@@ -4,7 +4,6 @@ import { Fragment } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { JobsMenu } from "~/components/navigation/JobsMenu";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 import { Callout } from "~/components/primitives/Callout";
@@ -21,23 +20,28 @@ import {
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RunsTable } from "~/components/runs/RunsTable";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { projectMatchId, useProject } from "~/hooks/useProject";
+import { useProject } from "~/hooks/useProject";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { TriggerSourcePresenter } from "~/presenters/TriggerSourcePresenter.server";
 import { requireUser } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
 import {
   TriggerSourceParamSchema,
-  parentPath,
   projectTriggersPath,
   triggerSourceRunsPath,
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
+import { ListPagination } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/ListPagination";
+import { RunListSearchSchema } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/route";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
   const { organizationSlug, projectParam, triggerParam } =
     TriggerSourceParamSchema.parse(params);
+
+  const url = new URL(request.url);
+  const s = Object.fromEntries(url.searchParams.entries());
+  const searchParams = RunListSearchSchema.parse(s);
 
   const presenter = new TriggerSourcePresenter();
   const { trigger } = await presenter.call({
@@ -45,6 +49,8 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     organizationSlug,
     projectSlug: projectParam,
     triggerSourceId: triggerParam,
+    direction: searchParams.direction,
+    cursor: searchParams.cursor,
   });
 
   if (!trigger) {
@@ -134,17 +140,27 @@ export default function Integrations() {
             External Triggers need to be registered with the external service.
             You can see the list of attempted registrations below.
           </Paragraph>
-          {trigger.registrationJob ? (
-            <RunsTable
-              runs={trigger.registrationJob.runs}
-              total={trigger.registrationJob.runs.length}
-              hasFilters={false}
-              runsParentPath={triggerSourceRunsPath(
-                organization,
-                project,
-                trigger
-              )}
-            />
+          {trigger.runList ? (
+            <>
+              <ListPagination
+                list={trigger.runList}
+                className="mt-2 justify-end"
+              />
+              <RunsTable
+                runs={trigger.runList.runs}
+                total={trigger.runList.runs.length}
+                hasFilters={false}
+                runsParentPath={triggerSourceRunsPath(
+                  organization,
+                  project,
+                  trigger
+                )}
+              />
+              <ListPagination
+                list={trigger.runList}
+                className="mt-2 justify-end"
+              />
+            </>
           ) : (
             <Callout variant="warning">No registration runs found</Callout>
           )}

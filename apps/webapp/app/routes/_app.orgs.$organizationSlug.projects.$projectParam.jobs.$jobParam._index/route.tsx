@@ -28,7 +28,7 @@ export const DirectionSchema = z.union([
   z.literal("backward"),
 ]);
 
-const SearchSchema = z.object({
+export const RunListSearchSchema = z.object({
   cursor: z.string().optional(),
   direction: DirectionSchema.optional(),
 });
@@ -40,7 +40,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 
   const url = new URL(request.url);
   const s = Object.fromEntries(url.searchParams.entries());
-  const searchParams = SearchSchema.parse(s);
+  const searchParams = RunListSearchSchema.parse(s);
 
   const presenter = new RunListPresenter();
   const list = await presenter.call({

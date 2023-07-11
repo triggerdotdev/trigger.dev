@@ -2,6 +2,11 @@ import { TriggerSource, User } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
+import {
+  Direction,
+  RunList,
+  RunListPresenter,
+} from "./RunListPresenter.server";
 
 export class TriggerSourcePresenter {
   #prismaClient: PrismaClient;
@@ -15,11 +20,15 @@ export class TriggerSourcePresenter {
     projectSlug,
     organizationSlug,
     triggerSourceId,
+    direction = "forward",
+    cursor,
   }: {
     userId: User["id"];
     projectSlug: Project["slug"];
     organizationSlug: Organization["slug"];
     triggerSourceId: TriggerSource["id"];
+    direction?: Direction;
+    cursor?: string;
   }) {
     const trigger = await this.#prismaClient.triggerSource.findUnique({
       select: {
@@ -50,31 +59,6 @@ export class TriggerSourcePresenter {
                 slug: true,
               },
             },
-            runs: {
-              select: {
-                id: true,
-                number: true,
-                environment: {
-                  select: {
-                    type: true,
-                  },
-                },
-                status: true,
-                startedAt: true,
-                completedAt: true,
-                createdAt: true,
-                version: {
-                  select: {
-                    version: true,
-                  },
-                },
-                isTest: true,
-              },
-              orderBy: {
-                id: "desc",
-              },
-              take: 20,
-            },
           },
         },
       },
@@ -87,6 +71,18 @@ export class TriggerSourcePresenter {
       throw new Error("Trigger source not found");
     }
 
+    const runListPresenter = new RunListPresenter(this.#prismaClient);
+    const runList = trigger.sourceRegistrationJob
+      ? await runListPresenter.call({
+          userId,
+          jobSlug: trigger.sourceRegistrationJob.job.slug,
+          organizationSlug,
+          projectSlug,
+          direction,
+          cursor,
+        })
+      : undefined;
+
     return {
       trigger: {
         id: trigger.id,
@@ -96,23 +92,8 @@ export class TriggerSourcePresenter {
         createdAt: trigger.createdAt,
         updatedAt: trigger.updatedAt,
         params: trigger.params,
-        registrationJob: trigger.sourceRegistrationJob
-          ? {
-              id: trigger.sourceRegistrationJob.job.id,
-              slug: trigger.sourceRegistrationJob.job.slug,
-              runs: trigger.sourceRegistrationJob.runs.map((r) => ({
-                id: r.id,
-                number: r.number,
-                environment: r.environment,
-                status: r.status,
-                startedAt: r.startedAt,
-                completedAt: r.completedAt,
-                createdAt: r.createdAt,
-                version: r.version.version,
-                isTest: r.isTest,
-              })),
-            }
-          : undefined,
+        registrationJob: trigger.sourceRegistrationJob?.job,
+        runList,
       },
     };
   }
