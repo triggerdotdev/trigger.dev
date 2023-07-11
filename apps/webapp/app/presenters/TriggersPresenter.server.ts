@@ -23,7 +23,12 @@ export class TriggersPresenter {
       select: {
         id: true,
         active: true,
-        dynamicTrigger: true,
+        dynamicTrigger: {
+          select: {
+            id: true,
+            slug: true,
+          },
+        },
         integration: {
           select: {
             id: true,
