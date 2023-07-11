@@ -21,6 +21,7 @@ import {
   externalTriggerRunPath,
   externalTriggerRunStreamingPath,
   trimTrailingSlash,
+  externalTriggerRunsParentPath,
 } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
@@ -129,6 +130,9 @@ export default function Page() {
           { id: trigger.id },
           run
         ),
+        runsPath: externalTriggerRunsParentPath(organization, project, {
+          id: trigger.id,
+        }),
       }}
     />
   );

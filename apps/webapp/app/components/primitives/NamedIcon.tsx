@@ -205,6 +205,9 @@ const icons = {
   star: (className: string) => (
     <StarIcon className={cn("text-yellow-500", className)} />
   ),
+  stop: (className: string) => (
+    <StopIcon className={cn("text-rose-500", className)} />
+  ),
   team: (className: string) => (
     <UserGroupIcon className={cn("text-blue-500", className)} />
   ),

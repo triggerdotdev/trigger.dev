@@ -1,10 +1,12 @@
-import { conform } from "@conform-to/react";
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import { BoltIcon, ForwardIcon } from "@heroicons/react/24/solid";
-import { Form, Outlet, useNavigate } from "@remix-run/react";
+import { Form, Outlet, useActionData, useNavigate } from "@remix-run/react";
 import { JobRunStatus, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { useMemo } from "react";
 import { usePathName } from "~/hooks/usePathName";
 import { Run } from "~/presenters/RunPresenter.server";
+import { schema } from "~/routes/resources.runs.$runId.rerun";
 import { formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
 import {
@@ -35,6 +37,7 @@ import {
   RunBasicStatus,
   RunStatusIcon,
   RunStatusLabel,
+  hasFinished,
   runBasicStatus,
   runStatusTitle,
 } from "../runs/RunStatuses";
@@ -46,7 +49,6 @@ import {
   RunPanelHeader,
   RunPanelIconProperty,
   RunPanelIconSection,
-  RunPanelIconTitle,
   RunPanelProperties,
 } from "./RunCard";
 import { TaskCard } from "./TaskCard";
@@ -62,6 +64,7 @@ type RunOverviewProps = {
   paths: {
     back: string;
     run: string;
+    runsPath: string;
   };
 };
 
@@ -112,8 +115,10 @@ export function RunOverview({
                 Test run
               </span>
             )}
-            {showRerun && (
+            {showRerun && hasFinished(run.status) && (
               <RerunPopover
+                runId={run.id}
+                runsPath={paths.runsPath}
                 environmentType={run.environment.type}
                 status={basicStatus}
               />
@@ -328,12 +333,26 @@ function BlankTasks({
 }
 
 function RerunPopover({
+  runId,
+  runsPath,
   environmentType,
   status,
 }: {
+  runId: string;
+  runsPath: string;
   environmentType: RuntimeEnvironmentType;
   status: RunBasicStatus;
 }) {
+  const lastSubmission = useActionData();
+
+  const [form, { successRedirect }] = useForm({
+    id: "rerun",
+    lastSubmission,
+    onValidate({ formData }) {
+      return parse(formData, { schema });
+    },
+  });
+
   return (
     <Popover>
       <PopoverTrigger asChild={true}>
@@ -342,7 +361,15 @@ function RerunPopover({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="flex w-80 flex-col gap-2 p-4" align="end">
-        <Form method="post">
+        <Form
+          method="post"
+          action={`/resources/runs/${runId}/rerun`}
+          {...form.props}
+        >
+          <input
+            {...conform.input(successRedirect, { type: "hidden" })}
+            defaultValue={runsPath}
+          />
           {environmentType === "PRODUCTION" && (
             <Callout variant="warning">
               This will rerun this Job in your Production environment.

@@ -1,4 +1,4 @@
-import type { JobRunStatus } from "@trigger.dev/database";
+import type { JobRunExecution, JobRunStatus } from "@trigger.dev/database";
 import {
   CheckCircleIcon,
   ClockIcon,
@@ -8,6 +8,15 @@ import {
 } from "@heroicons/react/24/solid";
 import { cn } from "~/utils/cn";
 import { Spinner } from "../primitives/Spinner";
+
+export function hasFinished(status: JobRunStatus): boolean {
+  return (
+    status === "SUCCESS" ||
+    status === "FAILURE" ||
+    status === "ABORTED" ||
+    status === "TIMED_OUT"
+  );
+}
 
 export function RunStatus({ status }: { status: JobRunStatus }) {
   return (

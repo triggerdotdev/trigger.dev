@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
-import { NamedIcon } from "./NamedIcon";
+import { IconNamesOrString, NamedIcon } from "./NamedIcon";
 import { ShortcutKey } from "./ShortcutKey";
 
 const variant = {
@@ -125,8 +125,8 @@ const allVariants = {
 
 type ButtonContentPropsType = {
   children?: React.ReactNode;
-  LeadingIcon?: React.ComponentType<any> | string;
-  TrailingIcon?: React.ComponentType<any> | string;
+  LeadingIcon?: React.ComponentType<any> | IconNamesOrString;
+  TrailingIcon?: React.ComponentType<any> | IconNamesOrString;
   trailingIconClassName?: string;
   leadingIconClassName?: string;
   fullWidth?: boolean;
