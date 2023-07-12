@@ -1,25 +1,23 @@
 import { useMatches } from "@remix-run/react";
 import { motion } from "framer-motion";
-import { useOptionalIntegrationClient } from "~/hooks/useIntegrationClient";
 import { useOptionalJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
+import { Handle } from "~/utils/handle";
 import {
   accountPath,
   organizationBillingPath,
   organizationTeamPath,
   projectEnvironmentsPath,
   projectIntegrationsPath,
-  projectTriggersPath,
   projectPath,
+  projectTriggersPath,
 } from "~/utils/pathBuilder";
 import { UserProfilePhoto } from "../UserProfilePhoto";
 import { NavLinkButton } from "../primitives/Buttons";
-import type { IconNames } from "../primitives/NamedIcon";
+import { NamedIcon, type IconNames } from "../primitives/NamedIcon";
 import { SimpleTooltip } from "../primitives/Tooltip";
-import { usePathName } from "~/hooks/usePathName";
-import { Handle } from "~/utils/handle";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   return (
@@ -82,6 +80,7 @@ export function ProjectSideMenu() {
           icon="integration"
           to={projectIntegrationsPath(organization, project)}
           isCollapsed={isCollapsed}
+          hasWarning={project.hasUnconfiguredIntegrations}
           data-action="integrations"
         />
         <SideMenuItem
@@ -89,6 +88,7 @@ export function ProjectSideMenu() {
           icon="trigger"
           to={projectTriggersPath(organization, project)}
           isCollapsed={isCollapsed}
+          hasWarning={project.hasInactiveExternalTriggers}
           data-action="triggers"
         />
         <SideMenuItem
@@ -141,11 +141,13 @@ function SideMenuItem({
   to,
   isCollapsed,
   forceActive,
+  hasWarning = false,
 }: {
   icon: IconNames | React.ComponentType<any>;
   name: string;
   to: string;
   isCollapsed: boolean;
+  hasWarning?: boolean;
   forceActive?: boolean;
 }) {
   return (
@@ -163,6 +165,7 @@ function SideMenuItem({
               isActive = forceActive;
             }
             return cn(
+              "relative",
               isActive
                 ? "bg-slate-800 text-bright group-hover:bg-slate-800"
                 : "text-dimmed group-hover:bg-slate-850 group-hover:text-bright"
@@ -177,6 +180,9 @@ function SideMenuItem({
           >
             {name}
           </motion.span>
+          {hasWarning && (
+            <NamedIcon name="error" className="absolute left-1 top-1 h-4 w-4" />
+          )}
         </NavLinkButton>
       }
       content={name}

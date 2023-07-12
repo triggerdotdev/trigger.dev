@@ -90,6 +90,28 @@ export class ProjectPresenter {
           },
           orderBy: [{ title: "asc" }],
         },
+        _count: {
+          select: {
+            sources: {
+              where: {
+                active: false,
+              },
+            },
+          },
+        },
+        organization: {
+          select: {
+            _count: {
+              select: {
+                integrations: {
+                  where: {
+                    setupStatus: "MISSING_FIELDS",
+                  },
+                },
+              },
+            },
+          },
+        },
         environments: {
           select: {
             id: true,
@@ -207,6 +229,8 @@ export class ProjectPresenter {
           };
         })
         .filter(Boolean),
+      hasInactiveExternalTriggers: project._count.sources > 0,
+      hasUnconfiguredIntegrations: project.organization._count.integrations > 0,
       environments: project.environments.map((environment) => ({
         id: environment.id,
         slug: environment.slug,
