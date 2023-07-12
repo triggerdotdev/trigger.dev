@@ -45,12 +45,6 @@ new Job(client, {
       body: z.any().optional(),
       retry: z.any().optional(),
     }),
-    examples: {
-      successfulRequest: {
-        url: "https://httpbin.org/status/200",
-        method: "GET",
-      },
-    },
   }),
   run: async (payload, io, ctx) => {
     return await io.backgroundFetch<any>(
