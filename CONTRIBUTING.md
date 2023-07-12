@@ -14,7 +14,6 @@ branch are tagged into a release monthly.
 
 ### Prerequisites
 - [Node.js](https://nodejs.org/en) version >=16.x
-- [Next.js](https://nextjs.org/) version 12 or greater
 - [pnpm package manager](https://pnpm.io/installation) version 7
 - [Docker](https://www.docker.com/get-started/)
 
