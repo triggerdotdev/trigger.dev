@@ -1,11 +1,11 @@
 import chalk from "chalk";
 import { execSync } from "child_process";
 import { execa } from "execa";
-import fs from "fs-extra";
 import inquirer from "inquirer";
 import ora from "ora";
 import path from "path";
 import { logger } from "./logger.js";
+import { pathExists, removeFile } from "./fileSystem.js";
 
 const isGitInstalled = (dir: string): boolean => {
   try {
@@ -17,8 +17,8 @@ const isGitInstalled = (dir: string): boolean => {
 };
 
 /** @returns Whether or not the provided directory has a `.git` subdirectory in it. */
-const isRootGitRepo = (dir: string): boolean => {
-  return fs.existsSync(path.join(dir, ".git"));
+const isRootGitRepo = (dir: string): Promise<boolean> => {
+  return pathExists(path.join(dir, ".git"));
 };
 
 /** @returns Whether or not this directory or a parent directory has a `.git` directory. */
@@ -64,7 +64,7 @@ export const initializeGit = async (projectDir: string) => {
 
   const spinner = ora("Creating a new git repo...\n").start();
 
-  const isRoot = isRootGitRepo(projectDir);
+  const isRoot = await isRootGitRepo(projectDir);
   const isInside = await isInsideGitRepo(projectDir);
   const dirName = path.parse(projectDir).name; // skip full path for logging
 
@@ -86,7 +86,7 @@ export const initializeGit = async (projectDir: string) => {
       return;
     }
     // Deleting the .git folder
-    fs.removeSync(path.join(projectDir, ".git"));
+    await removeFile(path.join(projectDir, ".git"));
   } else if (isInside && !isRoot) {
     // Dir is inside a git worktree
     spinner.stop();

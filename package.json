@@ -51,7 +51,8 @@
     "turbo": "^1.10.3",
     "vite": "^4.1.1",
     "vite-tsconfig-paths": "^4.0.5",
-    "vitest": "^0.28.4"
+    "vitest": "^0.28.4",
+    "@trigger.dev/cli": "workspace:*"
   },
   "packageManager": "pnpm@7.18.1",
   "dependencies": {

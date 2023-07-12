@@ -74,7 +74,7 @@ const PackageSchema = z.object({
   "dist-tags": z.record(z.string()),
 });
 
-async function getLatestPackageVersion(
+export async function getLatestPackageVersion(
   packageName: string,
   tag: string
 ): Promise<InstalledPackage | undefined> {

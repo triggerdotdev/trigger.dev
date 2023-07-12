@@ -19,6 +19,7 @@ import { renderTitle } from "../utils/renderTitle.js";
 import { detectNextJsProject } from "../utils/detectNextJsProject.js";
 import { TriggerApi, WhoamiResponse } from "../utils/triggerApi.js";
 import { readFile } from "tsconfig";
+import { pathExists } from "../utils/fileSystem.js";
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -704,14 +705,5 @@ async function setupEnvironmentVariable(
     logger.success(
       `✅ Added ${variableName}=${renderer(value)} to ${fileName}`
     );
-  }
-}
-
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await fs.access(path);
-    return true;
-  } catch (error) {
-    return false;
   }
 }

@@ -35,7 +35,6 @@
     "trigger-cli": "./dist/index.js"
   },
   "devDependencies": {
-    "@types/fs-extra": "^11.0.1",
     "@types/gradient-string": "^1.1.2",
     "@types/inquirer": "^9.0.3",
     "@types/node": "16",
@@ -59,7 +58,6 @@
     "commander": "^9.4.1",
     "degit": "^2.8.4",
     "execa": "^7.0.0",
-    "fs-extra": "^11.1.0",
     "gradient-string": "^2.0.2",
     "inquirer": "^9.1.4",
     "localtunnel": "^2.0.2",
