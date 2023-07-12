@@ -383,7 +383,6 @@ function IntegrationsWithMissingFields({
   callbackUrl: string;
   options: IntegrationOrApi[];
 }) {
-  const clicked = useCallback((id: string) => {}, [clients]);
   const integrationsList = options.flatMap((o) =>
     o.type === "integration" ? [o] : []
   );

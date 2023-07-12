@@ -64,6 +64,7 @@ export default function Integrations() {
         A Scheduled Trigger runs a Job on a repeated schedule. The schedule can
         use a CRON expression or an interval.
       </Paragraph>
+
       <Table containerClassName="mt-4">
         <TableHeader>
           <TableRow>
