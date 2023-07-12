@@ -13,15 +13,16 @@
     "dist/index.js.map"
   ],
   "devDependencies": {
-    "@trigger.dev/tsconfig": "workspace:*",
-    "@types/node": "18",
+    "@types/node": "16.x",
     "rimraf": "^3.0.2",
-    "tsup": "^6.5.0"
+    "tsup": "7.1.x",
+    "typescript": "4.9.4"
   },
   "scripts": {
     "clean": "rimraf dist",
     "build": "npm run clean && npm run build:tsup",
-    "build:tsup": "tsup"
+    "build:tsup": "tsup",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@typeform/api-client": "^1.8.0",
