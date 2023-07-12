@@ -38,16 +38,46 @@ branch are tagged into a release monthly.
       ```
       cp .env.example .env && cp packages/database/.env.example packages/database/.env
       ```
-      Open the root `.env` file and fill in the required values.
-6. Start Docker. This starts the required services like Postgres.
+5. Open the root `.env` file and fill in the required values for these services:
+
+      <details>
+      <summary>Resend</summary>
+            
+      <p>We use https://resend.com for email sending (including the magic-link signup/login system). They have a generous free tier of 100 emails a day that should be sufficient. Signup for Resend.com and enter the required environment vars below.</p>
+      
+      ```
+      RESEND_API_KEY=<api_key>
+      FROM_EMAIL=
+      REPLY_TO_EMAIL=
+      ```
+      </details>
+
+      <details>
+      <summary>Magic Link</summary>
+            
+      <p>Both of these secrets should be random strings, which you can easily generate (and copy into your pasteboard) with the following command:</p>
+      
+      ```sh
+      openssl rand -hex 16 | pbcopy
+      ```
+
+      <p>Then set them here:</p>
+
+      ```
+      SESSION_SECRET=<string>
+      MAGIC_LINK_SECRET=<string>
+      ```
+      </details>
+      
+7. Start Docker. This starts the required services like Postgres.
       ```
       pnpm run docker
       ```
-7. Migrate the database
+8. Migrate the database
       ```
       pnpm run db:migrate
       ```
-8. Run the seed script
+9. Run the seed script
       ```
       pnpm run db:seed
       ```
