@@ -60,6 +60,7 @@ export class RegisterScheduleService {
         dispatcher: eventDispatcher,
         schedule: payload,
         accountId: payload.accountId,
+        dynamicTrigger,
       });
 
       return registration;

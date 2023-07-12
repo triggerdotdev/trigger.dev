@@ -1,4 +1,4 @@
-import type { EventDispatcher } from "@trigger.dev/database";
+import type { DynamicTrigger, EventDispatcher } from "@trigger.dev/database";
 import {
   CronMetadata,
   IntervalMetadata,
@@ -19,11 +19,13 @@ export class RegisterScheduleSourceService {
     dispatcher,
     schedule,
     accountId,
+    dynamicTrigger,
   }: {
     key: string;
     dispatcher: EventDispatcher;
     schedule: ScheduleMetadata;
     accountId?: string;
+    dynamicTrigger?: DynamicTrigger;
   }) {
     const validatedSchedule = validateSchedule(schedule);
 
@@ -63,6 +65,7 @@ export class RegisterScheduleSourceService {
           active: environment.autoEnableInternalSources,
           metadata: schedule.metadata,
           externalAccountId: externalAccount ? externalAccount.id : undefined,
+          dynamicTriggerId: dynamicTrigger ? dynamicTrigger.id : undefined,
         },
         update: {
           schedule: {
