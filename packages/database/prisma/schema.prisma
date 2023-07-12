@@ -565,9 +565,10 @@ model DynamicTrigger {
   endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   endpointId String
 
-  jobs          Job[]
-  sources       TriggerSource[]
-  registrations DynamicTriggerRegistration[]
+  jobs            Job[]
+  sources         TriggerSource[]
+  scheduleSources ScheduleSource[]
+  registrations   DynamicTriggerRegistration[]
 
   sourceRegistrationJob   JobVersion? @relation(fields: [sourceRegistrationJobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   sourceRegistrationJobId String?
@@ -995,6 +996,9 @@ model ScheduleSource {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  dynamicTrigger   DynamicTrigger? @relation(fields: [dynamicTriggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  dynamicTriggerId String?
 
   externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   externalAccountId String?
