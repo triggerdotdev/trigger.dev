@@ -359,14 +359,28 @@ export class TriggerClient {
           };
         }
 
-        const sourceRequest = new Request(headers.data["x-ts-http-url"], {
+        const sourceRequestNeedsBody =
+          headers.data["x-ts-http-method"] !== "GET";
+
+        const sourceRequestInit: RequestInit = {
           method: headers.data["x-ts-http-method"],
           headers: headers.data["x-ts-http-headers"],
-          body:
-            headers.data["x-ts-http-method"] !== "GET"
-              ? request.body
-              : undefined,
-        });
+          body: sourceRequestNeedsBody ? request.body : undefined,
+        };
+
+        if (sourceRequestNeedsBody) {
+          try {
+            // @ts-ignore
+            sourceRequestInit.duplex = "half";
+          } catch (error) {
+            // ignore
+          }
+        }
+
+        const sourceRequest = new Request(
+          headers.data["x-ts-http-url"],
+          sourceRequestInit
+        );
 
         const key = headers.data["x-ts-key"];
         const dynamicId = headers.data["x-ts-dynamic-id"];

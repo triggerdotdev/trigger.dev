@@ -66,6 +66,7 @@ async function convertToStandardRequest(
     method,
     // @ts-ignore
     body: nextReq,
+    duplex: "half",
   });
 
   return webReq;
