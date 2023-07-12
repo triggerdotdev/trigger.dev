@@ -11,20 +11,41 @@ export class CancelRunService {
   public async call({ runId }: { runId: string }) {
     try {
       return await this.#prismaClient.$transaction(async (tx) => {
-        const run = await tx.jobRun.update({
-          select: {
-            queueId: true,
+        const run = await tx.jobRun.findUniqueOrThrow({
+          where: {
+            id: runId,
           },
+        });
+
+        const shouldDecrementQueue =
+          run.status === "STARTED" || run.status === "PREPROCESSING";
+        await tx.jobRun.update({
           where: { id: runId },
           data: {
             status: "CANCELED",
-            queue: {
-              update: {
-                jobCount: {
-                  decrement: 1,
-                },
-              },
+            completedAt: new Date(),
+            queue: shouldDecrementQueue
+              ? {
+                  update: {
+                    jobCount: {
+                      decrement: 1,
+                    },
+                  },
+                }
+              : undefined,
+          },
+        });
+
+        await tx.task.updateMany({
+          where: {
+            runId,
+            status: {
+              in: ["PENDING", "RUNNING", "WAITING"],
             },
+          },
+          data: {
+            status: "CANCELED",
+            completedAt: new Date(),
           },
         });
 

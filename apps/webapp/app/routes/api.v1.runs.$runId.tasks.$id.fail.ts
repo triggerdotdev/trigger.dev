@@ -121,7 +121,8 @@ export class FailRunTaskService {
 
       if (
         existingTask.status === "COMPLETED" ||
-        existingTask.status === "ERRORED"
+        existingTask.status === "ERRORED" ||
+        existingTask.status === "CANCELED"
       ) {
         logger.debug("Task already completed", {
           existingTask,

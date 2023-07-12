@@ -12,6 +12,10 @@ export class RetryWithTaskError {
   ) {}
 }
 
+export class CanceledWithTaskError {
+  constructor(public task: ServerTask) {}
+}
+
 /** Use this function if you're using a `try/catch` block to catch errors.
  * It checks if a thrown error is a special internal error that you should ignore.
  * If this returns `true` then you must rethrow the error: `throw err;`
@@ -20,8 +24,10 @@ export class RetryWithTaskError {
  */
 export function isTriggerError(
   err: unknown
-): err is ResumeWithTaskError | RetryWithTaskError {
+): err is ResumeWithTaskError | RetryWithTaskError | CanceledWithTaskError {
   return (
-    err instanceof ResumeWithTaskError || err instanceof RetryWithTaskError
+    err instanceof ResumeWithTaskError ||
+    err instanceof RetryWithTaskError ||
+    err instanceof CanceledWithTaskError
   );
 }

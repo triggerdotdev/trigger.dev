@@ -356,6 +356,15 @@ export const RunJobRetryWithTaskSchema = z.object({
 
 export type RunJobRetryWithTask = z.infer<typeof RunJobRetryWithTaskSchema>;
 
+export const RunJobCanceledWithTaskSchema = z.object({
+  status: z.literal("CANCELED"),
+  task: TaskSchema,
+});
+
+export type RunJobCanceledWithTask = z.infer<
+  typeof RunJobCanceledWithTaskSchema
+>;
+
 export const RunJobSuccessSchema = z.object({
   status: z.literal("SUCCESS"),
   output: DeserializedJsonSchema.optional(),
@@ -367,6 +376,7 @@ export const RunJobResponseSchema = z.discriminatedUnion("status", [
   RunJobErrorSchema,
   RunJobResumeWithTaskSchema,
   RunJobRetryWithTaskSchema,
+  RunJobCanceledWithTaskSchema,
   RunJobSuccessSchema,
 ]);
 
