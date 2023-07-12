@@ -24,16 +24,14 @@ export const variantClasses = {
   warning: {
     className: "border-yellow-400/20 bg-yellow-400/30",
     icon: (
-      <ExclamationCircleIcon className="h-5 w-5 shrink-0 text-yellow-400" />
+      <ExclamationTriangleIcon className="h-5 w-5 shrink-0 text-yellow-400" />
     ),
     textColor: "text-yellow-200",
     linkClassName: "transition hover:bg-yellow-400/40",
   },
   error: {
     className: "border-rose-500/20 bg-rose-500/30",
-    icon: (
-      <ExclamationTriangleIcon className="h-5 w-5 shrink-0 text-rose-400" />
-    ),
+    icon: <ExclamationCircleIcon className="h-5 w-5 shrink-0 text-rose-400" />,
     textColor: "text-rose-200",
     linkClassName: "transition hover:bg-rose-500/40",
   },
