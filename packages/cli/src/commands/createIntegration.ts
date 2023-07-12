@@ -174,6 +174,12 @@ export async function createIntegrationCommand(path: string, cliOptions: any) {
     JSON.stringify(tsconfigJson, null, 2)
   );
 
+  const readme = `
+# ${resolvedOptions.packageName}
+  `;
+
+  await createFileInPath(resolvedPath, "README.md", readme);
+
   // Create the tsup.config.ts
   const tsupConfig = `
 import { defineConfig } from "tsup";
