@@ -58,6 +58,18 @@ export class TriggersPresenter {
             },
           },
         },
+        environment: {
+          OR: [
+            {
+              orgMember: null,
+            },
+            {
+              orgMember: {
+                userId,
+              },
+            },
+          ],
+        },
         project: {
           slug: projectSlug,
         },
