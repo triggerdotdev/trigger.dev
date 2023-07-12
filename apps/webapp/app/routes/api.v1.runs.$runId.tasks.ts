@@ -1,5 +1,6 @@
 import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
+import { TaskStatus } from "@trigger.dev/database";
 import {
   RunTaskBodyOutput,
   RunTaskBodyOutputSchema,
@@ -202,16 +203,21 @@ export class RunTaskService {
       });
 
       if (!run) throw new Error("Run not found");
-      if (run.status === "CANCELED") return;
 
       // If task.delayUntil is set and is in the future, we'll set the task's status to "WAITING", else set it to RUNNING
-      const status =
-        (taskBody.delayUntil && taskBody.delayUntil.getTime() > Date.now()) ||
-        taskBody.trigger
-          ? "WAITING"
-          : taskBody.noop
-          ? "COMPLETED"
-          : "RUNNING";
+      let status: TaskStatus;
+
+      if (run.status === "CANCELED") {
+        status = "CANCELED";
+      } else {
+        status =
+          (taskBody.delayUntil && taskBody.delayUntil.getTime() > Date.now()) ||
+          taskBody.trigger
+            ? "WAITING"
+            : taskBody.noop
+            ? "COMPLETED"
+            : "RUNNING";
+      }
 
       const task = await tx.task.create({
         data: {
@@ -241,7 +247,10 @@ export class RunTaskService {
           description: taskBody.description,
           status,
           startedAt: new Date(),
-          completedAt: status === "COMPLETED" ? new Date() : undefined,
+          completedAt:
+            status === "COMPLETED" || status === "CANCELED"
+              ? new Date()
+              : undefined,
           noop: taskBody.noop,
           delayUntil: taskBody.delayUntil,
           params: taskBody.params ?? undefined,

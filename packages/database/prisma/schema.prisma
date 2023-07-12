@@ -799,6 +799,7 @@ enum TaskStatus {
   RUNNING
   COMPLETED
   ERRORED
+  CANCELED
 }
 
 model TaskAttempt {

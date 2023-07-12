@@ -3,6 +3,7 @@ import {
   CheckCircleIcon,
   CheckIcon,
   ClockIcon,
+  NoSymbolIcon,
   XCircleIcon,
 } from "@heroicons/react/24/solid";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -50,6 +51,12 @@ export function TaskStatusIcon({
           className={cn(taskStatusClassNameColor(status), className)}
         />
       );
+    case "CANCELED":
+      return (
+        <NoSymbolIcon
+          className={cn(taskStatusClassNameColor(status), className)}
+        />
+      );
   }
 }
 
@@ -65,5 +72,7 @@ function taskStatusClassNameColor(status: TaskStatus): string {
       return "text-blue-500";
     case "ERRORED":
       return "text-rose-500";
+    case "CANCELED":
+      return "text-slate-500";
   }
 }
