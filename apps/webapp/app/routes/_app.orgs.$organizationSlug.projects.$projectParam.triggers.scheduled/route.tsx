@@ -1,3 +1,4 @@
+import { NoSymbolIcon } from "@heroicons/react/20/solid";
 import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -12,21 +13,19 @@ import {
   TableBlankRow,
   TableBody,
   TableCell,
-  TableCellChevron,
   TableHeader,
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { TextLink } from "~/components/primitives/TextLink";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { ScheduledTriggersPresenter } from "~/presenters/ScheduledTriggersPresenter.server";
 import { requireUser } from "~/services/session.server";
-import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import {
   ProjectParamSchema,
-  externalTriggerPath,
+  docsPath,
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
@@ -70,21 +69,18 @@ export default function Integrations() {
           <TableRow>
             <TableHeaderCell>ID</TableHeaderCell>
             <TableHeaderCell>Schedule</TableHeaderCell>
+            <TableHeaderCell>Environment</TableHeaderCell>
+            <TableHeaderCell>Active</TableHeaderCell>
             <TableHeaderCell>Dynamic</TableHeaderCell>
             <TableHeaderCell>Last run</TableHeaderCell>
             <TableHeaderCell>Next run</TableHeaderCell>
-            <TableHeaderCell>Environment</TableHeaderCell>
-            <TableHeaderCell>Active</TableHeaderCell>
           </TableRow>
         </TableHeader>
         <TableBody>
           {scheduled.length > 0 ? (
             scheduled.map((t) => {
               return (
-                <TableRow
-                  key={t.id}
-                  className={cn(!t.active && "bg-rose-500/30")}
-                >
+                <TableRow key={t.id}>
                   <TableCell>{t.key}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
@@ -113,6 +109,32 @@ export default function Integrations() {
                     </div>
                   </TableCell>
                   <TableCell>
+                    <span className="flex">
+                      <EnvironmentLabel environment={t.environment} />
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    {t.active ? (
+                      <CheckCircleIcon className="h-6 w-6 text-green-500" />
+                    ) : t.environment.type === "DEVELOPMENT" ? (
+                      <span className="flex items-center gap-1">
+                        <NoSymbolIcon className="h-6 w-6 text-dimmed" />
+                        <Paragraph variant="extra-small">
+                          <TextLink
+                            href={docsPath(
+                              "documentation/concepts/triggers/scheduled"
+                            )}
+                            variant="secondary"
+                          >
+                            Won't run in DEV
+                          </TextLink>
+                        </Paragraph>
+                      </span>
+                    ) : (
+                      <XCircleIcon className="h-6 w-6 text-rose-500" />
+                    )}
+                  </TableCell>
+                  <TableCell>
                     {t.dynamicTrigger ? (
                       <span className="flex items-center gap-0.5">
                         <NamedIcon name="dynamic" className="h-4 w-4" />
@@ -134,18 +156,6 @@ export default function Integrations() {
                       <DateTime date={t.nextEventTimestamp} />
                     ) : (
                       "–"
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <span className="flex">
-                      <EnvironmentLabel environment={t.environment} />
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    {t.active ? (
-                      <CheckCircleIcon className="h-6 w-6 text-green-500" />
-                    ) : (
-                      <XCircleIcon className="h-6 w-6 text-rose-500" />
                     )}
                   </TableCell>
                 </TableRow>
