@@ -1,11 +1,9 @@
 import {
   ArrowTopRightOnSquareIcon,
-  ExclamationCircleIcon,
   ExclamationTriangleIcon,
   InformationCircleIcon,
   StopIcon,
 } from "@heroicons/react/20/solid";
-import { CompanyIcon, hasIcon } from "@trigger.dev/companyicons";
 import {
   ArrowLeftIcon,
   ArrowPathIcon,
@@ -51,13 +49,15 @@ import {
   XCircleIcon,
   XMarkIcon,
 } from "@heroicons/react/24/solid";
+import { CompanyIcon, hasIcon } from "@trigger.dev/companyicons";
+import { HourglassIcon } from "lucide-react";
+import { DynamicTriggerIcon } from "~/assets/icons/DynamicTriggerIcon";
+import { ErrorIcon } from "~/assets/icons/ErrorIcon";
 import { ScheduleIcon } from "~/assets/icons/ScheduleIcon";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { cn } from "~/utils/cn";
 import { LogoIcon } from "../LogoIcon";
 import { Spinner } from "./Spinner";
-import { HourglassIcon } from "lucide-react";
-import { DynamicTriggerIcon } from "~/assets/icons/DynamicTriggerIcon";
 
 const icons = {
   account: (className: string) => (
@@ -118,7 +118,7 @@ const icons = {
     <DynamicTriggerIcon className={cn("text-cyan-500", className)} />
   ),
   error: (className: string) => (
-    <ExclamationCircleIcon className={cn("text-rose-500", className)} />
+    <ErrorIcon className={cn("text-rose-500", className)} />
   ),
   "external-link": (className: string) => (
     <ArrowTopRightOnSquareIcon className={cn("text-dimmed", className)} />
