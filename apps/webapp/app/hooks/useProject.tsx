@@ -1,25 +1,27 @@
-import {
-  UseDataFunctionReturn,
-  useTypedRouteLoaderData,
-} from "remix-typedjson";
+import { RouteMatch } from "@remix-run/react";
+import { UseDataFunctionReturn } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import type { loader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam/route";
 import { useChanged } from "./useChanged";
+import { useTypedMatchesData } from "./useTypedMatchData";
 
 export type MatchedProject = UseDataFunctionReturn<typeof loader>["project"];
-
 export type ProjectJob = MatchedProject["jobs"][number];
 
-export function useOptionalProject() {
-  const routeMatch = useTypedRouteLoaderData<typeof loader>(
-    "routes/_app.orgs.$organizationSlug.projects.$projectParam"
-  );
+export const projectMatchId =
+  "routes/_app.orgs.$organizationSlug.projects.$projectParam";
+
+export function useOptionalProject(matches?: RouteMatch[]) {
+  const routeMatch = useTypedMatchesData<typeof loader>({
+    id: projectMatchId,
+    matches,
+  });
 
   return routeMatch?.project;
 }
 
-export function useProject() {
-  const project = useOptionalProject();
+export function useProject(matches?: RouteMatch[]) {
+  const project = useOptionalProject(matches);
   invariant(project, "Project must be defined");
   return project;
 }

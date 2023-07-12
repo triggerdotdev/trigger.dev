@@ -19,6 +19,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { webcrypto } from "node:crypto";
 import { ApiClient } from "./apiClient";
 import {
+  CanceledWithTaskError,
   ResumeWithTaskError,
   RetryWithTaskError,
   isTriggerError,
@@ -513,6 +514,15 @@ export class IO {
       parentId,
     });
 
+    if (task.status === "CANCELED") {
+      this._logger.debug("Task canceled", {
+        idempotencyKey,
+        task,
+      });
+
+      throw new CanceledWithTaskError(task);
+    }
+
     if (task.status === "COMPLETED") {
       this._logger.debug("Using task output", {
         idempotencyKey,
@@ -560,10 +570,18 @@ export class IO {
           task,
         });
 
-        await this._apiClient.completeTask(this._id, task.id, {
-          output: result ?? undefined,
-          properties: task.outputProperties ?? undefined,
-        });
+        const completedTask = await this._apiClient.completeTask(
+          this._id,
+          task.id,
+          {
+            output: result ?? undefined,
+            properties: task.outputProperties ?? undefined,
+          }
+        );
+
+        if (completedTask.status === "CANCELED") {
+          throw new CanceledWithTaskError(completedTask);
+        }
 
         return result;
       } catch (error) {

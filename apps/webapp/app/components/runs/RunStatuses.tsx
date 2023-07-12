@@ -1,13 +1,25 @@
-import type { JobRunStatus } from "@trigger.dev/database";
+import type { JobRunExecution, JobRunStatus } from "@trigger.dev/database";
 import {
   CheckCircleIcon,
   ClockIcon,
   ExclamationTriangleIcon,
+  StopIcon,
   WrenchIcon,
   XCircleIcon,
 } from "@heroicons/react/24/solid";
 import { cn } from "~/utils/cn";
 import { Spinner } from "../primitives/Spinner";
+import { HandRaisedIcon, NoSymbolIcon } from "@heroicons/react/20/solid";
+
+export function hasFinished(status: JobRunStatus): boolean {
+  return (
+    status === "SUCCESS" ||
+    status === "FAILURE" ||
+    status === "ABORTED" ||
+    status === "TIMED_OUT" ||
+    status === "CANCELED"
+  );
+}
 
 export function RunStatus({ status }: { status: JobRunStatus }) {
   return (
@@ -80,6 +92,12 @@ export function RunStatusIcon({
       return (
         <Spinner className={cn(runStatusClassNameColor(status), className)} />
       );
+    case "CANCELED":
+      return (
+        <NoSymbolIcon
+          className={cn(runStatusClassNameColor(status), className)}
+        />
+      );
   }
 }
 
@@ -110,6 +128,8 @@ export function runBasicStatus(status: JobRunStatus): RunBasicStatus {
       return "FAILED";
     case "PREPROCESSING":
       return "PENDING";
+    case "CANCELED":
+      return "FAILED";
   }
 }
 
@@ -133,6 +153,8 @@ export function runStatusTitle(status: JobRunStatus): string {
       return "Aborted";
     case "PREPROCESSING":
       return "Preprocessing";
+    case "CANCELED":
+      return "Canceled";
   }
 }
 
@@ -156,5 +178,7 @@ export function runStatusClassNameColor(status: JobRunStatus): string {
       return "text-rose-500";
     case "PREPROCESSING":
       return "text-blue-500";
+    case "CANCELED":
+      return "text-slate-500";
   }
 }

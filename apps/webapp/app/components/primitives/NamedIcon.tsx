@@ -1,11 +1,9 @@
 import {
   ArrowTopRightOnSquareIcon,
-  ExclamationCircleIcon,
   ExclamationTriangleIcon,
   InformationCircleIcon,
   StopIcon,
 } from "@heroicons/react/20/solid";
-import { CompanyIcon, hasIcon } from "@trigger.dev/companyicons";
 import {
   ArrowLeftIcon,
   ArrowPathIcon,
@@ -17,6 +15,7 @@ import {
   BuildingOffice2Icon,
   CalendarDaysIcon,
   ChatBubbleLeftEllipsisIcon,
+  CheckCircleIcon,
   CheckIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
@@ -47,19 +46,25 @@ import {
   UserIcon,
   UserPlusIcon,
   WrenchScrewdriverIcon,
+  XCircleIcon,
   XMarkIcon,
 } from "@heroicons/react/24/solid";
+import { CompanyIcon, hasIcon } from "@trigger.dev/companyicons";
+import { HourglassIcon } from "lucide-react";
+import { DynamicTriggerIcon } from "~/assets/icons/DynamicTriggerIcon";
+import { ErrorIcon } from "~/assets/icons/ErrorIcon";
 import { ScheduleIcon } from "~/assets/icons/ScheduleIcon";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { cn } from "~/utils/cn";
 import { LogoIcon } from "../LogoIcon";
 import { Spinner } from "./Spinner";
-import { HourglassIcon } from "lucide-react";
-import { DynamicTriggerIcon } from "~/assets/icons/DynamicTriggerIcon";
 
 const icons = {
   account: (className: string) => (
     <UserCircleIcon className={cn("text-slate-400", className)} />
+  ),
+  active: (className: string) => (
+    <CheckCircleIcon className={cn("text-green-500", className)} />
   ),
   "arrow-right": (className: string) => (
     <ArrowRightIcon className={cn("text-white", className)} />
@@ -113,7 +118,7 @@ const icons = {
     <DynamicTriggerIcon className={cn("text-cyan-500", className)} />
   ),
   error: (className: string) => (
-    <ExclamationCircleIcon className={cn("text-rose-500", className)} />
+    <ErrorIcon className={cn("text-rose-500", className)} />
   ),
   "external-link": (className: string) => (
     <ArrowTopRightOnSquareIcon className={cn("text-dimmed", className)} />
@@ -141,6 +146,9 @@ const icons = {
   ),
   id: (className: string) => (
     <FingerPrintIcon className={cn("text-rose-200", className)} />
+  ),
+  inactive: (className: string) => (
+    <XCircleIcon className={cn("text-rose-500", className)} />
   ),
   info: (className: string) => (
     <InformationCircleIcon className={cn("text-blue-500", className)} />
@@ -197,6 +205,9 @@ const icons = {
   star: (className: string) => (
     <StarIcon className={cn("text-yellow-500", className)} />
   ),
+  stop: (className: string) => (
+    <StopIcon className={cn("text-rose-500", className)} />
+  ),
   team: (className: string) => (
     <UserGroupIcon className={cn("text-blue-500", className)} />
   ),
@@ -213,8 +224,11 @@ const icons = {
   "custom-event": (className: string) => (
     <CodeBracketSquareIcon className={cn("text-toxic-600", className)} />
   ),
+  "register-source": (className: string) => (
+    <GlobeAltIcon className={cn("text-sky-500", className)} />
+  ),
   "schedule-interval": (className: string) => (
-    <ScheduleIcon className={cn("text-sky-500", className)} />
+    <ClockIcon className={cn("text-sky-500", className)} />
   ),
   "schedule-cron": (className: string) => (
     <ScheduleIcon className={cn("text-sky-500", className)} />

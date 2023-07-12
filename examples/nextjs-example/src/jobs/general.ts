@@ -45,6 +45,12 @@ new Job(client, {
       body: z.any().optional(),
       retry: z.any().optional(),
     }),
+    examples: {
+      successfulRequest: {
+        url: "https://httpbin.org/status/200",
+        method: "GET",
+      },
+    },
   }),
   run: async (payload, io, ctx) => {
     return await io.backgroundFetch<any>(
@@ -635,9 +641,13 @@ new Job(client, {
     repo: "basic-starter-12k",
   }),
   run: async (payload, io, ctx) => {
-    await io.wait("wait", 5); // wait for 5 seconds
+    await io.runTask("slow task", { name: "slow task" }, async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+    });
 
     await io.logger.info("This is a simple log info message");
+
+    await io.wait("wait", 5); // wait for 5 seconds
 
     const response = await io.slack.postMessage("Slack 📝", {
       text: `New Issue opened: ${payload.issue.html_url}`,

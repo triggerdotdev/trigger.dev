@@ -23,7 +23,11 @@ import {
   SourceMetadata,
 } from "@trigger.dev/internal";
 import { ApiClient } from "./apiClient";
-import { ResumeWithTaskError, RetryWithTaskError } from "./errors";
+import {
+  CanceledWithTaskError,
+  ResumeWithTaskError,
+  RetryWithTaskError,
+} from "./errors";
 import { IO } from "./io";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { Job } from "./job";
@@ -656,6 +660,13 @@ export class TriggerClient {
           task: error.task,
           error: error.cause,
           retryAt: error.retryAt,
+        };
+      }
+
+      if (error instanceof CanceledWithTaskError) {
+        return {
+          status: "CANCELED",
+          task: error.task,
         };
       }
 

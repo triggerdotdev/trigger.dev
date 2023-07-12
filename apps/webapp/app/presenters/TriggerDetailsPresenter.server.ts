@@ -1,15 +1,10 @@
 import { PrismaClient, prisma } from "~/db.server";
 
-type DetailsProps = {
-  id: string;
-  userId: string;
-};
-
 export type DetailedEvent = NonNullable<
-  Awaited<ReturnType<EventDetailsPresenter["call"]>>
+  Awaited<ReturnType<TriggerDetailsPresenter["call"]>>
 >;
 
-export class EventDetailsPresenter {
+export class TriggerDetailsPresenter {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {

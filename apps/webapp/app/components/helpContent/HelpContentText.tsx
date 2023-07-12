@@ -1,5 +1,5 @@
 import { Link } from "@remix-run/react";
-import { Paragraph, TextLink } from "~/components/primitives/Paragraph";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
 import { useDevEnvironment } from "~/hooks/useEnvironments";
@@ -27,6 +27,7 @@ import selectExample from "./select-example.png";
 import { Header2 } from "../primitives/Headers";
 import { CodeBlock } from "../code/CodeBlock";
 import { EnvironmentLabel } from "../environments/EnvironmentLabel";
+import { TextLink } from "../primitives/TextLink";
 
 export function HowToSetupYourProject() {
   const devEnvironment = useDevEnvironment();

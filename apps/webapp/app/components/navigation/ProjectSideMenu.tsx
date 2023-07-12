@@ -1,10 +1,10 @@
 import { useMatches } from "@remix-run/react";
 import { motion } from "framer-motion";
-import { useOptionalIntegrationClient } from "~/hooks/useIntegrationClient";
 import { useOptionalJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
+import { Handle } from "~/utils/handle";
 import {
   accountPath,
   organizationBillingPath,
@@ -12,10 +12,11 @@ import {
   projectEnvironmentsPath,
   projectIntegrationsPath,
   projectPath,
+  projectTriggersPath,
 } from "~/utils/pathBuilder";
 import { UserProfilePhoto } from "../UserProfilePhoto";
 import { NavLinkButton } from "../primitives/Buttons";
-import type { IconNames } from "../primitives/NamedIcon";
+import { NamedIcon, type IconNames } from "../primitives/NamedIcon";
 import { SimpleTooltip } from "../primitives/Tooltip";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
@@ -45,14 +46,15 @@ export function ProjectSideMenu() {
   const project = useProject();
   const matches = useMatches();
 
-  //we collapse the menu if we're in a job or an integration
-  const job = useOptionalJob();
-  const client = useOptionalIntegrationClient();
-  const isCollapsed = job !== undefined || client !== undefined;
+  //the deepest route `handle` determines if the menu is expanded
+  const deepestMatch = matches.at(-1);
+  const handle = deepestMatch?.handle as Handle;
+  const isCollapsed = handle?.expandSidebar ? !handle.expandSidebar : true;
 
+  const job = useOptionalJob();
   const jobsActive =
     job !== undefined ||
-    matches.at(-1)?.id ===
+    deepestMatch?.id ===
       "routes/_app.orgs.$organizationSlug.projects.$projectParam._index";
 
   return (
@@ -78,7 +80,16 @@ export function ProjectSideMenu() {
           icon="integration"
           to={projectIntegrationsPath(organization, project)}
           isCollapsed={isCollapsed}
+          hasWarning={project.hasUnconfiguredIntegrations}
           data-action="integrations"
+        />
+        <SideMenuItem
+          name="Triggers"
+          icon="trigger"
+          to={projectTriggersPath(organization, project)}
+          isCollapsed={isCollapsed}
+          hasWarning={project.hasInactiveExternalTriggers}
+          data-action="triggers"
         />
         <SideMenuItem
           name="Environments & API Keys"
@@ -130,11 +141,13 @@ function SideMenuItem({
   to,
   isCollapsed,
   forceActive,
+  hasWarning = false,
 }: {
   icon: IconNames | React.ComponentType<any>;
   name: string;
   to: string;
   isCollapsed: boolean;
+  hasWarning?: boolean;
   forceActive?: boolean;
 }) {
   return (
@@ -152,6 +165,7 @@ function SideMenuItem({
               isActive = forceActive;
             }
             return cn(
+              "relative",
               isActive
                 ? "bg-slate-800 text-bright group-hover:bg-slate-800"
                 : "text-dimmed group-hover:bg-slate-850 group-hover:text-bright"
@@ -166,6 +180,9 @@ function SideMenuItem({
           >
             {name}
           </motion.span>
+          {hasWarning && (
+            <NamedIcon name="error" className="absolute left-1 top-1 h-4 w-4" />
+          )}
         </NavLinkButton>
       }
       content={name}

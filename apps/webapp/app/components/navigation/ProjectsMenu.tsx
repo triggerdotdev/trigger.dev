@@ -1,3 +1,4 @@
+import { RouteMatch } from "@remix-run/react";
 import { Fragment, useState } from "react";
 import {
   useIsNewOrganizationPage,
@@ -17,11 +18,11 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 
-export function ProjectsMenu() {
+export function ProjectsMenu({ matches }: { matches: RouteMatch[] }) {
   const [isOpen, setIsOpen] = useState(false);
-  const organizations = useOrganizations();
-  const isNewOrgPage = useIsNewOrganizationPage();
-  const currentProject = useOptionalProject();
+  const organizations = useOrganizations(matches);
+  const isNewOrgPage = useIsNewOrganizationPage(matches);
+  const currentProject = useOptionalProject(matches);
 
   if (isNewOrgPage) {
     return null;

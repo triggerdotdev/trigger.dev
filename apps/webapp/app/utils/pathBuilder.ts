@@ -1,14 +1,15 @@
-import type { Integration } from "@trigger.dev/database";
+import type { Integration, TriggerSource } from "@trigger.dev/database";
 import { z } from "zod";
 import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 
-type OrgForPath = Pick<Organization, "slug">;
-type ProjectForPath = Pick<Project, "slug">;
-type JobForPath = Pick<Job, "slug">;
-type RunForPath = Pick<Job, "id">;
-type IntegrationForPath = Pick<Integration, "slug">;
+export type OrgForPath = Pick<Organization, "slug">;
+export type ProjectForPath = Pick<Project, "slug">;
+export type JobForPath = Pick<Job, "slug">;
+export type RunForPath = Pick<Job, "id">;
+export type IntegrationForPath = Pick<Integration, "slug">;
+export type TriggerForPath = Pick<TriggerSource, "id">;
 
 export const OrganizationParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -33,6 +34,29 @@ export const TaskParamsSchema = RunParamsSchema.extend({
 export const IntegrationClientParamSchema = ProjectParamSchema.extend({
   clientParam: z.string(),
 });
+
+export const TriggerSourceParamSchema = ProjectParamSchema.extend({
+  triggerParam: z.string(),
+});
+
+export const TriggerSourceRunParamsSchema = TriggerSourceParamSchema.extend({
+  runParam: z.string(),
+});
+
+export const TriggerSourceRunTaskParamsSchema =
+  TriggerSourceRunParamsSchema.extend({
+    taskParam: z.string(),
+  });
+
+export function trimTrailingSlash(path: string) {
+  return path.replace(/\/$/, "");
+}
+
+export function parentPath(path: string) {
+  const trimmedTrailingSlash = trimTrailingSlash(path);
+  const lastSlashIndex = trimmedTrailingSlash.lastIndexOf("/");
+  return trimmedTrailingSlash.substring(0, lastSlashIndex);
+}
 
 export function organizationsPath() {
   return `/`;
@@ -105,6 +129,13 @@ export function projectIntegrationsPath(
   return `${projectPath(organization, project)}/integrations`;
 }
 
+export function projectTriggersPath(
+  organization: OrgForPath,
+  project: ProjectForPath
+) {
+  return `${projectPath(organization, project)}/triggers`;
+}
+
 export function projectEnvironmentsPath(
   organization: OrgForPath,
   project: ProjectForPath
@@ -155,6 +186,62 @@ function clientParam(integration: IntegrationForPath) {
   return integration.slug;
 }
 
+// Triggers
+export function projectScheduledTriggersPath(
+  organization: OrgForPath,
+  project: ProjectForPath
+) {
+  return `${projectTriggersPath(organization, project)}/scheduled`;
+}
+
+export function externalTriggerPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  trigger: TriggerForPath
+) {
+  return `${projectTriggersPath(
+    organization,
+    project
+  )}/external/${triggerSourceParam(trigger)}`;
+}
+
+export function externalTriggerRunsParentPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  trigger: TriggerForPath
+) {
+  return `${externalTriggerPath(organization, project, trigger)}/runs`;
+}
+
+export function externalTriggerRunPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  trigger: TriggerForPath,
+  run: RunForPath
+) {
+  return `${externalTriggerRunsParentPath(organization, project, trigger)}/${
+    run.id
+  }`;
+}
+
+export function externalTriggerRunStreamingPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  trigger: TriggerForPath,
+  run: RunForPath
+) {
+  return `${externalTriggerRunPath(
+    organization,
+    project,
+    trigger,
+    run
+  )}/stream`;
+}
+
+function triggerSourceParam(trigger: TriggerForPath) {
+  return trigger.id;
+}
+
 // Job
 export function jobPath(
   organization: OrgForPath,
@@ -193,22 +280,30 @@ export function jobParam(job: JobForPath) {
 }
 
 // Run
-function runPath(
+export function jobRunsParentPath(
   organization: OrgForPath,
   project: ProjectForPath,
-  job: JobForPath,
-  run: RunForPath
+  job: JobForPath
 ) {
-  return `${jobPath(organization, project, job)}/runs/${runParam(run)}`;
+  return `${jobPath(organization, project, job)}/runs`;
 }
 
-export function runDashboardPath(
+export function runPath(
   organization: OrgForPath,
   project: ProjectForPath,
   job: JobForPath,
   run: RunForPath
 ) {
-  return runTriggerPath(organization, project, job, run);
+  return `${jobRunsParentPath(organization, project, job)}/${runParam(run)}`;
+}
+
+export function jobRunDashboardPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  job: JobForPath,
+  run: RunForPath
+) {
+  return runTriggerPath(runPath(organization, project, job, run));
 }
 
 export function runStreamingPath(
@@ -225,34 +320,18 @@ export function runParam(run: RunForPath) {
 }
 
 // Task
-export function runTaskPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  job: JobForPath,
-  run: RunForPath,
-  taskId: string
-) {
-  return `${runPath(organization, project, job, run)}/tasks/${taskId}`;
+export function runTaskPath(runPath: string, taskId: string) {
+  return `${runPath}/tasks/${taskId}`;
 }
 
 // Event
-export function runTriggerPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  job: JobForPath,
-  run: RunForPath
-) {
-  return `${runPath(organization, project, job, run)}/trigger`;
+export function runTriggerPath(runPath: string) {
+  return `${runPath}/trigger`;
 }
 
 // Event
-export function runCompletedPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  job: JobForPath,
-  run: RunForPath
-) {
-  return `${runPath(organization, project, job, run)}/completed`;
+export function runCompletedPath(runPath: string) {
+  return `${runPath}/completed`;
 }
 
 // Docs

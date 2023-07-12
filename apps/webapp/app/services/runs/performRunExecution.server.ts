@@ -2,6 +2,7 @@ import type { Task } from "@trigger.dev/database";
 import {
   ApiEventLogSchema,
   CachedTaskSchema,
+  RunJobCanceledWithTask,
   RunJobError,
   RunJobResumeWithTask,
   RunJobRetryWithTask,
@@ -193,6 +194,11 @@ export class PerformRunExecutionService {
   async #executeJob(execution: FoundRunExecution) {
     const { run } = execution;
 
+    if (run.status === "CANCELED") {
+      await this.#cancelExecution(execution);
+      return;
+    }
+
     const client = new EndpointApi(
       run.environment.apiKey,
       run.endpoint.url,
@@ -337,6 +343,10 @@ export class PerformRunExecutionService {
       case "RETRY_WITH_TASK": {
         await this.#retryRunWithTask(execution, safeBody.data);
 
+        break;
+      }
+      case "CANCELED": {
+        await this.#cancelExecution(execution);
         break;
       }
       default: {
@@ -702,6 +712,19 @@ export class PerformRunExecutionService {
           error: JSON.stringify(output),
         },
       });
+    });
+  }
+
+  async #cancelExecution(execution: FoundRunExecution) {
+    await this.#prismaClient.jobRunExecution.update({
+      where: {
+        id: execution.id,
+      },
+      data: {
+        status: "FAILURE",
+        completedAt: new Date(),
+        error: "This never ran because it was canceled by the user.",
+      },
     });
   }
 }

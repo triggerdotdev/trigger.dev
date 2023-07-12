@@ -1,21 +1,21 @@
 import type { User } from "~/models/user.server";
 import { useMatchesData } from "~/utils";
 import { useChanged } from "./useChanged";
+import { RouteMatch } from "@remix-run/react";
+import { useTypedMatchesData } from "./useTypedMatchData";
+import { loader } from "~/root";
 
-function isUser(user: any): user is User {
-  return user && typeof user === "object" && typeof user.email === "string";
+export function useOptionalUser(matches?: RouteMatch[]): User | undefined {
+  const routeMatch = useTypedMatchesData<typeof loader>({
+    id: "root",
+    matches,
+  });
+
+  return routeMatch?.user ?? undefined;
 }
 
-export function useOptionalUser(): User | undefined {
-  const routeMatch = useMatchesData("root");
-  if (!routeMatch || !isUser(routeMatch.data.user)) {
-    return undefined;
-  }
-  return routeMatch.data.user;
-}
-
-export function useUser(): User {
-  const maybeUser = useOptionalUser();
+export function useUser(matches?: RouteMatch[]): User {
+  const maybeUser = useOptionalUser(matches);
   if (!maybeUser) {
     throw new Error(
       "No user found in root loader, but user is required by useUser. If user is optional, try useOptionalUser instead."

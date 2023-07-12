@@ -11,9 +11,10 @@ import { MainCenteredContainer } from "../layout/AppLayout";
 import { FormTitle } from "../primitives/FormTitle";
 import { Form } from "@remix-run/react";
 import { NamedIcon } from "../primitives/NamedIcon";
-import { Paragraph, TextLink } from "../primitives/Paragraph";
+import { Paragraph } from "../primitives/Paragraph";
 import { LogoIcon } from "../LogoIcon";
 import { Label } from "../primitives/Label";
+import { TextLink } from "../primitives/TextLink";
 
 const meta: Meta<typeof Forms> = {
   title: "Primitives/Forms",

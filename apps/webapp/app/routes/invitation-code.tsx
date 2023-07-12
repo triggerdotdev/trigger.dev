@@ -15,7 +15,7 @@ import { FormError } from "~/components/primitives/FormError";
 import { FormTitle } from "~/components/primitives/FormTitle";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
-import { TextLink } from "~/components/primitives/Paragraph";
+import { TextLink } from "~/components/primitives/TextLink";
 import { prisma } from "~/db.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { grantUserCloudAccess } from "~/models/user.server";

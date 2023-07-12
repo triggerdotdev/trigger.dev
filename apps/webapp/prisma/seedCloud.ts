@@ -224,7 +224,18 @@ export async function seedCloud(prisma: PrismaClient) {
           accessToken: process.env.SEED_CLOUD_GITHUB_ACCESS_TOKEN,
         },
       },
-      update: {},
+      update: {
+        value: {
+          raw: {
+            scope: "admin:repo_hook,public_repo",
+            token_type: "bearer",
+            access_token: process.env.SEED_CLOUD_GITHUB_ACCESS_TOKEN,
+          },
+          type: "oauth2",
+          scopes: ["admin:repo_hook,public_repo"],
+          accessToken: process.env.SEED_CLOUD_GITHUB_ACCESS_TOKEN,
+        },
+      },
     });
   }
 
@@ -295,7 +306,34 @@ export async function seedCloud(prisma: PrismaClient) {
           accessToken: process.env.SEED_CLOUD_SLACK_ACCESS_TOKEN,
         },
       },
-      update: {},
+      update: {
+        value: {
+          raw: {
+            ok: true,
+            team: { id: "T84AW8RBP", name: "Trigger.dev" },
+            scope:
+              "chat:write,channels:read,channels:manage,im:write,channels:join,chat:write.customize,bookmarks:read",
+            app_id: "A04H149K884",
+            enterprise: null,
+            token_type: "bot",
+            authed_user: { id: "U8590FPB9" },
+            bot_user_id: "U04H0UUQPHR",
+            access_token: process.env.SEED_CLOUD_SLACK_ACCESS_TOKEN,
+            is_enterprise_install: false,
+          },
+          type: "oauth2",
+          scopes: [
+            "chat:write",
+            "channels:read",
+            "channels:manage",
+            "im:write",
+            "channels:join",
+            "chat:write.customize",
+            "bookmarks:read",
+          ],
+          accessToken: process.env.SEED_CLOUD_SLACK_ACCESS_TOKEN,
+        },
+      },
     });
   }
 

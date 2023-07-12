@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
 import { Header1, Header2, Header3 } from "../primitives/Headers";
-import { Paragraph, TextLink } from "../primitives/Paragraph";
+import { Paragraph } from "../primitives/Paragraph";
+import { TextLink } from "../primitives/TextLink";
 
 const meta: Meta<typeof Typography> = {
   title: "Primitives/Typography",

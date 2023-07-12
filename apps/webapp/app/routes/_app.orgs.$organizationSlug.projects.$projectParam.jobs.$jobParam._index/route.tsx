@@ -9,20 +9,26 @@ import { RunListPresenter } from "~/presenters/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
-import { JobParamsSchema, projectIntegrationsPath } from "~/utils/pathBuilder";
+import {
+  JobParamsSchema,
+  projectIntegrationsPath,
+  jobRunsParentPath,
+  trimTrailingSlash,
+} from "~/utils/pathBuilder";
 import { ListPagination } from "./ListPagination";
 import { Callout } from "~/components/primitives/Callout";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useJob } from "~/hooks/useJob";
 import simplur from "simplur";
+import { BreadcrumbLink } from "~/components/navigation/NavBar";
 
 export const DirectionSchema = z.union([
   z.literal("forward"),
   z.literal("backward"),
 ]);
 
-const SearchSchema = z.object({
+export const RunListSearchSchema = z.object({
   cursor: z.string().optional(),
   direction: DirectionSchema.optional(),
 });
@@ -34,7 +40,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 
   const url = new URL(request.url);
   const s = Object.fromEntries(url.searchParams.entries());
-  const searchParams = SearchSchema.parse(s);
+  const searchParams = RunListSearchSchema.parse(s);
 
   const presenter = new RunListPresenter();
   const list = await presenter.call({
@@ -52,9 +58,9 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: {
-    slug: "runs",
-  },
+  breadcrumb: (match) => (
+    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Runs" />
+  ),
 };
 
 export default function Page() {
@@ -97,6 +103,7 @@ export default function Page() {
                 hasFilters={false}
                 runs={list.runs}
                 isLoading={isLoading}
+                runsParentPath={jobRunsParentPath(organization, project, job)}
               />
               <ListPagination list={list} className="mt-2 justify-end" />
             </div>

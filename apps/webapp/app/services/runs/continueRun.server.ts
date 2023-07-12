@@ -2,7 +2,7 @@ import { EXECUTE_JOB_RETRY_LIMIT } from "~/consts";
 import { $transaction, Prisma, PrismaClient, prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
 
-const RESUMABLE_STATUSES = ["FAILURE", "TIMED_OUT", "ABORTED"];
+const RESUMABLE_STATUSES = ["FAILURE", "TIMED_OUT", "ABORTED", "CANCELED"];
 
 export class ContinueRunService {
   #prismaClient: PrismaClient;

@@ -1,6 +1,7 @@
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { connectionType } from "~/components/integrations/connectionType";
+import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -15,7 +16,10 @@ import {
 import { IntegrationClientConnectionsPresenter } from "~/presenters/IntegrationClientConnectionsPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
-import { IntegrationClientParamSchema } from "~/utils/pathBuilder";
+import {
+  IntegrationClientParamSchema,
+  trimTrailingSlash,
+} from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -34,9 +38,12 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: {
-    slug: "integration-connections",
-  },
+  breadcrumb: (match) => (
+    <BreadcrumbLink
+      to={trimTrailingSlash(match.pathname)}
+      title="Connections"
+    />
+  ),
 };
 
 export default function Page() {

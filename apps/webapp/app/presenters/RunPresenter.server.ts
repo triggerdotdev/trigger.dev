@@ -12,6 +12,7 @@ type RunOptions = {
   userId: string;
 };
 
+export type Run = NonNullable<Awaited<ReturnType<RunPresenter["call"]>>>;
 export type Task = NonNullable<
   Awaited<ReturnType<RunPresenter["call"]>>
 >["tasks"][number];

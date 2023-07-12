@@ -20,7 +20,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
-import { Paragraph, TextLink } from "~/components/primitives/Paragraph";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { authenticator } from "~/services/auth.server";
 import {
   commitSession,
@@ -30,6 +30,7 @@ import magicLinkIcon from "./login.magic.svg";
 
 import type { LoaderType as RootLoader } from "~/root";
 import { appEnvTitleTag } from "~/utils";
+import { TextLink } from "~/components/primitives/TextLink";
 
 export const meta: TypedMetaFunction<typeof loader, { root: RootLoader }> = ({
   parentsData,
