@@ -19,7 +19,7 @@ import type {
   UpdateWebhookParams,
 } from "./types";
 
-const listForms: AuthenticatedTask<
+export const listForms: AuthenticatedTask<
   TypeformSDK,
   ListFormsParams,
   Typeform.API.Forms.List
@@ -46,27 +46,30 @@ const listForms: AuthenticatedTask<
   },
 };
 
-const getForm: AuthenticatedTask<TypeformSDK, GetFormParams, GetFormResponse> =
-  {
-    run: async (params, client) => {
-      return client.forms.get(params);
-    },
-    init: (params) => {
-      return {
-        name: "Get Form",
-        params,
-        icon: "typeform",
-        properties: [
-          {
-            label: "Form ID",
-            text: params.uid,
-          },
-        ],
-      };
-    },
-  };
+export const getForm: AuthenticatedTask<
+  TypeformSDK,
+  GetFormParams,
+  GetFormResponse
+> = {
+  run: async (params, client) => {
+    return client.forms.get(params);
+  },
+  init: (params) => {
+    return {
+      name: "Get Form",
+      params,
+      icon: "typeform",
+      properties: [
+        {
+          label: "Form ID",
+          text: params.uid,
+        },
+      ],
+    };
+  },
+};
 
-const listResponses: AuthenticatedTask<
+export const listResponses: AuthenticatedTask<
   TypeformSDK,
   ListResponsesParams,
   ListResponsesResponse
@@ -89,7 +92,7 @@ const listResponses: AuthenticatedTask<
   },
 };
 
-const getAllResponses: AuthenticatedTask<
+export const getAllResponses: AuthenticatedTask<
   TypeformSDK,
   GetAllResponsesParams,
   GetAllResponsesResponse
@@ -146,7 +149,7 @@ const getAllResponses: AuthenticatedTask<
   },
 };
 
-const createWebhook: AuthenticatedTask<
+export const createWebhook: AuthenticatedTask<
   TypeformSDK,
   CreateWebhookParams,
   GetWebhookResponse
@@ -173,7 +176,7 @@ const createWebhook: AuthenticatedTask<
   },
 };
 
-const listWebhooks: AuthenticatedTask<
+export const listWebhooks: AuthenticatedTask<
   TypeformSDK,
   ListWebhooksParams,
   ListWebhooksResponse
@@ -196,7 +199,7 @@ const listWebhooks: AuthenticatedTask<
   },
 };
 
-const updateWebhook: AuthenticatedTask<
+export const updateWebhook: AuthenticatedTask<
   TypeformSDK,
   UpdateWebhookParams,
   GetWebhookResponse
@@ -223,7 +226,7 @@ const updateWebhook: AuthenticatedTask<
   },
 };
 
-const getWebhook: AuthenticatedTask<
+export const getWebhook: AuthenticatedTask<
   TypeformSDK,
   GetWebhookParams,
   GetWebhookResponse
@@ -250,7 +253,7 @@ const getWebhook: AuthenticatedTask<
   },
 };
 
-const deleteWebhook: AuthenticatedTask<
+export const deleteWebhook: AuthenticatedTask<
   TypeformSDK,
   DeleteWebhookParams,
   DeleteWebhookResponse
@@ -275,16 +278,4 @@ const deleteWebhook: AuthenticatedTask<
       ],
     };
   },
-};
-
-export const tasks = {
-  listForms,
-  getForm,
-  listResponses,
-  getAllResponses,
-  createWebhook,
-  updateWebhook,
-  getWebhook,
-  deleteWebhook,
-  listWebhooks,
 };

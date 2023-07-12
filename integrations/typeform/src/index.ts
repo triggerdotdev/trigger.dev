@@ -1,6 +1,6 @@
 import { createClient } from "@typeform/api-client";
+import * as tasks from "./tasks";
 
-import { tasks } from "./tasks";
 import {
   FormResponseEvent,
   GetWebhookResponse,

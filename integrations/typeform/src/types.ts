@@ -46,6 +46,7 @@ export type ListResponsesResponse = Prettify<
 export type GetFormParams = {
   uid: string;
 };
+
 export type GetFormResponse = Prettify<Typeform.Form>;
 
 export type GetAllResponsesParams = Prettify<
