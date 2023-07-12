@@ -60,46 +60,5 @@ We provide an official trigger.dev docker image you can use to easily self-host 
 
 ## Development
 
-### Prerequisites
-- [Node.js](https://nodejs.org/en) version >=18.x
-- [pnpm package manager](https://pnpm.io/installation) version 7
-- [Docker](https://www.docker.com/get-started/)
+To setup and develop locally or contribute to the open source project, follow our [developement guide](./CONTRIBUTING.md). 
 
-### Setup
-
-1. Clone the repo into a public GitHub repository or [fork the repo](https://github.com/triggerdotdev/trigger.dev/fork). If you plan to distribute the code, keep the source code public to comply with the [Apache Licence 2.0](https://github.com/triggerdotdev/trigger.dev/blob/main/LICENSE).
-
-      ```
-      git clone https://github.com/triggerdotdev/trigger.dev.git
-      ```
-      > If you are on windows, run the following command on gitbash with admin privileges:
-      > `git clone -c core.symlinks=true https://triggerdotdev/trigger.dev.git`
-2. Navigate to the project folder
-      ```
-      cd trigger.dev
-      ```
-3. Install the required packages using pnpm.
-      ```
-      pnpm i
-      ```
-4. Create your `.env` files
-      ```
-      cp .env.example .env && cp packages/database/.env.example packages/database/.env
-      ```
-      Open the root `.env` file and fill in the required values.
-6. Start Docker. This starts the required services like Postgres.
-      ```
-      pnpm run docker
-      ```
-7. Migrate the database
-      ```
-      pnpm run db:migrate
-      ```
-8. Run the seed script
-      ```
-      pnpm run db:seed
-      ```
-5. Run the project. It should run on `port:3030`
-      ```
-      pnpm run dev --filter webapp
-      ```
