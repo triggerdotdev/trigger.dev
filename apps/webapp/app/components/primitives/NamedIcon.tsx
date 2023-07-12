@@ -228,7 +228,7 @@ const icons = {
     <GlobeAltIcon className={cn("text-sky-500", className)} />
   ),
   "schedule-interval": (className: string) => (
-    <ScheduleIcon className={cn("text-sky-500", className)} />
+    <ClockIcon className={cn("text-sky-500", className)} />
   ),
   "schedule-cron": (className: string) => (
     <ScheduleIcon className={cn("text-sky-500", className)} />
