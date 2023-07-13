@@ -1,11 +1,14 @@
 import { Popover, Transition } from "@headlessui/react";
-import { BookOpenIcon } from "@heroicons/react/20/solid";
+import {
+  BookOpenIcon,
+  ChatBubbleLeftRightIcon,
+} from "@heroicons/react/20/solid";
 import { Link } from "@remix-run/react";
 import { Fragment } from "react";
 import { cn } from "~/utils/cn";
 import { Feedback } from "../Feedback";
 import { LogoIcon } from "../LogoIcon";
-import { LinkButton } from "../primitives/Buttons";
+import { Button, LinkButton } from "../primitives/Buttons";
 import { Breadcrumb } from "./Breadcrumb";
 import { docsRoot } from "~/utils/pathBuilder";
 
@@ -27,7 +30,17 @@ export function NavBar() {
         >
           Documentation
         </LinkButton>
-        <Feedback />
+        <Feedback
+          button={
+            <Button
+              variant="secondary/small"
+              LeadingIcon={ChatBubbleLeftRightIcon}
+              shortcut={{ key: "f" }}
+            >
+              Send us feedback
+            </Button>
+          }
+        />
       </div>
     </div>
   );

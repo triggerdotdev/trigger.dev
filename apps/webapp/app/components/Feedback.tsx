@@ -1,14 +1,17 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ChatBubbleLeftRightIcon } from "@heroicons/react/24/solid";
 import {
   Form,
   useActionData,
   useLocation,
   useNavigation,
 } from "@remix-run/react";
-import { useState } from "react";
-import { feedbackTypeLabel, schema } from "~/routes/resources.feedback";
+import { ReactNode, useState } from "react";
+import {
+  FeedbackType,
+  feedbackTypeLabel,
+  schema,
+} from "~/routes/resources.feedback";
 import { Button } from "./primitives/Buttons";
 import { Fieldset } from "./primitives/Fieldset";
 import { FormButtons } from "./primitives/FormButtons";
@@ -33,7 +36,12 @@ import {
 } from "./primitives/Sheet";
 import { TextArea } from "./primitives/TextArea";
 
-export function Feedback() {
+type FeedbackProps = {
+  button: ReactNode;
+  defaultValue?: FeedbackType;
+};
+
+export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
   const [open, setOpen] = useState(false);
   const location = useLocation();
   const lastSubmission = useActionData();
@@ -58,15 +66,7 @@ export function Feedback() {
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild={true}>
-        <Button
-          variant="secondary/small"
-          LeadingIcon={ChatBubbleLeftRightIcon}
-          shortcut={{ key: "f" }}
-        >
-          Send us feedback
-        </Button>
-      </SheetTrigger>
+      <SheetTrigger asChild={true}>{button}</SheetTrigger>
       <SheetContent size="sm">
         <SheetHeader className="justify-between">Give us feedback</SheetHeader>
         <SheetBody>
@@ -82,7 +82,10 @@ export function Feedback() {
               <InputGroup>
                 <Label>What kind of feedback do you have?</Label>
                 <SelectGroup>
-                  <Select {...conform.input(feedbackType)} defaultValue={"bug"}>
+                  <Select
+                    {...conform.input(feedbackType)}
+                    defaultValue={defaultValue}
+                  >
                     <SelectTrigger size="medium" width="full">
                       <SelectValue placeholder="Type" />
                     </SelectTrigger>
