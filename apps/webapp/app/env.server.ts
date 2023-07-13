@@ -7,16 +7,12 @@ const EnvironmentSchema = z.object({
     z.literal("production"),
     z.literal("test"),
   ]),
-  REMIX_APP_PORT: z.string().optional(),
   DATABASE_URL: z.string(),
-  LOGIN_ORIGIN: z
-    .string()
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
-    .default(process.env.FC_URL ?? "https://app.trigger.dev"),
-  APP_ORIGIN: z
-    .string()
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
-    .default(process.env.FC_URL ?? "https://app.trigger.dev"),
+  SESSION_SECRET: z.string(),
+  MAGIC_LINK_SECRET: z.string(),
+  REMIX_APP_PORT: z.string().optional(),
+  LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
+  APP_ORIGIN: z.string().default("http://localhost:3030"),
   APP_ENV: z
     .union([
       z.literal("development"),
@@ -28,13 +24,11 @@ const EnvironmentSchema = z.object({
   SECRET_STORE: SecretStoreOptionsSchema.default("DATABASE"),
   POSTHOG_PROJECT_KEY: z.string().optional(),
   HIGHLIGHT_PROJECT_ID: z.string().optional(),
-  MAGIC_LINK_SECRET: z.string(),
   AUTH_GITHUB_CLIENT_ID: z.string().optional(),
   AUTH_GITHUB_CLIENT_SECRET: z.string().optional(),
-  FROM_EMAIL: z.string(),
-  REPLY_TO_EMAIL: z.string(),
-  RESEND_API_KEY: z.string(),
-  SESSION_SECRET: z.string(),
+  FROM_EMAIL: z.string().optional(),
+  REPLY_TO_EMAIL: z.string().optional(),
+  RESEND_API_KEY: z.string().optional(),
   PLAIN_API_KEY: z.string().optional(),
 });
 

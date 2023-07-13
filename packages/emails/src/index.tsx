@@ -6,6 +6,7 @@ import ConnectIntegration from "../emails/connect-integration";
 import WorkflowFailed from "../emails/workflow-failed";
 import WorkflowIntegration from "../emails/workflow-integration";
 import InviteEmail, { InviteEmailSchema } from "../emails/invite";
+import { render } from "@react-email/render";
 
 import { Resend } from "resend";
 import { z } from "zod";
@@ -42,18 +43,18 @@ export const DeliverEmailSchema = z
 export type DeliverEmail = z.infer<typeof DeliverEmailSchema>;
 
 export class EmailClient {
-  #client: Resend;
+  #client?: Resend;
   #imagesBaseUrl: string;
   #from: string;
   #replyTo: string;
 
   constructor(config: {
-    apikey: string;
+    apikey?: string;
     imagesBaseUrl: string;
     from: string;
     replyTo: string;
   }) {
-    this.#client = new Resend(config.apikey);
+    this.#client = config.apikey ? new Resend(config.apikey) : undefined;
     this.#imagesBaseUrl = config.imagesBaseUrl;
     this.#from = config.from;
     this.#replyTo = config.replyTo;
@@ -61,6 +62,7 @@ export class EmailClient {
 
   async send(data: DeliverEmail) {
     const { subject, component } = this.#getTemplate(data);
+
     return this.#sendEmail({
       to: data.to,
       subject,
@@ -125,12 +127,24 @@ export class EmailClient {
     subject: string;
     react: ReactElement;
   }) {
-    await this.#client.sendEmail({
-      from: this.#from,
-      to,
-      replyTo: this.#replyTo,
-      subject,
-      react,
-    });
+    if (this.#client) {
+      await this.#client.sendEmail({
+        from: this.#from,
+        to,
+        replyTo: this.#replyTo,
+        subject,
+        react,
+      });
+
+      return;
+    }
+
+    console.log(`
+##### sendEmail to ${to}, subject: ${subject}
+
+${render(react, {
+  plainText: true,
+})}
+    `);
   }
 }

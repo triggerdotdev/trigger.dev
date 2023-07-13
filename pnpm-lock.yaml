@@ -625,7 +625,7 @@ importers:
       '@react-email/img': ^0.0.2
       '@react-email/link': ^0.0.2
       '@react-email/preview': ^0.0.2
-      '@react-email/render': ^0.0.3
+      '@react-email/render': ^0.0.7
       '@react-email/section': ^0.0.1
       '@react-email/text': ^0.0.2
       '@trigger.dev/tsconfig': workspace:*
@@ -647,7 +647,7 @@ importers:
       '@react-email/img': 0.0.2
       '@react-email/link': 0.0.2
       '@react-email/preview': 0.0.2
-      '@react-email/render': 0.0.3_react@18.2.0
+      '@react-email/render': 0.0.7
       '@react-email/section': 0.0.1
       '@react-email/text': 0.0.2
       react: 18.2.0
@@ -7836,16 +7836,6 @@ packages:
       react-dom: 18.2.0_react@18.2.0
     dev: false
 
-  /@react-email/render/0.0.3_react@18.2.0:
-    resolution: {integrity: sha512-+4eOrLGdTCJjoJU3PunekErjo3PFnhSDFjVINBHrfJT+1wlVdhWfDo7hFdzXJx/JOOYqmnZTilU/umGLdRumKQ==}
-    engines: {node: '>=18.0.0'}
-    dependencies:
-      pretty: 2.0.0
-      react-dom: 18.2.0_react@18.2.0
-    transitivePeerDependencies:
-      - react
-    dev: false
-
   /@react-email/render/0.0.4_react@18.2.0:
     resolution: {integrity: sha512-HPWjgw1TKcvYUPh74BjVC8Xq0ZU4nqb/tKsTa/VK/Ln4yXqnakBXNYl/UdHeJs57Ic9RMXSA9iOciQEHLgFWOg==}
     engines: {node: '>=16.0.0'}
@@ -7855,6 +7845,16 @@ packages:
       react-dom: 18.2.0_react@18.2.0
     transitivePeerDependencies:
       - react
+    dev: false
+
+  /@react-email/render/0.0.7:
+    resolution: {integrity: sha512-hMMhxk6TpOcDC5qnKzXPVJoVGEwfm+U5bGOPH+MyTTlx0F02RLQygcATBKsbP7aI/mvkmBAZoFbgPIHop7ovug==}
+    engines: {node: '>=16.0.0'}
+    dependencies:
+      html-to-text: 9.0.3
+      pretty: 2.0.0
+      react: 18.2.0
+      react-dom: 18.2.0_react@18.2.0
     dev: false
 
   /@react-email/section/0.0.1:

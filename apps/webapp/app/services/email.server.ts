@@ -9,8 +9,8 @@ import { workerQueue } from "./worker.server";
 const client = new EmailClient({
   apikey: env.RESEND_API_KEY,
   imagesBaseUrl: env.APP_ORIGIN,
-  from: env.FROM_EMAIL,
-  replyTo: env.REPLY_TO_EMAIL,
+  from: env.FROM_EMAIL ?? "team@email.trigger.dev",
+  replyTo: env.REPLY_TO_EMAIL ?? "help@email.trigger.dev",
 });
 
 export async function sendMagicLinkEmail(
