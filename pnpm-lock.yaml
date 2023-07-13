@@ -424,7 +424,7 @@ importers:
       '@octokit/webhooks': ^10.4.0
       '@octokit/webhooks-types': ^6.10.0
       '@trigger.dev/integration-kit': workspace:^2.0.0-next.5
-      '@trigger.dev/sdk': workspace:^2.0.0-next.15
+      '@trigger.dev/sdk': workspace:^2.0.0-next.16
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       octokit: ^2.0.14
@@ -450,7 +450,7 @@ importers:
   integrations/openai:
     specifiers:
       '@trigger.dev/integration-kit': workspace:^2.0.0-next.5
-      '@trigger.dev/sdk': workspace:^2.0.0-next.15
+      '@trigger.dev/sdk': workspace:^2.0.0-next.16
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       openai: ^3.3.0
@@ -472,7 +472,7 @@ importers:
     specifiers:
       '@team-plain/typescript-sdk': ^2.7.0
       '@trigger.dev/integration-kit': workspace:^2.0.0-next.5
-      '@trigger.dev/sdk': workspace:^2.0.0-next.15
+      '@trigger.dev/sdk': workspace:^2.0.0-next.16
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
@@ -490,7 +490,7 @@ importers:
   integrations/resend:
     specifiers:
       '@trigger.dev/integration-kit': workspace:^2.0.0-next.5
-      '@trigger.dev/sdk': workspace:^2.0.0-next.15
+      '@trigger.dev/sdk': workspace:^2.0.0-next.16
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       resend: ^0.9.1
@@ -528,7 +528,7 @@ importers:
   integrations/typeform:
     specifiers:
       '@trigger.dev/integration-kit': workspace:^2.0.0-next.5
-      '@trigger.dev/sdk': workspace:^2.0.0-next.15
+      '@trigger.dev/sdk': workspace:^2.0.0-next.16
       '@typeform/api-client': ^1.8.0
       '@types/node': 16.x
       rimraf: ^3.0.2
