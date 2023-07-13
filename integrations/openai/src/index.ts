@@ -9,6 +9,12 @@ export class OpenAI
   client: IntegrationClient<OpenAIApi, typeof tasks>;
 
   constructor(private options: OpenAIIntegrationOptions) {
+    if (Object.keys(options).includes("apiKey") && !options.apiKey) {
+      throw new Error(
+        `OpenAI integration (${options.id}) apiKey was undefined`
+      );
+    }
+
     this.client = {
       tasks,
       usesLocalAuth: true,

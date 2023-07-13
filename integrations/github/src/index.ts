@@ -92,6 +92,10 @@ export class Github
 function createClientFromOptions(
   options: GithubIntegrationOptions
 ): IntegrationClient<Octokit, typeof tasks> {
+  if (Object.keys(options).includes("token") && !options.token) {
+    throw new Error(`GitHub integration (${options.id}) token was undefined`);
+  }
+
   if (options.token) {
     const client = new Octokit({
       auth: options.token,

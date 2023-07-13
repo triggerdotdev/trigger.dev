@@ -17,6 +17,10 @@ export class Plain implements PlainIntegration {
   client: PlainIntegrationClient;
 
   constructor(private options: PlainIntegrationOptions) {
+    if (Object.keys(options).includes("apiKey") && !options.apiKey) {
+      throw new Error(`Plain integration (${options.id}) apiKey was undefined`);
+    }
+
     this.client = {
       tasks,
       usesLocalAuth: true,

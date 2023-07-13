@@ -34,6 +34,12 @@ export class Typeform implements TypeformIntegration {
   client: TypeformIntegrationClient;
 
   constructor(private options: TypeformIntegrationOptions) {
+    if (Object.keys(options).includes("token") && !options.token) {
+      throw new Error(
+        `Typeform integration (${options.id}) token was undefined`
+      );
+    }
+
     this.client = {
       tasks,
       usesLocalAuth: true,

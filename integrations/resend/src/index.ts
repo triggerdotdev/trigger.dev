@@ -56,6 +56,12 @@ export class Resend
   client: IntegrationClient<ResendClient, typeof tasks>;
 
   constructor(private options: ResendIntegrationOptions) {
+    if (Object.keys(options).includes("apiKey") && !options.apiKey) {
+      throw new Error(
+        `Resend integration (${options.id}) apiKey was undefined`
+      );
+    }
+
     this.client = {
       tasks,
       usesLocalAuth: true,
