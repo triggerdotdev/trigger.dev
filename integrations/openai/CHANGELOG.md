@@ -1,5 +1,11 @@
 # @trigger.dev/slack
 
+## 1.0.0-next.7
+
+### Patch Changes
+
+- fe3bc6ef: Missing token/apikey error improved for display in Next.js logs
+
 ## 1.0.0-next.6
 
 ### Patch Changes
