@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.16
+
+### Patch Changes
+
+- 1dc42dae: Added support for Runs being canceled
+- d6310a79: Set duplex "half" when creating fetch based Request objects when they have a body
+- 0012bb21: All logs are now structured logs
+
 ## 2.0.0-next.15
 
 ### Patch Changes

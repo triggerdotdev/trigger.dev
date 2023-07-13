@@ -1,5 +1,15 @@
 # @trigger.dev/nextjs
 
+## 1.0.0-next.8
+
+### Patch Changes
+
+- d6310a79: Set duplex "half" when creating fetch based Request objects when they have a body
+- Updated dependencies [1dc42dae]
+- Updated dependencies [d6310a79]
+- Updated dependencies [0012bb21]
+  - @trigger.dev/sdk@2.0.0-next.16
+
 ## 1.0.0-next.7
 
 ### Patch Changes

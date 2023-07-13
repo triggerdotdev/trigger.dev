@@ -1,5 +1,12 @@
 # create-trigger
 
+## 0.2.1-next.20
+
+### Patch Changes
+
+- 5e36ad96: Generate the README for a new integration package
+- 520ab88a: Adding the create-integration command to scaffold out new integration packages (inside or outside of the monorepo)
+
 ## 0.2.1-next.19
 
 ### Patch Changes
