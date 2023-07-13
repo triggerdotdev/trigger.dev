@@ -18,7 +18,7 @@ export class Plain implements PlainIntegration {
 
   constructor(private options: PlainIntegrationOptions) {
     if (Object.keys(options).includes("apiKey") && !options.apiKey) {
-      throw new Error(`Plain integration (${options.id}) apiKey was undefined`);
+      throw `Can't create Plain integration (${options.id}) as apiKey was undefined`;
     }
 
     this.client = {

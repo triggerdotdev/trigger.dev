@@ -35,9 +35,7 @@ export class Typeform implements TypeformIntegration {
 
   constructor(private options: TypeformIntegrationOptions) {
     if (Object.keys(options).includes("token") && !options.token) {
-      throw new Error(
-        `Typeform integration (${options.id}) token was undefined`
-      );
+      throw `Can't create Typeform integration (${options.id}) as token was undefined`;
     }
 
     this.client = {

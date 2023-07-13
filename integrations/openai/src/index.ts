@@ -10,9 +10,7 @@ export class OpenAI
 
   constructor(private options: OpenAIIntegrationOptions) {
     if (Object.keys(options).includes("apiKey") && !options.apiKey) {
-      throw new Error(
-        `OpenAI integration (${options.id}) apiKey was undefined`
-      );
+      throw `Can't create OpenAI integration (${options.id}) as apiKey was undefined`;
     }
 
     this.client = {

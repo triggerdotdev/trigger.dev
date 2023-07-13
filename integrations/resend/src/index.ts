@@ -57,9 +57,7 @@ export class Resend
 
   constructor(private options: ResendIntegrationOptions) {
     if (Object.keys(options).includes("apiKey") && !options.apiKey) {
-      throw new Error(
-        `Resend integration (${options.id}) apiKey was undefined`
-      );
+      throw `Can't create Resend integration (${options.id}) as apiKey was undefined`;
     }
 
     this.client = {
