@@ -38,24 +38,9 @@ branch are tagged into a release monthly.
       ```
       cp .env.example .env && cp packages/database/.env.example packages/database/.env
       ```
-5. Open the root `.env` file and fill in the required values for these services:
-
-      <details>
-      <summary>Resend</summary>
+5. Open the root `.env` file and fill in the required values Magic Link:
             
-      <p>We use https://resend.com for email sending (including the magic-link signup/login system). They have a generous free tier of 100 emails a day that should be sufficient. Signup for Resend.com and enter the required environment vars below.</p>
-      
-      ```
-      RESEND_API_KEY=<api_key>
-      FROM_EMAIL=
-      REPLY_TO_EMAIL=
-      ```
-      </details>
-
-      <details>
-      <summary>Magic Link</summary>
-            
-      <p>Both of these secrets should be random strings, which you can easily generate (and copy into your pasteboard) with the following command:</p>
+      Both of these secrets should be random strings, which you can easily generate (and copy into your pasteboard) with the following command:
       
       ```sh
       openssl rand -hex 16 | pbcopy
@@ -67,7 +52,6 @@ branch are tagged into a release monthly.
       SESSION_SECRET=<string>
       MAGIC_LINK_SECRET=<string>
       ```
-      </details>
       
 7. Start Docker. This starts the required services like Postgres.
       ```
@@ -81,16 +65,20 @@ branch are tagged into a release monthly.
       ```
       pnpm run db:seed
       ```
-5. Run the project. See the section below.
+5. Run the app. See the section below.
 
 ## Running
 
-You can run the project with:
+1. You can run the app with:
       ```
       pnpm run dev --filter webapp
       ```
       
-It should run on `port:3030`
+      It should run on port `3030`: [http://localhost:3030](http://localhost:3030/)
+
+2. Once the app is running click the magic link button and enter your email.
+3. Check your terminal, the magic link email should have printed out.
+4. Paste the magic link shown in your terminal into your bowser to login.
 
 ## Making a pull request
 
