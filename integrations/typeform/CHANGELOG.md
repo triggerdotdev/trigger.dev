@@ -1,5 +1,17 @@
 # @trigger.dev/typeform
 
+## 1.0.0-next.8
+
+### Patch Changes
+
+- bac8ad10: Throw if the clients are passed an undefined apikey or token
+- f96da50e: Use a standalone tsconfig.json file to increase portability
+- 953354f3: Update how tasks are exported
+- Updated dependencies [1dc42dae]
+- Updated dependencies [d6310a79]
+- Updated dependencies [0012bb21]
+  - @trigger.dev/sdk@2.0.0-next.16
+
 ## 1.0.0-next.7
 
 ### Patch Changes

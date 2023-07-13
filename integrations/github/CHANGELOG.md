@@ -1,5 +1,15 @@
 # @trigger.dev/github
 
+## 1.0.0-next.7
+
+### Patch Changes
+
+- bac8ad10: Throw if the clients are passed an undefined apikey or token
+- Updated dependencies [1dc42dae]
+- Updated dependencies [d6310a79]
+- Updated dependencies [0012bb21]
+  - @trigger.dev/sdk@2.0.0-next.16
+
 ## 1.0.0-next.6
 
 ### Patch Changes
