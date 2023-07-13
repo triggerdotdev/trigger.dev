@@ -19,10 +19,10 @@ export const feedbackTypeLabel = {
   bug: "Bug report",
   feature: "Feature request",
   help: "Help me out",
-  integration: "Request an integration",
+  integration: "Request an Integration",
 };
 
-type FeedbackType = keyof typeof feedbackTypeLabel;
+export type FeedbackType = keyof typeof feedbackTypeLabel;
 
 const feedbackTypeLiterals = Object.keys(feedbackTypeLabel).map((key) =>
   z.literal(key)
