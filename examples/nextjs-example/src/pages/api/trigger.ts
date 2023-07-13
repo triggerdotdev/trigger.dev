@@ -10,6 +10,7 @@ import "@/jobs/resend";
 import "@/jobs/schedules";
 import "@/jobs/slack";
 import "@/jobs/typeform";
+import "@/jobs/edgeCases";
 
 import { createPagesRoute } from "@trigger.dev/nextjs";
 

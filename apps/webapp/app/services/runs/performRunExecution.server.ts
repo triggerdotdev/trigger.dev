@@ -22,6 +22,7 @@ import { safeJsonZodParse } from "~/utils/json";
 import { EndpointApi } from "../endpointApi.server";
 import { workerQueue } from "../worker.server";
 import { formatError } from "~/utils/formatErrors.server";
+import { logger } from "../logger.server";
 
 type FoundRunExecution = NonNullable<
   Awaited<ReturnType<typeof findRunExecution>>
@@ -290,22 +291,47 @@ export class PerformRunExecutionService {
 
     if (!response) {
       return await this.#failRunExecutionWithRetry(execution, {
-        message: "Could not connect to the endpoint",
+        message: `Connection could not be established to the endpoint (${run.endpoint.url})`,
       });
     }
 
     const rawBody = await response.text();
 
     if (!response.ok) {
+      logger.debug("Endpoint responded with non-200 status code", {
+        status: response.status,
+        runId: run.id,
+        endpoint: run.endpoint.url,
+      });
+
       const errorBody = safeJsonZodParse(errorParser, rawBody);
 
       if (errorBody && errorBody.success) {
-        return await this.#failRunExecutionWithRetry(execution, errorBody.data);
+        // Only retry if the error isn't a 4xx
+        if (response.status >= 400 && response.status <= 499) {
+          return await this.#failRunExecution(
+            this.#prismaClient,
+            execution,
+            errorBody.data
+          );
+        } else {
+          return await this.#failRunExecutionWithRetry(
+            execution,
+            errorBody.data
+          );
+        }
       }
 
-      return await this.#failRunExecutionWithRetry(execution, {
-        message: `Endpoint responded with ${response.status} status code`,
-      });
+      // Only retry if the error isn't a 4xx
+      if (response.status >= 400 && response.status <= 499) {
+        return await this.#failRunExecution(this.#prismaClient, execution, {
+          message: `Endpoint responded with ${response.status} status code`,
+        });
+      } else {
+        return await this.#failRunExecutionWithRetry(execution, {
+          message: `Endpoint responded with ${response.status} status code`,
+        });
+      }
     }
 
     const safeBody = safeJsonZodParse(parser, rawBody);

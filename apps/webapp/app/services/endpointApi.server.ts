@@ -285,6 +285,7 @@ async function safeFetch(url: string, options: RequestInit) {
   } catch (error) {
     logger.debug("Error while trying to connect to endpoint", {
       url,
+      error,
     });
   }
 }
