@@ -292,10 +292,12 @@ export function NamedIconInBox({
   name,
   className,
   fallback,
+  iconClassName,
 }: {
   name: string;
   className?: string;
   fallback?: JSX.Element;
+  iconClassName?: string;
 }) {
   return (
     <div
@@ -304,7 +306,11 @@ export function NamedIconInBox({
         className
       )}
     >
-      <NamedIcon name={name} fallback={fallback} className="h-6 w-6" />
+      <NamedIcon
+        name={name}
+        fallback={fallback}
+        className={cn("h-6 w-6", iconClassName)}
+      />
     </div>
   );
 }
