@@ -78,7 +78,7 @@ branch are tagged into a release monthly.
 
 2. Once the app is running click the magic link button and enter your email.
 3. Check your terminal, the magic link email should have printed out.
-4. Paste the magic link shown in your terminal into your bowser to login.
+4. Paste the magic link shown in your terminal into your browser to login.
 
 ## Making a pull request
 
