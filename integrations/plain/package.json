@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/plain",
-  "version": "1.0.0-next.5",
+  "version": "1.0.0-next.6",
   "description": "The official Plain.com integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
