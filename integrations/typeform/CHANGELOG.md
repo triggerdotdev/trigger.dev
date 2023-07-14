@@ -1,5 +1,13 @@
 # @trigger.dev/typeform
 
+## 1.0.0-next.11
+
+### Patch Changes
+
+- 7f6bf992: All Typeform events should be "form_response". Got rid of "all"
+- Updated dependencies [7f6bf992]
+  - @trigger.dev/sdk@2.0.0-next.17
+
 ## 1.0.0-next.10
 
 ### Patch Changes
