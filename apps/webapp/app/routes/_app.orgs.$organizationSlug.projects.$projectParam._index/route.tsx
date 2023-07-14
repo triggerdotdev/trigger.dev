@@ -41,8 +41,11 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   invariant(jobId, "jobId not found");
 
   try {
-    const jobsListPresenter = new JobsListPresenter();
-    const jobs = await jobsListPresenter.getProjectJob(projectParam, jobId);
+    const jobsPresenter = new JobsListPresenter();
+    const jobs = await jobsPresenter.call({
+      userId,
+      slug: projectParam,
+    });
 
     if (!jobs) {
       throw new Response("Not found", {

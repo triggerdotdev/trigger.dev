@@ -2,7 +2,7 @@
 
 In thc contributing guide of Trigger.dev, there's a section that requires you to start Docker.
 
-If you don't have Docker installed on yiur machine, you'll run into some complications (errors).
+If you don't have Docker installed on your machine, you'll run into some complications (errors).
 
 Below are the steps on how you can avoid that.
 
@@ -44,7 +44,7 @@ To install Docker Compose on Linux Ubuntu via the terminal, you can follow these
 
 After following these steps, you should have Docker Compose installed on your Ubuntu system, and you can use it by running `docker-compose` commands in the terminal.
 
-When you've verified that the `docker-compose` package installed and you proceed to start Docker with `pnpm run docker`.
+When you've verified that the `docker-compose` package is installed and you proceed to start Docker with `pnpm run docker`.
 
 You'll probably get an error similar to the one below:
 
