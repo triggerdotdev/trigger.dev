@@ -27,6 +27,46 @@ import {
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { requireUserId } from "~/services/session.server";
+import { LoaderArgs } from "@remix-run/server-runtime";
+import invariant from "tiny-invariant";
+import { typedjson } from "remix-typedjson";
+import { analytics } from "~/services/analytics.server";
+import { JobsListPresenter } from "~/presenters/JobPresenter.server";
+
+export const loader = async ({ request, params }: LoaderArgs) => {
+  const { projectParam, jobId } = params;
+  const userId = await requireUserId(request);
+  invariant(projectParam, "projectParam not found");
+  invariant(jobId, "jobId not found");
+
+  try {
+    const jobsListPresenter = new JobsListPresenter();
+    const jobs = await jobsListPresenter.getProjectJob(projectParam, jobId);
+
+    if (!jobs) {
+      throw new Response("Not found", {
+        status: 404,
+        statusText: `Project with this ${projectParam} was not found in your Organization`,
+      });
+    }
+
+    return typedjson({
+      jobs,
+    });
+  } catch (error) {
+    if (error instanceof Response) {
+      throw error;
+    }
+
+    console.error(error);
+    throw new Response(undefined, {
+      status: 400,
+      statusText:
+        "Something went wrong. If the problem persists contact support",
+    });
+  }
+};
 
 export const handle: Handle = {
   breadcrumb: (match) => (
