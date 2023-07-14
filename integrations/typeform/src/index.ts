@@ -195,7 +195,7 @@ export function createWebhookEventSource(
 
         return {
           data: newWebhookData,
-          registeredEvents: ["all"],
+          registeredEvents: ["form_response"],
         };
       };
 
@@ -230,7 +230,7 @@ export function createWebhookEventSource(
 
         return {
           data: newWebhookData,
-          registeredEvents: ["all"],
+          registeredEvents: ["form_response"],
         };
       } catch (error) {
         return createWebhook();

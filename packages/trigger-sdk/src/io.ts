@@ -246,6 +246,7 @@ export class IO {
         redact: {
           paths: ["secret"],
         },
+        params: options,
       },
       async (task) => {
         return await this._apiClient.updateSource(
