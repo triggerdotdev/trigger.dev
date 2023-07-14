@@ -1,5 +1,11 @@
 # @trigger.dev/typeform
 
+## 1.0.0-next.10
+
+### Patch Changes
+
+- dbb9fe44: Create a new webhook if the existing webhook url doesn't match
+
 ## 1.0.0-next.9
 
 ### Patch Changes
