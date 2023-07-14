@@ -44,6 +44,65 @@ To install Docker Compose on Linux Ubuntu via the terminal, you can follow these
 
 After following these steps, you should have Docker Compose installed on your Ubuntu system, and you can use it by running `docker-compose` commands in the terminal.
 
+When you've verified that the `docker-compose` package installed and you proceed to start Docker with `pnpm run docker`.
+
+You'll probably get an error similar to the one below:
+
+```shell
+Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+ ELIFECYCLE  Command failed with exit code 1.
+```
+
+The error message suggests that the Docker daemon is not running on your system. The Docker daemon is responsible for managing and running Docker containers.
+
+To resolve this issue, you may need to install Docker properly on your Ubuntu system. Here are the steps to install Docker on Ubuntu:
+
+1. Update the package index on your system by running the following command:
+
+   ```shell
+   sudo apt update
+   ```
+
+2. Install the necessary packages to allow apt to use repositories over HTTPS:
+
+   ```shell
+   sudo apt install apt-transport-https ca-certificates curl software-properties-common
+   ```
+
+3. Add the official Docker GPG key to your system by running the following command:
+
+   ```shell
+   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+   ```
+
+4. Add the Docker repository to the APT sources list:
+
+   ```shell
+   echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+   ```
+
+5. Update the package index again:
+
+   ```shell
+   sudo apt update
+   ```
+
+6. Install Docker by running the following command:
+
+   ```shell
+   sudo apt install docker-ce docker-ce-cli containerd.io
+   ```
+
+7. After the installation is complete, verify that Docker is installed correctly by running the following command:
+
+   ```shell
+   docker --version
+   ```
+
+   This command should display the version information of Docker without any errors.
+
+Once Docker is installed and verified, you should be able to start the Docker daemon and run the `pnpm run docker` command without encountering any issues.
+
 ## Windows
 
 1. Download the Docker Desktop installer from the Docker website: [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop)
