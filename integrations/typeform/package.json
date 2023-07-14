@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/typeform",
-  "version": "1.0.0-next.9",
+  "version": "1.0.0-next.10",
   "description": "The official Typeform integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
