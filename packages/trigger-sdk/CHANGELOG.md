@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.17
+
+### Patch Changes
+
+- 7f6bf992: Show the params to updateSource in the dashboard
+
 ## 2.0.0-next.16
 
 ### Patch Changes
