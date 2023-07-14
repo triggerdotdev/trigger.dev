@@ -528,7 +528,7 @@ importers:
   integrations/typeform:
     specifiers:
       '@trigger.dev/integration-kit': workspace:^2.0.0-next.5
-      '@trigger.dev/sdk': workspace:^2.0.0-next.16
+      '@trigger.dev/sdk': workspace:^2.0.0-next.17
       '@typeform/api-client': ^1.8.0
       '@types/node': 16.x
       rimraf: ^3.0.2
