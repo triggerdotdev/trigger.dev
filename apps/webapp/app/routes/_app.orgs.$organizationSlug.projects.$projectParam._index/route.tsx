@@ -35,10 +35,10 @@ import { analytics } from "~/services/analytics.server";
 import { JobsListPresenter } from "~/presenters/JobPresenter.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
-  const { projectParam, jobId } = params;
+  const { projectParam } = params;
   const userId = await requireUserId(request);
   invariant(projectParam, "projectParam not found");
-  invariant(jobId, "jobId not found");
+  invariant(userId, "jobId not found");
 
   try {
     const jobsPresenter = new JobsListPresenter();
