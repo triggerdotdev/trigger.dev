@@ -143,6 +143,13 @@ export function projectEnvironmentsPath(
   return `${projectPath(organization, project)}/environments`;
 }
 
+export function projectEnvironmentsStreamingPath(
+  organization: OrgForPath,
+  project: ProjectForPath
+) {
+  return `${projectEnvironmentsPath(organization, project)}/stream`;
+}
+
 export function endpointStreamingPath(environment: { id: string }) {
   return `/resources/environments/${environment.id}/endpoint/stream`;
 }
