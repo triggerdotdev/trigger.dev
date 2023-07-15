@@ -23,6 +23,7 @@ packages/**/styles/tailwind.css
 # misc
 .DS_Store
 *.pem
+.idea
 
 # debug
 npm-debug.log*
