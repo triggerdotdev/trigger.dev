@@ -19,7 +19,7 @@ import { renderTitle } from "../utils/renderTitle.js";
 import { detectNextJsProject } from "../utils/detectNextJsProject.js";
 import { TriggerApi, WhoamiResponse } from "../utils/triggerApi.js";
 import { readFile } from "tsconfig";
-import { pathExists } from "../utils/fileSystem.js";
+import { pathExists, readJSONFile } from "../utils/fileSystem.js";
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -202,6 +202,14 @@ const resolveOptionsWithPrompts = async (
 
     if (!options.endpointSlug) {
       resolvedOptions.endpointSlug = await promptEndpointSlug(path);
+      const resolvedPath = resolvePath(options.projectPath);
+
+      const packageJSONPath = pathModule.join(resolvedPath, "package.json");
+      const packageJSON = await readJSONFile(packageJSONPath);
+
+      if (packageJSON && packageJSON.endpointId) {
+        options.endpointSlug = packageJSON.endpointId;
+      }
     }
   } catch (err) {
     // If the user is not calling the command from an interactive terminal, inquirer will throw an error with isTTYError = true

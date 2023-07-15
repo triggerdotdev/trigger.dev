@@ -1,4 +1,3 @@
-import fs from "fs";
 import { Command } from "commander";
 import inquirer from "inquirer";
 import { initCommand } from "../commands/init.js";
@@ -7,9 +6,6 @@ import { getVersion } from "../utils/getVersion.js";
 import pathModule from "node:path";
 import { devCommand } from "../commands/dev.js";
 import { createIntegrationCommand } from "../commands/createIntegration.js";
-
-const packageJSON = JSON.parse(fs.readFileSync("package.json", "utf-8"));
-const endpointId = packageJSON.endpointId;
 
 export const program = new Command();
 
@@ -38,9 +34,6 @@ program
   )
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (options) => {
-    if (endpointId) {
-      options.endpointId = endpointId;
-    }
     await initCommand(options);
   });
 
