@@ -10,7 +10,7 @@ export const client = new TriggerClient({
   logLevel: "debug",
 });
 
-new Job(client, {
+client.defineJob({
   id: "appdir-alert-on-new-github-issues",
   name: "AppDir: Alert on new GitHub issues",
   version: "0.1.1",

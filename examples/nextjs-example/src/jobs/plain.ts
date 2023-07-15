@@ -12,7 +12,7 @@ export const plain = new Plain({
   apiKey: process.env.PLAIN_API_KEY!,
 });
 
-new Job(client, {
+client.defineJob({
   id: "plain-playground",
   name: "Plain Playground",
   version: "0.1.1",

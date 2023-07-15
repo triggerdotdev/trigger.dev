@@ -14,7 +14,7 @@ const db = {
 export const slack = new Slack({ id: "slack-6" });
 export const slackMissing = new Slack({ id: "slack-7" });
 
-new Job(client, {
+client.defineJob({
   id: "slack-kpi-summary",
   name: "Slack kpi summary",
   version: "0.1.1",
@@ -35,7 +35,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "slack-auto-join",
   name: "Slack Auto Join",
   version: "0.1.1",
@@ -71,7 +71,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "slack-missing-integration",
   name: "Slack with missing integration",
   version: "0.1.1",

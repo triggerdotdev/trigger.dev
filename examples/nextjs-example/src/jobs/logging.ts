@@ -1,7 +1,7 @@
 import { client } from "@/trigger";
 import { Job, eventTrigger } from "@trigger.dev/sdk";
 
-new Job(client, {
+client.defineJob({
   id: "test-logging",
   name: "Test logging",
   version: "0.0.1",

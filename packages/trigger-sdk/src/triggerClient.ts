@@ -30,7 +30,7 @@ import {
 } from "./errors";
 import { IO } from "./io";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
-import { Job } from "./job";
+import { Job, JobOptions } from "./job";
 import { DynamicTrigger } from "./triggers/dynamic";
 import { EventTrigger } from "./triggers/eventTrigger";
 import { ExternalSource } from "./triggers/externalSource";
@@ -40,6 +40,7 @@ import type {
   TriggerContext,
   TriggerPreprocessContext,
 } from "./types";
+import { IntegrationClient, TriggerIntegration } from "./integrations";
 
 const registerSourceEvent: EventSpecification<RegisterSourceEvent> = {
   name: REGISTER_SOURCE_EVENT,
@@ -860,6 +861,15 @@ export class TriggerClient {
         },
       },
     };
+  }
+
+  defineJob(
+    options: JobOptions<
+      Trigger<EventSpecification<any>>,
+      Record<string, TriggerIntegration<IntegrationClient<any, any>>>
+    >
+  ) {
+    return new Job(this, options);
   }
 }
 

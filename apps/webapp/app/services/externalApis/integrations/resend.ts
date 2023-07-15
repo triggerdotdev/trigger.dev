@@ -23,7 +23,7 @@ const resend = new Resend({
           {
             title: "Using the client",
             code: `
-new Job(client, {
+client.defineJob({
   id: "send-resend-email",
   name: "Send Resend Email",
   version: "0.1.0",

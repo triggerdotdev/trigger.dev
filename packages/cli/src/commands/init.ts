@@ -466,7 +466,7 @@ import { Job, eventTrigger } from "@trigger.dev/sdk";
 import { client } from "${jobsPathPrefix}trigger";
 
 // your first job
-new Job(client, {
+client.defineJob({
   id: "example-job",
   name: "Example Job",
   version: "0.0.1",
@@ -572,7 +572,7 @@ import { Job, eventTrigger } from "@trigger.dev/sdk";
 import { client } from "${jobsPathPrefix}trigger";
 
 // your first job
-new Job(client, {
+client.defineJob({
   id: "example-job",
   name: "Example Job",
   version: "0.0.1",

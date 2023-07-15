@@ -23,7 +23,7 @@ export const plain = new Plain({
           {
             title: "Using the client",
             code: `
-new Job(client, {
+client.defineJob({
   id: "plain-playground",
   name: "Plain Playground",
   version: "0.1.1",

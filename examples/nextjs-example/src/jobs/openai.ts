@@ -8,7 +8,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
-new Job(client, {
+client.defineJob({
   id: "openai-tasks",
   name: "OpenAI Tasks",
   version: "0.0.1",
@@ -74,7 +74,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "openai-images",
   name: "OpenAI Images",
   version: "0.0.1",
@@ -95,7 +95,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "openai-files",
   name: "OpenAI Files",
   version: "0.0.1",

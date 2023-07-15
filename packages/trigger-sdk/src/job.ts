@@ -44,7 +44,7 @@ export type JobOptions<
   logLevel?: LogLevel;
   /** Imports the specified integrations into the Job. The integrations will be available on the `io` object in the `run()` function with the same name as the key. For example:
       ```ts
-      new Job(client, {
+      client.defineJob({
         //... other options
         integrations: {
           slack,
