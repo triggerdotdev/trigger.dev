@@ -6,6 +6,7 @@ import { getVersion } from "../utils/getVersion.js";
 import pathModule from "node:path";
 import { devCommand } from "../commands/dev.js";
 import { createIntegrationCommand } from "../commands/createIntegration.js";
+import { updateCommand } from "../commands/update.js";
 
 export const program = new Command();
 
@@ -79,6 +80,12 @@ program
     await createIntegrationCommand(path, options);
   });
 
+program
+  .command("update")
+  .description("Update the Trigger.dev CLI to the latest version")
+  .action(async () => {
+    await updateCommand();
+  });
 export const promptTriggerUrl = async (): Promise<string> => {
   const { instanceType } = await inquirer.prompt<{
     instanceType: "cloud" | "self-hosted";
