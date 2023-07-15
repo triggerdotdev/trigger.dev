@@ -863,13 +863,14 @@ export class TriggerClient {
     };
   }
 
-  defineJob(
-    options: JobOptions<
-      Trigger<EventSpecification<any>>,
-      Record<string, TriggerIntegration<IntegrationClient<any, any>>>
-    >
-  ) {
-    return new Job(this, options);
+  defineJob<
+    TTrigger extends Trigger<EventSpecification<any>>,
+    TIntegrations extends Record<
+      string,
+      TriggerIntegration<IntegrationClient<any, any>>
+    > = {}
+  >(options: JobOptions<TTrigger, TIntegrations>) {
+    return new Job<TTrigger, TIntegrations>(this, options);
   }
 }
 
