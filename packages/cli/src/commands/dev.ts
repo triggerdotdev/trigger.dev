@@ -28,7 +28,6 @@ export async function devCommand(path: string, anyOptions: any) {
     logger.error(result.error.message);
     process.exit(1);
   }
-
   const options = result.data;
 
   const resolvedPath = resolvePath(path);
