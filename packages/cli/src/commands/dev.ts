@@ -8,9 +8,6 @@ import { z } from "zod";
 import { TriggerApi } from "../utils/triggerApi.js";
 import chokidar from "chokidar";
 import ora from "ora";
-import axios from 'axios';
-import semver from 'semver';
-import { execSync } from 'child_process';
 
 export const DevCommandOptionsSchema = z.object({
   port: z.coerce.number(),
@@ -31,8 +28,6 @@ export async function devCommand(path: string, anyOptions: any) {
     logger.error(result.error.message);
     process.exit(1);
   }
-
-  await checkForUpdates();
 
   const options = result.data;
 
@@ -265,36 +260,4 @@ const maximum_backoff = 30;
 const initial_backoff = 0.2;
 function backoff(attempt: number) {
   return Math.min((2 ^ attempt) * initial_backoff, maximum_backoff) * 1000;
-}
-
-//check for updates
-async function checkForUpdates(): Promise<void> {
-  try {
-    // Get the list of installed packages in the current project
-    const installedPackages = JSON.parse(execSync('npm list --depth=0 --json').toString()).dependencies;
-
-    // Filter the packages that start with "@trigger.dev/"
-    const triggerDevPackages = Object.keys(installedPackages).filter(pkg => pkg.startsWith('@trigger.dev/'));
-
-    let anyOutdated = false;
-    // Check each package for updates
-    for (const packageName of triggerDevPackages) {
-      // Fetch the latest package information from the npm registry
-      const { data } = await axios.get(`https://registry.npmjs.org/${packageName}`);
-
-      // Extract the latest version
-      const latestVersion = data['dist-tags'].latest;
-      // Compare the installed version with the latest version
-      if (semver.lt(installedPackages[packageName].version, latestVersion)) {
-        anyOutdated = true;
-        logger.warn(`Warning: ${packageName} is outdated. Latest version: ${latestVersion}`);
-      }
-    }
-
-    if (anyOutdated) {
-      logger.warn(`Please run "npx @trigger.dev/cli update" to update packages.`);
-    }
-  } catch (error) {
-    logger.error('An error occurred while checking for updates:', error);
-  }
 }
