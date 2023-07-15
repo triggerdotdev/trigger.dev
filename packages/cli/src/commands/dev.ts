@@ -292,7 +292,7 @@ async function checkForUpdates(): Promise<void> {
     }
 
     if (anyOutdated) {
-      console.warn(`Please run "npx @trigger.dev/cli update" to update packages.`);
+      logger.warn(`Please run "npx @trigger.dev/cli update" to update packages.`);
     }
   } catch (error) {
     logger.error('An error occurred while checking for updates:', error);
