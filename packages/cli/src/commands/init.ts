@@ -201,14 +201,14 @@ const resolveOptionsWithPrompts = async (
     }
 
     if (!options.endpointSlug) {
-      resolvedOptions.endpointSlug = await promptEndpointSlug(path);
       const resolvedPath = resolvePath(options.projectPath);
-
       const packageJSONPath = pathModule.join(resolvedPath, "package.json");
       const packageJSON = await readJSONFile(packageJSONPath);
 
       if (packageJSON && packageJSON.endpointId) {
         options.endpointSlug = packageJSON.endpointId;
+      } else {
+        options.endpointSlug = await promptEndpointSlug(path);
       }
     }
   } catch (err) {
