@@ -38,7 +38,6 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const { projectParam } = params;
   const userId = await requireUserId(request);
   invariant(projectParam, "projectParam not found");
-  invariant(userId, "jobId not found");
 
   try {
     const jobsPresenter = new JobsListPresenter();

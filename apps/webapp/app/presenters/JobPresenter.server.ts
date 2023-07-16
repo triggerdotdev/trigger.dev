@@ -12,15 +12,31 @@ export class JobsListPresenter {
   public async call({
     slug,
     userId,
-  }: {
-    slug: string;
-    userId: string;
-  }): Promise<Job[]> {
-    return this.#prismaClient.job.findMany({
+  }: Pick<Job, "slug"> & { userId: User["id"] }) {
+    const project = await this.#prismaClient.project.findFirst({
       where: {
-        projectId: slug,
-        id: userId,
+        slug,
+        organization: {
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
+      },
+      select: {
+        jobs: {
+          where: {
+            internal: false,
+          },
+        },
       },
     });
+
+    if (!project) {
+      return undefined;
+    }
+
+    return project.jobs.filter((job) => !job.internal);
   }
 }
