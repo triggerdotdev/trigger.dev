@@ -4,7 +4,7 @@ import semver from "semver";
 import { readFileSync } from 'fs';
 import { logger } from "../utils/logger.js";
 import { getUserPkgManager } from "../utils/getUserPkgManager.js";
-import { execSync } from "child_process";
+import { exec } from "child_process";
 import { installDependencies } from "../utils/installDependencies.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
 import { writeJSONFile } from "../utils/fileSystem.js";
@@ -12,8 +12,8 @@ import { writeJSONFile } from "../utils/fileSystem.js";
 export async function updateCommand(path: string) {
     try {
         const resolvedPath = resolvePath(path);
-        const installedPackages = getInstalledPackages();
-        const triggerDevPackages = Object.keys(installedPackages.dependencies).filter(pkg => pkg.startsWith('axios'));
+        const installedPackages = await getInstalledPackages();
+        const triggerDevPackages = Object.keys(installedPackages.dependencies).filter(pkg => pkg.startsWith('@trigger.dev/'));
 
         if (triggerDevPackages.length === 0) {
             logger.info('No @trigger.dev packages found in package.json.');
@@ -58,10 +58,18 @@ export async function updateCommand(path: string) {
     }
 }
 
-function getInstalledPackages(): any {
+async function getInstalledPackages(): Promise<any> {
     const manager = getUserPkgManager();
-    const installedPackages = JSON.parse(execSync(`${manager} list --depth=0 --json`).toString());
-    return installedPackages;
+    return new Promise((resolve, reject) => {
+        exec(`${manager} list --depth=0 --json`, (error, stdout) => {
+            if (error) {
+                reject(error);
+            } else {
+                const installedPackages = JSON.parse(stdout.toString());
+                resolve(installedPackages);
+            }
+        });
+    });
 }
 
 async function getLatestVersions(packageNames: string[]): Promise<{ [packageName: string]: string }> {
