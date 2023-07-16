@@ -737,6 +737,8 @@ model JobRunExecution {
   resumeTaskId String?
 
   graphileJobId String?
+
+  isRetry Boolean @default(false)
 }
 
 enum JobRunExecutionReason {

@@ -70,6 +70,7 @@ export class ContinueRunService {
               status: "PENDING",
               reason: "EXECUTE_JOB",
               retryLimit: EXECUTE_JOB_RETRY_LIMIT,
+              isRetry: true,
             },
           });
 

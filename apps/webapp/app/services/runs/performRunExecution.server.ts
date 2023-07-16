@@ -193,7 +193,7 @@ export class PerformRunExecutionService {
     }
   }
   async #executeJob(execution: FoundRunExecution) {
-    const { run } = execution;
+    const { run, isRetry } = execution;
 
     if (run.status === "CANCELED") {
       await this.#cancelExecution(execution);
@@ -264,6 +264,7 @@ export class PerformRunExecutionService {
         id: run.id,
         isTest: run.isTest,
         startedAt,
+        isRetry,
       },
       environment: {
         id: run.environment.id,
