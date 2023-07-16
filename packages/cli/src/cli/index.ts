@@ -83,7 +83,12 @@ program
 program
   .command("update")
   .description("Update the Trigger.dev CLI to the latest version")
-  .action(async (path, _options) => {
+  .argument(
+      "[path]",
+      "The path where you would like the Trigger.dev packages to be updated",
+      "."
+  )
+  .action(async (path) => {
     await updateCommand(path);
   });
 export const promptTriggerUrl = async (): Promise<string> => {
