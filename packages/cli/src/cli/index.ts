@@ -83,8 +83,8 @@ program
 program
   .command("update")
   .description("Update the Trigger.dev CLI to the latest version")
-  .action(async () => {
-    await updateCommand();
+  .action(async (path, _options) => {
+    await updateCommand(path);
   });
 export const promptTriggerUrl = async (): Promise<string> => {
   const { instanceType } = await inquirer.prompt<{

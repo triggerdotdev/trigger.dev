@@ -1,14 +1,20 @@
 import axios from "axios";
 import inquirer from "inquirer";
 import semver from "semver";
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync } from 'fs';
 import { logger } from "../utils/logger.js";
-import { execSync } from "child_process";
+import { getUserPkgManager } from "../utils/getUserPkgManager.js";
+import { execa } from "execa";
+import { installDependencies } from "../utils/installDependencies.js";
+import { resolvePath } from "../utils/parseNameAndPath.js";
+import { writeJSONFile } from "../utils/fileSystem.js";
 
-export async function updateCommand() {
+export async function updateCommand(path: string) {
     try {
-        const installedPackages = JSON.parse(execSync('npm list --depth=0 --json').toString());
-        const triggerDevPackages = Object.keys(installedPackages.dependencies).filter(pkg => pkg.startsWith('axios'));
+        const resolvedPath = resolvePath(path);
+
+        const installedPackages = await getInstalledPackages();
+        const triggerDevPackages = Object.keys(installedPackages.dependencies).filter(pkg => pkg.startsWith('@trigger.dev/'));
 
         if (triggerDevPackages.length === 0) {
             logger.info('No @trigger.dev packages found in package.json.');
@@ -38,12 +44,12 @@ export async function updateCommand() {
 
         if (confirm) {
             const updatedPackageJson = updatePackageJson(updates);
-            writeFileSync('package.json', JSON.stringify(updatedPackageJson, null, 2));
+            await writeJSONFile('package.json', updatedPackageJson);
             logger.info('package.json updated.');
 
             // Run 'npm install' to install the updated packages
             logger.info('Running npm install...');
-            execSync('npm install', { stdio: 'inherit' });
+            await installDependencies(resolvedPath);
             logger.info('Dependencies updated.');
         } else {
             logger.info('Update canceled.');
@@ -51,6 +57,12 @@ export async function updateCommand() {
     } catch (error) {
         logger.error('An error occurred:', error);
     }
+}
+
+async function getInstalledPackages(): Promise<any> {
+    const manager = getUserPkgManager();
+    const packages = (await execa(manager, ['list', '--depth=0', '--json'])).toString();
+    return JSON.parse(packages);
 }
 
 async function getLatestVersions(packageNames: string[]): Promise<{ [packageName: string]: string }> {
