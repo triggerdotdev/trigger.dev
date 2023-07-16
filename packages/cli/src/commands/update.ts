@@ -68,15 +68,26 @@ async function getLatestVersions(packageNames: string[]): Promise<{ [packageName
     const registryUrl = 'https://registry.npmjs.org';
 
     const requests = packageNames.map(packageName =>
-        axios.get(`${registryUrl}/${packageName}`)
+        axios.get(`${registryUrl}/${packageName}`, {
+                headers: {
+                    'Accept-Encoding': 'application/json',
+                }
+            }
+        )
     );
 
     const responses = await Promise.all(requests);
     return responses.reduce((versions: { [packageName: string]: string }, response, index) => {
         const packageName = packageNames[index];
         if (packageName) {
+            const nextVersion = response.data['dist-tags']?.next;
             const latestVersion = response.data['dist-tags'].latest;
-            versions[packageName] = latestVersion;
+
+            if (nextVersion && semver.gt(nextVersion, latestVersion)) {
+                versions[packageName] = nextVersion;
+            } else {
+                versions[packageName] = latestVersion;
+            }
         }
         return versions;
     }, {});
