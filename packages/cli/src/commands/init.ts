@@ -205,7 +205,7 @@ const resolveOptionsWithPrompts = async (
       const packageJSONPath = pathModule.join(resolvedPath, "package.json");
       const packageJSON = await readJSONFile(packageJSONPath);
 
-      if (packageJSON && packageJSON.endpointId) {
+      if (packageJSON && packageJSON["trigger.dev"].endpointId) {
         options.endpointSlug = packageJSON.endpointId;
       } else {
         options.endpointSlug = await promptEndpointSlug(path);
