@@ -3,6 +3,7 @@ import { openai } from "./integrations/openai";
 import { plain } from "./integrations/plain";
 import { resend } from "./integrations/resend";
 import { slack } from "./integrations/slack";
+import { supabase } from "./integrations/supabase";
 import { typeform } from "./integrations/typeform";
 import type { Integration } from "./types";
 
@@ -35,4 +36,5 @@ export const integrationCatalog = new IntegrationCatalog({
   resend,
   slack,
   typeform,
+  supabase,
 });

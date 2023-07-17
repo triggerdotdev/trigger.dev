@@ -25,7 +25,8 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "typescript": "5.0.4",
-    "zod": "3.21.4"
+    "zod": "3.21.4",
+    "@trigger.dev/supabase": "workspace:*"
   },
   "devDependencies": {
     "eslint": "8.42.0",

@@ -1,0 +1,40 @@
+{
+  "name": "@trigger.dev/supabase",
+  "version": "0.0.1",
+  "description": "Trigger.dev integration for @supabase/supabase-js",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/index.js.map"
+  ],
+  "devDependencies": {
+    "@types/node": "16.x",
+    "@types/node-fetch": "^2.6.4",
+    "openapi-typescript": "^6.3.4",
+    "rimraf": "^3.0.2",
+    "tsup": "7.1.x",
+    "typescript": "4.9.4"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup",
+    "typecheck": "tsc --noEmit",
+    "generate": "openapi-typescript https://api.supabase.com/api/v1-json -o ./src/management/client/api/v1.d.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.26.0",
+    "@trigger.dev/integration-kit": "workspace:^2.0.0-next.5",
+    "@trigger.dev/sdk": "workspace:^2.0.0-next.16",
+    "node-fetch": "^3.3.1",
+    "openapi-fetch": "^0.6.1"
+  },
+  "engines": {
+    "node": ">=16.8.0"
+  }
+}

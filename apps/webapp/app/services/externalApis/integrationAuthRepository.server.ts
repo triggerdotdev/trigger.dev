@@ -1,17 +1,16 @@
 import type {
-  SecretReference,
-  ExternalAccount,
-  IntegrationConnection,
-  ConnectionType,
-  Integration,
   ConnectionAttempt,
+  ConnectionType,
+  ExternalAccount,
+  Integration,
   IntegrationAuthMethod,
+  IntegrationConnection,
   IntegrationDefinition,
+  SecretReference,
 } from "@trigger.dev/database";
 import jsonpointer from "jsonpointer";
 import { customAlphabet } from "nanoid";
 import * as crypto from "node:crypto";
-import createSlug from "slug";
 import type {
   PrismaClient,
   PrismaClientOrTransaction,
@@ -31,7 +30,7 @@ import {
 } from "./oauth2.server";
 import {
   AccessToken,
-  ApiAuthenticationMethod,
+  AccessTokenSchema,
   ApiAuthenticationMethodOAuth2,
   ConnectionMetadata,
   GrantTokenParams,
@@ -39,7 +38,6 @@ import {
   OAuthClientSchema,
   RefreshTokenParams,
 } from "./types";
-import { AccessTokenSchema } from "./types";
 
 export type ConnectionWithSecretReference = IntegrationConnection & {
   dataReference: SecretReference;

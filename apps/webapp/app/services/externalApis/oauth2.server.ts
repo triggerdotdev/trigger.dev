@@ -94,7 +94,7 @@ export function createOAuth2Url(
   }
   const pkceParams = {
     code_challenge: codeChallenge ?? undefined,
-    code_challenge_method: codeChallenge ? "S256" : undefined,
+    code_challenge_method: codeChallenge ? "sha256" : undefined,
   };
 
   const scopeParams: Record<string, string> = {};
