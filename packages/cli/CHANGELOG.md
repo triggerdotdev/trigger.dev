@@ -1,5 +1,11 @@
 # create-trigger
 
+## 0.2.1-next.23
+
+### Patch Changes
+
+- d0b19d50: Add option to specify the path to the handler function in the dev command
+
 ## 0.2.1-next.22
 
 ### Patch Changes
