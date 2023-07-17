@@ -54,7 +54,10 @@ export class EmailClient {
     from: string;
     replyTo: string;
   }) {
-    this.#client = config.apikey ? new Resend(config.apikey) : undefined;
+    this.#client =
+      config.apikey && config.apikey.startsWith("re_")
+        ? new Resend(config.apikey)
+        : undefined;
     this.#imagesBaseUrl = config.imagesBaseUrl;
     this.#from = config.from;
     this.#replyTo = config.replyTo;
