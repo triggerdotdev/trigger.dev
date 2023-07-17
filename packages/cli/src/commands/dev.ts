@@ -8,6 +8,7 @@ import { pathExists, readFile } from "../utils/fileSystem.js";
 import { logger } from "../utils/logger.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
 import { TriggerApi } from "../utils/triggerApi.js";
+import dotenv from "dotenv";
 
 export const DevCommandOptionsSchema = z.object({
   port: z.coerce.number(),
@@ -195,26 +196,17 @@ async function getTriggerApiDetails(path: string, envFile: string) {
     process.exit(1);
   }
 
-  if (
-    !resolvedEnvFile.content.includes("TRIGGER_API_KEY") ||
-    !resolvedEnvFile.content.includes("TRIGGER_API_URL")
-  ) {
+  const parsedEnvFile = dotenv.parse(resolvedEnvFile.content);
+
+  if (!parsedEnvFile.TRIGGER_API_KEY || !parsedEnvFile.TRIGGER_API_KEY) {
     logger.error(
       `You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`
     );
     process.exit(1);
   }
 
-  const envFileLines = resolvedEnvFile.content.split("\n");
-  const apiKeyLine = envFileLines.find((line) =>
-    line.includes("TRIGGER_API_KEY")
-  );
-  const apiUrlLine = envFileLines.find((line) =>
-    line.includes("TRIGGER_API_URL")
-  );
-
-  const apiKey = apiKeyLine?.split("=")[1];
-  const apiUrl = apiUrlLine?.split("=")[1];
+  const apiKey = parsedEnvFile.TRIGGER_API_KEY;
+  const apiUrl = parsedEnvFile.TRIGGER_API_URL;
 
   if (!apiKey || !apiUrl) {
     logger.error(
