@@ -47,6 +47,7 @@ export const handle: Handle = {
   breadcrumb: (match, matches) => {
     const jobMatch = matches.find((m) => m.id === jobMatchId);
     const runData = useTypedMatchData<typeof loader>(match);
+
     return (
       <Fragment>
         <BreadcrumbLink
@@ -54,7 +55,7 @@ export const handle: Handle = {
           title="Runs"
         />
         <BreadcrumbIcon />
-        {runData && (
+        {runData && runData.run && (
           <BreadcrumbLink
             to={match.pathname}
             title={`Run #${runData.run.number}`}

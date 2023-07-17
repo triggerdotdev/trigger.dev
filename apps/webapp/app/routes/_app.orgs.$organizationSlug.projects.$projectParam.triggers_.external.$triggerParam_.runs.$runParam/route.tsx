@@ -15,13 +15,12 @@ import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
 import {
   TriggerSourceRunParamsSchema,
-  projectTriggersPath,
-  runStreamingPath,
   externalTriggerPath,
   externalTriggerRunPath,
   externalTriggerRunStreamingPath,
-  trimTrailingSlash,
   externalTriggerRunsParentPath,
+  projectTriggersPath,
+  trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
@@ -89,10 +88,12 @@ export const handle: Handle = {
           title={`${data.trigger.integration.title}: ${data.trigger.integration.slug}`}
         />
         <BreadcrumbIcon />
-        <BreadcrumbLink
-          to={trimTrailingSlash(match.pathname)}
-          title={`Run #${data.run.number}`}
-        />
+        {data && data.run && (
+          <BreadcrumbLink
+            to={trimTrailingSlash(match.pathname)}
+            title={`Run #${data.run.number}`}
+          />
+        )}
       </Fragment>
     );
   },
