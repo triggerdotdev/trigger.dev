@@ -1,5 +1,11 @@
 # create-trigger
 
+## 0.2.1-next.22
+
+### Patch Changes
+
+- 1bf2802b: Parse .env file using dotenv instead of hand-parsing it
+
 ## 0.2.1-next.21
 
 ### Patch Changes
