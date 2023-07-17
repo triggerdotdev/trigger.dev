@@ -18,7 +18,7 @@ export function CustomHelp({ name }: { name: string }) {
       </Paragraph>
       <CodeBlock
         code={`
-new Job(client, {
+client.defineJob({
   id: "scheduled-job-1",
   name: "Scheduled Job 1",
   version: "0.1.1",
@@ -54,7 +54,7 @@ new Job(client, {
       </Paragraph>
       <CodeBlock
         code={`
-new Job(client, {
+client.defineJob({
   id: "scheduled-job-1",
   name: "Scheduled Job 1",
   version: "0.1.1",

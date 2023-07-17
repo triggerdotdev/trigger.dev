@@ -15,7 +15,7 @@ const slack = new Slack({
     {
       title: "Using the client",
       code: `
-new Job(client, {
+client.defineJob({
   id: "slack-test",
   name: "Slack test",
   version: "0.0.1",

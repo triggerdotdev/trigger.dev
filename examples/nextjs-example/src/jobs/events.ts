@@ -2,7 +2,7 @@ import { client } from "@/trigger";
 import { Job, eventTrigger } from "@trigger.dev/sdk";
 import { z } from "zod";
 
-new Job(client, {
+client.defineJob({
   id: "test-event-trigger-1",
   name: "Test Event Trigger 1",
   version: "0.0.1",
@@ -27,7 +27,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "test-event-trigger-2",
   name: "Test Event Trigger 2",
   version: "0.0.1",

@@ -2,7 +2,7 @@ import { client } from "@/trigger";
 import { Job, eventTrigger } from "@trigger.dev/sdk";
 import { z } from "zod";
 
-new Job(client, {
+client.defineJob({
   id: "test-long-running-cpu",
   name: "Test long running CPU",
   version: "0.0.1",

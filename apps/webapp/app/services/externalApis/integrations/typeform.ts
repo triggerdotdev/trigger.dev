@@ -24,7 +24,7 @@ const typeform = new Typeform({
           {
             title: "Using the client",
             code: `
-new Job(client, {
+client.defineJob({
   id: "typeform-response",
   name: "Typeform Response",
   version: "0.0.1",
