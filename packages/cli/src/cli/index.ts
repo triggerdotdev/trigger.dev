@@ -53,6 +53,10 @@ program
     "The name of the env file to load",
     ".env.local"
   )
+  .option(
+    "-i, --client-id <name>",
+    "The ID of the client to use for this project. Will use the value from the package.json file if not provided."
+  )
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (path, options) => {
     await devCommand(path, options);

@@ -27,6 +27,10 @@ export async function removeFile(path: string) {
   await fsModule.unlink(path);
 }
 
+export async function readFile(path: string) {
+  return await fsModule.readFile(path, "utf-8");
+}
+
 export async function readJSONFile(path: string) {
   const fileContents = await fsModule.readFile(path, "utf-8");
 

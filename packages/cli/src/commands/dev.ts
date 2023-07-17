@@ -1,18 +1,21 @@
+import chokidar from "chokidar";
 import fs from "fs/promises";
+import ngrok from "ngrok";
+import ora from "ora";
 import pathModule from "path";
-import { detectNextJsProject } from "../utils/detectNextJsProject.js";
+import { z } from "zod";
+import { pathExists, readFile } from "../utils/fileSystem.js";
 import { logger } from "../utils/logger.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
-import ngrok from "ngrok";
-import { z } from "zod";
 import { TriggerApi } from "../utils/triggerApi.js";
-import chokidar from "chokidar";
-import ora from "ora";
 
 export const DevCommandOptionsSchema = z.object({
   port: z.coerce.number(),
   envFile: z.string(),
+  clientId: z.string().optional(),
 });
+
+type DevCommandOptions = z.infer<typeof DevCommandOptionsSchema>;
 
 const throttleTimeMs = 1000;
 
@@ -31,29 +34,24 @@ export async function devCommand(path: string, anyOptions: any) {
   const options = result.data;
 
   const resolvedPath = resolvePath(path);
-  // Detect if are are in a Next.js project
-  const isNextJsProject = await detectNextJsProject(resolvedPath);
-  if (!isNextJsProject) {
-    logger.error(
-      `You must run this command in a Next.js project: ${resolvedPath}`
-    );
-    process.exit(1);
-  }
-  logger.success(`✔️ [trigger.dev] Detected valid Next.js project`);
 
   // Read from package.json to get the endpointId
-  const endpointId = await getEndpointIdFromPackageJson(resolvedPath);
+  const endpointId = await getEndpointIdFromPackageJson(resolvedPath, options);
   if (!endpointId) {
     logger.error(
-      "You must run the `init` command first to setup the project – you are missing \n'trigger.dev': { 'endpointId': 'your-client-id' } from your package.json file."
+      "You must run the `init` command first to setup the project – you are missing \n'trigger.dev': { 'endpointId': 'your-client-id' } from your package.json file, or pass in the --client-id option to this command"
     );
     process.exit(1);
   }
   logger.success(`✔️ [trigger.dev] Detected TriggerClient id: ${endpointId}`);
 
-  // Read from .env.local to get the TRIGGER_API_KEY and TRIGGER_API_URL
-  const { apiUrl } = await getTriggerApiDetails(resolvedPath, options.envFile);
-  logger.success(`✔️ [trigger.dev] Found API Key in ${options.envFile} file`);
+  // Read from .env.local or .env to get the TRIGGER_API_KEY and TRIGGER_API_URL
+  const { apiUrl, envFile } = await getTriggerApiDetails(
+    resolvedPath,
+    options.envFile
+  );
+
+  logger.success(`✔️ [trigger.dev] Found API Key in ${envFile} file`);
 
   logger.info(
     `  [trigger.dev] Looking for Next.js site on port ${options.port}`
@@ -70,13 +68,14 @@ export async function devCommand(path: string, anyOptions: any) {
     connectingSpinner.start();
 
     const refreshedEndpointId = await getEndpointIdFromPackageJson(
-      resolvedPath
+      resolvedPath,
+      options
     );
 
     // Read from .env.local to get the TRIGGER_API_KEY and TRIGGER_API_URL
     const { apiKey, apiUrl } = await getTriggerApiDetails(
       resolvedPath,
-      options.envFile
+      envFile
     );
 
     const apiClient = new TriggerApi(apiKey, apiUrl);
@@ -136,7 +135,14 @@ export async function devCommand(path: string, anyOptions: any) {
   throttle(refresh, throttleTimeMs);
 }
 
-async function getEndpointIdFromPackageJson(path: string) {
+async function getEndpointIdFromPackageJson(
+  path: string,
+  options: DevCommandOptions
+) {
+  if (options.clientId) {
+    return options.clientId;
+  }
+
   const pkgJsonPath = pathModule.join(path, "package.json");
   const pkgBuffer = await fs.readFile(pkgJsonPath);
   const pkgJson = JSON.parse(pkgBuffer.toString());
@@ -147,13 +153,51 @@ async function getEndpointIdFromPackageJson(path: string) {
   return value as string;
 }
 
+async function readEnvFilesWithBackups(
+  path: string,
+  envFile: string,
+  backups: string[]
+): Promise<{ content: string; fileName: string } | undefined> {
+  const envFilePath = pathModule.join(path, envFile);
+  const envFileExists = await pathExists(envFilePath);
+
+  if (envFileExists) {
+    const content = await readFile(envFilePath);
+
+    return { content, fileName: envFile };
+  }
+
+  for (const backup of backups) {
+    const backupPath = pathModule.join(path, backup);
+    const backupExists = await pathExists(backupPath);
+
+    if (backupExists) {
+      const content = await readFile(backupPath);
+
+      return { content, fileName: backup };
+    }
+  }
+
+  return;
+}
+
 async function getTriggerApiDetails(path: string, envFile: string) {
-  const envPath = pathModule.join(path, envFile);
-  const envFileContent = await fs.readFile(envPath, "utf-8");
+  const resolvedEnvFile = await readEnvFilesWithBackups(path, envFile, [
+    ".env",
+    ".env.local",
+    ".env.development.local",
+  ]);
+
+  if (!resolvedEnvFile) {
+    logger.error(
+      `You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`
+    );
+    process.exit(1);
+  }
 
   if (
-    !envFileContent.includes("TRIGGER_API_KEY") ||
-    !envFileContent.includes("TRIGGER_API_URL")
+    !resolvedEnvFile.content.includes("TRIGGER_API_KEY") ||
+    !resolvedEnvFile.content.includes("TRIGGER_API_URL")
   ) {
     logger.error(
       `You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`
@@ -161,7 +205,7 @@ async function getTriggerApiDetails(path: string, envFile: string) {
     process.exit(1);
   }
 
-  const envFileLines = envFileContent.split("\n");
+  const envFileLines = resolvedEnvFile.content.split("\n");
   const apiKeyLine = envFileLines.find((line) =>
     line.includes("TRIGGER_API_KEY")
   );
@@ -179,7 +223,7 @@ async function getTriggerApiDetails(path: string, envFile: string) {
     process.exit(1);
   }
 
-  return { apiKey, apiUrl };
+  return { apiKey, apiUrl, envFile: resolvedEnvFile.fileName };
 }
 
 async function resolveEndpointUrl(apiUrl: string, port: number) {
