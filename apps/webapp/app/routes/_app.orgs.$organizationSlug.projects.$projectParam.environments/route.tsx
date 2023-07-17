@@ -1,6 +1,8 @@
 import { LoaderArgs } from "@remix-run/server-runtime";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRevalidator } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { useEventSource } from "remix-utils";
 import {
   EnvironmentLabel,
   environmentTitle,
@@ -32,7 +34,10 @@ import {
 } from "~/presenters/EnvironmentsPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
-import { ProjectParamSchema } from "~/utils/pathBuilder";
+import {
+  ProjectParamSchema,
+  projectEnvironmentsStreamingPath,
+} from "~/utils/pathBuilder";
 import { requestUrl } from "~/utils/requestUrl.server";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
@@ -43,6 +48,8 @@ import {
   HowToUseApiKeysAndEndpoints,
 } from "~/components/helpContent/HelpContentText";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -101,6 +108,23 @@ export default function Page() {
       endpoint: client.endpoints[selected.type],
     };
   }, [selected, clients]);
+
+  const organization = useOrganization();
+  const project = useProject();
+
+  const revalidator = useRevalidator();
+  const events = useEventSource(
+    projectEnvironmentsStreamingPath(organization, project),
+    { event: "message" }
+  );
+
+  useEffect(() => {
+    if (events !== null) {
+      revalidator.revalidate();
+    }
+    // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
+  }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   return (
     <PageContainer>
