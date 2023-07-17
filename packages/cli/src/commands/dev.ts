@@ -13,6 +13,7 @@ import dotenv from "dotenv";
 export const DevCommandOptionsSchema = z.object({
   port: z.coerce.number(),
   envFile: z.string(),
+  handlerPath: z.string(),
   clientId: z.string().optional(),
 });
 
@@ -61,7 +62,11 @@ export async function devCommand(path: string, anyOptions: any) {
   // Setup tunnel
   const endpointUrl = await resolveEndpointUrl(apiUrl, options.port);
 
-  const connectingSpinner = ora(`[trigger.dev] Connecting to Trigger.dev...`);
+  const endpointHandlerUrl = `${endpointUrl}${options.handlerPath}`;
+
+  const connectingSpinner = ora(
+    `[trigger.dev] Registering endpoint ${endpointHandlerUrl}...`
+  );
 
   //refresh function
   let attemptCount = 0;
@@ -84,7 +89,7 @@ export async function devCommand(path: string, anyOptions: any) {
     const result = await refreshEndpoint(
       apiClient,
       refreshedEndpointId ?? endpointId,
-      endpointUrl
+      endpointHandlerUrl
     );
     if (result.success) {
       attemptCount = 0;
@@ -245,12 +250,12 @@ async function createTunnel(port: number) {
 async function refreshEndpoint(
   apiClient: TriggerApi,
   endpointId: string,
-  tunnelUrl: string
+  endpointUrl: string
 ) {
   try {
     const response = await apiClient.registerEndpoint({
       id: endpointId,
-      url: `${tunnelUrl}/api/trigger`,
+      url: endpointUrl,
     });
 
     if (!response.ok) {

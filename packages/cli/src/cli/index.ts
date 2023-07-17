@@ -42,12 +42,8 @@ program
   .description(
     "Tunnel your local Next.js project to Trigger.dev and start running jobs"
   )
-  .argument("[path]", "The path to the Next.js project", ".")
-  .option(
-    "-p, --port <port>",
-    "The local port your Next.js project is on",
-    "3000"
-  )
+  .argument("[path]", "The path to the project", ".")
+  .option("-p, --port <port>", "The local port your server is on", "3000")
   .option(
     "-e, --env-file <name>",
     "The name of the env file to load",
@@ -56,6 +52,11 @@ program
   .option(
     "-i, --client-id <name>",
     "The ID of the client to use for this project. Will use the value from the package.json file if not provided."
+  )
+  .option(
+    "-h, --handler-path <handler path>",
+    "The URI path to the API handler function to use for this project.",
+    "/api/trigger"
   )
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (path, options) => {
