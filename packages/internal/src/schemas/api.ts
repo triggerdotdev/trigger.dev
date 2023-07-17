@@ -307,6 +307,7 @@ export const RunJobBodySchema = z.object({
   run: z.object({
     id: z.string(),
     isTest: z.boolean(),
+    isRetry: z.boolean(),
     startedAt: z.coerce.date(),
   }),
   environment: z.object({
