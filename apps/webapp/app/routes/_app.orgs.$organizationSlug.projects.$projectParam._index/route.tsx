@@ -1,3 +1,5 @@
+import { LoaderArgs } from "@remix-run/server-runtime";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import Confetti from "react-confetti";
 import { HowToSetupYourProject } from "~/components/helpContent/HelpContentText";
 import { JobsTable } from "~/components/jobs/JobsTable";
@@ -25,8 +27,32 @@ import {
   docsPath,
   projectIntegrationsPath,
   trimTrailingSlash,
+  ProjectParamSchema,
 } from "~/utils/pathBuilder";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { requireUserId } from "~/services/session.server";
+import { JobListPresenter } from "~/presenters/JobListPresenter.server";
+
+export const loader = async ({ request, params }: LoaderArgs) => {
+  const userId = await requireUserId(request);
+  const { projectParam } = ProjectParamSchema.parse(params);
+
+  try {
+    const presenter = new JobListPresenter();
+    const jobs = await presenter.call({ userId, slug: projectParam });
+
+    return typedjson({
+      jobs,
+    });
+  } catch (error) {
+    console.error(error);
+    throw new Response(undefined, {
+      status: 400,
+      statusText:
+        "Something went wrong, if this problem persists please contact support.",
+    });
+  }
+};
 
 export const handle: Handle = {
   breadcrumb: (match) => (
@@ -38,10 +64,9 @@ export const handle: Handle = {
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
+  const { jobs } = useTypedLoaderData<typeof loader>();
 
-  const { filterText, setFilterText, filteredItems } = useFilterJobs(
-    project.jobs
-  );
+  const { filterText, setFilterText, filteredItems } = useFilterJobs(jobs);
 
   const { width, height } = useWindowSize();
 
@@ -56,7 +81,7 @@ export default function Page() {
             <PageInfoProperty
               icon={"job"}
               label={"Active Jobs"}
-              value={project.jobs.length}
+              value={jobs.length}
             />
           </PageInfoGroup>
         </PageInfoRow>
@@ -80,7 +105,7 @@ export default function Page() {
             "rgb(217 70 239)",
           ]}
         /> */}
-        <Help defaultOpen={project.jobs.length === 0}>
+        <Help defaultOpen={jobs.length === 0}>
           {(open) => (
             <div
               className={cn(
@@ -89,10 +114,8 @@ export default function Page() {
               )}
             >
               <div>
-                {project.jobs.length > 0 &&
-                  project.jobs.some(
-                    (j) => j.hasIntegrationsRequiringAction
-                  ) && (
+                {jobs.length > 0 &&
+                  jobs.some((j) => j.hasIntegrationsRequiringAction) && (
                     <Callout
                       variant="error"
                       to={projectIntegrationsPath(organization, project)}
@@ -103,7 +126,7 @@ export default function Page() {
                     </Callout>
                   )}
                 <div className="mb-2 flex items-center justify-between gap-x-2">
-                  {project.jobs.length === 0 ? (
+                  {jobs.length === 0 ? (
                     <Header2>Jobs</Header2>
                   ) : (
                     <Input
@@ -117,7 +140,7 @@ export default function Page() {
                   )}
                   <HelpTrigger title="How do I setup my Project?" />
                 </div>
-                {project.jobs.length === 0 ? (
+                {jobs.length === 0 ? (
                   <div
                     className={
                       "flex w-full justify-center gap-x-4 rounded-md border border-dashed border-indigo-800 px-5 py-8"
@@ -134,7 +157,7 @@ export default function Page() {
                       noResultsText={`No Jobs match ${filterText}. Try a different search
               query.`}
                     />
-                    {project.jobs.length === 1 ? (
+                    {jobs.length === 1 ? (
                       <Callout
                         variant="docs"
                         to={docsPath("documentation/quickstart#your-first-job")}

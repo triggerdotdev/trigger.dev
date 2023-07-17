@@ -15,7 +15,8 @@ import {
 } from "../primitives/Table";
 import { SimpleTooltip } from "../primitives/Tooltip";
 import { runStatusTitle } from "../runs/RunStatuses";
-import { ProjectJob, useProject } from "~/hooks/useProject";
+import { ProjectJob } from "~/hooks/useJobs";
+import { useProject } from "~/hooks/useProject";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { JobRunStatus } from "~/models/job.server";
 import { cn } from "~/utils/cn";

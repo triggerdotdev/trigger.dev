@@ -1,4 +1,4 @@
-import { ProjectJob } from "./useProject";
+import { ProjectJob } from "./useJobs";
 import { useTextFilter } from "./useTextFilter";
 
 export function useFilterJobs(jobs: ProjectJob[]) {
