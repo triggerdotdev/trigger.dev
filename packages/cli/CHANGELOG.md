@@ -1,5 +1,11 @@
 # create-trigger
 
+## 0.2.1-next.21
+
+### Patch Changes
+
+- 01c0f9b3: Allow the CLI dev command to work outside of a Next.js project
+
 ## 0.2.1-next.20
 
 ### Patch Changes
