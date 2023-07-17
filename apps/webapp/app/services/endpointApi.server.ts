@@ -37,7 +37,6 @@ export class EndpointApi {
     const response = await safeFetch(this.url, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
         "x-trigger-api-key": this.apiKey,
         "x-trigger-endpoint-id": this.id,
         "x-trigger-action": "PING",
@@ -281,11 +280,21 @@ export class EndpointApi {
 
 async function safeFetch(url: string, options: RequestInit) {
   try {
-    return await fetch(url, options);
+    return await fetch(url, addStandardRequestOptions(options));
   } catch (error) {
     logger.debug("Error while trying to connect to endpoint", {
       url,
       error,
     });
   }
+}
+
+function addStandardRequestOptions(options: RequestInit) {
+  return {
+    ...options,
+    headers: {
+      ...options.headers,
+      "user-agent": "triggerdotdev-server/2.0.0",
+    },
+  };
 }
