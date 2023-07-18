@@ -65,8 +65,8 @@ export function HowToSetupYourProject() {
             <ClipboardField
               variant="primary/medium"
               className="mb-4"
-              secure={`yarn @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
-              value={`yarn @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
+              secure={`yarn dlx @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
+              value={`yarn dlx @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
             />
           </ClientTabsContent>
         </ClientTabs>
@@ -124,7 +124,7 @@ export function HowToSetupYourProject() {
             <ClipboardField
               variant="primary/medium"
               className="mb-4"
-              value={`yarn @trigger.dev/cli@latest dev`}
+              value={`yarn dlx @trigger.dev/cli@latest dev`}
             />
           </ClientTabsContent>
         </ClientTabs>
