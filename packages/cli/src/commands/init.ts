@@ -201,8 +201,7 @@ const resolveOptionsWithPrompts = async (
     }
 
     if (!options.endpointSlug) {
-      const resolvedPath = resolvePath(options.projectPath);
-      const packageJSONPath = pathModule.join(resolvedPath, "package.json");
+      const packageJSONPath = pathModule.join(path, "package.json");
       const packageJSON = await readJSONFile(packageJSONPath);
 
       if (
