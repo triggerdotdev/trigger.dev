@@ -1,12 +1,13 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { generateErrorMessage } from "zod-error";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { CreateEndpointService } from "~/services/endpoints/createEndpoint.server";
 import { logger } from "~/services/logger.server";
 
 const BodySchema = z.object({
-  url: z.string(),
+  url: z.string().url({ message: "Invalid url" }),
   id: z.string(),
 });
 
@@ -33,7 +34,14 @@ export async function action({ request }: ActionArgs) {
   const body = BodySchema.safeParse(anyBody);
 
   if (!body.success) {
-    return json({ error: "Invalid request body" }, { status: 400 });
+    return json(
+      {
+        error: `Invalid request body: ${generateErrorMessage(
+          body.error.issues
+        )}`,
+      },
+      { status: 400 }
+    );
   }
 
   logger.info("Creating endpoint", {

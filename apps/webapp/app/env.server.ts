@@ -30,6 +30,7 @@ const EnvironmentSchema = z.object({
   REPLY_TO_EMAIL: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   PLAIN_API_KEY: z.string().optional(),
+  RUNTIME_PLATFORM: z.enum(["docker-compose", "ecs", "local"]).default("local"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
