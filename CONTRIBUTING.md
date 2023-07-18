@@ -56,7 +56,7 @@ branch are tagged into a release monthly.
    MAGIC_LINK_SECRET=<string>
    ```
 
-6. Start Docker. This starts the required services like Postgres. If this is your first time using Docker, consider going through this [guide](docker-setup.md)
+6. Start Docker. This starts the required services like Postgres. If this is your first time using Docker, consider going through this [guide](DOCKER_INSTALLATION.md)
    ```
    pnpm run docker
    ```

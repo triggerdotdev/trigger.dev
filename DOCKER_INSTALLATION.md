@@ -1,6 +1,8 @@
+This guide covers installing Docker and Docker Compose. If you're looking for instructions for running Trigger.dev in docker, [see here](https://github.com/triggerdotdev/docker).
+
 ## Setting up Docker for the first time.
 
-In thc contributing guide of Trigger.dev, there's a section that requires you to start Docker.
+In the contributing guide of Trigger.dev, there's a section that requires you to start Docker.
 
 If you don't have Docker installed on your machine, you'll run into some complications (errors).
 
