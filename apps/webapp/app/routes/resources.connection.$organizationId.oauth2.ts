@@ -75,11 +75,7 @@ export function createSchema(
       redirectTo: z.string(),
       scopes: z.preprocess(
         (data) => (typeof data === "string" ? [data] : data),
-        z
-          .array(z.string(), {
-            required_error: "You must select at least one scope",
-          })
-          .nonempty("You must select at least one scope")
+        z.array(z.string()).default([])
       ),
     })
     .refine(

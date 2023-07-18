@@ -38,6 +38,7 @@ import {
   OAuthClientSchema,
   RefreshTokenParams,
 } from "./types";
+import { logger } from "../logger.server";
 
 export type ConnectionWithSecretReference = IntegrationConnection & {
   dataReference: SecretReference;
@@ -389,6 +390,8 @@ export class IntegrationAuthRepository {
           expiresInPointer:
             authMethod.config.token.expiresInPointer ?? "/expires_in",
           scopePointer: authMethod.config.token.scopePointer ?? "/scope",
+          authorizationMethod: authMethod.config.token.authorizationMethod,
+          bodyFormat: authMethod.config.token.bodyFormat,
         };
 
         const token = await grantOAuth2Token(
@@ -660,6 +663,9 @@ export class IntegrationAuthRepository {
           expiresInPointer:
             authMethod.config.token.expiresInPointer ?? "/expires_in",
           scopePointer: authMethod.config.token.scopePointer ?? "/scope",
+          authorizationMethod: authMethod.config.token.authorizationMethod,
+          bodyFormat: authMethod.config.token.bodyFormat,
+          skipScopes: authMethod.config.refresh.skipScopes,
         };
 
         //todo do we need pkce here?

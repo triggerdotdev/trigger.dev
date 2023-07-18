@@ -48,9 +48,11 @@ export const supabase: Integration = {
         token: {
           url: "https://api.supabase.com/v1/oauth/token",
           metadata: { accountPointer: "/team/name" },
+          authorizationMethod: "body",
         },
         refresh: {
           url: "https://api.supabase.com/v1/oauth/token",
+          skipScopes: true,
         },
       },
       scopes: [

@@ -60,6 +60,7 @@ export function ConnectToOAuthForm({
     },
   ] = useForm({
     lastSubmission: fetcher.data,
+    shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
       return parse(formData, {
         // Create the schema without any constraint defined
@@ -187,15 +188,16 @@ export function ConnectToOAuthForm({
             </div>
           )}
         </div>
-        <div>
-          <Header2>Scopes</Header2>
-          <Paragraph variant="small" className="mb-4">
-            Select the scopes you want to grant to {integration.name} in order
-            for it to access your data. Note: If you try and perform an action
-            in a Job that requires a scope you haven’t granted, that task will
-            fail.
-          </Paragraph>
-          {/* <Header3 className="mb-2">
+        {authMethod.scopes.length > 0 && (
+          <div>
+            <Header2>Scopes</Header2>
+            <Paragraph variant="small" className="mb-4">
+              Select the scopes you want to grant to {integration.name} in order
+              for it to access your data. Note: If you try and perform an action
+              in a Job that requires a scope you haven’t granted, that task will
+              fail.
+            </Paragraph>
+            {/* <Header3 className="mb-2">
                   Select from popular scope collections
                 </Header3>
                 <fieldset>
@@ -205,60 +207,63 @@ export function ConnectToOAuthForm({
                     variant="button/small"
                   />
                 </fieldset> */}
-          <div className="mb-2 mt-4 flex items-center justify-between">
-            <Header3>Select {integration.name} scopes</Header3>
-            <Paragraph variant="small" className="text-slate-500">
-              {simplur`${selectedScopes.size} scope[|s] selected`}
-            </Paragraph>
-          </div>
-          <Input
-            placeholder="Search scopes"
-            className="mb-2"
-            variant="medium"
-            icon="search"
-            fullWidth={true}
-            value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
-          />
-          <div className="mb-28 flex flex-col gap-y-0.5 overflow-hidden rounded-md">
-            {filteredItems.length === 0 && (
-              <Paragraph variant="small" className="p-4">
-                No scopes match {filterText}. Try a different search query.
+            <div className="mb-2 mt-4 flex items-center justify-between">
+              <Header3>Select {integration.name} scopes</Header3>
+              <Paragraph variant="small" className="text-slate-500">
+                {simplur`${selectedScopes.size} scope[|s] selected`}
               </Paragraph>
-            )}
-            {authMethod.scopes.map((s) => {
-              return (
-                <Checkbox
-                  key={s.name}
-                  id={s.name}
-                  value={s.name}
-                  name="scopes"
-                  label={s.name}
-                  defaultChecked={s.defaultChecked ?? false}
-                  badges={s.annotations?.map((a) => a.label)}
-                  description={s.description}
-                  variant="description"
-                  className={cn(
-                    filteredItems.find((f) => f.name === s.name) ? "" : "hidden"
-                  )}
-                  onChange={(isChecked) => {
-                    if (isChecked) {
-                      setSelectedScopes((selected) => {
-                        selected.add(s.name);
-                        return new Set(selected);
-                      });
-                    } else {
-                      setSelectedScopes((selected) => {
-                        selected.delete(s.name);
-                        return new Set(selected);
-                      });
-                    }
-                  }}
-                />
-              );
-            })}
+            </div>
+            <Input
+              placeholder="Search scopes"
+              className="mb-2"
+              variant="medium"
+              icon="search"
+              fullWidth={true}
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+            />
+            <div className="mb-28 flex flex-col gap-y-0.5 overflow-hidden rounded-md">
+              {filteredItems.length === 0 && (
+                <Paragraph variant="small" className="p-4">
+                  No scopes match {filterText}. Try a different search query.
+                </Paragraph>
+              )}
+              {authMethod.scopes.map((s) => {
+                return (
+                  <Checkbox
+                    key={s.name}
+                    id={s.name}
+                    value={s.name}
+                    name="scopes"
+                    label={s.name}
+                    defaultChecked={s.defaultChecked ?? false}
+                    badges={s.annotations?.map((a) => a.label)}
+                    description={s.description}
+                    variant="description"
+                    className={cn(
+                      filteredItems.find((f) => f.name === s.name)
+                        ? ""
+                        : "hidden"
+                    )}
+                    onChange={(isChecked) => {
+                      if (isChecked) {
+                        setSelectedScopes((selected) => {
+                          selected.add(s.name);
+                          return new Set(selected);
+                        });
+                      } else {
+                        setSelectedScopes((selected) => {
+                          selected.delete(s.name);
+                          return new Set(selected);
+                        });
+                      }
+                    }}
+                  />
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
       </Fieldset>
 
       <div className="absolute bottom-0 left-0 flex w-full items-center justify-end gap-x-4 rounded-b-md border-t border-slate-800 bg-midnight-900 p-4">

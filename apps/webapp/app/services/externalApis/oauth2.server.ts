@@ -8,6 +8,7 @@ import type {
   RefreshTokenParams,
 } from "./types";
 import jsonpointer from "jsonpointer";
+import { logger } from "../logger.server";
 
 export function getClientConfig({
   env,
@@ -94,7 +95,7 @@ export function createOAuth2Url(
   }
   const pkceParams = {
     code_challenge: codeChallenge ?? undefined,
-    code_challenge_method: codeChallenge ? "sha256" : undefined,
+    code_challenge_method: codeChallenge ? "S256" : undefined,
   };
 
   const scopeParams: Record<string, string> = {};
@@ -126,6 +127,8 @@ export async function grantOAuth2Token(
     expiresInPointer,
     scopePointer,
     pkceCode,
+    authorizationMethod,
+    bodyFormat,
   }: GrantTokenParams,
   strategy?: string
 ): Promise<AccessToken> {
@@ -145,7 +148,11 @@ export async function grantOAuth2Token(
       tokenHost: `${tokenUrlObj.protocol}//${tokenUrlObj.host}`,
       tokenPath: tokenUrlObj.pathname,
     },
-  };
+    options: {
+      authorizationMethod,
+      bodyFormat,
+    },
+  } as const;
 
   const simpleOAuthClient = new simpleOauth2.AuthorizationCode(clientConfig);
 
@@ -161,7 +168,6 @@ export async function grantOAuth2Token(
   const token = await simpleOAuthClient.getToken({
     code,
     redirect_uri: callbackUrl,
-    scope: requestedScopes.join(scopeSeparator),
     ...pkceParams,
   });
 
@@ -188,6 +194,9 @@ export async function refreshOAuth2Token(
     refreshTokenPointer,
     expiresInPointer,
     scopePointer,
+    authorizationMethod,
+    bodyFormat,
+    skipScopes,
   }: RefreshTokenParams,
   strategy?: string
 ) {
@@ -208,6 +217,10 @@ export async function refreshOAuth2Token(
       tokenPath: tokenUrlObj.pathname,
       refreshPath: tokenUrlObj.pathname,
     },
+    options: {
+      authorizationMethod,
+      bodyFormat,
+    },
   };
 
   const simpleOAuthClient = new simpleOauth2.AuthorizationCode(clientConfig);
@@ -220,7 +233,7 @@ export async function refreshOAuth2Token(
   });
 
   const newToken = await oldToken.refresh({
-    scope: requestedScopes.join(scopeSeparator),
+    ...(skipScopes ? {} : { scope: requestedScopes.join(scopeSeparator) }),
   });
 
   return convertToken({
