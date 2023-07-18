@@ -10,6 +10,8 @@ Below are the steps on how you can avoid that.
 
 First you need to setup docker-compose as it is an underlying tool that this command: `pnpm run docker` fires behind the scene.
 
+## Linux
+
 To install Docker Compose on Linux Ubuntu via the terminal, you can follow these steps:
 
 1. Update the package index on your system by running the following command:
