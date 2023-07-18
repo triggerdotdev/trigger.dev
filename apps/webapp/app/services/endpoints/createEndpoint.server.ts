@@ -3,6 +3,7 @@ import { $transaction, prisma, PrismaClient } from "~/db.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
 import { EndpointApi } from "../endpointApi.server";
 import { workerQueue } from "../worker.server";
+import { env } from "~/env.server";
 
 const indexingHookIdentifier = customAlphabet(
   "0123456789abcdefghijklmnopqrstuvxyz",
@@ -104,7 +105,7 @@ export class CreateEndpointService {
   // If the endpoint URL points to localhost, and the RUNTIME_PLATFORM is docker-compose, then we need to rewrite the host to host.docker.internal
   // otherwise we shouldn't change anything
   #normalizeEndpointUrl(url: string) {
-    if (process.env.RUNTIME_PLATFORM === "docker-compose") {
+    if (env.RUNTIME_PLATFORM === "docker-compose") {
       const urlObj = new URL(url);
 
       if (urlObj.hostname === "localhost") {
