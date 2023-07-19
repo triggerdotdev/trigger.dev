@@ -50,7 +50,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
       projectSlug: projectParam,
       organizationSlug,
     }),
-    jobsPresenter.call({ userId, slug: projectParam }),
+    jobsPresenter.call({ userId, projectSlug: projectParam }),
   ]);
 
   if (job === null) {

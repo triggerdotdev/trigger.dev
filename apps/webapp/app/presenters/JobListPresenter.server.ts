@@ -3,7 +3,8 @@ import {
   DisplayPropertySchema,
   EventSpecificationSchema,
 } from "@trigger.dev/internal";
-import { PrismaClient, prisma } from "~/db.server";
+import { PrismaClient, Prisma, prisma } from "~/db.server";
+import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
 import { z } from "zod";
@@ -17,81 +18,91 @@ export class JobListPresenter {
 
   public async call({
     userId,
-    slug,
-  }: Pick<Project, "slug"> & {
+    projectSlug,
+    organizationSlug,
+    integrationSlug,
+  }: {
     userId: User["id"];
+    projectSlug: Project["slug"];
+    organizationSlug?: Organization["slug"];
+    integrationSlug?: string;
   }) {
-    const project = await this.#prismaClient.project.findFirst({
+    const orgWhere: Prisma.JobWhereInput["organization"] = organizationSlug
+      ? { slug: organizationSlug, members: { some: { userId } } }
+      : { members: { some: { userId } } };
+
+    const integrationsWhere: Prisma.JobWhereInput["integrations"] =
+      integrationSlug
+        ? { some: { integration: { slug: integrationSlug } } }
+        : {};
+
+    const jobs = await this.#prismaClient.job.findMany({
       select: {
-        jobs: {
+        id: true,
+        slug: true,
+        title: true,
+        aliases: {
           select: {
-            id: true,
-            slug: true,
-            title: true,
-            aliases: {
+            version: {
               select: {
-                version: {
+                version: true,
+                eventSpecification: true,
+                properties: true,
+                runs: {
                   select: {
-                    version: true,
-                    eventSpecification: true,
-                    properties: true,
-                    runs: {
+                    createdAt: true,
+                    status: true,
+                  },
+                  take: 1,
+                  orderBy: [{ createdAt: "desc" }],
+                },
+                integrations: {
+                  select: {
+                    key: true,
+                    integration: {
                       select: {
-                        createdAt: true,
-                        status: true,
-                      },
-                      take: 1,
-                      orderBy: [{ createdAt: "desc" }],
-                    },
-                    integrations: {
-                      select: {
-                        key: true,
-                        integration: {
-                          select: {
-                            slug: true,
-                            definition: true,
-                            setupStatus: true,
-                          },
-                        },
+                        slug: true,
+                        definition: true,
+                        setupStatus: true,
                       },
                     },
                   },
                 },
-                environment: {
-                  select: {
-                    type: true,
-                    orgMember: {
-                      select: {
-                        userId: true,
-                      },
-                    },
-                  },
-                },
-              },
-              where: {
-                name: "latest",
               },
             },
-            dynamicTriggers: {
+            environment: {
               select: {
                 type: true,
+                orgMember: {
+                  select: {
+                    userId: true,
+                  },
+                },
               },
             },
           },
           where: {
-            internal: false,
+            name: "latest",
           },
-          orderBy: [{ title: "asc" }],
+        },
+        dynamicTriggers: {
+          select: {
+            type: true,
+          },
         },
       },
-      where: { slug, organization: { members: { some: { userId } } } },
+      where: {
+        internal: false,
+        organization: orgWhere,
+        project: {
+          slug: projectSlug,
+        },
+        integrations: integrationsWhere,
+      },
+      orderBy: [{ title: "asc" }],
     });
 
-    if (!project) {
-      return [];
-    }
-
-    return project.jobs
+    return jobs
       .map((job) => {
         //the best alias to select:
         // 1. Logged-in user dev

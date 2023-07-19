@@ -10,7 +10,6 @@ import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Input } from "~/components/primitives/Input";
 import { useFilterJobs } from "~/hooks/useFilterJobs";
 import { useIntegrationClient } from "~/hooks/useIntegrationClient";
-import { IntegrationClientJobsPresenter } from "~/presenters/IntegrationClientJobsPresenter.server";
 import { JobListPresenter } from "~/presenters/JobListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -26,25 +25,16 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const { organizationSlug, projectParam, clientParam } =
     IntegrationClientParamSchema.parse(params);
 
-  const integrationPresenter = new IntegrationClientJobsPresenter();
   const jobsPresenter = new JobListPresenter();
 
-  const [integrationJobs, userJobs] = await Promise.all([
-    integrationPresenter.call({
-      userId: userId,
-      organizationSlug,
-      projectSlug: projectParam,
-      clientSlug: clientParam,
-    }),
-    jobsPresenter.call({ userId, slug: projectParam }),
-  ]);
+  const jobs = await jobsPresenter.call({
+    userId,
+    projectSlug: projectParam,
+    organizationSlug,
+    integrationSlug: clientParam,
+  });
 
-  const integrationJobIds = integrationJobs.jobs.map((job) => job.id);
-  const filteredJobs = userJobs.filter((job) =>
-    integrationJobIds.includes(job.id)
-  );
-
-  return typedjson({ jobs: filteredJobs });
+  return typedjson({ jobs });
 };
 
 export const handle: Handle = {

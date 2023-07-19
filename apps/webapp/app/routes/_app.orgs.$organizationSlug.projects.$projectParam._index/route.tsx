@@ -39,7 +39,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 
   try {
     const presenter = new JobListPresenter();
-    const jobs = await presenter.call({ userId, slug: projectParam });
+    const jobs = await presenter.call({ userId, projectSlug: projectParam });
 
     return typedjson({
       jobs,
