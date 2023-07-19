@@ -209,7 +209,7 @@ const resolveOptionsWithPrompts = async (
         packageJSON["trigger.dev"] &&
         packageJSON["trigger.dev"].endpointId
       ) {
-        options.endpointSlug = packageJSON.endpointId;
+        options.endpointSlug = packageJSON["trigger.dev"].endpointId;
       } else {
         options.endpointSlug = await promptEndpointSlug(path);
       }
