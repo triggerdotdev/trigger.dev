@@ -125,7 +125,6 @@ export default function Page() {
     // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
   }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
-
   return (
     <PageContainer>
       <PageHeader>

@@ -24,6 +24,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { projectMatchId, useProject } from "~/hooks/useProject";
 import { useOptionalRun } from "~/hooks/useRun";
 import { findJobByParams } from "~/models/job.server";
+import { JobListPresenter } from "~/presenters/JobListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
 import {
@@ -40,12 +41,17 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const { jobParam, projectParam, organizationSlug } =
     JobParamsSchema.parse(params);
 
-  const job = await findJobByParams({
-    userId,
-    slug: jobParam,
-    projectSlug: projectParam,
-    organizationSlug,
-  });
+  const jobsPresenter = new JobListPresenter();
+
+  const [job, projectJobs] = await Promise.all([
+    findJobByParams({
+      userId,
+      slug: jobParam,
+      projectSlug: projectParam,
+      organizationSlug,
+    }),
+    jobsPresenter.call({ userId, projectSlug: projectParam }),
+  ]);
 
   if (job === null) {
     throw new Response("Not Found", {
@@ -59,6 +65,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 
   return typedjson({
     job,
+    projectJobs,
   });
 };
 
