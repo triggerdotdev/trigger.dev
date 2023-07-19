@@ -5,8 +5,13 @@ if [ -n "$DATABASE_HOST" ]; then
   scripts/wait-for-it.sh ${DATABASE_HOST} -- echo "database is up"
 fi
 
-npx --no-install prisma migrate deploy --schema /triggerdotdev/packages/database/prisma/schema.prisma
-npx --no-install ts-node --transpile-only /triggerdotdev/apps/webapp/prisma/seed.ts
+# Run migrations
+pnpm --filter @trigger.dev/database db:migrate:deploy
+
+# Copy over required prisma files and invoke bundled seed file
+cp packages/database/prisma/schema.prisma apps/webapp/prisma/
+cp node_modules/@prisma/engines/libquery_engine-linux-arm64-openssl-1.1.x.so.node apps/webapp/prisma/
+pnpm --filter webapp db:seed
 
 cd /triggerdotdev/apps/webapp
 exec dumb-init pnpm run start
