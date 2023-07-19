@@ -36,6 +36,7 @@
     "@codemirror/view": "^6.5.0",
     "@conform-to/react": "^0.6.1",
     "@conform-to/zod": "^0.6.1",
+    "@godaddy/terminus": "^4.12.1",
     "@headlessui/react": "^1.7.8",
     "@heroicons/react": "^2.0.12",
     "@highlight-run/node": "^3.1.0",

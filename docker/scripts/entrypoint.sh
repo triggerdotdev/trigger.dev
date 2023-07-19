@@ -9,4 +9,4 @@ npx --no-install prisma migrate deploy --schema /triggerdotdev/packages/database
 npx --no-install ts-node --transpile-only /triggerdotdev/apps/webapp/prisma/seed.ts
 
 cd /triggerdotdev/apps/webapp
-exec pnpm run start
+exec dumb-init pnpm run start

@@ -3,6 +3,7 @@
 .github
 # editor
 .idea
+.vscode
 # dependencies
 node_modules
 .pnp
@@ -35,3 +36,10 @@ cypress/videos
 
 apps/**/styles/tailwind.css
 packages/**/styles/tailwind.css
+
+.changeset
+examples
+CHANGESETS.md
+CONTRIBUTING.md
+README.md
+LICENSE
