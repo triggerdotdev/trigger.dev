@@ -70,6 +70,7 @@
     "simple-git": "^3.19.0",
     "terminal-link": "^3.0.0",
     "tsconfig": "^7.0.0",
+    "url": "^0.11.1",
     "zod": "3.21.4"
   },
   "engines": {
