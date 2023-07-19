@@ -336,7 +336,7 @@ importers:
     devDependencies:
       eslint: 8.31.0
       eslint-config-prettier: 8.6.0_eslint@8.31.0
-      eslint-config-turbo: 1.10.7_eslint@8.31.0
+      eslint-config-turbo: 1.10.8_eslint@8.31.0
       eslint-plugin-react: 7.31.8_eslint@8.31.0
       typescript: 4.9.4
 
@@ -533,23 +533,19 @@ importers:
       '@trigger.dev/integration-kit': workspace:^2.0.0-next.5
       '@trigger.dev/sdk': workspace:^2.0.0-next.16
       '@types/node': 16.x
-      '@types/node-fetch': ^2.6.4
-      node-fetch: ^3.3.1
-      openapi-fetch: ^0.6.1
-      openapi-typescript: ^6.3.4
       rimraf: ^3.0.2
+      supabase-management-js: ^0.1.1
       tsup: 7.1.x
       typescript: 4.9.4
+      zod: 3.21.4
     dependencies:
       '@supabase/supabase-js': 2.26.0
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
-      node-fetch: 3.3.1
-      openapi-fetch: 0.6.1
+      supabase-management-js: 0.1.1
+      zod: 3.21.4
     devDependencies:
       '@types/node': 16.18.11
-      '@types/node-fetch': 2.6.4
-      openapi-typescript: 6.3.4
       rimraf: 3.0.2
       tsup: 7.1.0_typescript@4.9.4
       typescript: 4.9.4
@@ -10328,13 +10324,6 @@ packages:
       form-data: 3.0.1
     dev: true
 
-  /@types/node-fetch/2.6.4:
-    resolution: {integrity: sha512-1ZX9fcN4Rvkvgv4E6PAY5WXUFWFcRWxZa3EW83UjycOB9ljJCedb2CupIP4RZMEwF/M3eTcCihbBRgwtGbg5Rg==}
-    dependencies:
-      '@types/node': 20.3.3
-      form-data: 3.0.1
-    dev: true
-
   /@types/node/12.20.55:
     resolution: {integrity: sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ==}
 
@@ -11217,6 +11206,7 @@ packages:
   /ansi-colors/4.1.3:
     resolution: {integrity: sha512-/6w/C21Pm1A7aZitlI5Ni/2J6FFQN8i1Cvz3kHABAAbw93v/NlvKdVOqz7CCWz/3iv/JplRSEEZ83XION15ovw==}
     engines: {node: '>=6'}
+    dev: false
 
   /ansi-escapes/4.3.2:
     resolution: {integrity: sha512-gKXj5ALrKWQLsYG9jlTRmR/xKluxHV+Z9QEwNIgCfM1/uwPMCuzVVnh5mwTd+OuBZcwSIMbqssNWRm1lE51QaQ==}
@@ -14049,13 +14039,13 @@ packages:
       eslint: 8.31.0
     dev: true
 
-  /eslint-config-turbo/1.10.7_eslint@8.31.0:
-    resolution: {integrity: sha512-0yHt5UlXVph8S4SOvP6gYehLvYjJj6XFKTYOG/WUQbjlcF0OU4pOT1a1juqmmBPWYlvJ0evt7v+RekY4tOopPQ==}
+  /eslint-config-turbo/1.10.8_eslint@8.31.0:
+    resolution: {integrity: sha512-fDJTyM04N9XUcvYFlM4r7Byvjx27TuO68iOnMNjtKF7vBtrJuBBBGtNM0aQIWGg0oTqjjcNTNQw9sQK+IcA5Gw==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
       eslint: 8.31.0
-      eslint-plugin-turbo: 1.10.7_eslint@8.31.0
+      eslint-plugin-turbo: 1.10.8_eslint@8.31.0
     dev: true
 
   /eslint-import-resolver-node/0.3.7:
@@ -14592,8 +14582,8 @@ packages:
       - typescript
     dev: true
 
-  /eslint-plugin-turbo/1.10.7_eslint@8.31.0:
-    resolution: {integrity: sha512-YikBHc75DY9VV1vAFUIBekHLQlxqVT5zTNibK8zBQInCUhF7PvyPJc0xXw5FSz8EYtt4uOV3r0Km3CmFRclS4Q==}
+  /eslint-plugin-turbo/1.10.8_eslint@8.31.0:
+    resolution: {integrity: sha512-0ULCoR0Zj/ec4mjmfeYhDa5OtqCvSgDkQdSD/tqLUSHM0GzcUrNvGPclVmsoCb5kmawzeqtlqnS2FKILc862qw==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
@@ -15188,17 +15178,6 @@ packages:
       glob-parent: 5.1.2
       merge2: 1.4.1
       micromatch: 4.0.5
-
-  /fast-glob/3.3.0:
-    resolution: {integrity: sha512-ChDuvbOypPuNjO8yIDf36x7BlZX1smcUMTTcyoIjycexOxd6DFsKsg21qVBzEmr3G7fUKIRy2/psii+CIUt7FA==}
-    engines: {node: '>=8.6.0'}
-    dependencies:
-      '@nodelib/fs.stat': 2.0.5
-      '@nodelib/fs.walk': 1.2.8
-      glob-parent: 5.1.2
-      merge2: 1.4.1
-      micromatch: 4.0.5
-    dev: true
 
   /fast-json-parse/1.0.3:
     resolution: {integrity: sha512-FRWsaZRWEJ1ESVNbDWmsAlqDk96gPQezzLghafp5J4GUKjbCz3OkAHuZs5TuPEtkbVQERysLp9xv6c24fBm8Aw==}
@@ -18828,15 +18807,6 @@ packages:
       formdata-polyfill: 4.0.10
     dev: false
 
-  /node-fetch/3.3.1:
-    resolution: {integrity: sha512-cRVc/kyto/7E5shrWca1Wsea4y6tL9iYJE5FBCius3JQfb/4P4I295PfhgbJQBLTx6lATE4z+wK0rPM4VS2uow==}
-    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
-    dependencies:
-      data-uri-to-buffer: 4.0.1
-      fetch-blob: 3.2.0
-      formdata-polyfill: 4.0.10
-    dev: false
-
   /node-gyp-build/4.6.0:
     resolution: {integrity: sha512-NTZVKn9IylLwUzaKjkas1e4u2DLNcV4rdYagA4PWdPwW87Bi7z+BznyKSRwS/761tV/lzCGXplWsiaMjLqP2zQ==}
     hasBin: true
@@ -19131,18 +19101,6 @@ packages:
   /openapi-fetch/0.6.1:
     resolution: {integrity: sha512-CGWPqqtL31uC2e4eEU9NHoqYMXnJ7Jk4H/4Yguil4tO22MIZi91hlQJ/51E8CiaKdSTODh03yF4ndjIOABVHUw==}
     dev: false
-
-  /openapi-typescript/6.3.4:
-    resolution: {integrity: sha512-icWb7WBBFr8+RxX7NZC5ez0WkTSQAScLnI33vHRLvWxkpOGKLlp94C0wcicZWzh85EoIoFjO+tujcQxo7zeZdA==}
-    hasBin: true
-    dependencies:
-      ansi-colors: 4.1.3
-      fast-glob: 3.3.0
-      js-yaml: 4.1.0
-      supports-color: 9.4.0
-      undici: 5.22.1
-      yargs-parser: 21.1.1
-    dev: true
 
   /opentracing/0.14.7:
     resolution: {integrity: sha512-vz9iS7MJ5+Bp1URw8Khvdyw1H/hGvzHWlKQ7eRrQojSCDL1/SrWfrY9QebLw97n2deyRtzHRC3MkQfVNUCo91Q==}
@@ -22085,6 +22043,13 @@ packages:
       pirates: 4.0.5
       ts-interface-checker: 0.1.13
 
+  /supabase-management-js/0.1.1:
+    resolution: {integrity: sha512-4usaQP9gElUaFxmyJmMGvbj+rUjdMT8Z8gld3fJl5TnzirHoXU03o7wmAlj51AsS4eJpMsQECWcOx5LRYwZjPg==}
+    engines: {node: '>=18.0.0'}
+    dependencies:
+      openapi-fetch: 0.6.1
+    dev: false
+
   /supports-color/5.5.0:
     resolution: {integrity: sha512-QjVjwdXIt408MIiAqCX4oUKsgU2EqAGzs2Ppkm4aQYbjm+ZEWEcW4SfFNTr4uMNZma0ey4f5lgLrkB0aX0QMow==}
     engines: {node: '>=4'}
@@ -22102,11 +22067,6 @@ packages:
     engines: {node: '>=10'}
     dependencies:
       has-flag: 4.0.0
-    dev: true
-
-  /supports-color/9.4.0:
-    resolution: {integrity: sha512-VL+lNrEoIXww1coLPOmiEmK/0sGigko5COxI09KzHc2VJXJsQ37UaQ+8quuxjDeA7+KnLGTWRyOXSLLR2Wb4jw==}
-    engines: {node: '>=12'}
     dev: true
 
   /supports-hyperlinks/2.3.0:
@@ -23024,13 +22984,6 @@ packages:
       has-bigints: 1.0.2
       has-symbols: 1.0.3
       which-boxed-primitive: 1.0.2
-
-  /undici/5.22.1:
-    resolution: {integrity: sha512-Ji2IJhFXZY0x/0tVBXeQwgPlLWw13GVzpsWPQ3rV50IFMMof2I55PZZxtm4P6iNq+L5znYN9nSTAq0ZyE6lSJw==}
-    engines: {node: '>=14.0'}
-    dependencies:
-      busboy: 1.6.0
-    dev: true
 
   /unfetch/4.2.0:
     resolution: {integrity: sha512-F9p7yYCn6cIW9El1zi0HI6vqpeIvBsr3dSuRO6Xuppb1u5rXpCPmMvLSyECLhybr9isec8Ohl0hPekMVrEinDA==}

@@ -1,0 +1,434 @@
+import {
+  EventSpecification,
+  ExternalSource,
+  ExternalSourceTrigger,
+  HandlerEvent,
+  IntegrationClient,
+  Logger,
+  TriggerIntegration,
+} from "@trigger.dev/sdk";
+import { SupabaseManagementAPI } from "supabase-management-js";
+import { z } from "zod";
+import { safeParseBody } from "@trigger.dev/integration-kit";
+import * as tasks from "./tasks";
+import { randomUUID } from "crypto";
+
+export type SupabaseManagementIntegrationOptions = {
+  id: string;
+};
+
+type SupabaseManagementIntegrationClient = IntegrationClient<
+  SupabaseManagementAPI,
+  typeof tasks
+>;
+type SupabaseManagementIntegration =
+  TriggerIntegration<SupabaseManagementIntegrationClient>;
+
+export class SupabaseManagement implements SupabaseManagementIntegration {
+  client: SupabaseManagementIntegrationClient;
+
+  constructor(private options: SupabaseManagementIntegrationOptions) {
+    this.client = {
+      tasks,
+      usesLocalAuth: false,
+      clientFactory: (auth) => {
+        return new SupabaseManagementAPI({ accessToken: auth.accessToken });
+      },
+    };
+  }
+
+  get id() {
+    return this.options.id;
+  }
+
+  get metadata() {
+    return { id: "supabase-management", name: "Supabase Management API" };
+  }
+
+  get source(): WebhookEventSource {
+    return createWebhookEventSource(this);
+  }
+
+  onInserted<TRecord extends any>(params: {
+    projectRef: string;
+    table: string;
+  }) {
+    return createTrigger<OnInserted<TRecord>>(this.source, {
+      event: "insert",
+      ...params,
+    });
+  }
+
+  onUpdated<TRecord extends any>(params: {
+    projectRef: string;
+    table: string;
+    columns?: string[];
+  }) {
+    return createTrigger<{
+      table: string;
+      record: TRecord;
+      type: "UPDATE";
+      schema: string;
+      old_record: TRecord;
+    }>(this.source, {
+      event: "update",
+      ...params,
+    });
+  }
+
+  onDeleted<TRecord extends any>(params: {
+    projectRef: string;
+    table: string;
+    columns?: string[];
+  }) {
+    return createTrigger<{
+      table: string;
+      record: null;
+      type: "DELETE";
+      schema: string;
+      old_record: TRecord;
+    }>(this.source, {
+      event: "delete",
+      ...params,
+    });
+  }
+
+  onChanged<TRecord extends any>(params: {
+    projectRef: string;
+    table: string;
+    columns?: string[];
+  }) {
+    return createTrigger<OnChanged<TRecord>>(this.source, {
+      event: "change",
+      ...params,
+    });
+  }
+}
+
+type OnInserted<TRecord extends any> = {
+  table: string;
+  record: TRecord;
+  type: "INSERT";
+  schema: string;
+  old_record: null;
+};
+
+type OnUpdated<TRecord extends any> = {
+  table: string;
+  record: TRecord;
+  type: "UPDATE";
+  schema: string;
+  old_record: TRecord;
+};
+
+type OnDeleted<TRecord extends any> = {
+  table: string;
+  record: null;
+  type: "DELETE";
+  schema: string;
+  old_record: TRecord;
+};
+
+type OnChanged<TRecord extends any> =
+  | OnInserted<TRecord>
+  | OnUpdated<TRecord>
+  | OnDeleted<TRecord>;
+
+type WebhookEventSource = ReturnType<typeof createWebhookEventSource>;
+
+type WebhookEvents = "insert" | "update" | "delete" | "change";
+
+function createTrigger<TEvent extends any>(
+  source: WebhookEventSource,
+  params: { event: WebhookEvents } & {
+    projectRef: string;
+    table: string;
+    columns?: string[];
+  }
+): ExternalSourceTrigger<EventSpecification<TEvent>, WebhookEventSource> {
+  const eventSpecification = {
+    name: params.event,
+    title: `Supabase ${params.event}`,
+    source: "supabase",
+    icon: "supabase",
+    properties: [
+      {
+        label: "Project Ref",
+        text: params.projectRef,
+      },
+      {
+        label: "Table",
+        text: params.table,
+      },
+      ...(params.columns
+        ? [
+            {
+              label: "Columns",
+              text: params.columns.join(", "),
+            },
+          ]
+        : []),
+    ],
+    parsePayload: (payload: any) => payload as TEvent,
+  };
+
+  return new ExternalSourceTrigger({
+    event: eventSpecification,
+    params: {
+      projectRef: params.projectRef,
+      table: params.table,
+      columns: params.columns,
+    },
+    source,
+  });
+}
+
+const WebhookSchema = z.object({
+  projectRef: z.string(),
+  table: z.string(),
+  schema: z.string().optional(),
+  columns: z.array(z.string()).optional(),
+});
+
+const WebhookData = z.object({
+  triggerName: z.string(),
+  table: z.string(),
+  schema: z.string().optional(),
+  columns: z.array(z.string()).optional(),
+});
+
+export function createWebhookEventSource(
+  integration: SupabaseManagementIntegration
+): ExternalSource<
+  SupabaseManagementIntegration,
+  { projectRef: string; table: string; schema?: string; columns?: string[] },
+  "HTTP"
+> {
+  return new ExternalSource("HTTP", {
+    id: "supabase.webhook",
+    schema: WebhookSchema,
+    version: "0.1.1",
+    integration,
+    filter: (params) => {
+      return {
+        table: [params.table],
+      };
+    },
+    key: (params) =>
+      `${params.projectRef}-${params.schema ?? "public"}-${params.table}${
+        params.columns ? `-${params.columns.sort().join("-")}` : ""
+      }`,
+    properties: (params) => [
+      {
+        label: "Project Ref",
+        text: params.projectRef,
+      },
+      {
+        label: "Table",
+        text: params.table,
+      },
+    ],
+    handler: webhookHandler,
+    register: async (event, io, ctx) => {
+      const { params, source: httpSource, events, missingEvents } = event;
+
+      const webhookData = WebhookData.safeParse(httpSource.data);
+
+      if (httpSource.active && webhookData.success) {
+        const { triggerName, table, schema, columns } = webhookData.data;
+
+        const allEvents = new Set<string>([
+          ...events,
+          ...missingEvents,
+        ]) as Set<WebhookEvents>;
+
+        const allColumns = new Set<string>([
+          ...(columns ?? []),
+          ...(params.columns ?? []),
+        ]) as Set<string>;
+
+        const condition = createTriggerCondition(
+          Array.from(allEvents),
+          Array.from(allColumns)
+        );
+
+        const query = createTriggerQuery({
+          triggerName,
+          condition,
+          schema: params.schema ?? "public",
+          table: params.table,
+          url: httpSource.url,
+          secret: httpSource.secret,
+        });
+
+        const queryResults = await io.integration.runQuery("update-trigger", {
+          ref: params.projectRef,
+          query,
+        });
+
+        await io.logger.debug("Query results", { queryResults });
+
+        return {
+          data: {
+            triggerName: triggerName,
+            table: table,
+            schema: schema,
+            columns: Array.from(allColumns),
+          },
+          registeredEvents: Array.from(allEvents),
+        };
+      }
+
+      const url = new URL(httpSource.url);
+      const id = url.pathname.split("/").pop();
+
+      const triggerName = `trigger_${id}`;
+
+      const condition = createTriggerCondition(
+        events as WebhookEvents[],
+        params.columns
+      );
+
+      const query = createTriggerQuery({
+        triggerName,
+        condition,
+        schema: params.schema ?? "public",
+        table: params.table,
+        url: httpSource.url,
+        secret: httpSource.secret,
+      });
+
+      const queryResults = await io.integration.runQuery("create-trigger", {
+        ref: params.projectRef,
+        query,
+      });
+
+      await io.logger.debug("Query results", { queryResults });
+
+      return {
+        data: {
+          triggerName: triggerName,
+          table: params.table,
+          schema: params.schema,
+          columns: params.columns ?? [],
+        },
+        registeredEvents: events,
+      };
+    },
+  });
+}
+
+function createTriggerQuery({
+  triggerName,
+  condition,
+  schema,
+  table,
+  url,
+  secret,
+}: {
+  triggerName: string;
+  condition: string;
+  schema: string;
+  table: string;
+  url: string;
+  secret: string;
+}): string {
+  return `
+    CREATE OR REPLACE TRIGGER ${triggerName}
+    AFTER ${condition} on "${schema}"."${table}"
+    FOR EACH ROW EXECUTE FUNCTION supabase_functions.http_request('${url}', 'POST', '{"Content-type":"application/json", "Authorization": "Bearer ${secret}" }', '{}', '1000')
+  `;
+}
+
+function createTriggerCondition(
+  events: WebhookEvents[],
+  columns?: string[]
+): string {
+  return events
+    .map((event) => {
+      switch (event) {
+        case "insert":
+          return `INSERT`;
+        case "update":
+          return `UPDATE ${
+            columns ? `OF ${columns.map((c) => `${c}`).join(", ")}` : ""
+          }`;
+        case "delete":
+          return `DELETE`;
+        case "change":
+          return createTriggerCondition(
+            ["insert", "update", "delete"],
+            columns
+          );
+      }
+    })
+    .join(" OR ");
+}
+
+async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
+  logger.debug(
+    "[inside supabase management integration] Handling webhook handler"
+  );
+
+  const { rawEvent: request, source } = event;
+
+  if (!request.body) {
+    logger.debug("[inside supabase management integration] No body found");
+
+    return;
+  }
+
+  // Check the Bearer token matches the secret
+  const authHeader = request.headers.get("Authorization");
+
+  if (!authHeader) {
+    logger.debug(
+      "[inside supabase management integration] No Authorization header found"
+    );
+
+    return { events: [] };
+  }
+
+  const authHeaderParts = authHeader.split(" ");
+
+  if (authHeaderParts.length !== 2) {
+    logger.debug(
+      "[inside supabase management integration] Authorization header is not in the correct format"
+    );
+
+    return { events: [] };
+  }
+
+  const token = authHeaderParts[1];
+
+  if (token !== source.secret) {
+    logger.debug(
+      "[inside supabase management integration] Authorization header does not match the secret"
+    );
+
+    return { events: [] };
+  }
+
+  const rawBody = await request.text();
+
+  const payload = safeParseBody(rawBody);
+
+  if (!payload) {
+    return { events: [] };
+  }
+
+  // Generate a unique ID for the event
+  const id = randomUUID();
+
+  return {
+    events: [
+      {
+        id,
+        name: payload.type.toLowerCase(),
+        source: "supabase",
+        payload,
+        context: {},
+      },
+    ],
+  };
+}

@@ -6,7 +6,7 @@ export default defineConfig([
     entry: ["./src/index.ts"],
     outDir: "./dist",
     platform: "node",
-    format: ["cjs", "esm"],
+    format: ["cjs"],
     legacyOutput: true,
     sourcemap: true,
     clean: true,
@@ -17,7 +17,7 @@ export default defineConfig([
       preset: "smallest",
     },
     esbuildPlugins: [],
-    noExternal: ["openapi-fetch"],
+    noExternal: [],
     external: ["http", "https", "util", "events", "tty", "os", "timers"],
   },
 ]);

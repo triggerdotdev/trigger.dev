@@ -7,7 +7,7 @@
     "forceConsistentCasingInFileNames": true,
     "inlineSources": false,
     "isolatedModules": true,
-    "moduleResolution": "Bundler",
+    "moduleResolution": "node",
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "preserveWatchOutput": true,
@@ -18,7 +18,7 @@
     "sourceMap": true,
     "resolveJsonModule": true,
     "lib": ["es2019", "dom"],
-    "module": "ES2015",
+    "module": "CommonJS",
     "target": "es2021"
   },
   "include": ["./src/**/*.ts", "tsup.config.ts"],
