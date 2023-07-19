@@ -46,7 +46,7 @@ export function getOrganizations({ userId }: { userId: User["id"] }) {
         include: {
           _count: {
             select: {
-              jobs: { where: { internal: false } },
+              jobs: true,
             },
           },
         },
