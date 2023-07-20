@@ -53,7 +53,13 @@ export class SupabaseManagement implements SupabaseManagementIntegration {
     projectRef: string;
     table: string;
   }) {
-    return createTrigger<OnInserted<TRecord>>(this.source, {
+    return createTrigger<{
+      table: string;
+      record: TRecord;
+      type: "INSERT";
+      schema: string;
+      old_record: null;
+    }>(this.source, {
       event: "insert",
       ...params,
     });
@@ -92,51 +98,11 @@ export class SupabaseManagement implements SupabaseManagementIntegration {
       ...params,
     });
   }
-
-  onChanged<TRecord extends any>(params: {
-    projectRef: string;
-    table: string;
-    columns?: string[];
-  }) {
-    return createTrigger<OnChanged<TRecord>>(this.source, {
-      event: "change",
-      ...params,
-    });
-  }
 }
-
-type OnInserted<TRecord extends any> = {
-  table: string;
-  record: TRecord;
-  type: "INSERT";
-  schema: string;
-  old_record: null;
-};
-
-type OnUpdated<TRecord extends any> = {
-  table: string;
-  record: TRecord;
-  type: "UPDATE";
-  schema: string;
-  old_record: TRecord;
-};
-
-type OnDeleted<TRecord extends any> = {
-  table: string;
-  record: null;
-  type: "DELETE";
-  schema: string;
-  old_record: TRecord;
-};
-
-type OnChanged<TRecord extends any> =
-  | OnInserted<TRecord>
-  | OnUpdated<TRecord>
-  | OnDeleted<TRecord>;
 
 type WebhookEventSource = ReturnType<typeof createWebhookEventSource>;
 
-type WebhookEvents = "insert" | "update" | "delete" | "change";
+type WebhookEvents = "insert" | "update" | "delete";
 
 function createTrigger<TEvent extends any>(
   source: WebhookEventSource,
@@ -355,11 +321,6 @@ function createTriggerCondition(
           }`;
         case "delete":
           return `DELETE`;
-        case "change":
-          return createTriggerCondition(
-            ["insert", "update", "delete"],
-            columns
-          );
       }
     })
     .join(" OR ");
