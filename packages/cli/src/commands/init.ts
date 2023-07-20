@@ -20,6 +20,7 @@ import { detectNextJsProject } from "../utils/detectNextJsProject.js";
 import { TriggerApi, WhoamiResponse } from "../utils/triggerApi.js";
 import { readFile } from "tsconfig";
 import { pathExists, readJSONFile } from "../utils/fileSystem.js";
+import { pathToFileURL } from "url";
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -282,7 +283,7 @@ async function detectPagesOrAppDir(
   usesSrcDir = false
 ): Promise<"pages" | "app"> {
   const nextConfigPath = pathModule.join(path, "next.config.js");
-  const importedConfig = await import(nextConfigPath);
+  const importedConfig = await import(pathToFileURL(nextConfigPath).toString());
 
   if (importedConfig?.default?.experimental?.appDir) {
     return "app";

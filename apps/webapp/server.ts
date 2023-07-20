@@ -3,6 +3,7 @@ import express from "express";
 import compression from "compression";
 import morgan from "morgan";
 import { createRequestHandler } from "@remix-run/express";
+import { createTerminus } from "@godaddy/terminus";
 
 const app = express();
 
@@ -56,11 +57,14 @@ app.all(
 
 const port = process.env.REMIX_APP_PORT || 3000;
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   // require the built app so we're ready when the first request comes in
   require(BUILD_DIR);
   console.log(`✅ app ready: http://localhost:${port}`);
 });
+
+// Handle shutdowns gracefully
+createTerminus(server, { signals: ["SIGINT", "SIGTERM"], timeout: 5000 });
 
 function purgeRequireCache() {
   // purge require cache on requests for "server side HMR" this won't let

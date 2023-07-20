@@ -10,7 +10,7 @@ networks:
 services:
   db:
     container_name: db
-    image: postgres:latest
+    image: postgres:14
     restart: always
     volumes:
       - database-data:/var/lib/postgresql/data/
@@ -25,11 +25,16 @@ services:
   app:
     build:
       context: ../
-      dockerfile: docker/Dockerfile
+      dockerfile: ./docker/Dockerfile
     ports:
-      - 3000:3000
+      - 3030:3030
     depends_on:
       - db
-    env_file: .env
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/postgres?schema=public
+      SESSION_SECRET: secret123
+      MAGIC_LINK_SECRET: secret123
+      REMIX_APP_PORT: 3030
+      PORT: 3030
     networks:
       - app_network

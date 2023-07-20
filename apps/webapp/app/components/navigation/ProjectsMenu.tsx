@@ -1,5 +1,7 @@
 import { RouteMatch } from "@remix-run/react";
 import { Fragment, useState } from "react";
+import simplur from "simplur";
+import { Badge } from "~/components/primitives/Badge";
 import {
   useIsNewOrganizationPage,
   useOrganizations,
@@ -49,7 +51,12 @@ export function ProjectsMenu({ matches }: { matches: RouteMatch[] }) {
                     <PopoverMenuItem
                       key={project.id}
                       to={projectPath(organization, project)}
-                      title={project.name}
+                      title={
+                        <div className="flex w-[calc(100%-44px)] items-center justify-between pl-1 text-bright">
+                          <span className="grow text-left">{project.name}</span>
+                          <Badge className="mr-0.5">{simplur`${project._count.jobs} job[|s]`}</Badge>
+                        </div>
+                      }
                       isSelected={isSelected}
                       icon="folder"
                     />
