@@ -141,14 +141,20 @@ export default function Page() {
                   <HelpTrigger title="How do I setup my Project?" />
                 </div>
                 {jobs.length === 0 ? (
-                  <div
-                    className={
-                      "flex w-full justify-center gap-x-4 rounded-md border border-dashed border-indigo-800 px-5 py-8"
-                    }
-                  >
-                    <Paragraph variant="small">
-                      Your Jobs will appear here.
-                    </Paragraph>
+                  <div>
+                    <div
+                      className={
+                        "flex w-full flex-col justify-center gap-x-4 rounded-md border border-dashed border-indigo-800 px-5 py-8"
+                      }
+                    >
+                      <Paragraph variant="small">
+                        Your Jobs will appear here.
+                      </Paragraph>
+                      <div> </div>
+                      <Paragraph variant="base">
+                        Browse example jobs:
+                      </Paragraph>{" "}
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -177,7 +183,7 @@ export default function Page() {
                   </>
                 )}
               </div>
-              <HelpContent title="How to setup your Project">
+              <HelpContent title="How to add Trigger.dev to your Next.js app (5 mins)">
                 <HowToSetupYourProject />
               </HelpContent>
             </div>
