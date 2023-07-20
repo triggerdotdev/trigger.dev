@@ -41,6 +41,19 @@ export function createIOWithIntegrations<
         client,
       } as any;
 
+      ioConnection.task = async (
+        key: string | any[],
+        callback: (client: any, task: any, io: IO) => Promise<any>
+      ) => {
+        return await io.runTask(
+          key,
+          { name: "Task", icon: integration.metadata.id },
+          async (ioTask) => {
+            return await callback(client, ioTask, io);
+          }
+        );
+      };
+
       if (integration.client.tasks) {
         const tasks: Record<
           string,

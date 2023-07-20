@@ -19,7 +19,11 @@
     "resolveJsonModule": true,
     "lib": ["es2019", "dom"],
     "module": "CommonJS",
-    "target": "es2021"
+    "target": "es2021",
+    "paths": {
+      "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
+      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"]
+    }
   },
   "include": ["./src/**/*.ts", "tsup.config.ts"],
   "exclude": ["node_modules"]

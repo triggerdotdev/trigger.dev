@@ -1,19 +1,20 @@
+import { Database } from "@/supabase.types";
 import { client } from "@/trigger";
 import { Job, eventTrigger } from "@trigger.dev/sdk";
-import { SupabaseManagement } from "@trigger.dev/supabase";
+import { SupabaseManagement, SupabaseDB } from "@trigger.dev/supabase";
 import { z } from "zod";
 
 const supabase = new SupabaseManagement({
   id: "supabase",
 });
 
-type UserRecord = {
-  id: number;
-  first_name: string;
-  last_name: string;
-  created_at: string;
-  email_address: string;
-};
+const supabaseDB = new SupabaseDB<Database>({
+  id: "supabase-db",
+  supabaseUrl: `https://${process.env.SUPABASE_ID}.supabase.co`,
+  supabaseKey: process.env.SUPABASE_KEY!,
+});
+
+type UserRecord = Database["public"]["Tables"]["users"]["Row"];
 
 new Job(client, {
   id: "supabase-playground",
@@ -24,6 +25,7 @@ new Job(client, {
   }),
   integrations: {
     supabase,
+    supabaseDB,
   },
   run: async (payload, io, ctx) => {
     await io.supabase.getPGConfig("get-pg-config", {
@@ -44,6 +46,14 @@ new Job(client, {
 
     await io.supabase.getTypescriptTypes("get-typescript-types", {
       ref: payload.ref,
+    });
+
+    const users = await io.supabaseDB.task("fetch-users", async (db, task) => {
+      const { data, error } = await db.from("users").select("*");
+
+      if (error) throw error;
+
+      return data;
     });
   },
 });
@@ -82,7 +92,7 @@ new Job(client, {
   name: "Supabase On User Insert",
   version: "0.1.1",
   trigger: supabase.onInserted<UserRecord>({
-    projectRef: "axtbanoixaztvdntngew",
+    projectRef: process.env.SUPABASE_ID!,
     table: "users",
   }),
   integrations: {
@@ -96,7 +106,7 @@ new Job(client, {
   name: "Supabase On User Email Changed",
   version: "0.1.1",
   trigger: supabase.onUpdated<UserRecord>({
-    projectRef: "axtbanoixaztvdntngew",
+    projectRef: process.env.SUPABASE_ID!,
     table: "users",
     columns: ["email_address"],
   }),
@@ -111,7 +121,7 @@ new Job(client, {
   name: "Supabase On User Deleted",
   version: "0.1.1",
   trigger: supabase.onDeleted<UserRecord>({
-    projectRef: "axtbanoixaztvdntngew",
+    projectRef: process.env.SUPABASE_ID!,
     table: "users",
   }),
   integrations: {
