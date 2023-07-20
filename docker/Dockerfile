@@ -60,13 +60,10 @@ COPY --from=production-deps --chown=node:node /triggerdotdev .
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/build/server.js ./apps/webapp/build/server.js
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/build ./apps/webapp/build
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/public ./apps/webapp/public
+COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/prisma/seed.js ./apps/webapp/prisma/seed.js
 COPY --from=builder --chown=node:node /triggerdotdev/scripts ./scripts
 
 EXPOSE 3000
-
-# This is needed to run migrations in the entrypoint.sh script (TODO: figure out a better way to do this)
-RUN npm install -g prisma@4.16.0
-RUN npm install -g ts-node@10.9.1
 
 USER node
 CMD ["./scripts/entrypoint.sh"]

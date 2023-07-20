@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "sideEffects": false,
   "scripts": {
-    "build": "run-s build:*",
+    "build": "run-s build:**",
+    "build:db:seed": "esbuild --platform=node --bundle --minify --format=cjs ./prisma/seed.ts --outdir=prisma",
     "build:remix": "remix build",
     "build:server": "esbuild --platform=node --format=cjs ./server.ts --outdir=build",
     "dev": "cross-env PORT=3030 remix dev",
@@ -12,7 +13,7 @@
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
     "start": "cross-env NODE_ENV=production node --max-old-space-size=8192 ./build/server.js",
     "typecheck": "tsc --noEmit",
-    "db:seed": "ts-node prisma/seed.ts",
+    "db:seed": "node prisma/seed.js",
     "generate:sourcemaps": "remix build --sourcemap",
     "clean:sourcemaps": "run-s clean:sourcemaps:*",
     "clean:sourcemaps:public": "rimraf ./build/**/*.map",
