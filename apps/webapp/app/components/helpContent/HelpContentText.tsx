@@ -29,21 +29,19 @@ import { CodeBlock } from "../code/CodeBlock";
 import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 import { TextLink } from "../primitives/TextLink";
 import FormSegmentedControl from "../primitives/FormSegmentedControl";
-
-// const options = [
-//   { label: "Label 1", value: "developer" },
-//   { label: "Label 2", value: "Users" },
-// ];
+import {
+  GitHubLightIcon,
+  OpenAILightIcon,
+  ResendIcon,
+  SlackIcon,
+} from "@trigger.dev/companyicons";
+import { CalendarDaysIcon, ClockIcon } from "@heroicons/react/20/solid";
 
 export function HowToSetupYourProject() {
   const devEnvironment = useDevEnvironment();
   const appOrigin = useAppOrigin();
   return (
     <>
-      {/* <FormSegmentedControl
-        name={"graph"}
-        options={options}
-      ></FormSegmentedControl> */}
       <Paragraph spacing>
         Add Trigger.dev to your Project with an example Job which logs 'Hello
         World' to the console.
@@ -91,7 +89,8 @@ export function HowToSetupYourProject() {
         </Paragraph>{" "}
         <Paragraph spacing>
           You’ll notice a new folder in your project called 'jobs' . We’ve added
-          a very simple example Job in there to help you get started.
+          a very simple example Job in <InlineCode>examples.ts</InlineCode> to
+          help you get started.
         </Paragraph>
       </StepContentContainer>
       <StepNumber stepNumber="2" title="Run your Next.js app" />

@@ -32,6 +32,13 @@ import {
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { requireUserId } from "~/services/session.server";
 import { JobListPresenter } from "~/presenters/JobListPresenter.server";
+import { TextLink } from "~/components/primitives/TextLink";
+import {
+  GitHubLightIcon,
+  OpenAILightIcon,
+  ResendIcon,
+} from "@trigger.dev/companyicons";
+import { ClockIcon, CalendarDaysIcon, SlackIcon } from "lucide-react";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -138,7 +145,7 @@ export default function Page() {
                       onChange={(e) => setFilterText(e.target.value)}
                     />
                   )}
-                  <HelpTrigger title="How do I setup my Project?" />
+                  <HelpTrigger title="How do I add Trigger.dev to my Next.js app?" />
                 </div>
                 {jobs.length === 0 ? (
                   <div>
@@ -150,10 +157,74 @@ export default function Page() {
                       <Paragraph variant="small">
                         Your Jobs will appear here.
                       </Paragraph>
-                      <div> </div>
-                      <Paragraph variant="base">
-                        Browse example jobs:
-                      </Paragraph>{" "}
+                    </div>
+                    <div className="mt-6 flex w-full flex-col gap-y-2 rounded bg-slate-900 p-4">
+                      <Header2 className="text-slate-300">Example jobs</Header2>
+                      <Paragraph variant="small">
+                        If you want more inspiration or just want to dig into
+                        the code of a Job, check out our{" "}
+                        <TextLink href="https://github.com/triggerdotdev/examples">
+                          examples repo
+                        </TextLink>
+                        .
+                      </Paragraph>
+                      <div className="h-[1px] w-full bg-slate-800" />
+                      <div className="flex gap-1.5">
+                        <ClockIcon className="h-4 w-4 pt-0.5 text-slate-100" />
+                        <Paragraph variant="small">
+                          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/delays">
+                            Delays
+                          </TextLink>{" "}
+                          - Using delays inside Jobs
+                        </Paragraph>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <CalendarDaysIcon className="h-4 w-4 pt-0.5 text-slate-100" />
+                        <Paragraph variant="small">
+                          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/scheduled">
+                            Scheduled
+                          </TextLink>{" "}
+                          - Interval and cron scheduled Jobs
+                        </Paragraph>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <GitHubLightIcon className="ml-0.5 h-4 w-4 pt-0.5" />
+                        <Paragraph variant="small">
+                          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/delays">
+                            GitHub
+                          </TextLink>{" "}
+                          - When a new GitHub issue is opened it adds a “Bug”
+                          label to it.
+                        </Paragraph>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <OpenAILightIcon className="ml-0.5 h-4 w-4 pt-0.5" />
+                        <Paragraph variant="small">
+                          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/openai">
+                            OpenAI
+                          </TextLink>{" "}
+                          - Generate images and jokes from a prompt
+                        </Paragraph>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <ResendIcon className="ml-0.5 h-4 w-4 pt-0.5" />
+                        <Paragraph variant="small">
+                          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/resend">
+                            Resend
+                          </TextLink>{" "}
+                          - Sends an email by submitting a form in the Next.js
+                          app
+                        </Paragraph>
+                      </div>{" "}
+                      <div className="flex gap-1.5">
+                        <SlackIcon className="ml-0.5 h-4 w-4 pt-0.5" />
+                        <Paragraph variant="small">
+                          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/slack">
+                            Slack
+                          </TextLink>{" "}
+                          - Sends a Slack message when an event is received
+                        </Paragraph>
+                      </div>
                     </div>
                   </div>
                 ) : (
