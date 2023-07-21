@@ -28,17 +28,30 @@ import { Header2 } from "../primitives/Headers";
 import { CodeBlock } from "../code/CodeBlock";
 import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 import { TextLink } from "../primitives/TextLink";
+import FormSegmentedControl from "../primitives/FormSegmentedControl";
+import {
+  GitHubLightIcon,
+  OpenAILightIcon,
+  ResendIcon,
+  SlackIcon,
+} from "@trigger.dev/companyicons";
+import { CalendarDaysIcon, ClockIcon } from "@heroicons/react/20/solid";
 
 export function HowToSetupYourProject() {
   const devEnvironment = useDevEnvironment();
   const appOrigin = useAppOrigin();
   return (
     <>
-      <StepNumber stepNumber="1" title="Run the CLI init command" />
+      <Paragraph spacing>
+        Add Trigger.dev to your Project with an example Job which logs 'Hello
+        World' to the console.
+      </Paragraph>
+
+      <StepNumber
+        stepNumber="1"
+        title="Run the CLI 'init' command from a Next.js project"
+      />
       <StepContentContainer>
-        <Paragraph spacing>
-          Run this CLI command in a terminal window from your Next.js project.
-        </Paragraph>
         <ClientTabs defaultValue="npm">
           <ClientTabsList>
             <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
@@ -73,6 +86,11 @@ export function HowToSetupYourProject() {
         <Paragraph spacing variant="small">
           It will ask you for a "unique ID for your endpoint". You can use the
           default by hitting enter.
+        </Paragraph>{" "}
+        <Paragraph spacing>
+          You’ll notice a new folder in your project called 'jobs' . We’ve added
+          a very simple example Job in <InlineCode>examples.ts</InlineCode> to
+          help you get started.
         </Paragraph>
       </StepContentContainer>
       <StepNumber stepNumber="2" title="Run your Next.js app" />
@@ -81,23 +99,13 @@ export function HowToSetupYourProject() {
           Ensure your Next.js app is running locally on port 3000.
         </Paragraph>
       </StepContentContainer>
-      <StepNumber stepNumber="3" title="Run the CLI dev command" />
+      <StepNumber stepNumber="3" title="Run the CLI 'dev' command" />
       <StepContentContainer>
         <Paragraph spacing>
-          The CLI <InlineCode>dev</InlineCode> command allows the Trigger.dev
-          service to send messages to your Next.js site. This is required for
-          registering Jobs, triggering them and running Tasks. To achieve this
-          it creates a tunnel (using{" "}
-          <TextLink href="https://ngrok.com/">ngrok</TextLink>) so Trigger.dev
-          can send messages to your machine.
-        </Paragraph>
-        <Paragraph spacing>
-          You should leave the <InlineCode>dev</InlineCode> command running when
-          you're developing.
-        </Paragraph>
-        <Paragraph spacing>
           In a{" "}
-          <strong className="text-bright">new terminal window or tab</strong>{" "}
+          <strong className="text-bright">
+            separate terminal window or tab
+          </strong>{" "}
           run:
         </Paragraph>
         <ClientTabs defaultValue="npm">
@@ -128,6 +136,10 @@ export function HowToSetupYourProject() {
             />
           </ClientTabsContent>
         </ClientTabs>
+        <Paragraph spacing variant="small">
+          You should leave the <InlineCode>dev</InlineCode> command running when
+          you're developing.
+        </Paragraph>
       </StepContentContainer>
       <StepNumber stepNumber="4" title="Check for Jobs" />
       <StepContentContainer>
