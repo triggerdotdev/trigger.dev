@@ -1,4 +1,4 @@
-import { ConnectionAuth } from "@trigger.dev/internal";
+import { ConnectionAuth, RunTaskOptions } from "@trigger.dev/internal";
 import {
   AuthenticatedTask,
   IOWithIntegrations,
@@ -41,13 +41,14 @@ export function createIOWithIntegrations<
         client,
       } as any;
 
-      ioConnection.task = async (
+      ioConnection.runTask = async (
         key: string | any[],
-        callback: (client: any, task: any, io: IO) => Promise<any>
+        callback: (client: any, task: any, io: IO) => Promise<any>,
+        options?: RunTaskOptions
       ) => {
         return await io.runTask(
           key,
-          { name: "Task", icon: integration.metadata.id },
+          { name: "Task", icon: integration.metadata.id, ...options },
           async (ioTask) => {
             return await callback(client, ioTask, io);
           }

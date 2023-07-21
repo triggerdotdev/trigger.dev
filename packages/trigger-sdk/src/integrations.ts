@@ -6,6 +6,12 @@ import {
 } from "@trigger.dev/internal";
 import { IO, IOTask } from "./io";
 
+type IntegrationRunTaskFunction<TClient> = <TResult>(
+  key: string | any[],
+  callback: (client: TClient, task: IOTask, io: IO) => Promise<TResult>,
+  options?: RunTaskOptions
+) => Promise<TResult>;
+
 export type ClientFactory<TClient> = (auth: ConnectionAuth) => TClient;
 
 export interface TriggerIntegration<
@@ -90,10 +96,7 @@ type ExtractIntegrationClientClient<
 }
   ? {
       client: TClient;
-      task: <TResult>(
-        key: string | any[],
-        callback: (client: TClient, task: IOTask, io: IO) => Promise<TResult>
-      ) => Promise<TResult>;
+      runTask: IntegrationRunTaskFunction<TClient>;
     }
   : TIntegrationClient extends {
       usesLocalAuth: false;
@@ -101,10 +104,7 @@ type ExtractIntegrationClientClient<
     }
   ? {
       client: TClient;
-      task: <TResult>(
-        key: string | any[],
-        callback: (client: TClient, task: IOTask, io: IO) => Promise<TResult>
-      ) => Promise<TResult>;
+      runTask: IntegrationRunTaskFunction<TClient>;
     }
   : never;
 

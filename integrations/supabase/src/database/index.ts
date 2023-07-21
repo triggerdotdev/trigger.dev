@@ -1,22 +1,21 @@
 import {
-  createClient,
   SupabaseClient,
   SupabaseClientOptions,
-  PostgrestResponse,
+  createClient,
 } from "@supabase/supabase-js";
 import { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
 import { GenericSchema } from "./types";
 
 const tasks = {};
 
-export type SupabaseDBIntegrationOptions<TSchema extends string> = {
+export type SupabaseIntegrationOptions<TSchema extends string> = {
   id: string;
   supabaseUrl: string;
   supabaseKey: string;
   options?: SupabaseClientOptions<TSchema>;
 };
 
-export class SupabaseDB<
+export class Supabase<
   Database = any,
   SchemaName extends string & keyof Database = "public" extends keyof Database
     ? "public"
@@ -37,7 +36,7 @@ export class SupabaseDB<
     typeof tasks
   >;
 
-  constructor(private options: SupabaseDBIntegrationOptions<SchemaName>) {
+  constructor(private options: SupabaseIntegrationOptions<SchemaName>) {
     const supabaseOptions = options.options || {};
 
     const supabaseClient = createClient(

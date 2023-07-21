@@ -1,14 +1,14 @@
 import { Database } from "@/supabase.types";
 import { client } from "@/trigger";
 import { Job, eventTrigger } from "@trigger.dev/sdk";
-import { SupabaseManagement, SupabaseDB } from "@trigger.dev/supabase";
+import { SupabaseManagement, Supabase } from "@trigger.dev/supabase";
 import { z } from "zod";
 
 const supabase = new SupabaseManagement({
   id: "supabase",
 });
 
-const supabaseDB = new SupabaseDB<Database>({
+const supabaseDB = new Supabase<Database>({
   id: "supabase-db",
   supabaseUrl: `https://${process.env.SUPABASE_ID}.supabase.co`,
   supabaseKey: process.env.SUPABASE_KEY!,
@@ -48,13 +48,71 @@ new Job(client, {
       ref: payload.ref,
     });
 
-    const users = await io.supabaseDB.task("fetch-users", async (db, task) => {
-      const { data, error } = await db.from("users").select("*");
+    const users = await io.supabaseDB.runTask(
+      "fetch-users",
+      async (db) => {
+        const { data, error } = await db.from("users").select("*");
 
-      if (error) throw error;
+        if (error) throw error;
 
-      return data;
-    });
+        return data;
+      },
+      { name: "Fetch Users" }
+    );
+
+    const newUser = await io.supabaseDB.runTask(
+      "create-user",
+      async (db) => {
+        return await db
+          .from("users")
+          .insert({
+            first_name: "John",
+            last_name: "Doe",
+            email_address: "john@trigger.dev",
+          })
+          .select();
+      },
+      { name: "New Users" }
+    );
+  },
+});
+
+new Job(client, {
+  id: "supabase-create-todo",
+  name: "Supabase Create Todo",
+  version: "0.1.1",
+  trigger: eventTrigger({
+    name: "supabase.create-todo",
+    schema: z.object({
+      contents: z.string(),
+      user_id: z.number(),
+    }),
+  }),
+  integrations: {
+    supabaseDB,
+  },
+  run: async (payload, io, ctx) => {
+    const newTodo = await io.supabaseDB.runTask(
+      "create-todo",
+      async (db) => {
+        const { data, error } = await db
+          .from("todos")
+          .insert({
+            contents: payload.contents,
+            user_id: payload.user_id,
+            is_complete: false,
+          })
+          .select();
+
+        if (error) throw error;
+
+        return data;
+      },
+      {
+        name: "Create Todo",
+        properties: [{ label: "Contents", text: payload.contents }],
+      }
+    );
   },
 });
 

@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/supabase",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Trigger.dev integration for @supabase/supabase-js",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -13,7 +13,7 @@
     "dist/index.js.map"
   ],
   "devDependencies": {
-    "@types/node": "16.x",
+    "@types/node": "18.x",
     "rimraf": "^3.0.2",
     "tsup": "7.1.x",
     "typescript": "4.9.4"
