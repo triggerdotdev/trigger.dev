@@ -170,7 +170,10 @@ export default function Page() {
         <PageInfoRow>
           <PageInfoGroup>
             <PageInfoProperty
-              icon={trigger.integration.definitionId}
+              icon={
+                trigger.integration.definition.icon ??
+                trigger.integration.definitionId
+              }
               label={trigger.integration.title ?? ""}
               value={trigger.integration.slug}
             />

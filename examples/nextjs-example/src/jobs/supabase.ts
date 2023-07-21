@@ -8,6 +8,11 @@ const supabase = new SupabaseManagement({
   id: "supabase",
 });
 
+const supabaseManagementKey = new SupabaseManagement({
+  id: "supabase-management-key",
+  apiKey: process.env.SUPABASE_API_KEY!,
+});
+
 const supabaseDB = new Supabase<Database>({
   id: "supabase-db",
   supabaseUrl: `https://${process.env.SUPABASE_ID}.supabase.co`,
@@ -15,6 +20,7 @@ const supabaseDB = new Supabase<Database>({
 });
 
 type UserRecord = Database["public"]["Tables"]["users"]["Row"];
+type TodoRecord = Database["public"]["Tables"]["todos"]["Row"];
 
 new Job(client, {
   id: "supabase-playground",
@@ -26,9 +32,10 @@ new Job(client, {
   integrations: {
     supabase,
     supabaseDB,
+    supabaseManagementKey,
   },
   run: async (payload, io, ctx) => {
-    await io.supabase.getPGConfig("get-pg-config", {
+    await io.supabaseManagementKey.getPGConfig("get-pg-config", {
       ref: payload.ref,
     });
 
@@ -181,6 +188,20 @@ new Job(client, {
   trigger: supabase.onDeleted<UserRecord>({
     projectRef: process.env.SUPABASE_ID!,
     table: "users",
+  }),
+  integrations: {
+    supabase,
+  },
+  run: async (payload, io, ctx) => {},
+});
+
+new Job(client, {
+  id: "supabase-on-todo-created",
+  name: "Supabase On TODO created",
+  version: "0.1.1",
+  trigger: supabaseManagementKey.onInserted<TodoRecord>({
+    projectRef: process.env.SUPABASE_ID!,
+    table: "todos",
   }),
   integrations: {
     supabase,

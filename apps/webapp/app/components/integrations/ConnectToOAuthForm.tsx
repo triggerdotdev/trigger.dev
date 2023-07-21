@@ -273,7 +273,7 @@ export function ConnectToOAuthForm({
           className="flex gap-2"
           disabled={transition.state !== "idle"}
           variant="primary/medium"
-          LeadingIcon={integration.identifier}
+          LeadingIcon={integration.icon ?? integration.identifier}
         >
           Connect to {integration.name}
         </Button>

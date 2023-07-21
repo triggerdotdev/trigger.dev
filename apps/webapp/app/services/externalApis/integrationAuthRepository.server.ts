@@ -126,6 +126,16 @@ export class IntegrationAuthRepository {
         });
       }
 
+      logger.debug("Creating Integration", {
+        id,
+        clientType,
+        scopes,
+        title,
+        slug,
+        integrationIdentifier,
+        integrationAuthMethod,
+      });
+
       const client = await tx.integration.create({
         data: {
           id,

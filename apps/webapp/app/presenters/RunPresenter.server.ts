@@ -46,6 +46,11 @@ const taskSelect = {
           definitionId: true,
           title: true,
           slug: true,
+          definition: {
+            select: {
+              icon: true,
+            },
+          },
         },
       },
     },

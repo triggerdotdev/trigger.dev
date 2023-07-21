@@ -87,7 +87,10 @@ export default function Integrations() {
                   <TableCell to={path}>
                     <div className="flex items-center gap-1">
                       <NamedIcon
-                        name={t.integration.definitionId}
+                        name={
+                          t.integration.definition.icon ??
+                          t.integration.definitionId
+                        }
                         className="h-8 w-8"
                       />
                       <LabelValueStack

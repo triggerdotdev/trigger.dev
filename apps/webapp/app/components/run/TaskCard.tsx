@@ -124,7 +124,10 @@ export function TaskCard({
               )}
               {connection && (
                 <RunPanelIconProperty
-                  icon={connection.integration.definitionId}
+                  icon={
+                    connection.integration.definition.icon ??
+                    connection.integration.definitionId
+                  }
                   label="Connection"
                   value={connection.integration.slug}
                 />

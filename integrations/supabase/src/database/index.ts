@@ -8,13 +8,39 @@ import { GenericSchema } from "./types";
 
 const tasks = {};
 
-export type SupabaseIntegrationOptions<TSchema extends string> = {
-  id: string;
-  supabaseUrl: string;
-  supabaseKey: string;
-  options?: SupabaseClientOptions<TSchema>;
-};
+export type SupabaseIntegrationOptions<TSchema extends string> =
+  | {
+      /** The unique ID for this integration */
+      id: string;
+      /** The Supabase project url (e.g. "https://<project-id>.supabase.co") */
+      supabaseUrl: string;
+      /** The Supabase service account API Key (found in your Supabase Project Settings -> API -> service_role) */
+      supabaseKey: string;
+      /** Options that are passed through to the call the createClient */
+      options?: SupabaseClientOptions<TSchema>;
+    }
+  | {
+      id: string;
+      projectId: string;
+      supabaseKey: string;
+      options?: SupabaseClientOptions<TSchema>;
+    };
 
+/**
+ * A Trigger Integration for Supabase
+ *
+ * @example
+ * ```ts
+ * import { Supabase } from "@trigger.dev/supabase";
+ * import { Database } from "@/supabase.types";
+ *
+ * const supabase = new Supabase<Database>({
+ *  id: "my-supabase",
+ *  projectId: process.env.SUPABASE_ID!,
+ *  supabaseKey: process.env.SUPABASE_API_KEY!,
+ * });
+ * ```
+ */
 export class Supabase<
   Database = any,
   SchemaName extends string & keyof Database = "public" extends keyof Database
@@ -39,24 +65,25 @@ export class Supabase<
   constructor(private options: SupabaseIntegrationOptions<SchemaName>) {
     const supabaseOptions = options.options || {};
 
-    const supabaseClient = createClient(
-      options.supabaseUrl,
-      options.supabaseKey,
-      {
-        ...supabaseOptions,
-        auth: {
-          ...supabaseOptions.auth,
-          persistSession: false,
-        },
-      }
-    );
+    const supabaseUrl =
+      "projectId" in options
+        ? `https://${options.projectId}.supabase.co`
+        : options.supabaseUrl;
+
+    const supabaseClient = createClient(supabaseUrl, options.supabaseKey, {
+      ...supabaseOptions,
+      auth: {
+        ...supabaseOptions.auth,
+        persistSession: false,
+      },
+    });
 
     this.client = {
       tasks,
       usesLocalAuth: true,
       client: supabaseClient,
       auth: {
-        supabaseUrl: options.supabaseUrl,
+        supabaseUrl,
         supabaseKey: options.supabaseKey,
       },
     };

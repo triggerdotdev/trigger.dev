@@ -13,9 +13,14 @@ import { safeParseBody } from "@trigger.dev/integration-kit";
 import * as tasks from "./tasks";
 import { randomUUID } from "crypto";
 
-export type SupabaseManagementIntegrationOptions = {
-  id: string;
-};
+export type SupabaseManagementIntegrationOptions =
+  | {
+      id: string;
+    }
+  | {
+      id: string;
+      apiKey: string;
+    };
 
 type SupabaseManagementIntegrationClient = IntegrationClient<
   SupabaseManagementAPI,
@@ -28,13 +33,28 @@ export class SupabaseManagement implements SupabaseManagementIntegration {
   client: SupabaseManagementIntegrationClient;
 
   constructor(private options: SupabaseManagementIntegrationOptions) {
-    this.client = {
-      tasks,
-      usesLocalAuth: false,
-      clientFactory: (auth) => {
-        return new SupabaseManagementAPI({ accessToken: auth.accessToken });
-      },
-    };
+    if ("apiKey" in options) {
+      if (!options.apiKey || options.apiKey === "") {
+        throw `Can't create SupabaseManagement integration (${options.id}) as apiKey is undefined`;
+      }
+
+      this.client = {
+        tasks,
+        usesLocalAuth: true,
+        client: new SupabaseManagementAPI({ accessToken: options.apiKey }),
+        auth: {
+          apiKey: options.apiKey,
+        },
+      };
+    } else {
+      this.client = {
+        tasks,
+        usesLocalAuth: false,
+        clientFactory: (auth) => {
+          return new SupabaseManagementAPI({ accessToken: auth.accessToken });
+        },
+      };
+    }
   }
 
   get id() {

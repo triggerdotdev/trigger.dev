@@ -191,7 +191,9 @@ export class ProjectPresenter {
             (integration) => ({
               key: integration.key,
               title: integration.integration.slug,
-              icon: integration.integration.definition.id,
+              icon:
+                integration.integration.definition.icon ??
+                integration.integration.definition.id,
               setupStatus: integration.integration.setupStatus,
             })
           );

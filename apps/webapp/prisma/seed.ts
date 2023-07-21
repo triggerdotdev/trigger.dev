@@ -5,16 +5,17 @@ import { seedCloud } from "./seedCloud";
 import { prisma } from "../app/db.server";
 
 async function seedIntegrationAuthMethods() {
-  for (const [identifier, integration] of Object.entries(
+  for (const [_, integration] of Object.entries(
     integrationCatalog.getIntegrations()
   )) {
     await prisma.integrationDefinition.upsert({
       where: {
-        id: identifier,
+        id: integration.identifier,
       },
       create: {
-        id: identifier,
+        id: integration.identifier,
         name: integration.name,
+        icon: integration.icon ?? integration.identifier,
         instructions: "Instructions go here",
         description: integration.description,
         packageName: integration.packageName,
@@ -23,6 +24,7 @@ async function seedIntegrationAuthMethods() {
         name: integration.name,
         description: integration.description,
         packageName: integration.packageName,
+        icon: integration.icon ?? integration.identifier,
       },
     });
 
@@ -30,12 +32,12 @@ async function seedIntegrationAuthMethods() {
       integration.authenticationMethods
     )) {
       if (authMethod.type === "oauth2") {
-        console.log(`Upserting auth method ${identifier}.${key}`);
+        console.log(`Upserting auth method ${integration.identifier}.${key}`);
 
         await prisma.integrationAuthMethod.upsert({
           where: {
             definitionId_key: {
-              definitionId: identifier,
+              definitionId: integration.identifier,
               key,
             },
           },
@@ -49,7 +51,7 @@ async function seedIntegrationAuthMethods() {
             scopes: authMethod.scopes,
             definition: {
               connect: {
-                id: identifier,
+                id: integration.identifier,
               },
             },
             help: authMethod.help,

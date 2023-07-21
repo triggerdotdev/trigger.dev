@@ -3,6 +3,8 @@ import { z } from "zod";
 export type Integration = {
   /** Used to uniquely identify an integration */
   identifier: string;
+  /** identifier is used by default as the icon name, but you can specify a different one using icon */
+  icon?: string;
   /** The name of the integration */
   name: string;
   /** The description of the integration */
