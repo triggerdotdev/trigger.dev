@@ -426,6 +426,22 @@ function getPathAlias(tsconfig: any, usesSrcDir: boolean, isTypescriptProject: b
   return;
 }
 
+function getJobsPathPrefix(pathAlias: string | undefined, isTypescriptProject: boolean) {
+  if (!isTypescriptProject) {
+    return "../"
+  }
+  return pathAlias ? pathAlias + "/" : "../";
+}
+
+function getRoutePathPrefix(pathAlias: string | undefined, isTypescriptProject: boolean, isAppRoute = false) {
+  const defaultPath = isAppRoute ? ".../../..." : "../.."
+
+  if (!isTypescriptProject) {
+    return defaultPath
+  }
+  return  pathAlias ? pathAlias + "/" : defaultPath;
+}
+
 async function createTriggerAppRoute(
   projectPath: string,
   path: string,
@@ -442,7 +458,7 @@ async function createTriggerAppRoute(
   const routeFileName = `route${extension}`
 
   const pathAlias = getPathAlias(tsConfig, usesSrcDir, isTypescriptProject);
-  const routePathPrefix = pathAlias ? pathAlias + "/" : "../../../";
+  const routePathPrefix = getRoutePathPrefix(pathAlias, isTypescriptProject, true);
 
   const routeContent = `
 import { createAppRoute } from "@trigger.dev/nextjs";
@@ -465,7 +481,7 @@ export const client = new TriggerClient({
 });
   `;
 
-  const jobsPathPrefix = pathAlias ? pathAlias + "/" : "../";
+  const jobsPathPrefix = getJobsPathPrefix(pathAlias, isTypescriptProject)
 
   const jobsContent = `
 import { eventTrigger } from "@trigger.dev/sdk";
@@ -545,13 +561,11 @@ async function createTriggerPageRoute(
   isTypescriptProject: boolean,
   usesSrcDir = false,
 ) {
-  logger.info("isTtpescriptProject", isTypescriptProject)
   const tsConfigPath = pathModule.join(projectPath, "tsconfig.json");
   const tsConfig = isTypescriptProject ? await readFile(tsConfigPath) : {};
 
   const pathAlias = getPathAlias(tsConfig, usesSrcDir, isTypescriptProject);
-  logger.info("pathAlias", pathAlias)
-  const routePathPrefix = pathAlias ? pathAlias + "/" : "../..";
+  const routePathPrefix = getRoutePathPrefix(pathAlias, isTypescriptProject);
 
   const extension = isTypescriptProject ? ".ts" : ".js"
   const triggerFileName = `trigger${extension}`
@@ -578,7 +592,7 @@ export const client = new TriggerClient({
 });
   `;
 
-  const jobsPathPrefix = pathAlias ? pathAlias + "/" : "../";
+  const jobsPathPrefix = getJobsPathPrefix(pathAlias, isTypescriptProject)
 
   const jobsContent = `
 import { eventTrigger } from "@trigger.dev/sdk";
