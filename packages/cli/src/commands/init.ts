@@ -106,7 +106,7 @@ export const initCommand = async (options: InitCommandOptions) => {
     logger.info("📁 Detected use of src directory");
   }
 
-  const nextJsDir = await detectPagesOrAppDir(resolvedPath, usesSrcDir);
+  const nextJsDir = await detectPagesOrAppDir(resolvedPath, usesSrcDir, isTypescriptProject);
 
   const routeDir = pathModule.join(resolvedPath, usesSrcDir ? "src" : "");
 
@@ -262,7 +262,8 @@ async function detectUseOfSrcDir(path: string): Promise<boolean> {
 // Import the next.config.js file and check for experimental: { appDir: true }
 async function detectPagesOrAppDir(
   path: string,
-  usesSrcDir = false
+  usesSrcDir = false,
+  isTypescriptProject = false
 ): Promise<"pages" | "app"> {
   const nextConfigPath = pathModule.join(path, "next.config.js");
   const importedConfig = await import(pathToFileURL(nextConfigPath).toString());
@@ -275,11 +276,13 @@ async function detectPagesOrAppDir(
     // If so then we return app
     // If not return pages
 
+    const extension = isTypescriptProject ? "tsx" : "js"
+
     const appPagePath = pathModule.join(
       path,
       usesSrcDir ? "src" : "",
       "app",
-      "page.tsx"
+      `page.${extension}`
     );
 
     const appPageExists = await pathExists(appPagePath);
@@ -434,7 +437,7 @@ async function createTriggerAppRoute(
   const tsConfigPath = pathModule.join(projectPath, configFileName);
   const tsConfig = await readFile(tsConfigPath);
 
-  const extension = isTypescriptProject ? ".ts" : "/js"
+  const extension = isTypescriptProject ? ".ts" : ".js"
   const triggerFileName = `trigger${extension}`
   const examplesFileName = `examples${extension}`
   const routeFileName = `route${extension}`
