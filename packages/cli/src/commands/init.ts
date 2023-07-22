@@ -468,7 +468,7 @@ export const client = new TriggerClient({
   const jobsPathPrefix = pathAlias ? pathAlias + "/" : "../";
 
   const jobsContent = `
-import { Job, eventTrigger } from "@trigger.dev/sdk";
+import { eventTrigger } from "@trigger.dev/sdk";
 import { client } from "${jobsPathPrefix}trigger";
 
 // your first job
@@ -581,7 +581,7 @@ export const client = new TriggerClient({
   const jobsPathPrefix = pathAlias ? pathAlias + "/" : "../";
 
   const jobsContent = `
-import { Job, eventTrigger } from "@trigger.dev/sdk";
+import { eventTrigger } from "@trigger.dev/sdk";
 import { client } from "${jobsPathPrefix}trigger";
 
 // your first job
