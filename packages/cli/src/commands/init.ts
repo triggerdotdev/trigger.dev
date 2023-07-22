@@ -391,10 +391,7 @@ async function getMiddlewareConfigMatcher(
 //   "@/*": ["./src/*"]
 // }
 // In this case, we would return "@"
-function getPathAlias(tsconfig: any, usesSrcDir: boolean, isTypescriptProject: boolean) {
-  if (!isTypescriptProject) {
-    return usesSrcDir ? "./src" : "./*"
-  }
+function getPathAlias(tsconfig: any, usesSrcDir: boolean) {
 
   if (!tsconfig.compilerOptions.paths) {
     return;
@@ -426,22 +423,6 @@ function getPathAlias(tsconfig: any, usesSrcDir: boolean, isTypescriptProject: b
   return;
 }
 
-function getJobsPathPrefix(pathAlias: string | undefined, isTypescriptProject: boolean) {
-  if (!isTypescriptProject) {
-    return "../"
-  }
-  return pathAlias ? pathAlias + "/" : "../";
-}
-
-function getRoutePathPrefix(pathAlias: string | undefined, isTypescriptProject: boolean, isAppRoute = false) {
-  const defaultPath = isAppRoute ? ".../../..." : "../.."
-
-  if (!isTypescriptProject) {
-    return defaultPath
-  }
-  return  pathAlias ? pathAlias + "/" : defaultPath;
-}
-
 async function createTriggerAppRoute(
   projectPath: string,
   path: string,
@@ -449,16 +430,17 @@ async function createTriggerAppRoute(
   isTypescriptProject: boolean,
   usesSrcDir = false
 ) {
-  const tsConfigPath = pathModule.join(projectPath, "tsconfig.json");
-  const tsConfig = isTypescriptProject ? await readFile(tsConfigPath) : {};
+  const configFileName = isTypescriptProject ? "tsconfig.json" : "jsconfig.json"
+  const tsConfigPath = pathModule.join(projectPath, configFileName);
+  const tsConfig = await readFile(tsConfigPath);
 
   const extension = isTypescriptProject ? ".ts" : "/js"
   const triggerFileName = `trigger${extension}`
   const examplesFileName = `examples${extension}`
   const routeFileName = `route${extension}`
 
-  const pathAlias = getPathAlias(tsConfig, usesSrcDir, isTypescriptProject);
-  const routePathPrefix = getRoutePathPrefix(pathAlias, isTypescriptProject, true);
+  const pathAlias = getPathAlias(tsConfig, usesSrcDir);
+  const routePathPrefix = pathAlias ? pathAlias + "/" : "../../../";
 
   const routeContent = `
 import { createAppRoute } from "@trigger.dev/nextjs";
@@ -481,7 +463,7 @@ export const client = new TriggerClient({
 });
   `;
 
-  const jobsPathPrefix = getJobsPathPrefix(pathAlias, isTypescriptProject)
+  const jobsPathPrefix = pathAlias ? pathAlias + "/" : "../";
 
   const jobsContent = `
 import { eventTrigger } from "@trigger.dev/sdk";
@@ -561,11 +543,12 @@ async function createTriggerPageRoute(
   isTypescriptProject: boolean,
   usesSrcDir = false,
 ) {
-  const tsConfigPath = pathModule.join(projectPath, "tsconfig.json");
-  const tsConfig = isTypescriptProject ? await readFile(tsConfigPath) : {};
+  const configFileName = isTypescriptProject ? "tsconfig.json" : "jsconfig.json"
+  const tsConfigPath = pathModule.join(projectPath, configFileName);
+  const tsConfig = await readFile(tsConfigPath);
 
-  const pathAlias = getPathAlias(tsConfig, usesSrcDir, isTypescriptProject);
-  const routePathPrefix = getRoutePathPrefix(pathAlias, isTypescriptProject);
+  const pathAlias = getPathAlias(tsConfig, usesSrcDir);
+  const routePathPrefix = pathAlias ? pathAlias + "/" : "../..";
 
   const extension = isTypescriptProject ? ".ts" : ".js"
   const triggerFileName = `trigger${extension}`
@@ -592,7 +575,7 @@ export const client = new TriggerClient({
 });
   `;
 
-  const jobsPathPrefix = getJobsPathPrefix(pathAlias, isTypescriptProject)
+  const jobsPathPrefix = pathAlias ? pathAlias + "/" : "../";
 
   const jobsContent = `
 import { eventTrigger } from "@trigger.dev/sdk";
