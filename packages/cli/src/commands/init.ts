@@ -521,12 +521,12 @@ client.defineJob({
   await fs.mkdir(exampleDirectories, { recursive: true });
 
   const exampleFileExists = await pathExists(
-    pathModule.join(exampleDirectories,examplesFileName)
+    pathModule.join(exampleDirectories, examplesFileName)
   );
 
   if (!exampleFileExists) {
     await fs.writeFile(
-      pathModule.join(exampleDirectories,examplesFileName),
+      pathModule.join(exampleDirectories, examplesFileName),
       jobsContent
     );
 
@@ -634,12 +634,12 @@ client.defineJob({
   await fs.mkdir(exampleDirectories, { recursive: true });
 
   const exampleFileExists = await pathExists(
-    pathModule.join(exampleDirectories,examplesFileName)
+    pathModule.join(exampleDirectories, examplesFileName)
   );
 
   if (!exampleFileExists) {
     await fs.writeFile(
-      pathModule.join(exampleDirectories,examplesFileName),
+      pathModule.join(exampleDirectories, examplesFileName),
       jobsContent
     );
 
