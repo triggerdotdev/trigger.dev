@@ -1,15 +1,15 @@
 type InputType = { id: string; parentId: string | null };
 type OutputType<T> = T & { subtasks?: T[] };
 
-export function taskListToTree<T extends InputType, R extends OutputType<T>>(
+export function taskListToTree<T extends InputType>(
   tasks: T[]
-): R[] {
-  const result: R[] = [];
+): OutputType<T>[] {
+  const result: OutputType<T>[] = [];
   const map = new Map<string, T>(tasks.map((v) => [v.id, v]));
 
   for (const node of tasks) {
-    const parent: R | null = node.parentId
-      ? (map.get(node.parentId) as R)
+    const parent: OutputType<T> | null = node.parentId
+      ? (map.get(node.parentId) as OutputType<T>)
       : null;
     if (parent) {
       if (!parent.subtasks) {

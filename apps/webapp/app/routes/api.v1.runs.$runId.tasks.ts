@@ -13,6 +13,7 @@ import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ulid } from "~/services/ulid.server";
 import { workerQueue } from "~/services/worker.server";
+import { taskListToTree } from "~/utils/taskListToTree";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -29,6 +30,7 @@ const SearchQuerySchema = z.object({
 
 export async function loader({ request, params }: LoaderArgs) {
   // Next authenticate the request
+  //todo allow use of client API key
   const authenticatedEnv = await authenticateApiRequest(request);
 
   if (!authenticatedEnv) {
@@ -44,29 +46,25 @@ export async function loader({ request, params }: LoaderArgs) {
     where: {
       id: runId,
     },
-    include: {
+    select: {
+      id: true,
+      status: true,
+      startedAt: true,
+      updatedAt: true,
+      completedAt: true,
+      environmentId: true,
       tasks: {
-        where: {
-          parentId: null,
-        },
-        include: {
-          children: {
-            include: {
-              children: {
-                include: {
-                  children: {
-                    include: {
-                      children: {
-                        include: {
-                          children: true,
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
+        select: {
+          id: true,
+          parentId: true,
+          displayKey: true,
+          status: true,
+          name: true,
+          icon: true,
+          startedAt: true,
+          completedAt: true,
+          params: true,
+          output: true,
         },
         orderBy: {
           id: "asc",
@@ -89,11 +87,11 @@ export async function loader({ request, params }: LoaderArgs) {
     return json({ message: "Run not found" }, { status: 404 });
   }
 
-  const tasks = jobRun.tasks.slice(0, query.take);
+  const tasks = taskListToTree(jobRun.tasks.slice(0, query.take));
   const nextTask = jobRun.tasks[query.take];
 
   return json({
-    data: tasks,
+    tasks,
     nextCursor: nextTask ? nextTask.id : undefined,
   });
 }
