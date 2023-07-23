@@ -12,7 +12,7 @@ export type AuthenticatedEnvironment = NonNullable<
 
 export async function authenticateApiRequest(
   request: Request,
-  { allowClient = false }: { allowClient?: boolean } = {}
+  { allowPublicKey = false }: { allowPublicKey?: boolean } = {}
 ): Promise<AuthenticatedEnvironment | null | undefined> {
   const rawAuthorization = request.headers.get("Authorization");
 
@@ -23,7 +23,7 @@ export async function authenticateApiRequest(
 
   const apiKey = authorization.data.replace(/^Bearer /, "");
 
-  if (allowClient) {
+  if (allowPublicKey) {
     return findEnvironmentByPublicOrPrivateApiKey(apiKey);
   }
 

@@ -14,8 +14,9 @@ export async function loader({ request, params }: LoaderArgs) {
     return cors(request, json({}));
   }
 
-  //todo allow use of client API key
-  const authenticatedEnv = await authenticateApiRequest(request);
+  const authenticatedEnv = await authenticateApiRequest(request, {
+    allowPublicKey: true,
+  });
   if (!authenticatedEnv) {
     return cors(
       request,
