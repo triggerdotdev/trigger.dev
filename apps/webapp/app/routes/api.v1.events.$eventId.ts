@@ -1,5 +1,6 @@
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
+import { cors } from "remix-utils";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
@@ -9,11 +10,17 @@ const ParamsSchema = z.object({
 });
 
 export async function loader({ request, params }: LoaderArgs) {
+  if (request.method.toUpperCase() === "OPTIONS") {
+    return cors(request, json({}));
+  }
+
   //todo allow use of client API key
   const authenticatedEnv = await authenticateApiRequest(request);
-
   if (!authenticatedEnv) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
+    return cors(
+      request,
+      json({ error: "Invalid or Missing API key" }, { status: 401 })
+    );
   }
 
   const { eventId } = ParamsSchema.parse(params);
@@ -38,5 +45,5 @@ export async function loader({ request, params }: LoaderArgs) {
     },
   });
 
-  return json(event);
+  return cors(request, json(event));
 }
