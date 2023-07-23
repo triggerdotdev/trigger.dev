@@ -39,7 +39,10 @@ export async function loader({ request, params }: LoaderArgs) {
     allowPublicKey: true,
   });
   if (!authenticatedEnv) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
+    return cors(
+      request,
+      json({ error: "Invalid or Missing API key" }, { status: 401 })
+    );
   }
 
   const { runId } = ParamsSchema.parse(params);
