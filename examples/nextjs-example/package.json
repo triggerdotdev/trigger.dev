@@ -11,6 +11,7 @@
   "dependencies": {
     "@trigger.dev/github": "workspace:*",
     "@trigger.dev/nextjs": "workspace:*",
+    "@trigger.dev/react": "workspace:*",
     "@trigger.dev/openai": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "@trigger.dev/slack": "workspace:*",
