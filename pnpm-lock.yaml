@@ -374,6 +374,7 @@ importers:
       '@trigger.dev/nextjs': workspace:*
       '@trigger.dev/openai': workspace:*
       '@trigger.dev/plain': workspace:*
+      '@trigger.dev/react': workspace:*
       '@trigger.dev/resend': workspace:*
       '@trigger.dev/sdk': workspace:*
       '@trigger.dev/slack': workspace:*
@@ -397,6 +398,7 @@ importers:
       '@trigger.dev/nextjs': link:../../packages/nextjs
       '@trigger.dev/openai': link:../../integrations/openai
       '@trigger.dev/plain': link:../../integrations/plain
+      '@trigger.dev/react': link:../../packages/react
       '@trigger.dev/resend': link:../../integrations/resend
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       '@trigger.dev/slack': link:../../integrations/slack
@@ -720,6 +722,35 @@ importers:
       '@types/debug': 4.1.7
       '@types/ws': 8.5.4
       next: 13.3.1
+      rimraf: 3.0.2
+      tsup: 6.6.3
+      tsx: 3.12.2
+
+  packages/react:
+    specifiers:
+      '@tanstack/react-query': ^4.32.0
+      '@trigger.dev/internal': workspace:*
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/debug': ^4.1.7
+      '@types/react': ^18.0.21
+      '@types/ws': ^8.5.3
+      debug: ^4.3.4
+      react: ^18.2.0
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
+      tsx: ^3.12.1
+      zod: 3.21.4
+    dependencies:
+      '@tanstack/react-query': 4.32.0_react@18.2.0
+      debug: 4.3.4
+      zod: 3.21.4
+    devDependencies:
+      '@trigger.dev/internal': link:../internal
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/debug': 4.1.7
+      '@types/react': 18.0.26
+      '@types/ws': 8.5.4
+      react: 18.2.0
       rimraf: 3.0.2
       tsup: 6.6.3
       tsx: 3.12.2
@@ -9694,6 +9725,27 @@ packages:
       postcss-selector-parser: 6.0.10
       tailwindcss: 3.3.2_ts-node@10.9.1
     dev: true
+
+  /@tanstack/query-core/4.32.0:
+    resolution: {integrity: sha512-ei4IYwL2kmlKSlCw9WgvV7PpXi0MiswVwfQRxawhJA690zWO3dU49igaQ/UMTl+Jy9jj9dK5IKAYvbX7kUvviQ==}
+    dev: false
+
+  /@tanstack/react-query/4.32.0_react@18.2.0:
+    resolution: {integrity: sha512-B8WUMcByYAH9500ENejDCATOmEZhqjtS9wsfiQ3BNa+s+yAynY8SESI8WWHhSqUmjd0pmCSFRP6BOUGSda3QXA==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0
+      react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0
+      react-native: '*'
+    peerDependenciesMeta:
+      react-dom:
+        optional: true
+      react-native:
+        optional: true
+    dependencies:
+      '@tanstack/query-core': 4.32.0
+      react: 18.2.0
+      use-sync-external-store: 1.2.0_react@18.2.0
+    dev: false
 
   /@team-plain/typescript-sdk/2.2.0:
     resolution: {integrity: sha512-ZNRZJ1uhQYHqaAKNAMdcSvULxutDQldocJWEDxJ5CJX4QYyzD8adK7gB9szKQDsxHFA3sZgTjtSruFBOf+C2fw==}
