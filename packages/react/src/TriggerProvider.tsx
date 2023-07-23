@@ -10,7 +10,7 @@ const privateApiKeyStartsWith = "tr_";
 const ProviderContextSchema = z.object({
   //matches the format "tr_p_dev_abcd1234"
   publicApiKey: z.string().startsWith(publicApiKeyStartsWith),
-  apiUrl: z.string().optional(),
+  apiUrl: z.string(),
 });
 
 type ProviderContextValue = z.infer<typeof ProviderContextSchema>;
@@ -19,7 +19,7 @@ const ProviderContext = createContext<ProviderContextValue>(
   {} as ProviderContextValue
 );
 
-function useProvider() {
+export function useTriggerProvider() {
   const value = useContext(ProviderContext);
   const parsed = ProviderContextSchema.safeParse(value);
 
@@ -29,7 +29,7 @@ function useProvider() {
     );
   }
 
-  return parsed;
+  return parsed.data;
 }
 
 type TriggerProviderProps = {
@@ -58,7 +58,9 @@ export function TriggerProvider({
   }
 
   return (
-    <ProviderContext.Provider value={{ publicApiKey, apiUrl }}>
+    <ProviderContext.Provider
+      value={{ publicApiKey, apiUrl: apiUrl ?? "https://api.trigger.dev" }}
+    >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </ProviderContext.Provider>
   );
