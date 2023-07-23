@@ -6,6 +6,7 @@ import {
   RunTaskBodyOutputSchema,
   ServerTask,
 } from "@trigger.dev/internal";
+import { cors } from "remix-utils";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { taskWithAttemptsToServerTask } from "~/models/task.server";
@@ -30,10 +31,13 @@ const SearchQuerySchema = z.object({
 });
 
 export async function loader({ request, params }: LoaderArgs) {
-  // Next authenticate the request
-  //todo allow use of client API key
-  const authenticatedEnv = await authenticateApiRequest(request);
+  if (request.method.toUpperCase() === "OPTIONS") {
+    return cors(request, json({}));
+  }
 
+  const authenticatedEnv = await authenticateApiRequest(request, {
+    allowPublicKey: true,
+  });
   if (!authenticatedEnv) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
@@ -81,11 +85,11 @@ export async function loader({ request, params }: LoaderArgs) {
   });
 
   if (!jobRun) {
-    return json({ message: "Run not found" }, { status: 404 });
+    return cors(request, json({ message: "Run not found" }, { status: 404 }));
   }
 
   if (jobRun.environmentId !== authenticatedEnv.id) {
-    return json({ message: "Run not found" }, { status: 404 });
+    return cors(request, json({ message: "Run not found" }, { status: 404 }));
   }
 
   const selectedTasks = jobRun.tasks.slice(0, query.take);
@@ -93,15 +97,18 @@ export async function loader({ request, params }: LoaderArgs) {
   const tasks = taskListToTree(selectedTasks, query.subtasks);
   const nextTask = jobRun.tasks[query.take];
 
-  return json({
-    id: jobRun.id,
-    status: jobRun.status,
-    startedAt: jobRun.startedAt,
-    updatedAt: jobRun.updatedAt,
-    completedAt: jobRun.completedAt,
-    tasks,
-    nextCursor: nextTask ? nextTask.id : undefined,
-  });
+  return cors(
+    request,
+    json({
+      id: jobRun.id,
+      status: jobRun.status,
+      startedAt: jobRun.startedAt,
+      updatedAt: jobRun.updatedAt,
+      completedAt: jobRun.completedAt,
+      tasks,
+      nextCursor: nextTask ? nextTask.id : undefined,
+    })
+  );
 }
 
 export async function action({ request, params }: ActionArgs) {
