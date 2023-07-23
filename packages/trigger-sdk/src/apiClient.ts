@@ -6,6 +6,8 @@ import {
   CreateRunBody,
   CreateRunResponseBodySchema,
   FailTaskBodyInput,
+  GetEventSchema,
+  GetRunSchema,
   LogLevel,
   Logger,
   RegisterScheduleResponseBodySchema,
@@ -345,6 +347,45 @@ export class ApiClient {
     );
 
     return response;
+  }
+
+  async getEvent(eventId: string) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Getting Event", {
+      eventId,
+    });
+
+    return await zodfetch(
+      GetEventSchema,
+      `${this.#apiUrl}/api/v1/events/${eventId}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      }
+    );
+  }
+
+  async getRun(runId: string, { subtasks = false } = {}) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Getting Run", {
+      runId,
+    });
+
+    const url = new URL(`${this.#apiUrl}/api/v1/runs/${runId}/tasks`);
+    if (subtasks) {
+      url.searchParams.set("subtasks", String(subtasks));
+    }
+
+    return await zodfetch(GetRunSchema, url.href, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
   }
 
   async #apiKey() {
