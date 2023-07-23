@@ -33,7 +33,6 @@ export function useQueryRun(runId: string) {
     },
     {
       refetchInterval: (data, query) => {
-        console.log(data, query);
         if (data?.status && resolvedStatuses.includes(data.status)) {
           return false;
         }
