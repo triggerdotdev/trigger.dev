@@ -8,7 +8,6 @@ const publicApiKeyStartsWith = "pub_tr";
 const privateApiKeyStartsWith = "tr_";
 
 const ProviderContextSchema = z.object({
-  //matches the format "tr_p_dev_abcd1234"
   publicApiKey: z.string().startsWith(publicApiKeyStartsWith),
   apiUrl: z.string(),
 });

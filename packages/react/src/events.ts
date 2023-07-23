@@ -1,3 +1,5 @@
+"use client";
+
 import { useQuery } from "@tanstack/react-query";
 import { GetEventSchema } from "@trigger.dev/internal";
 import { zodfetch } from "./fetch";
