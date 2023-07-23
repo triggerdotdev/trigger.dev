@@ -9,9 +9,10 @@ import {
 } from "@trigger.dev/sdk";
 import { SupabaseManagementAPI } from "supabase-management-js";
 import { z } from "zod";
-import { safeParseBody } from "@trigger.dev/integration-kit";
+import { Prettify, safeParseBody } from "@trigger.dev/integration-kit";
 import * as tasks from "./tasks";
 import { randomUUID } from "crypto";
+import { GenericSchema } from "../database/types";
 
 export type SupabaseManagementIntegrationOptions =
   | {
@@ -28,6 +29,46 @@ type SupabaseManagementIntegrationClient = IntegrationClient<
 >;
 type SupabaseManagementIntegration =
   TriggerIntegration<SupabaseManagementIntegrationClient>;
+
+class SupabaseDatabase<
+  Database = any,
+  SchemaName extends string & keyof Database = "public" extends keyof Database
+    ? "public"
+    : string & keyof Database,
+  Schema extends GenericSchema = Database[SchemaName] extends GenericSchema
+    ? Database[SchemaName]
+    : any
+> {
+  constructor(
+    private integration: SupabaseManagement,
+    private projectRef: string,
+    private schema: SchemaName = "public" as SchemaName
+  ) {}
+
+  onChange<
+    TableName extends string & keyof Schema["Tables"],
+    Table extends Schema["Tables"][TableName]
+  >(table: TableName): Table["Row"] {
+    return {} as Table["Row"];
+  }
+
+  onInserted<
+    TTableName extends string & keyof Schema["Tables"],
+    TTable extends Schema["Tables"][TTableName]
+  >(params: { table: TTableName }) {
+    return createTrigger<{
+      table: TTableName;
+      record: Prettify<TTable["Row"]>;
+      type: "INSERT";
+      schema: SchemaName;
+      old_record: null;
+    }>(this.integration.source, {
+      event: "insert",
+      projectRef: this.projectRef,
+      ...params,
+    });
+  }
+}
 
 export class SupabaseManagement implements SupabaseManagementIntegration {
   client: SupabaseManagementIntegrationClient;
@@ -69,15 +110,38 @@ export class SupabaseManagement implements SupabaseManagementIntegration {
     return createWebhookEventSource(this);
   }
 
-  onInserted<TRecord extends any>(params: {
-    projectRef: string;
-    table: string;
-  }) {
+  db<
+    Database = any,
+    SchemaName extends string & keyof Database = "public" extends keyof Database
+      ? "public"
+      : string & keyof Database,
+    Schema extends GenericSchema = Database[SchemaName] extends GenericSchema
+      ? Database[SchemaName]
+      : any
+  >(projectRef: string, options?: { schema?: SchemaName }) {
+    return new SupabaseDatabase<Database, SchemaName, Schema>(
+      this,
+      projectRef,
+      options?.schema
+    );
+  }
+
+  onInserted<
+    Database = any,
+    SchemaName extends string & keyof Database = "public" extends keyof Database
+      ? "public"
+      : string & keyof Database,
+    Schema extends GenericSchema = Database[SchemaName] extends GenericSchema
+      ? Database[SchemaName]
+      : any,
+    TTableName extends string & keyof Schema["Tables"] = string &
+      keyof Schema["Tables"]
+  >(params: { projectRef: string; table: TTableName }) {
     return createTrigger<{
-      table: string;
-      record: TRecord;
+      table: TTableName;
+      record: Prettify<Schema["Tables"][TTableName]["Row"]>;
       type: "INSERT";
-      schema: string;
+      schema: Schema;
       old_record: null;
     }>(this.source, {
       event: "insert",

@@ -152,12 +152,15 @@ new Job(client, {
   },
 });
 
+const db = supabase.db<Database>(process.env.SUPABASE_ID!, {
+  schema: "public",
+});
+
 new Job(client, {
   id: "supabase-on-user-insert",
   name: "Supabase On User Insert",
   version: "0.1.1",
-  trigger: supabase.onInserted<UserRecord>({
-    projectRef: process.env.SUPABASE_ID!,
+  trigger: db.onInserted({
     table: "users",
   }),
   integrations: {
@@ -201,7 +204,7 @@ new Job(client, {
   version: "0.1.1",
   trigger: supabaseManagementKey.onInserted<TodoRecord>({
     projectRef: process.env.SUPABASE_ID!,
-    table: "todos",
+    table: "users",
   }),
   integrations: {
     supabase,
