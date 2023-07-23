@@ -12,6 +12,7 @@ export default function Home() {
     <>
       <TriggerProvider
         publicApiKey={process.env.NEXT_PUBLIC_TRIGGER_API_KEY ?? ""}
+        apiUrl="http://localhost:3030"
       >
         <Head>
           <title>Trigger.dev example</title>
