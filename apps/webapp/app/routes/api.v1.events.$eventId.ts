@@ -23,6 +23,7 @@ export async function loader({ request, params }: LoaderArgs) {
       id: true,
       name: true,
       createdAt: true,
+      updatedAt: true,
       runs: {
         select: {
           id: true,
