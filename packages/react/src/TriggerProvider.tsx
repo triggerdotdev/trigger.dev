@@ -4,9 +4,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createContext, useContext } from "react";
 import { z } from "zod";
 
+const publicApiKeyStartsWith = "pub_tr";
+const privateApiKeyStartsWith = "tr_";
+
 const ProviderContextSchema = z.object({
   //matches the format "tr_p_dev_abcd1234"
-  publicApiKey: z.string().startsWith("tr_p_"),
+  publicApiKey: z.string().startsWith(publicApiKeyStartsWith),
   apiUrl: z.string().optional(),
 });
 
@@ -42,15 +45,15 @@ export function TriggerProvider({
   apiUrl,
   children,
 }: TriggerProviderProps) {
-  const values = ProviderContextSchema.safeParse({
-    publicApiKey,
-    apiUrl,
-  });
+  if (!publicApiKey.startsWith(publicApiKeyStartsWith)) {
+    if (publicApiKey.startsWith(privateApiKeyStartsWith)) {
+      throw new Error(
+        `You are using a private API key. You must use a public API key.`
+      );
+    }
 
-  if (!values.success) {
     console.error(
-      "TriggerProvider publicApiKey wasn't correct.",
-      values.error.format()
+      `TriggerProvider publicApiKey wasn't in the correct format. Should be ${publicApiKeyStartsWith}...`
     );
   }
 
