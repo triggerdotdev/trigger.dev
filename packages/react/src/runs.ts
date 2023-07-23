@@ -5,6 +5,15 @@ import { GetRunSchema } from "@trigger.dev/internal";
 import { zodfetch } from "./fetch";
 import { useTriggerProvider } from "./TriggerProvider";
 
+const resolvedStatuses = [
+  "SUCCESS",
+  "FAILURE",
+  "CANCELED",
+  "TIMED_OUT",
+  "ABORTED",
+];
+const refreshInterval = 5000;
+
 export function useQueryRun(runId: string) {
   const { apiUrl, publicApiKey } = useTriggerProvider();
 
@@ -23,7 +32,13 @@ export function useQueryRun(runId: string) {
       );
     },
     {
-      refetchInterval: 6000,
+      refetchInterval: (data, query) => {
+        console.log(data, query);
+        if (data?.status && resolvedStatuses.includes(data.status)) {
+          return false;
+        }
+        return refreshInterval;
+      },
     }
   );
 }
