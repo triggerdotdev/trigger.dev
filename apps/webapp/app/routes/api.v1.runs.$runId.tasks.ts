@@ -94,6 +94,11 @@ export async function loader({ request, params }: LoaderArgs) {
   const nextTask = jobRun.tasks[query.take];
 
   return json({
+    id: jobRun.id,
+    status: jobRun.status,
+    startedAt: jobRun.startedAt,
+    updatedAt: jobRun.updatedAt,
+    completedAt: jobRun.completedAt,
     tasks,
     nextCursor: nextTask ? nextTask.id : undefined,
   });
