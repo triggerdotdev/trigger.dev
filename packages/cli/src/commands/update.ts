@@ -13,17 +13,22 @@ export async function updateCommand(path: string) {
     try {
         const resolvedPath = resolvePath(path);
         const installedPackages = await getInstalledPackages();
-        const triggerDevPackages = Object.keys(installedPackages.dependencies).filter(pkg => pkg.startsWith('@trigger.dev/'));
+        const triggerDevPackagesName = Object.keys(installedPackages.dependencies).filter(pkg => pkg.startsWith('@trigger.dev/'));
 
-        if (triggerDevPackages.length === 0) {
+        if (triggerDevPackagesName.length === 0) {
             logger.info('No @trigger.dev packages found in package.json.');
             return;
         }
 
-        const latestVersions = await getLatestVersions(triggerDevPackages);
+        const triggerDevPackagesVersions = Object.fromEntries(triggerDevPackagesName.map(packageName => {
+            const currentVersion = installedPackages.dependencies[packageName].version;
+            return [packageName, currentVersion];
+        }));
+
+        const latestVersions = await getLatestVersions(triggerDevPackagesName, triggerDevPackagesVersions);
         const updates: { [packageName: string]: string } = {};
 
-        triggerDevPackages.forEach(packageName => {
+        triggerDevPackagesName.forEach(packageName => {
             const currentVersion = installedPackages.dependencies[packageName].version;
             const latestVersion = latestVersions[packageName];
             if (latestVersion) {
@@ -72,7 +77,7 @@ async function getInstalledPackages(): Promise<any> {
     });
 }
 
-async function getLatestVersions(packageNames: string[]): Promise<{ [packageName: string]: string }> {
+async function getLatestVersions(packageNames: string[], packageVersion: { [name: string]: string}): Promise<{ [packageName: string]: string }> {
     const registryUrl = 'https://registry.npmjs.org';
 
     const requests = packageNames.map(packageName =>
@@ -88,10 +93,11 @@ async function getLatestVersions(packageNames: string[]): Promise<{ [packageName
     return responses.reduce((versions: { [packageName: string]: string }, response, index) => {
         const packageName = packageNames[index];
         if (packageName) {
+            const isUsingNext = packageVersion[packageName].includes("next");
             const nextVersion = response.data['dist-tags']?.next;
             const latestVersion = response.data['dist-tags'].latest;
 
-            if (nextVersion && semver.gt(nextVersion, latestVersion)) {
+            if (isUsingNext && nextVersion && semver.gt(nextVersion, latestVersion)) {
                 versions[packageName] = nextVersion;
             } else {
                 versions[packageName] = latestVersion;
