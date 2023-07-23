@@ -26,6 +26,7 @@ const HeadersSchema = z.object({
 const SearchQuerySchema = z.object({
   cursor: z.string().optional(),
   take: z.coerce.number().default(50),
+  subtasks: z.coerce.boolean().default(false),
 });
 
 export async function loader({ request, params }: LoaderArgs) {
@@ -87,7 +88,9 @@ export async function loader({ request, params }: LoaderArgs) {
     return json({ message: "Run not found" }, { status: 404 });
   }
 
-  const tasks = taskListToTree(jobRun.tasks.slice(0, query.take));
+  const selectedTasks = jobRun.tasks.slice(0, query.take);
+
+  const tasks = taskListToTree(selectedTasks, query.subtasks);
   const nextTask = jobRun.tasks[query.take];
 
   return json({
