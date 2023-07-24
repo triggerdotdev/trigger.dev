@@ -1,27 +1,21 @@
 import { z } from "zod";
 
-export async function zodfetch<
-  TResponseBody extends any,
-  TOptional extends boolean = false
->(
+export async function zodfetch<TResponseBody extends any>(
   schema: z.Schema<TResponseBody>,
   url: string,
-  requestInit?: RequestInit,
-  options?: {
-    errorMessage?: string;
-    optional?: TOptional;
-  }
-): Promise<TOptional extends true ? TResponseBody | undefined : TResponseBody> {
+  requestInit?: RequestInit
+): Promise<TResponseBody> {
   const response = await fetch(url, requestInit);
 
   if (
     (!requestInit || requestInit.method === "GET") &&
-    response.status === 404 &&
-    options?.optional
+    response.status === 404
   ) {
     // @ts-ignore
     return;
   }
+
+  //todo improve error handling
 
   if (response.status >= 400 && response.status < 500) {
     const body = await response.json();
@@ -31,8 +25,7 @@ export async function zodfetch<
 
   if (response.status !== 200) {
     throw new Error(
-      options?.errorMessage ??
-        `Failed to fetch ${url}, got status code ${response.status}`
+      `Failed to fetch ${url}, got status code ${response.status}`
     );
   }
 
