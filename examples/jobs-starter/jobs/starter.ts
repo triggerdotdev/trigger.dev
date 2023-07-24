@@ -9,7 +9,7 @@ const QUOTES = [
   "Knowledge is power. – Francis Bacon",
   "Sometimes it pays to stay in bed on Monday, rather than spending the rest of the week debugging Monday’s code. – Dan Salomon",
   "Perfection is achieved not when there is nothing more to add, but rather when there is nothing more to take away. – Antoine de Saint-Exupery",
-  "Ruby is rubbish! PHP is phpantastic! – Nikita Popov",
+  "Rust is the most loved programming language. – Stack Overflow",
   "Code is like humor. When you have to explain it, it’s bad. – Cory House",
   "Fix the cause, not the symptom. – Steve Maguire",
 ];
@@ -80,7 +80,7 @@ client.defineJob({
           const { stargazers_count } = await response.json();
 
           return { success: true, stargazers_count };
-        } catch(error) {
+        } catch (error) {
           await io.logger.error("Failed to fetch stars count", { error });
 
           return { success: false };
