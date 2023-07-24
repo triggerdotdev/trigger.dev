@@ -84,6 +84,24 @@ branch are tagged into a release monthly.
 3. Check your terminal, the magic link email should have printed out.
 4. Paste the magic link shown in your terminal into your browser to login.
 
+## Add sample jobs
+The [examples/jobs-starter](./examples/jobs-starter/) defines simple jobs you can get started with.
+
+1. `cd` into `examples/jobs-starter`
+2. Create a `.env.local` file with the following content, replacing `[TRIGGER_DEV_API_KEY]` with an actual key:
+
+   ```
+   TRIGGER_API_KEY=[TRIGGER_DEV_API_KEY]
+   TRIGGER_API_URL=http://localhost:3030
+   ```
+3. Run the app:
+
+   ```
+   pnpm dev
+   ```
+4. Navigate to your trigger.dev instance ([http://localhost:3030](http://localhost:3030/)), to see the jobs.
+   You can use the test feature to trigger them.
+
 ## Making a pull request
 
 **If you get errors, be sure to fix them before committing.**
