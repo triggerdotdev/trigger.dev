@@ -45,23 +45,49 @@ client.defineJob({
 });
 
 client.defineJob({
-  id: "change-rate",
+  id: "usd-eur-change-rate",
   name: "USD-EUR Change Rate",
   version: "0.0.1",
   trigger: intervalTrigger({
-    name: "starter.change-rate",
     seconds: 60,
   }),
-  run: async (payload, io, _ctx) => {
-    const { amount } = payload;
-
-    await io.logger.log(`Amount: ${amount} USD`);
-
-    // This is just a dummy example, we can use an API to pull the actual rate
+  run: async (_payload, io, _ctx) => {
+    // This is just a dummy example, we can actually use an API to pull the actual rate
+    await io.logger.info("Fetching USD-EUR rate...");
 
     return {
       rate: 0.85,
-      amount: amount * 0.85,
     };
+  },
+});
+
+client.defineJob({
+  id: "stars-count",
+  name: "Number of stars for Trigger.dev repo",
+  version: "0.0.1",
+  trigger: intervalTrigger({
+    seconds: 60 * 60,
+  }),
+  run: async (_payload, io, _ctx) => {
+    return await io.runTask(
+      "get-stars-count",
+      { name: "Get Trigger.dev stars count" },
+      async () => {
+        try {
+          const response = await fetch(
+            "https://api.github.com/repos/triggerdotdev/trigger.dev",
+            {
+              headers: {
+                Accept: "application/vnd.github+json",
+              },
+            }
+          );
+          const { stargazers_count } = await response.json();
+          return { success: true, stargazers_count };
+        } catch { 
+          return { success: false };
+        }
+      }
+    );
   },
 });
