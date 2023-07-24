@@ -26,6 +26,15 @@ export const RunTaskSchema = z.object({
   output: z.any().nullable(),
 });
 
+const GetRunOptionsSchema = z.object({
+  subtasks: z.boolean().optional(),
+  taskdetails: z.boolean().optional(),
+  cursor: z.string().optional(),
+  take: z.number().optional(),
+});
+
+export type GetRunOptions = z.infer<typeof GetRunOptionsSchema>;
+
 export const GetRunSchema = z.object({
   id: z.string(),
   status: RunStatusSchema,

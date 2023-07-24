@@ -7,6 +7,7 @@ import {
   CreateRunResponseBodySchema,
   FailTaskBodyInput,
   GetEventSchema,
+  GetRunOptions,
   GetRunSchema,
   LogLevel,
   Logger,
@@ -22,6 +23,7 @@ import {
   TriggerSource,
   TriggerSourceSchema,
   UpdateTriggerSourceBody,
+  urlWithSearchParams,
 } from "@trigger.dev/internal";
 
 import { z } from "zod";
@@ -368,24 +370,23 @@ export class ApiClient {
     );
   }
 
-  async getRun(runId: string, { subtasks = false } = {}) {
+  async getRun(runId: string, options?: GetRunOptions) {
     const apiKey = await this.#apiKey();
 
     this.#logger.debug("Getting Run", {
       runId,
     });
 
-    const url = new URL(`${this.#apiUrl}/api/v1/runs/${runId}`);
-    if (subtasks) {
-      url.searchParams.set("subtasks", String(subtasks));
-    }
-
-    return await zodfetch(GetRunSchema, url.href, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-    });
+    return await zodfetch(
+      GetRunSchema,
+      urlWithSearchParams(`${this.#apiUrl}/api/v1/runs/${runId}`, options),
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      }
+    );
   }
 
   async #apiKey() {

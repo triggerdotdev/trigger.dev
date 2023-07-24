@@ -5,7 +5,7 @@ import { GetEventSchema } from "@trigger.dev/internal";
 import { zodfetch } from "./fetch";
 import { useTriggerProvider } from "./TriggerProvider";
 
-export function useQueryEvent(eventId: string) {
+export function useEventDetails(eventId: string) {
   const { apiUrl, publicApiKey } = useTriggerProvider();
 
   return useQuery(

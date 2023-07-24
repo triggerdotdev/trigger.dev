@@ -1,6 +1,6 @@
 "use client";
 
-import { useQueryEvent, useQueryRun } from "@trigger.dev/react";
+import { useEventDetails, useRunDetails } from "@trigger.dev/react";
 import styles from "@/styles/Home.module.css";
 
 export function EventTest() {
@@ -13,7 +13,7 @@ export function EventTest() {
 }
 
 function EventData({ id }: { id: string }) {
-  const { isLoading, data, error } = useQueryEvent(id);
+  const { isLoading, data, error } = useEventDetails(id);
 
   return (
     <>
@@ -34,7 +34,10 @@ function EventData({ id }: { id: string }) {
 }
 
 function RunData({ id }: { id: string }) {
-  const { isLoading, isError, data, error } = useQueryRun(id);
+  const { isLoading, isError, data, error } = useRunDetails(id, {
+    subtasks: true,
+    refreshInterval: 1000,
+  });
 
   if (isLoading) {
     return <p>Loading...</p>;
