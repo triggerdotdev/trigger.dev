@@ -75,16 +75,14 @@ client.defineJob({
       async () => {
         try {
           const response = await fetch(
-            "https://api.github.com/repos/triggerdotdev/trigger.dev",
-            {
-              headers: {
-                Accept: "application/vnd.github+json",
-              },
-            }
+            "https://api.github.com/repos/triggerdotdev/trigger.dev"
           );
           const { stargazers_count } = await response.json();
+
           return { success: true, stargazers_count };
-        } catch { 
+        } catch(error) {
+          await io.logger.error("Failed to fetch stars count", { error });
+
           return { success: false };
         }
       }
