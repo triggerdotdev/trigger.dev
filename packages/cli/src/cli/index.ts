@@ -82,10 +82,10 @@ program
 
 program
   .command("update")
-  .description("Update the Trigger.dev CLI to the latest version")
+  .description("Updates all @trigger.dev to their latest compatible versions")
   .argument(
       "[path]",
-      "The path where you would like the Trigger.dev packages to be updated",
+      "The path to the directory that contains the package.json file",
       "."
   )
   .action(async (path) => {
