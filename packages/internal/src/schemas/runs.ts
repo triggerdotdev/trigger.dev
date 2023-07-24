@@ -16,7 +16,6 @@ export const RunStatusSchema = z.union([
 
 export const RunTaskSchema = z.object({
   id: z.string(),
-  parentId: z.string().nullable(),
   displayKey: z.string().nullable(),
   status: TaskStatusSchema,
   name: z.string(),
