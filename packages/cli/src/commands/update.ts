@@ -90,12 +90,14 @@ async function getLatestVersions(packageNames: string[], packageVersion: { [name
     );
 
     const responses = await Promise.all(requests);
-    return responses.reduce((versions: { [packageName: string]: string }, response, index) => {
+    const responseData: any[] = await Promise.all(responses.map(res => res.json()));
+
+    return responseData.reduce((versions: { [packageName: string]: string }, response, index) => {
         const packageName = packageNames[index];
         if (packageName) {
             const isUsingNext = packageVersion[packageName]?.includes("next");
-            const nextVersion = response.data['dist-tags']?.next;
-            const latestVersion = response.data['dist-tags'].latest;
+            const nextVersion = response['dist-tags']?.next;
+            const latestVersion = response['dist-tags'].latest;
 
             if (isUsingNext && nextVersion && semver.gt(nextVersion, latestVersion)) {
                 versions[packageName] = nextVersion;
