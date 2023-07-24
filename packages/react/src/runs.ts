@@ -20,16 +20,12 @@ export function useQueryRun(runId: string) {
   return useQuery(
     [`run-${runId}`],
     async () => {
-      return await zodfetch(
-        GetRunSchema,
-        `${apiUrl}/api/v1/runs/${runId}/tasks`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${publicApiKey}`,
-          },
-        }
-      );
+      return await zodfetch(GetRunSchema, `${apiUrl}/api/v1/runs/${runId}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${publicApiKey}`,
+        },
+      });
     },
     {
       refetchInterval: (data, query) => {

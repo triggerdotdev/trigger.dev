@@ -375,7 +375,7 @@ export class ApiClient {
       runId,
     });
 
-    const url = new URL(`${this.#apiUrl}/api/v1/runs/${runId}/tasks`);
+    const url = new URL(`${this.#apiUrl}/api/v1/runs/${runId}`);
     if (subtasks) {
       url.searchParams.set("subtasks", String(subtasks));
     }
