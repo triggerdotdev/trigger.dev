@@ -19,11 +19,14 @@ const resolvedStatuses = [
 
 const defaultRefreshInterval = 5000;
 
-type Options = GetRunOptions & {
+export type RunDetailOptions = GetRunOptions & {
   refreshInterval?: number;
 };
 
-export function useRunDetails(runId: string, options?: Options) {
+export function useRunDetails(
+  runId: string | undefined,
+  options?: RunDetailOptions
+) {
   const { apiUrl, publicApiKey } = useTriggerProvider();
 
   const { refreshInterval, ...otherOptions } = options || {};
@@ -43,6 +46,7 @@ export function useRunDetails(runId: string, options?: Options) {
       });
     },
     {
+      enabled: !!runId,
       refetchInterval: (data, query) => {
         if (data?.status && resolvedStatuses.includes(data.status)) {
           return false;

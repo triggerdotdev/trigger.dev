@@ -4,6 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { GetEventSchema } from "@trigger.dev/internal";
 import { zodfetch } from "./fetch";
 import { useTriggerProvider } from "./TriggerProvider";
+import { RunDetailOptions, useRunDetails } from "./runs";
+
+const defaultRefreshInterval = 5000;
 
 export function useEventDetails(eventId: string) {
   const { apiUrl, publicApiKey } = useTriggerProvider();
@@ -23,7 +26,15 @@ export function useEventDetails(eventId: string) {
       );
     },
     {
-      refetchInterval: 6000,
+      refetchInterval: defaultRefreshInterval,
     }
   );
+}
+
+export function useEventRunDetails(
+  eventId: string,
+  options?: RunDetailOptions
+) {
+  const event = useEventDetails(eventId);
+  return useRunDetails(event.data?.runs[0]?.id, options);
 }

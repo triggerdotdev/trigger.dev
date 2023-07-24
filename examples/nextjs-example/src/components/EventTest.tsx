@@ -1,13 +1,22 @@
 "use client";
 
-import { useEventDetails, useRunDetails } from "@trigger.dev/react";
+import {
+  useEventDetails,
+  useEventRunDetails,
+  useRunDetails,
+} from "@trigger.dev/react";
 import styles from "@/styles/Home.module.css";
 
 export function EventTest() {
   return (
-    <div>
-      <EventData id="clj73e44q00947c60kp0dpc37" />
-      <RunData id="cljykui9y00027coa4o3lxmuq" />
+    <div style={{ display: "flex", gap: "64px" }}>
+      <div>
+        <EventData id="clj73e44q00947c60kp0dpc37" />
+        <RunData id="cljykui9y00027coa4o3lxmuq" />
+      </div>
+      <div>
+        <EventRunData id="clj73kywk00ae7c60xpjkn89k" />
+      </div>
     </div>
   );
 }
@@ -35,6 +44,32 @@ function EventData({ id }: { id: string }) {
 
 function RunData({ id }: { id: string }) {
   const { isLoading, isError, data, error } = useRunDetails(id);
+
+  if (isLoading) {
+    return <p>Loading...</p>;
+  }
+
+  if (isError) {
+    return <p>Error</p>;
+  }
+
+  return (
+    <>
+      <div>Run status: {data.status}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+        {data.tasks.map((task) => (
+          <div key={task.id}>
+            <h4>{task.name}</h4>
+            <p>Status: {task.status}</p>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function EventRunData({ id }: { id: string }) {
+  const { isLoading, isError, data, error } = useEventRunDetails(id);
 
   if (isLoading) {
     return <p>Loading...</p>;
