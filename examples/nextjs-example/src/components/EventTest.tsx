@@ -34,10 +34,7 @@ function EventData({ id }: { id: string }) {
 }
 
 function RunData({ id }: { id: string }) {
-  const { isLoading, isError, data, error } = useRunDetails(id, {
-    subtasks: true,
-    refreshInterval: 1000,
-  });
+  const { isLoading, isError, data, error } = useRunDetails(id);
 
   if (isLoading) {
     return <p>Loading...</p>;

@@ -6,6 +6,8 @@ type CorsOptions = {
   methods?: CorsMethod[];
   /** Defaults to 5 mins */
   maxAge?: number;
+  origin?: boolean | string;
+  credentials?: boolean;
 };
 
 export function apiCors(

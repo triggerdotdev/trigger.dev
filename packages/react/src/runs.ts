@@ -44,9 +44,9 @@ export function useRunDetails(runId: string, options?: Options) {
     },
     {
       refetchInterval: (data, query) => {
-        // if (data?.status && resolvedStatuses.includes(data.status)) {
-        //   return false;
-        // }
+        if (data?.status && resolvedStatuses.includes(data.status)) {
+          return false;
+        }
         return refreshInterval ?? defaultRefreshInterval;
       },
     }
