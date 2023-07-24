@@ -85,7 +85,7 @@ branch are tagged into a release monthly.
 4. Paste the magic link shown in your terminal into your browser to login.
 
 ## Add sample jobs
-The [examples/jobs-starter](./examples/jobs-starter/) defines simple jobs you can get started with.
+The [examples/jobs-starter](./examples/jobs-starter/) project defines simple jobs you can get started with.
 
 1. `cd` into `examples/jobs-starter`
 2. Create a `.env.local` file with the following content, replacing `[TRIGGER_DEV_API_KEY]` with an actual key:
