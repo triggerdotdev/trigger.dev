@@ -28,6 +28,7 @@ const SearchQuerySchema = z.object({
   cursor: z.string().optional(),
   take: z.coerce.number().default(50),
   subtasks: z.coerce.boolean().default(false),
+  taskdetails: z.coerce.boolean().default(false),
 });
 
 export async function loader({ request, params }: LoaderArgs) {
@@ -61,6 +62,7 @@ export async function loader({ request, params }: LoaderArgs) {
       updatedAt: true,
       completedAt: true,
       environmentId: true,
+      output: true,
       tasks: {
         select: {
           id: true,
@@ -71,8 +73,11 @@ export async function loader({ request, params }: LoaderArgs) {
           icon: true,
           startedAt: true,
           completedAt: true,
-          params: true,
-          output: true,
+          params: query.taskdetails,
+          output: query.taskdetails,
+        },
+        where: {
+          parentId: query.subtasks ? undefined : null,
         },
         orderBy: {
           id: "asc",
@@ -108,7 +113,10 @@ export async function loader({ request, params }: LoaderArgs) {
       startedAt: jobRun.startedAt,
       updatedAt: jobRun.updatedAt,
       completedAt: jobRun.completedAt,
-      tasks,
+      tasks: tasks.map((task) => {
+        const { parentId, ...rest } = task;
+        return { ...rest };
+      }),
       nextCursor: nextTask ? nextTask.id : undefined,
     })
   );
