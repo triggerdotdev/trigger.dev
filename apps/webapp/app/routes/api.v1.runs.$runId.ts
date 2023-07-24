@@ -4,6 +4,7 @@ import { cors } from "remix-utils";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { apiCors } from "~/utils/apiCors";
 import { taskListToTree } from "~/utils/taskListToTree";
 
 const ParamsSchema = z.object({
@@ -19,14 +20,14 @@ const SearchQuerySchema = z.object({
 
 export async function loader({ request, params }: LoaderArgs) {
   if (request.method.toUpperCase() === "OPTIONS") {
-    return cors(request, json({}));
+    return apiCors(request, json({}));
   }
 
   const authenticatedEnv = await authenticateApiRequest(request, {
     allowPublicKey: true,
   });
   if (!authenticatedEnv) {
-    return cors(
+    return apiCors(
       request,
       json({ error: "Invalid or Missing API key" }, { status: 401 })
     );
@@ -79,11 +80,17 @@ export async function loader({ request, params }: LoaderArgs) {
   });
 
   if (!jobRun) {
-    return cors(request, json({ message: "Run not found" }, { status: 404 }));
+    return apiCors(
+      request,
+      json({ message: "Run not found" }, { status: 404 })
+    );
   }
 
   if (jobRun.environmentId !== authenticatedEnv.id) {
-    return cors(request, json({ message: "Run not found" }, { status: 404 }));
+    return apiCors(
+      request,
+      json({ message: "Run not found" }, { status: 404 })
+    );
   }
 
   const selectedTasks = jobRun.tasks.slice(0, query.take);
@@ -91,7 +98,7 @@ export async function loader({ request, params }: LoaderArgs) {
   const tasks = taskListToTree(selectedTasks, query.subtasks);
   const nextTask = jobRun.tasks[query.take];
 
-  return cors(
+  return apiCors(
     request,
     json({
       id: jobRun.id,
