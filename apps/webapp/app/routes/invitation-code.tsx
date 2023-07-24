@@ -118,9 +118,9 @@ export default function Page() {
               <br /> No code yet? You can{" "}
               <TextLink
                 target="_blank"
-                href="https://bcymafitv0e.typeform.com/to/QQnotGJM#source=marketingsite"
+                href="https://bcymafitv0e.typeform.com/to/QQnotGJM#source=cloud-beta"
               >
-                join the waitlist
+                request a code
               </TextLink>{" "}
               or get started now by{" "}
               <TextLink
