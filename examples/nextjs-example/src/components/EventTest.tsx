@@ -7,7 +7,7 @@ export function EventTest() {
   return (
     <div>
       <EventData id="clj73e44q00947c60kp0dpc37" />
-      <RunData id="clj73e45f00957c60v1d06whu" />
+      <RunData id="cljykui9y00027coa4o3lxmuq" />
     </div>
   );
 }
@@ -22,30 +22,39 @@ function EventData({ id }: { id: string }) {
         <p>Loading</p>
       ) : error ? (
         JSON.stringify(error, null, 2)
+      ) : data ? (
+        <p>
+          <strong>Event ID:</strong> {data.id}
+        </p>
       ) : (
-        <code>
-          <pre>{JSON.stringify(data, null, 2)}</pre>
-        </code>
+        <p></p>
       )}
     </>
   );
 }
 
 function RunData({ id }: { id: string }) {
-  const { isLoading, data, error } = useQueryRun(id);
+  const { isLoading, isError, data, error } = useQueryRun(id);
+
+  if (isLoading) {
+    return <p>Loading...</p>;
+  }
+
+  if (isError) {
+    return <p>Error</p>;
+  }
 
   return (
     <>
-      <h1 className={styles.title}>Run</h1>
-      {isLoading ? (
-        <p>Loading</p>
-      ) : error ? (
-        JSON.stringify(error, null, 2)
-      ) : (
-        <code>
-          <pre>{JSON.stringify(data, null, 2)}</pre>
-        </code>
-      )}
+      <div>Run status: {data.status}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+        {data.tasks.map((task) => (
+          <div key={task.id}>
+            <h4>{task.name}</h4>
+            <p>Status: {task.status}</p>
+          </div>
+        ))}
+      </div>
     </>
   );
 }
