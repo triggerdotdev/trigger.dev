@@ -1,4 +1,4 @@
-import axios from "axios";
+import fetch from "node-fetch";
 import inquirer from "inquirer";
 import semver from "semver";
 import { readFileSync } from 'fs';
@@ -81,19 +81,19 @@ async function getLatestVersions(packageNames: string[], packageVersion: { [name
     const registryUrl = 'https://registry.npmjs.org';
 
     const requests = packageNames.map(packageName =>
-        axios.get(`${registryUrl}/${packageName}`, {
-                headers: {
-                    'Accept-Encoding': 'application/json',
-                }
-            }
-        )
+        fetch(`${registryUrl}/${packageName}`, {
+            method: "GET",
+            headers: {
+                'Accept-Encoding': 'application/json',
+            },
+        })
     );
 
     const responses = await Promise.all(requests);
     return responses.reduce((versions: { [packageName: string]: string }, response, index) => {
         const packageName = packageNames[index];
         if (packageName) {
-            const isUsingNext = packageVersion[packageName].includes("next");
+            const isUsingNext = packageVersion[packageName]?.includes("next");
             const nextVersion = response.data['dist-tags']?.next;
             const latestVersion = response.data['dist-tags'].latest;
 
