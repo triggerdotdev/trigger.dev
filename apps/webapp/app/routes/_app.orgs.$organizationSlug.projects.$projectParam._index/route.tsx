@@ -191,7 +191,7 @@ export default function Page() {
                   </>
                 )}
               </div>
-              <HelpContent title="How to add Trigger.dev to your Next.js app (5 mins)">
+              <HelpContent title="How to add Trigger.dev to your Next.js app (3 mins)">
                 <HowToSetupYourProject />
               </HelpContent>
             </div>

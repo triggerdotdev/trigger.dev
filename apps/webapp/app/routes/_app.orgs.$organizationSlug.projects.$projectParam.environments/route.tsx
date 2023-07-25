@@ -1,17 +1,20 @@
+import { useRevalidator } from "@remix-run/react";
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { useEffect, useMemo, useState } from "react";
-import { useRevalidator } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import {
   EnvironmentLabel,
   environmentTitle,
 } from "~/components/environments/EnvironmentLabel";
+import { HowToUseApiKeysAndEndpoints } from "~/components/helpContent/HelpContentText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { ButtonContent } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import {
   PageDescription,
   PageHeader,
@@ -28,11 +31,14 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 import {
   ClientEndpoint,
   EnvironmentsPresenter,
 } from "~/presenters/EnvironmentsPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import {
   ProjectParamSchema,
@@ -41,15 +47,6 @@ import {
 import { requestUrl } from "~/utils/requestUrl.server";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
-import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
-import { cn } from "~/utils/cn";
-import {
-  HowToSetupYourProject,
-  HowToUseApiKeysAndEndpoints,
-} from "~/components/helpContent/HelpContentText";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
