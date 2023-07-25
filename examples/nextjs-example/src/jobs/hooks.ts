@@ -14,5 +14,9 @@ client.defineJob({
     await io.logger.log("It runs for a while to test the React hooks");
     await io.wait("wait 2", 10);
     await io.logger.log("This is the end of the job");
+
+    return {
+      myMessage: "This is the output of the job",
+    };
   },
 });
