@@ -64,14 +64,17 @@ branch are tagged into a release monthly.
    ```
    pnpm run db:migrate
    ```
-8. Run the seed script
+8. Build the app
+   ```
+   pnpm run build --filter webapp
+   ```
+9. Run the seed script
    ```
    pnpm run db:seed
    ```
-9. Run the app. See the section below.
+10. Run the app. See the section below.
 
 ## Running
-
 1. You can run the app with:
 
    ```
@@ -81,7 +84,15 @@ branch are tagged into a release monthly.
    It should run on port `3030`: [http://localhost:3030](http://localhost:3030/)
 
 2. Once the app is running click the magic link button and enter your email.
-3. Check your terminal, the magic link email should have printed out.
+3. Check your terminal, the magic link email should have printed out as following:
+``
+webapp:dev: Log in to Trigger.dev
+webapp:dev: 
+webapp:dev: Click here to log in with this magic link
+webapp:dev: [http://localhost:3030/magic?token=U2FsdGVkX18OvB0JxgaswTLCSbaRz%2FY82TN0EZWhSzFyZYwgG%2BIzKVTkeiaOtWfotPw7F8RwFzCHh53aBpMEu%2B%2B%2FItb%2FcJYh89MSjc3Pz92bevoEjqxSQ%2Ff%2BZbks09JOpqlBbYC3FzGWC8vuSVFBlxqLXxteSDLthZSUaC%2BS2LaA%2BJgp%2BLO7hgjAaC2lXbCHrM7MTgTdXOFt7i0Dvvuwz6%2BWY25RnfomZOPqDsyH0xz8Q2rzPTz0Xu53WSXrZ1hd]
+webapp:dev: 
+webapp:dev: If you didn't try to log in, you can safely ignore this email.
+``
 4. Paste the magic link shown in your terminal into your browser to login.
 
 ## Making a pull request
@@ -92,3 +103,24 @@ branch are tagged into a release monthly.
 - If your PR refers to or fixes an issue, be sure to add `refs #XXX` or `fixes #XXX` to the PR description. Replacing `XXX` with the respective issue number. See more about [Linking a pull request to an issue
   ](https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue).
 - Be sure to fill the PR Template accordingly.
+
+## Troubleshooting
+
+### No PostHog API key, so analytics won't work
+
+When receiving the following error message:
+``
+webapp:dev: No PostHog API key, so analytics won't work
+webapp:dev: Error: listen EADDRINUSE: address already in use :::3030
+``
+
+The process running on port `3030` should be destroyed.
+
+1. Get the `PID` of the process running on PORT `3030`
+   ```
+   lsof -i :3030
+   ```
+2. Kill the process
+   ```
+   sudo kill -9 <PID>
+   ```
