@@ -5,6 +5,5 @@ export async function GET(request: Request) {
   const event = await client.sendEvent({
     name: "test-event",
   });
-
   return NextResponse.json(event);
 }

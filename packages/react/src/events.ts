@@ -6,7 +6,7 @@ import { zodfetch } from "./fetch";
 import { reactQueryContext, useTriggerProvider } from "./TriggerProvider";
 import { RunDetailOptions, useRunDetails } from "./runs";
 
-const defaultRefreshInterval = 5000;
+const defaultRefreshInterval = 1000;
 
 export function useEventDetails(eventId: string) {
   const { apiUrl, publicApiKey } = useTriggerProvider();

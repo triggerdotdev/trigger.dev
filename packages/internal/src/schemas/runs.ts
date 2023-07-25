@@ -22,13 +22,10 @@ export const RunTaskSchema = z.object({
   icon: z.string().nullable(),
   startedAt: z.coerce.date().nullable(),
   completedAt: z.coerce.date().nullable(),
-  params: z.any().nullable(),
-  output: z.any().nullable(),
 });
 
 const GetRunOptionsSchema = z.object({
   subtasks: z.boolean().optional(),
-  taskdetails: z.boolean().optional(),
   cursor: z.string().optional(),
   take: z.number().optional(),
 });
@@ -42,4 +39,5 @@ export const GetRunSchema = z.object({
   updatedAt: z.coerce.date().nullable(),
   completedAt: z.coerce.date().nullable(),
   tasks: z.array(RunTaskSchema),
+  output: z.any().optional(),
 });

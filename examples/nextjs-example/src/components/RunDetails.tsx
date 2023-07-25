@@ -42,9 +42,9 @@ export function RunData({ id }: { id: string }) {
   return (
     <>
       <div>Run status: {data.status}</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
         {data.tasks.map((task) => (
-          <div key={task.id}>
+          <div key={task.id} style={{ display: "flex", gap: "0.5rem" }}>
             <h4>{task.name}</h4>
             <p>Status: {task.status}</p>
           </div>
@@ -68,10 +68,14 @@ export function EventRunData({ id }: { id: string }) {
   return (
     <>
       <div>Run status: {data.status}</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
         {data.tasks.map((task) => (
-          <div key={task.id}>
-            <h4>{task.name}</h4>
+          <div
+            key={task.id}
+            style={{ display: "flex", gap: "0.3rem", alignItems: "center" }}
+          >
+            <h4>{task.displayKey ?? task.name}</h4>
+            <p>{task.icon}</p>
             <p>Status: {task.status}</p>
           </div>
         ))}

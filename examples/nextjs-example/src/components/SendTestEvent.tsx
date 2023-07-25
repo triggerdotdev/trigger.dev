@@ -1,15 +1,16 @@
 "use client";
 
-import { redirect } from "next/navigation";
 import { useMutation } from "react-query";
+import { useRouter } from "next/navigation";
 
 export function SendTestEventButton() {
+  const router = useRouter();
   const mutation = useMutation({
     mutationFn: async () => {
       const response = await fetch("/api/send-test-event");
       const data = await response.json();
       console.log("event", data);
-      redirect(`/events/${data.id}`);
+      router.push(`/events/${data.id}`);
     },
   });
 

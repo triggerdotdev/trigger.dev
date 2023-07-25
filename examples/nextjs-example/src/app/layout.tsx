@@ -1,4 +1,7 @@
+/* eslint-disable turbo/no-undeclared-env-vars */
+
 import { ReactQuery } from "@/components/ReactQuery";
+import { TriggerProvider } from "@trigger.dev/react";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -16,7 +19,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <ReactQuery>{children}</ReactQuery>
+        <TriggerProvider
+          publicApiKey={process.env.NEXT_PUBLIC_TRIGGER_API_KEY ?? ""}
+          apiUrl="http://localhost:3030"
+        >
+          <ReactQuery>{children}</ReactQuery>
+        </TriggerProvider>
       </body>
     </html>
   );
