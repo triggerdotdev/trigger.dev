@@ -73,7 +73,13 @@ async function getInstalledPackages(resolvedPath: string): Promise<any> {
                 reject(error);
             } else {
                 const installedPackages = JSON.parse(stdout.toString());
-                resolve(installedPackages);
+                switch (manager) {
+                    case "pnpm":
+                        resolve(installedPackages[0].dependencies);
+                        break;
+                    default:
+                        resolve(installedPackages);
+                }
             }
         });
     });
