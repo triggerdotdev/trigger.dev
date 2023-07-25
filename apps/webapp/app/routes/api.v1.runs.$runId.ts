@@ -3,7 +3,10 @@ import { json } from "@remix-run/server-runtime";
 import { cors } from "remix-utils";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
+import {
+  authenticateApiRequest,
+  getApiKeyFromRequest,
+} from "~/services/apiAuth.server";
 import { apiCors } from "~/utils/apiCors";
 import { taskListToTree } from "~/utils/taskListToTree";
 
@@ -23,10 +26,11 @@ export async function loader({ request, params }: LoaderArgs) {
     return apiCors(request, json({}));
   }
 
+  const apiKeyResult = getApiKeyFromRequest(request);
   const authenticatedEnv = await authenticateApiRequest(request, {
     allowPublicKey: true,
   });
-  if (!authenticatedEnv) {
+  if (!authenticatedEnv || !apiKeyResult) {
     return apiCors(
       request,
       json({ error: "Invalid or Missing API key" }, { status: 401 })
@@ -37,6 +41,7 @@ export async function loader({ request, params }: LoaderArgs) {
 
   const url = new URL(request.url);
   const query = SearchQuerySchema.parse(Object.fromEntries(url.searchParams));
+  const showTaskDetails = query.taskdetails && apiKeyResult.type === "PRIVATE";
 
   const jobRun = await prisma.jobRun.findUnique({
     where: {
@@ -60,8 +65,8 @@ export async function loader({ request, params }: LoaderArgs) {
           icon: true,
           startedAt: true,
           completedAt: true,
-          params: query.taskdetails,
-          output: query.taskdetails,
+          params: showTaskDetails,
+          output: showTaskDetails,
         },
         where: {
           parentId: query.subtasks ? undefined : null,
@@ -106,6 +111,7 @@ export async function loader({ request, params }: LoaderArgs) {
       startedAt: jobRun.startedAt,
       updatedAt: jobRun.updatedAt,
       completedAt: jobRun.completedAt,
+      output: jobRun.output,
       tasks: tasks.map((task) => {
         const { parentId, ...rest } = task;
         return { ...rest };
