@@ -1,6 +1,7 @@
 import {
   ErrorWithStackSchema,
   GetRunOptionsWithTaskDetails,
+  GetRunsOptions,
   HandleTriggerSource,
   HttpSourceRequestHeadersSchema,
   IndexEndpointResponse,
@@ -595,6 +596,10 @@ export class TriggerClient {
 
   async getRun(runId: string, options?: GetRunOptionsWithTaskDetails) {
     return this.#client.getRun(runId, options);
+  }
+
+  async getRuns(jobSlug: string, options?: GetRunsOptions) {
+    return this.#client.getRuns(jobSlug, options);
   }
 
   authorized(

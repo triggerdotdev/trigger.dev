@@ -22,9 +22,7 @@ export async function loader({ request, params }: LoaderArgs) {
     return apiCors(request, json({}));
   }
 
-  const authenticatedEnv = await authenticateApiRequest(request, {
-    allowPublicKey: true,
-  });
+  const authenticatedEnv = await authenticateApiRequest(request);
   if (!authenticatedEnv) {
     return apiCors(
       request,
@@ -36,6 +34,8 @@ export async function loader({ request, params }: LoaderArgs) {
 
   const url = new URL(request.url);
   const query = SearchQuerySchema.parse(Object.fromEntries(url.searchParams));
+
+  const take = Math.min(query.take, 50);
 
   const runs = await prisma.jobRun.findMany({
     where: {
@@ -50,12 +50,11 @@ export async function loader({ request, params }: LoaderArgs) {
       startedAt: true,
       updatedAt: true,
       completedAt: true,
-      output: true,
     },
     orderBy: {
       id: "desc",
     },
-    take: query.take + 1,
+    take: take + 1,
     cursor: query.cursor
       ? {
           id: query.cursor,
@@ -63,8 +62,8 @@ export async function loader({ request, params }: LoaderArgs) {
       : undefined,
   });
 
-  const selectedRuns = runs.slice(0, query.take);
-  const nextRun = runs[query.take];
+  const selectedRuns = runs.slice(0, take);
+  const nextRun = runs[take];
 
   return apiCors(
     request,

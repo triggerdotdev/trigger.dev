@@ -9,6 +9,8 @@ import {
   GetEventSchema,
   GetRunOptionsWithTaskDetails,
   GetRunSchema,
+  GetRunsOptions,
+  GetRunsSchema,
   LogLevel,
   Logger,
   RegisterScheduleResponseBodySchema,
@@ -380,6 +382,28 @@ export class ApiClient {
     return await zodfetch(
       GetRunSchema,
       urlWithSearchParams(`${this.#apiUrl}/api/v1/runs/${runId}`, options),
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      }
+    );
+  }
+
+  async getRuns(jobSlug: string, options?: GetRunsOptions) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Getting Runs", {
+      jobSlug,
+    });
+
+    return await zodfetch(
+      GetRunsSchema,
+      urlWithSearchParams(
+        `${this.#apiUrl}/api/v1/jobs/${jobSlug}/runs`,
+        options
+      ),
       {
         method: "GET",
         headers: {

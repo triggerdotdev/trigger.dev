@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { ZodObject, z } from "zod";
 import { TaskStatusSchema } from "./tasks";
 
 export const RunStatusSchema = z.union([
@@ -38,7 +38,7 @@ const GetRunOptionsSchema = z.object({
   subtasks: z.boolean().optional(),
   /** You can use this to get more tasks, if there are more than are returned in a single batch @default undefined */
   cursor: z.string().optional(),
-  /** How many tasks you want to return in one go. @default 50 */
+  /** How many tasks you want to return in one go, max 50. @default 20 */
   take: z.number().optional(),
 });
 
@@ -53,7 +53,7 @@ export type GetRunOptionsWithTaskDetails = z.infer<
   typeof GetRunOptionsWithTaskDetailsSchema
 >;
 
-export const GetRunSchema = z.object({
+const RunSchema = z.object({
   /** The Run id */
   id: z.string(),
   /** The Run status */
@@ -64,8 +64,29 @@ export const GetRunSchema = z.object({
   updatedAt: z.coerce.date().nullable(),
   /** When the run was completed */
   completedAt: z.coerce.date().nullable(),
-  /** The tasks from the run */
-  tasks: z.array(RunTaskSchema),
+});
+
+export const GetRunSchema = RunSchema.extend({
   /** The output of the run */
   output: z.any().optional(),
+  /** The tasks from the run */
+  tasks: z.array(RunTaskSchema),
+  /** If there are more tasks, you can use this to get them */
+  nextCursor: z.string().optional(),
+});
+
+const GetRunsOptionsSchema = z.object({
+  /** You can use this to get more tasks, if there are more than are returned in a single batch @default undefined */
+  cursor: z.string().optional(),
+  /** How many runs you want to return in one go, max 50. @default 20 */
+  take: z.number().optional(),
+});
+
+export type GetRunsOptions = z.infer<typeof GetRunsOptionsSchema>;
+
+export const GetRunsSchema = z.object({
+  /** The runs from the query */
+  runs: RunSchema.array(),
+  /** If there are more runs, you can use this to get them */
+  nextCursor: z.string().optional(),
 });
