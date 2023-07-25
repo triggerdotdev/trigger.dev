@@ -1,27 +1,13 @@
 "use client";
 
+import styles from "@/styles/Home.module.css";
 import {
   useEventDetails,
   useEventRunDetails,
   useRunDetails,
 } from "@trigger.dev/react";
-import styles from "@/styles/Home.module.css";
 
-export function EventTest() {
-  return (
-    <div style={{ display: "flex", gap: "64px" }}>
-      <div>
-        <EventData id="clj73e44q00947c60kp0dpc37" />
-        <RunData id="cljykui9y00027coa4o3lxmuq" />
-      </div>
-      <div>
-        <EventRunData id="clj73kywk00ae7c60xpjkn89k" />
-      </div>
-    </div>
-  );
-}
-
-function EventData({ id }: { id: string }) {
+export function EventData({ id }: { id: string }) {
   const { isLoading, data, error } = useEventDetails(id);
 
   return (
@@ -42,7 +28,7 @@ function EventData({ id }: { id: string }) {
   );
 }
 
-function RunData({ id }: { id: string }) {
+export function RunData({ id }: { id: string }) {
   const { isLoading, isError, data, error } = useRunDetails(id);
 
   if (isLoading) {
@@ -68,7 +54,7 @@ function RunData({ id }: { id: string }) {
   );
 }
 
-function EventRunData({ id }: { id: string }) {
+export function EventRunData({ id }: { id: string }) {
   const { isLoading, isError, data, error } = useEventRunDetails(id);
 
   if (isLoading) {

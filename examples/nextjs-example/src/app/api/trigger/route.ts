@@ -1,3 +1,4 @@
+import { createAppRoute } from "@trigger.dev/nextjs";
 import { client } from "@/trigger";
 
 import "@/jobs/events";
@@ -11,11 +12,6 @@ import "@/jobs/schedules";
 import "@/jobs/slack";
 import "@/jobs/typeform";
 import "@/jobs/edgeCases";
+import "@/jobs/hooks";
 
-import { createPagesRoute } from "@trigger.dev/nextjs";
-
-const { handler, config } = createPagesRoute(client);
-
-export { config };
-
-export default handler;
+export const { POST, dynamic } = createAppRoute(client);

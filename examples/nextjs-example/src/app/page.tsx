@@ -1,8 +1,6 @@
 /* eslint-disable turbo/no-undeclared-env-vars */
-import { EventTest } from "@/components/EventTest";
-import styles from "@/styles/Home.module.css";
+import { SendTestEventButton } from "@/components/SendTestEvent";
 import { TriggerProvider } from "@trigger.dev/react";
-import Head from "next/head";
 
 export default function Home() {
   return (
@@ -11,11 +9,8 @@ export default function Home() {
         publicApiKey={process.env.NEXT_PUBLIC_TRIGGER_API_KEY ?? ""}
         apiUrl="http://localhost:3030"
       >
-        <Head>
-          <title>Trigger.dev example</title>
-        </Head>
-        <main>
-          <EventTest />
+        <main style={{ padding: "1rem" }}>
+          <SendTestEventButton />
         </main>
       </TriggerProvider>
     </>

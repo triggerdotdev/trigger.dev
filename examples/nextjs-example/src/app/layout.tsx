@@ -1,3 +1,4 @@
+import { ReactQuery } from "@/components/ReactQuery";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -14,7 +15,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <ReactQuery>{children}</ReactQuery>
+      </body>
     </html>
   );
 }
