@@ -1,22 +1,16 @@
 "use client";
 
-import {
-  QueryClient,
-  QueryClientProvider,
-  useQuery,
-} from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useState } from "react";
-import { z } from "zod";
 
 const publicApiKeyStartsWith = "pk_";
 const privateApiKeyStartsWith = "tr_";
 
-const ProviderContextSchema = z.object({
-  publicApiKey: z.string().startsWith(publicApiKeyStartsWith),
-  apiUrl: z.string(),
-});
-
-type ProviderContextValue = z.infer<typeof ProviderContextSchema>;
+type ProviderContextValue = {
+  publicApiKey: string;
+  apiUrl: string;
+  queryClient: QueryClient;
+};
 
 const ProviderContext = createContext<ProviderContextValue>(
   {} as ProviderContextValue
@@ -24,15 +18,8 @@ const ProviderContext = createContext<ProviderContextValue>(
 
 export function useTriggerProvider() {
   const value = useContext(ProviderContext);
-  const parsed = ProviderContextSchema.safeParse(value);
-
-  if (!parsed.success) {
-    throw new Error(
-      `You must use the TriggerProvider component somewhere in your hierarchy, above where you perform queries.`
-    );
-  }
-
-  return parsed.data;
+  verifyApiKey(value.publicApiKey);
+  return value;
 }
 
 type TriggerProviderProps = {
@@ -52,25 +39,31 @@ export function TriggerProvider({
 }: TriggerProviderProps) {
   const [queryClient] = useState(() => new QueryClient());
 
-  if (publicApiKey.startsWith(privateApiKeyStartsWith)) {
+  verifyApiKey(publicApiKey);
+
+  return (
+    <ProviderContext.Provider
+      value={{
+        publicApiKey,
+        apiUrl: apiUrl ?? "https://api.trigger.dev",
+        queryClient,
+      }}
+    >
+      {children}
+    </ProviderContext.Provider>
+  );
+}
+
+function verifyApiKey(apiKey: string) {
+  if (apiKey.startsWith(privateApiKeyStartsWith)) {
     throw new Error(
       `You are using a private API key, you should not do this because the value is visible to the client.`
     );
   }
 
-  if (!publicApiKey.startsWith(publicApiKeyStartsWith)) {
+  if (!apiKey.startsWith(publicApiKeyStartsWith)) {
     console.error(
       `TriggerProvider publicApiKey wasn't in the correct format. Should be ${publicApiKeyStartsWith}...`
     );
   }
-
-  return (
-    <ProviderContext.Provider
-      value={{ publicApiKey, apiUrl: apiUrl ?? "https://api.trigger.dev" }}
-    >
-      <QueryClientProvider client={queryClient} context={reactQueryContext}>
-        {children}
-      </QueryClientProvider>
-    </ProviderContext.Provider>
-  );
 }

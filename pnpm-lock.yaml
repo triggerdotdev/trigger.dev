@@ -730,7 +730,7 @@ importers:
 
   packages/react:
     specifiers:
-      '@tanstack/react-query': ^4.32.0
+      '@tanstack/react-query': 5.0.0-beta.2
       '@trigger.dev/internal': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
@@ -743,7 +743,7 @@ importers:
       tsx: ^3.12.1
       zod: 3.21.4
     dependencies:
-      '@tanstack/react-query': 4.32.0_react@18.2.0
+      '@tanstack/react-query': 5.0.0-beta.2_react@18.2.0
       debug: 4.3.4
       zod: 3.21.4
     devDependencies:
@@ -9728,15 +9728,15 @@ packages:
       tailwindcss: 3.3.2_ts-node@10.9.1
     dev: true
 
-  /@tanstack/query-core/4.32.0:
-    resolution: {integrity: sha512-ei4IYwL2kmlKSlCw9WgvV7PpXi0MiswVwfQRxawhJA690zWO3dU49igaQ/UMTl+Jy9jj9dK5IKAYvbX7kUvviQ==}
+  /@tanstack/query-core/5.0.0-beta.0:
+    resolution: {integrity: sha512-VGq/H3PuRoj0shOcg1S5Flv3YD2qNz2ttk8w5xe5AHQE1I8NO9EHSBUxezIpk4dD6M7bQDtwHBMqqU2EwMwyUw==}
     dev: false
 
-  /@tanstack/react-query/4.32.0_react@18.2.0:
-    resolution: {integrity: sha512-B8WUMcByYAH9500ENejDCATOmEZhqjtS9wsfiQ3BNa+s+yAynY8SESI8WWHhSqUmjd0pmCSFRP6BOUGSda3QXA==}
+  /@tanstack/react-query/5.0.0-beta.2_react@18.2.0:
+    resolution: {integrity: sha512-JdK1HRw20tuwg3GfT3QZTkuS7s2KDa9FeozuJ7jZULlwPczZagouqYmM6+PL0ad6jfCnw8NzmLFtZdlBx6cTmA==}
     peerDependencies:
-      react: ^16.8.0 || ^17.0.0 || ^18.0.0
-      react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0
+      react: ^18.0.0
+      react-dom: ^18.0.0
       react-native: '*'
     peerDependenciesMeta:
       react-dom:
@@ -9744,9 +9744,9 @@ packages:
       react-native:
         optional: true
     dependencies:
-      '@tanstack/query-core': 4.32.0
+      '@tanstack/query-core': 5.0.0-beta.0
+      client-only: 0.0.1
       react: 18.2.0
-      use-sync-external-store: 1.2.0_react@18.2.0
     dev: false
 
   /@team-plain/typescript-sdk/2.2.0:

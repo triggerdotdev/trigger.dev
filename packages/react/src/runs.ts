@@ -6,10 +6,10 @@ import {
   GetRunSchema,
   urlWithSearchParams,
 } from "@trigger.dev/internal";
+import { useTriggerProvider } from "./TriggerProvider";
 import { zodfetch } from "./fetch";
-import { reactQueryContext, useTriggerProvider } from "./TriggerProvider";
 
-const resolvedStatuses = [
+export const runResolvedStatuses = [
   "SUCCESS",
   "FAILURE",
   "CANCELED",
@@ -17,43 +17,48 @@ const resolvedStatuses = [
   "ABORTED",
 ];
 
-const defaultRefreshInterval = 5000;
+const defaultRefreshInterval = 1000;
 
 export type RunDetailOptions = GetRunOptions & {
-  refreshInterval?: number;
+  /** How often you want to refresh, the default is 1000. Min is 500  */
+  refreshIntervalMs?: number;
 };
 
 export function useRunDetails(
   runId: string | undefined,
   options?: RunDetailOptions
 ) {
-  const { apiUrl, publicApiKey } = useTriggerProvider();
+  const { apiUrl, publicApiKey, queryClient } = useTriggerProvider();
 
-  const { refreshInterval, ...otherOptions } = options || {};
+  const { refreshIntervalMs: refreshInterval, ...otherOptions } = options || {};
 
   const url = urlWithSearchParams(
     `${apiUrl}/api/v1/runs/${runId}`,
     otherOptions
   );
   return useQuery(
-    [`run-${runId}`],
-    async () => {
-      return await zodfetch(GetRunSchema, url, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${publicApiKey}`,
-        },
-      });
-    },
     {
+      queryKey: [`triggerdotdev-run-${runId}`],
+      queryFn: async () => {
+        return await zodfetch(GetRunSchema, url, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${publicApiKey}`,
+          },
+        });
+      },
       enabled: !!runId,
       refetchInterval: (data, query) => {
-        if (data?.status && resolvedStatuses.includes(data.status)) {
+        if (data?.status && runResolvedStatuses.includes(data.status)) {
           return false;
         }
-        return refreshInterval ?? defaultRefreshInterval;
+        if (refreshInterval !== undefined) {
+          return Math.max(refreshInterval, 500);
+        }
+
+        return defaultRefreshInterval;
       },
-      context: reactQueryContext,
-    }
+    },
+    queryClient
   );
 }

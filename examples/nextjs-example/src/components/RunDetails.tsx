@@ -39,6 +39,10 @@ export function RunData({ id }: { id: string }) {
     return <p>Error</p>;
   }
 
+  if (!data) {
+    return <p>Loading...</p>;
+  }
+
   return (
     <>
       <div>Run status: {data.status}</div>
@@ -63,6 +67,10 @@ export function EventRunData({ id }: { id: string }) {
 
   if (isError) {
     return <p>Error</p>;
+  }
+
+  if (!data) {
+    return <p>Loading...</p>;
   }
 
   return (
