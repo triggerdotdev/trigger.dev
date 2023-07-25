@@ -92,3 +92,27 @@ branch are tagged into a release monthly.
 - If your PR refers to or fixes an issue, be sure to add `refs #XXX` or `fixes #XXX` to the PR description. Replacing `XXX` with the respective issue number. See more about [Linking a pull request to an issue
   ](https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue).
 - Be sure to fill the PR Template accordingly.
+
+## Adding changesets
+
+We use changesets to track changes and structure the descriptions of various changes in this project in a format that is readable/comprehensible by everyone.
+
+Since Trigger.dev is a monorepo that contains various packages, it is important that we integrate this workflow.
+
+Before you create a Pull Request be sure to use the command below to add a changeset describing what you have done.
+
+```shell
+pnpm changeset:add
+```
+
+When you initiate the command above, you'll be presented with some prompts in your terminal. Try to answer them.
+
+Below are some screenshots that represent what you should expect. Most times, the changes you'll make are likely to be categorized under minor releases.
+
+| List of packages                                                                                                     | Type of release                                                                                         |
+| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| ![list of packages in trigger dot dev](https://res.cloudinary.com/meje/image/upload/v1690290222/packages_rm0khe.png) | ![type of release](https://res.cloudinary.com/meje/image/upload/v1690290221/type_of_release_jwhcap.png) |
+
+But, if you think your change could be otherwise, you can reach out to [@ericallam](https://github.com/ericallam) for more information on which option to go with.
+
+PS: you should only create a changeset if your fix or contribution is related to any of the Trigger.dev packages.
