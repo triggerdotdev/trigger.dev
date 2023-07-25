@@ -236,7 +236,7 @@ function ExampleJobs() {
       <div className="flex gap-1.5">
         <GitHubLightIcon className="ml-0.5 h-4 w-4 pt-0.5" />
         <Paragraph variant="small">
-          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/delays">
+          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/github">
             GitHub
           </TextLink>{" "}
           - When a new GitHub issue is opened it adds a “Bug” label to it.
