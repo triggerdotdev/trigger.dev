@@ -9,6 +9,7 @@ import { logger } from "../utils/logger.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
 import { TriggerApi } from "../utils/triggerApi.js";
 import dotenv from "dotenv";
+import fetch from 'node-fetch';
 
 export const DevCommandOptionsSchema = z.object({
   port: z.coerce.number(),
@@ -48,7 +49,7 @@ export async function devCommand(path: string, anyOptions: any) {
   logger.success(`✔️ [trigger.dev] Detected TriggerClient id: ${endpointId}`);
 
   // Read from .env.local or .env to get the TRIGGER_API_KEY and TRIGGER_API_URL
-  const { apiUrl, envFile } = await getTriggerApiDetails(
+  const { apiUrl, envFile, apiKey } = await getTriggerApiDetails(
     resolvedPath,
     options.envFile
   );
@@ -63,6 +64,20 @@ export async function devCommand(path: string, anyOptions: any) {
   const endpointUrl = await resolveEndpointUrl(apiUrl, options.port);
 
   const endpointHandlerUrl = `${endpointUrl}${options.handlerPath}`;
+
+  const response = await fetch(endpointHandlerUrl, {
+    method: "HEAD",
+    headers: {
+      "x-trigger-api-key": apiKey,
+      "x-trigger-action": "PING",
+      "x-trigger-endpoint-id": endpointId,
+    },
+  });
+
+  if (!response.ok) {
+    logger.error(`❌ [trigger.dev] No server found on port ${options.port}. Status Code: ${response.status}, Status Text: ${response.statusText}`);
+    process.exit(1);
+  }
 
   const connectingSpinner = ora(
     `[trigger.dev] Registering endpoint ${endpointHandlerUrl}...`
