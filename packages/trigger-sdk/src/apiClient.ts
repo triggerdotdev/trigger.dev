@@ -7,7 +7,7 @@ import {
   CreateRunResponseBodySchema,
   FailTaskBodyInput,
   GetEventSchema,
-  GetRunOptions,
+  GetRunOptionsWithTaskDetails,
   GetRunSchema,
   LogLevel,
   Logger,
@@ -26,8 +26,8 @@ import {
   urlWithSearchParams,
 } from "@trigger.dev/internal";
 
-import { z } from "zod";
 import fetch, { type RequestInit } from "node-fetch";
+import { z } from "zod";
 
 export type ApiClientOptions = {
   apiKey?: string;
@@ -370,7 +370,7 @@ export class ApiClient {
     );
   }
 
-  async getRun(runId: string, options?: GetRunOptions) {
+  async getRun(runId: string, options?: GetRunOptionsWithTaskDetails) {
     const apiKey = await this.#apiKey();
 
     this.#logger.debug("Getting Run", {

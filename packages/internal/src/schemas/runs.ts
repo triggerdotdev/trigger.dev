@@ -15,29 +15,57 @@ export const RunStatusSchema = z.union([
 ]);
 
 export const RunTaskSchema = z.object({
+  /** The Task id */
   id: z.string(),
+  /** The key that you defined when creating the Task, the first param in any task. */
   displayKey: z.string().nullable(),
+  /** The Task status */
   status: TaskStatusSchema,
+  /** The name of the Task */
   name: z.string(),
+  /** The icon of the Task, a string.
+   * For integrations, this will be a lowercase name of the company.
+   * Can be used with the [@trigger.dev/companyicons](https://www.npmjs.com/package/@trigger.dev/companyicons) package to display an svg. */
   icon: z.string().nullable(),
+  /** When the task started */
   startedAt: z.coerce.date().nullable(),
+  /** When the task completed */
   completedAt: z.coerce.date().nullable(),
 });
 
 const GetRunOptionsSchema = z.object({
+  /** Return subtasks, which appear in a `subtasks` array on a task. @default false */
   subtasks: z.boolean().optional(),
+  /** You can use this to get more tasks, if there are more than are returned in a single batch @default undefined */
   cursor: z.string().optional(),
+  /** How many tasks you want to return in one go. @default 50 */
   take: z.number().optional(),
 });
 
 export type GetRunOptions = z.infer<typeof GetRunOptionsSchema>;
 
+const GetRunOptionsWithTaskDetailsSchema = GetRunOptionsSchema.extend({
+  /** If `true`, it returns the `params` and `output` of all tasks. @default false */
+  taskdetails: z.boolean().optional(),
+});
+
+export type GetRunOptionsWithTaskDetails = z.infer<
+  typeof GetRunOptionsWithTaskDetailsSchema
+>;
+
 export const GetRunSchema = z.object({
+  /** The Run id */
   id: z.string(),
+  /** The Run status */
   status: RunStatusSchema,
+  /** When the run started */
   startedAt: z.coerce.date().nullable(),
+  /** When the run was last updated */
   updatedAt: z.coerce.date().nullable(),
+  /** When the run was completed */
   completedAt: z.coerce.date().nullable(),
+  /** The tasks from the run */
   tasks: z.array(RunTaskSchema),
+  /** The output of the run */
   output: z.any().optional(),
 });
