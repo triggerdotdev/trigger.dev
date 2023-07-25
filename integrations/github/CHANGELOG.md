@@ -1,5 +1,11 @@
 # @trigger.dev/github
 
+## 1.0.0-next.9
+
+### Patch Changes
+
+- d4da2f32: Added getIssue Task
+
 ## 1.0.0-next.8
 
 ### Patch Changes

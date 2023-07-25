@@ -37,7 +37,7 @@ export function NavBar() {
               LeadingIcon={ChatBubbleLeftRightIcon}
               shortcut={{ key: "f" }}
             >
-              Send us feedback
+              Help & feedback
             </Button>
           }
         />

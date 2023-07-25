@@ -1,5 +1,11 @@
 # create-trigger
 
+## 0.2.1-next.24
+
+### Patch Changes
+
+- 2f1b2a32: This is a patch bump
+
 ## 0.2.1-next.23
 
 ### Patch Changes
