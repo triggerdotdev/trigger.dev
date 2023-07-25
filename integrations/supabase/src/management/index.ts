@@ -68,6 +68,42 @@ class SupabaseDatabase<
       ...params,
     });
   }
+
+  onUpdated<
+    TTableName extends string & keyof Schema["Tables"],
+    TTable extends Schema["Tables"][TTableName],
+    TColumns extends Array<string & keyof TTable["Row"]>
+  >(params: { table: TTableName; columns?: TColumns }) {
+    return createTrigger<{
+      table: TTableName;
+      record: Prettify<TTable["Row"]>;
+      type: "UPDATE";
+      schema: SchemaName;
+      old_record: Prettify<TTable["Row"]>;
+    }>(this.integration.source, {
+      event: "update",
+      projectRef: this.projectRef,
+      columns: params.columns,
+      ...params,
+    });
+  }
+
+  onDeleted<
+    TTableName extends string & keyof Schema["Tables"],
+    TTable extends Schema["Tables"][TTableName]
+  >(params: { table: TTableName }) {
+    return createTrigger<{
+      table: TTableName;
+      record: null;
+      type: "DELETE";
+      schema: SchemaName;
+      old_record: Prettify<TTable["Row"]>;
+    }>(this.integration.source, {
+      event: "delete",
+      projectRef: this.projectRef,
+      ...params,
+    });
+  }
 }
 
 export class SupabaseManagement implements SupabaseManagementIntegration {
@@ -124,63 +160,6 @@ export class SupabaseManagement implements SupabaseManagementIntegration {
       projectRef,
       options?.schema
     );
-  }
-
-  onInserted<
-    Database = any,
-    SchemaName extends string & keyof Database = "public" extends keyof Database
-      ? "public"
-      : string & keyof Database,
-    Schema extends GenericSchema = Database[SchemaName] extends GenericSchema
-      ? Database[SchemaName]
-      : any,
-    TTableName extends string & keyof Schema["Tables"] = string &
-      keyof Schema["Tables"]
-  >(params: { projectRef: string; table: TTableName }) {
-    return createTrigger<{
-      table: TTableName;
-      record: Prettify<Schema["Tables"][TTableName]["Row"]>;
-      type: "INSERT";
-      schema: Schema;
-      old_record: null;
-    }>(this.source, {
-      event: "insert",
-      ...params,
-    });
-  }
-
-  onUpdated<TRecord extends any>(params: {
-    projectRef: string;
-    table: string;
-    columns?: string[];
-  }) {
-    return createTrigger<{
-      table: string;
-      record: TRecord;
-      type: "UPDATE";
-      schema: string;
-      old_record: TRecord;
-    }>(this.source, {
-      event: "update",
-      ...params,
-    });
-  }
-
-  onDeleted<TRecord extends any>(params: {
-    projectRef: string;
-    table: string;
-    columns?: string[];
-  }) {
-    return createTrigger<{
-      table: string;
-      record: null;
-      type: "DELETE";
-      schema: string;
-      old_record: TRecord;
-    }>(this.source, {
-      event: "delete",
-      ...params,
-    });
   }
 }
 

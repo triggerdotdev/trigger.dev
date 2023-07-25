@@ -8,9 +8,17 @@ const supabase = new SupabaseManagement({
   id: "supabase",
 });
 
+const db = supabase.db<Database>(process.env.SUPABASE_ID!, {
+  schema: "public",
+});
+
 const supabaseManagementKey = new SupabaseManagement({
   id: "supabase-management-key",
   apiKey: process.env.SUPABASE_API_KEY!,
+});
+
+const dbKey = supabase.db<Database>(process.env.SUPABASE_ID!, {
+  schema: "public",
 });
 
 const supabaseDB = new Supabase<Database>({
@@ -18,9 +26,6 @@ const supabaseDB = new Supabase<Database>({
   supabaseUrl: `https://${process.env.SUPABASE_ID}.supabase.co`,
   supabaseKey: process.env.SUPABASE_KEY!,
 });
-
-type UserRecord = Database["public"]["Tables"]["users"]["Row"];
-type TodoRecord = Database["public"]["Tables"]["todos"]["Row"];
 
 new Job(client, {
   id: "supabase-playground",
@@ -152,10 +157,6 @@ new Job(client, {
   },
 });
 
-const db = supabase.db<Database>(process.env.SUPABASE_ID!, {
-  schema: "public",
-});
-
 new Job(client, {
   id: "supabase-on-user-insert",
   name: "Supabase On User Insert",
@@ -173,10 +174,9 @@ new Job(client, {
   id: "supabase-on-user-email-changed",
   name: "Supabase On User Email Changed",
   version: "0.1.1",
-  trigger: supabase.onUpdated<UserRecord>({
-    projectRef: process.env.SUPABASE_ID!,
+  trigger: db.onUpdated({
     table: "users",
-    columns: ["email_address"],
+    columns: ["email_address", "last_name"],
   }),
   integrations: {
     supabase,
@@ -188,8 +188,7 @@ new Job(client, {
   id: "supabase-on-user-deleted",
   name: "Supabase On User Deleted",
   version: "0.1.1",
-  trigger: supabase.onDeleted<UserRecord>({
-    projectRef: process.env.SUPABASE_ID!,
+  trigger: db.onDeleted({
     table: "users",
   }),
   integrations: {
@@ -202,9 +201,8 @@ new Job(client, {
   id: "supabase-on-todo-created",
   name: "Supabase On TODO created",
   version: "0.1.1",
-  trigger: supabaseManagementKey.onInserted<TodoRecord>({
-    projectRef: process.env.SUPABASE_ID!,
-    table: "users",
+  trigger: dbKey.onInserted({
+    table: "todos",
   }),
   integrations: {
     supabase,
