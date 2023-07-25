@@ -97,7 +97,10 @@ The [examples/jobs-starter](./examples/jobs-starter/) project defines simple job
    TRIGGER_API_URL=http://localhost:3030
    ```
 
-3. Run the app:
+   `TRIGGER_API_URL` is used to configure the URL for your Trigger.dev instance,
+   where the jobs will be registered.
+
+3. Run the `jobs-starter` app:
 
    ```
    pnpm dev

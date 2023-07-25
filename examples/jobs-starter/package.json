@@ -1,5 +1,5 @@
 {
-  "name": "jobs-starter",
+  "name": "@examples/jobs-starter",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -11,8 +11,8 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@trigger.dev/nextjs": "^1.0.0-next.8",
-    "@trigger.dev/sdk": "^2.0.0-next.18",
+    "@trigger.dev/nextjs": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
     "@types/node": "20.4.2",
     "@types/react": "^18.0.21",
     "@types/react-dom": "^18.0.6",
@@ -30,6 +30,7 @@
     "endpointId": "jobs-starter"
   },
   "devDependencies": {
-    "concurrently": "^8.2.0"
+    "concurrently": "^8.2.0",
+    "@trigger.dev/cli": "workspace:*"
   }
 }
