@@ -106,11 +106,10 @@ webapp:dev: If you didn't try to log in, you can safely ignore this email.
 
 ## Troubleshooting
 
-### No PostHog API key, so analytics won't work
+### EADDRINUSE: address already in use :::3030
 
 When receiving the following error message:
 ``
-webapp:dev: No PostHog API key, so analytics won't work
 webapp:dev: Error: listen EADDRINUSE: address already in use :::3030
 ``
 
