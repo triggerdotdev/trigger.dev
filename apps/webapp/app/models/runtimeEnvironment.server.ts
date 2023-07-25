@@ -17,17 +17,10 @@ export async function findEnvironmentByApiKey(apiKey: string) {
   return environment;
 }
 
-export async function findEnvironmentByPublicOrPrivateApiKey(apiKey: string) {
-  const environment = await prisma.runtimeEnvironment.findFirst({
+export async function findEnvironmentByPublicApiKey(apiKey: string) {
+  const environment = await prisma.runtimeEnvironment.findUnique({
     where: {
-      OR: [
-        {
-          apiKey,
-        },
-        {
-          pkApiKey: apiKey,
-        },
-      ],
+      pkApiKey: apiKey,
     },
     include: {
       project: true,
