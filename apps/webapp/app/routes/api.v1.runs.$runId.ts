@@ -16,7 +16,7 @@ const ParamsSchema = z.object({
 
 const SearchQuerySchema = z.object({
   cursor: z.string().optional(),
-  take: z.coerce.number().default(50),
+  take: z.coerce.number().default(20),
   subtasks: z.coerce.boolean().default(false),
   taskdetails: z.coerce.boolean().default(false),
 });
@@ -42,6 +42,8 @@ export async function loader({ request, params }: LoaderArgs) {
   const url = new URL(request.url);
   const query = SearchQuerySchema.parse(Object.fromEntries(url.searchParams));
   const showTaskDetails = query.taskdetails && apiKeyResult.type === "PRIVATE";
+
+  const take = Math.min(query.take, 50);
 
   const jobRun = await prisma.jobRun.findUnique({
     where: {
@@ -74,7 +76,7 @@ export async function loader({ request, params }: LoaderArgs) {
         orderBy: {
           id: "asc",
         },
-        take: query.take + 1,
+        take: take + 1,
         cursor: query.cursor
           ? {
               id: query.cursor,
@@ -98,10 +100,10 @@ export async function loader({ request, params }: LoaderArgs) {
     );
   }
 
-  const selectedTasks = jobRun.tasks.slice(0, query.take);
+  const selectedTasks = jobRun.tasks.slice(0, take);
 
   const tasks = taskListToTree(selectedTasks, query.subtasks);
-  const nextTask = jobRun.tasks[query.take];
+  const nextTask = jobRun.tasks[take];
 
   return apiCors(
     request,
