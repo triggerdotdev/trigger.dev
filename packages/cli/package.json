@@ -69,7 +69,7 @@
     "path-to-regexp": "^6.2.1",
     "simple-git": "^3.19.0",
     "terminal-link": "^3.0.0",
-    "tsconfig": "^7.0.0",
+    "tsconfck": "^2.1.2",
     "url": "^0.11.1",
     "zod": "3.21.4"
   },
