@@ -170,9 +170,7 @@ export default function Page() {
                       <>
                         <Callout
                           variant="docs"
-                          to={docsPath(
-                            "documentation/quickstart#your-first-job"
-                          )}
+                          to={docsPath("documentation/guides/create-a-job")}
                           className="my-3"
                         >
                           Create your first Job in code
