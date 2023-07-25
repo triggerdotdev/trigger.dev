@@ -88,6 +88,11 @@ export function EventRunData({ id }: { id: string }) {
           </div>
         ))}
       </div>
+      {data.output && (
+        <code>
+          <pre>{JSON.stringify(data.output, null, 2)}</pre>
+        </code>
+      )}
     </>
   );
 }
