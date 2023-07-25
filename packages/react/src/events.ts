@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { GetEventSchema } from "@trigger.dev/internal";
 import { zodfetch } from "./fetch";
-import { useTriggerProvider } from "./TriggerProvider";
+import { reactQueryContext, useTriggerProvider } from "./TriggerProvider";
 import { RunDetailOptions, useRunDetails } from "./runs";
 
 const defaultRefreshInterval = 5000;
@@ -27,6 +27,7 @@ export function useEventDetails(eventId: string) {
     },
     {
       refetchInterval: defaultRefreshInterval,
+      context: reactQueryContext,
     }
   );
 }

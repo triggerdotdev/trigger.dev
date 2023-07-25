@@ -7,7 +7,7 @@ import {
   urlWithSearchParams,
 } from "@trigger.dev/internal";
 import { zodfetch } from "./fetch";
-import { useTriggerProvider } from "./TriggerProvider";
+import { reactQueryContext, useTriggerProvider } from "./TriggerProvider";
 
 const resolvedStatuses = [
   "SUCCESS",
@@ -53,6 +53,7 @@ export function useRunDetails(
         }
         return refreshInterval ?? defaultRefreshInterval;
       },
+      context: reactQueryContext,
     }
   );
 }

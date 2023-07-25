@@ -1,7 +1,11 @@
 "use client";
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createContext, useContext } from "react";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+} from "@tanstack/react-query";
+import { createContext, useContext, useState } from "react";
 import { z } from "zod";
 
 const publicApiKeyStartsWith = "pk_";
@@ -37,13 +41,17 @@ type TriggerProviderProps = {
   children: React.ReactNode;
 };
 
-const queryClient = new QueryClient();
+export const reactQueryContext = createContext<QueryClient | undefined>(
+  undefined
+);
 
 export function TriggerProvider({
   publicApiKey,
   apiUrl,
   children,
 }: TriggerProviderProps) {
+  const [queryClient] = useState(() => new QueryClient());
+
   if (publicApiKey.startsWith(privateApiKeyStartsWith)) {
     throw new Error(
       `You are using a private API key, you should not do this because the value is visible to the client.`
@@ -60,7 +68,9 @@ export function TriggerProvider({
     <ProviderContext.Provider
       value={{ publicApiKey, apiUrl: apiUrl ?? "https://api.trigger.dev" }}
     >
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient} context={reactQueryContext}>
+        {children}
+      </QueryClientProvider>
     </ProviderContext.Provider>
   );
 }
