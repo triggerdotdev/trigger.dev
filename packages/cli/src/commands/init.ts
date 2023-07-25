@@ -19,9 +19,8 @@ import { renderTitle } from "../utils/renderTitle.js";
 import { detectNextJsProject } from "../utils/detectNextJsProject.js";
 import { TriggerApi, WhoamiResponse } from "../utils/triggerApi.js";
 import { readFile } from "tsconfig";
-import { pathExists } from "../utils/fileSystem.js";
-import { pathToFileURL } from 'url'
-
+import { pathExists, readJSONFile } from "../utils/fileSystem.js";
+import { pathToFileURL } from "url";
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -197,6 +196,19 @@ const resolveOptionsWithPrompts = async (
     }
 
     if (!options.endpointSlug) {
+      const packageJSONPath = pathModule.join(path, "package.json");
+      const packageJSON = await readJSONFile(packageJSONPath);
+
+      if (
+        packageJSON &&
+        packageJSON["trigger.dev"] &&
+        packageJSON["trigger.dev"].endpointId
+      ) {
+        options.endpointSlug = packageJSON["trigger.dev"].endpointId;
+      } else {
+        options.endpointSlug = await promptEndpointSlug(path);
+      }
+
       resolvedOptions.endpointSlug = await promptEndpointSlug(path);
     }
   } catch (err) {
