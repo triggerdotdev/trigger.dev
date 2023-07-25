@@ -50,7 +50,6 @@ export async function loader({ request, params }: LoaderArgs) {
       startedAt: true,
       updatedAt: true,
       completedAt: true,
-      environmentId: true,
       output: true,
     },
     orderBy: {
