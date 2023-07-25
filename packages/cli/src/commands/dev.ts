@@ -60,12 +60,9 @@ export async function devCommand(path: string, anyOptions: any) {
     `  [trigger.dev] Looking for Next.js site on port ${options.port}`
   );
 
-  // Setup tunnel
-  const endpointUrl = await resolveEndpointUrl(apiUrl, options.port);
+  const localEndpointHandlerUrl = `http://localhost:${options.port}${options.handlerPath}`;
 
-  const endpointHandlerUrl = `${endpointUrl}${options.handlerPath}`;
-
-  const response = await fetch(endpointHandlerUrl, {
+  const response = await fetch(localEndpointHandlerUrl, {
     method: "HEAD",
     headers: {
       "x-trigger-api-key": apiKey,
@@ -78,6 +75,10 @@ export async function devCommand(path: string, anyOptions: any) {
     logger.error(`❌ [trigger.dev] No server found on port ${options.port}. Status Code: ${response.status}, Status Text: ${response.statusText}`);
     process.exit(1);
   }
+
+  // Setup tunnel
+  const endpointUrl = await resolveEndpointUrl(apiUrl, options.port);
+  const endpointHandlerUrl = `${endpointUrl}${options.handlerPath}`;
 
   const connectingSpinner = ora(
     `[trigger.dev] Registering endpoint ${endpointHandlerUrl}...`
