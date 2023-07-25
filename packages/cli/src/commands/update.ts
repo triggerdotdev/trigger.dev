@@ -12,7 +12,7 @@ import { writeJSONFile } from "../utils/fileSystem.js";
 export async function updateCommand(path: string) {
     try {
         const resolvedPath = resolvePath(path);
-        const installedPackages = await getInstalledPackages();
+        const installedPackages = await getInstalledPackages(resolvedPath);
         const triggerDevPackagesName = Object.keys(installedPackages.dependencies).filter(pkg => pkg.startsWith('@trigger.dev/'));
 
         if (triggerDevPackagesName.length === 0) {
@@ -63,10 +63,12 @@ export async function updateCommand(path: string) {
     }
 }
 
-async function getInstalledPackages(): Promise<any> {
+async function getInstalledPackages(resolvedPath: string): Promise<any> {
     const manager = getUserPkgManager();
     return new Promise((resolve, reject) => {
-        exec(`${manager} list --depth=0 --json`, (error, stdout) => {
+        exec(`${manager} list --depth=0 --json`, {
+            cwd: resolvedPath
+        }, (error, stdout) => {
             if (error) {
                 reject(error);
             } else {
