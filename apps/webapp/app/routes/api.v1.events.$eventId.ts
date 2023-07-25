@@ -4,6 +4,7 @@ import { cors } from "remix-utils";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { apiCors } from "~/utils/apiCors";
 
 const ParamsSchema = z.object({
   eventId: z.string(),
@@ -11,14 +12,14 @@ const ParamsSchema = z.object({
 
 export async function loader({ request, params }: LoaderArgs) {
   if (request.method.toUpperCase() === "OPTIONS") {
-    return cors(request, json({}));
+    return apiCors(request, json({}));
   }
 
   const authenticatedEnv = await authenticateApiRequest(request, {
     allowPublicKey: true,
   });
   if (!authenticatedEnv) {
-    return cors(
+    return apiCors(
       request,
       json({ error: "Invalid or Missing API key" }, { status: 401 })
     );
@@ -46,5 +47,5 @@ export async function loader({ request, params }: LoaderArgs) {
     },
   });
 
-  return cors(request, json(event));
+  return apiCors(request, json(event));
 }
