@@ -357,11 +357,11 @@ export function HowToUseApiKeysAndEndpoints() {
       </Paragraph>
       <Header2 spacing>Environments</Header2>
       <Paragraph spacing>
-        Each environment has an API Key associated with it. This API Key is used
-        to authenticate your Jobs with the Trigger.dev platform.
+        Each environment has API Keys associated with it. The Server API Key is
+        used to authenticate your Jobs with the Trigger.dev platform.
       </Paragraph>
       <Paragraph spacing>
-        The API Key you use for your{" "}
+        The Server API Key you use for your{" "}
         <TextLink to="https://trigger.dev/docs/documentation/concepts/client-adaptors">
           Client
         </TextLink>{" "}
@@ -372,8 +372,8 @@ export function HowToUseApiKeysAndEndpoints() {
         className="mb-4"
         code={`export const client = new TriggerClient({
   id: "nextjs-example",
-  //this environment variable should be set to your DEV API Key locally,
-  //and your PROD API Key in production
+  //this environment variable should be set to your Server DEV API Key locally,
+  //and your Server PROD API Key in production
   apiKey: process.env.TRIGGER_API_KEY!,
 });`}
       />
