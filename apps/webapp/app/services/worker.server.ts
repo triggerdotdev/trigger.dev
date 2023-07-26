@@ -216,6 +216,7 @@ function getWorkerQueue() {
       },
       refreshOAuthToken: {
         queueName: "internal-queue",
+        maxAttempts: 10,
         handler: async (payload, job) => {
           await integrationAuthRepository.refreshConnection({
             connectionId: payload.connectionId,

@@ -135,6 +135,7 @@ model IntegrationDefinition {
   name         String
   instructions String?
   description  String?
+  icon         String?
   packageName  String  @default("")
 
   authMethods IntegrationAuthMethod[]

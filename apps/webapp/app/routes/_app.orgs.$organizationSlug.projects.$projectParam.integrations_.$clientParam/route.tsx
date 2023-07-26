@@ -105,7 +105,7 @@ export default function Integrations() {
               }
             />
             <PageInfoProperty
-              icon={client.integration.identifier}
+              icon={client.integration.icon ?? client.integration.identifier}
               label="API"
               value={client.integration.name}
             />

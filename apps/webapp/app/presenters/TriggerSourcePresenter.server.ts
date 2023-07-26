@@ -41,6 +41,11 @@ export class TriggerSourcePresenter {
             slug: true,
             definitionId: true,
             setupStatus: true,
+            definition: {
+              select: {
+                icon: true,
+              },
+            },
           },
         },
         environment: {

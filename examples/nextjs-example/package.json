@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "generate:types": "npx supabase gen types typescript --project-id axtbanoixaztvdntngew --schema public --schema public_2 > src/supabase.types.ts"
   },
   "dependencies": {
     "@trigger.dev/github": "workspace:*",
@@ -25,7 +26,8 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "typescript": "5.0.4",
-    "zod": "3.21.4"
+    "zod": "3.21.4",
+    "@trigger.dev/supabase": "workspace:*"
   },
   "devDependencies": {
     "eslint": "8.42.0",

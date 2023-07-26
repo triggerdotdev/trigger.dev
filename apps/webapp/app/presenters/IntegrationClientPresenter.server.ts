@@ -48,6 +48,7 @@ export class IntegrationClientPresenter {
             id: true,
             name: true,
             packageName: true,
+            icon: true,
           },
         },
         connectionType: true,
@@ -119,6 +120,7 @@ export class IntegrationClientPresenter {
         identifier: integration.definition.id,
         name: integration.definition.name,
         packageName: integration.definition.packageName,
+        icon: integration.definition.icon,
       },
       authMethod: {
         type: integration.authMethod?.type ?? "local",

@@ -185,10 +185,12 @@ function PossibleIntegrationsList({
                   integration={option}
                   organizationId={organizationId}
                   callbackUrl={callbackUrl}
+                  icon={option.icon}
                   button={
                     <AddIntegrationConnection
                       identifier={option.identifier}
                       name={option.name}
+                      icon={option.icon}
                       isIntegration
                     />
                   }
@@ -330,10 +332,7 @@ function ConnectedIntegrationsList({
                         <TableCell to={path}>{client.title}</TableCell>
                         <TableCell to={path}>
                           <span className="flex items-center gap-1">
-                            <NamedIcon
-                              name={client.integrationIdentifier}
-                              className="h-5 w-5"
-                            />
+                            <NamedIcon name={client.icon} className="h-5 w-5" />
                             {client.integration.name}
                           </span>
                         </TableCell>
@@ -503,15 +502,17 @@ function AddIntegrationConnection({
   identifier,
   name,
   isIntegration,
+  icon,
 }: {
   identifier: string;
   name: string;
   isIntegration: boolean;
+  icon?: string;
 }) {
   return (
     <div className="group flex h-11 w-full items-center gap-3 rounded-md p-1 pr-3 transition hover:bg-slate-850">
       <NamedIconInBox
-        name={identifier}
+        name={icon ?? identifier}
         className="h-9 w-9 flex-none transition group-hover:border-slate-750"
       />
       <Paragraph
