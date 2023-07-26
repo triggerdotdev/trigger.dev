@@ -582,12 +582,12 @@ enum DynamicTriggerType {
 }
 
 model EventDispatcher {
-  id            String  @id @default(cuid())
-  event         String
+  id            String   @id @default(cuid())
+  event         String[]
   source        String
   payloadFilter Json?
   contextFilter Json?
-  manual        Boolean @default(false)
+  manual        Boolean  @default(false)
 
   dispatchableId String
   dispatchable   Json
