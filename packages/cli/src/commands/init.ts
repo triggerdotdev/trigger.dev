@@ -453,6 +453,7 @@ async function createTriggerAppRoute(
   const extension = isTypescriptProject ? ".ts" : ".js"
   const triggerFileName = `trigger${extension}`
   const examplesFileName = `examples${extension}`
+  const examplesIndex = `index${extension}`
   const routeFileName = `route${extension}`
 
   const pathAlias = getPathAlias(tsconfig, usesSrcDir);
@@ -463,7 +464,7 @@ import { createAppRoute } from "@trigger.dev/nextjs";
 import { client } from "${routePathPrefix}trigger";
 
 // Replace this with your own jobs
-import "${routePathPrefix}jobs/examples";
+import "${routePathPrefix}jobs";
 
 //this route is used to send and receive data with Trigger.dev
 export const { POST, dynamic } = createAppRoute(client);
@@ -502,6 +503,10 @@ client.defineJob({
   },
 });
 `;
+
+  const examplesIndexContent = `
+    export * from "./examples"
+  `
 
   const directories = pathModule.join(path, "app", "api", "trigger");
   await fs.mkdir(directories, { recursive: true });
@@ -544,6 +549,11 @@ client.defineJob({
       jobsContent
     );
 
+    await fs.writeFile(
+      pathModule.join(exampleDirectories, examplesIndex),
+      examplesIndexContent
+    );
+
     logger.success(
       `✅ Created example job at ${
         usesSrcDir ? "src/" : ""
@@ -569,6 +579,7 @@ async function createTriggerPageRoute(
   const extension = isTypescriptProject ? ".ts" : ".js"
   const triggerFileName = `trigger${extension}`
   const examplesFileName = `examples${extension}`
+  const examplesIndex = `index${extension}`
 
   const routeContent = `
 import { createPagesRoute } from "@trigger.dev/nextjs";
@@ -615,6 +626,10 @@ client.defineJob({
 });
 `;
 
+  const examplesIndexContent = `
+  export * from "./examples"
+  `
+
   const directories = pathModule.join(path, "pages", "api");
   await fs.mkdir(directories, { recursive: true });
 
@@ -654,6 +669,11 @@ client.defineJob({
     await fs.writeFile(
       pathModule.join(exampleDirectories, examplesFileName),
       jobsContent
+    );
+
+    await fs.writeFile(
+      pathModule.join(exampleDirectories, examplesIndex),
+      examplesIndexContent
     );
 
     logger.success(
