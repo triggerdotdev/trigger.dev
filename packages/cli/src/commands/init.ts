@@ -463,7 +463,7 @@ async function createTriggerAppRoute(
 import { createAppRoute } from "@trigger.dev/nextjs";
 import { client } from "${routePathPrefix}trigger";
 
-// Replace this with your own jobs
+
 import "${routePathPrefix}jobs";
 
 //this route is used to send and receive data with Trigger.dev
@@ -505,8 +505,10 @@ client.defineJob({
 `;
 
   const examplesIndexContent = `
-    export * from "./examples"
-  `
+// import all your job files here
+
+export * from "./examples"
+`
 
   const directories = pathModule.join(path, "app", "api", "trigger");
   await fs.mkdir(directories, { recursive: true });
@@ -627,7 +629,9 @@ client.defineJob({
 `;
 
   const examplesIndexContent = `
-  export * from "./examples"
+// import all your job files here
+
+export * from "./examples"
   `
 
   const directories = pathModule.join(path, "pages", "api");
