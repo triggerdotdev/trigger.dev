@@ -69,13 +69,13 @@ export interface Trigger<TEventSpec extends EventSpecification<any>> {
 
 export type EventSpecificationExample = {
   id: string;
-  name: string;
+  name: string | string[];
   icon?: string;
   payload: any;
 };
 
 export interface EventSpecification<TEvent extends any> {
-  name: string;
+  name: string | string[];
   title: string;
   source: string;
   icon: string;

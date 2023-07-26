@@ -30,7 +30,7 @@ export const DynamicTriggerMetadataSchema = z.object({
 
 export const StaticTriggerMetadataSchema = z.object({
   type: z.literal("static"),
-  title: z.string(),
+  title: z.union([z.string(), z.array(z.string())]),
   properties: z.array(DisplayPropertySchema).optional(),
   rule: EventRuleSchema,
 });
