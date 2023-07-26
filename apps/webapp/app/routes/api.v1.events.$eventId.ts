@@ -25,7 +25,16 @@ export async function loader({ request, params }: LoaderArgs) {
     );
   }
 
-  const { eventId } = ParamsSchema.parse(params);
+  const parsed = ParamsSchema.safeParse(params);
+
+  if (!parsed.success) {
+    return apiCors(
+      request,
+      json({ error: "Invalid or Missing eventId" }, { status: 400 })
+    );
+  }
+
+  const { eventId } = parsed.data;
 
   const event = await prisma.eventRecord.findUnique({
     select: {
@@ -46,6 +55,13 @@ export async function loader({ request, params }: LoaderArgs) {
       id: eventId,
     },
   });
+
+  if (!event) {
+    return apiCors(
+      request,
+      json({ error: "Event not found" }, { status: 404 })
+    );
+  }
 
   return apiCors(request, json(event));
 }
