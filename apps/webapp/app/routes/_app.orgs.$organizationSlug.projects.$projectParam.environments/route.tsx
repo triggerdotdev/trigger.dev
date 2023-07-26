@@ -149,7 +149,7 @@ export default function Page() {
                 </div>
                 <div className="mb-8">
                   <Paragraph variant="small" spacing>
-                    Secret API keys should be used on your server – they give
+                    Server API keys should be used on your server – they give
                     full API access. <br />
                     Public API keys should be used in your frontend – they have
                     limited read-only access.
@@ -167,7 +167,7 @@ export default function Page() {
                             secure
                             value={environment.apiKey}
                             variant={"primary/medium"}
-                            icon={<Badge variant="outline">Secret</Badge>}
+                            icon={<Badge variant="outline">Server</Badge>}
                           />
                           <ClipboardField
                             className="w-full max-w-none"
