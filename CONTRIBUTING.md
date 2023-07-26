@@ -175,6 +175,26 @@ The [examples/jobs-starter](./examples/jobs-starter/) project defines simple job
   ](https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue).
 - Be sure to fill the PR Template accordingly.
 
+## Adding changesets
+
+We use [changesets](https://github.com/changesets/changesets) to manage our package versions and changelogs. If you've never used changesets before, first read [their guide here](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md).
+
+If you are contributing a change to any packages in this monorepo (anything in either the `/packages` or `/integrations` directories), then you will need to add a changeset to your Pull Requests before they can be merged.
+
+To add a changeset, run the following command in the root of the repo
+
+```shell
+pnpm run changeset:add
+```
+
+Here's an example of creating a `patch` changeset for the `@trigger.dev/github` and `@trigger.dev/slack` packages (click to view):
+
+[![asciicast](https://asciinema.org/a/599228.svg)](https://asciinema.org/a/599228)
+
+You will be prompted to select which packages to include in the changeset. Only select the packages that you have made changes for (Important: never include a changeset for the `@trigger.dev/internal` package, as it's bundled with other packages and should not be published).
+
+Most of the time the changes you'll make are likely to be categorized as patch releases. If you feel like there is the need for a minor or major release of the package based on the changes being made, add the changeset as such and it will be discussed during PR review.
+
 ## Troubleshooting
 
 ### EADDRINUSE: address already in use :::3030
