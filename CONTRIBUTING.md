@@ -141,6 +141,30 @@ To test CLI changes, follow the steps below:
 8. After running the CLI, start your newly created Next.js project. You should now be able to see the changes.
 
 9. Please remember to delete the temporary project you created after you've tested the changes, and before you raise a PR.
+## Add sample jobs
+
+The [examples/jobs-starter](./examples/jobs-starter/) project defines simple jobs you can get started with.
+
+1. `cd` into `examples/jobs-starter`
+2. Create a `.env.local` file with the following content, 
+   replacing `[TRIGGER_DEV_API_KEY]` with an actual key:
+
+   ```
+   TRIGGER_API_KEY=[TRIGGER_DEV_API_KEY]
+   TRIGGER_API_URL=http://localhost:3030
+   ```
+
+   `TRIGGER_API_URL` is used to configure the URL for your Trigger.dev instance,
+   where the jobs will be registered.
+
+3. Run the `jobs-starter` app:
+
+   ```
+   pnpm dev
+   ```
+
+4. Navigate to your trigger.dev instance ([http://localhost:3030](http://localhost:3030/)), to see the jobs.
+   You can use the test feature to trigger them.
 
 ## Making a pull request
 
