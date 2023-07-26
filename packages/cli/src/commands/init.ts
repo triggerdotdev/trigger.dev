@@ -453,7 +453,7 @@ async function createTriggerAppRoute(
   const extension = isTypescriptProject ? ".ts" : ".js"
   const triggerFileName = `trigger${extension}`
   const examplesFileName = `examples${extension}`
-  const examplesIndex = `index${extension}`
+  const examplesIndexFileName = `index${extension}`
   const routeFileName = `route${extension}`
 
   const pathAlias = getPathAlias(tsconfig, usesSrcDir);
@@ -552,7 +552,7 @@ export * from "./examples"
     );
 
     await fs.writeFile(
-      pathModule.join(exampleDirectories, examplesIndex),
+      pathModule.join(exampleDirectories, examplesIndexFileName),
       examplesIndexContent
     );
 
@@ -581,7 +581,7 @@ async function createTriggerPageRoute(
   const extension = isTypescriptProject ? ".ts" : ".js"
   const triggerFileName = `trigger${extension}`
   const examplesFileName = `examples${extension}`
-  const examplesIndex = `index${extension}`
+  const examplesIndexFileName = `index${extension}`
 
   const routeContent = `
 import { createPagesRoute } from "@trigger.dev/nextjs";
@@ -676,7 +676,7 @@ export * from "./examples"
     );
 
     await fs.writeFile(
-      pathModule.join(exampleDirectories, examplesIndex),
+      pathModule.join(exampleDirectories, examplesIndexFileName),
       examplesIndexContent
     );
 
