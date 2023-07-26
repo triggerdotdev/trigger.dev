@@ -113,12 +113,12 @@ Since Trigger.dev is a monorepo that contains various packages, it is important 
 Before you create a Pull Request be sure to use the command below to add a changeset describing what you have done.
 
 ```shell
-pnpm changeset:add
+pnpm run changeset:add
 ```
 
 When you initiate the command above, you'll be presented with some prompts in your terminal. Try to answer them.
 
-Below are some screenshots that represent what you should expect. Most times, the changes you'll make are likely to be categorized under minor releases.
+Below are some screenshots that represent what you should expect. Most times, the changes you'll make are likely to be categorized as patch releases.
 
 | List of packages                                                                                                     | Type of release                                                                                         |
 | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -126,7 +126,9 @@ Below are some screenshots that represent what you should expect. Most times, th
 
 But, if you think your change could be otherwise, you can reach out to [@ericallam](https://github.com/ericallam) for more information on which option to go with.
 
-PS: you should only create a changeset if your fix or contribution is related to any of the Trigger.dev packages.
+PS: you should only create a changeset if your fix or contribution is related to any of the Trigger.dev packages. 
+
+One package that you should always exclude creating a changeset for, is the `@trigger.dev/internal` package, as it is meant to be bundled with package or apps that needs it.
 
 ## Troubleshooting
 
