@@ -8,18 +8,16 @@ const supabase = new SupabaseManagement({
   id: "supabase",
 });
 
-const db = supabase.db<Database>(process.env.SUPABASE_ID!, {
-  schema: "public",
-});
+const db = supabase.db<Database>(process.env.SUPABASE_ID!);
+
+const dbNoTypes = supabase.db(process.env.SUPABASE_ID!);
 
 const supabaseManagementKey = new SupabaseManagement({
   id: "supabase-management-key",
   apiKey: process.env.SUPABASE_API_KEY!,
 });
 
-const dbKey = supabase.db<Database>(process.env.SUPABASE_ID!, {
-  schema: "public",
-});
+const dbKey = supabase.db<Database>(process.env.SUPABASE_ID!);
 
 const supabaseDB = new Supabase<Database>({
   id: "supabase-db",
@@ -171,12 +169,24 @@ new Job(client, {
 });
 
 new Job(client, {
+  id: "supabase-on-user-insert-2",
+  name: "Supabase On User Insert 2",
+  version: "0.1.1",
+  trigger: db.onInserted({
+    table: "users",
+  }),
+  integrations: {
+    supabase,
+  },
+  run: async (payload, io, ctx) => {},
+});
+
+new Job(client, {
   id: "supabase-on-user-email-changed",
   name: "Supabase On User Email Changed",
   version: "0.1.1",
   trigger: db.onUpdated({
     table: "users",
-    columns: ["email_address", "last_name"],
   }),
   integrations: {
     supabase,
@@ -202,6 +212,69 @@ new Job(client, {
   name: "Supabase On TODO created",
   version: "0.1.1",
   trigger: dbKey.onInserted({
+    table: "todos",
+  }),
+  integrations: {
+    supabase,
+  },
+  run: async (payload, io, ctx) => {},
+});
+
+new Job(client, {
+  id: "supabase-on-todo-created",
+  name: "Supabase On TODO created",
+  version: "0.1.1",
+  trigger: dbKey.onInserted({
+    table: "todos",
+  }),
+  integrations: {
+    supabase,
+  },
+  run: async (payload, io, ctx) => {},
+});
+
+new Job(client, {
+  id: "supabase-on-todo-completed",
+  name: "Supabase On TODO completed",
+  version: "0.1.1",
+  trigger: dbKey.onUpdated({
+    table: "todos",
+    filter: {
+      old_record: {
+        is_complete: [false],
+      },
+      record: {
+        is_complete: [true],
+      },
+    },
+  }),
+  integrations: {
+    supabase,
+  },
+  run: async (payload, io, ctx) => {
+    await io.logger.log("Todo Completed", { payload });
+  },
+});
+
+new Job(client, {
+  id: "supabase-on-tweet-created-or-deleted",
+  name: "Supabase On Tweet Created or Deleted",
+  version: "0.1.1",
+  trigger: dbKey.onDeleted({
+    schema: "public_2",
+    table: "tweets",
+  }),
+  integrations: {
+    supabase,
+  },
+  run: async (payload, io, ctx) => {},
+});
+
+new Job(client, {
+  id: "supabase-on-todo-created-no-types",
+  name: "Supabase On TODO created",
+  version: "0.1.1",
+  trigger: dbNoTypes.onInserted({
     table: "todos",
   }),
   integrations: {

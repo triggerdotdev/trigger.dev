@@ -336,7 +336,7 @@ importers:
     devDependencies:
       eslint: 8.31.0
       eslint-config-prettier: 8.6.0_eslint@8.31.0
-      eslint-config-turbo: 1.10.9_eslint@8.31.0
+      eslint-config-turbo: 1.10.12_eslint@8.31.0
       eslint-plugin-react: 7.31.8_eslint@8.31.0
       typescript: 4.9.4
 
@@ -534,7 +534,7 @@ importers:
       '@trigger.dev/sdk': workspace:^2.0.0-next.16
       '@types/node': 18.x
       rimraf: ^3.0.2
-      supabase-management-js: ^0.1.1
+      supabase-management-js: ^0.1.2
       tsup: 7.1.x
       typescript: 4.9.4
       zod: 3.21.4
@@ -542,7 +542,7 @@ importers:
       '@supabase/supabase-js': 2.26.0
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
-      supabase-management-js: 0.1.1
+      supabase-management-js: 0.1.2
       zod: 3.21.4
     devDependencies:
       '@types/node': 18.15.13
@@ -14039,13 +14039,13 @@ packages:
       eslint: 8.31.0
     dev: true
 
-  /eslint-config-turbo/1.10.9_eslint@8.31.0:
-    resolution: {integrity: sha512-YA5QWxWte/NiRJL0/Cv7aATfIvS5sUAuyD6ZuyTZEzwyU7E6FUXGo44amjf9INkyj96HrJ2nYWoFkCRx3vs6Ag==}
+  /eslint-config-turbo/1.10.12_eslint@8.31.0:
+    resolution: {integrity: sha512-z3jfh+D7UGYlzMWGh+Kqz++hf8LOE96q3o5R8X4HTjmxaBWlLAWG+0Ounr38h+JLR2TJno0hU9zfzoPNkR9BdA==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
       eslint: 8.31.0
-      eslint-plugin-turbo: 1.10.9_eslint@8.31.0
+      eslint-plugin-turbo: 1.10.12_eslint@8.31.0
     dev: true
 
   /eslint-import-resolver-node/0.3.7:
@@ -14582,8 +14582,8 @@ packages:
       - typescript
     dev: true
 
-  /eslint-plugin-turbo/1.10.9_eslint@8.31.0:
-    resolution: {integrity: sha512-o8Nga4WFMvzF0lo3d3UyjGli2JOUn/4SRtRdvcf4EA9/TPotU/NUHqO16Cp0SHZJG/tGYIy5LY1O/EO7Mxbd1A==}
+  /eslint-plugin-turbo/1.10.12_eslint@8.31.0:
+    resolution: {integrity: sha512-uNbdj+ohZaYo4tFJ6dStRXu2FZigwulR1b3URPXe0Q8YaE7thuekKNP+54CHtZPH9Zey9dmDx5btAQl9mfzGOw==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
@@ -22043,8 +22043,8 @@ packages:
       pirates: 4.0.5
       ts-interface-checker: 0.1.13
 
-  /supabase-management-js/0.1.1:
-    resolution: {integrity: sha512-4usaQP9gElUaFxmyJmMGvbj+rUjdMT8Z8gld3fJl5TnzirHoXU03o7wmAlj51AsS4eJpMsQECWcOx5LRYwZjPg==}
+  /supabase-management-js/0.1.2:
+    resolution: {integrity: sha512-2sdCM1Gc7XI6zMVbOxdG0hsn1RQOqdD7pGfQwrgnLtampLe9mq7FTeK6a0LS/UhsDYl7jEVYK9BINP18zDxj6Q==}
     engines: {node: '>=18.0.0'}
     dependencies:
       openapi-fetch: 0.6.1

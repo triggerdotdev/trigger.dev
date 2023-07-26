@@ -78,4 +78,41 @@ export interface Database {
       [_ in never]: never
     }
   }
+  public_2: {
+    Tables: {
+      tweets: {
+        Row: {
+          content: string
+          created_at: string | null
+          id: number
+          tweet_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          id?: number
+          tweet_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          id?: number
+          tweet_id?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
 }

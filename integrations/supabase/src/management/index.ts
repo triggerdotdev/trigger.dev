@@ -1,4 +1,5 @@
 import {
+  EventFilter,
   EventSpecification,
   ExternalSource,
   ExternalSourceTrigger,
@@ -30,32 +31,23 @@ type SupabaseManagementIntegrationClient = IntegrationClient<
 type SupabaseManagementIntegration =
   TriggerIntegration<SupabaseManagementIntegrationClient>;
 
-class SupabaseDatabase<
-  Database = any,
-  SchemaName extends string & keyof Database = "public" extends keyof Database
-    ? "public"
-    : string & keyof Database,
-  Schema extends GenericSchema = Database[SchemaName] extends GenericSchema
-    ? Database[SchemaName]
-    : any
-> {
+class SupabaseDatabase<Database = any> {
   constructor(
     private integration: SupabaseManagement,
-    private projectRef: string,
-    private schema: SchemaName = "public" as SchemaName
+    private projectRef: string
   ) {}
 
-  onChange<
-    TableName extends string & keyof Schema["Tables"],
-    Table extends Schema["Tables"][TableName]
-  >(table: TableName): Table["Row"] {
-    return {} as Table["Row"];
-  }
-
   onInserted<
-    TTableName extends string & keyof Schema["Tables"],
-    TTable extends Schema["Tables"][TTableName]
-  >(params: { table: TTableName }) {
+    SchemaName extends string & keyof Database = "public" extends keyof Database
+      ? "public"
+      : string & keyof Database,
+    Schema extends GenericSchema = Database[SchemaName] extends GenericSchema
+      ? Database[SchemaName]
+      : any,
+    TTableName extends string & keyof Schema["Tables"] = string &
+      keyof Schema["Tables"],
+    TTable extends Schema["Tables"][TTableName] = Schema["Tables"][TTableName]
+  >(params: { table: TTableName; schema?: SchemaName; filter?: EventFilter }) {
     return createTrigger<{
       table: TTableName;
       record: Prettify<TTable["Row"]>;
@@ -63,17 +55,23 @@ class SupabaseDatabase<
       schema: SchemaName;
       old_record: null;
     }>(this.integration.source, {
-      event: "insert",
+      event: "INSERT",
       projectRef: this.projectRef,
       ...params,
     });
   }
 
   onUpdated<
-    TTableName extends string & keyof Schema["Tables"],
-    TTable extends Schema["Tables"][TTableName],
-    TColumns extends Array<string & keyof TTable["Row"]>
-  >(params: { table: TTableName; columns?: TColumns }) {
+    SchemaName extends string & keyof Database = "public" extends keyof Database
+      ? "public"
+      : string & keyof Database,
+    Schema extends GenericSchema = Database[SchemaName] extends GenericSchema
+      ? Database[SchemaName]
+      : any,
+    TTableName extends string & keyof Schema["Tables"] = string &
+      keyof Schema["Tables"],
+    TTable extends Schema["Tables"][TTableName] = Schema["Tables"][TTableName]
+  >(params: { table: TTableName; schema?: SchemaName; filter?: EventFilter }) {
     return createTrigger<{
       table: TTableName;
       record: Prettify<TTable["Row"]>;
@@ -81,17 +79,23 @@ class SupabaseDatabase<
       schema: SchemaName;
       old_record: Prettify<TTable["Row"]>;
     }>(this.integration.source, {
-      event: "update",
+      event: "UPDATE",
       projectRef: this.projectRef,
-      columns: params.columns,
       ...params,
     });
   }
 
   onDeleted<
-    TTableName extends string & keyof Schema["Tables"],
-    TTable extends Schema["Tables"][TTableName]
-  >(params: { table: TTableName }) {
+    SchemaName extends string & keyof Database = "public" extends keyof Database
+      ? "public"
+      : string & keyof Database,
+    Schema extends GenericSchema = Database[SchemaName] extends GenericSchema
+      ? Database[SchemaName]
+      : any,
+    TTableName extends string & keyof Schema["Tables"] = string &
+      keyof Schema["Tables"],
+    TTable extends Schema["Tables"][TTableName] = Schema["Tables"][TTableName]
+  >(params: { table: TTableName; schema?: SchemaName; filter?: EventFilter }) {
     return createTrigger<{
       table: TTableName;
       record: null;
@@ -99,7 +103,7 @@ class SupabaseDatabase<
       schema: SchemaName;
       old_record: Prettify<TTable["Row"]>;
     }>(this.integration.source, {
-      event: "delete",
+      event: "DELETE",
       projectRef: this.projectRef,
       ...params,
     });
@@ -146,58 +150,56 @@ export class SupabaseManagement implements SupabaseManagementIntegration {
     return createWebhookEventSource(this);
   }
 
-  db<
-    Database = any,
-    SchemaName extends string & keyof Database = "public" extends keyof Database
-      ? "public"
-      : string & keyof Database,
-    Schema extends GenericSchema = Database[SchemaName] extends GenericSchema
-      ? Database[SchemaName]
-      : any
-  >(projectRef: string, options?: { schema?: SchemaName }) {
-    return new SupabaseDatabase<Database, SchemaName, Schema>(
-      this,
-      projectRef,
-      options?.schema
-    );
+  /**
+   * Creates a new database instance that can be used to listen to changes in the database.
+   *
+   * @param projectIdOrUrl The project ID or URL of the Supabase project (e.g. `https://<project-id>.supabase.co`)
+   * @param options Options for the database instance
+   */
+  db<Database = any>(projectIdOrUrl: string) {
+    const projectRef = getProjectRef(projectIdOrUrl);
+
+    return new SupabaseDatabase<Database>(this, projectRef);
   }
+}
+
+/**
+ *
+ * @param projectIdOrUrl The project ID or URL of the Supabase project (e.g. `https://<project-id>.supabase.co`)
+ * @returns The project reference of the Supabase project (e.g. `<project-id>`)
+ */
+function getProjectRef(projectIdOrUrl: string) {
+  if (projectIdOrUrl.startsWith("http")) {
+    const url = new URL(projectIdOrUrl);
+    return url.hostname.split(".")[0];
+  }
+
+  return projectIdOrUrl;
 }
 
 type WebhookEventSource = ReturnType<typeof createWebhookEventSource>;
 
-type WebhookEvents = "insert" | "update" | "delete";
+type WebhookEvents = "INSERT" | "UPDATE" | "DELETE";
 
 function createTrigger<TEvent extends any>(
   source: WebhookEventSource,
-  params: { event: WebhookEvents } & {
+  params: { event: WebhookEvents; filter?: EventFilter } & {
     projectRef: string;
     table: string;
-    columns?: string[];
+    schema?: string;
   }
 ): ExternalSourceTrigger<EventSpecification<TEvent>, WebhookEventSource> {
   const eventSpecification = {
     name: params.event,
-    title: `Supabase ${params.event}`,
+    title: "Supabase DB Webhook",
     source: "supabase",
     icon: "supabase",
-    properties: [
-      {
-        label: "Project Ref",
-        text: params.projectRef,
-      },
-      {
-        label: "Table",
-        text: params.table,
-      },
-      ...(params.columns
-        ? [
-            {
-              label: "Columns",
-              text: params.columns.join(", "),
-            },
-          ]
-        : []),
-    ],
+    filter: {
+      ...params.filter,
+      type: [params.event],
+      schema: [params.schema ?? "public"],
+    },
+    properties: [],
     parsePayload: (payload: any) => payload as TEvent,
   };
 
@@ -206,7 +208,7 @@ function createTrigger<TEvent extends any>(
     params: {
       projectRef: params.projectRef,
       table: params.table,
-      columns: params.columns,
+      schema: params.schema ?? "public",
     },
     source,
   });
@@ -215,22 +217,24 @@ function createTrigger<TEvent extends any>(
 const WebhookSchema = z.object({
   projectRef: z.string(),
   table: z.string(),
-  schema: z.string().optional(),
-  columns: z.array(z.string()).optional(),
+  schema: z.string(),
 });
 
 const WebhookData = z.object({
   triggerName: z.string(),
   table: z.string(),
-  schema: z.string().optional(),
-  columns: z.array(z.string()).optional(),
+  schema: z.string(),
 });
 
 export function createWebhookEventSource(
   integration: SupabaseManagementIntegration
 ): ExternalSource<
   SupabaseManagementIntegration,
-  { projectRef: string; table: string; schema?: string; columns?: string[] },
+  {
+    projectRef: string;
+    table: string;
+    schema: string;
+  },
   "HTTP"
 > {
   return new ExternalSource("HTTP", {
@@ -243,10 +247,7 @@ export function createWebhookEventSource(
         table: [params.table],
       };
     },
-    key: (params) =>
-      `${params.projectRef}-${params.schema ?? "public"}-${params.table}${
-        params.columns ? `-${params.columns.sort().join("-")}` : ""
-      }`,
+    key: (params) => `${params.projectRef}-${params.schema}-${params.table}`,
     properties: (params) => [
       {
         label: "Project Ref",
@@ -254,7 +255,7 @@ export function createWebhookEventSource(
       },
       {
         label: "Table",
-        text: params.table,
+        text: `${params.schema}.${params.table}`,
       },
     ],
     handler: webhookHandler,
@@ -264,27 +265,19 @@ export function createWebhookEventSource(
       const webhookData = WebhookData.safeParse(httpSource.data);
 
       if (httpSource.active && webhookData.success) {
-        const { triggerName, table, schema, columns } = webhookData.data;
+        const { triggerName, table, schema } = webhookData.data;
 
         const allEvents = new Set<string>([
           ...events,
           ...missingEvents,
         ]) as Set<WebhookEvents>;
 
-        const allColumns = new Set<string>([
-          ...(columns ?? []),
-          ...(params.columns ?? []),
-        ]) as Set<string>;
-
-        const condition = createTriggerCondition(
-          Array.from(allEvents),
-          Array.from(allColumns)
-        );
+        const condition = createTriggerCondition(Array.from(allEvents));
 
         const query = createTriggerQuery({
           triggerName,
           condition,
-          schema: params.schema ?? "public",
+          schema: params.schema,
           table: params.table,
           url: httpSource.url,
           secret: httpSource.secret,
@@ -302,26 +295,23 @@ export function createWebhookEventSource(
             triggerName: triggerName,
             table: table,
             schema: schema,
-            columns: Array.from(allColumns),
           },
           registeredEvents: Array.from(allEvents),
         };
       }
 
       const url = new URL(httpSource.url);
-      const id = url.pathname.split("/").pop();
+      const id = url.pathname.split("/").pop() ?? randomUUID();
 
-      const triggerName = `trigger_${id}`;
+      // Create the trigger name using the last 12 characters of the id
+      const triggerName = `tr_${id.slice(-12)}`;
 
-      const condition = createTriggerCondition(
-        events as WebhookEvents[],
-        params.columns
-      );
+      const condition = createTriggerCondition(events as WebhookEvents[]);
 
       const query = createTriggerQuery({
         triggerName,
         condition,
-        schema: params.schema ?? "public",
+        schema: params.schema,
         table: params.table,
         url: httpSource.url,
         secret: httpSource.secret,
@@ -339,7 +329,6 @@ export function createWebhookEventSource(
           triggerName: triggerName,
           table: params.table,
           schema: params.schema,
-          columns: params.columns ?? [],
         },
         registeredEvents: events,
       };
@@ -369,24 +358,8 @@ function createTriggerQuery({
   `;
 }
 
-function createTriggerCondition(
-  events: WebhookEvents[],
-  columns?: string[]
-): string {
-  return events
-    .map((event) => {
-      switch (event) {
-        case "insert":
-          return `INSERT`;
-        case "update":
-          return `UPDATE ${
-            columns ? `OF ${columns.map((c) => `${c}`).join(", ")}` : ""
-          }`;
-        case "delete":
-          return `DELETE`;
-      }
-    })
-    .join(" OR ");
+function createTriggerCondition(events: WebhookEvents[]): string {
+  return events.join(" OR ");
 }
 
 async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
@@ -448,7 +421,7 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
     events: [
       {
         id,
-        name: payload.type.toLowerCase(),
+        name: payload.type,
         source: "supabase",
         payload,
         context: {},
