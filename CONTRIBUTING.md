@@ -106,29 +106,23 @@ webapp:dev: If you didn't try to log in, you can safely ignore this email.
 
 ## Adding changesets
 
-We use changesets to track changes and structure the descriptions of various changes in this project in a format that is readable/comprehensible by everyone.
+We use [changesets](https://github.com/changesets/changesets) to manage our package versions and changelogs. If you've never used changesets before, first read [their guide here](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md).
 
-Since Trigger.dev is a monorepo that contains various packages, it is important that we integrate this workflow.
+If you are contributing a change to any packages in this monorepo (anything in either the `/packages` or `/integrations` directories), then you will need to add a changeset to your Pull Requests before they can be merged.
 
-Before you create a Pull Request be sure to use the command below to add a changeset describing what you have done.
+To add a changeset, run the following command in the root of the repo
 
 ```shell
 pnpm run changeset:add
 ```
 
-When you initiate the command above, you'll be presented with some prompts in your terminal. Try to answer them.
+Here's an example of creating a `patch` changeset for the `@trigger.dev/github` and `@trigger.dev/slack` packages (click to view):
 
-Below are some screenshots that represent what you should expect. Most times, the changes you'll make are likely to be categorized as patch releases.
+[![asciicast](https://asciinema.org/a/599228.svg)](https://asciinema.org/a/599228)
 
-| List of packages                                                                                                     | Type of release                                                                                         |
-| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| ![list of packages in trigger dot dev](https://res.cloudinary.com/meje/image/upload/v1690290222/packages_rm0khe.png) | ![type of release](https://res.cloudinary.com/meje/image/upload/v1690290221/type_of_release_jwhcap.png) |
+You will be prompted to select which packages to include in the changeset. Only select the packages that you have made changes for (Important: never include a changeset for the `@trigger.dev/internal` package, as it's bundled with other packages and should not be published).
 
-But, if you think your change could be otherwise, you can reach out to [@ericallam](https://github.com/ericallam) for more information on which option to go with.
-
-PS: you should only create a changeset if your fix or contribution is related to any of the Trigger.dev packages. 
-
-One package that you should always exclude creating a changeset for, is the `@trigger.dev/internal` package, as it is meant to be bundled with package or apps that needs it.
+Most of the time the changes you'll make are likely to be categorized as patch releases. If you feel like there is the need for a minor or major release of the package based on the changes being made, add the changeset as such and it will be discussed during PR review.
 
 ## Troubleshooting
 
