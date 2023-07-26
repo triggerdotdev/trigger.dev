@@ -18,9 +18,10 @@ import { renderApiKey } from "../utils/renderApiKey.js";
 import { renderTitle } from "../utils/renderTitle.js";
 import { detectNextJsProject } from "../utils/detectNextJsProject.js";
 import { TriggerApi, WhoamiResponse } from "../utils/triggerApi.js";
-import { readFile } from "tsconfig";
+import { parse } from "tsconfck";
 import { pathExists, readJSONFile } from "../utils/fileSystem.js";
-import { pathToFileURL } from "url";
+import { pathToFileURL } from 'url'
+
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -447,14 +448,14 @@ async function createTriggerAppRoute(
 ) {
   const configFileName = isTypescriptProject ? "tsconfig.json" : "jsconfig.json"
   const tsConfigPath = pathModule.join(projectPath, configFileName);
-  const tsConfig = await readFile(tsConfigPath);
+  const { tsconfig } = await parse(tsConfigPath);
 
   const extension = isTypescriptProject ? ".ts" : ".js"
   const triggerFileName = `trigger${extension}`
   const examplesFileName = `examples${extension}`
   const routeFileName = `route${extension}`
 
-  const pathAlias = getPathAlias(tsConfig, usesSrcDir);
+  const pathAlias = getPathAlias(tsconfig, usesSrcDir);
   const routePathPrefix = pathAlias ? pathAlias + "/" : "../../../";
 
   const routeContent = `
@@ -560,9 +561,9 @@ async function createTriggerPageRoute(
 ) {
   const configFileName = isTypescriptProject ? "tsconfig.json" : "jsconfig.json"
   const tsConfigPath = pathModule.join(projectPath, configFileName);
-  const tsConfig = await readFile(tsConfigPath);
+  const { tsconfig } = await parse(tsConfigPath);
 
-  const pathAlias = getPathAlias(tsConfig, usesSrcDir);
+  const pathAlias = getPathAlias(tsconfig, usesSrcDir);
   const routePathPrefix = pathAlias ? pathAlias + "/" : "../..";
 
   const extension = isTypescriptProject ? ".ts" : ".js"
