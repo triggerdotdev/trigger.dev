@@ -576,7 +576,7 @@ importers:
       rimraf: ^3.0.2
       simple-git: ^3.19.0
       terminal-link: ^3.0.0
-      tsconfig: ^7.0.0
+      tsconfck: ^2.1.2
       tsup: ^6.5.0
       type-fest: ^3.6.0
       typescript: ^4.9.5
@@ -600,7 +600,7 @@ importers:
       path-to-regexp: 6.2.1
       simple-git: 3.19.0
       terminal-link: 3.0.0
-      tsconfig: 7.0.0
+      tsconfck: 2.1.2_typescript@4.9.5
       url: 0.11.1
       zod: 3.21.4
     devDependencies:
@@ -10436,14 +10436,6 @@ packages:
   /@types/slug/5.0.3:
     resolution: {integrity: sha512-yPX0bb1SvrpaGlHuSiz6EicgRI4VBE+LO7IANlZagQwtaoKjLLcZc8y6s13vKp41mYvMCSzjtObxvU7/0JRPaA==}
     dev: true
-
-  /@types/strip-bom/3.0.0:
-    resolution: {integrity: sha512-xevGOReSYGM7g/kUBZzPqCrR/KYAo+F0yiPc85WFTJa0MSLtyFTVTU6cJu/aV4mid7IffDIWqo69THF2o4JiEQ==}
-    dev: false
-
-  /@types/strip-json-comments/0.0.30:
-    resolution: {integrity: sha512-7NQmHra/JILCd1QqpSzl8+mJRc8ZHz3uDm8YV1Ks9IhK0epEiTw8aIErbvH9PI+6XbqhyIQy3462nEsn7UVzjQ==}
-    dev: false
 
   /@types/tar/6.1.4:
     resolution: {integrity: sha512-Cp4oxpfIzWt7mr2pbhHT2OTXGMAL0szYCzuf8lRWyIMCgsx6/Hfc3ubztuhvzXHXgraTQxyOCmmg7TDGIMIJJQ==}
@@ -21904,6 +21896,7 @@ packages:
   /strip-json-comments/2.0.1:
     resolution: {integrity: sha512-4gB8na07fecVVkOI6Rs4e7T6NOTki5EmL7TUduTs6bu3EdnSycntVJ4re8kgZA+wx9IueI2Y11bfbgwtzuE0KQ==}
     engines: {node: '>=0.10.0'}
+    dev: true
 
   /strip-json-comments/3.1.1:
     resolution: {integrity: sha512-6fPc+R4ihwqP6N/aIv2f1gMH8lOVtWQHoqC4yK6oSDVVocumAsfCqjkXnqiYMhmMwS/mEHLp7Vehlt3ql6lEig==}
@@ -22518,16 +22511,29 @@ packages:
     resolution: {integrity: sha512-3IDBalvf6SyvHFS14UiwCWzqdSdo+Q0k2J7DZyJYaHW/iraW9DJpaBKDJpry3yQs3o/t/A+oGaRW3iVt2lKxzA==}
     dev: false
 
-  /tsconfck/2.0.2:
-    resolution: {integrity: sha512-H3DWlwKpow+GpVLm/2cpmok72pwRr1YFROV3YzAmvzfGFiC1zEM/mc9b7+1XnrxuXtEbhJ7xUSIqjPFbedp7aQ==}
-    engines: {node: ^14.13.1 || ^16 || >=18, pnpm: ^7.18.0}
+  /tsconfck/2.1.2:
+    resolution: {integrity: sha512-ghqN1b0puy3MhhviwO2kGF8SeMDNhEbnKxjK7h6+fvY9JAxqvXi8y5NAHSQv687OVboS2uZIByzGd45/YxrRHg==}
+    engines: {node: ^14.13.1 || ^16 || >=18}
     hasBin: true
     peerDependencies:
-      typescript: ^4.3.5
+      typescript: ^4.3.5 || ^5.0.0
     peerDependenciesMeta:
       typescript:
         optional: true
     dev: true
+
+  /tsconfck/2.1.2_typescript@4.9.5:
+    resolution: {integrity: sha512-ghqN1b0puy3MhhviwO2kGF8SeMDNhEbnKxjK7h6+fvY9JAxqvXi8y5NAHSQv687OVboS2uZIByzGd45/YxrRHg==}
+    engines: {node: ^14.13.1 || ^16 || >=18}
+    hasBin: true
+    peerDependencies:
+      typescript: ^4.3.5 || ^5.0.0
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      typescript: 4.9.5
+    dev: false
 
   /tsconfig-paths/3.14.1:
     resolution: {integrity: sha512-fxDhWnFSLt3VuTwtvJt5fpwxBHg5AdKWMsgcPOOIilyjymcYVZoCQF8fvFRezCNfblEXmi+PcM1eYHeOAgXCOQ==}
@@ -22546,15 +22552,6 @@ packages:
       minimist: 1.2.7
       strip-bom: 3.0.0
     dev: true
-
-  /tsconfig/7.0.0:
-    resolution: {integrity: sha512-vZXmzPrL+EmC4T/4rVlT2jNVMWCi/O4DIiSj3UHg1OE5kCKbk4mfrXc6dZksLgRM/TZlKnousKH9bbTazUWRRw==}
-    dependencies:
-      '@types/strip-bom': 3.0.0
-      '@types/strip-json-comments': 0.0.30
-      strip-bom: 3.0.0
-      strip-json-comments: 2.0.1
-    dev: false
 
   /tslib/1.14.1:
     resolution: {integrity: sha512-Xni35NKzjgMrwevysHTCArtLDpPvye8zV/0E4EyYn43P7/7qvQwPh9BGkHewbMulVntbigmcT7rdX3BNo9wRJg==}
@@ -23444,7 +23441,7 @@ packages:
     dependencies:
       debug: 4.3.4
       globrex: 0.1.2
-      tsconfck: 2.0.2
+      tsconfck: 2.1.2
     transitivePeerDependencies:
       - supports-color
       - typescript

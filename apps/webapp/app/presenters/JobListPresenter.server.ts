@@ -146,8 +146,14 @@ export class JobListPresenter {
           alias.version.eventSpecification
         );
 
-        const lastRun =
-          alias.version.runs[0] != null ? alias.version.runs[0] : undefined;
+        const lastRuns = job.aliases
+          .map((alias) => alias.version.runs.at(0))
+          .filter(Boolean)
+          .sort((a, b) => {
+            return b.createdAt.getTime() - a.createdAt.getTime();
+          });
+
+        const lastRun = lastRuns.at(0);
 
         const integrations = alias.version.integrations.map((integration) => ({
           key: integration.key,

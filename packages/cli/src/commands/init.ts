@@ -18,8 +18,8 @@ import { renderApiKey } from "../utils/renderApiKey.js";
 import { renderTitle } from "../utils/renderTitle.js";
 import { detectNextJsProject } from "../utils/detectNextJsProject.js";
 import { TriggerApi, WhoamiResponse } from "../utils/triggerApi.js";
-import { readFile } from "tsconfig";
-import { pathExists } from "../utils/fileSystem.js";
+import { parse } from "tsconfck";
+import { pathExists, readJSONFile } from "../utils/fileSystem.js";
 import { pathToFileURL } from 'url'
 
 
@@ -68,14 +68,6 @@ export const initCommand = async (options: InitCommandOptions) => {
 
   const isTypescriptProject = await detectTypescriptProject(resolvedPath);
 
-  if (!isTypescriptProject) {
-    // Exit with an error message
-    logger.error(
-      "You must be using TypeScript in your Next.js project to use Trigger.dev."
-    );
-
-    process.exit(1);
-  }
 
   const resolvedOptions = await resolveOptionsWithPrompts(
     options,
@@ -114,7 +106,7 @@ export const initCommand = async (options: InitCommandOptions) => {
     logger.info("📁 Detected use of src directory");
   }
 
-  const nextJsDir = await detectPagesOrAppDir(resolvedPath, usesSrcDir);
+  const nextJsDir = await detectPagesOrAppDir(resolvedPath, usesSrcDir, isTypescriptProject);
 
   const routeDir = pathModule.join(resolvedPath, usesSrcDir ? "src" : "");
 
@@ -123,6 +115,7 @@ export const initCommand = async (options: InitCommandOptions) => {
       resolvedPath,
       routeDir,
       resolvedOptions,
+      isTypescriptProject,
       usesSrcDir
     );
   } else {
@@ -130,6 +123,7 @@ export const initCommand = async (options: InitCommandOptions) => {
       resolvedPath,
       routeDir,
       resolvedOptions,
+      isTypescriptProject,
       usesSrcDir
     );
   }
@@ -203,6 +197,19 @@ const resolveOptionsWithPrompts = async (
     }
 
     if (!options.endpointSlug) {
+      const packageJSONPath = pathModule.join(path, "package.json");
+      const packageJSON = await readJSONFile(packageJSONPath);
+
+      if (
+        packageJSON &&
+        packageJSON["trigger.dev"] &&
+        packageJSON["trigger.dev"].endpointId
+      ) {
+        options.endpointSlug = packageJSON["trigger.dev"].endpointId;
+      } else {
+        options.endpointSlug = await promptEndpointSlug(path);
+      }
+
       resolvedOptions.endpointSlug = await promptEndpointSlug(path);
     }
   } catch (err) {
@@ -268,7 +275,8 @@ async function detectUseOfSrcDir(path: string): Promise<boolean> {
 // Import the next.config.js file and check for experimental: { appDir: true }
 async function detectPagesOrAppDir(
   path: string,
-  usesSrcDir = false
+  usesSrcDir = false,
+  isTypescriptProject = false
 ): Promise<"pages" | "app"> {
   const nextConfigPath = pathModule.join(path, "next.config.js");
   const importedConfig = await import(pathToFileURL(nextConfigPath).toString());
@@ -281,11 +289,13 @@ async function detectPagesOrAppDir(
     // If so then we return app
     // If not return pages
 
+    const extension = isTypescriptProject ? "tsx" : "js"
+
     const appPagePath = pathModule.join(
       path,
       usesSrcDir ? "src" : "",
       "app",
-      "page.tsx"
+      `page.${extension}`
     );
 
     const appPageExists = await pathExists(appPagePath);
@@ -398,6 +408,7 @@ async function getMiddlewareConfigMatcher(
 // }
 // In this case, we would return "@"
 function getPathAlias(tsconfig: any, usesSrcDir: boolean) {
+
   if (!tsconfig.compilerOptions.paths) {
     return;
   }
@@ -432,12 +443,19 @@ async function createTriggerAppRoute(
   projectPath: string,
   path: string,
   options: ResolvedOptions,
+  isTypescriptProject: boolean,
   usesSrcDir = false
 ) {
-  const tsConfigPath = pathModule.join(projectPath, "tsconfig.json");
-  const tsConfig = await readFile(tsConfigPath);
+  const configFileName = isTypescriptProject ? "tsconfig.json" : "jsconfig.json"
+  const tsConfigPath = pathModule.join(projectPath, configFileName);
+  const { tsconfig } = await parse(tsConfigPath);
 
-  const pathAlias = getPathAlias(tsConfig, usesSrcDir);
+  const extension = isTypescriptProject ? ".ts" : ".js"
+  const triggerFileName = `trigger${extension}`
+  const examplesFileName = `examples${extension}`
+  const routeFileName = `route${extension}`
+
+  const pathAlias = getPathAlias(tsconfig, usesSrcDir);
   const routePathPrefix = pathAlias ? pathAlias + "/" : "../../../";
 
   const routeContent = `
@@ -464,7 +482,7 @@ export const client = new TriggerClient({
   const jobsPathPrefix = pathAlias ? pathAlias + "/" : "../";
 
   const jobsContent = `
-import { Job, eventTrigger } from "@trigger.dev/sdk";
+import { eventTrigger } from "@trigger.dev/sdk";
 import { client } from "${jobsPathPrefix}trigger";
 
 // your first job
@@ -488,28 +506,28 @@ client.defineJob({
   const directories = pathModule.join(path, "app", "api", "trigger");
   await fs.mkdir(directories, { recursive: true });
 
-  const fileExists = await pathExists(pathModule.join(directories, "route.ts"));
+  const fileExists = await pathExists(pathModule.join(directories, routeFileName));
 
   if (fileExists) {
     logger.info("Skipping creation of app route because it already exists");
     return;
   }
 
-  await fs.writeFile(pathModule.join(directories, "route.ts"), routeContent);
+  await fs.writeFile(pathModule.join(directories, routeFileName), routeContent);
 
   logger.success(
     `✅ Created app route at ${usesSrcDir ? "src/" : ""}app/api/trigger.ts`
   );
 
   const triggerFileExists = await pathExists(
-    pathModule.join(path, "trigger.ts")
+    pathModule.join(path, triggerFileName)
   );
 
   if (!triggerFileExists) {
-    await fs.writeFile(pathModule.join(path, "trigger.ts"), triggerContent);
+    await fs.writeFile(pathModule.join(path, triggerFileName), triggerContent);
 
     logger.success(
-      `✅ Created trigger client at ${usesSrcDir ? "src/" : ""}trigger.ts`
+      `✅ Created trigger client at ${usesSrcDir ? "src/" : ""}${triggerFileName}`
     );
   }
 
@@ -517,19 +535,19 @@ client.defineJob({
   await fs.mkdir(exampleDirectories, { recursive: true });
 
   const exampleFileExists = await pathExists(
-    pathModule.join(exampleDirectories, "examples.ts")
+    pathModule.join(exampleDirectories, examplesFileName)
   );
 
   if (!exampleFileExists) {
     await fs.writeFile(
-      pathModule.join(exampleDirectories, "examples.ts"),
+      pathModule.join(exampleDirectories, examplesFileName),
       jobsContent
     );
 
     logger.success(
       `✅ Created example job at ${
         usesSrcDir ? "src/" : ""
-      }jobs/examples/examples.ts`
+      }jobs/examples/examplesFileName`
     );
   }
 }
@@ -538,13 +556,19 @@ async function createTriggerPageRoute(
   projectPath: string,
   path: string,
   options: ResolvedOptions,
-  usesSrcDir = false
+  isTypescriptProject: boolean,
+  usesSrcDir = false,
 ) {
-  const tsConfigPath = pathModule.join(projectPath, "tsconfig.json");
-  const tsConfig = await readFile(tsConfigPath);
+  const configFileName = isTypescriptProject ? "tsconfig.json" : "jsconfig.json"
+  const tsConfigPath = pathModule.join(projectPath, configFileName);
+  const { tsconfig } = await parse(tsConfigPath);
 
-  const pathAlias = getPathAlias(tsConfig, usesSrcDir);
+  const pathAlias = getPathAlias(tsconfig, usesSrcDir);
   const routePathPrefix = pathAlias ? pathAlias + "/" : "../..";
+
+  const extension = isTypescriptProject ? ".ts" : ".js"
+  const triggerFileName = `trigger${extension}`
+  const examplesFileName = `examples${extension}`
 
   const routeContent = `
 import { createPagesRoute } from "@trigger.dev/nextjs";
@@ -570,7 +594,7 @@ export const client = new TriggerClient({
   const jobsPathPrefix = pathAlias ? pathAlias + "/" : "../";
 
   const jobsContent = `
-import { Job, eventTrigger } from "@trigger.dev/sdk";
+import { eventTrigger } from "@trigger.dev/sdk";
 import { client } from "${jobsPathPrefix}trigger";
 
 // your first job
@@ -595,27 +619,27 @@ client.defineJob({
   await fs.mkdir(directories, { recursive: true });
 
   // Don't overwrite the file if it already exists
-  const exists = await pathExists(pathModule.join(directories, "trigger.ts"));
+  const exists = await pathExists(pathModule.join(directories, triggerFileName));
 
   if (exists) {
     logger.info("Skipping creation of pages route because it already exists");
     return;
   }
 
-  await fs.writeFile(pathModule.join(directories, "trigger.ts"), routeContent);
+  await fs.writeFile(pathModule.join(directories, triggerFileName), routeContent);
   logger.success(
-    `✅ Created pages route at ${usesSrcDir ? "src/" : ""}pages/api/trigger.ts`
+    `✅ Created pages route at ${usesSrcDir ? "src/" : ""}pages/api/${triggerFileName}`
   );
 
   const triggerFileExists = await pathExists(
-    pathModule.join(path, "trigger.ts")
+    pathModule.join(path, triggerFileName)
   );
 
   if (!triggerFileExists) {
-    await fs.writeFile(pathModule.join(path, "trigger.ts"), triggerContent);
+    await fs.writeFile(pathModule.join(path, triggerFileName), triggerContent);
 
     logger.success(
-      `✅ Created TriggerClient at ${usesSrcDir ? "src/" : ""}trigger.ts`
+      `✅ Created TriggerClient at ${usesSrcDir ? "src/" : ""}${triggerFileName}`
     );
   }
 
@@ -623,19 +647,19 @@ client.defineJob({
   await fs.mkdir(exampleDirectories, { recursive: true });
 
   const exampleFileExists = await pathExists(
-    pathModule.join(exampleDirectories, "examples.ts")
+    pathModule.join(exampleDirectories, examplesFileName)
   );
 
   if (!exampleFileExists) {
     await fs.writeFile(
-      pathModule.join(exampleDirectories, "examples.ts"),
+      pathModule.join(exampleDirectories, examplesFileName),
       jobsContent
     );
 
     logger.success(
       `✅ Created example job at ${
         usesSrcDir ? "src/" : ""
-      }jobs/examples/examples.ts`
+      }jobs/examples/${examplesFileName}`
     );
   }
 }

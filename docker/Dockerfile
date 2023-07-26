@@ -3,7 +3,7 @@ FROM node:18.16.1-bullseye-slim AS pruner
 WORKDIR /triggerdotdev
 
 COPY --chown=node:node . .
-RUN npx -q turbo prune --scope=webapp --docker
+RUN npx -q turbo@1.10.9 prune --scope=webapp --docker
 RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
 
 # Base strategy to have layer caching

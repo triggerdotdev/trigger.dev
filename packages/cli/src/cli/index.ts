@@ -167,10 +167,10 @@ export const promptEndpointSlug = async (path: string): Promise<string> => {
     type: "input",
     name: "endpointSlug",
     default: slugify(pathModule.basename(path)),
-    message: "Enter a unique ID for your endpoint",
+    message: "Enter an ID for this project",
     validate: (input) => {
       if (!input) {
-        return "Please enter a unique ID for your endpoint";
+        return "Please enter an ID for this project";
       }
 
       return true;
