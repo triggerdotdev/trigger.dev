@@ -15,15 +15,17 @@ export async function loader({ request, params }: LoaderArgs) {
     return apiCors(request, json({}));
   }
 
-  const authenticatedEnv = await authenticateApiRequest(request, {
+  const authenticationResult = await authenticateApiRequest(request, {
     allowPublicKey: true,
   });
-  if (!authenticatedEnv) {
+  if (!authenticationResult) {
     return apiCors(
       request,
       json({ error: "Invalid or Missing API key" }, { status: 401 })
     );
   }
+
+  const authenticatedEnv = authenticationResult.environment;
 
   const parsed = ParamsSchema.safeParse(params);
 
@@ -36,7 +38,7 @@ export async function loader({ request, params }: LoaderArgs) {
 
   const { eventId } = parsed.data;
 
-  const event = await prisma.eventRecord.findUnique({
+  const event = await prisma.eventRecord.findFirst({
     select: {
       id: true,
       name: true,
@@ -53,6 +55,7 @@ export async function loader({ request, params }: LoaderArgs) {
     },
     where: {
       id: eventId,
+      environmentId: authenticatedEnv.id,
     },
   });
 

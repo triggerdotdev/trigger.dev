@@ -10,10 +10,16 @@ export type AuthenticatedEnvironment = NonNullable<
   Awaited<ReturnType<typeof findEnvironmentByApiKey>>
 >;
 
+type ApiAuthenticationResult = {
+  apiKey: string;
+  type: "PUBLIC" | "PRIVATE";
+  environment: AuthenticatedEnvironment;
+};
+
 export async function authenticateApiRequest(
   request: Request,
   { allowPublicKey = false }: { allowPublicKey?: boolean } = {}
-): Promise<AuthenticatedEnvironment | null | undefined> {
+): Promise<ApiAuthenticationResult | undefined> {
   const result = getApiKeyFromRequest(request);
 
   if (!result) {
@@ -22,14 +28,31 @@ export async function authenticateApiRequest(
 
   //if it's a public API key and we don't allow public keys, return
   if (!allowPublicKey) {
-    return findEnvironmentByApiKey(result.apiKey);
+    const environment = await findEnvironmentByApiKey(result.apiKey);
+    if (!environment) return;
+    return {
+      ...result,
+      environment,
+    };
   }
 
   switch (result.type) {
-    case "PUBLIC":
-      return findEnvironmentByPublicApiKey(result.apiKey);
-    case "PRIVATE":
-      return findEnvironmentByApiKey(result.apiKey);
+    case "PUBLIC": {
+      const environment = await findEnvironmentByPublicApiKey(result.apiKey);
+      if (!environment) return;
+      return {
+        ...result,
+        environment,
+      };
+    }
+    case "PRIVATE": {
+      const environment = await findEnvironmentByApiKey(result.apiKey);
+      if (!environment) return;
+      return {
+        ...result,
+        environment,
+      };
+    }
   }
 }
 

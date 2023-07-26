@@ -19,13 +19,15 @@ export async function loader({ request, params }: LoaderArgs) {
     return apiCors(request, json({}));
   }
 
-  const authenticatedEnv = await authenticateApiRequest(request);
-  if (!authenticatedEnv) {
+  const authenticationResult = await authenticateApiRequest(request);
+  if (!authenticationResult) {
     return apiCors(
       request,
       json({ error: "Invalid or Missing API key" }, { status: 401 })
     );
   }
+
+  const authenticatedEnv = authenticationResult.environment;
 
   const parsedParams = ParamsSchema.safeParse(params);
 
@@ -58,6 +60,7 @@ export async function loader({ request, params }: LoaderArgs) {
       job: {
         slug: jobSlug,
       },
+      environmentId: authenticatedEnv.id,
       projectId: authenticatedEnv.projectId,
     },
     select: {

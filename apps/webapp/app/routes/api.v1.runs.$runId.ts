@@ -26,16 +26,17 @@ export async function loader({ request, params }: LoaderArgs) {
     return apiCors(request, json({}));
   }
 
-  const apiKeyResult = getApiKeyFromRequest(request);
-  const authenticatedEnv = await authenticateApiRequest(request, {
+  const authenticationResult = await authenticateApiRequest(request, {
     allowPublicKey: true,
   });
-  if (!authenticatedEnv || !apiKeyResult) {
+  if (!authenticationResult) {
     return apiCors(
       request,
       json({ error: "Invalid or Missing API key" }, { status: 401 })
     );
   }
+
+  const authenticatedEnv = authenticationResult.environment;
 
   const parsed = ParamsSchema.safeParse(params);
 
@@ -61,7 +62,8 @@ export async function loader({ request, params }: LoaderArgs) {
   }
 
   const query = parsedQuery.data;
-  const showTaskDetails = query.taskdetails && apiKeyResult.type === "PRIVATE";
+  const showTaskDetails =
+    query.taskdetails && authenticationResult.type === "PRIVATE";
 
   const take = Math.min(query.take, 50);
 
