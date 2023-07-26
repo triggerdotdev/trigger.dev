@@ -1,5 +1,14 @@
 # create-trigger
 
+## 0.2.1-next.25
+
+### Patch Changes
+
+- 454ad25b: Changed the text on the ID question
+- d7c4b242: replace tsconfig package with tsconfck package
+- 706ab20c: Add cli init support for nextjs projects using javascript
+- 27a98121: allow trigger CLI init command to use endpointId if it is present in package.json
+
 ## 0.2.1-next.24
 
 ### Patch Changes
