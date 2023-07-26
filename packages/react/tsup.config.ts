@@ -14,6 +14,7 @@ export default defineConfig([
     splitting: false,
     dts: true,
     external: ["http", "https", "util", "events", "tty", "os", "timers"],
+    noExternal: ["@trigger.dev/internal"],
     esbuildPlugins: [],
   },
 ]);
