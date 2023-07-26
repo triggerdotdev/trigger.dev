@@ -9,7 +9,7 @@ import { logger } from "../utils/logger.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
 import { TriggerApi } from "../utils/triggerApi.js";
 import dotenv from "dotenv";
-import fetch from 'node-fetch';
+import fetch from "node-fetch";
 
 export const DevCommandOptionsSchema = z.object({
   port: z.coerce.number(),
@@ -62,17 +62,17 @@ export async function devCommand(path: string, anyOptions: any) {
 
   const localEndpointHandlerUrl = `http://localhost:${options.port}${options.handlerPath}`;
 
-  const response = await fetch(localEndpointHandlerUrl, {
-    method: "HEAD",
-    headers: {
-      "x-trigger-api-key": apiKey,
-      "x-trigger-action": "PING",
-      "x-trigger-endpoint-id": endpointId,
-    },
-  });
-
-  if (!response.ok) {
-    logger.error(`❌ [trigger.dev] No server found on port ${options.port}. Status Code: ${response.status}, Status Text: ${response.statusText}`);
+  try {
+    await fetch(localEndpointHandlerUrl, {
+      method: "HEAD",
+      headers: {
+        "x-trigger-api-key": apiKey,
+        "x-trigger-action": "PING",
+        "x-trigger-endpoint-id": endpointId,
+      },
+    });
+  } catch (err) {
+    logger.error(`❌ [trigger.dev] No server found on port ${options.port}.`);
     process.exit(1);
   }
 
