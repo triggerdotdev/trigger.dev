@@ -180,11 +180,34 @@ export function createWebhookEventSource(
         };
       }
 
+      const createWebhook = async () => {
+        const newWebhookData = await io.integration.createWebhook(
+          "create-webhook",
+          {
+            uid: params.uid,
+            tag: params.tag,
+            url: httpSource.url,
+            enabled: true,
+            secret: httpSource.secret,
+            verifySSL: true,
+          }
+        );
+
+        return {
+          data: newWebhookData,
+          registeredEvents: ["form_response"],
+        };
+      };
+
       try {
         const existingWebhook = await io.integration.getWebhook(
           "get-webhook",
           params
         );
+
+        if (existingWebhook.url !== httpSource.url) {
+          return createWebhook();
+        }
 
         if (existingWebhook.enabled) {
           return {
@@ -207,25 +230,10 @@ export function createWebhookEventSource(
 
         return {
           data: newWebhookData,
-          registeredEvents: ["all"],
+          registeredEvents: ["form_response"],
         };
       } catch (error) {
-        const newWebhookData = await io.integration.createWebhook(
-          "create-webhook",
-          {
-            uid: params.uid,
-            tag: params.tag,
-            url: httpSource.url,
-            enabled: true,
-            secret: httpSource.secret,
-            verifySSL: true,
-          }
-        );
-
-        return {
-          data: newWebhookData,
-          registeredEvents: ["all"],
-        };
+        return createWebhook();
       }
     },
   });

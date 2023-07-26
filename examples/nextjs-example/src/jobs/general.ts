@@ -31,7 +31,7 @@ const dynamicSchedule = new DynamicSchedule(client, {
 
 const enabled = true;
 
-new Job(client, {
+client.defineJob({
   id: "test-background-fetch-retry",
   name: "Test background fetch retry",
   version: "0.0.1",
@@ -71,7 +71,7 @@ const CHAT_MODELS = [
   "gpt-4-0613",
 ];
 
-new Job(client, {
+client.defineJob({
   id: "openai-test",
   name: "OpenAI Test",
   version: "0.0.1",
@@ -137,7 +137,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "openai-errors",
   name: "OpenAI Errors",
   version: "0.0.1",
@@ -181,7 +181,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "on-missing-auth-connection",
   name: "On missing auth connection",
   version: "0.1.1",
@@ -210,7 +210,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "on-missing-auth-connection-resolved",
   name: "On missing auth connection-resolved",
   version: "0.1.1",
@@ -241,7 +241,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "user-on-issue-opened",
   name: "user on issue opened",
   version: "0.1.1",
@@ -260,7 +260,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "get-user-repo",
   name: "Get User Repo",
   version: "0.1.1",
@@ -280,7 +280,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "get-user-repo-on-schedule",
   name: "Get User Repo On Schedule",
   version: "0.1.1",
@@ -297,7 +297,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "register-dynamic-interval",
   name: "Register Dynamic Interval",
   version: "0.1.1",
@@ -320,7 +320,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "register-dynamic-cron",
   name: "Register Dynamic Cron",
   version: "0.1.1",
@@ -343,7 +343,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "use-dynamic-interval",
   name: "Use Dynamic Interval",
   version: "0.1.1",
@@ -362,7 +362,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "event-1",
   name: "Run when the foo.bar event happens",
   version: "0.0.1",
@@ -429,7 +429,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "scheduled-job-1",
   name: "Scheduled Job 1",
   version: "0.1.1",
@@ -504,7 +504,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "scheduled-job-2",
   name: "Scheduled Job 2",
   version: "0.1.1",
@@ -525,7 +525,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "test-io-functions",
   name: "Test IO functions",
   version: "0.1.1",
@@ -546,7 +546,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "register-dynamic-trigger-on-new-repo",
   name: "Register dynamic trigger on new repo",
   version: "0.1.1",
@@ -568,7 +568,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "listen-for-dynamic-trigger",
   name: "Listen for dynamic trigger",
   version: "0.1.1",
@@ -587,7 +587,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "listen-for-dynamic-trigger-2",
   name: "Listen for dynamic trigger-2",
   version: "0.1.1",
@@ -604,7 +604,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "listen-for-dynamic-trigger-3",
   name: "Listen for dynamic trigger-3",
   version: "0.1.1",
@@ -621,7 +621,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "alert-on-new-github-issues-3",
   name: "Alert on new GitHub issues",
   version: "0.1.1",

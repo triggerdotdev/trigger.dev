@@ -15,7 +15,7 @@ npx @trigger.dev/init@latest
 ### yarn
 
 ```sh
-yarn @trigger.dev/init@latest
+yarn dlx @trigger.dev/init@latest
 ```
 
 ### pnpm

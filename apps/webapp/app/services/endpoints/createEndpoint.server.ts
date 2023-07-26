@@ -3,6 +3,7 @@ import { $transaction, prisma, PrismaClient } from "~/db.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
 import { EndpointApi } from "../endpointApi.server";
 import { workerQueue } from "../worker.server";
+import { env } from "~/env.server";
 
 const indexingHookIdentifier = customAlphabet(
   "0123456789abcdefghijklmnopqrstuvxyz",
@@ -34,7 +35,9 @@ export class CreateEndpointService {
     url: string;
     id: string;
   }) {
-    const client = new EndpointApi(environment.apiKey, url, id);
+    const endpointUrl = this.#normalizeEndpointUrl(url);
+
+    const client = new EndpointApi(environment.apiKey, endpointUrl, id);
 
     const pong = await client.ping();
 
@@ -68,11 +71,11 @@ export class CreateEndpointService {
               },
             },
             slug: id,
-            url,
+            url: endpointUrl,
             indexingHookIdentifier: indexingHookIdentifier(),
           },
           update: {
-            url,
+            url: endpointUrl,
           },
         });
 
@@ -97,5 +100,20 @@ export class CreateEndpointService {
         throw new CreateEndpointError("FAILED_UPSERT", "Something went wrong");
       }
     }
+  }
+
+  // If the endpoint URL points to localhost, and the RUNTIME_PLATFORM is docker-compose, then we need to rewrite the host to host.docker.internal
+  // otherwise we shouldn't change anything
+  #normalizeEndpointUrl(url: string) {
+    if (env.RUNTIME_PLATFORM === "docker-compose") {
+      const urlObj = new URL(url);
+
+      if (urlObj.hostname === "localhost") {
+        urlObj.hostname = "host.docker.internal";
+        return urlObj.toString();
+      }
+    }
+
+    return url;
   }
 }

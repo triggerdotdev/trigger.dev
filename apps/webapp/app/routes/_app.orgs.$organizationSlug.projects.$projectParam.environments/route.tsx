@@ -1,15 +1,20 @@
+import { useRevalidator } from "@remix-run/react";
 import { LoaderArgs } from "@remix-run/server-runtime";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { useEventSource } from "remix-utils";
 import {
   EnvironmentLabel,
   environmentTitle,
 } from "~/components/environments/EnvironmentLabel";
+import { HowToUseApiKeysAndEndpoints } from "~/components/helpContent/HelpContentText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { ButtonContent } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import {
   PageDescription,
   PageHeader,
@@ -26,23 +31,22 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 import {
   ClientEndpoint,
   EnvironmentsPresenter,
 } from "~/presenters/EnvironmentsPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
-import { ProjectParamSchema } from "~/utils/pathBuilder";
+import {
+  ProjectParamSchema,
+  projectEnvironmentsStreamingPath,
+} from "~/utils/pathBuilder";
 import { requestUrl } from "~/utils/requestUrl.server";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
-import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
-import { cn } from "~/utils/cn";
-import {
-  HowToSetupYourProject,
-  HowToUseApiKeysAndEndpoints,
-} from "~/components/helpContent/HelpContentText";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -101,6 +105,22 @@ export default function Page() {
       endpoint: client.endpoints[selected.type],
     };
   }, [selected, clients]);
+
+  const organization = useOrganization();
+  const project = useProject();
+
+  const revalidator = useRevalidator();
+  const events = useEventSource(
+    projectEnvironmentsStreamingPath(organization, project),
+    { event: "message" }
+  );
+
+  useEffect(() => {
+    if (events !== null) {
+      revalidator.revalidate();
+    }
+    // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
+  }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <PageContainer>

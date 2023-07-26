@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useJobs } from "~/hooks/useJobs";
 import { cn } from "~/utils/cn";
 import { jobPath } from "~/utils/pathBuilder";
 import { LabelValueStack } from "../primitives/LabelValueStack";
@@ -18,6 +19,7 @@ export function JobsMenu({ matches }: { matches: RouteMatch[] }) {
   const [isOpen, setIsOpen] = useState(false);
   const organization = useOrganization(matches);
   const project = useProject(matches);
+  const projectJobs = useJobs(matches);
   const currentJob = useJob(matches);
 
   return (
@@ -33,7 +35,7 @@ export function JobsMenu({ matches }: { matches: RouteMatch[] }) {
         >
           <PopoverSectionHeader title="Jobs" />
           <div className="flex flex-col gap-1 p-1">
-            {project.jobs.map((job) => {
+            {projectJobs.map((job) => {
               const isSelected = job.id === currentJob?.id;
               return (
                 <Link

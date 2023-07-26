@@ -1,7 +1,7 @@
 import { client } from "@/trigger";
 import { Job, cronTrigger } from "@trigger.dev/sdk";
 
-new Job(client, {
+client.defineJob({
   id: "test-cron-schedule-5",
   name: "Test Cron Schedule 5",
   version: "0.0.1",

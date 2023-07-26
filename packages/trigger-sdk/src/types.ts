@@ -19,7 +19,7 @@ export interface TriggerContext {
   /** Organization metadata */
   organization: { slug: string; id: string; title: string };
   /** Run metadata */
-  run: { id: string; isTest: boolean; startedAt: Date };
+  run: { id: string; isTest: boolean; startedAt: Date; isRetry: boolean };
   /** Event metadata */
   event: { id: string; name: string; context: any; timestamp: Date };
   /** Source metadata */

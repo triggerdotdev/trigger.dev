@@ -1,5 +1,38 @@
 # create-trigger
 
+## 0.2.1-next.25
+
+### Patch Changes
+
+- 454ad25b: Changed the text on the ID question
+- d7c4b242: replace tsconfig package with tsconfck package
+- 706ab20c: Add cli init support for nextjs projects using javascript
+- 27a98121: allow trigger CLI init command to use endpointId if it is present in package.json
+
+## 0.2.1-next.24
+
+### Patch Changes
+
+- 2f1b2a32: This is a patch bump
+
+## 0.2.1-next.23
+
+### Patch Changes
+
+- d0b19d50: Add option to specify the path to the handler function in the dev command
+
+## 0.2.1-next.22
+
+### Patch Changes
+
+- 1bf2802b: Parse .env file using dotenv instead of hand-parsing it
+
+## 0.2.1-next.21
+
+### Patch Changes
+
+- 01c0f9b3: Allow the CLI dev command to work outside of a Next.js project
+
 ## 0.2.1-next.20
 
 ### Patch Changes

@@ -8,7 +8,9 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { IntegrationIcon } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.integrations/route";
 import { jobTestPath } from "~/utils/pathBuilder";
+import { CodeBlock } from "../code/CodeBlock";
 import { InlineCode } from "../code/InlineCode";
+import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 import { HelpPanelProps } from "../integrations/ApiKeyHelp";
 import { HelpInstall } from "../integrations/HelpInstall";
 import { HelpSamples } from "../integrations/HelpSamples";
@@ -21,24 +23,22 @@ import {
   ClientTabsTrigger,
 } from "../primitives/ClientTabs";
 import { ClipboardField } from "../primitives/ClipboardField";
+import { Header2 } from "../primitives/Headers";
+import { TextLink } from "../primitives/TextLink";
 import integrationButton from "./integration-button.png";
 import selectEnvironment from "./select-environment.png";
 import selectExample from "./select-example.png";
-import { Header2 } from "../primitives/Headers";
-import { CodeBlock } from "../code/CodeBlock";
-import { EnvironmentLabel } from "../environments/EnvironmentLabel";
-import { TextLink } from "../primitives/TextLink";
 
 export function HowToSetupYourProject() {
   const devEnvironment = useDevEnvironment();
   const appOrigin = useAppOrigin();
   return (
     <>
-      <StepNumber stepNumber="1" title="Run the CLI init command" />
+      <StepNumber
+        stepNumber="1"
+        title="Run the CLI 'init' command in a Next.js project"
+      />
       <StepContentContainer>
-        <Paragraph spacing>
-          Run this CLI command in a terminal window from your Next.js project.
-        </Paragraph>
         <ClientTabs defaultValue="npm">
           <ClientTabsList>
             <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
@@ -65,39 +65,57 @@ export function HowToSetupYourProject() {
             <ClipboardField
               variant="primary/medium"
               className="mb-4"
-              secure={`yarn @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
-              value={`yarn @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
+              secure={`yarn dlx @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
+              value={`yarn dlx @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
             />
           </ClientTabsContent>
         </ClientTabs>
-        <Paragraph spacing variant="small">
-          It will ask you for a "unique ID for your endpoint". You can use the
-          default by hitting enter.
+
+        <Paragraph spacing>
+          You’ll notice a new folder in your project called 'jobs'. We’ve added
+          a very simple example Job in <InlineCode>examples.ts</InlineCode> to
+          help you get started.
         </Paragraph>
       </StepContentContainer>
       <StepNumber stepNumber="2" title="Run your Next.js app" />
       <StepContentContainer>
-        <Paragraph>
-          Ensure your Next.js app is running locally on port 3000.
-        </Paragraph>
+        <Paragraph>Ensure your app is running locally.</Paragraph>
+        <ClientTabs defaultValue="npm">
+          <ClientTabsList>
+            <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
+            <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
+            <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
+          </ClientTabsList>
+          <ClientTabsContent value={"npm"}>
+            <ClipboardField
+              variant="primary/medium"
+              className="mb-4"
+              value={`npm run dev`}
+            />
+          </ClientTabsContent>
+          <ClientTabsContent value={"pnpm"}>
+            <ClipboardField
+              variant="primary/medium"
+              className="mb-4"
+              value={`pnpm run dev`}
+            />
+          </ClientTabsContent>
+          <ClientTabsContent value={"yarn"}>
+            <ClipboardField
+              variant="primary/medium"
+              className="mb-4"
+              value={`yarn run dev`}
+            />
+          </ClientTabsContent>
+        </ClientTabs>
       </StepContentContainer>
-      <StepNumber stepNumber="3" title="Run the CLI dev command" />
+      <StepNumber stepNumber="3" title="Run the CLI 'dev' command" />
       <StepContentContainer>
         <Paragraph spacing>
-          The CLI <InlineCode>dev</InlineCode> command allows the Trigger.dev
-          service to send messages to your Next.js site. This is required for
-          registering Jobs, triggering them and running Tasks. To achieve this
-          it creates a tunnel (using{" "}
-          <TextLink href="https://ngrok.com/">ngrok</TextLink>) so Trigger.dev
-          can send messages to your machine.
-        </Paragraph>
-        <Paragraph spacing>
-          You should leave the <InlineCode>dev</InlineCode> command running when
-          you're developing.
-        </Paragraph>
-        <Paragraph spacing>
           In a{" "}
-          <strong className="text-bright">new terminal window or tab</strong>{" "}
+          <strong className="text-bright">
+            separate terminal window or tab
+          </strong>{" "}
           run:
         </Paragraph>
         <ClientTabs defaultValue="npm">
@@ -124,10 +142,18 @@ export function HowToSetupYourProject() {
             <ClipboardField
               variant="primary/medium"
               className="mb-4"
-              value={`yarn @trigger.dev/cli@latest dev`}
+              value={`yarn dlx @trigger.dev/cli@latest dev`}
             />
           </ClientTabsContent>
         </ClientTabs>
+        <Paragraph spacing variant="small">
+          If you’re not running on port 3000 you can specify the port by adding{" "}
+          <InlineCode>--port 3001</InlineCode> to the end.
+        </Paragraph>
+        <Paragraph spacing variant="small">
+          You should leave the <InlineCode>dev</InlineCode> command running when
+          you're developing.
+        </Paragraph>
       </StepContentContainer>
       <StepNumber stepNumber="4" title="Check for Jobs" />
       <StepContentContainer>

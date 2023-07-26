@@ -30,7 +30,7 @@ const usageSample: HelpSample = {
     token: process.env.GITHUB_TOKEN,
   });
   
-  new Job(client, {
+  client.defineJob({
     id: "alert-on-new-github-issues",
     name: "Alert on new GitHub issues",
     version: "0.1.1",

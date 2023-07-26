@@ -1,13 +1,6 @@
-import {
-  DisplayProperty,
-  DisplayPropertySchema,
-  EventSpecificationSchema,
-  IntegrationMetadataSchema,
-} from "@trigger.dev/internal";
 import { PrismaClient, prisma } from "~/db.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
-import { z } from "zod";
 
 export class ProjectPresenter {
   #prismaClient: PrismaClient;
@@ -140,97 +133,6 @@ export class ProjectPresenter {
       organizationId: project.organizationId,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
-      jobs: project.jobs
-        .map((job) => {
-          //the best alias to select:
-          // 1. Logged-in user dev
-          // 2. Prod
-          // 3. Any other user's dev
-          const sortedAliases = job.aliases.sort((a, b) => {
-            if (
-              a.environment.type === "DEVELOPMENT" &&
-              a.environment.orgMember?.userId === userId
-            ) {
-              return -1;
-            }
-
-            if (
-              b.environment.type === "DEVELOPMENT" &&
-              b.environment.orgMember?.userId === userId
-            ) {
-              return 1;
-            }
-
-            if (a.environment.type === "PRODUCTION") {
-              return -1;
-            }
-
-            if (b.environment.type === "PRODUCTION") {
-              return 1;
-            }
-
-            return 0;
-          });
-
-          const alias = sortedAliases.at(0);
-
-          if (!alias) {
-            throw new Error(
-              `No aliases found for job ${job.id}, this should never happen.`
-            );
-          }
-
-          const eventSpecification = EventSpecificationSchema.parse(
-            alias.version.eventSpecification
-          );
-
-          const lastRun =
-            alias.version.runs[0] != null ? alias.version.runs[0] : undefined;
-
-          const integrations = alias.version.integrations.map(
-            (integration) => ({
-              key: integration.key,
-              title: integration.integration.slug,
-              icon:
-                integration.integration.definition.icon ??
-                integration.integration.definition.id,
-              setupStatus: integration.integration.setupStatus,
-            })
-          );
-
-          let properties: DisplayProperty[] = [];
-
-          if (eventSpecification.properties) {
-            properties = [...properties, ...eventSpecification.properties];
-          }
-
-          if (alias.version.properties) {
-            const versionProperties = z
-              .array(DisplayPropertySchema)
-              .parse(alias.version.properties);
-            properties = [...properties, ...versionProperties];
-          }
-
-          return {
-            id: job.id,
-            slug: job.slug,
-            title: job.title,
-            version: alias.version.version,
-            dynamic: job.dynamicTriggers.length > 0,
-            event: {
-              title: eventSpecification.title,
-              icon: eventSpecification.icon,
-              source: eventSpecification.source,
-            },
-            integrations,
-            hasIntegrationsRequiringAction: integrations.some(
-              (i) => i.setupStatus === "MISSING_FIELDS"
-            ),
-            lastRun,
-            properties,
-          };
-        })
-        .filter(Boolean),
       hasInactiveExternalTriggers: project._count.sources > 0,
       hasUnconfiguredIntegrations: project.organization._count.integrations > 0,
       environments: project.environments.map((environment) => ({

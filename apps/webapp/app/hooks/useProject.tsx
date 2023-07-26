@@ -6,7 +6,6 @@ import { useChanged } from "./useChanged";
 import { useTypedMatchesData } from "./useTypedMatchData";
 
 export type MatchedProject = UseDataFunctionReturn<typeof loader>["project"];
-export type ProjectJob = MatchedProject["jobs"][number];
 
 export const projectMatchId =
   "routes/_app.orgs.$organizationSlug.projects.$projectParam";

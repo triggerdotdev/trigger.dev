@@ -25,7 +25,7 @@ const openai = new OpenAI({
           {
             title: "Using the client",
             code: `
-new Job(client, {
+client.defineJob({
   id: "openai-tasks",
   name: "OpenAI Tasks",
   version: "0.0.1",

@@ -166,6 +166,29 @@ const createIssueComment: GithubAuthenticatedTask<
   },
 };
 
+const getIssue: GithubAuthenticatedTask<
+  { owner: string; repo: string; issueNumber: number },
+  OctokitClient["rest"]["issues"]["get"]
+> = {
+  onError,
+  run: async (params, client) => {
+    return client.rest.issues
+      .get({
+        owner: params.owner,
+        repo: params.repo,
+        issue_number: params.issueNumber,
+      })
+      .then((res) => res.data);
+  },
+  init: (params) => {
+    return {
+      name: "Get Issue",
+      params,
+      properties: [...repoProperties(params), ...issueProperties(params)],
+    };
+  },
+};
+
 const getRepo: GithubAuthenticatedTask<
   { owner: string; repo: string },
   OctokitClient["rest"]["repos"]["get"]
@@ -586,6 +609,7 @@ export const tasks = {
   addIssueAssignees,
   addIssueLabels,
   createIssueComment,
+  getIssue,
   getRepo,
   createIssueCommentWithReaction,
   addIssueCommentReaction,

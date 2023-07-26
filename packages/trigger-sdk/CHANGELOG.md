@@ -1,5 +1,19 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.18
+
+### Patch Changes
+
+- 1961b994: added defineJob in TriggerClient
+- 69af845a: Make isRetry context property backwards compatible and add it to the TriggerContext type
+- 0066971b: added isRetry in context run
+
+## 2.0.0-next.17
+
+### Patch Changes
+
+- 7f6bf992: Show the params to updateSource in the dashboard
+
 ## 2.0.0-next.16
 
 ### Patch Changes

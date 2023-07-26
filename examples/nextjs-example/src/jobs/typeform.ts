@@ -9,7 +9,7 @@ export const typeform = new Typeform({
   token: process.env.TYPEFORM_API_KEY!,
 });
 
-new Job(client, {
+client.defineJob({
   id: "typeform-playground",
   name: "Typeform Playground",
   version: "0.1.1",
@@ -45,7 +45,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+client.defineJob({
   id: "typeform-webhook-2",
   name: "Typeform Webhook 2",
   version: "0.1.1",

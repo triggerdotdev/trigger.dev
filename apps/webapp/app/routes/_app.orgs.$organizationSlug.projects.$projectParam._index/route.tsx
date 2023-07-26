@@ -1,3 +1,5 @@
+import { LoaderArgs } from "@remix-run/server-runtime";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import Confetti from "react-confetti";
 import { HowToSetupYourProject } from "~/components/helpContent/HelpContentText";
 import { JobsTable } from "~/components/jobs/JobsTable";
@@ -25,8 +27,39 @@ import {
   docsPath,
   projectIntegrationsPath,
   trimTrailingSlash,
+  ProjectParamSchema,
 } from "~/utils/pathBuilder";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { requireUserId } from "~/services/session.server";
+import { JobListPresenter } from "~/presenters/JobListPresenter.server";
+import { TextLink } from "~/components/primitives/TextLink";
+import {
+  GitHubLightIcon,
+  OpenAILightIcon,
+  ResendIcon,
+} from "@trigger.dev/companyicons";
+import { ClockIcon, CalendarDaysIcon, SlackIcon } from "lucide-react";
+
+export const loader = async ({ request, params }: LoaderArgs) => {
+  const userId = await requireUserId(request);
+  const { projectParam } = ProjectParamSchema.parse(params);
+
+  try {
+    const presenter = new JobListPresenter();
+    const jobs = await presenter.call({ userId, projectSlug: projectParam });
+
+    return typedjson({
+      jobs,
+    });
+  } catch (error) {
+    console.error(error);
+    throw new Response(undefined, {
+      status: 400,
+      statusText:
+        "Something went wrong, if this problem persists please contact support.",
+    });
+  }
+};
 
 export const handle: Handle = {
   breadcrumb: (match) => (
@@ -38,10 +71,9 @@ export const handle: Handle = {
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
+  const { jobs } = useTypedLoaderData<typeof loader>();
 
-  const { filterText, setFilterText, filteredItems } = useFilterJobs(
-    project.jobs
-  );
+  const { filterText, setFilterText, filteredItems } = useFilterJobs(jobs);
 
   const { width, height } = useWindowSize();
 
@@ -56,7 +88,7 @@ export default function Page() {
             <PageInfoProperty
               icon={"job"}
               label={"Active Jobs"}
-              value={project.jobs.length}
+              value={jobs.length}
             />
           </PageInfoGroup>
         </PageInfoRow>
@@ -80,7 +112,7 @@ export default function Page() {
             "rgb(217 70 239)",
           ]}
         /> */}
-        <Help defaultOpen={project.jobs.length === 0}>
+        <Help defaultOpen={jobs.length === 0}>
           {(open) => (
             <div
               className={cn(
@@ -89,10 +121,8 @@ export default function Page() {
               )}
             >
               <div>
-                {project.jobs.length > 0 &&
-                  project.jobs.some(
-                    (j) => j.hasIntegrationsRequiringAction
-                  ) && (
+                {jobs.length > 0 &&
+                  jobs.some((j) => j.hasIntegrationsRequiringAction) && (
                     <Callout
                       variant="error"
                       to={projectIntegrationsPath(organization, project)}
@@ -103,7 +133,7 @@ export default function Page() {
                     </Callout>
                   )}
                 <div className="mb-2 flex items-center justify-between gap-x-2">
-                  {project.jobs.length === 0 ? (
+                  {jobs.length === 0 ? (
                     <Header2>Jobs</Header2>
                   ) : (
                     <Input
@@ -115,17 +145,19 @@ export default function Page() {
                       onChange={(e) => setFilterText(e.target.value)}
                     />
                   )}
-                  <HelpTrigger title="How do I setup my Project?" />
+                  <HelpTrigger title="How do I add Trigger.dev to my Next.js app?" />
                 </div>
-                {project.jobs.length === 0 ? (
-                  <div
-                    className={
-                      "flex w-full justify-center gap-x-4 rounded-md border border-dashed border-indigo-800 px-5 py-8"
-                    }
-                  >
-                    <Paragraph variant="small">
-                      Your Jobs will appear here.
-                    </Paragraph>
+                {jobs.length === 0 ? (
+                  <div>
+                    <div
+                      className={
+                        "flex w-full flex-col justify-center gap-x-4 rounded-md border border-dashed border-indigo-800 px-5 py-8"
+                      }
+                    >
+                      <Paragraph variant="small">
+                        Your Jobs will appear here.
+                      </Paragraph>
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -134,14 +166,17 @@ export default function Page() {
                       noResultsText={`No Jobs match ${filterText}. Try a different search
               query.`}
                     />
-                    {project.jobs.length === 1 ? (
-                      <Callout
-                        variant="docs"
-                        to={docsPath("documentation/quickstart#your-first-job")}
-                        className="my-3"
-                      >
-                        Create your first Job in code
-                      </Callout>
+                    {jobs.length === 1 ? (
+                      <>
+                        <Callout
+                          variant="docs"
+                          to={docsPath("documentation/guides/create-a-job")}
+                          className="my-3"
+                        >
+                          Create your first Job in code
+                        </Callout>
+                        <ExampleJobs />
+                      </>
                     ) : (
                       <Callout
                         variant="docs"
@@ -154,7 +189,7 @@ export default function Page() {
                   </>
                 )}
               </div>
-              <HelpContent title="How to setup your Project">
+              <HelpContent title="How to add Trigger.dev to your Next.js app (3 mins)">
                 <HowToSetupYourProject />
               </HelpContent>
             </div>
@@ -162,5 +197,76 @@ export default function Page() {
         </Help>
       </PageBody>
     </PageContainer>
+  );
+}
+
+function ExampleJobs() {
+  return (
+    <div className="mt-6 flex w-full flex-col gap-y-2 rounded bg-slate-900 p-4">
+      <Header2 className="text-slate-300">Example Jobs</Header2>
+      <Paragraph variant="small">
+        If you want more inspiration or just want to dig into the code of a Job,
+        check out our{" "}
+        <TextLink href="https://github.com/triggerdotdev/examples">
+          examples repo
+        </TextLink>
+        .
+      </Paragraph>
+      <div className="h-[1px] w-full bg-slate-800" />
+      <div className="flex gap-1.5">
+        <ClockIcon className="h-4 w-4 pt-0.5 text-slate-100" />
+        <Paragraph variant="small">
+          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/delays">
+            Delays
+          </TextLink>{" "}
+          - Using delays inside Jobs
+        </Paragraph>
+      </div>
+      <div className="flex gap-1.5">
+        <CalendarDaysIcon className="h-4 w-4 pt-0.5 text-slate-100" />
+        <Paragraph variant="small">
+          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/scheduled">
+            Scheduled
+          </TextLink>{" "}
+          - Interval and cron scheduled Jobs
+        </Paragraph>
+      </div>
+      <div className="flex gap-1.5">
+        <GitHubLightIcon className="ml-0.5 h-4 w-4 pt-0.5" />
+        <Paragraph variant="small">
+          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/github">
+            GitHub
+          </TextLink>{" "}
+          - When a new GitHub issue is opened it adds a “Bug” label to it.
+        </Paragraph>
+      </div>
+      <div className="flex gap-1.5">
+        <OpenAILightIcon className="ml-0.5 h-4 w-4 pt-0.5" />
+        <Paragraph variant="small">
+          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/openai">
+            OpenAI
+          </TextLink>{" "}
+          - Generate images and jokes from a prompt
+        </Paragraph>
+      </div>
+      <div className="flex gap-1.5">
+        <ResendIcon className="ml-0.5 h-4 w-4 pt-0.5" />
+        <Paragraph variant="small">
+          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/resend">
+            Resend
+          </TextLink>{" "}
+          - Sends an email by submitting a form in the Next.js app
+        </Paragraph>
+      </div>{" "}
+      <div className="flex gap-1.5">
+        <SlackIcon className="ml-0.5 h-4 w-4 pt-0.5" />
+        <Paragraph variant="small">
+          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/slack">
+            Slack
+          </TextLink>{" "}
+          - Sends a Slack message when an event is received
+        </Paragraph>
+      </div>
+    </div>
   );
 }

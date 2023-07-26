@@ -114,17 +114,24 @@ export default function Page() {
           title="Trigger.dev Cloud Beta"
           description={
             <>
-              Enter your code to get access. If you don't have one you can
-              always{" "}
+              Enter your code to login and access now.
+              <br /> No code yet? You can{" "}
+              <TextLink
+                target="_blank"
+                href="https://bcymafitv0e.typeform.com/to/QQnotGJM#source=cloud-beta"
+              >
+                request a code
+              </TextLink>{" "}
+              or get started now by{" "}
               <TextLink
                 target="_blank"
                 href="https://trigger.dev/docs/documentation/guides/self-hosting"
                 trailingIcon="external-link"
                 trailingIconClassName="h-3 w-3 text-indigo-500 transition group-hover:text-indigo-400"
               >
-                self-host
+                self-hosting
               </TextLink>{" "}
-              Trigger.dev
+              Trigger.dev.
             </>
           }
         />
