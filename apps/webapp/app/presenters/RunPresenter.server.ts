@@ -25,25 +25,6 @@ type QueryTask = NonNullable<
   Awaited<ReturnType<RunPresenter["query"]>>
 >["tasks"][number];
 
-const taskSelect = {
-  runConnection: {
-    select: {
-      integration: {
-        select: {
-          definitionId: true,
-          title: true,
-          slug: true,
-          definition: {
-            select: {
-              icon: true,
-            },
-          },
-        },
-      },
-    },
-  },
-} as const;
-
 export class RunPresenter {
   #prismaClient: PrismaClient;
 
