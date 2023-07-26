@@ -2,10 +2,7 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import {
-  authenticateApiRequest,
-  getApiKeyFromRequest,
-} from "~/services/apiAuth.server";
+import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { apiCors } from "~/utils/apiCors";
 
 const ParamsSchema = z.object({
@@ -30,11 +27,30 @@ export async function loader({ request, params }: LoaderArgs) {
     );
   }
 
-  const { jobSlug } = ParamsSchema.parse(params);
+  const parsedParams = ParamsSchema.safeParse(params);
+
+  if (!parsedParams.success) {
+    return apiCors(
+      request,
+      json({ error: "Missing the job id" }, { status: 400 })
+    );
+  }
+
+  const { jobSlug } = parsedParams.data;
 
   const url = new URL(request.url);
-  const query = SearchQuerySchema.parse(Object.fromEntries(url.searchParams));
+  const parsedQuery = SearchQuerySchema.safeParse(
+    Object.fromEntries(url.searchParams)
+  );
 
+  if (!parsedQuery.success) {
+    return apiCors(
+      request,
+      json({ error: "Invalid or missing query parameters" }, { status: 400 })
+    );
+  }
+
+  const query = parsedQuery.data;
   const take = Math.min(query.take, 50);
 
   const runs = await prisma.jobRun.findMany({
