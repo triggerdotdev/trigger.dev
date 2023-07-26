@@ -37,10 +37,30 @@ export async function loader({ request, params }: LoaderArgs) {
     );
   }
 
-  const { runId } = ParamsSchema.parse(params);
+  const parsed = ParamsSchema.safeParse(params);
+
+  if (!parsed.success) {
+    return apiCors(
+      request,
+      json({ error: "Invalid or missing runId" }, { status: 400 })
+    );
+  }
+
+  const { runId } = parsed.data;
 
   const url = new URL(request.url);
-  const query = SearchQuerySchema.parse(Object.fromEntries(url.searchParams));
+  const parsedQuery = SearchQuerySchema.safeParse(
+    Object.fromEntries(url.searchParams)
+  );
+
+  if (!parsedQuery.success) {
+    return apiCors(
+      request,
+      json({ error: "Invalid or missing query parameters" }, { status: 400 })
+    );
+  }
+
+  const query = parsedQuery.data;
   const showTaskDetails = query.taskdetails && apiKeyResult.type === "PRIVATE";
 
   const take = Math.min(query.take, 50);
