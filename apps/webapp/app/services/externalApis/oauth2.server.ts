@@ -1,5 +1,6 @@
-import simpleOauth2 from "simple-oauth2";
+import jsonpointer from "jsonpointer";
 import * as crypto from "node:crypto";
+import simpleOauth2 from "simple-oauth2";
 import type {
   AccessToken,
   CreateUrlParams,
@@ -7,8 +8,6 @@ import type {
   OAuthClient,
   RefreshTokenParams,
 } from "./types";
-import jsonpointer from "jsonpointer";
-import { logger } from "../logger.server";
 
 export function getClientConfig({
   env,
