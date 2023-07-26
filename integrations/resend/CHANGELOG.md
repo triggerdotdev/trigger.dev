@@ -1,5 +1,13 @@
 # @trigger.dev/resend
 
+## 1.0.0-next.6
+
+### Patch Changes
+
+- de57592d: Sending emails should retry if there are errors
+- Updated dependencies [767e09ee]
+  - @trigger.dev/sdk@2.0.0-next.19
+
 ## 1.0.0-next.5
 
 ### Patch Changes

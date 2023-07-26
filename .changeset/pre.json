@@ -17,9 +17,11 @@
     "@trigger.dev/resend": "1.0.0-next.1",
     "@trigger.dev/cli": "0.2.1-next.8",
     "@trigger.dev/typeform": "1.0.0-next.2",
-    "@trigger.dev/plain": "1.0.0-next.2"
+    "@trigger.dev/plain": "1.0.0-next.2",
+    "@trigger.dev/supabase": "0.1.0"
   },
   "changesets": [
+    "afraid-bikes-draw",
     "afraid-hornets-cheer",
     "beige-maps-hug",
     "big-tables-search",
@@ -114,6 +116,7 @@
     "two-tools-hide",
     "wild-rats-mix",
     "wise-pumas-destroy",
+    "wise-shirts-visit",
     "young-birds-unite"
   ]
 }
