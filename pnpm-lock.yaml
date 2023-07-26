@@ -531,7 +531,7 @@ importers:
   integrations/resend:
     specifiers:
       '@trigger.dev/integration-kit': workspace:^2.0.0-next.5
-      '@trigger.dev/sdk': workspace:^2.0.0-next.16
+      '@trigger.dev/sdk': workspace:^2.0.0-next.19
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       resend: ^0.9.1
@@ -570,7 +570,7 @@ importers:
     specifiers:
       '@supabase/supabase-js': ^2.26.0
       '@trigger.dev/integration-kit': workspace:^2.0.0-next.5
-      '@trigger.dev/sdk': workspace:^2.0.0-next.16
+      '@trigger.dev/sdk': workspace:^2.0.0-next.19
       '@types/node': 18.x
       rimraf: ^3.0.2
       supabase-management-js: ^0.1.2
