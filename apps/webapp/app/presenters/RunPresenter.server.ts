@@ -24,10 +24,25 @@ export type Event = NonNullable<
 type QueryTask = NonNullable<
   Awaited<ReturnType<RunPresenter["query"]>>
 >["tasks"][number];
-type EnrichedTask = ReturnType<RunPresenter["enrichTasks"]>[number];
-type EnrichedTaskWithSubtasks = EnrichedTask & {
-  subtasks: EnrichedTaskWithSubtasks[];
-};
+
+const taskSelect = {
+  runConnection: {
+    select: {
+      integration: {
+        select: {
+          definitionId: true,
+          title: true,
+          slug: true,
+          definition: {
+            select: {
+              icon: true,
+            },
+          },
+        },
+      },
+    },
+  },
+} as const;
 
 export class RunPresenter {
   #prismaClient: PrismaClient;
@@ -152,6 +167,11 @@ export class RunPresenter {
                     definitionId: true,
                     title: true,
                     slug: true,
+                    definition: {
+                      select: {
+                        icon: true,
+                      },
+                    },
                   },
                 },
               },

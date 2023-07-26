@@ -1,7 +1,7 @@
 {
-  "name": "@trigger.dev/resend",
-  "version": "1.0.0-next.6",
-  "description": "The official Resend.com integration for Trigger.dev",
+  "name": "@trigger.dev/supabase",
+  "version": "0.1.1-next.0",
+  "description": "Trigger.dev integration for @supabase/supabase-js",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "publishConfig": {
@@ -13,22 +13,25 @@
     "dist/index.js.map"
   ],
   "devDependencies": {
-    "@trigger.dev/tsconfig": "workspace:*",
-    "@types/node": "18",
+    "@types/node": "18.x",
     "rimraf": "^3.0.2",
-    "tsup": "^6.5.0"
+    "tsup": "7.1.x",
+    "typescript": "4.9.4"
   },
   "scripts": {
     "clean": "rimraf dist",
     "build": "npm run clean && npm run build:tsup",
-    "build:tsup": "tsup"
+    "build:tsup": "tsup",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.26.0",
     "@trigger.dev/integration-kit": "workspace:^2.0.0-next.5",
     "@trigger.dev/sdk": "workspace:^2.0.0-next.19",
-    "resend": "^0.9.1"
+    "supabase-management-js": "^0.1.2",
+    "zod": "3.21.4"
   },
   "engines": {
-    "node": ">=16.8.0"
+    "node": ">=18.0.0"
   }
 }

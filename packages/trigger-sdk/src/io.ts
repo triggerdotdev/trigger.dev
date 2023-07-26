@@ -236,17 +236,17 @@ export class IO {
       key,
       {
         name: "Update Source",
-        description: `Update Source ${options.key}`,
+        description: "Update Source",
         properties: [
           {
             label: "key",
             text: options.key,
           },
         ],
+        params: options,
         redact: {
           paths: ["secret"],
         },
-        params: options,
       },
       async (task) => {
         return await this._apiClient.updateSource(

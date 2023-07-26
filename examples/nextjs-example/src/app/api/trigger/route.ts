@@ -13,5 +13,6 @@ import "@/jobs/slack";
 import "@/jobs/typeform";
 import "@/jobs/edgeCases";
 import "@/jobs/hooks";
+import "@/jobs/supabase";
 
 export const { POST, dynamic } = createAppRoute(client);

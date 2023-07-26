@@ -95,6 +95,52 @@ webapp:dev: If you didn't try to log in, you can safely ignore this email.
 ``
 4. Paste the magic link shown in your terminal into your browser to login.
 
+## Testing CLI changes
+To test CLI changes, follow the steps below:
+
+1. Build the CLI and watch for changes
+   
+   ```
+   cd packages/cli
+   pnpm run dev
+   ```
+
+2. Open a new Terminal window and run the webapp locally and then create a new project in the dashboard. Copy out the dev API key.
+
+3. Create a new temporary Next.js app in examples directory
+
+   ```
+   pnpm create next-app@latest
+   ```
+
+   Follow the prompts to create a TypeScript project using the App Directory.
+
+4. Then once that's finished, add the `@trigger.dev/cli` to the `devDependencies` of the newly created Next.js app's `package.json` file, like so:
+
+   ```
+   {
+      "devDependencies": { "@trigger.dev/cli": "workspace:*" }
+   }
+   ```
+
+5. Open a new terminal window, navigate into the example, and initialize the CLI:
+   
+   ```
+   cd examples/your-newly-created-nextjs-project
+   pnpm i
+   pnpm exec trigger-cli init
+   ```
+
+6. When prompted, select `self-hosted` and enter `localhost:3030` for your local version of the webapp. When asked for an API key, use the key you copied earlier.
+
+7. Run the CLI
+   ```
+   pnpm exec trigger-cli dev
+   ```
+
+8. After running the CLI, start your newly created Next.js project. You should now be able to see the changes.
+
+9. Please remember to delete the temporary project you created after you've tested the changes, and before you raise a PR.
 ## Add sample jobs
 
 The [examples/jobs-starter](./examples/jobs-starter/) project defines simple jobs you can get started with.
@@ -128,6 +174,26 @@ The [examples/jobs-starter](./examples/jobs-starter/) project defines simple job
 - If your PR refers to or fixes an issue, be sure to add `refs #XXX` or `fixes #XXX` to the PR description. Replacing `XXX` with the respective issue number. See more about [Linking a pull request to an issue
   ](https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue).
 - Be sure to fill the PR Template accordingly.
+
+## Adding changesets
+
+We use [changesets](https://github.com/changesets/changesets) to manage our package versions and changelogs. If you've never used changesets before, first read [their guide here](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md).
+
+If you are contributing a change to any packages in this monorepo (anything in either the `/packages` or `/integrations` directories), then you will need to add a changeset to your Pull Requests before they can be merged.
+
+To add a changeset, run the following command in the root of the repo
+
+```shell
+pnpm run changeset:add
+```
+
+Here's an example of creating a `patch` changeset for the `@trigger.dev/github` and `@trigger.dev/slack` packages (click to view):
+
+[![asciicast](https://asciinema.org/a/599228.svg)](https://asciinema.org/a/599228)
+
+You will be prompted to select which packages to include in the changeset. Only select the packages that you have made changes for (Important: never include a changeset for the `@trigger.dev/internal` package, as it's bundled with other packages and should not be published).
+
+Most of the time the changes you'll make are likely to be categorized as patch releases. If you feel like there is the need for a minor or major release of the package based on the changes being made, add the changeset as such and it will be discussed during PR review.
 
 ## Troubleshooting
 
