@@ -37,6 +37,13 @@ export const sendEmail: AuthenticatedTask<
         },
         ...subjectProperty,
       ],
+      retry: {
+        limit: 8,
+        factor: 1.8,
+        minTimeoutInMs: 500,
+        maxTimeoutInMs: 30000,
+        randomize: true,
+      },
     };
   },
 };
