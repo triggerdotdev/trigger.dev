@@ -115,7 +115,7 @@ To test CLI changes, follow the steps below:
 
    Follow the prompts to create a TypeScript project using the App Directory.
 
-4. Then once that's finished, add the ```@trigger.dev/cli``` to the ```devDependencies``` of the newly created Next.js app's ```package.json``` file, like so:
+4. Then once that's finished, add the `@trigger.dev/cli` to the `devDependencies` of the newly created Next.js app's `package.json` file, like so:
 
    ```
    {
@@ -131,7 +131,7 @@ To test CLI changes, follow the steps below:
    pnpm exec trigger-cli init
    ```
 
-6. When prompted, select ```self-hosted``` and enter ```localhost:3030``` for your local version of the webapp. When asked for an API key, use the key you copied earlier.
+6. When prompted, select `self-hosted` and enter `localhost:3030` for your local version of the webapp. When asked for an API key, use the key you copied earlier.
 
 7. Run the CLI
    ```
