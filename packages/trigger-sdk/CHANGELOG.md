@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.19
+
+### Patch Changes
+
+- 767e09ee: Added io.integration.runTask and initial @trigger.dev/supabase integration
+
 ## 2.0.0-next.18
 
 ### Patch Changes
