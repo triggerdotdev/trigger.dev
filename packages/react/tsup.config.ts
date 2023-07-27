@@ -2,19 +2,16 @@ import { defineConfig } from "tsup";
 
 export default defineConfig([
   {
-    name: "main",
-    entry: ["./src/index.ts"],
-    outDir: "./dist",
-    platform: "node",
-    format: ["cjs"],
-    legacyOutput: true,
+    target: "es2018",
+    external: ["react"],
     sourcemap: true,
-    clean: true,
-    bundle: true,
-    splitting: false,
     dts: true,
-    external: ["http", "https", "util", "events", "tty", "os", "timers"],
-    noExternal: ["@trigger.dev/internal"],
-    esbuildPlugins: [],
+    format: ["esm", "cjs"],
+    esbuildOptions(options) {
+      options.banner = {
+        js: '"use client";\n',
+      };
+      options.jsx = "automatic";
+    },
   },
 ]);

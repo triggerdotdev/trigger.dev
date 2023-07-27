@@ -801,7 +801,7 @@ importers:
       debug: ^4.3.4
       react: ^18.2.0
       rimraf: ^3.0.2
-      tsup: ^6.5.0
+      tsup: ^7.1.0
       tsx: ^3.12.1
       zod: 3.21.4
     dependencies:
@@ -816,7 +816,7 @@ importers:
       '@types/ws': 8.5.4
       react: 18.2.0
       rimraf: 3.0.2
-      tsup: 6.6.3
+      tsup: 7.1.0
       tsx: 3.12.2
 
   packages/trigger-sdk:
@@ -23355,6 +23355,41 @@ packages:
       sucrase: 3.32.0
       tree-kill: 1.2.2
       typescript: 4.9.5
+    transitivePeerDependencies:
+      - supports-color
+      - ts-node
+    dev: true
+
+  /tsup/7.1.0:
+    resolution: {integrity: sha512-mazl/GRAk70j8S43/AbSYXGgvRP54oQeX8Un4iZxzATHt0roW0t6HYDVZIXMw0ZQIpvr1nFMniIVnN5186lW7w==}
+    engines: {node: '>=16.14'}
+    hasBin: true
+    peerDependencies:
+      '@swc/core': ^1
+      postcss: ^8.4.12
+      typescript: '>=4.1.0'
+    peerDependenciesMeta:
+      '@swc/core':
+        optional: true
+      postcss:
+        optional: true
+      typescript:
+        optional: true
+    dependencies:
+      bundle-require: 4.0.1_esbuild@0.18.11
+      cac: 6.7.14
+      chokidar: 3.5.3
+      debug: 4.3.4
+      esbuild: 0.18.11
+      execa: 5.1.1
+      globby: 11.1.0
+      joycon: 3.1.1
+      postcss-load-config: 4.0.1
+      resolve-from: 5.0.0
+      rollup: 3.10.0
+      source-map: 0.8.0-beta.0
+      sucrase: 3.32.0
+      tree-kill: 1.2.2
     transitivePeerDependencies:
       - supports-color
       - ts-node

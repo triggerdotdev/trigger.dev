@@ -1,13 +1,10 @@
 {
-  "extends": "@trigger.dev/tsconfig/node18.json",
   "include": ["./src/**/*.ts", "./src/**/*.tsx", "tsup.config.ts"],
   "compilerOptions": {
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
-    "declaration": false,
-    "declarationMap": false,
-    "jsx": "react-jsx",
-    "lib": ["DOM", "DOM.Iterable"],
+    "jsx": "react",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "lib": ["es2015", "dom"],
     "paths": {
       "@trigger.dev/internal": ["../internal/src/index"],
       "@trigger.dev/internal/*": ["../internal/src/*"]

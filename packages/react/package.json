@@ -2,21 +2,15 @@
   "name": "@trigger.dev/react",
   "version": "1.0.0-next.2",
   "description": "Trigger.dev React SDK",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
   "publishConfig": {
     "access": "public"
   },
   "files": [
     "dist"
   ],
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "require": "./dist/index.js"
-    },
-    "./package.json": "./package.json"
-  },
   "devDependencies": {
     "@trigger.dev/internal": "workspace:*",
     "@trigger.dev/tsconfig": "workspace:*",
@@ -25,23 +19,20 @@
     "@types/ws": "^8.5.3",
     "react": "^18.2.0",
     "rimraf": "^3.0.2",
-    "tsup": "^6.5.0",
+    "tsup": "^7.1.0",
     "tsx": "^3.12.1"
   },
   "scripts": {
     "clean": "rimraf dist",
     "build": "npm run clean && npm run build:tsup",
-    "build:tsup": "tsup"
+    "build:tsup": "tsup src/index.ts"
   },
   "peerDependencies": {
-    "react": "^16.8.0 || ^17.0.0 || ^18.0.0"
+    "react": "^16.8.0 || ^17.0.0 || ^18"
   },
   "dependencies": {
     "@tanstack/react-query": "5.0.0-beta.2",
     "debug": "^4.3.4",
     "zod": "3.21.4"
-  },
-  "engines": {
-    "node": ">=16.8.0"
   }
 }

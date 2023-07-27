@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { QueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useState } from "react";
 
@@ -18,7 +19,11 @@ const ProviderContext = createContext<ProviderContextValue>(
 
 export function useTriggerProvider() {
   const value = useContext(ProviderContext);
-  verifyApiKey(value.publicApiKey);
+  if (!value) {
+    console.error(
+      "You must have a TriggerProvider above where you're using Trigger.dev hooks in your React tree."
+    );
+  }
   return value;
 }
 
@@ -38,6 +43,12 @@ export function TriggerProvider({
   children,
 }: TriggerProviderProps) {
   const [queryClient] = useState(() => new QueryClient());
+
+  if (!publicApiKey) {
+    throw new Error(
+      "TriggerProvider requires `publicApiKey` to be set with a value."
+    );
+  }
 
   verifyApiKey(publicApiKey);
 
