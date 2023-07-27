@@ -95,6 +95,25 @@ webapp:dev: If you didn't try to log in, you can safely ignore this email.
 ``
 4. Paste the magic link shown in your terminal into your browser to login.
 
+## Adding and running migrations
+1. Modify packages/database/prisma/schema.prisma file
+2. cd into packages/database folder and run
+
+   ```
+   pnpm run generate
+   ```
+   The above updates the prisma client generated into node_modules/.prisma/client folder. This helps with typing of relevant prisma models. It ensures typescript
+   recognizes fields added or removed from a model and type-checks appropriately.
+
+3. Apply the migrations by running
+
+   ```
+   pnpm run db:migrate:dev
+   ```
+   This creates a migration file and executes the migrations against your database and applies changes to the database schema(s)
+
+4. Commit generated migrations as well as changes to the schema.prisma file
+
 ## Testing CLI changes
 To test CLI changes, follow the steps below:
 
