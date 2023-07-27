@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/stripe",
-  "version": "0.0.1",
+  "version": "0.1.0-next.0",
   "description": "Trigger.dev integration for stripe",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@trigger.dev/integration-kit": "workspace:^2.0.0-next.5",
-    "@trigger.dev/sdk": "workspace:^2.0.0-next.19",
+    "@trigger.dev/sdk": "workspace:^2.0.0-next.21",
     "stripe": "^12.14.0",
     "zod": "3.21.4"
   },

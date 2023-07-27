@@ -19,7 +19,8 @@
     "@trigger.dev/typeform": "1.0.0-next.2",
     "@trigger.dev/plain": "1.0.0-next.2",
     "@trigger.dev/supabase": "0.1.0",
-    "@trigger.dev/react": "1.0.0-next.1"
+    "@trigger.dev/react": "1.0.0-next.1",
+    "@trigger.dev/stripe": "0.0.1"
   },
   "changesets": [
     "afraid-bikes-draw",
@@ -105,6 +106,7 @@
     "strong-cars-visit",
     "stupid-files-cough",
     "stupid-islands-collect",
+    "stupid-queens-relax",
     "sweet-adults-applaud",
     "sweet-cups-rescue",
     "sweet-houses-drum",
