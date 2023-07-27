@@ -1,4 +1,4 @@
-import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
+import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { TaskStatus } from "@trigger.dev/database";
 import {
@@ -22,82 +22,6 @@ const HeadersSchema = z.object({
   "idempotency-key": z.string(),
 });
 
-const SearchQuerySchema = z.object({
-  cursor: z.string().optional(),
-  take: z.coerce.number().default(50),
-});
-
-export async function loader({ request, params }: LoaderArgs) {
-  // Next authenticate the request
-  const authenticatedEnv = await authenticateApiRequest(request);
-
-  if (!authenticatedEnv) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
-  }
-
-  const { runId } = ParamsSchema.parse(params);
-
-  const url = new URL(request.url);
-  const query = SearchQuerySchema.parse(Object.fromEntries(url.searchParams));
-
-  const jobRun = await prisma.jobRun.findUnique({
-    where: {
-      id: runId,
-    },
-    include: {
-      tasks: {
-        where: {
-          parentId: null,
-        },
-        include: {
-          children: {
-            include: {
-              children: {
-                include: {
-                  children: {
-                    include: {
-                      children: {
-                        include: {
-                          children: true,
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-        orderBy: {
-          id: "asc",
-        },
-        take: query.take + 1,
-        cursor: query.cursor
-          ? {
-              id: query.cursor,
-            }
-          : undefined,
-      },
-    },
-  });
-
-  if (!jobRun) {
-    return json({ message: "Run not found" }, { status: 404 });
-  }
-
-  if (jobRun.environmentId !== authenticatedEnv.id) {
-    return json({ message: "Run not found" }, { status: 404 });
-  }
-
-  const tasks = jobRun.tasks.slice(0, query.take);
-  const nextTask = jobRun.tasks[query.take];
-
-  return json({
-    data: tasks,
-    nextCursor: nextTask ? nextTask.id : undefined,
-  });
-}
-
 export async function action({ request, params }: ActionArgs) {
   // Ensure this is a POST request
   if (request.method.toUpperCase() !== "POST") {
@@ -105,9 +29,9 @@ export async function action({ request, params }: ActionArgs) {
   }
 
   // Next authenticate the request
-  const authenticatedEnv = await authenticateApiRequest(request);
+  const authenticationResult = await authenticateApiRequest(request);
 
-  if (!authenticatedEnv) {
+  if (!authenticationResult) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
 

@@ -17,6 +17,9 @@ export type { NormalizedRequest, EventFilter } from "@trigger.dev/internal";
 
 export type Task = ServerTask;
 
+import { ApiEventLog } from "@trigger.dev/internal";
+export type SentEvent = ApiEventLog;
+
 /*
  * This function is used to create a redacted string that can be used in the headers of a fetch request.
  * It is used to prevent the string from being logged in trigger.dev.

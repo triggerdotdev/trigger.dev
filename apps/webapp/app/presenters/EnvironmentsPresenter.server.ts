@@ -68,6 +68,7 @@ export class EnvironmentsPresenter {
       select: {
         id: true,
         apiKey: true,
+        pkApiKey: true,
         type: true,
         slug: true,
         orgMember: {
@@ -186,16 +187,30 @@ export class EnvironmentsPresenter {
     }
 
     return {
-      environments: filtered.map((environment) => ({
-        id: environment.id,
-        apiKey: environment.apiKey,
-        type: environment.type,
-        slug: environment.slug,
-      })),
+      environments: filtered
+        .map((environment) => ({
+          id: environment.id,
+          apiKey: environment.apiKey,
+          pkApiKey: environment.pkApiKey,
+          type: environment.type,
+          slug: environment.slug,
+        }))
+        .sort((a, b) => {
+          const aIndex = environmentSortOrder.indexOf(a.type);
+          const bIndex = environmentSortOrder.indexOf(b.type);
+          return aIndex - bIndex;
+        }),
       clients,
     };
   }
 }
+
+const environmentSortOrder: RuntimeEnvironmentType[] = [
+  "DEVELOPMENT",
+  "PREVIEW",
+  "STAGING",
+  "PRODUCTION",
+];
 
 function endpointClient(
   endpoint: Pick<Endpoint, "id" | "slug" | "url" | "indexingHookIdentifier"> & {
