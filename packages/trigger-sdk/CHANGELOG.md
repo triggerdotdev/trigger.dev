@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.21
+
+### Patch Changes
+
+- 9351c051: Initial Stripe integration
+
 ## 2.0.0-next.20
 
 ### Patch Changes
