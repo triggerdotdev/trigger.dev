@@ -2,9 +2,23 @@
   "name": "@trigger.dev/react",
   "version": "1.0.0-next.2",
   "description": "Trigger.dev React SDK",
-  "main": "dist/index.js",
-  "module": "dist/index.mjs",
-  "types": "dist/index.d.ts",
+  "type": "module",
+  "types": "build/legacy/index.d.ts",
+  "main": "build/legacy/index.cjs",
+  "module": "build/legacy/index.js",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./build/modern/index.d.ts",
+        "default": "./build/modern/index.js"
+      },
+      "require": {
+        "types": "./build/modern/index.d.cts",
+        "default": "./build/modern/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
   "publishConfig": {
     "access": "public"
   },
@@ -17,15 +31,17 @@
     "@types/debug": "^4.1.7",
     "@types/react": "^18.0.21",
     "@types/ws": "^8.5.3",
+    "esbuild": "^0.18.13",
+    "esbuild-plugin-file-path-extensions": "^1.0.0",
     "react": "^18.2.0",
     "rimraf": "^3.0.2",
     "tsup": "^7.1.0",
     "tsx": "^3.12.1"
   },
   "scripts": {
-    "clean": "rimraf dist",
+    "clean": "rimraf build",
     "build": "npm run clean && npm run build:tsup",
-    "build:tsup": "tsup src/index.ts"
+    "build:tsup": "tsup"
   },
   "peerDependencies": {
     "react": "^16.8.0 || ^17.0.0 || ^18"
