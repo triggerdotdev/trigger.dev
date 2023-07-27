@@ -48,7 +48,7 @@ export function useRunDetails(
         });
       },
       enabled: !!runId,
-      refetchInterval: (data, query) => {
+      refetchInterval: (data) => {
         if (data?.status && runResolvedStatuses.includes(data.status)) {
           return false;
         }

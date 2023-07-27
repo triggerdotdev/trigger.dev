@@ -26,7 +26,7 @@ export function useEventDetails(eventId: string | undefined) {
           }
         );
       },
-      refetchInterval: (data, query) => {
+      refetchInterval: (data) => {
         if (
           data &&
           data.runs.length > 0 &&

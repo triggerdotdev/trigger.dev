@@ -33,10 +33,6 @@ type TriggerProviderProps = {
   children: React.ReactNode;
 };
 
-export const reactQueryContext = createContext<QueryClient | undefined>(
-  undefined
-);
-
 export function TriggerProvider({
   publicApiKey,
   apiUrl,
