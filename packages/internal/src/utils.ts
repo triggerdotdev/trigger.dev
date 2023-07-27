@@ -2,35 +2,29 @@
 
 import { EventFilter } from "./schemas";
 
-// This function should take two EventFilters and return a new EventFilter that is the result of merging the two.
-export function deepMergeFilters(
-  filter: EventFilter,
-  other: EventFilter
-): EventFilter {
-  const result: EventFilter = { ...filter };
+// This function should take any number of EventFilters and return a new EventFilter that is the result of merging of them.
+export function deepMergeFilters(...filters: EventFilter[]): EventFilter {
+  const result: EventFilter = {};
 
-  for (const key in other) {
-    if (other.hasOwnProperty(key)) {
-      const otherValue = other[key];
-
-      if (
-        typeof otherValue === "object" &&
-        !Array.isArray(otherValue) &&
-        otherValue !== null
-      ) {
+  for (const filter of filters) {
+    for (const key in filter) {
+      if (filter.hasOwnProperty(key)) {
         const filterValue = filter[key];
+        const existingValue = result[key];
 
         if (
-          filterValue &&
+          existingValue &&
+          typeof existingValue === "object" &&
           typeof filterValue === "object" &&
-          !Array.isArray(filterValue)
+          !Array.isArray(existingValue) &&
+          !Array.isArray(filterValue) &&
+          existingValue !== null &&
+          filterValue !== null
         ) {
-          result[key] = deepMergeFilters(filterValue, otherValue);
+          result[key] = deepMergeFilters(existingValue, filterValue);
         } else {
-          result[key] = { ...other[key] };
+          result[key] = filterValue;
         }
-      } else {
-        result[key] = other[key];
       }
     }
   }

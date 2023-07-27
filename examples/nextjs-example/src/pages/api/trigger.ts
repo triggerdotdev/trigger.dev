@@ -12,6 +12,7 @@ import "@/jobs/slack";
 import "@/jobs/typeform";
 import "@/jobs/edgeCases";
 import "@/jobs/supabase";
+import "@/jobs/stripe";
 
 import { createPagesRoute } from "@trigger.dev/nextjs";
 

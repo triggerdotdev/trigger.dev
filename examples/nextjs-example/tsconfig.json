@@ -87,6 +87,12 @@
       ],
       "@trigger.dev/supabase/*": [
         "../../integrations/supabase/src/*"
+      ],
+      "@trigger.dev/stripe": [
+        "../../integrations/stripe/src/index"
+      ],
+      "@trigger.dev/stripe/*": [
+        "../../integrations/stripe/src/*"
       ]
     },
     "plugins": [

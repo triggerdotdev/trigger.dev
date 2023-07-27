@@ -414,6 +414,7 @@ importers:
       '@trigger.dev/resend': workspace:*
       '@trigger.dev/sdk': workspace:*
       '@trigger.dev/slack': workspace:*
+      '@trigger.dev/stripe': workspace:*
       '@trigger.dev/supabase': workspace:*
       '@trigger.dev/typeform': workspace:*
       '@types/node': 18.15.13
@@ -438,6 +439,7 @@ importers:
       '@trigger.dev/resend': link:../../integrations/resend
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       '@trigger.dev/slack': link:../../integrations/slack
+      '@trigger.dev/stripe': link:../../integrations/stripe
       '@trigger.dev/supabase': link:../../integrations/supabase
       '@trigger.dev/typeform': link:../../integrations/typeform
       '@types/node': 18.15.13
@@ -565,6 +567,29 @@ importers:
       '@types/node': 18.15.13
       rimraf: 3.0.2
       tsup: 6.6.3
+
+  integrations/stripe:
+    specifiers:
+      '@trigger.dev/integration-kit': workspace:^2.0.0-next.5
+      '@trigger.dev/sdk': workspace:^2.0.0-next.19
+      '@types/node': 16.x
+      rimraf: ^3.0.2
+      stripe: ^12.14.0
+      stripe-event-types: ^2.4.0
+      tsup: 7.1.x
+      typescript: 4.9.4
+      zod: 3.21.4
+    dependencies:
+      '@trigger.dev/integration-kit': link:../../packages/integration-kit
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      stripe: 12.14.0
+      zod: 3.21.4
+    devDependencies:
+      '@types/node': 16.18.11
+      rimraf: 3.0.2
+      stripe-event-types: 2.4.0_stripe@12.14.0
+      tsup: 7.1.0_typescript@4.9.4
+      typescript: 4.9.4
 
   integrations/supabase:
     specifiers:
@@ -22447,6 +22472,21 @@ packages:
     dependencies:
       acorn: 8.10.0
     dev: true
+
+  /stripe-event-types/2.4.0_stripe@12.14.0:
+    resolution: {integrity: sha512-5ORZMW/WKjc31nsGMCUECOS+xVjtHhAFJJ8833ft3471hIjQrMbLMPBEb5AcJM8mKRRULpKmCVMDU0lLYrxERQ==}
+    peerDependencies:
+      stripe: '>=10.0.0'
+    dependencies:
+      stripe: 12.14.0
+    dev: true
+
+  /stripe/12.14.0:
+    resolution: {integrity: sha512-WrDlYH1p5jliY7uzSU5nLDY7OCIeRe6FkC0hhScpTGwMthP/Muk38WXGeggjDHKeXAGCs43jUheZ7Ud/NEAJdg==}
+    engines: {node: '>=12.*'}
+    dependencies:
+      '@types/node': 20.4.2
+      qs: 6.11.0
 
   /striptags/2.2.1:
     resolution: {integrity: sha512-vZTvmFP0IYu/zn8MXV6PrLb6VKbd9WGSEnlm4D5RNXS/+zYYlHrSfJgoBw1w56D6RJCr515er3BittRGQqihLA==}
