@@ -2,29 +2,15 @@
   "name": "@trigger.dev/react",
   "version": "1.0.0-next.2",
   "description": "Trigger.dev React SDK",
-  "type": "module",
-  "types": "build/legacy/index.d.ts",
-  "main": "build/legacy/index.js",
-  "module": "build/legacy/esm/index.js",
-  "exports": {
-    ".": {
-      "import": {
-        "types": "./build/modern/index.d.ts",
-        "default": "./build/modern/esm/index.js"
-      },
-      "require": {
-        "types": "./build/modern/index.d.ts",
-        "default": "./build/modern/index.js"
-      }
-    },
-    "./package.json": "./package.json"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "devDependencies": {
     "@trigger.dev/internal": "workspace:*",
     "@trigger.dev/tsconfig": "workspace:*",
@@ -39,7 +25,7 @@
     "tsx": "^3.12.1"
   },
   "scripts": {
-    "clean": "rimraf build",
+    "clean": "rimraf dist",
     "build": "npm run clean && npm run build:tsup",
     "build:tsup": "tsup"
   },
