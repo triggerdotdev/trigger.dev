@@ -575,7 +575,7 @@ importers:
   integrations/stripe:
     specifiers:
       '@trigger.dev/integration-kit': workspace:^2.0.0-next.5
-      '@trigger.dev/sdk': workspace:^2.0.0-next.19
+      '@trigger.dev/sdk': workspace:^2.0.0-next.21
       '@types/node': 16.x
       rimraf: ^3.0.2
       stripe: ^12.14.0
