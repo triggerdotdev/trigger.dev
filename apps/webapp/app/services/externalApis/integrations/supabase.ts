@@ -50,6 +50,7 @@ export const supabaseManagement: Integration = {
   icon: "supabase",
   name: "Supabase Management",
   packageName: "@trigger.dev/supabase",
+  description: "Use database webhooks, manage your organizations and projects.",
   authenticationMethods: {
     apikey: {
       type: "apikey",
