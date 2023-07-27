@@ -17,6 +17,20 @@ export async function findEnvironmentByApiKey(apiKey: string) {
   return environment;
 }
 
+export async function findEnvironmentByPublicApiKey(apiKey: string) {
+  const environment = await prisma.runtimeEnvironment.findUnique({
+    where: {
+      pkApiKey: apiKey,
+    },
+    include: {
+      project: true,
+      organization: true,
+    },
+  });
+
+  return environment;
+}
+
 export async function getEnvironmentForOrganization(
   organizationSlug: string,
   slug: string

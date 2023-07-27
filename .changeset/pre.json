@@ -18,7 +18,8 @@
     "@trigger.dev/cli": "0.2.1-next.8",
     "@trigger.dev/typeform": "1.0.0-next.2",
     "@trigger.dev/plain": "1.0.0-next.2",
-    "@trigger.dev/supabase": "0.1.0"
+    "@trigger.dev/supabase": "0.1.0",
+    "@trigger.dev/react": "1.0.0-next.1"
   },
   "changesets": [
     "afraid-bikes-draw",
@@ -51,6 +52,8 @@
     "gentle-guests-leave",
     "giant-scissors-hug",
     "great-meals-listen",
+    "green-flowers-wonder",
+    "happy-bulldogs-jog",
     "healthy-houses-build",
     "healthy-rockets-cry",
     "heavy-eyes-own",
@@ -113,6 +116,7 @@
     "thirty-apes-happen",
     "tidy-planes-compete",
     "tough-walls-share",
+    "two-kangaroos-repeat",
     "two-tools-hide",
     "wild-rats-mix",
     "wise-pumas-destroy",

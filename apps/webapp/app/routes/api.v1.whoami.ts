@@ -4,11 +4,11 @@ import { authenticateApiRequest } from "~/services/apiAuth.server";
 
 export async function loader({ request }: LoaderArgs) {
   // Next authenticate the request
-  const authenticatedEnv = await authenticateApiRequest(request);
+  const authenticationResult = await authenticateApiRequest(request);
 
-  if (!authenticatedEnv) {
+  if (!authenticationResult) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
 
-  return json(authenticatedEnv);
+  return json(authenticationResult.environment);
 }

@@ -6,6 +6,11 @@ import {
   CreateRunBody,
   CreateRunResponseBodySchema,
   FailTaskBodyInput,
+  GetEventSchema,
+  GetRunOptionsWithTaskDetails,
+  GetRunSchema,
+  GetRunsOptions,
+  GetRunsSchema,
   LogLevel,
   Logger,
   RegisterScheduleResponseBodySchema,
@@ -20,10 +25,11 @@ import {
   TriggerSource,
   TriggerSourceSchema,
   UpdateTriggerSourceBody,
+  urlWithSearchParams,
 } from "@trigger.dev/internal";
 
-import { z } from "zod";
 import fetch, { type RequestInit } from "node-fetch";
+import { z } from "zod";
 
 export type ApiClientOptions = {
   apiKey?: string;
@@ -345,6 +351,66 @@ export class ApiClient {
     );
 
     return response;
+  }
+
+  async getEvent(eventId: string) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Getting Event", {
+      eventId,
+    });
+
+    return await zodfetch(
+      GetEventSchema,
+      `${this.#apiUrl}/api/v1/events/${eventId}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      }
+    );
+  }
+
+  async getRun(runId: string, options?: GetRunOptionsWithTaskDetails) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Getting Run", {
+      runId,
+    });
+
+    return await zodfetch(
+      GetRunSchema,
+      urlWithSearchParams(`${this.#apiUrl}/api/v1/runs/${runId}`, options),
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      }
+    );
+  }
+
+  async getRuns(jobSlug: string, options?: GetRunsOptions) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Getting Runs", {
+      jobSlug,
+    });
+
+    return await zodfetch(
+      GetRunsSchema,
+      urlWithSearchParams(
+        `${this.#apiUrl}/api/v1/jobs/${jobSlug}/runs`,
+        options
+      ),
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      }
+    );
   }
 
   async #apiKey() {

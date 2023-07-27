@@ -280,10 +280,10 @@ model OrgMemberInvite {
 }
 
 model RuntimeEnvironment {
-  id       String  @id @default(cuid())
+  id       String @id @default(cuid())
   slug     String
-  apiKey   String  @unique
-  pkApiKey String?
+  apiKey   String @unique
+  pkApiKey String @unique
 
   type RuntimeEnvironmentType @default(DEVELOPMENT)
 

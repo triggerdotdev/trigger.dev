@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.20
+
+### Patch Changes
+
+- b314178d: Added getEvent(), getRun() and getRuns() methods to the client
+
 ## 2.0.0-next.19
 
 ### Patch Changes

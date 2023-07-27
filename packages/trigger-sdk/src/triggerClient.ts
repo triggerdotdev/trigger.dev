@@ -1,5 +1,7 @@
 import {
   ErrorWithStackSchema,
+  GetRunOptionsWithTaskDetails,
+  GetRunsOptions,
   HandleTriggerSource,
   HttpSourceRequestHeadersSchema,
   IndexEndpointResponse,
@@ -28,6 +30,7 @@ import {
   ResumeWithTaskError,
   RetryWithTaskError,
 } from "./errors";
+import { IntegrationClient, TriggerIntegration } from "./integrations";
 import { IO } from "./io";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { Job, JobOptions } from "./job";
@@ -40,7 +43,6 @@ import type {
   TriggerContext,
   TriggerPreprocessContext,
 } from "./types";
-import { IntegrationClient, TriggerIntegration } from "./integrations";
 
 const registerSourceEvent: EventSpecification<RegisterSourceEvent> = {
   name: REGISTER_SOURCE_EVENT,
@@ -586,6 +588,18 @@ export class TriggerClient {
 
   async unregisterSchedule(id: string, key: string) {
     return this.#client.unregisterSchedule(this.id, id, key);
+  }
+
+  async getEvent(eventId: string) {
+    return this.#client.getEvent(eventId);
+  }
+
+  async getRun(runId: string, options?: GetRunOptionsWithTaskDetails) {
+    return this.#client.getRun(runId, options);
+  }
+
+  async getRuns(jobSlug: string, options?: GetRunsOptions) {
+    return this.#client.getRuns(jobSlug, options);
   }
 
   authorized(

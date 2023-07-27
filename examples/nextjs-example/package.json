@@ -13,11 +13,12 @@
     "@trigger.dev/github": "workspace:*",
     "@trigger.dev/nextjs": "workspace:*",
     "@trigger.dev/openai": "workspace:*",
+    "@trigger.dev/plain": "workspace:*",
+    "@trigger.dev/react": "workspace:*",
+    "@trigger.dev/resend": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "@trigger.dev/slack": "workspace:*",
-    "@trigger.dev/resend": "workspace:*",
     "@trigger.dev/typeform": "workspace:*",
-    "@trigger.dev/plain": "workspace:*",
     "@types/node": "18.15.13",
     "@types/react": "^18.0.21",
     "@types/react-dom": "^18.0.6",
@@ -25,18 +26,19 @@
     "node-fetch": "2.6.x",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-query": "^3.39.3",
     "typescript": "5.0.4",
     "zod": "3.21.4",
     "@trigger.dev/supabase": "workspace:*",
     "@trigger.dev/stripe": "workspace:*"
   },
   "devDependencies": {
+    "@trigger.dev/cli": "workspace:*",
+    "@types/node-fetch": "2.6.x",
     "eslint": "8.42.0",
     "eslint-config-next": "13.4.6",
-    "@types/node-fetch": "2.6.x",
     "msw": "^0.47.0",
-    "ts-loader": "^9.4.2",
-    "@trigger.dev/cli": "workspace:*"
+    "ts-loader": "^9.4.2"
   },
   "trigger.dev": {
     "endpointId": "nextjs-example"
