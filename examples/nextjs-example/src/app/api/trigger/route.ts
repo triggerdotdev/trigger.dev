@@ -14,5 +14,6 @@ import "@/jobs/typeform";
 import "@/jobs/edgeCases";
 import "@/jobs/hooks";
 import "@/jobs/supabase";
+import "@/jobs/stripe";
 
 export const { POST, dynamic } = createAppRoute(client);

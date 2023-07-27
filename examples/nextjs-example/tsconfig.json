@@ -18,8 +18,6 @@
       "@/*": ["./src/*"],
       "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
       "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
-      "@trigger.dev/react": ["../../packages/react/src/index"],
-      "@trigger.dev/react/*": ["../../packages/react/src/*"],
       "@trigger.dev/nextjs": ["../../packages/nextjs/src/index"],
       "@trigger.dev/nextjs/*": ["../../packages/nextjs/src/*"],
       "@trigger.dev/internal": ["../../packages/internal/src/index"],
@@ -43,7 +41,9 @@
       "@trigger.dev/plain": ["../../integrations/plain/src/index"],
       "@trigger.dev/plain/*": ["../../integrations/plain/src/*"],
       "@trigger.dev/supabase": ["../../integrations/supabase/src/index"],
-      "@trigger.dev/supabase/*": ["../../integrations/supabase/src/*"]
+      "@trigger.dev/supabase/*": ["../../integrations/supabase/src/*"],
+      "@trigger.dev/stripe": ["../../integrations/stripe/src/index"],
+      "@trigger.dev/stripe/*": ["../../integrations/stripe/src/*"]
     },
     "plugins": [
       {
