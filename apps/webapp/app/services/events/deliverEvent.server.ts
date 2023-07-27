@@ -33,7 +33,9 @@ export class DeliverEventService {
         const possibleEventDispatchers = await tx.eventDispatcher.findMany({
           where: {
             environmentId: eventRecord.environmentId,
-            event: {in:eventRecord.name},
+             event: {
+              has: eventRecord.name,
+            },
             source: eventRecord.source,
             enabled: true,
             manual: false,

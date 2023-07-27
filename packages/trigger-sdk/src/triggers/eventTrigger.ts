@@ -11,7 +11,7 @@ import { EventSpecification, Trigger } from "../types";
 type EventTriggerOptions<TEventSpecification extends EventSpecification<any>> =
   {
     event: TEventSpecification;
-    name?: string;
+     name?: string | string[];
     source?: string;
     filter?: EventFilter;
   };
@@ -57,7 +57,7 @@ export class EventTrigger<TEventSpecification extends EventSpecification<any>>
 /** Configuration options for an EventTrigger */
 type TriggerOptions<TEvent> = {
   /** The name of the event you are subscribing to. Must be an exact match (case sensitive). */
-  name: string;
+   name: string | string[];
   /** A [Zod](https://trigger.dev/docs/documentation/guides/zod) schema that defines the shape of the event payload.
    * The default is `z.any()` which is `any`.
    * */
