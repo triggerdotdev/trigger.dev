@@ -105,7 +105,7 @@ webapp:dev: If you didn't try to log in, you can safely ignore this email.
    The above updates the prisma client generated into node_modules/.prisma/client folder. This helps with typing of relevant prisma models. It ensures typescript
    recognizes fields added or removed from a model and type-checks appropriately.
 
-3. Apply the migrations by running
+3. Generate and apply the migrations by running
 
    ```
    pnpm run db:migrate:dev
