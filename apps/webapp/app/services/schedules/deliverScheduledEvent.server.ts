@@ -1,7 +1,4 @@
-import {
-  SCHEDULED_EVENT,
-  ScheduledPayload,
-} from "../../../../../packages/core/src";
+import { SCHEDULED_EVENT, ScheduledPayload } from "@trigger.dev/core";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { NextScheduledEventService } from "./nextScheduledEvent.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";

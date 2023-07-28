@@ -10,7 +10,7 @@ import {
   JobMetadata,
   SCHEDULED_EVENT,
   TriggerMetadata,
-} from "../../../../../packages/core/src";
+} from "@trigger.dev/core";
 import { DEFAULT_MAX_CONCURRENT_RUNS } from "~/consts";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";

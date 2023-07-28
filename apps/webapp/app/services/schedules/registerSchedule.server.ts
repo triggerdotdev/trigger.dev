@@ -1,4 +1,4 @@
-import { RegisterScheduleBody } from "../../../../../packages/core/src";
+import { RegisterScheduleBody } from "@trigger.dev/core";
 import { $transaction, PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";

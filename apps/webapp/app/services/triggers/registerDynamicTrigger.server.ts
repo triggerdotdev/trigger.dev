@@ -1,4 +1,4 @@
-import type { DynamicTriggerEndpointMetadata } from "../../../../../packages/core/src";
+import type { DynamicTriggerEndpointMetadata } from "@trigger.dev/core";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";

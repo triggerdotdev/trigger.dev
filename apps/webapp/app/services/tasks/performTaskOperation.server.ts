@@ -14,7 +14,7 @@ import {
   FetchRetryStrategy,
   RedactString,
   calculateRetryAt,
-} from "../../../../../packages/core/src";
+} from "@trigger.dev/core";
 import { safeJsonFromResponse } from "~/utils/json";
 import { logger } from "../logger.server";
 import { formatUnknownError } from "~/utils/formatErrors.server";

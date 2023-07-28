@@ -2,10 +2,7 @@ import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
 import { z } from "zod";
-import {
-  RawEventSchema,
-  SendEventOptionsSchema,
-} from "../../../../../packages/core/src";
+import { RawEventSchema, SendEventOptionsSchema } from "@trigger.dev/core";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
 
 const SendEventOutputSchema = z.object({
