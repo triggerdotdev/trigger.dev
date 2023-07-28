@@ -1,5 +1,5 @@
 import type { Task, TaskAttempt } from "@trigger.dev/database";
-import { ServerTask } from "../../../../packages/core/src";
+import { ServerTask } from "@trigger.dev/core";
 
 export type TaskWithAttempts = Task & { attempts: TaskAttempt[] };
 

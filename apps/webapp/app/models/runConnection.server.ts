@@ -1,5 +1,5 @@
 import type { Integration, RunConnection } from "@trigger.dev/database";
-import type { ConnectionAuth } from "../../../../packages/core/src";
+import type { ConnectionAuth } from "@trigger.dev/core";
 import type { ConnectionWithSecretReference } from "~/services/externalApis/integrationAuthRepository.server";
 import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
 

@@ -13,7 +13,7 @@ import {
   RegisterTriggerBodySchema,
   RunJobBody,
   RunJobResponseSchema,
-} from "../../../../packages/core/src";
+} from "@trigger.dev/core";
 import { safeBodyFromResponse } from "~/utils/json";
 import { logger } from "./logger.server";
 

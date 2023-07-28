@@ -3,7 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import {
   RegisterScheduleBodySchema,
   RegisterScheduleResponseBodySchema,
-} from "../../../../packages/core/src";
+} from "@trigger.dev/core";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";

@@ -1,5 +1,5 @@
 import { User } from "@trigger.dev/database";
-import { ScheduleMetadataSchema } from "../../../../packages/core/src";
+import { ScheduleMetadataSchema } from "@trigger.dev/core";
 import { PrismaClient, prisma } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
