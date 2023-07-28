@@ -1,5 +1,11 @@
 # @trigger.dev/supabase
 
+## 0.1.1-next.1
+
+### Patch Changes
+
+- 1fef1fa5: Adding `native` property to get access to underlying client in local auth only integrations
+
 ## 0.1.1-next.0
 
 ### Patch Changes
