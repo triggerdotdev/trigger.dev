@@ -1,14 +1,23 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { GetEventSchema } from "@trigger.dev/core";
+import { UseQueryResult, useQuery } from "@tanstack/react-query";
+import { GetEvent, GetEventSchema } from "@trigger.dev/core";
 import { useTriggerProvider } from "./TriggerProvider";
 import { zodfetch } from "./fetch";
-import { RunDetailOptions, runResolvedStatuses, useRunDetails } from "./runs";
+import {
+  RunDetailOptions,
+  UseRunDetailsResult,
+  runResolvedStatuses,
+  useRunDetails,
+} from "./runs";
 
 const defaultRefreshInterval = 1000;
 
-export function useEventDetails(eventId: string | undefined) {
+export type UseEventDetailsResult = UseQueryResult<GetEvent>;
+
+export function useEventDetails(
+  eventId: string | undefined
+): UseEventDetailsResult {
   const { apiUrl, publicApiKey, queryClient } = useTriggerProvider();
 
   return useQuery(
@@ -46,7 +55,7 @@ export function useEventDetails(eventId: string | undefined) {
 export function useEventRunDetails(
   eventId: string,
   options?: RunDetailOptions
-) {
+): UseRunDetailsResult {
   const event = useEventDetails(eventId);
   return useRunDetails(event.data?.runs[0]?.id, options);
 }

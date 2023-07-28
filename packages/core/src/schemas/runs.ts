@@ -75,6 +75,8 @@ export const GetRunSchema = RunSchema.extend({
   nextCursor: z.string().optional(),
 });
 
+export type GetRun = z.infer<typeof GetRunSchema>;
+
 const GetRunsOptionsSchema = z.object({
   /** You can use this to get more tasks, if there are more than are returned in a single batch @default undefined */
   cursor: z.string().optional(),

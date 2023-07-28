@@ -5,7 +5,7 @@ export default defineConfig([
     name: "main",
     entry: ["./src/index.ts"],
     outDir: "./dist",
-    platform: "node",
+    platform: "neutral",
     format: ["cjs"],
     legacyOutput: true,
     sourcemap: true,
