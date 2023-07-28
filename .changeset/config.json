@@ -7,11 +7,5 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": [
-    "webapp",
-    "emails",
-    "@examples/nextjs",
-    "@examples/jobs-starter",
-    "nextjs-12"
-  ]
+  "ignore": ["webapp", "emails"]
 }
