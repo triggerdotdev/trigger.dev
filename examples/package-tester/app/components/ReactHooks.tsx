@@ -1,13 +1,25 @@
 "use client";
 
-import { useEventRunDetails, useTriggerProvider } from "@trigger.dev/react";
+import {
+  useEventDetails,
+  useEventRunDetails,
+  useRunDetails,
+  useTriggerProvider,
+} from "@trigger.dev/react";
 import Link from "next/link";
 
 export function ReactHooks({ eventId }: { eventId: string }) {
   const providerData = useTriggerProvider();
-  const { isLoading, isError, data, error } = useEventRunDetails(eventId);
+  const { isSuccess, isLoading, isError, data, error } =
+    useEventRunDetails(eventId);
 
-  if (isError) {
+  const event = useEventDetails(eventId);
+  console.log("event.data", event.data);
+
+  const run = useRunDetails(event.data?.runs?.at(0)?.id);
+  console.log("run.data", run.data);
+
+  if (!isSuccess) {
     return <p>Error</p>;
   }
 
@@ -46,7 +58,7 @@ export function ReactHooks({ eventId }: { eventId: string }) {
                     : "progress"
                 }
                 name={task.displayKey ?? task.name ?? ""}
-                icon={task.icon}
+                icon={task.icon ?? undefined}
               />
             ))}
           </>
