@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.22
+
+### Patch Changes
+
+- 64477f6b: Adding some type helpers for getting the payload and IO types from jobs and triggers
+
 ## 2.0.0-next.21
 
 ### Patch Changes
