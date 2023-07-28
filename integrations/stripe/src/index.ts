@@ -26,22 +26,41 @@ type StripeIntegration = TriggerIntegration<StripeIntegrationClient>;
 export class Stripe implements StripeIntegration {
   client: StripeIntegrationClient;
 
+  /**
+   * The native Stripe client. This is exposed for use outside of Trigger.dev jobs
+   *
+   * @example
+   * ```ts
+   * import { Stripe } from "@trigger.dev/stripe";
+   *
+   * const stripe = new Stripe({
+   *  id: "stripe",
+   *  apiKey: process.env.STRIPE_API_KEY!,
+   * });
+   *
+   * const customer = await stripe.native.customers.create({}); // etc.
+   * ```
+   */
+  public readonly native: StripeClient;
+
   constructor(private options: StripeIntegrationOptions) {
+    this.native = new StripeClient(options.apiKey, {
+      apiVersion: "2022-11-15",
+      typescript: true,
+      timeout: 10000,
+      maxNetworkRetries: 0,
+      stripeAccount: options.stripeAccount,
+      appInfo: {
+        name: "Trigger.dev Stripe Integration",
+        version: "0.1.0",
+        url: "https://trigger.dev",
+      },
+    });
+
     this.client = {
       tasks,
       usesLocalAuth: true,
-      client: new StripeClient(options.apiKey, {
-        apiVersion: "2022-11-15",
-        typescript: true,
-        timeout: 10000,
-        maxNetworkRetries: 0,
-        stripeAccount: options.stripeAccount,
-        appInfo: {
-          name: "Trigger.dev Stripe Integration",
-          version: "0.1.0",
-          url: "https://trigger.dev",
-        },
-      }),
+      client: this.native,
       auth: {
         apiKey: options.apiKey,
       },
