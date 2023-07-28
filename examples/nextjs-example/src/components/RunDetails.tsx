@@ -47,7 +47,7 @@ export function RunData({ id }: { id: string }) {
     <>
       <div>Run status: {data.status}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-        {data.tasks.map((task) => (
+        {data.tasks?.map((task) => (
           <div key={task.id} style={{ display: "flex", gap: "0.5rem" }}>
             <h4>{task.name}</h4>
             <p>Status: {task.status}</p>
@@ -77,7 +77,7 @@ export function EventRunData({ id }: { id: string }) {
     <>
       <div>Run status: {data.status}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-        {data.tasks.map((task) => (
+        {data.tasks?.map((task) => (
           <div
             key={task.id}
             style={{ display: "flex", gap: "0.3rem", alignItems: "center" }}
