@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "concurrently --kill-others npm:dev:*",
+    "dev:next": "next dev",
+    "dev:trigger": "npx @trigger.dev/cli dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -21,9 +23,6 @@
     "@trigger.dev/stripe": "workspace:*",
     "@trigger.dev/supabase": "workspace:*",
     "@trigger.dev/typeform": "workspace:*",
-    "@types/node": "20.4.5",
-    "@types/react": "18.2.17",
-    "@types/react-dom": "18.2.7",
     "autoprefixer": "10.4.14",
     "eslint": "8.45.0",
     "eslint-config-next": "13.4.12",
@@ -33,5 +32,15 @@
     "react-dom": "18.2.0",
     "tailwindcss": "3.3.3",
     "typescript": "5.1.6"
+  },
+  "devDependencies": {
+    "@types/node": "20.4.5",
+    "@types/react": "18.2.17",
+    "@types/react-dom": "18.2.7",
+    "@trigger.dev/cli": "workspace:*",
+    "concurrently": "^8.2.0"
+  },
+  "trigger.dev": {
+    "endpointId": "package-tester"
   }
 }
