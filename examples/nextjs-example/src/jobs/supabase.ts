@@ -1,6 +1,14 @@
 import { Database } from "@/supabase.types";
 import { client } from "@/trigger";
-import { Job, eventTrigger } from "@trigger.dev/sdk";
+import {
+  type IntegrationIO,
+  Job,
+  eventTrigger,
+  type JobPayload,
+  type JobIO,
+  type TriggerPayload,
+  type IOWithIntegrations,
+} from "@trigger.dev/sdk";
 import { SupabaseManagement, Supabase } from "@trigger.dev/supabase";
 import { z } from "zod";
 
@@ -24,6 +32,15 @@ const supabaseDB = new Supabase<Database>({
   supabaseUrl: `https://${process.env.SUPABASE_ID}.supabase.co`,
   supabaseKey: process.env.SUPABASE_KEY!,
 });
+
+async function doPlaygroundStuff(
+  io: IntegrationIO<typeof supabaseManagementKey>,
+  ref: string
+) {
+  await io.getPGConfig("get-pg-config", {
+    ref,
+  });
+}
 
 new Job(client, {
   id: "supabase-playground",
@@ -87,7 +104,7 @@ new Job(client, {
   },
 });
 
-new Job(client, {
+const createTodoJob = new Job(client, {
   id: "supabase-create-todo",
   name: "Supabase Create Todo",
   version: "0.1.1",
@@ -126,20 +143,63 @@ new Job(client, {
   },
 });
 
+type CreateTodo = JobPayload<typeof createTodoJob>;
+type CreateTodoIO = JobIO<typeof createTodoJob>;
+
+async function runCreateTodo(payload: CreateTodo, io: CreateTodoIO) {
+  const newTodo = await io.supabaseDB.runTask(
+    "create-todo",
+    async (db) => {
+      const { data, error } = await db
+        .from("todos")
+        .insert({
+          contents: payload.contents,
+          user_id: payload.user_id,
+          is_complete: false,
+        })
+        .select();
+
+      if (error) throw error;
+
+      return data;
+    },
+    {
+      name: "Create Todo",
+      properties: [{ label: "Contents", text: payload.contents }],
+    }
+  );
+}
+
+const createProjectTrigger = eventTrigger({
+  name: "supabase.create",
+  schema: z.object({
+    name: z.string(),
+    organization_id: z.string(),
+    plan: z.enum(["free", "pro"]),
+    region: z.enum(["us-east-1", "us-west-1"]),
+    password: z.string(),
+  }),
+});
+
+async function doRun(
+  payload: TriggerPayload<typeof createProjectTrigger>,
+  io: IOWithIntegrations<{ supabase: typeof supabase }>
+) {
+  await io.supabase.createProject("create-project", {
+    name: payload.name,
+    organization_id: payload.organization_id,
+    plan: payload.plan,
+    region: payload.region,
+    kps_enabled: true,
+    db_pass: payload.password,
+  });
+}
+
 new Job(client, {
   id: "supabase-create-project",
   name: "Supabase Create Project",
   version: "0.1.1",
-  trigger: eventTrigger({
-    name: "supabase.create",
-    schema: z.object({
-      name: z.string(),
-      organization_id: z.string(),
-      plan: z.enum(["free", "pro"]),
-      region: z.enum(["us-east-1", "us-west-1"]),
-      password: z.string(),
-    }),
-  }),
+  trigger: createProjectTrigger,
   integrations: {
     supabase,
   },
