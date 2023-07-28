@@ -343,7 +343,7 @@ export function runCompletedPath(runPath: string) {
 
 // Docs
 export function docsRoot() {
-  return "https://docs.trigger.dev";
+  return "https://trigger.dev/docs";
 }
 
 export function docsPath(path: string) {

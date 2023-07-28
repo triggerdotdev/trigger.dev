@@ -175,7 +175,7 @@ function PossibleIntegrationsList({
         value={filterText}
         onChange={(e) => setFilterText(e.target.value)}
       />
-      <div className="mt-2 grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-[repeat(auto-fill,_minmax(14rem,_auto))]">
+      <div className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 sm:grid-cols-[repeat(auto-fill,_minmax(14rem,_auto))]">
         {filteredItems.map((option) => {
           switch (option.type) {
             case "integration":
@@ -185,10 +185,12 @@ function PossibleIntegrationsList({
                   integration={option}
                   organizationId={organizationId}
                   callbackUrl={callbackUrl}
+                  icon={option.icon}
                   button={
                     <AddIntegrationConnection
                       identifier={option.identifier}
                       name={option.name}
+                      icon={option.icon}
                       isIntegration
                     />
                   }
@@ -330,10 +332,7 @@ function ConnectedIntegrationsList({
                         <TableCell to={path}>{client.title}</TableCell>
                         <TableCell to={path}>
                           <span className="flex items-center gap-1">
-                            <NamedIcon
-                              name={client.integrationIdentifier}
-                              className="h-5 w-5"
-                            />
+                            <NamedIcon name={client.icon} className="h-5 w-5" />
                             {client.integration.name}
                           </span>
                         </TableCell>
@@ -503,20 +502,22 @@ function AddIntegrationConnection({
   identifier,
   name,
   isIntegration,
+  icon,
 }: {
   identifier: string;
   name: string;
   isIntegration: boolean;
+  icon?: string;
 }) {
   return (
-    <div className="group flex h-11 w-full items-center gap-3 rounded-md p-1 pr-3 transition hover:bg-slate-850">
+    <div className="group flex h-11 w-full items-center gap-2 rounded-md p-1 pr-3 transition hover:bg-slate-850">
       <NamedIconInBox
-        name={identifier}
+        name={icon ?? identifier}
         className="h-9 w-9 flex-none transition group-hover:border-slate-750"
       />
       <Paragraph
-        variant="base"
-        className="m-0 flex-1 text-left transition group-hover:text-bright"
+        variant="small"
+        className="m-0 flex-1 text-left leading-[1.1rem] transition group-hover:text-bright"
       >
         {name}
       </Paragraph>

@@ -51,6 +51,7 @@ export class IntegrationsPresenter {
           select: {
             id: true,
             name: true,
+            icon: true,
           },
         },
         authSource: true,
@@ -111,6 +112,7 @@ export class IntegrationsPresenter {
         return {
           id: c.id,
           title: c.title ?? c.slug,
+          icon: c.definition.icon ?? c.definition.id,
           slug: c.slug,
           integrationIdentifier: c.definition.id,
           description: c.description,

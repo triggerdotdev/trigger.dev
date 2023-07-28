@@ -1,0 +1,14 @@
+{
+  "include": ["./src/**/*.ts", "./src/**/*.tsx", "tsup.config.js"],
+  "compilerOptions": {
+    "jsx": "react",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "lib": ["es2015", "dom"],
+    "paths": {
+      "@trigger.dev/internal": ["../internal/src/index"],
+      "@trigger.dev/internal/*": ["../internal/src/*"]
+    }
+  },
+  "exclude": ["node_modules"]
+}

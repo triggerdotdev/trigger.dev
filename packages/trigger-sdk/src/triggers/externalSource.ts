@@ -211,7 +211,7 @@ export class ExternalSource<
 export type ExternalSourceParams<
   TExternalSource extends ExternalSource<any, any, any>
 > = TExternalSource extends ExternalSource<any, infer TParams, any>
-  ? TParams
+  ? TParams & { filter?: EventFilter }
   : never;
 
 export type ExternalSourceTriggerOptions<
@@ -247,7 +247,8 @@ export class ExternalSourceTrigger<
         event: this.event.name,
         payload: deepMergeFilters(
           this.options.source.filter(this.options.params),
-          this.event.filter ?? {}
+          this.event.filter ?? {},
+          this.options.params.filter ?? {}
         ),
         source: this.event.source,
       },

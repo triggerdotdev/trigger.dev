@@ -4,7 +4,13 @@ import {
   RunTaskOptions,
   ServerTask,
 } from "@trigger.dev/internal";
-import { IO } from "./io";
+import { IO, IOTask } from "./io";
+
+type IntegrationRunTaskFunction<TClient> = <TResult>(
+  key: string | any[],
+  callback: (client: TClient, task: IOTask, io: IO) => Promise<TResult>,
+  options?: RunTaskOptions
+) => Promise<TResult>;
 
 export type ClientFactory<TClient> = (auth: ConnectionAuth) => TClient;
 
@@ -88,18 +94,28 @@ type ExtractIntegrationClientClient<
   usesLocalAuth: true;
   client: infer TClient;
 }
-  ? { client: TClient }
+  ? {
+      client: TClient;
+      runTask: IntegrationRunTaskFunction<TClient>;
+    }
   : TIntegrationClient extends {
       usesLocalAuth: false;
       clientFactory: ClientFactory<infer TClient>;
     }
-  ? { client: TClient }
+  ? {
+      client: TClient;
+      runTask: IntegrationRunTaskFunction<TClient>;
+    }
   : never;
 
 type ExtractIntegrationClient<
   TIntegrationClient extends IntegrationClient<any, any>
 > = ExtractIntegrationClientClient<TIntegrationClient> &
   ExtractTasks<TIntegrationClient["tasks"]>;
+
+export type IntegrationIO<
+  TIntegration extends TriggerIntegration<IntegrationClient<any, any>>
+> = ExtractIntegrationClient<TIntegration["client"]>;
 
 type ExtractIntegrations<
   TIntegrations extends Record<

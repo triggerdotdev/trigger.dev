@@ -39,7 +39,11 @@
       "@trigger.dev/typeform": ["../../integrations/typeform/src/index"],
       "@trigger.dev/typeform/*": ["../../integrations/typeform/src/*"],
       "@trigger.dev/plain": ["../../integrations/plain/src/index"],
-      "@trigger.dev/plain/*": ["../../integrations/plain/src/*"]
+      "@trigger.dev/plain/*": ["../../integrations/plain/src/*"],
+      "@trigger.dev/supabase": ["../../integrations/supabase/src/index"],
+      "@trigger.dev/supabase/*": ["../../integrations/supabase/src/*"],
+      "@trigger.dev/stripe": ["../../integrations/stripe/src/index"],
+      "@trigger.dev/stripe/*": ["../../integrations/stripe/src/*"]
     },
     "plugins": [
       {

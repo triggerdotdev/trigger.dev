@@ -6,6 +6,7 @@ import {
 } from "@trigger.dev/internal";
 import { PrismaClient, prisma } from "~/db.server";
 import { mergeProperties } from "~/utils/mergeProperties.server";
+import { taskListToTree } from "~/utils/taskListToTree";
 
 type RunOptions = {
   id: string;
@@ -23,34 +24,6 @@ export type Event = NonNullable<
 type QueryTask = NonNullable<
   Awaited<ReturnType<RunPresenter["query"]>>
 >["tasks"][number];
-
-const taskSelect = {
-  id: true,
-  displayKey: true,
-  name: true,
-  icon: true,
-  status: true,
-  delayUntil: true,
-  description: true,
-  properties: true,
-  outputProperties: true,
-  error: true,
-  startedAt: true,
-  completedAt: true,
-  style: true,
-  parentId: true,
-  runConnection: {
-    select: {
-      integration: {
-        select: {
-          definitionId: true,
-          title: true,
-          slug: true,
-        },
-      },
-    },
-  },
-} as const;
 
 export class RunPresenter {
   #prismaClient: PrismaClient;
@@ -76,31 +49,9 @@ export class RunPresenter {
       eventSpecification.properties
     );
 
-    const enrichTask = (task: QueryTask) => {
-      const { children, ...t } = task;
-      return {
-        ...t,
-        error: t.error ? ErrorWithStackSchema.parse(t.error) : undefined,
-        connection: t.runConnection,
-        properties: mergeProperties(t.properties, t.outputProperties),
-        style: t.style ? StyleSchema.parse(t.style) : undefined,
-      };
-    };
-
-    type EnrichedTask = ReturnType<typeof enrichTask> & {
-      subtasks: EnrichedTask[];
-    };
-
-    const recursivelyEnrichTasks = (task: QueryTask[]): EnrichedTask[] => {
-      return task.map((t) => {
-        const enrichedTask = enrichTask(t);
-
-        return {
-          ...enrichedTask,
-          subtasks: recursivelyEnrichTasks(t.children),
-        };
-      });
-    };
+    //enrich tasks then group subtasks under their parents
+    const enrichedTasks = this.enrichTasks(run.tasks);
+    const tasks = taskListToTree(enrichedTasks);
 
     let runError: ErrorWithStack | undefined = undefined;
     let runOutput: string | null | undefined = run.output
@@ -134,7 +85,7 @@ export class RunPresenter {
         slug: run.environment.slug,
       },
       event: run.event,
-      tasks: recursivelyEnrichTasks(run.tasks),
+      tasks,
       runConnections: run.runConnections,
       missingConnections: run.missingConnections,
       error: runError,
@@ -176,53 +127,39 @@ export class RunPresenter {
         },
         tasks: {
           select: {
-            ...taskSelect,
-            children: {
+            id: true,
+            displayKey: true,
+            name: true,
+            icon: true,
+            status: true,
+            delayUntil: true,
+            description: true,
+            properties: true,
+            outputProperties: true,
+            error: true,
+            startedAt: true,
+            completedAt: true,
+            style: true,
+            parentId: true,
+            runConnection: {
               select: {
-                ...taskSelect,
-                children: {
+                integration: {
                   select: {
-                    ...taskSelect,
-                    children: {
+                    definitionId: true,
+                    title: true,
+                    slug: true,
+                    definition: {
                       select: {
-                        ...taskSelect,
-                        children: {
-                          select: {
-                            ...taskSelect,
-                            children: {
-                              select: {
-                                ...taskSelect,
-                              },
-                              orderBy: {
-                                createdAt: "asc",
-                              },
-                            },
-                          },
-                          orderBy: {
-                            createdAt: "asc",
-                          },
-                        },
-                      },
-                      orderBy: {
-                        createdAt: "asc",
+                        icon: true,
                       },
                     },
                   },
-                  orderBy: {
-                    createdAt: "asc",
-                  },
                 },
-              },
-              orderBy: {
-                createdAt: "asc",
               },
             },
           },
           orderBy: {
             createdAt: "asc",
-          },
-          where: {
-            parentId: null,
           },
         },
         runConnections: {
@@ -253,5 +190,15 @@ export class RunPresenter {
         },
       },
     });
+  }
+
+  enrichTasks(tasks: QueryTask[]) {
+    return tasks.map((task) => ({
+      ...task,
+      error: task.error ? ErrorWithStackSchema.parse(task.error) : undefined,
+      connection: task.runConnection,
+      properties: mergeProperties(task.properties, task.outputProperties),
+      style: task.style ? StyleSchema.parse(task.style) : undefined,
+    }));
   }
 }

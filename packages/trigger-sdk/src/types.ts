@@ -67,6 +67,12 @@ export interface Trigger<TEventSpec extends EventSpecification<any>> {
   preprocessRuns: boolean;
 }
 
+export type TriggerPayload<TTrigger> = TTrigger extends Trigger<
+  EventSpecification<infer TEvent>
+>
+  ? TEvent
+  : never;
+
 export type EventSpecificationExample = {
   id: string;
   name: string | string[];

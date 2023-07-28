@@ -52,8 +52,10 @@ export function ProjectsMenu({ matches }: { matches: RouteMatch[] }) {
                       key={project.id}
                       to={projectPath(organization, project)}
                       title={
-                        <div className="flex w-[calc(100%-44px)] items-center justify-between pl-1 text-bright">
-                          <span className="grow text-left">{project.name}</span>
+                        <div className="flex w-full items-center justify-between pl-1 text-bright">
+                          <span className="grow truncate text-left">
+                            {project.name}
+                          </span>
                           <Badge className="mr-0.5">{simplur`${project._count.jobs} job[|s]`}</Badge>
                         </div>
                       }

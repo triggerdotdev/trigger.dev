@@ -3,6 +3,8 @@ import { z } from "zod";
 export type Integration = {
   /** Used to uniquely identify an integration */
   identifier: string;
+  /** identifier is used by default as the icon name, but you can specify a different one using icon */
+  icon?: string;
   /** The name of the integration */
   name: string;
   /** The description of the integration */
@@ -93,10 +95,20 @@ export type ApiAuthenticationMethodOAuth2 = {
       scopePointer?: string;
       /** Some APIs have strange granting logic, this allows total control to deal with that */
       grantTokenStrategy?: string;
+      /** Format of data sent in the request body. Defaults to form. */
+      bodyFormat?: "form" | "json";
+      /**
+       * Indicates the method used to send the client.id/client.secret authorization params at the token request.
+       * If set to body, the bodyFormat option will be used to format the credentials.
+       * Defaults to header
+       */
+      authorizationMethod?: "header" | "body";
     };
     /** Refresh is how a token is refreshed */
     refresh: {
       url: string;
+      /** Skip including scopes with the refresh_token request */
+      skipScopes?: boolean;
       /** Some APIs have strange refreshing logic, this allows total control to deal with that */
       refreshTokenStrategy?: string;
     };
@@ -141,6 +153,8 @@ export type GrantTokenParams = {
   expiresInPointer: string;
   scopePointer: string;
   pkceCode?: string;
+  authorizationMethod?: "header" | "body";
+  bodyFormat?: "form" | "json";
 };
 
 export type RefreshTokenParams = {
@@ -154,6 +168,9 @@ export type RefreshTokenParams = {
   refreshTokenPointer: string;
   expiresInPointer: string;
   scopePointer: string;
+  authorizationMethod?: "header" | "body";
+  bodyFormat?: "form" | "json";
+  skipScopes?: boolean;
 };
 
 type AdditionalField = {

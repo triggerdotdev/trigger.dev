@@ -68,10 +68,11 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild={true}>{button}</SheetTrigger>
       <SheetContent size="sm">
-        <SheetHeader className="justify-between">Give us feedback</SheetHeader>
+        <SheetHeader className="justify-between">Help & feedback</SheetHeader>
         <SheetBody>
           <Paragraph variant="small" className="mb-4">
-            We'd love to hear your feedback, good, bad or ugly.
+            Use this form to ask for help or give us feedback. We read every
+            message and will get back to you as soon as we can.
           </Paragraph>
           <Form method="post" action="/resources/feedback" {...form.props}>
             <Fieldset>
@@ -80,7 +81,7 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
                 {...conform.input(path, { type: "hidden" })}
               />
               <InputGroup>
-                <Label>What kind of feedback do you have?</Label>
+                <Label>How can we help?</Label>
                 <SelectGroup>
                   <Select
                     {...conform.input(feedbackType)}

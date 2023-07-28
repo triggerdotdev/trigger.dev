@@ -157,11 +157,11 @@ export async function createEnvironment(
 }
 
 function createApiKeyForEnv(envType: RuntimeEnvironment["type"]) {
-  return `tr_${envSlug(envType)}_${apiKeyId(12)}`;
+  return `tr_${envSlug(envType)}_${apiKeyId(20)}`;
 }
 
 function createPkApiKeyForEnv(envType: RuntimeEnvironment["type"]) {
-  return `pk_${envSlug(envType)}_${apiKeyId(16)}`;
+  return `pk_${envSlug(envType)}_${apiKeyId(20)}`;
 }
 
 function envSlug(environmentType: RuntimeEnvironment["type"]) {

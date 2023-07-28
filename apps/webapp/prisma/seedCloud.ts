@@ -59,6 +59,7 @@ export async function seedCloud(prisma: PrismaClient) {
     },
     create: {
       apiKey: "tr_dev_bNaLxayOXqoj",
+      pkApiKey: "pk_dev_323f3650218e370508cf",
       slug: "dev",
       type: "DEVELOPMENT",
       project: {
@@ -86,6 +87,7 @@ export async function seedCloud(prisma: PrismaClient) {
     },
     create: {
       apiKey: "tr_prod_bNaLxayOXqoj",
+      pkApiKey: "pk_dev_323f3650218e370508cf",
       slug: "prod",
       type: "PRODUCTION",
       project: {

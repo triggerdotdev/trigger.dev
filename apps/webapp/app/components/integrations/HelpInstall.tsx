@@ -28,7 +28,7 @@ export function HelpInstall({ packageName }: { packageName: string }) {
         <ClientTabsContent value={"pnpm"}>
           <ClipboardField
             variant="secondary/medium"
-            value={`pnpm install ${packageName}`}
+            value={`pnpm add ${packageName}`}
             className="mb-4"
           />
         </ClientTabsContent>

@@ -36,6 +36,11 @@ export class TriggersPresenter {
             slug: true,
             definitionId: true,
             setupStatus: true,
+            definition: {
+              select: {
+                icon: true,
+              },
+            },
           },
         },
         environment: {

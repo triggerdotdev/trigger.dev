@@ -1,17 +1,20 @@
+import { useRevalidator } from "@remix-run/react";
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { useEffect, useMemo, useState } from "react";
-import { useRevalidator } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import {
   EnvironmentLabel,
   environmentTitle,
 } from "~/components/environments/EnvironmentLabel";
+import { HowToUseApiKeysAndEndpoints } from "~/components/helpContent/HelpContentText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { ButtonContent } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import {
   PageDescription,
   PageHeader,
@@ -28,11 +31,14 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 import {
   ClientEndpoint,
   EnvironmentsPresenter,
 } from "~/presenters/EnvironmentsPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import {
   ProjectParamSchema,
@@ -41,15 +47,7 @@ import {
 import { requestUrl } from "~/utils/requestUrl.server";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
-import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
-import { cn } from "~/utils/cn";
-import {
-  HowToSetupYourProject,
-  HowToUseApiKeysAndEndpoints,
-} from "~/components/helpContent/HelpContentText";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
+import { Badge } from "~/components/primitives/Badge";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -149,17 +147,38 @@ export default function Page() {
                   <Header2>API Keys</Header2>
                   <HelpTrigger title="How do I use API Keys and Endpoints?" />
                 </div>
-                <div className="mb-8 mt-4 flex gap-4">
-                  {environments.map((environment) => (
-                    <ClipboardField
-                      key={environment.id}
-                      fullWidth={false}
-                      secure
-                      value={environment.apiKey}
-                      variant={"primary/medium"}
-                      icon={<EnvironmentLabel environment={environment} />}
-                    />
-                  ))}
+                <div className="mb-8">
+                  <Paragraph variant="small" spacing>
+                    Server API keys should be used on your server – they give
+                    full API access. <br />
+                    Public API keys should be used in your frontend – they have
+                    limited read-only access.
+                  </Paragraph>
+                  <div className="mt-4 flex flex-col gap-6">
+                    {environments.map((environment) => (
+                      <div key={environment.id}>
+                        <Header3 className="flex items-center gap-1">
+                          <EnvironmentLabel environment={environment} />{" "}
+                          Environment
+                        </Header3>
+                        <div className="mt-2 inline-flex flex-col gap-3">
+                          <ClipboardField
+                            className="w-full max-w-none"
+                            secure
+                            value={environment.apiKey}
+                            variant={"primary/medium"}
+                            icon={<Badge variant="outline">Server</Badge>}
+                          />
+                          <ClipboardField
+                            className="w-full max-w-none"
+                            value={environment.pkApiKey}
+                            variant={"primary/medium"}
+                            icon={<Badge variant="outline">Public</Badge>}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <Header2 className="mb-2">Endpoints</Header2>

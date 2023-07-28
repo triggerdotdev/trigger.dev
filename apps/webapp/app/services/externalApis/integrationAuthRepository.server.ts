@@ -1,17 +1,16 @@
 import type {
-  SecretReference,
-  ExternalAccount,
-  IntegrationConnection,
-  ConnectionType,
-  Integration,
   ConnectionAttempt,
+  ConnectionType,
+  ExternalAccount,
+  Integration,
   IntegrationAuthMethod,
+  IntegrationConnection,
   IntegrationDefinition,
+  SecretReference,
 } from "@trigger.dev/database";
 import jsonpointer from "jsonpointer";
 import { customAlphabet } from "nanoid";
 import * as crypto from "node:crypto";
-import createSlug from "slug";
 import type {
   PrismaClient,
   PrismaClientOrTransaction,
@@ -31,7 +30,7 @@ import {
 } from "./oauth2.server";
 import {
   AccessToken,
-  ApiAuthenticationMethod,
+  AccessTokenSchema,
   ApiAuthenticationMethodOAuth2,
   ConnectionMetadata,
   GrantTokenParams,
@@ -39,7 +38,7 @@ import {
   OAuthClientSchema,
   RefreshTokenParams,
 } from "./types";
-import { AccessTokenSchema } from "./types";
+import { logger } from "../logger.server";
 
 export type ConnectionWithSecretReference = IntegrationConnection & {
   dataReference: SecretReference;
@@ -126,6 +125,16 @@ export class IntegrationAuthRepository {
           },
         });
       }
+
+      logger.debug("Creating Integration", {
+        id,
+        clientType,
+        scopes,
+        title,
+        slug,
+        integrationIdentifier,
+        integrationAuthMethod,
+      });
 
       const client = await tx.integration.create({
         data: {
@@ -391,6 +400,8 @@ export class IntegrationAuthRepository {
           expiresInPointer:
             authMethod.config.token.expiresInPointer ?? "/expires_in",
           scopePointer: authMethod.config.token.scopePointer ?? "/scope",
+          authorizationMethod: authMethod.config.token.authorizationMethod,
+          bodyFormat: authMethod.config.token.bodyFormat,
         };
 
         const token = await grantOAuth2Token(
@@ -662,6 +673,9 @@ export class IntegrationAuthRepository {
           expiresInPointer:
             authMethod.config.token.expiresInPointer ?? "/expires_in",
           scopePointer: authMethod.config.token.scopePointer ?? "/scope",
+          authorizationMethod: authMethod.config.token.authorizationMethod,
+          bodyFormat: authMethod.config.token.bodyFormat,
+          skipScopes: authMethod.config.refresh.skipScopes,
         };
 
         //todo do we need pkce here?

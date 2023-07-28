@@ -28,12 +28,14 @@ export function ConnectToIntegrationSheet({
   button,
   className,
   callbackUrl,
+  icon,
 }: {
   integration: Integration;
   organizationId: string;
   button: React.ReactNode;
   callbackUrl: string;
   className?: string;
+  icon?: string;
 }) {
   const [integrationMethod, setIntegrationMethod] = useState<
     IntegrationMethod | undefined
@@ -48,7 +50,10 @@ export function ConnectToIntegrationSheet({
       <SheetTrigger className={className}>{button}</SheetTrigger>
       <SheetContent size="lg" className="relative">
         <SheetHeader>
-          <NamedIconInBox name={integration.identifier} className="h-9 w-9" />
+          <NamedIconInBox
+            name={icon ?? integration.identifier}
+            className="h-9 w-9"
+          />
           <div className="grow">
             <Header1>{integration.name}</Header1>
             {integration.description && (
@@ -59,6 +64,7 @@ export function ConnectToIntegrationSheet({
             to={docsIntegrationPath(integration.identifier)}
             variant="secondary/small"
             LeadingIcon="docs"
+            target="_blank"
           >
             View docs
           </LinkButton>

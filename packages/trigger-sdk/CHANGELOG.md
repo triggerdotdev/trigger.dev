@@ -1,5 +1,29 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.22
+
+### Patch Changes
+
+- 64477f6b: Adding some type helpers for getting the payload and IO types from jobs and triggers
+
+## 2.0.0-next.21
+
+### Patch Changes
+
+- 9351c051: Initial Stripe integration
+
+## 2.0.0-next.20
+
+### Patch Changes
+
+- b314178d: Added getEvent(), getRun() and getRuns() methods to the client
+
+## 2.0.0-next.19
+
+### Patch Changes
+
+- 767e09ee: Added io.integration.runTask and initial @trigger.dev/supabase integration
+
 ## 2.0.0-next.18
 
 ### Patch Changes

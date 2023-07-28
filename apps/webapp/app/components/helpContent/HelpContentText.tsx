@@ -8,7 +8,9 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { IntegrationIcon } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.integrations/route";
 import { jobTestPath } from "~/utils/pathBuilder";
+import { CodeBlock } from "../code/CodeBlock";
 import { InlineCode } from "../code/InlineCode";
+import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 import { HelpPanelProps } from "../integrations/ApiKeyHelp";
 import { HelpInstall } from "../integrations/HelpInstall";
 import { HelpSamples } from "../integrations/HelpSamples";
@@ -21,35 +23,20 @@ import {
   ClientTabsTrigger,
 } from "../primitives/ClientTabs";
 import { ClipboardField } from "../primitives/ClipboardField";
+import { Header2 } from "../primitives/Headers";
+import { TextLink } from "../primitives/TextLink";
 import integrationButton from "./integration-button.png";
 import selectEnvironment from "./select-environment.png";
 import selectExample from "./select-example.png";
-import { Header2 } from "../primitives/Headers";
-import { CodeBlock } from "../code/CodeBlock";
-import { EnvironmentLabel } from "../environments/EnvironmentLabel";
-import { TextLink } from "../primitives/TextLink";
-import FormSegmentedControl from "../primitives/FormSegmentedControl";
-import {
-  GitHubLightIcon,
-  OpenAILightIcon,
-  ResendIcon,
-  SlackIcon,
-} from "@trigger.dev/companyicons";
-import { CalendarDaysIcon, ClockIcon } from "@heroicons/react/20/solid";
 
 export function HowToSetupYourProject() {
   const devEnvironment = useDevEnvironment();
   const appOrigin = useAppOrigin();
   return (
     <>
-      <Paragraph spacing>
-        Add Trigger.dev to your Project with an example Job which logs 'Hello
-        World' to the console.
-      </Paragraph>
-
       <StepNumber
         stepNumber="1"
-        title="Run the CLI 'init' command from a Next.js project"
+        title="Run the CLI 'init' command in a Next.js project"
       />
       <StepContentContainer>
         <ClientTabs defaultValue="npm">
@@ -83,21 +70,44 @@ export function HowToSetupYourProject() {
             />
           </ClientTabsContent>
         </ClientTabs>
-        <Paragraph spacing variant="small">
-          It will ask you for a "unique ID for your endpoint". You can use the
-          default by hitting enter.
-        </Paragraph>{" "}
+
         <Paragraph spacing>
-          You’ll notice a new folder in your project called 'jobs' . We’ve added
+          You’ll notice a new folder in your project called 'jobs'. We’ve added
           a very simple example Job in <InlineCode>examples.ts</InlineCode> to
           help you get started.
         </Paragraph>
       </StepContentContainer>
       <StepNumber stepNumber="2" title="Run your Next.js app" />
       <StepContentContainer>
-        <Paragraph>
-          Ensure your Next.js app is running locally on port 3000.
-        </Paragraph>
+        <Paragraph>Ensure your app is running locally.</Paragraph>
+        <ClientTabs defaultValue="npm">
+          <ClientTabsList>
+            <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
+            <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
+            <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
+          </ClientTabsList>
+          <ClientTabsContent value={"npm"}>
+            <ClipboardField
+              variant="primary/medium"
+              className="mb-4"
+              value={`npm run dev`}
+            />
+          </ClientTabsContent>
+          <ClientTabsContent value={"pnpm"}>
+            <ClipboardField
+              variant="primary/medium"
+              className="mb-4"
+              value={`pnpm run dev`}
+            />
+          </ClientTabsContent>
+          <ClientTabsContent value={"yarn"}>
+            <ClipboardField
+              variant="primary/medium"
+              className="mb-4"
+              value={`yarn run dev`}
+            />
+          </ClientTabsContent>
+        </ClientTabs>
       </StepContentContainer>
       <StepNumber stepNumber="3" title="Run the CLI 'dev' command" />
       <StepContentContainer>
@@ -136,6 +146,10 @@ export function HowToSetupYourProject() {
             />
           </ClientTabsContent>
         </ClientTabs>
+        <Paragraph spacing variant="small">
+          If you’re not running on port 3000 you can specify the port by adding{" "}
+          <InlineCode>--port 3001</InlineCode> to the end.
+        </Paragraph>
         <Paragraph spacing variant="small">
           You should leave the <InlineCode>dev</InlineCode> command running when
           you're developing.
@@ -343,11 +357,11 @@ export function HowToUseApiKeysAndEndpoints() {
       </Paragraph>
       <Header2 spacing>Environments</Header2>
       <Paragraph spacing>
-        Each environment has an API Key associated with it. This API Key is used
-        to authenticate your Jobs with the Trigger.dev platform.
+        Each environment has API Keys associated with it. The Server API Key is
+        used to authenticate your Jobs with the Trigger.dev platform.
       </Paragraph>
       <Paragraph spacing>
-        The API Key you use for your{" "}
+        The Server API Key you use for your{" "}
         <TextLink to="https://trigger.dev/docs/documentation/concepts/client-adaptors">
           Client
         </TextLink>{" "}
@@ -358,8 +372,8 @@ export function HowToUseApiKeysAndEndpoints() {
         className="mb-4"
         code={`export const client = new TriggerClient({
   id: "nextjs-example",
-  //this environment variable should be set to your DEV API Key locally,
-  //and your PROD API Key in production
+  //this environment variable should be set to your Server DEV API Key locally,
+  //and your Server PROD API Key in production
   apiKey: process.env.TRIGGER_API_KEY!,
 });`}
       />

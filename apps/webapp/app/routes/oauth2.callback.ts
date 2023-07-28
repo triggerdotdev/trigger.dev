@@ -5,6 +5,7 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
 import { OAuthClient, OAuthClientSchema } from "~/services/externalApis/types";
+import { logger } from "~/services/logger.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { requestUrl } from "~/utils/requestUrl.server";
 
@@ -22,6 +23,7 @@ export async function loader({ request }: LoaderArgs) {
   }
 
   const url = requestUrl(request);
+
   const parsedParams = ParamsSchema.safeParse(
     Object.fromEntries(url.searchParams)
   );

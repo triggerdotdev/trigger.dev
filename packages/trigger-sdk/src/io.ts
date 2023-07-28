@@ -236,17 +236,17 @@ export class IO {
       key,
       {
         name: "Update Source",
-        description: `Update Source ${options.key}`,
+        description: "Update Source",
         properties: [
           {
             label: "key",
             text: options.key,
           },
         ],
+        params: options,
         redact: {
           paths: ["secret"],
         },
-        params: options,
       },
       async (task) => {
         return await this._apiClient.updateSource(
@@ -591,24 +591,32 @@ export class IO {
         }
 
         if (onError) {
-          const onErrorResult = onError(error, task, this);
+          try {
+            const onErrorResult = onError(error, task, this);
 
-          if (onErrorResult) {
-            if (onErrorResult instanceof Error) {
-              error = onErrorResult;
-            } else {
-              const parsedError = ErrorWithStackSchema.safeParse(
-                onErrorResult.error
-              );
+            if (onErrorResult) {
+              if (onErrorResult instanceof Error) {
+                error = onErrorResult;
+              } else {
+                const parsedError = ErrorWithStackSchema.safeParse(
+                  onErrorResult.error
+                );
 
-              throw new RetryWithTaskError(
-                parsedError.success
-                  ? parsedError.data
-                  : { message: "Unknown error" },
-                task,
-                onErrorResult.retryAt
-              );
+                throw new RetryWithTaskError(
+                  parsedError.success
+                    ? parsedError.data
+                    : { message: "Unknown error" },
+                  task,
+                  onErrorResult.retryAt
+                );
+              }
             }
+          } catch (innerError) {
+            if (isTriggerError(innerError)) {
+              throw innerError;
+            }
+
+            error = innerError;
           }
         }
 

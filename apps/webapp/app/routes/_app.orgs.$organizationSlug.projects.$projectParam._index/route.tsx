@@ -170,9 +170,7 @@ export default function Page() {
                       <>
                         <Callout
                           variant="docs"
-                          to={docsPath(
-                            "documentation/quickstart#your-first-job"
-                          )}
+                          to={docsPath("documentation/guides/create-a-job")}
                           className="my-3"
                         >
                           Create your first Job in code
@@ -191,7 +189,7 @@ export default function Page() {
                   </>
                 )}
               </div>
-              <HelpContent title="How to add Trigger.dev to your Next.js app (5 mins)">
+              <HelpContent title="How to add Trigger.dev to your Next.js app (3 mins)">
                 <HowToSetupYourProject />
               </HelpContent>
             </div>
@@ -236,7 +234,7 @@ function ExampleJobs() {
       <div className="flex gap-1.5">
         <GitHubLightIcon className="ml-0.5 h-4 w-4 pt-0.5" />
         <Paragraph variant="small">
-          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/delays">
+          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/github">
             GitHub
           </TextLink>{" "}
           - When a new GitHub issue is opened it adds a “Bug” label to it.
