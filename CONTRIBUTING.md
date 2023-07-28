@@ -191,7 +191,7 @@ Here's an example of creating a `patch` changeset for the `@trigger.dev/github` 
 
 [![asciicast](https://asciinema.org/a/599228.svg)](https://asciinema.org/a/599228)
 
-You will be prompted to select which packages to include in the changeset. Only select the packages that you have made changes for (Important: never include a changeset for the `@trigger.dev/internal` package, as it's bundled with other packages and should not be published).
+You will be prompted to select which packages to include in the changeset. Only select the packages that you have made changes for.
 
 Most of the time the changes you'll make are likely to be categorized as patch releases. If you feel like there is the need for a minor or major release of the package based on the changes being made, add the changeset as such and it will be discussed during PR review.
 
