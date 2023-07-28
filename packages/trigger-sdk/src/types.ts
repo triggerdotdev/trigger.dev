@@ -75,7 +75,7 @@ export type TriggerPayload<TTrigger> = TTrigger extends Trigger<
 
 export type EventSpecificationExample = {
   id: string;
-  name: string | string[];
+  name: string;
   icon?: string;
   payload: any;
 };

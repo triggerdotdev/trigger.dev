@@ -19,7 +19,7 @@ export const EventFilterSchema: z.ZodType<EventFilter> = z.lazy(() =>
 );
 
 export const EventRuleSchema = z.object({
-  event: z.union([z.string(), z.array(z.string())]),
+  event: z.string().or(z.array(z.string())),
   source: z.string(),
   payload: EventFilterSchema.optional(),
   context: EventFilterSchema.optional(),
