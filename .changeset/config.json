@@ -9,6 +9,9 @@
   "updateInternalDependencies": "patch",
   "ignore": [
     "webapp",
-    "emails"
+    "emails",
+    "@examples/nextjs",
+    "@examples/jobs-starter",
+    "nextjs-12"
   ]
 }
