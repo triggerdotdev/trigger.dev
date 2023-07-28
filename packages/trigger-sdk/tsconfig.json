@@ -10,9 +10,7 @@
     },
     "lib": ["DOM", "DOM.Iterable"],
     "declaration": false,
-    "declarationMap": false,
-    "module": "ES2020",
-    "target": "ES2020"
+    "declarationMap": false
   },
   "exclude": ["node_modules"]
 }
