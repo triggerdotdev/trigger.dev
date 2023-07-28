@@ -2,17 +2,17 @@ import { defineConfig } from "tsup";
 
 export default defineConfig([
   {
-    entry: ["src/index.ts"],
-    target: "es2018",
-    external: ["react"],
-    sourcemap: true,
+    entry: ["src/*.ts", "src/*.tsx"],
+    format: ["cjs", "esm"],
+    target: ["es2020", "node16"],
+    outDir: "dist",
     dts: true,
-    bundle: true,
-    format: ["esm", "cjs"],
-    noExternal: ["@trigger.dev/core"],
-    esbuildOptions(options) {
-      options.banner = {
-        js: '"use client";',
+    sourcemap: true,
+    clean: true,
+    bundle: false,
+    outExtension({ format }) {
+      return {
+        js: `.${format === "esm" ? "js" : "cjs"}`,
       };
     },
   },
