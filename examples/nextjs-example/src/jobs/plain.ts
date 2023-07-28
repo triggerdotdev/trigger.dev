@@ -9,7 +9,7 @@ import { Job, eventTrigger } from "@trigger.dev/sdk";
 
 export const plain = new Plain({
   id: "plain-1",
-  apiKey: process.env.PLAIN_API_KEY!,
+  apiKey: process.env["PLAIN_API_KEY"]!,
 });
 
 client.defineJob({

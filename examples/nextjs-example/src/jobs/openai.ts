@@ -5,7 +5,7 @@ import { z } from "zod";
 
 const openai = new OpenAI({
   id: "openai",
-  apiKey: process.env.OPENAI_API_KEY!,
+  apiKey: process.env["OPENAI_API_KEY"]!,
 });
 
 client.defineJob({
