@@ -93,7 +93,7 @@ export const initCommand = async (options: InitCommandOptions) => {
   }
 
   await addDependencies(resolvedPath, [
-    { name: "@trigger.dev/sdk", tag: "next" },
+    { name: "@trigger.dev/sdk", tag: "latest" },
     { name: "@trigger.dev/nextjs", tag: "latest" },
   ]);
 
