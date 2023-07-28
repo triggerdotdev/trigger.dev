@@ -161,6 +161,7 @@ export const getPostgRESTConfig: AuthenticatedTask<
   },
 };
 
+/** Gets project's Postgres config */
 export const getPGConfig: AuthenticatedTask<
   SupabaseManagementAPI,
   { ref: string },

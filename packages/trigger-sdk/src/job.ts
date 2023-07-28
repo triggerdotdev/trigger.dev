@@ -77,6 +77,17 @@ export type JobOptions<
   ) => Promise<any>;
 };
 
+export type JobPayload<TJob> = TJob extends Job<
+  Trigger<EventSpecification<infer TEvent>>,
+  any
+>
+  ? TEvent
+  : never;
+
+export type JobIO<TJob> = TJob extends Job<any, infer TIntegrations>
+  ? IOWithIntegrations<TIntegrations>
+  : never;
+
 /** A [Job](https://trigger.dev/docs/documentation/concepts/jobs) is used to define the [Trigger](https://trigger.dev/docs/documentation/concepts/triggers), metadata, and what happens when it runs. */
 export class Job<
   TTrigger extends Trigger<EventSpecification<any>>,

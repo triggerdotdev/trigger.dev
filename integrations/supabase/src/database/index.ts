@@ -62,6 +62,25 @@ export class Supabase<
     typeof tasks
   >;
 
+  /**
+   * The native Supabase client. This is exposed for use outside of Trigger.dev jobs
+   *
+   * @example
+   * ```ts
+   * import { Supabase } from "@trigger.dev/supabase";
+   * import { Database } from "@/supabase.types";
+   *
+   * const supabase = new Supabase<Database>({
+   *   id: "my-supabase",
+   *   projectId: process.env.SUPABASE_ID!,
+   *   supabaseKey: process.env.SUPABASE_API_KEY!,
+   * });
+   *
+   * const { data, error } = await supabase.native.from("users").select("*");
+   * ```
+   */
+  public readonly native: SupabaseClient<Database, SchemaName, Schema>;
+
   constructor(private options: SupabaseIntegrationOptions<SchemaName>) {
     const supabaseOptions = options.options || {};
 
@@ -70,7 +89,7 @@ export class Supabase<
         ? `https://${options.projectId}.supabase.co`
         : options.supabaseUrl;
 
-    const supabaseClient = createClient(supabaseUrl, options.supabaseKey, {
+    this.native = createClient(supabaseUrl, options.supabaseKey, {
       ...supabaseOptions,
       auth: {
         ...supabaseOptions.auth,
@@ -81,7 +100,7 @@ export class Supabase<
     this.client = {
       tasks,
       usesLocalAuth: true,
-      client: supabaseClient,
+      client: this.native,
       auth: {
         supabaseUrl,
         supabaseKey: options.supabaseKey,

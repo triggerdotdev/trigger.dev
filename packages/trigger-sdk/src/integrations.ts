@@ -113,6 +113,10 @@ type ExtractIntegrationClient<
 > = ExtractIntegrationClientClient<TIntegrationClient> &
   ExtractTasks<TIntegrationClient["tasks"]>;
 
+export type IntegrationIO<
+  TIntegration extends TriggerIntegration<IntegrationClient<any, any>>
+> = ExtractIntegrationClient<TIntegration["client"]>;
+
 type ExtractIntegrations<
   TIntegrations extends Record<
     string,
