@@ -9,6 +9,18 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@trigger.dev/core": "workspace:*",
+    "@trigger.dev/github": "workspace:*",
+    "@trigger.dev/nextjs": "workspace:*",
+    "@trigger.dev/openai": "workspace:*",
+    "@trigger.dev/plain": "workspace:*",
+    "@trigger.dev/react": "workspace:*",
+    "@trigger.dev/resend": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
+    "@trigger.dev/slack": "workspace:*",
+    "@trigger.dev/stripe": "workspace:*",
+    "@trigger.dev/supabase": "workspace:*",
+    "@trigger.dev/typeform": "workspace:*",
     "@types/node": "20.4.5",
     "@types/react": "18.2.17",
     "@types/react-dom": "18.2.7",
