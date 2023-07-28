@@ -4,7 +4,7 @@ import {
   FailTaskBodyInput,
   FailTaskBodyInputSchema,
   ServerTask,
-} from "@trigger.dev/internal";
+} from "../../../../packages/core/src";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { taskWithAttemptsToServerTask } from "~/models/task.server";

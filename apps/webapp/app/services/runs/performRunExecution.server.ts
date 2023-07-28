@@ -8,7 +8,7 @@ import {
   RunJobRetryWithTask,
   RunJobSuccess,
   RunSourceContextSchema,
-} from "@trigger.dev/internal";
+} from "../../../../../packages/core/src";
 import { generateErrorMessage } from "zod-error";
 import { EXECUTE_JOB_RETRY_LIMIT } from "~/consts";
 import {

@@ -1,7 +1,7 @@
 import {
   RegisterDynamicSchedulePayload,
   SCHEDULED_EVENT,
-} from "@trigger.dev/internal";
+} from "../../../../../packages/core/src";
 import { PrismaClientOrTransaction, prisma } from "~/db.server";
 import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 

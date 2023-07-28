@@ -2,7 +2,7 @@ import {
   DisplayProperty,
   DisplayPropertySchema,
   EventSpecificationSchema,
-} from "@trigger.dev/internal";
+} from "../../../../packages/core/src";
 import { PrismaClient, Prisma, prisma } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";

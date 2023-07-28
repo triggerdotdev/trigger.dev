@@ -1,5 +1,5 @@
 import { DeliverEmailSchema } from "@/../../packages/emails/src";
-import { ScheduledPayloadSchema } from "@trigger.dev/internal";
+import { ScheduledPayloadSchema } from "../../../../packages/core/src";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";

@@ -20,8 +20,8 @@
       "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
       "@trigger.dev/nextjs": ["../../packages/nextjs/src/index"],
       "@trigger.dev/nextjs/*": ["../../packages/nextjs/src/*"],
-      "@trigger.dev/internal": ["../../packages/internal/src/index"],
-      "@trigger.dev/internal/*": ["../../packages/internal/src/*"],
+      "@trigger.dev/core": ["../../packages/core/src/index"],
+      "@trigger.dev/core/*": ["../../packages/core/src/*"],
       "@trigger.dev/integration-kit": [
         "../../packages/integration-kit/src/index"
       ],

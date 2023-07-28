@@ -3,7 +3,7 @@ import {
   CronMetadata,
   IntervalMetadata,
   ScheduleMetadata,
-} from "@trigger.dev/internal";
+} from "../../../../../packages/core/src";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { NextScheduledEventService } from "./nextScheduledEvent.server";
 

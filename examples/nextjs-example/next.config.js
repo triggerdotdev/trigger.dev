@@ -5,7 +5,7 @@ module.exports = {
   transpilePackages: [
     "@trigger.dev/sdk",
     "@trigger.dev/github",
-    "@trigger.dev/internal",
+    "@trigger.dev/core",
   ],
   experimental: {
     appDir: true,

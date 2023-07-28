@@ -1,5 +1,5 @@
-import type { LogLevel } from "@trigger.dev/internal";
-import { Logger } from "@trigger.dev/internal";
+import type { LogLevel } from "../../../../packages/core/src";
+import { Logger } from "../../../../packages/core/src";
 import { sensitiveDataReplacer } from "./sensitiveDataReplacer";
 
 export const logger = new Logger(

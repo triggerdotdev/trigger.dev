@@ -1,7 +1,7 @@
 import {
   RegisterSourceEvent,
   RegisterTriggerBody,
-} from "@trigger.dev/internal";
+} from "../../../../../packages/core/src";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";

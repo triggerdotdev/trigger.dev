@@ -5,7 +5,7 @@ import {
   GetRunOptions,
   GetRunSchema,
   urlWithSearchParams,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import { useTriggerProvider } from "./TriggerProvider";
 import { zodfetch } from "./fetch";
 

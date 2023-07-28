@@ -12,7 +12,7 @@
     "access": "public"
   },
   "devDependencies": {
-    "@trigger.dev/internal": "workspace:*",
+    "@trigger.dev/core": "workspace:*",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/react": "^18.0.21",

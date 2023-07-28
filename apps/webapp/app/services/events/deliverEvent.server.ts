@@ -1,6 +1,6 @@
 import type { EventDispatcher, EventRecord } from "@trigger.dev/database";
-import type { EventFilter } from "@trigger.dev/internal";
-import { EventFilterSchema } from "@trigger.dev/internal";
+import type { EventFilter } from "../../../../../packages/core/src";
+import { EventFilterSchema } from "../../../../../packages/core/src";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { workerQueue } from "../worker.server";

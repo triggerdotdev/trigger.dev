@@ -15,14 +15,11 @@ module.exports = {
   serverDependenciesToBundle: [
     "marked",
     "axios",
-    "@trigger.dev/internal",
+    "@trigger.dev/core",
     "emails",
     "highlight.run",
   ],
   watchPaths: async () => {
-    return [
-      "../../packages/internal/src/**/*",
-      "../../packages/emails/src/**/*",
-    ];
+    return ["../../packages/core/src/**/*", "../../packages/emails/src/**/*"];
   },
 };

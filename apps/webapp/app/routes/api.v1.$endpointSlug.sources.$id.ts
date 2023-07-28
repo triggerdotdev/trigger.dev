@@ -1,6 +1,6 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { UpdateTriggerSourceBodySchema } from "@trigger.dev/internal";
+import { UpdateTriggerSourceBodySchema } from "../../../../packages/core/src";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";

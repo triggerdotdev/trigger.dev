@@ -3,7 +3,7 @@ import {
   JobMetadata,
   LogLevel,
   QueueOptions,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import {
   IOWithIntegrations,
   IntegrationClient,

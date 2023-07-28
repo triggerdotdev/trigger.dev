@@ -9,7 +9,7 @@ export default defineConfig([
     dts: true,
     bundle: true,
     format: ["esm", "cjs"],
-    noExternal: ["@trigger.dev/internal"],
+    noExternal: ["@trigger.dev/core"],
     esbuildOptions(options) {
       options.banner = {
         js: '"use client";',

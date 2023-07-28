@@ -1,7 +1,7 @@
 import {
   DisplayProperty,
   DisplayPropertiesSchema,
-} from "@trigger.dev/internal";
+} from "../../../../packages/core/src";
 
 // Takes a list of potential arrays of DisplayProperties and merges them together so no duplicates exist based on the label
 // For example, if the propertyLists are:

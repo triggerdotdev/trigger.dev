@@ -1,14 +1,9 @@
 {
   "extends": "@trigger.dev/tsconfig/node18.json",
-  "include": ["./src/**/*.ts", "tsup.config.ts"],
+  "include": ["src/globals.d.ts", "./src/**/*.ts", "tsup.config.ts"],
   "compilerOptions": {
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "paths": {
-      "@trigger.dev/core/*": ["../core/src/*"],
-      "@trigger.dev/core": ["../core/src/index"]
-    },
-    "lib": ["DOM", "DOM.Iterable"],
     "declaration": false,
     "declarationMap": false,
     "module": "ES2020",

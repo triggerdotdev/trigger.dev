@@ -1,8 +1,8 @@
 import type { Organization, RuntimeEnvironment } from "@trigger.dev/database";
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import type { LogMessage } from "@trigger.dev/internal";
-import { LogMessageSchema } from "@trigger.dev/internal";
+import type { LogMessage } from "../../../../packages/core/src";
+import { LogMessageSchema } from "../../../../packages/core/src";
 import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";

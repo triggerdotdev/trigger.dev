@@ -3,7 +3,7 @@ import {
   ErrorWithStackSchema,
   EventSpecificationSchema,
   StyleSchema,
-} from "@trigger.dev/internal";
+} from "../../../../packages/core/src";
 import { PrismaClient, prisma } from "~/db.server";
 import { mergeProperties } from "~/utils/mergeProperties.server";
 import { taskListToTree } from "~/utils/taskListToTree";

@@ -4,7 +4,7 @@ import {
   CreateExternalConnectionBody,
   CreateExternalConnectionBodySchema,
   ErrorWithStackSchema,
-} from "@trigger.dev/internal";
+} from "../../../../packages/core/src";
 import { z } from "zod";
 import { generateErrorMessage } from "zod-error";
 import { PrismaClientOrTransaction, prisma } from "~/db.server";

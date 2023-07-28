@@ -1,4 +1,4 @@
-import type { TaskStatus } from "@trigger.dev/internal";
+import type { TaskStatus } from "../../../../../packages/core/src";
 import {
   CheckCircleIcon,
   CheckIcon,

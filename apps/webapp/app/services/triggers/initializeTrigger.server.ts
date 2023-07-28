@@ -1,7 +1,7 @@
 import {
   InitializeTriggerBody,
   REGISTER_SOURCE_EVENT,
-} from "@trigger.dev/internal";
+} from "../../../../../packages/core/src";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";

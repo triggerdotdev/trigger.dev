@@ -1,4 +1,4 @@
-import { EventSpecificationSchema } from "@trigger.dev/internal";
+import { EventSpecificationSchema } from "../../../../../packages/core/src";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { CreateRunService } from "../runs/createRun.server";
 
@@ -18,64 +18,70 @@ export class TestJobService {
     versionId: string;
     payload: any;
   }) {
-    return await $transaction(this.#prismaClient, async (tx) => {
-      //get the environment with orgId and projectId
-      const environment = await tx.runtimeEnvironment.findUniqueOrThrow({
-        include: {
-          organization: true,
-          project: true,
-        },
-        where: {
-          id: environmentId,
-        },
-      });
-
-      const version = await tx.jobVersion.findUniqueOrThrow({
-        include: {
-          job: true,
-        },
-        where: {
-          id: versionId,
-        },
-      });
-
-      const event = EventSpecificationSchema.parse(version.eventSpecification);
-
-      const eventLog = await this.#prismaClient.eventRecord.create({
-        data: {
-          organization: {
-            connect: {
-              id: environment.organizationId,
-            },
+    return await $transaction(
+      this.#prismaClient,
+      async (tx) => {
+        //get the environment with orgId and projectId
+        const environment = await tx.runtimeEnvironment.findUniqueOrThrow({
+          include: {
+            organization: true,
+            project: true,
           },
-          project: {
-            connect: {
-              id: environment.projectId,
-            },
+          where: {
+            id: environmentId,
           },
-          environment: {
-            connect: {
-              id: environment.id,
-            },
+        });
+
+        const version = await tx.jobVersion.findUniqueOrThrow({
+          include: {
+            job: true,
           },
-          eventId: `test:${event.name}:${new Date().getTime()}`,
-          name: event.name,
-          timestamp: new Date(),
-          payload: payload ?? {},
-          context: {},
-          source: event.source ?? "trigger.dev",
-          isTest: true,
-        },
-      });
+          where: {
+            id: versionId,
+          },
+        });
 
-      const createRunService = new CreateRunService(tx);
+        const event = EventSpecificationSchema.parse(
+          version.eventSpecification
+        );
 
-      return await createRunService.call({
-        environment,
-        eventId: eventLog.id,
-        job: version.job,
-        version,
-      });
-    }, { timeout: 10000 });
+        const eventLog = await this.#prismaClient.eventRecord.create({
+          data: {
+            organization: {
+              connect: {
+                id: environment.organizationId,
+              },
+            },
+            project: {
+              connect: {
+                id: environment.projectId,
+              },
+            },
+            environment: {
+              connect: {
+                id: environment.id,
+              },
+            },
+            eventId: `test:${event.name}:${new Date().getTime()}`,
+            name: event.name,
+            timestamp: new Date(),
+            payload: payload ?? {},
+            context: {},
+            source: event.source ?? "trigger.dev",
+            isTest: true,
+          },
+        });
+
+        const createRunService = new CreateRunService(tx);
+
+        return await createRunService.call({
+          environment,
+          eventId: eventLog.id,
+          job: version.job,
+          version,
+        });
+      },
+      { timeout: 10000 }
+    );
   }
 }

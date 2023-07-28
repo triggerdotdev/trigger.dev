@@ -6,7 +6,7 @@ import {
   MissingConnectionResolvedNotificationPayload,
   MissingConnectionResolvedNotificationPayloadSchema,
   TriggerMetadata,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import { TriggerIntegration } from "../integrations";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";

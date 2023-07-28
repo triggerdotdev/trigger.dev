@@ -92,8 +92,8 @@ importers:
       '@team-plain/typescript-sdk': ^2.2.0
       '@total-typescript/ts-reset': ^0.4.2
       '@trigger.dev/companyicons': ^1.5.14
+      '@trigger.dev/core': workspace:*
       '@trigger.dev/database': workspace:*
-      '@trigger.dev/internal': workspace:*
       '@trigger.dev/tailwind-config': workspace:*
       '@types/bcryptjs': ^2.4.2
       '@types/compression': ^1.7.2
@@ -216,8 +216,8 @@ importers:
       '@remix-run/server-runtime': 1.18.1
       '@team-plain/typescript-sdk': 2.2.0
       '@trigger.dev/companyicons': 1.5.14_biqbaboplfbrettd7655fr4n2y
+      '@trigger.dev/core': link:../../packages/core
       '@trigger.dev/database': link:../../packages/database
-      '@trigger.dev/internal': link:../../packages/internal
       '@uiw/react-codemirror': 4.19.5_k4ec5g7vuuzzonc3d6xbjnmmle
       class-variance-authority: 0.5.2_typescript@4.9.4
       clsx: 1.2.1
@@ -700,6 +700,27 @@ importers:
       type-fest: 3.6.0
       typescript: 4.9.5
 
+  packages/core:
+    specifiers:
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': '16'
+      rimraf: ^3.0.2
+      tsup: ^7.1.0
+      typescript: ^4.9.4
+      ulid: ^2.3.0
+      zod: 3.21.4
+      zod-error: 1.5.0
+    dependencies:
+      ulid: 2.3.0
+      zod: 3.21.4
+      zod-error: 1.5.0
+    devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 16.18.11
+      rimraf: 3.0.2
+      tsup: 7.1.0_typescript@4.9.5
+      typescript: 4.9.5
+
   packages/database:
     specifiers:
       '@prisma/client': ^4.16.0
@@ -777,23 +798,6 @@ importers:
       tsup: 6.6.3
       tsx: 3.12.2
 
-  packages/internal:
-    specifiers:
-      '@trigger.dev/tsconfig': workspace:*
-      '@types/node': '16'
-      typescript: ^4.9.4
-      ulid: ^2.3.0
-      zod: 3.21.4
-      zod-error: 1.5.0
-    dependencies:
-      ulid: 2.3.0
-      zod: 3.21.4
-      zod-error: 1.5.0
-    devDependencies:
-      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
-      '@types/node': 16.18.11
-      typescript: 4.9.5
-
   packages/nextjs:
     specifiers:
       '@trigger.dev/tsconfig': workspace:*
@@ -818,7 +822,7 @@ importers:
   packages/react:
     specifiers:
       '@tanstack/react-query': 5.0.0-beta.2
-      '@trigger.dev/internal': workspace:*
+      '@trigger.dev/core': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/react': ^18.0.21
@@ -836,7 +840,7 @@ importers:
       debug: 4.3.4
       zod: 3.21.4
     devDependencies:
-      '@trigger.dev/internal': link:../internal
+      '@trigger.dev/core': link:../core
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/debug': 4.1.7
       '@types/react': 18.0.26
@@ -850,7 +854,7 @@ importers:
 
   packages/trigger-sdk:
     specifiers:
-      '@trigger.dev/internal': workspace:*
+      '@trigger.dev/core': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/node': '18'
@@ -894,7 +898,7 @@ importers:
       zod: 3.21.4
       zod-error: 1.5.0
     devDependencies:
-      '@trigger.dev/internal': link:../internal
+      '@trigger.dev/core': link:../core
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/debug': 4.1.7
       '@types/node': 18.14.0
@@ -23703,6 +23707,42 @@ packages:
       sucrase: 3.32.0
       tree-kill: 1.2.2
       typescript: 4.9.4
+    transitivePeerDependencies:
+      - supports-color
+      - ts-node
+    dev: true
+
+  /tsup/7.1.0_typescript@4.9.5:
+    resolution: {integrity: sha512-mazl/GRAk70j8S43/AbSYXGgvRP54oQeX8Un4iZxzATHt0roW0t6HYDVZIXMw0ZQIpvr1nFMniIVnN5186lW7w==}
+    engines: {node: '>=16.14'}
+    hasBin: true
+    peerDependencies:
+      '@swc/core': ^1
+      postcss: ^8.4.12
+      typescript: '>=4.1.0'
+    peerDependenciesMeta:
+      '@swc/core':
+        optional: true
+      postcss:
+        optional: true
+      typescript:
+        optional: true
+    dependencies:
+      bundle-require: 4.0.1_esbuild@0.18.11
+      cac: 6.7.14
+      chokidar: 3.5.3
+      debug: 4.3.4
+      esbuild: 0.18.11
+      execa: 5.1.1
+      globby: 11.1.0
+      joycon: 3.1.1
+      postcss-load-config: 4.0.1
+      resolve-from: 5.0.0
+      rollup: 3.10.0
+      source-map: 0.8.0-beta.0
+      sucrase: 3.32.0
+      tree-kill: 1.2.2
+      typescript: 4.9.5
     transitivePeerDependencies:
       - supports-color
       - ts-node

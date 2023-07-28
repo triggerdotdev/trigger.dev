@@ -3,7 +3,7 @@ import {
   IntegrationMetadata,
   RunTaskOptions,
   ServerTask,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import { IO, IOTask } from "./io";
 
 type IntegrationRunTaskFunction<TClient> = <TResult>(

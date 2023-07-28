@@ -1,4 +1,7 @@
-import type { DisplayProperty, StyleName } from "@trigger.dev/internal";
+import type {
+  DisplayProperty,
+  StyleName,
+} from "../../../../../packages/core/src";
 import { motion } from "framer-motion";
 import { HourglassIcon } from "lucide-react";
 import { ReactNode, useEffect, useState } from "react";

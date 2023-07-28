@@ -1,4 +1,7 @@
-import { ErrorWithStack, ErrorWithStackSchema } from "@trigger.dev/internal";
+import {
+  ErrorWithStack,
+  ErrorWithStackSchema,
+} from "../../../../packages/core/src";
 
 export function formatError(
   error: ErrorWithStack,

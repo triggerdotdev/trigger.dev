@@ -10,7 +10,7 @@ import { env } from "~/env.server";
 import {
   REGISTER_SOURCE_EVENT,
   RegisterTriggerSource,
-} from "@trigger.dev/internal";
+} from "../../../../../packages/core/src";
 import {
   SecretStoreProvider,
   getSecretStore,

@@ -1,4 +1,4 @@
-import { MISSING_CONNECTION_RESOLVED_NOTIFICATION } from "@trigger.dev/internal";
+import { MISSING_CONNECTION_RESOLVED_NOTIFICATION } from "../../../../../packages/core/src";
 import { PrismaClientOrTransaction, prisma } from "~/db.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
 import { logger } from "../logger.server";

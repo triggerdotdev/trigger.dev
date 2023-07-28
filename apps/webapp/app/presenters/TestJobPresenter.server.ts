@@ -1,5 +1,5 @@
 import { User } from "@trigger.dev/database";
-import { replacements } from "@trigger.dev/internal";
+import { replacements } from "../../../../packages/core/src";
 import { PrismaClient, prisma } from "~/db.server";
 import { Job } from "~/models/job.server";
 import { Organization } from "~/models/organization.server";

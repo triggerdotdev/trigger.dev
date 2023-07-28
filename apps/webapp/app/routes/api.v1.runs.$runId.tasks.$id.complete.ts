@@ -1,7 +1,10 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import type { CompleteTaskBodyOutput, ServerTask } from "@trigger.dev/internal";
-import { CompleteTaskBodyInputSchema } from "@trigger.dev/internal";
+import type {
+  CompleteTaskBodyOutput,
+  ServerTask,
+} from "../../../../packages/core/src";
+import { CompleteTaskBodyInputSchema } from "../../../../packages/core/src";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { taskWithAttemptsToServerTask } from "~/models/task.server";

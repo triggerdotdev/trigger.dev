@@ -1,6 +1,6 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { SendEventBodySchema } from "@trigger.dev/internal";
+import { SendEventBodySchema } from "../../../../packages/core/src";
 import { generateErrorMessage } from "zod-error";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { IngestSendEvent } from "~/services/events/ingestSendEvent.server";
