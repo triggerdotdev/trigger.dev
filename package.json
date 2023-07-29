@@ -44,17 +44,17 @@
     "@manypkg/cli": "^0.19.2",
     "@tailwindcss/forms": "^0.5.3",
     "@tailwindcss/typography": "^0.5.8",
+    "@trigger.dev/cli": "workspace:*",
     "autoprefixer": "^10.4.12",
     "eslint-config-custom": "workspace:*",
     "postcss": "^8.4.17",
-    "prettier": "^2.5.1",
+    "prettier": "^3.0.0",
     "tailwindcss": "3.1.8",
     "tsx": "^3.7.1",
     "turbo": "^1.10.3",
     "vite": "^4.1.1",
     "vite-tsconfig-paths": "^4.0.5",
-    "vitest": "^0.28.4",
-    "@trigger.dev/cli": "workspace:*"
+    "vitest": "^0.28.4"
   },
   "packageManager": "pnpm@7.18.1",
   "dependencies": {
