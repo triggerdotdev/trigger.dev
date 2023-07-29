@@ -74,15 +74,47 @@ async function getInstalledPackages(resolvedPath: string): Promise<any> {
             } else {
                 const installedPackages = JSON.parse(stdout.toString());
                 switch (manager) {
-                    case "pnpm":
-                        resolve(installedPackages[0].dependencies);
-                        break;
-                    default:
+                    case "npm":
                         resolve(installedPackages);
+                        break;
+                    case "yarn":
+                        resolve(convertYarnOutput(installedPackages));
+                        break;
+                    case "pnpm":
+                        resolve(convertPnpmOutput(installedPackages));
+                        break;
                 }
             }
         });
     });
+}
+
+function convertPnpmOutput(pnpmOutput: any[]): any {
+    const rootProject = pnpmOutput[0];
+    if (rootProject && rootProject.dependencies) {
+        const dependencies: { [name: string]: { version: string } } = {};
+        for (const [name, details] of Object.entries(rootProject.dependencies)) {
+            dependencies[name] = { version: (details as any).version };
+        }
+        return { dependencies };
+    }
+
+    return {};
+}
+
+function convertYarnOutput(yarnOutput: any): any {
+    const packages: { [name: string]: { version: string } } = {};
+
+    for (const pkg of yarnOutput.data.trees) {
+        if (pkg.name) {
+            const [name, version] = pkg.name.split('@');
+            if (name && version) {
+                packages[name] = { version };
+            }
+        }
+    }
+
+    return { dependencies: packages };
 }
 
 async function getLatestVersions(packageNames: string[], packageVersion: { [name: string]: string}): Promise<{ [packageName: string]: string }> {
