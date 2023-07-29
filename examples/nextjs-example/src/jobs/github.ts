@@ -244,3 +244,132 @@ client.defineJob({
     return { payload, ctx };
   },
 });
+
+client.defineJob({
+  id: "github-integration-on-pull-request-merge-commit",
+  name: "GitHub Integration - on Pull Request Merge Commit",
+  version: "0.1.0",
+  integrations: { github },
+  trigger: githubApiKey.triggers.repo({
+    event: events.onPullRequest,
+    owner: "triggerdotdev",
+    repo: "empty",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("This is a simple log info message");
+
+    if (payload.pull_request.merged && payload.pull_request.merge_commit_sha) {
+      const commit = await io.github.getCommit("get merge commit", {
+        owner: payload.repository.owner.login,
+        repo: payload.repository.name,
+        commitSHA: payload.pull_request.merge_commit_sha,
+      });
+      await io.logger.info("Merge Commit Details", commit);
+    }
+
+    return { payload, ctx };
+  },
+});
+
+client.defineJob({
+  id: "github-integration-get-tree",
+  name: "GitHub Integration - Get Tree",
+  version: "0.1.0",
+  integrations: { github },
+  trigger: githubApiKey.triggers.repo({
+    event: events.onPullRequest,
+    owner: "triggerdotdev",
+    repo: "empty",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("This is a simple log info message");
+
+    if (payload.pull_request.merged && payload.pull_request.merge_commit_sha) {
+      const tree = await io.github.getTree("get merge commit", {
+        owner: payload.repository.owner.login,
+        repo: payload.repository.name,
+        treeSHA: payload.pull_request.merge_commit_sha,
+      });
+      await io.logger.info("Tree ", tree);
+    }
+
+    return { payload, ctx };
+  },
+});
+
+client.defineJob({
+  id: "github-integration-get-reference",
+  name: "GitHub Integration - Get Reference",
+  integrations: { github },
+  version: "0.1.0",
+  trigger: githubApiKey.triggers.repo({
+    event: events.onNewBranch,
+    owner: "triggerdotdev",
+    repo: "empty",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("This is a simple log info message");
+
+    const ref = await io.github.getReference("Get reference", {
+      owner: payload.repository.owner.login,
+      repo: payload.repository.name,
+      ref: payload.ref,
+    });
+
+    await io.logger.info("Reference ", ref);
+
+    return { payload, ctx };
+  },
+});
+
+client.defineJob({
+  id: "github-integration-list-matching-references",
+  name: "GitHub Integration - List Matching References",
+  integrations: { github },
+  version: "0.1.0",
+  trigger: githubApiKey.triggers.repo({
+    event: events.onNewBranch,
+    owner: "triggerdotdev",
+    repo: "empty",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("This is a simple log info message");
+
+    const ref = await io.github.listMatchingReferences(
+      "List Matching References",
+      {
+        owner: payload.repository.owner.login,
+        repo: payload.repository.name,
+        ref: payload.ref,
+      }
+    );
+
+    await io.logger.info("Reference ", ref);
+
+    return { payload, ctx };
+  },
+});
+
+client.defineJob({
+  id: "github-integration-get-tag",
+  name: "GitHub Integration - Get Tag",
+  version: "0.1.0",
+  integrations: { github },
+  trigger: githubApiKey.triggers.repo({
+    event: events.onNewBranchOrTag,
+    owner: "triggerdotdev",
+    repo: "empty",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("This is a simple log info message");
+    if (payload.ref_type === "tag") {
+      const tag = io.github.getTag("Get Tag", {
+        owner: payload.repository.owner.login,
+        repo: payload.repository.name,
+        tagSHA: payload.ref,
+      });
+      await io.logger.info("Tag ", tag);
+    }
+    return { payload, ctx };
+  },
+});

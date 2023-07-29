@@ -760,7 +760,7 @@ const getCommit: GetCommitTask = {
   },
 };
 
-type ListMatchinghReferencesTask = GithubAuthenticatedTask<
+type ListMatchingReferencesTask = GithubAuthenticatedTask<
   {
     owner: string;
     repo: string;
@@ -768,7 +768,7 @@ type ListMatchinghReferencesTask = GithubAuthenticatedTask<
   },
   OctokitClient["rest"]["git"]["listMatchingRefs"]
 >;
-const listMatchingReferences: ListMatchinghReferencesTask = {
+const listMatchingReferences: ListMatchingReferencesTask = {
   onError,
   run: async (params, client) => {
     return client.rest.git
