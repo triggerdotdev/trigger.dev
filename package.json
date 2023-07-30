@@ -15,7 +15,7 @@
     "db:studio": "turbo run db:studio",
     "dev": "turbo run dev --parallel",
     "i:dev": "infisical run -- turbo run dev --parallel",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "format": "prettier . --write --config prettier.config.js",
     "generate": "turbo run generate",
     "lint": "turbo run lint",
     "docker": "docker-compose -p triggerdotdev-docker -f docker/docker-compose.yml up -d",
