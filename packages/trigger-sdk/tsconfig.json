@@ -5,8 +5,8 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "paths": {
-      "@trigger.dev/internal/*": ["../internal/src/*"],
-      "@trigger.dev/internal": ["../internal/src/index"]
+      "@trigger.dev/core/*": ["../core/src/*"],
+      "@trigger.dev/core": ["../core/src/index"]
     },
     "lib": ["DOM", "DOM.Iterable"],
     "declaration": false,

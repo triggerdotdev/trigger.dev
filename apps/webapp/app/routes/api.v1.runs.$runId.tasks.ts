@@ -5,7 +5,7 @@ import {
   RunTaskBodyOutput,
   RunTaskBodyOutputSchema,
   ServerTask,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { taskWithAttemptsToServerTask } from "~/models/task.server";

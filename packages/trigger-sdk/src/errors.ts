@@ -1,4 +1,4 @@
-import { ErrorWithStack, ServerTask } from "@trigger.dev/internal";
+import { ErrorWithStack, ServerTask } from "@trigger.dev/core";
 
 export class ResumeWithTaskError {
   constructor(public task: ServerTask) {}

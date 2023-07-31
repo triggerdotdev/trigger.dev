@@ -74,7 +74,7 @@ export async function createIntegrationCommand(path: string, cliOptions: any) {
   const sdkVersion = await getInternalOrExternalPackageVersion({
     path: "packages/trigger-sdk",
     packageName: "@trigger.dev/sdk",
-    tag: "next",
+    tag: "latest",
     monorepoPath: triggerMonorepoPath,
   });
 

@@ -1,11 +1,12 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { UseQueryResult, useQuery } from "@tanstack/react-query";
 import {
+  GetRun,
   GetRunOptions,
   GetRunSchema,
   urlWithSearchParams,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import { useTriggerProvider } from "./TriggerProvider";
 import { zodfetch } from "./fetch";
 
@@ -24,10 +25,12 @@ export type RunDetailOptions = GetRunOptions & {
   refreshIntervalMs?: number;
 };
 
+export type UseRunDetailsResult = UseQueryResult<GetRun>;
+
 export function useRunDetails(
   runId: string | undefined,
   options?: RunDetailOptions
-) {
+): UseRunDetailsResult {
   const { apiUrl, publicApiKey, queryClient } = useTriggerProvider();
 
   const { refreshIntervalMs: refreshInterval, ...otherOptions } = options || {};
@@ -36,6 +39,7 @@ export function useRunDetails(
     `${apiUrl}/api/v1/runs/${runId}`,
     otherOptions
   );
+
   return useQuery(
     {
       queryKey: [`triggerdotdev-run-${runId}`],

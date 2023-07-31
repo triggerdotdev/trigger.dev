@@ -5,7 +5,7 @@ import { Job } from "@trigger.dev/sdk";
 
 const githubApiKey = new Github({
   id: "github-api-key",
-  token: process.env.GITHUB_API_KEY!,
+  token: process.env["GITHUB_API_KEY"]!,
 });
 
 client.defineJob({

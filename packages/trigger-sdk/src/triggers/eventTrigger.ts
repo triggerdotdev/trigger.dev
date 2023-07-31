@@ -2,7 +2,7 @@ import {
   EventFilter,
   TriggerMetadata,
   deepMergeFilters,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import { z } from "zod";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";

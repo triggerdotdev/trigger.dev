@@ -3,7 +3,7 @@ import {
   IntervalMetadata,
   ScheduleMetadata,
   ScheduleMetadataSchema,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { parseExpression } from "cron-parser";
 import { workerQueue } from "../worker.server";

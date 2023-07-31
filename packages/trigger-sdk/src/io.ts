@@ -14,7 +14,7 @@ import {
   SerializableJson,
   ServerTask,
   UpdateTriggerSourceBody,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { webcrypto } from "node:crypto";
 import { ApiClient } from "./apiClient";

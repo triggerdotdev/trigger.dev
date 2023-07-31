@@ -6,7 +6,7 @@ import { z } from "zod";
 
 export const typeform = new Typeform({
   id: "typeform-1",
-  token: process.env.TYPEFORM_API_KEY!,
+  token: process.env["TYPEFORM_API_KEY"]!,
 });
 
 client.defineJob({

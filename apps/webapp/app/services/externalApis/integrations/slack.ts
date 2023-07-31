@@ -45,7 +45,7 @@ client.defineJob({
 export const slack: Integration = {
   identifier: "slack",
   name: "Slack",
-  packageName: "@trigger.dev/slack@next",
+  packageName: "@trigger.dev/slack@latest",
   authenticationMethods: {
     oauth2Bot: {
       name: "OAuth2 (Bot)",

@@ -11,7 +11,7 @@ import {
   TriggerMetadata,
   UpdateTriggerSourceBody,
   deepMergeFilters,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import {
   IOWithIntegrations,
   IntegrationClient,

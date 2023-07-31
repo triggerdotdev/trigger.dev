@@ -1,5 +1,5 @@
 {
-  "mode": "pre",
+  "mode": "exit",
   "tag": "next",
   "initialVersions": {
     "webapp": "1.0.0",
@@ -7,7 +7,7 @@
     "@trigger.dev/slack": "0.2.0",
     "create-trigger": "0.2.0",
     "emails": "1.0.0",
-    "@trigger.dev/internal": "0.0.1",
+    "@trigger.dev/core": "0.0.3",
     "@trigger.dev/nextjs": "0.1.0",
     "@trigger.dev/sdk": "1.0.0",
     "@trigger.dev/openai": "1.0.0-next.0",

@@ -23,7 +23,7 @@ import {
   SendEvent,
   SendEventOptions,
   SourceMetadata,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import { ApiClient } from "./apiClient";
 import {
   CanceledWithTaskError,

@@ -16,21 +16,21 @@ const supabase = new SupabaseManagement({
   id: "supabase",
 });
 
-const db = supabase.db<Database>(process.env.SUPABASE_ID!);
+const db = supabase.db<Database>(process.env["SUPABASE_ID"]!);
 
-const dbNoTypes = supabase.db(process.env.SUPABASE_ID!);
+const dbNoTypes = supabase.db(process.env["SUPABASE_ID"]!);
 
 const supabaseManagementKey = new SupabaseManagement({
   id: "supabase-management-key",
-  apiKey: process.env.SUPABASE_API_KEY!,
+  apiKey: process.env["SUPABASE_API_KEY"]!,
 });
 
-const dbKey = supabase.db<Database>(process.env.SUPABASE_ID!);
+const dbKey = supabase.db<Database>(process.env["SUPABASE_ID"]!);
 
 const supabaseDB = new Supabase<Database>({
   id: "supabase-db",
-  supabaseUrl: `https://${process.env.SUPABASE_ID}.supabase.co`,
-  supabaseKey: process.env.SUPABASE_KEY!,
+  supabaseUrl: `https://${process.env["SUPABASE_ID"]}.supabase.co`,
+  supabaseKey: process.env["SUPABASE_KEY"]!,
 });
 
 async function doPlaygroundStuff(
