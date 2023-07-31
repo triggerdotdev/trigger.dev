@@ -604,6 +604,502 @@ const listOrgWebhooks: GithubAuthenticatedTask<
   },
 };
 
+type Endcoding = "utf-8" | "base-64";
+
+type CreateBlobTask = GithubAuthenticatedTask<
+  {
+    owner: string;
+    repo: string;
+    content: string;
+    encoding?: Endcoding;
+  },
+  OctokitClient["rest"]["git"]["createBlob"]
+>;
+const createBlob: CreateBlobTask = {
+  onError,
+  run: async (params, client) => {
+    return client.rest.git
+      .createBlob({
+        owner: params.owner,
+        repo: params.repo,
+        content: params.content,
+        encoding: params.encoding,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "Create Blob",
+      params,
+      properties: [
+        ...repoProperties(params),
+        {
+          label: "Content",
+          text: params.content,
+        },
+      ],
+    };
+  },
+};
+
+type GetBlobTask = GithubAuthenticatedTask<
+  {
+    owner: string;
+    repo: string;
+    fileSHA: string;
+  },
+  OctokitClient["rest"]["git"]["getBlob"]
+>;
+
+const getBlob: GetBlobTask = {
+  onError,
+  run: async (params, client) => {
+    return client.rest.git
+      .getBlob({
+        owner: params.owner,
+        repo: params.repo,
+        file_sha: params.fileSHA,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "Get Blob",
+      params,
+      properties: [...repoProperties(params)],
+    };
+  },
+};
+
+type AuthorContent = {
+  name: string;
+  email: string;
+  date?: string;
+};
+
+type CommitterContent = {
+  name?: string;
+  email?: string;
+  date?: string;
+};
+
+type CreateCommitTask = GithubAuthenticatedTask<
+  {
+    owner: string;
+    repo: string;
+    message: string;
+    tree: string;
+    parents?: string[];
+    author?: AuthorContent;
+    committer?: CommitterContent;
+    signature?: string;
+  },
+  OctokitClient["rest"]["git"]["createCommit"]
+>;
+
+const createCommit: CreateCommitTask = {
+  onError,
+  run: async (params, client) => {
+    return client.rest.git
+      .createCommit({
+        ...params,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "Create Commit",
+      params,
+      properties: [
+        ...repoProperties(params),
+        {
+          label: "Message",
+          text: params.message,
+        },
+        {
+          label: "Tree",
+          text: params.tree,
+        },
+      ],
+    };
+  },
+};
+
+type GetCommitTask = GithubAuthenticatedTask<
+  {
+    owner: string;
+    repo: string;
+    commitSHA: string;
+  },
+  OctokitClient["rest"]["git"]["getCommit"]
+>;
+
+const getCommit: GetCommitTask = {
+  onError,
+  run: async (params, client) => {
+    return client.rest.git
+      .getCommit({
+        owner: params.owner,
+        repo: params.repo,
+        commit_sha: params.commitSHA,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "Get Commit",
+      params,
+      properties: [
+        ...repoProperties(params),
+        {
+          label: "Commit SHA",
+          text: params.commitSHA,
+        },
+      ],
+    };
+  },
+};
+
+type ListMatchingReferencesTask = GithubAuthenticatedTask<
+  {
+    owner: string;
+    repo: string;
+    ref: string;
+  },
+  OctokitClient["rest"]["git"]["listMatchingRefs"]
+>;
+const listMatchingReferences: ListMatchingReferencesTask = {
+  onError,
+  run: async (params, client) => {
+    return client.rest.git
+      .listMatchingRefs({
+        ...params,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "List Matching References",
+      params,
+      properties: [
+        ...repoProperties(params),
+        {
+          label: "Ref",
+          text: params.ref,
+        },
+      ],
+    };
+  },
+};
+
+type GetReferenceTask = GithubAuthenticatedTask<
+  {
+    owner: string;
+    repo: string;
+    ref: string;
+  },
+  OctokitClient["rest"]["git"]["getRef"]
+>;
+
+const getReference: GetReferenceTask = {
+  onError,
+  run: async (params, client) => {
+    return client.rest.git
+      .getRef({
+        ...params,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "Get Reference",
+      params,
+      properties: [
+        ...repoProperties(params),
+        {
+          label: "Ref",
+          text: params.ref,
+        },
+      ],
+    };
+  },
+};
+
+type CreateReferenceTask = GithubAuthenticatedTask<
+  {
+    owner: string;
+    repo: string;
+    ref: string;
+    sha: string;
+  },
+  OctokitClient["rest"]["git"]["createRef"]
+>;
+
+const createReference: CreateReferenceTask = {
+  onError,
+  run: async (params, client) => {
+    return client.rest.git
+      .createRef({
+        ...params,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "Create Reference",
+      params,
+      properties: [
+        ...repoProperties(params),
+        {
+          label: "Ref",
+          text: params.ref,
+        },
+        {
+          label: "SHA",
+          text: params.ref,
+        },
+      ],
+    };
+  },
+};
+
+type UpdateReferenceTask = GithubAuthenticatedTask<
+  {
+    owner: string;
+    repo: string;
+    ref: string;
+    sha: string;
+    force?: boolean;
+  },
+  OctokitClient["rest"]["git"]["updateRef"]
+>;
+
+const updateReference: UpdateReferenceTask = {
+  onError,
+  run: async (params, client) => {
+    return client.rest.git
+      .updateRef({
+        ...params,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "Update Reference",
+      params,
+      properties: [
+        ...repoProperties(params),
+        {
+          label: "Ref",
+          text: params.ref,
+        },
+        {
+          label: "SHA",
+          text: params.ref,
+        },
+      ],
+    };
+  },
+};
+
+type DeleteReferenceTask = GithubAuthenticatedTask<
+  {
+    owner: string;
+    repo: string;
+    ref: string;
+  },
+  OctokitClient["rest"]["git"]["deleteRef"]
+>;
+
+const deleteReference: DeleteReferenceTask = {
+  onError,
+  run: async (params, client) => {
+    return client.rest.git
+      .deleteRef({
+        ...params,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "Delete Reference",
+      params,
+      properties: [
+        ...repoProperties(params),
+        {
+          label: "Ref",
+          text: params.ref,
+        },
+      ],
+    };
+  },
+};
+
+type TagType = "commit" | "tree" | "blob";
+type TaggerContent = {
+  name: string;
+  email: string;
+  date?: string;
+};
+type CreateTagTask = GithubAuthenticatedTask<
+  {
+    owner: string;
+    repo: string;
+    tag: string;
+    message: string;
+    object: string;
+    type: TagType;
+    tagger?: TaggerContent;
+  },
+  OctokitClient["rest"]["git"]["createTag"]
+>;
+
+const createTag: CreateTagTask = {
+  onError,
+  run: async (params, client) => {
+    return client.rest.git
+      .createTag({
+        ...params,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "Create Tag",
+      params,
+      properties: [
+        ...repoProperties(params),
+        {
+          label: "Tag",
+          text: params.tag,
+        },
+        {
+          label: "Message",
+          text: params.message,
+        },
+        {
+          label: "Object",
+          text: params.object,
+        },
+        {
+          label: "Tag Type",
+          text: params.type,
+        },
+      ],
+    };
+  },
+};
+
+type GetTagTask = GithubAuthenticatedTask<
+  {
+    owner: string;
+    repo: string;
+    tagSHA: string;
+  },
+  OctokitClient["rest"]["git"]["getTag"]
+>;
+
+const getTag: GetTagTask = {
+  onError,
+  run: async (params, client) => {
+    return client.rest.git
+      .getTag({
+        owner: params.owner,
+        repo: params.repo,
+        tag_sha: params.tagSHA,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "Get Tag",
+      params,
+      properties: [
+        ...repoProperties(params),
+        {
+          label: "Tag SHA",
+          text: params.tagSHA,
+        },
+      ],
+    };
+  },
+};
+
+type TreeType = {
+  path?: string | undefined;
+  mode?: "100644" | "100755" | "040000" | "160000" | "120000" | undefined;
+  type?: "commit" | "tree" | "blob" | undefined;
+  sha?: string | null | undefined;
+  content?: string | undefined;
+};
+
+type CreateTreeTask = GithubAuthenticatedTask<
+  {
+    owner: string;
+    repo: string;
+    tree: TreeType[];
+    baseTree?: string;
+  },
+  OctokitClient["rest"]["git"]["createTree"]
+>;
+
+const createTree: CreateTreeTask = {
+  onError,
+  run: async (params, client) => {
+    return client.rest.git
+      .createTree({
+        owner: params.owner,
+        repo: params.repo,
+        tree: params.tree,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "Create Tree",
+      params,
+      properties: [...repoProperties(params)],
+    };
+  },
+};
+
+type GetTreeTask = GithubAuthenticatedTask<
+  {
+    owner: string;
+    repo: string;
+    treeSHA: string;
+    recursive?: string;
+  },
+  OctokitClient["rest"]["git"]["getTree"]
+>;
+
+const getTree: GetTreeTask = {
+  onError,
+  run: async (params, client) => {
+    return client.rest.git
+      .getTree({
+        owner: params.owner,
+        repo: params.repo,
+        tree_sha: params.treeSHA,
+        recursive: params.recursive,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "Get Tree",
+      params,
+      properties: [
+        ...repoProperties(params),
+        {
+          label: "Tree SHA",
+          text: params.treeSHA,
+        },
+      ],
+    };
+  },
+};
+
 export const tasks = {
   createIssue,
   addIssueAssignees,
@@ -619,4 +1115,17 @@ export const tasks = {
   updateOrgWebhook,
   createOrgWebhook,
   listOrgWebhooks,
+  createBlob,
+  getBlob,
+  createCommit,
+  getCommit,
+  listMatchingReferences,
+  getReference,
+  createReference,
+  updateReference,
+  deleteReference,
+  createTag,
+  getTag,
+  createTree,
+  getTree,
 };
