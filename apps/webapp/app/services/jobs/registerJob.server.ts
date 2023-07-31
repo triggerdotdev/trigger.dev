@@ -404,7 +404,10 @@ export class RegisterJobService {
             },
           },
           create: {
-            event: trigger.rule.event,
+            event:
+              typeof trigger.rule.event === "string"
+                ? [trigger.rule.event]
+                : trigger.rule.event,
             source: trigger.rule.source,
             payloadFilter: trigger.rule.payload,
             contextFilter: trigger.rule.context,
@@ -417,7 +420,10 @@ export class RegisterJobService {
             dispatchableId: job.id,
           },
           update: {
-            event: trigger.rule.event,
+            event:
+              typeof trigger.rule.event === "string"
+                ? [trigger.rule.event]
+                : trigger.rule.event,
             source: trigger.rule.source,
             payloadFilter: trigger.rule.payload,
             contextFilter: trigger.rule.context,

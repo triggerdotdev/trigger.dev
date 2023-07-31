@@ -81,7 +81,7 @@ export type EventSpecificationExample = {
 };
 
 export interface EventSpecification<TEvent extends any> {
-  name: string;
+  name: string | string[];
   title: string;
   source: string;
   icon: string;

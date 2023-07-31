@@ -92,7 +92,10 @@ export class DynamicTrigger<
         key,
         channel: this.source.channel,
         params,
-        events: [this.event.name],
+        events:
+          typeof this.event.name === "string"
+            ? [this.event.name]
+            : this.event.name,
         integration: {
           id: this.source.integration.id,
           metadata: this.source.integration.metadata,

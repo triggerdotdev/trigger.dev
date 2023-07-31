@@ -13,7 +13,7 @@ export const EventExampleSchema = z.object({
 export type EventExample = z.infer<typeof EventExampleSchema>;
 
 export const EventSpecificationSchema = z.object({
-  name: z.string(),
+  name: z.string().or(z.array(z.string())),
   title: z.string(),
   source: z.string(),
   icon: z.string(),
@@ -30,7 +30,7 @@ export const DynamicTriggerMetadataSchema = z.object({
 
 export const StaticTriggerMetadataSchema = z.object({
   type: z.literal("static"),
-  title: z.string(),
+  title: z.union([z.string(), z.array(z.string())]),
   properties: z.array(DisplayPropertySchema).optional(),
   rule: EventRuleSchema,
 });
