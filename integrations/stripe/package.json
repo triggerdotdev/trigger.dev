@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/stripe",
-  "version": "0.1.0-next.0",
+  "version": "0.1.0-next.1",
   "description": "Trigger.dev integration for stripe",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

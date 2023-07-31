@@ -513,7 +513,12 @@ export class TriggerClient {
     }
 
     registeredSource.events = Array.from(
-      new Set([...registeredSource.events, options.event.name])
+      new Set([
+        ...registeredSource.events,
+        ...(typeof options.event.name === "string"
+          ? [options.event.name]
+          : options.event.name),
+      ])
     );
 
     this.#registeredSources[options.key] = registeredSource;

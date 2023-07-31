@@ -17,7 +17,7 @@ export function addGitHubStrategy(
       clientSecret,
       callbackURL: `${env.LOGIN_ORIGIN}/auth/github/callback`,
     },
-    async ({ accessToken, extraParams, profile }) => {
+    async ({ extraParams, profile }) => {
       const emails = profile.emails;
 
       if (!emails) {
@@ -34,7 +34,6 @@ export function addGitHubStrategy(
         const { user, isNewUser } = await findOrCreateUser({
           email: emails[0].value,
           authenticationMethod: "GITHUB",
-          accessToken,
           authenticationProfile: profile,
           authenticationExtraParams: extraParams,
         });

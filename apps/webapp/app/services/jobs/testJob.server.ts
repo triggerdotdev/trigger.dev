@@ -44,6 +44,9 @@ export class TestJobService {
         const event = EventSpecificationSchema.parse(
           version.eventSpecification
         );
+        const eventName = Array.isArray(event.name)
+          ? event.name[0]
+          : event.name;
 
         const eventLog = await this.#prismaClient.eventRecord.create({
           data: {
@@ -62,8 +65,8 @@ export class TestJobService {
                 id: environment.id,
               },
             },
-            eventId: `test:${event.name}:${new Date().getTime()}`,
-            name: event.name,
+            eventId: `test:${eventName}:${new Date().getTime()}`,
+            name: eventName,
             timestamp: new Date(),
             payload: payload ?? {},
             context: {},

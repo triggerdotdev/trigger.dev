@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/supabase",
-  "version": "0.1.1-next.0",
+  "version": "0.1.1-next.1",
   "description": "Trigger.dev integration for @supabase/supabase-js",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
