@@ -101,7 +101,7 @@ webapp:dev: If you didn't try to log in, you can safely ignore this email.
    ```sh
    cd packages/database
    ```
-4. Generate the Prisma client
+3. Generate the Prisma client
 
    ```sh
    pnpm run generate
@@ -109,15 +109,15 @@ webapp:dev: If you didn't try to log in, you can safely ignore this email.
    The above updates the prisma client generated into node_modules/.prisma/client folder. This helps with typing of relevant prisma models. It ensures typescript
    recognizes fields added or removed from a model and type-checks appropriately.
 
-5. Create and apply the migrations
+4. Create and apply the migrations
 
    ```
    pnpm run db:migrate:dev
    ```
    This creates a migration file and executes the migrations against your database and applies changes to the database schema(s)
 
-6. Commit generated migrations as well as changes to the schema.prisma file
-7. If you're using VSCode you may need to restart the Typescript server in the webapp to get updated type inference. Open a TypeScript file, then open the Command Palette (View > Command Palette) and run `TypeScript: Restart TS server`.
+5. Commit generated migrations as well as changes to the schema.prisma file
+6. If you're using VSCode you may need to restart the Typescript server in the webapp to get updated type inference. Open a TypeScript file, then open the Command Palette (View > Command Palette) and run `TypeScript: Restart TS server`.
 
 ## Testing CLI changes
 To test CLI changes, follow the steps below:
