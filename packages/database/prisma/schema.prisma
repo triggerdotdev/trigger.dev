@@ -13,7 +13,6 @@ model User {
   email String @unique
 
   authenticationMethod      AuthenticationMethod
-  accessToken               String?
   authenticationProfile     Json?
   authenticationExtraParams Json?
   authIdentifier            String?              @unique

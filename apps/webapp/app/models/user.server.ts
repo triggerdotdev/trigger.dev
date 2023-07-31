@@ -11,7 +11,6 @@ type FindOrCreateMagicLink = {
 type FindOrCreateGithub = {
   authenticationMethod: "GITHUB";
   email: User["email"];
-  accessToken: User["accessToken"];
   authenticationProfile: GitHubProfile;
   authenticationExtraParams: Record<string, unknown>;
 };
@@ -61,7 +60,6 @@ export async function findOrCreateMagicLinkUser(
 
 export async function findOrCreateGithubUser({
   email,
-  accessToken,
   authenticationProfile,
   authenticationExtraParams,
 }: FindOrCreateGithub): Promise<LoggedInUser> {
@@ -98,7 +96,6 @@ export async function findOrCreateGithubUser({
         email,
       },
       data: {
-        accessToken,
         authenticationProfile: authProfile,
         authenticationExtraParams: authExtraParams,
         avatarUrl,
@@ -117,9 +114,7 @@ export async function findOrCreateGithubUser({
       where: {
         id: existingUser.id,
       },
-      data: {
-        accessToken,
-      },
+      data: {},
     });
 
     return {
@@ -132,9 +127,8 @@ export async function findOrCreateGithubUser({
     where: {
       authIdentifier,
     },
-    update: { accessToken },
+    update: {},
     create: {
-      accessToken,
       authenticationProfile: authProfile,
       authenticationExtraParams: authExtraParams,
       name,

@@ -10,6 +10,7 @@
   "scripts": {
     "build": "turbo run build",
     "build:force": "turbo run build --force",
+    "build:db:seed": "turbo run build:db:seed",
     "db:migrate": "turbo run db:migrate:deploy generate",
     "db:seed": "turbo run db:seed",
     "db:studio": "turbo run db:studio",
