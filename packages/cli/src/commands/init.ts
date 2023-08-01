@@ -87,7 +87,11 @@ export const initCommand = async (options: InitCommandOptions) => {
     return;
   }
 
-  telemetryClient.identify(authorizedKey.organization.id, authorizedKey.project.id, authorizedKey.userId);
+  telemetryClient.identify(
+    authorizedKey.organization.id,
+    authorizedKey.project.id,
+    authorizedKey.userId
+  );
 
   await addDependencies(resolvedPath, [
     { name: "@trigger.dev/sdk", tag: "latest" },
@@ -186,7 +190,7 @@ const resolveOptionsWithPrompts = async (
     } else {
       resolvedOptions.apiUrl = resolvedOptions.triggerUrl;
     }
-    
+
     telemetryClient.init.resolvedApiUrl(resolvedOptions.apiUrl, resolvedOptions);
 
     if (!options.apiKey) {

@@ -16,19 +16,18 @@ export async function loader({ request }: LoaderArgs) {
       orgMember: {
         select: {
           userId: true,
-        }
-      }
+        },
+      },
     },
     where: {
       id: authenticationResult.environment.id,
-    }
+    },
   });
 
   const result = {
     ...authenticationResult.environment,
     userId: environmentWithUser?.orgMember?.userId,
-  }
+  };
 
   return json(result);
 }
-

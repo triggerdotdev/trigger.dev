@@ -65,9 +65,7 @@ export async function devCommand(path: string, anyOptions: any) {
 
   logger.success(`✔️ [trigger.dev] Found API Key in ${envFile} file`);
 
-  logger.info(
-    `  [trigger.dev] Looking for Next.js site on port ${options.port}`
-  );
+  logger.info(`  [trigger.dev] Looking for Next.js site on port ${options.port}`);
 
   const localEndpointHandlerUrl = `http://localhost:${options.port}${options.handlerPath}`;
 
@@ -98,9 +96,7 @@ export async function devCommand(path: string, anyOptions: any) {
   const endpointHandlerUrl = `${endpointUrl}${options.handlerPath}`;
   telemetryClient.dev.tunnelRunning(path, options);
 
-  const connectingSpinner = ora(
-    `[trigger.dev] Registering endpoint ${endpointHandlerUrl}...`
-  );
+  const connectingSpinner = ora(`[trigger.dev] Registering endpoint ${endpointHandlerUrl}...`);
 
   //refresh function
   let hasConnected = false;
@@ -108,18 +104,13 @@ export async function devCommand(path: string, anyOptions: any) {
   const refresh = async () => {
     connectingSpinner.start();
 
-    const refreshedEndpointId = await getEndpointIdFromPackageJson(
-      resolvedPath,
-      options
-    );
+    const refreshedEndpointId = await getEndpointIdFromPackageJson(resolvedPath, options);
 
     // Read from .env.local to get the TRIGGER_API_KEY and TRIGGER_API_URL
     const apiDetails = await getTriggerApiDetails(resolvedPath, envFile);
 
     if (!apiDetails) {
-      connectingSpinner.fail(
-        `❌ [trigger.dev] Failed to connect: Missing API Key`
-      );
+      connectingSpinner.fail(`❌ [trigger.dev] Failed to connect: Missing API Key`);
       logger.info(`Will attempt again on the next file change…`);
       attemptCount = 0;
       return;
@@ -152,9 +143,9 @@ export async function devCommand(path: string, anyOptions: any) {
     if (result.success) {
       attemptCount = 0;
       connectingSpinner.succeed(
-        `[trigger.dev] 🔄 Refreshed ${
-          refreshedEndpointId ?? endpointId
-        } ${formattedDate.format(new Date(result.data.updatedAt))}`
+        `[trigger.dev] 🔄 Refreshed ${refreshedEndpointId ?? endpointId} ${formattedDate.format(
+          new Date(result.data.updatedAt)
+        )}`
       );
 
       if (!hasConnected) {
@@ -208,10 +199,7 @@ export async function devCommand(path: string, anyOptions: any) {
   throttle(refresh, throttleTimeMs);
 }
 
-async function getEndpointIdFromPackageJson(
-  path: string,
-  options: DevCommandOptions
-) {
+async function getEndpointIdFromPackageJson(path: string, options: DevCommandOptions) {
   if (options.clientId) {
     return options.clientId;
   }
@@ -262,18 +250,14 @@ async function getTriggerApiDetails(path: string, envFile: string) {
   ]);
 
   if (!resolvedEnvFile) {
-    logger.error(
-      `You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`
-    );
+    logger.error(`You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`);
     return;
   }
 
   const parsedEnvFile = dotenv.parse(resolvedEnvFile.content);
 
   if (!parsedEnvFile.TRIGGER_API_KEY || !parsedEnvFile.TRIGGER_API_KEY) {
-    logger.error(
-      `You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`
-    );
+    logger.error(`You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`);
     return;
   }
 
@@ -281,9 +265,7 @@ async function getTriggerApiDetails(path: string, envFile: string) {
   const apiUrl = parsedEnvFile.TRIGGER_API_URL;
 
   if (!apiKey || !apiUrl) {
-    logger.error(
-      `You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`
-    );
+    logger.error(`You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`);
     return;
   }
 
@@ -316,11 +298,7 @@ async function createTunnel(port: number) {
   }
 }
 
-async function refreshEndpoint(
-  apiClient: TriggerApi,
-  endpointId: string,
-  endpointUrl: string
-) {
+async function refreshEndpoint(apiClient: TriggerApi, endpointId: string, endpointUrl: string) {
   try {
     const response = await apiClient.registerEndpoint({
       id: endpointId,

@@ -47,20 +47,14 @@ export class TelemetryClient {
         properties: this.#initProperties(options),
       });
     },
-    isTypescriptProject: (
-      isTypescriptProject: boolean,
-      options: InitCommandOptions
-    ) => {
+    isTypescriptProject: (isTypescriptProject: boolean, options: InitCommandOptions) => {
       this.#client.capture({
         distinctId: this.#sessionId,
         event: "cli_init_typescriptproject",
         properties: { ...this.#initProperties(options), isTypescriptProject },
       });
     },
-    resolvedApiUrl: (
-      apiUrl: string | undefined,
-      options: InitCommandOptions
-    ) => {
+    resolvedApiUrl: (apiUrl: string | undefined, options: InitCommandOptions) => {
       this.#client.capture({
         distinctId: this.#sessionId,
         event: "cli_init_resolved_apiurl",
@@ -113,8 +107,7 @@ export class TelemetryClient {
       });
     },
     failed: (reason: string, options: InitCommandOptions, error?: unknown) => {
-      const errorString =
-        error instanceof Error ? error.message : String(error);
+      const errorString = error instanceof Error ? error.message : String(error);
 
       this.#client.capture({
         distinctId: this.#sessionId,
@@ -129,10 +122,7 @@ export class TelemetryClient {
   };
 
   dev = {
-    started: (
-      path: string,
-      options: Record<string, string | number | boolean>
-    ) => {
+    started: (path: string, options: Record<string, string | number | boolean>) => {
       this.#client.capture({
         distinctId: this.#sessionId,
         event: "cli_dev_started",
@@ -165,8 +155,7 @@ export class TelemetryClient {
       options: Record<string, string | number | boolean>,
       error?: unknown
     ) => {
-      const errorString =
-        error instanceof Error ? error.message : String(error);
+      const errorString = error instanceof Error ? error.message : String(error);
 
       this.#client.capture({
         distinctId: this.#sessionId,
