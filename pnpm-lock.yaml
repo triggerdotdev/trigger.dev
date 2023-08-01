@@ -712,11 +712,13 @@ importers:
       gradient-string: ^2.0.2
       inquirer: ^9.1.4
       localtunnel: ^2.0.2
+      nanoid: ^4.0.2
       ngrok: 5.0.0-beta.2
       node-fetch: ^3.3.0
       openai: ^3.3.0
       ora: ^6.1.2
       path-to-regexp: ^6.2.1
+      posthog-node: ^3.1.1
       rimraf: ^3.0.2
       simple-git: ^3.19.0
       terminal-link: ^3.0.0
@@ -737,11 +739,13 @@ importers:
       gradient-string: 2.0.2
       inquirer: 9.1.4
       localtunnel: 2.0.2
+      nanoid: 4.0.2
       ngrok: 5.0.0-beta.2
       node-fetch: 3.3.0
       openai: 3.3.0
       ora: 6.1.2
       path-to-regexp: 6.2.1
+      posthog-node: 3.1.1
       simple-git: 3.19.0
       terminal-link: 3.0.0
       tsconfck: 2.1.2_typescript@4.9.5
@@ -11974,7 +11978,7 @@ packages:
   /axios/0.21.4_debug@4.3.2:
     resolution: {integrity: sha512-ut5vewkiu8jjGBdqpM44XxjuCjq9LAKeHVmoVfHVzy8eHgxxq8SbAVQNovDA8mVi05kP0Ea/n/UzcSHcTJQfNg==}
     dependencies:
-      follow-redirects: 1.15.2_debug@4.3.2
+      follow-redirects: 1.15.2
     transitivePeerDependencies:
       - debug
     dev: false
@@ -16079,18 +16083,6 @@ packages:
         optional: true
     dev: false
 
-  /follow-redirects/1.15.2_debug@4.3.2:
-    resolution: {integrity: sha512-VQLG33o04KaQ8uYi2tVNbdrWp1QWxNNea+nmIB4EVM28v0hmP17z7aG1+wAkNzVq4KeXTq3221ye5qTJP91JwA==}
-    engines: {node: '>=4.0'}
-    peerDependencies:
-      debug: '*'
-    peerDependenciesMeta:
-      debug:
-        optional: true
-    dependencies:
-      debug: 4.3.2
-    dev: false
-
   /for-each/0.3.3:
     resolution: {integrity: sha512-jqYfLp7mo9vIyQf8ykW2v7A+2N4QjeCeI5+Dz9XraiO1ign81wjiH7Fb9vSOWvQfNtmSa4H2RoQTrrXivdUZmw==}
     dependencies:
@@ -19222,6 +19214,12 @@ packages:
     resolution: {integrity: sha512-BGcqMMJuToF7i1rt+2PWSNVnWIkGCU78jBG3RxO/bZlnZPK2Cmi2QaffxGO/2RvWi9sL+FAiRiXMgsyxQ1DIDA==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
+
+  /nanoid/4.0.2:
+    resolution: {integrity: sha512-7ZtY5KTCNheRGfEFxnedV5zFiORN1+Y1N6zvPTnHQd8ENUvfaDBeuJDZb2bN/oXwXxu3qkTXDzy57W5vAmDTBw==}
+    engines: {node: ^14 || ^16 || >=18}
+    hasBin: true
+    dev: false
 
   /nanomatch/1.2.13:
     resolution: {integrity: sha512-fpoe2T0RbHwBTBUOftAfBPaDEi06ufaUai0mE6Yn1kacc3SnTErfb/h+X94VXzI64rKFHYImXSvdwGGCmwOqCA==}

@@ -17,6 +17,7 @@ import { TriggerApi, WhoamiResponse } from "../utils/triggerApi.js";
 import { parse } from "tsconfck";
 import { pathExists, readJSONFile } from "../utils/fileSystem.js";
 import { pathToFileURL } from "url";
+import { TelemetryClient } from "../telemetry/telemetry.js";
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -31,6 +32,9 @@ type ResolvedOptions = Required<InitCommandOptions>;
 export const initCommand = async (options: InitCommandOptions) => {
   renderTitle();
 
+  const telemetryClient = new TelemetryClient();
+  telemetryClient.init.started(options);
+
   if (options.triggerUrl === CLOUD_TRIGGER_URL) {
     logger.info(`✨ Initializing project in Trigger.dev Cloud`);
   } else if (typeof options.triggerUrl === "string") {
@@ -42,6 +46,7 @@ export const initCommand = async (options: InitCommandOptions) => {
   const resolvedPath = resolvePath(options.projectPath);
   // Detect if are are in a Next.js project
   const isNextJsProject = await detectNextJsProject(resolvedPath);
+  telemetryClient.init.isNextJsProject(isNextJsProject, options);
 
   if (!isNextJsProject) {
     logger.error("You must run this command in a Next.js project.");
@@ -62,7 +67,6 @@ export const initCommand = async (options: InitCommandOptions) => {
   const isTypescriptProject = await detectTypescriptProject(resolvedPath);
 
   const resolvedOptions = await resolveOptionsWithPrompts(options, resolvedPath);
-
   const apiKey = resolvedOptions.apiKey;
 
   if (!apiKey) {
@@ -78,8 +82,11 @@ export const initCommand = async (options: InitCommandOptions) => {
       `🛑 The API key you provided is not authorized. Try visiting your dashboard at ${resolvedOptions.triggerUrl} to get a new API key.`
     );
 
+    telemetryClient.init.invalidApiKey(options);
     process.exit(1);
   }
+
+  telemetryClient.identify(authorizedKey.organization.id, authorizedKey.project.id, authorizedKey.userId);
 
   await addDependencies(resolvedPath, [
     { name: "@trigger.dev/sdk", tag: "latest" },
