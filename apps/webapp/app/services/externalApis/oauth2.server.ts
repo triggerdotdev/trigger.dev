@@ -273,7 +273,7 @@ function convertToken({
   const scopesPtr = jsonpointer.compile(scopePointer);
   const scopesValue = scopesPtr.get(token.token);
   if (typeof scopesValue === "string") {
-    actualScopes = (scopesValue as string).split(scopeSeparator);
+    actualScopes = scopesValue.split(scopeSeparator);
   }
 
   const refreshTokenPtr = jsonpointer.compile(refreshTokenPointer);

@@ -850,10 +850,10 @@ enum SecretStoreProvider {
   AWS_PARAM_STORE
 }
 
-/// Used when the provider = "database". Not recommended outside of local development.
 model SecretStore {
-  key   String @unique
-  value Json
+  key     String @unique
+  value   Json
+  version String @default("1")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

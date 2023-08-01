@@ -10,6 +10,7 @@ const EnvironmentSchema = z.object({
   DATABASE_URL: z.string(),
   SESSION_SECRET: z.string(),
   MAGIC_LINK_SECRET: z.string(),
+  ENCRYPTION_KEY: z.string(),
   REMIX_APP_PORT: z.string().optional(),
   LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
   APP_ORIGIN: z.string().default("http://localhost:3030"),
