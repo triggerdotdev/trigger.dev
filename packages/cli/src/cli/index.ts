@@ -1,13 +1,12 @@
 import { Command } from "commander";
 import inquirer from "inquirer";
-import { initCommand } from "../commands/init.js";
-import { COMMAND_NAME, CLOUD_TRIGGER_URL } from "../consts.js";
-import { getVersion } from "../utils/getVersion.js";
 import pathModule from "node:path";
-import { devCommand } from "../commands/dev.js";
 import { createIntegrationCommand } from "../commands/createIntegration.js";
-import { TelemetryClient } from "../telemetry/telemetry.js";
-import { logger } from "../utils/logger.js";
+import { devCommand } from "../commands/dev.js";
+import { initCommand } from "../commands/init.js";
+import { CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts.js";
+import { TelemetryClient, telemetryClient } from "../telemetry/telemetry.js";
+import { getVersion } from "../utils/getVersion.js";
 
 export const program = new Command();
 
@@ -36,9 +35,8 @@ program
   )
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (options) => {
-    const telemetryClient = new TelemetryClient();
     try {
-      await initCommand(options, telemetryClient);
+      await initCommand(options);
     } catch (e) {
       telemetryClient.init.failed("unknown", options, e);
       throw e;
@@ -68,7 +66,12 @@ program
   )
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (path, options) => {
-    await devCommand(path, options);
+    try {
+      await devCommand(path, options);
+    } catch (e) {
+      telemetryClient.dev.failed("unknown", options, e);
+      throw e;
+    }
   });
 
 program

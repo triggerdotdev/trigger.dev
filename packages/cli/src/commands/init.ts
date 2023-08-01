@@ -9,7 +9,7 @@ import { parse } from "tsconfck";
 import { pathToFileURL } from "url";
 import { promptApiKey, promptEndpointSlug, promptTriggerUrl } from "../cli/index.js";
 import { CLOUD_API_URL, CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts.js";
-import { TelemetryClient } from "../telemetry/telemetry.js";
+import { TelemetryClient, telemetryClient } from "../telemetry/telemetry.js";
 import { addDependencies } from "../utils/addDependencies.js";
 import { detectNextJsProject } from "../utils/detectNextJsProject.js";
 import { pathExists, readJSONFile } from "../utils/fileSystem.js";
@@ -29,7 +29,7 @@ export type InitCommandOptions = {
 
 type ResolvedOptions = Required<InitCommandOptions>;
 
-export const initCommand = async (options: InitCommandOptions, telemetryClient: TelemetryClient) => {
+export const initCommand = async (options: InitCommandOptions) => {
   renderTitle();
 
   telemetryClient.init.started(options);

@@ -2,6 +2,7 @@ import { PostHog } from "posthog-node";
 import { InitCommandOptions } from "../commands/init.js";
 import { nanoid } from "nanoid";
 import { getVersion } from "../utils/getVersion.js";
+import { DevCommandOptions } from "../commands/dev.js";
 
 //todo update this to the PROD key: phc_hwYmedO564b3Ik8nhA4Csrb5SueY0EwFJWCbseGwWW
 const postHogApiKey = "phc_HBGZden3ls3SinTqYOdZkFct4Rn0aarqUzrodYQ7exE";
@@ -149,6 +150,58 @@ export class TelemetryClient {
     },
   };
 
+  dev = {
+    started: (
+      path: string,
+      options: Record<string, string | number | boolean>
+    ) => {
+      this.#client.capture({
+        distinctId: this.#sessionId,
+        event: "cli_dev_started",
+        properties: { ...options, path },
+      });
+    },
+    serverRunning: (path: string, options: DevCommandOptions) => {
+      this.#client.capture({
+        distinctId: this.#sessionId,
+        event: "cli_dev_server_running",
+        properties: { ...options, path },
+      });
+    },
+    tunnelRunning: (path: string, options: DevCommandOptions) => {
+      this.#client.capture({
+        distinctId: this.#sessionId,
+        event: "cli_dev_tunnel_running",
+        properties: { ...options, path },
+      });
+    },
+    connected: (path: string, options: DevCommandOptions) => {
+      this.#client.capture({
+        distinctId: this.#sessionId,
+        event: "cli_dev_connected",
+        properties: { ...options, path },
+      });
+    },
+    failed: (
+      reason: string,
+      options: Record<string, string | number | boolean>,
+      error?: unknown
+    ) => {
+      const errorString =
+        error instanceof Error ? error.message : String(error);
+
+      this.#client.capture({
+        distinctId: this.#sessionId,
+        event: "cli_dev_failed",
+        properties: {
+          ...options,
+          reason,
+          error: errorString,
+        },
+      });
+    },
+  };
+
   #initProperties(options: InitCommandOptions) {
     return {
       version: this.#version,
@@ -159,3 +212,5 @@ export class TelemetryClient {
     };
   }
 }
+
+export const telemetryClient = new TelemetryClient();

@@ -522,9 +522,8 @@ importers:
 
   examples/temporary-app:
     specifiers:
-      '@trigger.dev/cli': workspace:*
-      '@trigger.dev/nextjs': ^1.0.0-next.8
-      '@trigger.dev/sdk': ^0.2.22
+      '@trigger.dev/nextjs': workspace:*
+      '@trigger.dev/sdk': workspace:*
       '@types/node': 20.4.5
       '@types/react': 18.2.17
       '@types/react-dom': 18.2.7
@@ -538,8 +537,8 @@ importers:
       tailwindcss: 3.3.3
       typescript: 5.1.6
     dependencies:
-      '@trigger.dev/nextjs': 1.0.0-next.8_2q2xkrofoedn463phkw6az3ur4
-      '@trigger.dev/sdk': 0.2.22
+      '@trigger.dev/nextjs': link:../../packages/nextjs
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
       '@types/node': 20.4.5
       '@types/react': 18.2.17
       '@types/react-dom': 18.2.7
@@ -552,8 +551,6 @@ importers:
       react-dom: 18.2.0_react@18.2.0
       tailwindcss: 3.3.3
       typescript: 5.1.6
-    devDependencies:
-      '@trigger.dev/cli': link:../../packages/cli
 
   integrations/github:
     specifiers:
@@ -959,6 +956,7 @@ importers:
       chalk: ^5.2.0
       cronstrue: ^2.21.0
       debug: ^4.3.4
+      encoding: ^0.1.13
       evt: ^2.4.13
       get-caller-file: ^2.0.5
       git-remote-origin-url: ^4.0.0
@@ -983,7 +981,7 @@ importers:
       get-caller-file: 2.0.5
       git-remote-origin-url: 4.0.0
       git-repo-info: 2.1.1
-      node-fetch: 2.6.7
+      node-fetch: 2.6.7_encoding@0.1.13
       slug: 6.1.0
       terminal-link: 3.0.0
       ulid: 2.3.0
@@ -1000,6 +998,7 @@ importers:
       '@types/slug': 5.0.3
       '@types/uuid': 9.0.0
       '@types/ws': 8.5.4
+      encoding: 0.1.13
       rimraf: 3.0.2
       tsup: 6.5.0_typescript@4.9.5
       tsx: 3.12.2
@@ -10285,46 +10284,6 @@ packages:
       react-dom: 18.2.0_react@18.2.0
     dev: false
 
-  /@trigger.dev/nextjs/1.0.0-next.8_2q2xkrofoedn463phkw6az3ur4:
-    resolution: {integrity: sha512-azZFVffyfAXAQFWHCU0yEP3SSRQFymgycU4cKtnsWoKRgPPIw1Y6fpWc0D9v+xJ5hUjFdoEm6SBAoIS1vpBlxA==}
-    engines: {node: '>=16.8.0'}
-    peerDependencies:
-      '@trigger.dev/sdk': ^2.0.0-next.16
-      next: '>=12.0.0 <14.0.0'
-    dependencies:
-      '@trigger.dev/sdk': 0.2.22
-      debug: 4.3.4
-      next: 13.4.12_biqbaboplfbrettd7655fr4n2y
-    transitivePeerDependencies:
-      - supports-color
-    dev: false
-
-  /@trigger.dev/sdk/0.2.22:
-    resolution: {integrity: sha512-80WzSr4fYL3hBCiY9p4mq8SNH09eJs3iVx6u+z9oafK582ZV0B5jzlY0YKENKC3luonKlTRQZmVMoBVLB2bfIw==}
-    engines: {node: '>=14'}
-    dependencies:
-      chalk: 5.2.0
-      debug: 4.3.4
-      evt: 2.4.13
-      get-caller-file: 2.0.5
-      git-remote-origin-url: 4.0.0
-      git-repo-info: 2.1.1
-      node-fetch: 2.6.12
-      slug: 6.1.0
-      terminal-link: 3.0.0
-      ulid: 2.3.0
-      uuid: 9.0.0
-      ws: 8.12.0
-      zod: 3.21.4
-      zod-error: 1.5.0
-      zod-to-json-schema: 3.21.4_zod@3.21.4
-    transitivePeerDependencies:
-      - bufferutil
-      - encoding
-      - supports-color
-      - utf-8-validate
-    dev: false
-
   /@tsconfig/node10/1.0.9:
     resolution: {integrity: sha512-jNsYVVxU8v5g43Erja32laIDHXeoNvFEpX33OK4d6hljo3jDhCBDhx5dhCCTMWUojscpAagGiRkBKxpdl9fxqA==}
 
@@ -13959,6 +13918,11 @@ packages:
     resolution: {integrity: sha512-TPJXq8JqFaVYm2CWmPvnP2Iyo4ZSM7/QKcSmuMLDObfpH5fi7RUGmd/rTDf+rut/saiDiQEeVTNgAmJEdAOx0w==}
     engines: {node: '>= 0.8'}
 
+  /encoding/0.1.13:
+    resolution: {integrity: sha512-ETBauow1T35Y/WZMkio9jiM0Z5xjHHmJ4XmjZOq1l/dXz3lr2sRn87nJy20RupqSh1F2m3HHPSp8ShIPQJrJ3A==}
+    dependencies:
+      iconv-lite: 0.6.3
+
   /end-of-stream/1.4.4:
     resolution: {integrity: sha512-+uw1inIHVPQoaVuHzRyXd21icM+cnt4CzD5rW+NC1wjOUSTOs+Te7FOv7AhN7vS9x/oIyhLP5PR1H+phQAHu5Q==}
     dependencies:
@@ -17415,6 +17379,12 @@ packages:
     dependencies:
       safer-buffer: 2.1.2
 
+  /iconv-lite/0.6.3:
+    resolution: {integrity: sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==}
+    engines: {node: '>=0.10.0'}
+    dependencies:
+      safer-buffer: 2.1.2
+
   /icss-utils/5.1.0_postcss@8.4.24:
     resolution: {integrity: sha512-soFhflCVWLfRNOPU3iv5Z9VUdT44xFRbzjLsEzSr5AQmgqPMTHdU3PMT1Cf1ssx8fLNJDA1juftYl+PUcv3MqA==}
     engines: {node: ^10 || ^12 || >= 14}
@@ -19950,6 +19920,19 @@ packages:
         optional: true
     dependencies:
       whatwg-url: 5.0.0
+
+  /node-fetch/2.6.7_encoding@0.1.13:
+    resolution: {integrity: sha512-ZjMPFEfVx5j+y2yF35Kzx5sF7kDzxuDj6ziH4FFbOp87zKDZNx8yExJIb05OGF4Nlt9IHFIMBkRl41VdvcNdbQ==}
+    engines: {node: 4.x || >=6.0.0}
+    peerDependencies:
+      encoding: ^0.1.0
+    peerDependenciesMeta:
+      encoding:
+        optional: true
+    dependencies:
+      encoding: 0.1.13
+      whatwg-url: 5.0.0
+    dev: false
 
   /node-fetch/3.3.0:
     resolution: {integrity: sha512-BKwRP/O0UvoMKp7GNdwPlObhYGB5DQqwhEDQlNKuoqwVYSxkSZCSbHjnFFmUEtwSKRPU4kNK8PbDYYitwaE3QA==}
@@ -25565,14 +25548,6 @@ packages:
 
   /zod-error/1.5.0:
     resolution: {integrity: sha512-zzopKZ/skI9iXpqCEPj+iLCKl9b88E43ehcU+sbRoHuwGd9F1IDVGQ70TyO6kmfiRL1g4IXkjsXK+g1gLYl4WQ==}
-    dependencies:
-      zod: 3.21.4
-    dev: false
-
-  /zod-to-json-schema/3.21.4_zod@3.21.4:
-    resolution: {integrity: sha512-fjUZh4nQ1s6HMccgIeE0VP4QG/YRGPmyjO9sAh890aQKPEk3nqbfUXhMFaC+Dr5KvYBm8BCyvfpZf2jY9aGSsw==}
-    peerDependencies:
-      zod: ^3.21.4
     dependencies:
       zod: 3.21.4
     dev: false
