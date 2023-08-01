@@ -48,16 +48,6 @@ export class TelemetryClient {
         properties: this.#initProperties(options),
       });
     },
-    isNextJsProject: (
-      isNextJsProject: boolean,
-      options: InitCommandOptions
-    ) => {
-      this.#client.capture({
-        distinctId: this.#sessionId,
-        event: "cli_init_nextjsproject",
-        properties: { ...this.#initProperties(options), isNextJsProject },
-      });
-    },
     isTypescriptProject: (
       isTypescriptProject: boolean,
       options: InitCommandOptions
@@ -99,13 +89,6 @@ export class TelemetryClient {
         properties: this.#initProperties(options),
       });
     },
-    setupEnvironmentVariables: (options: InitCommandOptions) => {
-      this.#client.capture({
-        distinctId: this.#sessionId,
-        event: "cli_init_setup_environment_variables",
-        properties: this.#initProperties(options),
-      });
-    },
     createFiles: (options: InitCommandOptions, routerType: "pages" | "app") => {
       this.#client.capture({
         distinctId: this.#sessionId,
@@ -113,25 +96,21 @@ export class TelemetryClient {
         properties: { ...this.#initProperties(options), routerType },
       });
     },
-    detectedMiddleware: (options: InitCommandOptions) => {
-      this.#client.capture({
-        distinctId: this.#sessionId,
-        event: "cli_init_detected_middleware",
-        properties: this.#initProperties(options),
-      });
-    },
-    addedConfigurationToPackageJson: (options: InitCommandOptions) => {
-      this.#client.capture({
-        distinctId: this.#sessionId,
-        event: "cli_init_added_configuration_to_package_json",
-        properties: this.#initProperties(options),
-      });
-    },
     completed: (options: InitCommandOptions) => {
       this.#client.capture({
         distinctId: this.#sessionId,
         event: "cli_init_completed",
         properties: this.#initProperties(options),
+      });
+    },
+    warning: (reason: string, options: InitCommandOptions) => {
+      this.#client.capture({
+        distinctId: this.#sessionId,
+        event: "cli_init_warning",
+        properties: {
+          ...this.#initProperties(options),
+          reason,
+        },
       });
     },
     failed: (reason: string, options: InitCommandOptions, error?: unknown) => {

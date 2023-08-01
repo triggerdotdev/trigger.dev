@@ -522,8 +522,8 @@ importers:
 
   examples/temporary-app:
     specifiers:
-      '@trigger.dev/nextjs': workspace:*
-      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/nextjs': ^1.0.0-next.8
+      '@trigger.dev/sdk': ^0.2.22
       '@types/node': 20.4.5
       '@types/react': 18.2.17
       '@types/react-dom': 18.2.7
@@ -537,8 +537,8 @@ importers:
       tailwindcss: 3.3.3
       typescript: 5.1.6
     dependencies:
-      '@trigger.dev/nextjs': link:../../packages/nextjs
-      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/nextjs': 1.0.0-next.8_2q2xkrofoedn463phkw6az3ur4
+      '@trigger.dev/sdk': 0.2.22
       '@types/node': 20.4.5
       '@types/react': 18.2.17
       '@types/react-dom': 18.2.7
@@ -10282,6 +10282,46 @@ packages:
     dependencies:
       react: 18.2.0
       react-dom: 18.2.0_react@18.2.0
+    dev: false
+
+  /@trigger.dev/nextjs/1.0.0-next.8_2q2xkrofoedn463phkw6az3ur4:
+    resolution: {integrity: sha512-azZFVffyfAXAQFWHCU0yEP3SSRQFymgycU4cKtnsWoKRgPPIw1Y6fpWc0D9v+xJ5hUjFdoEm6SBAoIS1vpBlxA==}
+    engines: {node: '>=16.8.0'}
+    peerDependencies:
+      '@trigger.dev/sdk': ^2.0.0-next.16
+      next: '>=12.0.0 <14.0.0'
+    dependencies:
+      '@trigger.dev/sdk': 0.2.22
+      debug: 4.3.4
+      next: 13.4.12_biqbaboplfbrettd7655fr4n2y
+    transitivePeerDependencies:
+      - supports-color
+    dev: false
+
+  /@trigger.dev/sdk/0.2.22:
+    resolution: {integrity: sha512-80WzSr4fYL3hBCiY9p4mq8SNH09eJs3iVx6u+z9oafK582ZV0B5jzlY0YKENKC3luonKlTRQZmVMoBVLB2bfIw==}
+    engines: {node: '>=14'}
+    dependencies:
+      chalk: 5.2.0
+      debug: 4.3.4
+      evt: 2.4.13
+      get-caller-file: 2.0.5
+      git-remote-origin-url: 4.0.0
+      git-repo-info: 2.1.1
+      node-fetch: 2.6.12
+      slug: 6.1.0
+      terminal-link: 3.0.0
+      ulid: 2.3.0
+      uuid: 9.0.0
+      ws: 8.12.0
+      zod: 3.21.4
+      zod-error: 1.5.0
+      zod-to-json-schema: 3.21.4_zod@3.21.4
+    transitivePeerDependencies:
+      - bufferutil
+      - encoding
+      - supports-color
+      - utf-8-validate
     dev: false
 
   /@tsconfig/node10/1.0.9:
@@ -25548,6 +25588,14 @@ packages:
 
   /zod-error/1.5.0:
     resolution: {integrity: sha512-zzopKZ/skI9iXpqCEPj+iLCKl9b88E43ehcU+sbRoHuwGd9F1IDVGQ70TyO6kmfiRL1g4IXkjsXK+g1gLYl4WQ==}
+    dependencies:
+      zod: 3.21.4
+    dev: false
+
+  /zod-to-json-schema/3.21.4_zod@3.21.4:
+    resolution: {integrity: sha512-fjUZh4nQ1s6HMccgIeE0VP4QG/YRGPmyjO9sAh890aQKPEk3nqbfUXhMFaC+Dr5KvYBm8BCyvfpZf2jY9aGSsw==}
+    peerDependencies:
+      zod: ^3.21.4
     dependencies:
       zod: 3.21.4
     dev: false

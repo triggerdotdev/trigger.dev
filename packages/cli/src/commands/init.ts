@@ -45,7 +45,6 @@ export const initCommand = async (options: InitCommandOptions) => {
   const resolvedPath = resolvePath(options.projectPath);
   // Detect if are are in a Next.js project
   const isNextJsProject = await detectNextJsProject(resolvedPath);
-  telemetryClient.init.isNextJsProject(isNextJsProject, options);
 
   if (!isNextJsProject) {
     logger.error("You must run this command in a Next.js project.");
@@ -99,7 +98,6 @@ export const initCommand = async (options: InitCommandOptions) => {
 
   // Setup environment variables
   await setupEnvironmentVariables(resolvedPath, resolvedOptions);
-  telemetryClient.init.setupEnvironmentVariables(resolvedOptions);
 
   const usesSrcDir = await detectUseOfSrcDir(resolvedPath);
 
@@ -132,10 +130,8 @@ export const initCommand = async (options: InitCommandOptions) => {
   }
 
   await detectMiddlewareUsage(resolvedPath, usesSrcDir);
-  telemetryClient.init.detectedMiddleware(resolvedOptions);
 
   await addConfigurationToPackageJson(resolvedPath, resolvedOptions);
-  telemetryClient.init.addedConfigurationToPackageJson(resolvedOptions);
 
   await printNextSteps(resolvedOptions, authorizedKey);
   telemetryClient.init.completed(resolvedOptions);
@@ -320,6 +316,7 @@ async function detectMiddlewareUsage(path: string, usesSrcDir = false) {
       )} which can cause issues with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware`
     );
 
+    telemetryClient.init.warning("middleware_conflict", { projectPath: path });
     return;
   }
 
@@ -338,6 +335,7 @@ async function detectMiddlewareUsage(path: string, usesSrcDir = false) {
           middlewarePath
         )} which will cause issues with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware`
       );
+      telemetryClient.init.warning("middleware_conflict_api_trigger", { projectPath: path });
     }
   } else if (Array.isArray(matcher) && matcher.every((m) => typeof m === "string")) {
     const matcherRegexes = matcher.map((m) => pathToRegexp(m));
@@ -349,6 +347,7 @@ async function detectMiddlewareUsage(path: string, usesSrcDir = false) {
           middlewarePath
         )} which will cause issues with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware`
       );
+      telemetryClient.init.warning("middleware_conflict", { projectPath: path });
     }
   }
 }
