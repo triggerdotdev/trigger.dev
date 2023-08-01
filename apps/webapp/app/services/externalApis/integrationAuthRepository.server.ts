@@ -44,8 +44,6 @@ export type ConnectionWithSecretReference = IntegrationConnection & {
   dataReference: SecretReference;
 };
 
-const randomGenerator = customAlphabet("1234567890abcdef", 3);
-
 /** How many seconds before expiry we should refresh the token  */
 const tokenRefreshThreshold = 5 * 60;
 
