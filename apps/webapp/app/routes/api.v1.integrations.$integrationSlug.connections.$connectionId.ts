@@ -13,19 +13,13 @@ const ParamsSchema = z.object({
 export async function loader({ request, params }: LoaderArgs) {
   const authenticationResult = await authenticateApiRequest(request);
   if (!authenticationResult) {
-    return apiCors(
-      request,
-      json({ error: "Invalid or Missing API key" }, { status: 401 })
-    );
+    return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
 
   if (authenticationResult.type !== "PRIVATE") {
-    return apiCors(
-      request,
-      json(
-        { error: "Only private API keys can access this endpoint" },
-        { status: 403 }
-      )
+    return json(
+      { error: "Only private API keys can access this endpoint" },
+      { status: 403 }
     );
   }
 

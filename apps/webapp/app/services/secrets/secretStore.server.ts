@@ -50,7 +50,7 @@ const EncryptedSecretValueSchema = z.object({
   tag: z.string(),
 });
 
-/** This stores secrets in the Postgres Database, in plain text. NOT recommended outside of localhost. */
+/** This stores secrets in the Postgres Database, encrypted using aes-256-gcm */
 class PrismaSecretStore implements SecretStoreProvider {
   #prismaClient: PrismaClientOrTransaction;
 
