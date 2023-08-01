@@ -7,6 +7,7 @@ import pathModule from "node:path";
 import { devCommand } from "../commands/dev.js";
 import { createIntegrationCommand } from "../commands/createIntegration.js";
 import { TelemetryClient } from "../telemetry/telemetry.js";
+import { logger } from "../utils/logger.js";
 
 export const program = new Command();
 
@@ -40,6 +41,7 @@ program
       await initCommand(options, telemetryClient);
     } catch (e) {
       telemetryClient.init.failed("unknown", options, e);
+      throw e;
     }
   });
 
