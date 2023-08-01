@@ -1,4 +1,3 @@
-import { Stripe as StripeClient } from "stripe";
 import {
   EventFilter,
   ExternalSource,
@@ -8,11 +7,12 @@ import {
   type Logger,
   type TriggerIntegration,
 } from "@trigger.dev/sdk";
-import type { StripeSDK, StripeIntegrationOptions, WebhookEvents } from "./types";
+import { Stripe as StripeClient } from "stripe";
+import type { StripeIntegrationOptions, StripeSDK, WebhookEvents } from "./types";
 
-import * as tasks from "./tasks";
 import z from "zod";
 import * as events from "./events";
+import * as tasks from "./tasks";
 
 export * from "./types";
 
@@ -76,6 +76,36 @@ export class Stripe implements StripeIntegration {
   }
 
   /**
+   * Occurs whenever a price is created, updated, or deleted. Accepts an optional array of events to filter on. By default it will listen to all price events.
+   *
+   * @example
+   * ```ts
+   * stripe.onPrice({ events: ["price.created", "price.updated"] })
+   * ```
+   *
+   * You can detect the event name in your job by using the `ctx.event.name` property:
+   *
+   * ```ts
+   * client.defineJob({
+   *   id: "stripe-price",
+   *   name: "Stripe Price",
+   *   version: "0.1.0",
+   *   trigger: stripe.onPrice({ events: ["price.created", "price.updated"] }),
+   *   run: async (payload, io, ctx) => {
+   *     console.log(ctx.event.name); // "price.created" or "price.updated"
+   *   },
+   * });
+   * ```
+   */
+  onPrice(
+    params?: TriggerParams & { events?: Array<"price.created" | "price.updated" | "price.deleted"> }
+  ) {
+    const event = { ...events.onPrice, name: params?.events ?? events.onPrice.name };
+
+    return createTrigger(this.source, event, params ?? { connect: false });
+  }
+
+  /**
    * Occurs whenever a price is created.
    */
   onPriceCreated(params?: TriggerParams) {
@@ -94,6 +124,38 @@ export class Stripe implements StripeIntegration {
    */
   onPriceDeleted(params?: TriggerParams) {
     return createTrigger(this.source, events.onPriceDeleted, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever a product is created, updated, or deleted. Accepts an optional array of events to filter on. By default it will listen to all product events.
+   *
+   * @example
+   * ```ts
+   * stripe.onProduct({ events: ["product.created", "product.updated"] })
+   * ```
+   *
+   * You can detect the event name in your job by using the `ctx.event.name` property:
+   *
+   * ```ts
+   * client.defineJob({
+   *   id: "stripe-example",
+   *   name: "Stripe Example",
+   *   version: "0.1.0",
+   *   trigger: stripe.onProduct({ events: ["product.created", "product.updated"] }),
+   *   run: async (payload, io, ctx) => {
+   *     console.log(ctx.event.name); // "product.created" or "product.updated"
+   *   },
+   * });
+   * ```
+   */
+  onProduct(
+    params?: TriggerParams & {
+      events?: Array<"product.created" | "product.updated" | "product.deleted">;
+    }
+  ) {
+    const event = { ...events.onProduct, name: params?.events ?? events.onProduct.name };
+
+    return createTrigger(this.source, event, params ?? { connect: false });
   }
 
   /**
@@ -118,6 +180,46 @@ export class Stripe implements StripeIntegration {
   }
 
   /**
+   * Occurs whenever a checkout.session is completed, expired, async_payment_succeeded, or async_payment_failed. Accepts an optional array of events to filter on. By default it will listen to all checkout.session events.
+   *
+   * @example
+   * ```ts
+   * stripe.onCheckoutSession({ events: ["session.checkout.completed", "session.checkout.expired"] })
+   * ```
+   *
+   * You can detect the event name in your job by using the `ctx.event.name` property:
+   *
+   * ```ts
+   * client.defineJob({
+   *   id: "stripe-example",
+   *   name: "Stripe Example",
+   *   version: "0.1.0",
+   *   trigger: stripe.onCheckoutSession({ events: ["checkout.session.completed", "checkout.session.expired"] }),
+   *   run: async (payload, io, ctx) => {
+   *     console.log(ctx.event.name); // "checkout.session.completed" or "checkout.session.expired"
+   *   },
+   * });
+   * ```
+   */
+  onCheckoutSession(
+    params?: TriggerParams & {
+      events?: Array<
+        | "checkout.session.completed"
+        | "checkout.session.async_payment_succeeded"
+        | "checkout.session.async_payment_failed"
+        | "checkout.session.expired"
+      >;
+    }
+  ) {
+    const event = {
+      ...events.onCheckoutSession,
+      name: params?.events ?? events.onCheckoutSession.name,
+    };
+
+    return createTrigger(this.source, event, params ?? { connect: false });
+  }
+
+  /**
    * Occurs when a Checkout Session has been successfully completed.
    */
   onCheckoutSessionCompleted(params?: TriggerParams) {
@@ -137,6 +239,49 @@ export class Stripe implements StripeIntegration {
       events.onCheckoutSessionExpired,
       params ?? { connect: false }
     );
+  }
+
+  /**
+   * Occurs on any customer.subscription.* event. Accepts an optional array of events to filter on. By default it will listen to all customer.subscription.* events.
+   *
+   * @example
+   * ```ts
+   * stripe.onCustomerSubscription({ events: ["customer.subscription.created", "customer.subscription.resumed"] })
+   * ```
+   *
+   * You can detect the event name in your job by using the `ctx.event.name` property:
+   *
+   * ```ts
+   * client.defineJob({
+   *   id: "stripe-example",
+   *   name: "Stripe Example",
+   *   version: "0.1.0",
+   *   trigger: stripe.onCustomerSubscription({ events: ["customer.subscription.created", "customer.subscription.resumed"] }),
+   *   run: async (payload, io, ctx) => {
+   *     console.log(ctx.event.name); // "customer.subscription.created" or "customer.subscription.resumed"
+   *   },
+   * });
+   * ```
+   */
+  onCustomerSubscription(
+    params?: TriggerParams & {
+      events?: Array<
+        | "customer.subscription.created"
+        | "customer.subscription.deleted"
+        | "customer.subscription.updated"
+        | "customer.subscription.paused"
+        | "customer.subscription.pending_update_applied"
+        | "customer.subscription.pending_update_expired"
+        | "customer.subscription.resumed"
+      >;
+    }
+  ) {
+    const event = {
+      ...events.onCustomerSubscription,
+      name: params?.events ?? events.onCustomerSubscription.name,
+    };
+
+    return createTrigger(this.source, event, params ?? { connect: false });
   }
 
   /**

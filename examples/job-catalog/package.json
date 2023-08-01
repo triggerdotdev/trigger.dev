@@ -1,0 +1,35 @@
+{
+  "name": "@examples/job-catalog",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "stripe": "nodemon --watch src/stripe.ts -r tsconfig-paths/register -r dotenv/config src/stripe.ts",
+    "dev:trigger": "trigger-cli dev --port 8080"
+  },
+  "dependencies": {
+    "@trigger.dev/express": "workspace:*",
+    "@trigger.dev/github": "workspace:*",
+    "@trigger.dev/openai": "workspace:*",
+    "@trigger.dev/plain": "workspace:*",
+    "@trigger.dev/resend": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
+    "@trigger.dev/slack": "workspace:*",
+    "@trigger.dev/stripe": "workspace:*",
+    "@trigger.dev/typeform": "workspace:*",
+    "@types/node": "20.4.2",
+    "typescript": "5.1.6",
+    "zod": "3.21.4"
+  },
+  "trigger.dev": {
+    "endpointId": "job-catalog"
+  },
+  "devDependencies": {
+    "@trigger.dev/cli": "workspace:*",
+    "@trigger.dev/tsconfig": "workspace:*",
+    "concurrently": "^8.2.0",
+    "dotenv": "^16.3.1",
+    "nodemon": "^3.0.1",
+    "ts-node": "^10.9.1",
+    "tsconfig-paths": "^3.14.1"
+  }
+}

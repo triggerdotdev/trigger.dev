@@ -139,6 +139,86 @@ export const onPriceDeleted: EventSpecification<OnPriceEvent> = {
   runProperties: (payload) => [{ label: "Price ID", text: payload.id }],
 };
 
+export const onPrice: EventSpecification<OnPriceEvent> = {
+  name: ["price.created", "price.updated", "price.deleted"],
+  title: "On Price",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [
+    {
+      id: "recurring",
+      name: "Recurring Price",
+      icon: "stripe",
+      payload: {
+        id: "plan_OLCbCoAUbHPcHT",
+        object: "price",
+        active: false,
+        billing_scheme: "per_unit",
+        created: 1690472058,
+        currency: "usd",
+        custom_unit_amount: null,
+        livemode: false,
+        lookup_key: null,
+        metadata: {},
+        nickname: null,
+        product: "prod_OLCbckE3tpR34b",
+        recurring: {
+          aggregate_usage: null,
+          interval: "month",
+          interval_count: 1,
+          trial_period_days: null,
+          usage_type: "licensed",
+        },
+        tax_behavior: "unspecified",
+        tiers_mode: null,
+        transform_quantity: null,
+        type: "recurring",
+        unit_amount: 2000,
+        unit_amount_decimal: "2000",
+      },
+    },
+  ],
+  parsePayload: (payload) => payload as OnPriceEvent,
+  runProperties: (payload) => [{ label: "Price ID", text: payload.id }],
+};
+
+export const onProduct: EventSpecification<OnProductEvent> = {
+  name: ["product.created", "product.updated", "product.deleted"],
+  title: "On Product",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [
+    {
+      id: "mock_product",
+      name: "Mock Product",
+      icon: "stripe",
+      payload: {
+        id: "prod_OLBTh0QPxDXkIU",
+        object: "product",
+        active: true,
+        attributes: [],
+        created: 1690467853,
+        default_price: null,
+        description: "(created by Stripe CLI)",
+        images: [],
+        livemode: false,
+        metadata: {},
+        name: "myproduct",
+        package_dimensions: null,
+        shippable: null,
+        statement_descriptor: null,
+        tax_code: null,
+        type: "service",
+        unit_label: null,
+        updated: 1690467853,
+        url: null,
+      },
+    },
+  ],
+  parsePayload: (payload) => payload as OnProductEvent,
+  runProperties: (payload) => [{ label: "Product ID", text: payload.id }],
+};
+
 export const onProductCreated: EventSpecification<OnProductEvent> = {
   name: "product.created",
   title: "On Product Created",
@@ -250,6 +330,21 @@ export const onProductDeleted: EventSpecification<OnProductEvent> = {
   runProperties: (payload) => [{ label: "Product ID", text: payload.id }],
 };
 
+export const onCheckoutSession: EventSpecification<OnCheckoutSession> = {
+  name: [
+    "checkout.session.completed",
+    "checkout.session.async_payment_succeeded",
+    "checkout.session.async_payment_failed",
+    "checkout.session.expired",
+  ],
+  title: "On Checkout Session",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [checkoutSessionExample],
+  parsePayload: (payload) => payload as OnCheckoutSession,
+  runProperties: (payload) => [{ label: "Session ID", text: payload.id }],
+};
+
 export const onCheckoutSessionCompleted: EventSpecification<OnCheckoutSession> = {
   name: "checkout.session.completed",
   title: "On Checkout Session Completed",
@@ -268,6 +363,28 @@ export const onCheckoutSessionExpired: EventSpecification<OnCheckoutSession> = {
   examples: [checkoutSessionExample],
   parsePayload: (payload) => payload as OnCheckoutSession,
   runProperties: (payload) => [{ label: "Session ID", text: payload.id }],
+};
+
+export const onCustomerSubscription: EventSpecification<OnCustomerSubscription> = {
+  name: [
+    "customer.subscription.created",
+    "customer.subscription.deleted",
+    "customer.subscription.updated",
+    "customer.subscription.paused",
+    "customer.subscription.pending_update_applied",
+    "customer.subscription.pending_update_expired",
+    "customer.subscription.resumed",
+    "customer.subscription.trial_will_end",
+  ],
+  title: "On Customer Subscription",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [customerSubscriptionExample],
+  parsePayload: (payload) => payload as OnCustomerSubscription,
+  runProperties: (payload) => [
+    { label: "Subscription ID", text: payload.id },
+    { label: "Status", text: payload.status },
+  ],
 };
 
 export const onCustomerSubscriptionCreated: EventSpecification<OnCustomerSubscription> = {

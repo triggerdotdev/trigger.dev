@@ -1,7 +1,15 @@
-import { Stripe } from "@trigger.dev/stripe";
-import { client } from "@/trigger";
-import { eventTrigger } from "@trigger.dev/sdk";
+import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
+import { createExpressServer } from "@trigger.dev/express";
 import { z } from "zod";
+import { Stripe } from "@trigger.dev/stripe";
+
+export const client = new TriggerClient({
+  id: "job-catalog",
+  apiKey: process.env["TRIGGER_API_KEY"],
+  apiUrl: process.env["TRIGGER_API_URL"],
+  verbose: false,
+  ioLogLocalEnabled: true,
+});
 
 const stripe = new Stripe({
   id: "stripe",
@@ -136,6 +144,20 @@ client.defineJob({
 });
 
 client.defineJob({
+  id: "stripe-on-product",
+  name: "Stripe On Product",
+  version: "0.1.0",
+  trigger: stripe.onProduct({ events: ["product.created", "product.deleted"] }),
+  run: async (payload, io, ctx) => {
+    if (ctx.event.name === "product.created") {
+      await io.logger.info("product created!", { ctx });
+    } else {
+      await io.logger.info("product deleted!", { ctx });
+    }
+  },
+});
+
+client.defineJob({
   id: "stripe-on-price-created",
   name: "Stripe On Price Created",
   version: "0.1.0",
@@ -158,3 +180,5 @@ client.defineJob({
     await io.logger.info("ctx", { ctx });
   },
 });
+
+createExpressServer(client);
