@@ -6,6 +6,7 @@ import { getVersion } from "../utils/getVersion.js";
 import pathModule from "node:path";
 import { devCommand } from "../commands/dev.js";
 import { createIntegrationCommand } from "../commands/createIntegration.js";
+import { TelemetryClient } from "../telemetry/telemetry.js";
 
 export const program = new Command();
 
@@ -14,8 +15,15 @@ program.name(COMMAND_NAME).description("The Trigger.dev CLI").version("0.0.1");
 program
   .command("init")
   .description("Initialize Trigger.dev in your Next.js project")
-  .option("-p, --project-path <project-path>", "The path to the Next.js project", ".")
-  .option("-k, --api-key <api-key>", "The development API key to use for the project.")
+  .option(
+    "-p, --project-path <project-path>",
+    "The path to the Next.js project",
+    "."
+  )
+  .option(
+    "-k, --api-key <api-key>",
+    "The development API key to use for the project."
+  )
   .option(
     "-e, --endpoint-id <endpoint-id>",
     "The unique ID for the endpoint to use for this project. (e.g. my-nextjs-project)"
@@ -27,15 +35,26 @@ program
   )
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (options) => {
-    await initCommand(options);
+    const telemetryClient = new TelemetryClient();
+    try {
+      await initCommand(options, telemetryClient);
+    } catch (e) {
+      telemetryClient.init.failed("unknown", options, e);
+    }
   });
 
 program
   .command("dev")
-  .description("Tunnel your local Next.js project to Trigger.dev and start running jobs")
+  .description(
+    "Tunnel your local Next.js project to Trigger.dev and start running jobs"
+  )
   .argument("[path]", "The path to the project", ".")
   .option("-p, --port <port>", "The local port your server is on", "3000")
-  .option("-e, --env-file <name>", "The name of the env file to load", ".env.local")
+  .option(
+    "-e, --env-file <name>",
+    "The name of the env file to load",
+    ".env.local"
+  )
   .option(
     "-i, --client-id <name>",
     "The ID of the client to use for this project. Will use the value from the package.json file if not provided."
@@ -53,7 +72,11 @@ program
 program
   .command("create-integration")
   .description("Create a new integration package for Trigger.dev")
-  .argument("[path]", "The path where you would like the package to be created", ".")
+  .argument(
+    "[path]",
+    "The path where you would like the package to be created",
+    "."
+  )
   .option(
     "-n, --package-name <package name>",
     "The name of the package to create (e.g. @trigger.dev/slack)"
@@ -164,7 +187,11 @@ export const promptEndpointSlug = async (path: string): Promise<string> => {
 };
 
 export const obfuscateApiKey = (apiKey: string) => {
-  const [prefix, slug, secretPart] = apiKey.split("_") as [string, string, string];
+  const [prefix, slug, secretPart] = apiKey.split("_") as [
+    string,
+    string,
+    string,
+  ];
   return `${prefix}_${slug}_${"*".repeat(secretPart.length)}`;
 };
 
@@ -196,7 +223,9 @@ function tryToCreateValidUrlFromValue(input: string): string {
   let possibleUrl = input;
 
   if (!input.startsWith("http://") && !input.startsWith("https://")) {
-    possibleUrl = input.includes("localhost") ? `http://${input}` : `https://${input}`;
+    possibleUrl = input.includes("localhost")
+      ? `http://${input}`
+      : `https://${input}`;
   }
 
   return possibleUrl;
