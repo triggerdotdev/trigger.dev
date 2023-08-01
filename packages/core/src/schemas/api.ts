@@ -21,9 +21,7 @@ export const UpdateTriggerSourceBodySchema = z.object({
   data: SerializableJsonSchema.optional(),
 });
 
-export type UpdateTriggerSourceBody = z.infer<
-  typeof UpdateTriggerSourceBodySchema
->;
+export type UpdateTriggerSourceBody = z.infer<typeof UpdateTriggerSourceBodySchema>;
 
 export const HttpEventSourceSchema = UpdateTriggerSourceBodySchema.extend({
   id: z.string(),
@@ -109,14 +107,10 @@ export const HttpSourceRequestHeadersSchema = z.object({
   "x-ts-params": z.string().transform((s) => JSON.parse(s)),
   "x-ts-http-url": z.string(),
   "x-ts-http-method": z.string(),
-  "x-ts-http-headers": z
-    .string()
-    .transform((s) => z.record(z.string()).parse(JSON.parse(s))),
+  "x-ts-http-headers": z.string().transform((s) => z.record(z.string()).parse(JSON.parse(s))),
 });
 
-export type HttpSourceRequestHeaders = z.output<
-  typeof HttpSourceRequestHeadersSchema
->;
+export type HttpSourceRequestHeaders = z.output<typeof HttpSourceRequestHeadersSchema>;
 
 export const PongSuccessResponseSchema = z.object({
   ok: z.literal(true),
@@ -184,9 +178,7 @@ export const DynamicTriggerEndpointMetadataSchema = z.object({
     .optional(),
 });
 
-export type DynamicTriggerEndpointMetadata = z.infer<
-  typeof DynamicTriggerEndpointMetadataSchema
->;
+export type DynamicTriggerEndpointMetadata = z.infer<typeof DynamicTriggerEndpointMetadataSchema>;
 
 export const IndexEndpointResponseSchema = z.object({
   jobs: z.array(JobMetadataSchema),
@@ -289,9 +281,7 @@ export const RuntimeEnvironmentTypeSchema = z.enum([
   "PREVIEW",
 ]);
 
-export type RuntimeEnvironmentType = z.infer<
-  typeof RuntimeEnvironmentTypeSchema
->;
+export type RuntimeEnvironmentType = z.infer<typeof RuntimeEnvironmentTypeSchema>;
 
 export const RunSourceContextSchema = z.object({
   id: z.string(),
@@ -362,9 +352,7 @@ export const RunJobCanceledWithTaskSchema = z.object({
   task: TaskSchema,
 });
 
-export type RunJobCanceledWithTask = z.infer<
-  typeof RunJobCanceledWithTaskSchema
->;
+export type RunJobCanceledWithTask = z.infer<typeof RunJobCanceledWithTaskSchema>;
 
 export const RunJobSuccessSchema = z.object({
   status: z.literal("SUCCESS"),
@@ -542,12 +530,8 @@ export const CompleteTaskBodyInputSchema = RunTaskBodyInputSchema.pick({
   ),
 });
 
-export type CompleteTaskBodyInput = Prettify<
-  z.input<typeof CompleteTaskBodyInputSchema>
->;
-export type CompleteTaskBodyOutput = z.infer<
-  typeof CompleteTaskBodyInputSchema
->;
+export type CompleteTaskBodyInput = Prettify<z.input<typeof CompleteTaskBodyInputSchema>>;
+export type CompleteTaskBodyOutput = z.infer<typeof CompleteTaskBodyInputSchema>;
 
 export const FailTaskBodyInputSchema = z.object({
   error: ErrorWithStackSchema,
@@ -606,16 +590,12 @@ const RegisterCommonScheduleBodySchema = z.object({
 export const RegisterIntervalScheduleBodySchema =
   RegisterCommonScheduleBodySchema.merge(IntervalMetadataSchema);
 
-export type RegisterIntervalScheduleBody = z.infer<
-  typeof RegisterIntervalScheduleBodySchema
->;
+export type RegisterIntervalScheduleBody = z.infer<typeof RegisterIntervalScheduleBodySchema>;
 
 export const InitializeCronScheduleBodySchema =
   RegisterCommonScheduleBodySchema.merge(CronMetadataSchema);
 
-export type RegisterCronScheduleBody = z.infer<
-  typeof InitializeCronScheduleBodySchema
->;
+export type RegisterCronScheduleBody = z.infer<typeof InitializeCronScheduleBodySchema>;
 
 export const RegisterScheduleBodySchema = z.discriminatedUnion("type", [
   RegisterIntervalScheduleBodySchema,
@@ -631,9 +611,7 @@ export const RegisterScheduleResponseBodySchema = z.object({
   active: z.boolean(),
 });
 
-export type RegisterScheduleResponseBody = z.infer<
-  typeof RegisterScheduleResponseBodySchema
->;
+export type RegisterScheduleResponseBody = z.infer<typeof RegisterScheduleResponseBodySchema>;
 
 export const CreateExternalConnectionBodySchema = z.object({
   accessToken: z.string(),
@@ -642,6 +620,4 @@ export const CreateExternalConnectionBodySchema = z.object({
   metadata: z.any(),
 });
 
-export type CreateExternalConnectionBody = z.infer<
-  typeof CreateExternalConnectionBodySchema
->;
+export type CreateExternalConnectionBody = z.infer<typeof CreateExternalConnectionBodySchema>;

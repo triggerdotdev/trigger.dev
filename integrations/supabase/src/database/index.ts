@@ -1,8 +1,4 @@
-import {
-  SupabaseClient,
-  SupabaseClientOptions,
-  createClient,
-} from "@supabase/supabase-js";
+import { SupabaseClient, SupabaseClientOptions, createClient } from "@supabase/supabase-js";
 import { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
 import { GenericSchema } from "./types";
 
@@ -48,19 +44,13 @@ export class Supabase<
     : string & keyof Database,
   Schema extends GenericSchema = Database[SchemaName] extends GenericSchema
     ? Database[SchemaName]
-    : any
+    : any,
 > implements
     TriggerIntegration<
-      IntegrationClient<
-        SupabaseClient<Database, SchemaName, Schema>,
-        typeof tasks
-      >
+      IntegrationClient<SupabaseClient<Database, SchemaName, Schema>, typeof tasks>
     >
 {
-  client: IntegrationClient<
-    SupabaseClient<Database, SchemaName, Schema>,
-    typeof tasks
-  >;
+  client: IntegrationClient<SupabaseClient<Database, SchemaName, Schema>, typeof tasks>;
 
   /**
    * The native Supabase client. This is exposed for use outside of Trigger.dev jobs
@@ -85,9 +75,7 @@ export class Supabase<
     const supabaseOptions = options.options || {};
 
     const supabaseUrl =
-      "projectId" in options
-        ? `https://${options.projectId}.supabase.co`
-        : options.supabaseUrl;
+      "projectId" in options ? `https://${options.projectId}.supabase.co` : options.supabaseUrl;
 
     this.native = createClient(supabaseUrl, options.supabaseKey, {
       ...supabaseOptions,

@@ -6,10 +6,7 @@ interface Array<T> {
    * @param predicate A function that accepts up to three arguments. The filter method calls the predicate function one time for each element in the array.
    * @param thisArg An object to which the this keyword can refer in the predicate function. If thisArg is omitted, undefined is used as the this value.
    */
-  filter<S extends T>(
-    predicate: BooleanConstructor,
-    thisArg?: any
-  ): Exclude<S, Falsy>[];
+  filter<S extends T>(predicate: BooleanConstructor, thisArg?: any): Exclude<S, Falsy>[];
 }
 
 // See this for more: https://twitter.com/mattpocockuk/status/1653403198885904387?s=20

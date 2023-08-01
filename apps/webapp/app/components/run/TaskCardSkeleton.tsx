@@ -5,9 +5,7 @@ export function TaskCardSkeleton() {
     <RunPanel>
       <RunPanelHeader
         icon={undefined}
-        title={
-          <div className="h-5 w-36 max-w-full rounded border bg-slate-800" />
-        }
+        title={<div className="h-5 w-36 max-w-full rounded border bg-slate-800" />}
       />
       <RunPanelBody>
         <div className="flex w-full flex-col justify-between gap-y-1">

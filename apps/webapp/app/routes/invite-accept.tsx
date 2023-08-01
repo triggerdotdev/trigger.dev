@@ -1,9 +1,6 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { getInviteFromToken } from "~/models/member.server";
-import {
-  redirectWithErrorMessage,
-  redirectWithSuccessMessage,
-} from "~/models/message.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { getUser } from "~/services/session.server";
 
 export async function loader({ request }: LoaderArgs) {
@@ -32,12 +29,9 @@ export async function loader({ request }: LoaderArgs) {
   }
 
   if (!user) {
-    return redirectWithSuccessMessage(
-      "/",
-      request,
-      "Please log in to accept the invite.",
-      { ephemeral: false }
-    );
+    return redirectWithSuccessMessage("/", request, "Please log in to accept the invite.", {
+      ephemeral: false,
+    });
   }
 
   if (invite.email !== user.email) {

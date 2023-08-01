@@ -1,7 +1,6 @@
 import { z } from "zod";
 
-export const MISSING_CONNECTION_NOTIFICATION =
-  "dev.trigger.notifications.missingConnection";
+export const MISSING_CONNECTION_NOTIFICATION = "dev.trigger.notifications.missingConnection";
 
 export const MISSING_CONNECTION_RESOLVED_NOTIFICATION =
   "dev.trigger.notifications.missingConnectionResolved";
@@ -32,32 +31,28 @@ export const MissingExternalConnectionNotificationPayloadSchema =
     }),
   });
 
-export const MissingConnectionNotificationPayloadSchema = z.discriminatedUnion(
-  "type",
-  [
-    MissingDeveloperConnectionNotificationPayloadSchema,
-    MissingExternalConnectionNotificationPayloadSchema,
-  ]
-);
+export const MissingConnectionNotificationPayloadSchema = z.discriminatedUnion("type", [
+  MissingDeveloperConnectionNotificationPayloadSchema,
+  MissingExternalConnectionNotificationPayloadSchema,
+]);
 
 export type MissingConnectionNotificationPayload = z.infer<
   typeof MissingConnectionNotificationPayloadSchema
 >;
 
-export const CommonMissingConnectionNotificationResolvedPayloadSchema =
-  z.object({
+export const CommonMissingConnectionNotificationResolvedPayloadSchema = z.object({
+  id: z.string(),
+  client: z.object({
     id: z.string(),
-    client: z.object({
-      id: z.string(),
-      title: z.string(),
-      scopes: z.array(z.string()),
-      createdAt: z.coerce.date(),
-      updatedAt: z.coerce.date(),
-      integrationIdentifier: z.string(),
-      integrationAuthMethod: z.string(),
-    }),
-    expiresAt: z.coerce.date(),
-  });
+    title: z.string(),
+    scopes: z.array(z.string()),
+    createdAt: z.coerce.date(),
+    updatedAt: z.coerce.date(),
+    integrationIdentifier: z.string(),
+    integrationAuthMethod: z.string(),
+  }),
+  expiresAt: z.coerce.date(),
+});
 
 export const MissingDeveloperConnectionResolvedNotificationPayloadSchema =
   CommonMissingConnectionNotificationResolvedPayloadSchema.extend({
@@ -73,11 +68,10 @@ export const MissingExternalConnectionResolvedNotificationPayloadSchema =
     }),
   });
 
-export const MissingConnectionResolvedNotificationPayloadSchema =
-  z.discriminatedUnion("type", [
-    MissingDeveloperConnectionResolvedNotificationPayloadSchema,
-    MissingExternalConnectionResolvedNotificationPayloadSchema,
-  ]);
+export const MissingConnectionResolvedNotificationPayloadSchema = z.discriminatedUnion("type", [
+  MissingDeveloperConnectionResolvedNotificationPayloadSchema,
+  MissingExternalConnectionResolvedNotificationPayloadSchema,
+]);
 
 export type MissingConnectionResolvedNotificationPayload = z.infer<
   typeof MissingConnectionResolvedNotificationPayloadSchema

@@ -19,10 +19,7 @@ export async function loader({ request, params }: LoaderArgs) {
     allowPublicKey: true,
   });
   if (!authenticationResult) {
-    return apiCors(
-      request,
-      json({ error: "Invalid or Missing API key" }, { status: 401 })
-    );
+    return apiCors(request, json({ error: "Invalid or Missing API key" }, { status: 401 }));
   }
 
   const authenticatedEnv = authenticationResult.environment;
@@ -30,10 +27,7 @@ export async function loader({ request, params }: LoaderArgs) {
   const parsed = ParamsSchema.safeParse(params);
 
   if (!parsed.success) {
-    return apiCors(
-      request,
-      json({ error: "Invalid or Missing eventId" }, { status: 400 })
-    );
+    return apiCors(request, json({ error: "Invalid or Missing eventId" }, { status: 400 }));
   }
 
   const { eventId } = parsed.data;
@@ -60,10 +54,7 @@ export async function loader({ request, params }: LoaderArgs) {
   });
 
   if (!event) {
-    return apiCors(
-      request,
-      json({ error: "Event not found" }, { status: 404 })
-    );
+    return apiCors(request, json({ error: "Event not found" }, { status: 404 }));
   }
 
   return apiCors(request, json(event));

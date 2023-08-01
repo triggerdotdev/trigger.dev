@@ -69,8 +69,7 @@ export const formResponseExample: EventSpecificationExample = {
           },
           {
             id: "PNe8ZKBK8C2Q",
-            title:
-              "Which pictures do you like? You can choose as many as you like.",
+            title: "Which pictures do you like? You can choose as many as you like.",
             type: "picture_choice",
             ref: "readable_ref_picture_choice",
             allow_multiple_selections: true,

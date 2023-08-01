@@ -69,8 +69,6 @@ export function getApiKeyFromRequest(request: Request) {
   }
 
   const apiKey = authorization.data.replace(/^Bearer /, "");
-  const type = isPublicApiKey(apiKey)
-    ? ("PUBLIC" as const)
-    : ("PRIVATE" as const);
+  const type = isPublicApiKey(apiKey) ? ("PUBLIC" as const) : ("PRIVATE" as const);
   return { apiKey, type };
 }

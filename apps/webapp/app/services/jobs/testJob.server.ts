@@ -41,12 +41,8 @@ export class TestJobService {
           },
         });
 
-        const event = EventSpecificationSchema.parse(
-          version.eventSpecification
-        );
-        const eventName = Array.isArray(event.name)
-          ? event.name[0]
-          : event.name;
+        const event = EventSpecificationSchema.parse(version.eventSpecification);
+        const eventName = Array.isArray(event.name) ? event.name[0] : event.name;
 
         const eventLog = await this.#prismaClient.eventRecord.create({
           data: {

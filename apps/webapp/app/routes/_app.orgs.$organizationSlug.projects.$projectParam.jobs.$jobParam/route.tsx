@@ -38,8 +38,7 @@ import {
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
-  const { jobParam, projectParam, organizationSlug } =
-    JobParamsSchema.parse(params);
+  const { jobParam, projectParam, organizationSlug } = JobParamsSchema.parse(params);
 
   const jobsPresenter = new JobListPresenter();
 
@@ -74,10 +73,7 @@ export const handle: Handle = {
     const projectMatch = matches.find((m) => m.id === projectMatchId);
     return (
       <Fragment>
-        <BreadcrumbLink
-          to={trimTrailingSlash(projectMatch?.pathname ?? "")}
-          title="Jobs"
-        />
+        <BreadcrumbLink to={trimTrailingSlash(projectMatch?.pathname ?? "")} title="Jobs" />
         <BreadcrumbIcon />
         <JobsMenu matches={matches} />
       </Fragment>
@@ -114,14 +110,8 @@ export default function Job() {
         </PageTitleRow>
         <PageInfoRow>
           <PageInfoGroup>
-            <PageInfoProperty
-              icon={job.event.icon}
-              label={"Trigger"}
-              value={job.event.title}
-            />
-            {job.dynamic && (
-              <PageInfoProperty icon="dynamic" value={"Dynamic"} />
-            )}
+            <PageInfoProperty icon={job.event.icon} label={"Trigger"} value={job.event.title} />
+            {job.dynamic && <PageInfoProperty icon="dynamic" value={"Dynamic"} />}
             <PageInfoProperty icon="id" label={"ID"} value={job.slug} />
             {job.properties &&
               job.properties.map((property, index) => (
@@ -138,11 +128,7 @@ export default function Job() {
                 value={
                   <span className="flex gap-0.5">
                     {job.integrations.map((integration, index) => (
-                      <NamedIcon
-                        key={index}
-                        name={integration.icon}
-                        className={"h-4 w-4"}
-                      />
+                      <NamedIcon key={index} name={integration.icon} className={"h-4 w-4"} />
                     ))}
                   </span>
                 }

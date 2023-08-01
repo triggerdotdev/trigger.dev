@@ -199,12 +199,7 @@ function getWorkerQueue() {
         handler: async (payload, job) => {
           const service = new IndexEndpointService();
 
-          await service.call(
-            payload.id,
-            payload.source,
-            payload.reason,
-            payload.sourceData
-          );
+          await service.call(payload.id, payload.source, payload.reason, payload.sourceData);
         },
       },
       deliverEvent: {

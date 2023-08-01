@@ -45,10 +45,13 @@ export function useMatchesData(
   const paths = Array.isArray(id) ? id : [id];
 
   // Get the first matching route
-  const route = paths.reduce((acc, path) => {
-    if (acc) return acc;
-    return matchingRoutes.find((route) => route.id === path);
-  }, undefined as RouteMatch | undefined);
+  const route = paths.reduce(
+    (acc, path) => {
+      if (acc) return acc;
+      return matchingRoutes.find((route) => route.id === path);
+    },
+    undefined as RouteMatch | undefined
+  );
 
   return route;
 }
@@ -161,9 +164,7 @@ export const obfuscateApiKey = (apiKey: string) => {
   return `${prefix}_${slug}_${"*".repeat(secretPart.length)}`;
 };
 
-export function appEnvTitleTag(
-  appEnv?: "test" | "production" | "development" | "staging"
-): string {
+export function appEnvTitleTag(appEnv?: "test" | "production" | "development" | "staging"): string {
   if (!appEnv) {
     return "";
   }

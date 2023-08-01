@@ -106,31 +106,19 @@ export function ClipboardField({
   const inputIcon = useRef<HTMLInputElement>(null);
 
   return (
-    <span
-      className={cn(container, fullWidth ? "w-full" : "max-w-max", className)}
-    >
+    <span className={cn(container, fullWidth ? "w-full" : "max-w-max", className)}>
       {icon && (
         <span
           onClick={() => inputIcon.current && inputIcon.current.focus()}
           className={cn(iconPosition, "flex items-center")}
         >
-          {typeof icon === "string" ? (
-            <NamedIcon name={icon} className={iconClassName} />
-          ) : (
-            icon
-          )}
+          {typeof icon === "string" ? <NamedIcon name={icon} className={iconClassName} /> : icon}
         </span>
       )}
       <input
         type="text"
         ref={inputIcon}
-        value={
-          isSecure
-            ? typeof secure === "string"
-              ? secure
-              : "•".repeat(value.length)
-            : value
-        }
+        value={isSecure ? (typeof secure === "string" ? secure : "•".repeat(value.length)) : value}
         readOnly={true}
         className={cn("shrink grow select-all overflow-x-auto", input)}
         size={value.length}
@@ -146,11 +134,7 @@ export function ClipboardField({
           }
         }}
       />
-      <Button
-        variant={buttonVariant}
-        onClick={copy}
-        className={cn("shrink-0 grow-0", button)}
-      >
+      <Button variant={buttonVariant} onClick={copy} className={cn("shrink-0 grow-0", button)}>
         {copied ? <CheckIcon className="h-4 w-4 text-green-500" /> : "Copy"}
       </Button>
     </span>

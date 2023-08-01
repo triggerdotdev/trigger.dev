@@ -1,9 +1,7 @@
 import { prisma } from "~/db.server";
 import { Prettify } from "~/lib.es5";
 
-export type ExtendedEndpoint = Prettify<
-  Awaited<ReturnType<typeof findEndpoint>>
->;
+export type ExtendedEndpoint = Prettify<Awaited<ReturnType<typeof findEndpoint>>>;
 
 export async function findEndpoint(id: string) {
   return await prisma.endpoint.findUniqueOrThrow({

@@ -23,10 +23,7 @@ import { useJob } from "~/hooks/useJob";
 import simplur from "simplur";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
 
-export const DirectionSchema = z.union([
-  z.literal("forward"),
-  z.literal("backward"),
-]);
+export const DirectionSchema = z.union([z.literal("forward"), z.literal("backward")]);
 
 export const RunListSearchSchema = z.object({
   cursor: z.string().optional(),
@@ -35,8 +32,7 @@ export const RunListSearchSchema = z.object({
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
-  const { jobParam, projectParam, organizationSlug } =
-    JobParamsSchema.parse(params);
+  const { jobParam, projectParam, organizationSlug } = JobParamsSchema.parse(params);
 
   const url = new URL(request.url);
   const s = Object.fromEntries(url.searchParams.entries());
@@ -58,9 +54,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: (match) => (
-    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Runs" />
-  ),
+  breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Runs" />,
 };
 
 export default function Page() {
@@ -80,19 +74,13 @@ export default function Page() {
           className="mb-2"
         >
           {simplur`This Job has ${
-            job.integrations.filter((j) => j.setupStatus === "MISSING_FIELDS")
-              .length
+            job.integrations.filter((j) => j.setupStatus === "MISSING_FIELDS").length
           } Integration[|s] that [has|have] not been configured.`}
         </Callout>
       )}
       <Help defaultOpen={list.runs.length === 0}>
         {(open) => (
-          <div
-            className={cn(
-              "grid h-fit gap-4",
-              open ? "grid-cols-2" : "grid-cols-1"
-            )}
-          >
+          <div className={cn("grid h-fit gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
             <div>
               <div className="mb-2 flex items-center justify-end gap-x-2">
                 <ListPagination list={list} />

@@ -28,9 +28,7 @@ export function getClientConfig({
 
   const secret = process.env[env.secretName];
   if (!secret) {
-    throw new Error(
-      `Client secret environment variable not found: ${env.secretName}`
-    );
+    throw new Error(`Client secret environment variable not found: ${env.secretName}`);
   }
 
   return {

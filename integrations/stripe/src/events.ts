@@ -6,12 +6,7 @@ import {
   pausedSubscriptionExample,
   updatedSubscriptionExample,
 } from "./examples";
-import {
-  OnCheckoutSession,
-  OnCustomerSubscription,
-  OnPriceEvent,
-  OnProductEvent,
-} from "./types";
+import { OnCheckoutSession, OnCustomerSubscription, OnPriceEvent, OnProductEvent } from "./types";
 
 export const onPriceCreated: EventSpecification<OnPriceEvent> = {
   name: "price.created",
@@ -255,16 +250,15 @@ export const onProductDeleted: EventSpecification<OnProductEvent> = {
   runProperties: (payload) => [{ label: "Product ID", text: payload.id }],
 };
 
-export const onCheckoutSessionCompleted: EventSpecification<OnCheckoutSession> =
-  {
-    name: "checkout.session.completed",
-    title: "On Checkout Session Completed",
-    source: "stripe.com",
-    icon: "stripe",
-    examples: [checkoutSessionExample],
-    parsePayload: (payload) => payload as OnCheckoutSession,
-    runProperties: (payload) => [{ label: "Session ID", text: payload.id }],
-  };
+export const onCheckoutSessionCompleted: EventSpecification<OnCheckoutSession> = {
+  name: "checkout.session.completed",
+  title: "On Checkout Session Completed",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [checkoutSessionExample],
+  parsePayload: (payload) => payload as OnCheckoutSession,
+  runProperties: (payload) => [{ label: "Session ID", text: payload.id }],
+};
 
 export const onCheckoutSessionExpired: EventSpecification<OnCheckoutSession> = {
   name: "checkout.session.expired",
@@ -276,72 +270,67 @@ export const onCheckoutSessionExpired: EventSpecification<OnCheckoutSession> = {
   runProperties: (payload) => [{ label: "Session ID", text: payload.id }],
 };
 
-export const onCustomerSubscriptionCreated: EventSpecification<OnCustomerSubscription> =
-  {
-    name: "customer.subscription.created",
-    title: "On Customer Subscription Created",
-    source: "stripe.com",
-    icon: "stripe",
-    examples: [customerSubscriptionExample],
-    parsePayload: (payload) => payload as OnCustomerSubscription,
-    runProperties: (payload) => [
-      { label: "Subscription ID", text: payload.id },
-      { label: "Status", text: payload.status },
-    ],
-  };
+export const onCustomerSubscriptionCreated: EventSpecification<OnCustomerSubscription> = {
+  name: "customer.subscription.created",
+  title: "On Customer Subscription Created",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [customerSubscriptionExample],
+  parsePayload: (payload) => payload as OnCustomerSubscription,
+  runProperties: (payload) => [
+    { label: "Subscription ID", text: payload.id },
+    { label: "Status", text: payload.status },
+  ],
+};
 
-export const onCustomerSubscriptionPaused: EventSpecification<OnCustomerSubscription> =
-  {
-    name: "customer.subscription.paused",
-    title: "On Customer Subscription Paused",
-    source: "stripe.com",
-    icon: "stripe",
-    examples: [pausedSubscriptionExample],
-    parsePayload: (payload) => payload as OnCustomerSubscription,
-    runProperties: (payload) => [
-      { label: "Subscription ID", text: payload.id },
-      { label: "Status", text: payload.status },
-    ],
-  };
+export const onCustomerSubscriptionPaused: EventSpecification<OnCustomerSubscription> = {
+  name: "customer.subscription.paused",
+  title: "On Customer Subscription Paused",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [pausedSubscriptionExample],
+  parsePayload: (payload) => payload as OnCustomerSubscription,
+  runProperties: (payload) => [
+    { label: "Subscription ID", text: payload.id },
+    { label: "Status", text: payload.status },
+  ],
+};
 
-export const onCustomerSubscriptionResumed: EventSpecification<OnCustomerSubscription> =
-  {
-    name: "customer.subscription.resumed",
-    title: "On Customer Subscription Resumed",
-    source: "stripe.com",
-    icon: "stripe",
-    examples: [customerSubscriptionExample],
-    parsePayload: (payload) => payload as OnCustomerSubscription,
-    runProperties: (payload) => [
-      { label: "Subscription ID", text: payload.id },
-      { label: "Status", text: payload.status },
-    ],
-  };
+export const onCustomerSubscriptionResumed: EventSpecification<OnCustomerSubscription> = {
+  name: "customer.subscription.resumed",
+  title: "On Customer Subscription Resumed",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [customerSubscriptionExample],
+  parsePayload: (payload) => payload as OnCustomerSubscription,
+  runProperties: (payload) => [
+    { label: "Subscription ID", text: payload.id },
+    { label: "Status", text: payload.status },
+  ],
+};
 
-export const onCustomerSubscriptionDeleted: EventSpecification<OnCustomerSubscription> =
-  {
-    name: "customer.subscription.deleted",
-    title: "On Customer Subscription Deleted",
-    source: "stripe.com",
-    icon: "stripe",
-    examples: [cancelledSubscriptionExample],
-    parsePayload: (payload) => payload as OnCustomerSubscription,
-    runProperties: (payload) => [
-      { label: "Subscription ID", text: payload.id },
-      { label: "Status", text: payload.status },
-    ],
-  };
+export const onCustomerSubscriptionDeleted: EventSpecification<OnCustomerSubscription> = {
+  name: "customer.subscription.deleted",
+  title: "On Customer Subscription Deleted",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [cancelledSubscriptionExample],
+  parsePayload: (payload) => payload as OnCustomerSubscription,
+  runProperties: (payload) => [
+    { label: "Subscription ID", text: payload.id },
+    { label: "Status", text: payload.status },
+  ],
+};
 
-export const onCustomerSubscriptionUpdated: EventSpecification<OnCustomerSubscription> =
-  {
-    name: "customer.subscription.updated",
-    title: "On Customer Subscription Deleted",
-    source: "stripe.com",
-    icon: "stripe",
-    examples: [updatedSubscriptionExample],
-    parsePayload: (payload) => payload as OnCustomerSubscription,
-    runProperties: (payload) => [
-      { label: "Subscription ID", text: payload.id },
-      { label: "Status", text: payload.status },
-    ],
-  };
+export const onCustomerSubscriptionUpdated: EventSpecification<OnCustomerSubscription> = {
+  name: "customer.subscription.updated",
+  title: "On Customer Subscription Deleted",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [updatedSubscriptionExample],
+  parsePayload: (payload) => payload as OnCustomerSubscription,
+  runProperties: (payload) => [
+    { label: "Subscription ID", text: payload.id },
+    { label: "Status", text: payload.status },
+  ],
+};

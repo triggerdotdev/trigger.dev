@@ -21,8 +21,8 @@ export default function Email({
       <Head />
       <Section style={main}>
         <Text style={paragraph}>
-          Your workflow {workflowId ?? "WORKFLOWID"} can’t run because you need
-          to connect to {integration ?? "INTEGRATION"}.
+          Your workflow {workflowId ?? "WORKFLOWID"} can’t run because you need to connect to{" "}
+          {integration ?? "INTEGRATION"}.
         </Text>
 
         <Text style={paragraph}>To fix this, just click the button below.</Text>

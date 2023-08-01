@@ -3,10 +3,7 @@ import { parse } from "@conform-to/zod";
 import { Form, useActionData } from "@remix-run/react";
 import { ActionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import {
-  AppContainer,
-  MainCenteredContainer,
-} from "~/components/layout/AppLayout";
+import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { NavBar } from "~/components/navigation/NavBar";
 import { Button } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -150,11 +147,7 @@ export default function Page() {
 
             <FormButtons
               confirmButton={
-                <Button
-                  type="submit"
-                  variant={"primary/small"}
-                  TrailingIcon={"arrow-right"}
-                >
+                <Button type="submit" variant={"primary/small"} TrailingIcon={"arrow-right"}>
                   Get access
                 </Button>
               }

@@ -31,26 +31,24 @@ export class RegisterScheduleService {
       },
     });
 
-    const dynamicTrigger =
-      await this.#prismaClient.dynamicTrigger.findUniqueOrThrow({
-        where: {
-          endpointId_slug_type: {
-            endpointId: endpoint.id,
-            slug: id,
-            type: "SCHEDULE",
-          },
+    const dynamicTrigger = await this.#prismaClient.dynamicTrigger.findUniqueOrThrow({
+      where: {
+        endpointId_slug_type: {
+          endpointId: endpoint.id,
+          slug: id,
+          type: "SCHEDULE",
         },
-      });
+      },
+    });
 
-    const eventDispatcher =
-      await this.#prismaClient.eventDispatcher.findUniqueOrThrow({
-        where: {
-          dispatchableId_environmentId: {
-            dispatchableId: dynamicTrigger.id,
-            environmentId: environment.id,
-          },
+    const eventDispatcher = await this.#prismaClient.eventDispatcher.findUniqueOrThrow({
+      where: {
+        dispatchableId_environmentId: {
+          dispatchableId: dynamicTrigger.id,
+          environmentId: environment.id,
         },
-      });
+      },
+    });
 
     return await $transaction(this.#prismaClient, async (tx) => {
       const registerScheduleSource = new RegisterScheduleSourceService(tx);

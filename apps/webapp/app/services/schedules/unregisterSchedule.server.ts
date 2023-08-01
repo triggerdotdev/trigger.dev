@@ -31,16 +31,15 @@ export class UnregisterScheduleService {
       },
     });
 
-    const dynamicTrigger =
-      await this.#prismaClient.dynamicTrigger.findUniqueOrThrow({
-        where: {
-          endpointId_slug_type: {
-            endpointId: endpoint.id,
-            slug: id,
-            type: "SCHEDULE",
-          },
+    const dynamicTrigger = await this.#prismaClient.dynamicTrigger.findUniqueOrThrow({
+      where: {
+        endpointId_slug_type: {
+          endpointId: endpoint.id,
+          slug: id,
+          type: "SCHEDULE",
         },
-      });
+      },
+    });
 
     await this.#prismaClient.scheduleSource.update({
       where: {

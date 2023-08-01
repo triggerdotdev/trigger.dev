@@ -6,10 +6,7 @@ import { LogMessageSchema } from "@trigger.dev/core";
 import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import {
-  authenticateApiRequest,
-  AuthenticatedEnvironment,
-} from "~/services/apiAuth.server";
+import { authenticateApiRequest, AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
@@ -64,11 +61,7 @@ export class CreateRunLogService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(
-    environment: AuthenticatedEnvironment,
-    runId: string,
-    logMessage: LogMessage
-  ) {
+  public async call(environment: AuthenticatedEnvironment, runId: string, logMessage: LogMessage) {
     // @ts-ignore
     logger.debug(logMessage.message, logMessage.data ?? {});
 

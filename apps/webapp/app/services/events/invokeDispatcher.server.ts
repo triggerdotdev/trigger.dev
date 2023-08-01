@@ -27,20 +27,19 @@ export class InvokeDispatcherService {
   }
 
   public async call(id: string, eventRecordId: string) {
-    const eventDispatcher =
-      await this.#prismaClient.eventDispatcher.findUniqueOrThrow({
-        where: {
-          id,
-        },
-        include: {
-          environment: {
-            include: {
-              project: true,
-              organization: true,
-            },
+    const eventDispatcher = await this.#prismaClient.eventDispatcher.findUniqueOrThrow({
+      where: {
+        id,
+      },
+      include: {
+        environment: {
+          include: {
+            project: true,
+            organization: true,
           },
         },
-      });
+      },
+    });
 
     if (!eventDispatcher.enabled) {
       logger.debug("Event dispatcher is disabled", {
@@ -61,9 +60,7 @@ export class InvokeDispatcherService {
       eventRecord: eventRecord.id,
     });
 
-    const dispatchable = DispatchableSchema.safeParse(
-      eventDispatcher.dispatchable
-    );
+    const dispatchable = DispatchableSchema.safeParse(eventDispatcher.dispatchable);
 
     if (!dispatchable.success) {
       logger.debug("Invalid dispatchable", {
@@ -76,15 +73,14 @@ export class InvokeDispatcherService {
 
     switch (dispatchable.data.type) {
       case "JOB_VERSION": {
-        const jobVersion =
-          await this.#prismaClient.jobVersion.findUniqueOrThrow({
-            where: {
-              id: dispatchable.data.id,
-            },
-            include: {
-              job: true,
-            },
-          });
+        const jobVersion = await this.#prismaClient.jobVersion.findUniqueOrThrow({
+          where: {
+            id: dispatchable.data.id,
+          },
+          include: {
+            job: true,
+          },
+        });
 
         const createRunService = new CreateRunService(this.#prismaClient);
 
@@ -98,41 +94,39 @@ export class InvokeDispatcherService {
         break;
       }
       case "DYNAMIC_TRIGGER": {
-        const dynamicTrigger =
-          await this.#prismaClient.dynamicTrigger.findUniqueOrThrow({
-            where: {
-              id: dispatchable.data.id,
-            },
-            include: {
-              endpoint: {
-                include: {
-                  environment: {
-                    include: {
-                      project: true,
-                      organization: true,
-                    },
+        const dynamicTrigger = await this.#prismaClient.dynamicTrigger.findUniqueOrThrow({
+          where: {
+            id: dispatchable.data.id,
+          },
+          include: {
+            endpoint: {
+              include: {
+                environment: {
+                  include: {
+                    project: true,
+                    organization: true,
                   },
                 },
               },
-              jobs: true,
             },
-          });
+            jobs: true,
+          },
+        });
 
         for (const job of dynamicTrigger.jobs) {
-          const latestJobVersion =
-            await this.#prismaClient.jobVersion.findFirst({
-              where: {
-                jobId: job.id,
-                aliases: {
-                  some: {
-                    name: "latest",
-                  },
+          const latestJobVersion = await this.#prismaClient.jobVersion.findFirst({
+            where: {
+              jobId: job.id,
+              aliases: {
+                some: {
+                  name: "latest",
                 },
-                environmentId: dynamicTrigger.endpoint.environmentId,
               },
-              orderBy: { createdAt: "desc" },
-              take: 1,
-            });
+              environmentId: dynamicTrigger.endpoint.environmentId,
+            },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+          });
 
           if (!latestJobVersion) {
             continue;

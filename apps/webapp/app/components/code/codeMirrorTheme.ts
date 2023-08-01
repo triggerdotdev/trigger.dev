@@ -36,8 +36,9 @@ export function darkTheme(): Extension {
       },
 
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: cursor },
-      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
-        { backgroundColor: selection },
+      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
+        backgroundColor: selection,
+      },
 
       ".cm-panels": { backgroundColor: darkBackground, color: ivory },
       ".cm-panels.cm-panels-top": { borderBottom: "2px solid black" },
@@ -101,13 +102,7 @@ export function darkTheme(): Extension {
   const jsonHeroHighlightStyle = HighlightStyle.define([
     { tag: tags.keyword, color: violet },
     {
-      tag: [
-        tags.name,
-        tags.deleted,
-        tags.character,
-        tags.propertyName,
-        tags.macroName,
-      ],
+      tag: [tags.name, tags.deleted, tags.character, tags.propertyName, tags.macroName],
       color: coral,
     },
     { tag: [tags.function(tags.variableName), tags.labelName], color: malibu },
@@ -194,8 +189,9 @@ export function lightTheme(): Extension[] {
       },
 
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: cursor },
-      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
-        { backgroundColor: selection },
+      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
+        backgroundColor: selection,
+      },
 
       ".cm-panels": { backgroundColor: darkBackground, color: ivory },
       ".cm-panels.cm-panels-top": { borderBottom: "2px solid black" },
@@ -259,13 +255,7 @@ export function lightTheme(): Extension[] {
   const jsonHeroHighlightStyle = tagHighlighter([
     { tag: tags.keyword, class: violet },
     {
-      tag: [
-        tags.name,
-        tags.deleted,
-        tags.character,
-        tags.propertyName,
-        tags.macroName,
-      ],
+      tag: [tags.name, tags.deleted, tags.character, tags.propertyName, tags.macroName],
       class: variableColor,
     },
     {

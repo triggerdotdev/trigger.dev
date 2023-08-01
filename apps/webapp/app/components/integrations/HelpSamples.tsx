@@ -7,28 +7,16 @@ export type ReplacementData = {
   slug: string;
 };
 
-export function HelpSamples({
-  help,
-  integrationClient,
-  integration,
-}: HelpPanelProps) {
+export function HelpSamples({ help, integrationClient, integration }: HelpPanelProps) {
   return (
     <>
       {help &&
         help.samples.map((sample, i) => {
-          const code = runReplacers(
-            sample.code,
-            integrationClient,
-            integration
-          );
+          const code = runReplacers(sample.code, integrationClient, integration);
           return (
             <div key={i}>
               <Paragraph spacing>{sample.title}</Paragraph>
-              <CodeBlock
-                code={code}
-                className="mb-4"
-                highlightedRanges={sample.highlight}
-              />
+              <CodeBlock code={code} className="mb-4" highlightedRanges={sample.highlight} />
             </div>
           );
         })}
@@ -39,10 +27,7 @@ export function HelpSamples({
 const replacements = [
   {
     match: /__SLUG__/g,
-    replacement: (
-      data: ReplacementData | undefined,
-      integration: HelpPanelIntegration
-    ) => {
+    replacement: (data: ReplacementData | undefined, integration: HelpPanelIntegration) => {
       if (data) return data.slug;
       return integration.identifier;
     },

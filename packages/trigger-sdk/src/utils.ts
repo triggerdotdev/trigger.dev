@@ -3,10 +3,7 @@ export function slugifyId(input: string): string {
   const replaceSpacesWithDash = input.toLowerCase().replace(/\s+/g, "-");
 
   // Remove any non-URL-safe characters
-  const removeNonUrlSafeChars = replaceSpacesWithDash.replace(
-    /[^a-zA-Z0-9-._~]/g,
-    ""
-  );
+  const removeNonUrlSafeChars = replaceSpacesWithDash.replace(/[^a-zA-Z0-9-._~]/g, "");
 
   return removeNonUrlSafeChars;
 }

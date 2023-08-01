@@ -132,21 +132,11 @@ function PopoverMenu() {
 
           <div className="flex flex-col gap-1 p-1">
             <PopoverMenuItem to="#" title="My Blog" icon="folder" />
-            <PopoverMenuItem
-              to="#"
-              title="New Project"
-              isSelected={false}
-              icon="plus"
-            />
+            <PopoverMenuItem to="#" title="New Project" isSelected={false} icon="plus" />
           </div>
         </Fragment>
         <div className="border-t border-slate-800 p-1">
-          <PopoverMenuItem
-            to="#"
-            title="New Organization"
-            isSelected={false}
-            icon="plus"
-          />
+          <PopoverMenuItem to="#" title="New Organization" isSelected={false} icon="plus" />
         </div>
       </PopoverContent>
     </Popover>

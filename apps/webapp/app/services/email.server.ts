@@ -13,9 +13,7 @@ const client = new EmailClient({
   replyTo: env.REPLY_TO_EMAIL ?? "help@email.trigger.dev",
 });
 
-export async function sendMagicLinkEmail(
-  options: SendEmailOptions<AuthUser>
-): Promise<void> {
+export async function sendMagicLinkEmail(options: SendEmailOptions<AuthUser>): Promise<void> {
   return client.send({
     email: "magic_link",
     to: options.emailAddress,
@@ -25,8 +23,7 @@ export async function sendMagicLinkEmail(
 
 export async function scheduleWelcomeEmail(user: User) {
   //delay for one minute in development, longer in production
-  const delay =
-    process.env.NODE_ENV === "development" ? 1000 * 60 : 1000 * 60 * 22;
+  const delay = process.env.NODE_ENV === "development" ? 1000 * 60 : 1000 * 60 * 22;
 
   await workerQueue.enqueue(
     "scheduleEmail",
@@ -39,10 +36,7 @@ export async function scheduleWelcomeEmail(user: User) {
   );
 }
 
-export async function scheduleEmail(
-  data: DeliverEmail,
-  delay?: { seconds: number }
-) {
+export async function scheduleEmail(data: DeliverEmail, delay?: { seconds: number }) {
   const runAt = delay ? new Date(Date.now() + delay.seconds * 1000) : undefined;
   await workerQueue.enqueue("scheduleEmail", data, { runAt });
 }

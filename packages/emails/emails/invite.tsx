@@ -8,13 +8,7 @@ import { Section } from "@react-email/section";
 import { Text } from "@react-email/text";
 import * as React from "react";
 import { Footer } from "./components/Footer";
-import {
-  main,
-  anchor,
-  h1,
-  container,
-  paragraphLight,
-} from "./components/styles";
+import { main, anchor, h1, container, paragraphLight } from "./components/styles";
 import { z } from "zod";
 
 export const InviteEmailSchema = z.object({
@@ -39,8 +33,7 @@ export default function Email({
         <Container style={container}>
           <Text style={h1}>{`You've been invited to ${orgName}`}</Text>
           <Text style={paragraphLight}>
-            {inviterName ?? inviterEmail} has invited you to join their
-            organization on Trigger.dev.
+            {inviterName ?? inviterEmail} has invited you to join their organization on Trigger.dev.
           </Text>
           <Link
             href={inviteLink}
@@ -54,12 +47,7 @@ export default function Email({
             Click here to view the invitation
           </Link>
 
-          <Image
-            path="/emails/logo-mono.png"
-            width="156"
-            height="28"
-            alt="Trigger.dev"
-          />
+          <Image path="/emails/logo-mono.png" width="156" height="28" alt="Trigger.dev" />
           <Footer />
         </Container>
       </Section>

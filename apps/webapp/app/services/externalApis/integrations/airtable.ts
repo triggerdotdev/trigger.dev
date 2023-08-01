@@ -56,13 +56,11 @@ export const airtable: Integration = {
         },
         {
           name: "schema.bases:read",
-          description:
-            "See the structure of a base, like table names or field types",
+          description: "See the structure of a base, like table names or field types",
         },
         {
           name: "schema.bases:write",
-          description:
-            "Edit the structure of a base, like adding new fields or tables",
+          description: "Edit the structure of a base, like adding new fields or tables",
         },
         {
           name: "webhook:manage",

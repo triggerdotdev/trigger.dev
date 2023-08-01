@@ -10,8 +10,7 @@ import Link from "next/link";
 
 export function ReactHooks({ eventId }: { eventId: string }) {
   const providerData = useTriggerProvider();
-  const { isSuccess, isLoading, isError, data, error } =
-    useEventRunDetails(eventId);
+  const { isSuccess, isLoading, isError, data, error } = useEventRunDetails(eventId);
 
   const event = useEventDetails(eventId);
   console.log("event.data", event.data);
@@ -28,9 +27,7 @@ export function ReactHooks({ eventId }: { eventId: string }) {
       <h2 className="text-lg">useTriggerProvider()</h2>
       <code>
         <pre>
-          {providerData !== undefined &&
-            providerData.publicApiKey !== null &&
-            "✅ Working"}
+          {providerData !== undefined && providerData.publicApiKey !== null && "✅ Working"}
         </pre>
       </code>
 
@@ -41,9 +38,7 @@ export function ReactHooks({ eventId }: { eventId: string }) {
           <>
             <ProgressItem
               state={
-                data?.tasks === undefined || data.tasks.length === 0
-                  ? "progress"
-                  : "completed"
+                data?.tasks === undefined || data.tasks.length === 0 ? "progress" : "completed"
               }
               name="Starting up"
             />

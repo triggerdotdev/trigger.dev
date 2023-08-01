@@ -22,10 +22,7 @@ import { requireUserId } from "~/services/session.server";
 import { organizationPath, projectPath } from "~/utils/pathBuilder";
 
 const schema = z.object({
-  projectName: z
-    .string()
-    .min(3, "Project name must have at least 3 characters")
-    .max(50),
+  projectName: z.string().min(3, "Project name must have at least 3 characters").max(50),
 });
 
 export const action: ActionFunction = async ({ request, params }) => {
@@ -86,25 +83,16 @@ export default function NewOrganizationPage() {
                 placeholder="Your project name"
                 icon="folder"
               />
-              <FormError id={projectName.errorId}>
-                {projectName.error}
-              </FormError>
+              <FormError id={projectName.errorId}>{projectName.error}</FormError>
             </InputGroup>
             <FormButtons
               confirmButton={
-                <Button
-                  type="submit"
-                  variant={"primary/small"}
-                  TrailingIcon="arrow-right"
-                >
+                <Button type="submit" variant={"primary/small"} TrailingIcon="arrow-right">
                   Create
                 </Button>
               }
               cancelButton={
-                <LinkButton
-                  to={organizationPath(organization)}
-                  variant={"secondary/small"}
-                >
+                <LinkButton to={organizationPath(organization)} variant={"secondary/small"}>
                   Cancel
                 </LinkButton>
               }

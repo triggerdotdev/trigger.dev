@@ -19,11 +19,7 @@ import type {
   UpdateWebhookParams,
 } from "./types";
 
-export const listForms: AuthenticatedTask<
-  TypeformSDK,
-  ListFormsParams,
-  Typeform.API.Forms.List
-> = {
+export const listForms: AuthenticatedTask<TypeformSDK, ListFormsParams, Typeform.API.Forms.List> = {
   run: async (params, client) => {
     return client.forms.list(params ?? {});
   },
@@ -33,24 +29,16 @@ export const listForms: AuthenticatedTask<
       params,
       icon: "typeform",
       properties: [
-        ...(params?.workspaceId
-          ? [{ label: "Workspace ID", text: params.workspaceId }]
-          : []),
+        ...(params?.workspaceId ? [{ label: "Workspace ID", text: params.workspaceId }] : []),
         ...(params?.search ? [{ label: "Search", text: params.search }] : []),
         ...(params?.page ? [{ label: "Page", text: String(params.page) }] : []),
-        ...(params?.pageSize
-          ? [{ label: "Page Size", text: String(params.pageSize) }]
-          : []),
+        ...(params?.pageSize ? [{ label: "Page Size", text: String(params.pageSize) }] : []),
       ],
     };
   },
 };
 
-export const getForm: AuthenticatedTask<
-  TypeformSDK,
-  GetFormParams,
-  GetFormResponse
-> = {
+export const getForm: AuthenticatedTask<TypeformSDK, GetFormParams, GetFormResponse> = {
   run: async (params, client) => {
     return client.forms.get(params);
   },
@@ -226,11 +214,7 @@ export const updateWebhook: AuthenticatedTask<
   },
 };
 
-export const getWebhook: AuthenticatedTask<
-  TypeformSDK,
-  GetWebhookParams,
-  GetWebhookResponse
-> = {
+export const getWebhook: AuthenticatedTask<TypeformSDK, GetWebhookParams, GetWebhookResponse> = {
   run: async (params, client) => {
     return client.webhooks.get(params);
   },

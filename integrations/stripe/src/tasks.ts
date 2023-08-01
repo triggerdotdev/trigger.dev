@@ -21,71 +21,68 @@ import { AuthenticatedTask } from "@trigger.dev/sdk";
 import { Stripe } from "stripe";
 import { omit } from "./utils";
 
-export const createCharge: AuthenticatedTask<
-  StripeSDK,
-  CreateChargeParams,
-  CreateChargeResponse
-> = {
-  onError: (error) => {
-    if (error instanceof Stripe.errors.StripeError) {
-      console.log("Stripe error", error);
-    }
+export const createCharge: AuthenticatedTask<StripeSDK, CreateChargeParams, CreateChargeResponse> =
+  {
+    onError: (error) => {
+      if (error instanceof Stripe.errors.StripeError) {
+        console.log("Stripe error", error);
+      }
 
-    throw error;
-  },
-  run: async (params, client, task) => {
-    const response = await client.charges.create(params, {
-      idempotencyKey: task.idempotencyKey,
-      stripeAccount: params.stripeAccount,
-    });
+      throw error;
+    },
+    run: async (params, client, task) => {
+      const response = await client.charges.create(params, {
+        idempotencyKey: task.idempotencyKey,
+        stripeAccount: params.stripeAccount,
+      });
 
-    task.outputProperties = [
-      {
-        label: "Charge ID",
-        text: response.id,
-      },
-      ...(response.lastResponse.requestId
-        ? [
-            {
-              label: "Request ID",
-              text: response.lastResponse.requestId,
-            },
-          ]
-        : []),
-    ];
-
-    return response;
-  },
-  init: (params) => {
-    return {
-      name: "Create Charge",
-      params,
-      icon: "stripe",
-      properties: [
+      task.outputProperties = [
         {
-          label: "Amount",
-          text: `${params.amount}`,
+          label: "Charge ID",
+          text: response.id,
         },
-        ...(params.currency
+        ...(response.lastResponse.requestId
           ? [
               {
-                label: "Currency",
-                text: params.currency,
+                label: "Request ID",
+                text: response.lastResponse.requestId,
               },
             ]
           : []),
-        ...(params.stripeAccount
-          ? [
-              {
-                label: "Stripe Account",
-                text: params.stripeAccount,
-              },
-            ]
-          : []),
-      ],
-    };
-  },
-};
+      ];
+
+      return response;
+    },
+    init: (params) => {
+      return {
+        name: "Create Charge",
+        params,
+        icon: "stripe",
+        properties: [
+          {
+            label: "Amount",
+            text: `${params.amount}`,
+          },
+          ...(params.currency
+            ? [
+                {
+                  label: "Currency",
+                  text: params.currency,
+                },
+              ]
+            : []),
+          ...(params.stripeAccount
+            ? [
+                {
+                  label: "Stripe Account",
+                  text: params.stripeAccount,
+                },
+              ]
+            : []),
+        ],
+      };
+    },
+  };
 
 export const createCustomer: AuthenticatedTask<
   StripeSDK,
@@ -140,14 +137,10 @@ export const updateCustomer: AuthenticatedTask<
   UpdateCustomerResponse
 > = {
   run: async (params, client, task) => {
-    const response = await client.customers.update(
-      params.id,
-      omit(params, "id"),
-      {
-        idempotencyKey: task.idempotencyKey,
-        stripeAccount: params.stripeAccount,
-      }
-    );
+    const response = await client.customers.update(params.id, omit(params, "id"), {
+      idempotencyKey: task.idempotencyKey,
+      stripeAccount: params.stripeAccount,
+    });
 
     task.outputProperties = [
       ...(response.lastResponse.requestId
@@ -191,13 +184,9 @@ export const retrieveSubscription: AuthenticatedTask<
   RetrieveSubscriptionResponse
 > = {
   run: async (params, client, task) => {
-    const response = await client.subscriptions.retrieve(
-      params.id,
-      omit(params, "id"),
-      {
-        stripeAccount: params.stripeAccount,
-      }
-    );
+    const response = await client.subscriptions.retrieve(params.id, omit(params, "id"), {
+      stripeAccount: params.stripeAccount,
+    });
 
     return response;
   },
@@ -313,13 +302,9 @@ export const updateWebhook: AuthenticatedTask<
   UpdateWebhookResponse
 > = {
   run: async (params, client, task) => {
-    const response = await client.webhookEndpoints.update(
-      params.id,
-      omit(params, "id"),
-      {
-        idempotencyKey: task.idempotencyKey,
-      }
-    );
+    const response = await client.webhookEndpoints.update(params.id, omit(params, "id"), {
+      idempotencyKey: task.idempotencyKey,
+    });
 
     task.outputProperties = [
       ...(response.lastResponse.requestId
@@ -349,21 +334,18 @@ export const updateWebhook: AuthenticatedTask<
   },
 };
 
-export const listWebhooks: AuthenticatedTask<
-  StripeSDK,
-  ListWebhooksParams,
-  ListWebhooksResponse
-> = {
-  run: async (params, client, task) => {
-    const response = await client.webhookEndpoints.list(params);
+export const listWebhooks: AuthenticatedTask<StripeSDK, ListWebhooksParams, ListWebhooksResponse> =
+  {
+    run: async (params, client, task) => {
+      const response = await client.webhookEndpoints.list(params);
 
-    return response;
-  },
-  init: (params) => {
-    return {
-      name: "List Webhooks",
-      params,
-      icon: "stripe",
-    };
-  },
-};
+      return response;
+    },
+    init: (params) => {
+      return {
+        name: "List Webhooks",
+        params,
+        icon: "stripe",
+      };
+    },
+  };

@@ -43,11 +43,8 @@ export function PaginationControls({
       <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-slate-400">
-            Showing{" "}
-            <span className="font-medium">
-              {(currentPage - 1) * pageSize + 1}
-            </span>{" "}
-            to <span className="font-medium">{currentPage * pageSize}</span> of{" "}
+            Showing <span className="font-medium">{(currentPage - 1) * pageSize + 1}</span> to{" "}
+            <span className="font-medium">{currentPage * pageSize}</span> of{" "}
             <span className="font-medium">{totalResults}</span> results
           </p>
         </div>
@@ -86,10 +83,7 @@ export function PaginationControls({
   );
 }
 
-function pageUrl(
-  location: ReturnType<typeof useLocation>,
-  page: number
-): string {
+function pageUrl(location: ReturnType<typeof useLocation>, page: number): string {
   const search = new URLSearchParams(location.search);
 
   search.set("page", String(page));
@@ -101,8 +95,7 @@ const baseClass =
   "relative inline-flex items-center border px-3.5 py-2 text-xs font-medium focus:z-20 transition";
 const unselectedClass =
   "bg-slate-700/20 border-slate-500 text-slate-400 hover:bg-slate-400 hover:text-slate-900";
-const selectedClass =
-  "z-10 bg-slate-500 border-slate-500 hover:bg-slate-400 text-slate-900";
+const selectedClass = "z-10 bg-slate-500 border-slate-500 hover:bg-slate-400 text-slate-900";
 
 function PageLinkComponent({
   page,
@@ -114,19 +107,13 @@ function PageLinkComponent({
   if (page.type === "specific") {
     if (page.isCurrent) {
       return (
-        <Link
-          to={pageUrl(location, page.page)}
-          className={cn(baseClass, selectedClass)}
-        >
+        <Link to={pageUrl(location, page.page)} className={cn(baseClass, selectedClass)}>
           {page.page}
         </Link>
       );
     } else {
       return (
-        <Link
-          to={pageUrl(location, page.page)}
-          className={cn(baseClass, unselectedClass)}
-        >
+        <Link to={pageUrl(location, page.page)} className={cn(baseClass, unselectedClass)}>
           {page.page}
         </Link>
       );
@@ -154,10 +141,7 @@ type SpecificPageLink = {
 
 // If there are less than or equal to 6 pages, just show all the pages.
 // If there are more than 5 pages, show the first 3, the current page, and the last 3.
-function calculatePageLinks(
-  currentPage: number,
-  totalPages: number
-): Array<PageLink> {
+function calculatePageLinks(currentPage: number, totalPages: number): Array<PageLink> {
   const pageLinks: Array<PageLink> = [];
 
   if (totalPages <= 10) {

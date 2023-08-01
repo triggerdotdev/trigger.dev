@@ -65,10 +65,7 @@ export default function NewOrganizationPage() {
   return (
     <MainCenteredContainer>
       <div>
-        <FormTitle
-          LeadingIcon="organization"
-          title="Create a new Organization"
-        />
+        <FormTitle LeadingIcon="organization" title="Create a new Organization" />
         <Form method="post" {...form.props}>
           <Fieldset>
             <InputGroup>
@@ -89,18 +86,12 @@ export default function NewOrganizationPage() {
                 icon="folder"
               />
               <Hint>Your Jobs will live inside this Project.</Hint>
-              <FormError id={projectName.errorId}>
-                {projectName.error}
-              </FormError>
+              <FormError id={projectName.errorId}>{projectName.error}</FormError>
             </InputGroup>
 
             <FormButtons
               confirmButton={
-                <Button
-                  type="submit"
-                  variant={"primary/small"}
-                  TrailingIcon="arrow-right"
-                >
+                <Button type="submit" variant={"primary/small"} TrailingIcon="arrow-right">
                   Create
                 </Button>
               }

@@ -23,9 +23,7 @@ export const OperatingSystemContextProvider = ({
 };
 
 const throwIfNoProvider = () => {
-  throw new Error(
-    "Please wrap your application in an OperatingSystemContextProvider."
-  );
+  throw new Error("Please wrap your application in an OperatingSystemContextProvider.");
 };
 
 export const useOperatingSystem = () => {

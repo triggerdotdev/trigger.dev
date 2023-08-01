@@ -42,34 +42,22 @@ function PageHeaders() {
           <PageTitleRow>
             <PageTitle title="Organizations" />
             <PageButtons>
-              <LinkButton
-                to={""}
-                variant="primary/small"
-                shortcut={{ key: "n" }}
-              >
+              <LinkButton to={""} variant="primary/small" shortcut={{ key: "n" }}>
                 Create a new Organization
               </LinkButton>
             </PageButtons>
           </PageTitleRow>
           <PageDescription>
-            Create new Organizations and new Projects to help organize your
-            Jobs.
+            Create new Organizations and new Projects to help organize your Jobs.
           </PageDescription>
         </PageHeader>
       </div>
       <div className="bg-[#0B1018]">
         <PageHeader>
           <PageTitleRow>
-            <PageTitle
-              title="Your Organizations"
-              backButton={{ to: "#", text: "Orgs" }}
-            />
+            <PageTitle title="Your Organizations" backButton={{ to: "#", text: "Orgs" }} />
             <PageButtons>
-              <LinkButton
-                to={""}
-                variant="primary/small"
-                shortcut={{ key: "n" }}
-              >
+              <LinkButton to={""} variant="primary/small" shortcut={{ key: "n" }}>
                 Create a new Organization
               </LinkButton>
             </PageButtons>

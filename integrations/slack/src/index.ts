@@ -11,9 +11,7 @@ export type SlackIntegrationOptions = {
   id: string;
 };
 
-export class Slack
-  implements TriggerIntegration<IntegrationClient<WebClient, typeof tasks>>
-{
+export class Slack implements TriggerIntegration<IntegrationClient<WebClient, typeof tasks>> {
   client: IntegrationClient<WebClient, typeof tasks>;
 
   constructor(private options: SlackIntegrationOptions) {

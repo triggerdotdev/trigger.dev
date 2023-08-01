@@ -28,9 +28,7 @@ export default function handleRequest(
   });
 
   //get whether it's a mac or pc from the headers
-  const platform: OperatingSystemPlatform = request.headers
-    .get("user-agent")
-    ?.includes("Mac")
+  const platform: OperatingSystemPlatform = request.headers.get("user-agent")?.includes("Mac")
     ? "mac"
     : "windows";
 
@@ -70,11 +68,7 @@ function serveTheBots(
     const { pipe, abort } = renderToPipeableStream(
       <OperatingSystemContextProvider platform={platform}>
         <LocaleContextProvider locales={locales}>
-          <RemixServer
-            context={remixContext}
-            url={request.url}
-            abortDelay={ABORT_DELAY}
-          />
+          <RemixServer context={remixContext} url={request.url} abortDelay={ABORT_DELAY} />
         </LocaleContextProvider>
       </OperatingSystemContextProvider>,
       {
@@ -113,11 +107,7 @@ function serveBrowsers(
     const { pipe, abort } = renderToPipeableStream(
       <OperatingSystemContextProvider platform={platform}>
         <LocaleContextProvider locales={locales}>
-          <RemixServer
-            context={remixContext}
-            url={request.url}
-            abortDelay={ABORT_DELAY}
-          />
+          <RemixServer context={remixContext} url={request.url} abortDelay={ABORT_DELAY} />
         </LocaleContextProvider>
       </OperatingSystemContextProvider>,
       {
@@ -153,10 +143,7 @@ if (env.HIGHLIGHT_PROJECT_ID) {
   H.init({ projectID: env.HIGHLIGHT_PROJECT_ID });
 }
 
-export function handleError(
-  error: unknown,
-  { request, params, context }: DataFunctionArgs
-) {
+export function handleError(error: unknown, { request, params, context }: DataFunctionArgs) {
   logError(error, request);
 }
 
@@ -166,9 +153,7 @@ Worker.init().catch((error) => {
 
 function logError(error: unknown, request?: Request) {
   if (env.HIGHLIGHT_PROJECT_ID) {
-    const parsed = request
-      ? H.parseHeaders(Object.fromEntries(request.headers))
-      : undefined;
+    const parsed = request ? H.parseHeaders(Object.fromEntries(request.headers)) : undefined;
     if (error instanceof Error) {
       H.consumeError(error, parsed?.secureSessionId, parsed?.requestId);
     } else {

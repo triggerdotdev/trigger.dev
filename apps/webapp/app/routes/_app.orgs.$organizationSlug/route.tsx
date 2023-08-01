@@ -7,10 +7,7 @@ import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { getOrganizationFromSlug } from "~/models/organization.server";
 import { analytics } from "~/services/analytics.server";
-import {
-  commitCurrentOrgSession,
-  setCurrentOrg,
-} from "~/services/currentOrganization.server";
+import { commitCurrentOrgSession, setCurrentOrg } from "~/services/currentOrganization.server";
 import { requireUserId } from "~/services/session.server";
 import { organizationPath } from "~/utils/pathBuilder";
 
@@ -54,11 +51,7 @@ export default function Organization() {
 
 export function ErrorBoundary() {
   const org = useOrganization();
-  return (
-    <RouteErrorDisplay
-      button={{ title: org.title, to: organizationPath(org) }}
-    />
-  );
+  return <RouteErrorDisplay button={{ title: org.title, to: organizationPath(org) }} />;
 }
 
 export const shouldRevalidate: ShouldRevalidateFunction = (options) => {

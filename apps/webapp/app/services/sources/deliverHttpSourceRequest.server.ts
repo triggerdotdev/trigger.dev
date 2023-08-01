@@ -13,35 +13,32 @@ export class DeliverHttpSourceRequestService {
   }
 
   public async call(id: string) {
-    const httpSourceRequest =
-      await this.#prismaClient.httpSourceRequestDelivery.findUniqueOrThrow({
-        where: { id },
-        include: {
-          endpoint: true,
-          environment: {
-            include: {
-              organization: true,
-              project: true,
-            },
-          },
-          source: {
-            include: {
-              secretReference: true,
-              dynamicTrigger: true,
-              externalAccount: true,
-              integration: true,
-            },
+    const httpSourceRequest = await this.#prismaClient.httpSourceRequestDelivery.findUniqueOrThrow({
+      where: { id },
+      include: {
+        endpoint: true,
+        environment: {
+          include: {
+            organization: true,
+            project: true,
           },
         },
-      });
+        source: {
+          include: {
+            secretReference: true,
+            dynamicTrigger: true,
+            externalAccount: true,
+            integration: true,
+          },
+        },
+      },
+    });
 
     if (!httpSourceRequest.source.active) {
       return;
     }
 
-    const secretStore = getSecretStore(
-      httpSourceRequest.source.secretReference.provider
-    );
+    const secretStore = getSecretStore(httpSourceRequest.source.secretReference.provider);
 
     const secret = await secretStore.getSecret(
       z.object({

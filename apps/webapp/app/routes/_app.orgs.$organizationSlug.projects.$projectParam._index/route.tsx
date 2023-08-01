@@ -33,11 +33,7 @@ import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { requireUserId } from "~/services/session.server";
 import { JobListPresenter } from "~/presenters/JobListPresenter.server";
 import { TextLink } from "~/components/primitives/TextLink";
-import {
-  GitHubLightIcon,
-  OpenAILightIcon,
-  ResendIcon,
-} from "@trigger.dev/companyicons";
+import { GitHubLightIcon, OpenAILightIcon, ResendIcon } from "@trigger.dev/companyicons";
 import { ClockIcon, CalendarDaysIcon, SlackIcon } from "lucide-react";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
@@ -55,16 +51,13 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     console.error(error);
     throw new Response(undefined, {
       status: 400,
-      statusText:
-        "Something went wrong, if this problem persists please contact support.",
+      statusText: "Something went wrong, if this problem persists please contact support.",
     });
   }
 };
 
 export const handle: Handle = {
-  breadcrumb: (match) => (
-    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Jobs" />
-  ),
+  breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Jobs" />,
   expandSidebar: true,
 };
 
@@ -85,11 +78,7 @@ export default function Page() {
         </PageTitleRow>
         <PageInfoRow>
           <PageInfoGroup>
-            <PageInfoProperty
-              icon={"job"}
-              label={"Active Jobs"}
-              value={jobs.length}
-            />
+            <PageInfoProperty icon={"job"} label={"Active Jobs"} value={jobs.length} />
           </PageInfoGroup>
         </PageInfoRow>
       </PageHeader>
@@ -114,24 +103,17 @@ export default function Page() {
         /> */}
         <Help defaultOpen={jobs.length === 0}>
           {(open) => (
-            <div
-              className={cn(
-                "grid h-fit gap-4",
-                open ? "grid-cols-2" : "grid-cols-1"
-              )}
-            >
+            <div className={cn("grid h-fit gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
               <div>
-                {jobs.length > 0 &&
-                  jobs.some((j) => j.hasIntegrationsRequiringAction) && (
-                    <Callout
-                      variant="error"
-                      to={projectIntegrationsPath(organization, project)}
-                      className="mb-2"
-                    >
-                      Some of your Jobs have Integrations that have not been
-                      configured.
-                    </Callout>
-                  )}
+                {jobs.length > 0 && jobs.some((j) => j.hasIntegrationsRequiringAction) && (
+                  <Callout
+                    variant="error"
+                    to={projectIntegrationsPath(organization, project)}
+                    className="mb-2"
+                  >
+                    Some of your Jobs have Integrations that have not been configured.
+                  </Callout>
+                )}
                 <div className="mb-2 flex items-center justify-between gap-x-2">
                   {jobs.length === 0 ? (
                     <Header2>Jobs</Header2>
@@ -154,9 +136,7 @@ export default function Page() {
                         "flex w-full flex-col justify-center gap-x-4 rounded-md border border-dashed border-indigo-800 px-5 py-8"
                       }
                     >
-                      <Paragraph variant="small">
-                        Your Jobs will appear here.
-                      </Paragraph>
+                      <Paragraph variant="small">Your Jobs will appear here.</Paragraph>
                     </div>
                   </div>
                 ) : (
@@ -205,12 +185,8 @@ function ExampleJobs() {
     <div className="mt-6 flex w-full flex-col gap-y-2 rounded bg-slate-900 p-4">
       <Header2 className="text-slate-300">Example Jobs</Header2>
       <Paragraph variant="small">
-        If you want more inspiration or just want to dig into the code of a Job,
-        check out our{" "}
-        <TextLink href="https://github.com/triggerdotdev/examples">
-          examples repo
-        </TextLink>
-        .
+        If you want more inspiration or just want to dig into the code of a Job, check out our{" "}
+        <TextLink href="https://github.com/triggerdotdev/examples">examples repo</TextLink>.
       </Paragraph>
       <div className="h-[1px] w-full bg-slate-800" />
       <div className="flex gap-1.5">

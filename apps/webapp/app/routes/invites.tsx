@@ -5,10 +5,7 @@ import { Form, useActionData } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import simplur from "simplur";
-import {
-  AppContainer,
-  MainCenteredContainer,
-} from "~/components/layout/AppLayout";
+import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { NavBar } from "~/components/navigation/NavBar";
 import { Button } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -16,11 +13,7 @@ import { FormTitle } from "~/components/primitives/FormTitle";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import {
-  acceptInvite,
-  declineInvite,
-  getUsersInvites,
-} from "~/models/member.server";
+import { acceptInvite, declineInvite, getUsersInvites } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { invitesPath, organizationsPath } from "~/utils/pathBuilder";
@@ -123,12 +116,9 @@ export default function Page() {
               <Fieldset>
                 <InputGroup className="flex items-center justify-between border-b border-slate-800 py-4">
                   <div className="flex flex-col gap-y-0.5 overflow-hidden">
-                    <Header2 className="truncate">
-                      {invite.organization.title}
-                    </Header2>
+                    <Header2 className="truncate">{invite.organization.title}</Header2>
                     <Paragraph variant="small" className="truncate">
-                      Invited by{" "}
-                      {invite.inviter.displayName ?? invite.inviter.email}
+                      Invited by {invite.inviter.displayName ?? invite.inviter.email}
                     </Paragraph>
                     <input name="inviteId" type="hidden" value={invite.id} />
                   </div>

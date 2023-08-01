@@ -8,12 +8,8 @@ type OctokitClient = InstanceType<typeof Octokit>;
 
 type GithubAuthenticatedTask<
   TParams extends Record<string, unknown>,
-  TFunction extends (...args: any[]) => any
-> = AuthenticatedTask<
-  OctokitClient,
-  TParams,
-  GetResponseDataTypeFromEndpointMethod<TFunction>
->;
+  TFunction extends (...args: any[]) => any,
+> = AuthenticatedTask<OctokitClient, TParams, GetResponseDataTypeFromEndpointMethod<TFunction>>;
 
 function isRequestError(error: unknown): error is RequestError {
   return typeof error === "object" && error !== null && "status" in error;
@@ -219,15 +215,7 @@ const getRepo: GithubAuthenticatedTask<
   },
 };
 
-type ReactionContent =
-  | "+1"
-  | "-1"
-  | "laugh"
-  | "confused"
-  | "heart"
-  | "hooray"
-  | "rocket"
-  | "eyes";
+type ReactionContent = "+1" | "-1" | "laugh" | "confused" | "heart" | "hooray" | "rocket" | "eyes";
 
 const addIssueCommentReaction: GithubAuthenticatedTask<
   {

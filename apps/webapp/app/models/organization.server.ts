@@ -82,9 +82,7 @@ export async function createOrganization(
   });
 
   if (attemptCount > 100) {
-    throw new Error(
-      `Unable to create organization with slug ${uniqueOrgSlug} after 100 attempts`
-    );
+    throw new Error(`Unable to create organization with slug ${uniqueOrgSlug} after 100 attempts`);
   }
 
   if (orgWithSameSlug) {

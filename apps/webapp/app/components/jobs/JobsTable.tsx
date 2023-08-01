@@ -21,13 +21,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { JobRunStatus } from "~/models/job.server";
 import { cn } from "~/utils/cn";
 
-export function JobsTable({
-  jobs,
-  noResultsText,
-}: {
-  jobs: ProjectJob[];
-  noResultsText: string;
-}) {
+export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResultsText: string }) {
   const organization = useOrganization();
   const project = useProject();
 
@@ -50,9 +44,7 @@ export function JobsTable({
             return (
               <TableRow
                 key={job.id}
-                className={cn(
-                  job.hasIntegrationsRequiringAction && "bg-rose-500/30"
-                )}
+                className={cn(job.hasIntegrationsRequiringAction && "bg-rose-500/30")}
               >
                 <TableCell to={path}>
                   <span className="flex items-center gap-2">
@@ -63,8 +55,7 @@ export function JobsTable({
                         job.dynamic ? (
                           <span className="flex items-center gap-0.5">
                             <NamedIcon name="dynamic" className="h-4 w-4" />{" "}
-                            <span className="uppercase">Dynamic:</span>{" "}
-                            {job.event.title}
+                            <span className="uppercase">Dynamic:</span> {job.event.title}
                           </span>
                         ) : (
                           job.event.title
@@ -75,11 +66,7 @@ export function JobsTable({
                   </span>
                 </TableCell>
                 <TableCell to={path}>
-                  <LabelValueStack
-                    label={job.slug}
-                    value={`v${job.version}`}
-                    variant="primary"
-                  />
+                  <LabelValueStack label={job.slug} value={`v${job.version}`} variant="primary" />
                 </TableCell>
                 <TableCell to={path}>
                   {job.integrations.map((integration) => (
@@ -87,15 +74,9 @@ export function JobsTable({
                       key={integration.key}
                       button={
                         <div className="relative">
-                          <NamedIcon
-                            name={integration.icon}
-                            className="h-6 w-6"
-                          />
+                          <NamedIcon name={integration.icon} className="h-6 w-6" />
                           {integration.setupStatus === "MISSING_FIELDS" && (
-                            <NamedIcon
-                              name="error"
-                              className="absolute -left-1 -top-1 h-4 w-4"
-                            />
+                            <NamedIcon name="error" className="absolute -left-1 -top-1 h-4 w-4" />
                           )}
                         </div>
                       }
@@ -166,10 +147,7 @@ export function JobsTable({
           })
         ) : (
           <TableBlankRow colSpan={6}>
-            <Paragraph
-              variant="small"
-              className="flex items-center justify-center"
-            >
+            <Paragraph variant="small" className="flex items-center justify-center">
               {noResultsText}
             </Paragraph>
           </TableBlankRow>

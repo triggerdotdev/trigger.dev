@@ -6,8 +6,6 @@ export function useIsProjectChildPage(matches?: RouteMatch[]) {
   }
 
   return matches.some((matchData) => {
-    return matchData.id.startsWith(
-      "routes/_app.orgs.$organizationSlug.projects.$projectParam"
-    );
+    return matchData.id.startsWith("routes/_app.orgs.$organizationSlug.projects.$projectParam");
   });
 }

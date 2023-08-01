@@ -113,9 +113,7 @@ export class EndpointApi {
     }
 
     if (!response.ok) {
-      throw new Error(
-        `Could not connect to endpoint ${this.url}. Status code: ${response.status}`
-      );
+      throw new Error(`Could not connect to endpoint ${this.url}. Status code: ${response.status}`);
     }
 
     const anyBody = await response.json();
@@ -144,9 +142,7 @@ export class EndpointApi {
     }
 
     if (!response.ok) {
-      throw new Error(
-        `Could not connect to endpoint ${this.url}. Status code: ${response.status}`
-      );
+      throw new Error(`Could not connect to endpoint ${this.url}. Status code: ${response.status}`);
     }
 
     const anyBody = await response.json();
@@ -190,10 +186,7 @@ export class EndpointApi {
     return { response, parser: PreprocessRunResponseSchema };
   }
 
-  async initializeTrigger(
-    id: string,
-    params: any
-  ): Promise<RegisterTriggerBody | undefined> {
+  async initializeTrigger(id: string, params: any): Promise<RegisterTriggerBody | undefined> {
     const response = await safeFetch(this.url, {
       method: "POST",
       headers: {
@@ -218,9 +211,7 @@ export class EndpointApi {
         throw new EndpointApiError(error.data.message, error.data.stack);
       }
 
-      throw new Error(
-        `Could not connect to endpoint ${this.url}. Status code: ${response.status}`
-      );
+      throw new Error(`Could not connect to endpoint ${this.url}. Status code: ${response.status}`);
     }
 
     const anyBody = await response.json();
@@ -263,9 +254,7 @@ export class EndpointApi {
     }
 
     if (!response.ok) {
-      throw new Error(
-        `Could not connect to endpoint ${this.url}. Status code: ${response.status}`
-      );
+      throw new Error(`Could not connect to endpoint ${this.url}. Status code: ${response.status}`);
     }
 
     const anyBody = await response.json();

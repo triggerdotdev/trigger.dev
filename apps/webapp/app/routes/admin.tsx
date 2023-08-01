@@ -33,11 +33,7 @@ export default function Page() {
     <>
       <div className="flex h-full">
         <Transition.Root show={mobileMenuOpen} as={Fragment}>
-          <Dialog
-            as="div"
-            className="relative z-40 lg:hidden"
-            onClose={setMobileMenuOpen}
-          >
+          <Dialog as="div" className="relative z-40 lg:hidden" onClose={setMobileMenuOpen}>
             <Transition.Child
               as={Fragment}
               enter="transition-opacity ease-linear duration-300"
@@ -77,10 +73,7 @@ export default function Page() {
                         onClick={() => setMobileMenuOpen(false)}
                       >
                         <span className="sr-only">Close sidebar</span>
-                        <XMarkIcon
-                          className="h-6 w-6 text-white"
-                          aria-hidden="true"
-                        />
+                        <XMarkIcon className="h-6 w-6 text-white" aria-hidden="true" />
                       </button>
                     </div>
                   </Transition.Child>
@@ -114,10 +107,7 @@ export default function Page() {
                     <button className="group block flex-shrink-0">
                       <div className="flex items-center">
                         <div>
-                          <UserProfilePhoto
-                            user={data.user}
-                            className="h-10 w-10"
-                          />
+                          <UserProfilePhoto user={data.user} className="h-10 w-10" />
                         </div>
                         <div className="ml-3">
                           <p className="text-base font-medium text-gray-700 group-hover:text-gray-900">
@@ -151,10 +141,7 @@ export default function Page() {
                     alt="Workflow"
                   />
                 </div>
-                <nav
-                  aria-label="Sidebar"
-                  className="flex flex-col items-center space-y-3 py-6"
-                >
+                <nav aria-label="Sidebar" className="flex flex-col items-center space-y-3 py-6">
                   {navigation.map((item) => (
                     <a
                       key={item.name}
@@ -169,10 +156,7 @@ export default function Page() {
               </div>
               <div className="flex flex-shrink-0 pb-5">
                 <button className="flex w-full flex-shrink-0 flex-grow justify-center">
-                  <UserProfilePhoto
-                    user={data.user}
-                    className="block h-10 w-10"
-                  />
+                  <UserProfilePhoto user={data.user} className="block h-10 w-10" />
                   <div className="sr-only">
                     <p>{data.user.displayName}</p>
                     <p>Account settings</p>
@@ -191,13 +175,7 @@ export default function Page() {
   );
 }
 
-function UserProfilePhoto({
-  user,
-  className,
-}: {
-  user: User;
-  className?: string;
-}) {
+function UserProfilePhoto({ user, className }: { user: User; className?: string }) {
   return user.avatarUrl ? (
     <img
       className={cn("rounded-full", className)}

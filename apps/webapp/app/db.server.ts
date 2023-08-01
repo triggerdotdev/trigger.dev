@@ -10,20 +10,13 @@ export type PrismaTransactionClient = Omit<
 
 export type PrismaClientOrTransaction = PrismaClient | PrismaTransactionClient;
 
-function isTransactionClient(
-  prisma: PrismaClientOrTransaction
-): prisma is PrismaTransactionClient {
+function isTransactionClient(prisma: PrismaClientOrTransaction): prisma is PrismaTransactionClient {
   return !("$transaction" in prisma);
 }
 
-function isPrismaKnownError(
-  error: unknown
-): error is Prisma.PrismaClientKnownRequestError {
+function isPrismaKnownError(error: unknown): error is Prisma.PrismaClientKnownRequestError {
   return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    typeof error.code === "string"
+    typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
   );
 }
 
@@ -95,9 +88,7 @@ function getClient() {
   const urlWithoutCredentials = new URL(DATABASE_URL);
   urlWithoutCredentials.password = "";
 
-  console.log(
-    `🔌 setting up prisma client to ${urlWithoutCredentials.toString()}`
-  );
+  console.log(`🔌 setting up prisma client to ${urlWithoutCredentials.toString()}`);
 
   const client = new PrismaClient({
     datasources: {

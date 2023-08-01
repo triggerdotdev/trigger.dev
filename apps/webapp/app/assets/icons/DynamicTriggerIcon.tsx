@@ -1,11 +1,6 @@
 export function DynamicTriggerIcon({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 21 21"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-    >
+    <svg viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
       <path
         fillRule="evenodd"
         clipRule="evenodd"

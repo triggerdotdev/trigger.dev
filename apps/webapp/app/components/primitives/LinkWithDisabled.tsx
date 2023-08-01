@@ -6,11 +6,7 @@ type Props = Parameters<typeof Link>[0] & {
   disabledClassName?: string;
 };
 
-export function LinkDisabled({
-  disabled = false,
-  disabledClassName,
-  ...props
-}: Props) {
+export function LinkDisabled({ disabled = false, disabledClassName, ...props }: Props) {
   if (disabled) {
     return (
       <span {...props} className={cn(props.className, disabledClassName)}>

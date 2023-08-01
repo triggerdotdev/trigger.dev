@@ -4,11 +4,7 @@ import type { RedactString } from "@trigger.dev/core";
 // For example, this object: {"Authorization":{"__redactedString":true,"strings":["Bearer ",""],"interpolations":["sk-1234"]}}
 // Would get stringified like so: {"Authorization": "Bearer ******"}
 export function sensitiveDataReplacer(key: string, value: any): any {
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    value.__redactedString === true
-  ) {
+  if (typeof value === "object" && value !== null && value.__redactedString === true) {
     return redactString(value);
   }
 

@@ -18,15 +18,10 @@ type ShortcutKeyProps = {
   className?: string;
 };
 
-export function ShortcutKey({
-  shortcut,
-  variant,
-  className,
-}: ShortcutKeyProps) {
+export function ShortcutKey({ shortcut, variant, className }: ShortcutKeyProps) {
   const { platform } = useOperatingSystem();
   const isMac = platform === "mac";
-  let relevantShortcut =
-    "mac" in shortcut ? (isMac ? shortcut.mac : shortcut.windows) : shortcut;
+  let relevantShortcut = "mac" in shortcut ? (isMac ? shortcut.mac : shortcut.windows) : shortcut;
   const modifiers = relevantShortcut.modifiers ?? [];
   const character = relevantShortcut.key;
 

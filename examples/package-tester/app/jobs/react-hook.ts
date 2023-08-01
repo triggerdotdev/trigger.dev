@@ -22,18 +22,15 @@ client.defineJob({
     await io.wait("Wait 2 seconds", 2);
     await io.wait("Wait 1 second", 1);
 
-    const result = await io.openai.backgroundCreateChatCompletion(
-      "Tell me a joke",
-      {
-        model: "gpt-3.5-turbo-16k",
-        messages: [
-          {
-            role: "user",
-            content: `Tell me a joke please`,
-          },
-        ],
-      }
-    );
+    const result = await io.openai.backgroundCreateChatCompletion("Tell me a joke", {
+      model: "gpt-3.5-turbo-16k",
+      messages: [
+        {
+          role: "user",
+          content: `Tell me a joke please`,
+        },
+      ],
+    });
 
     return {
       summary: result?.choices[0]?.message?.content,

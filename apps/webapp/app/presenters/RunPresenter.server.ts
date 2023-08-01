@@ -14,16 +14,10 @@ type RunOptions = {
 };
 
 export type Run = NonNullable<Awaited<ReturnType<RunPresenter["call"]>>>;
-export type Task = NonNullable<
-  Awaited<ReturnType<RunPresenter["call"]>>
->["tasks"][number];
-export type Event = NonNullable<
-  Awaited<ReturnType<RunPresenter["call"]>>
->["event"];
+export type Task = NonNullable<Awaited<ReturnType<RunPresenter["call"]>>>["tasks"][number];
+export type Event = NonNullable<Awaited<ReturnType<RunPresenter["call"]>>>["event"];
 
-type QueryTask = NonNullable<
-  Awaited<ReturnType<RunPresenter["query"]>>
->["tasks"][number];
+type QueryTask = NonNullable<Awaited<ReturnType<RunPresenter["query"]>>>["tasks"][number];
 
 export class RunPresenter {
   #prismaClient: PrismaClient;
@@ -39,9 +33,7 @@ export class RunPresenter {
       return undefined;
     }
 
-    const eventSpecification = EventSpecificationSchema.parse(
-      run.version.eventSpecification
-    );
+    const eventSpecification = EventSpecificationSchema.parse(run.version.eventSpecification);
 
     const runProperties = mergeProperties(
       run.version.properties,

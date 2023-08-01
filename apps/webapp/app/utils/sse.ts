@@ -15,12 +15,7 @@ type Event = {
   data: string;
 };
 
-export function sse({
-  request,
-  pingInterval = 1000,
-  updateInterval = 348,
-  run,
-}: SseProps) {
+export function sse({ request, pingInterval = 1000, updateInterval = 348, run }: SseProps) {
   let pinger: NodeJS.Timer | undefined = undefined;
   let updater: NodeJS.Timer | undefined = undefined;
 

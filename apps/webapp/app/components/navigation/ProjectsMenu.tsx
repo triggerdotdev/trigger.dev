@@ -2,16 +2,9 @@ import { RouteMatch } from "@remix-run/react";
 import { Fragment, useState } from "react";
 import simplur from "simplur";
 import { Badge } from "~/components/primitives/Badge";
-import {
-  useIsNewOrganizationPage,
-  useOrganizations,
-} from "~/hooks/useOrganizations";
+import { useIsNewOrganizationPage, useOrganizations } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
-import {
-  newOrganizationPath,
-  newProjectPath,
-  projectPath,
-} from "~/utils/pathBuilder";
+import { newOrganizationPath, newProjectPath, projectPath } from "~/utils/pathBuilder";
 import {
   Popover,
   PopoverArrowTrigger,
@@ -53,9 +46,7 @@ export function ProjectsMenu({ matches }: { matches: RouteMatch[] }) {
                       to={projectPath(organization, project)}
                       title={
                         <div className="flex w-full items-center justify-between pl-1 text-bright">
-                          <span className="grow truncate text-left">
-                            {project.name}
-                          </span>
+                          <span className="grow truncate text-left">{project.name}</span>
                           <Badge className="mr-0.5">{simplur`${project._count.jobs} job[|s]`}</Badge>
                         </div>
                       }

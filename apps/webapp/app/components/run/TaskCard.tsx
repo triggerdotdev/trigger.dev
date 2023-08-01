@@ -55,11 +55,7 @@ export function TaskCard({
   return (
     <Fragment>
       <div style={{ marginLeft: `${depth}rem` }}>
-        <RunPanel
-          selected={isSelected}
-          onClick={() => selectedTask(id)}
-          styleName={style?.style}
-        >
+        <RunPanel selected={isSelected} onClick={() => selectedTask(id)} styleName={style?.style}>
           <RunPanelHeader
             icon={
               status === "COMPLETED" ? (
@@ -72,41 +68,19 @@ export function TaskCard({
                 />
               )
             }
-            title={
-              status === "COMPLETED" ? (
-                name
-              ) : (
-                <RunPanelIconTitle icon={icon} title={name} />
-              )
-            }
+            title={status === "COMPLETED" ? name : <RunPanelIconTitle icon={icon} title={name} />}
             accessory={
               <Paragraph variant="extra-small">
-                <UpdatingDuration
-                  start={startedAt ?? undefined}
-                  end={completedAt ?? undefined}
-                />
+                <UpdatingDuration start={startedAt ?? undefined} end={completedAt ?? undefined} />
               </Paragraph>
             }
             styleName={style?.style}
           />
           <RunPanelBody>
-            {error && (
-              <RunPanelError text={error.message} stackTrace={error.stack} />
-            )}
-            {description && (
-              <RunPanelDescription
-                text={description}
-                variant={style?.variant}
-              />
-            )}
+            {error && <RunPanelError text={error.message} stackTrace={error.stack} />}
+            {description && <RunPanelDescription text={description} variant={style?.variant} />}
             <RunPanelIconSection>
-              {displayKey && (
-                <RunPanelIconProperty
-                  icon="key"
-                  label="Key"
-                  value={displayKey}
-                />
-              )}
+              {displayKey && <RunPanelIconProperty icon="key" label="Key" value={displayKey} />}
               {delayUntil && !completedAt && (
                 <>
                   <UpdatingDelay delayUntil={delayUntil} />
@@ -125,8 +99,7 @@ export function TaskCard({
               {connection && (
                 <RunPanelIconProperty
                   icon={
-                    connection.integration.definition.icon ??
-                    connection.integration.definitionId
+                    connection.integration.definition.icon ?? connection.integration.definitionId
                   }
                   label="Connection"
                   value={connection.integration.slug}
@@ -145,9 +118,7 @@ export function TaskCard({
               <div className="flex items-center gap-2">
                 <Square2StackIcon className="h-5 w-5 text-slate-400" />
                 <Paragraph variant="small">
-                  {simplur`${expanded ? "Hide" : "Show"} ${
-                    subtasks.length
-                  } subtask[|s]`}
+                  {simplur`${expanded ? "Hide" : "Show"} ${subtasks.length} subtask[|s]`}
                 </Paragraph>
               </div>
               <motion.span
@@ -158,17 +129,13 @@ export function TaskCard({
                   expanded: { rotate: 180, transition: { ease: "anticipate" } },
                 }}
               >
-                <ChevronDownIcon
-                  className={"h-5 w-5 text-slate-400 transition"}
-                />
+                <ChevronDownIcon className={"h-5 w-5 text-slate-400 transition"} />
               </motion.span>
             </button>
           )}
         </RunPanel>
       </div>
-      {(!isLast || expanded) && (
-        <TaskSeparator depth={depth + (expanded ? 1 : 0)} />
-      )}
+      {(!isLast || expanded) && <TaskSeparator depth={depth + (expanded ? 1 : 0)} />}
 
       {subtasks &&
         subtasks.length > 0 &&

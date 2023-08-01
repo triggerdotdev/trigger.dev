@@ -1,9 +1,5 @@
 {
-  "extends": [
-    "@remix-run/eslint-config",
-    "@remix-run/eslint-config/node",
-    "prettier"
-  ],
+  "extends": ["@remix-run/eslint-config", "@remix-run/eslint-config/node", "prettier"],
   "rules": {
     "@typescript-eslint/strict-boolean-expressions": [
       "error",

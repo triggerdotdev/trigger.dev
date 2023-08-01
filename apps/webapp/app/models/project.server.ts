@@ -6,11 +6,7 @@ import { Organization, createEnvironment } from "./organization.server";
 export type { Project } from "@trigger.dev/database";
 
 export async function createProject(
-  {
-    organizationSlug,
-    name,
-    userId,
-  }: { organizationSlug: string; name: string; userId: string },
+  { organizationSlug, name, userId }: { organizationSlug: string; name: string; userId: string },
   attemptCount = 0
 ): Promise<Project & { organization: Organization }> {
   //check the user has permissions to do this
@@ -34,9 +30,7 @@ export async function createProject(
   });
 
   if (attemptCount > 100) {
-    throw new Error(
-      `Unable to create project with slug ${uniqueProjectSlug} after 100 attempts`
-    );
+    throw new Error(`Unable to create project with slug ${uniqueProjectSlug} after 100 attempts`);
   }
 
   if (projectWithSameSlug) {

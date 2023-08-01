@@ -8,11 +8,7 @@ import simplur from "simplur";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useTextFilter } from "~/hooks/useTextFilter";
 import { createSchema } from "~/routes/resources.connection.$organizationId.oauth2";
-import {
-  ApiAuthenticationMethodOAuth2,
-  Integration,
-  Scope,
-} from "~/services/externalApis/types";
+import { ApiAuthenticationMethodOAuth2, Integration, Scope } from "~/services/externalApis/types";
 import { cn } from "~/utils/cn";
 import { CodeBlock } from "../code/CodeBlock";
 import { Button } from "../primitives/Buttons";
@@ -48,33 +44,22 @@ export function ConnectToOAuthForm({
   const fetcher = useFetcher();
   const { isManagedCloud } = useFeatures();
 
-  const [
-    form,
-    {
-      title,
-      slug,
-      scopes,
-      hasCustomClient,
-      customClientId,
-      customClientSecret,
-    },
-  ] = useForm({
-    lastSubmission: fetcher.data,
-    shouldRevalidate: "onSubmit",
-    onValidate({ formData }) {
-      return parse(formData, {
-        // Create the schema without any constraint defined
-        schema: createSchema(),
-      });
-    },
-  });
+  const [form, { title, slug, scopes, hasCustomClient, customClientId, customClientSecret }] =
+    useForm({
+      lastSubmission: fetcher.data,
+      shouldRevalidate: "onSubmit",
+      onValidate({ formData }) {
+        return parse(formData, {
+          // Create the schema without any constraint defined
+          schema: createSchema(),
+        });
+      },
+    });
 
   const location = useLocation();
 
   const [selectedScopes, setSelectedScopes] = useState<Set<string>>(
-    new Set(
-      authMethod.scopes.filter((s) => s.defaultChecked).map((s) => s.name)
-    )
+    new Set(authMethod.scopes.filter((s) => s.defaultChecked).map((s) => s.name))
   );
 
   const requiresCustomOAuthApp = clientType === "EXTERNAL" || !isManagedCloud;
@@ -85,10 +70,7 @@ export function ConnectToOAuthForm({
     items: authMethod.scopes,
     filter: (scope, text) => {
       if (scope.name.toLowerCase().includes(text.toLowerCase())) return true;
-      if (
-        scope.description &&
-        scope.description.toLowerCase().includes(text.toLowerCase())
-      )
+      if (scope.description && scope.description.toLowerCase().includes(text.toLowerCase()))
         return true;
 
       return false;
@@ -104,16 +86,8 @@ export function ConnectToOAuthForm({
     >
       <Fieldset>
         <input type="hidden" name="id" value={id} />
-        <input
-          type="hidden"
-          name="integrationIdentifier"
-          value={integration.identifier}
-        />
-        <input
-          type="hidden"
-          name="integrationAuthMethod"
-          value={authMethodKey}
-        />
+        <input type="hidden" name="integrationIdentifier" value={integration.identifier} />
+        <input type="hidden" name="integrationAuthMethod" value={authMethodKey} />
         <input type="hidden" name="redirectTo" value={location.pathname} />
         <InputGroup>
           <FormError>{form.error}</FormError>
@@ -127,8 +101,8 @@ export function ConnectToOAuthForm({
             placeholder={`e.g. ${integration.identifier}`}
           />
           <Hint>
-            This is used in your code to reference this connection. It must be
-            unique for this project.
+            This is used in your code to reference this connection. It must be unique for this
+            project.
           </Hint>
           <FormError>{slug.error}</FormError>
         </InputGroup>
@@ -146,8 +120,7 @@ export function ConnectToOAuthForm({
         <div>
           <Header2>Use my OAuth App</Header2>
           <Paragraph variant="small" className="mb-2">
-            To use your own OAuth app, check the option below and insert the
-            details.
+            To use your own OAuth app, check the option below and insert the details.
           </Paragraph>
           <Checkbox
             id="hasCustomClient"
@@ -161,17 +134,13 @@ export function ConnectToOAuthForm({
           {useMyOAuthApp && (
             <div className="ml-6 mt-2">
               <Paragraph variant="small" className="mb-2">
-                Set the callback url to{" "}
-                <CodeBlock code={callbackUrl} showLineNumbers={false} />
+                Set the callback url to <CodeBlock code={callbackUrl} showLineNumbers={false} />
               </Paragraph>
               <div className="flex flex-col gap-2">
                 <div className="flex gap-2">
                   <InputGroup fullWidth>
                     <Label variant="small">Client ID</Label>
-                    <Input
-                      fullWidth
-                      {...conform.input(customClientId, { type: "text" })}
-                    />
+                    <Input fullWidth {...conform.input(customClientId, { type: "text" })} />
                   </InputGroup>
                   <InputGroup fullWidth>
                     <Label variant="small">Client secret</Label>
@@ -192,10 +161,9 @@ export function ConnectToOAuthForm({
           <div>
             <Header2>Scopes</Header2>
             <Paragraph variant="small" className="mb-4">
-              Select the scopes you want to grant to {integration.name} in order
-              for it to access your data. Note: If you try and perform an action
-              in a Job that requires a scope you haven’t granted, that task will
-              fail.
+              Select the scopes you want to grant to {integration.name} in order for it to access
+              your data. Note: If you try and perform an action in a Job that requires a scope you
+              haven’t granted, that task will fail.
             </Paragraph>
             {/* <Header3 className="mb-2">
                   Select from popular scope collections
@@ -240,11 +208,7 @@ export function ConnectToOAuthForm({
                     badges={s.annotations?.map((a) => a.label)}
                     description={s.description}
                     variant="description"
-                    className={cn(
-                      filteredItems.find((f) => f.name === s.name)
-                        ? ""
-                        : "hidden"
-                    )}
+                    className={cn(filteredItems.find((f) => f.name === s.name) ? "" : "hidden")}
                     onChange={(isChecked) => {
                       if (isChecked) {
                         setSelectedScopes((selected) => {

@@ -17,17 +17,10 @@
     "emitDecoratorMetadata": true,
     "sourceMap": true,
     "resolveJsonModule": true,
-    "lib": [
-      "es2019"
-    ],
+    "lib": ["es2019"],
     "module": "commonjs",
     "target": "es2021"
   },
-  "include": [
-    "./src/**/*.ts",
-    "tsup.config.ts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+  "include": ["./src/**/*.ts", "tsup.config.ts"],
+  "exclude": ["node_modules"]
 }

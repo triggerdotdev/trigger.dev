@@ -6,11 +6,7 @@ type InputGroupProps = {
   fullWidth?: boolean;
 };
 
-export function InputGroup({
-  children,
-  className,
-  fullWidth,
-}: InputGroupProps) {
+export function InputGroup({ children, className, fullWidth }: InputGroupProps) {
   return (
     <div
       className={cn(

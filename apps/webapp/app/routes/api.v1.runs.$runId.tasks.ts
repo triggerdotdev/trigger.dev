@@ -1,11 +1,7 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { TaskStatus } from "@trigger.dev/database";
-import {
-  RunTaskBodyOutput,
-  RunTaskBodyOutputSchema,
-  ServerTask,
-} from "@trigger.dev/core";
+import { RunTaskBodyOutput, RunTaskBodyOutputSchema, ServerTask } from "@trigger.dev/core";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { taskWithAttemptsToServerTask } from "~/models/task.server";
@@ -38,10 +34,7 @@ export async function action({ request, params }: ActionArgs) {
   const headers = HeadersSchema.safeParse(Object.fromEntries(request.headers));
 
   if (!headers.success) {
-    return json(
-      { error: "Invalid or Missing idempotency key" },
-      { status: 400 }
-    );
+    return json({ error: "Invalid or Missing idempotency key" }, { status: 400 });
   }
 
   const { "idempotency-key": idempotencyKey } = headers.data;
@@ -135,8 +128,7 @@ export class RunTaskService {
         status = "CANCELED";
       } else {
         status =
-          (taskBody.delayUntil && taskBody.delayUntil.getTime() > Date.now()) ||
-          taskBody.trigger
+          (taskBody.delayUntil && taskBody.delayUntil.getTime() > Date.now()) || taskBody.trigger
             ? "WAITING"
             : taskBody.noop
             ? "COMPLETED"
@@ -164,17 +156,12 @@ export class RunTaskService {
               id: runId,
             },
           },
-          parent: taskBody.parentId
-            ? { connect: { id: taskBody.parentId } }
-            : undefined,
+          parent: taskBody.parentId ? { connect: { id: taskBody.parentId } } : undefined,
           name: taskBody.name,
           description: taskBody.description,
           status,
           startedAt: new Date(),
-          completedAt:
-            status === "COMPLETED" || status === "CANCELED"
-              ? new Date()
-              : undefined,
+          completedAt: status === "COMPLETED" || status === "CANCELED" ? new Date() : undefined,
           noop: taskBody.noop,
           delayUntil: taskBody.delayUntil,
           params: taskBody.params ?? undefined,

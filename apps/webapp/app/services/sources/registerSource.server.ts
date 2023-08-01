@@ -44,9 +44,7 @@ export class RegisterSourceService {
     accountId?: string,
     dynamicSource?: { id: string; metadata: any }
   ) {
-    const key = [dynamicTriggerId, dynamicSource?.id, metadata.key]
-      .filter(Boolean)
-      .join(":");
+    const key = [dynamicTriggerId, dynamicSource?.id, metadata.key].filter(Boolean).join(":");
 
     const registrationJob = metadata.registerSourceJob
       ? await this.#prismaClient.job.findUnique({
@@ -122,9 +120,7 @@ export class RegisterSourceService {
                   },
                 }
               : undefined,
-            externalAccount: externalAccount
-              ? { connect: { id: externalAccount.id } }
-              : undefined,
+            externalAccount: externalAccount ? { connect: { id: externalAccount.id } } : undefined,
             events: {
               create: metadata.events.map((event) => ({
                 name: event,
@@ -248,17 +244,16 @@ export class RegisterSourceService {
     // 1. It's not active
     // 2. There are orphaned events
     // 3. There are trigger events that are not registered
-    const triggerSource =
-      await this.#prismaClient.triggerSource.findUniqueOrThrow({
-        where: {
-          id: id,
-        },
-        include: {
-          events: true,
-          secretReference: true,
-          integration: true,
-        },
-      });
+    const triggerSource = await this.#prismaClient.triggerSource.findUniqueOrThrow({
+      where: {
+        id: id,
+      },
+      include: {
+        events: true,
+        secretReference: true,
+        integration: true,
+      },
+    });
 
     if (dynamicTriggerId) {
       return triggerSource;
@@ -266,15 +261,9 @@ export class RegisterSourceService {
 
     const triggerIsActive = triggerSource.active;
     const triggerHasOrphanedEvents = orphanedEvents.length > 0;
-    const triggerHasUnregisteredEvents = triggerSource.events.some(
-      (event) => !event.registered
-    );
+    const triggerHasUnregisteredEvents = triggerSource.events.some((event) => !event.registered);
 
-    if (
-      !triggerIsActive ||
-      triggerHasOrphanedEvents ||
-      triggerHasUnregisteredEvents
-    ) {
+    if (!triggerIsActive || triggerHasOrphanedEvents || triggerHasUnregisteredEvents) {
       // We need to re-activate the source, and there could be orphaned events
       await workerQueue.enqueue("activateSource", {
         id: triggerSource.id,

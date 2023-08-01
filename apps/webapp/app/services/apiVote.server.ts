@@ -7,13 +7,7 @@ export class ApiVoteService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({
-    userId,
-    identifier,
-  }: {
-    userId: string;
-    identifier: string;
-  }) {
+  public async call({ userId, identifier }: { userId: string; identifier: string }) {
     return this.#prismaClient.apiIntegrationVote.create({
       data: {
         user: {

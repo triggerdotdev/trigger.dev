@@ -9,10 +9,7 @@ import {
   UpsertCustomerParams,
   UpsertCustomerResponse,
 } from "./types";
-import {
-  PlainSDKError,
-  UpsertCustomTimelineEntryInput,
-} from "@team-plain/typescript-sdk";
+import { PlainSDKError, UpsertCustomTimelineEntryInput } from "@team-plain/typescript-sdk";
 import { Prettify } from "@trigger.dev/integration-kit/prettify";
 
 function isPlainError(error: unknown): error is PlainSDKError {
@@ -26,42 +23,33 @@ function isPlainError(error: unknown): error is PlainSDKError {
   );
 }
 
-const getCustomerById: AuthenticatedTask<
-  PlainSDK,
-  GetCustomerByIdParams,
-  GetCustomerByIdResponse
-> = {
-  run: async (params, client) => {
-    const response = await client.getCustomerById(params);
+const getCustomerById: AuthenticatedTask<PlainSDK, GetCustomerByIdParams, GetCustomerByIdResponse> =
+  {
+    run: async (params, client) => {
+      const response = await client.getCustomerById(params);
 
-    if (response.error) {
-      throw response.error;
-    } else {
-      return response.data
-        ? recursivelyRemoveTypenameProperties(response.data)
-        : undefined;
-    }
-  },
-  init: (params) => {
-    return {
-      name: "Get Customer By Id",
-      params,
-      icon: "plain",
-      properties: [
-        {
-          label: "Customer ID",
-          text: params.customerId,
-        },
-      ],
-    };
-  },
-};
+      if (response.error) {
+        throw response.error;
+      } else {
+        return response.data ? recursivelyRemoveTypenameProperties(response.data) : undefined;
+      }
+    },
+    init: (params) => {
+      return {
+        name: "Get Customer By Id",
+        params,
+        icon: "plain",
+        properties: [
+          {
+            label: "Customer ID",
+            text: params.customerId,
+          },
+        ],
+      };
+    },
+  };
 
-const upsertCustomer: AuthenticatedTask<
-  PlainSDK,
-  UpsertCustomerParams,
-  UpsertCustomerResponse
-> = {
+const upsertCustomer: AuthenticatedTask<PlainSDK, UpsertCustomerParams, UpsertCustomerResponse> = {
   run: async (params, client) => {
     const response = await client.upsertCustomer(params);
 

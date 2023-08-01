@@ -29,22 +29,19 @@ export const getOrganizations: AuthenticatedTask<
   },
 };
 
-export const getProjects: AuthenticatedTask<
-  SupabaseManagementAPI,
-  void,
-  GetProjectsResponseData
-> = {
-  run: async (params, client) => {
-    return client.getProjects();
-  },
-  init: (params) => {
-    return {
-      name: "Get Projects",
-      params,
-      icon: "supabase",
-    };
-  },
-};
+export const getProjects: AuthenticatedTask<SupabaseManagementAPI, void, GetProjectsResponseData> =
+  {
+    run: async (params, client) => {
+      return client.getProjects();
+    },
+    init: (params) => {
+      return {
+        name: "Get Projects",
+        params,
+        icon: "supabase",
+      };
+    },
+  };
 
 export const createProject: AuthenticatedTask<
   SupabaseManagementAPI,

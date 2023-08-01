@@ -1,13 +1,5 @@
-import {
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  ExclamationTriangleIcon,
-} from "@heroicons/react/20/solid";
-import {
-  ArrowUturnLeftIcon,
-  LightBulbIcon,
-  NoSymbolIcon,
-} from "@heroicons/react/24/solid";
+import { ArrowLeftIcon, ArrowRightIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import { ArrowUturnLeftIcon, LightBulbIcon, NoSymbolIcon } from "@heroicons/react/24/solid";
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
 import { Button } from "../primitives/Buttons";
@@ -85,10 +77,7 @@ function ButtonList({ primary }: { primary: string }) {
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Shortcut</Header3>
-          <Button
-            variant="primary/small"
-            shortcut={{ key: "s", modifiers: ["meta"] }}
-          >
+          <Button variant="primary/small" shortcut={{ key: "s", modifiers: ["meta"] }}>
             Primary button
           </Button>
           <Button variant="secondary/small" shortcut={{ key: "f" }}>
@@ -97,10 +86,7 @@ function ButtonList({ primary }: { primary: string }) {
           <Button variant="tertiary/small" shortcut={{ key: "i" }}>
             Tertiary button
           </Button>
-          <Button
-            variant="danger/small"
-            shortcut={{ key: "s", modifiers: ["meta"] }}
-          >
+          <Button variant="danger/small" shortcut={{ key: "s", modifiers: ["meta"] }}>
             Danger button
           </Button>
         </div>
@@ -154,10 +140,7 @@ function ButtonList({ primary }: { primary: string }) {
           <Button variant="primary/small" LeadingIcon={ArrowRightIcon} />
           <Button variant="secondary/small" LeadingIcon={LightBulbIcon} />
           <Button variant="tertiary/small" LeadingIcon="warning" />
-          <Button
-            variant="danger/small"
-            LeadingIcon={ExclamationTriangleIcon}
-          />
+          <Button variant="danger/small" LeadingIcon={ExclamationTriangleIcon} />
         </div>
       </div>
       <Header1 className="mb-2 mt-8">Medium buttons</Header1>
@@ -201,28 +184,16 @@ function ButtonList({ primary }: { primary: string }) {
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Shortcut</Header3>
-          <Button
-            variant="primary/medium"
-            shortcut={{ key: "s", modifiers: ["meta"] }}
-          >
+          <Button variant="primary/medium" shortcut={{ key: "s", modifiers: ["meta"] }}>
             Primary button
           </Button>
-          <Button
-            variant="secondary/medium"
-            shortcut={{ key: "s", modifiers: ["meta"] }}
-          >
+          <Button variant="secondary/medium" shortcut={{ key: "s", modifiers: ["meta"] }}>
             Secondary button
           </Button>
-          <Button
-            variant="tertiary/medium"
-            shortcut={{ key: "s", modifiers: ["meta"] }}
-          >
+          <Button variant="tertiary/medium" shortcut={{ key: "s", modifiers: ["meta"] }}>
             Tertiary button
           </Button>
-          <Button
-            variant="danger/medium"
-            shortcut={{ key: "s", modifiers: ["meta"] }}
-          >
+          <Button variant="danger/medium" shortcut={{ key: "s", modifiers: ["meta"] }}>
             Danger button
           </Button>
         </div>
@@ -276,10 +247,7 @@ function ButtonList({ primary }: { primary: string }) {
           <Button variant="primary/medium" LeadingIcon={ArrowRightIcon} />
           <Button variant="secondary/medium" LeadingIcon={LightBulbIcon} />
           <Button variant="tertiary/medium" LeadingIcon="warning" />
-          <Button
-            variant="danger/medium"
-            LeadingIcon={ExclamationTriangleIcon}
-          />
+          <Button variant="danger/medium" LeadingIcon={ExclamationTriangleIcon} />
         </div>
       </div>
       <Header1 className="mb-2 mt-8">Large buttons</Header1>
@@ -305,20 +273,10 @@ function ButtonList({ primary }: { primary: string }) {
       <Header1 className="mb-2 mt-8">Menu items</Header1>
       <div className="grid grid-cols-1">
         <div className="flex flex-col items-start gap-1 rounded border border-slate-800 bg-slate-850 p-1">
-          <Button
-            variant="menu-item"
-            fullWidth
-            textAlignLeft
-            LeadingIcon="folder"
-          >
+          <Button variant="menu-item" fullWidth textAlignLeft LeadingIcon="folder">
             Acme Inc.
           </Button>
-          <Button
-            variant="menu-item"
-            fullWidth
-            textAlignLeft
-            LeadingIcon="plus"
-          >
+          <Button variant="menu-item" fullWidth textAlignLeft LeadingIcon="plus">
             New Project
           </Button>
           <Button
@@ -327,26 +285,14 @@ function ButtonList({ primary }: { primary: string }) {
             textAlignLeft
             LeadingIcon="globe"
             TrailingIcon={isSelected ? "check" : undefined}
-            className={
-              isSelected ? "bg-slate-750 group-hover:bg-slate-750" : undefined
-            }
+            className={isSelected ? "bg-slate-750 group-hover:bg-slate-750" : undefined}
           >
             Item enabled
           </Button>
-          <Button
-            variant="menu-item"
-            fullWidth
-            textAlignLeft
-            LeadingIcon="slack"
-          >
+          <Button variant="menu-item" fullWidth textAlignLeft LeadingIcon="slack">
             When a Stripe payment fails re-engage the customer
           </Button>
-          <Button
-            variant="menu-item"
-            fullWidth
-            textAlignLeft
-            LeadingIcon="spinner"
-          >
+          <Button variant="menu-item" fullWidth textAlignLeft LeadingIcon="spinner">
             In Progress
           </Button>
           <Button

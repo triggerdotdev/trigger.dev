@@ -1,9 +1,4 @@
-import {
-  ConnectionAuth,
-  IntegrationMetadata,
-  RunTaskOptions,
-  ServerTask,
-} from "@trigger.dev/core";
+import { ConnectionAuth, IntegrationMetadata, RunTaskOptions, ServerTask } from "@trigger.dev/core";
 import { IO, IOTask } from "./io";
 
 type IntegrationRunTaskFunction<TClient> = <TResult>(
@@ -15,10 +10,7 @@ type IntegrationRunTaskFunction<TClient> = <TResult>(
 export type ClientFactory<TClient> = (auth: ConnectionAuth) => TClient;
 
 export interface TriggerIntegration<
-  TIntegrationClient extends IntegrationClient<any, any> = IntegrationClient<
-    any,
-    any
-  >
+  TIntegrationClient extends IntegrationClient<any, any> = IntegrationClient<any, any>,
 > {
   client: TIntegrationClient;
   id: string;
@@ -27,7 +19,7 @@ export interface TriggerIntegration<
 
 export type IntegrationClient<
   TClient,
-  TTasks extends Record<string, AuthenticatedTask<TClient, any, any, any>>
+  TTasks extends Record<string, AuthenticatedTask<TClient, any, any, any>>,
 > =
   | {
       usesLocalAuth: true;
@@ -41,12 +33,7 @@ export type IntegrationClient<
       tasks?: TTasks;
     };
 
-export type AuthenticatedTask<
-  TClient,
-  TParams,
-  TResult,
-  TAuth = ConnectionAuth
-> = {
+export type AuthenticatedTask<TClient, TParams, TResult, TAuth = ConnectionAuth> = {
   run: (
     params: TParams,
     client: TClient,
@@ -62,12 +49,7 @@ export type AuthenticatedTask<
 };
 
 export function authenticatedTask<TClient, TParams, TResult>(options: {
-  run: (
-    params: TParams,
-    client: TClient,
-    task: ServerTask,
-    io: IO
-  ) => Promise<TResult>;
+  run: (params: TParams, client: TClient, task: ServerTask, io: IO) => Promise<TResult>;
   init: (params: TParams) => RunTaskOptions;
 }): AuthenticatedTask<TClient, TParams, TResult> {
   return options;
@@ -82,55 +64,41 @@ type ExtractRunFunction<T> = T extends AuthenticatedTask<
   ? (key: string, params: TParams) => Promise<TResult>
   : never;
 
-type ExtractTasks<
-  TTasks extends Record<string, AuthenticatedTask<any, any, any, any>>
-> = {
+type ExtractTasks<TTasks extends Record<string, AuthenticatedTask<any, any, any, any>>> = {
   [key in keyof TTasks]: ExtractRunFunction<TTasks[key]>;
 };
 
-type ExtractIntegrationClientClient<
-  TIntegrationClient extends IntegrationClient<any, any>
-> = TIntegrationClient extends {
-  usesLocalAuth: true;
-  client: infer TClient;
-}
-  ? {
-      client: TClient;
-      runTask: IntegrationRunTaskFunction<TClient>;
-    }
-  : TIntegrationClient extends {
-      usesLocalAuth: false;
-      clientFactory: ClientFactory<infer TClient>;
-    }
-  ? {
-      client: TClient;
-      runTask: IntegrationRunTaskFunction<TClient>;
-    }
-  : never;
+type ExtractIntegrationClientClient<TIntegrationClient extends IntegrationClient<any, any>> =
+  TIntegrationClient extends {
+    usesLocalAuth: true;
+    client: infer TClient;
+  }
+    ? {
+        client: TClient;
+        runTask: IntegrationRunTaskFunction<TClient>;
+      }
+    : TIntegrationClient extends {
+        usesLocalAuth: false;
+        clientFactory: ClientFactory<infer TClient>;
+      }
+    ? {
+        client: TClient;
+        runTask: IntegrationRunTaskFunction<TClient>;
+      }
+    : never;
 
-type ExtractIntegrationClient<
-  TIntegrationClient extends IntegrationClient<any, any>
-> = ExtractIntegrationClientClient<TIntegrationClient> &
-  ExtractTasks<TIntegrationClient["tasks"]>;
+type ExtractIntegrationClient<TIntegrationClient extends IntegrationClient<any, any>> =
+  ExtractIntegrationClientClient<TIntegrationClient> & ExtractTasks<TIntegrationClient["tasks"]>;
 
-export type IntegrationIO<
-  TIntegration extends TriggerIntegration<IntegrationClient<any, any>>
-> = ExtractIntegrationClient<TIntegration["client"]>;
+export type IntegrationIO<TIntegration extends TriggerIntegration<IntegrationClient<any, any>>> =
+  ExtractIntegrationClient<TIntegration["client"]>;
 
 type ExtractIntegrations<
-  TIntegrations extends Record<
-    string,
-    TriggerIntegration<IntegrationClient<any, any>>
-  >
+  TIntegrations extends Record<string, TriggerIntegration<IntegrationClient<any, any>>>,
 > = {
-  [key in keyof TIntegrations]: ExtractIntegrationClient<
-    TIntegrations[key]["client"]
-  >;
+  [key in keyof TIntegrations]: ExtractIntegrationClient<TIntegrations[key]["client"]>;
 };
 
 export type IOWithIntegrations<
-  TIntegrations extends Record<
-    string,
-    TriggerIntegration<IntegrationClient<any, any>>
-  >
+  TIntegrations extends Record<string, TriggerIntegration<IntegrationClient<any, any>>>,
 > = IO & ExtractIntegrations<TIntegrations>;

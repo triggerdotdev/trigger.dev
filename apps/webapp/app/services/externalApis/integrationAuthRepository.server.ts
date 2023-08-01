@@ -11,11 +11,7 @@ import type {
 import jsonpointer from "jsonpointer";
 import { customAlphabet } from "nanoid";
 import * as crypto from "node:crypto";
-import type {
-  PrismaClient,
-  PrismaClientOrTransaction,
-  PrismaTransactionClient,
-} from "~/db.server";
+import type { PrismaClient, PrismaClientOrTransaction, PrismaTransactionClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { workerQueue } from "~/services/worker.server";
@@ -72,9 +68,7 @@ export class IntegrationAuthRepository {
       },
     });
 
-    return clients.map((c) =>
-      this.#enrichIntegration(c, c.definition, c.authMethod)
-    );
+    return clients.map((c) => this.#enrichIntegration(c, c.definition, c.authMethod));
   }
 
   async createConnectionClient({
@@ -326,13 +320,11 @@ export class IntegrationAuthRepository {
           clientSecret: clientConfig.secret,
           key: connectionAttempt.id,
           callbackUrl,
-          scopeParamName:
-            authMethod.config.authorization.scopeParamName ?? "scope",
+          scopeParamName: authMethod.config.authorization.scopeParamName ?? "scope",
           scopes: integration.scopes,
           scopeSeparator: authMethod.config.authorization.scopeSeparator,
           pkceCode,
-          authorizationLocation:
-            authMethod.config.authorization.authorizationLocation ?? "body",
+          authorizationLocation: authMethod.config.authorization.authorizationLocation ?? "body",
           extraParameters: authMethod.config.authorization.extraParameters,
         };
 
@@ -344,9 +336,7 @@ export class IntegrationAuthRepository {
         return authorizationUrl;
       }
       default: {
-        throw new Error(
-          `Authentication method type ${authMethod.type} not supported`
-        );
+        throw new Error(`Authentication method type ${authMethod.type} not supported`);
       }
     }
   }
@@ -362,9 +352,7 @@ export class IntegrationAuthRepository {
     url: URL;
     customOAuthClient?: OAuthClient;
   }) {
-    const { definition, authMethod } = await this.#getDefinitionAndAuthMethod(
-      attempt.integration
-    );
+    const { definition, authMethod } = await this.#getDefinitionAndAuthMethod(attempt.integration);
 
     switch (authMethod.type) {
       case "oauth2": {
@@ -391,21 +379,15 @@ export class IntegrationAuthRepository {
           requestedScopes: attempt.integration.scopes,
           scopeSeparator: authMethod.config.authorization.scopeSeparator,
           pkceCode: attempt.securityCode ?? undefined,
-          accessTokenPointer:
-            authMethod.config.token.accessTokenPointer ?? "/access_token",
-          refreshTokenPointer:
-            authMethod.config.token.refreshTokenPointer ?? "/refresh_token",
-          expiresInPointer:
-            authMethod.config.token.expiresInPointer ?? "/expires_in",
+          accessTokenPointer: authMethod.config.token.accessTokenPointer ?? "/access_token",
+          refreshTokenPointer: authMethod.config.token.refreshTokenPointer ?? "/refresh_token",
+          expiresInPointer: authMethod.config.token.expiresInPointer ?? "/expires_in",
           scopePointer: authMethod.config.token.scopePointer ?? "/scope",
           authorizationMethod: authMethod.config.token.authorizationMethod,
           bodyFormat: authMethod.config.token.bodyFormat,
         };
 
-        const token = await grantOAuth2Token(
-          params,
-          authMethod.config.token.grantTokenStrategy
-        );
+        const token = await grantOAuth2Token(params, authMethod.config.token.grantTokenStrategy);
 
         //this key is used to store in the relevant SecretStore
         const hashedAccessToken = crypto
@@ -413,10 +395,7 @@ export class IntegrationAuthRepository {
           .update(token.accessToken)
           .digest("base64");
 
-        const key = secretStoreKeyForToken(
-          definition.identifier,
-          hashedAccessToken
-        );
+        const key = secretStoreKeyForToken(definition.identifier, hashedAccessToken);
 
         const metadata = this.#getMetadataFromToken({
           token,
@@ -496,9 +475,7 @@ export class IntegrationAuthRepository {
     integration: Integration;
     externalAccount?: ExternalAccount;
   }) {
-    const { definition, authMethod } = await this.#getDefinitionAndAuthMethod(
-      integration
-    );
+    const { definition, authMethod } = await this.#getDefinitionAndAuthMethod(integration);
 
     switch (authMethod.type) {
       case "oauth2": {
@@ -508,10 +485,7 @@ export class IntegrationAuthRepository {
           .update(token.accessToken)
           .digest("base64");
 
-        const key = secretStoreKeyForToken(
-          definition.identifier,
-          hashedAccessToken
-        );
+        const key = secretStoreKeyForToken(definition.identifier, hashedAccessToken);
 
         const metadata = this.#getMetadataFromToken({
           token,
@@ -585,20 +559,19 @@ export class IntegrationAuthRepository {
   }
 
   async refreshConnection({ connectionId }: { connectionId: string }) {
-    const connection =
-      await this.#prismaClient.integrationConnection.findUnique({
-        where: {
-          id: connectionId,
-        },
-        include: {
-          dataReference: true,
-          integration: {
-            include: {
-              customClientReference: true,
-            },
+    const connection = await this.#prismaClient.integrationConnection.findUnique({
+      where: {
+        id: connectionId,
+      },
+      include: {
+        dataReference: true,
+        integration: {
+          include: {
+            customClientReference: true,
           },
         },
-      });
+      },
+    });
 
     if (!connection) {
       throw new Error(`Connection ${connectionId} not found`);
@@ -613,9 +586,7 @@ export class IntegrationAuthRepository {
       );
     }
 
-    const { authMethod } = await this.#getDefinitionAndAuthMethod(
-      connection.integration
-    );
+    const { authMethod } = await this.#getDefinitionAndAuthMethod(connection.integration);
 
     switch (authMethod.type) {
       case "oauth2": {
@@ -660,16 +631,11 @@ export class IntegrationAuthRepository {
           token: {
             accessToken: accessToken.accessToken,
             refreshToken: accessToken.refreshToken,
-            expiresAt: new Date(
-              connection.updatedAt.getTime() + accessToken.expiresIn * 1000
-            ),
+            expiresAt: new Date(connection.updatedAt.getTime() + accessToken.expiresIn * 1000),
           },
-          accessTokenPointer:
-            authMethod.config.token.accessTokenPointer ?? "/access_token",
-          refreshTokenPointer:
-            authMethod.config.token.refreshTokenPointer ?? "/refresh_token",
-          expiresInPointer:
-            authMethod.config.token.expiresInPointer ?? "/expires_in",
+          accessTokenPointer: authMethod.config.token.accessTokenPointer ?? "/access_token",
+          refreshTokenPointer: authMethod.config.token.refreshTokenPointer ?? "/refresh_token",
+          expiresInPointer: authMethod.config.token.expiresInPointer ?? "/expires_in",
           scopePointer: authMethod.config.token.scopePointer ?? "/scope",
           authorizationMethod: authMethod.config.token.authorizationMethod,
           bodyFormat: authMethod.config.token.bodyFormat,
@@ -692,28 +658,25 @@ export class IntegrationAuthRepository {
         });
 
         const expiresAt = this.#getExpiresAtFromToken({ token });
-        const newConnection =
-          await this.#prismaClient.integrationConnection.update({
-            where: {
-              id: connectionId,
-            },
-            data: {
-              metadata,
-              scopes: token.scopes,
-              expiresAt,
-            },
-            include: {
-              dataReference: true,
-            },
-          });
+        const newConnection = await this.#prismaClient.integrationConnection.update({
+          where: {
+            id: connectionId,
+          },
+          data: {
+            metadata,
+            scopes: token.scopes,
+            expiresAt,
+          },
+          include: {
+            dataReference: true,
+          },
+        });
 
         await this.#scheduleRefresh(expiresAt, connection);
         return newConnection;
       }
       default: {
-        throw new Error(
-          `Authentication method type ${authMethod.type} not supported`
-        );
+        throw new Error(`Authentication method type ${authMethod.type} not supported`);
       }
     }
   }
@@ -722,9 +685,7 @@ export class IntegrationAuthRepository {
   async getCredentials(connection: ConnectionWithSecretReference) {
     //refresh the token if the expiry is in the past (or about to be)
     if (connection.expiresAt) {
-      const refreshBy = new Date(
-        connection.expiresAt.getTime() - tokenRefreshThreshold * 1000
-      );
+      const refreshBy = new Date(connection.expiresAt.getTime() - tokenRefreshThreshold * 1000);
       if (refreshBy < new Date()) {
         connection = await this.refreshConnection({
           connectionId: connection.id,
@@ -733,10 +694,7 @@ export class IntegrationAuthRepository {
     }
 
     const secretStore = getSecretStore(connection.dataReference.provider);
-    return secretStore.getSecret(
-      AccessTokenSchema,
-      connection.dataReference.key
-    );
+    return secretStore.getSecret(AccessTokenSchema, connection.dataReference.key);
   }
 
   #enrichIntegration(
@@ -751,9 +709,7 @@ export class IntegrationAuthRepository {
     }
 
     if (authMethod.type !== "oauth2") {
-      throw new Error(
-        `Authentication method type ${authMethod.type} not supported`
-      );
+      throw new Error(`Authentication method type ${authMethod.type} not supported`);
     }
 
     return {
@@ -771,12 +727,11 @@ export class IntegrationAuthRepository {
   }
 
   async #getDefinitionAndAuthMethod(integration: Integration) {
-    const definition =
-      await this.#prismaClient.integrationDefinition.findUniqueOrThrow({
-        where: {
-          id: integration.definitionId,
-        },
-      });
+    const definition = await this.#prismaClient.integrationDefinition.findUniqueOrThrow({
+      where: {
+        id: integration.definitionId,
+      },
+    });
 
     const authMethod = integration.authMethodId
       ? await this.#prismaClient.integrationAuthMethod.findUniqueOrThrow({
@@ -877,10 +832,7 @@ export class IntegrationAuthRepository {
   }
 }
 
-function secretStoreKeyForToken(
-  integrationIdentifier: string,
-  hashedAccessToken: string
-) {
+function secretStoreKeyForToken(integrationIdentifier: string, hashedAccessToken: string) {
   return `connection/token/${integrationIdentifier}-${hashedAccessToken}`;
 }
 

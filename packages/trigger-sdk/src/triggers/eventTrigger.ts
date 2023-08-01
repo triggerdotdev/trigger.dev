@@ -1,24 +1,15 @@
-import {
-  EventFilter,
-  TriggerMetadata,
-  deepMergeFilters,
-} from "@trigger.dev/core";
+import { EventFilter, TriggerMetadata, deepMergeFilters } from "@trigger.dev/core";
 import { z } from "zod";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
-import {
-  EventSpecification,
-  EventSpecificationExample,
-  Trigger,
-} from "../types";
+import { EventSpecification, EventSpecificationExample, Trigger } from "../types";
 
-type EventTriggerOptions<TEventSpecification extends EventSpecification<any>> =
-  {
-    event: TEventSpecification;
-    name?: string | string[];
-    source?: string;
-    filter?: EventFilter;
-  };
+type EventTriggerOptions<TEventSpecification extends EventSpecification<any>> = {
+  event: TEventSpecification;
+  name?: string | string[];
+  source?: string;
+  filter?: EventFilter;
+};
 
 export class EventTrigger<TEventSpecification extends EventSpecification<any>>
   implements Trigger<TEventSpecification>
@@ -36,10 +27,7 @@ export class EventTrigger<TEventSpecification extends EventSpecification<any>>
       rule: {
         event: this.#options.name ?? this.#options.event.name,
         source: this.#options.source ?? "trigger.dev",
-        payload: deepMergeFilters(
-          this.#options.filter ?? {},
-          this.#options.event.filter ?? {}
-        ),
+        payload: deepMergeFilters(this.#options.filter ?? {}, this.#options.event.filter ?? {}),
       },
     };
   }
@@ -48,10 +36,7 @@ export class EventTrigger<TEventSpecification extends EventSpecification<any>>
     return this.#options.event;
   }
 
-  attachToJob(
-    triggerClient: TriggerClient,
-    job: Job<Trigger<TEventSpecification>, any>
-  ): void {}
+  attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpecification>, any>): void {}
 
   get preprocessRuns() {
     return false;

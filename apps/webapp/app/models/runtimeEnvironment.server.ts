@@ -31,10 +31,7 @@ export async function findEnvironmentByPublicApiKey(apiKey: string) {
   return environment;
 }
 
-export async function getEnvironmentForOrganization(
-  organizationSlug: string,
-  slug: string
-) {
+export async function getEnvironmentForOrganization(organizationSlug: string, slug: string) {
   const organization = await prisma.organization.findUnique({
     where: {
       slug: organizationSlug,
@@ -48,9 +45,7 @@ export async function getEnvironmentForOrganization(
     return;
   }
 
-  const environment = organization.environments.find(
-    (environment) => environment.slug === slug
-  );
+  const environment = organization.environments.find((environment) => environment.slug === slug);
 
   return environment;
 }

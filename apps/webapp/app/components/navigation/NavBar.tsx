@@ -1,8 +1,5 @@
 import { Popover, Transition } from "@headlessui/react";
-import {
-  BookOpenIcon,
-  ChatBubbleLeftRightIcon,
-} from "@heroicons/react/20/solid";
+import { BookOpenIcon, ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
 import { Link } from "@remix-run/react";
 import { Fragment } from "react";
 import { cn } from "~/utils/cn";
@@ -23,11 +20,7 @@ export function NavBar() {
         <MobileDropdownMenu />
       </div>
       <div className="hidden items-center gap-2 sm:flex">
-        <LinkButton
-          to={docsRoot()}
-          variant="secondary/small"
-          LeadingIcon={BookOpenIcon}
-        >
+        <LinkButton to={docsRoot()} variant="secondary/small" LeadingIcon={BookOpenIcon}>
           Documentation
         </LinkButton>
         <Feedback
@@ -128,10 +121,7 @@ function MobileNavIcon({ open }: { open: boolean }) {
       />
       <path
         d="M2 2L12 12M12 2L2 12"
-        className={cn(
-          "origin-center transition",
-          !open && "scale-90 opacity-0"
-        )}
+        className={cn("origin-center transition", !open && "scale-90 opacity-0")}
       />
     </svg>
   );

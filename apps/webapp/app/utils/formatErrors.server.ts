@@ -1,9 +1,6 @@
 import { ErrorWithStack, ErrorWithStackSchema } from "@trigger.dev/core";
 
-export function formatError(
-  error: ErrorWithStack,
-  style: "short" | "long" = "short"
-): string {
+export function formatError(error: ErrorWithStack, style: "short" | "long" = "short"): string {
   if (style === "short") {
     return error.name ? `${error.name}: ${error.message}` : error.message;
   }
@@ -11,10 +8,7 @@ export function formatError(
   return formatError(error, "short") + "\n" + error.stack;
 }
 
-export function formatUnknownError(
-  error: unknown,
-  style: "short" | "long" = "short"
-): string {
+export function formatUnknownError(error: unknown, style: "short" | "long" = "short"): string {
   const parsedError = ErrorWithStackSchema.safeParse(error);
 
   if (parsedError.success) {

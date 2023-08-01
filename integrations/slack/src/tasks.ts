@@ -97,9 +97,7 @@ export const postMessage: AuthenticatedTask<
   },
 };
 
-type ConversationsJoinResponse = Awaited<
-  ReturnType<SlackClientType["conversations"]["join"]>
->;
+type ConversationsJoinResponse = Awaited<ReturnType<SlackClientType["conversations"]["join"]>>;
 
 export const joinConversation: AuthenticatedTask<
   SlackClientType,

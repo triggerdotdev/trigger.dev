@@ -3,13 +3,7 @@ import { LinkButton } from "../primitives/Buttons";
 import { Header1 } from "../primitives/Headers";
 import { NamedIconInBox } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
-import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetHeader,
-  SheetTrigger,
-} from "../primitives/Sheet";
+import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTrigger } from "../primitives/Sheet";
 import { SelectOAuthMethod } from "./SelectOAuthMethod";
 import { Integration } from "~/services/externalApis/types";
 import { Client } from "~/presenters/IntegrationsPresenter.server";

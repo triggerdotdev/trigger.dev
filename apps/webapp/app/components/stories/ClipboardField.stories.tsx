@@ -28,11 +28,7 @@ function ClipboardFieldExample() {
           variant="tertiary/small"
           icon={<EnvironmentLabel environment={{ type: "PRODUCTION" }} />}
         />
-        <ClipboardField
-          value="with leadingIcon"
-          variant="tertiary/small"
-          icon="search"
-        />
+        <ClipboardField value="with leadingIcon" variant="tertiary/small" icon="search" />
         <ClipboardField value="copy paste me" variant="primary/medium" />
         <ClipboardField value="copy paste me" variant="secondary/medium" />
         <ClipboardField value="copy paste me" variant="tertiary/medium" />
@@ -41,28 +37,12 @@ function ClipboardFieldExample() {
           variant="tertiary/medium"
           icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
         />
-        <ClipboardField
-          value="with leadingIcon"
-          variant="tertiary/medium"
-          icon="search"
-        />
+        <ClipboardField value="with leadingIcon" variant="tertiary/medium" icon="search" />
       </div>
       <div className="flex flex-col items-start gap-y-8 p-8">
-        <ClipboardField
-          value="copy paste me"
-          variant="primary/small"
-          secure={true}
-        />
-        <ClipboardField
-          value="copy paste me"
-          variant="secondary/small"
-          secure={true}
-        />
-        <ClipboardField
-          value="copy paste me"
-          variant="tertiary/small"
-          secure={true}
-        />
+        <ClipboardField value="copy paste me" variant="primary/small" secure={true} />
+        <ClipboardField value="copy paste me" variant="secondary/small" secure={true} />
+        <ClipboardField value="copy paste me" variant="tertiary/small" secure={true} />
         <ClipboardField
           value="with leadingIcon"
           variant="tertiary/small"
@@ -75,21 +55,9 @@ function ClipboardFieldExample() {
           icon="search"
           secure={true}
         />
-        <ClipboardField
-          value="copy paste me"
-          variant="primary/medium"
-          secure={true}
-        />
-        <ClipboardField
-          value="copy paste me"
-          variant="secondary/medium"
-          secure={true}
-        />
-        <ClipboardField
-          value="copy paste me"
-          variant="tertiary/medium"
-          secure={true}
-        />
+        <ClipboardField value="copy paste me" variant="primary/medium" secure={true} />
+        <ClipboardField value="copy paste me" variant="secondary/medium" secure={true} />
+        <ClipboardField value="copy paste me" variant="tertiary/medium" secure={true} />
         <ClipboardField
           value="with leadingIcon"
           variant="tertiary/medium"
@@ -104,21 +72,9 @@ function ClipboardFieldExample() {
         />
       </div>
       <div className="flex flex-col items-start gap-y-8 p-8">
-        <ClipboardField
-          value="npx abcdefghi"
-          variant="primary/small"
-          secure="npx ••••••••"
-        />
-        <ClipboardField
-          value="npx abcdefghi"
-          variant="secondary/small"
-          secure="npx ••••••••"
-        />
-        <ClipboardField
-          value="npx abcdefghi"
-          variant="tertiary/small"
-          secure="npx ••••••••"
-        />
+        <ClipboardField value="npx abcdefghi" variant="primary/small" secure="npx ••••••••" />
+        <ClipboardField value="npx abcdefghi" variant="secondary/small" secure="npx ••••••••" />
+        <ClipboardField value="npx abcdefghi" variant="tertiary/small" secure="npx ••••••••" />
         <ClipboardField
           value="npx abcdefghi"
           variant="tertiary/small"
@@ -131,21 +87,9 @@ function ClipboardFieldExample() {
           icon="search"
           secure="npx ••••••••"
         />
-        <ClipboardField
-          value="npx abcdefghi"
-          variant="primary/medium"
-          secure="npx ••••••••"
-        />
-        <ClipboardField
-          value="npx abcdefghi"
-          variant="secondary/medium"
-          secure="npx ••••••••"
-        />
-        <ClipboardField
-          value="npx abcdefghi"
-          variant="tertiary/medium"
-          secure="npx ••••••••"
-        />
+        <ClipboardField value="npx abcdefghi" variant="primary/medium" secure="npx ••••••••" />
+        <ClipboardField value="npx abcdefghi" variant="secondary/medium" secure="npx ••••••••" />
+        <ClipboardField value="npx abcdefghi" variant="tertiary/medium" secure="npx ••••••••" />
         <ClipboardField
           value="npx abcdefghi"
           variant="tertiary/medium"

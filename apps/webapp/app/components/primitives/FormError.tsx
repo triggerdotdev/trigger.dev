@@ -3,13 +3,7 @@ import { Paragraph } from "./Paragraph";
 import { NamedIcon } from "./NamedIcon";
 import { motion } from "framer-motion";
 
-export function FormError({
-  children,
-  id,
-}: {
-  children: React.ReactNode;
-  id?: string;
-}) {
+export function FormError({ children, id }: { children: React.ReactNode; id?: string }) {
   return (
     <>
       {children && (
@@ -29,13 +23,7 @@ export function FormError({
   );
 }
 
-export function ZodFormErrors({
-  errors,
-  path,
-}: {
-  errors: z.ZodIssue[];
-  path: string[];
-}) {
+export function ZodFormErrors({ errors, path }: { errors: z.ZodIssue[]; path: string[] }) {
   if (errors.length === 0) {
     return null;
   }

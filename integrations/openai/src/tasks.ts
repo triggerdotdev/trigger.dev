@@ -10,11 +10,7 @@ import {
 } from "openai";
 import { OpenAIIntegrationAuth } from "./types";
 import { redactString } from "@trigger.dev/sdk";
-import {
-  Prettify,
-  fileFromString,
-  truncate,
-} from "@trigger.dev/integration-kit";
+import { Prettify, fileFromString, truncate } from "@trigger.dev/integration-kit";
 import { createTaskUsageProperties, onTaskError } from "./taskUtils";
 
 type OpenAIClientType = InstanceType<typeof OpenAIApi>;
@@ -51,9 +47,7 @@ export const retrieveModel: AuthenticatedTask<
   },
 };
 
-type ListModelsResponseData = Awaited<
-  ReturnType<OpenAIClientType["listModels"]>
->["data"];
+type ListModelsResponseData = Awaited<ReturnType<OpenAIClientType["listModels"]>>["data"];
 
 export const listModels: AuthenticatedTask<
   OpenAIClientType,
@@ -120,9 +114,7 @@ export const backgroundCreateCompletion: AuthenticatedTask<
         headers: {
           "Content-Type": "application/json",
           Authorization: redactString`Bearer ${auth.apiKey}`,
-          ...(auth.organization
-            ? { "OpenAI-Organization": auth.organization }
-            : {}),
+          ...(auth.organization ? { "OpenAI-Organization": auth.organization } : {}),
         },
         body: JSON.stringify(params),
       }
@@ -194,9 +186,7 @@ export const backgroundCreateChatCompletion: AuthenticatedTask<
         headers: {
           "Content-Type": "application/json",
           Authorization: redactString`Bearer ${auth.apiKey}`,
-          ...(auth.organization
-            ? { "OpenAI-Organization": auth.organization }
-            : {}),
+          ...(auth.organization ? { "OpenAI-Organization": auth.organization } : {}),
         },
         body: JSON.stringify(params),
       },
@@ -239,9 +229,7 @@ export const backgroundCreateChatCompletion: AuthenticatedTask<
   },
 };
 
-type CreateEditResponseData = Prettify<
-  Awaited<ReturnType<OpenAIClientType["createEdit"]>>["data"]
->;
+type CreateEditResponseData = Prettify<Awaited<ReturnType<OpenAIClientType["createEdit"]>>["data"]>;
 
 export const createEdit: AuthenticatedTask<
   OpenAIClientType,
@@ -377,9 +365,7 @@ export const createEmbedding: AuthenticatedTask<
   },
 };
 
-type CreateFileResponseData = Awaited<
-  ReturnType<OpenAIClientType["createFile"]>
->["data"];
+type CreateFileResponseData = Awaited<ReturnType<OpenAIClientType["createFile"]>>["data"];
 
 type CreateFileRequest = {
   file: string | File;
@@ -397,10 +383,7 @@ export const createFile: AuthenticatedTask<
     let file: File;
 
     if (typeof params.file === "string") {
-      file = (await fileFromString(
-        params.file,
-        params.fileName ?? "file.txt"
-      )) as any;
+      file = (await fileFromString(params.file, params.fileName ?? "file.txt")) as any;
     } else {
       file = params.file;
     }
@@ -426,15 +409,9 @@ export const createFile: AuthenticatedTask<
   },
 };
 
-type ListFilesResponseData = Prettify<
-  Awaited<ReturnType<OpenAIClientType["listFiles"]>>["data"]
->;
+type ListFilesResponseData = Prettify<Awaited<ReturnType<OpenAIClientType["listFiles"]>>["data"]>;
 
-export const listFiles: AuthenticatedTask<
-  OpenAIClientType,
-  void,
-  ListFilesResponseData
-> = {
+export const listFiles: AuthenticatedTask<OpenAIClientType, void, ListFilesResponseData> = {
   onError: onTaskError,
   run: async (params, client) => {
     return client.listFiles().then((res) => res.data);
@@ -534,11 +511,7 @@ type ListFineTunesResponseData = Prettify<
   Awaited<ReturnType<OpenAIClientType["listFineTunes"]>>["data"]
 >;
 
-export const listFineTunes: AuthenticatedTask<
-  OpenAIClientType,
-  void,
-  ListFineTunesResponseData
-> = {
+export const listFineTunes: AuthenticatedTask<OpenAIClientType, void, ListFineTunesResponseData> = {
   onError: onTaskError,
   run: async (params, client) => {
     return client.listFineTunes().then((res) => res.data);
@@ -624,9 +597,7 @@ export const listFineTuneEvents: AuthenticatedTask<
 > = {
   onError: onTaskError,
   run: async (params, client) => {
-    return client
-      .listFineTuneEvents(params.fineTuneId, false)
-      .then((res) => res.data);
+    return client.listFineTuneEvents(params.fineTuneId, false).then((res) => res.data);
   },
   init: (params) => {
     return {

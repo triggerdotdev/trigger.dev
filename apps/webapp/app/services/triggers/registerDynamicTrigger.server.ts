@@ -102,9 +102,7 @@ export class RegisterDynamicTriggerService {
           connect: jobs.map((job) => ({
             id: job.id,
           })),
-          disconnect: dynamicTrigger.jobs.filter(
-            (job) => !jobs.find((j) => j.id === job.id)
-          ),
+          disconnect: dynamicTrigger.jobs.filter((job) => !jobs.find((j) => j.id === job.id)),
         },
       },
     });

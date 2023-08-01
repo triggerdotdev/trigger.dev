@@ -1,7 +1,4 @@
-import {
-  InitializeTriggerBody,
-  REGISTER_SOURCE_EVENT,
-} from "@trigger.dev/core";
+import { InitializeTriggerBody, REGISTER_SOURCE_EVENT } from "@trigger.dev/core";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
@@ -38,27 +35,19 @@ export class InitializeTriggerService {
       },
     });
 
-    const dynamicTrigger =
-      await this.#prismaClient.dynamicTrigger.findUniqueOrThrow({
-        where: {
-          endpointId_slug_type: {
-            endpointId: endpoint.id,
-            slug: id,
-            type: "EVENT",
-          },
+    const dynamicTrigger = await this.#prismaClient.dynamicTrigger.findUniqueOrThrow({
+      where: {
+        endpointId_slug_type: {
+          endpointId: endpoint.id,
+          slug: id,
+          type: "EVENT",
         },
-      });
+      },
+    });
 
-    const clientApi = new EndpointApi(
-      environment.apiKey,
-      endpoint.url,
-      endpoint.slug
-    );
+    const clientApi = new EndpointApi(environment.apiKey, endpoint.url, endpoint.slug);
 
-    const registerMetadata = await clientApi.initializeTrigger(
-      dynamicTrigger.slug,
-      payload.params
-    );
+    const registerMetadata = await clientApi.initializeTrigger(dynamicTrigger.slug, payload.params);
 
     if (!registerMetadata) {
       throw new Error("Could not initialize trigger");

@@ -24,16 +24,10 @@ export const feedbackTypeLabel = {
 
 export type FeedbackType = keyof typeof feedbackTypeLabel;
 
-const feedbackTypeLiterals = Object.keys(feedbackTypeLabel).map((key) =>
-  z.literal(key)
-);
+const feedbackTypeLiterals = Object.keys(feedbackTypeLabel).map((key) => z.literal(key));
 
 const feedbackType = z.union(
-  [
-    feedbackTypeLiterals[0],
-    feedbackTypeLiterals[1],
-    ...feedbackTypeLiterals.slice(2),
-  ],
+  [feedbackTypeLiterals[0], feedbackTypeLiterals[1], ...feedbackTypeLiterals.slice(2)],
   {
     required_error: "Must be either 'bug' or 'feature'",
     invalid_type_error: "Must be either 'bug' or 'feature'",
@@ -101,8 +95,7 @@ export async function action({ request }: ActionArgs) {
       return json(submission);
     }
 
-    const title =
-      feedbackTypeLabel[submission.value.feedbackType as FeedbackType];
+    const title = feedbackTypeLabel[submission.value.feedbackType as FeedbackType];
     const upsertTimelineEntryRes = await client.upsertCustomTimelineEntry({
       customerId: upsertCustomerRes.data.customer.id,
       title,

@@ -73,15 +73,9 @@ export const handle: Handle = {
 
     return (
       <Fragment>
-        <BreadcrumbLink
-          to={projectTriggersPath(org, project)}
-          title="Triggers"
-        />
+        <BreadcrumbLink to={projectTriggersPath(org, project)} title="Triggers" />
         <BreadcrumbIcon />
-        <BreadcrumbLink
-          to={projectTriggersPath(org, project)}
-          title="External Triggers"
-        />
+        <BreadcrumbLink to={projectTriggersPath(org, project)} title="External Triggers" />
         <BreadcrumbIcon />
         <BreadcrumbLink
           to={externalTriggerPath(org, project, { id: data.trigger.id })}
@@ -125,12 +119,7 @@ export default function Page() {
       showRerun={false}
       paths={{
         back: externalTriggerPath(organization, project, { id: trigger.id }),
-        run: externalTriggerRunPath(
-          organization,
-          project,
-          { id: trigger.id },
-          run
-        ),
+        run: externalTriggerRunPath(organization, project, { id: trigger.id }, run),
         runsPath: externalTriggerRunsParentPath(organization, project, {
           id: trigger.id,
         }),

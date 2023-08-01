@@ -31,10 +31,9 @@ export class JobListPresenter {
       ? { slug: organizationSlug, members: { some: { userId } } }
       : { members: { some: { userId } } };
 
-    const integrationsWhere: Prisma.JobWhereInput["integrations"] =
-      integrationSlug
-        ? { some: { integration: { slug: integrationSlug } } }
-        : {};
+    const integrationsWhere: Prisma.JobWhereInput["integrations"] = integrationSlug
+      ? { some: { integration: { slug: integrationSlug } } }
+      : {};
 
     const jobs = await this.#prismaClient.job.findMany({
       select: {
@@ -109,17 +108,11 @@ export class JobListPresenter {
         // 2. Prod
         // 3. Any other user's dev
         const sortedAliases = job.aliases.sort((a, b) => {
-          if (
-            a.environment.type === "DEVELOPMENT" &&
-            a.environment.orgMember?.userId === userId
-          ) {
+          if (a.environment.type === "DEVELOPMENT" && a.environment.orgMember?.userId === userId) {
             return -1;
           }
 
-          if (
-            b.environment.type === "DEVELOPMENT" &&
-            b.environment.orgMember?.userId === userId
-          ) {
+          if (b.environment.type === "DEVELOPMENT" && b.environment.orgMember?.userId === userId) {
             return 1;
           }
 
@@ -137,14 +130,10 @@ export class JobListPresenter {
         const alias = sortedAliases.at(0);
 
         if (!alias) {
-          throw new Error(
-            `No aliases found for job ${job.id}, this should never happen.`
-          );
+          throw new Error(`No aliases found for job ${job.id}, this should never happen.`);
         }
 
-        const eventSpecification = EventSpecificationSchema.parse(
-          alias.version.eventSpecification
-        );
+        const eventSpecification = EventSpecificationSchema.parse(alias.version.eventSpecification);
 
         const lastRuns = job.aliases
           .map((alias) => alias.version.runs.at(0))
@@ -158,9 +147,7 @@ export class JobListPresenter {
         const integrations = alias.version.integrations.map((integration) => ({
           key: integration.key,
           title: integration.integration.slug,
-          icon:
-            integration.integration.definition.icon ??
-            integration.integration.definition.id,
+          icon: integration.integration.definition.icon ?? integration.integration.definition.id,
           setupStatus: integration.integration.setupStatus,
         }));
 
@@ -171,9 +158,7 @@ export class JobListPresenter {
         }
 
         if (alias.version.properties) {
-          const versionProperties = z
-            .array(DisplayPropertySchema)
-            .parse(alias.version.properties);
+          const versionProperties = z.array(DisplayPropertySchema).parse(alias.version.properties);
           properties = [...properties, ...versionProperties];
         }
 

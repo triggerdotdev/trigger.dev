@@ -1,10 +1,5 @@
 import type { RawEvent, SendEventOptions } from "@trigger.dev/core";
-import {
-  $transaction,
-  PrismaClientOrTransaction,
-  PrismaErrorSchema,
-  prisma,
-} from "~/db.server";
+import { $transaction, PrismaClientOrTransaction, PrismaErrorSchema, prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { workerQueue } from "~/services/worker.server";
 

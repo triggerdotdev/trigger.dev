@@ -63,6 +63,4 @@ export const RegisterDynamicSchedulePayloadSchema = z.object({
   ),
 });
 
-export type RegisterDynamicSchedulePayload = z.infer<
-  typeof RegisterDynamicSchedulePayloadSchema
->;
+export type RegisterDynamicSchedulePayload = z.infer<typeof RegisterDynamicSchedulePayloadSchema>;

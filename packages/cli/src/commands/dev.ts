@@ -49,16 +49,11 @@ export async function devCommand(path: string, anyOptions: any) {
   logger.success(`✔️ [trigger.dev] Detected TriggerClient id: ${endpointId}`);
 
   // Read from .env.local or .env to get the TRIGGER_API_KEY and TRIGGER_API_URL
-  const { apiUrl, envFile, apiKey } = await getTriggerApiDetails(
-    resolvedPath,
-    options.envFile
-  );
+  const { apiUrl, envFile, apiKey } = await getTriggerApiDetails(resolvedPath, options.envFile);
 
   logger.success(`✔️ [trigger.dev] Found API Key in ${envFile} file`);
 
-  logger.info(
-    `  [trigger.dev] Looking for Next.js site on port ${options.port}`
-  );
+  logger.info(`  [trigger.dev] Looking for Next.js site on port ${options.port}`);
 
   const localEndpointHandlerUrl = `http://localhost:${options.port}${options.handlerPath}`;
 
@@ -80,25 +75,17 @@ export async function devCommand(path: string, anyOptions: any) {
   const endpointUrl = await resolveEndpointUrl(apiUrl, options.port);
   const endpointHandlerUrl = `${endpointUrl}${options.handlerPath}`;
 
-  const connectingSpinner = ora(
-    `[trigger.dev] Registering endpoint ${endpointHandlerUrl}...`
-  );
+  const connectingSpinner = ora(`[trigger.dev] Registering endpoint ${endpointHandlerUrl}...`);
 
   //refresh function
   let attemptCount = 0;
   const refresh = async () => {
     connectingSpinner.start();
 
-    const refreshedEndpointId = await getEndpointIdFromPackageJson(
-      resolvedPath,
-      options
-    );
+    const refreshedEndpointId = await getEndpointIdFromPackageJson(resolvedPath, options);
 
     // Read from .env.local to get the TRIGGER_API_KEY and TRIGGER_API_URL
-    const { apiKey, apiUrl } = await getTriggerApiDetails(
-      resolvedPath,
-      envFile
-    );
+    const { apiKey, apiUrl } = await getTriggerApiDetails(resolvedPath, envFile);
 
     const apiClient = new TriggerApi(apiKey, apiUrl);
 
@@ -110,9 +97,9 @@ export async function devCommand(path: string, anyOptions: any) {
     if (result.success) {
       attemptCount = 0;
       connectingSpinner.succeed(
-        `[trigger.dev] 🔄 Refreshed ${
-          refreshedEndpointId ?? endpointId
-        } ${formattedDate.format(new Date(result.data.updatedAt))}`
+        `[trigger.dev] 🔄 Refreshed ${refreshedEndpointId ?? endpointId} ${formattedDate.format(
+          new Date(result.data.updatedAt)
+        )}`
       );
     } else {
       attemptCount++;
@@ -157,10 +144,7 @@ export async function devCommand(path: string, anyOptions: any) {
   throttle(refresh, throttleTimeMs);
 }
 
-async function getEndpointIdFromPackageJson(
-  path: string,
-  options: DevCommandOptions
-) {
+async function getEndpointIdFromPackageJson(path: string, options: DevCommandOptions) {
   if (options.clientId) {
     return options.clientId;
   }
@@ -211,18 +195,14 @@ async function getTriggerApiDetails(path: string, envFile: string) {
   ]);
 
   if (!resolvedEnvFile) {
-    logger.error(
-      `You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`
-    );
+    logger.error(`You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`);
     process.exit(1);
   }
 
   const parsedEnvFile = dotenv.parse(resolvedEnvFile.content);
 
   if (!parsedEnvFile.TRIGGER_API_KEY || !parsedEnvFile.TRIGGER_API_KEY) {
-    logger.error(
-      `You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`
-    );
+    logger.error(`You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`);
     process.exit(1);
   }
 
@@ -230,9 +210,7 @@ async function getTriggerApiDetails(path: string, envFile: string) {
   const apiUrl = parsedEnvFile.TRIGGER_API_URL;
 
   if (!apiKey || !apiUrl) {
-    logger.error(
-      `You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`
-    );
+    logger.error(`You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`);
     process.exit(1);
   }
 
@@ -263,11 +241,7 @@ async function createTunnel(port: number) {
   }
 }
 
-async function refreshEndpoint(
-  apiClient: TriggerApi,
-  endpointId: string,
-  endpointUrl: string
-) {
+async function refreshEndpoint(apiClient: TriggerApi, endpointId: string, endpointUrl: string) {
   try {
     const response = await apiClient.registerEndpoint({
       id: endpointId,

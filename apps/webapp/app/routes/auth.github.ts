@@ -22,10 +22,7 @@ export let action: ActionFunction = async ({ request }) => {
     if (error instanceof Response) {
       // we need to append a Set-Cookie header with a cookie storing the
       // returnTo value
-      error.headers.append(
-        "Set-Cookie",
-        await redirectCookie.serialize(redirectTo)
-      );
+      error.headers.append("Set-Cookie", await redirectCookie.serialize(redirectTo));
     }
     throw error;
   }

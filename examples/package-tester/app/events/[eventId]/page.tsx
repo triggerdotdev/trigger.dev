@@ -1,10 +1,6 @@
 import { ReactHooks } from "@/app/components/ReactHooks";
 
-export default function Page({
-  params: { eventId },
-}: {
-  params: { eventId: string };
-}) {
+export default function Page({ params: { eventId } }: { params: { eventId: string } }) {
   return (
     <main className="h-screen w-full bg-slate-900">
       <div className="flex flex-col gap-y-6 mx-auto items-center pt-40">

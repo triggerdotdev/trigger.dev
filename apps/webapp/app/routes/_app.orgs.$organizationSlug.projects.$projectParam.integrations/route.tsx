@@ -70,9 +70,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: (match) => (
-    <BreadcrumbLink to={match.pathname} title="Integrations" />
-  ),
+  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Integrations" />,
   expandSidebar: true,
 };
 
@@ -88,18 +86,13 @@ export default function Integrations() {
         <PageTitleRow>
           <PageTitle title="Integrations" />
           <PageButtons>
-            <LinkButton
-              to={docsCreateIntegration()}
-              variant="secondary/small"
-              LeadingIcon="docs"
-            >
+            <LinkButton to={docsCreateIntegration()} variant="secondary/small" LeadingIcon="docs">
               Create your own Integration
             </LinkButton>
           </PageButtons>
         </PageTitleRow>
         <PageDescription>
-          Easily use an Integration, an existing Node.js SDK or make HTTP calls
-          from a Job.
+          Easily use an Integration, an existing Node.js SDK or make HTTP calls from a Job.
         </PageDescription>
       </PageHeader>
 
@@ -144,12 +137,10 @@ function PossibleIntegrationsList({
   const optionsToShow = onlyShowIntegrations
     ? options.filter((o) => o.type === "integration")
     : options;
-  const { filterText, setFilterText, filteredItems } =
-    useTextFilter<IntegrationOrApi>({
-      items: optionsToShow,
-      filter: (integration, text) =>
-        integration.name.toLowerCase().includes(text.toLowerCase()),
-    });
+  const { filterText, setFilterText, filteredItems } = useTextFilter<IntegrationOrApi>({
+    items: optionsToShow,
+    filter: (integration, text) => integration.name.toLowerCase().includes(text.toLowerCase()),
+  });
 
   return (
     <div className="overflow-y-auto py-4 pl-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
@@ -322,11 +313,7 @@ function ConnectedIntegrationsList({
               ) : (
                 <>
                   {filteredItems.map((client) => {
-                    const path = integrationClientPath(
-                      organization,
-                      project,
-                      client
-                    );
+                    const path = integrationClientPath(organization, project, client);
                     return (
                       <TableRow key={client.id}>
                         <TableCell to={path}>{client.title}</TableCell>
@@ -337,14 +324,10 @@ function ConnectedIntegrationsList({
                           </span>
                         </TableCell>
                         <TableCell to={path}>{client.slug}</TableCell>
-                        <TableCell to={path}>
-                          {client.authMethod.name}
-                        </TableCell>
+                        <TableCell to={path}>{client.authMethod.name}</TableCell>
                         <TableCell to={path}>{client.jobCount}</TableCell>
                         <TableCell to={path}>
-                          {client.authSource === "LOCAL"
-                            ? "–"
-                            : client.scopesCount}
+                          {client.authSource === "LOCAL" ? "–" : client.scopesCount}
                         </TableCell>
                         <TableCell to={path}>
                           {client.authSource === "LOCAL" ? (
@@ -367,15 +350,10 @@ function ConnectedIntegrationsList({
                           )}
                         </TableCell>
                         <TableCell to={path}>
-                          {client.authSource === "LOCAL"
-                            ? "–"
-                            : client.connectionsCount}
+                          {client.authSource === "LOCAL" ? "–" : client.connectionsCount}
                         </TableCell>
                         <TableCell to={path}>
-                          <DateTime
-                            date={client.createdAt}
-                            includeSeconds={false}
-                          />
+                          <DateTime date={client.createdAt} includeSeconds={false} />
                         </TableCell>
                         <TableCellChevron to={path} />
                       </TableRow>
@@ -402,9 +380,7 @@ function IntegrationsWithMissingFields({
   callbackUrl: string;
   options: IntegrationOrApi[];
 }) {
-  const integrationsList = options.flatMap((o) =>
-    o.type === "integration" ? [o] : []
-  );
+  const integrationsList = options.flatMap((o) => (o.type === "integration" ? [o] : []));
 
   return (
     <div className="mb-6">
@@ -440,8 +416,7 @@ function IntegrationsWithMissingFields({
                     organizationId={organizationId}
                     button={
                       <span className="inline-flex items-center gap-1">
-                        <NamedIcon name="error" className="h-5 w-5" />{" "}
-                        {client.title}
+                        <NamedIcon name="error" className="h-5 w-5" /> {client.title}
                       </span>
                     }
                     callbackUrl={callbackUrl}
@@ -455,10 +430,7 @@ function IntegrationsWithMissingFields({
                     organizationId={organizationId}
                     button={
                       <span className="flex items-center gap-1">
-                        <NamedIcon
-                          name={client.integrationIdentifier}
-                          className="h-5 w-5"
-                        />
+                        <NamedIcon name={client.integrationIdentifier} className="h-5 w-5" />
                         {client.integration.name}
                       </span>
                     }
@@ -548,10 +520,7 @@ function ExternalIntegrationLink({
         className="h-9 w-9 flex-none text-dimmed transition group-hover:border-slate-750"
         iconClassName="text-dimmed"
       />
-      <Paragraph
-        variant="base"
-        className="m-0 flex-1 text-left transition group-hover:text-bright"
-      >
+      <Paragraph variant="base" className="m-0 flex-1 text-left transition group-hover:text-bright">
         {label}
       </Paragraph>
       <div className="flex flex-none items-center gap-1">
@@ -575,10 +544,7 @@ function InfoLink({ text }: { text: string }) {
         name="integration"
         className="h-9 w-9 flex-none transition group-hover:border-slate-750"
       />
-      <Paragraph
-        variant="base"
-        className="m-0 flex-1 text-left transition group-hover:text-bright"
-      >
+      <Paragraph variant="base" className="m-0 flex-1 text-left transition group-hover:text-bright">
         {text}
       </Paragraph>
       <div className="flex flex-none items-center gap-1">

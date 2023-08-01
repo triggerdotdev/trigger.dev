@@ -81,7 +81,6 @@ branch are tagged into a release monthly.
 
 2. Once the app is running click the magic link button and enter your email.
 3. Check your terminal, the magic link email should have printed out as following:
-   <<<<<<< HEAD
 
    ```sh
    webapp:dev: Log in to Trigger.dev
@@ -92,15 +91,7 @@ branch are tagged into a release monthly.
    webapp:dev: If you didn't try to log in, you can safely ignore this email.
    ```
 
-=======
-`webapp:dev: Log in to Trigger.dev
-webapp:dev: 
-webapp:dev: Click here to log in with this magic link
-webapp:dev: [http://localhost:3030/magic?token=U2FsdGVkX18OvB0JxgaswTLCSbaRz%2FY82TN0EZWhSzFyZYwgG%2BIzKVTkeiaOtWfotPw7F8RwFzCHh53aBpMEu%2B%2B%2FItb%2FcJYh89MSjc3Pz92bevoEjqxSQ%2Ff%2BZbks09JOpqlBbYC3FzGWC8vuSVFBlxqLXxteSDLthZSUaC%2BS2LaA%2BJgp%2BLO7hgjAaC2lXbCHrM7MTgTdXOFt7i0Dvvuwz6%2BWY25RnfomZOPqDsyH0xz8Q2rzPTz0Xu53WSXrZ1hd]
-webapp:dev: 
-webapp:dev: If you didn't try to log in, you can safely ignore this email.`
-
-> > > > > > > origin/main 4. Paste the magic link shown in your terminal into your browser to login.
+   Paste the magic link shown in your terminal into your browser to login.
 
 ## Adding and running migrations
 

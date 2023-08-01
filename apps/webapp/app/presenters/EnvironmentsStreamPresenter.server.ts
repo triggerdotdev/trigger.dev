@@ -109,34 +109,28 @@ export class EnvironmentsStreamPresenter {
 
     if (!environments) return null;
 
-    const environmentSignalsMap = environments.reduce<EnvironmentSignalsMap>(
-      (acc, environment) => {
-        const lastUpdatedAt = environment.updatedAt.getTime();
-        const lastTotalEndpointUpdatedTime = environment.endpoints.reduce(
-          (prev, endpoint) => prev + endpoint.updatedAt.getTime(),
-          0
-        );
-        const lastTotalIndexingUpdatedTime = environment.endpoints.reduce(
-          (prev, endpoint) =>
-            prev +
-            endpoint.indexings.reduce(
-              (prev, indexing) => prev + indexing.updatedAt.getTime(),
-              0
-            ),
-          0
-        );
+    const environmentSignalsMap = environments.reduce<EnvironmentSignalsMap>((acc, environment) => {
+      const lastUpdatedAt = environment.updatedAt.getTime();
+      const lastTotalEndpointUpdatedTime = environment.endpoints.reduce(
+        (prev, endpoint) => prev + endpoint.updatedAt.getTime(),
+        0
+      );
+      const lastTotalIndexingUpdatedTime = environment.endpoints.reduce(
+        (prev, endpoint) =>
+          prev +
+          endpoint.indexings.reduce((prev, indexing) => prev + indexing.updatedAt.getTime(), 0),
+        0
+      );
 
-        return {
-          ...acc,
-          [environment.id]: {
-            lastUpdatedAt,
-            lastTotalEndpointUpdatedTime,
-            lastTotalIndexingUpdatedTime,
-          },
-        };
-      },
-      {}
-    );
+      return {
+        ...acc,
+        [environment.id]: {
+          lastUpdatedAt,
+          lastTotalEndpointUpdatedTime,
+          lastTotalIndexingUpdatedTime,
+        },
+      };
+    }, {});
 
     return environmentSignalsMap;
   }

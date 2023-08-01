@@ -3,9 +3,7 @@ import { ServerTask } from "@trigger.dev/core";
 
 export type TaskWithAttempts = Task & { attempts: TaskAttempt[] };
 
-export function taskWithAttemptsToServerTask(
-  task: TaskWithAttempts
-): ServerTask {
+export function taskWithAttemptsToServerTask(task: TaskWithAttempts): ServerTask {
   return {
     id: task.id,
     name: task.name,

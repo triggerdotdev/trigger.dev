@@ -38,9 +38,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: (match) => (
-    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Jobs" />
-  ),
+  breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Jobs" />,
 };
 
 export default function Page() {
@@ -52,12 +50,7 @@ export default function Page() {
   return (
     <Help defaultOpen={jobs.length === 0}>
       {(open) => (
-        <div
-          className={cn(
-            "grid h-full gap-4",
-            open ? "grid-cols-2" : "grid-cols-1"
-          )}
-        >
+        <div className={cn("grid h-full gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
           <div className="grow">
             <div className="mb-2 flex items-center justify-between gap-x-2">
               {jobs.length === 0 ? (
@@ -99,12 +92,8 @@ export default function Page() {
               integrationClient={client}
               help={client.help}
             />
-            <Callout
-              variant="docs"
-              to={docsIntegrationPath(client.integration.identifier)}
-            >
-              View the docs to learn more about using the{" "}
-              {client.integration.name} Integration.
+            <Callout variant="docs" to={docsIntegrationPath(client.integration.identifier)}>
+              View the docs to learn more about using the {client.integration.name} Integration.
             </Callout>
           </HelpContent>
         </div>

@@ -7,8 +7,7 @@ import { useTypedMatchesData } from "./useTypedMatchData";
 
 export type MatchedProject = UseDataFunctionReturn<typeof loader>["project"];
 
-export const projectMatchId =
-  "routes/_app.orgs.$organizationSlug.projects.$projectParam";
+export const projectMatchId = "routes/_app.orgs.$organizationSlug.projects.$projectParam";
 
 export function useOptionalProject(matches?: RouteMatch[]) {
   const routeMatch = useTypedMatchesData<typeof loader>({
@@ -25,8 +24,6 @@ export function useProject(matches?: RouteMatch[]) {
   return project;
 }
 
-export const useProjectChanged = (
-  action: (org: MatchedProject | undefined) => void
-) => {
+export const useProjectChanged = (action: (org: MatchedProject | undefined) => void) => {
   useChanged(useOptionalProject, action);
 };

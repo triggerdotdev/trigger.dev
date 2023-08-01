@@ -54,29 +54,14 @@ const AlertContent = React.forwardRef<
 ));
 AlertContent.displayName = AlertDialogPrimitive.Content.displayName;
 
-const AlertHeader = ({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) => (
-  <div
-    className={cn(
-      "flex flex-col space-y-2 text-center sm:text-left",
-      className
-    )}
-    {...props}
-  />
+const AlertHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+  <div className={cn("flex flex-col space-y-2 text-center sm:text-left", className)} {...props} />
 );
 AlertHeader.displayName = "AlertDialogHeader";
 
-const AlertFooter = ({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) => (
+const AlertFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
-      className
-    )}
+    className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)}
     {...props}
   />
 );
@@ -118,11 +103,7 @@ const AlertCancel = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Cancel>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Cancel>
 >(({ className, ...props }, ref) => (
-  <AlertDialogPrimitive.Cancel
-    ref={ref}
-    className={cn("mt-2 sm:mt-0", className)}
-    {...props}
-  />
+  <AlertDialogPrimitive.Cancel ref={ref} className={cn("mt-2 sm:mt-0", className)} {...props} />
 ));
 AlertCancel.displayName = AlertDialogPrimitive.Cancel.displayName;
 

@@ -35,12 +35,9 @@ client.defineJob({
         pageSize: 50,
       });
 
-      const allResponses = await io.typeform.getAllResponses(
-        "get-all-responses",
-        {
-          uid: payload.formId,
-        }
-      );
+      const allResponses = await io.typeform.getAllResponses("get-all-responses", {
+        uid: payload.formId,
+      });
     }
   },
 });

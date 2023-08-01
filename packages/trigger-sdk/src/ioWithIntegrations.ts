@@ -8,10 +8,7 @@ import {
 import { IO } from "./io";
 
 export function createIOWithIntegrations<
-  TIntegrations extends Record<
-    string,
-    TriggerIntegration<IntegrationClient<any, any>>
-  >
+  TIntegrations extends Record<string, TriggerIntegration<IntegrationClient<any, any>>>,
 >(
   io: IO,
   auths?: Record<string, ConnectionAuth | undefined>,
@@ -21,74 +18,65 @@ export function createIOWithIntegrations<
     return io as IOWithIntegrations<TIntegrations>;
   }
 
-  const connections = Object.entries(integrations).reduce(
-    (acc, [connectionKey, integration]) => {
-      let auth = auths?.[connectionKey];
+  const connections = Object.entries(integrations).reduce((acc, [connectionKey, integration]) => {
+    let auth = auths?.[connectionKey];
 
-      const client = integration.client.usesLocalAuth
-        ? integration.client.client
-        : auth
-        ? integration.client.clientFactory?.(auth)
-        : undefined;
+    const client = integration.client.usesLocalAuth
+      ? integration.client.client
+      : auth
+      ? integration.client.clientFactory?.(auth)
+      : undefined;
 
-      if (!client) {
-        return acc;
-      }
-
-      auth = integration.client.usesLocalAuth ? integration.client.auth : auth;
-
-      const ioConnection = {
-        client,
-      } as any;
-
-      ioConnection.runTask = async (
-        key: string | any[],
-        callback: (client: any, task: any, io: IO) => Promise<any>,
-        options?: RunTaskOptions
-      ) => {
-        return await io.runTask(
-          key,
-          { name: "Task", icon: integration.metadata.id, ...options },
-          async (ioTask) => {
-            return await callback(client, ioTask, io);
-          }
-        );
-      };
-
-      if (integration.client.tasks) {
-        const tasks: Record<
-          string,
-          AuthenticatedTask<any, any, any, any>
-        > = integration.client.tasks;
-
-        Object.keys(tasks).forEach((taskName) => {
-          const authenticatedTask = tasks[taskName];
-
-          ioConnection[taskName] = async (
-            key: string | string[],
-            params: any
-          ) => {
-            const options = authenticatedTask.init(params);
-            options.connectionKey = connectionKey;
-
-            return await io.runTask(
-              key,
-              options,
-              async (ioTask) => {
-                return authenticatedTask.run(params, client, ioTask, io, auth);
-              },
-              authenticatedTask.onError
-            );
-          };
-        });
-      }
-
-      acc[connectionKey] = ioConnection;
-
+    if (!client) {
       return acc;
-    },
-    {} as any
-  );
+    }
+
+    auth = integration.client.usesLocalAuth ? integration.client.auth : auth;
+
+    const ioConnection = {
+      client,
+    } as any;
+
+    ioConnection.runTask = async (
+      key: string | any[],
+      callback: (client: any, task: any, io: IO) => Promise<any>,
+      options?: RunTaskOptions
+    ) => {
+      return await io.runTask(
+        key,
+        { name: "Task", icon: integration.metadata.id, ...options },
+        async (ioTask) => {
+          return await callback(client, ioTask, io);
+        }
+      );
+    };
+
+    if (integration.client.tasks) {
+      const tasks: Record<string, AuthenticatedTask<any, any, any, any>> = integration.client.tasks;
+
+      Object.keys(tasks).forEach((taskName) => {
+        const authenticatedTask = tasks[taskName];
+
+        ioConnection[taskName] = async (key: string | string[], params: any) => {
+          const options = authenticatedTask.init(params);
+          options.connectionKey = connectionKey;
+
+          return await io.runTask(
+            key,
+            options,
+            async (ioTask) => {
+              return authenticatedTask.run(params, client, ioTask, io, auth);
+            },
+            authenticatedTask.onError
+          );
+        };
+      });
+    }
+
+    acc[connectionKey] = ioConnection;
+
+    return acc;
+  }, {} as any);
 
   return new Proxy(io, {
     get(target, prop, receiver) {

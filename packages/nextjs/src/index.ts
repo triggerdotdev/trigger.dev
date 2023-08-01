@@ -3,10 +3,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { NextResponse } from "next/server";
 
 export function createPagesRoute(client: TriggerClient) {
-  const handler = async function handler(
-    req: NextApiRequest,
-    res: NextApiResponse
-  ) {
+  const handler = async function handler(req: NextApiRequest, res: NextApiResponse) {
     const normalizedRequest = await convertToStandardRequest(req);
 
     const response = await client.handleRequest(normalizedRequest);
@@ -49,9 +46,7 @@ export function createAppRoute(client: TriggerClient) {
   } as const;
 }
 
-async function convertToStandardRequest(
-  nextReq: NextApiRequest
-): Promise<Request> {
+async function convertToStandardRequest(nextReq: NextApiRequest): Promise<Request> {
   const { headers: nextHeaders, method } = nextReq;
 
   const headers = new Headers();
