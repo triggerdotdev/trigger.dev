@@ -19,8 +19,8 @@
     "paths": {
       "~/*": ["./app/*"],
       "@/*": ["./*"],
-      "@trigger.dev/internal": ["../../packages/internal/src/index"],
-      "@trigger.dev/internal/*": ["../../packages/internal/src/*"],
+      "@trigger.dev/core": ["../../packages/core/src/index"],
+      "@trigger.dev/core/*": ["../../packages/core/src/*"],
       "@trigger.dev/database": ["../../packages/database/src/index"],
       "@trigger.dev/database/*": ["../../packages/database/src/*"],
       "emails": ["../../packages/emails/src/index"],

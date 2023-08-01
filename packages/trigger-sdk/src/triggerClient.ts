@@ -23,7 +23,7 @@ import {
   SendEvent,
   SendEventOptions,
   SourceMetadata,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import { ApiClient } from "./apiClient";
 import {
   CanceledWithTaskError,
@@ -513,7 +513,12 @@ export class TriggerClient {
     }
 
     registeredSource.events = Array.from(
-      new Set([...registeredSource.events, options.event.name])
+      new Set([
+        ...registeredSource.events,
+        ...(typeof options.event.name === "string"
+          ? [options.event.name]
+          : options.event.name),
+      ])
     );
 
     this.#registeredSources[options.key] = registeredSource;

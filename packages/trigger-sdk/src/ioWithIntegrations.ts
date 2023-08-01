@@ -1,4 +1,4 @@
-import { ConnectionAuth, RunTaskOptions } from "@trigger.dev/internal";
+import { ConnectionAuth, RunTaskOptions } from "@trigger.dev/core";
 import {
   AuthenticatedTask,
   IOWithIntegrations,

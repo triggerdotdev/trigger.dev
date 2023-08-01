@@ -26,7 +26,7 @@ import {
   TriggerSourceSchema,
   UpdateTriggerSourceBody,
   urlWithSearchParams,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 
 import fetch, { type RequestInit } from "node-fetch";
 import { z } from "zod";

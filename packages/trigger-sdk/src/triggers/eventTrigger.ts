@@ -2,16 +2,20 @@ import {
   EventFilter,
   TriggerMetadata,
   deepMergeFilters,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import { z } from "zod";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
-import { EventSpecification, Trigger } from "../types";
+import {
+  EventSpecification,
+  EventSpecificationExample,
+  Trigger,
+} from "../types";
 
 type EventTriggerOptions<TEventSpecification extends EventSpecification<any>> =
   {
     event: TEventSpecification;
-    name?: string;
+    name?: string | string[];
     source?: string;
     filter?: EventFilter;
   };
@@ -56,8 +60,8 @@ export class EventTrigger<TEventSpecification extends EventSpecification<any>>
 
 /** Configuration options for an EventTrigger */
 type TriggerOptions<TEvent> = {
-  /** The name of the event you are subscribing to. Must be an exact match (case sensitive). */
-  name: string;
+  /** The name of the event you are subscribing to. Must be an exact match (case sensitive). To trigger on multiple possible events, pass in an array of event names */
+  name: string | string[];
   /** A [Zod](https://trigger.dev/docs/documentation/guides/zod) schema that defines the shape of the event payload.
    * The default is `z.any()` which is `any`.
    * */
@@ -84,6 +88,8 @@ type TriggerOptions<TEvent> = {
    * ```
    */
   filter?: EventFilter;
+
+  examples?: EventSpecificationExample[];
 };
 
 /** `eventTrigger()` is set as a [Job's trigger](https://trigger.dev/docs/sdk/job) to subscribe to an event a Job from [a sent event](https://trigger.dev/docs/sdk/triggerclient/instancemethods/sendevent)
@@ -100,6 +106,7 @@ export function eventTrigger<TEvent extends any = any>(
       title: "Event",
       source: options.source ?? "trigger.dev",
       icon: "custom-event",
+      examples: options.examples,
       parsePayload: (rawPayload: any) => {
         if (options.schema) {
           return options.schema.parse(rawPayload);

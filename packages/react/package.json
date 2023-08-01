@@ -2,22 +2,29 @@
   "name": "@trigger.dev/react",
   "version": "1.0.0-next.3",
   "description": "Trigger.dev React SDK",
-  "main": "dist/index.js",
-  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist"
   ],
+  "sideEffects": false,
   "publishConfig": {
     "access": "public"
   },
   "devDependencies": {
-    "@trigger.dev/internal": "workspace:*",
+    "@trigger.dev/core": "workspace:*",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/debug": "^4.1.7",
-    "@types/react": "^18.0.21",
+    "@types/react": "18.2.17",
     "@types/ws": "^8.5.3",
-    "esbuild": "^0.18.13",
     "esbuild-plugin-file-path-extensions": "^1.0.0",
     "react": "^18.2.0",
     "rimraf": "^3.0.2",

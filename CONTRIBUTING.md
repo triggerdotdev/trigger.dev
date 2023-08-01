@@ -98,6 +98,30 @@ branch are tagged into a release monthly.
 
 4. Paste the magic link shown in your terminal into your browser to login.
 
+## Adding and running migrations
+1. Modify packages/database/prisma/schema.prisma file
+2. Change directory to the packages/database folder
+   ```sh
+   cd packages/database
+   ```
+3. Generate the Prisma client
+
+   ```sh
+   pnpm run generate
+   ```
+   The above updates the prisma client generated into node_modules/.prisma/client folder. This helps with typing of relevant prisma models. It ensures typescript
+   recognizes fields added or removed from a model and type-checks appropriately.
+
+4. Create and apply the migrations
+
+   ```
+   pnpm run db:migrate:dev
+   ```
+   This creates a migration file and executes the migrations against your database and applies changes to the database schema(s)
+
+5. Commit generated migrations as well as changes to the schema.prisma file
+6. If you're using VSCode you may need to restart the Typescript server in the webapp to get updated type inference. Open a TypeScript file, then open the Command Palette (View > Command Palette) and run `TypeScript: Restart TS server`.
+
 ## Testing CLI changes
 
 To test CLI changes, follow the steps below:
@@ -197,7 +221,7 @@ Here's an example of creating a `patch` changeset for the `@trigger.dev/github` 
 
 [![asciicast](https://asciinema.org/a/599228.svg)](https://asciinema.org/a/599228)
 
-You will be prompted to select which packages to include in the changeset. Only select the packages that you have made changes for (Important: never include a changeset for the `@trigger.dev/internal` package, as it's bundled with other packages and should not be published).
+You will be prompted to select which packages to include in the changeset. Only select the packages that you have made changes for.
 
 Most of the time the changes you'll make are likely to be categorized as patch releases. If you feel like there is the need for a minor or major release of the package based on the changes being made, add the changeset as such and it will be discussed during PR review.
 

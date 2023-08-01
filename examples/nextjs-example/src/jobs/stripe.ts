@@ -5,7 +5,7 @@ import { z } from "zod";
 
 const stripe = new Stripe({
   id: "stripe",
-  apiKey: process.env.STRIPE_API_KEY!,
+  apiKey: process.env["STRIPE_API_KEY"]!,
 });
 
 client.defineJob({

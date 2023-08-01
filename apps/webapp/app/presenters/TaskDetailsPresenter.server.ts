@@ -1,4 +1,4 @@
-import { DisplayPropertiesSchema, StyleSchema } from "@trigger.dev/internal";
+import { DisplayPropertiesSchema, StyleSchema } from "@trigger.dev/core";
 import { PrismaClient, prisma } from "~/db.server";
 import { mergeProperties } from "~/utils/mergeProperties.server";
 

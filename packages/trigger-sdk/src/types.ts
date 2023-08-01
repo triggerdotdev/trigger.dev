@@ -4,8 +4,8 @@ import type {
   RuntimeEnvironmentType,
   RedactString,
   TriggerMetadata,
-} from "@trigger.dev/internal";
-import { DisplayProperty } from "@trigger.dev/internal";
+} from "@trigger.dev/core";
+import { DisplayProperty } from "@trigger.dev/core";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
 
@@ -81,7 +81,7 @@ export type EventSpecificationExample = {
 };
 
 export interface EventSpecification<TEvent extends any> {
-  name: string;
+  name: string | string[];
   title: string;
   source: string;
   icon: string;

@@ -1,4 +1,4 @@
-import type { RawEvent, SendEventOptions } from "@trigger.dev/internal";
+import type { RawEvent, SendEventOptions } from "@trigger.dev/core";
 import {
   $transaction,
   PrismaClientOrTransaction,

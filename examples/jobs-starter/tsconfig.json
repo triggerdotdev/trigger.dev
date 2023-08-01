@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
-    "target": "es5",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "target": "ES2015",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "ES2015"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -15,11 +19,21 @@
     "jsx": "preserve",
     "incremental": true,
     "paths": {
-      "@/*": ["./*"],
-      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
-      "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
-      "@trigger.dev/nextjs": ["../../packages/nextjs/src/index"],
-      "@trigger.dev/nextjs/*": ["../../packages/nextjs/src/*"]
+      "@/*": [
+        "./*"
+      ],
+      "@trigger.dev/sdk": [
+        "../../packages/trigger-sdk/src/index"
+      ],
+      "@trigger.dev/sdk/*": [
+        "../../packages/trigger-sdk/src/*"
+      ],
+      "@trigger.dev/nextjs": [
+        "../../packages/nextjs/src/index"
+      ],
+      "@trigger.dev/nextjs/*": [
+        "../../packages/nextjs/src/*"
+      ]
     },
     "plugins": [
       {
@@ -27,6 +41,13 @@
       }
     ]
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

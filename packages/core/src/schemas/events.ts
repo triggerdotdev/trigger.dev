@@ -24,3 +24,5 @@ export const GetEventSchema = z.object({
     })
   ),
 });
+
+export type GetEvent = z.infer<typeof GetEventSchema>;
