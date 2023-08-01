@@ -1,5 +1,5 @@
 ---
-"@trigger.dev/init": patch
+"@trigger.dev/cli": patch
 ---
 
 A number of improvements to the initialization experience:

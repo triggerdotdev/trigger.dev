@@ -5,7 +5,7 @@
 "@trigger.dev/openai": patch
 "@trigger.dev/slack": patch
 "@trigger.dev/nextjs": patch
-"@trigger.dev/init": patch
+"@trigger.dev/cli": patch
 ---
 
 Creating the init CLI package

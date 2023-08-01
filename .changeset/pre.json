@@ -12,7 +12,6 @@
     "@trigger.dev/sdk": "1.0.0",
     "@trigger.dev/openai": "1.0.0-next.0",
     "@trigger.dev/database": "0.0.0",
-    "@trigger.dev/init": "0.2.0",
     "@trigger.dev/integration-kit": "2.0.0-next.1",
     "@trigger.dev/resend": "1.0.0-next.1",
     "@trigger.dev/cli": "0.2.1-next.8",

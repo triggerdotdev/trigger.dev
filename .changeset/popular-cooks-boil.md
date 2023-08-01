@@ -1,6 +1,6 @@
 ---
 "@trigger.dev/sdk": patch
-"@trigger.dev/internal": patch
+"@trigger.dev/core": patch
 ---
 
 backgroundFetch jsdocs

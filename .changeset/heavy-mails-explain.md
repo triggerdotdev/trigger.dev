@@ -1,5 +1,5 @@
 ---
-"@trigger.dev/init": patch
+"@trigger.dev/cli": patch
 ---
 
 Improved the CLI prompts

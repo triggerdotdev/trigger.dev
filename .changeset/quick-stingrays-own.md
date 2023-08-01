@@ -1,5 +1,5 @@
 ---
-"@trigger.dev/init": patch
+"@trigger.dev/cli": patch
 ---
 
 Fixed the help defaults
