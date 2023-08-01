@@ -4,8 +4,7 @@ import { nanoid } from "nanoid";
 import { getVersion } from "../utils/getVersion.js";
 import { DevCommandOptions } from "../commands/dev.js";
 
-//todo update this to the PROD key: phc_hwYmedO564b3Ik8nhA4Csrb5SueY0EwFJWCbseGwWW
-const postHogApiKey = "phc_HBGZden3ls3SinTqYOdZkFct4Rn0aarqUzrodYQ7exE";
+const postHogApiKey = "phc_hwYmedO564b3Ik8nhA4Csrb5SueY0EwFJWCbseGwWW";
 
 export class TelemetryClient {
   #client: PostHog;
