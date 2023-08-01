@@ -1,7 +1,4 @@
-import {
-  UseDataFunctionReturn,
-  useTypedRouteLoaderData,
-} from "remix-typedjson";
+import { UseDataFunctionReturn, useTypedRouteLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import type { loader as orgLoader } from "~/routes/_app.orgs.$organizationSlug/route";
 import type { loader as appLoader } from "~/routes/_app/route";
@@ -10,9 +7,7 @@ import { useChanged } from "./useChanged";
 import { RouteMatch } from "@remix-run/react";
 import { useTypedMatchesData } from "./useTypedMatchData";
 
-export type MatchedOrganization = UseDataFunctionReturn<
-  typeof appLoader
->["organizations"][number];
+export type MatchedOrganization = UseDataFunctionReturn<typeof appLoader>["organizations"][number];
 
 export function useOptionalOrganizations(matches?: RouteMatch[]) {
   const data = useTypedMatchesData<typeof appLoader>({
@@ -56,8 +51,6 @@ export function useIsNewOrganizationPage(matches?: RouteMatch[]): boolean {
   return !!data;
 }
 
-export const useOrganizationChanged = (
-  action: (org: MatchedOrganization | undefined) => void
-) => {
+export const useOrganizationChanged = (action: (org: MatchedOrganization | undefined) => void) => {
   useChanged(useOptionalOrganization, action);
 };

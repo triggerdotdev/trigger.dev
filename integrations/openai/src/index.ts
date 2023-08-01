@@ -3,9 +3,7 @@ import { Configuration, OpenAIApi } from "openai";
 import * as tasks from "./tasks";
 import { OpenAIIntegrationOptions } from "./types";
 
-export class OpenAI
-  implements TriggerIntegration<IntegrationClient<OpenAIApi, typeof tasks>>
-{
+export class OpenAI implements TriggerIntegration<IntegrationClient<OpenAIApi, typeof tasks>> {
   client: IntegrationClient<OpenAIApi, typeof tasks>;
 
   /**

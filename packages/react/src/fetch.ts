@@ -7,10 +7,7 @@ export async function zodfetch<TResponseBody extends any>(
 ): Promise<TResponseBody> {
   const response = await fetch(url, requestInit);
 
-  if (
-    (!requestInit || requestInit.method === "GET") &&
-    response.status === 404
-  ) {
+  if ((!requestInit || requestInit.method === "GET") && response.status === 404) {
     // @ts-ignore
     return;
   }
@@ -24,9 +21,7 @@ export async function zodfetch<TResponseBody extends any>(
   }
 
   if (response.status !== 200) {
-    throw new Error(
-      `Failed to fetch ${url}, got status code ${response.status}`
-    );
+    throw new Error(`Failed to fetch ${url}, got status code ${response.status}`);
   }
 
   const jsonBody = await response.json();

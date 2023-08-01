@@ -2,13 +2,7 @@ export function generateTwoRandomWords() {
   return randomWords({ exactly: 2, join: "-" });
 }
 
-function randomWords({
-  exactly,
-  join,
-}: {
-  exactly: number;
-  join: string;
-}): string {
+function randomWords({ exactly, join }: { exactly: number; join: string }): string {
   const words: string[] = [];
 
   for (let i = 0; i < exactly; i++) {

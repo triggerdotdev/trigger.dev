@@ -120,14 +120,12 @@ export const slack: Integration = {
         },
         {
           name: "channels:read",
-          description:
-            "View basic information about public channels in a workspace",
+          description: "View basic information about public channels in a workspace",
         },
 
         {
           name: "channels:write",
-          description:
-            "Manage a user’s public channels and create new ones on a user’s behalf",
+          description: "Manage a user’s public channels and create new ones on a user’s behalf",
         },
         {
           name: "channels:write.invites",
@@ -147,21 +145,18 @@ export const slack: Integration = {
 
         {
           name: "chat:write.customize",
-          description:
-            "Send messages as @your_slack_app with a customized username and avatar",
+          description: "Send messages as @your_slack_app with a customized username and avatar",
           defaultChecked: true,
         },
         {
           name: "chat:write.public",
-          description:
-            "Send messages to channels @your_slack_app isn't a member of",
+          description: "Send messages to channels @your_slack_app isn't a member of",
           defaultChecked: true,
         },
 
         {
           name: "commands",
-          description:
-            "Add shortcuts and/or slash commands that people can use",
+          description: "Add shortcuts and/or slash commands that people can use",
         },
 
         {
@@ -246,8 +241,7 @@ export const slack: Integration = {
 
         {
           name: "incoming-webhook",
-          description:
-            "Create one-way webhooks to post messages to a specific channel",
+          description: "Create one-way webhooks to post messages to a specific channel",
         },
 
         {
@@ -480,23 +474,19 @@ export const slack: Integration = {
         },
         {
           name: "admin.conversations:read",
-          description:
-            "View the channel’s member list, topic, purpose and channel name",
+          description: "View the channel’s member list, topic, purpose and channel name",
         },
         {
           name: "admin.conversations:write",
-          description:
-            "Start a new conversation, modify a conversation and modify channel details",
+          description: "Start a new conversation, modify a conversation and modify channel details",
         },
         {
           name: "admin.invites:read",
-          description:
-            "Gain information about invite requests in a Grid organization.",
+          description: "Gain information about invite requests in a Grid organization.",
         },
         {
           name: "admin.invites:write",
-          description:
-            "Approve or deny invite requests in a Grid organization.",
+          description: "Approve or deny invite requests in a Grid organization.",
         },
         {
           name: "admin.roles:read",
@@ -541,8 +531,7 @@ export const slack: Integration = {
 
         {
           name: "auditlogs:read",
-          description:
-            "View events from all workspaces, channels and users (Enterprise Grid only)",
+          description: "View events from all workspaces, channels and users (Enterprise Grid only)",
         },
 
         {
@@ -573,8 +562,7 @@ export const slack: Integration = {
 
         {
           name: "channels:read",
-          description:
-            "View basic information about public channels in a workspace",
+          description: "View basic information about public channels in a workspace",
         },
 
         {
@@ -605,8 +593,7 @@ export const slack: Integration = {
 
         {
           name: "commands",
-          description:
-            "Add shortcuts and/or slash commands that people can use",
+          description: "Add shortcuts and/or slash commands that people can use",
         },
 
         {
@@ -703,8 +690,7 @@ export const slack: Integration = {
 
         {
           name: "incoming-webhook",
-          description:
-            "Create one-way webhooks to post messages to a specific channel",
+          description: "Create one-way webhooks to post messages to a specific channel",
         },
 
         {
@@ -766,8 +752,7 @@ export const slack: Integration = {
         },
         {
           name: "profile",
-          description:
-            "View a user’s Slack avatar and Slack workspace's basic information",
+          description: "View a user’s Slack avatar and Slack workspace's basic information",
         },
 
         {
@@ -808,8 +793,7 @@ export const slack: Integration = {
 
         {
           name: "stars:read",
-          description:
-            "View messages and files that your slack app has starred",
+          description: "View messages and files that your slack app has starred",
         },
         {
           name: "stars:write",

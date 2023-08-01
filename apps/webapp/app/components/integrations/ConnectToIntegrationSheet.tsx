@@ -1,21 +1,12 @@
 import React, { useState } from "react";
-import {
-  ApiAuthenticationMethodApiKey,
-  Integration,
-} from "~/services/externalApis/types";
+import { ApiAuthenticationMethodApiKey, Integration } from "~/services/externalApis/types";
 import { docsIntegrationPath } from "~/utils/pathBuilder";
 import { LinkButton } from "../primitives/Buttons";
 import { Header1, Header2 } from "../primitives/Headers";
 import { NamedIconInBox } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
 import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
-import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetHeader,
-  SheetTrigger,
-} from "../primitives/Sheet";
+import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTrigger } from "../primitives/Sheet";
 import { ApiKeyHelp } from "./ApiKeyHelp";
 import { CustomHelp } from "./CustomHelp";
 import { SelectOAuthMethod } from "./SelectOAuthMethod";
@@ -37,9 +28,9 @@ export function ConnectToIntegrationSheet({
   className?: string;
   icon?: string;
 }) {
-  const [integrationMethod, setIntegrationMethod] = useState<
-    IntegrationMethod | undefined
-  >(undefined);
+  const [integrationMethod, setIntegrationMethod] = useState<IntegrationMethod | undefined>(
+    undefined
+  );
 
   const authMethods = Object.values(integration.authenticationMethods);
   const hasApiKeyOption = authMethods.some((s) => s.type === "apikey");
@@ -50,10 +41,7 @@ export function ConnectToIntegrationSheet({
       <SheetTrigger className={className}>{button}</SheetTrigger>
       <SheetContent size="lg" className="relative">
         <SheetHeader>
-          <NamedIconInBox
-            name={icon ?? integration.identifier}
-            className="h-9 w-9"
-          />
+          <NamedIconInBox name={icon ?? integration.identifier} className="h-9 w-9" />
           <div className="grow">
             <Header1>{integration.name}</Header1>
             {integration.description && (

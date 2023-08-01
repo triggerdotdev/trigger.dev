@@ -6,10 +6,7 @@ import { Form, useActionData } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { forwardRef, useState } from "react";
 import { z } from "zod";
-import {
-  AppContainer,
-  MainCenteredContainer,
-} from "~/components/layout/AppLayout";
+import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { NavBar } from "~/components/navigation/NavBar";
 import { Button } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -34,10 +31,7 @@ function createSchema(
 ) {
   return z
     .object({
-      name: z
-        .string()
-        .min(3, "Your name must be at least 3 characters")
-        .max(50),
+      name: z.string().min(3, "Your name must be at least 3 characters").max(50),
       email: z
         .string()
         .email()
@@ -181,10 +175,7 @@ export default function Page() {
                   icon="user"
                   autoFocus={Boolean(name.initialError)}
                 />
-                <Hint>
-                  Your team will see this name and we'll use it if we contact
-                  you.
-                </Hint>
+                <Hint>Your team will see this name and we'll use it if we contact you.</Hint>
                 <FormError id={name.errorId}>{name.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -202,8 +193,7 @@ export default function Page() {
                 />
                 {!shouldShowConfirm && (
                   <Hint>
-                    Check this is the email you'd like associated with your
-                    Trigger.dev account.
+                    Check this is the email you'd like associated with your Trigger.dev account.
                   </Hint>
                 )}
                 <FormError id={email.errorId}>{email.error}</FormError>
@@ -219,29 +209,19 @@ export default function Page() {
                     spellCheck={false}
                   />
                   <Hint>
-                    Check this is the email you'd like associated with your
-                    Trigger.dev account.
+                    Check this is the email you'd like associated with your Trigger.dev account.
                   </Hint>
-                  <FormError id={confirmEmail.errorId}>
-                    {confirmEmail.error}
-                  </FormError>
+                  <FormError id={confirmEmail.errorId}>{confirmEmail.error}</FormError>
                 </InputGroup>
               ) : (
                 <>
-                  <input
-                    {...conform.input(confirmEmail, { type: "hidden" })}
-                    value={user.email}
-                  />
+                  <input {...conform.input(confirmEmail, { type: "hidden" })} value={user.email} />
                 </>
               )}
 
               <FormButtons
                 confirmButton={
-                  <Button
-                    type="submit"
-                    variant={"primary/small"}
-                    TrailingIcon={"arrow-right"}
-                  >
+                  <Button type="submit" variant={"primary/small"} TrailingIcon={"arrow-right"}>
                     Continue
                   </Button>
                 }

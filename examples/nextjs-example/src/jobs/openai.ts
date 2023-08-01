@@ -28,18 +28,15 @@ client.defineJob({
       });
     }
 
-    await io.openai.backgroundCreateChatCompletion(
-      "background-chat-completion",
-      {
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "user",
-            content: "Create a good programming joke about background jobs",
-          },
-        ],
-      }
-    );
+    await io.openai.backgroundCreateChatCompletion("background-chat-completion", {
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "user",
+          content: "Create a good programming joke about background jobs",
+        },
+      ],
+    });
 
     await io.openai.createChatCompletion("chat-completion", {
       model: "gpt-3.5-turbo",
@@ -124,8 +121,7 @@ client.defineJob({
         },
         {
           prompt: "Tell me another joke",
-          completion:
-            "Why did the chicken cross the road? To get to the other side",
+          completion: "Why did the chicken cross the road? To get to the other side",
         },
       ],
     });
@@ -153,9 +149,7 @@ client.defineJob({
     await io.logger.info("files", files);
 
     //this will fail because the fine tune didn't complete
-    await io.logger.info(
-      "This next task will fail because the model never completed"
-    );
+    await io.logger.info("This next task will fail because the model never completed");
     const deleteFineTune = await io.openai.deleteFineTune("delete-fine-tune", {
       fineTunedModelId: model.id,
     });

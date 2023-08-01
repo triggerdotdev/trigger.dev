@@ -17,8 +17,7 @@ export class CancelRunService {
           },
         });
 
-        const shouldDecrementQueue =
-          run.status === "STARTED" || run.status === "PREPROCESSING";
+        const shouldDecrementQueue = run.status === "STARTED" || run.status === "PREPROCESSING";
         await tx.jobRun.update({
           where: { id: runId },
           data: {

@@ -65,10 +65,7 @@ export class DeliverScheduledEventService {
 
         const invokeDispatcherService = new InvokeDispatcherService(tx);
 
-        await invokeDispatcherService.call(
-          scheduleSource.dispatcher.id,
-          eventRecord.id
-        );
+        await invokeDispatcherService.call(scheduleSource.dispatcher.id, eventRecord.id);
 
         logger.debug("updating lastEventTimestamp", {
           id,

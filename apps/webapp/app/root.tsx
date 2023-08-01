@@ -1,27 +1,13 @@
 import type { LinksFunction, LoaderArgs } from "@remix-run/node";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
-import {
-  Links,
-  LiveReload,
-  Meta,
-  Outlet,
-  Scripts,
-  ScrollRestoration,
-} from "@remix-run/react";
-import {
-  TypedMetaFunction,
-  typedjson,
-  useTypedLoaderData,
-} from "remix-typedjson";
+import { Links, LiveReload, Meta, Outlet, Scripts, ScrollRestoration } from "@remix-run/react";
+import { TypedMetaFunction, typedjson, useTypedLoaderData } from "remix-typedjson";
 import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
 import tailwindStylesheetUrl from "~/tailwind.css";
 import { RouteErrorDisplay } from "./components/ErrorDisplay";
 import { HighlightInit } from "./components/HighlightInit";
-import {
-  AppContainer,
-  MainCenteredContainer,
-} from "./components/layout/AppLayout";
+import { AppContainer, MainCenteredContainer } from "./components/layout/AppLayout";
 import { Toast } from "./components/primitives/Toast";
 import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
@@ -94,8 +80,7 @@ export function ErrorBoundary() {
 }
 
 function App() {
-  const { posthogProjectKey, highlightProjectId } =
-    useTypedLoaderData<typeof loader>();
+  const { posthogProjectKey, highlightProjectId } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey);
   useHighlight();
 

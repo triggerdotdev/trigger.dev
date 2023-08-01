@@ -26,19 +26,12 @@ export async function action({ request }: ActionArgs) {
   const body = SendEventBodySchema.safeParse(anyBody);
 
   if (!body.success) {
-    return json(
-      { message: generateErrorMessage(body.error.issues) },
-      { status: 422 }
-    );
+    return json({ message: generateErrorMessage(body.error.issues) }, { status: 422 });
   }
 
   const service = new IngestSendEvent();
 
-  const event = await service.call(
-    authenticatedEnv,
-    body.data.event,
-    body.data.options
-  );
+  const event = await service.call(authenticatedEnv, body.data.event, body.data.options);
 
   return json(event);
 }

@@ -19,12 +19,7 @@ type LabelProps = React.AllHTMLAttributes<HTMLLabelElement> & {
   variant?: keyof typeof labelVariants;
 };
 
-export function Label({
-  className,
-  children,
-  variant = "medium",
-  ...props
-}: LabelProps) {
+export function Label({ className, children, variant = "medium", ...props }: LabelProps) {
   const variation = labelVariants[variant];
   return (
     <label className={cn(variation.text, className)} {...props}>

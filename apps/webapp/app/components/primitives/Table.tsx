@@ -18,10 +18,7 @@ export const Table = forwardRef<HTMLTableElement, TableProps>(
           containerClassName
         )}
       >
-        <table
-          ref={ref}
-          className={cn("w-full divide-y bg-midnight-850", className)}
-        >
+        <table ref={ref} className={cn("w-full divide-y bg-midnight-850", className)}>
           {children}
         </table>
       </div>
@@ -34,23 +31,18 @@ type TableHeaderProps = {
   children: ReactNode;
 };
 
-export const TableHeader = forwardRef<
-  HTMLTableSectionElement,
-  TableHeaderProps
->(({ className, children }, ref) => {
-  return (
-    <thead
-      ref={ref}
-      className={cn(
-        "rounded-t-md",
-        "relative divide-y divide-slate-850",
-        className
-      )}
-    >
-      {children}
-    </thead>
-  );
-});
+export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>(
+  ({ className, children }, ref) => {
+    return (
+      <thead
+        ref={ref}
+        className={cn("rounded-t-md", "relative divide-y divide-slate-850", className)}
+      >
+        {children}
+      </thead>
+    );
+  }
+);
 
 type TableBodyProps = {
   className?: string;
@@ -60,10 +52,7 @@ type TableBodyProps = {
 export const TableBody = forwardRef<HTMLTableSectionElement, TableBodyProps>(
   ({ className, children }, ref) => {
     return (
-      <tbody
-        ref={ref}
-        className={cn("relative divide-y divide-slate-850", className)}
-      >
+      <tbody ref={ref} className={cn("relative divide-y divide-slate-850", className)}>
         {children}
       </tbody>
     );
@@ -96,14 +85,8 @@ type TableHeaderCellProps = TableCellBasicProps & {
   hiddenLabel?: boolean;
 };
 
-export const TableHeaderCell = forwardRef<
-  HTMLTableCellElement,
-  TableHeaderCellProps
->(
-  (
-    { className, alignment = "left", children, colSpan, hiddenLabel = false },
-    ref
-  ) => {
+export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellProps>(
+  ({ className, alignment = "left", children, colSpan, hiddenLabel = false }, ref) => {
     let alignmentClassName = "text-left";
     switch (alignment) {
       case "center":
@@ -193,13 +176,7 @@ export const TableCellChevron = forwardRef<
   }
 >(({ className, to, onClick }, ref) => {
   return (
-    <TableCell
-      className={className}
-      to={to}
-      onClick={onClick}
-      ref={ref}
-      alignment="right"
-    >
+    <TableCell className={className} to={to} onClick={onClick} ref={ref} alignment="right">
       <ChevronRightIcon className="h-4 w-4 text-slate-700 transition group-hover:text-bright" />
     </TableCell>
   );
@@ -211,18 +188,14 @@ type TableBlankRowProps = {
   children: ReactNode;
 };
 
-export const TableBlankRow = forwardRef<
-  HTMLTableRowElement,
-  TableBlankRowProps
->(({ children, colSpan, className }, ref) => {
-  return (
-    <tr ref={ref}>
-      <td
-        colSpan={colSpan}
-        className={cn("py-6 text-center text-sm", className)}
-      >
-        {children}
-      </td>
-    </tr>
-  );
-});
+export const TableBlankRow = forwardRef<HTMLTableRowElement, TableBlankRowProps>(
+  ({ children, colSpan, className }, ref) => {
+    return (
+      <tr ref={ref}>
+        <td colSpan={colSpan} className={cn("py-6 text-center text-sm", className)}>
+          {children}
+        </td>
+      </tr>
+    );
+  }
+);

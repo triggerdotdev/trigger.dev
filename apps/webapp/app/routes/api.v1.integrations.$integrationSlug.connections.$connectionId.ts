@@ -17,10 +17,7 @@ export async function loader({ request, params }: LoaderArgs) {
   }
 
   if (authenticationResult.type !== "PRIVATE") {
-    return json(
-      { error: "Only private API keys can access this endpoint" },
-      { status: 403 }
-    );
+    return json({ error: "Only private API keys can access this endpoint" }, { status: 403 });
   }
 
   const authenticatedEnv = authenticationResult.environment;
@@ -28,10 +25,7 @@ export async function loader({ request, params }: LoaderArgs) {
   const parsedParams = ParamsSchema.safeParse(params);
 
   if (!parsedParams.success) {
-    return apiCors(
-      request,
-      json({ error: parsedParams.error.message }, { status: 400 })
-    );
+    return apiCors(request, json({ error: parsedParams.error.message }, { status: 400 }));
   }
 
   const connection = await prisma.integrationConnection.findFirst({
@@ -53,10 +47,7 @@ export async function loader({ request, params }: LoaderArgs) {
   });
 
   if (!connection) {
-    return apiCors(
-      request,
-      json({ error: "Connection not found" }, { status: 404 })
-    );
+    return apiCors(request, json({ error: "Connection not found" }, { status: 404 }));
   }
 
   const auth = await resolveApiConnection(connection);

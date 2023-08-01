@@ -5,10 +5,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { IntegrationClientScopesPresenter } from "~/presenters/IntegrationClientScopesPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
-import {
-  IntegrationClientParamSchema,
-  trimTrailingSlash,
-} from "~/utils/pathBuilder";
+import { IntegrationClientParamSchema, trimTrailingSlash } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -27,9 +24,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: (match) => (
-    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Scopes" />
-  ),
+  breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Scopes" />,
 };
 
 export default function Page() {

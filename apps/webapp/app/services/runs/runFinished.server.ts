@@ -48,11 +48,7 @@ export class RunFinishedService {
 
       if (parsedOutput.success) {
         for (const newEvent of parsedOutput.data.events) {
-          await this.#ingestEventService.call(
-            run.environment,
-            newEvent,
-            parsedOutput.data.options
-          );
+          await this.#ingestEventService.call(run.environment, newEvent, parsedOutput.data.options);
         }
       }
     }

@@ -8,10 +8,7 @@ import {
 import { z } from "zod";
 import { generateErrorMessage } from "zod-error";
 import { PrismaClientOrTransaction, prisma } from "~/db.server";
-import {
-  AuthenticatedEnvironment,
-  authenticateApiRequest,
-} from "~/services/apiAuth.server";
+import { AuthenticatedEnvironment, authenticateApiRequest } from "~/services/apiAuth.server";
 import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
 
 const ParamsSchema = z.object({
@@ -28,10 +25,7 @@ export async function action({ request, params }: ActionArgs) {
   const parsedParams = ParamsSchema.safeParse(params);
 
   if (!parsedParams.success) {
-    return json(
-      { message: generateErrorMessage(parsedParams.error.issues) },
-      { status: 422 }
-    );
+    return json({ message: generateErrorMessage(parsedParams.error.issues) }, { status: 422 });
   }
 
   // Next authenticate the request
@@ -49,10 +43,7 @@ export async function action({ request, params }: ActionArgs) {
   const body = CreateExternalConnectionBodySchema.safeParse(anyBody);
 
   if (!body.success) {
-    return json(
-      { message: generateErrorMessage(body.error.issues) },
-      { status: 422 }
-    );
+    return json({ message: generateErrorMessage(body.error.issues) }, { status: 422 });
   }
 
   try {
@@ -90,15 +81,14 @@ class CreateExternalConnectionService {
     environment: AuthenticatedEnvironment,
     payload: CreateExternalConnectionBody
   ) {
-    const externalAccount =
-      await this.#prismaClient.externalAccount.findUniqueOrThrow({
-        where: {
-          environmentId_identifier: {
-            environmentId: environment.id,
-            identifier: accountIdentifier,
-          },
+    const externalAccount = await this.#prismaClient.externalAccount.findUniqueOrThrow({
+      where: {
+        environmentId_identifier: {
+          environmentId: environment.id,
+          identifier: accountIdentifier,
         },
-      });
+      },
+    });
 
     const integration = await this.#prismaClient.integration.findUniqueOrThrow({
       where: {

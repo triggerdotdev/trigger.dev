@@ -3,13 +3,7 @@ import { LinkButton } from "~/components/primitives/Buttons";
 import { Direction, RunList } from "~/presenters/RunListPresenter.server";
 import { cn } from "~/utils/cn";
 
-export function ListPagination({
-  list,
-  className,
-}: {
-  list: RunList;
-  className?: string;
-}) {
+export function ListPagination({ list, className }: { list: RunList; className?: string }) {
   return (
     <div className={cn("flex items-center gap-1", className)}>
       <PreviousButton cursor={list.pagination.previous} />

@@ -50,18 +50,7 @@ export type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
 };
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  (
-    {
-      className,
-      type,
-      shortcut,
-      fullWidth = true,
-      variant = "medium",
-      icon,
-      ...props
-    },
-    ref
-  ) => {
+  ({ className, type, shortcut, fullWidth = true, variant = "medium", icon, ...props }, ref) => {
     const inputClassName = variants[variant].input;
     const iconClassName = variants[variant].iconSize;
     const iconOffsetClassName = variants[variant].iconOffset;
@@ -70,25 +59,16 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       <div className={cn("relative", fullWidth ? "w-full" : "max-w-max")}>
         {icon && (
           <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center">
-            <NamedIcon
-              name={icon}
-              className={cn(iconClassName, "text-dimmed")}
-            />
+            <NamedIcon name={icon} className={cn(iconClassName, "text-dimmed")} />
           </div>
         )}
         <input
           type={type}
-          className={cn(
-            inputClassName,
-            icon ? iconOffsetClassName : "",
-            className
-          )}
+          className={cn(inputClassName, icon ? iconOffsetClassName : "", className)}
           ref={ref}
           {...props}
         />
-        {shortcut && (
-          <div className={cn(shortcutClassName, "absolute")}>{shortcut}</div>
-        )}
+        {shortcut && <div className={cn(shortcutClassName, "absolute")}>{shortcut}</div>}
       </div>
     );
   }

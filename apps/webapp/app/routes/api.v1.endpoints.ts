@@ -37,9 +37,7 @@ export async function action({ request }: ActionArgs) {
   if (!body.success) {
     return json(
       {
-        error: `Invalid request body: ${generateErrorMessage(
-          body.error.issues
-        )}`,
+        error: `Invalid request body: ${generateErrorMessage(body.error.issues)}`,
       },
       { status: 400 }
     );

@@ -52,12 +52,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 export const handle: Handle = {
   breadcrumb: (match) => {
     const data = useTypedMatchData<typeof loader>(match);
-    return (
-      <BreadcrumbLink
-        to={match.pathname}
-        title={data?.client.title ?? "Integration"}
-      />
-    );
+    return <BreadcrumbLink to={match.pathname} title={data?.client.title ?? "Integration"} />;
   },
 };
 
@@ -100,9 +95,7 @@ export default function Integrations() {
           <PageInfoGroup>
             <PageInfoProperty
               label="ID"
-              value={
-                <ClipboardField value={client.slug} variant="tertiary/small" />
-              }
+              value={<ClipboardField value={client.slug} variant="tertiary/small" />}
             />
             <PageInfoProperty
               icon={client.integration.icon ?? client.integration.identifier}
@@ -110,10 +103,7 @@ export default function Integrations() {
               value={client.integration.name}
             />
             <PageInfoProperty label="Method" value={client.authMethod.name} />
-            <PageInfoProperty
-              label="Type"
-              value={connectionType(client.type)}
-            />
+            <PageInfoProperty label="Type" value={connectionType(client.type)} />
             <PageInfoProperty icon="job" label="Jobs" value={client.jobCount} />
             <PageInfoProperty
               icon="key"

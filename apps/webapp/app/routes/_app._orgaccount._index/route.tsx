@@ -37,10 +37,7 @@ export default function Page() {
       <>
         {organizations &&
           organizations.map((organization) => (
-            <OrganizationGridItem
-              key={organization.id}
-              organization={organization}
-            />
+            <OrganizationGridItem key={organization.id} organization={organization} />
           ))}
       </>
       <li>
@@ -54,10 +51,7 @@ export default function Page() {
               className="h-10 w-10 text-dimmed transition duration-300 group-hover:text-green-500"
               aria-hidden="true"
             />
-            <Paragraph
-              variant="small"
-              className="transition duration-300 group-hover:text-bright"
-            >
+            <Paragraph variant="small" className="transition duration-300 group-hover:text-bright">
               New Organization
             </Paragraph>
           </div>

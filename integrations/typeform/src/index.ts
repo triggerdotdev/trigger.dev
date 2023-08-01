@@ -81,9 +81,7 @@ const onFormResponse: EventSpecification<FormResponseEvent> = {
   icon: "typeform",
   examples: [formResponseExample],
   parsePayload: (payload) => payload as FormResponseEvent,
-  runProperties: (payload) => [
-    { label: "Form ID", text: payload.form_response.form_id },
-  ],
+  runProperties: (payload) => [{ label: "Form ID", text: payload.form_response.form_id }],
 };
 
 export const events = {
@@ -92,16 +90,11 @@ export const events = {
 
 type TypeformEvents = (typeof events)[keyof typeof events];
 
-type CreateTypeformTriggerReturnType = <
-  TEventSpecification extends TypeformEvents
->(args: {
+type CreateTypeformTriggerReturnType = <TEventSpecification extends TypeformEvents>(args: {
   event: TEventSpecification;
   uid: string;
   tag: string;
-}) => ExternalSourceTrigger<
-  TEventSpecification,
-  ReturnType<typeof createWebhookEventSource>
->;
+}) => ExternalSourceTrigger<TEventSpecification, ReturnType<typeof createWebhookEventSource>>;
 
 function createWebhookEventTrigger(
   source: ReturnType<typeof createWebhookEventSource>
@@ -156,23 +149,16 @@ export function createWebhookEventSource(
     register: async (event, io, ctx) => {
       const { params, source: httpSource } = event;
 
-      if (
-        httpSource.active &&
-        isWebhookData(httpSource.data) &&
-        !httpSource.data.enabled
-      ) {
+      if (httpSource.active && isWebhookData(httpSource.data) && !httpSource.data.enabled) {
         // Update the webhook to re-enable it
-        const newWebhookData = await io.integration.updateWebhook(
-          "update-webhook",
-          {
-            uid: params.uid,
-            tag: params.tag,
-            url: httpSource.url,
-            enabled: true,
-            secret: httpSource.secret,
-            verifySSL: true,
-          }
-        );
+        const newWebhookData = await io.integration.updateWebhook("update-webhook", {
+          uid: params.uid,
+          tag: params.tag,
+          url: httpSource.url,
+          enabled: true,
+          secret: httpSource.secret,
+          verifySSL: true,
+        });
 
         return {
           data: newWebhookData,
@@ -181,17 +167,14 @@ export function createWebhookEventSource(
       }
 
       const createWebhook = async () => {
-        const newWebhookData = await io.integration.createWebhook(
-          "create-webhook",
-          {
-            uid: params.uid,
-            tag: params.tag,
-            url: httpSource.url,
-            enabled: true,
-            secret: httpSource.secret,
-            verifySSL: true,
-          }
-        );
+        const newWebhookData = await io.integration.createWebhook("create-webhook", {
+          uid: params.uid,
+          tag: params.tag,
+          url: httpSource.url,
+          enabled: true,
+          secret: httpSource.secret,
+          verifySSL: true,
+        });
 
         return {
           data: newWebhookData,
@@ -200,10 +183,7 @@ export function createWebhookEventSource(
       };
 
       try {
-        const existingWebhook = await io.integration.getWebhook(
-          "get-webhook",
-          params
-        );
+        const existingWebhook = await io.integration.getWebhook("get-webhook", params);
 
         if (existingWebhook.url !== httpSource.url) {
           return createWebhook();
@@ -216,17 +196,14 @@ export function createWebhookEventSource(
           };
         }
 
-        const newWebhookData = await io.integration.updateWebhook(
-          "update-webhook",
-          {
-            uid: params.uid,
-            tag: params.tag,
-            url: httpSource.url,
-            enabled: true,
-            secret: httpSource.secret,
-            verifySSL: true,
-          }
-        );
+        const newWebhookData = await io.integration.updateWebhook("update-webhook", {
+          uid: params.uid,
+          tag: params.tag,
+          url: httpSource.url,
+          enabled: true,
+          secret: httpSource.secret,
+          verifySSL: true,
+        });
 
         return {
           data: newWebhookData,
@@ -240,9 +217,7 @@ export function createWebhookEventSource(
 }
 
 async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
-  logger.debug(
-    "[inside typeform integration] Handling typeform webhook handler"
-  );
+  logger.debug("[inside typeform integration] Handling typeform webhook handler");
 
   const { rawEvent: request, source } = event;
 
@@ -262,16 +237,12 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
     return { events: [] };
   }
 
-  const hash = createHmac("sha256", source.secret)
-    .update(rawBody)
-    .digest("base64");
+  const hash = createHmac("sha256", source.secret).update(rawBody).digest("base64");
 
   const actualSig = `sha256=${hash}`;
 
   if (signature !== actualSig) {
-    logger.debug(
-      "[inside typeform integration] Signature does not match, ignoring"
-    );
+    logger.debug("[inside typeform integration] Signature does not match, ignoring");
 
     return { events: [] };
   }
@@ -292,7 +263,5 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
 }
 
 function isWebhookData(data: any): data is GetWebhookResponse {
-  return (
-    typeof data === "object" && data !== null && typeof data.id === "string"
-  );
+  return typeof data === "object" && data !== null && typeof data.id === "string";
 }

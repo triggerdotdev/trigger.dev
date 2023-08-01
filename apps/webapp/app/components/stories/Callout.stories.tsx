@@ -27,10 +27,7 @@ function CalloutsSet() {
         <Callout variant="error">This is an error callout</Callout>
         <Callout variant="idea">This is an idea callout</Callout>
         <Callout variant="docs">This is a docs callout</Callout>
-        <Callout
-          variant="idea"
-          icon={<EnvelopeIcon className="h-5 w-5 text-green-400" />}
-        >
+        <Callout variant="idea" icon={<EnvelopeIcon className="h-5 w-5 text-green-400" />}>
           This has a custom icon
         </Callout>
       </div>
@@ -50,11 +47,7 @@ function CalloutsSet() {
         <Callout to="#" variant="docs">
           This is a docs callout
         </Callout>
-        <Callout
-          to="#"
-          variant="idea"
-          icon={<EnvelopeIcon className="h-5 w-5 text-green-400" />}
-        >
+        <Callout to="#" variant="idea" icon={<EnvelopeIcon className="h-5 w-5 text-green-400" />}>
           This has a custom icon
         </Callout>
       </div>

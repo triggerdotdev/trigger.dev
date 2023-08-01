@@ -28,11 +28,7 @@ export class IndexEndpointService {
     const endpoint = await findEndpoint(id);
 
     // Make a request to the endpoint to fetch a list of jobs
-    const client = new EndpointApi(
-      endpoint.environment.apiKey,
-      endpoint.url,
-      endpoint.slug
-    );
+    const client = new EndpointApi(endpoint.environment.apiKey, endpoint.url, endpoint.slug);
 
     const indexResponse = await client.indexEndpoint();
 
@@ -40,8 +36,7 @@ export class IndexEndpointService {
       throw new Error(indexResponse.error);
     }
 
-    const { jobs, sources, dynamicTriggers, dynamicSchedules } =
-      indexResponse.data;
+    const { jobs, sources, dynamicTriggers, dynamicSchedules } = indexResponse.data;
 
     logger.debug("Indexing endpoint", {
       endpointId: endpoint.id,
@@ -98,10 +93,7 @@ export class IndexEndpointService {
 
     for (const dynamicTrigger of dynamicTriggers) {
       try {
-        await this.#registerDynamicTriggerService.call(
-          endpoint,
-          dynamicTrigger
-        );
+        await this.#registerDynamicTriggerService.call(endpoint, dynamicTrigger);
 
         indexStats.dynamicTriggers++;
       } catch (error) {
@@ -115,10 +107,7 @@ export class IndexEndpointService {
 
     for (const dynamicSchedule of dynamicSchedules) {
       try {
-        await this.#registerDynamicScheduleService.call(
-          endpoint,
-          dynamicSchedule
-        );
+        await this.#registerDynamicScheduleService.call(endpoint, dynamicSchedule);
 
         indexStats.dynamicSchedules++;
       } catch (error) {

@@ -40,9 +40,7 @@ export async function clearRedirectTo(request: Request) {
   return session;
 }
 
-export async function getRedirectTo(
-  request: Request
-): Promise<string | undefined> {
+export async function getRedirectTo(request: Request): Promise<string | undefined> {
   const session = await getRedirectSession(request);
 
   if (session) {

@@ -79,9 +79,7 @@ class PrismaSecretStore implements SecretStoreProvider {
     const encryptedData = EncryptedSecretValueSchema.safeParse(secret.value);
 
     if (!encryptedData.success) {
-      throw new Error(
-        `Unable to parse encrypted secret ${key}: ${encryptedData.error.message}`
-      );
+      throw new Error(`Unable to parse encrypted secret ${key}: ${encryptedData.error.message}`);
     }
 
     const decrypted = await this.#decrypt(
@@ -118,11 +116,7 @@ class PrismaSecretStore implements SecretStoreProvider {
     });
   }
 
-  async #decrypt(
-    nonce: string,
-    ciphertext: string,
-    tag: string
-  ): Promise<string> {
+  async #decrypt(nonce: string, ciphertext: string, tag: string): Promise<string> {
     const decipher = nodeCrypto.createDecipheriv(
       "aes-256-gcm",
       this.encryptionKey,
@@ -143,11 +137,7 @@ class PrismaSecretStore implements SecretStoreProvider {
     tag: string;
   }> {
     const nonce = nodeCrypto.randomBytes(12);
-    const cipher = nodeCrypto.createCipheriv(
-      "aes-256-gcm",
-      this.encryptionKey,
-      nonce
-    );
+    const cipher = nodeCrypto.createCipheriv("aes-256-gcm", this.encryptionKey, nonce);
 
     let encrypted = cipher.update(value, "utf8", "hex");
     encrypted += cipher.final("hex");
@@ -164,7 +154,7 @@ class PrismaSecretStore implements SecretStoreProvider {
 
 export function getSecretStore<
   K extends SecretStoreOptions,
-  TOptions extends ProviderInitializationOptions[K]
+  TOptions extends ProviderInitializationOptions[K],
 >(provider: K, options?: TOptions): SecretStore {
   switch (provider) {
     case "DATABASE": {

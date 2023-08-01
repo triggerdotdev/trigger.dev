@@ -1,4 +1,3 @@
-
 import { defineConfig } from "tsup";
 
 export default defineConfig([
@@ -21,4 +20,3 @@ export default defineConfig([
     external: ["http", "https", "util", "events", "tty", "os", "timers"],
   },
 ]);
-

@@ -23,8 +23,7 @@ export async function loader({ params }: LoaderArgs) {
     };
   }
 
-  const { environmentId, endpointSlug, indexHookIdentifier } =
-    parsedParams.data;
+  const { environmentId, endpointSlug, indexHookIdentifier } = parsedParams.data;
 
   const service = new TriggerEndpointIndexHookService();
 
@@ -51,8 +50,7 @@ export async function action({ request, params }: ActionArgs) {
     };
   }
 
-  const { environmentId, endpointSlug, indexHookIdentifier } =
-    parsedParams.data;
+  const { environmentId, endpointSlug, indexHookIdentifier } = parsedParams.data;
 
   const body = await request.text();
 
@@ -142,9 +140,7 @@ function parseReasonFromBody(body: any): string | undefined {
     return;
   }
 
-  const githubMeta = VercelDeploymentGithubMetaSchema.safeParse(
-    payload.deployment.meta
-  );
+  const githubMeta = VercelDeploymentGithubMetaSchema.safeParse(payload.deployment.meta);
 
   if (!githubMeta.success) {
     return `Vercel project ${payload.deployment.name} was deployed to ${payload.deployment.url}`;
@@ -152,9 +148,7 @@ function parseReasonFromBody(body: any): string | undefined {
 
   return `"${githubMeta.data.githubCommitMessage}" was deployed from ${
     githubMeta.data.githubCommitRef
-  } (${githubMeta.data.githubCommitSha.slice(0, 7)}) to ${
-    payload.deployment.name
-  }`;
+  } (${githubMeta.data.githubCommitSha.slice(0, 7)}) to ${payload.deployment.name}`;
 }
 
 // Example payload: https://jsonhero.io/j/fhIwXEFmi7qa

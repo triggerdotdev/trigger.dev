@@ -49,9 +49,7 @@ type GithubTriggers = {
   org: ReturnType<typeof createOrgTrigger>;
 };
 
-export class Github
-  implements TriggerIntegration<IntegrationClient<Octokit, typeof tasks>>
-{
+export class Github implements TriggerIntegration<IntegrationClient<Octokit, typeof tasks>> {
   client: IntegrationClient<Octokit, typeof tasks>;
   _repoSource: ReturnType<typeof createRepoEventSource>;
   _orgSource: ReturnType<typeof createOrgEventSource>;
@@ -441,16 +439,11 @@ export const events = {
 // params.event has to be a union of all the values of the exports events object
 type GitHubEvents = (typeof events)[keyof typeof events];
 
-type CreateRepoTriggerReturnType = <
-  TEventSpecification extends GitHubEvents
->(args: {
+type CreateRepoTriggerReturnType = <TEventSpecification extends GitHubEvents>(args: {
   event: TEventSpecification;
   owner: string;
   repo: string;
-}) => ExternalSourceTrigger<
-  TEventSpecification,
-  ReturnType<typeof createRepoEventSource>
->;
+}) => ExternalSourceTrigger<TEventSpecification, ReturnType<typeof createRepoEventSource>>;
 
 function createRepoTrigger(
   source: ReturnType<typeof createRepoEventSource>
@@ -472,15 +465,10 @@ function createRepoTrigger(
   };
 }
 
-type CreateOrgTriggerReturnType = <
-  TEventSpecification extends GitHubEvents
->(args: {
+type CreateOrgTriggerReturnType = <TEventSpecification extends GitHubEvents>(args: {
   event: TEventSpecification;
   org: string;
-}) => ExternalSourceTrigger<
-  TEventSpecification,
-  ReturnType<typeof createOrgEventSource>
->;
+}) => ExternalSourceTrigger<TEventSpecification, ReturnType<typeof createOrgEventSource>>;
 
 function createOrgTrigger(
   source: ReturnType<typeof createOrgEventSource>

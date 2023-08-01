@@ -20,11 +20,7 @@ import { NamedIcon, type IconNames } from "../primitives/NamedIcon";
 import { SimpleTooltip } from "../primitives/Tooltip";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex h-full w-full justify-stretch overflow-hidden">
-      {children}
-    </div>
-  );
+  return <div className="flex h-full w-full justify-stretch overflow-hidden">{children}</div>;
 }
 
 const expandedWith = "14rem";
@@ -54,8 +50,7 @@ export function ProjectSideMenu() {
   const job = useOptionalJob();
   const jobsActive =
     job !== undefined ||
-    deepestMatch?.id ===
-      "routes/_app.orgs.$organizationSlug.projects.$projectParam._index";
+    deepestMatch?.id === "routes/_app.orgs.$organizationSlug.projects.$projectParam._index";
 
   return (
     <motion.div
@@ -180,9 +175,7 @@ function SideMenuItem({
           >
             {name}
           </motion.span>
-          {hasWarning && (
-            <NamedIcon name="error" className="absolute left-1 top-1 h-4 w-4" />
-          )}
+          {hasWarning && <NamedIcon name="error" className="absolute left-1 top-1 h-4 w-4" />}
         </NavLinkButton>
       }
       content={name}

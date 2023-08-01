@@ -1,16 +1,8 @@
 import type { LoaderArgs } from "@remix-run/node";
 import { Form } from "@remix-run/react";
-import {
-  TypedMetaFunction,
-  redirect,
-  typedjson,
-  useTypedLoaderData,
-} from "remix-typedjson";
+import { TypedMetaFunction, redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { LogoIcon } from "~/components/LogoIcon";
-import {
-  AppContainer,
-  MainCenteredContainer,
-} from "~/components/layout/AppLayout";
+import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormTitle } from "~/components/primitives/FormTitle";
@@ -24,9 +16,7 @@ import { getUserId } from "~/services/session.server";
 import { appEnvTitleTag } from "~/utils";
 import { requestUrl } from "~/utils/requestUrl.server";
 
-export const meta: TypedMetaFunction<typeof loader, { root: RootLoader }> = ({
-  parentsData,
-}) => ({
+export const meta: TypedMetaFunction<typeof loader, { root: RootLoader }> = ({ parentsData }) => ({
   title: `Login to Trigger.dev${appEnvTitleTag(parentsData?.root.appEnv)}`,
 });
 
@@ -63,9 +53,7 @@ export default function LoginPage() {
     <AppContainer showBackgroundGradient={true}>
       <MainCenteredContainer>
         <Form
-          action={`/auth/github${
-            data.redirectTo ? `?redirectTo=${data.redirectTo}` : ""
-          }`}
+          action={`/auth/github${data.redirectTo ? `?redirectTo=${data.redirectTo}` : ""}`}
           method="post"
         >
           <div className="flex flex-col items-center">
@@ -81,16 +69,10 @@ export default function LoginPage() {
                     Continue with GitHub
                   </Button>
                 )}
-                <LinkButton
-                  to="/login/magic"
-                  variant="secondary/large"
-                  fullWidth
-                >
+                <LinkButton to="/login/magic" variant="secondary/large" fullWidth>
                   <NamedIcon
                     name={"envelope"}
-                    className={
-                      "mr-1.5 h-4 w-4 text-dimmed transition group-hover:text-bright"
-                    }
+                    className={"mr-1.5 h-4 w-4 text-dimmed transition group-hover:text-bright"}
                   />
                   Continue with Email
                 </LinkButton>
@@ -101,10 +83,7 @@ export default function LoginPage() {
                   terms
                 </TextLink>
                 {" "}and{" "}
-                <TextLink
-                  href="https://trigger.dev/legal/privacy"
-                  target="_blank"
-                >
+                <TextLink href="https://trigger.dev/legal/privacy" target="_blank">
                   privacy
                 </TextLink>
                 {" "}policy.

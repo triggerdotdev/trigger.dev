@@ -20,17 +20,13 @@ export type RemoveTypename<T> = T extends object
 
 type ReplaceNullWithUndefined<T> = T extends null ? undefined : T;
 
-export type GetCustomerByIdParams = Prettify<
-  Parameters<PlainSDK["getCustomerById"]>[0]
->;
+export type GetCustomerByIdParams = Prettify<Parameters<PlainSDK["getCustomerById"]>[0]>;
 
 export type GetCustomerByIdResponse = GetPlainSuccessResponseData<
   ReturnType<PlainSDK["getCustomerById"]>
 >;
 
-export type UpsertCustomerParams = Prettify<
-  Parameters<PlainSDK["upsertCustomer"]>[0]
->;
+export type UpsertCustomerParams = Prettify<Parameters<PlainSDK["upsertCustomer"]>[0]>;
 
 export type UpsertCustomerResponse = GetPlainSuccessResponseData<
   ReturnType<PlainSDK["upsertCustomer"]>

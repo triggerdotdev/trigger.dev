@@ -1,8 +1,5 @@
 import { PrismaClient, prisma } from "~/db.server";
-import {
-  IndexEndpointStats,
-  parseEndpointIndexStats,
-} from "~/models/indexEndpoint.server";
+import { IndexEndpointStats, parseEndpointIndexStats } from "~/models/indexEndpoint.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
 import {
@@ -133,18 +130,14 @@ export class EnvironmentsPresenter {
         (environment) => environment.type === "DEVELOPMENT"
       );
       if (!developmentEnvironment) {
-        throw new Error(
-          "Development environment not found, this should not happen"
-        );
+        throw new Error("Development environment not found, this should not happen");
       }
 
       const productionEnvironment = filtered.find(
         (environment) => environment.type === "PRODUCTION"
       );
       if (!productionEnvironment) {
-        throw new Error(
-          "Production environment not found, this should not happen"
-        );
+        throw new Error("Production environment not found, this should not happen");
       }
 
       const client: Client = {
@@ -165,22 +158,14 @@ export class EnvironmentsPresenter {
         (endpoint) => endpoint.slug === slug
       );
       if (devEndpoint) {
-        client.endpoints.DEVELOPMENT = endpointClient(
-          devEndpoint,
-          developmentEnvironment,
-          baseUrl
-        );
+        client.endpoints.DEVELOPMENT = endpointClient(devEndpoint, developmentEnvironment, baseUrl);
       }
 
       const prodEndpoint = productionEnvironment.endpoints.find(
         (endpoint) => endpoint.slug === slug
       );
       if (prodEndpoint) {
-        client.endpoints.PRODUCTION = endpointClient(
-          prodEndpoint,
-          productionEnvironment,
-          baseUrl
-        );
+        client.endpoints.PRODUCTION = endpointClient(prodEndpoint, productionEnvironment, baseUrl);
       }
 
       clients.push(client);

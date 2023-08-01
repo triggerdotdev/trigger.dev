@@ -6,11 +6,7 @@ type TextFilterProps<T> = {
   filter: (item: T, filterText: string) => boolean;
 };
 
-export function useTextFilter<T>({
-  defaultValue = "",
-  items,
-  filter,
-}: TextFilterProps<T>) {
+export function useTextFilter<T>({ defaultValue = "", items, filter }: TextFilterProps<T>) {
   const [filterText, setFilterText] = useState(defaultValue);
 
   const filteredItems = useMemo<T[]>(() => {

@@ -6,13 +6,7 @@ import { Section } from "@react-email/section";
 import { Text } from "@react-email/text";
 import * as React from "react";
 import { Footer } from "./components/Footer";
-import {
-  anchor,
-  bullets,
-  footerItalic,
-  main,
-  paragraph,
-} from "./components/styles";
+import { anchor, bullets, footerItalic, main, paragraph } from "./components/styles";
 
 export default function Email({ name }: { name?: string }) {
   return (
@@ -23,16 +17,16 @@ export default function Email({ name }: { name?: string }) {
         <Text style={paragraph}>Hey {name ?? "there"},</Text>
         <Text style={paragraph}>I’m Matt, CEO of Trigger.dev.</Text>
         <Text style={paragraph}>
-          Our goal is to give developers like you the ability to effortlessly
-          create powerful workflows in code.
+          Our goal is to give developers like you the ability to effortlessly create powerful
+          workflows in code.
         </Text>
         <Text style={paragraph}>
           We recommend{" "}
           <Link style={anchor} href="https://app.trigger.dev/templates">
             getting started with one of our templates
           </Link>{" "}
-          to get familiar with how Trigger.dev works, and then moving on to
-          create your own workflows.
+          to get familiar with how Trigger.dev works, and then moving on to create your own
+          workflows.
         </Text>
 
         <Text style={paragraph}>
@@ -53,8 +47,8 @@ export default function Email({ name }: { name?: string }) {
         <Text style={bullets}>Matt</Text>
         <Text style={paragraph}>CEO, Trigger.dev</Text>
         <Text style={footerItalic}>
-          If you don’t want me to contact you again, please just let me know and
-          I’ll update your preferences.
+          If you don’t want me to contact you again, please just let me know and I’ll update your
+          preferences.
         </Text>
         <Footer />
       </Section>

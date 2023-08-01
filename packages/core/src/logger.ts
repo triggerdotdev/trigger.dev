@@ -25,9 +25,7 @@ export class Logger {
     jsonReplacer?: (key: string, value: unknown) => unknown
   ) {
     this.#name = name;
-    this.#level = logLevels.indexOf(
-      (process.env.TRIGGER_LOG_LEVEL ?? level) as LogLevel
-    );
+    this.#level = logLevels.indexOf((process.env.TRIGGER_LOG_LEVEL ?? level) as LogLevel);
     this.#filteredKeys = filteredKeys;
     this.#jsonReplacer = jsonReplacer;
   }
@@ -35,12 +33,7 @@ export class Logger {
   // Return a new Logger instance with the same name and a new log level
   // but filter out the keys from the log messages (at any level)
   filter(...keys: string[]) {
-    return new Logger(
-      this.#name,
-      logLevels[this.#level],
-      keys,
-      this.#jsonReplacer
-    );
+    return new Logger(this.#name, logLevels[this.#level], keys, this.#jsonReplacer);
   }
 
   static satisfiesLogLevel(logLevel: LogLevel, setLevel: LogLevel) {
@@ -83,18 +76,13 @@ export class Logger {
     ...args: Array<Record<string, unknown> | undefined>
   ) {
     const structuredLog = {
-      ...structureArgs(
-        safeJsonClone(args) as Record<string, unknown>[],
-        this.#filteredKeys
-      ),
+      ...structureArgs(safeJsonClone(args) as Record<string, unknown>[], this.#filteredKeys),
       timestamp: new Date(),
       name: this.#name,
       message,
     };
 
-    loggerFunction(
-      JSON.stringify(structuredLog, createReplacer(this.#jsonReplacer))
-    );
+    loggerFunction(JSON.stringify(structuredLog, createReplacer(this.#jsonReplacer)));
   }
 }
 
@@ -152,19 +140,13 @@ function formattedDateTime() {
 }
 
 // If args is has a single item that is an object, return that object
-function structureArgs(
-  args: Array<Record<string, unknown>>,
-  filteredKeys: string[] = []
-) {
+function structureArgs(args: Array<Record<string, unknown>>, filteredKeys: string[] = []) {
   if (args.length === 0) {
     return;
   }
 
   if (args.length === 1 && typeof args[0] === "object") {
-    return filterKeys(
-      JSON.parse(JSON.stringify(args[0], bigIntReplacer)),
-      filteredKeys
-    );
+    return filterKeys(JSON.parse(JSON.stringify(args[0], bigIntReplacer)), filteredKeys);
   }
 
   return args;

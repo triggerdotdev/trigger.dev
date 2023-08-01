@@ -33,10 +33,7 @@ const supabaseDB = new Supabase<Database>({
   supabaseKey: process.env["SUPABASE_KEY"]!,
 });
 
-async function doPlaygroundStuff(
-  io: IntegrationIO<typeof supabaseManagementKey>,
-  ref: string
-) {
+async function doPlaygroundStuff(io: IntegrationIO<typeof supabaseManagementKey>, ref: string) {
   await io.getPGConfig("get-pg-config", {
     ref,
   });

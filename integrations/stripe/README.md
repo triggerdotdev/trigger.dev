@@ -1,3 +1,1 @@
-
 # @trigger.dev/stripe
-  

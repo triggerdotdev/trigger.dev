@@ -12,9 +12,7 @@ export const FetchRetryHeadersStrategySchema = z.object({
   resetHeader: z.string(),
 });
 
-export type FetchRetryHeadersStrategy = z.infer<
-  typeof FetchRetryHeadersStrategySchema
->;
+export type FetchRetryHeadersStrategy = z.infer<typeof FetchRetryHeadersStrategySchema>;
 
 /** The `backoff` strategy retries the request with an exponential backoff. */
 export const FetchRetryBackoffStrategySchema = RetryOptionsSchema.extend({
@@ -23,9 +21,7 @@ export const FetchRetryBackoffStrategySchema = RetryOptionsSchema.extend({
 });
 
 /** The `backoff` strategy retries the request with an exponential backoff. */
-export type FetchRetryBackoffStrategy = z.infer<
-  typeof FetchRetryBackoffStrategySchema
->;
+export type FetchRetryBackoffStrategy = z.infer<typeof FetchRetryBackoffStrategySchema>;
 
 export const FetchRetryStrategySchema = z.discriminatedUnion("strategy", [
   FetchRetryHeadersStrategySchema,

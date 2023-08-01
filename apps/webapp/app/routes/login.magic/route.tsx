@@ -1,17 +1,10 @@
 import type { ActionArgs, LoaderArgs } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
 import { Form, useTransition } from "@remix-run/react";
-import {
-  TypedMetaFunction,
-  typedjson,
-  useTypedLoaderData,
-} from "remix-typedjson";
+import { TypedMetaFunction, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { LogoIcon } from "~/components/LogoIcon";
-import {
-  AppContainer,
-  MainCenteredContainer,
-} from "~/components/layout/AppLayout";
+import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -22,19 +15,14 @@ import { Label } from "~/components/primitives/Label";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { authenticator } from "~/services/auth.server";
-import {
-  commitSession,
-  getUserSession,
-} from "~/services/sessionStorage.server";
+import { commitSession, getUserSession } from "~/services/sessionStorage.server";
 import magicLinkIcon from "./login.magic.svg";
 
 import type { LoaderType as RootLoader } from "~/root";
 import { appEnvTitleTag } from "~/utils";
 import { TextLink } from "~/components/primitives/TextLink";
 
-export const meta: TypedMetaFunction<typeof loader, { root: RootLoader }> = ({
-  parentsData,
-}) => ({
+export const meta: TypedMetaFunction<typeof loader, { root: RootLoader }> = ({ parentsData }) => ({
   title: `Login to Trigger.dev${appEnvTitleTag(parentsData?.root.appEnv)}`,
 });
 
@@ -98,15 +86,12 @@ export default function LoginMagicLinkPage() {
 
             {magicLinkSent ? (
               <>
-                <FormTitle
-                  divide={false}
-                  title="We've sent you a magic link!"
-                />
+                <FormTitle divide={false} title="We've sent you a magic link!" />
                 <img src={magicLinkIcon} className="mb-4 h-12 w-12" />
                 <Fieldset className="flex w-full flex-col items-center gap-y-2">
                   <Paragraph className="mb-6 text-center">
-                    We sent you an email which contains a magic link that will
-                    log you in to your account.
+                    We sent you an email which contains a magic link that will log you in to your
+                    account.
                   </Paragraph>
                   <FormButtons
                     cancelButton={
@@ -155,9 +140,7 @@ export default function LoginMagicLinkPage() {
                   >
                     <NamedIcon
                       name={isLoading ? "spinner-white" : "envelope"}
-                      className={
-                        "mr-1.5 h-4 w-4 text-white transition group-hover:text-bright"
-                      }
+                      className={"mr-1.5 h-4 w-4 text-white transition group-hover:text-bright"}
                     />
                     {isLoading ? "Sending…" : "Send a magic link"}
                   </Button>
@@ -168,10 +151,7 @@ export default function LoginMagicLinkPage() {
                     terms
                   </TextLink>{" "}
                   and{" "}
-                  <TextLink
-                    href="https://trigger.dev/legal/privacy"
-                    target="_blank"
-                  >
+                  <TextLink href="https://trigger.dev/legal/privacy" target="_blank">
                     privacy
                   </TextLink>{" "}
                   policy.

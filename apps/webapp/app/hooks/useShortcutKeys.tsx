@@ -22,11 +22,7 @@ type useShortcutKeysProps = {
   disabled?: boolean;
 };
 
-export function useShortcutKeys({
-  shortcut,
-  action,
-  disabled = false,
-}: useShortcutKeysProps) {
+export function useShortcutKeys({ shortcut, action, disabled = false }: useShortcutKeysProps) {
   const keys = createKeysFromShortcut(shortcut);
   useHotkeys(keys, action, { enabled: !disabled });
 }
@@ -34,8 +30,7 @@ export function useShortcutKeys({
 function createKeysFromShortcut(shortcut: ShortcutDefinition) {
   const { platform } = useOperatingSystem();
   const isMac = platform === "mac";
-  let relevantShortcut =
-    "mac" in shortcut ? (isMac ? shortcut.mac : shortcut.windows) : shortcut;
+  let relevantShortcut = "mac" in shortcut ? (isMac ? shortcut.mac : shortcut.windows) : shortcut;
   const modifiers = relevantShortcut.modifiers;
   const character = relevantShortcut.key;
 

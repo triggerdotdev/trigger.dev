@@ -4,13 +4,7 @@ import { cn } from "~/utils/cn";
 
 export function UserProfilePhoto({ className }: { className?: string }) {
   const user = useOptionalUser();
-  return (
-    <UserAvatar
-      avatarUrl={user?.avatarUrl}
-      name={user?.name}
-      className={className}
-    />
-  );
+  return <UserAvatar avatarUrl={user?.avatarUrl} name={user?.name} className={className} />;
 }
 
 export function UserAvatar({

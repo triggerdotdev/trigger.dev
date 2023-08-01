@@ -64,8 +64,7 @@ client.defineJob({
   }),
   run: async (payload, io, ctx) => {
     //delay for 24 hours (or 60 seconds in development)
-    const delayDuration =
-      ctx.environment.type === "DEVELOPMENT" ? 60 : 60 * 60 * 24;
+    const delayDuration = ctx.environment.type === "DEVELOPMENT" ? 60 : 60 * 60 * 24;
     await io.wait("wait 24 hours", delayDuration);
 
     const issue = await io.github.getIssue("get issue", {
@@ -335,14 +334,11 @@ client.defineJob({
   run: async (payload, io, ctx) => {
     await io.logger.info("This is a simple log info message");
 
-    const ref = await io.github.listMatchingReferences(
-      "List Matching References",
-      {
-        owner: payload.repository.owner.login,
-        repo: payload.repository.name,
-        ref: payload.ref,
-      }
-    );
+    const ref = await io.github.listMatchingReferences("List Matching References", {
+      owner: payload.repository.owner.login,
+      repo: payload.repository.name,
+      ref: payload.ref,
+    });
 
     await io.logger.info("Reference ", ref);
 

@@ -13,9 +13,7 @@ type ProviderContextValue = {
   queryClient: QueryClient;
 };
 
-const ProviderContext = createContext<ProviderContextValue>(
-  {} as ProviderContextValue
-);
+const ProviderContext = createContext<ProviderContextValue>({} as ProviderContextValue);
 
 export function useTriggerProvider() {
   const value = useContext(ProviderContext);
@@ -33,17 +31,11 @@ type TriggerProviderProps = {
   children: React.ReactNode;
 };
 
-export function TriggerProvider({
-  publicApiKey,
-  apiUrl,
-  children,
-}: TriggerProviderProps) {
+export function TriggerProvider({ publicApiKey, apiUrl, children }: TriggerProviderProps) {
   const [queryClient] = useState(() => new QueryClient());
 
   if (!publicApiKey) {
-    throw new Error(
-      "TriggerProvider requires `publicApiKey` to be set with a value."
-    );
+    throw new Error("TriggerProvider requires `publicApiKey` to be set with a value.");
   }
 
   verifyApiKey(publicApiKey);

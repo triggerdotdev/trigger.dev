@@ -49,9 +49,7 @@ const GetRunOptionsWithTaskDetailsSchema = GetRunOptionsSchema.extend({
   taskdetails: z.boolean().optional(),
 });
 
-export type GetRunOptionsWithTaskDetails = z.infer<
-  typeof GetRunOptionsWithTaskDetailsSchema
->;
+export type GetRunOptionsWithTaskDetails = z.infer<typeof GetRunOptionsWithTaskDetailsSchema>;
 
 const RunSchema = z.object({
   /** The Run id */

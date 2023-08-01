@@ -21,9 +21,7 @@ export function commitCurrentOrgSession(session: Session) {
   return currentOrgSessionStorage.commitSession(session);
 }
 
-export async function getCurrentOrg(
-  request: Request
-): Promise<string | undefined> {
+export async function getCurrentOrg(request: Request): Promise<string | undefined> {
   const session = await getCurrentOrgSession(request);
 
   return session.get("currentOrg");

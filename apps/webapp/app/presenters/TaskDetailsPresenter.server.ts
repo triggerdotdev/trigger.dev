@@ -7,9 +7,7 @@ type DetailsProps = {
   userId: string;
 };
 
-export type DetailedTask = NonNullable<
-  Awaited<ReturnType<TaskDetailsPresenter["call"]>>
->;
+export type DetailedTask = NonNullable<Awaited<ReturnType<TaskDetailsPresenter["call"]>>>;
 
 export class TaskDetailsPresenter {
   #prismaClient: PrismaClient;

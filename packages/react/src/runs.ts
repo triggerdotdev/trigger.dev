@@ -1,22 +1,11 @@
 "use client";
 
 import { UseQueryResult, useQuery } from "@tanstack/react-query";
-import {
-  GetRun,
-  GetRunOptions,
-  GetRunSchema,
-  urlWithSearchParams,
-} from "@trigger.dev/core";
+import { GetRun, GetRunOptions, GetRunSchema, urlWithSearchParams } from "@trigger.dev/core";
 import { useTriggerProvider } from "./TriggerProvider";
 import { zodfetch } from "./fetch";
 
-export const runResolvedStatuses = [
-  "SUCCESS",
-  "FAILURE",
-  "CANCELED",
-  "TIMED_OUT",
-  "ABORTED",
-];
+export const runResolvedStatuses = ["SUCCESS", "FAILURE", "CANCELED", "TIMED_OUT", "ABORTED"];
 
 const defaultRefreshInterval = 1000;
 
@@ -35,10 +24,7 @@ export function useRunDetails(
 
   const { refreshIntervalMs: refreshInterval, ...otherOptions } = options || {};
 
-  const url = urlWithSearchParams(
-    `${apiUrl}/api/v1/runs/${runId}`,
-    otherOptions
-  );
+  const url = urlWithSearchParams(`${apiUrl}/api/v1/runs/${runId}`, otherOptions);
 
   return useQuery(
     {

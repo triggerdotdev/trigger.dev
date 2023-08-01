@@ -14,11 +14,7 @@ const isGithubAuthSupported =
   typeof env.AUTH_GITHUB_CLIENT_SECRET === "string";
 
 if (env.AUTH_GITHUB_CLIENT_ID && env.AUTH_GITHUB_CLIENT_SECRET) {
-  addGitHubStrategy(
-    authenticator,
-    env.AUTH_GITHUB_CLIENT_ID,
-    env.AUTH_GITHUB_CLIENT_SECRET
-  );
+  addGitHubStrategy(authenticator, env.AUTH_GITHUB_CLIENT_ID, env.AUTH_GITHUB_CLIENT_SECRET);
 }
 
 addEmailLinkStrategy(authenticator);

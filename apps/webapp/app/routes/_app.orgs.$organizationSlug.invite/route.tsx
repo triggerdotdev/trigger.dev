@@ -1,10 +1,4 @@
-import {
-  conform,
-  useFieldList,
-  useForm,
-  list,
-  requestIntent,
-} from "@conform-to/react";
+import { conform, useFieldList, useForm, list, requestIntent } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import type { ActionFunction } from "@remix-run/node";
 import { json } from "@remix-run/node";
@@ -122,11 +116,7 @@ export default function Page() {
                 <Fragment key={email.key}>
                   <Input
                     {...conform.input(email, { type: "email" })}
-                    placeholder={
-                      index === 0
-                        ? "Enter an email address"
-                        : "Add another email"
-                    }
+                    placeholder={index === 0 ? "Enter an email address" : "Add another email"}
                     icon="envelope"
                     onChange={(e) => {
                       fieldValues.current[index] = e.target.value;
@@ -134,10 +124,7 @@ export default function Page() {
                         emailFields.length === fieldValues.current.length &&
                         fieldValues.current.every((v) => v !== "")
                       ) {
-                        requestIntent(
-                          form.ref.current ?? undefined,
-                          list.append(emails.name)
-                        );
+                        requestIntent(form.ref.current ?? undefined, list.append(emails.name));
                       }
                     }}
                   />
@@ -152,10 +139,7 @@ export default function Page() {
                 </Button>
               }
               cancelButton={
-                <LinkButton
-                  to={organizationTeamPath(organization)}
-                  variant={"secondary/small"}
-                >
+                <LinkButton to={organizationTeamPath(organization)} variant={"secondary/small"}>
                   Cancel
                 </LinkButton>
               }

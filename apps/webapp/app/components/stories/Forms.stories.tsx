@@ -81,22 +81,14 @@ function Forms() {
 
             <InputGroup>
               <Label>Project name</Label>
-              <Input
-                placeholder="Your Project name"
-                required={true}
-                icon="folder"
-              />
+              <Input placeholder="Your Project name" required={true} icon="folder" />
               <FormError>You must enter a project name</FormError>
               <Hint>Your Jobs will live inside this Project.</Hint>
             </InputGroup>
 
             <FormButtons
               confirmButton={
-                <Button
-                  type="submit"
-                  variant={"primary/small"}
-                  TrailingIcon="arrow-right"
-                >
+                <Button type="submit" variant={"primary/small"} TrailingIcon="arrow-right">
                   Create
                 </Button>
               }
@@ -129,8 +121,7 @@ function LoginForm() {
               Continue with Email
             </Button>
             <Paragraph variant="small" className="mt-2 text-center">
-              By creating an account you agree to our{" "}
-              <TextLink href="#">terms</TextLink> and{" "}
+              By creating an account you agree to our <TextLink href="#">terms</TextLink> and{" "}
               <TextLink href="#">privacy</TextLink> policies.
             </Paragraph>
           </Fieldset>
@@ -148,12 +139,7 @@ function SearchForm() {
           <Fieldset>
             <InputGroup>
               <Label>Medium search input</Label>
-              <Input
-                placeholder="Search"
-                required={true}
-                icon="search"
-                shortcut="⌘K"
-              />
+              <Input placeholder="Search" required={true} icon="search" shortcut="⌘K" />
             </InputGroup>
             <InputGroup>
               <Label>Small search input</Label>
@@ -178,30 +164,15 @@ function SearchForm() {
             </InputGroup>
             <InputGroup>
               <Label variant="small">This is a small label</Label>
-              <Input
-                placeholder="Search"
-                required={true}
-                icon="search"
-                shortcut="⌘K"
-              />
+              <Input placeholder="Search" required={true} icon="search" shortcut="⌘K" />
             </InputGroup>
             <InputGroup>
               <Label variant="medium">This is a medium label</Label>
-              <Input
-                placeholder="Search"
-                required={true}
-                icon="search"
-                shortcut="⌘K"
-              />
+              <Input placeholder="Search" required={true} icon="search" shortcut="⌘K" />
             </InputGroup>
             <InputGroup>
               <Label variant="large">This is a large label</Label>
-              <Input
-                placeholder="Search"
-                required={true}
-                icon="search"
-                shortcut="⌘K"
-              />
+              <Input placeholder="Search" required={true} icon="search" shortcut="⌘K" />
             </InputGroup>
           </Fieldset>
         </Form>

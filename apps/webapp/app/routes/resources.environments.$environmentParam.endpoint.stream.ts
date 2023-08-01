@@ -7,9 +7,7 @@ import { sse } from "~/utils/sse";
 export async function loader({ request, params }: LoaderArgs) {
   await requireUserId(request);
 
-  const { environmentParam } = z
-    .object({ environmentParam: z.string() })
-    .parse(params);
+  const { environmentParam } = z.object({ environmentParam: z.string() }).parse(params);
 
   const environment = await environmentForUpdates(environmentParam);
 
@@ -32,13 +30,11 @@ export async function loader({ request, params }: LoaderArgs) {
       if (lastSignals.lastUpdatedAt !== result.updatedAt.getTime()) {
         send({ data: result.updatedAt.toISOString() });
       } else if (
-        lastSignals.lastTotalEndpointUpdatedTime !==
-        newSignals.lastTotalEndpointUpdatedTime
+        lastSignals.lastTotalEndpointUpdatedTime !== newSignals.lastTotalEndpointUpdatedTime
       ) {
         send({ data: new Date().toISOString() });
       } else if (
-        lastSignals.lastTotalIndexingUpdatedTime !==
-        newSignals.lastTotalIndexingUpdatedTime
+        lastSignals.lastTotalIndexingUpdatedTime !== newSignals.lastTotalIndexingUpdatedTime
       ) {
         send({ data: new Date().toISOString() });
       }
@@ -79,11 +75,7 @@ function calculateChangeSignals(
   );
   let lastTotalIndexingUpdatedTime = environment.endpoints.reduce(
     (prev, endpoint) =>
-      prev +
-      endpoint.indexings.reduce(
-        (prev, indexing) => prev + indexing.updatedAt.getTime(),
-        0
-      ),
+      prev + endpoint.indexings.reduce((prev, indexing) => prev + indexing.updatedAt.getTime(), 0),
     0
   );
 

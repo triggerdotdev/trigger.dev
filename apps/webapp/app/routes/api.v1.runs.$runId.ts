@@ -3,10 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import { cors } from "remix-utils";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import {
-  authenticateApiRequest,
-  getApiKeyFromRequest,
-} from "~/services/apiAuth.server";
+import { authenticateApiRequest, getApiKeyFromRequest } from "~/services/apiAuth.server";
 import { apiCors } from "~/utils/apiCors";
 import { taskListToTree } from "~/utils/taskListToTree";
 
@@ -30,10 +27,7 @@ export async function loader({ request, params }: LoaderArgs) {
     allowPublicKey: true,
   });
   if (!authenticationResult) {
-    return apiCors(
-      request,
-      json({ error: "Invalid or Missing API key" }, { status: 401 })
-    );
+    return apiCors(request, json({ error: "Invalid or Missing API key" }, { status: 401 }));
   }
 
   const authenticatedEnv = authenticationResult.environment;
@@ -41,18 +35,13 @@ export async function loader({ request, params }: LoaderArgs) {
   const parsed = ParamsSchema.safeParse(params);
 
   if (!parsed.success) {
-    return apiCors(
-      request,
-      json({ error: "Invalid or missing runId" }, { status: 400 })
-    );
+    return apiCors(request, json({ error: "Invalid or missing runId" }, { status: 400 }));
   }
 
   const { runId } = parsed.data;
 
   const url = new URL(request.url);
-  const parsedQuery = SearchQuerySchema.safeParse(
-    Object.fromEntries(url.searchParams)
-  );
+  const parsedQuery = SearchQuerySchema.safeParse(Object.fromEntries(url.searchParams));
 
   if (!parsedQuery.success) {
     return apiCors(
@@ -62,8 +51,7 @@ export async function loader({ request, params }: LoaderArgs) {
   }
 
   const query = parsedQuery.data;
-  const showTaskDetails =
-    query.taskdetails && authenticationResult.type === "PRIVATE";
+  const showTaskDetails = query.taskdetails && authenticationResult.type === "PRIVATE";
 
   const take = Math.min(query.take, 50);
 
@@ -109,17 +97,11 @@ export async function loader({ request, params }: LoaderArgs) {
   });
 
   if (!jobRun) {
-    return apiCors(
-      request,
-      json({ message: "Run not found" }, { status: 404 })
-    );
+    return apiCors(request, json({ message: "Run not found" }, { status: 404 }));
   }
 
   if (jobRun.environmentId !== authenticatedEnv.id) {
-    return apiCors(
-      request,
-      json({ message: "Run not found" }, { status: 404 })
-    );
+    return apiCors(request, json({ message: "Run not found" }, { status: 404 }));
   }
 
   const selectedTasks = jobRun.tasks.slice(0, take);

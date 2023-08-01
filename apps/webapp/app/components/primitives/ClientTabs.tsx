@@ -12,10 +12,7 @@ const ClientTabsList = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.List
     ref={ref}
-    className={cn(
-      "inline-flex items-center justify-center transition duration-100",
-      className
-    )}
+    className={cn("inline-flex items-center justify-center transition duration-100", className)}
     {...props}
   />
 ));

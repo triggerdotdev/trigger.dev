@@ -48,16 +48,9 @@ export class EmailClient {
   #from: string;
   #replyTo: string;
 
-  constructor(config: {
-    apikey?: string;
-    imagesBaseUrl: string;
-    from: string;
-    replyTo: string;
-  }) {
+  constructor(config: { apikey?: string; imagesBaseUrl: string; from: string; replyTo: string }) {
     this.#client =
-      config.apikey && config.apikey.startsWith("re_")
-        ? new Resend(config.apikey)
-        : undefined;
+      config.apikey && config.apikey.startsWith("re_") ? new Resend(config.apikey) : undefined;
     this.#imagesBaseUrl = config.imagesBaseUrl;
     this.#from = config.from;
     this.#replyTo = config.replyTo;
@@ -97,10 +90,7 @@ export class EmailClient {
         return {
           subject: `Action required: you need to connect to ${data.integration}`,
           component: (
-            <ConnectIntegration
-              workflowId={data.workflowId}
-              integration={data.integration}
-            />
+            <ConnectIntegration workflowId={data.workflowId} integration={data.integration} />
           ),
         };
       case "workflow_failed":
@@ -112,24 +102,13 @@ export class EmailClient {
         return {
           subject: `Action required: connect ${data.integration} to start your workflow`,
           component: (
-            <WorkflowIntegration
-              workflowId={data.workflowId}
-              integration={data.integration}
-            />
+            <WorkflowIntegration workflowId={data.workflowId} integration={data.integration} />
           ),
         };
     }
   }
 
-  async #sendEmail({
-    to,
-    subject,
-    react,
-  }: {
-    to: string;
-    subject: string;
-    react: ReactElement;
-  }) {
+  async #sendEmail({ to, subject, react }: { to: string; subject: string; react: ReactElement }) {
     if (this.#client) {
       await this.#client.sendEmail({
         from: this.#from,

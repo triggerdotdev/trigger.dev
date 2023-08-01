@@ -12,10 +12,6 @@ type BadgeProps = React.HTMLAttributes<HTMLDivElement> & {
   variant?: keyof typeof variants;
 };
 
-export function Badge({
-  className,
-  variant = "default",
-  ...props
-}: BadgeProps) {
+export function Badge({ className, variant = "default", ...props }: BadgeProps) {
   return <div className={cn(variants[variant], className)} {...props} />;
 }

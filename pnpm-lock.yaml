@@ -13,7 +13,7 @@ importers:
       eslint-config-custom: workspace:*
       node-fetch: 2.6.x
       postcss: ^8.4.17
-      prettier: ^2.5.1
+      prettier: ^3.0.0
       tailwindcss: 3.1.8
       tsx: ^3.7.1
       turbo: ^1.10.3
@@ -31,7 +31,7 @@ importers:
       autoprefixer: 10.4.13_postcss@8.4.21
       eslint-config-custom: link:config-packages/eslint-config-custom
       postcss: 8.4.21
-      prettier: 2.8.2
+      prettier: 3.0.0
       tailwindcss: 3.1.8_postcss@8.4.21
       tsx: 3.12.2
       turbo: 1.10.3
@@ -20912,16 +20912,16 @@ packages:
       prettier: 2.8.8
     dev: true
 
-  /prettier/2.8.2:
-    resolution: {integrity: sha512-BtRV9BcncDyI2tsuS19zzhzoxD8Dh8LiCx7j7tHzrkz8GFXAexeWFdi22mjE1d16dftH2qNaytVxqiRTGlMfpw==}
-    engines: {node: '>=10.13.0'}
-    hasBin: true
-    dev: true
-
   /prettier/2.8.8:
     resolution: {integrity: sha512-tdN8qQGvNjw4CHbY+XXk0JgCXn9QiF21a55rBe5LJAU+kDyC4WQn4+awm2Xfk2lQMk5fKup9XgzTZtGkjBdP9Q==}
     engines: {node: '>=10.13.0'}
     hasBin: true
+
+  /prettier/3.0.0:
+    resolution: {integrity: sha512-zBf5eHpwHOGPC47h0zrPyNn+eAEIdEzfywMoYn2XPi0P44Zp0tSq64rq0xAREh4auw2cJZHo9QUob+NqCQky4g==}
+    engines: {node: '>=14'}
+    hasBin: true
+    dev: true
 
   /pretty-bytes/5.6.0:
     resolution: {integrity: sha512-FFw039TmrBqFK8ma/7OL3sDz/VytdtJr044/QUJtH0wK9lb9jLq9tJyIxUwtQJHwar2BqtiA4iCWSwo9JLkzFg==}

@@ -5,10 +5,7 @@ import { EndpointApi } from "../endpointApi.server";
 import { workerQueue } from "../worker.server";
 import { env } from "~/env.server";
 
-const indexingHookIdentifier = customAlphabet(
-  "0123456789abcdefghijklmnopqrstuvxyz",
-  10
-);
+const indexingHookIdentifier = customAlphabet("0123456789abcdefghijklmnopqrstuvxyz", 10);
 
 export class CreateEndpointError extends Error {
   code: "FAILED_PING" | "FAILED_UPSERT";

@@ -49,9 +49,7 @@ export class IntegrationClientScopesPresenter {
 
     return {
       scopes: integration.scopes.map((s) => {
-        const matchingScope = authMethodScopes.find(
-          (scope) => scope.name === s
-        );
+        const matchingScope = authMethodScopes.find((scope) => scope.name === s);
 
         return {
           name: s,

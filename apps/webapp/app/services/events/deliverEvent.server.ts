@@ -47,9 +47,8 @@ export class DeliverEventService {
           eventRecord: eventRecord.id,
         });
 
-        const matchingEventDispatchers = possibleEventDispatchers.filter(
-          (eventDispatcher) =>
-            this.#evaluateEventRule(eventDispatcher, eventRecord)
+        const matchingEventDispatchers = possibleEventDispatchers.filter((eventDispatcher) =>
+          this.#evaluateEventRule(eventDispatcher, eventRecord)
         );
 
         if (matchingEventDispatchers.length === 0) {
@@ -91,21 +90,14 @@ export class DeliverEventService {
     );
   }
 
-  #evaluateEventRule(
-    dispatcher: EventDispatcher,
-    eventRecord: EventRecord
-  ): boolean {
+  #evaluateEventRule(dispatcher: EventDispatcher, eventRecord: EventRecord): boolean {
     if (!dispatcher.payloadFilter && !dispatcher.contextFilter) {
       return true;
     }
 
-    const payloadFilter = EventFilterSchema.safeParse(
-      dispatcher.payloadFilter ?? {}
-    );
+    const payloadFilter = EventFilterSchema.safeParse(dispatcher.payloadFilter ?? {});
 
-    const contextFilter = EventFilterSchema.safeParse(
-      dispatcher.contextFilter ?? {}
-    );
+    const contextFilter = EventFilterSchema.safeParse(dispatcher.contextFilter ?? {});
 
     if (!payloadFilter.success || !contextFilter.success) {
       logger.error("Invalid event filter", {

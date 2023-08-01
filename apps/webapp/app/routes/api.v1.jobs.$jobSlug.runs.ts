@@ -21,10 +21,7 @@ export async function loader({ request, params }: LoaderArgs) {
 
   const authenticationResult = await authenticateApiRequest(request);
   if (!authenticationResult) {
-    return apiCors(
-      request,
-      json({ error: "Invalid or Missing API key" }, { status: 401 })
-    );
+    return apiCors(request, json({ error: "Invalid or Missing API key" }, { status: 401 }));
   }
 
   const authenticatedEnv = authenticationResult.environment;
@@ -32,18 +29,13 @@ export async function loader({ request, params }: LoaderArgs) {
   const parsedParams = ParamsSchema.safeParse(params);
 
   if (!parsedParams.success) {
-    return apiCors(
-      request,
-      json({ error: "Missing the job id" }, { status: 400 })
-    );
+    return apiCors(request, json({ error: "Missing the job id" }, { status: 400 }));
   }
 
   const { jobSlug } = parsedParams.data;
 
   const url = new URL(request.url);
-  const parsedQuery = SearchQuerySchema.safeParse(
-    Object.fromEntries(url.searchParams)
-  );
+  const parsedQuery = SearchQuerySchema.safeParse(Object.fromEntries(url.searchParams));
 
   if (!parsedQuery.success) {
     return apiCors(

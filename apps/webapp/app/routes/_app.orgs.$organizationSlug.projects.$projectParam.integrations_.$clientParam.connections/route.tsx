@@ -16,10 +16,7 @@ import {
 import { IntegrationClientConnectionsPresenter } from "~/presenters/IntegrationClientConnectionsPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
-import {
-  IntegrationClientParamSchema,
-  trimTrailingSlash,
-} from "~/utils/pathBuilder";
+import { IntegrationClientParamSchema, trimTrailingSlash } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -39,10 +36,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 
 export const handle: Handle = {
   breadcrumb: (match) => (
-    <BreadcrumbLink
-      to={trimTrailingSlash(match.pathname)}
-      title="Connections"
-    />
+    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Connections" />
   ),
 };
 
@@ -74,21 +68,14 @@ export default function Page() {
                 <TableCell>
                   <ExpiresAt expiresAt={connection.expiresAt} />
                 </TableCell>
-                <TableCell>
-                  {<DateTime date={connection.createdAt} />}
-                </TableCell>
-                <TableCell>
-                  {<DateTime date={connection.updatedAt} />}
-                </TableCell>
+                <TableCell>{<DateTime date={connection.createdAt} />}</TableCell>
+                <TableCell>{<DateTime date={connection.updatedAt} />}</TableCell>
               </TableRow>
             );
           })
         ) : (
           <TableBlankRow colSpan={7}>
-            <Paragraph
-              variant="small"
-              className="flex items-center justify-center"
-            >
+            <Paragraph variant="small" className="flex items-center justify-center">
               No connections
             </Paragraph>
           </TableBlankRow>

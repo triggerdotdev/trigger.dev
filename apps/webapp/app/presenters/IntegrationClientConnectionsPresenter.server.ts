@@ -22,48 +22,43 @@ export class IntegrationClientConnectionsPresenter {
     projectSlug: Project["slug"];
     clientSlug: string;
   }) {
-    const connections = await this.#prismaClient.integrationConnection.findMany(
-      {
-        select: {
-          id: true,
-          expiresAt: true,
-          metadata: true,
-          connectionType: true,
-          createdAt: true,
-          updatedAt: true,
-          _count: {
-            select: {
-              runConnections: true,
+    const connections = await this.#prismaClient.integrationConnection.findMany({
+      select: {
+        id: true,
+        expiresAt: true,
+        metadata: true,
+        connectionType: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: {
+          select: {
+            runConnections: true,
+          },
+        },
+      },
+      where: {
+        organization: {
+          slug: organizationSlug,
+          members: {
+            some: {
+              userId,
             },
           },
         },
-        where: {
-          organization: {
-            slug: organizationSlug,
-            members: {
-              some: {
-                userId,
-              },
-            },
-          },
-          integration: {
-            slug: clientSlug,
-          },
+        integration: {
+          slug: clientSlug,
         },
-        orderBy: {
-          createdAt: "desc",
-        },
-      }
-    );
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
 
     return {
       connections: connections.map((c) => ({
         id: c.id,
         expiresAt: c.expiresAt,
-        metadata:
-          c.metadata != null
-            ? ConnectionMetadataSchema.parse(c.metadata)
-            : null,
+        metadata: c.metadata != null ? ConnectionMetadataSchema.parse(c.metadata) : null,
         type: c.connectionType,
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,

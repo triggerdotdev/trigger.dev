@@ -5,11 +5,7 @@ import inquirer from "inquirer";
 import pathModule from "path";
 import { pathToRegexp } from "path-to-regexp";
 import { simpleGit } from "simple-git";
-import {
-  promptApiKey,
-  promptEndpointSlug,
-  promptTriggerUrl,
-} from "../cli/index.js";
+import { promptApiKey, promptEndpointSlug, promptTriggerUrl } from "../cli/index.js";
 import { COMMAND_NAME, CLOUD_TRIGGER_URL, CLOUD_API_URL } from "../consts.js";
 import { addDependencies } from "../utils/addDependencies.js";
 import { logger } from "../utils/logger.js";
@@ -20,8 +16,7 @@ import { detectNextJsProject } from "../utils/detectNextJsProject.js";
 import { TriggerApi, WhoamiResponse } from "../utils/triggerApi.js";
 import { parse } from "tsconfck";
 import { pathExists, readJSONFile } from "../utils/fileSystem.js";
-import { pathToFileURL } from 'url'
-
+import { pathToFileURL } from "url";
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -39,9 +34,7 @@ export const initCommand = async (options: InitCommandOptions) => {
   if (options.triggerUrl === CLOUD_TRIGGER_URL) {
     logger.info(`✨ Initializing project in Trigger.dev Cloud`);
   } else if (typeof options.triggerUrl === "string") {
-    logger.info(
-      `✨ Initializing project using Trigger.dev at ${options.triggerUrl}`
-    );
+    logger.info(`✨ Initializing project using Trigger.dev at ${options.triggerUrl}`);
   } else {
     logger.info(`✨ Initializing Trigger.dev in project`);
   }
@@ -68,11 +61,7 @@ export const initCommand = async (options: InitCommandOptions) => {
 
   const isTypescriptProject = await detectTypescriptProject(resolvedPath);
 
-
-  const resolvedOptions = await resolveOptionsWithPrompts(
-    options,
-    resolvedPath
-  );
+  const resolvedOptions = await resolveOptionsWithPrompts(options, resolvedPath);
 
   const apiKey = resolvedOptions.apiKey;
 
@@ -137,10 +126,7 @@ export const initCommand = async (options: InitCommandOptions) => {
   process.exit(0);
 };
 
-async function printNextSteps(
-  options: ResolvedOptions,
-  authorizedKey: WhoamiResponse
-) {
+async function printNextSteps(options: ResolvedOptions, authorizedKey: WhoamiResponse) {
   const projectUrl = `${options.triggerUrl}/orgs/${authorizedKey.organization.slug}/projects/${authorizedKey.project.slug}`;
 
   logger.success(`✅ Successfully initialized Trigger.dev!`);
@@ -157,10 +143,7 @@ async function printNextSteps(
   );
 }
 
-async function addConfigurationToPackageJson(
-  path: string,
-  options: ResolvedOptions
-) {
+async function addConfigurationToPackageJson(path: string, options: ResolvedOptions) {
   const pkgJsonPath = pathModule.join(path, "package.json");
   const pkgBuffer = await fs.readFile(pkgJsonPath);
   const pkgJson = JSON.parse(pkgBuffer.toString());
@@ -200,11 +183,7 @@ const resolveOptionsWithPrompts = async (
       const packageJSONPath = pathModule.join(path, "package.json");
       const packageJSON = await readJSONFile(packageJSONPath);
 
-      if (
-        packageJSON &&
-        packageJSON["trigger.dev"] &&
-        packageJSON["trigger.dev"].endpointId
-      ) {
+      if (packageJSON && packageJSON["trigger.dev"] && packageJSON["trigger.dev"].endpointId) {
         options.endpointSlug = packageJSON["trigger.dev"].endpointId;
       } else {
         options.endpointSlug = await promptEndpointSlug(path);
@@ -218,9 +197,7 @@ const resolveOptionsWithPrompts = async (
     // Otherwise we have to do some fancy namespace extension logic on the Error type which feels overkill for one line
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (err instanceof Error && (err as any).isTTYError) {
-      logger.warn(
-        `'${COMMAND_NAME} init' needs an interactive terminal to provide options`
-      );
+      logger.warn(`'${COMMAND_NAME} init' needs an interactive terminal to provide options`);
 
       const { shouldContinue } = await inquirer.prompt<{
         shouldContinue: boolean;
@@ -289,14 +266,9 @@ async function detectPagesOrAppDir(
     // If so then we return app
     // If not return pages
 
-    const extension = isTypescriptProject ? "tsx" : "js"
+    const extension = isTypescriptProject ? "tsx" : "js";
 
-    const appPagePath = pathModule.join(
-      path,
-      usesSrcDir ? "src" : "",
-      "app",
-      `page.${extension}`
-    );
+    const appPagePath = pathModule.join(path, usesSrcDir ? "src" : "", "app", `page.${extension}`);
 
     const appPageExists = await pathExists(appPagePath);
 
@@ -309,11 +281,7 @@ async function detectPagesOrAppDir(
 }
 
 async function detectMiddlewareUsage(path: string, usesSrcDir = false) {
-  const middlewarePath = pathModule.join(
-    path,
-    usesSrcDir ? "src" : "",
-    "middleware.ts"
-  );
+  const middlewarePath = pathModule.join(path, usesSrcDir ? "src" : "", "middleware.ts");
 
   const middlewareExists = await pathExists(middlewarePath);
 
@@ -350,10 +318,7 @@ async function detectMiddlewareUsage(path: string, usesSrcDir = false) {
         )} which will cause issues with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware`
       );
     }
-  } else if (
-    Array.isArray(matcher) &&
-    matcher.every((m) => typeof m === "string")
-  ) {
+  } else if (Array.isArray(matcher) && matcher.every((m) => typeof m === "string")) {
     const matcherRegexes = matcher.map((m) => pathToRegexp(m));
 
     if (matcherRegexes.some((r) => r.test("/api/trigger"))) {
@@ -367,9 +332,7 @@ async function detectMiddlewareUsage(path: string, usesSrcDir = false) {
   }
 }
 
-async function getMiddlewareConfigMatcher(
-  path: string
-): Promise<Array<string>> {
+async function getMiddlewareConfigMatcher(path: string): Promise<Array<string>> {
   const fileContent = await fs.readFile(path, "utf-8");
 
   const regex = /matcher:\s*(\[.*\]|".*")/s;
@@ -408,7 +371,6 @@ async function getMiddlewareConfigMatcher(
 // }
 // In this case, we would return "@"
 function getPathAlias(tsconfig: any, usesSrcDir: boolean) {
-
   if (!tsconfig.compilerOptions.paths) {
     return;
   }
@@ -446,14 +408,14 @@ async function createTriggerAppRoute(
   isTypescriptProject: boolean,
   usesSrcDir = false
 ) {
-  const configFileName = isTypescriptProject ? "tsconfig.json" : "jsconfig.json"
+  const configFileName = isTypescriptProject ? "tsconfig.json" : "jsconfig.json";
   const tsConfigPath = pathModule.join(projectPath, configFileName);
   const { tsconfig } = await parse(tsConfigPath);
 
-  const extension = isTypescriptProject ? ".ts" : ".js"
-  const triggerFileName = `trigger${extension}`
-  const examplesFileName = `examples${extension}`
-  const routeFileName = `route${extension}`
+  const extension = isTypescriptProject ? ".ts" : ".js";
+  const triggerFileName = `trigger${extension}`;
+  const examplesFileName = `examples${extension}`;
+  const routeFileName = `route${extension}`;
 
   const pathAlias = getPathAlias(tsconfig, usesSrcDir);
   const routePathPrefix = pathAlias ? pathAlias + "/" : "../../../";
@@ -515,39 +477,26 @@ client.defineJob({
 
   await fs.writeFile(pathModule.join(directories, routeFileName), routeContent);
 
-  logger.success(
-    `✅ Created app route at ${usesSrcDir ? "src/" : ""}app/api/trigger.ts`
-  );
+  logger.success(`✅ Created app route at ${usesSrcDir ? "src/" : ""}app/api/trigger.ts`);
 
-  const triggerFileExists = await pathExists(
-    pathModule.join(path, triggerFileName)
-  );
+  const triggerFileExists = await pathExists(pathModule.join(path, triggerFileName));
 
   if (!triggerFileExists) {
     await fs.writeFile(pathModule.join(path, triggerFileName), triggerContent);
 
-    logger.success(
-      `✅ Created trigger client at ${usesSrcDir ? "src/" : ""}${triggerFileName}`
-    );
+    logger.success(`✅ Created trigger client at ${usesSrcDir ? "src/" : ""}${triggerFileName}`);
   }
 
   const exampleDirectories = pathModule.join(path, "jobs");
   await fs.mkdir(exampleDirectories, { recursive: true });
 
-  const exampleFileExists = await pathExists(
-    pathModule.join(exampleDirectories, examplesFileName)
-  );
+  const exampleFileExists = await pathExists(pathModule.join(exampleDirectories, examplesFileName));
 
   if (!exampleFileExists) {
-    await fs.writeFile(
-      pathModule.join(exampleDirectories, examplesFileName),
-      jobsContent
-    );
+    await fs.writeFile(pathModule.join(exampleDirectories, examplesFileName), jobsContent);
 
     logger.success(
-      `✅ Created example job at ${
-        usesSrcDir ? "src/" : ""
-      }jobs/examples/examplesFileName`
+      `✅ Created example job at ${usesSrcDir ? "src/" : ""}jobs/examples/examplesFileName`
     );
   }
 }
@@ -557,18 +506,18 @@ async function createTriggerPageRoute(
   path: string,
   options: ResolvedOptions,
   isTypescriptProject: boolean,
-  usesSrcDir = false,
+  usesSrcDir = false
 ) {
-  const configFileName = isTypescriptProject ? "tsconfig.json" : "jsconfig.json"
+  const configFileName = isTypescriptProject ? "tsconfig.json" : "jsconfig.json";
   const tsConfigPath = pathModule.join(projectPath, configFileName);
   const { tsconfig } = await parse(tsConfigPath);
 
   const pathAlias = getPathAlias(tsconfig, usesSrcDir);
   const routePathPrefix = pathAlias ? pathAlias + "/" : "../..";
 
-  const extension = isTypescriptProject ? ".ts" : ".js"
-  const triggerFileName = `trigger${extension}`
-  const examplesFileName = `examples${extension}`
+  const extension = isTypescriptProject ? ".ts" : ".js";
+  const triggerFileName = `trigger${extension}`;
+  const examplesFileName = `examples${extension}`;
 
   const routeContent = `
 import { createPagesRoute } from "@trigger.dev/nextjs";
@@ -631,43 +580,29 @@ client.defineJob({
     `✅ Created pages route at ${usesSrcDir ? "src/" : ""}pages/api/${triggerFileName}`
   );
 
-  const triggerFileExists = await pathExists(
-    pathModule.join(path, triggerFileName)
-  );
+  const triggerFileExists = await pathExists(pathModule.join(path, triggerFileName));
 
   if (!triggerFileExists) {
     await fs.writeFile(pathModule.join(path, triggerFileName), triggerContent);
 
-    logger.success(
-      `✅ Created TriggerClient at ${usesSrcDir ? "src/" : ""}${triggerFileName}`
-    );
+    logger.success(`✅ Created TriggerClient at ${usesSrcDir ? "src/" : ""}${triggerFileName}`);
   }
 
   const exampleDirectories = pathModule.join(path, "jobs");
   await fs.mkdir(exampleDirectories, { recursive: true });
 
-  const exampleFileExists = await pathExists(
-    pathModule.join(exampleDirectories, examplesFileName)
-  );
+  const exampleFileExists = await pathExists(pathModule.join(exampleDirectories, examplesFileName));
 
   if (!exampleFileExists) {
-    await fs.writeFile(
-      pathModule.join(exampleDirectories, examplesFileName),
-      jobsContent
-    );
+    await fs.writeFile(pathModule.join(exampleDirectories, examplesFileName), jobsContent);
 
     logger.success(
-      `✅ Created example job at ${
-        usesSrcDir ? "src/" : ""
-      }jobs/examples/${examplesFileName}`
+      `✅ Created example job at ${usesSrcDir ? "src/" : ""}jobs/examples/${examplesFileName}`
     );
   }
 }
 
-async function setupEnvironmentVariables(
-  path: string,
-  options: ResolvedOptions
-) {
+async function setupEnvironmentVariables(path: string, options: ResolvedOptions) {
   if (options.apiKey) {
     await setupEnvironmentVariable(
       path,
@@ -680,13 +615,7 @@ async function setupEnvironmentVariables(
   }
 
   if (options.triggerUrl) {
-    await setupEnvironmentVariable(
-      path,
-      ".env.local",
-      "TRIGGER_API_URL",
-      options.triggerUrl,
-      true
-    );
+    await setupEnvironmentVariable(path, ".env.local", "TRIGGER_API_URL", options.triggerUrl, true);
   }
 }
 
@@ -710,9 +639,7 @@ async function setupEnvironmentVariable(
   if (envFileContent.includes(variableName)) {
     if (!replaceValue) {
       logger.info(
-        `☑ Skipping setting ${variableName}=${renderer(
-          value
-        )} because it already exists`
+        `☑ Skipping setting ${variableName}=${renderer(value)} because it already exists`
       );
       return;
     }
@@ -728,8 +655,6 @@ async function setupEnvironmentVariable(
   } else {
     await fs.appendFile(path, `\n${variableName}=${value}`);
 
-    logger.success(
-      `✅ Added ${variableName}=${renderer(value)} to ${fileName}`
-    );
+    logger.success(`✅ Added ${variableName}=${renderer(value)} to ${fileName}`);
   }
 }

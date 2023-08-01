@@ -13,7 +13,7 @@ import { ExternalSource, ExternalSourceParams } from "./externalSource";
 /** Options for a DynamicTrigger  */
 export type DynamicTriggerOptions<
   TEventSpec extends EventSpecification<any>,
-  TExternalSource extends ExternalSource<any, any, any>
+  TExternalSource extends ExternalSource<any, any, any>,
 > = {
   /** Used to uniquely identify a DynamicTrigger */
   id: string;
@@ -37,7 +37,7 @@ export type DynamicTriggerOptions<
 /** `DynamicTrigger` allows you to define a trigger that can be configured dynamically at runtime. */
 export class DynamicTrigger<
   TEventSpec extends EventSpecification<any>,
-  TExternalSource extends ExternalSource<any, any, any>
+  TExternalSource extends ExternalSource<any, any, any>,
 > implements Trigger<TEventSpec>
 {
   #client: TriggerClient;
@@ -48,10 +48,7 @@ export class DynamicTrigger<
    * @param client The `TriggerClient` instance to use for registering the trigger.
    * @param options The options for the dynamic trigger.
    * */
-  constructor(
-    client: TriggerClient,
-    options: DynamicTriggerOptions<TEventSpec, TExternalSource>
-  ) {
+  constructor(client: TriggerClient, options: DynamicTriggerOptions<TEventSpec, TExternalSource>) {
     this.#client = client;
     this.#options = options;
     this.source = options.source;
@@ -74,34 +71,24 @@ export class DynamicTrigger<
     return this.#options.event;
   }
 
-  registeredTriggerForParams(
-    params: ExternalSourceParams<TExternalSource>
-  ): RegisterTriggerBody {
+  registeredTriggerForParams(params: ExternalSourceParams<TExternalSource>): RegisterTriggerBody {
     const key = slugifyId(this.source.key(params));
 
     return {
       rule: {
         event: this.event.name,
         source: this.event.source,
-        payload: deepMergeFilters(
-          this.source.filter(params),
-          this.event.filter ?? {}
-        ),
+        payload: deepMergeFilters(this.source.filter(params), this.event.filter ?? {}),
       },
       source: {
         key,
         channel: this.source.channel,
         params,
-        events:
-          typeof this.event.name === "string"
-            ? [this.event.name]
-            : this.event.name,
+        events: typeof this.event.name === "string" ? [this.event.name] : this.event.name,
         integration: {
           id: this.source.integration.id,
           metadata: this.source.integration.metadata,
-          authSource: this.source.integration.client.usesLocalAuth
-            ? "LOCAL"
-            : "HOSTED",
+          authSource: this.source.integration.client.usesLocalAuth ? "LOCAL" : "HOSTED",
         },
       },
     };
@@ -115,17 +102,10 @@ export class DynamicTrigger<
     key: string,
     params: ExternalSourceParams<TExternalSource>
   ): Promise<RegisterSourceEvent> {
-    return this.#client.registerTrigger(
-      this.id,
-      key,
-      this.registeredTriggerForParams(params)
-    );
+    return this.#client.registerTrigger(this.id, key, this.registeredTriggerForParams(params));
   }
 
-  attachToJob(
-    triggerClient: TriggerClient,
-    job: Job<Trigger<TEventSpec>, any>
-  ): void {
+  attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpec>, any>): void {
     triggerClient.attachJobToDynamicTrigger(job, this);
   }
 

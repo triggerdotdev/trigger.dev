@@ -174,8 +174,7 @@ module.exports = {
         "accordion-up": "accordion-up 0.2s ease-out",
       },
       backgroundImage: {
-        "gradient-radial":
-          "radial-gradient(closest-side, var(--tw-gradient-stops))",
+        "gradient-radial": "radial-gradient(closest-side, var(--tw-gradient-stops))",
         "gradient-primary": `linear-gradient(90deg, acid-500 0%, toxic-500 100%)`,
         "gradient-primary-hover": `linear-gradient(80deg, acid-600 0%, toxic-600 100%)`,
         "gradient-secondary": `linear-gradient(90deg, hsl(271 91 65) 0%, hsl(221 83 53) 100%)`,

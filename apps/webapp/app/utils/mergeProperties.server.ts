@@ -14,9 +14,7 @@ import { DisplayProperty, DisplayPropertiesSchema } from "@trigger.dev/core";
 // ]
 //
 // We will use the DisplayPropertiesSchema zod schema to safely parse the properties and if they aren't valid then we'll just ignore them
-export function mergeProperties(
-  ...propertyLists: Array<unknown>
-): Array<DisplayProperty> {
+export function mergeProperties(...propertyLists: Array<unknown>): Array<DisplayProperty> {
   const mergedProperties = new Map<string, DisplayProperty>();
 
   for (const propertyList of propertyLists) {

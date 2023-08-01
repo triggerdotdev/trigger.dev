@@ -40,9 +40,7 @@ export async function resolveRunConnection(
     return;
   }
 
-  const response = await integrationAuthRepository.getCredentials(
-    connection.connection
-  );
+  const response = await integrationAuthRepository.getCredentials(connection.connection);
 
   if (!response) {
     return;

@@ -1,11 +1,7 @@
 "use client";
 
 import styles from "@/styles/Home.module.css";
-import {
-  useEventDetails,
-  useEventRunDetails,
-  useRunDetails,
-} from "@trigger.dev/react";
+import { useEventDetails, useEventRunDetails, useRunDetails } from "@trigger.dev/react";
 
 export function EventData({ id }: { id: string }) {
   const { isLoading, data, error } = useEventDetails(id);
@@ -78,10 +74,7 @@ export function EventRunData({ id }: { id: string }) {
       <div>Run status: {data.status}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
         {data.tasks?.map((task) => (
-          <div
-            key={task.id}
-            style={{ display: "flex", gap: "0.3rem", alignItems: "center" }}
-          >
+          <div key={task.id} style={{ display: "flex", gap: "0.3rem", alignItems: "center" }}>
             <h4>{task.displayKey ?? task.name}</h4>
             <p>{task.icon}</p>
             <p>Status: {task.status}</p>

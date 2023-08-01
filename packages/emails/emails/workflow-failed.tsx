@@ -18,13 +18,9 @@ export default function Email({
     <Html>
       <Head />
       <Section style={main}>
-        <Text style={paragraph}>
-          Your workflow, {workflowId ?? "WORKFLOWID"} has failed.
-        </Text>
+        <Text style={paragraph}>Your workflow, {workflowId ?? "WORKFLOWID"} has failed.</Text>
 
-        <Text style={paragraph}>
-          To learn more, just click the button below.
-        </Text>
+        <Text style={paragraph}>To learn more, just click the button below.</Text>
 
         <Button href="" pX={20} pY={12} style={button}>
           View the issue

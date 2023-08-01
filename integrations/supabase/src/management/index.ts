@@ -24,12 +24,8 @@ export type SupabaseManagementIntegrationOptions =
       apiKey: string;
     };
 
-type SupabaseManagementIntegrationClient = IntegrationClient<
-  SupabaseManagementAPI,
-  typeof tasks
->;
-type SupabaseManagementIntegration =
-  TriggerIntegration<SupabaseManagementIntegrationClient>;
+type SupabaseManagementIntegrationClient = IntegrationClient<SupabaseManagementAPI, typeof tasks>;
+type SupabaseManagementIntegration = TriggerIntegration<SupabaseManagementIntegrationClient>;
 
 class SupabaseDatabase<Database = any> {
   constructor(
@@ -44,9 +40,8 @@ class SupabaseDatabase<Database = any> {
     Schema extends GenericSchema = Database[SchemaName] extends GenericSchema
       ? Database[SchemaName]
       : any,
-    TTableName extends string & keyof Schema["Tables"] = string &
-      keyof Schema["Tables"],
-    TTable extends Schema["Tables"][TTableName] = Schema["Tables"][TTableName]
+    TTableName extends string & keyof Schema["Tables"] = string & keyof Schema["Tables"],
+    TTable extends Schema["Tables"][TTableName] = Schema["Tables"][TTableName],
   >(params: { table: TTableName; schema?: SchemaName; filter?: EventFilter }) {
     return createTrigger<{
       table: TTableName;
@@ -68,9 +63,8 @@ class SupabaseDatabase<Database = any> {
     Schema extends GenericSchema = Database[SchemaName] extends GenericSchema
       ? Database[SchemaName]
       : any,
-    TTableName extends string & keyof Schema["Tables"] = string &
-      keyof Schema["Tables"],
-    TTable extends Schema["Tables"][TTableName] = Schema["Tables"][TTableName]
+    TTableName extends string & keyof Schema["Tables"] = string & keyof Schema["Tables"],
+    TTable extends Schema["Tables"][TTableName] = Schema["Tables"][TTableName],
   >(params: { table: TTableName; schema?: SchemaName; filter?: EventFilter }) {
     return createTrigger<{
       table: TTableName;
@@ -92,9 +86,8 @@ class SupabaseDatabase<Database = any> {
     Schema extends GenericSchema = Database[SchemaName] extends GenericSchema
       ? Database[SchemaName]
       : any,
-    TTableName extends string & keyof Schema["Tables"] = string &
-      keyof Schema["Tables"],
-    TTable extends Schema["Tables"][TTableName] = Schema["Tables"][TTableName]
+    TTableName extends string & keyof Schema["Tables"] = string & keyof Schema["Tables"],
+    TTable extends Schema["Tables"][TTableName] = Schema["Tables"][TTableName],
   >(params: { table: TTableName; schema?: SchemaName; filter?: EventFilter }) {
     return createTrigger<{
       table: TTableName;
@@ -267,10 +260,7 @@ export function createWebhookEventSource(
       if (httpSource.active && webhookData.success) {
         const { triggerName, table, schema } = webhookData.data;
 
-        const allEvents = new Set<string>([
-          ...events,
-          ...missingEvents,
-        ]) as Set<WebhookEvents>;
+        const allEvents = new Set<string>([...events, ...missingEvents]) as Set<WebhookEvents>;
 
         const condition = createTriggerCondition(Array.from(allEvents));
 
@@ -363,9 +353,7 @@ function createTriggerCondition(events: WebhookEvents[]): string {
 }
 
 async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
-  logger.debug(
-    "[inside supabase management integration] Handling webhook handler"
-  );
+  logger.debug("[inside supabase management integration] Handling webhook handler");
 
   const { rawEvent: request, source } = event;
 
@@ -379,9 +367,7 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
   const authHeader = request.headers.get("Authorization");
 
   if (!authHeader) {
-    logger.debug(
-      "[inside supabase management integration] No Authorization header found"
-    );
+    logger.debug("[inside supabase management integration] No Authorization header found");
 
     return { events: [] };
   }

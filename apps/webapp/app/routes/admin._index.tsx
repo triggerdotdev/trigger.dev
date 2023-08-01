@@ -5,10 +5,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { Button } from "~/components/primitives/Buttons";
 import { adminGetUsers } from "~/models/admin.server";
-import {
-  commitImpersonationSession,
-  setImpersonationId,
-} from "~/services/impersonation.server";
+import { commitImpersonationSession, setImpersonationId } from "~/services/impersonation.server";
 
 export async function loader() {
   const users = await adminGetUsers();
@@ -75,10 +72,7 @@ export default function AdminDashboardRoute() {
           <tbody className="divide-y divide-slate-200 bg-white">
             {users.map((user) => {
               return (
-                <tr
-                  key={user.id}
-                  className="w-full bg-white px-4 py-2 text-left hover:bg-slate-50"
-                >
+                <tr key={user.id} className="w-full bg-white px-4 py-2 text-left hover:bg-slate-50">
                   <td className={cellClassName}>{user.email}</td>
                   <td className={cellClassName}>
                     <a
@@ -91,9 +85,7 @@ export default function AdminDashboardRoute() {
                     </a>
                   </td>
                   <td className={cellClassName}>{user.id}</td>
-                  <td className={cellClassName}>
-                    {user.createdAt.toISOString()}
-                  </td>
+                  <td className={cellClassName}>{user.createdAt.toISOString()}</td>
                   <td className={cellClassName}>{user.admin ? "✅" : ""}</td>
                   <td className={cellClassName}>
                     <Form method="post" reloadDocument>

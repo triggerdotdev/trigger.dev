@@ -1,10 +1,6 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import {
-  FailTaskBodyInput,
-  FailTaskBodyInputSchema,
-  ServerTask,
-} from "@trigger.dev/core";
+import { FailTaskBodyInput, FailTaskBodyInputSchema, ServerTask } from "@trigger.dev/core";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { taskWithAttemptsToServerTask } from "~/models/task.server";

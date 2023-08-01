@@ -8,11 +8,7 @@ import {
   type Logger,
   type TriggerIntegration,
 } from "@trigger.dev/sdk";
-import type {
-  StripeSDK,
-  StripeIntegrationOptions,
-  WebhookEvents,
-} from "./types";
+import type { StripeSDK, StripeIntegrationOptions, WebhookEvents } from "./types";
 
 import * as tasks from "./tasks";
 import z from "zod";
@@ -83,66 +79,42 @@ export class Stripe implements StripeIntegration {
    * Occurs whenever a price is created.
    */
   onPriceCreated(params?: TriggerParams) {
-    return createTrigger(
-      this.source,
-      events.onPriceCreated,
-      params ?? { connect: false }
-    );
+    return createTrigger(this.source, events.onPriceCreated, params ?? { connect: false });
   }
 
   /**
    * Occurs whenever a price is updated.
    */
   onPriceUpdated(params?: TriggerParams) {
-    return createTrigger(
-      this.source,
-      events.onPriceUpdated,
-      params ?? { connect: false }
-    );
+    return createTrigger(this.source, events.onPriceUpdated, params ?? { connect: false });
   }
 
   /**
    * Occurs whenever a price is deleted.
    */
   onPriceDeleted(params?: TriggerParams) {
-    return createTrigger(
-      this.source,
-      events.onPriceDeleted,
-      params ?? { connect: false }
-    );
+    return createTrigger(this.source, events.onPriceDeleted, params ?? { connect: false });
   }
 
   /**
    * Occurs whenever a product is created.
    */
   onProductCreated(params?: TriggerParams) {
-    return createTrigger(
-      this.source,
-      events.onProductCreated,
-      params ?? { connect: false }
-    );
+    return createTrigger(this.source, events.onProductCreated, params ?? { connect: false });
   }
 
   /**
    * Occurs whenever a product is updated.
    */
   onProductUpdated(params?: TriggerParams) {
-    return createTrigger(
-      this.source,
-      events.onProductUpdated,
-      params ?? { connect: false }
-    );
+    return createTrigger(this.source, events.onProductUpdated, params ?? { connect: false });
   }
 
   /**
    * Occurs whenever a product is deleted.
    */
   onProductDeleted(params?: TriggerParams) {
-    return createTrigger(
-      this.source,
-      events.onProductDeleted,
-      params ?? { connect: false }
-    );
+    return createTrigger(this.source, events.onProductDeleted, params ?? { connect: false });
   }
 
   /**
@@ -230,11 +202,10 @@ export type TriggerParams = {
 
 type StripeEvents = (typeof events)[keyof typeof events];
 
-type CreateTriggersResult<TEventSpecification extends StripeEvents> =
-  ExternalSourceTrigger<
-    TEventSpecification,
-    ReturnType<typeof createWebhookEventSource>
-  >;
+type CreateTriggersResult<TEventSpecification extends StripeEvents> = ExternalSourceTrigger<
+  TEventSpecification,
+  ReturnType<typeof createWebhookEventSource>
+>;
 
 function createTrigger<TEventSpecification extends StripeEvents>(
   source: ReturnType<typeof createWebhookEventSource>,
@@ -282,14 +253,11 @@ function createWebhookEventSource(
       if (httpSource.active && webhookData.success) {
         if (missingEvents.length === 0) return;
 
-        const updatedWebhook = await io.integration.updateWebhook(
-          "update-webhook",
-          {
-            id: webhookData.data.id,
-            url: httpSource.url,
-            enabled_events: allEvents as unknown as WebhookEvents[],
-          }
-        );
+        const updatedWebhook = await io.integration.updateWebhook("update-webhook", {
+          id: webhookData.data.id,
+          url: httpSource.url,
+          enabled_events: allEvents as unknown as WebhookEvents[],
+        });
 
         return {
           data: WebhookDataSchema.parse(updatedWebhook),
@@ -301,20 +269,15 @@ function createWebhookEventSource(
         limit: 100,
       });
 
-      const existingWebhook = listResponse.data.find(
-        (w) => w.url === httpSource.url
-      );
+      const existingWebhook = listResponse.data.find((w) => w.url === httpSource.url);
 
       if (existingWebhook) {
-        const updatedWebhook = await io.integration.updateWebhook(
-          "update-found-webhook",
-          {
-            id: existingWebhook.id,
-            url: httpSource.url,
-            enabled_events: allEvents as unknown as WebhookEvents[],
-            disabled: false,
-          }
-        );
+        const updatedWebhook = await io.integration.updateWebhook("update-found-webhook", {
+          id: existingWebhook.id,
+          url: httpSource.url,
+          enabled_events: allEvents as unknown as WebhookEvents[],
+          disabled: false,
+        });
 
         return {
           data: WebhookDataSchema.parse(updatedWebhook),
@@ -356,11 +319,7 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
     const stripeClient = new StripeClient("", { apiVersion: "2022-11-15" });
 
     try {
-      const event = stripeClient.webhooks.constructEvent(
-        rawBody,
-        signature,
-        source.secret
-      );
+      const event = stripeClient.webhooks.constructEvent(rawBody, signature, source.secret);
 
       return {
         events: [
@@ -381,16 +340,11 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
       };
     } catch (error) {
       if (error instanceof Error) {
-        logger.error(
-          "[@trigger.dev/stripe] Error while validating webhook signature",
-          {
-            error: { name: error.name, message: error.message },
-          }
-        );
+        logger.error("[@trigger.dev/stripe] Error while validating webhook signature", {
+          error: { name: error.name, message: error.message },
+        });
       } else {
-        logger.error(
-          "[@trigger.dev/stripe] Unknown Error while validating webhook signature"
-        );
+        logger.error("[@trigger.dev/stripe] Unknown Error while validating webhook signature");
       }
 
       return { events: [] };

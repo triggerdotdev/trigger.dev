@@ -5,12 +5,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { RunList } from "~/presenters/RunListPresenter.server";
 import { formatDuration } from "~/utils";
-import {
-  JobForPath,
-  OrgForPath,
-  ProjectForPath,
-  jobRunDashboardPath,
-} from "~/utils/pathBuilder";
+import { JobForPath, OrgForPath, ProjectForPath, jobRunDashboardPath } from "~/utils/pathBuilder";
 import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 import { Callout } from "../primitives/Callout";
 import { DateTime } from "../primitives/DateTime";

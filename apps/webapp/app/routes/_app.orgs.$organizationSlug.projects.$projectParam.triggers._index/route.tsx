@@ -23,11 +23,7 @@ import { TriggersPresenter } from "~/presenters/TriggersPresenter.server";
 import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
-import {
-  ProjectParamSchema,
-  externalTriggerPath,
-  trimTrailingSlash,
-} from "~/utils/pathBuilder";
+import { ProjectParamSchema, externalTriggerPath, trimTrailingSlash } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
@@ -45,10 +41,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 
 export const handle: Handle = {
   breadcrumb: (match) => (
-    <BreadcrumbLink
-      to={trimTrailingSlash(match.pathname)}
-      title="External Triggers"
-    />
+    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="External Triggers" />
   ),
   expandSidebar: true,
 };
@@ -61,8 +54,7 @@ export default function Integrations() {
   return (
     <>
       <Paragraph variant="small" spacing>
-        External Triggers get registered with external APIs, for example a
-        webhook.
+        External Triggers get registered with external APIs, for example a webhook.
       </Paragraph>
       <Table containerClassName="mt-4">
         <TableHeader>
@@ -80,17 +72,11 @@ export default function Integrations() {
             triggers.map((t) => {
               const path = externalTriggerPath(organization, project, t);
               return (
-                <TableRow
-                  key={t.id}
-                  className={cn(!t.active && "bg-rose-500/30")}
-                >
+                <TableRow key={t.id} className={cn(!t.active && "bg-rose-500/30")}>
                   <TableCell to={path}>
                     <div className="flex items-center gap-1">
                       <NamedIcon
-                        name={
-                          t.integration.definition.icon ??
-                          t.integration.definitionId
-                        }
+                        name={t.integration.definition.icon ?? t.integration.definitionId}
                         className="h-8 w-8"
                       />
                       <LabelValueStack
@@ -115,29 +101,21 @@ export default function Integrations() {
                       <SimpleTooltip
                         button={
                           <div className="flex max-w-[200px] items-start justify-start gap-5 truncate">
-                            {Object.entries(t.params).map(
-                              ([label, value], index) => (
-                                <LabelValueStack
-                                  key={index}
-                                  label={label}
-                                  value={value}
-                                  className="last:truncate"
-                                />
-                              )
-                            )}
+                            {Object.entries(t.params).map(([label, value], index) => (
+                              <LabelValueStack
+                                key={index}
+                                label={label}
+                                value={value}
+                                className="last:truncate"
+                              />
+                            ))}
                           </div>
                         }
                         content={
                           <div className="flex flex-col gap-2">
-                            {Object.entries(t.params).map(
-                              ([label, value], index) => (
-                                <LabelValueStack
-                                  key={index}
-                                  label={label}
-                                  value={value}
-                                />
-                              )
-                            )}
+                            {Object.entries(t.params).map(([label, value], index) => (
+                              <LabelValueStack key={index} label={label} value={value} />
+                            ))}
                           </div>
                         }
                       />

@@ -22,9 +22,7 @@ type LoggedInUser = {
   isNewUser: boolean;
 };
 
-export async function findOrCreateUser(
-  input: FindOrCreateUser
-): Promise<LoggedInUser> {
+export async function findOrCreateUser(input: FindOrCreateUser): Promise<LoggedInUser> {
   switch (input.authenticationMethod) {
     case "GITHUB": {
       return findOrCreateGithubUser(input);
@@ -168,13 +166,7 @@ export function updateUser({
   });
 }
 
-export async function grantUserCloudAccess({
-  id,
-  inviteCode,
-}: {
-  id: string;
-  inviteCode: string;
-}) {
+export async function grantUserCloudAccess({ id, inviteCode }: { id: string; inviteCode: string }) {
   return prisma.user.update({
     where: { id },
     data: {

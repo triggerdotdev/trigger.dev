@@ -6,13 +6,7 @@ const Context = React.createContext<BasePathContext>({
   basePath: "http://localhost:3000",
 });
 
-export function BasePath({
-  basePath,
-  children,
-}: {
-  basePath: string;
-  children: React.ReactNode;
-}) {
+export function BasePath({ basePath, children }: { basePath: string; children: React.ReactNode }) {
   return <Context.Provider value={{ basePath }}>{children}</Context.Provider>;
 }
 

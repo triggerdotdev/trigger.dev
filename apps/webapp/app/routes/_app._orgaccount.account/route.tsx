@@ -156,9 +156,7 @@ export default function Page() {
             variant="simple/small"
             defaultChecked={user.marketingEmails}
           />
-          <FormError id={marketingEmails.errorId}>
-            {marketingEmails.error}
-          </FormError>
+          <FormError id={marketingEmails.errorId}>{marketingEmails.error}</FormError>
         </InputGroup>
 
         <FormButtons

@@ -12,11 +12,7 @@ import {
   UpdateTriggerSourceBody,
   deepMergeFilters,
 } from "@trigger.dev/core";
-import {
-  IOWithIntegrations,
-  IntegrationClient,
-  TriggerIntegration,
-} from "../integrations";
+import { IOWithIntegrations, IntegrationClient, TriggerIntegration } from "../integrations";
 import { IO } from "../io";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
@@ -60,10 +56,7 @@ type ExternalSourceChannelMap = {
 
 type ChannelNames = keyof ExternalSourceChannelMap;
 
-type RegisterFunctionEvent<
-  TChannel extends ChannelNames,
-  TParams extends any
-> = {
+type RegisterFunctionEvent<TChannel extends ChannelNames, TParams extends any> = {
   events: Array<string>;
   missingEvents: Array<string>;
   orphanedEvents: Array<string>;
@@ -78,17 +71,14 @@ type RegisterFunctionEvent<
 type RegisterFunction<
   TIntegration extends TriggerIntegration<IntegrationClient<any, any>>,
   TParams extends any,
-  TChannel extends ChannelNames
+  TChannel extends ChannelNames,
 > = (
   event: RegisterFunctionEvent<TChannel, TParams>,
   io: IOWithIntegrations<{ integration: TIntegration }>,
   ctx: TriggerContext
 ) => Promise<UpdateTriggerSourceBody | undefined>;
 
-export type HandlerEvent<
-  TChannel extends ChannelNames,
-  TParams extends any = any
-> = {
+export type HandlerEvent<TChannel extends ChannelNames, TParams extends any = any> = {
   rawEvent: ExternalSourceChannelMap[TChannel]["event"];
   source: HandleTriggerSource & { params: TParams };
 };
@@ -104,7 +94,7 @@ type FilterFunction<TParams extends any> = (params: TParams) => EventFilter;
 type ExternalSourceOptions<
   TChannel extends ChannelNames,
   TIntegration extends TriggerIntegration<IntegrationClient<any, any>>,
-  TParams extends any
+  TParams extends any,
 > = {
   id: string;
   version: string;
@@ -120,7 +110,7 @@ type ExternalSourceOptions<
 export class ExternalSource<
   TIntegration extends TriggerIntegration<IntegrationClient<any, any>>,
   TParams extends any,
-  TChannel extends ChannelNames = ChannelNames
+  TChannel extends ChannelNames = ChannelNames,
 > {
   channel: TChannel;
 
@@ -153,17 +143,9 @@ export class ExternalSource<
     return this.options.properties?.(params) ?? [];
   }
 
-  async register(
-    params: TParams,
-    registerEvent: RegisterSourceEvent,
-    io: IO,
-    ctx: TriggerContext
-  ) {
+  async register(params: TParams, registerEvent: RegisterSourceEvent, io: IO, ctx: TriggerContext) {
     const { result: event, ommited: source } = omit(registerEvent, "source");
-    const { result: sourceWithoutChannel, ommited: channel } = omit(
-      source,
-      "channel"
-    );
+    const { result: sourceWithoutChannel, ommited: channel } = omit(source, "channel");
     const { result: channelWithoutType } = omit(channel, "type");
 
     const updates = await this.options.register(
@@ -208,15 +190,14 @@ export class ExternalSource<
   }
 }
 
-export type ExternalSourceParams<
-  TExternalSource extends ExternalSource<any, any, any>
-> = TExternalSource extends ExternalSource<any, infer TParams, any>
-  ? TParams & { filter?: EventFilter }
-  : never;
+export type ExternalSourceParams<TExternalSource extends ExternalSource<any, any, any>> =
+  TExternalSource extends ExternalSource<any, infer TParams, any>
+    ? TParams & { filter?: EventFilter }
+    : never;
 
 export type ExternalSourceTriggerOptions<
   TEventSpecification extends EventSpecification<any>,
-  TEventSource extends ExternalSource<any, any, any>
+  TEventSource extends ExternalSource<any, any, any>,
 > = {
   event: TEventSpecification;
   source: TEventSource;
@@ -225,15 +206,10 @@ export type ExternalSourceTriggerOptions<
 
 export class ExternalSourceTrigger<
   TEventSpecification extends EventSpecification<any>,
-  TEventSource extends ExternalSource<any, any, any>
+  TEventSource extends ExternalSource<any, any, any>,
 > implements Trigger<TEventSpecification>
 {
-  constructor(
-    private options: ExternalSourceTriggerOptions<
-      TEventSpecification,
-      TEventSource
-    >
-  ) {}
+  constructor(private options: ExternalSourceTriggerOptions<TEventSpecification, TEventSource>) {}
 
   get event() {
     return this.options.event;
@@ -256,10 +232,7 @@ export class ExternalSourceTrigger<
     };
   }
 
-  attachToJob(
-    triggerClient: TriggerClient,
-    job: Job<Trigger<TEventSpecification>, any>
-  ) {
+  attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpecification>, any>) {
     triggerClient.attachSource({
       key: slugifyId(this.options.source.key(this.options.params)),
       source: this.options.source,

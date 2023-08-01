@@ -12,15 +12,11 @@ import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
 import { EventSpecification, Trigger } from "../types";
 
-export function missingConnectionNotification(
-  integrations: Array<TriggerIntegration>
-) {
+export function missingConnectionNotification(integrations: Array<TriggerIntegration>) {
   return new MissingConnectionNotification({ integrations });
 }
 
-export function missingConnectionResolvedNotification(
-  integrations: Array<TriggerIntegration>
-) {
+export function missingConnectionResolvedNotification(integrations: Array<TriggerIntegration>) {
   return new MissingConnectionResolvedNotification({ integrations });
 }
 

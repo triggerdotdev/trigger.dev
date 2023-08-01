@@ -7,44 +7,24 @@ type DateTimeProps = {
   includeSeconds?: boolean;
 };
 
-export const DateTime = ({
-  date,
-  timeZone = "UTC",
-  includeSeconds = true,
-}: DateTimeProps) => {
+export const DateTime = ({ date, timeZone = "UTC", includeSeconds = true }: DateTimeProps) => {
   const locales = useLocales();
 
   const realDate = typeof date === "string" ? new Date(date) : date;
 
-  const initialFormattedDateTime = formatDateTime(
-    realDate,
-    timeZone,
-    locales,
-    includeSeconds
-  );
+  const initialFormattedDateTime = formatDateTime(realDate, timeZone, locales, includeSeconds);
 
-  const [formattedDateTime, setFormattedDateTime] = useState<string>(
-    initialFormattedDateTime
-  );
+  const [formattedDateTime, setFormattedDateTime] = useState<string>(initialFormattedDateTime);
 
   useEffect(() => {
     const resolvedOptions = Intl.DateTimeFormat().resolvedOptions();
 
     setFormattedDateTime(
-      formatDateTime(
-        realDate,
-        resolvedOptions.timeZone,
-        locales,
-        includeSeconds
-      )
+      formatDateTime(realDate, resolvedOptions.timeZone, locales, includeSeconds)
     );
   }, [locales, includeSeconds, realDate]);
 
-  return (
-    <Fragment>
-      {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
-    </Fragment>
-  );
+  return <Fragment>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</Fragment>;
 };
 
 function formatDateTime(
@@ -69,36 +49,20 @@ export const DateTimeAccurate = ({ date, timeZone = "UTC" }: DateTimeProps) => {
 
   const realDate = typeof date === "string" ? new Date(date) : date;
 
-  const initialFormattedDateTime = formatDateTimeAccurate(
-    realDate,
-    timeZone,
-    locales
-  );
+  const initialFormattedDateTime = formatDateTimeAccurate(realDate, timeZone, locales);
 
-  const [formattedDateTime, setFormattedDateTime] = useState<string>(
-    initialFormattedDateTime
-  );
+  const [formattedDateTime, setFormattedDateTime] = useState<string>(initialFormattedDateTime);
 
   useEffect(() => {
     const resolvedOptions = Intl.DateTimeFormat().resolvedOptions();
 
-    setFormattedDateTime(
-      formatDateTimeAccurate(realDate, resolvedOptions.timeZone, locales)
-    );
+    setFormattedDateTime(formatDateTimeAccurate(realDate, resolvedOptions.timeZone, locales));
   }, [locales, realDate]);
 
-  return (
-    <Fragment>
-      {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
-    </Fragment>
-  );
+  return <Fragment>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</Fragment>;
 };
 
-function formatDateTimeAccurate(
-  date: Date,
-  timeZone: string,
-  locales: string[]
-): string {
+function formatDateTimeAccurate(date: Date, timeZone: string, locales: string[]): string {
   const milliseconds = `00${date.getMilliseconds()}`.slice(-3);
 
   const formattedDateTime = new Intl.DateTimeFormat(locales, {

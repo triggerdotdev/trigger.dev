@@ -33,9 +33,7 @@ export type ListResponsesParams = {
 };
 
 //fix because the Typeform SDK doesn't have the `token` property on an item…
-type ResponseListItem = Prettify<
-  Typeform.API.Responses.List["items"][number]
-> & {
+type ResponseListItem = Prettify<Typeform.API.Responses.List["items"][number]> & {
   token?: string;
 };
 
@@ -49,13 +47,9 @@ export type GetFormParams = {
 
 export type GetFormResponse = Prettify<Typeform.Form>;
 
-export type GetAllResponsesParams = Prettify<
-  Omit<ListResponsesParams, "pageSize">
->;
+export type GetAllResponsesParams = Prettify<Omit<ListResponsesParams, "pageSize">>;
 
-export type GetAllResponsesResponse = Prettify<
-  Typeform.API.Responses.List["items"]
->;
+export type GetAllResponsesResponse = Prettify<Typeform.API.Responses.List["items"]>;
 
 export type GetWebhookResponse = Prettify<Typeform.Webhook>;
 

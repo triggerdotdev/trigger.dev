@@ -4,11 +4,7 @@ import { env } from "~/env.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
 import { integrationCatalog } from "~/services/externalApis/integrationCatalog.server";
-import {
-  Help,
-  HelpSchema,
-  OAuthClientSchema,
-} from "~/services/externalApis/types";
+import { Help, HelpSchema, OAuthClientSchema } from "~/services/externalApis/types";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 
 export class IntegrationClientPresenter {

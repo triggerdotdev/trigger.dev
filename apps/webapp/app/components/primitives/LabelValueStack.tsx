@@ -49,11 +49,7 @@ export function LabelValueStack({
             side="bottom"
             button={
               <Paragraph variant={variation.value}>
-                <a
-                  href={href}
-                  className="underline underline-offset-2"
-                  target="_blank"
-                >
+                <a href={href} className="underline underline-offset-2" target="_blank">
                   {value}
                   <ArrowTopRightOnSquareIcon className="ml-1 inline-block h-4 w-4 text-dimmed" />
                 </a>

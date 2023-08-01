@@ -2,11 +2,7 @@ import { TriggerSource, User } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
-import {
-  Direction,
-  RunList,
-  RunListPresenter,
-} from "./RunListPresenter.server";
+import { Direction, RunList, RunListPresenter } from "./RunListPresenter.server";
 
 export class TriggerSourcePresenter {
   #prismaClient: PrismaClient;

@@ -28,8 +28,6 @@ export function useJob(matches?: RouteMatch[]) {
   return job;
 }
 
-export const useJobChanged = (
-  action: (org: MatchedJob | undefined) => void
-) => {
+export const useJobChanged = (action: (org: MatchedJob | undefined) => void) => {
   useChanged(useOptionalJob, action);
 };

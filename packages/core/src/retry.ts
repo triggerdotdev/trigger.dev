@@ -8,10 +8,7 @@ const DEFAULT_RETRY_OPTIONS = {
   randomize: true,
 } satisfies RetryOptions;
 
-export function calculateRetryAt(
-  retryOptions: RetryOptions,
-  attempts: number
-): Date | undefined {
+export function calculateRetryAt(retryOptions: RetryOptions, attempts: number): Date | undefined {
   const options = {
     ...DEFAULT_RETRY_OPTIONS,
     ...retryOptions,
