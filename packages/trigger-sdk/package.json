@@ -24,6 +24,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@trigger.dev/core": "workspace:*",
     "chalk": "^5.2.0",
     "cronstrue": "^2.21.0",
     "debug": "^4.3.4",
@@ -41,7 +42,6 @@
     "zod-error": "1.5.0"
   },
   "devDependencies": {
-    "@trigger.dev/core": "workspace:*",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/node": "18",

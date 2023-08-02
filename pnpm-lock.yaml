@@ -965,10 +965,10 @@ importers:
       zod: 3.21.4
     dependencies:
       '@tanstack/react-query': 5.0.0-beta.2_react@18.2.0
+      '@trigger.dev/core': link:../core
       debug: 4.3.4
       zod: 3.21.4
     devDependencies:
-      '@trigger.dev/core': link:../core
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/debug': 4.1.7
       '@types/react': 18.2.17
@@ -1010,6 +1010,7 @@ importers:
       zod: 3.21.4
       zod-error: 1.5.0
     dependencies:
+      '@trigger.dev/core': link:../core
       chalk: 5.2.0
       cronstrue: 2.21.0
       debug: 4.3.4
@@ -1026,7 +1027,6 @@ importers:
       zod: 3.21.4
       zod-error: 1.5.0
     devDependencies:
-      '@trigger.dev/core': link:../core
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/debug': 4.1.7
       '@types/node': 18.14.0

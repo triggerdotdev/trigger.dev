@@ -1,5 +1,4 @@
 {
-  "private": true,
   "name": "@trigger.dev/core",
   "version": "0.0.4",
   "description": "Common code used across the Trigger.dev SDK and platform",
