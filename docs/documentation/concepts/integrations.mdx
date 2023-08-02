@@ -1,0 +1,112 @@
+---
+title: Integrations
+description: "Integrations make it easy to use APIs in your Jobs"
+---
+
+<Note>
+  You can use any API in your Jobs by using existing Node.js SDKs or HTTP
+  requests. Integrations just make it much easier especially when you want to
+  use OAuth. And you get great logging.
+</Note>
+
+An Integration is a package you install that makes it easy to work with a specific API. They:
+
+- Create a connection to the API (using OAuth, API keys or tokens)
+- Provide a set of [Tasks](/documentation/concepts/tasks) to work with the API
+- Provide a set of [Triggers](/documentation/concepts/triggers) to listen for events from the API
+- Allow you to use the **full underlying authenticated SDK client** directly
+
+## An example
+
+This job sends Slack messages when a new GitHub issue is opened on the `triggerdotdev/trigger.dev` repo.
+
+```ts
+import { Github } from "@trigger.dev/github";
+import { Slack } from "@trigger.dev/slack";
+
+//1. create GitHub client using a token
+const github = new Github({
+  id: "github",
+  token: process.env.GITHUB_TOKEN!,
+});
+
+//2. create Slack client using OAuth
+const slack = new Slack({
+  id: "slack",
+});
+
+new Job(client, {
+  id: "alert-on-new-github-issues",
+  name: "Alert on new GitHub issues",
+  version: "0.1.1",
+  integrations: {
+    //3. include the slack integration
+    slack,
+  },
+  //4. use the github integration to listen for new issues
+  trigger: github.triggers.repo({
+    event: events.onIssueOpened,
+    owner: "triggerdotdev",
+    repo: "trigger.dev",
+  }),
+  run: async (payload, io, ctx) => {
+    //5. send a message to slack
+    const response = await io.slack.postMessage("Slack alert", {
+      text: `New Issue opened: ${payload.issue.html_url}`,
+      channel: "C04GWBTDQ7W",
+    });
+
+    return response;
+  },
+});
+```
+
+There are some things worth highlighting here:
+
+1. Integration clients can use API keys or tokens.
+2. Integration clients can use OAuth.
+3. Integrations are added to a Job by adding them to the `integrations`.
+4. The Job Trigger can use an Integration to listen for events from the API.
+5. You can use the Integration to make API calls inside the `run` function.
+
+## Authentication
+
+### API Keys and Tokens
+
+You the value in when creating your Integration client. They are never sent from your server by the Trigger.dev service, they are local to your servers. We recommend you use a secure method of storing these values and passing them to your code, like environment variables.
+
+### OAuth
+
+You can use the [Integrations Dashboard](/documentation/guides/using-integrations) to setup OAuth for an Integration. We make it easy to use OAuth by dealing with the OAuth flow, token refreshing and storage for you.
+
+You can use OAuth to authenticate your internal team with an Integration or to allow your users to authenticate with an Integration – we call user authentication [Trigger.dev Connect](/documentation/guides/connect).
+
+## References
+
+<CardGroup>
+  <Card
+    title="Integrations Dashboard"
+    icon="sidebar"
+    href="documentation/guides/integrations"
+  >
+    The Integrations Dashboard allows you to manage your Integrations and setup
+    OAuth.
+  </Card>
+  <Card
+    title="Trigger.dev Connect"
+    icon="user-plus"
+    href="/documentation/concepts/connect"
+  >
+    Authenticate your users with an Integration using Trigger.dev Connect.
+  </Card>
+  <Card title="View Integrations" icon="grid-2" href="/integrations">
+    Trigger.dev integrates with a wide range of services.
+  </Card>
+  <Card
+    title="Create an Integration"
+    icon="square-plus"
+    href="/integrations/create"
+  >
+    Create an Integration for your own use or as a public package.
+  </Card>
+</CardGroup>

@@ -1,0 +1,25 @@
+---
+title: "ConnectionAuth"
+sidebarTitle: "ConnectionAuth"
+description: "An object containing the auth data for an integration that's using hosted auth."
+---
+
+## Properties
+
+<ParamField body="type" type="string" required>
+  The type of auth. Currently we only support `oauth2`.
+</ParamField>
+
+<ParamField body="accessToken" type="string" required>
+  The access token that will be used to authenticate requests to the
+  integration.
+</ParamField>
+
+<ParamField body="scopes" type="string[]">
+  The scopes that were granted by the user during the auth process.
+</ParamField>
+
+<ParamField body="additionalFields" type="Record<string, string>">
+  Any additional fields that were returned by the integration during the auth
+  process.
+</ParamField>

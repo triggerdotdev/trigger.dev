@@ -1,0 +1,46 @@
+---
+title: "io.unregisterTrigger()"
+sidebarTitle: "unregisterTrigger()"
+description: "`io.unregisterTrigger()` allows you to unregister a [DynamicTrigger](/sdk/dynamictrigger) that was previously registered with `io.registerTrigger()`."
+---
+
+## Parameters
+
+<Snippet file="stable-key-param.mdx" />
+<ResponseField name="dynamicTrigger" type="DynamicTrigger" required>
+  A [DynamicTrigger](/sdk/dynamictrigger) that will trigger any Jobs it's
+  attached to.
+</ResponseField>
+<ResponseField name="id" type="string" required>
+  A unique id for the trigger. This is used to identify and unregister it later.
+</ResponseField>
+
+## Returns
+
+A Promise with the following shape:
+
+<ResponseField name="ok" type="boolean" required>
+  Whether it was successfully unregistered.
+</ResponseField>
+
+<RequestExample>
+  
+  ```typescript
+new Job(client, {
+  id: "unregister-job",
+  name: "Unregister dynamic trigger",
+  version: "0.1.1",
+  trigger: eventTrigger({
+    name: "dynamic.unregister",
+    schema: z.object({
+      id: z.string(),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    //unregisters a DynamicSchedule with a CRON 
+    await io.unregisterTrigger("unregister", dynamicTrigger, payload.id);
+},
+});
+```
+
+</RequestExample>

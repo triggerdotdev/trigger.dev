@@ -1,0 +1,81 @@
+---
+title: "eventTrigger()"
+description: "`eventTrigger()` is set as a [Job's trigger](/sdk/job) to subscribe to an event a Job from [a sent event](/sdk/triggerclient/instancemethods/sendevent)."
+---
+
+<Snippet file="send-event-options.mdx" />
+
+You can have multiple Jobs that subscribe to the same event, they will all trigger when the event gets delivered.
+
+## Parameters
+
+<ResponseField name="options" type="object" required>
+  <Expandable title="options" defaultOpen>
+    <ResponseField name="name" type="string" required>
+      The name of the event you are subscribing to. Must be an exact match (case
+      sensitive).
+    </ResponseField>
+    <ResponseField name="schema" type="object">
+      A [Zod](/documentation/guides/zod) schema that defines the shape of the
+      event payload. The default is `z.any()` which is `any`.
+    </ResponseField>
+    <ResponseField name="source" type="string">
+      You can use this to filter events based on the source.
+    </ResponseField>
+    <ResponseField name="filter" type="object">
+      Used to filter which events trigger the Job.
+
+      An example:
+
+      ```typescript
+      {
+        name: ["John", "Jane"],
+        age: [18, 21]
+      }
+      ```
+
+      This filter would match against an event with the following data:
+
+      ```json
+      {
+        "name": "Jane",
+        "age": 18,
+        "location": "San Francisco"
+      }
+      ```
+
+    </ResponseField>
+
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+
+```typescript eventTrigger()
+//this Job subscribes to an event called new.user
+new Job(client, {
+  id: "job-2",
+  name: "Second job",
+  version: "0.0.1",
+  //subscribes to the "new.user" event
+  trigger: eventTrigger({
+    //sent events with this name will trigger this Job
+    name: "new.user",
+    //the expected payload shape
+    schema: z.object({
+      userId: z.string(),
+      tier: z.union([z.literal("free"), z.literal("pro")]),
+    }),
+    //only events with the tier: "pro" will trigger this Job
+    filter: {
+      tier: ["pro"],
+    },
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.log("New pro user created", { userId: payload.userId });
+    //do stuff
+  },
+});
+```
+
+</RequestExample>

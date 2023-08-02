@@ -1,0 +1,33 @@
+---
+title: "Overview"
+description: "TriggerClient is used to create a client that connects to the Trigger.dev platform"
+---
+
+A [TriggerClient](/documentation/concepts/client-adaptors) is used to connect to a specific [Project](/documentation/concepts/projects) by using an [API Key](/documentation/concepts/environments-apikeys).
+
+```ts Example
+export const client = new TriggerClient({
+  id: "my-webapp",
+  apiKey: process.env.TRIGGER_API_KEY!,
+});
+```
+
+## Constructor
+
+### [TriggerClient()](/sdk/triggerclient/constructor)
+
+Creates a new TriggerClient object.
+
+## Instance properties
+
+<ResponseField name="id" type="string">
+  Is used to uniquely identify the client.
+</ResponseField>
+
+## Instance methods
+
+#### [sendEvent()](/sdk/triggerclient/instancemethods/sendevent)
+
+Sending an event triggers any Jobs that are listening for that event (based on the name). Use [eventTrigger()](/sdk/eventtrigger) on a Job to listen for events.
+
+You can call this function from anywhere in your code to send an event. The other way to send an event is by using [io.sendEvent()](/sdk/io) from inside a `run()` function.

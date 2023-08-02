@@ -1,0 +1,18 @@
+```typescript Wait example
+new Job(client, {
+  id: "delay-job",
+  name: "Delay Job",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "example.event",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Hi");
+
+    // the second parameter is the number of seconds to wait
+    await io.wait("wait 30 days", 30 * 24 * 60 * 60);
+
+    await io.logger.info("Sorry for the slow reply!");
+  },
+});
+```

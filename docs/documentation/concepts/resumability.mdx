@@ -1,0 +1,58 @@
+---
+title: Resumability
+description: "Runs are resumable by returning Task stored data"
+---
+
+[Runs](/documentation/concepts/runs) can exceed the maximum timeout on serverless platforms and can survive server restarts.
+
+## How does this work?
+
+1. When a Run is created, it is given a unique ID. This ID is used to identify the Run.
+2. [Tasks](/documentation/concepts/tasks) have a `key` which is a string and is the first parameter. This should be stable and unique inside that `run` function.
+3. When a Task is completed, its output is stored.
+4. If a Run exceeds the timeout, or your server restarts, the Run will be "replayed".
+5. The second+ time it is run, Tasks that have already successfully completed will immediately return their first output. The code inside them won't re-run.
+
+## How to use keys
+
+Like we mentioned above, we use Task keys to determine which Tasks have already been executed. They are defined by you inside your `run` function, for example when you call `io.slack.postMessage`:
+
+```ts
+await io.slack.postMessage("⭐️ New Star", {
+  channel: "C04GWUTDC3W",
+  text: `@${starredBy} just starred ${repoName}!`,
+});
+```
+
+In this example, the key is the string `"⭐️ New Star"`. This means that if the Job is interrupted and then resumed, the `slack.postMessage` Task will be skipped because it has already been executed.
+
+If you make multiple calls to `slack.postMessage`, you should use different keys for each call. For example:
+
+```ts
+await io.slack.postMessage("⭐️ New Star", {
+  channel: "C04GWUTDC3W",
+  text: `@${starredBy} just starred ${repoName}!`,
+});
+
+await io.slack.postMessage("🚨 Critical Issue", {
+  channel: "C04GWUTDC3W",
+  text: `@${assignee} just opened a critical issue in ${repoName}!`,
+});
+```
+
+If you are calling a Task multiple times with the same key, it will only be executed once. For example, if you call `slack.postMessage` with the key `"⭐️ New Star"` twice, it will only be executed once.
+
+## How to use keys with loops
+
+If you are using a loop, you should use the loop index as the key. For example:
+
+```ts
+for (let i = 0; i < 10; i++) {
+  await ctx.waitFor(`Wait ${i}`, { seconds: 30 });
+
+  await slack.postMessage(`⭐️ New Star ${i}`, {
+    channelName: "github-stars",
+    text: `@${starredBy} just starred ${repoName}!`,
+  });
+}
+```

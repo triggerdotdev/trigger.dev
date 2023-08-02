@@ -1,0 +1,52 @@
+---
+title: Introduction
+---
+
+<Snippet file="integration-getting-started.mdx" />
+
+## Installation
+
+<CodeGroup>
+
+```bash npm
+npm install @trigger.dev/supabase
+```
+
+```bash pnpm
+pnpm add @trigger.dev/supabase
+```
+
+```bash yarn
+yarn add @trigger.dev/supabase
+```
+
+</CodeGroup>
+
+## Usage
+
+Our Supabase package supports two different integrations: One for the Supabase Management API and one that wraps the `@supabase/supabase-js` client.
+
+<CardGroup cols={2}>
+  <Card
+    title="Management API"
+    icon="server"
+    href="/integrations/apis/supabase/management"
+  >
+    The [Management API](https://supabase.com/docs/reference/api/introduction)
+    is used to manage your Supabase organization, projects, and databases. It
+    can also be used to trigger jobs based on changes in your Supabase database.
+    Works with OAuth or Personal Access Tokens.
+  </Card>
+  <Card
+    title="Supabase Client"
+    icon="database"
+    href="/integrations/apis/supabase/client"
+  >
+    Wraps the [@supabase/supabase-js](https://github.com/supabase/supabase-js)
+    client to make it easy to use Supabase in your jobs to run queries against
+    your database and access other functionality, like auth, storage, and
+    functions. Works with your Supabase
+    [service_role](https://supabase.com/docs/guides/api/api-keys#the-servicerole-key)
+    key.
+  </Card>
+</CardGroup>

@@ -1,0 +1,51 @@
+---
+title: "intervalTrigger()"
+description: "`intervalTrigger()` is set as a [Job's trigger](/sdk/job) to trigger a Job at a recurring interval."
+---
+
+## Development
+
+<Snippet file="scheduled-dev-warning.mdx" />
+
+## Defining an interval
+
+Intervals are set with a number of seconds. There are some important considerations:
+
+- The Job will first run the specified number of seconds after it has first connected to an [Environment](/documentation/concepts/environments-endpoints). This will happen when you first [deploy](/documentation/guides/deployment) that Job.
+- The minimum interval is 60 seconds (any input less than this it will default to 60).
+- The maximum interval is 86400 seconds (24 hours), if you pass more than this it will trigger every 24 hours.
+
+If you wish to Run a Job at an exact time or less frequently than once pr day you should use a [cronTrigger()](/sdk/crontrigger) instead.
+
+## Parameters
+
+<ResponseField name="options" type="object" required>
+  <Expandable title="options" defaultOpen>
+    <ResponseField name="seconds" type="number" required>
+      The number of seconds for the interval. Min = 60, Max = 86400 (1 day)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+
+```typescript Every 5 minutes
+new Job(client, {
+  id: "scheduled-job-1",
+  name: "Scheduled Job 1",
+  version: "0.1.1",
+  // Every 5 minutes
+  trigger: intervalTrigger({
+    seconds: 60 * 5,
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Received the scheduled event", {
+      payload,
+    });
+
+    return { foo: "bar" };
+  },
+});
+```
+
+</RequestExample>

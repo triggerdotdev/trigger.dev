@@ -1,0 +1,31 @@
+---
+title: "Client & Adaptors"
+description: "The Client is how you interact with the API, through an Adaptor."
+---
+
+## Client
+
+A Client is used to connect to a specific [Project](/documentation/concepts/projects) by using an [API Key](/documentation/concepts/environments-apikeys).
+
+Clients are created using the `TriggerClient` class.
+
+```ts
+export const client = new TriggerClient({
+  id: "my-webapp",
+  apiKey: process.env.TRIGGER_API_KEY!,
+});
+```
+
+View the [Client API Reference](//sdk/triggerclient) for more information.
+
+## Adaptors
+
+Adaptors allows Clients to receive data from the Trigger API. They do this by creating an API endpoint that data can be received at and transforming data into the expected format.
+
+Each platform has one or more adaptors, see the guides below:
+
+| Platform                                          | Adaptor              |
+| ------------------------------------------------- | -------------------- |
+| [Next.js](/documentation/guides/platforms/nextjs) | `createPagesRoute()` |
+| [Next.js](/documentation/guides/platforms/nextjs) | `createAppRoute()`   |
+| Express                                           | Coming soon          |

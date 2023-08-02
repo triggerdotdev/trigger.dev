@@ -1,0 +1,28 @@
+---
+title: "redactString"
+description: "An easy way to redact sensitive information from a string"
+---
+
+`redactString` is a [Tagged template](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals#tagged_templates) that can be used to redact sensitive information from a string.
+
+It is used internally to redact Bearer tokens in Integrations that use [backgroundFetch](/sdk/io/backgroundFetch).
+
+<RequestExample>
+
+```typescript
+const response = return io.backgroundFetch<CreateCompletionResponseData>(
+  "background",
+  "https://someapi.com/v1/endpointname",
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      //by using `redactString` the apiKey will be redacted in the logs
+      Authorization: redactString`Bearer ${auth.apiKey}`,
+    },
+    body: JSON.stringify(params),
+  }
+);
+```
+
+</RequestExample>

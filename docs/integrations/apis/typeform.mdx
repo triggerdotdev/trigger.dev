@@ -1,0 +1,156 @@
+---
+title: Typeform
+---
+
+<Snippet file="integration-getting-started.mdx" />
+
+## Installation
+
+<CodeGroup>
+
+```bash npm
+npm install @trigger.dev/typeform@latest
+```
+
+```bash pnpm
+pnpm install @trigger.dev/typeform@latest
+```
+
+```bash yarn
+yarn add @trigger.dev/typeform@latest
+```
+
+</CodeGroup>
+
+## Authentication
+
+Typeform supports Personal Access Tokens, to create yours read the [Typeform Personal Access Token guide](https://www.typeform.com/developers/get-started/personal-access-token/).
+
+```ts
+import { Typeform } from "@trigger.dev/typeform";
+
+//create Typeform client using a person access token
+const typeform = new Typeform({
+  id: "typeform-1",
+  token: process.env.TYPEFORM_PAT!,
+});
+```
+
+## Get notified of new form responses
+
+The Typeform Integration allows you to trigger a job run when a new form response is submitted using the `onFormResponse` trigger:
+
+```ts
+import { client } from "@/trigger";
+import { Typeform } from "@trigger.dev/typeform";
+import { Job } from "@trigger.dev/sdk";
+
+export const typeform = new Typeform({
+  id: "typeform-1",
+  token: process.env.TYPEFORM_API_KEY!,
+});
+
+new Job(client, {
+  id: "do-something-on-new-responses",
+  name: "Send a message to slack on new responses",
+  version: "0.1.1",
+  trigger: typeform.onFormResponse({
+    uid: "<form id>",
+    tag: "your-tag-here",
+  }),
+  run: async (payload, io, ctx) => {},
+});
+```
+
+To find your Form ID, visit your Typeform dashboard and find the form you'd like to use. Click on the "Share" navigation link and you'll find your Form ID in the share URL:
+
+![Typeform Form ID](/images/typeform-form-id.png)
+
+The `tag` parameter is a unique name you want to use for the webhook, and maps 1-to-1 with a single webhook source. Changing the `tag` will cause another webhook to be registered with Typeform. You can make use of the same `tag` value in multiple job triggers.
+
+## Tasks
+
+## All tasks
+
+| Function Name     | Description                                                                           |
+| ----------------- | ------------------------------------------------------------------------------------- |
+| `listForms`       | Retrieve a list of Forms.                                                             |
+| `getForm`         | Get a single form by uid.                                                             |
+| `listResponses`   | Pagintated list of responses by form.                                                 |
+| `getAllResponses` | Will collect all the responses on a form by making multiple requests to listResponses |
+
+### Usage
+
+```ts
+import { Typeform } from "@trigger.dev/typeform";
+
+//create Typeform client using a person access token
+const typeform = new Typeform({
+  id: "typeform-1",
+  token: process.env.TYPEFORM_PAT!,
+});
+
+new Job(client, {
+  id: "typeform-tasks",
+  name: "Typeform Tasks",
+  version: "0.1.0",
+  integrations: { typeform },
+  trigger: eventTrigger({
+    name: "typeform.tasks",
+  }),
+  run: async (payload, io, ctx) => {
+    const forms = await io.typeform.listForms("list-forms");
+
+    const form = await io.typeform.getForm("get-form", {
+      uid: payload.formId,
+    });
+
+    const listResponses = await io.typeform.listResponses("list-responses", {
+      uid: payload.formId,
+      pageSize: 50,
+    });
+
+    const allResponses = await io.typeform.getAllResponses(
+      "get-all-responses",
+      {
+        uid: payload.formId,
+      }
+    );
+  },
+});
+```
+
+## Using the underlying client
+
+You can use the underlying client to do anything [@typeform/api-client](https://www.npmjs.com/package/@typeform/api-client) supports, but make sure to wrap it in a task:
+
+```ts
+import { Typeform } from "@trigger.dev/typeform";
+
+//create Typeform client using a person access token
+const typeform = new Typeform({
+  id: "typeform-1",
+  token: process.env.TYPEFORM_PAT!,
+});
+
+new Job(client, {
+  id: "typeform-client",
+  name: "Typeform Client",
+  version: "0.1.0",
+  integrations: { typeform },
+  trigger: eventTrigger({
+    name: "typeform.client",
+  }),
+  run: async (payload, io, ctx) => {
+    const form = await io.runTask(
+      "create-form",
+      { name: "Create Form", icon: "typeform" },
+      async () => {
+        return io.typeform.client.forms.create({
+          data: { ... }
+        })
+      }
+    );
+  },
+});
+```

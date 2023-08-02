@@ -1,0 +1,49 @@
+---
+title: "Managing Jobs"
+description: "How to view, add, modify, and delete jobs"
+---
+
+[Jobs](/documentation/concepts/jobs) live inside a [Project](/documentation/concepts/projects).
+
+For Jobs to actually run, they need to be connected to the Trigger.dev platform.
+
+## Viewing Jobs
+
+The main page for a Project is the list of connected Jobs. You can see overview details for a each Job here, including details on the Trigger, Integrations and when it was last run.
+
+<Frame caption="The homepage of a Project">
+  ![Populated Jobs Page](/images/project-jobs.png)
+</Frame>
+
+## How to add your first Job
+
+We recommend you do the initial setup of a new Project by following our [quick start guide](/documentation/quickstart). Once completed you should have an example Job in your dashboard.
+
+## Adding more Jobs locally
+
+When you add a new Job to your codebase, you'll need to connect it to Trigger.dev. This is achieved by refreshing the endpoint in your local Dev environment.
+
+1. Go to the "Environments & API Keys" page for your Project
+   ![Click "Environments & API Keys"](/images/environments-link.png)
+2. Select the "DEV" row in the table of endpoints.
+   ![Environments & API Keys](/images/environments-click-dev.png)
+3. Click the "Refresh now" button
+   ![Refresh the DEV endpoint](/images/endpoint-refresh.png)
+
+<Note>
+  You only need to do this when you add a new Job (a job with an ID that hasn't
+  been connected to Trigger.dev before). If you modify an existing Job, you
+  don't need to refresh the endpoint.
+</Note>
+
+## Deploying Jobs
+
+See our [deployment guide](/documentation/guides/deployment).
+
+## Disabling Jobs
+
+Sometimes there's a Job that you no longer want to be Triggered. You can achieve this by Disabling it. This will prevent the `run()` function being called for that Job.
+
+## Archiving Jobs
+
+<Note>Being able to archive Jobs is coming soon</Note>

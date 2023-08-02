@@ -1,0 +1,61 @@
+---
+title: "Scheduled triggers"
+sidebarTitle: "Scheduled"
+description: "Run a Job on a recurring schedule"
+---
+
+A Scheduled Trigger runs a Job on a repeated schedule. You can set the schedule using a CRON expression or an interval.
+
+<Snippet file="scheduled-dev-warning.mdx" />
+
+## Interval
+
+This job will run every 60 seconds, starting 60 seconds after this Job is first indexed. Note that it does not run at the top of every minute, but rather 60 seconds after the Job is first indexed.
+
+```ts
+import { Job, intervalTrigger } from "@trigger.dev/sdk";
+
+new Job(client, {
+  id: "scheduled-job-1",
+  name: "Scheduled Job 1",
+  version: "0.1.1",
+  trigger: intervalTrigger({
+    seconds: 60,
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Received the scheduled event", {
+      payload,
+    });
+
+    return { foo: "bar" };
+  },
+});
+```
+
+## Using CRON syntax
+
+If you want a Job to run at a specific time or on a specific day of the week, you can use a CRON expression.
+
+This job will run at 2:30pm every Monday. You can get help with [CRON syntax](https://crontab.guru/#30_14_*_*_1).
+
+<Note>These are not in local time, they are UTC.</Note>
+
+```ts
+import { Job, cronTrigger } from "@trigger.dev/sdk";
+
+new Job(client, {
+  id: "scheduled-job-2",
+  name: "Scheduled Job 2",
+  version: "0.1.1",
+  trigger: cronTrigger({
+    cron: "30 14 * * 1",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Received the scheduled event", {
+      payload,
+    });
+
+    return { foo: "bar" };
+  },
+});
+```

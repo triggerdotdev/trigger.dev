@@ -1,0 +1,30 @@
+---
+title: "TriggerClient: sendEvent() instance method"
+sidebarTitle: "sendEvent()"
+description: "The `sendEvent()` instance method send an event that triggers any Jobs that are listening for that event (based on the name)."
+---
+
+You can call this function from anywhere in your code to send an event. The other way to send an event is by using [io.sendEvent()](/sdk/io/sendevent) from inside a `run()` function.
+
+Use [eventTrigger()](/sdk/eventtrigger) on a Job to listen for events.
+
+## Parameters
+
+<Snippet file="send-event-params.mdx" />
+
+## Returns
+
+<Snippet file="send-event-return.mdx" />
+
+<RequestExample>
+
+```ts Simple example with a payload
+const event = client.sendEvent({
+  name: "new.user",
+  payload: {
+    userId: "u_1234567890",
+  },
+});
+```
+
+</RequestExample>

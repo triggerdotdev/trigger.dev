@@ -1,0 +1,95 @@
+---
+title: "Overview"
+description: "`DynamicTrigger` allows you to define a trigger that can be configured dynamically at runtime."
+---
+
+Sometimes you want to subscribe to a webhook but you don't know the exact configuration until runtime.
+
+## Constructor
+
+### [DynamicTrigger()](/sdk/dynamictrigger/constructor)
+
+Creates a new `DynamicTrigger` instance.
+
+## Instance methods
+
+### [register()](/sdk/dynamictrigger/register)
+
+Use this method to register a new schedule with the DynamicTrigger.
+
+### [unregister()](/sdk/dynamictrigger/unregister)
+
+Use this method to unregister a schedule from the DynamicTrigger, using the id you used when registering it.
+
+### Example use cases:
+
+#### Subscribe to new GitHub issues for all your repos
+
+1. Create a `DynamicTrigger` with the [onIssueOpened](/integrations/apis/github-triggers) event.
+2. Loop through all of your repos add them to it.
+3. Use an [onNewRepository](/integrations/apis/github-triggers) trigger and add them to the `DynamicTrigger`.
+
+<RequestExample>
+
+```typescript DynamicTrigger
+//1. create a DynamicTrigger
+const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
+  id: "github-issue-opened",
+  event: events.onIssueOpened,
+  source: github.sources.repo,
+});
+
+//2. create a Job that is attached to the dynamic trigger
+new Job(client, {
+  id: "listen-for-dynamic-trigger",
+  name: "Listen for dynamic trigger",
+  version: "0.1.1",
+  trigger: dynamicOnIssueOpenedTrigger,
+  integrations: {
+    slack,
+  },
+  run: async (payload, io, ctx) => {
+    await io.slack.postMessage("Slack 📝", {
+      text: `New Issue opened on repo: ${
+        payload.issue.html_url
+      }. \n\n${JSON.stringify(ctx)}`,
+      channel: "C04GWUTDC3W",
+    });
+  },
+});
+
+//3. Register the DynamicTrigger anywhere in your app
+async function registerRepo(owner: string, repo: string) {
+  //the first param (key) should be unique
+  await dynamicOnIssueOpenedTrigger.register(`${owner}/${repo}`, {
+    owner,
+    repo,
+  });
+}
+
+//4. Register inside other Jobs
+new Job(client, {
+  id: "new-repo",
+  name: "New repo",
+  version: "0.1.1",
+  //5. when a new repo is created in your org
+  trigger: github.triggers.org({
+    event: events.onNewRepository,
+    org: "triggerdotdev",
+  }),
+  run: async (payload, io, ctx) => {
+    //6. Register the dynamic trigger so you get notified when an issue is opened
+    return await io.registerTrigger(
+      "register-repo",
+      dynamicOnIssueOpenedTrigger,
+      payload.repository.name,
+      {
+        owner: payload.repository.owner.login,
+        repo: payload.repository.name,
+      }
+    );
+  },
+});
+```
+
+</RequestExample>

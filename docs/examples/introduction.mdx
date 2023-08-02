@@ -1,0 +1,25 @@
+---
+title: Example Jobs
+description: "An ever-growing list of example Jobs which you can use to get started with Trigger.dev."
+---
+
+<Info>
+  If you are using integrations, you'll need set up authentication either using
+  OAuth or API keys / access tokens. You can find out how to do that in the
+  [integrations section](/integrations).
+</Info>
+
+| Job (code in link)                                                                                                                              | Description                                                                                                                                                   | Integrations used                                                      |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| [Basic delay](https://github.com/triggerdotdev/examples/blob/main/delays/src/jobs/delayJob.ts)                                                  | Logs a message to the console, waits for 5 minutes, and then logs another message.                                                                            | N/A                                                                    |
+| [Basic interval](https://github.com/triggerdotdev/examples/blob/main/scheduled/src/jobs/interval.ts)                                            | This Job will run every 60 seconds, starting 60 seconds after this Job is first indexed.                                                                      | N/A                                                                    |
+| [Cron scheduled interval](https://github.com/triggerdotdev/examples/blob/main/scheduled/src/jobs/cronScheduled.ts)                              | A scheduled Job which runs at 2:30pm every Monday.                                                                                                            | N/A                                                                    |
+| [Tell me a joke using OpenAI](https://github.com/triggerdotdev/examples/blob/main/openai/src/jobs/tellMeAJoke.ts)                               | Generates a random joke using OpenAI GPT 3.5.                                                                                                                 | [OpenAI](/integrations/apis/openai)                                    |
+| [Generate an image using OpenAI](https://github.com/triggerdotdev/examples/blob/main/openai/src/jobs/generateHedgehogImages.ts)                 | Generates a random image of a hedgehog using OpenAI DALL-E.                                                                                                   | [OpenAI](/integrations/apis/openai)                                    |
+| [Add a custom label to a GitHub issue when it is created](https://github.com/triggerdotdev/examples/blob/main/github/src/jobs/onIssueOpened.ts) | When a new GitHub issue is opened it adds a "Bug" label to it.                                                                                                | [GitHub](/integrations/apis/github)                                    |
+| [GitHub new star alert](https://github.com/triggerdotdev/examples/blob/main/github/src/jobs/newStarAlert.ts)                                    | When a repo is starred a message is logged with the new Stargazers count.                                                                                     | [GitHub](/integrations/apis/github)                                    |
+| [Github new star alert in Slack](https://github.com/triggerdotdev/examples/blob/main/github/src/jobs/newStarToSlack.ts)                         | When a repo is starred, a message is sent to a Slack channel with the name and URL of the GitHub user who starred the repo, and the updated Stargazers count. | [GitHub](/integrations/apis/github), [Slack](/integrations/apis/slack) |
+| [Send a Slack message when an event is received](https://github.com/triggerdotdev/examples/blob/main/slack/src/jobs/sendSlackMessage.ts)        | Sends a Slack message to a specific channel when an event is received.                                                                                        | [Slack](/integrations/apis/slack)                                      |
+| [Send an email using Resend](https://github.com/triggerdotdev/examples/blob/main/resend/src/jobs/resendBasicEmail.ts)                           | Send a basic email using Resend                                                                                                                               | [Resend](/integrations/apis/resend)                                    |
+
+If you have any ideas for Jobs you would like to build, you can fill in the [Job request form](https://bcymafitv0e.typeform.com/to/YLUKy9my#source=example-jobs-docs).

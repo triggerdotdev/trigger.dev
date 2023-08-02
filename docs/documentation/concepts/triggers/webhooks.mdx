@@ -1,0 +1,54 @@
+---
+title: "Webhooks"
+sidebarTitle: "Webhooks"
+description: "Webhooks allow you to subscribe to events from APIs you use."
+---
+
+Webhooks are a crucial part of API development, allowing for real-time reactions to various events across different systems, such as when a Stripe Payment is made, or when a GitHub issue is created.
+
+## Advantages of using Trigger.dev for webhooks
+
+Webhooks can be difficult to work with, especially when developing locally. We make them far easier to use with our [Integrations](/integrations).
+
+- You don't need to register/unregister for webhooks, we do it for you
+- We receive the webhook, then keep trying to send it to you until you receive it. If your server goes down, no problem.
+
+## Usage
+
+There are two ways to use webhooks with Trigger.dev:
+
+1. Use one of our built-in Integrations, such as [GitHub](/integrations/github). We'll take care of registering the webhook for you.
+2. [Create your own Integration](/integrations/create) that registers for webhooks, this is useful if you want to use a service that we don't have an Integration for.
+
+## Example
+
+```ts Github
+import { Job } from "@trigger.dev/sdk";
+import { Github, events } from "@trigger.dev/github";
+
+//GitHub integration with API Key (it supports OAuth too)
+const github = new Github({
+  id: "github",
+  token: process.env.GITHUB_API_KEY!,
+});
+
+new Job(client, {
+  id: "critical-issue-alert",
+  name: "Critical Issue Alert",
+  version: "0.1.0",
+  //When a GitHub issue is modified on the triggerdotdev/trigger.dev repo
+  trigger: github.triggers.repo({
+    event: events.onIssue,
+    owner: "triggerdotdev",
+    repo: "trigger.dev",
+  }),
+  //include any integrations you want to use
+  integrations: {
+    slack,
+  },
+  //this function gets executed when the webhook is received
+  run: async (payload, io, ctx) => {
+    await io.logger.info(`Action was ${payload.action}`);
+  },
+});
+```

@@ -1,0 +1,12 @@
+---
+title: Delays
+description: "Delays can be used to wait for a certain amount of time before continuing a Run."
+---
+
+[Runs](/documentation/concepts/runs) can be paused using delays. They can be very long.
+
+Delays works even if you're on a serverless platform with timeouts, or if your server goes down. They utilize [resumability](/documentation/concepts/resumability) to ensure that the Run can be resumed after the delay.
+
+## Usage
+
+<Snippet file="delay-example.mdx" />

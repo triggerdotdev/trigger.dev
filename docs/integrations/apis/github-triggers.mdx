@@ -1,0 +1,46 @@
+---
+title: Triggers
+---
+
+## All triggers
+
+| Function Name         | Description                                                                      |
+| --------------------- | -------------------------------------------------------------------------------- |
+| `onIssue`             | When any action is performed on an issue.                                        |
+| `onIssueOpened`       | When an issue is opened.                                                         |
+| `onIssueAssigned`     | When an issue is assigned.                                                       |
+| `onIssueComment`      | When an issue is commented on.                                                   |
+| `onStar`              | When a repo is starred or unstarred.                                             |
+| `onNewStar`           | When a repo is starred.                                                          |
+| `onNewRepository`     | When a new repo is created.                                                      |
+| `onNewBranchOrTag`    | When a new branch or tag is created.                                             |
+| `onNewBranch`         | When a new branch is created.                                                    |
+| `onPush`              | When a push is made to a repo.                                                   |
+| `onPullRequest`       | When activity occurs on a pull request (excluding reviews, issues, or comments). |
+| `onPullRequestReview` | When a pull request review has activity.                                         |
+
+## Usage
+
+```ts
+import { Github, events } from "@trigger.dev/github";
+
+const github = new Github({
+  id: "github",
+  token: process.env.GITHUB_TOKEN!,
+});
+
+new Job(client, {
+  id: "github-integration-on-issue",
+  name: "GitHub Integration - On Issue",
+  version: "0.1.0",
+  trigger: github.triggers.repo({
+    event: events.onIssue,
+    owner: "triggerdotdev",
+    repo: "empty",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("This is a simple log info message");
+    //do stuff
+  },
+});
+```

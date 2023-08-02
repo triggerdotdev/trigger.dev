@@ -1,0 +1,54 @@
+---
+title: Tasks
+---
+
+## All tasks
+
+| Function Name                    | Description                                                 |
+| -------------------------------- | ----------------------------------------------------------- |
+| `createIssue`                    | Creates a new issue in a repository.                        |
+| `addIssueAssignees`              | Adds assignees to an existing issue.                        |
+| `addIssueLabels`                 | Adds labels to an existing issue.                           |
+| `createIssueComment`             | Creates a new comment on an existing issue.                 |
+| `getRepo`                        | Retrieves information about a repository.                   |
+| `createIssueCommentWithReaction` | Creates a new comment on an existing issue with a reaction. |
+| `addIssueCommentReaction`        | Adds a reaction to an existing issue comment.               |
+| `updateWebhook`                  | Updates an existing webhook.                                |
+| `createWebhook`                  | Creates a new webhook.                                      |
+| `listWebhooks`                   | Lists the webhooks for a repository.                        |
+| `updateOrgWebhook`               | Updates an existing webhook for an organization.            |
+| `createOrgWebhook`               | Creates a new webhook for an organization.                  |
+| `listOrgWebhooks`                | Lists the webhooks for an organization.                     |
+
+## Usage
+
+```ts
+new Job(client, {
+  id: "github-integration-on-issue-opened",
+  name: "GitHub Integration - On Issue Opened",
+  version: "0.1.0",
+  integrations: { github },
+  trigger: github.triggers.repo({
+    event: events.onIssueOpened,
+    owner: "triggerdotdev",
+    repo: "empty",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.github.addIssueAssignees("add assignee", {
+      owner: payload.repository.owner.login,
+      repo: payload.repository.name,
+      issueNumber: payload.issue.number,
+      assignees: ["matt-aitken"],
+    });
+
+    await io.github.addIssueLabels("add label", {
+      owner: payload.repository.owner.login,
+      repo: payload.repository.name,
+      issueNumber: payload.issue.number,
+      labels: ["bug"],
+    });
+
+    return { payload, ctx };
+  },
+});
+```

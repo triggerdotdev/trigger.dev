@@ -1,0 +1,103 @@
+---
+title: "Tasks"
+description: "Tasks are individual building blocks of a Run."
+---
+
+> A Task is a resumable unit of a Run that can be retried, resumed and is logged.
+
+## Tasks vs regular code
+
+In the `run()` function you can use regular code and you can use Tasks.
+
+```ts
+new Job(client, {
+  id: "new-user",
+  name: "Run when a new user signs up",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "new.user",
+    schema: z.object({
+      userId: z.string(),
+    }),
+  }),
+  integrations: {
+    resend,
+  },
+  run: async (payload, io, ctx) => {
+    // regular code, not a Task
+    // the inputs/outputs of this function are not sent to the Trigger.dev platform
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { email: true, name: true },
+    });
+    if (!user) throw new Error(`User not found: ${payload.userId}`);
+
+    // Integration functions are Tasks
+    await io.resend.sendEmail("Welcome email", {
+      to: user.email,
+      from: "jane@acme.inc",
+      subject: "Welcome!",
+      html: welcomeEmail(user.name),
+    });
+
+    // built-in io functions are Tasks
+    await io.wait("wait", 60 * 60 * 3); // wait for 3 hours
+
+    // You can wrap your own code in a Task, for retrying, resumability and logging
+    const response = await io.runTask(
+      "my-task",
+      { name: "My Task" },
+      async () => {
+        return await longRunningCode(payload.userId);
+      }
+    );
+
+    return response;
+  },
+});
+```
+
+## The benefits of Tasks
+
+Tasks are a powerful concept that gives you a lot of benefits:
+
+- **Resumability** – Runs can exceed the maximum timeout on serverless platforms. If a Run exceeds this limit, it will be re-run. When it is re-run, any completed Tasks return their original output and they aren't re-run. Read more about [Resumability](/documentation/concepts/resumability).
+- **Retryable** – If a Task fails, it will be retried. You can configure how (or if) a Task is retried. Full details in the [io SDK reference](/sdk/io).
+- **Logging** – Tasks are logged, so you can see what happened in a Run. Find out more about [viewing runs](/documentation/guides/viewing-runs).
+
+## Subtasks
+
+A Task can have multiple subtasks, and so on. This is useful for breaking down a large Task into smaller Tasks. We currently support nesting 5 levels deep.
+
+## Task Keys
+
+The first param of all Tasks is a `key`. This is a unique identifier for the Task inside that Run. It is used for resumability and logging. It is also used to identify the Task in the [Viewing Runs Dashboard](/documentation/guides/viewing-runs).
+
+## References
+
+<CardGroup cols={2}>
+  <Card
+    title="Resumability"
+    icon="clock"
+    href="/documentation/concepts/resumability"
+  >
+    Runs can be very long-running. Learn how we handle this.
+  </Card>
+  <Card
+    title="Integrations"
+    icon="grid-2"
+    href="/documentation/concepts/integrations"
+  >
+    Integrations utilize Tasks.
+  </Card>
+  <Card title="`io` SDK Reference" icon="wrench" href="/sdk/io">
+    The `io` object allows you to easily run a Task yourself.
+  </Card>
+  <Card
+    title="Viewing Runs Dashboard"
+    icon="globe"
+    href="/documentation/guides/viewing-runs"
+  >
+    View all Runs for a Job, all the way down to individual Tasks.
+  </Card>
+</CardGroup>

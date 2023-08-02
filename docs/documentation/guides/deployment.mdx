@@ -1,0 +1,42 @@
+---
+title: "Introduction"
+description: "A guide for how to deploy your Jobs"
+---
+
+Deployment uses [Environments & Endpoints](/documentation/concepts/environments-endpoints) to connect your Jobs to the Trigger.dev platform.
+
+## First time deploying to a new Environment
+
+The first time you deploy to a new environment you will need to setup the
+endpoint for that environment.
+
+<Card
+  title="First time setup"
+  icon="wrench"
+  href="/documentation/guides/deployment-setup"
+>
+  This only needs to be done once for each environment
+</Card>
+
+## Subsequent deployments (i.e. refreshing your Endpoint)
+
+If you add new Jobs, change the id of a Job, or change the Triggers of a Job then you will need to refresh your Endpoint.
+
+There are two ways to do this:
+
+<CardGroup cols={2}>
+  <Card
+    title="Manual refreshing"
+    icon="arrow-pointer"
+    href="/documentation/guides/deployment-manual"
+  >
+    Manually refresh in your Trigger.dev dashboard
+  </Card>
+  <Card
+    title="Automatic refreshing"
+    icon="robot"
+    href="/documentation/guides/deployment-automatic"
+  >
+    Automatically refresh by using our webhook
+  </Card>
+</CardGroup>

@@ -1,0 +1,272 @@
+---
+title: "Create a Job"
+description: "How to create a Job in your codebase"
+---
+
+> Jobs are the core of the system. They allow you to run code when some event occurs. They are built using a combination of Triggers and Tasks.
+
+### Pre-requisites
+
+Make sure your Project is set up with Trigger.dev. We recommend [using the CLI](/documentation/quickstart) to do this.
+
+## How to write a Job in code
+
+### 1. Create a Job file in your Project
+
+This is where you will write your Job code. E.g. `my-job.ts`.
+
+```ts
+//this path might be different depending on your project
+import { client } from "@/trigger";
+
+client.defineJob({
+  // This is the unique ID for your Job's end-point
+  id: "your-job-id",
+  // This is the name of your Job
+  name: "Your Job name",
+  // This is the version of our SDK you are using
+  version: "0.0.1",
+  ...
+```
+
+The `id` and `name` are important because they are used to create and identify your Job in the app.
+
+<Note>
+  This Job must be imported in the `trigger` file in order to be registered when
+  the CLI dev command is run. This can be found in either the
+  `app/api/trigger/route.ts` file if you're using the Next.js App Router, or
+  `pages/api/trigger.ts` if you're using the Next.js Pages Router.
+</Note>
+
+### 2. Choose a Trigger
+
+This is what kicks-off a Job. There are a few different types of Triggers you can use:
+
+<Tabs>
+  <Tab title="Scheduled">
+    Run a Job on a repeating schedule, using [intervalTrigger](/documentation/concepts/triggers/scheduled#interval)
+    ```ts
+    client.defineJob({
+    ...
+    trigger: intervalTrigger({
+        seconds: 60,
+      }),
+    ...
+    ```
+    Or with CRON syntax, using [cronTrigger](/documentation/concepts/triggers/scheduled#using-cron-syntax):
+    ```ts
+    client.defineJob({
+    ...
+    trigger: cronTrigger({
+        cron: "30 14 * * 1",
+      }),
+    ...
+    ```
+  </Tab>
+  <Tab title="Webhook">
+
+    Start your Jobs when an event happens in another API. You'll need to use [Integrations](/integrations) to do this.
+
+    Here's an example with the GitHub integration.
+
+    ```ts
+    client.defineJob({
+    ...
+    //E.g. When a GitHub issue is modified on the triggerdotdev/trigger.dev repo
+    trigger: github.triggers.repo({
+      event: events.onIssue,
+      owner: "triggerdotdev",
+      repo: "trigger.dev",
+    }),
+    ...
+    ```
+
+  </Tab>
+  <Tab title="Event">
+    The [eventTrigger](/documentation/concepts/triggers/events) allows you to define an event that your Job listens for. 
+    
+    When you [send an event](/documentation/concepts/triggers/events#sending-events) with the same name the Job will run.
+        
+    ``` ts
+    client.defineJob({
+    ...
+    //E.g. when a user is created in your app (you send the event)
+    trigger: eventTrigger({
+        name: "user.created",
+        schema: z.object({
+          name: z.string(),
+          email: z.string(),
+          paidPlan: z.boolean(),
+        }),
+        ...
+    ```
+
+  </Tab>
+  <Tab title="Dynamic">
+    These are advanced features that allows you to attach dynamic triggers to a Job. Full information [here](/documentation/concepts/triggers/dynamic).
+  </Tab>
+</Tabs>
+
+### 3. Create the Job Tasks
+
+> A Task is a resumable unit of a Run that can be retried, resumed and is logged.
+
+<Info>
+  You can use just regular code in your Jobs. But you don't get the benefits of
+  retrying, logging and resumability. More info on [Tasks vs regular
+  code](/documentation/concepts/tasks#tasks-vs-regular-code).
+</Info>
+
+You can string together multiple Tasks and regular code in any order you want.
+
+**Useful built-in Tasks:**
+
+| Task                                        | Description                                                             | Task code                                                                                  |
+| ------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| [Delay](/documentation/concepts/delays)     | Wait for a period of time                                               | `await io.wait("wait", 60);`                                                               |
+| [Log](/sdk/io/logger)                       | Log a message                                                           | `await io.logger.log("Hello");`                                                            |
+| [Send Event](/sdk/io/sendevent)             | Send an event (for eventTrigger)                                        | `await io.sendEvent("my-event", { name: "my.event", payload: { hello: "world" } });`       |
+| [Run task](/sdk/io/runtask)                 | Wrap your own code in this to create a Task                             | `await io.runTask("My Task", { name: "My Task" }, async () => { console.log("Hello"); });` |
+| [Background fetch](/sdk/io/backgroundfetch) | Fetch data from a URL that can take longer that the serverless timeout. | `await io.backgroundFetch("fetch-some-data", { url: "https://example.com" });`             |
+
+For a full list of built-in Tasks, see the [io SDK reference](/sdk/io).
+
+**Integration Task examples:**
+
+<Info>
+  To use our integrations you will need to set them up in the app first. Our
+  guide is [here](/documentation/guides/using-integrations).
+</Info>
+
+<AccordionGroup>
+<Accordion title="OpenAI" description="Generate text completions in a conversational context.">
+
+**Task:** [backgroundCreateCompletion](/integrations/apis/openai)
+
+```ts
+await io.openai.backgroundCreateChatCompletion("background-chat-completion", {
+  model: "gpt-3.5-turbo",
+  messages: [
+    {
+      role: "user",
+      content: "Create a good programming joke about background jobs",
+    },
+  ],
+});
+```
+
+View more OpenAI tasks [here](/integrations/apis/openai).
+
+</Accordion>
+<Accordion title="GitHub" description="Add a custom label to a GitHub issue.">
+
+**Task:** [addIssueLabels](/integrations/apis/github-tasks)
+
+```ts
+await io.github.addIssueLabels("add label", {
+  owner: payload.repository.owner.login,
+  repo: payload.repository.name,
+  issueNumber: payload.issue.number,
+  labels: ["bug"],
+});
+```
+
+View more GitHub tasks [here](/integrations/apis/github-tasks).
+
+</Accordion>
+<Accordion title="Resend" description="Send an email using Resend.">
+
+**Task:** [sendEmail](/integrations/apis/resend)
+
+```ts
+await io.resend.sendEmail("send-email", {
+  to: payload.to,
+  subject: payload.subject,
+  text: payload.text,
+  from: "Trigger.dev <hello@email.trigger.dev>",
+});
+```
+
+</Accordion>
+<Accordion title="Slack" description="Post a message to a Slack channel.">
+
+**Task:** [postMessage](/integrations/apis/slack)
+
+```ts
+await io.slack.postMessage("post message", {
+  channel: "C04GWUTDC3W",
+  text: "My first Slack message",
+});
+```
+
+View more Slack tasks [here](/integrations/apis/slack).
+
+</Accordion>
+</AccordionGroup>
+
+These are just a few examples of Integration Tasks. For many more, browse our [Integrations section](/integrations/).
+
+### 4. Register your Jobs
+
+While your app is running, open a **new terminal window or tab** and run:
+
+<CodeGroup>
+
+```bash npm
+npx @trigger.dev/cli@latest dev
+```
+
+```bash pnpm
+pnpm dlx @trigger.dev/cli@latest dev
+```
+
+```bash yarn
+yarn dlx @trigger.dev/cli@latest dev
+```
+
+</CodeGroup>
+
+This will register all of your Jobs, they should appear in your dashboard.
+
+<Note>
+  Not seeing your Job in the web app? It might be because you forgot to import
+  it. This will need to be either in `app/api/trigger/route.ts` file if you're
+  using the Next,js App Router, or `pages/api/trigger.ts` if you're using the
+  Next,js Pages Router.
+</Note>
+
+If you are having trouble getting your job running, please reach out to us and we will help you fix any issues:
+
+- [Join our Discord](https://discord.gg/kA47vcd8P6)
+- [Email us](mailto:help@trigger.dev)
+
+---
+
+## Next steps
+
+We recommend exploring all of the below sections to fully understand how to create and run Jobs using Trigger.dev.
+
+<CardGroup cols={2}>
+  <Card
+    title="Running your jobs"
+    icon="wand-magic-sparkles"
+    href="/documentation/guides/running-jobs"
+  >
+  A guide for how to run your Jobs. Triggering a test Run and Triggering your Job for real
+
+    </Card>
+
+ <Card title="Example Jobs" icon="slot-machine" href="/examples">
+    View example Jobs / the example jobs repo. These are a great starting
+    point for creating your own Jobs.
+  </Card>
+  <Card title="SDK reference" icon="code" href="/sdk">
+    How to use the SDK. This includes all the available Tasks, triggers and
+    actions you can use.
+  </Card>
+ 
+  <Card title="Integrations" icon="grid-2" href="/integrations">
+    Integrations make it easy to authenticate and use APIs.
+Learn how to use and create integrations.
+  </Card>
+</CardGroup>

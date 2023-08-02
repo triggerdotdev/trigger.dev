@@ -1,0 +1,48 @@
+---
+title: "logger"
+description: "Used to send log messages to the [Run log](/documentation/guides/viewing-runs)."
+---
+
+There are 5 levels, that you can use to log messages.
+
+From least to most important:
+
+1. `io.logger.debug()` - info for debugging purposes
+2. `io.logger.info()` - information
+3. `io.logger.warn()` - warnings
+4. `io.logger.error()` - errors
+5. `io.logger.log()` - essential messages
+
+<Note>
+  If you set the `logLevel` on the Job or Client so only messages of a certain
+  level are logged, then `io.logger` will ignore log messages of lower levels.
+</Note>
+
+## Parameters
+
+Each of the `io.logger` methods takes these params:
+
+<ResponseField name="message" type="string" required>
+  The log message.
+</ResponseField>
+<ResponseField name="properties" type="object">
+  An optional object with additional data to log.
+</ResponseField>
+
+## Returns
+
+A `Promise` that resolves when the message has been logged.
+
+<RequestExample>
+
+```ts error with additional data
+await io.logger.error("This is a log error message", {
+  payload,
+});
+```
+
+```ts warning
+await io.logger.warn("This is a warning");
+```
+
+</RequestExample>

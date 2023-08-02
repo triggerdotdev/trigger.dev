@@ -1,0 +1,72 @@
+---
+title: "Deploy to Render"
+description: "Deploy self hosted version of [Trigger.dev](https://trigger.dev) to [Render](https://render.com/)"
+---
+
+You can use this [repository](https://github.com/triggerdotdev/render.com) as a jumping off point for deploying a self-hosted version of Trigger.dev on Render using the Trigger.dev public docker image located at `ghcr.io/triggerdotdev/trigger.dev:latest`
+
+### Fork the repository mentioned above and change the app name
+
+You should fork the repository before starting so you can make changes and commit them. For example, in render.yaml file you'll need to change the name under services to a unique name for your app.
+
+### Create a new web service
+
+1. Go to the Render dashboard.
+
+2. Click on "New" in the top right corner.
+
+3. Choose "Web service"
+
+   ![new web service render](/images/new-web-service-render.png)
+
+4. Click on "Connect With GitHub" (if you have not already done so). You will need to authorize Render to access your GitHub repositories.
+
+5. Once connected, you will see a list of your repositories. Choose the repository that contains your project.
+
+6. Render will detect the render.yaml file in your repository and auto fill the fields, add your app name now.
+
+   ![add app name render](/images/add-app-name-render.png)
+
+7. Scrolldown, click on advanced. Here you will need to add the environment variables
+
+   ![advanced render](/images/advanced-render.png)
+
+### Gather your secret environment variables
+
+The process for generating and collecting the required environment variables is identical to the one described in the [Fly.io guide](/documentation/guides/self-hosting/flyio#gather-your-secret-environment-variables). Follow the steps there to generate and collect the required environment variables.
+
+### Set the environment variables
+
+The render.yaml file declares several environment variables that your app needs to run. These include the `ENCRYPTION_KEY`, `MAGIC_LINK_SECRET` and `SESSION_SECRET`, and others. You need to manually set the values of these environment variables in the Render dashboard:
+
+1. Click on "Add Environment Variable" to add a new environment variable.
+2. Enter the key and value for each environment variable declared in your render.yaml file. The key should match the name of the environment variable in the render.yaml file.
+   ![add env variables render](/images/add-env-variables-render.png)
+
+### Deploy
+
+Render automatically deploys your service when you push to the connected GitHub repository. Alternatively, you can manually trigger a deployment from the Render dashboard by clicking "Deploy" in the "Deploys" tab.
+
+### Initialize your Next.js project
+
+Next, you can easily bootstrap your Next.js project to use your self-hosted instance of Trigger.dev.
+
+First, cd into your Next.js project, then run the `@trigger.dev/cli init` command to initialize your Next.js project:
+
+```sh
+npx @trigger.dev/cli@latest init -t "https://<your render app name>.onrender.com"
+```
+
+When it asks for your development API key, head over to your self-hosted Trigger.dev dashboard and select the initial project you created when signing up, and head to the `Environments & API Keys` page to copy your `dev` API key:
+
+![api key](/images/api-key.png)
+
+### Start your dev server
+
+Run your Next.js project dev server with `npm run dev` and then in a new terminal window you will need to run the `@trigger.dev/cli dev` command to connect to your Trigger.dev instance and allow it to tunnel to your local Next.js server:
+
+```sh
+npx @trigger.dev/cli@latest dev
+```
+
+At this point you should be able to navigate to your Trigger.dev dashboard and view your registered jobs

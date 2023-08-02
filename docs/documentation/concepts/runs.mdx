@@ -1,0 +1,80 @@
+---
+title: "Runs"
+description: "When a [Job](/documentation/concepts/jobs) is [Triggered](/documentation/concepts/triggers), the Run function is called."
+---
+
+> Everytime a Job is triggered, a Run is created with a payload of data.
+
+## Anatomy of a Run
+
+A Run is a record of the execution of a Job. It is created from `run()` function of a Job.
+
+```ts
+new Job(client, {
+  id: "event-1",
+  name: "Run when the foo.bar event happens",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "foo.bar",
+    schema: z.object({
+      url: z.string(),
+    }),
+  }),
+  // 1. Run function with params
+  run: async (payload, io, ctx) => {
+    // 2. Regular code and Tasks
+  },
+});
+```
+
+1. The `run()` function is called with some useful parameters. More on that in a second.
+2. Inside the run function you can write regular code and use [Tasks](/documentation/concepts/tasks).
+
+## Resumability
+
+Runs can exceed the maximum timeout on serverless platforms. If a Run exceeds this limit, it will be re-run. When it is re-run, any completed Tasks return their original output and they aren't re-run. Read more about [Resumability](/documentation/concepts/resumability).
+
+## Run function parameters
+
+### payload
+
+The payload is the data that triggered the Job. It is the same data that was sent to the [Trigger](/documentation/concepts/triggers) that triggered the Job.
+
+- For [Webhooks](/documentation/concepts/triggers/webhooks) the payload is the data from the webhook.
+- For [Events](/documentation/concepts/triggers/events) the payload is the data from the event, in the example above that's `{ url: "https://..." }`.
+- For [Scheduled](/documentation/concepts/triggers/scheduled) the payload is an object with the timestamp and the last timestamp (previous run).
+
+### io
+
+The `io` object gives you access to [Integrations](/documentation/concepts/integrations) and other useful functions. [View the full reference](/sdk/io) for `io`.
+
+A few things you can do with `io`:
+
+- Use [Integrations](/documentation/concepts/integrations).
+- Add [delays](/documentation/concepts/delays) (that can be longer than your server timeout).
+- Log messages to the [Run log](/documentation/guides/viewing-runs).
+- Perform [background fetch requests](/documentation/sdk/io) (that can be longer than your server timeout).
+- [Send events](/documentation/concepts/triggers/events) to Trigger other Jobs.
+- Create a [Task](/documentation/concepts/tasks) manually by wrapping code in `io.runTask`.
+
+### context
+
+The `context` object gives you access to information about the current Run, Job, Environment, Organization and Event. [View the full reference](/sdk/context) for `context`.
+
+## References
+
+<CardGroup cols={2}>
+  <Card
+    title="Viewing Runs Dashboard"
+    icon="globe"
+    href="/documentation/guides/viewing-runs"
+  >
+    View all Runs for a Job, all the way down to individual Tasks.
+  </Card>
+  <Card title="`io` SDK Reference" icon="wrench" href="/sdk/io">
+    The `io` object gives you access to Integrations and other useful functions.
+  </Card>
+  <Card title="`context` SDK Reference" icon="wrench" href="/sdk/context">
+    The `context` object gives you access to the current Run's context.
+  </Card>
+</CardGroup>

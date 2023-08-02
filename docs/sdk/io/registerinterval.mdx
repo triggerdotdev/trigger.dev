@@ -1,0 +1,84 @@
+---
+title: "io.registerInterval()"
+sidebarTitle: "registerInterval()"
+description: "`io.registerInterval()` allows you to register a [DynamicSchedule](/sdk/dynamicschedule) that will trigger any jobs it's attached to on a regular interval."
+---
+
+## Parameters
+
+<Snippet file="stable-key-param.mdx" />
+<ResponseField name="dynamicSchedule" type="DynamicSchedule" required>
+  A [DynamicSchedule](/sdk/dynamicschedule) that will trigger any Jobs it's
+  attached to on a regular interval.
+</ResponseField>
+<ResponseField name="id" type="string" required>
+  A unique id for the interval. This is used to identify and unregister the interval later.
+</ResponseField>
+<ResponseField name="options" type="object" required>
+  An object containing options about the interval.
+
+<Expandable title="options" defaultOpen>
+  <ResponseField name="seconds" type="number" required>
+    The number of seconds for the interval. Min = 60, Max = 86400 (1 day)
+  </ResponseField>
+</Expandable>
+
+</ResponseField>
+
+## Returns
+
+A Promise that resolves to an object with the following fields:
+
+<ResponseField name="id" type="string" required>
+  A unique id for the interval. This is used to identify and unregister the
+  interval later.
+</ResponseField>
+<ResponseField name="metadata" type="any" required>
+  Any additional metadata about the interval.
+</ResponseField>
+<ResponseField name="accountId" type="string" required>
+  This will be used by the Trigger.dev Connect feature, which is coming soon.
+</ResponseField>
+<ResponseField name="schedule" type="object" required>
+  <Expandable title="properties" defaultOpen>
+    <ResponseField name="type" type="string" required>
+      The type of schedule. This will always be "interval".
+    </ResponseField>
+    <ResponseField name="options" type="object" required>
+      An object containing options about the interval.
+      <Expandable title="options" defaultOpen>
+        <ResponseField name="seconds" type="number" required>
+          The number of seconds for the interval. Min = 60, Max = 86400 (1 day)
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="metadata" type="any" required>
+      Any additional metadata about the interval.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+  
+  ```typescript
+new Job(client, {
+  id: "my-job",
+  name: "My job",
+  version: "0.1.1",
+  trigger: eventTrigger({
+    name: "dynamic.interval",
+    schema: z.object({
+      id: z.string(),
+      seconds: z.number().int().positive(),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    //registers a DynamicSchedule with an interval 
+    await io.registerInterval("📆", dynamicSchedule, payload.id, {
+      seconds: payload.seconds,
+    });
+},
+});
+```
+
+</RequestExample>

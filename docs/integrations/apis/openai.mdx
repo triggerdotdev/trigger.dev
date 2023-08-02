@@ -1,0 +1,94 @@
+---
+title: Introduction
+---
+
+<Snippet file="integration-getting-started.mdx" />
+
+## Installation
+
+<CodeGroup>
+
+```bash npm
+npm install @trigger.dev/openai@latest
+```
+
+```bash pnpm
+pnpm install @trigger.dev/openai@latest
+```
+
+```bash yarn
+yarn add @trigger.dev/openai@latest
+```
+
+</CodeGroup>
+
+## Authentication
+
+OpenAI supports API Keys
+
+```ts
+import { OpenAI } from "@trigger.dev/openai";
+
+const openai = new OpenAI({
+  id: "openai",
+  apiKey: process.env.OPENAI_API_KEY!,
+});
+```
+
+## Example
+
+```ts
+new Job(client, {
+  id: "openai-tasks",
+  name: "OpenAI Tasks",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "openai.tasks",
+    schema: z.object({}),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    const response = await io.openai.backgroundCreateChatCompletion(
+      "background-chat-completion",
+      {
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "user",
+            content: "Create a good programming joke about background jobs",
+          },
+        ],
+      }
+    );
+
+    await io.logger.info("choices", response.choices);
+  },
+});
+```
+
+## Tasks
+
+Tasks that are marked as "long-running" can last longer than your serverless timeout – they are performed on one of our background workers.
+
+| Function Name                    | Description                                                               | Long-running? |
+| -------------------------------- | ------------------------------------------------------------------------- | ------------- |
+| `createCompletion`               | Generates text completions given a prompt.                                |
+| `backgroundCreateCompletion`     | Generates text completions in the background.                             | ✔             |
+| `createChatCompletion`           | Generates text completions in a conversational context.                   |
+| `backgroundCreateChatCompletion` | Generates text completions in a conversational context in the background. | ✔             |
+| `retrieveModel`                  | Retrieves a specific model by ID.                                         |
+| `listModels`                     | Lists the available models.                                               |
+| `createEdit`                     | Edits a given text prompt.                                                |
+| `createImage`                    | Generates images from textual descriptions.                               |
+| `createEmbedding`                | Generates embeddings for a given text.                                    |
+| `createFile`                     | Uploads a file to the OpenAI API.                                         |
+| `listFiles`                      | Lists the uploaded files.                                                 |
+| `createFineTuneFile`             | Uploads a file for fine-tuning a model.                                   |
+| `createFineTune`                 | Fine-tunes a model on a given task.                                       |
+| `listFineTunes`                  | Lists the available fine-tunes.                                           |
+| `retrieveFineTune`               | Retrieves a specific fine-tune by ID.                                     |
+| `cancelFineTune`                 | Cancels a specific fine-tune by ID.                                       |
+| `listFineTuneEvents`             | Lists the events for a specific fine-tune by ID.                          |
+| `deleteFineTune`                 | Deletes a specific fine-tune by ID.                                       |

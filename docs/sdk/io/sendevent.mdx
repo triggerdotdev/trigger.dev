@@ -1,0 +1,66 @@
+---
+title: "io.sendEvent()"
+sidebarTitle: "sendEvent()"
+description: "`io.sendEvent()` allows you to send an event from inside a Job run. The sent even will trigger any Jobs that are listening for that event (based on the name)."
+---
+
+If you want to send an event from outside a run (e.g. just from your backend) you should use [client.sendEvent()](/sdk/triggerclient/instancemethods/sendevent) instead.
+
+Use [eventTrigger()](/sdk/eventtrigger) on a Job to listen for events.
+
+## Parameters
+
+<Snippet file="stable-key-param.mdx" />
+
+<ResponseField name="seconds" type="number" required>
+  The number of seconds to wait. This can be very long, serverless timeouts are
+  not an issue.
+</ResponseField>
+
+<Snippet file="send-event-params.mdx" />
+
+## Returns
+
+<Snippet file="send-event-return.mdx" />
+
+<RequestExample>
+
+```typescript Send an event
+//this Job sends an event that triggers the second job
+new Job(client, {
+  id: "job-1",
+  name: "First job",
+  version: "0.0.1",
+  trigger: cronTrigger({
+    cron: "0 9 * * *", // 9am every day (UTC)
+  }),
+  run: async (payload, io, ctx) => {
+    //sends the "new.user" event with a userId in the payload
+    await io.sendEvent("send-event", {
+      name: "new.user",
+      payload: {
+        userId: "u_1234567890",
+      },
+    });
+  },
+});
+
+new Job(client, {
+  id: "job-2",
+  name: "Second job",
+  version: "0.0.1",
+  //subscribes to the "new.user" event
+  trigger: eventTrigger({
+    name: "new.user",
+    schema: z.object({
+      userId: z.string(),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.log("New user created", { userId: payload.userId });
+    //do stuff with the new user
+  },
+});
+```
+
+</RequestExample>

@@ -1,0 +1,167 @@
+---
+title: "Using Integrations"
+description: "How to use Integrations"
+---
+
+<Note>
+  You can use any API in your Jobs by using existing Node.js SDKs or HTTP
+  requests. Integrations just make it much easier especially when you want to
+  use OAuth. And you get great logging.
+</Note>
+
+[Integrations](/documentation/concepts/integrations) allow you to quickly use APIs, including webhooks and Tasks.
+
+## Authentication
+
+There are two ways to authenticate Integrations, OAuth and API Keys/Access Tokens.
+
+<CardGroup cols={2}>
+  <Card
+    title="API Keys/Access Tokens"
+    icon="key"
+    href="/documentation/guides/using-integrations-apikeys"
+  >
+    Use API Keys or Access Tokens to connect an Integration
+  </Card>
+  <Card
+    title="OAuth"
+    icon={
+      <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path
+          d="M50.5013 0C49.1646 0 47.7861 0.0417711 46.3659 0.125313C43.609 0.292398 40.685 0.75188 37.594 1.50376C34.67 2.25564 32.1637 3.09106 30.0752 4.01002C26.9006 5.43024 23.6842 7.26817 20.4261 9.52381C16.7502 12.1136 13.4921 15.2464 10.6516 18.9223C7.81119 22.5982 5.51378 26.6082 3.7594 30.9524L3.13283 32.4561C2.38095 34.2941 1.8797 35.6725 1.62907 36.5915C0.543024 40.3509 0 44.4444 0 48.8722C0 52.9657 0.37594 56.8505 1.12782 60.5263C2.96575 68.8805 6.39098 76.0234 11.4035 81.9549C15.7477 87.1345 21.5539 91.6458 28.8221 95.4887C32.8321 97.5773 37.406 98.9766 42.5439 99.6867C47.6817 100.397 52.8822 100.355 58.1454 99.5614C63.4085 98.7677 68.2122 97.2849 72.5564 95.1128C80.0752 91.2698 86.4244 85.4636 91.604 77.6942C94.1938 73.8513 96.1988 69.6742 97.619 65.1629C99.2063 60.1504 100 54.9708 100 49.6241C100 44.8621 99.1228 39.8914 97.3684 34.7118C95.9482 30.3676 94.0267 26.3158 91.604 22.5564C87.3434 15.7895 81.9967 10.4845 75.5639 6.6416C68.2122 2.21387 59.858 0 50.5013 0ZM46.2406 23.8095H53.0075C54.3442 23.8095 55.5556 24.2063 56.6416 25C57.7277 25.7936 58.4795 26.817 58.8972 28.0702L72.1805 68.1704C72.7652 69.8413 72.6608 71.4494 71.8672 72.995C71.0735 74.5405 69.883 75.5639 68.2957 76.0652C67.6274 76.2322 66.9591 76.3158 66.2907 76.3158C64.9541 76.3158 63.7427 75.9398 62.6566 75.188C61.5706 74.4361 60.8187 73.3918 60.401 72.0551L57.5188 62.9073H42.4812L39.599 72.0551C39.1813 73.3083 38.4294 74.3317 37.3434 75.1253C36.2573 75.919 35.0459 76.3158 33.7093 76.3158C33.0409 76.3158 32.4144 76.2322 31.8296 76.0652C30.1587 75.5639 28.9265 74.5614 28.1328 73.0576C27.3392 71.5539 27.193 69.9666 27.6942 68.2957L40.3509 28.1955C40.7686 26.8588 41.5205 25.7936 42.6065 25C43.6926 24.2063 44.9039 23.8095 46.2406 23.8095Z"
+          fill="#818cf8"
+        />
+      </svg>
+    }
+    href="/documentation/guides/using-integrations-oauth"
+  >
+    Use OAuth to connect an Integration for your team or your users
+  </Card>
+</CardGroup>
+
+## Using for Jobs & Tasks
+
+You must pass Integrations into your Job to run integration tasks. Passed in Integrations will be available on the `io` object in the `run()` function with the same name as the key. For example:
+
+<Snippet file="how-to-pass-integrations.mdx" />
+
+Both the `postMessage` and `addIssueLabels` functions above are implemented as an "Authenticated Task" that is defined inside the Integration, where the first argument is always the task [key](/documentation/concepts/tasks#task-keys) and the second argument is the parameters for the task. For example, here is how you would call the `postMessage` function above:
+
+```ts
+client.defineJob({
+  // ...
+  integrations: {
+    slack,
+  },
+  run: async (payload, io, ctx) => {
+    const response = await io.slack.postMessage("✋", {
+      channel: "C04GWUTDC3W",
+      text: "My first Slack message",
+    });
+  },
+});
+```
+
+The above code will create a [Task](/documentation/concepts/tasks) that will use the authentication configured for the specified Slack integration.
+
+If the integration does not support a specific task function that you want to use, you can use the `runTask` function to get access to the authenticated client.
+
+For example, the Slack integration doesn't expose an Authenticated Task function for deleting a message, but you can use the `chat.delete` function provided by the [@slack/web-api package](https://slack.dev/node-slack-sdk/web-api) directly:
+
+```ts
+client.defineJob({
+  // ...
+  integrations: {
+    slack,
+  },
+  run: async (payload, io, ctx) => {
+    const response = await io.slack.postMessage("✋", {
+      channel: "C04GWUTDC3W",
+      text: "My first Slack message",
+    });
+
+    await io.wait("⏰", 24 * 60 * 60 * 1000); // wait 24 hours
+
+    await io.slack.runTask("delete", async (slack) => {
+      return slack.chat.delete({
+        channel: "C04GWUTDC3W",
+        ts: response.ts!,
+      });
+    });
+  },
+});
+```
+
+You can optionally pass a third parameter to `runTask` to specify the task parameters:
+
+```ts
+await io.slack.runTask(
+  "delete",
+  async (slack) => {
+    return slack.chat.delete({
+      channel: "C04GWUTDC3W",
+      ts: response.ts!,
+    });
+  },
+  {
+    name: "Delete message",
+    properties: [{ label: "Message", text: response.ts }],
+  }
+);
+```
+
+View the [runTask](/sdk/io/runtask#parameters) reference for more information.
+
+## Using outside of Jobs
+
+If you want to use integrations that support "local auth" only (e.g. API keys, like Stripe and Supabase) outside of a Job you can use the `.native` property on the integration to get direct access to the client. For example:
+
+```ts stripe.ts
+import { Stripe } from "@trigger.dev/stripe";
+
+const stripe = new Stripe({
+  id: "stripe",
+  apiKey: process.env.STRIPE_SECRET_KEY!
+});
+
+async function createCustomer() {
+  await stripe.native.customers.create({
+    // ... customer attributes go here
+  });
+}
+```
+
+## Using for Triggers
+
+Some integrations provide triggers that you can use to start a Job. For example, the GitHub integration provides a `push` trigger that will start a Job when a new commit is pushed to a repository:
+
+```ts
+import { Github, events } from "@trigger.dev/github";
+
+const github = new Github({
+  id: "github",
+  token: process.env.GITHUB_TOKEN!,
+});
+
+client.defineJob({
+  id: "github-integration-on-push",
+  name: "GitHub Integration - On Push",
+  version: "0.1.0",
+  trigger: github.triggers.repo({
+    event: events.onPush,
+    owner: "triggerdotdev",
+    repo: "trigger.dev",
+  }),
+  run: async (payload, io, ctx) => {
+    // do something on push
+  },
+});
+```
+
+Behind the scenes, our `@trigger.dev/github` integration will create a webhook on your repository that will call our API when a new push event is received. We will then start your Job with the payload from the push event.
+
+<Note>
+  If you are just using an integration to trigger a job but not using
+  authenticated tasks inside the job run, there is no need to pass the
+  integration in the job `integrations` option.
+</Note>

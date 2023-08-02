@@ -1,0 +1,52 @@
+<ParamField body="event" type="object" required>
+  <Expandable title="properties" defaultOpen>
+    <ParamField body="name" type="string" required>
+      The `name` property must exactly match any subscriptions you want to
+      trigger.
+    </ParamField>
+    <ParamField body="payload" type="any">
+      The `payload` property will be sent to any matching Jobs and will appear
+      as the `payload` param of the `run()` function. You can leave this
+      parameter out if you just want to trigger a Job without any input data.
+    </ParamField>
+    <ParamField body="context" type="any">
+      The optional `context` property will be sent to any matching Jobs and will
+      be passed through as the `context.event.context` param of the `run()`
+      function. This is optional but can be useful if you want to pass through
+      some additional context to the Job.
+    </ParamField>
+    <ParamField body="id" type="string">
+      The `id` property uniquely identify this particular event. If unset it
+      will be set automatically using `ulid`.
+    </ParamField>
+    <ParamField body="timestamp" type="Date">
+      This is optional, it defaults to the current timestamp. Usually you would
+      only set this if you have a timestamp that you wish to pass through, e.g.
+      you receive a timestamp from a service and you want the same timestamp to
+      be used in your Job.
+    </ParamField>
+    <ParamField body="source" type="string">
+      This is optional, it defaults to "trigger.dev". It can be useful to set
+      this as you can filter events using this in the `eventTrigger()`.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="options" type="object">
+  <Expandable title="properties" defaultOpen>
+    <ParamField body="deliverAt" type="Date">
+      An optional Date when you want the event to Trigger Jobs. The event will
+      be sent to the platform immediately but won't be acted upon until the
+      specified time.
+    </ParamField>
+    <ParamField body="deliverAfter" type="number">
+      An optional number of seconds you want to wait for the event to Trigger
+      any relevant Jobs. The event will be sent to the platform immediately but
+      won't be acted upon until the specified time.
+    </ParamField>
+    <ParamField body="accountId" type="string">
+      This optional param will be used by the Trigger.dev Connect feature, which
+      is coming soon.
+    </ParamField>
+  </Expandable>
+</ParamField>

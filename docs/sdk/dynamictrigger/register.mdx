@@ -1,0 +1,33 @@
+---
+title: "DynamicTrigger: register() instance method"
+sidebarTitle: "register()"
+description: "Use this method to register a new configuration with the DynamicTrigger."
+---
+
+## Parameters
+
+<ResponseField name="id" type="string" required>
+  The id of the registration. The identifier you use will be available in the
+  `context.source.id` when the Job runs. It will also be used to unregister.
+</ResponseField>
+<ResponseField name="params" type="Object" required>
+  The shape of this object will depend on the type of event you set when
+  constructing the `DynamicTrigger`.
+</ResponseField>
+
+## Returns
+
+<ResponseField name="id" type="string">
+  The id of the schedule that was registered.
+</ResponseField>
+
+<RequestExample>
+
+```typescript GitHub issue opened
+await dynamicOnIssueOpenedTrigger.register(`${owner}/${repo}`, {
+  owner,
+  repo,
+});
+```
+
+</RequestExample>

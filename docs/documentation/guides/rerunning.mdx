@@ -1,0 +1,24 @@
+---
+title: "Rerunning"
+description: "From a Run page, you can rerun"
+---
+
+On the Run page when the Run is in a `success` or `failed` state, you can rerun by clicking the `Rerun` button.
+
+![The Rerun button](/images/rerun.png)
+
+There are two possible rerun options.
+
+### 1. Run again
+
+This option is always available (when a run has finished).
+
+It creates a brand new run with the same inputs as the original – the same Trigger payload, settings, connections etc.
+
+<Warning>Stating the obvious: this will run all the code again.</Warning>
+
+### 2. Retry job run
+
+This option is only available when the run has failed.
+
+It will continue the existing Run by retrying the Task that failed the Job.

@@ -1,0 +1,55 @@
+---
+title: "First-time setup"
+description: "The first time you deploy to a new environment you will need to setup the endpoint for that environment."
+---
+
+## 1. Make sure your Client is configured correctly
+
+The API Key you use for your `Client` is how we know which environment to run your code against:
+
+```ts
+export const client = new TriggerClient({
+  id: "nextjs-example",
+  //this environment variable should be set to your DEV API Key locally,
+  //and your PROD API Key in production
+  apiKey: process.env.TRIGGER_API_KEY!,
+});
+```
+
+## 2. Set your environment variables on your server
+
+Ensure that your `TRIGGER_API_KEY` (or whatever you've set it to) environment variable is set on your server, to the correct value from the "Environments & API Keys" page in your Trigger.dev dashboard.
+
+![Select your prod API key](/images/api-keys-prod.png)
+
+If you've used any other environment variables in your code (like API Keys for other services), make sure they are set on your server too.
+
+The exact instructions will vary depending on where you deploy to. Here are the docs links to some popular services:
+
+- [Vercel](https://vercel.com/docs/concepts/projects/environment-variables#)
+- [Cloudflare Pages](https://developers.cloudflare.com/pages/platform/functions/bindings/#environment-variables)
+- [Cloudflare Workers](https://developers.cloudflare.com/workers/platform/environment-variables/)
+- [Netlify](https://docs.netlify.com/environment-variables/overview/)
+
+## 3. Deploy your code as usual
+
+Your Job code lives in your codebase, so you can deploy it as you normally would.
+
+## 4. Connect the Endpoint for the first time
+
+1. Go to the "Environments & API Keys" page in your Trigger.dev dashboard
+   ![Go to the Environments & API Keys page ](/images/environments-link.png)
+
+2. Click the "Configure" button on the relevant endpoint
+   ![Select your endpoint](/images/endpoint-setup-1.png)
+
+3. Enter the URL of your Trigger.dev endpoint
+   ![Enter the URL of your Trigger.dev endpoint](/images/endpoint-setup-2.png)
+
+   <Info>
+     This is the value of the `path` option for the adaptor you're using. For
+     Next.js, this would usually be `https://yourdomain.com/api/trigger`.
+   </Info>
+
+4. Click "Save". This will automatically connect, test your endpoint, and register all your Jobs.
+   ![Save](/images/endpoint-setup-3.png)

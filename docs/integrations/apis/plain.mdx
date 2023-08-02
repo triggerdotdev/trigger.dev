@@ -1,0 +1,175 @@
+---
+title: Plain
+description: Plain is customer support for developer tools
+---
+
+<Snippet file="integration-getting-started.mdx" />
+
+## Installation
+
+<CodeGroup>
+
+```bash npm
+npm install @trigger.dev/plain@latest
+```
+
+```bash pnpm
+pnpm install @trigger.dev/plain@latest
+```
+
+```bash yarn
+yarn add @trigger.dev/plain@latest
+```
+
+</CodeGroup>
+
+## Authentication
+
+Plain supports API Keys, to create yours read the [Plain authentication guide](https://www.plain.com/docs/graphql-api/authentication).
+
+```ts
+import { Plain } from "@trigger.dev/plain";
+
+export const plain = new Plain({
+  id: "plain",
+  apiKey: process.env.PLAIN_API_KEY!,
+});
+```
+
+## Create customers and timeline entries
+
+The Plain Integration allows you to create/update customers and add timeline entries.
+
+```ts
+import { client } from "@/trigger";
+import { Job } from "@trigger.dev/sdk";
+import { Plain } from "@trigger.dev/plain";
+
+export const plain = new Plain({
+  id: "plain",
+  apiKey: process.env.PLAIN_API_KEY!,
+});
+
+new Job(client, {
+  id: "plain-playground",
+  name: "Plain Playground",
+  version: "0.1.1",
+  integrations: {
+    plain,
+  },
+  trigger: eventTrigger({
+    name: "plain.playground",
+  }),
+  run: async (payload, io, ctx) => {
+    const { customer } = await io.plain.upsertCustomer("upsert-customer", {
+      identifier: {
+        emailAddress: "rick.astley@gmail.com",
+      },
+      onCreate: {
+        email: {
+          email: "rick.astley@gmail.com",
+          isVerified: true,
+        },
+        fullName: "Rick Astley",
+        externalId: "u_123",
+      },
+      onUpdate: {
+        fullName: {
+          value: "Rick Astley",
+        },
+        externalId: {
+          value: "u_123",
+        },
+      },
+    });
+
+    const foundCustomer = await io.plain.getCustomerById("get-customer", {
+      customerId: customer.id,
+    });
+
+    const timelineEntry = await io.plain.upsertCustomTimelineEntry(
+      "upsert-timeline-entry",
+      {
+        customerId: customer.id,
+        title: "My timeline entry",
+        components: [
+          {
+            componentText: {
+              text: `This is a nice title`,
+            },
+          },
+          {
+            componentDivider: {
+              dividerSpacingSize: ComponentDividerSpacingSize.M,
+            },
+          },
+          {
+            componentText: {
+              textSize: ComponentTextSize.S,
+              textColor: ComponentTextColor.Muted,
+              text: "External id",
+            },
+          },
+          {
+            componentText: {
+              text: foundCustomer?.externalId ?? "",
+            },
+          },
+        ],
+      }
+    );
+  },
+});
+```
+
+## Tasks
+
+## All tasks
+
+| Function Name               | Description                         |
+| --------------------------- | ----------------------------------- |
+| `getCustomerById`           | Gets a customer using their id      |
+| `upsertCustomer`            | Creates or updates a customer       |
+| `upsertCustomTimelineEntry` | Creates or updates a timeline entry |
+
+## Using the underlying client
+
+You can use the underlying client to do anything [@team-plain/typescript-sdk](https://github.com/team-plain/typescript-sdk) supports, but make sure to wrap it in a task:
+
+```ts
+import { Plain } from "@trigger.dev/plain";
+
+//create client
+export const plain = new Plain({
+  id: "plain",
+  apiKey: process.env.PLAIN_API_KEY!,
+});
+
+new Job(client, {
+  id: "plain-client",
+  name: "Plain Client",
+  version: "0.1.0",
+  integrations: { plain },
+  trigger: eventTrigger({
+    name: "plain.client",
+  }),
+  run: async (payload, io, ctx) => {
+    const issue = await io.runTask(
+      "create-issue",
+      { name: "Create issue", icon: "plain" },
+      async () => {
+        const result = await io.plain.client.createIssue({
+          customerId: "abcdefghij",
+          issueTypeId: "123456",
+        });
+
+        if (result.error) {
+          throw result.error;
+        }
+
+        return result.data;
+      }
+    );
+  },
+});
+```
