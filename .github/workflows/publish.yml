@@ -6,6 +6,22 @@ on:
       - main
     tags:
       - "v*"
+    paths:
+      - ".github/workflows/publish.yml"
+      - "packages/**"
+      - "!packages/**/*.md"
+      - "!packages/**/*.eslintrc"
+      - "apps/**"
+      - "!apps/**/*.md"
+      - "!apps/**/*.eslintrc"
+      - "integrations/**"
+      - "!integrations/**/*.md"
+      - "!integrations/**/*.eslintrc"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
+      - "docker/Dockerfile"
+      - "docker/scripts/**"
 
 permissions:
   id-token: write
