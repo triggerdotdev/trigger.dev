@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/integration-kit",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Trigger.dev Integration Kit has helpers to make creating integrations easier",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/resend",
-  "version": "1.0.0",
+  "version": "2.0.1",
   "description": "The official Resend.com integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
