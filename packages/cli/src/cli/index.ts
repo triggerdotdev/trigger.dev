@@ -5,7 +5,7 @@ import { createIntegrationCommand } from "../commands/createIntegration.js";
 import { devCommand } from "../commands/dev.js";
 import { initCommand } from "../commands/init.js";
 import { CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts.js";
-import { TelemetryClient, telemetryClient } from "../telemetry/telemetry.js";
+import { telemetryClient } from "../telemetry/telemetry.js";
 import { getVersion } from "../utils/getVersion.js";
 
 export const program = new Command();

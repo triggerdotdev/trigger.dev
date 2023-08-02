@@ -1,16 +1,16 @@
 import chokidar from "chokidar";
+import dotenv from "dotenv";
 import fs from "fs/promises";
 import ngrok from "ngrok";
+import fetch from "node-fetch";
 import ora from "ora";
 import pathModule from "path";
 import { z } from "zod";
+import { telemetryClient } from "../telemetry/telemetry.js";
 import { pathExists, readFile } from "../utils/fileSystem.js";
 import { logger } from "../utils/logger.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
 import { TriggerApi } from "../utils/triggerApi.js";
-import dotenv from "dotenv";
-import fetch from "node-fetch";
-import { TelemetryClient, telemetryClient } from "../telemetry/telemetry.js";
 
 export const DevCommandOptionsSchema = z.object({
   port: z.coerce.number(),
