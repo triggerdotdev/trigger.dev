@@ -8,6 +8,7 @@ import { exec } from "child_process";
 import { installDependencies } from "../utils/installDependencies.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
 import { writeJSONFile } from "../utils/fileSystem.js";
+import pathModule from "path";
 
 export async function updateCommand(path: string) {
     try {
@@ -48,13 +49,11 @@ export async function updateCommand(path: string) {
 
         if (confirm) {
             const updatedPackageJson = updatePackageJson(updates);
-            await writeJSONFile('package.json', updatedPackageJson);
+            await writeJSONFile(pathModule.join(resolvedPath, 'package.json'), updatedPackageJson);
             logger.info('package.json updated.');
 
             // Run 'npm install' to install the updated packages
-            logger.info('Running npm install...');
             await installDependencies(resolvedPath);
-            logger.info('Dependencies updated.');
         } else {
             logger.info('Update canceled.');
         }
@@ -150,7 +149,6 @@ async function getLatestVersions(packageNames: string[], packageVersion: { [name
 }
 
 function updatePackageJson(updates: { [packageName: string]: string }) {
-    logger.info(JSON.stringify(updates));
     const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
 
     Object.entries(updates).forEach(([packageName, version]) => {
