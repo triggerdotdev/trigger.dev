@@ -82,7 +82,7 @@ program
 
 program
   .command("update")
-  .description("Updates all @trigger.dev to their latest compatible versions")
+  .description("Updates all @trigger.dev/* packages to their latest compatible versions")
   .argument(
       "[path]",
       "The path to the directory that contains the package.json file",
