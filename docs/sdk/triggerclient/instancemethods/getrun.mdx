@@ -1,0 +1,46 @@
+---
+title: "TriggerClient: getRun() instance method"
+sidebarTitle: "getRun()"
+description: "The `getRun()` method gets the details for a given Run."
+---
+
+## Parameters
+
+<ResponseField name="runId" type="string" required>
+  The Run ID you want to get the details for
+</ResponseField>
+<ResponseField name="options" type="Object">
+  <Expandable title="properties">
+    <Snippet file="run-detail-options.mdx" />
+    <ResponseField name="taskdetails" type="boolean" default={false}>
+      If `true`, it returns the `params` and `output` of all tasks.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Returns
+
+<Snippet file="run-object-detailed.mdx" />
+
+<RequestExample>
+
+```ts getRun example
+// jobs/myJobs.ts
+client.defineJob({
+  id: "my-job",
+  ...
+});
+
+// someFile.ts
+...
+const runs = await client.getRuns("my-job");
+if (runs.length === 0) {
+  throw new Error("No runs found");
+}
+
+const runDetail = await client.getRun(runs[0].id);
+console.log(runDetail.tasks.length);
+...
+```
+
+</RequestExample>

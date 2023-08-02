@@ -1,0 +1,25 @@
+<ResponseField name="id" type="string">
+  The Task id
+</ResponseField>
+<ResponseField name="displayKey" type="string | null">
+  The key that you defined when creating the Task, the first param in any task.
+</ResponseField>
+<ResponseField name="status" type="TaskStatus">
+  The Task status, can be one of `PENDING`, `WAITING`, `RUNNING`, `COMPLETED`,
+  `ERRORED`, `CANCELED`.
+</ResponseField>
+<ResponseField name="name" type="string">
+  The name of the Task
+</ResponseField>
+<ResponseField name="icon" type="string | null">
+  The icon of the Task, a string. For integrations, this will be a lowercase
+  name of the company. Can be used with the
+  [@trigger.dev/companyicons](https://www.npmjs.com/package/@trigger.dev/companyicons)
+  package to display an svg.
+</ResponseField>
+<ResponseField name="startedAt" type="Date | null">
+  When the task started
+</ResponseField>
+<ResponseField name="completedAt" type="Date | null">
+  When the task completed
+</ResponseField>

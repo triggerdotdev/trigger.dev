@@ -41,7 +41,7 @@
       "url": "integrations"
     },
     {
-      "name": "SDK Reference",
+      "name": "Reference",
       "url": "sdk"
     },
     {
@@ -120,6 +120,7 @@
             "documentation/guides/using-integrations-oauth"
           ]
         },
+        "documentation/guides/react-hooks",
         {
           "group": "Deployment",
           "pages": [
@@ -200,7 +201,7 @@
       ]
     },
     {
-      "group": "SDK reference",
+      "group": "SDK",
       "pages": [
         "sdk/introduction",
         {
@@ -211,7 +212,10 @@
             {
               "group": "Instance methods",
               "pages": [
-                "sdk/triggerclient/instancemethods/sendevent"
+                "sdk/triggerclient/instancemethods/sendevent",
+                "sdk/triggerclient/instancemethods/getevent",
+                "sdk/triggerclient/instancemethods/getruns",
+                "sdk/triggerclient/instancemethods/getrun"
               ]
             }
           ]
@@ -269,6 +273,16 @@
         "sdk/connection-auth",
         "sdk/istriggererror",
         "sdk/redactstring"
+      ]
+    },
+    {
+      "group": "React SDK",
+      "pages": [
+        "sdk/react/introduction",
+        "sdk/react/triggerprovider",
+        "sdk/react/useeventdetails",
+        "sdk/react/useeventrundetails",
+        "sdk/react/userundetails"
       ]
     },
     {

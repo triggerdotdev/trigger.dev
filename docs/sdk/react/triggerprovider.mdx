@@ -1,0 +1,46 @@
+---
+title: "TriggerProvider"
+description: "The `TriggerProvider` component allows any hooks lower in the React hierarchy to connect to the Trigger.dev API."
+---
+
+Ensure this component is above any Trigger.dev hooks in the React component tree.
+
+## Parameters
+
+<ResponseField name="publicApiKey" type="string" required>
+  The public API key for your Trigger.dev account. You can find this on the
+  Environments & API Keys page inside your Project.
+</ResponseField>
+<ResponseField name="apiUrl" type="string">
+  You only need to set this if you're self-hosting Trigger.dev. It defaults to
+  https://api.trigger.dev.
+</ResponseField>
+
+<RequestExample>
+
+```typescript app/layout.tsx
+import { TriggerProvider } from "@trigger.dev/react";
+
+//you don't have to put TriggerProvider in layout.tsx,
+//the hooks need this to be above them in the hierarchy
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body className={inter.className}>
+        <TriggerProvider
+          publicApiKey={process.env.NEXT_PUBLIC_TRIGGER_API_KEY ?? ""}
+          apiUrl={process.env.NEXT_PUBLIC_TRIGGER_API_URL}
+        >
+          {children}
+        </TriggerProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+</RequestExample>
