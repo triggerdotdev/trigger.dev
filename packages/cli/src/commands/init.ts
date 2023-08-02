@@ -5,18 +5,19 @@ import inquirer from "inquirer";
 import pathModule from "path";
 import { pathToRegexp } from "path-to-regexp";
 import { simpleGit } from "simple-git";
+import { parse } from "tsconfck";
+import { pathToFileURL } from "url";
 import { promptApiKey, promptEndpointSlug, promptTriggerUrl } from "../cli/index.js";
-import { COMMAND_NAME, CLOUD_TRIGGER_URL, CLOUD_API_URL } from "../consts.js";
+import { CLOUD_API_URL, CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts.js";
+import { TelemetryClient, telemetryClient } from "../telemetry/telemetry.js";
 import { addDependencies } from "../utils/addDependencies.js";
+import { detectNextJsProject } from "../utils/detectNextJsProject.js";
+import { pathExists, readJSONFile } from "../utils/fileSystem.js";
 import { logger } from "../utils/logger.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
 import { renderApiKey } from "../utils/renderApiKey.js";
 import { renderTitle } from "../utils/renderTitle.js";
-import { detectNextJsProject } from "../utils/detectNextJsProject.js";
 import { TriggerApi, WhoamiResponse } from "../utils/triggerApi.js";
-import { parse } from "tsconfck";
-import { pathExists, readJSONFile } from "../utils/fileSystem.js";
-import { pathToFileURL } from "url";
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -30,6 +31,8 @@ type ResolvedOptions = Required<InitCommandOptions>;
 
 export const initCommand = async (options: InitCommandOptions) => {
   renderTitle();
+
+  telemetryClient.init.started(options);
 
   if (options.triggerUrl === CLOUD_TRIGGER_URL) {
     logger.info(`✨ Initializing project in Trigger.dev Cloud`);
@@ -45,7 +48,8 @@ export const initCommand = async (options: InitCommandOptions) => {
 
   if (!isNextJsProject) {
     logger.error("You must run this command in a Next.js project.");
-    process.exit(1);
+    telemetryClient.init.failed("not_nextjs_project", options);
+    return;
   } else {
     logger.success("✅ Detected Next.js project");
   }
@@ -60,14 +64,15 @@ export const initCommand = async (options: InitCommandOptions) => {
   }
 
   const isTypescriptProject = await detectTypescriptProject(resolvedPath);
+  telemetryClient.init.isTypescriptProject(isTypescriptProject, options);
 
-  const resolvedOptions = await resolveOptionsWithPrompts(options, resolvedPath);
-
+  const resolvedOptions = await resolveOptionsWithPrompts(options, resolvedPath, telemetryClient);
   const apiKey = resolvedOptions.apiKey;
 
   if (!apiKey) {
     logger.error("You must provide an API key to continue.");
-    process.exit(1);
+    telemetryClient.init.failed("no_api_key", resolvedOptions);
+    return;
   }
 
   const apiClient = new TriggerApi(apiKey, resolvedOptions.apiUrl);
@@ -78,13 +83,22 @@ export const initCommand = async (options: InitCommandOptions) => {
       `🛑 The API key you provided is not authorized. Try visiting your dashboard at ${resolvedOptions.triggerUrl} to get a new API key.`
     );
 
-    process.exit(1);
+    telemetryClient.init.failed("invalid_api_key", resolvedOptions);
+    return;
   }
+
+  telemetryClient.identify(
+    authorizedKey.organization.id,
+    authorizedKey.project.id,
+    authorizedKey.userId
+  );
 
   await addDependencies(resolvedPath, [
     { name: "@trigger.dev/sdk", tag: "latest" },
     { name: "@trigger.dev/nextjs", tag: "latest" },
   ]);
+
+  telemetryClient.init.addedDependencies(resolvedOptions);
 
   // Setup environment variables
   await setupEnvironmentVariables(resolvedPath, resolvedOptions);
@@ -100,6 +114,7 @@ export const initCommand = async (options: InitCommandOptions) => {
   const routeDir = pathModule.join(resolvedPath, usesSrcDir ? "src" : "");
 
   if (nextJsDir === "pages") {
+    telemetryClient.init.createFiles(resolvedOptions, "pages");
     await createTriggerPageRoute(
       resolvedPath,
       routeDir,
@@ -108,6 +123,7 @@ export const initCommand = async (options: InitCommandOptions) => {
       usesSrcDir
     );
   } else {
+    telemetryClient.init.createFiles(resolvedOptions, "app");
     await createTriggerAppRoute(
       resolvedPath,
       routeDir,
@@ -122,8 +138,7 @@ export const initCommand = async (options: InitCommandOptions) => {
   await addConfigurationToPackageJson(resolvedPath, resolvedOptions);
 
   await printNextSteps(resolvedOptions, authorizedKey);
-
-  process.exit(0);
+  telemetryClient.init.completed(resolvedOptions);
 };
 
 async function printNextSteps(options: ResolvedOptions, authorizedKey: WhoamiResponse) {
@@ -160,7 +175,8 @@ async function addConfigurationToPackageJson(path: string, options: ResolvedOpti
 
 const resolveOptionsWithPrompts = async (
   options: InitCommandOptions,
-  path: string
+  path: string,
+  telemetryClient: TelemetryClient
 ): Promise<ResolvedOptions> => {
   const resolvedOptions: InitCommandOptions = { ...options };
 
@@ -175,21 +191,24 @@ const resolveOptionsWithPrompts = async (
       resolvedOptions.apiUrl = resolvedOptions.triggerUrl;
     }
 
+    telemetryClient.init.resolvedApiUrl(resolvedOptions.apiUrl, resolvedOptions);
+
     if (!options.apiKey) {
       resolvedOptions.apiKey = await promptApiKey(resolvedOptions.triggerUrl!);
     }
+    telemetryClient.init.resolvedApiKey(resolvedOptions);
 
     if (!options.endpointSlug) {
       const packageJSONPath = pathModule.join(path, "package.json");
       const packageJSON = await readJSONFile(packageJSONPath);
 
       if (packageJSON && packageJSON["trigger.dev"] && packageJSON["trigger.dev"].endpointId) {
-        options.endpointSlug = packageJSON["trigger.dev"].endpointId;
+        resolvedOptions.endpointSlug = packageJSON["trigger.dev"].endpointId;
       } else {
-        options.endpointSlug = await promptEndpointSlug(path);
+        resolvedOptions.endpointSlug = await promptEndpointSlug(path);
       }
 
-      resolvedOptions.endpointSlug = await promptEndpointSlug(path);
+      telemetryClient.init.resolvedEndpointSlug(resolvedOptions);
     }
   } catch (err) {
     // If the user is not calling the command from an interactive terminal, inquirer will throw an error with isTTYError = true
@@ -209,10 +228,12 @@ const resolveOptionsWithPrompts = async (
       });
 
       if (!shouldContinue) {
+        telemetryClient.init.failed("non_interactive_terminal", options);
         logger.info("Exiting...");
-        process.exit(0);
+        throw err;
       }
     } else {
+      telemetryClient.init.failed("unknown", options, err);
       throw err;
     }
   }
@@ -299,6 +320,7 @@ async function detectMiddlewareUsage(path: string, usesSrcDir = false) {
       )} which can cause issues with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware`
     );
 
+    telemetryClient.init.warning("middleware_conflict", { projectPath: path });
     return;
   }
 
@@ -317,6 +339,7 @@ async function detectMiddlewareUsage(path: string, usesSrcDir = false) {
           middlewarePath
         )} which will cause issues with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware`
       );
+      telemetryClient.init.warning("middleware_conflict_api_trigger", { projectPath: path });
     }
   } else if (Array.isArray(matcher) && matcher.every((m) => typeof m === "string")) {
     const matcherRegexes = matcher.map((m) => pathToRegexp(m));
@@ -328,6 +351,7 @@ async function detectMiddlewareUsage(path: string, usesSrcDir = false) {
           middlewarePath
         )} which will cause issues with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware`
       );
+      telemetryClient.init.warning("middleware_conflict", { projectPath: path });
     }
   }
 }

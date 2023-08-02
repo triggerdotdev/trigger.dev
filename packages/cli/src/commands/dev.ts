@@ -10,6 +10,7 @@ import { resolvePath } from "../utils/parseNameAndPath.js";
 import { TriggerApi } from "../utils/triggerApi.js";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
+import { TelemetryClient, telemetryClient } from "../telemetry/telemetry.js";
 
 export const DevCommandOptionsSchema = z.object({
   port: z.coerce.number(),
@@ -18,7 +19,7 @@ export const DevCommandOptionsSchema = z.object({
   clientId: z.string().optional(),
 });
 
-type DevCommandOptions = z.infer<typeof DevCommandOptionsSchema>;
+export type DevCommandOptions = z.infer<typeof DevCommandOptionsSchema>;
 
 const throttleTimeMs = 1000;
 
@@ -29,10 +30,13 @@ const formattedDate = new Intl.DateTimeFormat("en", {
 });
 
 export async function devCommand(path: string, anyOptions: any) {
+  telemetryClient.dev.started(path, anyOptions);
+
   const result = DevCommandOptionsSchema.safeParse(anyOptions);
   if (!result.success) {
     logger.error(result.error.message);
-    process.exit(1);
+    telemetryClient.dev.failed("invalid_options", anyOptions, result.error);
+    return;
   }
   const options = result.data;
 
@@ -44,12 +48,20 @@ export async function devCommand(path: string, anyOptions: any) {
     logger.error(
       "You must run the `init` command first to setup the project – you are missing \n'trigger.dev': { 'endpointId': 'your-client-id' } from your package.json file, or pass in the --client-id option to this command"
     );
-    process.exit(1);
+    telemetryClient.dev.failed("missing_endpoint_id", options);
+    return;
   }
   logger.success(`✔️ [trigger.dev] Detected TriggerClient id: ${endpointId}`);
 
   // Read from .env.local or .env to get the TRIGGER_API_KEY and TRIGGER_API_URL
-  const { apiUrl, envFile, apiKey } = await getTriggerApiDetails(resolvedPath, options.envFile);
+  const apiDetails = await getTriggerApiDetails(resolvedPath, options.envFile);
+
+  if (!apiDetails) {
+    telemetryClient.dev.failed("missing_api_key", options);
+    return;
+  }
+
+  const { apiUrl, envFile, apiKey } = apiDetails;
 
   logger.success(`✔️ [trigger.dev] Found API Key in ${envFile} file`);
 
@@ -68,16 +80,26 @@ export async function devCommand(path: string, anyOptions: any) {
     });
   } catch (err) {
     logger.error(`❌ [trigger.dev] No server found on port ${options.port}.`);
-    process.exit(1);
+    telemetryClient.dev.failed("no_server_found", options);
+    return;
   }
+
+  telemetryClient.dev.serverRunning(path, options);
 
   // Setup tunnel
   const endpointUrl = await resolveEndpointUrl(apiUrl, options.port);
+  if (!endpointUrl) {
+    telemetryClient.dev.failed("failed_to_create_tunnel", options);
+    return;
+  }
+
   const endpointHandlerUrl = `${endpointUrl}${options.handlerPath}`;
+  telemetryClient.dev.tunnelRunning(path, options);
 
   const connectingSpinner = ora(`[trigger.dev] Registering endpoint ${endpointHandlerUrl}...`);
 
   //refresh function
+  let hasConnected = false;
   let attemptCount = 0;
   const refresh = async () => {
     connectingSpinner.start();
@@ -85,9 +107,33 @@ export async function devCommand(path: string, anyOptions: any) {
     const refreshedEndpointId = await getEndpointIdFromPackageJson(resolvedPath, options);
 
     // Read from .env.local to get the TRIGGER_API_KEY and TRIGGER_API_URL
-    const { apiKey, apiUrl } = await getTriggerApiDetails(resolvedPath, envFile);
+    const apiDetails = await getTriggerApiDetails(resolvedPath, envFile);
 
+    if (!apiDetails) {
+      connectingSpinner.fail(`❌ [trigger.dev] Failed to connect: Missing API Key`);
+      logger.info(`Will attempt again on the next file change…`);
+      attemptCount = 0;
+      return;
+    }
+
+    const { apiKey, apiUrl } = apiDetails;
     const apiClient = new TriggerApi(apiKey, apiUrl);
+
+    const authorizedKey = await apiClient.whoami(apiKey);
+    if (!authorizedKey) {
+      logger.error(
+        `🛑 The API key you provided is not authorized. Try visiting your dashboard to get a new API key.`
+      );
+
+      telemetryClient.dev.failed("invalid_api_key", options);
+      return;
+    }
+
+    telemetryClient.identify(
+      authorizedKey.organization.id,
+      authorizedKey.project.id,
+      authorizedKey.userId
+    );
 
     const result = await refreshEndpoint(
       apiClient,
@@ -101,6 +147,11 @@ export async function devCommand(path: string, anyOptions: any) {
           new Date(result.data.updatedAt)
         )}`
       );
+
+      if (!hasConnected) {
+        hasConnected = true;
+        telemetryClient.dev.connected(path, options);
+      }
     } else {
       attemptCount++;
 
@@ -108,6 +159,10 @@ export async function devCommand(path: string, anyOptions: any) {
         connectingSpinner.fail(`🚨 Failed to connect: ${result.error}`);
         logger.info(`Will attempt again on the next file change…`);
         attemptCount = 0;
+
+        if (!hasConnected) {
+          telemetryClient.dev.failed("failed_to_connect", options);
+        }
         return;
       }
 
@@ -196,14 +251,14 @@ async function getTriggerApiDetails(path: string, envFile: string) {
 
   if (!resolvedEnvFile) {
     logger.error(`You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`);
-    process.exit(1);
+    return;
   }
 
   const parsedEnvFile = dotenv.parse(resolvedEnvFile.content);
 
   if (!parsedEnvFile.TRIGGER_API_KEY || !parsedEnvFile.TRIGGER_API_KEY) {
     logger.error(`You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`);
-    process.exit(1);
+    return;
   }
 
   const apiKey = parsedEnvFile.TRIGGER_API_KEY;
@@ -211,7 +266,7 @@ async function getTriggerApiDetails(path: string, envFile: string) {
 
   if (!apiKey || !apiUrl) {
     logger.error(`You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`);
-    process.exit(1);
+    return;
   }
 
   return { apiKey, apiUrl, envFile: resolvedEnvFile.fileName };
@@ -227,7 +282,9 @@ async function resolveEndpointUrl(apiUrl: string, port: number) {
   // Setup tunnel
   const tunnelSpinner = ora(`🚇 Creating tunnel`).start();
   const tunnelUrl = await createTunnel(port);
-  tunnelSpinner.succeed(`🚇 Created tunnel: ${tunnelUrl}`);
+  if (tunnelUrl) {
+    tunnelSpinner.succeed(`🚇 Created tunnel: ${tunnelUrl}`);
+  }
 
   return tunnelUrl;
 }
@@ -237,7 +294,7 @@ async function createTunnel(port: number) {
     return await ngrok.connect(port);
   } catch (e) {
     logger.error(`Ngrok failed to create a tunnel for port ${port}.\n${e}`);
-    process.exit(1);
+    return;
   }
 }
 

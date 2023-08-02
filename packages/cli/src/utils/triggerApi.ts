@@ -47,6 +47,7 @@ const WhoamiResponseSchema = z.object({
     createdAt: z.coerce.date(),
     updatedAt: z.coerce.date(),
   }),
+  userId: z.string().optional(),
 });
 
 export type WhoamiResponse = z.infer<typeof WhoamiResponseSchema>;
