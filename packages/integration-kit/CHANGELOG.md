@@ -1,5 +1,14 @@
 # @trigger.dev/integration-kit
 
+## 2.0.0
+
+### Patch Changes
+
+- 28914b87: Creating the init CLI package
+- 2c0ea0c1: Set Node version to 16.8 and above
+- 3ee396d7: Creating the typeform integration package
+- 94cc28d3: integration-kit uses webhook package
+
 ## 2.0.0-next.5
 
 ### Patch Changes
