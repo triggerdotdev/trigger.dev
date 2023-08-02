@@ -1,13 +1,12 @@
 import fetch from "node-fetch";
 import inquirer from "inquirer";
 import semver from "semver";
-import { readFileSync } from 'fs';
 import { logger } from "../utils/logger.js";
 import { getUserPkgManager } from "../utils/getUserPkgManager.js";
 import { exec } from "child_process";
 import { installDependencies } from "../utils/installDependencies.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
-import { writeJSONFile } from "../utils/fileSystem.js";
+import { readJSONFileSync, writeJSONFile } from "../utils/fileSystem.js";
 import pathModule from "path";
 
 export async function updateCommand(path: string) {
@@ -48,7 +47,7 @@ export async function updateCommand(path: string) {
         const confirm = await confirmUpdate(updates);
 
         if (confirm) {
-            const updatedPackageJson = updatePackageJson(updates);
+            const updatedPackageJson = updatePackageJson(updates, resolvedPath);
             await writeJSONFile(pathModule.join(resolvedPath, 'package.json'), updatedPackageJson);
             logger.info('package.json updated.');
 
@@ -148,8 +147,8 @@ async function getLatestVersions(packageNames: string[], packageVersion: { [name
     }, {});
 }
 
-function updatePackageJson(updates: { [packageName: string]: string }) {
-    const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
+function updatePackageJson(updates: { [packageName: string]: string }, resolvedPath: string): Promise<any> {
+    const packageJson = JSON.parse(readJSONFileSync(pathModule.join(resolvedPath, 'package.json')));
 
     Object.entries(updates).forEach(([packageName, version]) => {
         packageJson.dependencies[packageName] = `^${version}`;
