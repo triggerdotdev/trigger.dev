@@ -1,5 +1,11 @@
 # create-trigger
 
+## 2.0.2
+
+### Patch Changes
+
+- ee99191f: Sync all package versions
+
 ## 0.2.1
 
 ### Patch Changes

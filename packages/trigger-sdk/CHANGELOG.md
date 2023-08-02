@@ -1,5 +1,15 @@
 # @trigger.dev/sdk
 
+## 2.0.2
+
+### Patch Changes
+
+- 0a790de2: core version changed to 1.0.0. Dependencies for core set to ^1.0.0
+- ee99191f: Sync all package versions
+- Updated dependencies [0a790de2]
+- Updated dependencies [ee99191f]
+  - @trigger.dev/core@2.0.2
+
 ## 2.0.1
 
 ### Patch Changes

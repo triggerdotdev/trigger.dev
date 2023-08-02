@@ -1,5 +1,15 @@
 # @trigger.dev/typeform
 
+## 2.0.2
+
+### Patch Changes
+
+- ee99191f: Sync all package versions
+- Updated dependencies [0a790de2]
+- Updated dependencies [ee99191f]
+  - @trigger.dev/sdk@2.0.2
+  - @trigger.dev/integration-kit@2.0.2
+
 ## 1.0.0
 
 ### Patch Changes
