@@ -1,5 +1,11 @@
 # @trigger.dev/integration-kit
 
+## 2.0.2
+
+### Patch Changes
+
+- ee99191f: Sync all package versions
+
 ## 2.0.0
 
 ### Patch Changes

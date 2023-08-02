@@ -1,5 +1,12 @@
 # internal-platform
 
+## 2.0.2
+
+### Patch Changes
+
+- 0a790de2: core version changed to 1.0.0. Dependencies for core set to ^1.0.0
+- ee99191f: Sync all package versions
+
 ## 0.0.5
 
 ### Patch Changes
