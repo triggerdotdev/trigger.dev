@@ -705,7 +705,7 @@ importers:
       '@trigger.dev/sdk': workspace:^2.0.2
       '@types/node': 18.x
       rimraf: ^3.0.2
-      supabase-management-js: ^0.1.2
+      supabase-management-js: ^0.1.3
       tsup: 7.1.x
       typescript: 4.9.4
       zod: 3.21.4
@@ -713,7 +713,7 @@ importers:
       '@supabase/supabase-js': 2.31.0
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
-      supabase-management-js: 0.1.2
+      supabase-management-js: 0.1.3
       zod: 3.21.4
     devDependencies:
       '@types/node': 18.15.13
@@ -23046,8 +23046,8 @@ packages:
       pirates: 4.0.5
       ts-interface-checker: 0.1.13
 
-  /supabase-management-js/0.1.2:
-    resolution: {integrity: sha512-2sdCM1Gc7XI6zMVbOxdG0hsn1RQOqdD7pGfQwrgnLtampLe9mq7FTeK6a0LS/UhsDYl7jEVYK9BINP18zDxj6Q==}
+  /supabase-management-js/0.1.3:
+    resolution: {integrity: sha512-5y1EINERs+AZnzvgZfA4wmj78EKQOmSmgI6IEgg1bMEGpc7q6zXZnVS8zNAyYay/ort9inYefMqExRvbXXJpEA==}
     engines: {node: '>=18.0.0'}
     dependencies:
       openapi-fetch: 0.6.2
