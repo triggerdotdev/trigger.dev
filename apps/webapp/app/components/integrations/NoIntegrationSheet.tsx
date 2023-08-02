@@ -51,11 +51,6 @@ export function NoIntegrationSheet({
           )}
         </SheetHeader>
         <SheetBody>
-          <Callout variant="info">
-            We don’t have an Integration for the {api.name} API yet but you can request one by
-            clicking the button above. In the meantime, connect to {api.name} using one of the
-            methods below.
-          </Callout>
           <CustomHelp name={api.name} />
         </SheetBody>
       </SheetContent>
