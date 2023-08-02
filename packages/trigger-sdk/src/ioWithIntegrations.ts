@@ -44,7 +44,18 @@ export function createIOWithIntegrations<
     ) => {
       return await io.runTask(
         key,
-        { name: "Task", icon: integration.metadata.id, ...options },
+        {
+          name: "Task",
+          icon: integration.metadata.id,
+          retry: {
+            limit: 10,
+            minTimeoutInMs: 1000,
+            maxTimeoutInMs: 30000,
+            factor: 2,
+            randomize: true,
+          },
+          ...options,
+        },
         async (ioTask) => {
           return await callback(client, ioTask, io);
         }
