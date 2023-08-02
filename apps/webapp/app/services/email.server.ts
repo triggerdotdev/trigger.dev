@@ -1,6 +1,7 @@
 import type { DeliverEmail } from "emails";
 import { EmailClient } from "emails";
 import type { SendEmailOptions } from "remix-auth-email-link";
+import { redirect } from "remix-typedjson";
 import { env } from "~/env.server";
 import type { User } from "~/models/user.server";
 import type { AuthUser } from "./authUser";
@@ -14,6 +15,11 @@ const client = new EmailClient({
 });
 
 export async function sendMagicLinkEmail(options: SendEmailOptions<AuthUser>): Promise<void> {
+  // Auto redirect when in test mode
+  if (env.APP_ENV === "test") {
+    throw redirect(options.magicLink);
+  }
+
   return client.send({
     email: "magic_link",
     to: options.emailAddress,

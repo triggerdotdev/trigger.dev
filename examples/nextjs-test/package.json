@@ -1,0 +1,28 @@
+{
+  "name": "@examples/nextjs-test",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently --kill-others \"pnpm dev:next\" \"wait-on http://localhost:3000 && pnpm dev:trigger\"",
+    "dev:next": "next dev",
+    "dev:trigger": "pnpm dlx @trigger.dev/cli@latest dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "13.4.12",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "@trigger.dev/sdk": "^2.0.0-next.22",
+    "@trigger.dev/nextjs": "^1.0.0-next.8"
+  },
+  "trigger.dev": {
+    "endpointId": "nextjs-test"
+  },
+  "devDependencies": {
+    "@trigger.dev/cli": "workspace:*",
+    "concurrently": "^8.2.0",
+    "wait-on": "^7.0.1"
+  }
+}
