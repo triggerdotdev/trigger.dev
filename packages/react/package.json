@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/react",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Trigger.dev React SDK",
   "types": "dist/index.d.ts",
   "main": "dist/index.cjs",
