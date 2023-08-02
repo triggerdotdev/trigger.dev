@@ -23,13 +23,6 @@ import { omit } from "./utils";
 
 export const createCharge: AuthenticatedTask<StripeSDK, CreateChargeParams, CreateChargeResponse> =
   {
-    onError: (error) => {
-      if (error instanceof Stripe.errors.StripeError) {
-        console.log("Stripe error", error);
-      }
-
-      throw error;
-    },
     run: async (params, client, task) => {
       const response = await client.charges.create(params, {
         idempotencyKey: task.idempotencyKey,
