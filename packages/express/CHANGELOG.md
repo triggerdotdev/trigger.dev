@@ -1,13 +1,10 @@
-# @trigger.dev/plain
+# @trigger.dev/express
 
-## 1.0.0
+## 2.0.0
 
 ### Patch Changes
 
-- fe3bc6ef: Missing token/apikey error improved for display in Next.js logs
-- 2e84c6bb: Added upsertCustomTimelineEntry Task and exported the components from the plain package
-- bac8ad10: Throw if the clients are passed an undefined apikey or token
-- 2c0ea0c1: Set Node version to 16.8 and above
+- 9544624e: Adding compound triggers to Stripe and added a WIP express adapter
 - Updated dependencies [acaae993]
 - Updated dependencies [92233f2e]
 - Updated dependencies [cca7da9d]
@@ -55,7 +52,6 @@
 - Updated dependencies [61ed1fb2]
 - Updated dependencies [01cf5f3b]
 - Updated dependencies [9351c051]
-- Updated dependencies [94cc28d3]
 - Updated dependencies [953e7fc9]
 - Updated dependencies [0012bb21]
 - Updated dependencies [807b9d4c]
@@ -64,35 +60,3 @@
 - Updated dependencies [767e09ee]
 - Updated dependencies [917a70fb]
   - @trigger.dev/sdk@2.0.0
-  - @trigger.dev/integration-kit@2.0.0
-
-## 1.0.0-next.6
-
-### Patch Changes
-
-- fe3bc6ef: Missing token/apikey error improved for display in Next.js logs
-
-## 1.0.0-next.5
-
-### Patch Changes
-
-- bac8ad10: Throw if the clients are passed an undefined apikey or token
-- Updated dependencies [1dc42dae]
-- Updated dependencies [d6310a79]
-- Updated dependencies [0012bb21]
-  - @trigger.dev/sdk@2.0.0-next.16
-
-## 1.0.0-next.4
-
-### Patch Changes
-
-- 2c0ea0c1: Set Node version to 16.8 and above
-- Updated dependencies [2c0ea0c1]
-  - @trigger.dev/integration-kit@2.0.0-next.5
-  - @trigger.dev/sdk@2.0.0-next.15
-
-## 1.0.0-next.3
-
-### Patch Changes
-
-- 2e84c6bb: Added upsertCustomTimelineEntry Task and exported the components from the plain package

@@ -1,5 +1,13 @@
 # internal-platform
 
+## 0.0.4
+
+### Patch Changes
+
+- 92233f2e: @trigger.dev/core is now a separate package
+- 92233f2e: Packages move to @latest
+- e26923eb: backgroundFetch jsdocs
+
 ## 0.0.2-next.1
 
 ### Patch Changes

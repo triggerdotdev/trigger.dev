@@ -1,5 +1,67 @@
 # @trigger.dev/sdk
 
+## 2.0.0
+
+### Major Changes
+
+- 99316df8: Preparing packages for V2
+
+### Patch Changes
+
+- acaae993: run context jsdocs
+- 92233f2e: @trigger.dev/core is now a separate package
+- cca7da9d: Better docs for io.try
+- 9138976d: Multiple eventname support in eventDispatcher
+- 486d6818: IO Logging now respects the job and client logLevel, and only outputs locally when ioLogLocalEnabled is true
+- 24542d4e: Adding support for trigger source in the run context, and make sure dynamic trigger runs are preprocessed so they have a chance of populating run properties
+- c34a02c0: Improved OpenAI task errors
+- 5ee0b188: Don't return the apiKey when they don't match
+- 28914b87: Creating the init CLI package
+- 722fe7b7: registerCron and unregisterCron jsdocs
+- 1961b994: added defineJob in TriggerClient
+- 1dc42dae: Added support for Runs being canceled
+- d6310a79: Set duplex "half" when creating fetch based Request objects when they have a body
+- 817b4ed1: Endpoint registration and indexing now is only initiated outside of clients
+- f01af9c0: Upgrade to zod 3.21.4
+- 6d4922f4: api.trigger.dev is now the default cloud url
+- 34ccf345: Add support for task errors and task retrying
+- b314178d: Added getEvent(), getRun() and getRuns() methods to the client
+- 69af845a: Make isRetry context property backwards compatible and add it to the TriggerContext type
+- c83443a4: io.runTask jsdocs
+- 8e147dbe: io.sendEvent jsdocs
+- 2cbf50b1: deliverAt and timestamp event properties are now dates
+- 92233f2e: Packages move to @latest
+- b4167a38: Fixed the eventTrigger name
+- 931be399: cronTrigger jsdocs
+- facae926: Fix for a console warning about "encoding" with node-fetch
+- 6d04f6c6: Add default retry settings for integrations tasks
+- a11ddf65: Added JSDocs related to logging
+- ba446524: intervalTrigger() jsdocs
+- 6c869466: Fixed responses from the PING action to match expected schema
+- f2f4d4b8: Adding more granular error messages around unauthorized requests
+- e4b0b1e3: Added support for backgroundFetch
+- 094f6f5a: jsdocs for DynamicTrigger and DynamicSchedule
+- 2c0ea0c1: Set Node version to 16.8 and above
+- e26923eb: backgroundFetch jsdocs
+- 0066971b: added isRetry in context run
+- c83443a4: registerTrigger jsdocs
+- 99c6cd03: io.registerInterval and io.unregisterInterval jsdocs
+- 3ee396d7: Creating the typeform integration package
+- 7e2d48ac: Removed the url option for TriggerClient
+- 86dbd5d1: Added JSdocs for io.wait and io.logger
+- f160b34b: isTriggerError jsdocs
+- aaa70a9a: eventTrigger() jsdocs
+- 61ed1fb2: Adding support for output properties on tasks
+- 01cf5f3b: io.try jsdocs
+- 9351c051: Initial Stripe integration
+- 953e7fc9: Added human readable cron expression property to cron triggers
+- 0012bb21: All logs are now structured logs
+- 807b9d4c: Added jsdocs for TriggerClient() and sendEvent()
+- 64477f6b: Adding some type helpers for getting the payload and IO types from jobs and triggers
+- 7f6bf992: Show the params to updateSource in the dashboard
+- 767e09ee: Added io.integration.runTask and initial @trigger.dev/supabase integration
+- 917a70fb: Added JSdocs for Job
+
 ## 2.0.0-next.22
 
 ### Patch Changes
