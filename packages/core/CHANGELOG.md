@@ -1,5 +1,11 @@
 # internal-platform
 
+## 0.0.5
+
+### Patch Changes
+
+- aa9fe7d4: core made public. The react and sdk packages now have it as a dependency.
+
 ## 0.0.4
 
 ### Patch Changes

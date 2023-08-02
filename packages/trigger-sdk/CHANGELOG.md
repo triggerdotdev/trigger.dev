@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 2.0.1
+
+### Patch Changes
+
+- aa9fe7d4: core made public. The react and sdk packages now have it as a dependency.
+- Updated dependencies [aa9fe7d4]
+  - @trigger.dev/core@0.0.5
+
 ## 2.0.0
 
 ### Major Changes
