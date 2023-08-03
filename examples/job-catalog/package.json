@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "stripe": "nodemon --watch src/stripe.ts -r tsconfig-paths/register -r dotenv/config src/stripe.ts",
+    "supabase": "nodemon --watch src/supabase.ts -r tsconfig-paths/register -r dotenv/config src/supabase.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {
@@ -16,6 +17,7 @@
     "@trigger.dev/slack": "workspace:*",
     "@trigger.dev/stripe": "workspace:*",
     "@trigger.dev/typeform": "workspace:*",
+    "@trigger.dev/supabase": "workspace:*",
     "@types/node": "20.4.2",
     "typescript": "5.1.6",
     "zod": "3.21.4"

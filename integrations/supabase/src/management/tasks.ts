@@ -181,3 +181,27 @@ export const getPGConfig: AuthenticatedTask<
     };
   },
 };
+
+/** Enable Database Webhooks in project */
+export const enableDatabaseWebhooks: AuthenticatedTask<
+  SupabaseManagementAPI,
+  { ref: string },
+  void
+> = {
+  run: async (params, client) => {
+    return client.enableWebhooks(params.ref);
+  },
+  init: (params) => {
+    return {
+      name: "Enable Database Webhooks",
+      params,
+      icon: "supabase",
+      properties: [
+        {
+          label: "Project",
+          text: params.ref,
+        },
+      ],
+    };
+  },
+};

@@ -7,6 +7,7 @@ import {
   IntegrationClient,
   Logger,
   TriggerIntegration,
+  isTriggerError,
 } from "@trigger.dev/sdk";
 import { SupabaseManagementAPI } from "supabase-management-js";
 import { z } from "zod";
@@ -292,6 +293,19 @@ export function createWebhookEventSource(
 
       const url = new URL(httpSource.url);
       const id = url.pathname.split("/").pop() ?? randomUUID();
+
+      try {
+        await io.integration.enableDatabaseWebhooks("enable-webhooks", { ref: params.projectRef });
+      } catch (error) {
+        if (isTriggerError(error)) {
+          throw error;
+        }
+
+        await io.logger.info(
+          "Enabling database webhooks failed, probably because it is already enabled. Continuing...",
+          { error }
+        );
+      }
 
       // Create the trigger name using the last 12 characters of the id
       const triggerName = `tr_${id.slice(-12)}`;
