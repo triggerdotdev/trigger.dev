@@ -6,7 +6,7 @@ import invariant from "tiny-invariant";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { getOrganizationFromSlug } from "~/models/organization.server";
-import { analytics } from "~/services/analytics.server";
+import { telemetry } from "~/services/telemetry.server";
 import { commitCurrentOrgSession, setCurrentOrg } from "~/services/currentOrganization.server";
 import { requireUserId } from "~/services/session.server";
 import { organizationPath } from "~/utils/pathBuilder";
@@ -25,7 +25,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     throw new Response("Not Found", { status: 404 });
   }
 
-  analytics.organization.identify({ organization });
+  telemetry.organization.identify({ organization });
 
   const session = await setCurrentOrg(organization.slug, request);
 
