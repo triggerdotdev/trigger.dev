@@ -14,7 +14,7 @@ import {
   RunJobBody,
   RunJobResponseSchema,
 } from "@trigger.dev/core";
-import { safeBodyFromResponse } from "~/utils/json";
+import { safeBodyFromResponse, safeParseBodyFromResponse } from "~/utils/json";
 import { logger } from "./logger.server";
 
 export class EndpointApiError extends Error {
@@ -27,11 +27,7 @@ export class EndpointApiError extends Error {
 
 // TODO: this should work with tunnelling
 export class EndpointApi {
-  constructor(
-    private apiKey: string,
-    private url: string,
-    private id: string
-  ) {}
+  constructor(private apiKey: string, private url: string, private id: string) {}
 
   async ping(): Promise<PongResponse> {
     const response = await safeFetch(this.url, {
@@ -73,13 +69,23 @@ export class EndpointApi {
       };
     }
 
-    const anyBody = await response.json();
+    const pongResponse = await safeParseBodyFromResponse(response, PongResponseSchema);
 
-    logger.debug("ping() response from endpoint", {
-      body: anyBody,
-    });
+    if (!pongResponse) {
+      return {
+        ok: false,
+        error: `Could not parse response from endpoint. Make sure it points to the correct URL (you might be missing /api/trigger)`,
+      };
+    }
 
-    return PongResponseSchema.parse(anyBody);
+    if (!pongResponse.success) {
+      return {
+        ok: false,
+        error: `Endpoint ${this.url} responded with error: ${pongResponse.error.message}`,
+      };
+    }
+
+    return pongResponse.data;
   }
 
   async indexEndpoint() {

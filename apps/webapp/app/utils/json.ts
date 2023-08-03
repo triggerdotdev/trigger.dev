@@ -43,3 +43,20 @@ export async function safeBodyFromResponse<T>(
     return parsedJson.data;
   }
 }
+
+export async function safeParseBodyFromResponse<T>(
+  response: Response,
+  schema: z.Schema<T>
+): Promise<z.SafeParseReturnType<unknown, T> | undefined> {
+  try {
+    const unknownJson = await response.json();
+
+    if (!unknownJson) {
+      return;
+    }
+
+    const parsedJson = schema.safeParse(unknownJson);
+
+    return parsedJson;
+  } catch (error) {}
+}
