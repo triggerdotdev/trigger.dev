@@ -1,5 +1,12 @@
 # @trigger.dev/express
 
+## 2.0.3
+
+### Patch Changes
+
+- 81180999: The dev command should use a POST request when doing the PING to the local server
+  - @trigger.dev/sdk@2.0.3
+
 ## 2.0.2
 
 ### Patch Changes

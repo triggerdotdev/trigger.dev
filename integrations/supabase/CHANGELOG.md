@@ -1,5 +1,14 @@
 # @trigger.dev/supabase
 
+## 2.0.3
+
+### Patch Changes
+
+- ce901c92: Update supabase-management-js to 0.1.3
+- feaa79ec: Automatically enable database webhooks when using triggers
+  - @trigger.dev/integration-kit@2.0.3
+  - @trigger.dev/sdk@2.0.3
+
 ## 2.0.2
 
 ### Patch Changes
