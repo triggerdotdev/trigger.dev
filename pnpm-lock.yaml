@@ -575,8 +575,8 @@ importers:
       '@octokit/types': ^9.2.3
       '@octokit/webhooks': ^10.4.0
       '@octokit/webhooks-types': ^6.10.0
-      '@trigger.dev/integration-kit': workspace:^2.0.2
-      '@trigger.dev/sdk': workspace:^2.0.2
+      '@trigger.dev/integration-kit': workspace:^2.0.3
+      '@trigger.dev/sdk': workspace:^2.0.3
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       octokit: ^2.0.14
@@ -601,8 +601,8 @@ importers:
 
   integrations/openai:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.0.2
-      '@trigger.dev/sdk': workspace:^2.0.2
+      '@trigger.dev/integration-kit': workspace:^2.0.3
+      '@trigger.dev/sdk': workspace:^2.0.3
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       openai: ^3.3.0
@@ -623,8 +623,8 @@ importers:
   integrations/plain:
     specifiers:
       '@team-plain/typescript-sdk': ^2.7.0
-      '@trigger.dev/integration-kit': workspace:^2.0.2
-      '@trigger.dev/sdk': workspace:^2.0.2
+      '@trigger.dev/integration-kit': workspace:^2.0.3
+      '@trigger.dev/sdk': workspace:^2.0.3
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
@@ -641,8 +641,8 @@ importers:
 
   integrations/resend:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.0.2
-      '@trigger.dev/sdk': workspace:^2.0.2
+      '@trigger.dev/integration-kit': workspace:^2.0.3
+      '@trigger.dev/sdk': workspace:^2.0.3
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       resend: ^0.9.1
@@ -661,7 +661,7 @@ importers:
   integrations/slack:
     specifiers:
       '@slack/web-api': ^6.8.1
-      '@trigger.dev/sdk': workspace:^2.0.2
+      '@trigger.dev/sdk': workspace:^2.0.3
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
@@ -679,8 +679,8 @@ importers:
 
   integrations/stripe:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.0.2
-      '@trigger.dev/sdk': workspace:^2.0.2
+      '@trigger.dev/integration-kit': workspace:^2.0.3
+      '@trigger.dev/sdk': workspace:^2.0.3
       '@types/node': 16.x
       rimraf: ^3.0.2
       stripe: ^12.14.0
@@ -703,8 +703,8 @@ importers:
   integrations/supabase:
     specifiers:
       '@supabase/supabase-js': ^2.26.0
-      '@trigger.dev/integration-kit': workspace:^2.0.2
-      '@trigger.dev/sdk': workspace:^2.0.2
+      '@trigger.dev/integration-kit': workspace:^2.0.3
+      '@trigger.dev/sdk': workspace:^2.0.3
       '@types/node': 18.x
       rimraf: ^3.0.2
       supabase-management-js: ^0.1.4
@@ -725,8 +725,8 @@ importers:
 
   integrations/typeform:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.0.2
-      '@trigger.dev/sdk': workspace:^2.0.2
+      '@trigger.dev/integration-kit': workspace:^2.0.3
+      '@trigger.dev/sdk': workspace:^2.0.3
       '@typeform/api-client': ^1.8.0
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -891,7 +891,7 @@ importers:
   packages/express:
     specifiers:
       '@remix-run/web-fetch': ^4.3.5
-      '@trigger.dev/sdk': workspace:^2.0.2
+      '@trigger.dev/sdk': workspace:^2.0.3
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/express': ^4.17.13
@@ -956,7 +956,7 @@ importers:
   packages/react:
     specifiers:
       '@tanstack/react-query': 5.0.0-beta.2
-      '@trigger.dev/core': workspace:^2.0.2
+      '@trigger.dev/core': workspace:^2.0.3
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/react': 18.2.17
@@ -986,7 +986,7 @@ importers:
 
   packages/trigger-sdk:
     specifiers:
-      '@trigger.dev/core': workspace:^2.0.2
+      '@trigger.dev/core': workspace:^2.0.3
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/node': '18'
