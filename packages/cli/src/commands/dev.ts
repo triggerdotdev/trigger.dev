@@ -11,6 +11,7 @@ import { pathExists, readFile } from "../utils/fileSystem.js";
 import { logger } from "../utils/logger.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
 import { TriggerApi } from "../utils/triggerApi.js";
+import { CLOUD_API_URL } from "../consts.js";
 
 export const DevCommandOptionsSchema = z.object({
   port: z.coerce.number(),
@@ -250,26 +251,26 @@ async function getTriggerApiDetails(path: string, envFile: string) {
   ]);
 
   if (!resolvedEnvFile) {
-    logger.error(`You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`);
+    logger.error(`You must add TRIGGER_API_KEY to your ${envFile} file.`);
     return;
   }
 
   const parsedEnvFile = dotenv.parse(resolvedEnvFile.content);
 
-  if (!parsedEnvFile.TRIGGER_API_KEY || !parsedEnvFile.TRIGGER_API_KEY) {
-    logger.error(`You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`);
+  if (!parsedEnvFile) {
+    logger.error(`You must add TRIGGER_API_KEY to your ${envFile} file.`);
     return;
   }
 
   const apiKey = parsedEnvFile.TRIGGER_API_KEY;
   const apiUrl = parsedEnvFile.TRIGGER_API_URL;
 
-  if (!apiKey || !apiUrl) {
-    logger.error(`You must add TRIGGER_API_KEY and TRIGGER_API_URL to your ${envFile} file.`);
+  if (!apiKey) {
+    logger.error(`You must add TRIGGER_API_KEY to your ${envFile} file.`);
     return;
   }
 
-  return { apiKey, apiUrl, envFile: resolvedEnvFile.fileName };
+  return { apiKey, apiUrl: apiUrl ?? CLOUD_API_URL, envFile: resolvedEnvFile.fileName };
 }
 
 async function resolveEndpointUrl(apiUrl: string, port: number) {
