@@ -85,6 +85,23 @@ For a full list of available tasks, see the [Supabase Management API](https://su
 
 The `SupabaseManagement` integration also provides the ability to trigger jobs based on changes in your Supabase database through the use of [Supabase Database Webhooks](https://supabase.com/docs/guides/database/webhooks).
 
+### Enable Database Webhooks
+
+Currently the Supabase Management API does not provide a way to enable database webhooks, so you'll need to do this manually.
+
+You can do this by visiting your [Database Webhooks settings](https://supabase.com/dashboard/project/_/database/hooks) and clicking the "Enable webhooks" button:
+
+![Enable Database Webhooks](./images/supabase-enable-webhooks.png)
+
+You'll have to do this for each Supabase project you want to use webhooks with.
+
+<Note>
+  You don't actually need to create any webhooks yourself, our integration will take care of that
+  part for you.
+</Note>
+
+### Usage
+
 To use this feature, you'll first initialize a `db` instance, passing in your Supabase project [ID](https://supabase.com/dashboard/project/_/settings/api) (or URL):
 
 ```ts
@@ -151,9 +168,8 @@ client.defineJob({
 ```
 
 <Note>
-  We will only create at most 1 database webhook per table, to limit resource
-  usage when writing to your database. This means we cannot support scoping
-  updated triggers to specific columns.
+  We will only create at most 1 database webhook per table, to limit resource usage when writing to
+  your database. This means we cannot support scoping updated triggers to specific columns.
 </Note>
 
 ### Typescript Support
