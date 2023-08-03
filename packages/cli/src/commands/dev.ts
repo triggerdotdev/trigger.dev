@@ -71,7 +71,7 @@ export async function devCommand(path: string, anyOptions: any) {
 
   try {
     await fetch(localEndpointHandlerUrl, {
-      method: "HEAD",
+      method: "POST",
       headers: {
         "x-trigger-api-key": apiKey,
         "x-trigger-action": "PING",

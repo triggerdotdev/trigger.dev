@@ -60,6 +60,12 @@ export function createMiddleware(client: TriggerClient, path: string = "/api/tri
       return;
     }
 
+    if (req.method === "HEAD") {
+      res.sendStatus(200);
+
+      return;
+    }
+
     const request = convertToStandardRequest(req);
 
     const response = await client.handleRequest(request);
