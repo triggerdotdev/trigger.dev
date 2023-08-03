@@ -30,6 +30,7 @@ class Telemetry {
         apiKey: trigger.apiKey,
         apiUrl: trigger.apiUrl,
       });
+      console.log("Created telemetry TriggerClient");
     }
   }
 
@@ -61,7 +62,7 @@ class Telemetry {
         });
 
         this.#triggerClient?.sendEvent({
-          name: "user created",
+          name: "user.created",
           payload: {
             userId: user.id,
           },
