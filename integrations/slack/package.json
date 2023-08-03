@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/slack",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "The official Slack integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@slack/web-api": "^6.8.1",
-    "@trigger.dev/sdk": "workspace:^2.0.2",
+    "@trigger.dev/sdk": "workspace:^2.0.3",
     "zod": "3.21.4"
   },
   "engines": {

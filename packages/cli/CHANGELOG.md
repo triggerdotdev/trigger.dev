@@ -1,5 +1,12 @@
 # create-trigger
 
+## 2.0.3
+
+### Patch Changes
+
+- fc78854e: Don't require the TRIGGER_API_URL to be set (it has a default)
+- 81180999: The dev command should use a POST request when doing the PING to the local server
+
 ## 2.0.2
 
 ### Patch Changes

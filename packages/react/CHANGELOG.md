@@ -1,5 +1,11 @@
 # @trigger.dev/react
 
+## 2.0.3
+
+### Patch Changes
+
+- @trigger.dev/core@2.0.3
+
 ## 2.0.2
 
 ### Patch Changes
