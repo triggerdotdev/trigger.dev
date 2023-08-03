@@ -235,3 +235,79 @@ client.defineJob({
   },
 });
 ```
+
+### Chatbot Counseling Session
+
+This job represents a simulated AI counseling session. Leveraging OpenAI's ability to understand context and generate human-like text, it forms empathetic responses to user inputs. Such a system could be part of a mental wellness app.
+
+```ts
+client.defineJob({
+  id: "openai-chatbot-counseling",
+  name: "Chatbot Counseling Session",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "openai.startCounselingSession",
+    schema: z.object({}),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    const response = await io.openai.backgroundCreateChatCompletion(
+      "background-counseling-chat-completion",
+      {
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content: "You are a helpful and empathetic AI counselor.",
+          },
+          {
+            role: "user",
+            content: "I've been feeling really stressed out lately.",
+          },
+        ],
+      }
+    );
+    await io.logger.info("counseling session", response.choices);
+  },
+});
+```
+
+### AI Roleplay Game Session
+
+This job creates a fantasy AI role-playing game. It could be fun for interactive storytelling or game development contexts.
+
+```ts
+client.defineJob({
+  id: "openai-roleplay-game-session",
+  name: "AI Roleplay Game Session",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "openai.startRoleplayGameSession",
+    schema: z.object({}),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    const response = await io.openai.backgroundCreateChatCompletion(
+      "background-roleplay-game-session-chat-completion",
+      {
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content: "You are an intelligent guide in a fantasy role-playing game.",
+          },
+          {
+            role: "user",
+            content: "I embark on a quest for the enchanted crown. What's the first step?",
+          },
+        ],
+      }
+    );
+    await io.logger.info("roleplay game session", response.choices);
+  },
+});
+```
