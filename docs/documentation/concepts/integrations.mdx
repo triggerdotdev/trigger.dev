@@ -4,9 +4,8 @@ description: "Integrations make it easy to use APIs in your Jobs"
 ---
 
 <Note>
-  You can use any API in your Jobs by using existing Node.js SDKs or HTTP
-  requests. Integrations just make it much easier especially when you want to
-  use OAuth. And you get great logging.
+  You can use any API in your Jobs by using existing Node.js SDKs or HTTP requests. Integrations
+  just make it much easier especially when you want to use OAuth. And you get great logging.
 </Note>
 
 An Integration is a package you install that makes it easy to work with a specific API. They:
@@ -35,7 +34,7 @@ const slack = new Slack({
   id: "slack",
 });
 
-new Job(client, {
+client.defineJob({
   id: "alert-on-new-github-issues",
   name: "Alert on new GitHub issues",
   version: "0.1.1",
@@ -84,29 +83,16 @@ You can use OAuth to authenticate your internal team with an Integration or to a
 ## References
 
 <CardGroup>
-  <Card
-    title="Integrations Dashboard"
-    icon="sidebar"
-    href="documentation/guides/integrations"
-  >
-    The Integrations Dashboard allows you to manage your Integrations and setup
-    OAuth.
+  <Card title="Integrations Dashboard" icon="sidebar" href="documentation/guides/integrations">
+    The Integrations Dashboard allows you to manage your Integrations and setup OAuth.
   </Card>
-  <Card
-    title="Trigger.dev Connect"
-    icon="user-plus"
-    href="/documentation/concepts/connect"
-  >
+  <Card title="Trigger.dev Connect" icon="user-plus" href="/documentation/concepts/connect">
     Authenticate your users with an Integration using Trigger.dev Connect.
   </Card>
   <Card title="View Integrations" icon="grid-2" href="/integrations">
     Trigger.dev integrates with a wide range of services.
   </Card>
-  <Card
-    title="Create an Integration"
-    icon="square-plus"
-    href="/integrations/create"
-  >
+  <Card title="Create an Integration" icon="square-plus" href="/integrations/create">
     Create an Integration for your own use or as a public package.
   </Card>
 </CardGroup>

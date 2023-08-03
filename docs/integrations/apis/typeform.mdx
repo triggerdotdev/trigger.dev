@@ -50,7 +50,7 @@ export const typeform = new Typeform({
   token: process.env.TYPEFORM_API_KEY!,
 });
 
-new Job(client, {
+client.defineJob({
   id: "do-something-on-new-responses",
   name: "Send a message to slack on new responses",
   version: "0.1.1",
@@ -90,7 +90,7 @@ const typeform = new Typeform({
   token: process.env.TYPEFORM_PAT!,
 });
 
-new Job(client, {
+client.defineJob({
   id: "typeform-tasks",
   name: "Typeform Tasks",
   version: "0.1.0",
@@ -110,12 +110,9 @@ new Job(client, {
       pageSize: 50,
     });
 
-    const allResponses = await io.typeform.getAllResponses(
-      "get-all-responses",
-      {
-        uid: payload.formId,
-      }
-    );
+    const allResponses = await io.typeform.getAllResponses("get-all-responses", {
+      uid: payload.formId,
+    });
   },
 });
 ```
@@ -133,7 +130,7 @@ const typeform = new Typeform({
   token: process.env.TYPEFORM_PAT!,
 });
 
-new Job(client, {
+client.defineJob({
   id: "typeform-client",
   name: "Typeform Client",
   version: "0.1.0",

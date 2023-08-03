@@ -53,7 +53,7 @@ You can have multiple Jobs that subscribe to the same event, they will all trigg
 
 ```typescript eventTrigger()
 //this Job subscribes to an event called new.user
-new Job(client, {
+client.defineJob({
   id: "job-2",
   name: "Second job",
   version: "0.0.1",

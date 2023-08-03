@@ -32,7 +32,7 @@ const github = new Github({
   token: process.env.GITHUB_API_KEY!,
 });
 
-new Job(client, {
+client.defineJob({
   id: "critical-issue-alert",
   name: "Critical Issue Alert",
   version: "0.1.0",

@@ -8,12 +8,11 @@ description: "`io.unregisterCron()` allows you to unregister a [DynamicSchedule]
 
 <Snippet file="stable-key-param.mdx" />
 <ResponseField name="dynamicSchedule" type="DynamicSchedule" required>
-  A [DynamicSchedule](/sdk/dynamicschedule) that will trigger any Jobs it's
-  attached to on a regular interval.
+  A [DynamicSchedule](/sdk/dynamicschedule) that will trigger any Jobs it's attached to on a regular
+  interval.
 </ResponseField>
 <ResponseField name="id" type="string" required>
-  A unique id for the schedule. This is used to identify and unregister the
-  schedule later.
+  A unique id for the schedule. This is used to identify and unregister the schedule later.
 </ResponseField>
 
 ## Returns
@@ -27,7 +26,7 @@ A Promise with the following shape:
 <RequestExample>
   
   ```typescript
-new Job(client, {
+client.defineJob({
   id: "unregister-job",
   name: "Unregister dynamic schedule",
   version: "0.1.1",

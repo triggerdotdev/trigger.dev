@@ -23,7 +23,7 @@ You can always start out by using `z.any()` as your schema, and then later on yo
 ## Example
 
 ```ts
-new Job(client, {
+client.defineJob({
   id: "new-user-slack",
   name: "New user slack message",
   version: "0.1.0",
@@ -58,9 +58,8 @@ new Job(client, {
 ```
 
 <Note>
-  You can subscribe to the same event from multiple different Jobs. This is
-  useful if you want to send an event to multiple different services or if you
-  want to keep each Job small and simple.
+  You can subscribe to the same event from multiple different Jobs. This is useful if you want to
+  send an event to multiple different services or if you want to keep each Job small and simple.
 </Note>
 
 ## Sending events
@@ -84,7 +83,7 @@ await client.sendEvent({
 You can use `io.sendEvent()` to send events from inside a Job run, to trigger another. [View the SDK reference](/sdk/io/sendevent).
 
 ```ts
-new Job(client, {
+client.defineJob({
   id: "event-1",
   name: "Run when the foo.bar event happens",
   version: "0.0.1",

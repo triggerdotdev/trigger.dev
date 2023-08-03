@@ -50,7 +50,7 @@ export const plain = new Plain({
   apiKey: process.env.PLAIN_API_KEY!,
 });
 
-new Job(client, {
+client.defineJob({
   id: "plain-playground",
   name: "Plain Playground",
   version: "0.1.1",
@@ -87,37 +87,34 @@ new Job(client, {
       customerId: customer.id,
     });
 
-    const timelineEntry = await io.plain.upsertCustomTimelineEntry(
-      "upsert-timeline-entry",
-      {
-        customerId: customer.id,
-        title: "My timeline entry",
-        components: [
-          {
-            componentText: {
-              text: `This is a nice title`,
-            },
+    const timelineEntry = await io.plain.upsertCustomTimelineEntry("upsert-timeline-entry", {
+      customerId: customer.id,
+      title: "My timeline entry",
+      components: [
+        {
+          componentText: {
+            text: `This is a nice title`,
           },
-          {
-            componentDivider: {
-              dividerSpacingSize: ComponentDividerSpacingSize.M,
-            },
+        },
+        {
+          componentDivider: {
+            dividerSpacingSize: ComponentDividerSpacingSize.M,
           },
-          {
-            componentText: {
-              textSize: ComponentTextSize.S,
-              textColor: ComponentTextColor.Muted,
-              text: "External id",
-            },
+        },
+        {
+          componentText: {
+            textSize: ComponentTextSize.S,
+            textColor: ComponentTextColor.Muted,
+            text: "External id",
           },
-          {
-            componentText: {
-              text: foundCustomer?.externalId ?? "",
-            },
+        },
+        {
+          componentText: {
+            text: foundCustomer?.externalId ?? "",
           },
-        ],
-      }
-    );
+        },
+      ],
+    });
   },
 });
 ```
@@ -145,7 +142,7 @@ export const plain = new Plain({
   apiKey: process.env.PLAIN_API_KEY!,
 });
 
-new Job(client, {
+client.defineJob({
   id: "plain-client",
   name: "Plain Client",
   version: "0.1.0",

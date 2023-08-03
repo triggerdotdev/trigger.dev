@@ -30,7 +30,7 @@ If you wish to Run a Job at an exact time or less frequently than once pr day yo
 <RequestExample>
 
 ```typescript Every 5 minutes
-new Job(client, {
+client.defineJob({
   id: "scheduled-job-1",
   name: "Scheduled Job 1",
   version: "0.1.1",

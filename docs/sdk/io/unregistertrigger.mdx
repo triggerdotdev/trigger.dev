@@ -8,8 +8,7 @@ description: "`io.unregisterTrigger()` allows you to unregister a [DynamicTrigge
 
 <Snippet file="stable-key-param.mdx" />
 <ResponseField name="dynamicTrigger" type="DynamicTrigger" required>
-  A [DynamicTrigger](/sdk/dynamictrigger) that will trigger any Jobs it's
-  attached to.
+  A [DynamicTrigger](/sdk/dynamictrigger) that will trigger any Jobs it's attached to.
 </ResponseField>
 <ResponseField name="id" type="string" required>
   A unique id for the trigger. This is used to identify and unregister it later.
@@ -26,7 +25,7 @@ A Promise with the following shape:
 <RequestExample>
   
   ```typescript
-new Job(client, {
+client.defineJob({
   id: "unregister-job",
   name: "Unregister dynamic trigger",
   version: "0.1.1",

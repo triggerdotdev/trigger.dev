@@ -45,8 +45,7 @@ const github2 = new Github({
 
 <CardGroup cols={2}>
   <Card title="Triggers" icon="stars" href="/integrations/apis/github-triggers">
-    Trigger Jobs when events happen in GitHub, such as a new commit or a new
-    issue.
+    Trigger Jobs when events happen in GitHub, such as a new commit or a new issue.
   </Card>
   <Card title="Tasks" icon="sparkles" href="/integrations/apis/github-tasks">
     Perform tasks such as creating a new issue or a new comment.
@@ -58,8 +57,8 @@ const github2 = new Github({
 You can use the underlying client to do anything Octokit supports. In this example we create a project card when a new issue is opened..
 
 <Info>
-  View [the official GitHub docs](https://docs.github.com/en/rest) for
-  everything that is supported{" "}
+  View [the official GitHub docs](https://docs.github.com/en/rest) for everything that is
+  supported{" "}
 </Info>
 
 ```ts
@@ -70,7 +69,7 @@ const github = new Github({
   token: process.env.GITHUB_TOKEN!,
 });
 
-new Job(client, {
+client.defineJob({
   id: "alert-on-new-github-issues",
   name: "Alert on new GitHub issues",
   version: "0.1.1",
@@ -84,17 +83,13 @@ new Job(client, {
   },
   run: async (payload, io, ctx) => {
     //wrap the SDK call in runTask
-    const { data } = await io.runTask(
-      "create-card",
-      { name: "Create card" },
-      async () => {
-        //create a project card using the underlying client
-        return io.github.client.rest.projects.createCard({
-          column_id: 123,
-          note: "test",
-        });
-      }
-    );
+    const { data } = await io.runTask("create-card", { name: "Create card" }, async () => {
+      //create a project card using the underlying client
+      return io.github.client.rest.projects.createCard({
+        column_id: 123,
+        note: "test",
+      });
+    });
 
     //log the url of the created card
     await io.logger.info(data.url);

@@ -30,8 +30,7 @@ description: "`io.registerInterval()` allows you to register a [DynamicSchedule]
 A Promise that resolves to an object with the following fields:
 
 <ResponseField name="id" type="string" required>
-  A unique id for the interval. This is used to identify and unregister the
-  interval later.
+  A unique id for the interval. This is used to identify and unregister the interval later.
 </ResponseField>
 <ResponseField name="metadata" type="any" required>
   Any additional metadata about the interval.
@@ -61,7 +60,7 @@ A Promise that resolves to an object with the following fields:
 <RequestExample>
   
   ```typescript
-new Job(client, {
+client.defineJob({
   id: "my-job",
   name: "My job",
   version: "0.1.1",

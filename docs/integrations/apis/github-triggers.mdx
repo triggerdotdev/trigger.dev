@@ -29,7 +29,7 @@ const github = new Github({
   token: process.env.GITHUB_TOKEN!,
 });
 
-new Job(client, {
+client.defineJob({
   id: "github-integration-on-issue",
   name: "GitHub Integration - On Issue",
   version: "0.1.0",

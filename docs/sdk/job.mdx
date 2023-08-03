@@ -12,7 +12,7 @@ By far the most important thing to understand is the constructor.
 <RequestExample>
 
 ```ts cronTrigger
-new Job(client, {
+client.defineJob({
   id: "slack-kpi-summary",
   name: "Slack kpi summary",
   version: "0.1.1",
@@ -35,7 +35,7 @@ new Job(client, {
 ```
 
 ```ts webhook
-new Job(client, {
+client.defineJob({
   id: "github-integration-on-issue",
   name: "GitHub Integration - On Issue",
   version: "0.1.0",
@@ -52,7 +52,7 @@ new Job(client, {
 ```
 
 ```ts event
-new Job(client, {
+client.defineJob({
   id: "openai-joke",
   name: "OpenAI Joke",
   version: "0.0.1",
@@ -66,18 +66,15 @@ new Job(client, {
     openai,
   },
   run: async (payload, io, ctx) => {
-    const joke = await io.openai.backgroundCreateChatCompletion(
-      "generate-jokes",
-      {
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "user",
-            content: payload.jokePrompt,
-          },
-        ],
-      }
-    );
+    const joke = await io.openai.backgroundCreateChatCompletion("generate-jokes", {
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "user",
+          content: payload.jokePrompt,
+        },
+      ],
+    });
 
     return joke.choices;
   },
@@ -89,8 +86,7 @@ new Job(client, {
 ## Parameters
 
 <ParamField body="client" type="object" required>
-  An instance of [TriggerClient](/sdk/triggerclient) that is used to send events
-  to the Trigger API.
+  An instance of [TriggerClient](/sdk/triggerclient) that is used to send events to the Trigger API.
 </ParamField>
 
 <ParamField body="options" type="object" required>

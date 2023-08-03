@@ -19,9 +19,8 @@ description: "`io.registerCron()` allows you to register a [DynamicSchedule](/sd
 
 <Expandable title="options" defaultOpen>
   <ResponseField name="cron" type="string" required>
-    A CRON expression that defines the schedule. A useful tool when writing CRON
-    expressions is [crontab guru](https://crontab.guru). Note that the timezone
-    used is UTC.
+    A CRON expression that defines the schedule. A useful tool when writing CRON expressions is
+    [crontab guru](https://crontab.guru). Note that the timezone used is UTC.
   </ResponseField>
 </Expandable>
 
@@ -32,8 +31,7 @@ description: "`io.registerCron()` allows you to register a [DynamicSchedule](/sd
 A Promise that resolves to an object with the following fields:
 
 <ResponseField name="id" type="string" required>
-  A unique id for the interval. This is used to identify and unregister the
-  interval later.
+  A unique id for the interval. This is used to identify and unregister the interval later.
 </ResponseField>
 <ResponseField name="metadata" type="any" required>
   Any additional metadata about the interval.
@@ -63,7 +61,7 @@ A Promise that resolves to an object with the following fields:
 <RequestExample>
   
   ```typescript
-new Job(client, {
+client.defineJob({
   id: "my-job",
   name: "My job",
   version: "0.1.1",

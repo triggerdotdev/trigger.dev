@@ -40,7 +40,7 @@ const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
 });
 
 //2. create a Job that is attached to the dynamic trigger
-new Job(client, {
+client.defineJob({
   id: "listen-for-dynamic-trigger",
   name: "Listen for dynamic trigger",
   version: "0.1.1",
@@ -50,9 +50,7 @@ new Job(client, {
   },
   run: async (payload, io, ctx) => {
     await io.slack.postMessage("Slack 📝", {
-      text: `New Issue opened on repo: ${
-        payload.issue.html_url
-      }. \n\n${JSON.stringify(ctx)}`,
+      text: `New Issue opened on repo: ${payload.issue.html_url}. \n\n${JSON.stringify(ctx)}`,
       channel: "C04GWUTDC3W",
     });
   },
@@ -68,7 +66,7 @@ async function registerRepo(owner: string, repo: string) {
 }
 
 //4. Register inside other Jobs
-new Job(client, {
+client.defineJob({
   id: "new-repo",
   name: "New repo",
   version: "0.1.1",

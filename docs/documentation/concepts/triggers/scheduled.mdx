@@ -15,7 +15,7 @@ This job will run every 60 seconds, starting 60 seconds after this Job is first 
 ```ts
 import { Job, intervalTrigger } from "@trigger.dev/sdk";
 
-new Job(client, {
+client.defineJob({
   id: "scheduled-job-1",
   name: "Scheduled Job 1",
   version: "0.1.1",
@@ -43,7 +43,7 @@ This job will run at 2:30pm every Monday. You can get help with [CRON syntax](ht
 ```ts
 import { Job, cronTrigger } from "@trigger.dev/sdk";
 
-new Job(client, {
+client.defineJob({
   id: "scheduled-job-2",
   name: "Scheduled Job 2",
   version: "0.1.1",

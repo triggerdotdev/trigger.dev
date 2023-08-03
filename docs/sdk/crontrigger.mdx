@@ -23,8 +23,7 @@ A useful tool when writing CRON expressions is [crontab guru](https://crontab.gu
 <ResponseField name="options" type="object" required>
   <Expandable title="options" defaultOpen>
     <ResponseField name="cron" type="string" required>
-      A CRON expression that defines the schedule. Note that the timezone used
-      is always UTC.
+      A CRON expression that defines the schedule. Note that the timezone used is always UTC.
     </ResponseField>
   </Expandable>
 </ResponseField>
@@ -32,7 +31,7 @@ A useful tool when writing CRON expressions is [crontab guru](https://crontab.gu
 <RequestExample>
 
 ```typescript 9am UTC everyday
-new Job(client, {
+client.defineJob({
   id: "scheduled-job-1",
   name: "Scheduled Job 1",
   version: "0.1.1",
@@ -51,7 +50,7 @@ new Job(client, {
 ```
 
 ```typescript First day of month
-new Job(client, {
+client.defineJob({
   id: "scheduled-job-2",
   name: "Scheduled Job 2",
   version: "0.1.1",

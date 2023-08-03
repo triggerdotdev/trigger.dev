@@ -122,7 +122,7 @@ A Promise that resolves with the returned value of the callback.
 <RequestExample>
 
 ```typescript Run a task
-new Job(client, {
+client.defineJob({
   id: "alert-on-new-github-issues",
   name: "Alert on new GitHub issues",
   version: "0.1.1",
@@ -155,7 +155,7 @@ new Job(client, {
 ```
 
 ```typescript onError callback
-new Job(client, {
+client.defineJob({
   id: "custom-error-handling",
   name: "Custom Error handling",
   version: "0.1.1",

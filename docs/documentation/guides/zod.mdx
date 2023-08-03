@@ -13,7 +13,7 @@ We use it [extensively](https://github.com/search?q=repo%3Atriggerdotdev%2Ftrigg
 But there are a few places where we ask you to provide us with a Zod schema, for example when defining your own [events](/documentation/concepts/triggers/events):
 
 ```ts
-new Job(client, {
+client.defineJob({
   id: "new-user",
   name: "New user",
   version: "0.1.0",
@@ -36,8 +36,8 @@ new Job(client, {
 So it will help to know a little about Zod and how to use it. We definitely recommend the well written [Zod README](https://github.com/colinhacks/zod#readme) but we've included a short primer below.
 
 <Tip>
-  Wherever we require you to pass in a Zod schema, you can always start with
-  `z.any()` which accepts `any` type and then add more strict validations later.
+  Wherever we require you to pass in a Zod schema, you can always start with `z.any()` which accepts
+  `any` type and then add more strict validations later.
 </Tip>
 
 ## Basic Usage

@@ -17,7 +17,7 @@ A Job is made up of a few things:
 
 ```ts
 //Job definition – uses the client
-new Job(client, {
+client.defineJob({
   // 1. Metadata
   id: "event-1",
   name: "Run when the foo.bar event happens",
@@ -51,11 +51,7 @@ Events [trigger](/documentation/concepts/triggers) Jobs. Jobs generate a [Run](/
   <Card title="Job SDK reference" icon="wrench" href="/sdk/job">
     Detailed SDK reference for Jobs.
   </Card>
-  <Card
-    title="Managing Jobs Dashboard"
-    icon="globe"
-    href="/documentation/guides/managing-jobs"
-  >
+  <Card title="Managing Jobs Dashboard" icon="globe" href="/documentation/guides/managing-jobs">
     Viewing and managing your Jobs in the Dashboard.
   </Card>
 </CardGroup>

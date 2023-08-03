@@ -46,7 +46,7 @@ There are two way to use Integrations in a Job:
 This example automatically assigns "matt-aitken" to any new issue in the `trigger.dev` repo (lucky him).
 
 ```ts
-new Job(client, {
+client.defineJob({
   id: "assign-on-issue-opened",
   name: "Assign on Issue Opened",
   version: "0.1.0",

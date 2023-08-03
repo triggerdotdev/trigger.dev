@@ -20,9 +20,8 @@ This is used inside the OpenAI Integration for Tasks like `backgroundCreateChatC
     The HTTP method to use for the request.
   </ResponseField>
   <ResponseField name="headers" type="object">
-    Any headers to send with the request. Note that you can use
-    [redactString](sdk/redactString) to prevent sensitive information from being
-    stored (e.g. in the logs), like API keys and tokens.
+    Any headers to send with the request. Note that you can use [redactString](sdk/redactString) to
+    prevent sensitive information from being stored (e.g. in the logs), like API keys and tokens.
   </ResponseField>
   <ResponseField name="body" type="string | ArrayBuffer">
     The body of the request.
@@ -84,19 +83,16 @@ An individual retrying strategy can be one of two types:
 
 <Expandable title="headers strategy">
   <ResponseField name="type" type="headers" required>
-    The `headers` strategy retries the request using info from the response
-    headers.
+    The `headers` strategy retries the request using info from the response headers.
   </ResponseField>
   <ResponseField name="limitHeader" type="string">
-    The header to use to determine the maximum number of times to retry the
-    request.
+    The header to use to determine the maximum number of times to retry the request.
   </ResponseField>
   <ResponseField name="remainingHeader" type="string">
     The header to use to determine the number of remaining retries.
   </ResponseField>
   <ResponseField name="resetHeader" type="string">
-    The header to use to determine the time when the number of remaining retries
-    will be reset.
+    The header to use to determine the time when the number of remaining retries will be reset.
   </ResponseField>
 </Expandable>
 
@@ -111,7 +107,7 @@ A `Promise` that resolves after the specified amount of time.
 <RequestExample>
 
 ```typescript backgroundFetch example
-new Job(client, {
+client.defineJob({
   id: "background-fetch-job",
   name: "Background fetch Job",
   version: "0.0.1",

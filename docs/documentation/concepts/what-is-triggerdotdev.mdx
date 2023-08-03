@@ -42,7 +42,7 @@ const slack = new Slack({
   id: "slack",
 });
 
-new Job(client, {
+client.defineJob({
   id: "critical-issue-alert",
   name: "Critical Issue Alert",
   version: "0.1.0",

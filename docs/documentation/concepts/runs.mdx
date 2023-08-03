@@ -10,7 +10,7 @@ description: "When a [Job](/documentation/concepts/jobs) is [Triggered](/documen
 A Run is a record of the execution of a Job. It is created from `run()` function of a Job.
 
 ```ts
-new Job(client, {
+client.defineJob({
   id: "event-1",
   name: "Run when the foo.bar event happens",
   version: "0.0.1",
@@ -64,11 +64,7 @@ The `context` object gives you access to information about the current Run, Job,
 ## References
 
 <CardGroup cols={2}>
-  <Card
-    title="Viewing Runs Dashboard"
-    icon="globe"
-    href="/documentation/guides/viewing-runs"
-  >
+  <Card title="Viewing Runs Dashboard" icon="globe" href="/documentation/guides/viewing-runs">
     View all Runs for a Job, all the way down to individual Tasks.
   </Card>
   <Card title="`io` SDK Reference" icon="wrench" href="/sdk/io">

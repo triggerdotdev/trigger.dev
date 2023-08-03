@@ -71,9 +71,9 @@ Once you've created your Integration package, you can start developing it. In th
 This is the entry point of the Integration package. It exports a main "integration" class that implements the `TriggerIntegration` interface. For example, the `@trigger.dev/github` Integration exports a `Github` class that implements.
 
 <Tip>
-  We're adopting the naming convention of naming the class after the service,
-  without a suffix or prefix. We prefer the exported name be `Slack` instead of
-  something like `SlackIntegration` or `SlackConnector`
+  We're adopting the naming convention of naming the class after the service, without a suffix or
+  prefix. We prefer the exported name be `Slack` instead of something like `SlackIntegration` or
+  `SlackConnector`
 </Tip>
 
 <Accordion title="Example: OpenAI">
@@ -84,9 +84,7 @@ import { Configuration, OpenAIApi } from "openai";
 import * as tasks from "./tasks";
 import { OpenAIIntegrationOptions } from "./types";
 
-export class OpenAI
-  implements TriggerIntegration<IntegrationClient<OpenAIApi, typeof tasks>>
-{
+export class OpenAI implements TriggerIntegration<IntegrationClient<OpenAIApi, typeof tasks>> {
   client: IntegrationClient<OpenAIApi, typeof tasks>;
 
   constructor(private options: OpenAIIntegrationOptions) {
@@ -121,19 +119,18 @@ export class OpenAI
 The `TriggerIntegration` interface requires three properties to be implemented:
 
 <ParamField body="id" type="string" required>
-  The `id` that uniquely identifies the Integration. This should always be
-  passed through the constructor options.
+  The `id` that uniquely identifies the Integration. This should always be passed through the
+  constructor options.
 </ParamField>
 
 <ParamField body="metadata" type="object" required>
   <Expandable title="properties">
     <ParamField body="id" type="string" required>
-      A unique identifier for the Integration. For example, the OpenAI
-      Integration has an id of `"openai"`.
+      A unique identifier for the Integration. For example, the OpenAI Integration has an id of
+      `"openai"`.
     </ParamField>
     <ParamField body="name" type="string" required>
-      The name of the Integration. For example, the OpenAI Integration has a
-      name of `"OpenAI"`.
+      The name of the Integration. For example, the OpenAI Integration has a name of `"OpenAI"`.
     </ParamField>
   </Expandable>
 </ParamField>
@@ -194,11 +191,7 @@ For example, here is the `getForm` authenticated task defined in the `@trigger.d
 import type { AuthenticatedTask } from "@trigger.dev/sdk";
 import type { GetFormParams, GetFormResponse, TypeformSDK } from "./types";
 
-export const getForm: AuthenticatedTask<
-  TypeformSDK,
-  GetFormParams,
-  GetFormResponse
-> = {
+export const getForm: AuthenticatedTask<TypeformSDK, GetFormParams, GetFormResponse> = {
   init: (params) => {
     return {
       name: "Get Form",
@@ -232,7 +225,7 @@ export type GetFormResponse = Prettify<Typeform.Form>;
 ```
 
 ```ts usage.ts
-new Job(client, {
+client.defineJob({
   id: "typeform-playground",
   name: "Typeform Playground",
   version: "0.1.1",
@@ -258,9 +251,9 @@ The first thing to notice is the explicit typing of the `getForm` export as an `
 If you take a look at the `usage.ts` file above, you can see how this task is used in a job. The `io.typeform.getForm` function is typed as returning `Promise<GetFormResponse>` and the `params` argument is typed as `GetFormParams`.
 
 <Note>
-  Notice how the params are the _second_ argument to `getForm`, that's because
-  the first argument is always the task key. See our [Keys and Resumability
-  docs](/documentation/concepts/resumability) for more on why this is important
+  Notice how the params are the _second_ argument to `getForm`, that's because the first argument is
+  always the task key. See our [Keys and Resumability docs](/documentation/concepts/resumability)
+  for more on why this is important
 </Note>
 
 #### `run` function
@@ -268,8 +261,8 @@ If you take a look at the `usage.ts` file above, you can see how this task is us
 The `run` function is the main function that will be called when the task is run. It's an async function that takes up to 5 arguments:
 
 <ParamField body="params" type="type parameter" required>
-  The input params that were passed to the task. This is the second argument to
-  the `getForm` function in the example above.
+  The input params that were passed to the task. This is the second argument to the `getForm`
+  function in the example above.
 </ParamField>
 
 <ParamField body="client" type="type parameter" required>
@@ -286,9 +279,9 @@ The `run` function is the main function that will be called when the task is run
 </ParamField>
 
 <ParamField body="auth" type="ConnectionAuth">
-  If for some reason you need to access the auth object that was used to seed
-  the SDK client, you can access it here. The `AuthenticatedTask` generic type
-  takes an optional 4th type parameter that allows you to specify the auth type
+  If for some reason you need to access the auth object that was used to seed the SDK client, you
+  can access it here. The `AuthenticatedTask` generic type takes an optional 4th type parameter that
+  allows you to specify the auth type
 </ParamField>
 
 #### `init` function
@@ -296,8 +289,8 @@ The `run` function is the main function that will be called when the task is run
 The `init` function is used to initialize the task. It's a synchronous function that takes a single argument:
 
 <ParamField body="params" type="type parameter" required>
-  The input params that were passed to the task. This is the second argument to
-  the `getForm` function in the example above.
+  The input params that were passed to the task. This is the second argument to the `getForm`
+  function in the example above.
 </ParamField>
 
 #### `onError` function
@@ -466,9 +459,7 @@ export const backgroundCreateCompletion: AuthenticatedTask<
         headers: {
           "Content-Type": "application/json",
           Authorization: redactString`Bearer ${auth.apiKey}`,
-          ...(auth.organization
-            ? { "OpenAI-Organization": auth.organization }
-            : {}),
+          ...(auth.organization ? { "OpenAI-Organization": auth.organization } : {}),
         },
         body: JSON.stringify(params),
       }

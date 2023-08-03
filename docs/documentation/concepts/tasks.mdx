@@ -10,7 +10,7 @@ description: "Tasks are individual building blocks of a Run."
 In the `run()` function you can use regular code and you can use Tasks.
 
 ```ts
-new Job(client, {
+client.defineJob({
   id: "new-user",
   name: "Run when a new user signs up",
   version: "0.0.1",
@@ -44,13 +44,9 @@ new Job(client, {
     await io.wait("wait", 60 * 60 * 3); // wait for 3 hours
 
     // You can wrap your own code in a Task, for retrying, resumability and logging
-    const response = await io.runTask(
-      "my-task",
-      { name: "My Task" },
-      async () => {
-        return await longRunningCode(payload.userId);
-      }
-    );
+    const response = await io.runTask("my-task", { name: "My Task" }, async () => {
+      return await longRunningCode(payload.userId);
+    });
 
     return response;
   },
@@ -76,28 +72,16 @@ The first param of all Tasks is a `key`. This is a unique identifier for the Tas
 ## References
 
 <CardGroup cols={2}>
-  <Card
-    title="Resumability"
-    icon="clock"
-    href="/documentation/concepts/resumability"
-  >
+  <Card title="Resumability" icon="clock" href="/documentation/concepts/resumability">
     Runs can be very long-running. Learn how we handle this.
   </Card>
-  <Card
-    title="Integrations"
-    icon="grid-2"
-    href="/documentation/concepts/integrations"
-  >
+  <Card title="Integrations" icon="grid-2" href="/documentation/concepts/integrations">
     Integrations utilize Tasks.
   </Card>
   <Card title="`io` SDK Reference" icon="wrench" href="/sdk/io">
     The `io` object allows you to easily run a Task yourself.
   </Card>
-  <Card
-    title="Viewing Runs Dashboard"
-    icon="globe"
-    href="/documentation/guides/viewing-runs"
-  >
+  <Card title="Viewing Runs Dashboard" icon="globe" href="/documentation/guides/viewing-runs">
     View all Runs for a Job, all the way down to individual Tasks.
   </Card>
 </CardGroup>

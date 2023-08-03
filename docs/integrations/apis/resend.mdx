@@ -51,7 +51,7 @@ const resend = new Resend({
   apiKey: process.env.RESEND_API_KEY!,
 });
 
-new Job(client, {
+client.defineJob({
   id: "send-resend-email",
   name: "Send Resend Email",
   version: "0.1.0",

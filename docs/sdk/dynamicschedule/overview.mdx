@@ -39,7 +39,7 @@ const dynamicSchedule = new DynamicSchedule(client, {
 });
 
 //2. create a Job that is attached to the dynamic schedule
-new Job(client, {
+client.defineJob({
   id: "user-dynamicinterval",
   name: "User Dynamic Interval",
   version: "0.1.1",
@@ -63,7 +63,7 @@ async function registerUserCronJob(userId: string, userSchedule: string) {
 }
 
 //5. Register inside other Jobs
-new Job(client, {
+client.defineJob({
   id: "register-dynamicinterval",
   name: "Register Dynamic Interval",
   version: "0.1.1",
