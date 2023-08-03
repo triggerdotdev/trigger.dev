@@ -96,10 +96,21 @@ jobs:
           cp ./.env.example ./.env
           cp ./examples/nextjs-test/.env.example ./examples/nextjs-test/.env.local
           cp ./packages/database/.env.example ./packages/database/.env
+
+          # Build packages
+          pnpm run build --filter @examples/nextjs-test^...
+          pnpm --filter @trigger.dev/database generate
+
+          # Move trigger-cli bin to correct place
+          pnpm install --frozen-lockfile
+
+          # Execute tests
           pnpm run docker
           pnpm run db:migrate
           pnpm run db:seed
           pnpm run test:e2e
+
+          # Cleanup
           pnpm run docker:stop
 
       - name: Upload Playwright report

@@ -1,12 +1,10 @@
 import { test, expect } from "@playwright/test";
 
 test("Create an account", async ({ page }) => {
-  await page.goto("http://localhost:3030/login");
+  await page.goto("/login");
   await page.getByRole("link", { name: "Continue with Email" }).click();
 
-  await page
-    .getByPlaceholder("Email Address")
-    .type(`test_${Math.random()}@test.com`);
+  await page.getByPlaceholder("Email Address").type(`test_${Math.random()}@test.com`);
   await page.getByRole("button", { name: "Send a magic link" }).click();
 
   await expect(page.getByText("Welcome to Trigger.dev")).toBeVisible();
@@ -21,7 +19,7 @@ test("Create an account", async ({ page }) => {
 });
 
 test("Verify jobs from the test nextjs project", async ({ page }) => {
-  await page.goto("http://localhost:3030");
+  await page.goto("/");
   await page.getByRole("link", { name: "Continue with Email" }).click();
 
   await page.getByPlaceholder("Email Address").type("test-user@test.com");
@@ -31,9 +29,7 @@ test("Verify jobs from the test nextjs project", async ({ page }) => {
   await expect(page.locator("h1").filter({ hasText: /^Jobs$/ })).toBeVisible();
 
   await page.getByRole("link", { name: "Environments & API Keys" }).click();
-  await expect(
-    page.locator("h1").filter({ hasText: "Environments & API Keys" })
-  ).toBeVisible();
+  await expect(page.locator("h1").filter({ hasText: "Environments & API Keys" })).toBeVisible();
   await expect(
     page.locator("h3").filter({ hasText: "nextjs-test" })
     // Set the timeout high to allow the cli to register jobs

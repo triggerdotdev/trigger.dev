@@ -13,12 +13,7 @@ export const setDB = async (cb: SetDBCallback) => {
     },
   });
 
-  try {
-    await prisma.$connect();
-    await cb(prisma);
-  } catch (error) {
-    console.error(error);
-  } finally {
-    await prisma.$disconnect();
-  }
+  await prisma.$connect();
+  await cb(prisma);
+  await prisma.$disconnect();
 };

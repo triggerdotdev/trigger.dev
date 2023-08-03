@@ -15,8 +15,8 @@ const client = new EmailClient({
 });
 
 export async function sendMagicLinkEmail(options: SendEmailOptions<AuthUser>): Promise<void> {
-  // Auto redirect when in test mode
-  if (env.APP_ENV === "test") {
+  // Auto redirect when in development mode
+  if (env.NODE_ENV === "development") {
     throw redirect(options.magicLink);
   }
 

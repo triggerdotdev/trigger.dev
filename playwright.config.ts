@@ -23,6 +23,7 @@ export default defineConfig({
   reporter: "html",
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
+    baseURL: "http://localhost:3030",
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: "on-first-retry",
   },
@@ -54,7 +55,6 @@ export default defineConfig({
       command: "pnpm run --filter webapp dev",
       url: "http://localhost:3030",
       reuseExistingServer: !process.env.CI,
-      env: { APP_ENV: "test" },
     },
     {
       command: "pnpm run --filter @examples/nextjs-test dev",

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "concurrently --kill-others \"pnpm dev:next\" \"wait-on http://localhost:3000 && pnpm dev:trigger\"",
     "dev:next": "next dev",
-    "dev:trigger": "pnpm dlx @trigger.dev/cli@latest dev",
+    "dev:trigger": "trigger-cli dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -23,6 +23,8 @@
   "devDependencies": {
     "@trigger.dev/cli": "workspace:*",
     "concurrently": "^8.2.0",
+    "eslint": "8.42.0",
+    "eslint-config-next": "13.4.6",
     "wait-on": "^7.0.1"
   }
 }
