@@ -1,15 +1,17 @@
-import fs from "fs/promises";
 import pathModule from "path";
+import { type PackageJson } from "type-fest";
+import { readJSONFile } from "./fileSystem.js";
 
 /** Detects if the project is a Next.js project at path  */
 export async function detectNextJsProject(path: string): Promise<boolean> {
-  // Checks for the presence of a next.config.js file
+  // Checks for the presence of the next package in the package.json file
   try {
-    // Check if next.config.js file exists in the given path
-    await fs.access(pathModule.join(path, "next.config.js"));
-    return true;
+    const packageJsonPath = pathModule.join(path, "package.json");
+    const packageJsonContent = (await readJSONFile(packageJsonPath)) as PackageJson;
+
+    return packageJsonContent.dependencies?.next != null;
   } catch (error) {
-    // If next.config.js file doesn't exist, it's not a Next.js project
+    // If the package.json file doesn't exist… then they've run it in the wrong folder
     return false;
   }
 }
