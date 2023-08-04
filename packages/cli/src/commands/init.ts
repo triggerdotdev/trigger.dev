@@ -30,9 +30,11 @@ export type InitCommandOptions = {
 type ResolvedOptions = Required<InitCommandOptions>;
 
 export const initCommand = async (options: InitCommandOptions) => {
-  renderTitle();
-
   telemetryClient.init.started(options);
+
+  const resolvedPath = resolvePath(options.projectPath);
+
+  await renderTitle(resolvedPath);
 
   if (options.triggerUrl === CLOUD_TRIGGER_URL) {
     logger.info(`✨ Initializing project in Trigger.dev Cloud`);
@@ -42,7 +44,6 @@ export const initCommand = async (options: InitCommandOptions) => {
     logger.info(`✨ Initializing Trigger.dev in project`);
   }
 
-  const resolvedPath = resolvePath(options.projectPath);
   // Detect if are are in a Next.js project
   const isNextJsProject = await detectNextJsProject(resolvedPath);
 
