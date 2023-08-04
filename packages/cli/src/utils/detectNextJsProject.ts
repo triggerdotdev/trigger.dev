@@ -9,7 +9,7 @@ export async function detectNextJsProject(path: string): Promise<boolean> {
     const packageJsonPath = pathModule.join(path, "package.json");
     const packageJsonContent = (await readJSONFile(packageJsonPath)) as PackageJson;
 
-    return packageJsonContent.dependencies?.next != null;
+    return packageJsonContent.dependencies?.next !== undefined;
   } catch (error) {
     // If the package.json file doesn't exist… then they've run it in the wrong folder
     return false;
