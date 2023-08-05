@@ -78,6 +78,8 @@ export default function Page() {
     { client: string; type: RuntimeEnvironmentType } | undefined
   >();
 
+  const [isHelpOpen, setIsHelpOpen] = useState<boolean>(!clients.length); 
+
   const selectedEndpoint = useMemo(() => {
     if (!selected) return undefined;
 
@@ -119,7 +121,8 @@ export default function Page() {
         <PageDescription>API Keys and endpoints for your environments.</PageDescription>
       </PageHeader>
       <PageBody>
-        <Help defaultOpen>
+      {setIsHelpOpen(!clients.length)}
+        <Help defaultOpen={isHelpOpen}>
           {(open) => (
             <div className={cn("grid h-full gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
               <div>
