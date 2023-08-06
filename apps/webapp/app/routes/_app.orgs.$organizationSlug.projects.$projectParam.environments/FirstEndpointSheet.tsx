@@ -37,7 +37,6 @@ type FirstEndpointSheetProps = {
 };
 
 export function FirstEndpointSheet({ projectId, environments }: FirstEndpointSheetProps) {
-  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string>(environments[0].id);
   const setEndpointUrlFetcher = useFetcher();
   const [form, { url, environmentId }] = useForm({
     id: "new-endpoint-url",
@@ -52,7 +51,7 @@ export function FirstEndpointSheet({ projectId, environments }: FirstEndpointShe
   return (
     <Sheet>
       <SheetTrigger>
-        <ButtonContent variant={"primary/small"}>Add your first endpoint</ButtonContent>
+        <ButtonContent variant={"primary/medium"}>Add your first endpoint</ButtonContent>
       </SheetTrigger>
       <SheetContent size="lg">
         <SheetHeader>

@@ -203,10 +203,12 @@ export default function Page() {
                       </div>
                     ))
                   ) : (
-                    <Paragraph>
-                      Add your first endpoint{" "}
-                      <FirstEndpointSheet projectId={project.id} environments={environments} />
-                    </Paragraph>
+                    <>
+                      <Paragraph>Add your first endpoint</Paragraph>
+                      <Paragraph>
+                        <FirstEndpointSheet projectId={project.id} environments={environments} />
+                      </Paragraph>
+                    </>
                   )}
                 </div>
                 {selectedEndpoint && (

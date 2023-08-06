@@ -47,8 +47,6 @@ export async function action({ request, params }: ActionArgs) {
       return json(submission);
     }
 
-    console.log(submission);
-
     const service = new ValidateCreateEndpointService();
     const result = await service.call({
       url: submission.value.url,
