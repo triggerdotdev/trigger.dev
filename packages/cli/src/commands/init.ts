@@ -436,10 +436,11 @@ async function createTriggerAppRoute(
   const tsConfigPath = pathModule.join(projectPath, configFileName);
   const { tsconfig } = await parse(tsConfigPath);
 
-  const extension = isTypescriptProject ? ".ts" : ".js";
-  const triggerFileName = `trigger${extension}`;
-  const examplesFileName = `examples${extension}`;
-  const routeFileName = `route${extension}`;
+  const extension = isTypescriptProject ? ".ts" : ".js"
+  const triggerFileName = `trigger${extension}`
+  const examplesFileName = `examples${extension}`
+  const examplesIndexFileName = `index${extension}`
+  const routeFileName = `route${extension}`
 
   const pathAlias = getPathAlias(tsconfig, usesSrcDir);
   const routePathPrefix = pathAlias ? pathAlias + "/" : "../../../";
@@ -448,8 +449,8 @@ async function createTriggerAppRoute(
 import { createAppRoute } from "@trigger.dev/nextjs";
 import { client } from "${routePathPrefix}trigger";
 
-// Replace this with your own jobs
-import "${routePathPrefix}jobs/examples";
+
+import "${routePathPrefix}jobs";
 
 //this route is used to send and receive data with Trigger.dev
 export const { POST, dynamic } = createAppRoute(client);
@@ -489,6 +490,12 @@ client.defineJob({
 });
 `;
 
+  const examplesIndexContent = `
+// import all your job files here
+
+export * from "./examples"
+`
+
   const directories = pathModule.join(path, "app", "api", "trigger");
   await fs.mkdir(directories, { recursive: true });
 
@@ -519,6 +526,11 @@ client.defineJob({
   if (!exampleFileExists) {
     await fs.writeFile(pathModule.join(exampleDirectories, examplesFileName), jobsContent);
 
+    await fs.writeFile(
+      pathModule.join(exampleDirectories, examplesIndexFileName),
+      examplesIndexContent
+    );
+
     logger.success(
       `✅ Created example job at ${usesSrcDir ? "src/" : ""}jobs/examples/examplesFileName`
     );
@@ -539,13 +551,16 @@ async function createTriggerPageRoute(
   const pathAlias = getPathAlias(tsconfig, usesSrcDir);
   const routePathPrefix = pathAlias ? pathAlias + "/" : "../..";
 
-  const extension = isTypescriptProject ? ".ts" : ".js";
-  const triggerFileName = `trigger${extension}`;
-  const examplesFileName = `examples${extension}`;
+  const extension = isTypescriptProject ? ".ts" : ".js"
+  const triggerFileName = `trigger${extension}`
+  const examplesFileName = `examples${extension}`
+  const examplesIndexFileName = `index${extension}`
 
   const routeContent = `
 import { createPagesRoute } from "@trigger.dev/nextjs";
 import { client } from "${routePathPrefix}trigger";
+
+import "${routePathPrefix}jobs";
 
 //this route is used to send and receive data with Trigger.dev
 const { handler, config } = createPagesRoute(client);
@@ -588,6 +603,12 @@ client.defineJob({
 });
 `;
 
+  const examplesIndexContent = `
+// import all your job files here
+
+export * from "./examples"
+  `
+
   const directories = pathModule.join(path, "pages", "api");
   await fs.mkdir(directories, { recursive: true });
 
@@ -619,6 +640,11 @@ client.defineJob({
 
   if (!exampleFileExists) {
     await fs.writeFile(pathModule.join(exampleDirectories, examplesFileName), jobsContent);
+
+    await fs.writeFile(
+      pathModule.join(exampleDirectories, examplesIndexFileName),
+      examplesIndexContent
+    );
 
     logger.success(
       `✅ Created example job at ${usesSrcDir ? "src/" : ""}jobs/examples/${examplesFileName}`
