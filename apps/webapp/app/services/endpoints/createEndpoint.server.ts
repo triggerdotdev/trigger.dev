@@ -34,9 +34,9 @@ export class CreateEndpointService {
   }) {
     const endpointUrl = this.#normalizeEndpointUrl(url);
 
-    const client = new EndpointApi(environment.apiKey, endpointUrl, id);
+    const client = new EndpointApi(environment.apiKey, endpointUrl);
 
-    const pong = await client.ping();
+    const pong = await client.ping(id);
 
     if (!pong.ok) {
       throw new CreateEndpointError("FAILED_PING", pong.error);

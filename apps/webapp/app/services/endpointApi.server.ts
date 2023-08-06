@@ -28,14 +28,14 @@ export class EndpointApiError extends Error {
 }
 
 export class EndpointApi {
-  constructor(private apiKey: string, private url: string, private id: string) {}
+  constructor(private apiKey: string, private url: string) {}
 
-  async ping(): Promise<PongResponse> {
+  async ping(endpointId: string): Promise<PongResponse> {
     const response = await safeFetch(this.url, {
       method: "POST",
       headers: {
         "x-trigger-api-key": this.apiKey,
-        "x-trigger-endpoint-id": this.id,
+        "x-trigger-endpoint-id": endpointId,
         "x-trigger-action": "PING",
       },
     });
@@ -272,10 +272,6 @@ export class EndpointApi {
 
     return HttpSourceResponseSchema.parse(anyBody);
   }
-}
-
-export class EndpointValidateApi {
-  constructor(private apiKey: string, private url: string) {}
 
   async validate(): Promise<ValidateResponse> {
     const response = await safeFetch(this.url, {

@@ -2,9 +2,9 @@ import { customAlphabet } from "nanoid";
 import { $transaction, prisma, PrismaClient } from "~/db.server";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
-import { EndpointValidateApi } from "../endpointApi.server";
 import { workerQueue } from "../worker.server";
 import { CreateEndpointError } from "./createEndpoint.server";
+import { EndpointApi } from "../endpointApi.server";
 
 const indexingHookIdentifier = customAlphabet("0123456789abcdefghijklmnopqrstuvxyz", 10);
 
@@ -18,7 +18,7 @@ export class ValidateCreateEndpointService {
   public async call({ environment, url }: { environment: AuthenticatedEnvironment; url: string }) {
     const endpointUrl = this.#normalizeEndpointUrl(url);
 
-    const client = new EndpointValidateApi(environment.apiKey, endpointUrl);
+    const client = new EndpointApi(environment.apiKey, endpointUrl);
 
     const validationResult = await client.validate();
 

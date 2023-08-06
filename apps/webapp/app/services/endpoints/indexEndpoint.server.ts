@@ -28,7 +28,7 @@ export class IndexEndpointService {
     const endpoint = await findEndpoint(id);
 
     // Make a request to the endpoint to fetch a list of jobs
-    const client = new EndpointApi(endpoint.environment.apiKey, endpoint.url, endpoint.slug);
+    const client = new EndpointApi(endpoint.environment.apiKey, endpoint.url);
 
     const indexResponse = await client.indexEndpoint();
 
