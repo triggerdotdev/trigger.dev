@@ -7,7 +7,7 @@ import { EnvironmentLabel, environmentTitle } from "~/components/environments/En
 import { HowToUseApiKeysAndEndpoints } from "~/components/helpContent/HelpContentText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
-import { ButtonContent } from "~/components/primitives/Buttons";
+import { Button, ButtonContent } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
@@ -39,6 +39,7 @@ import { requestUrl } from "~/utils/requestUrl.server";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
 import { Badge } from "~/components/primitives/Badge";
+import { FirstEndpointSheet } from "./FirstEndpointSheet";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -202,7 +203,10 @@ export default function Page() {
                       </div>
                     ))
                   ) : (
-                    <Paragraph>You have no clients yet</Paragraph>
+                    <Paragraph>
+                      Add your first endpoint{" "}
+                      <FirstEndpointSheet projectId={project.id} environments={environments} />
+                    </Paragraph>
                   )}
                 </div>
                 {selectedEndpoint && (
