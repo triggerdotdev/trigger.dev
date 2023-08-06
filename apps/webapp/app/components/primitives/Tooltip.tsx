@@ -9,9 +9,7 @@ const TooltipProvider = TooltipPrimitive.Provider;
 const TooltipArrow = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Arrow>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Arrow>
->(({ ...props }, ref) => (
-  <TooltipPrimitive.Arrow className="z-50 fill-popover" {...props} />
-));
+>(({ ...props }, ref) => <TooltipPrimitive.Arrow className="z-50 fill-popover" {...props} />);
 TooltipArrow.displayName = TooltipPrimitive.Arrow.displayName;
 
 const Tooltip = React.forwardRef<
@@ -63,11 +61,4 @@ function SimpleTooltip({
   );
 }
 
-export {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipProvider,
-  TooltipArrow,
-  SimpleTooltip,
-};
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, TooltipArrow, SimpleTooltip };

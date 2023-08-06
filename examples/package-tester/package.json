@@ -1,0 +1,46 @@
+{
+  "name": "@examples/package-tester",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently --kill-others npm:dev:*",
+    "dev:next": "next dev",
+    "dev:trigger": "npx @trigger.dev/cli dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@trigger.dev/core": "workspace:*",
+    "@trigger.dev/github": "workspace:*",
+    "@trigger.dev/nextjs": "workspace:*",
+    "@trigger.dev/openai": "workspace:*",
+    "@trigger.dev/plain": "workspace:*",
+    "@trigger.dev/react": "workspace:*",
+    "@trigger.dev/resend": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
+    "@trigger.dev/slack": "workspace:*",
+    "@trigger.dev/stripe": "workspace:*",
+    "@trigger.dev/supabase": "workspace:*",
+    "@trigger.dev/typeform": "workspace:*",
+    "autoprefixer": "10.4.14",
+    "eslint": "8.45.0",
+    "eslint-config-next": "13.4.12",
+    "next": "13.4.12",
+    "postcss": "8.4.27",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "tailwindcss": "3.3.3",
+    "typescript": "5.1.6"
+  },
+  "devDependencies": {
+    "@types/node": "20.4.5",
+    "@types/react": "18.2.17",
+    "@types/react-dom": "18.2.7",
+    "@trigger.dev/cli": "workspace:*",
+    "concurrently": "^8.2.0"
+  },
+  "trigger.dev": {
+    "endpointId": "package-tester"
+  }
+}

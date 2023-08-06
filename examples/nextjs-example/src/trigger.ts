@@ -22,7 +22,7 @@ export const client = new TriggerClient({
 
 export const openai = new OpenAI({
   id: "openai",
-  apiKey: process.env.OPENAI_API_KEY!,
+  apiKey: process.env["OPENAI_API_KEY"]!,
 });
 
 export const github = new Github({

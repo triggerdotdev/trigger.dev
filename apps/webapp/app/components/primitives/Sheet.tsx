@@ -28,12 +28,7 @@ interface SheetPortalProps
   extends SheetPrimitive.DialogPortalProps,
     VariantProps<typeof portalVariants> {}
 
-const SheetPortal = ({
-  position,
-  className,
-  children,
-  ...props
-}: SheetPortalProps) => (
+const SheetPortal = ({ position, className, children, ...props }: SheetPortalProps) => (
   <SheetPrimitive.Portal className={cn(className)} {...props}>
     <div className={portalVariants({ position })}>{children}</div>
   </SheetPrimitive.Portal>
@@ -166,19 +161,14 @@ const SheetContent = React.forwardRef<
           </SheetPrimitive.Close>
           <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
         </div>
-        <div className="flex max-h-full flex-col overflow-hidden">
-          {children}
-        </div>
+        <div className="flex max-h-full flex-col overflow-hidden">{children}</div>
       </div>
     </SheetPrimitive.Content>
   </SheetPortal>
 ));
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
-export const SheetBody = ({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) => (
+export const SheetBody = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
       "overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700",
@@ -188,10 +178,7 @@ export const SheetBody = ({
   />
 );
 
-export const SheetHeader = ({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) => (
+export const SheetHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
       "mx-4 flex shrink-0 items-center gap-4 border-b border-slate-800 py-3.5",

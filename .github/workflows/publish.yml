@@ -5,7 +5,23 @@ on:
     branches:
       - main
     tags:
-      - "v*"
+      - "v.docker.*"
+    paths:
+      - ".github/workflows/publish.yml"
+      - "packages/**"
+      - "!packages/**/*.md"
+      - "!packages/**/*.eslintrc"
+      - "apps/**"
+      - "!apps/**/*.md"
+      - "!apps/**/*.eslintrc"
+      - "integrations/**"
+      - "!integrations/**/*.md"
+      - "!integrations/**/*.eslintrc"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
+      - "docker/Dockerfile"
+      - "docker/scripts/**"
 
 permissions:
   id-token: write
@@ -63,6 +79,10 @@ jobs:
         run: |
           IMAGE_TAG="${GITHUB_REF#refs/tags/}"
           if [[ $GITHUB_REF == refs/tags/* ]]; then
+            if [[ $IMAGE_TAG == v.docker.* ]]; then
+              ORIGINAL_VERSION="${IMAGE_TAG#v.docker.}"
+              IMAGE_TAG="v${ORIGINAL_VERSION}"
+            fi
             echo "IMAGE_TAG=${IMAGE_TAG}"
           elif [[ $GITHUB_REF == refs/heads/* ]]; then
             IMAGE_TAG="${GITHUB_REF#refs/heads/}"
@@ -71,8 +91,7 @@ jobs:
             echo "Invalid reference: ${GITHUB_REF}"
             exit 1
           fi
-          echo ::set-output name=version::${IMAGE_TAG}
-
+          echo "::set-output name=version::${IMAGE_TAG}"
       - name: 🔢 Get the commit hash
         id: get_commit
         run: |

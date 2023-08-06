@@ -1,0 +1,116 @@
+---
+title: "DynamicSchedule: register() instance method"
+sidebarTitle: "register()"
+description: "Use this method to register a new schedule with the DynamicSchedule."
+---
+
+## Parameters
+
+<ResponseField name="id" type="string" required>
+  The id of the schedule to register. The identifier you use will be available
+  in the `context.source.id` when the Job runs.
+</ResponseField>
+<ResponseField name="schedule" type="Schedule" required>
+  The schedule to register. It is either a `cron` or `interval` schedule.
+  <Expandable title="cron">
+    <ResponseField name="type" type="string" required>
+      Value is always `cron`
+    </ResponseField>
+    <ResponseField name="options" type="object" required>
+      <Expandable title="options" defaultOpen>
+        <ResponseField name="cron" type="string" required>
+          The cron expression to use.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="metadata" type="any">
+      Any additional data you wish to store with the schedule. This will be
+      available in the `context.source.metadata` when the Job runs.
+    </ResponseField>
+  </Expandable>
+  <Expandable title="interval">
+    <ResponseField name="type" type="string" required>
+      Value is always `interval`
+    </ResponseField>
+    <ResponseField name="options" type="object" required>
+      <Expandable title="options" defaultOpen>
+        <ResponseField name="seconds" type="number" required>
+          The number of seconds between each trigger.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="metadata" type="any">
+      Any additional data you wish to store with the schedule. This will be
+      available in the `context.source.metadata` when the Job runs.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Returns
+
+<ResponseField name="id" type="string">
+  The id of the schedule that was registered.
+</ResponseField>
+<ResponseField name="schedule" type="Schedule">
+  The schedule that was registered, one of "cron" or "interval".
+  <Expandable title="cron">
+    <ResponseField name="type" type="string" required>
+      The type of schedule. This will always be "cron".
+    </ResponseField>
+    <ResponseField name="options" type="object" required>
+      An object containing options about the CRON schedule.
+      <Expandable title="options" defaultOpen>
+        <ResponseField name="cron" type="string" required>
+          The registered CRON expression.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="metadata" type="any" required>
+      Any additional metadata about the interval.
+    </ResponseField>
+  </Expandable>
+  <Expandable title="interval">
+    <ResponseField name="type" type="string" required>
+      The type of schedule. This will always be "interval".
+    </ResponseField>
+    <ResponseField name="options" type="object" required>
+      An object containing options about the interval.
+      <Expandable title="options" defaultOpen>
+        <ResponseField name="seconds" type="number" required>
+          The number of seconds for the interval. Min = 60, Max = 86400 (1 day)
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="metadata" type="any" required>
+      Any additional metadata about the interval.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+<ResponseField name="metadata" type="any" required>
+  Metadata about the schedule.
+</ResponseField>
+<ResponseField name="active" type="boolean" required>
+  Whether the schedule is active or not.
+</ResponseField>
+
+<RequestExample>
+
+```typescript cron
+await dynamicSchedule.register(userId, {
+  type: "cron",
+  options: {
+    cron: "0 0 * * *",
+  },
+});
+```
+
+```typescript interval
+await dynamicSchedule.register(userId, {
+  type: "interval",
+  options: {
+    seconds: 60 * 60,
+  },
+});
+```
+
+</RequestExample>

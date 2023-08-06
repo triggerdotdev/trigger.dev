@@ -29,15 +29,7 @@ export function Spinner({
       xmlns="http://www.w3.org/2000/svg"
       className={cn("animate-spin motion-reduce:hidden", className)}
     >
-      <rect
-        x="2"
-        y="2"
-        width="16"
-        height="16"
-        rx="8"
-        stroke={currentColor.light}
-        strokeWidth="3"
-      />
+      <rect x="2" y="2" width="16" height="16" rx="8" stroke={currentColor.light} strokeWidth="3" />
       <path
         d="M10 18C5.58172 18 2 14.4183 2 10C2 5.58172 5.58172 2 10 2"
         stroke={currentColor.dark}

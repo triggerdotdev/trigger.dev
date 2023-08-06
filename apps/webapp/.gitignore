@@ -16,3 +16,5 @@ build-storybook.log
 .out
 .storybook-out
 storybook-static
+
+/prisma/seed.js

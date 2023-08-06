@@ -1,6 +1,6 @@
 import type { EventDispatcher, EventRecord } from "@trigger.dev/database";
-import type { EventFilter } from "@trigger.dev/internal";
-import { EventFilterSchema } from "@trigger.dev/internal";
+import type { EventFilter } from "@trigger.dev/core";
+import { EventFilterSchema } from "@trigger.dev/core";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { workerQueue } from "../worker.server";
@@ -33,7 +33,9 @@ export class DeliverEventService {
         const possibleEventDispatchers = await tx.eventDispatcher.findMany({
           where: {
             environmentId: eventRecord.environmentId,
-            event: eventRecord.name,
+            event: {
+              has: eventRecord.name,
+            },
             source: eventRecord.source,
             enabled: true,
             manual: false,
@@ -45,9 +47,8 @@ export class DeliverEventService {
           eventRecord: eventRecord.id,
         });
 
-        const matchingEventDispatchers = possibleEventDispatchers.filter(
-          (eventDispatcher) =>
-            this.#evaluateEventRule(eventDispatcher, eventRecord)
+        const matchingEventDispatchers = possibleEventDispatchers.filter((eventDispatcher) =>
+          this.#evaluateEventRule(eventDispatcher, eventRecord)
         );
 
         if (matchingEventDispatchers.length === 0) {
@@ -89,21 +90,14 @@ export class DeliverEventService {
     );
   }
 
-  #evaluateEventRule(
-    dispatcher: EventDispatcher,
-    eventRecord: EventRecord
-  ): boolean {
+  #evaluateEventRule(dispatcher: EventDispatcher, eventRecord: EventRecord): boolean {
     if (!dispatcher.payloadFilter && !dispatcher.contextFilter) {
       return true;
     }
 
-    const payloadFilter = EventFilterSchema.safeParse(
-      dispatcher.payloadFilter ?? {}
-    );
+    const payloadFilter = EventFilterSchema.safeParse(dispatcher.payloadFilter ?? {});
 
-    const contextFilter = EventFilterSchema.safeParse(
-      dispatcher.contextFilter ?? {}
-    );
+    const contextFilter = EventFilterSchema.safeParse(dispatcher.contextFilter ?? {});
 
     if (!payloadFilter.success || !contextFilter.success) {
       logger.error("Invalid event filter", {

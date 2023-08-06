@@ -1,0 +1,189 @@
+---
+title: "io.runTask()"
+sidebarTitle: "runTask()"
+description: "`io.runTask()` allows you to run a [Task](/documentation/concepts/tasks) from inside a Job run."
+---
+
+A Task is a resumable unit of a Run that can be retried, resumed and is logged. [Integrations](/integrations) use Tasks internally to perform their actions.
+
+## Parameters
+
+<Snippet file="stable-key-param.mdx" />
+
+<ResponseField name="options" type="object" required>
+  The options of how you'd like to run and log the Task. `name` is the only required field.
+
+<Expandable title="options">
+  <ResponseField name="name" type="string" required>
+    The name of the Task is required. This is displayed on the Task in the logs.
+  </ResponseField>
+  <ResponseField name="delayUntil" type="date">
+    The Task will wait and only start at the specified Date.
+  </ResponseField>
+  <ResponseField name="retry" type="object">
+    Retry options.
+
+    <Expandable title="options">
+      <ResponseField name="limit" type="number">
+        The maximum number of times to retry the request.
+      </ResponseField>
+      <ResponseField name="minTimeoutInMs" type="number">
+        The minimum amount of time to wait before retrying the request.
+      </ResponseField>
+      <ResponseField name="maxTimeoutInMs" type="number">
+        The maximum amount of time to wait before retrying the request.
+      </ResponseField>
+      <ResponseField name="factor" type="number">
+        The exponential factor to use when calculating the next retry time.
+      </ResponseField>
+      <ResponseField name="randomize" type="boolean">
+        Whether to randomize the retry time.
+      </ResponseField>
+    </Expandable>
+
+  </ResponseField>
+  <ResponseField name="icon" type="string">
+    The icon for the Task, it will appear in the logs. You can use the name of a
+    company in lowercase, e.g. "github". Or any icon name that [Font
+    Awesome](https://fontawesome.com/icons) supports.
+  </ResponseField>
+  <ResponseField name="description" type="string">
+    A description of the Task.
+  </ResponseField>
+    <ResponseField name="properties" type="array">
+      Properties that are displayed in the logs.
+
+      Each property has the following fields:
+
+      <Expandable title="property fields">
+        <ResponseField name="label" type="string" required>
+          The label for the property.
+        </ResponseField>
+        <ResponseField name="text" type="string" required>
+          The value of the property.
+        </ResponseField>
+        <ResponseField name="url" type="string">
+          The URL to link to when the property is clicked.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+  <ResponseField name="params" type="any">
+    The input params to the Task, will be displayed in the logs.
+  </ResponseField>
+  <ResponseField name="style" type="object">
+    The style of the log entry.
+
+    <Expandable title="style">
+      <ResponseField name="style" type="string">
+        The style: `normal` or `minimal`.
+      </ResponseField>
+      <ResponseField name="variant" type="string">
+        A variant of the style.
+      </ResponseField>
+    </Expandable>
+
+  </ResponseField>
+</Expandable>
+</ResponseField>
+
+<ResponseField name="callback" type="function" required>
+  The callback that will be called when the Task is run, this is where your logic should go. The callback receives
+  the Task and the IO as parameters.
+
+  <Expandable title="arguments">
+    <ResponseField name="task" type="Task">
+      The Task that is running. It has some useful properties like `idempotencyKey` and `attempts`.
+    </ResponseField>
+    <ResponseField name="io" type="IO">
+      [IO](/sdk/io/overview) holds Integrations and useful actions you can perform.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="onError" type="function">
+  An optional callback that will be called when the Task fails. You can perform
+  logic in here and optionally return a custom error object. Returning an object with `{ retryAt: Date, error?: Error }` will retry the Task at the specified Date. You can also just return a new `Error` object to throw a new error. Return nothing to rethrow the original error.
+
+  <Expandable title="arguments">
+    <ResponseField name="error" type="unknown">
+      The underlying error that was thrown inside the Task callback.
+    </ResponseField>
+    <ResponseField name="task" type="Task">
+      The Task that failed.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Returns
+
+A Promise that resolves with the returned value of the callback.
+
+<RequestExample>
+
+```typescript Run a task
+client.defineJob({
+  id: "alert-on-new-github-issues",
+  name: "Alert on new GitHub issues",
+  version: "0.1.1",
+  trigger: github.triggers.repo({
+    event: events.onIssueOpened,
+    owner: "triggerdotdev",
+    repo: "trigger.dev",
+  }),
+  integrations: {
+    github,
+  },
+  run: async (payload, io, ctx) => {
+    //runTask
+    const response = await io.runTask(
+      "create-card",
+      { name: "Create card", icon: "github" },
+      async () => {
+        //create a project card using the underlying GitHub Integration client
+        return io.github.client.rest.projects.createCard({
+          column_id: 123,
+          note: "test",
+        });
+      }
+    );
+
+    //log the url of the created card
+    await io.logger.info(response.data.url);
+  },
+});
+```
+
+```typescript onError callback
+client.defineJob({
+  id: "custom-error-handling",
+  name: "Custom Error handling",
+  version: "0.1.1",
+  trigger: eventTrigger({ name: "test" }),
+  run: async (payload, io, ctx) => {
+    //runTask
+    const response = await io.runTask(
+      "on-error-test",
+      { name: "On Error" },
+      async () => {
+        // Only throw error 50% of the time
+        if (Math.random() > 0.5) {
+          throw new Error("Something went wrong");
+        }
+      },
+      onError: (error, task) => {
+        //retry the task in 5 minutes
+        return {
+          retryAt: new Date(Date.now() + 5 * 60 * 1000),
+          error: new Error("Something went REALLY wrong")
+        };
+      }
+    );
+
+    //log the url of the created card
+    await io.logger.info(response.data.url);
+  },
+});
+```
+
+</RequestExample>

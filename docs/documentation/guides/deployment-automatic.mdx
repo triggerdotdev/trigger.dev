@@ -1,0 +1,46 @@
+---
+title: "Automatic endpoint refreshing"
+description: "Use our webhook to automatically tell us when you deploy"
+---
+
+## In the dashboard
+
+1. Go to the "Environments & API Keys" page in your Trigger.dev dashboard
+   ![Go to the Environments & API Keys page ](/images/environments-link.png)
+2. Select your endpoint row in the table of endpoints.
+   ![Select your endpoint](/images/endpoint-manual-refresh-1.png)
+3. There is a webhook URL in the "Automatic Refresh" section. Copy this URL.
+   ![Copy the webhook URL](/images/endpoint-automatic-refresh.png)
+
+## How to use the webhook URL
+
+### Vercel
+
+You can use this webhook URL in your Vercel dashboard, so when a deployment succeeds it automatically refreshes the endpoint.
+
+1. From your Vercel team dashboard, select "Settings"
+   ![Go to your Team's settings](/images/deploy-vercel-1.png)
+2. Go to the "Webhooks" page
+   ![Go to the Webhooks page](/images/deploy-vercel-2.png)
+3. Select the "Deployment Succeeded" event, your Vercel Project, and paste in our webhook URL. Then "Create Webhook".
+   ![Fill in the webhook details](/images/deploy-vercel-3.png)
+4. You're done! Whenever a deploy succeeds, Vercel will tell us to refresh your endpoint.
+   ![You're done!](/images/deploy-vercel-4.png)
+
+### GitHub Actions
+
+You can add a step to the GitHub Action that deploys your app.
+
+```yaml .github/workflows/release.yml
+- name: 🚀 Refresh Trigger.dev Jobs
+   env:
+      DEPLOY_TEST_HOOK: ${{ secrets.TRIGGER_ENDPOINT_HOOK }}
+   run: |
+      curl -X POST $TRIGGER_ENDPOINT_HOOK
+```
+
+You will need to [setup the `TRIGGER_ENDPOINT_HOOK` secret in your GitHub repo](https://docs.github.com/en/actions/security-guides/encrypted-secrets#creating-encrypted-secrets-for-a-repository). Set it to the webhook URL from the endpoint panel.
+
+### Do an HTTP request yourself
+
+Any `GET` or `POST` request to the webhook URL will cause a refresh of the Jobs for that endpoint. `POST` requests don't need a body. There is no authentication required.

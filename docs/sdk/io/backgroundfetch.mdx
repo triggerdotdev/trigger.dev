@@ -1,0 +1,146 @@
+---
+title: "io.backgroundFetch()"
+sidebarTitle: "backgroundFetch()"
+description: "`io.backgroundFetch()` allows you to fetch data from a URL that can take longer that the serverless timeout. The actual `fetch` request is performed on the Trigger.dev platform, and the response is sent back to you. An example use case is fetching data from a slow API, like some AI endpoints."
+---
+
+This is used inside the OpenAI Integration for Tasks like `backgroundCreateChatCompletion` and `backgroundCreateCompletion`.
+
+## Parameters
+
+<Snippet file="stable-key-param.mdx" />
+<ResponseField name="url" type="string" required>
+  The url to fetch.
+</ResponseField>
+<ResponseField name="options" type="object">
+  Options for the request
+
+<Expandable title="options" defaultOpen>
+  <ResponseField name="method" type="string">
+    The HTTP method to use for the request.
+  </ResponseField>
+  <ResponseField name="headers" type="object">
+    Any headers to send with the request. Note that you can use [redactString](sdk/redactString) to
+    prevent sensitive information from being stored (e.g. in the logs), like API keys and tokens.
+  </ResponseField>
+  <ResponseField name="body" type="string | ArrayBuffer">
+    The body of the request.
+  </ResponseField>
+</Expandable>
+
+<ResponseField name="retry options" type="object">
+  An object where the key is a status code pattern and the value is a retrying strategy. Supported patterns are:
+  - Specific status codes: 429
+  - Ranges: 500-599
+  - Wildcards: 2xx, 3xx, 4xx, 5xx
+
+```ts
+  {
+      "500-599": {
+        strategy: "backoff",
+        limit: 5,
+        minTimeoutInMs: 1000,
+        maxTimeoutInMs: 30000,
+        factor: 1.8,
+        randomize: true,
+      },
+      "429": {
+        strategy: "backoff",
+        limit: 10,
+        minTimeoutInMs: 1000,
+        maxTimeoutInMs: 60000,
+        factor: 2,
+        randomize: true,
+      },
+    }
+```
+
+An individual retrying strategy can be one of two types:
+
+- `backoff`: Retries the request with an exponential backoff.
+- `headers`: Retries the request using info from the response headers.
+
+<Expandable title="backoff strategy">
+  <ResponseField name="type" type="backoff" required>
+    The `backoff` strategy retries the request with an exponential backoff.
+  </ResponseField>
+  <ResponseField name="limit" type="number">
+    The maximum number of times to retry the request.
+  </ResponseField>
+  <ResponseField name="minTimeoutInMs" type="number">
+    The minimum amount of time to wait before retrying the request.
+  </ResponseField>
+  <ResponseField name="maxTimeoutInMs" type="number">
+    The maximum amount of time to wait before retrying the request.
+  </ResponseField>
+  <ResponseField name="factor" type="number">
+    The exponential factor to use when calculating the next retry time.
+  </ResponseField>
+  <ResponseField name="randomize" type="boolean">
+    Whether to randomize the retry time.
+  </ResponseField>
+</Expandable>
+
+<Expandable title="headers strategy">
+  <ResponseField name="type" type="headers" required>
+    The `headers` strategy retries the request using info from the response headers.
+  </ResponseField>
+  <ResponseField name="limitHeader" type="string">
+    The header to use to determine the maximum number of times to retry the request.
+  </ResponseField>
+  <ResponseField name="remainingHeader" type="string">
+    The header to use to determine the number of remaining retries.
+  </ResponseField>
+  <ResponseField name="resetHeader" type="string">
+    The header to use to determine the time when the number of remaining retries will be reset.
+  </ResponseField>
+</Expandable>
+
+</ResponseField>
+
+</ResponseField>
+
+## Returns
+
+A `Promise` that resolves after the specified amount of time.
+
+<RequestExample>
+
+```typescript backgroundFetch example
+client.defineJob({
+  id: "background-fetch-job",
+  name: "Background fetch Job",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "example.event",
+  }),
+  run: async (payload, io, ctx) => {
+    const response = io.backgroundFetch<CreateChatCompetionResponseData>(
+      "fetch-some-data",
+      "https://example.com/api/endpoint",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: redactString`Bearer ${auth.apiKey}`,
+        },
+        body: JSON.stringify({ foo: "bar" }),
+      },
+      {
+        "429": {
+          strategy: "backoff",
+          limit: 10,
+          minTimeoutInMs: 1000,
+          maxTimeoutInMs: 60000,
+          factor: 2,
+          randomize: true,
+        },
+      }
+    );
+
+    return response;
+  },
+});
+```
+
+</RequestExample>

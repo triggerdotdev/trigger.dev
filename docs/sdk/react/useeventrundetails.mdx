@@ -1,0 +1,70 @@
+---
+title: "useEventRunDetails()"
+description: "The `useEventRunDetails()` React hook will show the live status of the first run triggered by `sendEvent()`."
+---
+
+It will automatically update until the run has either completed or failed.
+
+<Snippet file="react-query-note.mdx" />
+
+## Parameters
+
+<ResponseField name="eventId" type="string | undefined" required>
+  The event ID to get the details for. This is returned when calling either
+  [client.sendEvent()](/sdk/triggerclient/instancemethods/sendevent) or
+  [io.sendEvent()](/sdk/io/sendevent).
+</ResponseField>
+<Snippet file="run-detail-hook-options.mdx" />
+
+## Returns
+
+<ResponseField name="data" type="object | undefined">
+  The data returned from the server.
+  <Expandable title="properties" defaultOpen>
+    <Snippet file="run-object-detailed.mdx" />
+  </Expandable>
+</ResponseField>
+<Snippet file="react-query-return.mdx" />
+
+<RequestExample>
+
+```typescript components/EventDetails.tsx
+"use client";
+
+import { useEventDetails } from "@trigger.dev/react";
+
+export function EventDetails({ eventId }: { eventId: string }) {
+  const { isLoading, isError, data, error } = useEventRunDetails(eventId);
+
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
+
+  if (isError) {
+    return <div>Error: {error.message}</div>;
+  }
+
+  //show the run status and all the tasks
+  return (
+    <div>
+      <h2>Run status: {data?.status}</h2>
+      <div>
+        {data?.tasks?.map((task) => (
+          <div className="flex gap-2 items-center">
+            {task.status === "ERRORED"
+              ? "⛔️"
+              : task.status === "COMPLETED"
+              ? "✅"
+              : "⏳"}
+            <div className="flex gap-1.5 items-center">
+              <h4 className="text-base">{task.displayKey ?? task.name}</h4>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+</RequestExample>

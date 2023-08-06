@@ -13,10 +13,7 @@ type LocaleContextProviderProps = {
 
 const Context = createContext<LocaleContext | null>(null);
 
-export const LocaleContextProvider = ({
-  locales,
-  children,
-}: LocaleContextProviderProps) => {
+export const LocaleContextProvider = ({ locales, children }: LocaleContextProviderProps) => {
   const value = { locales };
 
   return <Context.Provider value={value}>{children}</Context.Provider>;

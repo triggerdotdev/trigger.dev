@@ -1,5 +1,7 @@
 import {
   ErrorWithStackSchema,
+  GetRunOptionsWithTaskDetails,
+  GetRunsOptions,
   HandleTriggerSource,
   HttpSourceRequestHeadersSchema,
   IndexEndpointResponse,
@@ -21,13 +23,10 @@ import {
   SendEvent,
   SendEventOptions,
   SourceMetadata,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import { ApiClient } from "./apiClient";
-import {
-  CanceledWithTaskError,
-  ResumeWithTaskError,
-  RetryWithTaskError,
-} from "./errors";
+import { CanceledWithTaskError, ResumeWithTaskError, RetryWithTaskError } from "./errors";
+import { IntegrationClient, TriggerIntegration } from "./integrations";
 import { IO } from "./io";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { Job, JobOptions } from "./job";
@@ -40,7 +39,6 @@ import type {
   TriggerContext,
   TriggerPreprocessContext,
 } from "./types";
-import { IntegrationClient, TriggerIntegration } from "./integrations";
 
 const registerSourceEvent: EventSpecification<RegisterSourceEvent> = {
   name: REGISTER_SOURCE_EVENT,
@@ -73,8 +71,7 @@ export type TriggerClientOptions = {
 /** A [TriggerClient](https://trigger.dev/docs/documentation/concepts/client-adaptors) is used to connect to a specific [Project](https://trigger.dev/docs/documentation/concepts/projects) by using an [API Key](https://trigger.dev/docs/documentation/concepts/environments-apikeys). */
 export class TriggerClient {
   #options: TriggerClientOptions;
-  #registeredJobs: Record<string, Job<Trigger<EventSpecification<any>>, any>> =
-    {};
+  #registeredJobs: Record<string, Job<Trigger<EventSpecification<any>>, any>> = {};
   #registeredSources: Record<string, SourceMetadata> = {};
   #registeredHttpSourceHandlers: Record<
     string,
@@ -90,12 +87,8 @@ export class TriggerClient {
     string,
     DynamicTrigger<EventSpecification<any>, ExternalSource<any, any, any>>
   > = {};
-  #jobMetadataByDynamicTriggers: Record<
-    string,
-    Array<{ id: string; version: string }>
-  > = {};
-  #registeredSchedules: Record<string, Array<{ id: string; version: string }>> =
-    {};
+  #jobMetadataByDynamicTriggers: Record<string, Array<{ id: string; version: string }>> = {};
+  #registeredSchedules: Record<string, Array<{ id: string; version: string }>> = {};
 
   #client: ApiClient;
   #internalLogger: Logger;
@@ -105,10 +98,7 @@ export class TriggerClient {
     this.id = options.id;
     this.#options = options;
     this.#client = new ApiClient(this.#options);
-    this.#internalLogger = new Logger(
-      "trigger.dev",
-      this.#options.verbose ? "debug" : "log"
-    );
+    this.#internalLogger = new Logger("trigger.dev", this.#options.verbose ? "debug" : "log");
   }
 
   async handleRequest(request: Request): Promise<NormalizedResponse> {
@@ -228,22 +218,18 @@ export class TriggerClient {
         const body: IndexEndpointResponse = {
           jobs: Object.values(this.#registeredJobs).map((job) => job.toJSON()),
           sources: Object.values(this.#registeredSources),
-          dynamicTriggers: Object.values(this.#registeredDynamicTriggers).map(
-            (trigger) => ({
-              id: trigger.id,
-              jobs: this.#jobMetadataByDynamicTriggers[trigger.id] ?? [],
-              registerSourceJob: {
-                id: dynamicTriggerRegisterSourceJobId(trigger.id),
-                version: trigger.source.version,
-              },
-            })
-          ),
-          dynamicSchedules: Object.entries(this.#registeredSchedules).map(
-            ([id, jobs]) => ({
-              id,
-              jobs,
-            })
-          ),
+          dynamicTriggers: Object.values(this.#registeredDynamicTriggers).map((trigger) => ({
+            id: trigger.id,
+            jobs: this.#jobMetadataByDynamicTriggers[trigger.id] ?? [],
+            registerSourceJob: {
+              id: dynamicTriggerRegisterSourceJobId(trigger.id),
+              version: trigger.source.version,
+            },
+          })),
+          dynamicSchedules: Object.entries(this.#registeredSchedules).map(([id, jobs]) => ({
+            id,
+            jobs,
+          })),
         };
 
         // if the x-trigger-job-id header is not set, we return all jobs
@@ -360,8 +346,7 @@ export class TriggerClient {
           };
         }
 
-        const sourceRequestNeedsBody =
-          headers.data["x-ts-http-method"] !== "GET";
+        const sourceRequestNeedsBody = headers.data["x-ts-http-method"] !== "GET";
 
         const sourceRequestInit: RequestInit = {
           method: headers.data["x-ts-http-method"],
@@ -378,10 +363,7 @@ export class TriggerClient {
           }
         }
 
-        const sourceRequest = new Request(
-          headers.data["x-ts-http-url"],
-          sourceRequestInit
-        );
+        const sourceRequest = new Request(headers.data["x-ts-http-url"], sourceRequestInit);
 
         const key = headers.data["x-ts-key"];
         const dynamicId = headers.data["x-ts-dynamic-id"];
@@ -397,10 +379,7 @@ export class TriggerClient {
           data,
         };
 
-        const { response, events } = await this.#handleHttpSourceRequest(
-          source,
-          sourceRequest
-        );
+        const { response, events } = await this.#handleHttpSourceRequest(source, sourceRequest);
 
         return {
           status: 200,
@@ -445,12 +424,7 @@ export class TriggerClient {
         integration: trigger.source.integration,
       },
       run: async (event, io, ctx) => {
-        const updates = await trigger.source.register(
-          event.source.params,
-          event,
-          io,
-          ctx
-        );
+        const updates = await trigger.source.register(event.source.params, event, io, ctx);
 
         if (!updates) {
           // TODO: do something here?
@@ -467,10 +441,7 @@ export class TriggerClient {
     });
   }
 
-  attachJobToDynamicTrigger(
-    job: Job<Trigger<any>, any>,
-    trigger: DynamicTrigger<any, any>
-  ): void {
+  attachJobToDynamicTrigger(job: Job<Trigger<any>, any>, trigger: DynamicTrigger<any, any>): void {
     const jobs = this.#jobMetadataByDynamicTriggers[trigger.id] ?? [];
 
     jobs.push({ id: job.id, version: job.version });
@@ -499,9 +470,7 @@ export class TriggerClient {
         integration: {
           id: options.source.integration.id,
           metadata: options.source.integration.metadata,
-          authSource: options.source.integration.client.usesLocalAuth
-            ? "LOCAL"
-            : "HOSTED",
+          authSource: options.source.integration.client.usesLocalAuth ? "LOCAL" : "HOSTED",
         },
         registerSourceJob: {
           id: options.key,
@@ -511,7 +480,10 @@ export class TriggerClient {
     }
 
     registeredSource.events = Array.from(
-      new Set([...registeredSource.events, options.event.name])
+      new Set([
+        ...registeredSource.events,
+        ...(typeof options.event.name === "string" ? [options.event.name] : options.event.name),
+      ])
     );
 
     this.#registeredSources[options.key] = registeredSource;
@@ -533,12 +505,7 @@ export class TriggerClient {
       },
       startPosition: "initial",
       run: async (event, io, ctx) => {
-        const updates = await options.source.register(
-          options.params,
-          event,
-          io,
-          ctx
-        );
+        const updates = await options.source.register(options.params, event, io, ctx);
 
         if (!updates) {
           // TODO: do something here?
@@ -588,6 +555,18 @@ export class TriggerClient {
     return this.#client.unregisterSchedule(this.id, id, key);
   }
 
+  async getEvent(eventId: string) {
+    return this.#client.getEvent(eventId);
+  }
+
+  async getRun(runId: string, options?: GetRunOptionsWithTaskDetails) {
+    return this.#client.getRun(runId, options);
+  }
+
+  async getRuns(jobSlug: string, options?: GetRunsOptions) {
+    return this.#client.getRuns(jobSlug, options);
+  }
+
   authorized(
     apiKey?: string | null
   ): "authorized" | "unauthorized" | "missing-client" | "missing-header" {
@@ -608,15 +587,10 @@ export class TriggerClient {
     return this.#options.apiKey ?? process.env.TRIGGER_API_KEY;
   }
 
-  async #preprocessRun(
-    body: PreprocessRunBody,
-    job: Job<Trigger<EventSpecification<any>>, any>
-  ) {
+  async #preprocessRun(body: PreprocessRunBody, job: Job<Trigger<EventSpecification<any>>, any>) {
     const context = this.#createPreprocessRunContext(body);
 
-    const parsedPayload = job.trigger.event.parsePayload(
-      body.event.payload ?? {}
-    );
+    const parsedPayload = job.trigger.event.parsePayload(body.event.payload ?? {});
 
     const properties = job.trigger.event.runProperties?.(parsedPayload) ?? [];
 
@@ -626,10 +600,7 @@ export class TriggerClient {
     };
   }
 
-  async #executeJob(
-    body: RunJobBody,
-    job: Job<Trigger<any>, any>
-  ): Promise<RunJobResponse> {
+  async #executeJob(body: RunJobBody, job: Job<Trigger<any>, any>): Promise<RunJobResponse> {
     this.#internalLogger.debug("executing job", {
       execution: body,
       job: job.toJSON(),
@@ -735,9 +706,7 @@ export class TriggerClient {
     };
   }
 
-  #createPreprocessRunContext(
-    body: PreprocessRunBody
-  ): TriggerPreprocessContext {
+  #createPreprocessRunContext(body: PreprocessRunBody): TriggerPreprocessContext {
     const { event, organization, environment, job, run, account } = body;
 
     return {
@@ -773,12 +742,9 @@ export class TriggerClient {
       const dynamicTrigger = this.#registeredDynamicTriggers[source.dynamicId];
 
       if (!dynamicTrigger) {
-        this.#internalLogger.debug(
-          "No dynamic trigger registered for HTTP source",
-          {
-            source,
-          }
-        );
+        this.#internalLogger.debug("No dynamic trigger registered for HTTP source", {
+          source,
+        });
 
         return {
           response: {
@@ -865,10 +831,7 @@ export class TriggerClient {
 
   defineJob<
     TTrigger extends Trigger<EventSpecification<any>>,
-    TIntegrations extends Record<
-      string,
-      TriggerIntegration<IntegrationClient<any, any>>
-    > = {}
+    TIntegrations extends Record<string, TriggerIntegration<IntegrationClient<any, any>>> = {},
   >(options: JobOptions<TTrigger, TIntegrations>) {
     return new Job<TTrigger, TIntegrations>(this, options);
   }

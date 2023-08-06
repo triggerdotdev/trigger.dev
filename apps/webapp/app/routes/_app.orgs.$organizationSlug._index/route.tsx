@@ -36,10 +36,7 @@ export default function Page() {
             })
           ) : (
             <li>
-              <LinkButton
-                to={newProjectPath(organization)}
-                variant="primary/small"
-              >
+              <LinkButton to={newProjectPath(organization)} variant="primary/small">
                 Create a Project
               </LinkButton>
             </li>

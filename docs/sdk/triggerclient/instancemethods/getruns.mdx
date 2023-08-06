@@ -1,0 +1,49 @@
+---
+title: "TriggerClient: getRuns() instance method"
+sidebarTitle: "getRuns()"
+description: "The `getRuns()` method gets runs for a Job."
+---
+
+The runs are returned with the newest first. You can pass in a cursor to get more.
+
+## Parameters
+
+<ResponseField name="jobId" type="string" required>
+  The Job ID you want to get runs for
+</ResponseField>
+<ResponseField name="cursor" type="string">
+  You can use this to get more runs, if there are more than are returned in a
+  single batch.
+</ResponseField>
+<ResponseField name="take" type="number" default={20}>
+  How many runs you want to return in one go, max 50.
+</ResponseField>
+
+## Returns
+
+<ResponseField name="runs" type="Run[]">
+  The runs
+  <Expandable title="Run" defaultOpen>
+    <Snippet file="run-object.mdx" />
+  </Expandable>
+</ResponseField>
+<ResponseField name="nextCursor" type="string | undefined">
+  If there are more runs, you can use this to get them
+</ResponseField>
+
+<RequestExample>
+
+```ts getRuns example
+// jobs/myJobs.ts
+client.defineJob({
+  id: "my-job",
+  ...
+});
+
+// someFile.ts
+...
+const runs = await client.getRuns("my-job");
+...
+```
+
+</RequestExample>

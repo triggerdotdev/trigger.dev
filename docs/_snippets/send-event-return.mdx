@@ -1,0 +1,29 @@
+<ResponseField type="object">
+  <Expandable title="properties" defaultOpen>
+    <ResponseField name="id" type="string" required>
+      The `id` of the event that was sent.
+    </ResponseField>
+    <ResponseField name="name" type="string" required>
+      The `name` of the event that was sent.
+    </ResponseField>
+    <ResponseField name="payload" type="any" required>
+      The `payload` of the event that was sent
+    </ResponseField>
+    <ResponseField name="timestamp" type="Date" required>
+      The `timestamp` of the event that was sent
+    </ResponseField>
+    <ResponseField name="context" type="any">
+      The `context` of the event that was sent. Is `undefined` if no context was
+      set when sending the event.
+    </ResponseField>
+    <ResponseField name="deliverAt" type="Date">
+      The timestamp when the event will be delivered to any matching Jobs. Is
+      `undefined` if `deliverAt` or `deliverAfter` wasn't set when sending the
+      event.
+    </ResponseField>
+    <ResponseField name="deliveredAt" type="Date">
+      The timestamp when the event was delivered. Is `undefined` if `deliverAt`
+      or `deliverAfter` were set when sending the event.
+    </ResponseField>
+  </Expandable>
+</ResponseField>

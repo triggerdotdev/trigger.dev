@@ -47,12 +47,16 @@ const WhoamiResponseSchema = z.object({
     createdAt: z.coerce.date(),
     updatedAt: z.coerce.date(),
   }),
+  userId: z.string().optional(),
 });
 
 export type WhoamiResponse = z.infer<typeof WhoamiResponseSchema>;
 
 export class TriggerApi {
-  constructor(private apiKey: string, private baseUrl: string) {}
+  constructor(
+    private apiKey: string,
+    private baseUrl: string
+  ) {}
 
   async whoami(apiKey: string): Promise<WhoamiResponse | undefined> {
     const response = await fetch(`${this.baseUrl}/api/v1/whoami`, {
@@ -76,9 +80,7 @@ export class TriggerApi {
     return;
   }
 
-  async registerEndpoint(
-    options: CreateEndpointOptions
-  ): Promise<EndpointResponse> {
+  async registerEndpoint(options: CreateEndpointOptions): Promise<EndpointResponse> {
     const response = await fetch(`${this.baseUrl}/api/v1/endpoints`, {
       method: "POST",
       headers: {
@@ -97,8 +99,7 @@ export class TriggerApi {
         if (!rawJson) {
           return {
             ok: false,
-            error:
-              "An unknown issue occurred when registering with Trigger.dev",
+            error: "An unknown issue occurred when registering with Trigger.dev",
             retryable: true,
           };
         }
@@ -108,8 +109,7 @@ export class TriggerApi {
         if (!parsedJson.success) {
           return {
             ok: false,
-            error:
-              "An unknown issue occurred when registering with Trigger.dev",
+            error: "An unknown issue occurred when registering with Trigger.dev",
             retryable: true,
           };
         }

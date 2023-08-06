@@ -66,17 +66,14 @@ export function createRepoEventSource(
       if (httpSource.active && webhookData(httpSource.data)) {
         if (missingEvents.length > 0) {
           // We need to update the webhook to add the new events and then return
-          const newWebhookData = await io.integration.updateWebhook(
-            "update-webhook",
-            {
-              owner: params.owner,
-              repo: params.repo,
-              hookId: httpSource.data.id,
-              url: httpSource.url,
-              secret: httpSource.secret,
-              addEvents: missingEvents,
-            }
-          );
+          const newWebhookData = await io.integration.updateWebhook("update-webhook", {
+            owner: params.owner,
+            repo: params.repo,
+            hookId: httpSource.data.id,
+            url: httpSource.url,
+            secret: httpSource.secret,
+            addEvents: missingEvents,
+          });
 
           return {
             data: newWebhookData,
@@ -92,23 +89,18 @@ export function createRepoEventSource(
         repo: params.repo,
       });
 
-      const existingWebhook = webhooks.find(
-        (w) => w.config.url === httpSource.url
-      );
+      const existingWebhook = webhooks.find((w) => w.config.url === httpSource.url);
 
       // There is an existing webhook, but it's not synced with Trigger.dev, so we need to update it with the secret
       if (existingWebhook && existingWebhook.active) {
-        const updatedWebhook = await io.integration.updateWebhook(
-          "update-webhook",
-          {
-            owner: params.owner,
-            repo: params.repo,
-            hookId: existingWebhook.id,
-            url: httpSource.url,
-            secret: httpSource.secret,
-            addEvents: missingEvents,
-          }
-        );
+        const updatedWebhook = await io.integration.updateWebhook("update-webhook", {
+          owner: params.owner,
+          repo: params.repo,
+          hookId: existingWebhook.id,
+          url: httpSource.url,
+          secret: httpSource.secret,
+          addEvents: missingEvents,
+        });
 
         return {
           data: updatedWebhook,
@@ -167,16 +159,13 @@ export function createOrgEventSource(
         const existingData = httpSource.data;
 
         // We need to update the webhook to add the new events and then return
-        const newWebhookData = await io.integration.updateOrgWebhook(
-          "update-webhook",
-          {
-            org: params.org,
-            hookId: existingData.id,
-            url: httpSource.url,
-            secret: httpSource.secret,
-            addEvents: missingEvents,
-          }
-        );
+        const newWebhookData = await io.integration.updateOrgWebhook("update-webhook", {
+          org: params.org,
+          hookId: existingData.id,
+          url: httpSource.url,
+          secret: httpSource.secret,
+          addEvents: missingEvents,
+        });
 
         return {
           secret: httpSource.secret,
@@ -189,22 +178,17 @@ export function createOrgEventSource(
         org: params.org,
       });
 
-      const existingWebhook = webhooks.find(
-        (w) => w.config.url === httpSource.url
-      );
+      const existingWebhook = webhooks.find((w) => w.config.url === httpSource.url);
 
       const secret = Math.random().toString(36).slice(2);
 
       if (existingWebhook && existingWebhook.active) {
-        const updatedWebhook = await io.integration.updateOrgWebhook(
-          "update-webhook",
-          {
-            org: params.org,
-            hookId: existingWebhook.id,
-            url: httpSource.url,
-            secret,
-          }
-        );
+        const updatedWebhook = await io.integration.updateOrgWebhook("update-webhook", {
+          org: params.org,
+          hookId: existingWebhook.id,
+          url: httpSource.url,
+          secret,
+        });
 
         return {
           secret,
@@ -262,13 +246,10 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
     });
 
     if (!githubWebhooks.verify(rawBody, signature)) {
-      logger.debug(
-        "[inside github integration] Unable to verify the signature of the rawBody",
-        {
-          signature,
-          secret: source.secret,
-        }
-      );
+      logger.debug("[inside github integration] Unable to verify the signature of the rawBody", {
+        signature,
+        secret: source.secret,
+      });
 
       return;
     }
@@ -297,14 +278,11 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
     return;
   }
 
-  logger.debug(
-    "[inside github integration] Returning an event for the webhook!",
-    {
-      name,
-      payload,
-      context,
-    }
-  );
+  logger.debug("[inside github integration] Returning an event for the webhook!", {
+    name,
+    payload,
+    context,
+  });
 
   return {
     events: [

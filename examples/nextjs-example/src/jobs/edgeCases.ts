@@ -17,9 +17,7 @@ client.defineJob({
     console.log(`Running run ${ctx.run.id} at ${new Date().toISOString()}`);
 
     for (let i = 0; i < payload.iterations ?? 1; i++) {
-      await new Promise((resolve) =>
-        setTimeout(resolve, payload.sleepDuration ?? 1000)
-      );
+      await new Promise((resolve) => setTimeout(resolve, payload.sleepDuration ?? 1000));
     }
 
     console.log(`Finishing run ${ctx.run.id} at ${new Date().toISOString()}`);

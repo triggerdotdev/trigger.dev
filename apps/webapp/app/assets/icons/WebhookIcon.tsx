@@ -1,11 +1,6 @@
 export function WebhookIcon({ className }: { className?: string }) {
   return (
-    <svg
-      className={className}
-      viewBox="0 0 190 180"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
+    <svg className={className} viewBox="0 0 190 180" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path
         fill="currentColor"
         fillRule="evenodd"

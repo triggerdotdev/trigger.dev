@@ -35,9 +35,7 @@ const preview: Preview = {
 
       return (
         <OperatingSystemContextProvider platform="mac">
-          <LocaleContextProvider
-            locales={window.navigator.languages as string[]}
-          >
+          <LocaleContextProvider locales={window.navigator.languages as string[]}>
             <RemixStub initialEntries={["/"]} />
           </LocaleContextProvider>
         </OperatingSystemContextProvider>

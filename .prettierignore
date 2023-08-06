@@ -1,0 +1,11 @@
+node_modules
+.env
+.env.local
+pnpm-lock.yaml
+tailwind.css
+.babelrc.json
+**/.react-email/
+**/storybook-static/
+**/.changeset/
+**/build/
+**/dist/

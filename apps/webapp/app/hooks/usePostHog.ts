@@ -6,11 +6,7 @@ import { useOptionalUser, useUserChanged } from "./useUser";
 import { useProjectChanged } from "./useProject";
 import { useJobChanged } from "./useJob";
 
-export const usePostHog = (
-  apiKey?: string,
-  logging = false,
-  debug = false
-): void => {
+export const usePostHog = (apiKey?: string, logging = false, debug = false): void => {
   const postHogInitialized = useRef(false);
   const location = useLocation();
   const user = useOptionalUser();

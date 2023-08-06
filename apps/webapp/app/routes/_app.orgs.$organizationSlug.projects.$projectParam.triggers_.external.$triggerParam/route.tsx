@@ -46,8 +46,7 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
-  const { organizationSlug, projectParam, triggerParam } =
-    TriggerSourceParamSchema.parse(params);
+  const { organizationSlug, projectParam, triggerParam } = TriggerSourceParamSchema.parse(params);
 
   const url = new URL(request.url);
   const s = Object.fromEntries(url.searchParams.entries());
@@ -79,8 +78,7 @@ const schema = z.object({
 
 export const action: ActionFunction = async ({ request, params }) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, triggerParam } =
-    TriggerSourceParamSchema.parse(params);
+  const { organizationSlug, projectParam, triggerParam } = TriggerSourceParamSchema.parse(params);
 
   const formData = await request.formData();
   const submission = parse(formData, { schema });
@@ -95,11 +93,7 @@ export const action: ActionFunction = async ({ request, params }) => {
     const result = await service.call(triggerParam, submission.value.jobId);
 
     return redirectWithSuccessMessage(
-      externalTriggerPath(
-        { slug: organizationSlug },
-        { slug: projectParam },
-        { id: triggerParam }
-      ),
+      externalTriggerPath({ slug: organizationSlug }, { slug: projectParam }, { id: triggerParam }),
       request,
       `Retrying registration now`
     );
@@ -118,15 +112,9 @@ export const handle: Handle = {
 
     return (
       <Fragment>
-        <BreadcrumbLink
-          to={projectTriggersPath(org, project)}
-          title="Triggers"
-        />
+        <BreadcrumbLink to={projectTriggersPath(org, project)} title="Triggers" />
         <BreadcrumbIcon />
-        <BreadcrumbLink
-          to={projectTriggersPath(org, project)}
-          title="External Triggers"
-        />
+        <BreadcrumbLink to={projectTriggersPath(org, project)} title="External Triggers" />
         <BreadcrumbIcon />
         <BreadcrumbLink
           to={trimTrailingSlash(match.pathname)}
@@ -152,8 +140,7 @@ export default function Page() {
     },
   });
 
-  const isLoading =
-    navigation.state === "submitting" && navigation.formData !== undefined;
+  const isLoading = navigation.state === "submitting" && navigation.formData !== undefined;
 
   return (
     <PageContainer>
@@ -170,20 +157,14 @@ export default function Page() {
         <PageInfoRow>
           <PageInfoGroup>
             <PageInfoProperty
-              icon={
-                trigger.integration.definition.icon ??
-                trigger.integration.definitionId
-              }
+              icon={trigger.integration.definition.icon ?? trigger.integration.definitionId}
               label={trigger.integration.title ?? ""}
               value={trigger.integration.slug}
             />
             <PageInfoProperty
               label={trigger.active ? "Active" : "Inactive"}
               value={
-                <NamedIcon
-                  name={trigger.active ? "active" : "inactive"}
-                  className="h-4 w-4"
-                />
+                <NamedIcon name={trigger.active ? "active" : "inactive"} className="h-4 w-4" />
               }
             />
             <PageInfoProperty
@@ -198,21 +179,15 @@ export default function Page() {
         <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
           <Header2 spacing>External Trigger registration runs</Header2>
           <Paragraph variant="small" spacing>
-            External Triggers need to be registered with the external service.
-            You can see the list of attempted registrations below.
+            External Triggers need to be registered with the external service. You can see the list
+            of attempted registrations below.
           </Paragraph>
 
           {!trigger.active &&
             (trigger.registrationJob ? (
               <Form method="post" {...form.props}>
-                <Callout
-                  variant="error"
-                  className="justiy-between mb-4 items-center"
-                >
-                  <Paragraph
-                    variant="small"
-                    className={cn(variantClasses.error.textColor, "grow")}
-                  >
+                <Callout variant="error" className="justiy-between mb-4 items-center">
+                  <Paragraph variant="small" className={cn(variantClasses.error.textColor, "grow")}>
                     Registration hasn't succeeded yet, check the runs below.
                   </Paragraph>
                   <input
@@ -232,35 +207,22 @@ export default function Page() {
                 </Callout>
               </Form>
             ) : (
-              <Callout
-                variant="error"
-                className="justiy-between mb-4 items-center"
-              >
-                This External Trigger hasn't registered successfully. Contact
-                support for help: {trigger.id}
+              <Callout variant="error" className="justiy-between mb-4 items-center">
+                This External Trigger hasn't registered successfully. Contact support for help:{" "}
+                {trigger.id}
               </Callout>
             ))}
 
           {trigger.runList ? (
             <>
-              <ListPagination
-                list={trigger.runList}
-                className="mb-2 justify-end"
-              />
+              <ListPagination list={trigger.runList} className="mb-2 justify-end" />
               <RunsTable
                 runs={trigger.runList.runs}
                 total={trigger.runList.runs.length}
                 hasFilters={false}
-                runsParentPath={externalTriggerRunsParentPath(
-                  organization,
-                  project,
-                  trigger
-                )}
+                runsParentPath={externalTriggerRunsParentPath(organization, project, trigger)}
               />
-              <ListPagination
-                list={trigger.runList}
-                className="mt-2 justify-end"
-              />
+              <ListPagination list={trigger.runList} className="mt-2 justify-end" />
             </>
           ) : (
             <Callout variant="warning">No registration runs found</Callout>

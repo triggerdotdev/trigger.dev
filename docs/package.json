@@ -1,0 +1,13 @@
+{
+  "name": "docs",
+  "version": "2.0.0",
+  "description": "Trigger.dev documentation",
+  "private": true,
+  "scripts": {
+    "dev": "npx mintlify@latest dev --port 3050"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "packageManager": "pnpm@7.13.5"
+}

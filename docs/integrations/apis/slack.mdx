@@ -1,0 +1,64 @@
+---
+title: Introduction
+---
+
+<Snippet file="integration-getting-started.mdx" />
+
+## Installation
+
+<CodeGroup>
+
+```bash npm
+npm install @trigger.dev/slack@latest
+```
+
+```bash pnpm
+pnpm install @trigger.dev/slack@latest
+```
+
+```bash yarn
+yarn add @trigger.dev/slack@latest
+```
+
+</CodeGroup>
+
+## Authentication
+
+Slack supports OAuth
+
+```ts
+import { Slack } from "@trigger.dev/slack";
+
+const slack = new Slack({
+  id: "slack",
+});
+```
+
+## Example
+
+```ts
+client.defineJob({
+  id: "slack-test",
+  name: "Slack test",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "slack.test",
+    schema: z.object({}),
+  }),
+  integrations: {
+    slack,
+  },
+  run: async (payload, io, ctx) => {
+    const response = await io.slack.postMessage("post message", {
+      channel: "C04GWUTDC3W",
+      text: "My first Slack message",
+    });
+  },
+});
+```
+
+## Tasks
+
+| Function Name | Description                 |
+| ------------- | --------------------------- |
+| `postMessage` | Post a message to a channel |

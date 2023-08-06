@@ -8,17 +8,9 @@ import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
-import {
-  newProjectPath,
-  organizationPath,
-  projectPath,
-} from "~/utils/pathBuilder";
+import { newProjectPath, organizationPath, projectPath } from "~/utils/pathBuilder";
 
-export function OrganizationGridItem({
-  organization,
-}: {
-  organization: MatchedOrganization;
-}) {
+export function OrganizationGridItem({ organization }: { organization: MatchedOrganization }) {
   return (
     <li key={organization.id}>
       <div
@@ -31,11 +23,7 @@ export function OrganizationGridItem({
           className="group flex items-center gap-y-4 rounded-md border-b border-slate-800 px-2 pb-4 pt-2"
         >
           <div className="flex w-full items-center justify-between gap-x-2">
-            <NamedIcon
-              name="organization"
-              className="h-10 w-10 flex-none"
-              aria-hidden="true"
-            />
+            <NamedIcon name="organization" className="h-10 w-10 flex-none" aria-hidden="true" />
             <div className="flex-1">
               <Header2 className="">{organization.title}</Header2>
               <Paragraph variant="extra-small">

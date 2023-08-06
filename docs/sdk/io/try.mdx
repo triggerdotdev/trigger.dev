@@ -1,0 +1,81 @@
+---
+title: "io.try()"
+sidebarTitle: "try()"
+description: "`io.try()` allows you to run Tasks and catch any errors that are thrown, it's similar to a normal `try/catch` block but works with [io.runTask()](/sdk/io/runtask)."
+---
+
+A regular `try/catch` block on its own won't work as expected with Tasks. Internally `runTask()` throws some special errors to control flow execution. This is necessary to deal with resumability, serverless timeouts, and retrying Tasks.
+
+## How to `catch` errors inside `run()`
+
+You have two options:
+
+1. Use the `io.try()` function documented on this page.
+2. Use a regular `try/catch` block and [isTriggerError](/sdk/isTriggerError) to check if the error is a special error type.
+
+## Parameters
+
+<ResponseField name="tryCallback" required>
+  The code you wish to run
+</ResponseField>
+
+<ResponseField name="catchCallback" required>
+  This will be called if the Task fails. The callback receives the error
+</ResponseField>
+
+## Returns
+
+<ResponseField name="return" required>
+  A Promise that resolves with the returned value or the error
+</ResponseField>
+
+<RequestExample>
+
+```typescript Using io.try()
+client.defineJob({
+  id: "get-repo-info",
+  name: "GitHub get repo info",
+  version: "0.1.0",
+  integrations: { github },
+  trigger: eventTrigger({
+    name: "repo.info",
+    schema: z.object({
+      owner: z.string(),
+      repo: z.string(),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    //try
+    const result = io.try(
+      async () => {
+        const repo = await io.github.getRepo("get-repo", {
+          owner: payload.owner,
+          repo: payload.repo,
+        });
+
+        return {
+          success: true as const,
+          repo,
+        };
+      },
+      async (error) => {
+        //you can return data from the error handler,
+        //if you wish to elegantly deal with errors
+        return {
+          success: false as const,
+          error,
+        };
+      }
+    );
+
+    //result is either
+    // { success: true, repo: Repo }
+    // or
+    // { success: false, error: Error }
+
+    return result;
+  },
+});
+```
+
+</RequestExample>

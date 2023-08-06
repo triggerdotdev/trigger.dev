@@ -1,29 +1,12 @@
-import {
-  IntegrationConfig,
-  JobMetadata,
-  LogLevel,
-  QueueOptions,
-} from "@trigger.dev/internal";
-import {
-  IOWithIntegrations,
-  IntegrationClient,
-  TriggerIntegration,
-} from "./integrations";
+import { IntegrationConfig, JobMetadata, LogLevel, QueueOptions } from "@trigger.dev/core";
+import { IOWithIntegrations, IntegrationClient, TriggerIntegration } from "./integrations";
 import { TriggerClient } from "./triggerClient";
-import type {
-  EventSpecification,
-  Trigger,
-  TriggerContext,
-  TriggerEventType,
-} from "./types";
+import type { EventSpecification, Trigger, TriggerContext, TriggerEventType } from "./types";
 import { slugifyId } from "./utils";
 
 export type JobOptions<
   TTrigger extends Trigger<EventSpecification<any>>,
-  TIntegrations extends Record<
-    string,
-    TriggerIntegration<IntegrationClient<any, any>>
-  > = {}
+  TIntegrations extends Record<string, TriggerIntegration<IntegrationClient<any, any>>> = {},
 > = {
   /** The `id` property is used to uniquely identify the Job. Only change this if you want to create a new Job. */
   id: string;
@@ -77,13 +60,18 @@ export type JobOptions<
   ) => Promise<any>;
 };
 
+export type JobPayload<TJob> = TJob extends Job<Trigger<EventSpecification<infer TEvent>>, any>
+  ? TEvent
+  : never;
+
+export type JobIO<TJob> = TJob extends Job<any, infer TIntegrations>
+  ? IOWithIntegrations<TIntegrations>
+  : never;
+
 /** A [Job](https://trigger.dev/docs/documentation/concepts/jobs) is used to define the [Trigger](https://trigger.dev/docs/documentation/concepts/triggers), metadata, and what happens when it runs. */
 export class Job<
   TTrigger extends Trigger<EventSpecification<any>>,
-  TIntegrations extends Record<
-    string,
-    TriggerIntegration<IntegrationClient<any, any>>
-  > = {}
+  TIntegrations extends Record<string, TriggerIntegration<IntegrationClient<any, any>>> = {},
 > {
   readonly options: JobOptions<TTrigger, TIntegrations>;
 
@@ -107,9 +95,7 @@ export class Job<
   }
 
   get enabled() {
-    return typeof this.options.enabled === "boolean"
-      ? this.options.enabled
-      : true;
+    return typeof this.options.enabled === "boolean" ? this.options.enabled : true;
   }
 
   get name() {
@@ -158,8 +144,7 @@ export class Job<
       integrations: this.integrations,
       queue: this.options.queue,
       startPosition: this.options.startPosition ?? "latest",
-      enabled:
-        typeof this.options.enabled === "boolean" ? this.options.enabled : true,
+      enabled: typeof this.options.enabled === "boolean" ? this.options.enabled : true,
       preprocessRuns: this.trigger.preprocessRuns,
       internal,
     };

@@ -1,6 +1,6 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { RegisterTriggerBodySchema } from "@trigger.dev/internal";
+import { RegisterTriggerBodySchema } from "@trigger.dev/core";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -29,13 +29,14 @@ export async function action({ request, params }: ActionArgs) {
   }
 
   // Next authenticate the request
-  const authenticatedEnv = await authenticateApiRequest(request);
+  const authenticationResult = await authenticateApiRequest(request);
 
-  if (!authenticatedEnv) {
+  if (!authenticationResult) {
     logger.info("Invalid or missing api key", { url: request.url });
-
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
+
+  const authenticatedEnv = authenticationResult.environment;
 
   // Now parse the request body
   const anyBody = await request.json();

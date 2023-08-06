@@ -1,0 +1,17 @@
+<ResponseField name="id" type="string | undefined">
+  The event ID.
+</ResponseField>
+<ResponseField name="name" type="string | undefined">
+  The event name.
+</ResponseField>
+<ResponseField name="createdAt" type="Date | undefined">
+  When the event was created
+</ResponseField>
+<ResponseField name="updatedAt" type="Date | undefined">
+  When the event was last updated
+</ResponseField>
+<ResponseField name="runs" type="Run[] | undefined">
+  <Expandable title="Run">
+    <Snippet file="run-object.mdx" />
+  </Expandable>
+</ResponseField>

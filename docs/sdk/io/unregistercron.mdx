@@ -1,0 +1,46 @@
+---
+title: "io.unregisterCron()"
+sidebarTitle: "unregisterCron()"
+description: "`io.unregisterCron()` allows you to unregister a [DynamicSchedule](/sdk/dynamicschedule) that was previously registered with `io.registerCron()`."
+---
+
+## Parameters
+
+<Snippet file="stable-key-param.mdx" />
+<ResponseField name="dynamicSchedule" type="DynamicSchedule" required>
+  A [DynamicSchedule](/sdk/dynamicschedule) that will trigger any Jobs it's attached to on a regular
+  interval.
+</ResponseField>
+<ResponseField name="id" type="string" required>
+  A unique id for the schedule. This is used to identify and unregister the schedule later.
+</ResponseField>
+
+## Returns
+
+A Promise with the following shape:
+
+<ResponseField name="ok" type="boolean" required>
+  Whether the schedule was successfully unregistered.
+</ResponseField>
+
+<RequestExample>
+  
+  ```typescript
+client.defineJob({
+  id: "unregister-job",
+  name: "Unregister dynamic schedule",
+  version: "0.1.1",
+  trigger: eventTrigger({
+    name: "schedule.unregister",
+    schema: z.object({
+      id: z.string(),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    //unregisters a DynamicSchedule with a CRON 
+    await io.unregisterCron("❌📆", dynamicSchedule, payload.id);
+},
+});
+```
+
+</RequestExample>

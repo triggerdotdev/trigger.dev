@@ -1,4 +1,4 @@
-import { SCHEDULED_EVENT, ScheduledPayload } from "@trigger.dev/internal";
+import { SCHEDULED_EVENT, ScheduledPayload } from "@trigger.dev/core";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { NextScheduledEventService } from "./nextScheduledEvent.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
@@ -65,10 +65,7 @@ export class DeliverScheduledEventService {
 
         const invokeDispatcherService = new InvokeDispatcherService(tx);
 
-        await invokeDispatcherService.call(
-          scheduleSource.dispatcher.id,
-          eventRecord.id
-        );
+        await invokeDispatcherService.call(scheduleSource.dispatcher.id, eventRecord.id);
 
         logger.debug("updating lastEventTimestamp", {
           id,

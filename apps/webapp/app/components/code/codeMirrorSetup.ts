@@ -30,10 +30,7 @@ export function getViewerSetup(): Array<Extension> {
   return [drawSelection(), dropCursor(), bracketMatching(), lineNumbers()];
 }
 
-export function getEditorSetup(
-  showLineNumbers = true,
-  showHighlights = true
-): Array<Extension> {
+export function getEditorSetup(showLineNumbers = true, showHighlights = true): Array<Extension> {
   const options = [
     drawSelection(),
     dropCursor(),

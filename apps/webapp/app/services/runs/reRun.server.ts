@@ -43,9 +43,7 @@ export class ReRunService {
                 id: existingRun.environment.id,
               },
             },
-            eventId: `${
-              existingRun.event.eventId
-            }:retry:${new Date().getTime()}`,
+            eventId: `${existingRun.event.eventId}:retry:${new Date().getTime()}`,
             name: existingRun.event.name,
             timestamp: new Date(),
             payload: existingRun.event.payload ?? {},

@@ -1,5 +1,5 @@
 import { DeliverEmailSchema } from "@/../../packages/emails/src";
-import { ScheduledPayloadSchema } from "@trigger.dev/internal";
+import { ScheduledPayloadSchema } from "@trigger.dev/core";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
@@ -199,12 +199,7 @@ function getWorkerQueue() {
         handler: async (payload, job) => {
           const service = new IndexEndpointService();
 
-          await service.call(
-            payload.id,
-            payload.source,
-            payload.reason,
-            payload.sourceData
-          );
+          await service.call(payload.id, payload.source, payload.reason, payload.sourceData);
         },
       },
       deliverEvent: {

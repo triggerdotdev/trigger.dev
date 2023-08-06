@@ -1,9 +1,6 @@
 import { json as jsonLang } from "@codemirror/lang-json";
 import type { ViewUpdate } from "@codemirror/view";
-import type {
-  ReactCodeMirrorProps,
-  UseCodeMirror,
-} from "@uiw/react-codemirror";
+import type { ReactCodeMirrorProps, UseCodeMirror } from "@uiw/react-codemirror";
 import { useCodeMirror } from "@uiw/react-codemirror";
 import { useRef, useEffect } from "react";
 import { getEditorSetup } from "./codeMirrorSetup";

@@ -57,6 +57,12 @@ export async function action({ request, params }: ActionArgs) {
       return json(submission);
     }
 
-    return json(e, { status: 400 });
+    if (e instanceof Error) {
+      submission.error.url = `${e.name}: ${e.message}`;
+    } else {
+      submission.error.url = "Unknown error";
+    }
+
+    return json(submission, { status: 400 });
   }
 }

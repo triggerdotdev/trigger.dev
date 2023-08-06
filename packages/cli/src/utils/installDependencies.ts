@@ -13,9 +13,7 @@ export async function installDependencies(projectDir: string) {
 
   // If the spinner was used to show the progress, use succeed method on it
   // If not, use the succeed on a new spinner
-  (installSpinner || ora()).succeed(
-    chalk.green("Successfully installed dependencies!\n")
-  );
+  (installSpinner || ora()).succeed(chalk.green("Successfully installed dependencies!\n"));
 }
 
 async function runInstallCommand(
@@ -44,9 +42,7 @@ async function runInstallCommand(
           const text = data.toString();
 
           if (text.includes("Progress")) {
-            pnpmSpinner.text = text.includes("|")
-              ? text.split(" | ")[1] ?? ""
-              : text;
+            pnpmSpinner.text = text.includes("|") ? text.split(" | ")[1] ?? "" : text;
           }
         });
         pnpmSubprocess.on("error", (e) => rej(e));

@@ -1,0 +1,37 @@
+---
+title: "Running your Jobs"
+description: "A guide for how to run your Jobs."
+---
+
+There are two ways to run your Jobs:
+
+1. Triggering a test Run
+2. Triggering your Job for real
+
+## 1. Triggering a test Run
+
+You can perform a Run with any payload you want or use one of our examples on the test page in our dashboard.
+
+[How to do a test Run from the dashboard](/documentation/guides/testing-jobs).
+
+## 2. Triggering your Job for real
+
+Triggering your Job for real depends on the [type of trigger](/documentation/concepts/triggers) you have attached to your Job.
+
+There are three types of Trigger:
+
+### Scheduled Trigger
+
+<Snippet file="scheduled-dev-warning.mdx" />
+
+[Scheduled Triggers](/documentation/concepts/triggers/scheduled) are triggered automatically by our system on the schedule you define. Once you have [deployed](/documentation/guides/deployment) your Job, it will run automatically.
+
+### Event Trigger
+
+[Event Triggers](/documentation/concepts/triggers/event) are triggered by an event that you send from elsewhere in your code.
+
+<Snippet file="send-event-options.mdx" />
+
+### Webhook Trigger
+
+[Webhook Triggers](/documentation/concepts/triggers/webhook) are triggered when you perform the action that the webhook subscribes to. For example, if you have a webhook Trigger that subscribes to the `pull_request` event on GitHub, then it will be triggered whenever a pull request is opened, closed, or updated on the repo you configured.

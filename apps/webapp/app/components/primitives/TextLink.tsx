@@ -34,20 +34,14 @@ export function TextLink({
     <Link to={to} className={cn(classes, className)} {...props}>
       {children}{" "}
       {trailingIcon && (
-        <NamedIcon
-          name={trailingIcon}
-          className={cn("h-4 w-4", trailingIconClassName)}
-        />
+        <NamedIcon name={trailingIcon} className={cn("h-4 w-4", trailingIconClassName)} />
       )}
     </Link>
   ) : href ? (
     <a href={href} className={cn(classes, className)} {...props}>
       {children}{" "}
       {trailingIcon && (
-        <NamedIcon
-          name={trailingIcon}
-          className={cn("h-4 w-4", trailingIconClassName)}
-        />
+        <NamedIcon name={trailingIcon} className={cn("h-4 w-4", trailingIconClassName)} />
       )}
     </a>
   ) : (

@@ -1,0 +1,313 @@
+---
+title: Introduction
+---
+
+Trigger.dev provides seamless integration with OpenAI, enabling developers to harness the power of AI
+language models in their serverless applications. With Trigger.dev's background tasks, long-running
+OpenAI completions become possible, even within the constraints of serverless timeouts.
+
+<Snippet file="integration-getting-started.mdx" />
+
+## Installation
+
+To get started with the OpenAI integration on Trigger.dev, you need to install the `@trigger.dev/openai` package.
+You can do this using npm, pnpm, or yarn:
+
+<CodeGroup>
+
+```bash npm
+npm install @trigger.dev/openai@latest
+```
+
+```bash pnpm
+pnpm add @trigger.dev/openai@latest
+```
+
+```bash yarn
+yarn add @trigger.dev/openai@latest
+```
+
+</CodeGroup>
+
+## Authentication
+
+To use the OpenAI API with Trigger.dev, you'll need an API Key from OpenAI.
+If you don't have one yet, you can obtain it from the [OpenAI dashboard](https://platform.openai.com/account/api-keys).
+
+```ts
+import { OpenAI } from "@trigger.dev/openai";
+
+const openai = new OpenAI({
+  id: "openai",
+  apiKey: process.env.OPENAI_API_KEY!,
+});
+```
+
+## Usage
+
+Include the OpenAI integration in your Trigger.dev job:
+
+```ts
+client.defineJob({
+  id: "openai-tasks",
+  name: "OpenAI Tasks",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "openai.tasks",
+    schema: z.object({}),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    // Now you can access the OpenAI tasks through the io object
+    await io.openai.createCompletion("completion", {
+      model: "davinci",
+      prompt: "Once upon a time",
+    });
+  },
+});
+```
+
+## Tasks
+
+Tasks that are marked as "long-running" can last longer than your serverless timeout – they are performed on one of our background workers.
+
+| Function Name                    | Description                                                               | Long-running? |
+| -------------------------------- | ------------------------------------------------------------------------- | ------------- |
+| `createCompletion`               | Generates text completions given a prompt.                                |
+| `backgroundCreateCompletion`     | Generates text completions in the background.                             | ✔            |
+| `createChatCompletion`           | Generates text completions in a conversational context.                   |
+| `backgroundCreateChatCompletion` | Generates text completions in a conversational context in the background. | ✔            |
+| `retrieveModel`                  | Retrieves a specific model by ID.                                         |
+| `listModels`                     | Lists the available models.                                               |
+| `createEdit`                     | Edits a given text prompt.                                                |
+| `createImage`                    | Generates images from textual descriptions.                               |
+| `createEmbedding`                | Generates embeddings for a given text.                                    |
+| `createFile`                     | Uploads a file to the OpenAI API.                                         |
+| `listFiles`                      | Lists the uploaded files.                                                 |
+| `createFineTuneFile`             | Uploads a file for fine-tuning a model.                                   |
+| `createFineTune`                 | Fine-tunes a model on a given task.                                       |
+| `listFineTunes`                  | Lists the available fine-tunes.                                           |
+| `retrieveFineTune`               | Retrieves a specific fine-tune by ID.                                     |
+| `cancelFineTune`                 | Cancels a specific fine-tune by ID.                                       |
+| `listFineTuneEvents`             | Lists the events for a specific fine-tune by ID.                          |
+| `deleteFineTune`                 | Deletes a specific fine-tune by ID.                                       |
+
+## Examples
+
+### Generate a joke
+
+Here's an example of how to use the OpenAI integration in a Trigger.dev job.
+In this example, we'll create a background task to generate a programming joke.
+
+```ts
+client.defineJob({
+  id: "openai-tasks",
+  name: "OpenAI Tasks",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "openai.tasks",
+    schema: z.object({}),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    const response = await io.openai.backgroundCreateChatCompletion("background-chat-completion", {
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "user",
+          content: "Create a good programming joke about background jobs",
+        },
+      ],
+    });
+
+    await io.logger.info("choices", response.choices);
+  },
+});
+```
+
+### Generate Code Snippets
+
+In this example, we'll leverage Trigger.dev's background task to generate code snippets for
+a given programming task:
+
+```ts
+client.defineJob({
+  id: "openai-tasks",
+  name: "OpenAI Tasks",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "openai.tasks",
+    schema: z.object({}),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    const programmingTask = `Create a function that checks if a string is a palindrome.`;
+
+    const response = await io.openai.backgroundCreateCompletion("background-completion", {
+      model: "gpt-3.5-turbo",
+      prompt: `Coding task: ${programmingTask}\n\n`,
+    });
+
+    await io.logger.info("codeSnippet", response.choices[0]?.text);
+  },
+});
+```
+
+### Summarize Text
+
+We'll use Trigger.dev's background task to summarize a lengthy article:
+
+```ts
+client.defineJob({
+  id: "openai-tasks",
+  name: "OpenAI Tasks",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "openai.tasks",
+    schema: z.object({}),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    const articleToSummarize = `Lorem ipsum. olor sit amet, consectetur adipiscing elit. 
+    Sed nec aliquet sapien. Pellentesque vitae nisi id purus luctus tincidunt. 
+    Proin condimentum malesuada turpis, eget tincidunt mauris viverra in.`;
+
+    const response = await io.openai.backgroundCreateCompletion("background-completion", {
+      model: "gpt-3.5-turbo",
+      prompt: `Please summarize the following article:\n\n${articleToSummarize}`,
+    });
+
+    await io.logger.info("summary", response.choices[0]?.text);
+  },
+});
+```
+
+### Draft Email Response
+
+we'll use Trigger.dev's background task to draft an email response based on a given email content:
+
+```ts
+client.defineJob({
+  id: "openai-tasks",
+  name: "OpenAI Tasks",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "openai.tasks",
+    schema: z.object({}),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    const emailContent = `Dear John,
+
+    Thank you for your inquiry. We appreciate your interest in our products.
+    I have reviewed your request, and I'm pleased to inform you that we can
+    accommodate your requirements. Please find the attached proposal for your
+    reference. If you have any further questions, feel free to ask.
+
+    Best regards,
+    Jane Doe`;
+
+    const response = await io.openai.backgroundCreateChatCompletion("background-chat-completion", {
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "user",
+          content: emailContent,
+        },
+        {
+          role: "assistant",
+          content: "Draft a suitable response to the email above.",
+        },
+      ],
+    });
+
+    await io.logger.info("draftedEmailResponse", response.choices[0]?.text);
+  },
+});
+```
+
+### Chatbot Counseling Session
+
+This job represents a simulated AI counseling session. Leveraging OpenAI's ability to understand context and generate human-like text, it forms empathetic responses to user inputs. Such a system could be part of a mental wellness app.
+
+```ts
+client.defineJob({
+  id: "openai-chatbot-counseling",
+  name: "Chatbot Counseling Session",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "openai.startCounselingSession",
+    schema: z.object({}),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    const response = await io.openai.backgroundCreateChatCompletion(
+      "background-counseling-chat-completion",
+      {
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content: "You are a helpful and empathetic AI counselor.",
+          },
+          {
+            role: "user",
+            content: "I've been feeling really stressed out lately.",
+          },
+        ],
+      }
+    );
+    await io.logger.info("counseling session", response.choices);
+  },
+});
+```
+
+### AI Roleplay Game Session
+
+This job creates a fantasy AI role-playing game. It could be fun for interactive storytelling or game development contexts.
+
+```ts
+client.defineJob({
+  id: "openai-roleplay-game-session",
+  name: "AI Roleplay Game Session",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "openai.startRoleplayGameSession",
+    schema: z.object({}),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    const response = await io.openai.backgroundCreateChatCompletion(
+      "background-roleplay-game-session-chat-completion",
+      {
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content: "You are an intelligent guide in a fantasy role-playing game.",
+          },
+          {
+            role: "user",
+            content: "I embark on a quest for the enchanted crown. What's the first step?",
+          },
+        ],
+      }
+    );
+    await io.logger.info("roleplay game session", response.choices);
+  },
+});
+```

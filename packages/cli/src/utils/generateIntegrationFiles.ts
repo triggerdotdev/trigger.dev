@@ -25,11 +25,7 @@ function createExampleResponse(args: {
   `;
 }
 
-function createPrompt(
-  packageName: string,
-  sdkPackage: string,
-  extraInfo?: string
-) {
+function createPrompt(packageName: string, sdkPackage: string, extraInfo?: string) {
   return `'I\'m wanting to know what the minimal starting point index.ts, types.ts, and tasks.ts files should look like for the package "${packageName}" using the SDK package "${sdkPackage}". ${
     extraInfo ?? ""
   }`;
@@ -288,19 +284,14 @@ export async function generateIntegrationFiles(payload: {
         ...createExampleMessages(),
         {
           role: "user",
-          content: createPrompt(
-            payload.packageName,
-            payload.sdkPackage,
-            payload.extraInfo
-          ),
+          content: createPrompt(payload.packageName, payload.sdkPackage, payload.extraInfo),
         },
       ],
       function_call: { name: "createTypescriptFiles" },
       functions: [
         {
           name: "createTypescriptFiles",
-          description:
-            "Creates the initial typescript files for a new Trigger.dev package",
+          description: "Creates the initial typescript files for a new Trigger.dev package",
           parameters: {
             type: "object",
             properties: {

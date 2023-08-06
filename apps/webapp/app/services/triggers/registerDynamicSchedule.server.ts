@@ -1,7 +1,4 @@
-import {
-  RegisterDynamicSchedulePayload,
-  SCHEDULED_EVENT,
-} from "@trigger.dev/internal";
+import { RegisterDynamicSchedulePayload, SCHEDULED_EVENT } from "@trigger.dev/core";
 import { PrismaClientOrTransaction, prisma } from "~/db.server";
 import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 
@@ -69,9 +66,7 @@ export class RegisterDynamicScheduleService {
           connect: jobs.map((job) => ({
             id: job.id,
           })),
-          disconnect: dynamicTrigger.jobs.filter(
-            (job) => !jobs.find((j) => j.id === job.id)
-          ),
+          disconnect: dynamicTrigger.jobs.filter((job) => !jobs.find((j) => j.id === job.id)),
         },
       },
     });

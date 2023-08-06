@@ -2,13 +2,10 @@
   "$schema": "https://unpkg.com/@changesets/config@2.2.0/schema.json",
   "changelog": "@changesets/cli/changelog",
   "commit": false,
-  "fixed": [],
+  "fixed": [["@trigger.dev/*"]],
   "linked": [],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": [
-    "webapp",
-    "emails"
-  ]
+  "ignore": ["webapp", "emails", "@trigger.dev/database"]
 }

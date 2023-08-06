@@ -41,11 +41,7 @@ export function setSuccessMessage(
   } as ToastMessage);
 }
 
-export function setErrorMessage(
-  session: Session,
-  message: string,
-  options?: ToastMessageOptions
-) {
+export function setErrorMessage(session: Session, message: string, options?: ToastMessageOptions) {
   session.flash("toastMessage", {
     message,
     type: "error",

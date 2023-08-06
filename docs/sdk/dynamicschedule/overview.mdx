@@ -1,0 +1,91 @@
+---
+title: "Overview"
+description: "`DynamicSchedule` allows you to define a scheduled trigger that can be configured dynamically at runtime."
+---
+
+Sometimes you want to create a Job but define multiple different schedules that will Trigger it at runtime.
+
+## Constructor
+
+### [DynamicSchedule()](/sdk/dynamicschedule/constructor)
+
+Creates a new DynamicSchedule.
+
+## Instance methods
+
+### [register()](/sdk/dynamicschedule/register)
+
+Use this method to register a new schedule with the DynamicSchedule.
+
+### [unregister()](/sdk/dynamicschedule/unregister)
+
+Use this method to unregister a schedule from the DynamicSchedule, using the id you used when registering it.
+
+## Example use cases:
+
+### You want your users to be able to define their own schedule
+
+1. Create a `DynamicSchedule`.
+2. Create a [Job](/sdk/job) that will be triggered by the `DynamicSchedule`.
+3. Anywhere in your codebase you can now call `yourDynamicSchedule.register` to add a new schedule. You should use your user's userId when registering.
+4. When the Job runs you can check the `context.source.id` to see which user triggered it.
+
+<RequestExample>
+
+```typescript
+//1. create a DynamicSchedule
+const dynamicSchedule = new DynamicSchedule(client, {
+  id: "dynamicinterval",
+});
+
+//2. create a Job that is attached to the dynamic schedule
+client.defineJob({
+  id: "user-dynamicinterval",
+  name: "User Dynamic Interval",
+  version: "0.1.1",
+  //3. set the DynamicSchedule as the Trigger
+  trigger: dynamicSchedule,
+  run: async (payload, io, ctx) => {
+    await io.logger.info("The userId is ", ctx.source.id);
+  },
+});
+
+//4. Register the DynamicSchedule anywhere in your app
+async function registerUserCronJob(userId: string, userSchedule: string) {
+  //use the userId as the id for the DynamicSchedule
+  //so it comes through to run() in the context source.id
+  await dynamicSchedule.register(userId, {
+    type: "cron",
+    options: {
+      cron: userSchedule,
+    },
+  });
+}
+
+//5. Register inside other Jobs
+client.defineJob({
+  id: "register-dynamicinterval",
+  name: "Register Dynamic Interval",
+  version: "0.1.1",
+  trigger: eventTrigger({
+    name: "dynamic.interval",
+    schema: z.object({
+      userId: z.string(),
+      seconds: z.number().int().positive(),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    //6. Register the DynamicSchedule
+    await io.registerInterval("📆", dynamicSchedule, payload.userId, {
+      seconds: payload.seconds,
+    });
+
+    await io.wait("wait", 60);
+
+    //7. Unregister the DynamicSchedule if you want
+    await io.unregisterInterval("❌📆", dynamicSchedule, payload.id);
+  },
+});
+```
+
+</RequestExample>

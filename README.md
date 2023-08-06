@@ -11,9 +11,11 @@
 
 [![Twitter](https://img.shields.io/twitter/url/https/twitter.com/triggerdotdev.svg?style=social&label=Follow%20%40trigger.dev)](https://twitter.com/triggerdotdev)
 [![GitHub Repo stars](https://img.shields.io/github/stars/triggerdotdev/trigger.dev?style=social)](https://github.com/triggerdotdev/trigger.dev)
+
 </div>
 
 # About Trigger.dev
+
 Create long-running jobs directly in your codebase with features like API integrations, webhooks, scheduling and delays.
 
 ### Long running Jobs on serverless
@@ -60,5 +62,4 @@ We provide an official trigger.dev docker image you can use to easily self-host 
 
 ## Development
 
-To setup and develop locally or contribute to the open source project, follow our [developement guide](./CONTRIBUTING.md). 
-
+To setup and develop locally or contribute to the open source project, follow our [developement guide](./CONTRIBUTING.md).

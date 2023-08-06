@@ -90,18 +90,15 @@ client.defineJob({
   run: async (payload, io, ctx) => {
     if (CHAT_MODELS.includes(payload.model)) {
       if (payload.background) {
-        const completion = await io.openai.backgroundCreateChatCompletion(
-          "✨",
-          {
-            model: payload.model,
-            messages: [
-              {
-                role: "user",
-                content: payload.prompt,
-              },
-            ],
-          }
-        );
+        const completion = await io.openai.backgroundCreateChatCompletion("✨", {
+          model: payload.model,
+          messages: [
+            {
+              role: "user",
+              content: payload.prompt,
+            },
+          ],
+        });
 
         return completion;
       }
@@ -154,13 +151,11 @@ client.defineJob({
       messages: [
         {
           role: "system",
-          content:
-            "You are an AI assistant that is helpful, creative, clever, and very friendly.",
+          content: "You are an AI assistant that is helpful, creative, clever, and very friendly.",
         },
         {
           role: "user",
-          content:
-            "Call the supplied function that will tweet a really funny joke",
+          content: "Call the supplied function that will tweet a really funny joke",
         },
       ],
       function_call: { name: "tweetFunnyJoke" },
@@ -223,17 +218,13 @@ client.defineJob({
     switch (payload.type) {
       case "DEVELOPER": {
         return await io.slack.postMessage("message", {
-          text: `Missing developer connection resolved: ${JSON.stringify(
-            payload
-          )}`,
+          text: `Missing developer connection resolved: ${JSON.stringify(payload)}`,
           channel: "C04GWUTDC3W",
         });
       }
       case "EXTERNAL": {
         return await io.slack.postMessage("message", {
-          text: `Missing external connection resolved: ${JSON.stringify(
-            payload
-          )}`,
+          text: `Missing external connection resolved: ${JSON.stringify(payload)}`,
           channel: "C04GWUTDC3W",
         });
       }
@@ -373,19 +364,15 @@ client.defineJob({
   run: async (payload, io, ctx) => {
     await io.try(
       async () => {
-        return await io.runTask(
-          "task-1",
-          { name: "task-1", retry: { limit: 3 } },
-          async (task) => {
-            if (task.attempts > 2) {
-              return {
-                bar: "foo",
-              };
-            }
-
-            throw new Error(`Task failed on ${task.attempts} attempt(s)`);
+        return await io.runTask("task-1", { name: "task-1", retry: { limit: 3 } }, async (task) => {
+          if (task.attempts > 2) {
+            return {
+              bar: "foo",
+            };
           }
-        );
+
+          throw new Error(`Task failed on ${task.attempts} attempt(s)`);
+        });
       },
       async (error) => {
         // These should never be reached
@@ -403,13 +390,9 @@ client.defineJob({
     );
 
     try {
-      await io.runTask(
-        "task-2",
-        { name: "task-2", retry: { limit: 5 } },
-        async (task) => {
-          throw new Error(`Task failed on ${task.attempts} attempt(s)`);
-        }
-      );
+      await io.runTask("task-2", { name: "task-2", retry: { limit: 5 } }, async (task) => {
+        throw new Error(`Task failed on ${task.attempts} attempt(s)`);
+      });
     } catch (error) {
       if (isTriggerError(error)) {
         throw error;
@@ -556,15 +539,10 @@ client.defineJob({
     schema: z.object({ owner: z.string(), repo: z.string() }),
   }),
   run: async (payload, io, ctx) => {
-    return await io.registerTrigger(
-      "register-repo",
-      dynamicOnIssueOpenedTrigger,
-      payload.repo,
-      {
-        owner: payload.owner,
-        repo: payload.repo,
-      }
-    );
+    return await io.registerTrigger("register-repo", dynamicOnIssueOpenedTrigger, payload.repo, {
+      owner: payload.owner,
+      repo: payload.repo,
+    });
   },
 });
 

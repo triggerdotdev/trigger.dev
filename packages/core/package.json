@@ -1,0 +1,42 @@
+{
+  "name": "@trigger.dev/core",
+  "version": "2.0.3",
+  "description": "Common code used across the Trigger.dev SDK and platform",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup --dts-resolve",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ulid": "^2.3.0",
+    "zod": "3.21.4",
+    "zod-error": "1.5.0"
+  },
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/node": "16",
+    "rimraf": "^3.0.2",
+    "tsup": "^7.1.0",
+    "typescript": "^4.9.4"
+  },
+  "engines": {
+    "node": ">=16.8.0"
+  }
+}

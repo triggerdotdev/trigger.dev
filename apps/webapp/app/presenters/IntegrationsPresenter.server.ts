@@ -14,9 +14,7 @@ export type IntegrationOrApi =
     } & Integration)
   | ({ type: "api" } & Api & { voted: boolean });
 
-export type Client = Awaited<
-  ReturnType<IntegrationsPresenter["call"]>
->["clients"][number];
+export type Client = Awaited<ReturnType<IntegrationsPresenter["call"]>>["clients"][number];
 
 export class IntegrationsPresenter {
   #prismaClient: PrismaClient;
@@ -135,16 +133,13 @@ export class IntegrationsPresenter {
       })
     );
 
-    const setupClients = enrichedClients.filter(
-      (c) => c.setupStatus === "COMPLETE"
-    );
-    const clientMissingFields = enrichedClients.filter(
-      (c) => c.setupStatus === "MISSING_FIELDS"
-    );
+    const setupClients = enrichedClients.filter((c) => c.setupStatus === "COMPLETE");
+    const clientMissingFields = enrichedClients.filter((c) => c.setupStatus === "MISSING_FIELDS");
 
-    const integrations = Object.values(
-      integrationCatalog.getIntegrations()
-    ).map((i) => ({ type: "integration" as const, ...i }));
+    const integrations = Object.values(integrationCatalog.getIntegrations()).map((i) => ({
+      type: "integration" as const,
+      ...i,
+    }));
 
     //get all apis, some don't have integrations yet.
     //get whether the user has voted for them or not
@@ -165,9 +160,7 @@ export class IntegrationsPresenter {
         voted: votes.some((v) => v.apiIdentifier === a.identifier),
       }));
 
-    const options = [...integrations, ...apis].sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
+    const options = [...integrations, ...apis].sort((a, b) => a.name.localeCompare(b.name));
 
     return {
       clients: setupClients,

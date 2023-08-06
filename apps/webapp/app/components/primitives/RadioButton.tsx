@@ -45,9 +45,7 @@ export const RadioGroup = React.forwardRef<
   React.ElementRef<typeof RadioGroupPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof RadioGroupPrimitive.Root>
 >(({ className, ...props }, ref) => {
-  return (
-    <RadioGroupPrimitive.Root className={className} {...props} ref={ref} />
-  );
+  return <RadioGroupPrimitive.Root className={className} {...props} ref={ref} />;
 });
 
 type RadioGroupItemProps = Omit<
@@ -64,67 +62,48 @@ type RadioGroupItemProps = Omit<
 export const RadioGroupItem = React.forwardRef<
   React.ElementRef<typeof RadioGroupPrimitive.Item>,
   RadioGroupItemProps
->(
-  (
-    {
-      className,
-      children,
-      variant = "simple",
-      label,
-      description,
-      badges,
-      ...props
-    },
-    ref
-  ) => {
-    const variation = variants[variant];
+>(({ className, children, variant = "simple", label, description, badges, ...props }, ref) => {
+  const variation = variants[variant];
 
-    return (
-      <RadioGroupPrimitive.Item
-        ref={ref}
+  return (
+    <RadioGroupPrimitive.Item
+      ref={ref}
+      className={cn(
+        "group flex cursor-pointer items-start gap-x-2 transition",
+        variation.button,
+        className
+      )}
+      {...props}
+    >
+      <div
         className={cn(
-          "group flex cursor-pointer items-start gap-x-2 transition",
-          variation.button,
-          className
+          "aspect-square h-4 w-4 shrink-0 overflow-hidden rounded-sm border border-slate-700 ring-offset-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+          variation.inputPosition
         )}
-        {...props}
       >
-        <div
-          className={cn(
-            "aspect-square h-4 w-4 shrink-0 overflow-hidden rounded-sm border border-slate-700 ring-offset-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-            variation.inputPosition
-          )}
-        >
-          <RadioGroupPrimitive.Indicator className="flex h-full w-full items-center justify-center bg-indigo-700">
-            <Circle className="h-1.5 w-1.5 fill-white text-white" />
-          </RadioGroupPrimitive.Indicator>
-        </div>
-        <div>
-          <div className="flex items-center gap-x-2">
-            <label
-              htmlFor={props.id}
-              className={cn("cursor-pointer", variation.label)}
-            >
-              {label}
-            </label>
-            {badges && (
-              <span className="-mr-2 flex gap-x-1.5">
-                {badges.map((badge) => (
-                  <Badge key={badge}>{badge}</Badge>
-                ))}
-              </span>
-            )}
-          </div>
-          {variant === "description" && (
-            <Paragraph
-              variant="small"
-              className={cn("mt-0.5", variation.description)}
-            >
-              {description}
-            </Paragraph>
+        <RadioGroupPrimitive.Indicator className="flex h-full w-full items-center justify-center bg-indigo-700">
+          <Circle className="h-1.5 w-1.5 fill-white text-white" />
+        </RadioGroupPrimitive.Indicator>
+      </div>
+      <div>
+        <div className="flex items-center gap-x-2">
+          <label htmlFor={props.id} className={cn("cursor-pointer", variation.label)}>
+            {label}
+          </label>
+          {badges && (
+            <span className="-mr-2 flex gap-x-1.5">
+              {badges.map((badge) => (
+                <Badge key={badge}>{badge}</Badge>
+              ))}
+            </span>
           )}
         </div>
-      </RadioGroupPrimitive.Item>
-    );
-  }
-);
+        {variant === "description" && (
+          <Paragraph variant="small" className={cn("mt-0.5", variation.description)}>
+            {description}
+          </Paragraph>
+        )}
+      </div>
+    </RadioGroupPrimitive.Item>
+  );
+});

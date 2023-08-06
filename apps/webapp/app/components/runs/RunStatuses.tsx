@@ -31,82 +31,35 @@ export function RunStatus({ status }: { status: JobRunStatus }) {
 }
 
 export function RunStatusLabel({ status }: { status: JobRunStatus }) {
-  return (
-    <span className={runStatusClassNameColor(status)}>
-      {runStatusTitle(status)}
-    </span>
-  );
+  return <span className={runStatusClassNameColor(status)}>{runStatusTitle(status)}</span>;
 }
 
-export function RunStatusIcon({
-  status,
-  className,
-}: {
-  status: JobRunStatus;
-  className: string;
-}) {
+export function RunStatusIcon({ status, className }: { status: JobRunStatus; className: string }) {
   switch (status) {
     case "SUCCESS":
-      return (
-        <CheckCircleIcon
-          className={cn(runStatusClassNameColor(status), className)}
-        />
-      );
+      return <CheckCircleIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "PENDING":
-      return (
-        <ClockIcon className={cn(runStatusClassNameColor(status), className)} />
-      );
+      return <ClockIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "QUEUED":
-      return (
-        <ClockIcon className={cn(runStatusClassNameColor(status), className)} />
-      );
+      return <ClockIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "STARTED":
-      return (
-        <Spinner className={cn(runStatusClassNameColor(status), className)} />
-      );
+      return <Spinner className={cn(runStatusClassNameColor(status), className)} />;
     case "FAILURE":
-      return (
-        <XCircleIcon
-          className={cn(runStatusClassNameColor(status), className)}
-        />
-      );
+      return <XCircleIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "TIMED_OUT":
-      return (
-        <ExclamationTriangleIcon
-          className={cn(runStatusClassNameColor(status), className)}
-        />
-      );
+      return <ExclamationTriangleIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "WAITING_ON_CONNECTIONS":
-      return (
-        <WrenchIcon
-          className={cn(runStatusClassNameColor(status), className)}
-        />
-      );
+      return <WrenchIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "ABORTED":
-      return (
-        <XCircleIcon
-          className={cn(runStatusClassNameColor(status), className)}
-        />
-      );
+      return <XCircleIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "PREPROCESSING":
-      return (
-        <Spinner className={cn(runStatusClassNameColor(status), className)} />
-      );
+      return <Spinner className={cn(runStatusClassNameColor(status), className)} />;
     case "CANCELED":
-      return (
-        <NoSymbolIcon
-          className={cn(runStatusClassNameColor(status), className)}
-        />
-      );
+      return <NoSymbolIcon className={cn(runStatusClassNameColor(status), className)} />;
   }
 }
 
-export type RunBasicStatus =
-  | "WAITING"
-  | "PENDING"
-  | "RUNNING"
-  | "COMPLETED"
-  | "FAILED";
+export type RunBasicStatus = "WAITING" | "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
 
 export function runBasicStatus(status: JobRunStatus): RunBasicStatus {
   switch (status) {

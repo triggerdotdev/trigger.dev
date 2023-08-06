@@ -1,0 +1,47 @@
+{
+  "name": "@trigger.dev/react",
+  "version": "2.0.3",
+  "description": "Trigger.dev React SDK",
+  "types": "dist/index.d.ts",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.0.0-beta.2",
+    "@trigger.dev/core": "workspace:^2.0.3",
+    "debug": "^4.3.4",
+    "zod": "3.21.4"
+  },
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/debug": "^4.1.7",
+    "@types/react": "18.2.17",
+    "@types/ws": "^8.5.3",
+    "esbuild-plugin-file-path-extensions": "^1.0.0",
+    "react": "^18.2.0",
+    "rimraf": "^3.0.2",
+    "tsup": "^7.1.0",
+    "tsx": "^3.12.1"
+  },
+  "peerDependencies": {
+    "react": "^16.8.0 || ^17.0.0 || ^18"
+  }
+}

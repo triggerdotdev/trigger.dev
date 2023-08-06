@@ -1,0 +1,61 @@
+---
+title: "TriggerClient: constructor"
+sidebarTitle: "Constructor"
+description: "The `TriggerClient()` constructor creates a new [TriggerClient](/sdk/triggerclient) object."
+---
+
+## Parameters
+
+<ParamField body="options" type="object" required>
+  <Expandable title="properties" defaultOpen>
+    <ParamField body="id" type="string" required>
+      The `id` property is used to uniquely identify the client.
+    </ParamField>
+
+    <ParamField body="apiKey" type="string">
+      The `apiKey` property is the API Key for your Trigger.dev environment. We
+      recommend using an environment variable to store your API Key.
+    </ParamField>
+
+    <ParamField body="apiUrl" type="string">
+      The `apiUrl` property is an optional property that specifies the API URL. You
+      only need to specify this if you are not using Trigger.dev Cloud and are
+      running your own Trigger.dev instance.
+    </ParamField>
+
+    <ParamField body="logLevel" type="log | error | warn | info | debug">
+      The `logLevel` property is an optional property that specifies the level of
+      logging for the TriggerClient. The level is inherited by all Jobs that use this Client, unless they also specify a `logLevel`.
+      - `log` - logs only essential messages
+      - `error` - logs error messages
+      - `warn` - logs errors and warning messages
+      - `info` - logs errors, warnings and info messages
+      - `debug` - logs everything with full verbosity
+    </ParamField>
+
+    <ParamField body="verbose" type="boolean">
+    Very verbose log messages, default to false.
+    </ParamField>
+
+    <ParamField body="ioLogLocalEnabled" type="boolean">
+    Default is false. If set to true it will log to the server's console as well as the Trigger.dev platform
+    </ParamField>
+
+  </Expandable>
+</ParamField>
+
+## Returns
+
+<ResponseField name="TriggerClient instance" type="TriggerClient" />
+
+<RequestExample>
+
+```ts Example
+export const client = new TriggerClient({
+  id: "my-webapp",
+  apiKey: process.env.TRIGGER_API_KEY!,
+  logLevel: "debug",
+});
+```
+
+</RequestExample>

@@ -1,0 +1,308 @@
+---
+title: "Zod Guide"
+sidebarTitle: "Zod"
+description: "TypeScript-first schema validation with static type inference"
+---
+
+## Intro
+
+Zod is a fantastic utility package by [@colinhacks](https://twitter.com/colinhacks) that allows for defining runtime schema validation and type-safety.
+
+We use it [extensively](https://github.com/search?q=repo%3Atriggerdotdev%2Ftrigger.dev+%22zod%22%3B&type=code) internally at Trigger.dev.
+
+But there are a few places where we ask you to provide us with a Zod schema, for example when defining your own [events](/documentation/concepts/triggers/events):
+
+```ts
+client.defineJob({
+  id: "new-user",
+  name: "New user",
+  version: "0.1.0",
+  //the eventTrigger uses zod to define the schema
+  trigger: eventTrigger({
+    name: "user.created",
+    schema: z.object({
+      name: z.string(),
+      email: z.string(),
+      paidPlan: z.boolean(),
+    }),
+  }),
+  //this function is run when the custom event is received
+  run: async (payload, io, ctx) => {
+    //do stuff
+  },
+});
+```
+
+So it will help to know a little about Zod and how to use it. We definitely recommend the well written [Zod README](https://github.com/colinhacks/zod#readme) but we've included a short primer below.
+
+<Tip>
+  Wherever we require you to pass in a Zod schema, you can always start with `z.any()` which accepts
+  `any` type and then add more strict validations later.
+</Tip>
+
+## Basic Usage
+
+There are three main steps to using Zod:
+
+1. Define a schema
+
+```ts
+import { z } from "zod";
+
+const mySchema = z.object({
+  name: z.string(),
+  email: z.string(),
+  paidPlan: z.boolean(),
+});
+```
+
+2. Infer TypeScript types from the schema
+
+```ts
+type MySchema = z.infer<typeof mySchema>;
+```
+
+3. Validate data against the schema
+
+```ts
+const data: unknown = {
+  name: "Eric",
+  email: "eric@trigger.dev",
+  paidPlan: true,
+};
+
+const result = mySchema.parse(data);
+```
+
+When using Zod with Trigger.dev, you'll only really need to do the first step, and by passing it to us (through the `schema` property of the `customEvent` function), we'll do the second and third steps for you.
+
+## Defining Schemas
+
+### Primitives
+
+Zod schemas are a way to define the shape of an object. They can be as simple as a single type, or as complex as a nested object.
+
+```ts
+// Primitives
+z.string();
+z.number();
+z.boolean();
+z.date();
+z.undefined();
+z.null();
+```
+
+Any schema can be marked as optional, which means the schema can be `undefined` or `null`:
+
+```ts
+z.string().optional();
+```
+
+Schemas can also be marked optional by providing a default value:
+
+```ts
+const optionalString = z.string().default("default value");
+
+const value = optionalString.parse(undefined); // value === "default value"
+```
+
+If you need to allow a value to be `null`, you can use `nullable()`:
+
+```ts
+const nullableString = z.string().nullable();
+
+const value = nullableString.parse(null);
+```
+
+You can also use Zod to coerce primites into other types. For example, you can coerce a string into a number:
+
+```ts
+const numberString = z.coerce.number();
+
+const value = numberString.parse("123"); // value === 123
+```
+
+The following primitives are supported:
+
+```ts
+z.coerce.string();
+z.coerce.number();
+z.coerce.boolean();
+z.coerce.bigint();
+z.coerce.date();
+```
+
+Coercing dates are especially useful when you are receiving a `string` from an API and want to convert it to a JavaScript `Date` object:
+
+```ts
+const date = z.coerce.date();
+
+const value = date.parse("2021-01-01T00:00:00.000Z"); // value === Date object
+```
+
+### Objects
+
+Object schemas are the most common type of schema. They allow you to define the shape of an object, and the types of each property.
+
+```ts
+const mySchema = z.object({
+  name: z.string(),
+  email: z.string(),
+  paidPlan: z.boolean(),
+});
+```
+
+All properties are required by default, although you can make them all optional using `partial()`:
+
+```ts
+const mySchema = z
+  .object({
+    name: z.string(),
+    email: z.string(),
+    paidPlan: z.boolean(),
+  })
+  .partial();
+```
+
+You can also make individual properties optional:
+
+```ts
+const mySchema = z.object({
+  name: z.string(),
+  email: z.string(),
+  paidPlan: z.boolean().optional(),
+});
+```
+
+By default an object schema will strip out any extra properties that are not defined in the schema. You can disable this behavior using `passthrough()`:
+
+```ts
+const mySchema = z.object({
+  name: z.string(),
+});
+
+mySchema.parse({ name: "Eric", email: "eric@trigger.dev" }); // { name: "Eric" }
+mySchema.passthrough().parse({ name: "Eric", email: "eric@trigger.dev" }); // { name: "Eric", email: "eric@trigger.dev" }
+```
+
+Or you can use `strict()` to make the schema throw an error if there are any extra properties:
+
+```ts
+const mySchema = z
+  .object({
+    name: z.string(),
+  })
+  .strict();
+
+mySchema.parse({ name: "Eric", email: "eric@trigger.dev" }); // throws error
+```
+
+Zod includes a few useful object schema utilities to help with reusing schemas, `extends()` and `merge()`:
+
+```ts
+const baseSchema = z.object({
+  name: z.string(),
+});
+
+const extendedSchema = baseSchema.extend({
+  email: z.string(),
+});
+
+const mergedSchema = baseSchema.merge(
+  z.object({
+    email: z.string(),
+  })
+);
+```
+
+You can also use `pick()` and `omit()` to create a new schema that only includes or excludes certain properties:
+
+```ts
+const mySchema = z.object({
+  name: z.string(),
+  email: z.string(),
+  paidPlan: z.boolean(),
+});
+
+const pickedSchema = mySchema.pick({ name: true, email: true });
+const omittedSchema = mySchema.omit({ paidPlan: true });
+```
+
+### Arrays
+
+You can specify the schema of an array using `z.array()`:
+
+```ts
+z.array(z.string()); // string[]
+z.array(z.number()); // number[]
+z.array(z.object({ name: z.string() })); // Array<{ name: string }>
+```
+
+You can also specify the type of array that has a fixed number of elements using `z.tuple()`:
+
+```ts
+z.tuple([z.string(), z.number(), z.boolean()]); // [string, number, boolean]
+```
+
+### Unions
+
+You can specify a union of schemas using `z.union()`:
+
+```ts
+z.union([z.string(), z.number(), z.boolean()]); // string | number | boolean
+```
+
+Discriminating unions are also supported, and especially useful when paired with type narrowing:
+
+```ts
+const mySchema = z.discriminatingUnion("type", [
+  z.object({
+    type: z.literal("a"),
+    data: z.string(),
+  }),
+  z.object({
+    type: z.literal("b"),
+    data: z.number(),
+  }),
+]);
+
+const value = mySchema.parse({ type: "a", data: "hello" });
+
+if (type.a) {
+  // value is { type: "a", data: string }
+} else if (type.b) {
+  // value is { type: "b", data: number }
+}
+```
+
+### Records
+
+You can specify a record of schemas using `z.record()`, useful for when you have a map of values but don't care about the keys:
+
+```ts
+z.record(z.string()); // Record<string, string>
+z.record(z.number()); // Record<string, number>
+```
+
+### JSON type
+
+If you want to accept any valid JSON value, you can use the following schema:
+
+```ts
+const literalSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+type Literal = z.infer<typeof literalSchema>;
+type Json = Literal | { [key: string]: Json } | Json[];
+const jsonSchema: z.ZodType<Json> = z.lazy(() =>
+  z.union([literalSchema, z.array(jsonSchema), z.record(jsonSchema)])
+);
+
+jsonSchema.parse(data);
+```
+
+Hat tip to [ggoodman](https://github.com/ggoodman) for this one.
+
+## Resources
+
+Matt Pocock [@mattpocock](https://twitter.com/mattpocockuk) has a great free Zod Tutorial up on [Total Typescript](https://www.totaltypescript.com/tutorials/zod) that covers the basics of Zod.
+
+Easily generate Zod schemas from [JSON](https://transform.tools/json-to-zod), [JSON Schemas](https://transform.tools/json-schema-to-zod), or [TypeScript](https://transform.tools/typescript-to-zod) types.

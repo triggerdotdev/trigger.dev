@@ -29,22 +29,19 @@ export const getOrganizations: AuthenticatedTask<
   },
 };
 
-export const getProjects: AuthenticatedTask<
-  SupabaseManagementAPI,
-  void,
-  GetProjectsResponseData
-> = {
-  run: async (params, client) => {
-    return client.getProjects();
-  },
-  init: (params) => {
-    return {
-      name: "Get Projects",
-      params,
-      icon: "supabase",
-    };
-  },
-};
+export const getProjects: AuthenticatedTask<SupabaseManagementAPI, void, GetProjectsResponseData> =
+  {
+    run: async (params, client) => {
+      return client.getProjects();
+    },
+    init: (params) => {
+      return {
+        name: "Get Projects",
+        params,
+        icon: "supabase",
+      };
+    },
+  };
 
 export const createProject: AuthenticatedTask<
   SupabaseManagementAPI,
@@ -161,6 +158,7 @@ export const getPostgRESTConfig: AuthenticatedTask<
   },
 };
 
+/** Gets project's Postgres config */
 export const getPGConfig: AuthenticatedTask<
   SupabaseManagementAPI,
   { ref: string },
@@ -172,6 +170,30 @@ export const getPGConfig: AuthenticatedTask<
   init: (params) => {
     return {
       name: "Get PG Config",
+      params,
+      icon: "supabase",
+      properties: [
+        {
+          label: "Project",
+          text: params.ref,
+        },
+      ],
+    };
+  },
+};
+
+/** Enable Database Webhooks in project */
+export const enableDatabaseWebhooks: AuthenticatedTask<
+  SupabaseManagementAPI,
+  { ref: string },
+  void
+> = {
+  run: async (params, client) => {
+    return client.enableWebhooks(params.ref);
+  },
+  init: (params) => {
+    return {
+      name: "Enable Database Webhooks",
       params,
       icon: "supabase",
       properties: [

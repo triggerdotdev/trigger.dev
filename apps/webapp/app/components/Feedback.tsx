@@ -1,17 +1,8 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import {
-  Form,
-  useActionData,
-  useLocation,
-  useNavigation,
-} from "@remix-run/react";
+import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
 import { ReactNode, useState } from "react";
-import {
-  FeedbackType,
-  feedbackTypeLabel,
-  schema,
-} from "~/routes/resources.feedback";
+import { FeedbackType, feedbackTypeLabel, schema } from "~/routes/resources.feedback";
 import { Button } from "./primitives/Buttons";
 import { Fieldset } from "./primitives/Fieldset";
 import { FormButtons } from "./primitives/FormButtons";
@@ -27,13 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./primitives/Select";
-import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetHeader,
-  SheetTrigger,
-} from "./primitives/Sheet";
+import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTrigger } from "./primitives/Sheet";
 import { TextArea } from "./primitives/TextArea";
 
 type FeedbackProps = {
@@ -71,22 +56,16 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
         <SheetHeader className="justify-between">Help & feedback</SheetHeader>
         <SheetBody>
           <Paragraph variant="small" className="mb-4">
-            Use this form to ask for help or give us feedback. We read every
-            message and will get back to you as soon as we can.
+            Use this form to ask for help or give us feedback. We read every message and will get
+            back to you as soon as we can.
           </Paragraph>
           <Form method="post" action="/resources/feedback" {...form.props}>
             <Fieldset>
-              <input
-                value={location.pathname}
-                {...conform.input(path, { type: "hidden" })}
-              />
+              <input value={location.pathname} {...conform.input(path, { type: "hidden" })} />
               <InputGroup>
                 <Label>How can we help?</Label>
                 <SelectGroup>
-                  <Select
-                    {...conform.input(feedbackType)}
-                    defaultValue={defaultValue}
-                  >
+                  <Select {...conform.input(feedbackType)} defaultValue={defaultValue}>
                     <SelectTrigger size="medium" width="full">
                       <SelectValue placeholder="Type" />
                     </SelectTrigger>
@@ -99,9 +78,7 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
                     </SelectContent>
                   </Select>
                 </SelectGroup>
-                <FormError id={feedbackType.errorId}>
-                  {feedbackType.error}
-                </FormError>
+                <FormError id={feedbackType.errorId}>{feedbackType.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label>Message</Label>

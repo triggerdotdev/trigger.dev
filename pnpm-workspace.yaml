@@ -4,3 +4,4 @@ packages:
   - "integrations/*"
   - "apps/**"
   - "examples/*"
+  - "docs"

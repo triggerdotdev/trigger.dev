@@ -9,7 +9,7 @@ import { Job, eventTrigger } from "@trigger.dev/sdk";
 
 export const plain = new Plain({
   id: "plain-1",
-  apiKey: process.env.PLAIN_API_KEY!,
+  apiKey: process.env["PLAIN_API_KEY"]!,
 });
 
 client.defineJob({
@@ -49,36 +49,33 @@ client.defineJob({
       customerId: customer.id,
     });
 
-    const timelineEntry = await io.plain.upsertCustomTimelineEntry(
-      "upsert-timeline-entry",
-      {
-        customerId: customer.id,
-        title: "My timeline entry",
-        components: [
-          {
-            componentText: {
-              text: `This is a nice title`,
-            },
+    const timelineEntry = await io.plain.upsertCustomTimelineEntry("upsert-timeline-entry", {
+      customerId: customer.id,
+      title: "My timeline entry",
+      components: [
+        {
+          componentText: {
+            text: `This is a nice title`,
           },
-          {
-            componentDivider: {
-              dividerSpacingSize: ComponentDividerSpacingSize.M,
-            },
+        },
+        {
+          componentDivider: {
+            dividerSpacingSize: ComponentDividerSpacingSize.M,
           },
-          {
-            componentText: {
-              textSize: ComponentTextSize.S,
-              textColor: ComponentTextColor.Muted,
-              text: "External id",
-            },
+        },
+        {
+          componentText: {
+            textSize: ComponentTextSize.S,
+            textColor: ComponentTextColor.Muted,
+            text: "External id",
           },
-          {
-            componentText: {
-              text: foundCustomer?.externalId ?? "",
-            },
+        },
+        {
+          componentText: {
+            text: foundCustomer?.externalId ?? "",
           },
-        ],
-      }
-    );
+        },
+      ],
+    });
   },
 });

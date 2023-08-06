@@ -1,9 +1,5 @@
 import { RouteMatch, useMatches } from "@remix-run/react";
-import {
-  RemixSerializedType,
-  UseDataFunctionReturn,
-  deserializeRemix,
-} from "remix-typedjson";
+import { RemixSerializedType, UseDataFunctionReturn, deserializeRemix } from "remix-typedjson";
 
 type AppData = any;
 

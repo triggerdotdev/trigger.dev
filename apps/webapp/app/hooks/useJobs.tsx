@@ -4,9 +4,7 @@ import type { loader } from "~/routes/_app.orgs.$organizationSlug.projects.$proj
 import { RouteMatch } from "@remix-run/react";
 import { useTypedMatchesData } from "./useTypedMatchData";
 
-export type ProjectJob = UseDataFunctionReturn<
-  typeof loader
->["projectJobs"][number];
+export type ProjectJob = UseDataFunctionReturn<typeof loader>["projectJobs"][number];
 
 export const jobsMatchId =
   "routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam";

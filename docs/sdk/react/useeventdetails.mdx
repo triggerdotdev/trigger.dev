@@ -1,0 +1,54 @@
+---
+title: "useEventDetails()"
+description: "The `useEventDetails()` React hook will show the live status of an event that was sent using `sendEvent()`."
+---
+
+It will automatically update until all triggered runs with the event have completed or failed.
+
+<Snippet file="react-query-note.mdx" />
+
+## Parameters
+
+<ResponseField name="eventId" type="string | undefined" required>
+  The event ID to get the details for. This is returned when calling either
+  [client.sendEvent()](/sdk/triggerclient/instancemethods/sendevent) or
+  [io.sendEvent()](/sdk/io/sendevent).
+</ResponseField>
+
+## Returns
+
+<ResponseField name="data" type="object | undefined">
+  The data returned from the server.
+  <Expandable title="properties" defaultOpen>
+    <Snippet file="sent-event-object.mdx" />
+  </Expandable>
+</ResponseField>
+<Snippet file="react-query-return.mdx" />
+
+<RequestExample>
+
+```typescript components/EventDetails.tsx
+"use client";
+
+import { useEventDetails } from "@trigger.dev/react";
+
+export function EventDetails({ eventId }: { eventId: string }) {
+  const { isLoading, isError, data, error } = useEventDetails(eventId);
+
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
+
+  if (isError) {
+    return <div>Error: {error.message}</div>;
+  }
+
+  //get the first run (if one has started yet)
+  const firstRun = event.data?.runs?.at(0);
+
+  //if the run is there, show the status, otherwise loading
+  return <div>{firstRun ? firstRun.status : "Loading"}</div>;
+}
+```
+
+</RequestExample>

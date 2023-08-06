@@ -44,3 +44,17 @@ client.defineJob({
     }
   },
 });
+
+client.defineJob({
+  id: "test-multiple-events",
+  name: "Test Multiple Events",
+  version: "0.0.1",
+  logLevel: "debug",
+  trigger: eventTrigger({
+    name: ["test.event.1", "test.event.2"],
+    examples: [{ id: "test", name: "Test", payload: { name: "test" } }],
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.log(`Triggered by the ${ctx.event.name} event`, { ctx });
+  },
+});

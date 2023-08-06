@@ -49,20 +49,11 @@ export function TaskDetail({ task }: { task: DetailedTask }) {
   return (
     <RunPanel selected={false}>
       <RunPanelHeader
-        icon={
-          <TaskStatusIcon
-            status={status}
-            minimal={true}
-            className={cn("h-5 w-5")}
-          />
-        }
+        icon={<TaskStatusIcon status={status} minimal={true} className={cn("h-5 w-5")} />}
         title={<RunPanelIconTitle icon={icon} title={name} />}
         accessory={
           <Paragraph variant="extra-small">
-            <UpdatingDuration
-              start={startedAt ?? undefined}
-              end={completedAt ?? undefined}
-            />
+            <UpdatingDuration start={startedAt ?? undefined} end={completedAt ?? undefined} />
           </Paragraph>
         }
       />
@@ -104,9 +95,7 @@ export function TaskDetail({ task }: { task: DetailedTask }) {
           )}
         </RunPanelIconSection>
         <RunPanelDivider />
-        {description && (
-          <RunPanelDescription text={description} variant={style?.variant} />
-        )}
+        {description && <RunPanelDescription text={description} variant={style?.variant} />}
         {properties.length > 0 && (
           <div className="mt-4 flex flex-col gap-2">
             <Header3>Properties</Header3>
@@ -153,10 +142,7 @@ export function TaskDetail({ task }: { task: DetailedTask }) {
         <div className="mt-4 flex flex-col gap-2">
           <Header3>Input</Header3>
           {params ? (
-            <CodeBlock
-              code={JSON.stringify(params, sensitiveDataReplacer, 2)}
-              maxLines={35}
-            />
+            <CodeBlock code={JSON.stringify(params, sensitiveDataReplacer, 2)} maxLines={35} />
           ) : (
             <Paragraph variant="small">No input</Paragraph>
           )}

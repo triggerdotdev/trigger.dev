@@ -1,7 +1,7 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import type { CompleteTaskBodyOutput, ServerTask } from "@trigger.dev/internal";
-import { CompleteTaskBodyInputSchema } from "@trigger.dev/internal";
+import type { CompleteTaskBodyOutput, ServerTask } from "@trigger.dev/core";
+import { CompleteTaskBodyInputSchema } from "@trigger.dev/core";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { taskWithAttemptsToServerTask } from "~/models/task.server";
@@ -21,11 +21,13 @@ export async function action({ request, params }: ActionArgs) {
   }
 
   // Next authenticate the request
-  const authenticatedEnv = await authenticateApiRequest(request);
+  const authenticationResult = await authenticateApiRequest(request);
 
-  if (!authenticatedEnv) {
+  if (!authenticationResult) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
+
+  const authenticatedEnv = authenticationResult.environment;
 
   const { runId, id } = ParamsSchema.parse(params);
 

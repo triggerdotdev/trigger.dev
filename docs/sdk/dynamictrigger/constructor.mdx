@@ -1,0 +1,43 @@
+---
+title: "DynamicTrigger: Constructor"
+sidebarTitle: "Constructor"
+description: "The `DynamicTrigger()` constructor creates a new [DynamicTrigger](/sdk/dynamictrigger/overview) instance."
+---
+
+## Parameters
+
+<ResponseField name="client" type="TriggerClient" required>
+  The `TriggerClient` instance to use for registering the trigger.
+</ResponseField>
+<ResponseField name="options" type="DynamicTriggerOptions" required>
+  The options for the dynamic trigger.
+  <Expandable title="options" defaultOpen>
+    <ResponseField name="id" type="string" required>
+      Used to uniquely identify a DynamicTrigger
+    </ResponseField>
+    <ResponseField name="event" type="event" required>
+      An event from an [Integration](/integrations) package that you want to
+      attach to the DynamicTrigger. The event types will come through to the
+      payload in your Job's run.
+    </ResponseField>
+    <ResponseField name="source" type="source" required>
+      An external source fron an [Integration](/integrations) package
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Returns
+
+<ResponseField name="DynamicTrigger instance" type="DynamicTrigger" />
+
+<RequestExample>
+
+```typescript
+const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
+  id: "github-issue-opened",
+  event: events.onIssueOpened,
+  source: github.sources.repo,
+});
+```
+
+</RequestExample>

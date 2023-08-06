@@ -16,9 +16,7 @@ export type Integration = {
 };
 
 /** An authentication method that can be used */
-export type ApiAuthenticationMethod =
-  | ApiAuthenticationMethodOAuth2
-  | ApiAuthenticationMethodApiKey;
+export type ApiAuthenticationMethod = ApiAuthenticationMethodOAuth2 | ApiAuthenticationMethodApiKey;
 
 const HelpSampleSchema = z.object({
   title: z.string(),

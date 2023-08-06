@@ -4,11 +4,7 @@ import { UserPlusIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData } from "@remix-run/react";
 import { ActionFunction, LoaderArgs, json } from "@remix-run/server-runtime";
 import { useState } from "react";
-import {
-  UseDataFunctionReturn,
-  typedjson,
-  useTypedLoaderData,
-} from "remix-typedjson";
+import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { UserAvatar } from "~/components/UserProfilePhoto";
@@ -23,28 +19,17 @@ import {
   AlertTitle,
   AlertTrigger,
 } from "~/components/primitives/Alert";
-import {
-  Button,
-  ButtonContent,
-  LinkButton,
-} from "~/components/primitives/Buttons";
+import { Button, ButtonContent, LinkButton } from "~/components/primitives/Buttons";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
-import {
-  getTeamMembersAndInvites,
-  removeTeamMember,
-} from "~/models/member.server";
+import { getTeamMembersAndInvites, removeTeamMember } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUserId } from "~/services/session.server";
-import {
-  inviteTeamMemberPath,
-  organizationTeamPath,
-  resendInvitePath,
-} from "~/utils/pathBuilder";
+import { inviteTeamMemberPath, organizationTeamPath, resendInvitePath } from "~/utils/pathBuilder";
 import { OrgAdminHeader } from "../_app.orgs.$organizationSlug._index/OrgAdminHeader";
 import { DateTime } from "~/components/primitives/DateTime";
 
@@ -92,11 +77,7 @@ export const action: ActionFunction = async ({ request, params }) => {
     });
 
     if (deletedMember.userId === userId) {
-      return redirectWithSuccessMessage(
-        "/",
-        request,
-        `You left the organization`
-      );
+      return redirectWithSuccessMessage("/", request, `You left the organization`);
     }
 
     return redirectWithSuccessMessage(
@@ -133,9 +114,7 @@ export default function Page() {
               <div className="flex flex-col gap-0.5">
                 <Header3>
                   {member.user.name}{" "}
-                  {member.user.id === user.id && (
-                    <span className="text-dimmed">(You)</span>
-                  )}
+                  {member.user.id === user.id && <span className="text-dimmed">(You)</span>}
                 </Header3>
                 <Paragraph variant="small">{member.user.email}</Paragraph>
               </div>
@@ -145,11 +124,7 @@ export default function Page() {
                 <Paragraph variant="extra-small">
                   {titleCase(member.role.toLocaleLowerCase())}
                 </Paragraph> */}
-                <LeaveRemoveButton
-                  userId={user.id}
-                  member={member}
-                  memberCount={members.length}
-                />
+                <LeaveRemoveButton userId={user.id} member={member} memberCount={members.length} />
               </div>
             </li>
           ))}
@@ -209,10 +184,7 @@ function LeaveRemoveButton({
       return (
         <SimpleTooltip
           button={
-            <ButtonContent
-              variant="secondary/small"
-              className="cursor-not-allowed"
-            >
+            <ButtonContent variant="secondary/small" className="cursor-not-allowed">
               Leave team
             </ButtonContent>
           }
@@ -238,9 +210,7 @@ function LeaveRemoveButton({
     <LeaveTeamModal
       member={member}
       buttonText="Remove from team"
-      title={`Are you sure you want to remove ${
-        member.user.name ?? "them"
-      } from the team?`}
+      title={`Are you sure you want to remove ${member.user.name ?? "them"} from the team?`}
       description={`They will no longer have access to ${organization.title}. To regain access, you will need to invite them again.`}
       actionText="Remove from team"
     />

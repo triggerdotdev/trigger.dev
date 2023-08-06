@@ -1,0 +1,31 @@
+---
+title: "Limitations"
+---
+
+There are a few limitations that are important to understand.
+
+In the current beta:
+
+- Runs on localhost are limited to 5 minutes.
+- On long-running servers (not serverless) Runs can be retried erroneously.
+- Compute intensive jobs are not well supported.
+
+## Runs on localhost are limited to 5 minutes
+
+When developing locally the [CLI dev command](/documentation/guides/cli#dev-command) uses [ngrok](https://ngrok.com/) so messages can be sent to your machine.
+
+Ngrok has a timeout of 5 minutes on a Request/Response cycle. so, if a localhost Run takes longer than 5 minutes to complete, the Run will fail.
+
+This limitation will be removed in the future by adding an alternative run strategy that works well on localhost and long-running servers. This won't use the request/response cycle.
+
+## On long-running servers (not serverless) Runs can be retried erroneously
+
+Currently the only way that Runs are performed is by a Request/Response cycle when `run` is called on a Job. This is optimized for serverless functions (where you have to use a Request/Response cycle), but not for long-running servers.
+
+This limitation will be removed in the future by adding an alternative mode so Jobs works well on localhost and long-running servers. This won't use the request/response cycle.
+
+## Compute intensive jobs are not well supported
+
+Currently the only way that Runs are performed is inside a Request/Response cycle when `run` is called on a Job. This is not a good way to perform compute intensive jobs.
+
+In the future we will add good support for compute intensive jobs.

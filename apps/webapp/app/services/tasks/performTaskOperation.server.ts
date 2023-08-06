@@ -1,11 +1,6 @@
 import type { Task } from "@trigger.dev/database";
 import { EXECUTE_JOB_RETRY_LIMIT } from "~/consts";
-import {
-  $transaction,
-  PrismaClient,
-  PrismaClientOrTransaction,
-  prisma,
-} from "~/db.server";
+import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
 import {
   FetchOperationSchema,
@@ -14,7 +9,7 @@ import {
   FetchRetryStrategy,
   RedactString,
   calculateRetryAt,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import { safeJsonFromResponse } from "~/utils/json";
 import { logger } from "../logger.server";
 import { formatUnknownError } from "~/utils/formatErrors.server";
@@ -76,11 +71,7 @@ export class PerformTaskOperationService {
         });
 
         if (!response.ok) {
-          const retryAt = this.#calculateRetryForResponse(
-            task,
-            retry,
-            response
-          );
+          const retryAt = this.#calculateRetryForResponse(task, retry, response);
 
           if (retryAt) {
             return await this.#retryTaskWithError(
@@ -119,10 +110,7 @@ export class PerformTaskOperationService {
       return;
     }
 
-    const strategy = this.#getRetryStrategyForStatusCode(
-      response.status,
-      retry
-    );
+    const strategy = this.#getRetryStrategyForStatusCode(response.status, retry);
 
     if (!strategy) {
       return;
@@ -140,11 +128,7 @@ export class PerformTaskOperationService {
         const remaining = response.headers.get(strategy.remainingHeader);
         const resetAt = response.headers.get(strategy.resetHeader);
 
-        if (
-          typeof remaining === "string" &&
-          typeof resetAt === "string" &&
-          remaining === "0"
-        ) {
+        if (typeof remaining === "string" && typeof resetAt === "string" && remaining === "0") {
           return new Date(Number(resetAt) * 1000 + addJitterInMs());
         }
       }
@@ -290,9 +274,7 @@ export class PerformTaskOperationService {
   }
 }
 
-function normalizeHeaders(
-  headers: FetchRequestInit["headers"]
-): Record<string, string> {
+function normalizeHeaders(headers: FetchRequestInit["headers"]): Record<string, string> {
   if (!headers) {
     return {};
   }

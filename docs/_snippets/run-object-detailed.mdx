@@ -1,0 +1,13 @@
+<Snippet file="run-object.mdx" />
+<ResponseField name="output" type="any">
+  Whatever you returned from your run function, can be undefined
+</ResponseField>
+<ResponseField name="tasks" type="Task[]">
+  The tasks from the run
+  <Expandable title="Task">
+    <Snippet file="task-object.mdx" />
+  </Expandable>
+</ResponseField>
+<ResponseField name="nextCursor" type="string" optional>
+  If there are more tasks, you can use this to get them
+</ResponseField>

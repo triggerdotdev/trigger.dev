@@ -17,11 +17,7 @@ import { cancelSchema } from "~/routes/resources.runs.$runId.cancel";
 import { schema } from "~/routes/resources.runs.$runId.rerun";
 import { formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
-import {
-  runCompletedPath,
-  runTaskPath,
-  runTriggerPath,
-} from "~/utils/pathBuilder";
+import { runCompletedPath, runTaskPath, runTriggerPath } from "~/utils/pathBuilder";
 import { CodeBlock } from "../code/CodeBlock";
 import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "../layout/AppLayout";
@@ -78,12 +74,7 @@ type RunOverviewProps = {
 
 const taskPattern = /\/tasks\/(.*)/;
 
-export function RunOverview({
-  run,
-  trigger,
-  showRerun,
-  paths,
-}: RunOverviewProps) {
+export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps) {
   const navigate = useNavigate();
   const pathName = usePathName();
 
@@ -144,19 +135,9 @@ export function RunOverview({
             <PageInfoProperty
               icon={"calendar"}
               label={"Started"}
-              value={
-                run.startedAt ? (
-                  <DateTime date={run.startedAt} />
-                ) : (
-                  "Not started yet"
-                )
-              }
+              value={run.startedAt ? <DateTime date={run.startedAt} /> : "Not started yet"}
             />
-            <PageInfoProperty
-              icon={"property"}
-              label={"Version"}
-              value={`v${run.version}`}
-            />
+            <PageInfoProperty icon={"property"} label={"Version"} value={`v${run.version}`} />
             <PageInfoProperty
               label={"Env"}
               value={<EnvironmentLabel environment={run.environment} />}
@@ -186,10 +167,7 @@ export function RunOverview({
                 <RunPanelHeader icon={trigger.icon} title={trigger.title} />
                 <RunPanelBody>
                   <RunPanelProperties
-                    properties={[
-                      { label: "Event name", text: run.event.name },
-                      ...run.properties,
-                    ]}
+                    properties={[{ label: "Event name", text: run.event.name }, ...run.properties]}
                   />
                 </RunPanelBody>
               </RunPanel>
@@ -226,12 +204,7 @@ export function RunOverview({
                   onClick={() => navigate(runCompletedPath(paths.run))}
                 >
                   <RunPanelHeader
-                    icon={
-                      <RunStatusIcon
-                        status={run.status}
-                        className={"h-5 w-5"}
-                      />
-                    }
+                    icon={<RunStatusIcon status={run.status} className={"h-5 w-5"} />}
                     title={
                       <Paragraph variant="small/bright">
                         <RunStatusLabel status={run.status} />
@@ -258,34 +231,21 @@ export function RunOverview({
                         <RunPanelIconProperty
                           icon="clock"
                           label="Total duration"
-                          value={formatDuration(
-                            run.startedAt,
-                            run.completedAt,
-                            {
-                              style: "long",
-                            }
-                          )}
+                          value={formatDuration(run.startedAt, run.completedAt, {
+                            style: "long",
+                          })}
                         />
                       )}
                     </RunPanelIconSection>
                     <RunPanelDivider />
                     {run.error && (
-                      <RunPanelError
-                        text={run.error.message}
-                        stackTrace={run.error.stack}
-                      />
+                      <RunPanelError text={run.error.message} stackTrace={run.error.stack} />
                     )}
                     {run.output ? (
-                      <CodeBlock
-                        language="json"
-                        code={run.output}
-                        maxLines={10}
-                      />
+                      <CodeBlock language="json" code={run.output} maxLines={10} />
                     ) : (
                       run.output === null && (
-                        <Paragraph variant="small">
-                          This Run returned nothing.
-                        </Paragraph>
+                        <Paragraph variant="small">This Run returned nothing.</Paragraph>
                       )
                     )}
                   </RunPanelBody>
@@ -297,11 +257,7 @@ export function RunOverview({
           {/* Detail view */}
           <div className="overflow-y-auto py-4 pr-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
             <Header2 className="mb-2">Detail</Header2>
-            {selectedId ? (
-              <Outlet />
-            ) : (
-              <Callout variant="info">Select a task or trigger</Callout>
-            )}
+            {selectedId ? <Outlet /> : <Callout variant="info">Select a task or trigger</Callout>}
           </div>
         </div>
       </PageBody>
@@ -318,9 +274,7 @@ function BlankTasks({
 }) {
   switch (basicStatus) {
     case "COMPLETED":
-      return (
-        <Paragraph variant="small">There were no tasks for this run.</Paragraph>
-      );
+      return <Paragraph variant="small">There were no tasks for this run.</Paragraph>;
     case "FAILED":
       return <Paragraph variant="small">No tasks were run.</Paragraph>;
     case "WAITING":
@@ -335,9 +289,7 @@ function BlankTasks({
         </div>
       );
     default:
-      return (
-        <Paragraph variant="small">There were no tasks for this run.</Paragraph>
-      );
+      return <Paragraph variant="small">There were no tasks for this run.</Paragraph>;
   }
 }
 
@@ -370,15 +322,8 @@ function RerunPopover({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="flex w-80 flex-col gap-2 p-4" align="end">
-        <Form
-          method="post"
-          action={`/resources/runs/${runId}/rerun`}
-          {...form.props}
-        >
-          <input
-            {...conform.input(successRedirect, { type: "hidden" })}
-            defaultValue={runsPath}
-          />
+        <Form method="post" action={`/resources/runs/${runId}/rerun`} {...form.props}>
+          <input {...conform.input(successRedirect, { type: "hidden" })} defaultValue={runsPath} />
           {environmentType === "PRODUCTION" && (
             <Callout variant="warning">
               This will rerun this Job in your Production environment.
@@ -399,8 +344,8 @@ function RerunPopover({
               </Button>
 
               <Paragraph variant="extra-small" className="mt-2">
-                Start a brand new job run with the same Trigger data as this
-                one. This will re-do every task.
+                Start a brand new job run with the same Trigger data as this one. This will re-do
+                every task.
               </Paragraph>
             </div>
             {status === "FAILED" && (
@@ -417,8 +362,8 @@ function RerunPopover({
                 </Button>
 
                 <Paragraph variant="extra-small" className="mt-2">
-                  Continue running this job run from where it left off. This
-                  will skip any task that has already been completed.
+                  Continue running this job run from where it left off. This will skip any task that
+                  has already been completed.
                 </Paragraph>
               </div>
             )}
@@ -442,19 +387,11 @@ export function CancelRun({ runId }: { runId: string }) {
     },
   });
 
-  const isLoading =
-    navigation.state === "submitting" && navigation.formData !== undefined;
+  const isLoading = navigation.state === "submitting" && navigation.formData !== undefined;
 
   return (
-    <Form
-      method="post"
-      action={`/resources/runs/${runId}/cancel`}
-      {...form.props}
-    >
-      <input
-        {...conform.input(redirectUrl, { type: "hidden" })}
-        defaultValue={location.pathname}
-      />
+    <Form method="post" action={`/resources/runs/${runId}/cancel`} {...form.props}>
+      <input {...conform.input(redirectUrl, { type: "hidden" })} defaultValue={location.pathname} />
       <Button
         type="submit"
         LeadingIcon={isLoading ? "spinner-white" : "stop"}

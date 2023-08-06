@@ -46,10 +46,7 @@ export type ZodTasks<TConsumerSchema extends MessageCatalogSchema> = {
     maxAttempts?: number;
     jobKeyMode?: "replace" | "preserve_run_at" | "unsafe_dedupe";
     flags?: string[];
-    handler: (
-      payload: z.infer<TConsumerSchema[K]>,
-      job: GraphileJob
-    ) => Promise<void>;
+    handler: (payload: z.infer<TConsumerSchema[K]>, job: GraphileJob) => Promise<void>;
   };
 };
 
@@ -175,9 +172,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     if (!rows.success) {
       throw new Error(
-        `Failed to add job to queue, zod parsing error: ${JSON.stringify(
-          rows.error
-        )}`
+        `Failed to add job to queue, zod parsing error: ${JSON.stringify(rows.error)}`
       );
     }
 
@@ -208,8 +203,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     const subscriberSchema = this.#schema;
     type TypeKeys = keyof typeof subscriberSchema;
 
-    const messageSchema: TMessageCatalog[TypeKeys] | undefined =
-      subscriberSchema[typeName];
+    const messageSchema: TMessageCatalog[TypeKeys] | undefined = subscriberSchema[typeName];
 
     if (!messageSchema) {
       throw new Error(`Unknown message type: ${String(typeName)}`);

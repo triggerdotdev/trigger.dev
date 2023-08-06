@@ -1,0 +1,20 @@
+---
+title: "Introduction"
+description: "The SDK is how you interact with Trigger.dev"
+---
+
+<Note>The SDK requires Node.js v18 or above</Note>
+
+| Name                                      | Description                                                                                                                                              |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [TriggerClient](/sdk/triggerclient)       | TriggerClient is used to create a client that connects to the Trigger.dev platform                                                                       |
+| [Job](/sdk/job)                           | Create, configure and run a Job                                                                                                                          |
+| [IO](/sdk/io)                             | The second parameter in a Job's `run()` function. It holds Integrations and useful actions you can perform.                                              |
+| [context](/sdk/context)                   | The third parameter in a Job's `run()` function. An object that contains information about the Organization, Job, Run and more.                          |
+| [eventTrigger()](/sdk/eventtrigger)       | `eventTrigger()` is set as a [Job's trigger](/sdk/job) to subscribe to an event a Job from [a sent event](/sdk/triggerclient/instancemethods/sendevent). |
+| [cronTrigger()](/sdk/crontrigger)         | `cronTrigger()` is set as a [Job's trigger](/sdk/job) to trigger a Job on a recurring schedule using a CRON expression.                                  |
+| [intervalTrigger()](/sdk/intervaltrigger) | `intervalTrigger()` is set as a [Job's trigger](/sdk/job) to trigger a Job at a recurring interval.                                                      |
+| [DynamicTrigger](/sdk/dynamictrigger)     | `DynamicTrigger` allows you to define a trigger that can be configured dynamically at runtime.                                                           |
+| [DynamicSchedule](/sdk/dynamicschedule)   | `DynamicSchedule` allows you to define a scheduled trigger that can be configured dynamically at runtime.                                                |
+| [isTriggerError](/sdk/istriggererror)     | Use this function if you're using a `try/catch` block to catch errors.                                                                                   |
+| [redactString](/sdk/redactstring)         | An easy way to redact sensitive information from a string                                                                                                |

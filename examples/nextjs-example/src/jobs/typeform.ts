@@ -6,7 +6,7 @@ import { z } from "zod";
 
 export const typeform = new Typeform({
   id: "typeform-1",
-  token: process.env.TYPEFORM_API_KEY!,
+  token: process.env["TYPEFORM_API_KEY"]!,
 });
 
 client.defineJob({
@@ -35,12 +35,9 @@ client.defineJob({
         pageSize: 50,
       });
 
-      const allResponses = await io.typeform.getAllResponses(
-        "get-all-responses",
-        {
-          uid: payload.formId,
-        }
-      );
+      const allResponses = await io.typeform.getAllResponses("get-all-responses", {
+        uid: payload.formId,
+      });
     }
   },
 });

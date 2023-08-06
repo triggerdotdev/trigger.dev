@@ -11,7 +11,6 @@ type FindOrCreateMagicLink = {
 type FindOrCreateGithub = {
   authenticationMethod: "GITHUB";
   email: User["email"];
-  accessToken: User["accessToken"];
   authenticationProfile: GitHubProfile;
   authenticationExtraParams: Record<string, unknown>;
 };
@@ -23,9 +22,7 @@ type LoggedInUser = {
   isNewUser: boolean;
 };
 
-export async function findOrCreateUser(
-  input: FindOrCreateUser
-): Promise<LoggedInUser> {
+export async function findOrCreateUser(input: FindOrCreateUser): Promise<LoggedInUser> {
   switch (input.authenticationMethod) {
     case "GITHUB": {
       return findOrCreateGithubUser(input);
@@ -61,7 +58,6 @@ export async function findOrCreateMagicLinkUser(
 
 export async function findOrCreateGithubUser({
   email,
-  accessToken,
   authenticationProfile,
   authenticationExtraParams,
 }: FindOrCreateGithub): Promise<LoggedInUser> {
@@ -98,7 +94,6 @@ export async function findOrCreateGithubUser({
         email,
       },
       data: {
-        accessToken,
         authenticationProfile: authProfile,
         authenticationExtraParams: authExtraParams,
         avatarUrl,
@@ -117,9 +112,7 @@ export async function findOrCreateGithubUser({
       where: {
         id: existingUser.id,
       },
-      data: {
-        accessToken,
-      },
+      data: {},
     });
 
     return {
@@ -132,9 +125,8 @@ export async function findOrCreateGithubUser({
     where: {
       authIdentifier,
     },
-    update: { accessToken },
+    update: {},
     create: {
-      accessToken,
       authenticationProfile: authProfile,
       authenticationExtraParams: authExtraParams,
       name,
@@ -174,13 +166,7 @@ export function updateUser({
   });
 }
 
-export async function grantUserCloudAccess({
-  id,
-  inviteCode,
-}: {
-  id: string;
-  inviteCode: string;
-}) {
+export async function grantUserCloudAccess({ id, inviteCode }: { id: string; inviteCode: string }) {
   return prisma.user.update({
     where: { id },
     data: {

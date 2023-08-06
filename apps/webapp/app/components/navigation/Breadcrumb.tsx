@@ -2,10 +2,7 @@ import { RouteMatch, useMatches } from "@remix-run/react";
 import { Fragment, ReactNode } from "react";
 import { BreadcrumbIcon } from "../primitives/BreadcrumbIcon";
 
-export type BreadcrumbItem = (
-  match: RouteMatch,
-  allMatches: RouteMatch[]
-) => ReactNode;
+export type BreadcrumbItem = (match: RouteMatch, allMatches: RouteMatch[]) => ReactNode;
 
 export function Breadcrumb() {
   const matches = useMatches();

@@ -1,0 +1,28 @@
+---
+title: "DynamicSchedule: unregister() instance method"
+sidebarTitle: "unregister()"
+description: "Use this method to unregister a schedule from a DynamicSchedule."
+---
+
+## Parameters
+
+<ResponseField name="id" type="string" required>
+  The id of the schedule to unregister. This is what you used when you
+  registered it.
+</ResponseField>
+
+## Returns
+
+A Promise that resolves to:
+
+<ResponseField name="ok" type="boolean">
+  OK is true if the schedule was unregistered successfully.
+</ResponseField>
+
+<RequestExample>
+
+```typescript unregister
+const unregistered = await dynamicSchedule.unregister(userId);
+```
+
+</RequestExample>

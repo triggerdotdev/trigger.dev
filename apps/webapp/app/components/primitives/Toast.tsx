@@ -21,16 +21,12 @@ export function Toast() {
     switch (type) {
       case "success":
         toast.success(message, {
-          duration: options.ephemeral
-            ? defaultToastDuration
-            : permanentToastDuration,
+          duration: options.ephemeral ? defaultToastDuration : permanentToastDuration,
         });
         break;
       case "error":
         toast.error(message, {
-          duration: options.ephemeral
-            ? defaultToastDuration
-            : permanentToastDuration,
+          duration: options.ephemeral ? defaultToastDuration : permanentToastDuration,
         });
         break;
       default:

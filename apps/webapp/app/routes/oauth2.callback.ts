@@ -24,9 +24,7 @@ export async function loader({ request }: LoaderArgs) {
 
   const url = requestUrl(request);
 
-  const parsedParams = ParamsSchema.safeParse(
-    Object.fromEntries(url.searchParams)
-  );
+  const parsedParams = ParamsSchema.safeParse(Object.fromEntries(url.searchParams));
 
   if (!parsedParams.success) {
     // TODO: this should redirect to the integrations page (need to lookup orgid in cookie)

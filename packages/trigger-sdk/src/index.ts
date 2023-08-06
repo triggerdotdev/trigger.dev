@@ -9,13 +9,16 @@ export * from "./triggers/notifications";
 export * from "./io";
 export * from "./types";
 
-import { ServerTask } from "@trigger.dev/internal";
+import { ServerTask } from "@trigger.dev/core";
 import { RedactString } from "./types";
 export { isTriggerError } from "./errors";
 
-export type { NormalizedRequest, EventFilter } from "@trigger.dev/internal";
+export type { NormalizedRequest, EventFilter } from "@trigger.dev/core";
 
 export type Task = ServerTask;
+
+import { ApiEventLog } from "@trigger.dev/core";
+export type SentEvent = ApiEventLog;
 
 /*
  * This function is used to create a redacted string that can be used in the headers of a fetch request.

@@ -1,4 +1,4 @@
-import type { DisplayProperty, StyleName } from "@trigger.dev/internal";
+import type { DisplayProperty, StyleName } from "@trigger.dev/core";
 import { motion } from "framer-motion";
 import { HourglassIcon } from "lucide-react";
 import { ReactNode, useEffect, useState } from "react";
@@ -63,22 +63,12 @@ export function RunPanelHeader({
     <div
       className={cn(
         "flex items-center justify-between px-2",
-        styleName === "normal"
-          ? "h-10 border-b border-slate-850 bg-midnight-850 py-2"
-          : "pt-2"
+        styleName === "normal" ? "h-10 border-b border-slate-850 bg-midnight-850 py-2" : "pt-2"
       )}
     >
       <div className="flex items-center gap-2">
-        {typeof icon === "string" ? (
-          <NamedIcon name={icon} className="h-5 w-5" />
-        ) : (
-          icon
-        )}
-        {typeof title === "string" ? (
-          <Paragraph variant="small/bright">{title}</Paragraph>
-        ) : (
-          title
-        )}
+        {typeof icon === "string" ? <NamedIcon name={icon} className="h-5 w-5" /> : icon}
+        {typeof title === "string" ? <Paragraph variant="small/bright">{title}</Paragraph> : title}
       </div>
       <div className="flex items-center gap-2">{accessory}</div>
     </div>
@@ -111,18 +101,9 @@ const variantClasses: Record<string, string> = {
   debug: "",
 };
 
-export function RunPanelDescription({
-  text,
-  variant,
-}: {
-  text: string;
-  variant?: string;
-}) {
+export function RunPanelDescription({ text, variant }: { text: string; variant?: string }) {
   return (
-    <Paragraph
-      variant="small"
-      className={cn(variant && variantClasses[variant])}
-    >
+    <Paragraph variant="small" className={cn(variant && variantClasses[variant])}>
       {text}
     </Paragraph>
   );
@@ -155,11 +136,7 @@ export function RunPanelIconSection({
   children: React.ReactNode;
   className?: string;
 }) {
-  return (
-    <div className={cn("flex flex-wrap gap-x-8 gap-y-2", className)}>
-      {children}
-    </div>
-  );
+  return <div className={cn("flex flex-wrap gap-x-8 gap-y-2", className)}>{children}</div>;
 }
 
 export function RunPanelDivider() {
@@ -178,11 +155,7 @@ export function RunPanelIconProperty({
   return (
     <div className="flex items-center gap-2">
       <div className="flex h-8 w-8 items-center justify-center rounded-sm border border-slate-800 bg-slate-850">
-        {typeof icon === "string" ? (
-          <NamedIcon name={icon} className="h-5 w-5" />
-        ) : (
-          icon
-        )}
+        {typeof icon === "string" ? <NamedIcon name={icon} className="h-5 w-5" /> : icon}
       </div>
       <div className="flex flex-col gap-0.5">
         <Paragraph variant="extra-extra-small/caps">{label}</Paragraph>
@@ -205,9 +178,7 @@ export function RunPanelProperties({
     <div
       className={cn(
         "flex items-baseline",
-        layout === "horizontal"
-          ? "flex-wrap gap-x-8 gap-y-2"
-          : "flex-col gap-y-3",
+        layout === "horizontal" ? "flex-wrap gap-x-8 gap-y-2" : "flex-col gap-y-3",
         className
       )}
     >
@@ -220,10 +191,7 @@ export function RunPanelProperties({
 
 export function TaskSeparator({ depth }: { depth: number }) {
   return (
-    <div
-      className="h-4 w-4 border-r border-slate-600"
-      style={{ marginLeft: `${depth}rem` }}
-    />
+    <div className="h-4 w-4 border-r border-slate-600" style={{ marginLeft: `${depth}rem` }} />
   );
 }
 

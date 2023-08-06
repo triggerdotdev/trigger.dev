@@ -4,14 +4,11 @@ import {
   CreateExternalConnectionBody,
   CreateExternalConnectionBodySchema,
   ErrorWithStackSchema,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import { z } from "zod";
 import { generateErrorMessage } from "zod-error";
 import { PrismaClientOrTransaction, prisma } from "~/db.server";
-import {
-  AuthenticatedEnvironment,
-  authenticateApiRequest,
-} from "~/services/apiAuth.server";
+import { AuthenticatedEnvironment, authenticateApiRequest } from "~/services/apiAuth.server";
 import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
 
 const ParamsSchema = z.object({
@@ -28,18 +25,17 @@ export async function action({ request, params }: ActionArgs) {
   const parsedParams = ParamsSchema.safeParse(params);
 
   if (!parsedParams.success) {
-    return json(
-      { message: generateErrorMessage(parsedParams.error.issues) },
-      { status: 422 }
-    );
+    return json({ message: generateErrorMessage(parsedParams.error.issues) }, { status: 422 });
   }
 
   // Next authenticate the request
-  const authenticatedEnv = await authenticateApiRequest(request);
+  const authenticationResult = await authenticateApiRequest(request);
 
-  if (!authenticatedEnv) {
+  if (!authenticationResult) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
+
+  const authenticatedEnv = authenticationResult.environment;
 
   // Now parse the request body
   const anyBody = await request.json();
@@ -47,10 +43,7 @@ export async function action({ request, params }: ActionArgs) {
   const body = CreateExternalConnectionBodySchema.safeParse(anyBody);
 
   if (!body.success) {
-    return json(
-      { message: generateErrorMessage(body.error.issues) },
-      { status: 422 }
-    );
+    return json({ message: generateErrorMessage(body.error.issues) }, { status: 422 });
   }
 
   try {
@@ -88,15 +81,14 @@ class CreateExternalConnectionService {
     environment: AuthenticatedEnvironment,
     payload: CreateExternalConnectionBody
   ) {
-    const externalAccount =
-      await this.#prismaClient.externalAccount.findUniqueOrThrow({
-        where: {
-          environmentId_identifier: {
-            environmentId: environment.id,
-            identifier: accountIdentifier,
-          },
+    const externalAccount = await this.#prismaClient.externalAccount.findUniqueOrThrow({
+      where: {
+        environmentId_identifier: {
+          environmentId: environment.id,
+          identifier: accountIdentifier,
         },
-      });
+      },
+    });
 
     const integration = await this.#prismaClient.integration.findUniqueOrThrow({
       where: {

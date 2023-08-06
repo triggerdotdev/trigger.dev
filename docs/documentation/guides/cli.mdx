@@ -1,0 +1,109 @@
+---
+title: "Using the CLI"
+description: "How to use the CLI"
+---
+
+## Introduction
+
+If you're setting up your project for the first time, we recommend using the CLI by following the [Quickstart guide](/documentation/quickstart).
+
+## init Command
+
+The `init` command incorporates Trigger.dev into your Next.js project. It performs the following functions:
+
+- Adds Trigger.dev to the project.
+- Creates a new route.
+- Generates an example file.
+
+  During execution, this command requires some configuration parameters. Detailed information on these parameters can be found in the next section.
+
+![Your first Job](/images/cli-init.gif)
+
+Run this `init` command in a terminal window to setup your project with Trigger.dev
+
+<CodeGroup>
+
+```bash npm
+npx @trigger.dev/cli@latest init
+```
+
+```bash pnpm
+pnpm dlx @trigger.dev/cli@latest init
+```
+
+```bash yarn
+yarn dlx @trigger.dev/cli@latest init
+```
+
+</CodeGroup>
+
+### CLI steps explained
+
+<AccordionGroup>
+  <Accordion title="Are you using the Trigger.dev cloud or self-hosted?">
+    <ResponseField name="Option 1: Trigger.dev Cloud">
+      Trigger.dev Cloud is a fully hosted service that provides the easiest and quickest way to use Trigger.dev.
+    </ResponseField>
+    <ResponseField name="Option 2: Self-hosted">
+      Instead of using the Trigger.dev Cloud service which we host for you, you
+      can host the Trigger.dev platform yourself. We provide an official
+      Trigger.dev Docker image you can use to easily self-host on your preferred
+      platform. More information on self-hosting can be found in the
+      self-hosting section of the docs
+      [here](/documentation/guides/self-hosting).
+      <Accordion title="Enter the URL of your self-hosted Trigger.dev instance">
+        When following the [self-hosting guide](/documentation/guides/self-hosting) you will deploy your Docker image to a platform of your choice. After completing this step, enter the URL of your self-hosted instance in this CLI step. 
+      </Accordion>
+    </ResponseField>
+
+  </Accordion>
+
+<Accordion title="Enter your development API key">
+  To locate your development API key, login to the [Trigger.dev
+  dashboard](https://cloud.trigger.dev) and select the Project you want to
+  connect to. Then click on the Environments & API Keys tab in the left menu.
+  You can copy your development API Key from the field at the top of this page.
+  (Your development key will start with `tr_dev_`).
+</Accordion>
+
+<Accordion title="Enter a unique ID for your endpoint">
+  Enter a custom ID or use the default by hitting enter. You can learn more
+  about endpoints
+  [here](/documentation/concepts/environments-endpoints#endpoints).
+</Accordion>
+
+</AccordionGroup>
+
+## dev Command
+
+Once you're running your Next.js project locally, you can then execute the `dev` CLI command to run Trigger.dev locally. You should run this command every time you want to use Trigger.dev locally.
+
+![Your first Job](/images/cli-dev.gif)
+
+<Warning>
+  Make sure your Next.js site is running locally before continuing. You must
+  also leave this `dev` terminal command running while you develop.
+</Warning>
+
+In a **new terminal window or tab** run:
+
+<CodeGroup>
+
+```bash npm
+npx @trigger.dev/cli@latest dev
+```
+
+```bash pnpm
+pnpm dlx @trigger.dev/cli@latest dev
+```
+
+```bash yarn
+yarn dlx @trigger.dev/cli@latest dev
+```
+
+</CodeGroup>
+<br />
+<Note>
+  You can optionally pass the port if you're not running on 3000 by adding
+  `--port 3001` to the end
+</Note>

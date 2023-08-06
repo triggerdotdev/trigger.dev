@@ -4,10 +4,7 @@ import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { ImpersonationBanner } from "~/components/ImpersonationBanner";
 import { NoMobileOverlay } from "~/components/NoMobileOverlay";
-import {
-  AppContainer,
-  MainCenteredContainer,
-} from "~/components/layout/AppLayout";
+import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { NavBar } from "~/components/navigation/NavBar";
 import { featuresForRequest } from "~/features.server";
 import { useIsProjectChildPage } from "~/hooks/useIsProjectChildPage";
@@ -16,10 +13,7 @@ import { getOrganizations } from "~/models/organization.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { clearRedirectTo, commitSession } from "~/services/redirectTo.server";
 import { requireUser } from "~/services/session.server";
-import {
-  confirmBasicDetailsPath,
-  invitationCodePath,
-} from "~/utils/pathBuilder";
+import { confirmBasicDetailsPath, invitationCodePath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request }: LoaderArgs) => {
   const user = await requireUser(request);
@@ -29,11 +23,7 @@ export const loader = async ({ request }: LoaderArgs) => {
 
   const url = new URL(request.url);
 
-  if (
-    features.isManagedCloud &&
-    !user.invitationCodeId &&
-    url.pathname !== invitationCodePath()
-  ) {
+  if (features.isManagedCloud && !user.invitationCodeId && url.pathname !== invitationCodePath()) {
     throw redirect(invitationCodePath());
   }
 
@@ -48,9 +38,7 @@ export const loader = async ({ request }: LoaderArgs) => {
       impersonationId,
     },
     {
-      headers: [
-        ["Set-Cookie", await commitSession(await clearRedirectTo(request))],
-      ],
+      headers: [["Set-Cookie", await commitSession(await clearRedirectTo(request))]],
     }
   );
 };
@@ -60,18 +48,12 @@ export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
   if (options.formAction === "/orgs/new") return true;
 
   //added a project
-  if (
-    options.formAction &&
-    /^\/orgs\/[^\/]+\/projects\/new$/i.test(options.formAction)
-  ) {
+  if (options.formAction && /^\/orgs\/[^\/]+\/projects\/new$/i.test(options.formAction)) {
     return true;
   }
 
   //left a team
-  if (
-    options.formAction &&
-    /^\/orgs\/[^\/]+\/team$/i.test(options.formAction)
-  ) {
+  if (options.formAction && /^\/orgs\/[^\/]+\/team$/i.test(options.formAction)) {
     return true;
   }
 
@@ -86,9 +68,7 @@ export default function App() {
 
   return (
     <>
-      {impersonationId && (
-        <ImpersonationBanner impersonationId={impersonationId} />
-      )}
+      {impersonationId && <ImpersonationBanner impersonationId={impersonationId} />}
       <NoMobileOverlay />
       <AppContainer showBackgroundGradient={showBackgroundGradient}>
         <NavBar />

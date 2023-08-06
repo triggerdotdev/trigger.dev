@@ -1,5 +1,5 @@
 import type { Integration, RunConnection } from "@trigger.dev/database";
-import type { ConnectionAuth } from "@trigger.dev/internal";
+import type { ConnectionAuth } from "@trigger.dev/core";
 import type { ConnectionWithSecretReference } from "~/services/externalApis/integrationAuthRepository.server";
 import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
 
@@ -40,9 +40,7 @@ export async function resolveRunConnection(
     return;
   }
 
-  const response = await integrationAuthRepository.getCredentials(
-    connection.connection
-  );
+  const response = await integrationAuthRepository.getCredentials(connection.connection);
 
   if (!response) {
     return;

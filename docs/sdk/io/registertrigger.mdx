@@ -1,0 +1,79 @@
+---
+title: "io.registerTrigger()"
+sidebarTitle: "registerTrigger()"
+description: "`io.registerTrigger()` allows you to register a [DynamicTrigger](/sdk/dynamictrigger) with the specified trigger data."
+---
+
+## Parameters
+
+<Snippet file="stable-key-param.mdx" />
+<ResponseField name="dynamicTrigger" type="DynamicTrigger" required>
+  A [DynamicTrigger](/sdk/dynamictrigger) that will trigger any Jobs it's attached.
+</ResponseField>
+<ResponseField name="id" type="string" required>
+  A unique id for the registration. This is used to identify and unregister later.
+</ResponseField>
+<ResponseField name="params" type="object" required>
+  The params for the DynamicTrigger. These will vary depending on the type of the DynamicTrigger.
+</ResponseField>
+
+## Returns
+
+A Promise that resolves to an object with the following fields:
+
+<ResponseField name="id" type="string" required>
+  A unique id for the registration. This is used to identify and unregister later.
+</ResponseField>
+<ResponseField name="key" type="string" required>
+  The key of the registration.
+</ResponseField>
+
+## Example
+
+```typescript
+//1. create a DynamicTrigger
+const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
+  id: "github-issue-opened",
+  event: events.onIssueOpened,
+  source: github.sources.repo,
+});
+
+//2. create a Job that is attached to the dynamic trigger
+client.defineJob({
+  id: "listen-for-dynamic-trigger",
+  name: "Listen for dynamic trigger",
+  version: "0.1.1",
+  trigger: dynamicOnIssueOpenedTrigger,
+  integrations: {
+    slack,
+  },
+  run: async (payload, io, ctx) => {
+    await io.slack.postMessage("Slack 📝", {
+      text: `New Issue opened on repo: ${payload.issue.html_url}. \n\n${JSON.stringify(ctx)}`,
+      channel: "C04GWUTDC3W",
+    });
+  },
+});
+
+client.defineJob({
+  id: "new-repo",
+  name: "New repo",
+  version: "0.1.1",
+  trigger: github.triggers.org({
+    event: events.onNewRepository,
+    org: "triggerdotdev",
+  }),
+  run: async (payload, io, ctx) => {
+    //3. Register the dynamic trigger so you get notified when an issue is opened
+    return await io.registerTrigger(
+      "register-repo",
+      dynamicOnIssueOpenedTrigger,
+      payload.repository.name,
+      {
+        owner: payload.repository.owner.login,
+        repo: payload.repository.name,
+      }
+    );
+  },
+});
+```

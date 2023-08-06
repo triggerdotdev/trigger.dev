@@ -5,15 +5,8 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "command": "pnpm run idev --filter webapp",
+      "command": "pnpm run dev --filter webapp",
       "name": "Run webapp",
-      "request": "launch",
-      "type": "node-terminal",
-      "cwd": "${workspaceFolder}"
-    },
-    {
-      "command": "pnpm run dev --filter integrations",
-      "name": "Run integrations",
       "request": "launch",
       "type": "node-terminal",
       "cwd": "${workspaceFolder}"

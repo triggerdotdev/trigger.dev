@@ -1,0 +1,67 @@
+---
+title: "Overview"
+description: "The second parameter in a Job's `run()` function. It holds Integrations and useful actions you can perform."
+---
+
+## Integrations
+
+Any Integrations that you added in the `integrations` param of the [Job constructor](/sdk/job) will be available on the `io` object in the `run()` function with the same name as the key. For example:
+
+<Accordion title="How to pass in Integrations">
+  <Snippet file="how-to-pass-integrations.mdx" />
+</Accordion>
+
+View [the Integrations documentation](/integrations) for information on how to use Integrations.
+
+## Properties
+
+### [logger](/sdk/io/logger)
+
+Used to send log messages to the [Run log](/documentation/guides/viewing-runs).
+
+## Instance methods
+
+### [wait()](/sdk/io/wait)
+
+Waits for a certain amount of time before continuing the Job. Delays works even if you're on a serverless platform with timeouts, or if your server goes down. They utilize [resumability](/documentation/concepts/resumability) to ensure that the Run can be resumed after the delay.
+
+### [sendEvent()](/sdk/io/sendevent)
+
+`io.sendEvent()` allows you to send an event from inside a Job run. The sent even will trigger any Jobs that are listening for that event (based on the name).
+
+If you want to send an event from outside a run (e.g. just from your backend) you can use [client.sendEvent()](/sdk/triggerclient/instancemethods/sendevent).
+
+### [runTask()](/sdk/io/runtask)
+
+`io.runTask()` allows you to run a [Task](/documentation/concepts/tasks) from inside a Job run. A Task is a resumable unit of a Run that can be retried, resumed and is logged. [Integrations](/integrations) use Tasks internally to perform their actions.
+
+### [try()](/sdk/io/try)
+
+`io.try()` allows you to run Tasks and catch any errors that are thrown, it's similar to a normal `try/catch` block but works with [io.runTask()](/sdk/io/runtask).
+
+### [backgroundFetch()](/sdk/io/backgroundfetch)
+
+`io.backgroundFetch()` allows you to fetch data from a URL that can take longer that the serverless timeout. The actual `fetch` request is performed on the Trigger.dev platform, and the response is sent back to you. An example use case is fetching data from a slow API, like some AI endpoints.
+
+### [registerInterval()](/sdk/io/registerinterval)
+
+`io.registerInterval()` allows you to register a [DynamicSchedule](/sdk/dynamicschedule) that will run on a regular interval.
+
+### [unregisterInterval()](/sdk/io/unregisterinterval)
+
+`io.unregisterInterval()` allows you to unregister a [DynamicSchedule](/sdk/dynamicschedule) that was previously registered with `io.registerInterval()`.
+
+### [registerCron()](/sdk/io/registercron)
+
+`io.registerCron()` allows you to register a [DynamicSchedule](/sdk/dynamicschedule) that will run on a regular cron schedule.
+
+### [unregisterCron()](/sdk/io/unregistercron)
+
+`io.unregisterCron()` allows you to unregister a [DynamicSchedule](/sdk/dynamicschedule) that was previously registered with `io.registerCron()`.
+
+### [registerTrigger()](/sdk/io/registertrigger)
+
+`io.registerTrigger()` allows you to register a [DynamicTrigger](/sdk/dynamictrigger) with the specified trigger data.
+
+{/* ### [unregisterTrigger()](/sdk/io/unregistertrigger) */}
+{/* `io.unregisterTrigger()` allows you to unregister a [DynamicTrigger](/sdk/dynamictrigger) that was previously registered with `io.registerTrigger()`. */}

@@ -1,0 +1,221 @@
+---
+title: "React hooks"
+description: "How to show the live status of Job Runs in your React app"
+---
+
+You can display the live progress of a Job Run to your users, including the status of individual tasks and the final output of the Run.
+
+<Frame caption='This updates live as the Job progresses, until we show the "Posted to Slack" output'>
+  <img src="/images/react-hooks.png" />
+</Frame>
+
+## Steps
+
+This guide assumes that your project is already setup and you have a Job running. If not, you should follow the [quick start guide](/documentation/quickstart) first.
+
+### 1. Install the package
+
+Add the `@trigger.dev/react` package to your project:
+
+<CodeGroup>
+
+```bash npm
+npm install @trigger.dev/react@next
+```
+
+```bash pnpm
+pnpm install @trigger.dev/react@next
+```
+
+```bash yarn
+yarn add @trigger.dev/react@next
+```
+
+</CodeGroup>
+
+### 2. Get your public API key
+
+In the Trigger.dev dashboard you should go to your Project and then the "Environments & API Keys" page.
+
+![Get your public API Key](/images/environments-public-apikey.png)
+
+You should copy the `PUBLIC` API key for the dev environment.
+
+<Accordion title="What's a public API key?">
+  A public API key is a key that can be used in the browser. It can only be used
+  to read certain data from the API and can not write data. This means that it
+  can be used to get the status of a Job Run, but not to start a new Job Run.
+</Accordion>
+
+### 3. Add the env var to your project
+
+Add the `NEXT_PUBLIC_TRIGGER_API_KEY` environment variable to your project. This will be used by the `TriggerProvider` component to connect to the Trigger API.
+
+```sh .env.local
+#...
+TRIGGER_API_KEY=[your_private_api_key]
+NEXT_PUBLIC_TRIGGER_API_KEY=[your_public_api_key]
+#...
+```
+
+Your private API key should already be in there.
+
+### 4. Add the `TriggerProvider` component
+
+The [TriggerProvider](/sdk/react/triggerprovider) component is a React Context Provider that will make the Trigger API client available to all child components.
+
+Generally you'll want to add this to the root of your app, so that it's available everywhere. However, you can add it lower in the hierarchy but it must be above any of the hooks.
+
+```tsx app/layout.tsx
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body className={inter.className}>
+        <TriggerProvider
+          publicApiKey={process.env.NEXT_PUBLIC_TRIGGER_API_KEY!}
+        >
+          {children}
+        </TriggerProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+### 5. Add hooks to your components
+
+There are three hooks that you can use to show statuses:
+
+- [useEventDetails](/sdk/react/useeventdetails): get the details of a specific event
+- [useRunDetails](/sdk/react/userundetails): get the details of a specific Run
+- [useEventRunDetails](/sdk/react/useeventrundetails): get the details of a Run triggered from a specific event
+
+All of these hooks will automatically refresh your components as the state of your Runs or events change.
+
+#### 5.a useEventDetails
+
+The `useEventDetails` hook will get the details of a specific event. You can use this to show the status of a specific event.
+
+<Snippet file="how-to-get-event-id.mdx" />
+
+This component will show the details of an event and the overall status of Runs that were triggered by the event:
+
+```tsx
+import { useEventDetails } from "@trigger.dev/react";
+
+export default function EventDetails({ eventId }: { eventId: string }) {
+  const { data, error } = useEventDetails(eventId);
+
+  if (error) {
+    return <div>Error: {error.message}</div>;
+  }
+
+  if (!data) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <h1>{data.name}</h1>
+      <p>Runs: {data.runs?.length}</p>
+      <div>
+        {data.runs?.map((run) => (
+          <div key={run.id}>
+            <p>
+              Run {run.id}: {run.status}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+#### 5.b useRunDetails
+
+The `useRunDetails` hook will get the details of a specific Run. You can use this to show the status of a specific Run.
+
+<Accordion title="How do I get a Run id?">
+  You can call [client.getRuns()](/sdk/triggerclient/instancemethods/getruns)
+  with a Job id to get a list of the most recent Runs for that Job. You can then
+  pass that run id to your frontend to use in the hook.
+</Accordion>
+
+This component will show the details of a Run and the status of each task in the Run:
+
+```tsx
+import { useRunDetails } from "@trigger.dev/react";
+
+export default function RunDetails({ runId }: { runId: string }) {
+  const { data, error } = useRunDetails(runId);
+
+  if (error) {
+    return <div>Error: {error.message}</div>;
+  }
+
+  if (!data) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <h1>Run {data.id}</h1>
+      <p>Status: {data.status}</p>
+      <div>
+        {data.tasks?.map((task) => (
+          <div key={task.id}>
+            <p>
+              Task {task.id}: {task.status}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+#### 5.c useEventRunDetails
+
+The `useEventRunDetails` hook will get the details of a specific Run that was triggered by a specific event. You can use this to show the status of a specific Run.
+
+<Snippet file="how-to-get-event-id.mdx" />
+
+This component will show the details of a Run and the status of each task in the Run:
+
+```tsx
+import { useEventRunDetails } from "@trigger.dev/react";
+
+export default function EventRunDetails({ eventId }: { eventId: string }) {
+  const { data, error } = useEventRunDetails(eventId);
+
+  if (error) {
+    return <div>Error: {error.message}</div>;
+  }
+
+  if (!data) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <h1>Run {data.id}</h1>
+      <p>Status: {data.status}</p>
+      <div>
+        {data.tasks?.map((task) => (
+          <div key={task.id}>
+            <p>
+              Task {task.id}: {task.status}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```

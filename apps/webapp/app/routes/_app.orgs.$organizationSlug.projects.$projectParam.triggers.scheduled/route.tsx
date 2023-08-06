@@ -23,11 +23,7 @@ import { useProject } from "~/hooks/useProject";
 import { ScheduledTriggersPresenter } from "~/presenters/ScheduledTriggersPresenter.server";
 import { requireUser } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
-import {
-  ProjectParamSchema,
-  docsPath,
-  trimTrailingSlash,
-} from "~/utils/pathBuilder";
+import { ProjectParamSchema, docsPath, trimTrailingSlash } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
@@ -45,10 +41,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 
 export const handle: Handle = {
   breadcrumb: (match) => (
-    <BreadcrumbLink
-      to={trimTrailingSlash(match.pathname)}
-      title="Scheduled Triggers"
-    />
+    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Scheduled Triggers" />
   ),
   expandSidebar: true,
 };
@@ -61,8 +54,8 @@ export default function Integrations() {
   return (
     <>
       <Paragraph variant="small" spacing>
-        A Scheduled Trigger runs a Job on a repeated schedule. The schedule can
-        use a CRON expression or an interval.
+        A Scheduled Trigger runs a Job on a repeated schedule. The schedule can use a CRON
+        expression or an interval.
       </Paragraph>
 
       <Table containerClassName="mt-4">
@@ -96,10 +89,7 @@ export default function Integrations() {
                         </>
                       ) : (
                         <>
-                          <NamedIcon
-                            name="schedule-interval"
-                            className="h-8 w-8"
-                          />
+                          <NamedIcon name="schedule-interval" className="h-8 w-8" />
                           <LabelValueStack
                             label={"Interval"}
                             value={`${t.schedule.options.seconds}s`}
@@ -122,9 +112,7 @@ export default function Integrations() {
                         <NoSymbolIcon className="h-6 w-6 text-dimmed" />
                         <Paragraph variant="extra-small">
                           <TextLink
-                            href={docsPath(
-                              "documentation/concepts/triggers/scheduled"
-                            )}
+                            href={docsPath("documentation/concepts/triggers/scheduled")}
                             variant="secondary"
                           >
                             Won't run in DEV
@@ -146,18 +134,10 @@ export default function Integrations() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {t.lastEventTimestamp ? (
-                      <DateTime date={t.lastEventTimestamp} />
-                    ) : (
-                      "–"
-                    )}
+                    {t.lastEventTimestamp ? <DateTime date={t.lastEventTimestamp} /> : "–"}
                   </TableCell>
                   <TableCell>
-                    {t.nextEventTimestamp ? (
-                      <DateTime date={t.nextEventTimestamp} />
-                    ) : (
-                      "–"
-                    )}
+                    {t.nextEventTimestamp ? <DateTime date={t.nextEventTimestamp} /> : "–"}
                   </TableCell>
                 </TableRow>
               );

@@ -50,16 +50,10 @@ export const handle: Handle = {
 
     return (
       <Fragment>
-        <BreadcrumbLink
-          to={trimTrailingSlash(jobMatch?.pathname ?? "")}
-          title="Runs"
-        />
+        <BreadcrumbLink to={trimTrailingSlash(jobMatch?.pathname ?? "")} title="Runs" />
         <BreadcrumbIcon />
         {runData && runData.run && (
-          <BreadcrumbLink
-            to={match.pathname}
-            title={`Run #${runData.run.number}`}
-          />
+          <BreadcrumbLink to={match.pathname} title={`Run #${runData.run.number}`} />
         )}
       </Fragment>
     );
@@ -73,12 +67,9 @@ export default function Page() {
   const job = useJob();
 
   const revalidator = useRevalidator();
-  const events = useEventSource(
-    runStreamingPath(organization, project, job, run),
-    {
-      event: "message",
-    }
-  );
+  const events = useEventSource(runStreamingPath(organization, project, job, run), {
+    event: "message",
+  });
   useEffect(() => {
     if (events !== null) {
       revalidator.revalidate();

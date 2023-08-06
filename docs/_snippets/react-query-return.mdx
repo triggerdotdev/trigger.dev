@@ -1,0 +1,25 @@
+<ResponseField name="error" type="Error | undefined">
+  The error object if the request failed.
+</ResponseField>
+<ResponseField name="status" type="pending | success | error">
+  The status of the request. This can be one of the following values: `pending`,
+  `success` and `error`.
+</ResponseField>
+<ResponseField name="isLoading" type="boolean">
+  `true` if the request is currently pending or if it is in a `refetch` state.
+</ResponseField>
+<ResponseField name="isSuccess" type="boolean">
+  `true` if the request succeeded.
+</ResponseField>
+<ResponseField name="isError" type="boolean">
+  `true` if the request failed.
+</ResponseField>
+<ResponseField name="isPending" type="boolean">
+  `true` if the request is currently pending.
+</ResponseField>
+<ResponseField name="isLoadingError" type="boolean">
+  `true` if the request failed with a loading error.
+</ResponseField>
+<ResponseField name="isRefetchError" type="boolean">
+  `true` if the request failed with a refetch error.
+</ResponseField>

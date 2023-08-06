@@ -55,10 +55,7 @@ function Tooltips() {
       </div>
       <div className="flex gap-4">
         <Header2>Simple Tooltip:</Header2>
-        <SimpleTooltip
-          button={<ClipboardIcon className="h-5 w-5" />}
-          content="Copy"
-        />
+        <SimpleTooltip button={<ClipboardIcon className="h-5 w-5" />} content="Copy" />
       </div>
     </div>
   );

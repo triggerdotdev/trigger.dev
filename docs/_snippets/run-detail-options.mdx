@@ -1,0 +1,10 @@
+<ResponseField name="subtasks" type="boolean" default={false}>
+  Return subtasks, which appear in a `subtasks` array on every task.
+</ResponseField>
+<ResponseField name="cursor" type="string">
+  You can use this to get more tasks, if there are more than are returned in a
+  single batch.
+</ResponseField>
+<ResponseField name="take" type="number" default={20}>
+  How many tasks you want to return in one go, max 50.
+</ResponseField>

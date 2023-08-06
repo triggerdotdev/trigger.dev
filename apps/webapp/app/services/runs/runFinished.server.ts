@@ -2,7 +2,7 @@ import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
 import { z } from "zod";
-import { RawEventSchema, SendEventOptionsSchema } from "@trigger.dev/internal";
+import { RawEventSchema, SendEventOptionsSchema } from "@trigger.dev/core";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
 
 const SendEventOutputSchema = z.object({
@@ -48,11 +48,7 @@ export class RunFinishedService {
 
       if (parsedOutput.success) {
         for (const newEvent of parsedOutput.data.events) {
-          await this.#ingestEventService.call(
-            run.environment,
-            newEvent,
-            parsedOutput.data.options
-          );
+          await this.#ingestEventService.call(run.environment, newEvent, parsedOutput.data.options);
         }
       }
     }

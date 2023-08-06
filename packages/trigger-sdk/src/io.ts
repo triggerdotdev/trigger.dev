@@ -14,7 +14,7 @@ import {
   SerializableJson,
   ServerTask,
   UpdateTriggerSourceBody,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { webcrypto } from "node:crypto";
 import { ApiClient } from "./apiClient";
@@ -28,10 +28,7 @@ import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { calculateRetryAt } from "./retry";
 import { TriggerClient } from "./triggerClient";
 import { DynamicTrigger } from "./triggers/dynamic";
-import {
-  ExternalSource,
-  ExternalSourceParams,
-} from "./triggers/externalSource";
+import { ExternalSource, ExternalSourceParams } from "./triggers/externalSource";
 import { DynamicSchedule } from "./triggers/scheduled";
 import { EventSpecification, TaskLogger, TriggerContext } from "./types";
 
@@ -64,8 +61,7 @@ export class IO {
     this._id = options.id;
     this._apiClient = options.apiClient;
     this._triggerClient = options.client;
-    this._logger =
-      options.logger ?? new Logger("trigger.dev", options.logLevel);
+    this._logger = options.logger ?? new Logger("trigger.dev", options.logLevel);
     this._cachedTasks = new Map();
     this._jobLogger = options.jobLogger;
     this._jobLogLevel = options.jobLogLevel;
@@ -204,11 +200,7 @@ export class IO {
    * @param event The event to send. The event name must match the name of the event that your Jobs are listening for.
    * @param options Options for sending the event.
    */
-  async sendEvent(
-    key: string | any[],
-    event: SendEvent,
-    options?: SendEventOptions
-  ) {
+  async sendEvent(key: string | any[], event: SendEvent, options?: SendEventOptions) {
     return await this.runTask(
       key,
       {
@@ -228,10 +220,7 @@ export class IO {
     );
   }
 
-  async updateSource(
-    key: string | any[],
-    options: { key: string } & UpdateTriggerSourceBody
-  ) {
+  async updateSource(key: string | any[], options: { key: string } & UpdateTriggerSourceBody) {
     return this.runTask(
       key,
       {
@@ -249,11 +238,7 @@ export class IO {
         },
       },
       async (task) => {
-        return await this._apiClient.updateSource(
-          this._triggerClient.id,
-          options.key,
-          options
-        );
+        return await this._apiClient.updateSource(this._triggerClient.id, options.key, options);
       }
     );
   }
@@ -296,11 +281,7 @@ export class IO {
    * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to unregister a schedule on.
    * @param id A unique id for the interval. This is used to identify and unregister the interval later.
    */
-  async unregisterInterval(
-    key: string | any[],
-    dynamicSchedule: DynamicSchedule,
-    id: string
-  ) {
+  async unregisterInterval(key: string | any[], dynamicSchedule: DynamicSchedule, id: string) {
     return await this.runTask(
       key,
       {
@@ -353,11 +334,7 @@ export class IO {
    * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to unregister a schedule on.
    * @param id A unique id for the interval. This is used to identify and unregister the interval later.
    */
-  async unregisterCron(
-    key: string | any[],
-    dynamicSchedule: DynamicSchedule,
-    id: string
-  ) {
+  async unregisterCron(key: string | any[], dynamicSchedule: DynamicSchedule, id: string) {
     return await this.runTask(
       key,
       {
@@ -380,10 +357,7 @@ export class IO {
    * @param params The params for the trigger.
    */
   async registerTrigger<
-    TTrigger extends DynamicTrigger<
-      EventSpecification<any>,
-      ExternalSource<any, any, any>
-    >
+    TTrigger extends DynamicTrigger<EventSpecification<any>, ExternalSource<any, any, any>>,
   >(
     key: string | any[],
     trigger: TTrigger,
@@ -411,10 +385,7 @@ export class IO {
           }
         );
 
-        const connection = await this.getAuth(
-          "get-auth",
-          registration.source.clientId
-        );
+        const connection = await this.getAuth("get-auth", registration.source.clientId);
 
         const io = createIOWithIntegrations(
           // @ts-ignore
@@ -427,12 +398,7 @@ export class IO {
           }
         );
 
-        const updates = await trigger.source.register(
-          params,
-          registration,
-          io,
-          this._context
-        );
+        const updates = await trigger.source.register(params, registration, io, this._context);
 
         if (!updates) {
           // TODO: do something here?
@@ -447,10 +413,7 @@ export class IO {
     );
   }
 
-  async getAuth(
-    key: string | any[],
-    clientId?: string
-  ): Promise<ConnectionAuth | undefined> {
+  async getAuth(key: string | any[], clientId?: string): Promise<ConnectionAuth | undefined> {
     if (!clientId) {
       return;
     }
@@ -476,11 +439,7 @@ export class IO {
       error: unknown,
       task: IOTask,
       io: IO
-    ) =>
-      | { retryAt: Date; error?: Error; jitter?: number }
-      | Error
-      | undefined
-      | void
+    ) => { retryAt: Date; error?: Error; jitter?: number } | Error | undefined | void
   ): Promise<TResult> {
     const parentId = this._taskStorage.getStore()?.taskId;
 
@@ -492,9 +451,7 @@ export class IO {
       });
     }
 
-    const idempotencyKey = await generateIdempotencyKey(
-      [this._id, parentId ?? "", key].flat()
-    );
+    const idempotencyKey = await generateIdempotencyKey([this._id, parentId ?? "", key].flat());
 
     const cachedTask = this._cachedTasks.get(idempotencyKey);
 
@@ -571,14 +528,10 @@ export class IO {
           task,
         });
 
-        const completedTask = await this._apiClient.completeTask(
-          this._id,
-          task.id,
-          {
-            output: result ?? undefined,
-            properties: task.outputProperties ?? undefined,
-          }
-        );
+        const completedTask = await this._apiClient.completeTask(this._id, task.id, {
+          output: result ?? undefined,
+          properties: task.outputProperties ?? undefined,
+        });
 
         if (completedTask.status === "CANCELED") {
           throw new CanceledWithTaskError(completedTask);
@@ -591,24 +544,28 @@ export class IO {
         }
 
         if (onError) {
-          const onErrorResult = onError(error, task, this);
+          try {
+            const onErrorResult = onError(error, task, this);
 
-          if (onErrorResult) {
-            if (onErrorResult instanceof Error) {
-              error = onErrorResult;
-            } else {
-              const parsedError = ErrorWithStackSchema.safeParse(
-                onErrorResult.error
-              );
+            if (onErrorResult) {
+              if (onErrorResult instanceof Error) {
+                error = onErrorResult;
+              } else {
+                const parsedError = ErrorWithStackSchema.safeParse(onErrorResult.error);
 
-              throw new RetryWithTaskError(
-                parsedError.success
-                  ? parsedError.data
-                  : { message: "Unknown error" },
-                task,
-                onErrorResult.retryAt
-              );
+                throw new RetryWithTaskError(
+                  parsedError.success ? parsedError.data : { message: "Unknown error" },
+                  task,
+                  onErrorResult.retryAt
+                );
+              }
             }
+          } catch (innerError) {
+            if (isTriggerError(innerError)) {
+              throw innerError;
+            }
+
+            error = innerError;
           }
         }
 
@@ -619,9 +576,7 @@ export class IO {
 
           if (retryAt) {
             throw new RetryWithTaskError(
-              parsedError.success
-                ? parsedError.data
-                : { message: "Unknown error" },
+              parsedError.success ? parsedError.data : { message: "Unknown error" },
               task,
               retryAt
             );

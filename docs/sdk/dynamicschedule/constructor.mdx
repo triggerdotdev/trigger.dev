@@ -1,0 +1,33 @@
+---
+title: "DynamicSchedule: Constructor"
+sidebarTitle: "Constructor"
+description: "The `DynamicSchedule()` constructor creates a new [DynamicSchedule](/sdk/dynamicschedule/overview) instance."
+---
+
+## Parameters
+
+<ResponseField name="client" type="TriggerClient" required>
+  The `TriggerClient` instance to use for registering the trigger.
+</ResponseField>
+<ResponseField name="options" type="DynamicScheduleOptions" required>
+  The options for the dynamic schedule.
+  <Expandable title="options" defaultOpen>
+    <ResponseField name="id" type="string" required>
+      Used to uniquely identify a DynamicSchedule
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Returns
+
+<ResponseField name="DynamicSchedule instance" type="DynamicSchedule" />
+
+<RequestExample>
+
+```typescript
+const dynamicSchedule = new DynamicSchedule(client, {
+  id: "dynamicinterval",
+});
+```
+
+</RequestExample>

@@ -11,17 +11,9 @@ type WithChildren = {
   children: React.ReactNode;
 };
 
-export function PageHeader({
-  children,
-  hideBorder,
-}: WithChildren & { hideBorder?: boolean }) {
+export function PageHeader({ children, hideBorder }: WithChildren & { hideBorder?: boolean }) {
   return (
-    <div
-      className={cn(
-        "mx-4 pt-4",
-        hideBorder ? "" : "border-b border-slate-800 pb-4"
-      )}
-    >
+    <div className={cn("mx-4 pt-4", hideBorder ? "" : "border-b border-slate-800 pb-4")}>
       {children}
     </div>
   );
@@ -49,10 +41,7 @@ export function PageTitle({ title, backButton }: PageTitleProps) {
             className="flex items-center gap-1 text-slate-400 transition group-hover:text-white"
           >
             <ChevronLeftIcon className="h-6" />
-            <Header1
-              textColor="dimmed"
-              className="transition group-hover:text-white"
-            >
+            <Header1 textColor="dimmed" className="transition group-hover:text-white">
               {backButton.text}
             </Header1>
           </Link>
@@ -107,16 +96,9 @@ export function PageInfoProperty({
 }) {
   return (
     <div className="flex items-center gap-1">
-      {icon && typeof icon === "string" ? (
-        <NamedIcon name={icon} className="h-4 w-4" />
-      ) : (
-        icon
-      )}
+      {icon && typeof icon === "string" ? <NamedIcon name={icon} className="h-4 w-4" /> : icon}
       {label && (
-        <Paragraph
-          variant="extra-small/caps"
-          className="mt-0.5 whitespace-nowrap"
-        >
+        <Paragraph variant="extra-small/caps" className="mt-0.5 whitespace-nowrap">
           {label}:
         </Paragraph>
       )}

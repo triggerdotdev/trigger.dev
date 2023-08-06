@@ -12,17 +12,8 @@ module.exports = {
   ignoredRouteFiles: ["**/.*"],
   devServerPort: 8002,
   serverModuleFormat: "cjs",
-  serverDependenciesToBundle: [
-    "marked",
-    "axios",
-    "@trigger.dev/internal",
-    "emails",
-    "highlight.run",
-  ],
+  serverDependenciesToBundle: ["marked", "axios", "@trigger.dev/core", "emails", "highlight.run"],
   watchPaths: async () => {
-    return [
-      "../../packages/internal/src/**/*",
-      "../../packages/emails/src/**/*",
-    ];
+    return ["../../packages/core/src/**/*", "../../packages/emails/src/**/*"];
   },
 };

@@ -5,23 +5,19 @@ import inquirer from "inquirer";
 import pathModule from "path";
 import { pathToRegexp } from "path-to-regexp";
 import { simpleGit } from "simple-git";
-import {
-  promptApiKey,
-  promptEndpointSlug,
-  promptTriggerUrl,
-} from "../cli/index.js";
-import { COMMAND_NAME, CLOUD_TRIGGER_URL, CLOUD_API_URL } from "../consts.js";
+import { parse } from "tsconfck";
+import { pathToFileURL } from "url";
+import { promptApiKey, promptEndpointSlug, promptTriggerUrl } from "../cli/index.js";
+import { CLOUD_API_URL, CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts.js";
+import { TelemetryClient, telemetryClient } from "../telemetry/telemetry.js";
 import { addDependencies } from "../utils/addDependencies.js";
+import { detectNextJsProject } from "../utils/detectNextJsProject.js";
+import { pathExists, readJSONFile } from "../utils/fileSystem.js";
 import { logger } from "../utils/logger.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
 import { renderApiKey } from "../utils/renderApiKey.js";
 import { renderTitle } from "../utils/renderTitle.js";
-import { detectNextJsProject } from "../utils/detectNextJsProject.js";
 import { TriggerApi, WhoamiResponse } from "../utils/triggerApi.js";
-import { parse } from "tsconfck";
-import { pathExists, readJSONFile } from "../utils/fileSystem.js";
-import { pathToFileURL } from 'url'
-
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -36,12 +32,12 @@ type ResolvedOptions = Required<InitCommandOptions>;
 export const initCommand = async (options: InitCommandOptions) => {
   renderTitle();
 
+  telemetryClient.init.started(options);
+
   if (options.triggerUrl === CLOUD_TRIGGER_URL) {
     logger.info(`✨ Initializing project in Trigger.dev Cloud`);
   } else if (typeof options.triggerUrl === "string") {
-    logger.info(
-      `✨ Initializing project using Trigger.dev at ${options.triggerUrl}`
-    );
+    logger.info(`✨ Initializing project using Trigger.dev at ${options.triggerUrl}`);
   } else {
     logger.info(`✨ Initializing Trigger.dev in project`);
   }
@@ -52,7 +48,8 @@ export const initCommand = async (options: InitCommandOptions) => {
 
   if (!isNextJsProject) {
     logger.error("You must run this command in a Next.js project.");
-    process.exit(1);
+    telemetryClient.init.failed("not_nextjs_project", options);
+    return;
   } else {
     logger.success("✅ Detected Next.js project");
   }
@@ -67,18 +64,15 @@ export const initCommand = async (options: InitCommandOptions) => {
   }
 
   const isTypescriptProject = await detectTypescriptProject(resolvedPath);
+  telemetryClient.init.isTypescriptProject(isTypescriptProject, options);
 
-
-  const resolvedOptions = await resolveOptionsWithPrompts(
-    options,
-    resolvedPath
-  );
-
+  const resolvedOptions = await resolveOptionsWithPrompts(options, resolvedPath, telemetryClient);
   const apiKey = resolvedOptions.apiKey;
 
   if (!apiKey) {
     logger.error("You must provide an API key to continue.");
-    process.exit(1);
+    telemetryClient.init.failed("no_api_key", resolvedOptions);
+    return;
   }
 
   const apiClient = new TriggerApi(apiKey, resolvedOptions.apiUrl);
@@ -89,13 +83,22 @@ export const initCommand = async (options: InitCommandOptions) => {
       `🛑 The API key you provided is not authorized. Try visiting your dashboard at ${resolvedOptions.triggerUrl} to get a new API key.`
     );
 
-    process.exit(1);
+    telemetryClient.init.failed("invalid_api_key", resolvedOptions);
+    return;
   }
 
+  telemetryClient.identify(
+    authorizedKey.organization.id,
+    authorizedKey.project.id,
+    authorizedKey.userId
+  );
+
   await addDependencies(resolvedPath, [
-    { name: "@trigger.dev/sdk", tag: "next" },
+    { name: "@trigger.dev/sdk", tag: "latest" },
     { name: "@trigger.dev/nextjs", tag: "latest" },
   ]);
+
+  telemetryClient.init.addedDependencies(resolvedOptions);
 
   // Setup environment variables
   await setupEnvironmentVariables(resolvedPath, resolvedOptions);
@@ -111,6 +114,7 @@ export const initCommand = async (options: InitCommandOptions) => {
   const routeDir = pathModule.join(resolvedPath, usesSrcDir ? "src" : "");
 
   if (nextJsDir === "pages") {
+    telemetryClient.init.createFiles(resolvedOptions, "pages");
     await createTriggerPageRoute(
       resolvedPath,
       routeDir,
@@ -119,6 +123,7 @@ export const initCommand = async (options: InitCommandOptions) => {
       usesSrcDir
     );
   } else {
+    telemetryClient.init.createFiles(resolvedOptions, "app");
     await createTriggerAppRoute(
       resolvedPath,
       routeDir,
@@ -133,14 +138,10 @@ export const initCommand = async (options: InitCommandOptions) => {
   await addConfigurationToPackageJson(resolvedPath, resolvedOptions);
 
   await printNextSteps(resolvedOptions, authorizedKey);
-
-  process.exit(0);
+  telemetryClient.init.completed(resolvedOptions);
 };
 
-async function printNextSteps(
-  options: ResolvedOptions,
-  authorizedKey: WhoamiResponse
-) {
+async function printNextSteps(options: ResolvedOptions, authorizedKey: WhoamiResponse) {
   const projectUrl = `${options.triggerUrl}/orgs/${authorizedKey.organization.slug}/projects/${authorizedKey.project.slug}`;
 
   logger.success(`✅ Successfully initialized Trigger.dev!`);
@@ -157,10 +158,7 @@ async function printNextSteps(
   );
 }
 
-async function addConfigurationToPackageJson(
-  path: string,
-  options: ResolvedOptions
-) {
+async function addConfigurationToPackageJson(path: string, options: ResolvedOptions) {
   const pkgJsonPath = pathModule.join(path, "package.json");
   const pkgBuffer = await fs.readFile(pkgJsonPath);
   const pkgJson = JSON.parse(pkgBuffer.toString());
@@ -177,7 +175,8 @@ async function addConfigurationToPackageJson(
 
 const resolveOptionsWithPrompts = async (
   options: InitCommandOptions,
-  path: string
+  path: string,
+  telemetryClient: TelemetryClient
 ): Promise<ResolvedOptions> => {
   const resolvedOptions: InitCommandOptions = { ...options };
 
@@ -192,25 +191,24 @@ const resolveOptionsWithPrompts = async (
       resolvedOptions.apiUrl = resolvedOptions.triggerUrl;
     }
 
+    telemetryClient.init.resolvedApiUrl(resolvedOptions.apiUrl, resolvedOptions);
+
     if (!options.apiKey) {
       resolvedOptions.apiKey = await promptApiKey(resolvedOptions.triggerUrl!);
     }
+    telemetryClient.init.resolvedApiKey(resolvedOptions);
 
     if (!options.endpointSlug) {
       const packageJSONPath = pathModule.join(path, "package.json");
       const packageJSON = await readJSONFile(packageJSONPath);
 
-      if (
-        packageJSON &&
-        packageJSON["trigger.dev"] &&
-        packageJSON["trigger.dev"].endpointId
-      ) {
-        options.endpointSlug = packageJSON["trigger.dev"].endpointId;
+      if (packageJSON && packageJSON["trigger.dev"] && packageJSON["trigger.dev"].endpointId) {
+        resolvedOptions.endpointSlug = packageJSON["trigger.dev"].endpointId;
       } else {
-        options.endpointSlug = await promptEndpointSlug(path);
+        resolvedOptions.endpointSlug = await promptEndpointSlug(path);
       }
 
-      resolvedOptions.endpointSlug = await promptEndpointSlug(path);
+      telemetryClient.init.resolvedEndpointSlug(resolvedOptions);
     }
   } catch (err) {
     // If the user is not calling the command from an interactive terminal, inquirer will throw an error with isTTYError = true
@@ -218,9 +216,7 @@ const resolveOptionsWithPrompts = async (
     // Otherwise we have to do some fancy namespace extension logic on the Error type which feels overkill for one line
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (err instanceof Error && (err as any).isTTYError) {
-      logger.warn(
-        `'${COMMAND_NAME} init' needs an interactive terminal to provide options`
-      );
+      logger.warn(`'${COMMAND_NAME} init' needs an interactive terminal to provide options`);
 
       const { shouldContinue } = await inquirer.prompt<{
         shouldContinue: boolean;
@@ -232,10 +228,12 @@ const resolveOptionsWithPrompts = async (
       });
 
       if (!shouldContinue) {
+        telemetryClient.init.failed("non_interactive_terminal", options);
         logger.info("Exiting...");
-        process.exit(0);
+        throw err;
       }
     } else {
+      telemetryClient.init.failed("unknown", options, err);
       throw err;
     }
   }
@@ -289,14 +287,9 @@ async function detectPagesOrAppDir(
     // If so then we return app
     // If not return pages
 
-    const extension = isTypescriptProject ? "tsx" : "js"
+    const extension = isTypescriptProject ? "tsx" : "js";
 
-    const appPagePath = pathModule.join(
-      path,
-      usesSrcDir ? "src" : "",
-      "app",
-      `page.${extension}`
-    );
+    const appPagePath = pathModule.join(path, usesSrcDir ? "src" : "", "app", `page.${extension}`);
 
     const appPageExists = await pathExists(appPagePath);
 
@@ -309,11 +302,7 @@ async function detectPagesOrAppDir(
 }
 
 async function detectMiddlewareUsage(path: string, usesSrcDir = false) {
-  const middlewarePath = pathModule.join(
-    path,
-    usesSrcDir ? "src" : "",
-    "middleware.ts"
-  );
+  const middlewarePath = pathModule.join(path, usesSrcDir ? "src" : "", "middleware.ts");
 
   const middlewareExists = await pathExists(middlewarePath);
 
@@ -331,6 +320,7 @@ async function detectMiddlewareUsage(path: string, usesSrcDir = false) {
       )} which can cause issues with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware`
     );
 
+    telemetryClient.init.warning("middleware_conflict", { projectPath: path });
     return;
   }
 
@@ -349,11 +339,9 @@ async function detectMiddlewareUsage(path: string, usesSrcDir = false) {
           middlewarePath
         )} which will cause issues with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware`
       );
+      telemetryClient.init.warning("middleware_conflict_api_trigger", { projectPath: path });
     }
-  } else if (
-    Array.isArray(matcher) &&
-    matcher.every((m) => typeof m === "string")
-  ) {
+  } else if (Array.isArray(matcher) && matcher.every((m) => typeof m === "string")) {
     const matcherRegexes = matcher.map((m) => pathToRegexp(m));
 
     if (matcherRegexes.some((r) => r.test("/api/trigger"))) {
@@ -363,13 +351,12 @@ async function detectMiddlewareUsage(path: string, usesSrcDir = false) {
           middlewarePath
         )} which will cause issues with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware`
       );
+      telemetryClient.init.warning("middleware_conflict", { projectPath: path });
     }
   }
 }
 
-async function getMiddlewareConfigMatcher(
-  path: string
-): Promise<Array<string>> {
+async function getMiddlewareConfigMatcher(path: string): Promise<Array<string>> {
   const fileContent = await fs.readFile(path, "utf-8");
 
   const regex = /matcher:\s*(\[.*\]|".*")/s;
@@ -408,7 +395,6 @@ async function getMiddlewareConfigMatcher(
 // }
 // In this case, we would return "@"
 function getPathAlias(tsconfig: any, usesSrcDir: boolean) {
-
   if (!tsconfig.compilerOptions.paths) {
     return;
   }
@@ -446,7 +432,7 @@ async function createTriggerAppRoute(
   isTypescriptProject: boolean,
   usesSrcDir = false
 ) {
-  const configFileName = isTypescriptProject ? "tsconfig.json" : "jsconfig.json"
+  const configFileName = isTypescriptProject ? "tsconfig.json" : "jsconfig.json";
   const tsConfigPath = pathModule.join(projectPath, configFileName);
   const { tsconfig } = await parse(tsConfigPath);
 
@@ -522,34 +508,23 @@ export * from "./examples"
 
   await fs.writeFile(pathModule.join(directories, routeFileName), routeContent);
 
-  logger.success(
-    `✅ Created app route at ${usesSrcDir ? "src/" : ""}app/api/trigger.ts`
-  );
+  logger.success(`✅ Created app route at ${usesSrcDir ? "src/" : ""}app/api/trigger.ts`);
 
-  const triggerFileExists = await pathExists(
-    pathModule.join(path, triggerFileName)
-  );
+  const triggerFileExists = await pathExists(pathModule.join(path, triggerFileName));
 
   if (!triggerFileExists) {
     await fs.writeFile(pathModule.join(path, triggerFileName), triggerContent);
 
-    logger.success(
-      `✅ Created trigger client at ${usesSrcDir ? "src/" : ""}${triggerFileName}`
-    );
+    logger.success(`✅ Created trigger client at ${usesSrcDir ? "src/" : ""}${triggerFileName}`);
   }
 
   const exampleDirectories = pathModule.join(path, "jobs");
   await fs.mkdir(exampleDirectories, { recursive: true });
 
-  const exampleFileExists = await pathExists(
-    pathModule.join(exampleDirectories, examplesFileName)
-  );
+  const exampleFileExists = await pathExists(pathModule.join(exampleDirectories, examplesFileName));
 
   if (!exampleFileExists) {
-    await fs.writeFile(
-      pathModule.join(exampleDirectories, examplesFileName),
-      jobsContent
-    );
+    await fs.writeFile(pathModule.join(exampleDirectories, examplesFileName), jobsContent);
 
     await fs.writeFile(
       pathModule.join(exampleDirectories, examplesIndexFileName),
@@ -557,9 +532,7 @@ export * from "./examples"
     );
 
     logger.success(
-      `✅ Created example job at ${
-        usesSrcDir ? "src/" : ""
-      }jobs/examples/examplesFileName`
+      `✅ Created example job at ${usesSrcDir ? "src/" : ""}jobs/examples/examplesFileName`
     );
   }
 }
@@ -569,9 +542,9 @@ async function createTriggerPageRoute(
   path: string,
   options: ResolvedOptions,
   isTypescriptProject: boolean,
-  usesSrcDir = false,
+  usesSrcDir = false
 ) {
-  const configFileName = isTypescriptProject ? "tsconfig.json" : "jsconfig.json"
+  const configFileName = isTypescriptProject ? "tsconfig.json" : "jsconfig.json";
   const tsConfigPath = pathModule.join(projectPath, configFileName);
   const { tsconfig } = await parse(tsConfigPath);
 
@@ -652,30 +625,21 @@ export * from "./examples"
     `✅ Created pages route at ${usesSrcDir ? "src/" : ""}pages/api/${triggerFileName}`
   );
 
-  const triggerFileExists = await pathExists(
-    pathModule.join(path, triggerFileName)
-  );
+  const triggerFileExists = await pathExists(pathModule.join(path, triggerFileName));
 
   if (!triggerFileExists) {
     await fs.writeFile(pathModule.join(path, triggerFileName), triggerContent);
 
-    logger.success(
-      `✅ Created TriggerClient at ${usesSrcDir ? "src/" : ""}${triggerFileName}`
-    );
+    logger.success(`✅ Created TriggerClient at ${usesSrcDir ? "src/" : ""}${triggerFileName}`);
   }
 
   const exampleDirectories = pathModule.join(path, "jobs");
   await fs.mkdir(exampleDirectories, { recursive: true });
 
-  const exampleFileExists = await pathExists(
-    pathModule.join(exampleDirectories, examplesFileName)
-  );
+  const exampleFileExists = await pathExists(pathModule.join(exampleDirectories, examplesFileName));
 
   if (!exampleFileExists) {
-    await fs.writeFile(
-      pathModule.join(exampleDirectories, examplesFileName),
-      jobsContent
-    );
+    await fs.writeFile(pathModule.join(exampleDirectories, examplesFileName), jobsContent);
 
     await fs.writeFile(
       pathModule.join(exampleDirectories, examplesIndexFileName),
@@ -683,17 +647,12 @@ export * from "./examples"
     );
 
     logger.success(
-      `✅ Created example job at ${
-        usesSrcDir ? "src/" : ""
-      }jobs/examples/${examplesFileName}`
+      `✅ Created example job at ${usesSrcDir ? "src/" : ""}jobs/examples/${examplesFileName}`
     );
   }
 }
 
-async function setupEnvironmentVariables(
-  path: string,
-  options: ResolvedOptions
-) {
+async function setupEnvironmentVariables(path: string, options: ResolvedOptions) {
   if (options.apiKey) {
     await setupEnvironmentVariable(
       path,
@@ -706,13 +665,7 @@ async function setupEnvironmentVariables(
   }
 
   if (options.triggerUrl) {
-    await setupEnvironmentVariable(
-      path,
-      ".env.local",
-      "TRIGGER_API_URL",
-      options.triggerUrl,
-      true
-    );
+    await setupEnvironmentVariable(path, ".env.local", "TRIGGER_API_URL", options.triggerUrl, true);
   }
 }
 
@@ -736,9 +689,7 @@ async function setupEnvironmentVariable(
   if (envFileContent.includes(variableName)) {
     if (!replaceValue) {
       logger.info(
-        `☑ Skipping setting ${variableName}=${renderer(
-          value
-        )} because it already exists`
+        `☑ Skipping setting ${variableName}=${renderer(value)} because it already exists`
       );
       return;
     }
@@ -754,8 +705,6 @@ async function setupEnvironmentVariable(
   } else {
     await fs.appendFile(path, `\n${variableName}=${value}`);
 
-    logger.success(
-      `✅ Added ${variableName}=${renderer(value)} to ${fileName}`
-    );
+    logger.success(`✅ Added ${variableName}=${renderer(value)} to ${fileName}`);
   }
 }

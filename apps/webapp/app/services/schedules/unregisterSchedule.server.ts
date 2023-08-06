@@ -1,4 +1,4 @@
-import { RegisterScheduleBody } from "@trigger.dev/internal";
+import { RegisterScheduleBody } from "@trigger.dev/core";
 import { $transaction, PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
@@ -31,16 +31,15 @@ export class UnregisterScheduleService {
       },
     });
 
-    const dynamicTrigger =
-      await this.#prismaClient.dynamicTrigger.findUniqueOrThrow({
-        where: {
-          endpointId_slug_type: {
-            endpointId: endpoint.id,
-            slug: id,
-            type: "SCHEDULE",
-          },
+    const dynamicTrigger = await this.#prismaClient.dynamicTrigger.findUniqueOrThrow({
+      where: {
+        endpointId_slug_type: {
+          endpointId: endpoint.id,
+          slug: id,
+          type: "SCHEDULE",
         },
-      });
+      },
+    });
 
     await this.#prismaClient.scheduleSource.update({
       where: {

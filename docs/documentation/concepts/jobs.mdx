@@ -1,0 +1,57 @@
+---
+title: "Jobs"
+description: "When this happens, do this."
+---
+
+> A Job defines what event triggers it and what should happen when it is run.
+
+For example, you can create a Job that will send an email to a user when they sign up for your app.
+
+## Anatomy of a Job
+
+A Job is made up of a few things:
+
+1. Metadata
+2. A Trigger (what event should cause this job to run)
+3. The Run function (what should happen when this job runs)
+
+```ts
+//Job definition – uses the client
+client.defineJob({
+  // 1. Metadata
+  id: "event-1",
+  name: "Run when the foo.bar event happens",
+  version: "0.0.1",
+  // 2. Trigger
+  trigger: eventTrigger({
+    name: "foo.bar",
+  }),
+  // 3. Run function
+  run: async (payload, io, ctx) => {
+    // do something
+  },
+});
+```
+
+## Jobs, Triggers, Runs and Tasks
+
+A more complicated Job
+
+> When a GitHub issue is modified: If the issue has been labelled "critical" send a Slack message and sync the issue to Linear.
+
+This can be visualized like this:
+
+![Job](/images/job-concept.png)
+
+Events [trigger](/documentation/concepts/triggers) Jobs. Jobs generate a [Run](/documentation/concepts/runs) for every event. A Run is a single execution of a Job. A Run can have multiple [Tasks](/documentation/concepts/tasks) which are the individual steps of a Run.
+
+## References
+
+<CardGroup>
+  <Card title="Job SDK reference" icon="wrench" href="/sdk/job">
+    Detailed SDK reference for Jobs.
+  </Card>
+  <Card title="Managing Jobs Dashboard" icon="globe" href="/documentation/guides/managing-jobs">
+    Viewing and managing your Jobs in the Dashboard.
+  </Card>
+</CardGroup>

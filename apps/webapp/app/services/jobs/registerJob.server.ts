@@ -1,16 +1,10 @@
-import type {
-  Endpoint,
-  Integration,
-  Job,
-  JobIntegration,
-  JobVersion,
-} from "@trigger.dev/database";
+import type { Endpoint, Integration, Job, JobIntegration, JobVersion } from "@trigger.dev/database";
 import {
   IntegrationConfig,
   JobMetadata,
   SCHEDULED_EVENT,
   TriggerMetadata,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import { DEFAULT_MAX_CONCURRENT_RUNS } from "~/consts";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
@@ -27,10 +21,7 @@ export class RegisterJobService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(
-    endpointIdOrEndpoint: string | ExtendedEndpoint,
-    metadata: JobMetadata
-  ) {
+  public async call(endpointIdOrEndpoint: string | ExtendedEndpoint, metadata: JobMetadata) {
     const endpoint =
       typeof endpointIdOrEndpoint === "string"
         ? await findEndpoint(endpointIdOrEndpoint)
@@ -254,12 +245,10 @@ export class RegisterJobService {
         version: metadata.version,
         eventSpecification,
         preprocessRuns: metadata.preprocessRuns,
-        startPosition:
-          metadata.startPosition === "initial" ? "INITIAL" : "LATEST",
+        startPosition: metadata.startPosition === "initial" ? "INITIAL" : "LATEST",
       },
       update: {
-        startPosition:
-          metadata.startPosition === "initial" ? "INITIAL" : "LATEST",
+        startPosition: metadata.startPosition === "initial" ? "INITIAL" : "LATEST",
         eventSpecification,
         preprocessRuns: metadata.preprocessRuns,
         queue: {
@@ -378,12 +367,7 @@ export class RegisterJobService {
       },
     });
 
-    await this.#upsertEventDispatcher(
-      metadata.trigger,
-      job,
-      jobVersion,
-      environment
-    );
+    await this.#upsertEventDispatcher(metadata.trigger, job, jobVersion, environment);
 
     return jobVersion;
   }
@@ -404,7 +388,8 @@ export class RegisterJobService {
             },
           },
           create: {
-            event: trigger.rule.event,
+            event:
+              typeof trigger.rule.event === "string" ? [trigger.rule.event] : trigger.rule.event,
             source: trigger.rule.source,
             payloadFilter: trigger.rule.payload,
             contextFilter: trigger.rule.context,
@@ -417,7 +402,8 @@ export class RegisterJobService {
             dispatchableId: job.id,
           },
           update: {
-            event: trigger.rule.event,
+            event:
+              typeof trigger.rule.event === "string" ? [trigger.rule.event] : trigger.rule.event,
             source: trigger.rule.source,
             payloadFilter: trigger.rule.payload,
             contextFilter: trigger.rule.context,
@@ -442,36 +428,34 @@ export class RegisterJobService {
         break;
       }
       case "scheduled": {
-        const eventDispatcher = await this.#prismaClient.eventDispatcher.upsert(
-          {
-            where: {
-              dispatchableId_environmentId: {
-                dispatchableId: job.id,
-                environmentId: environment.id,
-              },
-            },
-            create: {
-              event: SCHEDULED_EVENT,
-              source: "trigger.dev",
-              payloadFilter: {},
-              contextFilter: {},
-              environmentId: environment.id,
-              enabled: true,
-              dispatchable: {
-                type: "JOB_VERSION",
-                id: jobVersion.id,
-              },
+        const eventDispatcher = await this.#prismaClient.eventDispatcher.upsert({
+          where: {
+            dispatchableId_environmentId: {
               dispatchableId: job.id,
-              manual: true,
+              environmentId: environment.id,
             },
-            update: {
-              dispatchable: {
-                type: "JOB_VERSION",
-                id: jobVersion.id,
-              },
+          },
+          create: {
+            event: SCHEDULED_EVENT,
+            source: "trigger.dev",
+            payloadFilter: {},
+            contextFilter: {},
+            environmentId: environment.id,
+            enabled: true,
+            dispatchable: {
+              type: "JOB_VERSION",
+              id: jobVersion.id,
             },
-          }
-        );
+            dispatchableId: job.id,
+            manual: true,
+          },
+          update: {
+            dispatchable: {
+              type: "JOB_VERSION",
+              id: jobVersion.id,
+            },
+          },
+        });
 
         const service = new RegisterScheduleSourceService();
 
@@ -500,9 +484,7 @@ export class RegisterJobService {
     const integration = integrations.get(config.id);
 
     if (!integration) {
-      throw new Error(
-        `Could not find integration with id ${config.id} for job ${job.id}`
-      );
+      throw new Error(`Could not find integration with id ${config.id} for job ${job.id}`);
     }
 
     // Find existing integration in the job instance
@@ -522,9 +504,7 @@ export class RegisterJobService {
     }
 
     // Find existing connection in the job
-    const existingJobIntegration = job.integrations.find(
-      (integration) => integration.key === key
-    );
+    const existingJobIntegration = job.integrations.find((integration) => integration.key === key);
 
     if (existingJobIntegration) {
       logger.debug("Creating new job integration from existing", {

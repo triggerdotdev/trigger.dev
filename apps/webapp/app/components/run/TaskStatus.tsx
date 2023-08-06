@@ -1,4 +1,4 @@
-import type { TaskStatus } from "@trigger.dev/internal";
+import type { TaskStatus } from "@trigger.dev/core";
 import {
   CheckCircleIcon,
   CheckIcon,
@@ -15,48 +15,24 @@ type TaskStatusIconProps = {
   minimal?: boolean;
 };
 
-export function TaskStatusIcon({
-  status,
-  className,
-  minimal = false,
-}: TaskStatusIconProps) {
+export function TaskStatusIcon({ status, className, minimal = false }: TaskStatusIconProps) {
   switch (status) {
     case "COMPLETED":
       return minimal ? (
-        <CheckIcon
-          className={cn(taskStatusClassNameColor(status), className)}
-        />
+        <CheckIcon className={cn(taskStatusClassNameColor(status), className)} />
       ) : (
-        <CheckCircleIcon
-          className={cn(taskStatusClassNameColor(status), className)}
-        />
+        <CheckCircleIcon className={cn(taskStatusClassNameColor(status), className)} />
       );
     case "PENDING":
-      return (
-        <ClockIcon
-          className={cn(taskStatusClassNameColor(status), className)}
-        />
-      );
+      return <ClockIcon className={cn(taskStatusClassNameColor(status), className)} />;
     case "WAITING":
-      return (
-        <Spinner className={cn(taskStatusClassNameColor(status), className)} />
-      );
+      return <Spinner className={cn(taskStatusClassNameColor(status), className)} />;
     case "RUNNING":
-      return (
-        <Spinner className={cn(taskStatusClassNameColor(status), className)} />
-      );
+      return <Spinner className={cn(taskStatusClassNameColor(status), className)} />;
     case "ERRORED":
-      return (
-        <XCircleIcon
-          className={cn(taskStatusClassNameColor(status), className)}
-        />
-      );
+      return <XCircleIcon className={cn(taskStatusClassNameColor(status), className)} />;
     case "CANCELED":
-      return (
-        <NoSymbolIcon
-          className={cn(taskStatusClassNameColor(status), className)}
-        />
-      );
+      return <NoSymbolIcon className={cn(taskStatusClassNameColor(status), className)} />;
   }
 }
 

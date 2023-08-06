@@ -1,0 +1,40 @@
+---
+title: "Environments & Endpoints"
+description: "Environments and Endpoints are used to connect your server to the Trigger.dev platform."
+---
+
+![Environments and Endpoints](/images/environments.png)
+When you login to your Project there's a section called "Environments & API Keys".
+
+## Environments
+
+Each environment has an API Key associated with it. This API Key is used to authenticate your Jobs with the Trigger.dev platform.
+
+The API Key you use for your [Client](/documentation/concepts/client-adaptors) is how we know which environment to run your code against:
+
+```ts
+export const client = new TriggerClient({
+  id: "nextjs-example",
+  //this environment variable should be set to your DEV API Key locally,
+  //and your PROD API Key in production
+  apiKey: process.env.TRIGGER_API_KEY!,
+});
+```
+
+### Development
+
+The `DEV` environment should only be used for local development. It's where you can test your Jobs before deploying them to servers.
+
+<Snippet file="scheduled-dev-warning.mdx" />
+
+### Production
+
+The `PROD` environment is where your Jobs will run in production. It's where you can run your Jobs against real data.
+
+## Endpoints
+
+An Endpoint is a URL on your server that Trigger.dev can connect to. This URL is used to register Jobs, start them and orchestrate runs and retries.
+
+`DEV` has multiple endpoints associated with it – one for each team member. This allows each team member to run their own Jobs, without interfering with each other.
+
+All other environments have just a single endpoint (with a single URL) associated with them.

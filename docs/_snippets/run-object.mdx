@@ -1,0 +1,14 @@
+<ResponseField name="id" type="string | undefined">
+  The id of the run
+</ResponseField>
+<ResponseField name="status" type="RunStatus | undefined">
+  The status of the run. Can be one of the following: `PENDING`, `CANCELED`,
+  `SUCCESS`, `QUEUED`, `WAITING_ON_CONNECTIONS`, `PREPROCESSING`, `STARTED`,
+  `FAILURE`, `TIMED_OUT`, `ABORTED`
+</ResponseField>
+<ResponseField name="startedAt" type="Date | undefined">
+  The time the run started
+</ResponseField>
+<ResponseField name="completedAt" type="Date | undefined">
+  The time the run completed
+</ResponseField>

@@ -1,0 +1,21 @@
+---
+title: "io.wait()"
+sidebarTitle: "wait()"
+description: "`io.wait()` waits for the specified amount of time before continuing the Job. Delays work even if you're on a serverless platform with timeouts, or if your server goes down. They utilize [resumability](/documentation/concepts/resumability) to ensure that the Run can be resumed after the delay."
+---
+
+## Parameters
+
+<Snippet file="stable-key-param.mdx" />
+<ResponseField name="seconds" type="number" required>
+  The number of seconds to wait. This can be very long, serverless timeouts are
+  not an issue.
+</ResponseField>
+
+## Returns
+
+A `Promise` that resolves after the specified amount of time.
+
+<RequestExample>
+  <Snippet file="delay-example.mdx" />
+</RequestExample>

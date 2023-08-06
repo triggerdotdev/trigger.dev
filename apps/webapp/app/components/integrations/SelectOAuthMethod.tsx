@@ -1,8 +1,5 @@
 import { useState } from "react";
-import {
-  ApiAuthenticationMethodOAuth2,
-  Integration,
-} from "~/services/externalApis/types";
+import { ApiAuthenticationMethodOAuth2, Integration } from "~/services/externalApis/types";
 import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
 import type { ConnectionType } from "@trigger.dev/database";
 import { Header2 } from "../primitives/Headers";
@@ -29,14 +26,10 @@ export function SelectOAuthMethod({
   const [oAuthKey, setOAuthKey] = useState<string | undefined>(
     oAuthMethods.length === 1 ? oAuthMethods[0][0] : undefined
   );
-  const [connectionType, setConnectionType] = useState<
-    ConnectionType | undefined
-  >();
+  const [connectionType, setConnectionType] = useState<ConnectionType | undefined>();
 
   const selectedOAuthMethod = oAuthKey
-    ? (integration.authenticationMethods[
-        oAuthKey
-      ] as ApiAuthenticationMethodOAuth2)
+    ? (integration.authenticationMethods[oAuthKey] as ApiAuthenticationMethodOAuth2)
     : undefined;
 
   return (
@@ -65,9 +58,7 @@ export function SelectOAuthMethod({
       )}
       {selectedOAuthMethod && (
         <>
-          <Header2 className="mb-2 mt-4">
-            Who is connecting to {integration.name}
-          </Header2>
+          <Header2 className="mb-2 mt-4">Who is connecting to {integration.name}</Header2>
           <RadioGroup
             name="connection-type"
             className="flex gap-2"
@@ -119,12 +110,9 @@ export function SelectOAuthMethod({
           <>
             <Header2 className="mb-1 mt-4">User OAuth coming soon</Header2>
             <Paragraph spacing>
-              End-user OAuth is going to be released soon. If you are interested
-              in being an early beta tester then please{" "}
-              <a
-                href="mailto:founders@trigger.dev"
-                className="text-indigo-500 underline"
-              >
+              End-user OAuth is going to be released soon. If you are interested in being an early
+              beta tester then please{" "}
+              <a href="mailto:founders@trigger.dev" className="text-indigo-500 underline">
                 message us
               </a>
               .

@@ -1,0 +1,70 @@
+---
+title: "isTriggerError()"
+description: "Use this function if you're using a `try/catch` block to catch errors."
+---
+
+A regular `try/catch` block on its own won't work as expected with Tasks. Internally `runTask()` throws some special errors to control flow execution. This is necessary to deal with resumability, serverless timeouts, and retrying Tasks.
+
+If this function returns `true` you must rethrow the error. If it returns `false` you can handle the error as you normally would.
+
+## How to `catch` errors inside `run()`
+
+You have two options:
+
+1. Use a regular `try/catch` block and `isTriggerError()` as documented on this page.
+2. Use the [io.try()](/sdk/io/try) function.
+
+## Parameters
+
+<ResponseField name="error" required>
+  The error to check.
+</ResponseField>
+
+## Returns
+
+<ResponseField name="boolean" required>
+  `true` if the error is a Trigger Error, `false` otherwise.
+
+You must rethrow the error if this function returns `true`.
+
+</ResponseField>
+
+<RequestExample>
+
+```typescript Using io.try()
+client.defineJob({
+  id: "get-repo-info",
+  name: "GitHub get repo info",
+  version: "0.1.0",
+  integrations: { github },
+  trigger: eventTrigger({
+    name: "repo.info",
+    schema: z.object({
+      owner: z.string(),
+      repo: z.string(),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    //try
+    try {
+      return await io.github.getRepo("get-repo", {
+        owner: payload.owner,
+        repo: payload.repo,
+      });
+    } catch (error) {
+      //if it is a TriggerError you must rethrow the error
+      if (isTriggerError(error)) {
+        throw error;
+      }
+
+      //do whatever you want when an error occurs
+      return {
+        success: false as const,
+        error,
+      };
+    }
+  },
+});
+```
+
+</RequestExample>

@@ -1,0 +1,118 @@
+---
+title: "Context"
+sidebarTitle: "context"
+description: "The third parameter in a Job's `run()` function. An object that contains information about the Organization, Job, Run and more."
+---
+
+`context` has useful information about the:
+
+- Job
+- Environment
+- Organization
+- Run
+- event
+- source
+- account
+
+## Properties
+
+<ResponseField name="job" type="object" required>
+  Metadata about the Job
+  <Expandable title="properties">
+    <ResponseField name="id" type="string" required>
+      The Job's ID
+    </ResponseField>
+    <ResponseField name="version" type="string" required>
+      The Job's version
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="environment" type="object" required>
+  Metadata about the Environment
+  <Expandable title="properties">
+    <ResponseField name="slug" type="string" required>
+      The Environment's slug
+    </ResponseField>
+    <ResponseField name="id" type="string" required>
+      The Environment's ID
+    </ResponseField>
+    <ResponseField name="type" type="string" required>
+      The Environment's type. One of: "PRODUCTION", "STAGING", "DEVELOPMENT",
+      "PREVIEW".
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="organization" type="object" required>
+  Metadata about the Organization
+  <Expandable title="properties">
+    <ResponseField name="slug" type="string" required>
+      The Organization's slug
+    </ResponseField>
+    <ResponseField name="id" type="string" required>
+      The Organization's ID
+    </ResponseField>
+    <ResponseField name="title" type="string" required>
+      The Organization's title
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="run" type="object" required>
+  Metadata about the Run
+  <Expandable title="properties">
+    <ResponseField name="id" type="string" required>
+      The Run's ID
+    </ResponseField>
+    <ResponseField name="isTest" type="boolean" required>
+      Whether the Run is a test run
+    </ResponseField>
+    <ResponseField name="startedAt" type="Date" required>
+      When the Run started
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="event" type="object" required>
+  Metadata about the Event that triggered the Run.
+  <Expandable title="properties">
+    <ResponseField name="id" type="string" required>
+      The Event's ID
+    </ResponseField>
+    <ResponseField name="name" type="string" required>
+      The Event's name
+    </ResponseField>
+    <ResponseField name="context" type="any" required>
+      The Event's context. This is additional data that been passed through
+    </ResponseField>
+    <ResponseField name="timestamp" type="Date" required>
+      When the Event was triggered
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="source" type="object">
+  Metadata about the Source that triggered the Run.
+  <Expandable title="properties">
+    <ResponseField name="id" type="string" required>
+      The Source's ID
+    </ResponseField>
+    <ResponseField name="metadata" type="any">
+      The Source's metadata. This is additional data that been passed through
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="account" type="object">
+  Metadata about the Account that triggered the Run. This is a Trigger.dev
+  Connect property which is coming soon.
+  <Expandable title="properties">
+    <ResponseField name="id" type="string" required>
+      The Account's ID
+    </ResponseField>
+    <ResponseField name="metadata" type="any">
+      The Account's metadata. This is additional data that been passed through
+    </ResponseField>
+  </Expandable>
+</ResponseField>

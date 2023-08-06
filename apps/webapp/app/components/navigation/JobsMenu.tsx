@@ -53,9 +53,7 @@ export function JobsMenu({ matches }: { matches: RouteMatch[] }) {
                     variant="primary"
                     className="w-full"
                   />
-                  {isSelected && (
-                    <NamedIcon name="check" className="mr-1 h-6 w-6" />
-                  )}
+                  {isSelected && <NamedIcon name="check" className="mr-1 h-6 w-6" />}
                 </Link>
               );
             })}

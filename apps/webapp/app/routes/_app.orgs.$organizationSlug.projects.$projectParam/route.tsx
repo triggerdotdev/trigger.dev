@@ -3,10 +3,7 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
-import {
-  ProjectSideMenu,
-  SideMenuContainer,
-} from "~/components/navigation/ProjectSideMenu";
+import { ProjectSideMenu, SideMenuContainer } from "~/components/navigation/ProjectSideMenu";
 import { ProjectsMenu } from "~/components/navigation/ProjectsMenu";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -49,8 +46,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     console.error(error);
     throw new Response(undefined, {
       status: 400,
-      statusText:
-        "Something went wrong, if this problem persists please contact support.",
+      statusText: "Something went wrong, if this problem persists please contact support.",
     });
   }
 };
@@ -75,9 +71,5 @@ export default function Project() {
 export function ErrorBoundary() {
   const org = useOrganization();
   const project = useProject();
-  return (
-    <RouteErrorDisplay
-      button={{ title: project.name, to: projectPath(org, project) }}
-    />
-  );
+  return <RouteErrorDisplay button={{ title: project.name, to: projectPath(org, project) }} />;
 }

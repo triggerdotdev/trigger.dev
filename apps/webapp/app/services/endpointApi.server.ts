@@ -13,8 +13,8 @@ import {
   RegisterTriggerBodySchema,
   RunJobBody,
   RunJobResponseSchema,
-} from "@trigger.dev/internal";
-import { safeBodyFromResponse } from "~/utils/json";
+} from "@trigger.dev/core";
+import { safeBodyFromResponse, safeParseBodyFromResponse } from "~/utils/json";
 import { logger } from "./logger.server";
 
 export class EndpointApiError extends Error {
@@ -27,11 +27,7 @@ export class EndpointApiError extends Error {
 
 // TODO: this should work with tunnelling
 export class EndpointApi {
-  constructor(
-    private apiKey: string,
-    private url: string,
-    private id: string
-  ) {}
+  constructor(private apiKey: string, private url: string, private id: string) {}
 
   async ping(): Promise<PongResponse> {
     const response = await safeFetch(this.url, {
@@ -73,13 +69,23 @@ export class EndpointApi {
       };
     }
 
-    const anyBody = await response.json();
+    const pongResponse = await safeParseBodyFromResponse(response, PongResponseSchema);
 
-    logger.debug("ping() response from endpoint", {
-      body: anyBody,
-    });
+    if (!pongResponse) {
+      return {
+        ok: false,
+        error: `Could not parse response from endpoint. Make sure it points to the correct URL (you might be missing /api/trigger)`,
+      };
+    }
 
-    return PongResponseSchema.parse(anyBody);
+    if (!pongResponse.success) {
+      return {
+        ok: false,
+        error: `Endpoint ${this.url} responded with error: ${pongResponse.error.message}`,
+      };
+    }
+
+    return pongResponse.data;
   }
 
   async indexEndpoint() {
@@ -113,9 +119,7 @@ export class EndpointApi {
     }
 
     if (!response.ok) {
-      throw new Error(
-        `Could not connect to endpoint ${this.url}. Status code: ${response.status}`
-      );
+      throw new Error(`Could not connect to endpoint ${this.url}. Status code: ${response.status}`);
     }
 
     const anyBody = await response.json();
@@ -144,9 +148,7 @@ export class EndpointApi {
     }
 
     if (!response.ok) {
-      throw new Error(
-        `Could not connect to endpoint ${this.url}. Status code: ${response.status}`
-      );
+      throw new Error(`Could not connect to endpoint ${this.url}. Status code: ${response.status}`);
     }
 
     const anyBody = await response.json();
@@ -190,10 +192,7 @@ export class EndpointApi {
     return { response, parser: PreprocessRunResponseSchema };
   }
 
-  async initializeTrigger(
-    id: string,
-    params: any
-  ): Promise<RegisterTriggerBody | undefined> {
+  async initializeTrigger(id: string, params: any): Promise<RegisterTriggerBody | undefined> {
     const response = await safeFetch(this.url, {
       method: "POST",
       headers: {
@@ -218,9 +217,7 @@ export class EndpointApi {
         throw new EndpointApiError(error.data.message, error.data.stack);
       }
 
-      throw new Error(
-        `Could not connect to endpoint ${this.url}. Status code: ${response.status}`
-      );
+      throw new Error(`Could not connect to endpoint ${this.url}. Status code: ${response.status}`);
     }
 
     const anyBody = await response.json();
@@ -263,9 +260,7 @@ export class EndpointApi {
     }
 
     if (!response.ok) {
-      throw new Error(
-        `Could not connect to endpoint ${this.url}. Status code: ${response.status}`
-      );
+      throw new Error(`Could not connect to endpoint ${this.url}. Status code: ${response.status}`);
     }
 
     const anyBody = await response.json();

@@ -9,13 +9,7 @@ export class RunStreamPresenter {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({
-    request,
-    runId,
-  }: {
-    request: Request;
-    runId: JobRun["id"];
-  }) {
+  public async call({ request, runId }: { request: Request; runId: JobRun["id"] }) {
     const run = await this.#runForUpdates(runId);
 
     if (!run) {

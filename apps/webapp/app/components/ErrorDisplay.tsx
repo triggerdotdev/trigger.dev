@@ -19,19 +19,14 @@ export function RouteErrorDisplay(options?: ErrorDisplayOptions) {
         <ErrorDisplay
           title={friendlyErrorDisplay(error.status, error.statusText).title}
           message={
-            error.data.message ??
-            friendlyErrorDisplay(error.status, error.statusText).message
+            error.data.message ?? friendlyErrorDisplay(error.status, error.statusText).message
           }
           {...options}
         />
       ) : error instanceof Error ? (
         <ErrorDisplay title={error.name} message={error.message} {...options} />
       ) : (
-        <ErrorDisplay
-          title="Oops"
-          message={JSON.stringify(error)}
-          {...options}
-        />
+        <ErrorDisplay title="Oops" message={JSON.stringify(error)} {...options} />
       )}
     </>
   );
@@ -47,11 +42,7 @@ export function ErrorDisplay({ title, message, button }: DisplayOptionsProps) {
     <div className="p-4">
       <Header1 className="mb-4 border-b border-slate-800 pb-4">{title}</Header1>
       {message && <Header3>{message}</Header3>}
-      <LinkButton
-        to={button ? button.to : "/"}
-        variant="primary/medium"
-        className="mt-8"
-      >
+      <LinkButton to={button ? button.to : "/"} variant="primary/medium" className="mt-8">
         {button ? button.title : "Home"}
       </LinkButton>
     </div>

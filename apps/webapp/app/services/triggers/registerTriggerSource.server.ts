@@ -1,7 +1,4 @@
-import {
-  RegisterSourceEvent,
-  RegisterTriggerBody,
-} from "@trigger.dev/internal";
+import { RegisterSourceEvent, RegisterTriggerBody } from "@trigger.dev/core";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
@@ -42,16 +39,15 @@ export class RegisterTriggerSourceService {
       },
     });
 
-    const dynamicTrigger =
-      await this.#prismaClient.dynamicTrigger.findUniqueOrThrow({
-        where: {
-          endpointId_slug_type: {
-            endpointId: endpoint.id,
-            slug: id,
-            type: "EVENT",
-          },
+    const dynamicTrigger = await this.#prismaClient.dynamicTrigger.findUniqueOrThrow({
+      where: {
+        endpointId_slug_type: {
+          endpointId: endpoint.id,
+          slug: id,
+          type: "EVENT",
         },
-      });
+      },
+    });
 
     return await $transaction(
       this.#prismaClient,
@@ -120,10 +116,9 @@ export class RegisterTriggerSourceService {
           },
         });
 
-        const secretStore = getSecretStore(
-          triggerSource.secretReference.provider,
-          { prismaClient: tx }
-        );
+        const secretStore = getSecretStore(triggerSource.secretReference.provider, {
+          prismaClient: tx,
+        });
 
         const { secret } = await secretStore.getSecretOrThrow(
           z.object({

@@ -1,4 +1,4 @@
-import { MISSING_CONNECTION_RESOLVED_NOTIFICATION } from "@trigger.dev/internal";
+import { MISSING_CONNECTION_RESOLVED_NOTIFICATION } from "@trigger.dev/core";
 import { PrismaClientOrTransaction, prisma } from "~/db.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
 import { logger } from "../logger.server";
@@ -15,47 +15,45 @@ export class IntegrationConnectionCreatedService {
     logger.debug("IntegrationConnectionCreatedService.call", { id });
 
     // first, deliver the event through the dispatcher
-    const connection =
-      await this.#prismaClient.integrationConnection.findUniqueOrThrow({
-        where: {
-          id,
-        },
-        include: {
-          externalAccount: true,
-          integration: true,
-        },
-      });
+    const connection = await this.#prismaClient.integrationConnection.findUniqueOrThrow({
+      where: {
+        id,
+      },
+      include: {
+        externalAccount: true,
+        integration: true,
+      },
+    });
 
-    const missingConnection =
-      await this.#prismaClient.missingConnection.findUnique({
-        where: {
-          integrationId_connectionType_accountIdentifier: {
-            integrationId: connection.integrationId,
-            connectionType: connection.connectionType,
-            accountIdentifier: connection.externalAccount
-              ? connection.externalAccount.id
-              : "DEVELOPER",
-          },
+    const missingConnection = await this.#prismaClient.missingConnection.findUnique({
+      where: {
+        integrationId_connectionType_accountIdentifier: {
+          integrationId: connection.integrationId,
+          connectionType: connection.connectionType,
+          accountIdentifier: connection.externalAccount
+            ? connection.externalAccount.id
+            : "DEVELOPER",
         },
-        include: {
-          runs: {
-            include: {
-              queue: true,
-              environment: {
-                include: {
-                  project: true,
-                  organization: true,
-                },
+      },
+      include: {
+        runs: {
+          include: {
+            queue: true,
+            environment: {
+              include: {
+                project: true,
+                organization: true,
               },
             },
-            orderBy: {
-              createdAt: "asc",
-            },
           },
-          integration: true,
-          externalAccount: true,
+          orderBy: {
+            createdAt: "asc",
+          },
         },
-      });
+        integration: true,
+        externalAccount: true,
+      },
+    });
 
     if (!missingConnection) {
       return;

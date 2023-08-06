@@ -4,13 +4,7 @@ import { Button } from "../primitives/Buttons";
 import { Callout } from "../primitives/Callout";
 import { Header1 } from "../primitives/Headers";
 import { NamedIconInBox } from "../primitives/NamedIcon";
-import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetHeader,
-  SheetTrigger,
-} from "../primitives/Sheet";
+import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTrigger } from "../primitives/Sheet";
 import { CustomHelp } from "./CustomHelp";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { useFetcher } from "@remix-run/react";
@@ -45,28 +39,18 @@ export function NoIntegrationSheet({
               </Paragraph>
             </div>
           ) : (
-            <fetcher.Form
-              method="post"
-              action={`/resources/apivote/${api.identifier}`}
-            >
+            <fetcher.Form method="post" action={`/resources/apivote/${api.identifier}`}>
               <Button
                 variant="primary/small"
                 disabled={isLoading}
                 LeadingIcon={isLoading ? "spinner-white" : undefined}
               >
-                {isLoading
-                  ? "Saving…"
-                  : `I want an Integration for ${api.name}`}
+                {isLoading ? "Saving…" : `I want an Integration for ${api.name}`}
               </Button>
             </fetcher.Form>
           )}
         </SheetHeader>
         <SheetBody>
-          <Callout variant="info">
-            We don’t have an Integration for the {api.name} API yet but you can
-            request one by clicking the button above. In the meantime, connect
-            to {api.name} using one of the methods below.
-          </Callout>
           <CustomHelp name={api.name} />
         </SheetBody>
       </SheetContent>

@@ -4,8 +4,8 @@ import type {
   RuntimeEnvironmentType,
   RedactString,
   TriggerMetadata,
-} from "@trigger.dev/internal";
-import { DisplayProperty } from "@trigger.dev/internal";
+} from "@trigger.dev/core";
+import { DisplayProperty } from "@trigger.dev/core";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
 
@@ -49,23 +49,25 @@ export type PreprocessResults = {
   properties: DisplayProperty[];
 };
 
-export type TriggerEventType<TTrigger extends Trigger<any>> =
-  TTrigger extends Trigger<infer TEventSpec>
-    ? ReturnType<TEventSpec["parsePayload"]>
-    : never;
+export type TriggerEventType<TTrigger extends Trigger<any>> = TTrigger extends Trigger<
+  infer TEventSpec
+>
+  ? ReturnType<TEventSpec["parsePayload"]>
+  : never;
 
 export interface Trigger<TEventSpec extends EventSpecification<any>> {
   event: TEventSpec;
   toJSON(): TriggerMetadata;
   // Attach this trigger to the job and the trigger client
   // Gives different triggers the ability to do things like register internal jobs
-  attachToJob(
-    triggerClient: TriggerClient,
-    job: Job<Trigger<TEventSpec>, any>
-  ): void;
+  attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpec>, any>): void;
 
   preprocessRuns: boolean;
 }
+
+export type TriggerPayload<TTrigger> = TTrigger extends Trigger<EventSpecification<infer TEvent>>
+  ? TEvent
+  : never;
 
 export type EventSpecificationExample = {
   id: string;
@@ -75,7 +77,7 @@ export type EventSpecificationExample = {
 };
 
 export interface EventSpecification<TEvent extends any> {
-  name: string;
+  name: string | string[];
   title: string;
   source: string;
   icon: string;
@@ -87,6 +89,5 @@ export interface EventSpecification<TEvent extends any> {
   runProperties?: (payload: TEvent) => DisplayProperty[];
 }
 
-export type EventTypeFromSpecification<
-  TEventSpec extends EventSpecification<any>
-> = TEventSpec extends EventSpecification<infer TEvent> ? TEvent : never;
+export type EventTypeFromSpecification<TEventSpec extends EventSpecification<any>> =
+  TEventSpec extends EventSpecification<infer TEvent> ? TEvent : never;

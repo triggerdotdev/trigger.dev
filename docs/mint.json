@@ -1,0 +1,306 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Trigger.dev",
+  "logo": {
+    "dark": "/logo/dark.png",
+    "light": "/logo/light.png",
+    "href": "https://trigger.dev"
+  },
+  "favicon": "/images/favicon.png",
+  "colors": {
+    "primary": "#818cf8",
+    "light": "#818cf8",
+    "dark": "#818cf8",
+    "anchors": {
+      "from": "#fff",
+      "to": "#eee"
+    }
+  },
+  "backgroundImage": "/images/docs-background.png",
+  "modeToggle": {
+    "default": "dark",
+    "isHidden": true
+  },
+  "feedback": {
+    "suggestEdit": true,
+    "raiseIssue": true
+  },
+  "topbarCtaButton": {
+    "type": "github",
+    "url": "https://github.com/triggerdotdev/trigger.dev"
+  },
+  "topbarLinks": [
+    {
+      "name": "Community",
+      "url": "https://discord.gg/kA47vcd8P6"
+    }
+  ],
+  "tabs": [
+    {
+      "name": "Integrations",
+      "url": "integrations"
+    },
+    {
+      "name": "Reference",
+      "url": "sdk"
+    },
+    {
+      "name": "Example Jobs",
+      "url": "examples"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        "documentation/introduction",
+        "documentation/quickstart",
+        "documentation/guides/create-a-job",
+        "documentation/guides/video-walkthrough"
+      ]
+    },
+    {
+      "group": "Concepts",
+      "pages": [
+        "documentation/concepts/what-is-triggerdotdev",
+        "documentation/concepts/limitations",
+        "documentation/concepts/projects",
+        "documentation/concepts/client-adaptors",
+        {
+          "group": "Jobs, Runs & Tasks",
+          "pages": [
+            "documentation/concepts/jobs",
+            "documentation/concepts/runs",
+            "documentation/concepts/tasks"
+          ]
+        },
+        {
+          "group": "Triggers",
+          "pages": [
+            "documentation/concepts/triggers/introduction",
+            "documentation/concepts/triggers/webhooks",
+            "documentation/concepts/triggers/events",
+            "documentation/concepts/triggers/scheduled",
+            "documentation/concepts/triggers/dynamic"
+          ]
+        },
+        "documentation/concepts/resumability",
+        "documentation/concepts/delays",
+        "documentation/concepts/integrations",
+        "documentation/concepts/connect",
+        "documentation/concepts/environments-endpoints"
+      ]
+    },
+    {
+      "group": "Guides",
+      "pages": [
+        {
+          "group": "Platforms",
+          "pages": [
+            "documentation/guides/platforms/nextjs",
+            "documentation/guides/platforms/express"
+          ]
+        },
+        "documentation/guides/cli",
+        "documentation/guides/running-jobs",
+        {
+          "group": "Using the Dashboard",
+          "pages": [
+            "documentation/guides/managing-jobs",
+            "documentation/guides/viewing-runs",
+            "documentation/guides/testing-jobs",
+            "documentation/guides/rerunning"
+          ]
+        },
+        {
+          "group": "Using integrations",
+          "pages": [
+            "documentation/guides/using-integrations",
+            "documentation/guides/using-integrations-apikeys",
+            "documentation/guides/using-integrations-oauth"
+          ]
+        },
+        "documentation/guides/react-hooks",
+        {
+          "group": "Deployment",
+          "pages": [
+            "documentation/guides/deployment",
+            "documentation/guides/deployment-setup",
+            "documentation/guides/deployment-manual",
+            "documentation/guides/deployment-automatic"
+          ]
+        },
+        "documentation/guides/zod",
+        {
+          "group": "Self hosting",
+          "pages": [
+            "documentation/guides/self-hosting",
+            "documentation/guides/self-hosting/flyio",
+            "documentation/guides/self-hosting/render",
+            "documentation/guides/tunneling-platform"
+          ]
+        },
+        "documentation/guides/contributing"
+      ]
+    },
+    {
+      "group": "Community & Support",
+      "pages": [
+        "documentation/get-help",
+        "documentation/faq",
+        "documentation/changelog",
+        "documentation/roadmap"
+      ]
+    },
+    {
+      "group": "Overview",
+      "pages": [
+        "integrations/introduction",
+        "integrations/create"
+      ]
+    },
+    {
+      "group": "Integrations",
+      "pages": [
+        {
+          "group": "GitHub",
+          "pages": [
+            "integrations/apis/github",
+            "integrations/apis/github-triggers",
+            "integrations/apis/github-tasks"
+          ]
+        },
+        {
+          "group": "Supabase",
+          "pages": [
+            "integrations/apis/supabase/introduction",
+            "integrations/apis/supabase/management",
+            "integrations/apis/supabase/client"
+          ]
+        },
+        {
+          "group": "OpenAI",
+          "pages": [
+            "integrations/apis/openai"
+          ]
+        },
+        "integrations/apis/plain",
+        {
+          "group": "Resend",
+          "pages": [
+            "integrations/apis/resend"
+          ]
+        },
+        {
+          "group": "Slack",
+          "pages": [
+            "integrations/apis/slack"
+          ]
+        },
+        "integrations/apis/typeform"
+      ]
+    },
+    {
+      "group": "SDK",
+      "pages": [
+        "sdk/introduction",
+        {
+          "group": "TriggerClient",
+          "pages": [
+            "sdk/triggerclient/overview",
+            "sdk/triggerclient/constructor",
+            {
+              "group": "Instance methods",
+              "pages": [
+                "sdk/triggerclient/instancemethods/sendevent",
+                "sdk/triggerclient/instancemethods/getevent",
+                "sdk/triggerclient/instancemethods/getruns",
+                "sdk/triggerclient/instancemethods/getrun"
+              ]
+            }
+          ]
+        },
+        "sdk/job",
+        {
+          "group": "IO",
+          "pages": [
+            "sdk/io/overview",
+            "sdk/io/logger",
+            "sdk/io/wait",
+            "sdk/io/sendevent",
+            "sdk/io/runtask",
+            "sdk/io/try",
+            "sdk/io/backgroundfetch",
+            "sdk/io/registerinterval",
+            "sdk/io/unregisterinterval",
+            "sdk/io/registercron",
+            "sdk/io/unregistercron",
+            "sdk/io/registertrigger"
+          ]
+        },
+        "sdk/context",
+        "sdk/eventtrigger",
+        "sdk/crontrigger",
+        "sdk/intervaltrigger",
+        {
+          "group": "DynamicTrigger",
+          "pages": [
+            "sdk/dynamictrigger/overview",
+            "sdk/dynamictrigger/constructor",
+            {
+              "group": "Instance methods",
+              "pages": [
+                "sdk/dynamictrigger/register",
+                "sdk/dynamictrigger/unregister"
+              ]
+            }
+          ]
+        },
+        {
+          "group": "DynamicSchedule",
+          "pages": [
+            "sdk/dynamicschedule/overview",
+            "sdk/dynamicschedule/constructor",
+            {
+              "group": "Instance methods",
+              "pages": [
+                "sdk/dynamicschedule/register",
+                "sdk/dynamicschedule/unregister"
+              ]
+            }
+          ]
+        },
+        "sdk/connection-auth",
+        "sdk/istriggererror",
+        "sdk/redactstring"
+      ]
+    },
+    {
+      "group": "React SDK",
+      "pages": [
+        "sdk/react/introduction",
+        "sdk/react/triggerprovider",
+        "sdk/react/useeventdetails",
+        "sdk/react/useeventrundetails",
+        "sdk/react/userundetails"
+      ]
+    },
+    {
+      "group": "Overview",
+      "pages": [
+        "examples/introduction",
+        "examples/examples-repository"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "twitter": "https://twitter.com/triggerdotdev",
+    "github": "https://github.com/triggerdotdev",
+    "linkedin": "https://www.linkedin.com/company/triggerdotdev"
+  },
+  "analytics": {
+    "posthog": {
+      "apiKey": "phc_hwYmedO564b3Ik8nhA4Csrb5SueY0EwFJWCbseGwWW"
+    }
+  }
+}

@@ -6,6 +6,11 @@ import {
   CreateRunBody,
   CreateRunResponseBodySchema,
   FailTaskBodyInput,
+  GetEventSchema,
+  GetRunOptionsWithTaskDetails,
+  GetRunSchema,
+  GetRunsOptions,
+  GetRunsSchema,
   LogLevel,
   Logger,
   RegisterScheduleResponseBodySchema,
@@ -20,10 +25,11 @@ import {
   TriggerSource,
   TriggerSourceSchema,
   UpdateTriggerSourceBody,
-} from "@trigger.dev/internal";
+  urlWithSearchParams,
+} from "@trigger.dev/core";
 
-import { z } from "zod";
 import fetch, { type RequestInit } from "node-fetch";
+import { z } from "zod";
 
 export type ApiClientOptions = {
   apiKey?: string;
@@ -62,17 +68,11 @@ export class ApiClient {
   constructor(options: ApiClientOptions) {
     this.#options = options;
 
-    this.#apiUrl =
-      this.#options.apiUrl ??
-      process.env.TRIGGER_API_URL ??
-      "https://api.trigger.dev";
+    this.#apiUrl = this.#options.apiUrl ?? process.env.TRIGGER_API_URL ?? "https://api.trigger.dev";
     this.#logger = new Logger("trigger.dev", this.#options.logLevel);
   }
 
-  async registerEndpoint(options: {
-    url: string;
-    name: string;
-  }): Promise<EndpointRecord> {
+  async registerEndpoint(options: { url: string; name: string }): Promise<EndpointRecord> {
     const apiKey = await this.#apiKey();
 
     this.#logger.debug("Registering endpoint", {
@@ -99,9 +99,7 @@ export class ApiClient {
     }
 
     if (response.status !== 200) {
-      throw new Error(
-        `Failed to register entry point, got status code ${response.status}`
-      );
+      throw new Error(`Failed to register entry point, got status code ${response.status}`);
     }
 
     return await response.json();
@@ -114,18 +112,14 @@ export class ApiClient {
       params,
     });
 
-    return await zodfetch(
-      CreateRunResponseBodySchema,
-      `${this.#apiUrl}/api/v1/runs`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(params),
-      }
-    );
+    return await zodfetch(CreateRunResponseBodySchema, `${this.#apiUrl}/api/v1/runs`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(params),
+    });
   }
 
   async runTask(runId: string, task: RunTaskBodyInput) {
@@ -135,19 +129,15 @@ export class ApiClient {
       task,
     });
 
-    return await zodfetch(
-      ServerTaskSchema,
-      `${this.#apiUrl}/api/v1/runs/${runId}/tasks`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          "Idempotency-Key": task.idempotencyKey,
-        },
-        body: JSON.stringify(task),
-      }
-    );
+    return await zodfetch(ServerTaskSchema, `${this.#apiUrl}/api/v1/runs/${runId}/tasks`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        "Idempotency-Key": task.idempotencyKey,
+      },
+      body: JSON.stringify(task),
+    });
   }
 
   async completeTask(runId: string, id: string, task: CompleteTaskBodyInput) {
@@ -267,12 +257,7 @@ export class ApiClient {
     return response;
   }
 
-  async registerSchedule(
-    client: string,
-    id: string,
-    key: string,
-    payload: ScheduleMetadata
-  ) {
+  async registerSchedule(client: string, id: string, key: string, payload: ScheduleMetadata) {
     const apiKey = await this.#apiKey();
 
     this.#logger.debug("registering schedule", {
@@ -305,11 +290,7 @@ export class ApiClient {
 
     const response = await zodfetch(
       z.object({ ok: z.boolean() }),
-      `${
-        this.#apiUrl
-      }/api/v1/${client}/schedules/${id}/registrations/${encodeURIComponent(
-        key
-      )}`,
+      `${this.#apiUrl}/api/v1/${client}/schedules/${id}/registrations/${encodeURIComponent(key)}`,
       {
         method: "DELETE",
         headers: {
@@ -345,6 +326,59 @@ export class ApiClient {
     );
 
     return response;
+  }
+
+  async getEvent(eventId: string) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Getting Event", {
+      eventId,
+    });
+
+    return await zodfetch(GetEventSchema, `${this.#apiUrl}/api/v1/events/${eventId}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+  }
+
+  async getRun(runId: string, options?: GetRunOptionsWithTaskDetails) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Getting Run", {
+      runId,
+    });
+
+    return await zodfetch(
+      GetRunSchema,
+      urlWithSearchParams(`${this.#apiUrl}/api/v1/runs/${runId}`, options),
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      }
+    );
+  }
+
+  async getRuns(jobSlug: string, options?: GetRunsOptions) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Getting Runs", {
+      jobSlug,
+    });
+
+    return await zodfetch(
+      GetRunsSchema,
+      urlWithSearchParams(`${this.#apiUrl}/api/v1/jobs/${jobSlug}/runs`, options),
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      }
+    );
   }
 
   async #apiKey() {
@@ -410,10 +444,7 @@ function getApiKey(key?: string) {
   return { status: "valid" as const, apiKey };
 }
 
-async function zodfetch<
-  TResponseBody extends any,
-  TOptional extends boolean = false
->(
+async function zodfetch<TResponseBody extends any, TOptional extends boolean = false>(
   schema: z.Schema<TResponseBody>,
   url: string,
   requestInit?: RequestInit,
@@ -441,8 +472,7 @@ async function zodfetch<
 
   if (response.status !== 200) {
     throw new Error(
-      options?.errorMessage ??
-        `Failed to fetch ${url}, got status code ${response.status}`
+      options?.errorMessage ?? `Failed to fetch ${url}, got status code ${response.status}`
     );
   }
 

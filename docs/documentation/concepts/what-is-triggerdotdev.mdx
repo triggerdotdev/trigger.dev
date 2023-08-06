@@ -1,0 +1,105 @@
+---
+title: "What is Trigger.dev?"
+sidebarTitle: "What is Trigger.dev?"
+---
+
+Trigger.dev is a platform, SDK and API for building and running Jobs in your codebase, triggered by various sources, but without having to worry about managing any complicated orchestration infrastructure.
+
+It can be used from _any_ Node.js (support versions) or TypeScript backend application (including serverless applications and microservices).
+
+## What we take care of for you:
+
+- We make it possible to run long-running Jobs on serverless platforms that have short timeouts (e.g. 30 seconds).
+- We provide an SDK for building Jobs in your codebase, triggered by various sources such as [events](/triggers/events), [scheduled events](/triggers/scheduled-events), and [webhooks](/triggers/webhooks).
+- We provide an orchestration platform for running Jobs in your codebase.
+- We provide out-of-the-box Integrations with popular services such as [Slack](/integrations/apis/slack), [OpenAI](/integrations/apis/openai), [GitHub](/integrations/apis/github) and [more](/integrations), which vastly simplifies the process interacting with 3rd-party services.
+  - We handle OAuth for you
+- We provide a nice UI for viewing and debugging your Jobs.
+
+## What you take care of:
+
+- You write your Jobs in your codebase.
+- You get a Trigger.dev API Key and add it to your codebase.
+- You deploy your codebase.
+
+## How it works
+
+To get an idea of how Trigger.dev works, let's take a look at a simple Job that sends a Slack message when a GitHub issue is labelled as `critical`:
+
+```ts
+import { Job } from "@trigger.dev/sdk";
+import { Github, events } from "@trigger.dev/github";
+import { Slack } from "@trigger.dev/slack";
+
+//GitHub integration with API Key (it supports OAuth too)
+const github = new Github({
+  id: "github",
+  token: process.env.GITHUB_API_KEY!,
+});
+
+//Slack integration with OAuth
+const slack = new Slack({
+  id: "slack",
+});
+
+client.defineJob({
+  id: "critical-issue-alert",
+  name: "Critical Issue Alert",
+  version: "0.1.0",
+  //When a GitHub issue is modified on the triggerdotdev/trigger.dev repo
+  trigger: github.triggers.repo({
+    event: events.onIssue,
+    owner: "triggerdotdev",
+    repo: "trigger.dev",
+  }),
+  //include any integrations you want to use
+  integrations: {
+    slack,
+  },
+  //this function gets executed when the trigger fires
+  run: async (payload, io, ctx) => {
+    await io.logger.info(`Action was ${payload.action}`);
+
+    if (payload.action === "labeled" && payload.label?.name === "critical") {
+      //use the Slack integration to post a message
+      await io.slack.postMessage("post message", {
+        channel: "C04GWUTDC3W",
+        text: `Issue ${payload.issue.number}: ${payload.issue.title} is critical!`,
+      });
+    }
+  },
+});
+```
+
+This code lives in a file inside your Next.js repo.
+
+It is listening for the [issueEvent](/integrations/apis/github/triggers) GitHub webhook, and when it receives one, we will take care of calling the `run` function supplied to the `Job` constructor with the webhook payload. This gives you the following advantages over traditional webhooks:
+
+- We will automatically register the webhook with GitHub for you, and verify the payload signature.
+- We provide a nicely typed `event` payload to your `run` function, so you don't have to setup webhook payload types.
+- If your server isn't running, we will wait until it's back online before attempting to run the Job.
+- It is very easy to test your Job locally using our [Test Run](/guides/running-tests) feature.
+
+As you can see the above Job also makes a call to our Slack [postMessage](/integrations/apis/slack) function, which provides the following advantages over using the raw Slack API:
+
+- We automatically handle the OAuth flow for you, so you don't have to worry about setting up a Slack app and dealing with credentials in your code (see our [Authentication](/concepts/authentication) guide for more details).
+- We will automatically retry the request if the Slack API returns an error.
+- We provide a nicely typed `response` object from your `postMessage` function, so you don't have to setup Slack API types.
+
+## Why use Trigger.dev?
+
+Apart from the reasons mentioned above, there are a few other reasons why you might want to use Trigger.dev:
+
+- You want to access your database or other internal services from your Jobs, without having to expose them to the internet.
+- You want to colocate your Jobs with your code, so you can deploy them together in one atomic unit.
+- You want to build event-driven architectures without having to manage any complicated orchestration infrastructure.
+- You want to add in delays or retries to your Jobs, without having to worry about managing a queue.
+
+## Architecture
+
+Below is a simplified architecture diagram of how Trigger.dev works:
+
+{/* https://www.tldraw.com/r/v2_KEeyTalIH0NRKdsb01Lqt?viewport=36%2C-165%2C2234%2C1420&page=page%3AOecar06rEOb6Kpu9XzDKo */}
+![Architecture](/images/architecture.png)
+
+As you can see above, we communicate between your code and the Trigger.dev platform. This allows us to send events to your code, and receive tasks from your code.

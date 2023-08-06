@@ -8,15 +8,10 @@ import {
   RunJobRetryWithTask,
   RunJobSuccess,
   RunSourceContextSchema,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import { generateErrorMessage } from "zod-error";
 import { EXECUTE_JOB_RETRY_LIMIT } from "~/consts";
-import {
-  $transaction,
-  PrismaClient,
-  PrismaClientOrTransaction,
-  prisma,
-} from "~/db.server";
+import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { resolveRunConnections } from "~/models/runConnection.server";
 import { safeJsonZodParse } from "~/utils/json";
 import { EndpointApi } from "../endpointApi.server";
@@ -24,9 +19,7 @@ import { workerQueue } from "../worker.server";
 import { formatError } from "~/utils/formatErrors.server";
 import { logger } from "../logger.server";
 
-type FoundRunExecution = NonNullable<
-  Awaited<ReturnType<typeof findRunExecution>>
->;
+type FoundRunExecution = NonNullable<Awaited<ReturnType<typeof findRunExecution>>>;
 
 export class PerformRunExecutionService {
   #prismaClient: PrismaClient;
@@ -61,11 +54,7 @@ export class PerformRunExecutionService {
   async #executePreprocessing(execution: FoundRunExecution) {
     const { run } = execution;
 
-    const client = new EndpointApi(
-      run.environment.apiKey,
-      run.endpoint.url,
-      run.endpoint.slug
-    );
+    const client = new EndpointApi(run.environment.apiKey, run.endpoint.url, run.endpoint.slug);
     const event = ApiEventLogSchema.parse({ ...run.event, id: run.eventId });
     const startedAt = new Date();
 
@@ -200,11 +189,7 @@ export class PerformRunExecutionService {
       return;
     }
 
-    const client = new EndpointApi(
-      run.environment.apiKey,
-      run.endpoint.url,
-      run.endpoint.slug
-    );
+    const client = new EndpointApi(run.environment.apiKey, run.endpoint.url, run.endpoint.slug);
     const event = ApiEventLogSchema.parse({ ...run.event, id: run.eventId });
 
     const startedAt = new Date();
@@ -250,9 +235,7 @@ export class PerformRunExecutionService {
       }
     }
 
-    const sourceContext = RunSourceContextSchema.safeParse(
-      run.event.sourceContext
-    );
+    const sourceContext = RunSourceContextSchema.safeParse(run.event.sourceContext);
 
     const { response, parser, errorParser } = await client.executeJobRequest({
       event,
@@ -310,16 +293,9 @@ export class PerformRunExecutionService {
       if (errorBody && errorBody.success) {
         // Only retry if the error isn't a 4xx
         if (response.status >= 400 && response.status <= 499) {
-          return await this.#failRunExecution(
-            this.#prismaClient,
-            execution,
-            errorBody.data
-          );
+          return await this.#failRunExecution(this.#prismaClient, execution, errorBody.data);
         } else {
-          return await this.#failRunExecutionWithRetry(
-            execution,
-            errorBody.data
-          );
+          return await this.#failRunExecutionWithRetry(execution, errorBody.data);
         }
       }
 
@@ -383,10 +359,7 @@ export class PerformRunExecutionService {
     }
   }
 
-  async #completeRunWithSuccess(
-    execution: FoundRunExecution,
-    data: RunJobSuccess
-  ) {
+  async #completeRunWithSuccess(execution: FoundRunExecution, data: RunJobSuccess) {
     const { run } = execution;
 
     return await $transaction(this.#prismaClient, async (tx) => {
@@ -426,10 +399,7 @@ export class PerformRunExecutionService {
     });
   }
 
-  async #resumeRunWithTask(
-    execution: FoundRunExecution,
-    data: RunJobResumeWithTask
-  ) {
+  async #resumeRunWithTask(execution: FoundRunExecution, data: RunJobResumeWithTask) {
     const { run } = execution;
 
     return await $transaction(this.#prismaClient, async (tx) => {
@@ -495,10 +465,7 @@ export class PerformRunExecutionService {
     });
   }
 
-  async #retryRunWithTask(
-    execution: FoundRunExecution,
-    data: RunJobRetryWithTask
-  ) {
+  async #retryRunWithTask(execution: FoundRunExecution, data: RunJobRetryWithTask) {
     const { run } = execution;
 
     return await $transaction(this.#prismaClient, async (tx) => {

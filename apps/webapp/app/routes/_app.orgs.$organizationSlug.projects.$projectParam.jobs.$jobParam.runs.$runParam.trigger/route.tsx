@@ -28,11 +28,5 @@ export default function Page() {
   const job = useJob();
   const run = useRun();
 
-  return (
-    <TriggerDetail
-      trigger={trigger}
-      event={job.event}
-      properties={run.properties}
-    />
-  );
+  return <TriggerDetail trigger={trigger} event={job.event} properties={run.properties} />;
 }

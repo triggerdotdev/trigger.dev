@@ -1,0 +1,205 @@
+---
+title: "Supabase Management API"
+sidebarTitle: "Management API"
+description: "Manage your Supabase organization, projects, and databases"
+---
+
+Our `@trigger.dev/supabase` package provides an integration that wraps the [Supabase Management API](https://supabase.com/docs/reference/api/introduction), allow you to run tasks that can manage your Supabase Orgs, Projects, and Databases.
+
+It also provides the ability to trigger jobs based on changes in your Supabase database through the use of [Supabase Database Webhooks](https://supabase.com/docs/guides/database/webhooks).
+
+## Usage
+
+There are two different ways to authenticate with the Supabase Management API, either using a [Personal Access Token](https://supabase.com/dashboard/account/tokens) or through OAuth provided by Trigger.dev.
+
+### Personal Access Token
+
+To use the Management API integration with a Personal Access Token, head over to your account [tokens](https://supabase.com/dashboard/account/tokens) page and click the "Generate New Token" button. Once you've copied the token you should save it to an environment variable in your project, for example `SUPABASE_TOKEN` and then use it in the `SupabaseManagementAPI` constructor:
+
+```ts
+import { SupabaseManagement } from "@trigger.dev/supabase";
+
+const supabaseManagement = new SupabaseManagement({
+  id: "supabase-management",
+  apiKey: process.env.SUPABASE_TOKEN!,
+});
+```
+
+Make sure you have the `SUPABASE_TOKEN` environment variable set in your project and keep it secret, as it provides full access to your Supabase account.
+
+### OAuth
+
+To use the Management API integration with Supabase OAuth, you'll need to create a new integration in the Trigger.dev dashboard and authorize it with your Supabase account. Once you've done that, you can use the `SupabaseManagementAPI` constructor with the matching `id` of the integration:
+
+```ts
+import { SupabaseManagement } from "@trigger.dev/supabase";
+
+const supabaseManagement = new SupabaseManagement({
+  id: "supabase-oauth",
+});
+```
+
+The access token will automatically be refreshed when it expires, so you don't need to worry about it, and any job that runs using the integration will have access to your Supabase account.
+
+## Jobs & Tasks
+
+Using the `SupabaseManagement` integration, you can run any of the [Management API](https://supabase.com/docs/reference/api/introduction) endpoints as a task inside a job. For example, to create a new Supabase project:
+
+```ts
+import { TriggerClient, eventTrigger } from "@trigger.dev/sdk"; // this is the Trigger.dev client
+import { SupabaseManagement } from "@trigger.dev/supabase";
+
+const client = new TriggerClient({
+  apiKey: process.env.TRIGGER_API_KEY!,
+});
+
+const supabaseManagement = new SupabaseManagement({
+  id: "supabase-management",
+});
+
+client.defineJob({
+  id: "create-supabase-project",
+  name: "Create Supabase Project",
+  version: "1.0.0",
+  integrations: {
+    supabaseManagement,
+  },
+  trigger: eventTrigger({
+    name: "create.project"
+  })
+  run: async (payload, io, ctx) => {
+    await io.supabaseManagement.createProject("🚀", {
+      name: payload.name,
+      organization_id: payload.organization_id,
+      plan: "free",
+      region: "us-east-1",
+      db_pass: "secret1234"
+    })
+  }
+})
+```
+
+For a full list of available tasks, see the [Supabase Management API](https://supabase.com/docs/reference/api/introduction) documentation.
+
+## Triggers
+
+The `SupabaseManagement` integration also provides the ability to trigger jobs based on changes in your Supabase database through the use of [Supabase Database Webhooks](https://supabase.com/docs/guides/database/webhooks).
+
+### Enable Database Webhooks
+
+<Info>
+  Manually enabling database webhooks are only needed if you are using `@trigger.dev/supabase` at
+  version `2.0.2` or earlier. If you are using `2.0.3` or later, this is done automatically for you.
+</Info>
+
+Currently the Supabase Management API does not provide a way to enable database webhooks, so you'll need to do this manually.
+
+You can do this by visiting your [Database Webhooks settings](https://supabase.com/dashboard/project/_/database/hooks) and clicking the "Enable webhooks" button:
+
+![Enable Database Webhooks](/images/supabase-enable-webhooks.png)
+
+You'll have to do this for each Supabase project you want to use webhooks with.
+
+<Note>
+  You don't actually need to create any webhooks yourself, our integration will take care of that
+  part for you.
+</Note>
+
+### Usage
+
+To use this feature, you'll first initialize a `db` instance, passing in your Supabase project [ID](https://supabase.com/dashboard/project/_/settings/api) (or URL):
+
+```ts
+import { SupabaseManagement } from "@trigger.dev/supabase";
+
+const supabaseManagement = new SupabaseManagement({
+  id: "supabase-management",
+});
+
+const db = supabase.db("https://<your project id>.supabase.co");
+```
+
+Now, you can use the `db` instance to add a trigger to run a job when a row is inserted, updated, or deleted from a table:
+
+```ts
+client.defineJob({
+  id: "supabase-trigger",
+  name: "Supabase Trigger",
+  trigger: db.onInserted({
+    table: "users",
+  }),
+  run: async (payload, io, ctx) => {
+    // payload is the database webhook body (see https://supabase.com/docs/guides/database/webhooks#payload)
+  },
+});
+```
+
+You can add additional filters to the trigger by passing a `filter` object:
+
+```ts
+client.defineJob({
+  id: "supabase-trigger",
+  name: "Supabase Trigger",
+  trigger: db.onUpdated({
+    table: "users",
+    filter: {
+      country: ["USA", "Canada"], // This will only trigger the job if the user.country is USA or Canada
+    },
+  }),
+  run: async (payload, io, ctx) => {
+    // payload is the database webhook body (see https://supabase.com/docs/guides/database/webhooks#payload)
+  },
+});
+
+client.defineJob({
+  id: "supabase-trigger",
+  name: "Supabase Trigger",
+  trigger: db.onUpdated({
+    table: "todos",
+    // Only trigger if the todo is marked as completed
+    filter: {
+      old_record: {
+        is_completed: [false],
+      },
+      record: {
+        is_completed: [true],
+      },
+    },
+  }),
+  run: async (payload, io, ctx) => {
+    // payload is the database webhook body (see https://supabase.com/docs/guides/database/webhooks#payload)
+  },
+});
+```
+
+<Note>
+  We will only create at most 1 database webhook per table, to limit resource usage when writing to
+  your database. This means we cannot support scoping updated triggers to specific columns.
+</Note>
+
+### Typescript Support
+
+If you have [generated types](https://supabase.com/docs/reference/javascript/typescript-support) for your Supabase database, you can use them to get type safety for your database triggers:
+
+```ts
+import { Database } from "./supabase.types"; // Generated types
+import { SupabaseManagement } from "@trigger.dev/supabase";
+
+const supabaseManagement = new SupabaseManagement({
+  id: "supabase-management",
+});
+
+// Pass the generated types to the db instance
+const db = supabase.db<Database>("https://<your project id>.supabase.co");
+
+client.defineJob({
+  id: "supabase-trigger",
+  name: "Supabase Trigger",
+  trigger: db.onUpdated({
+    table: "users",
+  }),
+  run: async (payload, io, ctx) => {
+    // payload.record and payload.old_record are now correctly typed to match the users table
+  },
+});
+```

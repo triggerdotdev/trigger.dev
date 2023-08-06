@@ -6,12 +6,8 @@
     "paths": {
       "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
       "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
-      "@trigger.dev/integration-kit/*": [
-        "../../packages/integration-kit/src/*"
-      ],
-      "@trigger.dev/integration-kit": [
-        "../../packages/integration-kit/src/index"
-      ]
+      "@trigger.dev/integration-kit/*": ["../../packages/integration-kit/src/*"],
+      "@trigger.dev/integration-kit": ["../../packages/integration-kit/src/index"]
     },
     "declaration": false,
     "declarationMap": false,

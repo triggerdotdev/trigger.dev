@@ -33,9 +33,7 @@ export default function Page() {
             </LinkButton>
           </PageButtons>
         </PageTitleRow>
-        <PageDescription>
-          Create new Organizations and manage your account.
-        </PageDescription>
+        <PageDescription>Create new Organizations and manage your account.</PageDescription>
         <PageTabs
           tabs={[
             { label: "Organizations", to: organizationsPath() },

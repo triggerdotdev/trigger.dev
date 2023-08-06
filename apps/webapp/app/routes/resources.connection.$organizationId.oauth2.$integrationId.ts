@@ -12,9 +12,7 @@ export const schema = z
   .object({
     integrationIdentifier: z.string(),
     integrationAuthMethod: z.string(),
-    title: z
-      .string()
-      .min(2, "The title must be unique and at least 2 characters long"),
+    title: z.string().min(2, "The title must be unique and at least 2 characters long"),
     description: z.string().optional(),
     hasCustomClient: z.preprocess((value) => value === "on", z.boolean()),
     customClientId: z.string().optional(),
@@ -101,22 +99,21 @@ export async function action({ request, params }: ActionArgs) {
 
   const url = requestUrl(request);
 
-  const redirectUrl =
-    await integrationAuthRepository.populateMissingConnectionClientFields({
-      id: integrationId,
-      customClient: hasCustomClient
-        ? { id: customClientId!, secret: customClientSecret! }
-        : undefined,
-      clientType,
-      organizationId: organization.id,
-      integrationIdentifier,
-      integrationAuthMethod,
-      scopes,
-      title,
-      description,
-      redirectTo,
-      url,
-    });
+  const redirectUrl = await integrationAuthRepository.populateMissingConnectionClientFields({
+    id: integrationId,
+    customClient: hasCustomClient
+      ? { id: customClientId!, secret: customClientSecret! }
+      : undefined,
+    clientType,
+    organizationId: organization.id,
+    integrationIdentifier,
+    integrationAuthMethod,
+    scopes,
+    title,
+    description,
+    redirectTo,
+    url,
+  });
 
   return redirect(redirectUrl);
 }

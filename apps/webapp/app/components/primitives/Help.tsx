@@ -29,11 +29,7 @@ function useHelp() {
   return React.useContext(HelpContext);
 }
 
-export function Help({
-  defaultOpen,
-  allowDismissing = true,
-  children,
-}: HelpProps) {
+export function Help({ defaultOpen, allowDismissing = true, children }: HelpProps) {
   const [open, setOpen] = React.useState(defaultOpen || false);
 
   return (

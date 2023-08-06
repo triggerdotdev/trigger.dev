@@ -17,20 +17,12 @@ export type InstalledPackage = {
   version: string;
 };
 
-export async function addDependencies(
-  projectDir: string,
-  packages: Array<InstallPackage>
-) {
+export async function addDependencies(projectDir: string, packages: Array<InstallPackage>) {
   const pkgManager = getUserPkgManager();
 
-  const spinner = ora(
-    "Adding @trigger.dev dependencies to package.json..."
-  ).start();
+  const spinner = ora("Adding @trigger.dev dependencies to package.json...").start();
 
-  const installedPackages = await addDependenciesToPackageJson(
-    projectDir,
-    packages
-  );
+  const installedPackages = await addDependenciesToPackageJson(projectDir, packages);
 
   spinner.succeed(
     chalk.green(
@@ -58,9 +50,7 @@ async function addDependenciesToPackageJson(
   // Add the dependencies to the package.json file
   pkgJson.dependencies = {
     ...pkgJson.dependencies,
-    ...Object.fromEntries(
-      packagesToInstall.map((pkg) => [pkg.name, `^${pkg.version}`])
-    ),
+    ...Object.fromEntries(packagesToInstall.map((pkg) => [pkg.name, `^${pkg.version}`])),
   };
 
   // Write the updated package.json file
@@ -140,9 +130,7 @@ async function runInstallCommand(
           const text = data.toString();
 
           if (text.includes("Progress")) {
-            pnpmSpinner.text = text.includes("|")
-              ? text.split(" | ")[1] ?? ""
-              : text;
+            pnpmSpinner.text = text.includes("|") ? text.split(" | ")[1] ?? "" : text;
           }
         });
         pnpmSubprocess.on("error", (e) => rej(e));

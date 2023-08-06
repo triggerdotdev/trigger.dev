@@ -1,8 +1,5 @@
 import type { RuntimeEnvironment } from "@trigger.dev/database";
-import type {
-  TriggerSource,
-  UpdateTriggerSourceBody,
-} from "@trigger.dev/internal";
+import type { TriggerSource, UpdateTriggerSourceBody } from "@trigger.dev/core";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { getSecretStore } from "../secrets/secretStore.server";
@@ -34,18 +31,17 @@ export class UpdateSourceService {
       },
     });
 
-    const triggerSource =
-      await this.#prismaClient.triggerSource.findUniqueOrThrow({
-        where: {
-          key_environmentId: {
-            environmentId: environment.id,
-            key: id,
-          },
+    const triggerSource = await this.#prismaClient.triggerSource.findUniqueOrThrow({
+      where: {
+        key_environmentId: {
+          environmentId: environment.id,
+          key: id,
         },
-        include: {
-          secretReference: true,
-        },
-      });
+      },
+      include: {
+        secretReference: true,
+      },
+    });
 
     await this.#prismaClient.triggerSource.update({
       where: {
@@ -74,16 +70,11 @@ export class UpdateSourceService {
 
     if (payload.secret) {
       // We need to update the secret reference in the store
-      const secretStore = getSecretStore(
-        triggerSource.secretReference.provider
-      );
+      const secretStore = getSecretStore(triggerSource.secretReference.provider);
 
-      await secretStore.setSecret<{ secret: string }>(
-        triggerSource.secretReference.key,
-        {
-          secret: payload.secret,
-        }
-      );
+      await secretStore.setSecret<{ secret: string }>(triggerSource.secretReference.key, {
+        secret: payload.secret,
+      });
     }
 
     return {

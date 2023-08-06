@@ -4,12 +4,7 @@ import ora from "ora";
 import { z } from "zod";
 import { COMMAND_NAME } from "../consts.js";
 import { getLatestPackageVersion } from "../utils/addDependencies.js";
-import {
-  createFile,
-  pathExists,
-  readJSONFile,
-  writeJSONFile,
-} from "../utils/fileSystem.js";
+import { createFile, pathExists, readJSONFile, writeJSONFile } from "../utils/fileSystem.js";
 import { generateIntegrationFiles } from "../utils/generateIntegrationFiles.js";
 import { installDependencies } from "../utils/installDependencies.js";
 import { logger } from "../utils/logger.js";
@@ -51,15 +46,9 @@ export async function createIntegrationCommand(path: string, cliOptions: any) {
     process.exit(1);
   }
 
-  const resolvedOptions = await resolveOptionsWithPrompts(
-    options,
-    resolvedPath
-  );
+  const resolvedOptions = await resolveOptionsWithPrompts(options, resolvedPath);
 
-  const latestVersion = await getLatestPackageVersion(
-    resolvedOptions.sdkPackage,
-    "latest"
-  );
+  const latestVersion = await getLatestPackageVersion(resolvedOptions.sdkPackage, "latest");
 
   if (!latestVersion) {
     logger.error(
@@ -74,14 +63,12 @@ export async function createIntegrationCommand(path: string, cliOptions: any) {
   const sdkVersion = await getInternalOrExternalPackageVersion({
     path: "packages/trigger-sdk",
     packageName: "@trigger.dev/sdk",
-    tag: "next",
+    tag: "latest",
     monorepoPath: triggerMonorepoPath,
   });
 
   if (!sdkVersion) {
-    logger.error(
-      `Could not find the latest version of @trigger.dev/sdk. Please try again later.`
-    );
+    logger.error(`Could not find the latest version of @trigger.dev/sdk. Please try again later.`);
 
     process.exit(1);
   }
@@ -134,11 +121,7 @@ export async function createIntegrationCommand(path: string, cliOptions: any) {
     },
   };
 
-  await createFileInPath(
-    resolvedPath,
-    "package.json",
-    JSON.stringify(packageJson, null, 2)
-  );
+  await createFileInPath(resolvedPath, "package.json", JSON.stringify(packageJson, null, 2));
 
   // Create the tsconfig.json
   const tsconfigJson = {
@@ -168,11 +151,7 @@ export async function createIntegrationCommand(path: string, cliOptions: any) {
     exclude: ["node_modules"],
   };
 
-  await createFileInPath(
-    resolvedPath,
-    "tsconfig.json",
-    JSON.stringify(tsconfigJson, null, 2)
-  );
+  await createFileInPath(resolvedPath, "tsconfig.json", JSON.stringify(tsconfigJson, null, 2));
 
   const readme = `
 # ${resolvedOptions.packageName}
@@ -212,10 +191,7 @@ export default defineConfig([
   if (resolvedOptions.skipGeneratingCode) {
     await createFileInPath(resolvedPath, "src/index.ts", "export {}");
   } else {
-    await attemptToGenerateIntegrationFiles(
-      pathModule.join(resolvedPath, "src"),
-      resolvedOptions
-    );
+    await attemptToGenerateIntegrationFiles(pathModule.join(resolvedPath, "src"), resolvedOptions);
   }
 
   // If inside the monorepo:
@@ -232,9 +208,7 @@ export default defineConfig([
   // Install the dependencies
   await installDependencies(resolvedPath);
 
-  logger.success(
-    `✅ Successfully initialized ${resolvedOptions.packageName} at ${resolvedPath}`
-  );
+  logger.success(`✅ Successfully initialized ${resolvedOptions.packageName} at ${resolvedPath}`);
   logger.info("Next steps:");
   logger.info(`   1. If you generated code, double check it for errors.`);
   logger.info(
@@ -242,16 +216,11 @@ export default defineConfig([
   );
 
   if (triggerMonorepoPath) {
-    logger.info(
-      `   3. Write some test jobs in the examples/nextjs-example project`
-    );
+    logger.info(`   3. Write some test jobs in the examples/nextjs-example project`);
   }
 }
 
-async function attemptToGenerateIntegrationFiles(
-  path: string,
-  options: ResolvedCLIOptions
-) {
+async function attemptToGenerateIntegrationFiles(path: string, options: ResolvedCLIOptions) {
   const spinner = ora("Generating integration code (may take ~30s)").start();
 
   function generateExtraInfo(
@@ -291,9 +260,7 @@ async function attemptToGenerateIntegrationFiles(
 
   if (files) {
     await Promise.all(
-      Object.entries(files).map(([file, contents]) =>
-        createFileInPath(path, file, contents)
-      )
+      Object.entries(files).map(([file, contents]) => createFileInPath(path, file, contents))
     );
 
     spinner.succeed(`Generated integration code in ${path}`);
@@ -302,11 +269,7 @@ async function attemptToGenerateIntegrationFiles(
   }
 }
 
-async function createFileInPath(
-  path: string,
-  fileName: string,
-  contents: string
-) {
+async function createFileInPath(path: string, fileName: string, contents: string) {
   await createFile(pathModule.join(path, fileName), contents);
 }
 
@@ -413,9 +376,7 @@ export const promptExtraInfo = async (): Promise<string | undefined> => {
 };
 
 // Choose between api-key, oauth, or both
-export const promptAuthMethod = async (): Promise<
-  "api-key" | "oauth" | "both-methods"
-> => {
+export const promptAuthMethod = async (): Promise<"api-key" | "oauth" | "both-methods"> => {
   const { authMethod } = await inquirer.prompt<{
     authMethod: "api-key" | "oauth" | "both-methods";
   }>({
@@ -455,9 +416,7 @@ export const promptSkipGeneratingCode = async (): Promise<boolean> => {
 };
 
 // Find where the github repo is located and check if it's the trigger.dev monorepo
-async function detectTriggerMonorepoPath(
-  path: string
-): Promise<string | undefined> {
+async function detectTriggerMonorepoPath(path: string): Promise<string | undefined> {
   const gitPath = await findGitPath(path);
 
   if (!gitPath) {
@@ -536,11 +495,7 @@ async function updateNextJsExampleProjectWithNewIntegration(
   integrationPath: string,
   resolvedOptions: ResolvedCLIOptions
 ) {
-  const nextjsPath = pathModule.join(
-    monorepoPath,
-    "examples",
-    "nextjs-example"
-  );
+  const nextjsPath = pathModule.join(monorepoPath, "examples", "nextjs-example");
 
   const packageJsonPath = pathModule.join(nextjsPath, "package.json");
   const packageJson = await readJSONFile(packageJsonPath);
@@ -565,9 +520,7 @@ async function updateNextJsExampleProjectWithNewIntegration(
       paths: {
         ...tsConfig.compilerOptions.paths,
         [resolvedOptions.packageName]: [
-          `../../integrations/${pathModule.basename(
-            integrationPath
-          )}/src/index`,
+          `../../integrations/${pathModule.basename(integrationPath)}/src/index`,
         ],
         [`${resolvedOptions.packageName}/*`]: [
           `../../integrations/${pathModule.basename(integrationPath)}/src/*`,

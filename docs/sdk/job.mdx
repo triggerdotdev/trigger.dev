@@ -1,0 +1,147 @@
+---
+title: "Job"
+description: "Job is used to create and configure a Job"
+---
+
+A [Job](/documentation/concepts/jobs) is used to define the [Trigger](/documentation/concepts/triggers), metadata, and what happens when it runs.
+
+By far the most important thing to understand is the constructor.
+
+# Constructor
+
+<RequestExample>
+
+```ts cronTrigger
+client.defineJob({
+  id: "slack-kpi-summary",
+  name: "Slack kpi summary",
+  version: "0.1.1",
+  integrations: {
+    slack,
+  },
+  trigger: cronTrigger({
+    cron: "0 9 * * *", // 9am every day (UTC)
+  }),
+  run: async (payload, io, ctx) => {
+    const { revenue } = await db.getKpiSummary(payload.ts);
+    const response = await io.slack.postMessage("Slack 📝", {
+      text: `Yesterday's revenue was $${revenue}`,
+      channel: "C04GWUTDC3W",
+    });
+
+    return response;
+  },
+});
+```
+
+```ts webhook
+client.defineJob({
+  id: "github-integration-on-issue",
+  name: "GitHub Integration - On Issue",
+  version: "0.1.0",
+  trigger: github.triggers.repo({
+    event: events.onIssue,
+    owner: "triggerdotdev",
+    repo: "empty",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("This is a simple log info message");
+    return { payload, ctx };
+  },
+});
+```
+
+```ts event
+client.defineJob({
+  id: "openai-joke",
+  name: "OpenAI Joke",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "openai.joke",
+    schema: z.object({
+      jokePrompt: z.string(),
+    }),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    const joke = await io.openai.backgroundCreateChatCompletion("generate-jokes", {
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "user",
+          content: payload.jokePrompt,
+        },
+      ],
+    });
+
+    return joke.choices;
+  },
+});
+```
+
+</RequestExample>
+
+## Parameters
+
+<ParamField body="client" type="object" required>
+  An instance of [TriggerClient](/sdk/triggerclient) that is used to send events to the Trigger API.
+</ParamField>
+
+<ParamField body="options" type="object" required>
+  <Expandable title="properties" defaultOpen>
+    <ParamField body="id" type="string" required>
+      The `id` property is used to uniquely identify the Job. Only change this if you want to create a new Job.
+    </ParamField>
+    <ParamField body="name" type="string" required>
+      The `name` of the Job that you want to appear in the dashboard and logs. You can change this without creating a new Job.
+    </ParamField>
+    <ParamField body="version" type="string" required>
+      The `version` property is used to version your Job. A new version will be created if you change this property. We recommend using [semantic versioning](https://www.baeldung.com/cs/semantic-versioning), e.g. `1.0.3`.
+    </ParamField>
+    <ParamField body="trigger" type="object" required>
+      The `trigger` property is used to define when the Job should run. There are currently the following Trigger types:
+      - [cronTrigger](/sdk/crontrigger)
+      - [intervalTrigger](/sdk/intervaltrigger)
+      - [eventTrigger](/sdk/eventtrigger)
+      - [DynamicTrigger](/sdk/dynamictrigger)
+      - [DynamicSchedule](/sdk/dynamicschedule)
+      - integration Triggers, like webhooks. See the [integrations](/integrations) page for more information.
+    </ParamField>
+    <ParamField body="run" type="function" required>
+      This function gets called automatically when a Run is Triggered. It has three parameters:
+      1. `payload` – The payload that was sent to the Trigger API.
+      2. [io](/sdk/io) – An object that contains the integrations that you specified in the `integrations` property and other useful functions like delays and running Tasks.
+      3. [context](/sdk/context) – An object that contains information about the Organization, Job, Run and more.
+
+      This is where you put the code you want to run for a Job. You can use normal code in here and you can also use Tasks.
+
+      You can return a value from this function and it will be sent back to the Trigger API.
+    </ParamField>
+    <ParamField body="integrations" type="object">
+      Imports the specified integrations into the Job. The integrations will be available on the `io` object in the `run()` function with the same name as the key. For example:
+      <Snippet file="how-to-pass-integrations.mdx" />
+    </ParamField>
+    <ParamField body="enabled" type="boolean">
+      The `enabled` property is used to enable or disable the Job. If you disable a Job, it will not run.
+    </ParamField>
+    <ParamField body="queue" type="string | QueueOptions">
+      The `queue` property is used to specify a custom queue. If you use an Object and specify the `maxConcurrent` option, you can control how many simulataneous runs can happen.
+    </ParamField>
+    <ParamField body="logLevel" type="log | error | warn | info | debug">
+      The `logLevel` property is an optional property that specifies the level of
+      logging for the Job. The level is inherited from the client if you omit this property.
+      - `log` - logs only essential messages
+      - `error` - logs error messages
+      - `warn` - logs errors and warning messages
+      - `info` - logs errors, warnings and info messages
+      - `debug` - logs everything with full verbosity
+    </ParamField>
+
+  </Expandable>
+</ParamField>
+
+## Returns
+
+<ResponseField name="Job instance" type="Job" />

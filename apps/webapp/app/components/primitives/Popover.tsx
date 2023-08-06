@@ -35,10 +35,7 @@ PopoverContent.displayName = PopoverPrimitive.Content.displayName;
 
 function PopoverSectionHeader({ title }: { title: string }) {
   return (
-    <Paragraph
-      variant="extra-extra-small/bright/caps"
-      className="bg-slate-900 px-2.5 py-2"
-    >
+    <Paragraph variant="extra-extra-small/bright/caps" className="bg-slate-900 px-2.5 py-2">
       {title}
     </Paragraph>
   );
@@ -63,9 +60,7 @@ function PopoverMenuItem({
       fullWidth
       textAlignLeft
       TrailingIcon={isSelected ? "check" : undefined}
-      className={
-        isSelected ? "bg-slate-750 group-hover:bg-slate-750" : undefined
-      }
+      className={isSelected ? "bg-slate-750 group-hover:bg-slate-750" : undefined}
     >
       {title}
     </LinkButton>
@@ -77,9 +72,7 @@ function PopoverArrowTrigger({
   children,
   className,
   ...props
-}: { isOpen?: boolean } & React.ComponentPropsWithoutRef<
-  typeof PopoverTrigger
->) {
+}: { isOpen?: boolean } & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
   return (
     <PopoverTrigger
       {...props}
@@ -88,17 +81,11 @@ function PopoverArrowTrigger({
         className
       )}
     >
-      <Paragraph
-        variant="extra-small"
-        className="transition group-hover:text-bright"
-      >
+      <Paragraph variant="extra-small" className="transition group-hover:text-bright">
         {children}
       </Paragraph>
       <ChevronDownIcon
-        className={cn(
-          "h-3 w-3 transition group-hover:text-bright",
-          isOpen && "-rotate-180"
-        )}
+        className={cn("h-3 w-3 transition group-hover:text-bright", isOpen && "-rotate-180")}
       />
     </PopoverTrigger>
   );

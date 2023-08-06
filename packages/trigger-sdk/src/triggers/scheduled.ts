@@ -6,7 +6,7 @@ import {
   ScheduledPayloadSchema,
   TriggerMetadata,
   currentDate,
-} from "@trigger.dev/internal";
+} from "@trigger.dev/core";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
 import { EventSpecification, Trigger } from "../types";

@@ -1,13 +1,7 @@
 import { prisma } from "~/db.server";
 import { createEnvironment } from "./organization.server";
 
-export async function getTeamMembersAndInvites({
-  userId,
-  slug,
-}: {
-  userId: string;
-  slug: string;
-}) {
+export async function getTeamMembersAndInvites({ userId, slug }: { userId: string; slug: string }) {
   const org = await prisma.organization.findFirst({
     where: { slug, members: { some: { userId } } },
     select: {
@@ -144,13 +138,7 @@ export async function getUsersInvites({ email }: { email: string }) {
   });
 }
 
-export async function acceptInvite({
-  userId,
-  inviteId,
-}: {
-  userId: string;
-  inviteId: string;
-}) {
+export async function acceptInvite({ userId, inviteId }: { userId: string; inviteId: string }) {
   return await prisma.$transaction(async (tx) => {
     // 1. Delete the invite and get the invite details
     const invite = await tx.orgMemberInvite.delete({
@@ -177,13 +165,7 @@ export async function acceptInvite({
 
     // 3. Create an environment for each project
     for (const project of invite.organization.projects) {
-      await createEnvironment(
-        invite.organization,
-        project,
-        "DEVELOPMENT",
-        member,
-        tx
-      );
+      await createEnvironment(invite.organization, project, "DEVELOPMENT", member, tx);
     }
 
     // 4. Check for other invites
@@ -197,13 +179,7 @@ export async function acceptInvite({
   });
 }
 
-export async function declineInvite({
-  userId,
-  inviteId,
-}: {
-  userId: string;
-  inviteId: string;
-}) {
+export async function declineInvite({ userId, inviteId }: { userId: string; inviteId: string }) {
   return await prisma.$transaction(async (tx) => {
     //1. delete invite
     const declinedInvite = await prisma.orgMemberInvite.delete({

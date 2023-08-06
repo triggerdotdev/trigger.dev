@@ -1,0 +1,598 @@
+---
+title: Create an Integration
+description: "You can create Integrations of your own."
+---
+
+Before creating an Integration, make sure to read the [Integration overview](/documentation/concepts/integrations) to understand what an Integration is and how it works.
+
+What we'll cover in this guide:
+
+- [Creating an Integration package](#creating-an-integration-package)
+- [Developing an Integration package](#developing-an-integration-package)
+- [Testing an Integration package](#testing-an-integration-package)
+- [Publishing an Integration package](#publishing-an-integration-package)
+
+## Creating an Integration package
+
+Before you embark on creating an Integration, you have to decide where the Integration code will be located. You have two options, either in the [Trigger.dev monorepo](https://github.com/triggerdotdev/trigger.dev) and namespaced under the `@trigger.dev` NPM organization, or in a separate repository you control and published independently.
+
+### In the Trigger.dev monorepo
+
+Before you can create an Integration in the Trigger.dev monorepo, you'll need to follow our [contributing guide](https://github.com/triggerdotdev/trigger.dev/blob/main/CONTRIBUTING.md) to get your local environment setup.
+
+Once you've forked the repository and cloned it locally, create a new branch for your Integration and prefix it with the `integrations/` namespace. For example, if you were creating an Integration for [Stripe](https://stripe.com), you would create a branch named `integrations/stripe`.
+
+```bash
+git checkout -b integrations/stripe
+```
+
+Now you are ready to create your Integration. We've created a CLI tool to help you scaffold out the Integration package. You can run the following command to create a new Integration package in the `integrations` directory:
+
+```bash
+npx @trigger.dev/cli create-integration integrations/stripe
+```
+
+This will ask you a few questions about your Integration:
+
+1. `What is the name of your Integration package?` - This is the name of the NPM package that will be created. It should be prefixed with `@trigger.dev/integration-` and be all lowercase. For example, if you were creating an Integration for Stripe, you would enter `@trigger.dev/stripe`.
+2. `What is the name of the npm package of the Integration?` - This is the name of the NPM package that the Integration will be wrapping. For example, if you were creating an Integration for Stripe, you would enter `stripe`.
+
+From this point, the CLI will create the Integration package for you and install all of the dependencies. It creates the following package structure:
+
+```bash
+integrations
+└── stripe
+    ├── README.md
+    ├── package.json
+    ├── tsup.config.ts
+    ├── src
+    │   ├── index.ts
+    │   ├── tasks.ts
+    │   └── types.ts
+    └── tsconfig.json
+```
+
+Next, head to the [How to develop an Integration package](#how-to-develop-an-integration-package) section to learn how to develop your Integration.
+
+### In your own repository
+
+You can also create an Integration in your own repository and publish it independently. This is useful if you want to keep your Integration code separate from the Trigger.dev monorepo. In this case, you should use the `@trigger.dev/cli` to create the Integration package in your repository or to start a new one:
+
+```bash
+npx @trigger.dev/cli create-integration my-internal-integration
+```
+
+## Developing an Integration package
+
+Once you've created your Integration package, you can start developing it. In this stage of development, you'll mainly be making changes to the `src/index.ts`, `src/types.ts`, and `src/tasks.ts` files. Below is an explanation of each of the files and their roles:
+
+### `src/index.ts`
+
+This is the entry point of the Integration package. It exports a main "integration" class that implements the `TriggerIntegration` interface. For example, the `@trigger.dev/github` Integration exports a `Github` class that implements.
+
+<Tip>
+  We're adopting the naming convention of naming the class after the service, without a suffix or
+  prefix. We prefer the exported name be `Slack` instead of something like `SlackIntegration` or
+  `SlackConnector`
+</Tip>
+
+<Accordion title="Example: OpenAI">
+
+```ts
+import type { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
+import { Configuration, OpenAIApi } from "openai";
+import * as tasks from "./tasks";
+import { OpenAIIntegrationOptions } from "./types";
+
+export class OpenAI implements TriggerIntegration<IntegrationClient<OpenAIApi, typeof tasks>> {
+  client: IntegrationClient<OpenAIApi, typeof tasks>;
+
+  constructor(private options: OpenAIIntegrationOptions) {
+    this.client = {
+      tasks,
+      usesLocalAuth: true,
+      client: new OpenAIApi(
+        new Configuration({
+          apiKey: options.apiKey,
+          organization: options.organization,
+        })
+      ),
+      auth: {
+        apiKey: options.apiKey,
+        organization: options.organization,
+      },
+    };
+  }
+
+  get id() {
+    return this.options.id;
+  }
+
+  get metadata() {
+    return { id: "openai", name: "OpenAI" };
+  }
+}
+```
+
+</Accordion>
+
+The `TriggerIntegration` interface requires three properties to be implemented:
+
+<ParamField body="id" type="string" required>
+  The `id` that uniquely identifies the Integration. This should always be passed through the
+  constructor options.
+</ParamField>
+
+<ParamField body="metadata" type="object" required>
+  <Expandable title="properties">
+    <ParamField body="id" type="string" required>
+      A unique identifier for the Integration. For example, the OpenAI Integration has an id of
+      `"openai"`.
+    </ParamField>
+    <ParamField body="name" type="string" required>
+      The name of the Integration. For example, the OpenAI Integration has a name of `"OpenAI"`.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="client" type="IntegrationClient" required>
+  An IntegrationClient object that contains either the underlying SDK client (if
+  using local auth) or a `clientFactory` function to create new clients using
+  authenticated credentials.
+
+{" "}
+
+  <Expandable title="properties" defaultOpen>
+    <ParamField body="usesLocalAuth" type="boolean" required>
+      Specifies whether the client uses local auth or not. If `true`, the `client` property should contain the underlying SDK client. If `false`, the `client` property should contain a `clientFactory` function that can be used to create new clients using authenticated credentials.
+    </ParamField>
+    <ParamField body="tasks" type="Record<string, AuthenticatedTask>" required>
+      An object that contains all of the authenticated tasks that are supported by the Integration. The keys of the object should be the names of the tasks and the values should be the authenticated tasks. More on authenticated tasks below.
+    </ParamField>
+    <ParamField body="clientFactory" type="function">
+      A function that takes in an `auth` object (of type [ConnectionAuth](/sdk/connection-auth)) and returns a new SDK client that is authenticated with the credentials in the `auth` object. This should only be set if `usesLocalAuth` is `false`.
+    </ParamField>
+    <ParamField body="client" type="SDK Client">
+      The underlying SDK client that will be used to make requests to the service. This should only be set if `usesLocalAuth` is `true`.
+    </ParamField>
+    <ParamField body="auth" type="any">
+      The authenticated credentials that were used to create the `client`. This should only be set if `usesLocalAuth` is `true`. This is used to access the credentials inside of authenticated tasks, but is only necessary in specific cases (like when doing a [`backgroundFetch`](/sdk/io/backgroundfetch) as a subtask)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### `src/types.ts`
+
+This file contains all of the types that are used in the Integration package. It's a good idea to keep all of the types in this file so that they can be easily imported into both the `src/index.ts` and `src/tasks.ts` files.
+
+You'll want to export the following types from this file
+
+- **SDK Client Type** - Export the type of the underlying SDK client that will be used both in authenticated tasks (more below) and the main Integration class.
+- **Authenticated Task Param Types** - Export a single type for each authenticated task input params
+- **Authenticated Task Response Types** - Export a single type for each authenticated task output response
+
+### `src/tasks.ts`
+
+This file contains all of the authenticated tasks that the Integration will support. Tasks are the main way that developers will interact with your Integration. They are the actions that developers will be able to perform in their jobs.
+
+For more about how tasks workd, see the [tasks documentation](/documentation/concepts/tasks).
+
+### Authenticated tasks
+
+Authenticated tasks are the backbone of an Integration and so we're going to cover them in more detail before moving on the main Integration class.
+
+Authenticated tasks are a specially crafted object that allows the `@trigger.dev/sdk` to run the task seeded with an authenticated SDK client.
+
+For example, here is the `getForm` authenticated task defined in the `@trigger.dev/typeform` Integration package:
+
+<CodeGroup>
+
+```ts tasks.ts
+import type { AuthenticatedTask } from "@trigger.dev/sdk";
+import type { GetFormParams, GetFormResponse, TypeformSDK } from "./types";
+
+export const getForm: AuthenticatedTask<TypeformSDK, GetFormParams, GetFormResponse> = {
+  init: (params) => {
+    return {
+      name: "Get Form",
+      params,
+      icon: "typeform",
+      properties: [
+        {
+          label: "Form ID",
+          text: params.uid,
+        },
+      ],
+    };
+  },
+  run: async (params, client) => {
+    return client.forms.get(params);
+  },
+};
+```
+
+```ts types.ts
+import { Prettify } from "@trigger.dev/integration-kit";
+import { createClient } from "@typeform/api-client";
+
+export type TypeformSDK = ReturnType<typeof createClient>;
+
+export type GetFormParams = {
+  uid: string;
+};
+
+export type GetFormResponse = Prettify<Typeform.Form>;
+```
+
+```ts usage.ts
+client.defineJob({
+  id: "typeform-playground",
+  name: "Typeform Playground",
+  version: "0.1.1",
+  integrations: {
+    typeform,
+  },
+  run: async (payload, io, ctx) => {
+    const form = await io.typeform.getForm("get-form", {
+      uid: payload.formId,
+    });
+  },
+});
+```
+
+</CodeGroup>
+
+The first thing to notice is the explicit typing of the `getForm` export as an `AuthenticatedTask<TypeformSDK, GetFormParams, GetFormResponse>`.
+
+- The first type parameter is the type of the SDK client that will be used to run the task. In this case, it's the `TypeformSDK` type that is exported from the `src/types.ts` file.
+- The second type parameter is the type of the input params that will be passed to the task. The `params` argument in the `run` and `init` functions will be typed as this type parameter.
+- The third type parameter is the type of the output response that will be returned from the task. The return type of the `run` function needs to match this type.
+
+If you take a look at the `usage.ts` file above, you can see how this task is used in a job. The `io.typeform.getForm` function is typed as returning `Promise<GetFormResponse>` and the `params` argument is typed as `GetFormParams`.
+
+<Note>
+  Notice how the params are the _second_ argument to `getForm`, that's because the first argument is
+  always the task key. See our [Keys and Resumability docs](/documentation/concepts/resumability)
+  for more on why this is important
+</Note>
+
+#### `run` function
+
+The `run` function is the main function that will be called when the task is run. It's an async function that takes up to 5 arguments:
+
+<ParamField body="params" type="type parameter" required>
+  The input params that were passed to the task. This is the second argument to the `getForm`
+  function in the example above.
+</ParamField>
+
+<ParamField body="client" type="type parameter" required>
+  The authenticated SDK client that was seeded into the task.
+</ParamField>
+
+<ParamField body="task" type="Task">
+  The underlying [task](/documentation/concepts/tasks) object
+</ParamField>
+
+<ParamField body="io" type="IO">
+  The [IO](/sdk/io/overview) object that can be used to run subtasks using
+  [`io.runTask`](/sdk/io/runtask)
+</ParamField>
+
+<ParamField body="auth" type="ConnectionAuth">
+  If for some reason you need to access the auth object that was used to seed the SDK client, you
+  can access it here. The `AuthenticatedTask` generic type takes an optional 4th type parameter that
+  allows you to specify the auth type
+</ParamField>
+
+#### `init` function
+
+The `init` function is used to initialize the task. It's a synchronous function that takes a single argument:
+
+<ParamField body="params" type="type parameter" required>
+  The input params that were passed to the task. This is the second argument to the `getForm`
+  function in the example above.
+</ParamField>
+
+#### `onError` function
+
+Authenticated tasks take an optional `onError` function that can be used to handle errors that occur during executing of the `run` function of the task. It takes two arguments:
+
+<ParamField body="error" type="unknown" required>
+  The error that was thrown during the execution of the `run` function.
+</ParamField>
+
+<ParamField body="task" type="Task" required>
+  The underlying [task](/documentation/concepts/tasks) object
+</ParamField>
+
+The `onError` function allows you to reformated errors that occur during the execution of the `run` function. For example, all the tasks in `@trigger.dev/openai` specify the following `onError` function:
+
+<CodeGroup>
+
+```ts tasks.ts
+import { OpenAIErrorSchema } from "./types";
+
+function onTaskError(error: unknown) {
+  const openAIError = OpenAIErrorSchema.safeParse(error);
+
+  if (!openAIError.success) {
+    return;
+  }
+
+  const { message, code, type } = openAIError.data.response.data.error;
+
+  return new Error(`${type}: ${message}${code ? ` (${code})` : ""}`);
+}
+```
+
+```ts types.ts
+const OpenAIErrorSchema = z.object({
+  response: z.object({
+    data: z.object({
+      error: z.object({
+        code: z.string().nullable().optional(),
+        message: z.string(),
+        type: z.string(),
+      }),
+    }),
+  }),
+});
+```
+
+</CodeGroup>
+
+You can also use the `onError` function to specify a specific time the task should be retried. The `@trigger.dev/github` Integration uses this to retry rate-limited requests:
+
+```ts
+function isRequestError(error: unknown): error is RequestError {
+  return typeof error === "object" && error !== null && "status" in error;
+}
+
+function onError(error: unknown) {
+  if (!isRequestError(error)) {
+    return;
+  }
+
+  // Check if this is a rate limit error
+  if (error.status === 403 && error.response) {
+    const rateLimitRemaining = error.response.headers["x-ratelimit-remaining"];
+    const rateLimitReset = error.response.headers["x-ratelimit-reset"];
+
+    if (rateLimitRemaining === "0" && rateLimitReset) {
+      const resetDate = new Date(Number(rateLimitReset) * 1000);
+
+      return {
+        retryAt: resetDate,
+        error,
+      };
+    }
+  }
+}
+```
+
+### Triggers
+
+<Note>The guide on creating Integration triggers is coming soon</Note>
+
+## Testing an Integration package
+
+<Note>This section is coming soon</Note>
+
+## Publishing an Integration package
+
+<Note>This section is coming soon</Note>
+
+## Example authenticated tasks
+
+### OpenAI examples
+
+<CodeGroup>
+
+```ts retrieveModel
+export const retrieveModel: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<RetrieveModelRequest>,
+  RetrieveModelResponseData
+> = {
+  onError: onTaskError,
+  run: async (params, client) => {
+    return client.retrieveModel(params.model).then((res) => res.data);
+  },
+  init: (params) => {
+    return {
+      name: "Retrieve model",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "Model id",
+          text: params.model,
+        },
+      ],
+    };
+  },
+};
+```
+
+```ts createCompletion
+export const createCompletion: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<CreateCompletionRequest>,
+  Prettify<Awaited<ReturnType<OpenAIClientType["createCompletion"]>>["data"]>
+> = {
+  run: async (params, client, task) => {
+    const response = await client.createCompletion(params);
+
+    task.outputProperties = createTaskUsageProperties(response.data.usage);
+
+    return response.data;
+  },
+  init: (params) => {
+    return {
+      name: "Completion",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "model",
+          text: params.model,
+        },
+      ],
+    };
+  },
+};
+```
+
+```ts backgroundCompletion
+export const backgroundCreateCompletion: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<CreateCompletionRequest>,
+  Prettify<CreateCompletionResponseData>,
+  OpenAIIntegrationAuth
+> = {
+  run: async (params, client, task, io, auth) => {
+    const response = await io.backgroundFetch<CreateCompletionResponseData>(
+      "background",
+      "https://api.openai.com/v1/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: redactString`Bearer ${auth.apiKey}`,
+          ...(auth.organization ? { "OpenAI-Organization": auth.organization } : {}),
+        },
+        body: JSON.stringify(params),
+      }
+    );
+
+    task.outputProperties = createTaskUsageProperties(response.usage);
+
+    return response;
+  },
+  init: (params) => {
+    return {
+      name: "Background Completion",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "model",
+          text: params.model,
+        },
+      ],
+    };
+  },
+};
+```
+
+</CodeGroup>
+
+### GitHub examples
+
+<CodeGroup>
+
+```ts createIssue
+const createIssue: GithubAuthenticatedTask<
+  { title: string; owner: string; repo: string },
+  OctokitClient["rest"]["issues"]["create"]
+> = {
+  onError,
+  run: async (params, client, task, io) => {
+    return client.rest.issues
+      .create({
+        owner: params.owner,
+        repo: params.repo,
+        title: params.title,
+      })
+      .then((res) => res.data);
+  },
+  init: (params) => {
+    return {
+      name: "Create Issue",
+      params,
+      properties: [
+        ...repoProperties(params),
+        {
+          label: "Title",
+          text: params.title,
+        },
+      ],
+      retry: {
+        limit: 3,
+        factor: 2,
+        minTimeoutInMs: 500,
+        maxTimeoutInMs: 30000,
+        randomize: true,
+      },
+    };
+  },
+};
+```
+
+```ts createIssueCommentWithReaction
+const createIssueCommentWithReaction: GithubAuthenticatedTask<
+  {
+    body: string;
+    owner: string;
+    repo: string;
+    issueNumber: number;
+    reaction: ReactionContent;
+  },
+  OctokitClient["rest"]["issues"]["createComment"]
+> = {
+  onError,
+  run: async (params, client, task, io, auth) => {
+    const comment = await io.runTask(
+      `Comment on Issue #${params.issueNumber}`,
+      createIssueComment.init(params),
+      async (t) => {
+        return createIssueComment.run(params, client, t, io, auth);
+      }
+    );
+
+    await io.runTask(
+      `React with ${params.reaction}`,
+      addIssueCommentReaction.init({
+        owner: params.owner,
+        repo: params.repo,
+        commentId: comment.id,
+        content: params.reaction,
+      }),
+      async (t) => {
+        return addIssueCommentReaction.run(
+          {
+            owner: params.owner,
+            repo: params.repo,
+            commentId: comment.id,
+            content: params.reaction,
+          },
+          client,
+          t,
+          io,
+          auth
+        );
+      }
+    );
+
+    return comment;
+  },
+  init: (params) => {
+    return {
+      name: "Create Issue Comment",
+      params,
+      properties: [
+        {
+          label: "Repo",
+          text: params.repo,
+        },
+        {
+          label: "Issue",
+          text: `#${params.issueNumber}`,
+        },
+      ],
+    };
+  },
+};
+```
+
+</CodeGroup>

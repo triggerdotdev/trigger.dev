@@ -1,6 +1,6 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { SendEventBodySchema } from "@trigger.dev/internal";
+import { SendEventBodySchema } from "@trigger.dev/core";
 import { generateErrorMessage } from "zod-error";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { IngestSendEvent } from "~/services/events/ingestSendEvent.server";
@@ -12,11 +12,13 @@ export async function action({ request }: ActionArgs) {
   }
 
   // Next authenticate the request
-  const authenticatedEnv = await authenticateApiRequest(request);
+  const authenticationResult = await authenticateApiRequest(request);
 
-  if (!authenticatedEnv) {
+  if (!authenticationResult) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
+
+  const authenticatedEnv = authenticationResult.environment;
 
   // Now parse the request body
   const anyBody = await request.json();
@@ -24,19 +26,12 @@ export async function action({ request }: ActionArgs) {
   const body = SendEventBodySchema.safeParse(anyBody);
 
   if (!body.success) {
-    return json(
-      { message: generateErrorMessage(body.error.issues) },
-      { status: 422 }
-    );
+    return json({ message: generateErrorMessage(body.error.issues) }, { status: 422 });
   }
 
   const service = new IngestSendEvent();
 
-  const event = await service.call(
-    authenticatedEnv,
-    body.data.event,
-    body.data.options
-  );
+  const event = await service.call(authenticatedEnv, body.data.event, body.data.options);
 
   return json(event);
 }

@@ -54,10 +54,7 @@ export default function FormSegmentedControl({
                       <div className="text-sm">
                         <RadioGroup.Label
                           as="p"
-                          className={cn(
-                            "font-normal",
-                            checked ? "text-bright" : "text-dimmed"
-                          )}
+                          className={cn("font-normal", checked ? "text-bright" : "text-dimmed")}
                         >
                           {option.label}
                         </RadioGroup.Label>

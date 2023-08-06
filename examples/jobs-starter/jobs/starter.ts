@@ -74,9 +74,7 @@ client.defineJob({
       { name: "Get Trigger.dev stars count" },
       async () => {
         try {
-          const response = await fetch(
-            "https://api.github.com/repos/triggerdotdev/trigger.dev"
-          );
+          const response = await fetch("https://api.github.com/repos/triggerdotdev/trigger.dev");
           const { stargazers_count } = await response.json();
 
           return { success: true, stargazers_count };

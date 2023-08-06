@@ -1,0 +1,15 @@
+```typescript
+client.defineJob({
+  //... other options
+  integrations: {
+    slack,
+    gh: github,
+  },
+  run: async (payload, io, ctx) => {
+    //slack is available on io.slack
+    io.slack.postMessage(...);
+    //github is available on io.gh
+    io.gh.addIssueLabels(...);
+  }
+});
+```

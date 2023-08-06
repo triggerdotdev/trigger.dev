@@ -1,8 +1,4 @@
-import type {
-  ConnectionType,
-  Integration,
-  IntegrationConnection,
-} from "@trigger.dev/database";
+import type { ConnectionType, Integration, IntegrationConnection } from "@trigger.dev/database";
 import { EXECUTE_JOB_RETRY_LIMIT, PREPROCESS_RETRY_LIMIT } from "~/consts";
 import type { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
@@ -39,11 +35,7 @@ export class StartRunService {
   }
 
   #runIsStartable(run: FoundRun) {
-    const startableStatuses = [
-      "PENDING",
-      "QUEUED",
-      "WAITING_ON_CONNECTIONS",
-    ] as const;
+    const startableStatuses = ["PENDING", "QUEUED", "WAITING_ON_CONNECTIONS"] as const;
     return startableStatuses.includes(run.status);
   }
 
@@ -57,11 +49,7 @@ export class StartRunService {
     });
   }
 
-  async #startRun(
-    id: string,
-    run: FoundRun,
-    runConnectionsByKey: RunConnectionsByKey
-  ) {
+  async #startRun(id: string, run: FoundRun, runConnectionsByKey: RunConnectionsByKey) {
     const createRunConnections = Object.entries(runConnectionsByKey)
       .map(([key, runConnection]) =>
         runConnection.result === "resolvedHosted"
@@ -150,12 +138,9 @@ export class StartRunService {
 
     const execution = await updateRunAndCreateExecution();
 
-    const job = await workerQueue.enqueue(
-      "performRunExecution",
-      {
-        id: execution.id,
-      },
-    );
+    const job = await workerQueue.enqueue("performRunExecution", {
+      id: execution.id,
+    });
 
     await this.#prismaClient.jobRunExecution.update({
       where: { id: execution.id },
@@ -164,22 +149,14 @@ export class StartRunService {
       },
     });
 
-    await workerQueue.enqueue(
-      "startQueuedRuns",
-      {
-        id: run.queueId,
-      },
-    );
+    await workerQueue.enqueue("startQueuedRuns", {
+      id: run.queueId,
+    });
   }
 
-  async #handleMissingConnections(
-    id: string,
-    runConnectionsByKey: RunConnectionsByKey
-  ) {
+  async #handleMissingConnections(id: string, runConnectionsByKey: RunConnectionsByKey) {
     const missingConnections = Object.values(runConnectionsByKey)
-      .map((runConnection) =>
-        runConnection.result === "missing" ? runConnection : undefined
-      )
+      .map((runConnection) => (runConnection.result === "missing" ? runConnection : undefined))
       .filter(Boolean);
 
     const updatedRun = await this.#prismaClient.jobRun.update({
@@ -218,12 +195,9 @@ export class StartRunService {
 
     for (const missingConnection of updatedRun.missingConnections) {
       if (missingConnection._count.runs === 1) {
-        workerQueue.enqueue(
-          "missingConnectionCreated",
-          {
-            id: missingConnection.id,
-          },
-        );
+        workerQueue.enqueue("missingConnectionCreated", {
+          id: missingConnection.id,
+        });
       }
     }
   }
@@ -247,10 +221,7 @@ async function findRun(tx: PrismaClientOrTransaction, id: string) {
   });
 }
 
-async function createRunConnections(
-  tx: PrismaClientOrTransaction,
-  run: FoundRun
-) {
+async function createRunConnections(tx: PrismaClientOrTransaction, run: FoundRun) {
   return await run.version.integrations.reduce(
     async (
       accP: Promise<
@@ -318,7 +289,5 @@ async function createRunConnections(
 }
 
 function hasMissingConnections(runConnectionsByKey: RunConnectionsByKey) {
-  return Object.values(runConnectionsByKey).some(
-    (connection) => connection.result === "missing"
-  );
+  return Object.values(runConnectionsByKey).some((connection) => connection.result === "missing");
 }

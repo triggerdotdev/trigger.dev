@@ -1,4 +1,4 @@
-import type { DynamicTriggerEndpointMetadata } from "@trigger.dev/internal";
+import type { DynamicTriggerEndpointMetadata } from "@trigger.dev/core";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
@@ -102,9 +102,7 @@ export class RegisterDynamicTriggerService {
           connect: jobs.map((job) => ({
             id: job.id,
           })),
-          disconnect: dynamicTrigger.jobs.filter(
-            (job) => !jobs.find((j) => j.id === job.id)
-          ),
+          disconnect: dynamicTrigger.jobs.filter((job) => !jobs.find((j) => j.id === job.id)),
         },
       },
     });

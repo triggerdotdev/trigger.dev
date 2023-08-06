@@ -13,7 +13,6 @@ model User {
   email String @unique
 
   authenticationMethod      AuthenticationMethod
-  accessToken               String?
   authenticationProfile     Json?
   authenticationExtraParams Json?
   authIdentifier            String?              @unique
@@ -280,10 +279,10 @@ model OrgMemberInvite {
 }
 
 model RuntimeEnvironment {
-  id       String  @id @default(cuid())
+  id       String @id @default(cuid())
   slug     String
-  apiKey   String  @unique
-  pkApiKey String?
+  apiKey   String @unique
+  pkApiKey String @unique
 
   type RuntimeEnvironmentType @default(DEVELOPMENT)
 
@@ -583,12 +582,12 @@ enum DynamicTriggerType {
 }
 
 model EventDispatcher {
-  id            String  @id @default(cuid())
-  event         String
+  id            String   @id @default(cuid())
+  event         String[]
   source        String
   payloadFilter Json?
   contextFilter Json?
-  manual        Boolean @default(false)
+  manual        Boolean  @default(false)
 
   dispatchableId String
   dispatchable   Json
@@ -851,10 +850,10 @@ enum SecretStoreProvider {
   AWS_PARAM_STORE
 }
 
-/// Used when the provider = "database". Not recommended outside of local development.
 model SecretStore {
-  key   String @unique
-  value Json
+  key     String @unique
+  value   Json
+  version String @default("1")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

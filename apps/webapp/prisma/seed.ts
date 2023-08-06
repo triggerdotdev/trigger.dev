@@ -5,9 +5,7 @@ import { seedCloud } from "./seedCloud";
 import { prisma } from "../app/db.server";
 
 async function seedIntegrationAuthMethods() {
-  for (const [_, integration] of Object.entries(
-    integrationCatalog.getIntegrations()
-  )) {
+  for (const [_, integration] of Object.entries(integrationCatalog.getIntegrations())) {
     await prisma.integrationDefinition.upsert({
       where: {
         id: integration.identifier,
@@ -28,9 +26,7 @@ async function seedIntegrationAuthMethods() {
       },
     });
 
-    for (const [key, authMethod] of Object.entries(
-      integration.authenticationMethods
-    )) {
+    for (const [key, authMethod] of Object.entries(integration.authenticationMethods)) {
       if (authMethod.type === "oauth2") {
         console.log(`Upserting auth method ${integration.identifier}.${key}`);
 
@@ -74,10 +70,7 @@ async function seedIntegrationAuthMethods() {
 async function seed() {
   await seedIntegrationAuthMethods();
 
-  if (
-    process.env.NODE_ENV === "development" &&
-    process.env.SEED_CLOUD === "enabled"
-  ) {
+  if (process.env.NODE_ENV === "development" && process.env.SEED_CLOUD === "enabled") {
     await seedCloud(prisma);
   }
 }

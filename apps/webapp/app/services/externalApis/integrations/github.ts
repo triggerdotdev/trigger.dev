@@ -64,7 +64,7 @@ const usageSample: HelpSample = {
 export const github: Integration = {
   identifier: "github",
   name: "GitHub",
-  packageName: "@trigger.dev/github@next",
+  packageName: "@trigger.dev/github@latest",
   authenticationMethods: {
     oauth2: {
       name: "OAuth",
@@ -155,15 +155,13 @@ export const github: Integration = {
         },
         {
           name: "read:repo_hook",
-          description:
-            "Grants read and ping access to hooks in public or private repositories.",
+          description: "Grants read and ping access to hooks in public or private repositories.",
           annotations: [webhookAnnotation],
         },
 
         {
           name: "admin:org",
-          description:
-            "Fully manage the organization and its teams, projects, and memberships.",
+          description: "Fully manage the organization and its teams, projects, and memberships.",
           annotations: [orgAnnotation],
         },
         {
@@ -237,14 +235,12 @@ export const github: Integration = {
         },
         {
           name: "project",
-          description:
-            "Grants read/write access to user and organization projects.",
+          description: "Grants read/write access to user and organization projects.",
         },
 
         {
           name: "read:project",
-          description:
-            "Grants read only access to user and organization projects.",
+          description: "Grants read only access to user and organization projects.",
         },
 
         {
@@ -259,14 +255,12 @@ export const github: Integration = {
 
         {
           name: "write:packages",
-          description:
-            "Grants access to upload or publish a package in GitHub Packages.",
+          description: "Grants access to upload or publish a package in GitHub Packages.",
         },
 
         {
           name: "read:packages",
-          description:
-            "Grants access to download or install packages from GitHub Packages.",
+          description: "Grants access to download or install packages from GitHub Packages.",
         },
 
         {

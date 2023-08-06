@@ -1,15 +1,12 @@
 import type { Organization, RuntimeEnvironment } from "@trigger.dev/database";
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import type { LogMessage } from "@trigger.dev/internal";
-import { LogMessageSchema } from "@trigger.dev/internal";
+import type { LogMessage } from "@trigger.dev/core";
+import { LogMessageSchema } from "@trigger.dev/core";
 import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import {
-  authenticateApiRequest,
-  AuthenticatedEnvironment,
-} from "~/services/apiAuth.server";
+import { authenticateApiRequest, AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
@@ -23,11 +20,13 @@ export async function action({ request, params }: ActionArgs) {
   }
 
   // Next authenticate the request
-  const authenticatedEnv = await authenticateApiRequest(request);
+  const authenticationResult = await authenticateApiRequest(request);
 
-  if (!authenticatedEnv) {
+  if (!authenticationResult) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
+
+  const authenticatedEnv = authenticationResult.environment;
 
   const { runId } = ParamsSchema.parse(params);
 
@@ -62,11 +61,7 @@ export class CreateRunLogService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(
-    environment: AuthenticatedEnvironment,
-    runId: string,
-    logMessage: LogMessage
-  ) {
+  public async call(environment: AuthenticatedEnvironment, runId: string, logMessage: LogMessage) {
     // @ts-ignore
     logger.debug(logMessage.message, logMessage.data ?? {});
 

@@ -82,9 +82,7 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
     },
     ref
   ) => {
-    const [isChecked, setIsChecked] = useState<boolean>(
-      defaultChecked ?? false
-    );
+    const [isChecked, setIsChecked] = useState<boolean>(defaultChecked ?? false);
     const [isDisabled, setIsDisabled] = useState<boolean>(disabled ?? false);
 
     const buttonClassName = variants[variant].button;
@@ -157,10 +155,7 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
             )}
           </div>
           {variant === "description" && (
-            <Paragraph
-              variant="small"
-              className={cn("mt-0.5", descriptionClassName)}
-            >
+            <Paragraph variant="small" className={cn("mt-0.5", descriptionClassName)}>
               {description}
             </Paragraph>
           )}

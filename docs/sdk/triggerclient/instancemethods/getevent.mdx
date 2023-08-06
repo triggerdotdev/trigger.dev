@@ -1,0 +1,28 @@
+---
+title: "TriggerClient: getEvent() instance method"
+sidebarTitle: "getEvent()"
+description: "The `getEvent()` method gets the event details for a given eventId."
+---
+
+## Parameters
+
+<ResponseField name="eventId" type="string" required>
+  The event ID to get the details for. This is returned when calling either
+  [client.sendEvent()](/sdk/triggerclient/instancemethods/sendevent) or
+  [io.sendEvent()](/sdk/io/sendevent).
+</ResponseField>
+
+## Returns
+
+<Snippet file="sent-event-object.mdx" />
+
+<RequestExample>
+
+```ts getEvent example
+const event = await client.getEvent(anEventId);
+if (event.runs.length === 0) {
+  throw new Error("No runs");
+}
+```
+
+</RequestExample>

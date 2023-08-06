@@ -1,20 +1,10 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import type {
-  TriggerSource,
-  SecretReference,
-  TriggerSourceEvent,
-} from "@trigger.dev/database";
+import type { TriggerSource, SecretReference, TriggerSourceEvent } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { env } from "~/env.server";
-import {
-  REGISTER_SOURCE_EVENT,
-  RegisterTriggerSource,
-} from "@trigger.dev/internal";
-import {
-  SecretStoreProvider,
-  getSecretStore,
-} from "../secrets/secretStore.server";
+import { REGISTER_SOURCE_EVENT, RegisterTriggerSource } from "@trigger.dev/core";
+import { SecretStoreProvider, getSecretStore } from "../secrets/secretStore.server";
 import { SecretStore } from "../secrets/secretStore.server";
 import { z } from "zod";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
@@ -27,23 +17,22 @@ export class ActivateSourceService {
   }
 
   public async call(id: string, jobId: string, orphanedEvents?: Array<string>) {
-    const triggerSource =
-      await this.#prismaClient.triggerSource.findUniqueOrThrow({
-        where: {
-          id,
-        },
-        include: {
-          endpoint: true,
-          environment: {
-            include: {
-              organization: true,
-              project: true,
-            },
+    const triggerSource = await this.#prismaClient.triggerSource.findUniqueOrThrow({
+      where: {
+        id,
+      },
+      include: {
+        endpoint: true,
+        environment: {
+          include: {
+            organization: true,
+            project: true,
           },
-          events: true,
-          secretReference: true,
         },
-      });
+        events: true,
+        secretReference: true,
+      },
+    });
 
     const eventId = `${id}:${jobId}`;
 

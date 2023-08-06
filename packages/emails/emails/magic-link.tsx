@@ -8,13 +8,7 @@ import { Section } from "@react-email/section";
 import { Text } from "@react-email/text";
 import * as React from "react";
 import { Footer } from "./components/Footer";
-import {
-  main,
-  anchor,
-  h1,
-  container,
-  paragraphLight,
-} from "./components/styles";
+import { main, anchor, h1, container, paragraphLight } from "./components/styles";
 
 export default function Email({ magicLink }: { magicLink: string }) {
   return (
@@ -38,12 +32,7 @@ export default function Email({ magicLink }: { magicLink: string }) {
           <Text style={paragraphLight}>
             If you didn&apos;t try to log in, you can safely ignore this email.
           </Text>
-          <Image
-            path="/emails/logo-mono.png"
-            width="156"
-            height="28"
-            alt="Trigger.dev"
-          />
+          <Image path="/emails/logo-mono.png" width="156" height="28" alt="Trigger.dev" />
           <Footer />
         </Container>
       </Section>

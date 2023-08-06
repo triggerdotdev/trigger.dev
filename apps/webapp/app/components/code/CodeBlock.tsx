@@ -2,16 +2,8 @@ import type { Language, PrismTheme } from "prism-react-renderer";
 import Highlight, { defaultProps } from "prism-react-renderer";
 import { forwardRef, useCallback, useState } from "react";
 import { cn } from "~/utils/cn";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../primitives/Tooltip";
-import {
-  ClipboardDocumentCheckIcon,
-  ClipboardIcon,
-} from "@heroicons/react/24/solid";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { ClipboardDocumentCheckIcon, ClipboardIcon } from "@heroicons/react/24/solid";
 import { Clipboard, ClipboardCheck, ClipboardCheckIcon } from "lucide-react";
 
 //This is a fork of https://github.com/mantinedev/mantine/blob/master/src/mantine-prism/src/Prism/Prism.tsx
@@ -193,9 +185,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
     const maxLineWidth = lineCount.toString().length;
     let maxHeight: string | undefined = undefined;
     if (maxLines && lineCount > maxLines) {
-      maxHeight = `calc(${
-        (maxLines + extraLinesWhenClipping) * 0.75 * 1.625
-      }rem + 1.5rem )`;
+      maxHeight = `calc(${(maxLines + extraLinesWhenClipping) * 0.75 * 1.625}rem + 1.5rem )`;
     }
 
     const highlightLines = highlightedRanges?.flatMap(([start, end]) =>
@@ -204,10 +194,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
 
     return (
       <div
-        className={cn(
-          "relative overflow-hidden rounded-md border border-slate-800",
-          className
-        )}
+        className={cn("relative overflow-hidden rounded-md border border-slate-800", className)}
         style={{
           backgroundColor: theme.plain.backgroundColor,
         }}
@@ -226,9 +213,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                 className={cn(
                   "absolute  right-3 z-50 transition-colors duration-100 hover:cursor-pointer",
                   showChrome ? "top-10" : "top-3",
-                  copied
-                    ? "text-emerald-500"
-                    : "text-slate-500 hover:text-slate-300"
+                  copied ? "text-emerald-500" : "text-slate-500 hover:text-slate-300"
                 )}
               >
                 {copied ? (
@@ -244,12 +229,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
           </TooltipProvider>
         )}
 
-        <Highlight
-          {...defaultProps}
-          theme={theme}
-          code={code}
-          language={language}
-        >
+        <Highlight {...defaultProps} theme={theme} code={code} language={language}>
           {({
             className: inheritedClassName,
             style: inheritedStyle,
@@ -285,15 +265,10 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                     const lineNumber = index + 1;
                     const lineProps = getLineProps({ line, key: index });
 
-                    let hasAnyHighlights = highlightLines
-                      ? highlightLines.length > 0
-                      : false;
+                    let hasAnyHighlights = highlightLines ? highlightLines.length > 0 : false;
 
                     let shouldDim = hasAnyHighlights;
-                    if (
-                      hasAnyHighlights &&
-                      highlightLines?.includes(lineNumber)
-                    ) {
+                    if (hasAnyHighlights && highlightLines?.includes(lineNumber)) {
                       shouldDim = false;
                     }
 

@@ -23,9 +23,7 @@ export const variantClasses = {
   },
   warning: {
     className: "border-yellow-400/20 bg-yellow-400/30",
-    icon: (
-      <ExclamationTriangleIcon className="h-5 w-5 shrink-0 text-yellow-400" />
-    ),
+    icon: <ExclamationTriangleIcon className="h-5 w-5 shrink-0 text-yellow-400" />,
     textColor: "text-yellow-200",
     linkClassName: "transition hover:bg-yellow-400/40",
   },
@@ -87,19 +85,14 @@ export function Callout({
             {icon ? icon : variantDefinition.icon}
 
             {typeof children === "string" ? (
-              <Paragraph
-                variant={"small"}
-                className={variantDefinition.textColor}
-              >
+              <Paragraph variant={"small"} className={variantDefinition.textColor}>
                 {children}
               </Paragraph>
             ) : (
               children
             )}
           </div>
-          <ArrowTopRightOnSquareIcon
-            className={cn("h-5 w-5", variantDefinition.textColor)}
-          />
+          <ArrowTopRightOnSquareIcon className={cn("h-5 w-5", variantDefinition.textColor)} />
         </a>
       );
     } else {
@@ -117,19 +110,14 @@ export function Callout({
             {icon ? icon : variantDefinition.icon}
 
             {typeof children === "string" ? (
-              <Paragraph
-                variant={"small"}
-                className={variantDefinition.textColor}
-              >
+              <Paragraph variant={"small"} className={variantDefinition.textColor}>
                 {children}
               </Paragraph>
             ) : (
               children
             )}
           </div>
-          <ChevronRightIcon
-            className={cn("h-5 w-5", variantDefinition.textColor)}
-          />
+          <ChevronRightIcon className={cn("h-5 w-5", variantDefinition.textColor)} />
         </Link>
       );
     }

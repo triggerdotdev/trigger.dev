@@ -15,12 +15,7 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetHeader,
-} from "~/components/primitives/Sheet";
+import { Sheet, SheetBody, SheetContent, SheetHeader } from "~/components/primitives/Sheet";
 import { ClientEndpoint } from "~/presenters/EnvironmentsPresenter.server";
 import { endpointStreamingPath } from "~/utils/pathBuilder";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
@@ -33,11 +28,7 @@ type ConfigureEndpointSheetProps = {
   onClose: () => void;
 };
 
-export function ConfigureEndpointSheet({
-  slug,
-  endpoint,
-  onClose,
-}: ConfigureEndpointSheetProps) {
+export function ConfigureEndpointSheet({ slug, endpoint, onClose }: ConfigureEndpointSheetProps) {
   const setEndpointUrlFetcher = useFetcher();
 
   const [form, { url, clientSlug }] = useForm({
@@ -53,12 +44,9 @@ export function ConfigureEndpointSheet({
   const refreshingEndpoint = refreshEndpointFetcher.state !== "idle";
 
   const revalidator = useRevalidator();
-  const events = useEventSource(
-    endpointStreamingPath({ id: endpoint.environment.id }),
-    {
-      event: "message",
-    }
-  );
+  const events = useEventSource(endpointStreamingPath({ id: endpoint.environment.id }), {
+    event: "message",
+  });
 
   useEffect(() => {
     if (events !== null) {
@@ -80,9 +68,7 @@ export function ConfigureEndpointSheet({
         <SheetHeader>
           <Header1>
             <div className="flex items-center gap-2">
-              <EnvironmentLabel
-                environment={{ type: endpoint.environment.type }}
-              />
+              <EnvironmentLabel environment={{ type: endpoint.environment.type }} />
               <Header1>Configure endpoint</Header1>
             </div>
           </Header1>
@@ -96,10 +82,7 @@ export function ConfigureEndpointSheet({
             <InputGroup className="max-w-none">
               <Header2>Endpoint URL</Header2>
               <div className="flex items-center">
-                <input
-                  {...conform.input(clientSlug, { type: "hidden" })}
-                  value={slug}
-                />
+                <input {...conform.input(clientSlug, { type: "hidden" })} value={slug} />
                 <Input
                   className="rounded-r-none"
                   {...conform.input(url, { type: "url" })}
@@ -119,12 +102,8 @@ export function ConfigureEndpointSheet({
               <FormError id={url.errorId}>{url.error}</FormError>
               <FormError id={form.errorId}>{form.error}</FormError>
               <Hint>
-                This is the URL of your Trigger API route, Typically this would
-                be:{" "}
-                <InlineCode variant="extra-small">
-                  https://yourdomain.com/api/trigger
-                </InlineCode>
-                .
+                This is the URL of your Trigger API route, Typically this would be:{" "}
+                <InlineCode variant="extra-small">https://yourdomain.com/api/trigger</InlineCode>.
               </Hint>
             </InputGroup>
           </setEndpointUrlFetcher.Form>
@@ -140,10 +119,7 @@ export function ConfigureEndpointSheet({
                   method="post"
                   action={`/resources/environments/${endpoint.environment.id}/endpoint/${endpoint.id}`}
                 >
-                  <Callout
-                    variant="success"
-                    className="justiy-between items-center"
-                  >
+                  <Callout variant="success" className="justiy-between items-center">
                     <Paragraph variant="small" className="grow text-green-200">
                       Endpoint configured. Last refreshed:{" "}
                       {endpoint.latestIndex ? (
@@ -157,9 +133,7 @@ export function ConfigureEndpointSheet({
                       type="submit"
                       className="bg-green-700 group-hover:bg-green-600/90"
                       disabled={refreshingEndpoint}
-                      LeadingIcon={
-                        refreshingEndpoint ? "spinner-white" : undefined
-                      }
+                      LeadingIcon={refreshingEndpoint ? "spinner-white" : undefined}
                     >
                       {refreshingEndpoint ? "Refreshing" : "Refresh now"}
                     </Button>
@@ -169,14 +143,10 @@ export function ConfigureEndpointSheet({
               <div className="max-w-full overflow-hidden">
                 <Header2>Automatic refreshing</Header2>
                 <Paragraph className="mb-2" variant="small">
-                  Use this webhook URL so your Jobs get automatically refreshed
-                  when you deploy. You just need to hit this URL (POST) and we
-                  will refresh your Jobs.
+                  Use this webhook URL so your Jobs get automatically refreshed when you deploy. You
+                  just need to hit this URL (POST) and we will refresh your Jobs.
                 </Paragraph>
-                <ClipboardField
-                  variant="secondary/medium"
-                  value={endpoint.indexWebhookPath}
-                />
+                <ClipboardField variant="secondary/medium" value={endpoint.indexWebhookPath} />
               </div>
             </div>
           )}

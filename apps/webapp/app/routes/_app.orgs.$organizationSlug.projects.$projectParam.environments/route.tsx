@@ -3,10 +3,7 @@ import { LoaderArgs } from "@remix-run/server-runtime";
 import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
-import {
-  EnvironmentLabel,
-  environmentTitle,
-} from "~/components/environments/EnvironmentLabel";
+import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { HowToUseApiKeysAndEndpoints } from "~/components/helpContent/HelpContentText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
@@ -33,20 +30,15 @@ import {
 } from "~/components/primitives/Table";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import {
-  ClientEndpoint,
-  EnvironmentsPresenter,
-} from "~/presenters/EnvironmentsPresenter.server";
+import { ClientEndpoint, EnvironmentsPresenter } from "~/presenters/EnvironmentsPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
-import {
-  ProjectParamSchema,
-  projectEnvironmentsStreamingPath,
-} from "~/utils/pathBuilder";
+import { ProjectParamSchema, projectEnvironmentsStreamingPath } from "~/utils/pathBuilder";
 import { requestUrl } from "~/utils/requestUrl.server";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
+import { Badge } from "~/components/primitives/Badge";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -70,16 +62,13 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     console.error(error);
     throw new Response(undefined, {
       status: 400,
-      statusText:
-        "Something went wrong, if this problem persists please contact support.",
+      statusText: "Something went wrong, if this problem persists please contact support.",
     });
   }
 };
 
 export const handle: Handle = {
-  breadcrumb: (match) => (
-    <BreadcrumbLink to={match.pathname} title="Environments" />
-  ),
+  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Environments" />,
   expandSidebar: true,
 };
 
@@ -110,10 +99,9 @@ export default function Page() {
   const project = useProject();
 
   const revalidator = useRevalidator();
-  const events = useEventSource(
-    projectEnvironmentsStreamingPath(organization, project),
-    { event: "message" }
-  );
+  const events = useEventSource(projectEnvironmentsStreamingPath(organization, project), {
+    event: "message",
+  });
 
   useEffect(() => {
     if (events !== null) {
@@ -128,35 +116,48 @@ export default function Page() {
         <PageTitleRow>
           <PageTitle title="Environments & API Keys" />
         </PageTitleRow>
-        <PageDescription>
-          API Keys and endpoints for your environments.
-        </PageDescription>
+        <PageDescription>API Keys and endpoints for your environments.</PageDescription>
       </PageHeader>
       <PageBody>
         <Help defaultOpen>
           {(open) => (
-            <div
-              className={cn(
-                "grid h-full gap-4",
-                open ? "grid-cols-2" : "grid-cols-1"
-              )}
-            >
+            <div className={cn("grid h-full gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
               <div>
                 <div className="mb-2 flex items-center justify-between gap-x-2">
                   <Header2>API Keys</Header2>
                   <HelpTrigger title="How do I use API Keys and Endpoints?" />
                 </div>
-                <div className="mb-8 mt-4 flex gap-4">
-                  {environments.map((environment) => (
-                    <ClipboardField
-                      key={environment.id}
-                      fullWidth={false}
-                      secure
-                      value={environment.apiKey}
-                      variant={"primary/medium"}
-                      icon={<EnvironmentLabel environment={environment} />}
-                    />
-                  ))}
+                <div className="mb-8">
+                  <Paragraph variant="small" spacing>
+                    Server API keys should be used on your server – they give full API access.{" "}
+                    <br />
+                    Public API keys should be used in your frontend – they have limited read-only
+                    access.
+                  </Paragraph>
+                  <div className="mt-4 flex flex-col gap-6">
+                    {environments.map((environment) => (
+                      <div key={environment.id}>
+                        <Header3 className="flex items-center gap-1">
+                          <EnvironmentLabel environment={environment} /> Environment
+                        </Header3>
+                        <div className="mt-2 inline-flex flex-col gap-3">
+                          <ClipboardField
+                            className="w-full max-w-none"
+                            secure
+                            value={environment.apiKey}
+                            variant={"primary/medium"}
+                            icon={<Badge variant="outline">Server</Badge>}
+                          />
+                          <ClipboardField
+                            className="w-full max-w-none"
+                            value={environment.pkApiKey}
+                            variant={"primary/medium"}
+                            icon={<Badge variant="outline">Public</Badge>}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <Header2 className="mb-2">Endpoints</Header2>
@@ -172,9 +173,7 @@ export default function Page() {
                               <TableHeaderCell>Url</TableHeaderCell>
                               <TableHeaderCell>Last refreshed</TableHeaderCell>
                               <TableHeaderCell>Jobs</TableHeaderCell>
-                              <TableHeaderCell hiddenLabel>
-                                Go to page
-                              </TableHeaderCell>
+                              <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -264,15 +263,9 @@ function EndpointRow({
           </TableCell>
           <TableCell onClick={onClick}>{endpoint.url}</TableCell>
           <TableCell onClick={onClick}>
-            {endpoint.latestIndex ? (
-              <DateTime date={endpoint.latestIndex.updatedAt} />
-            ) : (
-              "–"
-            )}
+            {endpoint.latestIndex ? <DateTime date={endpoint.latestIndex.updatedAt} /> : "–"}
           </TableCell>
-          <TableCell onClick={onClick}>
-            {endpoint.latestIndex?.stats.jobs ?? "–"}
-          </TableCell>
+          <TableCell onClick={onClick}>{endpoint.latestIndex?.stats.jobs ?? "–"}</TableCell>
           <TableCellChevron onClick={onClick} />
         </TableRow>
       );

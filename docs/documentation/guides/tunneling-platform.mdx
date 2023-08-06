@@ -1,0 +1,41 @@
+---
+title: "Local platform"
+description: "Running the Trigger.dev platform locally requires tunneling to the internet."
+---
+
+Note this is only relevant to you if you are [running the platform locally](/documentation/guides/self-hosting).
+
+## How do I do it?
+
+There are a few ways to do this, but we recommend using [ngrok](https://ngrok.com/). It's free and easy to use.
+
+### Start ngrok
+
+1. Install ngrok:
+
+<CodeGroup>
+```sh Mac
+brew install ngrok/ngrok/ngrok
+```
+
+```sh Windows
+choco install ngrok
+```
+
+</CodeGroup>
+
+2. Open a new terminal window/tab, you need to leave this running
+
+3. Create an http tunnel at port 3030:
+
+```sh
+ngrok http 3030
+```
+
+4. Grab your forwarding address in the ngrok output:
+
+![ngrok](/images/ngrok.png)
+
+### 2. Use the forwarding URL
+
+Use the forwarding URL that ngrok gave you for the `LOGIN_ORIGIN` and `API_ORIGIN` environment variables for the docker container.
