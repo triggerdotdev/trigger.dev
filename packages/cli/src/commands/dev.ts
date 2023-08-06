@@ -7,7 +7,7 @@ import ora from "ora";
 import pathModule from "path";
 import { z } from "zod";
 import { telemetryClient } from "../telemetry/telemetry.js";
-import { pathExists, readFile } from "../utils/fileSystem.js";
+import { pathExists, readFile, readJSONFile } from "../utils/fileSystem.js";
 import { logger } from "../utils/logger.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
 import { TriggerApi } from "../utils/triggerApi.js";
@@ -42,6 +42,8 @@ export async function devCommand(path: string, anyOptions: any) {
   const options = result.data;
 
   const resolvedPath = resolvePath(path);
+
+  checkForOutdatedPackages(resolvedPath);
 
   // Read from package.json to get the endpointId
   const endpointId = await getEndpointIdFromPackageJson(resolvedPath, options);
@@ -325,6 +327,77 @@ async function refreshEndpoint(apiClient: TriggerApi, endpointId: string, endpoi
         retryable: true,
       };
     }
+  }
+}
+
+async function getOutdatedTriggerDevPackages(path: string) {
+  const packageJSONPath = pathModule.join(path, "package.json");
+  const packageJSON = await readJSONFile(packageJSONPath);
+
+  const packageJSONSchema = z.object({
+    dependencies: z.record(z.string()),
+    devDependencies: z.record(z.string()),
+  });
+
+  const triggrDevPackages = [];
+  const { dependencies, devDependencies } = packageJSONSchema.parse(packageJSON);
+
+  for (const packageName in dependencies) {
+    if (packageName.startsWith("@trigger.dev/")) {
+      triggrDevPackages.push(packageName);
+    }
+  }
+
+  for (const packageName in devDependencies) {
+    if (packageName.startsWith("@trigger.dev/")) {
+      triggrDevPackages.push(packageName);
+    }
+  }
+
+  return triggrDevPackages;
+}
+
+async function getLatestPackageVersion(packageName: string) {
+  const npmRegistryURL = `https://registry.npmjs.org/${packageName}`;
+  const response = await fetch(npmRegistryURL);
+
+  if (response.ok) {
+    const data = await response.json();
+    // use array destructuring because of the `dist-tags` property
+    // @ts-ignore
+    return data["dist-tags"].latest;
+  } else {
+    console.log(`Failed to fetch the latest version of ${packageName}`);
+  }
+}
+
+async function checkForOutdatedPackages(path: string) {
+  const resolvedPath = resolvePath(path);
+  const packageJSONPath = pathModule.join(path, "package.json");
+  const packageJSON = await readJSONFile(packageJSONPath);
+
+  const outdatedPackages = [];
+  const triggerDevPackages = await getOutdatedTriggerDevPackages(resolvedPath);
+
+  for (const packageName of triggerDevPackages) {
+    const latestVersion = await getLatestPackageVersion(packageName);
+    const installedVersion =
+      packageJSON.dependencies?.[packageName] || packageJSON.devDependencies?.[packageName];
+
+    if (installedVersion !== latestVersion) {
+      outdatedPackages.push({ name: packageName, installedVersion, latestVersion });
+    }
+  }
+
+  if (outdatedPackages.length > 0) {
+    console.warn("⚠️ Outdated @trigger.dev packages found:");
+
+    for (const pkg of outdatedPackages) {
+      console.warn(`${pkg.name}: installed ${pkg.installedVersion}, latest ${pkg.latestVersion}`);
+    }
+    console.warn("Run 'npx @trigger.dev/cli update' to update the packages.");
+  } else {
+    console.log("All @trigger.dev packages are up-to-date.");
   }
 }
 
