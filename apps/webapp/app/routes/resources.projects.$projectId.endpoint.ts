@@ -9,6 +9,7 @@ import {
 import { requireUserId } from "~/services/session.server";
 import { RuntimeEnvironmentTypeSchema } from "@trigger.dev/core";
 import { env } from "process";
+import { ValidateCreateEndpointService } from "~/services/endpoints/validateCreateEndpoint.server";
 
 const ParamsSchema = z.object({
   projectId: z.string(),
@@ -48,12 +49,11 @@ export async function action({ request, params }: ActionArgs) {
 
     console.log(submission);
 
-    // const service = new CreateEndpointService();
-    // const result = await service.call({
-    //   id: submission.value.clientSlug,
-    //   url: submission.value.url,
-    //   environment,
-    // });
+    const service = new ValidateCreateEndpointService();
+    const result = await service.call({
+      url: submission.value.url,
+      environment,
+    });
 
     return json(submission);
   } catch (e) {
