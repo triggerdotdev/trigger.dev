@@ -30,6 +30,8 @@ import selectEnvironment from "./select-environment.png";
 import selectExample from "./select-example.png";
 import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
 import { useState } from "react";
+import { Feedback } from "../Feedback";
+import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
 
 export function HowToSetupYourProject() {
   const devEnvironment = useDevEnvironment();
@@ -37,7 +39,16 @@ export function HowToSetupYourProject() {
   const [selectedValue, setSelectedValue] = useState<string | null>(null);
   return (
     <div className="mx-auto mt-10 max-w-3xl">
-      <Header1 spacing>Get setup in 5 minutes</Header1>
+      <div className="flex items-center justify-between">
+        <Header1 spacing>Get setup in 5 minutes</Header1>
+        <Feedback
+          button={
+            <Button variant="secondary/small" LeadingIcon={ChatBubbleLeftRightIcon}>
+              I'm stuck!
+            </Button>
+          }
+        />
+      </div>
       <RadioGroup className="mb-4 flex gap-x-2" onValueChange={(value) => setSelectedValue(value)}>
         <RadioGroupItem
           id="r1"
