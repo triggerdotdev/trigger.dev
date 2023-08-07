@@ -58,7 +58,7 @@ export function HowToSetupYourProject() {
         <>
           <StepNumber
             stepNumber="1"
-            title="Run the CLI 'trigger-with-new-next-app' command to create a new Next.js project"
+            title="Run the CLI 'new-next-app' command to create a new Next.js project"
           />
           <StepContentContainer>
             <ClientTabs defaultValue="npm">
@@ -71,24 +71,24 @@ export function HowToSetupYourProject() {
                 <ClipboardField
                   variant="primary/medium"
                   className="mb-4"
-                  secure={`npx @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
-                  value={`npx @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
+                  secure={`npx @trigger.dev/cli@latest new-next-app -k ••••••••• -t ${appOrigin}`}
+                  value={`npx @trigger.dev/cli@latest new-next-app -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
                 />
               </ClientTabsContent>
               <ClientTabsContent value={"pnpm"}>
                 <ClipboardField
                   variant="primary/medium"
                   className="mb-4"
-                  secure={`pnpm dlx @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
-                  value={`pnpm dlx @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
+                  secure={`pnpm dlx @trigger.dev/cli@latest new-next-app -k ••••••••• -t ${appOrigin}`}
+                  value={`pnpm dlx @trigger.dev/cli@latest new-next-app -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
                 />
               </ClientTabsContent>
               <ClientTabsContent value={"yarn"}>
                 <ClipboardField
                   variant="primary/medium"
                   className="mb-4"
-                  secure={`yarn dlx @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
-                  value={`yarn dlx @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
+                  secure={`yarn dlx @trigger.dev/cli@latest new-next-app -k ••••••••• -t ${appOrigin}`}
+                  value={`yarn dlx @trigger.dev/cli@latest new-next-app -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
                 />
               </ClientTabsContent>
             </ClientTabs>
