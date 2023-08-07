@@ -35,6 +35,7 @@ import { JobListPresenter } from "~/presenters/JobListPresenter.server";
 import { TextLink } from "~/components/primitives/TextLink";
 import { GitHubLightIcon, OpenAILightIcon, ResendIcon } from "@trigger.dev/companyicons";
 import { ClockIcon, CalendarDaysIcon, SlackIcon } from "lucide-react";
+import { Button } from "~/components/primitives/Buttons";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -126,7 +127,12 @@ export default function Page() {
               </div>
             )}
             {jobs.length === 0 ? (
-              <HowToSetupYourProject />
+              <>
+                <div className="flex w-full justify-end">
+                  <Button variant={"primary/medium"}>I'm stuck!</Button>
+                </div>
+                <HowToSetupYourProject />
+              </>
             ) : (
               <>
                 <JobsTable
@@ -134,7 +140,7 @@ export default function Page() {
                   noResultsText={`No Jobs match ${filterText}. Try a different search
               query.`}
                 />
-                {jobs.length == 1 && <ExampleJobs />}
+                {jobs.length === 1 && <ExampleJobs />}
               </>
             )}
           </div>
