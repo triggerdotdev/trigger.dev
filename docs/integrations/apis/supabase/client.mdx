@@ -7,8 +7,8 @@ description: "Interact with your Supabase project using the Supabase JS Client."
 Our `@trigger.dev/supabase` package provides an integration that wraps the [@supabase/supabase-js](https://github.com/supabase/supabase-js) package, allowing you to run tasks to interact with your Supabase project.
 
 <Note>
-  If you want to trigger jobs based on changes in your Supabase database, you'll
-  need to use the [Supabase Management API](../management) integration
+  If you want to trigger jobs based on changes in your Supabase database, you'll need to use the
+  [Supabase Management API](/integrations/apis/supabase/management) integration
 </Note>
 
 ## Usage
@@ -26,8 +26,7 @@ const supabase = new Supabase({
 ```
 
 <Warning>
-  Never expose the `service_role` key in a browser or anywhere where a user can
-  see it.
+  Never expose the `service_role` key in a browser or anywhere where a user can see it.
 </Warning>
 
 You can then use the `supabase` integration to run tasks in your jobs:
@@ -39,21 +38,17 @@ client.defineJob({
     supabase,
   },
   run: async (payload, io, ctx) => {
-    const { data: users, error } = await io.supabase.runTask(
-      "find-users",
-      async (db) => {
-        return db.from("users").select("*");
-      }
-    );
+    const { data: users, error } = await io.supabase.runTask("find-users", async (db) => {
+      return db.from("users").select("*");
+    });
   },
 });
 ```
 
 <Note>
-  By using `runTask` instead of the `@supabase/supabase-js` client directly
-  inside your job run, you'll be able to create tasks that can be run
-  idempotently and also retried. For more, see our guide on
-  [Resumability](http://localhost:3050/documentation/concepts/resumability)
+  By using `runTask` instead of the `@supabase/supabase-js` client directly inside your job run,
+  you'll be able to create tasks that can be run idempotently and also retried. For more, see our
+  guide on [Resumability](http://localhost:3050/documentation/concepts/resumability)
 </Note>
 
 You can also choose to throw an error if the query fails and abort the job run:
@@ -83,10 +78,7 @@ The `db` object passed to the callback is an instance of the [@supabase/supabase
 - [Invoking Functions](https://supabase.com/docs/reference/javascript/functions-invoke)
 - [Storage](https://supabase.com/docs/reference/javascript/storage-createbucket)
 
-<Warning>
-  Currently we do not support Supabase Realtime (such as subscribing to a
-  channel)
-</Warning>
+<Warning>Currently we do not support Supabase Realtime (such as subscribing to a channel)</Warning>
 
 ## Typescript Support
 
