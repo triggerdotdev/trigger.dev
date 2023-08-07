@@ -94,6 +94,7 @@ importers:
       '@trigger.dev/companyicons': ^1.5.14
       '@trigger.dev/core': workspace:*
       '@trigger.dev/database': workspace:*
+      '@trigger.dev/sdk': 2.0.2
       '@trigger.dev/tailwind-config': workspace:*
       '@types/bcryptjs': ^2.4.2
       '@types/compression': ^1.7.2
@@ -218,6 +219,7 @@ importers:
       '@trigger.dev/companyicons': 1.5.14_biqbaboplfbrettd7655fr4n2y
       '@trigger.dev/core': link:../../packages/core
       '@trigger.dev/database': link:../../packages/database
+      '@trigger.dev/sdk': 2.0.2
       '@uiw/react-codemirror': 4.19.5_k4ec5g7vuuzzonc3d6xbjnmmle
       class-variance-authority: 0.5.2_typescript@4.9.4
       clsx: 1.2.1
@@ -10268,6 +10270,42 @@ packages:
     dependencies:
       react: 18.2.0
       react-dom: 18.2.0_react@18.2.0
+    dev: false
+
+  /@trigger.dev/core/2.0.2:
+    resolution: {integrity: sha512-VQkppbRd7QPELG0TOPKHvBQ9/PumEjF60pOSxM4riGyfND7gBn+AqgdQpcKAoWxopANVHx4lX+ZPDaSDZmL5nw==}
+    engines: {node: '>=16.8.0'}
+    dependencies:
+      ulid: 2.3.0
+      zod: 3.21.4
+      zod-error: 1.5.0
+    dev: false
+
+  /@trigger.dev/sdk/2.0.2:
+    resolution: {integrity: sha512-Nl3yR93DKUR3GNwFkDU5eUnnbWzy7K0kI0M1IuKmoRhmB5gYSsjV51x8YC6or5sk+MGuZ3jD+ADG1lIwxLhzvQ==}
+    engines: {node: '>=16.8.0'}
+    dependencies:
+      '@trigger.dev/core': 2.0.2
+      chalk: 5.2.0
+      cronstrue: 2.21.0
+      debug: 4.3.4
+      evt: 2.4.13
+      get-caller-file: 2.0.5
+      git-remote-origin-url: 4.0.0
+      git-repo-info: 2.1.1
+      node-fetch: 2.6.12
+      slug: 6.1.0
+      terminal-link: 3.0.0
+      ulid: 2.3.0
+      uuid: 9.0.0
+      ws: 8.12.0
+      zod: 3.21.4
+      zod-error: 1.5.0
+    transitivePeerDependencies:
+      - bufferutil
+      - encoding
+      - supports-color
+      - utf-8-validate
     dev: false
 
   /@tsconfig/node10/1.0.9:
