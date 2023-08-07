@@ -2,7 +2,17 @@
 
 This project is meant to be used to create a catalog of jobs, usually to test something in an integration or the SDK.
 
+## Setup
+
+You will need to create a `.env` file. You can duplicate the `.env.example` file and set your local `TRIGGER_API_KEY` value.
+
 ### Running
+
+You need to build the CLI:
+
+```sh
+pnpm run build --filter @trigger.dev/cli
+```
 
 Each file in `src` is a separate set of jobs that can be run separately. For example, the `src/stripe.ts` file can be run with:
 
