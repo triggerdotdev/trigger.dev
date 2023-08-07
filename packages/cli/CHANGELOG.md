@@ -1,5 +1,13 @@
 # create-trigger
 
+## 2.0.4
+
+### Patch Changes
+
+- ff04bf44: Detect package manager from artifacts if they exist
+- d5b8f829: The cli init command creates a jobs/index file and that is used to import jobs
+- e7402978: Detect Next.js project by looking at dependencies if can't find next.config.js
+
 ## 2.0.3
 
 ### Patch Changes
