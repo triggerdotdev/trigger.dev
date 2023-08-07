@@ -1,5 +1,11 @@
 # internal-platform
 
+## 2.0.4
+
+### Patch Changes
+
+- 96384991: Adding the validate endpoint action to be able to add an endpoint first in the dashboard
+
 ## 2.0.3
 
 ## 2.0.2

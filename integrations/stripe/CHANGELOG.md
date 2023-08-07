@@ -1,5 +1,13 @@
 # @trigger.dev/stripe
 
+## 2.0.4
+
+### Patch Changes
+
+- Updated dependencies [96384991]
+  - @trigger.dev/sdk@2.0.4
+  - @trigger.dev/integration-kit@2.0.4
+
 ## 2.0.3
 
 ### Patch Changes
