@@ -1,11 +1,15 @@
+import { ArrowUpIcon } from "@heroicons/react/24/solid";
 import { LoaderArgs } from "@remix-run/server-runtime";
+import { GitHubLightIcon, OpenAILightIcon, ResendIcon } from "@trigger.dev/companyicons";
+import { CalendarDaysIcon, ClockIcon, SlackIcon } from "lucide-react";
+import useWindowSize from "react-use/lib/useWindowSize";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import Confetti from "react-confetti";
 import { HowToSetupYourProject } from "~/components/helpContent/HelpContentText";
 import { JobsTable } from "~/components/jobs/JobsTable";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { Callout } from "~/components/primitives/Callout";
-import { Header1, Header2 } from "~/components/primitives/Headers";
+import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Input } from "~/components/primitives/Input";
 import {
@@ -17,34 +21,19 @@ import {
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { TextLink } from "~/components/primitives/TextLink";
 import { useFilterJobs } from "~/hooks/useFilterJobs";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { JobListPresenter } from "~/presenters/JobListPresenter.server";
+import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
-import useWindowSize from "react-use/lib/useWindowSize";
 import {
-  docsPath,
+  ProjectParamSchema,
   projectIntegrationsPath,
   trimTrailingSlash,
-  ProjectParamSchema,
 } from "~/utils/pathBuilder";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
-import { requireUserId } from "~/services/session.server";
-import { JobListPresenter } from "~/presenters/JobListPresenter.server";
-import { TextLink } from "~/components/primitives/TextLink";
-import { GitHubLightIcon, OpenAILightIcon, ResendIcon } from "@trigger.dev/companyicons";
-import { ClockIcon, CalendarDaysIcon, SlackIcon } from "lucide-react";
-import { Button } from "~/components/primitives/Buttons";
-import { ArrowUpIcon } from "@heroicons/react/24/solid";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "~/components/primitives/Dialog";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -150,25 +139,7 @@ export default function Page() {
                     )}
                   </>
                 ) : (
-                  <>
-                    <div className="flex w-full justify-end">
-                      <Dialog>
-                        <DialogTrigger>
-                          <Button variant={"primary/medium"}>I'm stuck!</Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Are you sure absolutely sure?</DialogTitle>
-                            <DialogDescription>
-                              This action cannot be undone. This will permanently delete your
-                              account and remove your data from our servers.
-                            </DialogDescription>
-                          </DialogHeader>
-                        </DialogContent>
-                      </Dialog>
-                    </div>
-                    <HowToSetupYourProject />
-                  </>
+                  <HowToSetupYourProject />
                 )}
               </div>
               <HelpContent title="Example Jobs and inspiration">
