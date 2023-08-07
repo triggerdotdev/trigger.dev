@@ -146,26 +146,7 @@ export default function Page() {
                       noResultsText={`No Jobs match ${filterText}. Try a different search
               query.`}
                     />
-                    {jobs.length === 1 ? (
-                      <>
-                        <Callout
-                          variant="docs"
-                          to={docsPath("documentation/guides/create-a-job")}
-                          className="my-3"
-                        >
-                          Create your first Job in code
-                        </Callout>
-                        <ExampleJobs />
-                      </>
-                    ) : (
-                      <Callout
-                        variant="docs"
-                        to={docsPath("documentation/guides/create-a-job")}
-                        className="my-3"
-                      >
-                        Create another Job
-                      </Callout>
-                    )}
+                    {jobs.length == 1 && <ExampleJobs />}
                   </>
                 )}
               </div>
