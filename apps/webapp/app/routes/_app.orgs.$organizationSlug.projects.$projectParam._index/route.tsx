@@ -115,32 +115,41 @@ export default function Page() {
           {(open) => (
             <div className={cn("grid h-fit gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
               <div className="h-full">
-                {jobs.length > 0 && jobs.some((j) => j.hasIntegrationsRequiringAction) && (
-                  <Callout
-                    variant="error"
-                    to={projectIntegrationsPath(organization, project)}
-                    className="mb-2"
-                  >
-                    Some of your Jobs have Integrations that have not been configured.
-                  </Callout>
-                )}
-                {jobs.length > 0 && (
-                  <div className="mb-2 flex flex-col">
-                    <Header2 spacing>Jobs</Header2>
-                    <div className="flex w-full">
-                      <Input
-                        placeholder="Search Jobs"
-                        variant="tertiary"
-                        icon="search"
-                        fullWidth={true}
-                        value={filterText}
-                        onChange={(e) => setFilterText(e.target.value)}
-                      />
-                      <HelpTrigger title="Example Jobs and inspiration" />
+                {jobs.length > 0 ? (
+                  <>
+                    {jobs.some((j) => j.hasIntegrationsRequiringAction) && (
+                      <Callout
+                        variant="error"
+                        to={projectIntegrationsPath(organization, project)}
+                        className="mb-2"
+                      >
+                        Some of your Jobs have Integrations that have not been configured.
+                      </Callout>
+                    )}
+                    <div className="mb-2 flex flex-col">
+                      <Header2 spacing>Jobs</Header2>
+                      <div className="flex w-full">
+                        <Input
+                          placeholder="Search Jobs"
+                          variant="tertiary"
+                          icon="search"
+                          fullWidth={true}
+                          value={filterText}
+                          onChange={(e) => setFilterText(e.target.value)}
+                        />
+                        <HelpTrigger title="Example Jobs and inspiration" />
+                      </div>
                     </div>
-                  </div>
-                )}
-                {jobs.length === 0 ? (
+                    <JobsTable
+                      jobs={filteredItems}
+                      noResultsText={`No Jobs match ${filterText}. Try a different search
+          query.`}
+                    />
+                    {jobs.length === 1 && jobs.every((r) => r.lastRun === undefined) && (
+                      <RunYourJobPrompt />
+                    )}
+                  </>
+                ) : (
                   <>
                     <div className="flex w-full justify-end">
                       <Dialog>
@@ -159,17 +168,6 @@ export default function Page() {
                       </Dialog>
                     </div>
                     <HowToSetupYourProject />
-                  </>
-                ) : (
-                  <>
-                    <JobsTable
-                      jobs={filteredItems}
-                      noResultsText={`No Jobs match ${filterText}. Try a different search
-              query.`}
-                    />
-                    {jobs.length === 1 && jobs.some((r) => r.lastRun === undefined) && (
-                      <RunYourJobPrompt />
-                    )}
                   </>
                 )}
               </div>
