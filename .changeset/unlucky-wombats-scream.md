@@ -2,4 +2,4 @@
 "@trigger.dev/cli": patch
 ---
 
-Detect Next.js project by looking at dependencies, not next.config.js
+Detect Next.js project by looking at dependencies if can't find next.config.js
