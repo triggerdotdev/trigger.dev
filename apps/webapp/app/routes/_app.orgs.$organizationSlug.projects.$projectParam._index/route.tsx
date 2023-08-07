@@ -141,7 +141,9 @@ export default function Page() {
                   noResultsText={`No Jobs match ${filterText}. Try a different search
               query.`}
                 />
-                {jobs.length === 1 && <RunYourJobPrompt />}
+                {jobs.length === 1 && jobs.some((r) => r.lastRun === undefined) && (
+                  <RunYourJobPrompt />
+                )}
               </>
             )}
           </div>
