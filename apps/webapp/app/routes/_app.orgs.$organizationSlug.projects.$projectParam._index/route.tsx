@@ -37,6 +37,14 @@ import { GitHubLightIcon, OpenAILightIcon, ResendIcon } from "@trigger.dev/compa
 import { ClockIcon, CalendarDaysIcon, SlackIcon } from "lucide-react";
 import { Button } from "~/components/primitives/Buttons";
 import { ArrowUpIcon } from "@heroicons/react/24/solid";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -135,7 +143,20 @@ export default function Page() {
                 {jobs.length === 0 ? (
                   <>
                     <div className="flex w-full justify-end">
-                      <Button variant={"primary/medium"}>I'm stuck!</Button>
+                      <Dialog>
+                        <DialogTrigger>
+                          <Button variant={"primary/medium"}>I'm stuck!</Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Are you sure absolutely sure?</DialogTitle>
+                            <DialogDescription>
+                              This action cannot be undone. This will permanently delete your
+                              account and remove your data from our servers.
+                            </DialogDescription>
+                          </DialogHeader>
+                        </DialogContent>
+                      </Dialog>
                     </div>
                     <HowToSetupYourProject />
                   </>
