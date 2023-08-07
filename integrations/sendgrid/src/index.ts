@@ -3,30 +3,37 @@ import sgMail from "@sendgrid/mail";
 
 import type { AuthenticatedTask } from "@trigger.dev/sdk";
 
-type SendEmailData = Parameters<typeof sgMail["send"]>[0];
+type SendEmailData = Parameters<(typeof sgMail)["send"]>[0];
 type SendEmailResponse = [sgMail.ClientResponse, {}];
-
 
 export const sendEmail: AuthenticatedTask<typeof sgMail, SendEmailData, SendEmailResponse> = {
   run: async (params, client) => {
     const response = await client.send(params);
-    return response as SendEmailResponse; 
+    return response as SendEmailResponse;
   },
   init: (params) => {
-    const subjectProperty = Array.isArray(params) ? [] : (params.subject ? [{ label: "Subject", text: params.subject }] : []);
-    
+    const subjectProperty = Array.isArray(params)
+      ? []
+      : params.subject
+      ? [{ label: "Subject", text: params.subject }]
+      : [];
+
     return {
       name: "Send Email",
       params,
-      icon: "sendgrid", 
+      icon: "sendgrid",
       properties: [
         {
           label: "From",
-          text: Array.isArray(params) ? params[0].from : params.from, 
+          text: Array.isArray(params)
+            ? getEmailFromEmailData(params[0].from)
+            : getEmailFromEmailData(params.from),
         },
         {
           label: "To",
-          text: Array.isArray(params) ? params[0].to : params.to,
+          text: Array.isArray(params)
+            ? getEmailFromEmailData(params[0]?.to)
+            : getEmailFromEmailData(params?.to),
         },
         ...subjectProperty,
       ],
@@ -50,7 +57,9 @@ export type SendGridIntegrationOptions = {
   apiKey: string;
 };
 
-export class SendGrid implements TriggerIntegration<IntegrationClient<typeof sgMail, typeof tasks>> {
+export class SendGrid
+  implements TriggerIntegration<IntegrationClient<typeof sgMail, typeof tasks>>
+{
   client: IntegrationClient<typeof sgMail, typeof tasks>;
 
   constructor(private options: SendGridIntegrationOptions) {
@@ -77,4 +86,21 @@ export class SendGrid implements TriggerIntegration<IntegrationClient<typeof sgM
   get metadata() {
     return { id: "sendgrid", name: "SendGrid" };
   }
+}
+
+type EmailData = string | { name?: string; email: string };
+type EmailDataArray = EmailData | EmailData[];
+
+function getEmailFromEmailData(emailData: EmailDataArray | undefined): string {
+  if (emailData === undefined) {
+    return "";
+  }
+  if (Array.isArray(emailData)) {
+    return emailData.map(getEmailFromEmailData).join(", ");
+  }
+
+  if (typeof emailData === "string") {
+    return emailData;
+  }
+  return emailData.email;
 }

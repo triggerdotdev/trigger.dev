@@ -5,6 +5,7 @@
   "scripts": {
     "stripe": "nodemon --watch src/stripe.ts -r tsconfig-paths/register -r dotenv/config src/stripe.ts",
     "supabase": "nodemon --watch src/supabase.ts -r tsconfig-paths/register -r dotenv/config src/supabase.ts",
+    "sendgrid": "nodemon --watch src/sendgrid.ts -r tsconfig-paths/register -r dotenv/config src/sendgrid.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {
