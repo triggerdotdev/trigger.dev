@@ -6,6 +6,7 @@ import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
 import { sendEmail } from "./email.server";
 import { IndexEndpointService } from "./endpoints/indexEndpoint.server";
+import { RecurringEndpointIndexService } from "./endpoints/recurringEndpointIndex.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
 import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
 import { integrationAuthRepository } from "./externalApis/integrationAuthRepository.server";
@@ -95,6 +96,31 @@ function getWorkerQueue() {
       pollInterval: 1000,
     },
     schema: workerCatalog,
+    recurringTasks: {
+      // Run this every 5 minutes
+      autoIndexProductionEndpoints: {
+        pattern: "*/5 * * * *",
+        handler: async (payload, job) => {
+          const service = new RecurringEndpointIndexService();
+
+          await service.call(payload.ts);
+        },
+      },
+      // Run this every hour
+      purgeOldIndexings: {
+        pattern: "0 * * * *",
+        handler: async (payload, job) => {
+          // Delete indexings that are older than 7 days
+          await prisma.endpointIndex.deleteMany({
+            where: {
+              createdAt: {
+                lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+              },
+            },
+          });
+        },
+      },
+    },
     tasks: {
       "events.invokeDispatcher": {
         maxAttempts: 3,
