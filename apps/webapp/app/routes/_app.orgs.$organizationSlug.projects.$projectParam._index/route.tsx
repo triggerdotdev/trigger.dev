@@ -101,8 +101,8 @@ export default function Page() {
             "rgb(217 70 239)",
           ]}
         /> */}
-        <div className="grid h-fit grid-cols-1 gap-4">
-          <div>
+        <div className="grid h-full grid-cols-1 gap-4">
+          <div className="h-full">
             {jobs.length > 0 && jobs.some((j) => j.hasIntegrationsRequiringAction) && (
               <Callout
                 variant="error"
@@ -112,23 +112,21 @@ export default function Page() {
                 Some of your Jobs have Integrations that have not been configured.
               </Callout>
             )}
-            <div className="mb-2 flex items-center justify-between gap-x-2">
-              {jobs.length >= 1 && (
-                <div className="flex w-full flex-col">
-                  <Header2 spacing>Jobs</Header2>
-                  <Input
-                    placeholder="Search Jobs"
-                    variant="tertiary"
-                    icon="search"
-                    fullWidth={true}
-                    value={filterText}
-                    onChange={(e) => setFilterText(e.target.value)}
-                  />
-                </div>
-              )}
-            </div>
+            {jobs.length >= 1 && (
+              <div className="mb-2 flex flex-col">
+                <Header2 spacing>Jobs</Header2>
+                <Input
+                  placeholder="Search Jobs"
+                  variant="tertiary"
+                  icon="search"
+                  fullWidth={true}
+                  value={filterText}
+                  onChange={(e) => setFilterText(e.target.value)}
+                />
+              </div>
+            )}
             {jobs.length === 0 ? (
-              <div>
+              <div className="grid h-full place-content-center">
                 <Header1 spacing>Get setup in 5 minutes</Header1>
                 <HowToSetupYourProject />
               </div>
