@@ -56,7 +56,10 @@ export function HowToSetupYourProject() {
       </RadioGroup>
       {selectedValue === "v1" && (
         <>
-          <StepNumber stepNumber="1" title="Run the CLI 'init' command in a Next.js project" />
+          <StepNumber
+            stepNumber="1"
+            title="Run the CLI 'trigger-with-new-next-app' command to create a new Next.js project"
+          />
           <StepContentContainer>
             <ClientTabs defaultValue="npm">
               <ClientTabsList>
@@ -133,7 +136,10 @@ export function HowToSetupYourProject() {
       )}
       {selectedValue === "v2" && (
         <>
-          <StepNumber stepNumber="1" title="Run the CLI 'trigger-with-new-next-app' command" />
+          <StepNumber
+            stepNumber="1"
+            title="Run the CLI 'init' command in an existing Next.js project"
+          />
           <StepContentContainer>
             <ClientTabs defaultValue="npm">
               <ClientTabsList>
