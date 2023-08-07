@@ -38,8 +38,8 @@ client.defineJob({
     supabase,
   },
   run: async (payload, io, ctx) => {
-    const { data: users, error } = await io.supabase.runTask("find-users", async (db) => {
-      return db.from("users").select("*");
+    const { data: todos, error } = await io.supabase.runTask("find-todos", async (db) => {
+      return db.from("todos").select("*");
     });
   },
 });
@@ -60,8 +60,8 @@ client.defineJob({
     supabase,
   },
   run: async (payload, io, ctx) => {
-    const users = await io.supabase.runTask("find-users", async (db) => {
-      const { data, error } = await db.from("users").select("*");
+    const todos = await io.supabase.runTask("find-todos", async (db) => {
+      const { data, error } = await db.from("todos").select("*");
 
       if (error) throw error;
 
@@ -100,15 +100,15 @@ client.defineJob({
     supabase,
   },
   run: async (payload, io, ctx) => {
-    const users = await io.supabase.runTask("find-users", async (db) => {
-      const { data, error } = await db.from("users").select("*");
+    const todos = await io.supabase.runTask("find-todos", async (db) => {
+      const { data, error } = await db.from("todos").select("*");
 
       if (error) throw error;
 
       return data;
     });
 
-    // users is now typed as User[] instead of any[]
+    // todos is now typed as Todo[] instead of any[]
   },
 });
 ```
