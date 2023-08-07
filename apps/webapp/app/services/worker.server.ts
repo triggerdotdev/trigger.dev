@@ -180,7 +180,7 @@ function getWorkerQueue() {
         },
       },
       deliverHttpSourceRequest: {
-        maxAttempts: 5,
+        maxAttempts: 25,
         handler: async (payload, job) => {
           const service = new DeliverHttpSourceRequestService();
 
