@@ -103,51 +103,61 @@ export default function Page() {
             "rgb(217 70 239)",
           ]}
         /> */}
-        <div className="grid h-full grid-cols-1 gap-4">
-          <div className="h-full">
-            {jobs.length > 0 && jobs.some((j) => j.hasIntegrationsRequiringAction) && (
-              <Callout
-                variant="error"
-                to={projectIntegrationsPath(organization, project)}
-                className="mb-2"
-              >
-                Some of your Jobs have Integrations that have not been configured.
-              </Callout>
-            )}
-            {jobs.length >= 1 && (
-              <div className="mb-2 flex flex-col">
-                <Header2 spacing>Jobs</Header2>
-                <Input
-                  placeholder="Search Jobs"
-                  variant="tertiary"
-                  icon="search"
-                  fullWidth={true}
-                  value={filterText}
-                  onChange={(e) => setFilterText(e.target.value)}
-                />
-              </div>
-            )}
-            {jobs.length === 0 ? (
-              <>
-                <div className="flex w-full justify-end">
-                  <Button variant={"primary/medium"}>I'm stuck!</Button>
-                </div>
-                <HowToSetupYourProject />
-              </>
-            ) : (
-              <>
-                <JobsTable
-                  jobs={filteredItems}
-                  noResultsText={`No Jobs match ${filterText}. Try a different search
-              query.`}
-                />
-                {jobs.length === 1 && jobs.some((r) => r.lastRun === undefined) && (
-                  <RunYourJobPrompt />
+        <Help>
+          {(open) => (
+            <div className={cn("grid h-fit gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
+              <div className="h-full">
+                {jobs.length > 0 && jobs.some((j) => j.hasIntegrationsRequiringAction) && (
+                  <Callout
+                    variant="error"
+                    to={projectIntegrationsPath(organization, project)}
+                    className="mb-2"
+                  >
+                    Some of your Jobs have Integrations that have not been configured.
+                  </Callout>
                 )}
-              </>
-            )}
-          </div>
-        </div>
+                {jobs.length > 0 && (
+                  <div className="mb-2 flex flex-col">
+                    <Header2 spacing>Jobs</Header2>
+                    <div className="flex w-full">
+                      <Input
+                        placeholder="Search Jobs"
+                        variant="tertiary"
+                        icon="search"
+                        fullWidth={true}
+                        value={filterText}
+                        onChange={(e) => setFilterText(e.target.value)}
+                      />
+                      <HelpTrigger title="Example Jobs and inspiration" />
+                    </div>
+                  </div>
+                )}
+                {jobs.length === 0 ? (
+                  <>
+                    <div className="flex w-full justify-end">
+                      <Button variant={"primary/medium"}>I'm stuck!</Button>
+                    </div>
+                    <HowToSetupYourProject />
+                  </>
+                ) : (
+                  <>
+                    <JobsTable
+                      jobs={filteredItems}
+                      noResultsText={`No Jobs match ${filterText}. Try a different search
+              query.`}
+                    />
+                    {jobs.length === 1 && jobs.some((r) => r.lastRun === undefined) && (
+                      <RunYourJobPrompt />
+                    )}
+                  </>
+                )}
+              </div>
+              <HelpContent title="Example Jobs and inspiration">
+                <ExampleJobs />
+              </HelpContent>
+            </div>
+          )}
+        </Help>
       </PageBody>
     </PageContainer>
   );
