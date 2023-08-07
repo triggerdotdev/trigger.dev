@@ -36,6 +36,7 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { GitHubLightIcon, OpenAILightIcon, ResendIcon } from "@trigger.dev/companyicons";
 import { ClockIcon, CalendarDaysIcon, SlackIcon } from "lucide-react";
 import { Button } from "~/components/primitives/Buttons";
+import { ArrowUpIcon } from "@heroicons/react/24/solid";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -140,13 +141,24 @@ export default function Page() {
                   noResultsText={`No Jobs match ${filterText}. Try a different search
               query.`}
                 />
-                {jobs.length === 1 && <ExampleJobs />}
+                {jobs.length === 1 && <RunYourJobPrompt />}
               </>
             )}
           </div>
         </div>
       </PageBody>
     </PageContainer>
+  );
+}
+
+function RunYourJobPrompt() {
+  return (
+    <div className="mt-2 flex w-full gap-x-2 rounded border border-slate-800 bg-slate-900 p-4 pl-6">
+      <ArrowUpIcon className="h-5 w-5 animate-bounce text-green-500" />
+      <Paragraph variant="small" className="text-green-500">
+        Your Job is ready to run! Click it to run it now.
+      </Paragraph>
+    </div>
   );
 }
 
