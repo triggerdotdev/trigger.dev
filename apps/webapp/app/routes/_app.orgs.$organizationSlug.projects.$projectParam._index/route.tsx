@@ -5,7 +5,7 @@ import { HowToSetupYourProject } from "~/components/helpContent/HelpContentText"
 import { JobsTable } from "~/components/jobs/JobsTable";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Callout } from "~/components/primitives/Callout";
-import { Header2 } from "~/components/primitives/Headers";
+import { Header1, Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Input } from "~/components/primitives/Input";
 import {
@@ -101,61 +101,49 @@ export default function Page() {
             "rgb(217 70 239)",
           ]}
         /> */}
-        <Help defaultOpen={jobs.length === 0}>
-          {(open) => (
-            <div className={cn("grid h-fit gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
-              <div>
-                {jobs.length > 0 && jobs.some((j) => j.hasIntegrationsRequiringAction) && (
-                  <Callout
-                    variant="error"
-                    to={projectIntegrationsPath(organization, project)}
-                    className="mb-2"
-                  >
-                    Some of your Jobs have Integrations that have not been configured.
-                  </Callout>
-                )}
-                <div className="mb-2 flex items-center justify-between gap-x-2">
-                  {jobs.length === 0 ? (
-                    <Header2>Jobs</Header2>
-                  ) : (
-                    <Input
-                      placeholder="Search Jobs"
-                      variant="tertiary"
-                      icon="search"
-                      fullWidth={true}
-                      value={filterText}
-                      onChange={(e) => setFilterText(e.target.value)}
-                    />
-                  )}
-                  <HelpTrigger title="How do I add Trigger.dev to my Next.js app?" />
+        <div className="grid h-fit grid-cols-1 gap-4">
+          <div>
+            {jobs.length > 0 && jobs.some((j) => j.hasIntegrationsRequiringAction) && (
+              <Callout
+                variant="error"
+                to={projectIntegrationsPath(organization, project)}
+                className="mb-2"
+              >
+                Some of your Jobs have Integrations that have not been configured.
+              </Callout>
+            )}
+            <div className="mb-2 flex items-center justify-between gap-x-2">
+              {jobs.length >= 1 && (
+                <div className="flex w-full flex-col">
+                  <Header2 spacing>Jobs</Header2>
+                  <Input
+                    placeholder="Search Jobs"
+                    variant="tertiary"
+                    icon="search"
+                    fullWidth={true}
+                    value={filterText}
+                    onChange={(e) => setFilterText(e.target.value)}
+                  />
                 </div>
-                {jobs.length === 0 ? (
-                  <div>
-                    <div
-                      className={
-                        "flex w-full flex-col justify-center gap-x-4 rounded-md border border-dashed border-indigo-800 px-5 py-8"
-                      }
-                    >
-                      <Paragraph variant="small">Your Jobs will appear here.</Paragraph>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <JobsTable
-                      jobs={filteredItems}
-                      noResultsText={`No Jobs match ${filterText}. Try a different search
-              query.`}
-                    />
-                    {jobs.length == 1 && <ExampleJobs />}
-                  </>
-                )}
-              </div>
-              <HelpContent title="How to add Trigger.dev to your Next.js app (3 mins)">
-                <HowToSetupYourProject />
-              </HelpContent>
+              )}
             </div>
-          )}
-        </Help>
+            {jobs.length === 0 ? (
+              <div>
+                <Header1 spacing>Get setup in 5 minutes</Header1>
+                <HowToSetupYourProject />
+              </div>
+            ) : (
+              <>
+                <JobsTable
+                  jobs={filteredItems}
+                  noResultsText={`No Jobs match ${filterText}. Try a different search
+              query.`}
+                />
+                {jobs.length == 1 && <ExampleJobs />}
+              </>
+            )}
+          </div>
+        </div>
       </PageBody>
     </PageContainer>
   );
