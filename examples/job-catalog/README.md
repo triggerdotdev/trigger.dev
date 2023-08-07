@@ -15,7 +15,7 @@ This will open up a local server using `express` on port 8080. Then in a new ter
 
 ```sh
 cd examples/job-catalog
-pnpm run trigger:dev
+pnpm run dev:trigger
 ```
 
 ### Adding a new file
