@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/express",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Official Express adapter for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,7 +18,7 @@
     "./package.json": "./package.json"
   },
   "devDependencies": {
-    "@trigger.dev/sdk": "workspace:^2.0.4",
+    "@trigger.dev/sdk": "workspace:^2.0.5",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/express": "^4.17.13",
@@ -32,7 +32,7 @@
     "build:tsup": "tsup"
   },
   "peerDependencies": {
-    "@trigger.dev/sdk": "workspace:^2.0.4"
+    "@trigger.dev/sdk": "workspace:^2.0.5"
   },
   "dependencies": {
     "@remix-run/web-fetch": "^4.3.5",
