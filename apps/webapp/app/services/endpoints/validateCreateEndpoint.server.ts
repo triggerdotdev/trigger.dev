@@ -1,45 +1,29 @@
 import { customAlphabet } from "nanoid";
 import { $transaction, prisma, PrismaClient } from "~/db.server";
-import { AuthenticatedEnvironment } from "../apiAuth.server";
-import { EndpointApi } from "../endpointApi.server";
-import { workerQueue } from "../worker.server";
 import { env } from "~/env.server";
+import { AuthenticatedEnvironment } from "../apiAuth.server";
+import { workerQueue } from "../worker.server";
+import { CreateEndpointError } from "./createEndpoint.server";
+import { EndpointApi } from "../endpointApi.server";
 
 const indexingHookIdentifier = customAlphabet("0123456789abcdefghijklmnopqrstuvxyz", 10);
 
-export class CreateEndpointError extends Error {
-  code: "FAILED_PING" | "FAILED_UPSERT";
-  constructor(code: "FAILED_PING" | "FAILED_UPSERT", message: string) {
-    super(message);
-    Object.setPrototypeOf(this, CreateEndpointError.prototype);
-    this.code = code;
-  }
-}
-
-export class CreateEndpointService {
+export class ValidateCreateEndpointService {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({
-    environment,
-    url,
-    id,
-  }: {
-    environment: AuthenticatedEnvironment;
-    url: string;
-    id: string;
-  }) {
+  public async call({ environment, url }: { environment: AuthenticatedEnvironment; url: string }) {
     const endpointUrl = this.#normalizeEndpointUrl(url);
 
     const client = new EndpointApi(environment.apiKey, endpointUrl);
 
-    const pong = await client.ping(id);
+    const validationResult = await client.validate();
 
-    if (!pong.ok) {
-      throw new CreateEndpointError("FAILED_PING", pong.error);
+    if (!validationResult.ok) {
+      throw new Error(validationResult.error);
     }
 
     try {
@@ -48,7 +32,7 @@ export class CreateEndpointService {
           where: {
             environmentId_slug: {
               environmentId: environment.id,
-              slug: id,
+              slug: validationResult.endpointId,
             },
           },
           create: {
@@ -67,7 +51,7 @@ export class CreateEndpointService {
                 id: environment.projectId,
               },
             },
-            slug: id,
+            slug: validationResult.endpointId,
             url: endpointUrl,
             indexingHookIdentifier: indexingHookIdentifier(),
           },

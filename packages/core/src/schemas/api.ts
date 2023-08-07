@@ -128,6 +128,23 @@ export const PongResponseSchema = z.discriminatedUnion("ok", [
 
 export type PongResponse = z.infer<typeof PongResponseSchema>;
 
+export const ValidateSuccessResponseSchema = z.object({
+  ok: z.literal(true),
+  endpointId: z.string(),
+});
+
+export const ValidateErrorResponseSchema = z.object({
+  ok: z.literal(false),
+  error: z.string(),
+});
+
+export const ValidateResponseSchema = z.discriminatedUnion("ok", [
+  ValidateSuccessResponseSchema,
+  ValidateErrorResponseSchema,
+]);
+
+export type ValidateResponse = z.infer<typeof ValidateResponseSchema>;
+
 export const QueueOptionsSchema = z.object({
   name: z.string(),
   maxConcurrent: z.number().optional(),
