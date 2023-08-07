@@ -43,7 +43,7 @@ export async function devCommand(path: string, anyOptions: any) {
 
   const resolvedPath = resolvePath(path);
 
-  checkForOutdatedPackages(resolvedPath);
+  await checkForOutdatedPackages(resolvedPath);
 
   // Read from package.json to get the endpointId
   const endpointId = await getEndpointIdFromPackageJson(resolvedPath, options);
@@ -339,22 +339,22 @@ async function getOutdatedTriggerDevPackages(path: string) {
     devDependencies: z.record(z.string()),
   });
 
-  const triggrDevPackages = [];
+  const triggerDevPackages = [];
   const { dependencies, devDependencies } = packageJSONSchema.parse(packageJSON);
 
   for (const packageName in dependencies) {
     if (packageName.startsWith("@trigger.dev/")) {
-      triggrDevPackages.push(packageName);
+      triggerDevPackages.push(packageName);
     }
   }
 
   for (const packageName in devDependencies) {
     if (packageName.startsWith("@trigger.dev/")) {
-      triggrDevPackages.push(packageName);
+      triggerDevPackages.push(packageName);
     }
   }
 
-  return triggrDevPackages;
+  return triggerDevPackages;
 }
 
 async function getLatestPackageVersion(packageName: string) {

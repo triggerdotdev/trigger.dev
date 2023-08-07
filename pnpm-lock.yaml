@@ -511,6 +511,24 @@ importers:
       msw: 0.47.4_typescript@5.0.4
       ts-loader: 9.4.2_typescript@5.0.4
 
+  examples/outdated-packages:
+    specifiers:
+      '@types/node': 20.4.8
+      '@types/react': 18.2.17
+      '@types/react-dom': 18.2.7
+      next: 13.4.12
+      react: 18.2.0
+      react-dom: 18.2.0
+      typescript: 5.1.6
+    dependencies:
+      '@types/node': 20.4.8
+      '@types/react': 18.2.17
+      '@types/react-dom': 18.2.7
+      next: 13.4.12_biqbaboplfbrettd7655fr4n2y
+      react: 18.2.0
+      react-dom: 18.2.0_react@18.2.0
+      typescript: 5.1.6
+
   examples/package-tester:
     specifiers:
       '@trigger.dev/cli': workspace:*
@@ -10790,6 +10808,10 @@ packages:
 
   /@types/node/20.4.5:
     resolution: {integrity: sha512-rt40Nk13II9JwQBdeYqmbn2Q6IVTA5uPhvSO+JVqdXw/6/4glI6oR9ezty/A9Hg5u7JH4OmYmuQ+XvjKm0Datg==}
+
+  /@types/node/20.4.8:
+    resolution: {integrity: sha512-0mHckf6D2DiIAzh8fM8f3HQCvMKDpK94YQ0DSVkfWTG9BZleYIWudw9cJxX8oCk9bM+vAkDyujDV6dmKHbvQpg==}
+    dev: false
 
   /@types/normalize-package-data/2.4.1:
     resolution: {integrity: sha512-Gj7cI7z+98M282Tqmp2K5EIsoouUEzbBJhQQzDE3jSIRk6r9gsz0oUokqIUR4u1R3dMHo0pDHM7sNOHyhulypw==}
