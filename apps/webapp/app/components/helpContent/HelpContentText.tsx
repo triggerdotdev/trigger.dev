@@ -23,132 +23,158 @@ import {
   ClientTabsTrigger,
 } from "../primitives/ClientTabs";
 import { ClipboardField } from "../primitives/ClipboardField";
-import { Header2 } from "../primitives/Headers";
+import { Header1, Header2 } from "../primitives/Headers";
 import { TextLink } from "../primitives/TextLink";
 import integrationButton from "./integration-button.png";
 import selectEnvironment from "./select-environment.png";
 import selectExample from "./select-example.png";
+import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
+import { useState } from "react";
 
 export function HowToSetupYourProject() {
   const devEnvironment = useDevEnvironment();
   const appOrigin = useAppOrigin();
+  const [selectedValue, setSelectedValue] = useState<string | null>(null);
   return (
-    <>
-      <StepNumber stepNumber="1" title="Run the CLI 'init' command in a Next.js project" />
-      <StepContentContainer>
-        <ClientTabs defaultValue="npm">
-          <ClientTabsList>
-            <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
-            <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
-            <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
-          </ClientTabsList>
-          <ClientTabsContent value={"npm"}>
-            <ClipboardField
-              variant="primary/medium"
-              className="mb-4"
-              secure={`npx @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
-              value={`npx @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
-            />
-          </ClientTabsContent>
-          <ClientTabsContent value={"pnpm"}>
-            <ClipboardField
-              variant="primary/medium"
-              className="mb-4"
-              secure={`pnpm dlx @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
-              value={`pnpm dlx @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
-            />
-          </ClientTabsContent>
-          <ClientTabsContent value={"yarn"}>
-            <ClipboardField
-              variant="primary/medium"
-              className="mb-4"
-              secure={`yarn dlx @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
-              value={`yarn dlx @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
-            />
-          </ClientTabsContent>
-        </ClientTabs>
+    <div className="mx-auto mt-10 max-w-3xl">
+      <Header1 spacing>Get setup in 5 minutes</Header1>
+      <RadioGroup className="mb-4 flex gap-x-2" onValueChange={(value) => setSelectedValue(value)}>
+        <RadioGroupItem
+          id="r1"
+          label="Create a new Next.js project"
+          description="Use this option if you want to try out Trigger.dev in a new Next.js project."
+          value={"v1"}
+          variant="description"
+        />
+        <RadioGroupItem
+          id="r2"
+          label="Use an existing Next.js project"
+          description="Use this option if you want to use Trigger.dev in an existing Next.js project."
+          value={"v2"}
+          variant="description"
+        />
+      </RadioGroup>
+      {selectedValue === "v1" && (
+        <>
+          <StepNumber stepNumber="1" title="Run the CLI 'init' command in a Next.js project" />
+          <StepContentContainer>
+            <ClientTabs defaultValue="npm">
+              <ClientTabsList>
+                <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
+                <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
+                <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
+              </ClientTabsList>
+              <ClientTabsContent value={"npm"}>
+                <ClipboardField
+                  variant="primary/medium"
+                  className="mb-4"
+                  secure={`npx @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
+                  value={`npx @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
+                />
+              </ClientTabsContent>
+              <ClientTabsContent value={"pnpm"}>
+                <ClipboardField
+                  variant="primary/medium"
+                  className="mb-4"
+                  secure={`pnpm dlx @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
+                  value={`pnpm dlx @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
+                />
+              </ClientTabsContent>
+              <ClientTabsContent value={"yarn"}>
+                <ClipboardField
+                  variant="primary/medium"
+                  className="mb-4"
+                  secure={`yarn dlx @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
+                  value={`yarn dlx @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
+                />
+              </ClientTabsContent>
+            </ClientTabs>
 
-        <Paragraph spacing>
-          You’ll notice a new folder in your project called 'jobs'. We’ve added a very simple
-          example Job in <InlineCode>examples.ts</InlineCode> to help you get started.
-        </Paragraph>
-      </StepContentContainer>
-      <StepNumber stepNumber="2" title="Run your Next.js app" />
-      <StepContentContainer>
-        <Paragraph>Ensure your app is running locally.</Paragraph>
-        <ClientTabs defaultValue="npm">
-          <ClientTabsList>
-            <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
-            <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
-            <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
-          </ClientTabsList>
-          <ClientTabsContent value={"npm"}>
-            <ClipboardField variant="primary/medium" className="mb-4" value={`npm run dev`} />
-          </ClientTabsContent>
-          <ClientTabsContent value={"pnpm"}>
-            <ClipboardField variant="primary/medium" className="mb-4" value={`pnpm run dev`} />
-          </ClientTabsContent>
-          <ClientTabsContent value={"yarn"}>
-            <ClipboardField variant="primary/medium" className="mb-4" value={`yarn run dev`} />
-          </ClientTabsContent>
-        </ClientTabs>
-      </StepContentContainer>
-      <StepNumber stepNumber="3" title="Run the CLI 'dev' command" />
-      <StepContentContainer>
-        <Paragraph spacing>
-          In a <strong className="text-bright">separate terminal window or tab</strong> run:
-        </Paragraph>
-        <ClientTabs defaultValue="npm">
-          <ClientTabsList>
-            <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
-            <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
-            <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
-          </ClientTabsList>
-          <ClientTabsContent value={"npm"}>
-            <ClipboardField
+            <Paragraph spacing>
+              You’ll notice a new folder in your project called 'jobs'. We’ve added a very simple
+              example Job in <InlineCode>examples.ts</InlineCode> to help you get started.
+            </Paragraph>
+          </StepContentContainer>
+          <StepNumber stepNumber="2" title="Run your Next.js app" />
+          <StepContentContainer>
+            <Paragraph>Ensure your app is running locally.</Paragraph>
+            <ClientTabs defaultValue="npm">
+              <ClientTabsList>
+                <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
+                <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
+                <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
+              </ClientTabsList>
+              <ClientTabsContent value={"npm"}>
+                <ClipboardField variant="primary/medium" className="mb-4" value={`npm run dev`} />
+              </ClientTabsContent>
+              <ClientTabsContent value={"pnpm"}>
+                <ClipboardField variant="primary/medium" className="mb-4" value={`pnpm run dev`} />
+              </ClientTabsContent>
+              <ClientTabsContent value={"yarn"}>
+                <ClipboardField variant="primary/medium" className="mb-4" value={`yarn run dev`} />
+              </ClientTabsContent>
+            </ClientTabs>
+          </StepContentContainer>
+          <StepNumber stepNumber="3" title="Run the CLI 'dev' command" />
+          <StepContentContainer>
+            <Paragraph spacing>
+              In a <strong className="text-bright">separate terminal window or tab</strong> run:
+            </Paragraph>
+            <ClientTabs defaultValue="npm">
+              <ClientTabsList>
+                <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
+                <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
+                <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
+              </ClientTabsList>
+              <ClientTabsContent value={"npm"}>
+                <ClipboardField
+                  variant="primary/medium"
+                  className="mb-4"
+                  value={`npx @trigger.dev/cli@latest dev`}
+                />
+              </ClientTabsContent>
+              <ClientTabsContent value={"pnpm"}>
+                <ClipboardField
+                  variant="primary/medium"
+                  className="mb-4"
+                  value={`pnpm dlx @trigger.dev/cli@latest dev`}
+                />
+              </ClientTabsContent>
+              <ClientTabsContent value={"yarn"}>
+                <ClipboardField
+                  variant="primary/medium"
+                  className="mb-4"
+                  value={`yarn dlx @trigger.dev/cli@latest dev`}
+                />
+              </ClientTabsContent>
+            </ClientTabs>
+            <Paragraph spacing variant="small">
+              If you’re not running on port 3000 you can specify the port by adding{" "}
+              <InlineCode>--port 3001</InlineCode> to the end.
+            </Paragraph>
+            <Paragraph spacing variant="small">
+              You should leave the <InlineCode>dev</InlineCode> command running when you're
+              developing.
+            </Paragraph>
+          </StepContentContainer>
+          <StepNumber stepNumber="4" title="Check for Jobs" />
+          <StepContentContainer>
+            <Paragraph>
+              Once you've run the CLI command, click Refresh to view your example Job in the list.
+            </Paragraph>
+            <Button
               variant="primary/medium"
-              className="mb-4"
-              value={`npx @trigger.dev/cli@latest dev`}
-            />
-          </ClientTabsContent>
-          <ClientTabsContent value={"pnpm"}>
-            <ClipboardField
-              variant="primary/medium"
-              className="mb-4"
-              value={`pnpm dlx @trigger.dev/cli@latest dev`}
-            />
-          </ClientTabsContent>
-          <ClientTabsContent value={"yarn"}>
-            <ClipboardField
-              variant="primary/medium"
-              className="mb-4"
-              value={`yarn dlx @trigger.dev/cli@latest dev`}
-            />
-          </ClientTabsContent>
-        </ClientTabs>
-        <Paragraph spacing variant="small">
-          If you’re not running on port 3000 you can specify the port by adding{" "}
-          <InlineCode>--port 3001</InlineCode> to the end.
-        </Paragraph>
-        <Paragraph spacing variant="small">
-          You should leave the <InlineCode>dev</InlineCode> command running when you're developing.
-        </Paragraph>
-      </StepContentContainer>
-      <StepNumber stepNumber="4" title="Check for Jobs" />
-      <StepContentContainer>
-        <Paragraph>
-          Once you've run the CLI command, click Refresh to view your example Job in the list.
-        </Paragraph>
-        <Button
-          variant="primary/medium"
-          className="mt-4"
-          LeadingIcon="refresh"
-          onClick={() => window.location.reload()}
-        >
-          Refresh
-        </Button>
-      </StepContentContainer>
-    </>
+              className="mt-4"
+              LeadingIcon="refresh"
+              onClick={() => window.location.reload()}
+            >
+              Refresh
+            </Button>
+          </StepContentContainer>
+        </>
+      )}
+      {selectedValue === "v2" && <p>Content 2</p>}
+    </div>
   );
 }
 

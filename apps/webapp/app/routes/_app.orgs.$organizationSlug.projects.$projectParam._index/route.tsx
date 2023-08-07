@@ -126,10 +126,7 @@ export default function Page() {
               </div>
             )}
             {jobs.length === 0 ? (
-              <div className="grid h-full place-content-center">
-                <Header1 spacing>Get setup in 5 minutes</Header1>
-                <HowToSetupYourProject />
-              </div>
+              <HowToSetupYourProject />
             ) : (
               <>
                 <JobsTable
