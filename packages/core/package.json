@@ -1,7 +1,7 @@
 {
   "name": "@trigger.dev/core",
   "version": "2.0.5",
-  "description": "Common code used across the Trigger.dev SDK and platform",
+  "description": "Core code used across the Trigger.dev SDK and platform",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "publishConfig": {
