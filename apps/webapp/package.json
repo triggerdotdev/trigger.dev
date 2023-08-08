@@ -14,6 +14,7 @@
     "start": "cross-env NODE_ENV=production node --max-old-space-size=8192 ./build/server.js",
     "typecheck": "tsc --noEmit",
     "db:seed": "node prisma/seed.js",
+    "db:seed:local": "ts-node prisma/seed.ts",
     "generate:sourcemaps": "remix build --sourcemap",
     "clean:sourcemaps": "run-s clean:sourcemaps:*",
     "clean:sourcemaps:public": "rimraf ./build/**/*.map",
