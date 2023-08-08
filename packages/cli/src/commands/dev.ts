@@ -336,19 +336,12 @@ async function getOutdatedTriggerDevPackages(path: string) {
 
   const packageJSONSchema = z.object({
     dependencies: z.record(z.string()),
-    devDependencies: z.record(z.string()),
   });
 
   const triggerDevPackages = [];
-  const { dependencies, devDependencies } = packageJSONSchema.parse(packageJSON);
+  const { dependencies } = packageJSONSchema.parse(packageJSON);
 
   for (const packageName in dependencies) {
-    if (packageName.startsWith("@trigger.dev/")) {
-      triggerDevPackages.push(packageName);
-    }
-  }
-
-  for (const packageName in devDependencies) {
     if (packageName.startsWith("@trigger.dev/")) {
       triggerDevPackages.push(packageName);
     }
@@ -357,18 +350,30 @@ async function getOutdatedTriggerDevPackages(path: string) {
   return triggerDevPackages;
 }
 
+const packageRegistrySchema = z.object({
+  "dist-tags": z.object({
+    latest: z.string(),
+  }),
+});
+
+// @ts-ignore
 async function getLatestPackageVersion(packageName: string) {
   const npmRegistryURL = `https://registry.npmjs.org/${packageName}`;
-  const response = await fetch(npmRegistryURL);
 
-  if (response.ok) {
-    const data = await response.json();
-    // use array destructuring because of the `dist-tags` property
-    // @ts-ignore
-    return data["dist-tags"].latest;
-  } else {
-    console.log(`Failed to fetch the latest version of ${packageName}`);
-  }
+  try {
+    const response = await fetch(npmRegistryURL);
+
+    if (response.ok) {
+      const data = await response.json();
+      const parsedData = packageRegistrySchema.safeParse(data);
+
+      if (parsedData.success) {
+        return parsedData.data["dist-tags"].latest;
+      }
+    }
+  } catch (error) {}
+
+  console.log(`Failed to fetch the lastest version of ${packageName}`);
 }
 
 async function checkForOutdatedPackages(path: string) {
@@ -395,9 +400,7 @@ async function checkForOutdatedPackages(path: string) {
     for (const pkg of outdatedPackages) {
       console.warn(`${pkg.name}: installed ${pkg.installedVersion}, latest ${pkg.latestVersion}`);
     }
-    console.warn("Run 'npx @trigger.dev/cli update' to update the packages.");
-  } else {
-    console.log("All @trigger.dev packages are up-to-date.");
+    // console.warn("Run 'npx @trigger.dev/cli update' to update the packages.");
   }
 }
 
