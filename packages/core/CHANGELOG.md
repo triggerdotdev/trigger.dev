@@ -1,5 +1,7 @@
 # internal-platform
 
+## 2.0.5
+
 ## 2.0.4
 
 ### Patch Changes
