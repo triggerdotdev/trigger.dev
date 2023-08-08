@@ -34,6 +34,91 @@ class SupabaseDatabase<Database = any> {
     private projectRef: string
   ) {}
 
+  /**
+   * The function `on` creates a trigger for when a record is inserted, updated, or deleted on a
+   * specific table in a database schema.
+   * @param params - The `params` parameter is an object that contains the following properties:
+   * @param params.table - The `table` property is a string that specifies the name of the table
+   * that the trigger will be created for.
+   * @param params.events - The `events` property is an array of events that specifies the events
+   * that the trigger will be called for. The events that can be specified are `INSERT`, `UPDATE`, or `DELETE`.
+   * By default, the trigger will be called for all events.
+   * @param params.schema - The `schema` property is a string that specifies the name of the schema
+   * that the trigger will be created for. If the schema is not specified, the default schema will
+   * be used. (public)
+   * @param params.filter - The `filter` property is an object that specifies the filter that will
+   * be used to determine if the trigger should be called. If the filter is not specified, the
+   * trigger will be called for all records.
+   *
+   * @example
+   *
+   * ```ts
+   * const supabase = new SupabaseManagement({ id: "supabase" });
+   * const database = supabase.database<Database>("https://<project-id>.supabase.co");
+   *
+   * client.defineJob({
+   *  trigger: database.on({
+   *    table: "todos",
+   *    events: ["INSERTED", "UPDATED"],
+   *    schema: "public",
+   *    filter: {
+   *     record: { is_completed: [false] },
+   *    },
+   *  }),
+   * })
+   * ```
+   */
+  on<
+    SchemaName extends string & keyof Database = "public" extends keyof Database
+      ? "public"
+      : string & keyof Database,
+    Schema extends GenericSchema = Database[SchemaName] extends GenericSchema
+      ? Database[SchemaName]
+      : any,
+    TTableName extends string & keyof Schema["Tables"] = string & keyof Schema["Tables"],
+    TTable extends Schema["Tables"][TTableName] = Schema["Tables"][TTableName],
+    TEvents extends WebhookEvents[] = ["INSERT", "UPDATE", "DELETE"],
+  >(params: { table: TTableName; events?: TEvents; schema?: SchemaName; filter?: EventFilter }) {
+    return createTrigger<Prettify<UnionPayloads<TEvents, TTableName, SchemaName, TTable["Row"]>>>(
+      this.integration.source,
+      {
+        event: params.events ?? ["INSERT", "UPDATE", "DELETE"],
+        projectRef: this.projectRef,
+        ...params,
+      }
+    );
+  }
+
+  /**
+   * The function `onInserted` creates a trigger for when a new record is inserted into a specific
+   * table in a database schema.
+   * @param params - The `params` parameter is an object that contains the following properties:
+   * @param params.table - The `table` property is a string that specifies the name of the table
+   * that the trigger will be created for.
+   * @param params.schema - The `schema` property is a string that specifies the name of the schema
+   * that the trigger will be created for. If the schema is not specified, the default schema will
+   * be used. (public)
+   * @param params.filter - The `filter` property is an object that specifies the filter that will
+   * be used to determine if the trigger should be called. If the filter is not specified, the
+   * trigger will be called for all records.
+   *
+   * @example
+   *
+   * ```ts
+   * const supabase = new SupabaseManagement({ id: "supabase" });
+   * const database = supabase.database<Database>("https://<project-id>.supabase.co");
+   *
+   * client.defineJob({
+   *  trigger: database.onInserted({
+   *    table: "todos",
+   *    schema: "public",
+   *    filter: {
+   *     record: { is_completed: [false] },
+   *    },
+   *  }),
+   * })
+   * ```
+   */
   onInserted<
     SchemaName extends string & keyof Database = "public" extends keyof Database
       ? "public"
@@ -57,6 +142,37 @@ class SupabaseDatabase<Database = any> {
     });
   }
 
+  /**
+   * The function `onUpdated` creates a trigger for when a new record is updated on a specific
+   * table in a database schema.
+   * @param params - The `params` parameter is an object that contains the following properties:
+   * @param params.table - The `table` property is a string that specifies the name of the table
+   * that the trigger will be created for.
+   * @param params.schema - The `schema` property is a string that specifies the name of the schema
+   * that the trigger will be created for. If the schema is not specified, the default schema will
+   * be used. (public)
+   * @param params.filter - The `filter` property is an object that specifies the filter that will
+   * be used to determine if the trigger should be called. If the filter is not specified, the
+   * trigger will be called for all records.
+   *
+   * @example
+   *
+   * ```ts
+   * const supabase = new SupabaseManagement({ id: "supabase" });
+   * const database = supabase.database<Database>("https://<project-id>.supabase.co");
+   *
+   * client.defineJob({
+   *  trigger: database.onUpdated({
+   *    table: "todos",
+   *    schema: "public",
+   *    filter: {
+   *     record: { completed: [true] },
+   *     old_record: { completed: [false] },
+   *    },
+   *  }),
+   * })
+   * ```
+   */
   onUpdated<
     SchemaName extends string & keyof Database = "public" extends keyof Database
       ? "public"
@@ -80,6 +196,36 @@ class SupabaseDatabase<Database = any> {
     });
   }
 
+  /**
+   * The function `onDeleted` creates a trigger for when a new record is deleted from a specific
+   * table in a database schema.
+   * @param params - The `params` parameter is an object that contains the following properties:
+   * @param params.table - The `table` property is a string that specifies the name of the table
+   * that the trigger will be created for.
+   * @param params.schema - The `schema` property is a string that specifies the name of the schema
+   * that the trigger will be created for. If the schema is not specified, the default schema will
+   * be used. (public)
+   * @param params.filter - The `filter` property is an object that specifies the filter that will
+   * be used to determine if the trigger should be called. If the filter is not specified, the
+   * trigger will be called for all records.
+   *
+   * @example
+   *
+   * ```ts
+   * const supabase = new SupabaseManagement({ id: "supabase" });
+   * const database = supabase.database<Database>("https://<project-id>.supabase.co");
+   *
+   * client.defineJob({
+   *  trigger: database.onDeleted({
+   *    table: "todos",
+   *    schema: "public",
+   *    filter: {
+   *     old_record: { is_completed: [true] },
+   *    },
+   *  }),
+   * })
+   * ```
+   */
   onDeleted<
     SchemaName extends string & keyof Database = "public" extends keyof Database
       ? "public"
@@ -175,9 +321,44 @@ type WebhookEventSource = ReturnType<typeof createWebhookEventSource>;
 
 type WebhookEvents = "INSERT" | "UPDATE" | "DELETE";
 
+type WebhookEventPayloads<
+  TTableName extends string,
+  TSchemaName extends string = "public",
+  TRecord = any,
+> = {
+  INSERT: {
+    table: TTableName;
+    record: Prettify<TRecord>;
+    type: "INSERT";
+    schema: TSchemaName;
+    old_record: null;
+  };
+  UPDATE: {
+    table: TTableName;
+    record: Prettify<TRecord>;
+    type: "UPDATE";
+    schema: TSchemaName;
+    old_record: Prettify<TRecord>;
+  };
+  DELETE: {
+    table: TTableName;
+    record: null;
+    type: "DELETE";
+    schema: TSchemaName;
+    old_record: Prettify<TRecord>;
+  };
+};
+
+type UnionPayloads<
+  T extends WebhookEvents[],
+  TTableName extends string,
+  TSchemaName extends string = "public",
+  TRecord = any,
+> = WebhookEventPayloads<TTableName, TSchemaName, TRecord>[T[number]];
+
 function createTrigger<TEvent extends any>(
   source: WebhookEventSource,
-  params: { event: WebhookEvents; filter?: EventFilter } & {
+  params: { event: WebhookEvents | WebhookEvents[]; filter?: EventFilter } & {
     projectRef: string;
     table: string;
     schema?: string;
@@ -190,7 +371,7 @@ function createTrigger<TEvent extends any>(
     icon: "supabase",
     filter: {
       ...params.filter,
-      type: [params.event],
+      type: typeof params.event === "string" ? [params.event] : params.event,
       schema: [params.schema ?? "public"],
     },
     properties: [],

@@ -1,5 +1,19 @@
 # @trigger.dev/sdk
 
+## 2.0.5
+
+### Patch Changes
+
+- @trigger.dev/core@2.0.5
+
+## 2.0.4
+
+### Patch Changes
+
+- 96384991: Adding the validate endpoint action to be able to add an endpoint first in the dashboard
+- Updated dependencies [96384991]
+  - @trigger.dev/core@2.0.4
+
 ## 2.0.3
 
 ### Patch Changes

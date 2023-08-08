@@ -1,4 +1,6 @@
 import type {
+  CronItem,
+  CronItemOptions,
   Job as GraphileJob,
   Runner as GraphileRunner,
   JobHelpers,
@@ -7,7 +9,7 @@ import type {
   TaskList,
   TaskSpec,
 } from "graphile-worker";
-import { run as graphileRun } from "graphile-worker";
+import { run as graphileRun, parseCronItems } from "graphile-worker";
 
 import omit from "lodash.omit";
 import { z } from "zod";
@@ -17,6 +19,13 @@ import { logger } from "~/services/logger.server";
 export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
 }
+
+const RawCronPayloadSchema = z.object({
+  _cron: z.object({
+    ts: z.coerce.date(),
+    backfilled: z.boolean(),
+  }),
+});
 
 const GraphileJobSchema = z.object({
   id: z.coerce.string(),
@@ -50,6 +59,19 @@ export type ZodTasks<TConsumerSchema extends MessageCatalogSchema> = {
   };
 };
 
+type RecurringTaskPayload = {
+  ts: Date;
+  backfilled: boolean;
+};
+
+export type ZodRecurringTasks = {
+  [key: string]: {
+    pattern: string;
+    options?: CronItemOptions;
+    handler: (payload: RecurringTaskPayload, job: GraphileJob) => Promise<void>;
+  };
+};
+
 export type ZodWorkerEnqueueOptions = TaskSpec & {
   tx?: PrismaClientOrTransaction;
 };
@@ -59,6 +81,7 @@ export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   prisma: PrismaClient;
   schema: TMessageCatalog;
   tasks: ZodTasks<TMessageCatalog>;
+  recurringTasks?: ZodRecurringTasks;
 };
 
 export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
@@ -66,6 +89,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   #prisma: PrismaClient;
   #runnerOptions: RunnerOptions;
   #tasks: ZodTasks<TMessageCatalog>;
+  #recurringTasks?: ZodRecurringTasks;
   #runner?: GraphileRunner;
 
   constructor(options: ZodWorkerOptions<TMessageCatalog>) {
@@ -73,6 +97,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     this.#prisma = options.prisma;
     this.#runnerOptions = options.runnerOptions;
     this.#tasks = options.tasks;
+    this.#recurringTasks = options.recurringTasks;
   }
 
   public async initialize(): Promise<boolean> {
@@ -84,9 +109,12 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       runnerOptions: this.#runnerOptions,
     });
 
+    const parsedCronItems = parseCronItems(this.#createCronItemsFromRecurringTasks());
+
     this.#runner = await graphileRun({
       ...this.#runnerOptions,
       taskList: this.#createTaskListFromTasks(),
+      parsedCronItems,
     });
 
     if (!this.#runner) {
@@ -192,7 +220,36 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       taskList[key] = task;
     }
 
+    for (const [key] of Object.entries(this.#recurringTasks ?? {})) {
+      const task: Task = (payload, helpers) => {
+        return this.#handleRecurringTask(key, payload, helpers);
+      };
+
+      taskList[key] = task;
+    }
+
     return taskList;
+  }
+
+  #createCronItemsFromRecurringTasks() {
+    const cronItems: CronItem[] = [];
+
+    if (!this.#recurringTasks) {
+      return cronItems;
+    }
+
+    for (const [key, task] of Object.entries(this.#recurringTasks)) {
+      const cronItem: CronItem = {
+        pattern: task.pattern,
+        identifier: key,
+        task: key,
+        options: task.options,
+      };
+
+      cronItems.push(cronItem);
+    }
+
+    return cronItems;
   }
 
   async #handleMessage<K extends keyof TMessageCatalog>(
@@ -225,5 +282,46 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     }
 
     await task.handler(payload, job);
+  }
+
+  async #handleRecurringTask(
+    typeName: string,
+    rawPayload: unknown,
+    helpers: JobHelpers
+  ): Promise<void> {
+    const job = helpers.job;
+
+    logger.debug("Received recurring task, calling handler", {
+      type: String(typeName),
+      payload: rawPayload,
+      job,
+    });
+
+    const recurringTask = this.#recurringTasks?.[typeName];
+
+    if (!recurringTask) {
+      throw new Error(`No recurring task for message type: ${String(typeName)}`);
+    }
+
+    const parsedPayload = RawCronPayloadSchema.safeParse(rawPayload);
+
+    if (!parsedPayload.success) {
+      throw new Error(
+        `Failed to parse recurring task payload: ${JSON.stringify(parsedPayload.error)}`
+      );
+    }
+
+    const payload = parsedPayload.data;
+
+    try {
+      await recurringTask.handler(payload._cron, job);
+    } catch (error) {
+      logger.error("Failed to handle recurring task", {
+        error,
+        payload,
+      });
+
+      throw error;
+    }
   }
 }

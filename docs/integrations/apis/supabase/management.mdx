@@ -126,7 +126,7 @@ client.defineJob({
   id: "supabase-trigger",
   name: "Supabase Trigger",
   trigger: db.onInserted({
-    table: "users",
+    table: "todos",
   }),
   run: async (payload, io, ctx) => {
     // payload is the database webhook body (see https://supabase.com/docs/guides/database/webhooks#payload)
@@ -137,20 +137,6 @@ client.defineJob({
 You can add additional filters to the trigger by passing a `filter` object:
 
 ```ts
-client.defineJob({
-  id: "supabase-trigger",
-  name: "Supabase Trigger",
-  trigger: db.onUpdated({
-    table: "users",
-    filter: {
-      country: ["USA", "Canada"], // This will only trigger the job if the user.country is USA or Canada
-    },
-  }),
-  run: async (payload, io, ctx) => {
-    // payload is the database webhook body (see https://supabase.com/docs/guides/database/webhooks#payload)
-  },
-});
-
 client.defineJob({
   id: "supabase-trigger",
   name: "Supabase Trigger",
@@ -168,6 +154,31 @@ client.defineJob({
   }),
   run: async (payload, io, ctx) => {
     // payload is the database webhook body (see https://supabase.com/docs/guides/database/webhooks#payload)
+  },
+});
+```
+
+You can also listen for multiple different events using the `on` trigger:
+
+```ts
+client.defineJob({
+  id: "supabase-trigger",
+  name: "Supabase Trigger",
+  trigger: db.on({
+    table: "todos",
+    events: ["INSERT", "UPDATE"] // Trigger on both insert and update events
+    filter: {
+      record: {
+        is_completed: [false],
+      },
+    },
+  }),
+  run: async (payload, io, ctx) => {
+    if (payload.type === "INSERT") {
+      // payload will be typed as the INSERT payload
+    } else {
+      // payload will be typed as the UPDATE payload
+    }
   },
 });
 ```
@@ -196,10 +207,10 @@ client.defineJob({
   id: "supabase-trigger",
   name: "Supabase Trigger",
   trigger: db.onUpdated({
-    table: "users",
+    table: "todos",
   }),
   run: async (payload, io, ctx) => {
-    // payload.record and payload.old_record are now correctly typed to match the users table
+    // payload.record and payload.old_record are now correctly typed to match the todos table
   },
 });
 ```

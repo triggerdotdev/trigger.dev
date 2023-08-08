@@ -2,7 +2,7 @@ import chalk from "chalk";
 import { execa } from "execa";
 import ora, { type Ora } from "ora";
 import pathModule from "path";
-import { getUserPkgManager, type PackageManager } from "./getUserPkgManager.js";
+import { getUserPackageManager, type PackageManager } from "./getUserPkgManager.js";
 import fs from "fs/promises";
 import fetch from "node-fetch";
 import { z } from "zod";
@@ -18,7 +18,7 @@ export type InstalledPackage = {
 };
 
 export async function addDependencies(projectDir: string, packages: Array<InstallPackage>) {
-  const pkgManager = getUserPkgManager();
+  const pkgManager = await getUserPackageManager(projectDir);
 
   const spinner = ora("Adding @trigger.dev dependencies to package.json...").start();
 
