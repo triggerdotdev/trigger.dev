@@ -1,4 +1,6 @@
+import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
 import { Link, useSearchParams } from "@remix-run/react";
+import invariant from "tiny-invariant";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
@@ -8,6 +10,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { IntegrationIcon } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.integrations/route";
 import { jobTestPath } from "~/utils/pathBuilder";
+import { Feedback } from "../Feedback";
 import { CodeBlock } from "../code/CodeBlock";
 import { InlineCode } from "../code/InlineCode";
 import { EnvironmentLabel } from "../environments/EnvironmentLabel";
@@ -24,15 +27,12 @@ import {
 } from "../primitives/ClientTabs";
 import { ClipboardField } from "../primitives/ClipboardField";
 import { Header1, Header2 } from "../primitives/Headers";
+import { NamedIcon } from "../primitives/NamedIcon";
+import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
 import { TextLink } from "../primitives/TextLink";
 import integrationButton from "./integration-button.png";
 import selectEnvironment from "./select-environment.png";
 import selectExample from "./select-example.png";
-import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
-import { useState } from "react";
-import { Feedback } from "../Feedback";
-import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
-import invariant from "tiny-invariant";
 
 const existingProjectValue = "use-existing-project";
 const newProjectValue = "create-new-next-app";
@@ -70,6 +70,7 @@ export function HowToSetupYourProject() {
           checked={selectedValue === existingProjectValue}
           variant="icon"
           data-action={existingProjectValue}
+          icon={<NamedIcon className="h-14 w-14 text-green-500" name={"trees"} />}
         />
         <RadioGroupItem
           label="Create a new Next.js project"
@@ -78,6 +79,7 @@ export function HowToSetupYourProject() {
           checked={selectedValue === newProjectValue}
           variant="icon"
           data-action={newProjectValue}
+          icon={<NamedIcon className="mt-5 h-8 w-8 text-yellow-500" name={"sapling"} />}
         />
       </RadioGroup>
       {selectedValue && (

@@ -58,6 +58,8 @@ import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { cn } from "~/utils/cn";
 import { LogoIcon } from "../LogoIcon";
 import { Spinner } from "./Spinner";
+import { SaplingIcon } from "~/assets/icons/SaplingIcon";
+import { TwoTreesIcon } from "~/assets/icons/TwoTreesIcon";
 
 const icons = {
   account: (className: string) => <UserCircleIcon className={cn("text-slate-400", className)} />,
@@ -128,6 +130,7 @@ const icons = {
   property: (className: string) => <Cog8ToothIcon className={cn("text-slate-600", className)} />,
   "qr-code": (className: string) => <QrCodeIcon className={cn("text-amber-400", className)} />,
   refresh: (className: string) => <ArrowPathIcon className={cn("text-bright", className)} />,
+  sapling: (className: string) => <SaplingIcon className={cn("text-green-500", className)} />,
   search: (className: string) => <MagnifyingGlassIcon className={cn("text-dimmed", className)} />,
   settings: (className: string) => <Cog8ToothIcon className={cn("text-slate-600", className)} />,
   spinner: (className: string) => <Spinner className={className} color="blue" />,
@@ -135,6 +138,7 @@ const icons = {
   star: (className: string) => <StarIcon className={cn("text-yellow-500", className)} />,
   stop: (className: string) => <StopIcon className={cn("text-rose-500", className)} />,
   team: (className: string) => <UserGroupIcon className={cn("text-blue-500", className)} />,
+  trees: (className: string) => <TwoTreesIcon className={cn("text-green-500", className)} />,
   trigger: (className: string) => <BoltIcon className={cn("text-orange-500", className)} />,
   user: (className: string) => <UserIcon className={cn("text-blue-600", className)} />,
   warning: (className: string) => (
