@@ -153,7 +153,7 @@ export function HowToSetupYourProject() {
                   <Paragraph>Ensure your app is running locally.</Paragraph>
                   <DevCommand />
                 </StepContentContainer>
-                <StepNumber stepNumber="3" title="Check for Jobs" />
+                <StepNumber stepNumber="5" title="Check for Jobs" />
                 <StepContentContainer>
                   <Paragraph>
                     Once you've run the CLI command, click Refresh to view your example Job in the
