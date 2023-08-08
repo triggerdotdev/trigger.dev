@@ -60,6 +60,7 @@ import { LogoIcon } from "../LogoIcon";
 import { Spinner } from "./Spinner";
 import { SaplingIcon } from "~/assets/icons/SaplingIcon";
 import { TwoTreesIcon } from "~/assets/icons/TwoTreesIcon";
+import { OneTreeIcon } from "~/assets/icons/OneTreeIcon";
 
 const icons = {
   account: (className: string) => <UserCircleIcon className={cn("text-slate-400", className)} />,
@@ -138,6 +139,7 @@ const icons = {
   star: (className: string) => <StarIcon className={cn("text-yellow-500", className)} />,
   stop: (className: string) => <StopIcon className={cn("text-rose-500", className)} />,
   team: (className: string) => <UserGroupIcon className={cn("text-blue-500", className)} />,
+  tree: (className: string) => <OneTreeIcon className={cn("text-green-500", className)} />,
   trees: (className: string) => <TwoTreesIcon className={cn("text-green-500", className)} />,
   trigger: (className: string) => <BoltIcon className={cn("text-orange-500", className)} />,
   user: (className: string) => <UserIcon className={cn("text-blue-600", className)} />,

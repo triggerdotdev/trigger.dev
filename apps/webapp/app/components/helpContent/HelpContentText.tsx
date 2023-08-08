@@ -33,6 +33,7 @@ import { TextLink } from "../primitives/TextLink";
 import integrationButton from "./integration-button.png";
 import selectEnvironment from "./select-environment.png";
 import selectExample from "./select-example.png";
+import { TreePineIcon } from "lucide-react";
 
 const existingProjectValue = "use-existing-project";
 const newProjectValue = "create-new-next-app";
@@ -73,7 +74,7 @@ export function HowToSetupYourProject() {
             checked={selectedValue === existingProjectValue}
             variant="icon"
             data-action={existingProjectValue}
-            icon={<NamedIcon className="h-14 w-14 text-green-600" name={"trees"} />}
+            icon={<NamedIcon className="h-14 w-14 text-green-600" name={"tree"} />}
           />
           <RadioGroupItem
             label="Create a new Next.js project"
