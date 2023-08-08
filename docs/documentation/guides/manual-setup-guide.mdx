@@ -1,0 +1,232 @@
+---
+title: "Manual Project Setup Guide"
+description: "This guide provides step-by-step instructions to set up a Next.js project with Trigger.dev."
+---
+
+# Manual Project Setup Guide
+
+This guide provides step-by-step instructions to set up a Next.js project with Trigger.dev.
+
+## 1. Create a New Next.js Project
+
+To start, create a new Next.js project using the following command:
+
+<CodeGroup>
+```bash npm
+
+npx create-next-app@latest
+
+````
+
+```bash yarn
+yarn create next-app@latest
+
+````
+
+```bash pnpm
+pnpm create next-app@latest
+
+```
+
+</CodeGroup>
+
+### 2. Install Dependencies
+
+Install the required dependencies by running the following command:
+
+<CodeGroup>
+
+```bash npm
+
+npm i @trigger.dev/sdk @trigger-dev/nextjs
+
+```
+
+```bash yarn
+yarn add @trigger.dev/sdk @trigger-dev/nextjs
+
+```
+
+```bash pnpm
+pnpm install @trigger.dev/sdk @trigger-dev/nextjs
+
+```
+
+</CodeGroup>
+
+### 3. Set up Trigger Client
+
+Create a new file named trigger.ts in the src directory of your project and add the following code to configure the Trigger Client:
+
+````ts
+
+// src/trigger.ts
+
+import { TriggerClient } from "@trigger.dev/sdk";
+
+export const client = new TriggerClient({
+  id: "app-testing-trigger",
+  apiKey: process.env.TRIGGER_API_KEY,
+  apiUrl: process.env.TRIGGER_API_URL,
+});
+
+```
+
+
+### 4. Define Jobs
+
+Create a Jobs folder in the src directory and add the files index.ts and example.ts.
+
+Add the following code to example.ts to define your first job:
+
+```ts
+// src/Jobs/index.ts
+
+import { eventTrigger } from "@trigger.dev/sdk";
+import { client } from "@/trigger";
+
+// Define your first job
+client.defineJob({
+  id: "example-job",
+  name: "Example Job",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "example.event",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Hello world!", { payload });
+
+    return {
+      message: "Hello world!",
+    };
+  },
+});
+
+```
+
+
+### 5. Additional Job Definitions
+
+You can add more job definitions by creating files in the Jobs folder and exporting them in `index.ts`.
+
+```ts
+// src/Jobs/example.ts
+
+// Import and export other job files here
+export * from "./other-job-file";
+
+    ```
+
+### 6. Create API Route
+
+Create an API route to send and receive data with Trigger.dev. If you are using the NextJs App directory, add the route as follows:
+
+For app/api/trigger/route.ts:
+
+```ts
+// app/api/trigger/route.ts
+
+import { createAppRoute } from "@trigger.dev/nextjs";
+import { client } from "@/trigger";
+import "@/Jobs";
+
+export const { POST, dynamic } = createAppRoute(client);
+
+```
+
+For pages/api/trigger.ts in a pages directory setup:
+
+```ts
+// pages/api/trigger.ts
+
+import { createPagesRoute } from "@trigger.dev/nextjs";
+import { client } from "@/trigger";
+import "@/Jobs";
+
+const { handler, config } = createPagesRoute(client);
+export { config };
+export default handler;
+
+```
+
+### 7. Add Environment Variables
+
+Create a .env.local file in the root of your project and add your Trigger API key and URL:
+
+```bash
+
+TRIGGER_API_KEY= your-trigger-api-key //this is gotten from your trigger dashboard
+TRIGGER_API_URL=https://cloud.trigger.dev
+
+```
+
+
+### 8: Run Your Next.js Site
+
+Ensure your Next.js site is running locally. This is required to connect and register your Jobs. Keep it running for the remaining steps.
+
+<CodeGroup>
+
+```bash npm
+
+npm run dev
+
+```
+
+```bash yarn
+
+yarn run dev
+
+```
+
+```bash pnpm
+
+pnpm run dev
+
+```
+</CodeGroup>
+
+### 9. Run the CLI Dev Command
+The CLI dev command is used to allow Trigger.dev to communicate with your Next.js site for job registration, triggering, and tasks. This command creates a tunnel (using ngrok) to facilitate message transmission from Trigger.dev to your local environment. Keep this command running during development.
+
+Open a new terminal window or tab and run:
+
+```bash 
+npx @trigger.dev/cli@latest dev
+# Optionally, specify a different port with: npx @trigger.dev/cli@latest dev --port 3001
+
+```
+
+### 10. Advanced: Run Next.js Server with CLI
+For advanced users, you can run both your Next.js server and the CLI dev command together. To achieve this:
+
+1. Install the concurrently package:
+
+<CodeGroup> 
+
+```bash npm
+npm install concurrently --save-dev
+```
+
+```bash yarn 
+yarn add --dev concurrently
+```
+
+```bash pnpm 
+pnpm add -D concurrently
+```
+
+</CodeGroup>
+
+2.  Modify your package.json file's dev script:
+
+```json
+{
+  "scripts": {
+    "dev": "concurrently --kill-others npm:dev:*",
+    "dev:next": "next dev",
+    "dev:trigger": "npx @trigger.dev/cli dev",
+    ...
+  }
+}
+```
