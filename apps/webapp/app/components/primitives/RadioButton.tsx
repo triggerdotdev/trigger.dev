@@ -46,7 +46,7 @@ const variants = {
   },
   icon: {
     button:
-      "w-full p-2.5 hover:bg-slate-850 transition data-[disabled]:opacity-70 data-[state=checked]:bg-slate-850 border-slate-800 border rounded-sm",
+      "w-full p-2.5 pb-4 hover:bg-slate-850 transition data-[disabled]:opacity-70 data-[state=checked]:bg-slate-850 border-slate-800 border rounded-sm",
     label: "text-bright font-semibold -mt-1 text-left",
     description: "text-dimmed -mt-0 text-left",
     inputPosition: "mt-0",
@@ -103,7 +103,7 @@ export const RadioGroupItem = React.forwardRef<
             <Circle className="h-1.5 w-1.5 fill-white text-white" />
           </RadioGroupPrimitive.Indicator>
         </div>
-        <div>
+        <div className={cn(variation.icon ? "flex h-full flex-col justify-end" : "")}>
           {variant === "icon" && <div className={variation.icon}>{icon}</div>}
           <div className="flex items-center gap-x-2">
             <label htmlFor={props.id} className={cn("cursor-pointer", variation.label)}>
@@ -117,12 +117,11 @@ export const RadioGroupItem = React.forwardRef<
               </span>
             )}
           </div>
-          {variant === "description" ||
-            ("icon" && (
-              <Paragraph variant="small" className={cn("mt-0.5", variation.description)}>
-                {description}
-              </Paragraph>
-            ))}
+          {(variant === "description" || variant === "icon") && (
+            <Paragraph variant="small" className={cn("mt-0.5", variation.description)}>
+              {description}
+            </Paragraph>
+          )}
         </div>
       </RadioGroupPrimitive.Item>
     );

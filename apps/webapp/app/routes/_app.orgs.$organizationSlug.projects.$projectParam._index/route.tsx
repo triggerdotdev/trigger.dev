@@ -100,9 +100,10 @@ export default function Page() {
             "rgb(217 70 239)",
           ]}
         /> */}
+
         <Help>
           {(open) => (
-            <div className={cn("grid h-fit gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
+            <div className={cn("grid gap-4", open ? "h-fit grid-cols-2" : " h-full grid-cols-1")}>
               <div className="h-full">
                 {jobs.length > 0 ? (
                   <>
