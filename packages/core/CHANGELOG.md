@@ -1,5 +1,11 @@
 # internal-platform
 
+## 2.0.6
+
+### Patch Changes
+
+- 59075f5f: EventFilter now supports more complex condition filters #271
+
 ## 2.0.5
 
 ## 2.0.4
