@@ -55,21 +55,68 @@ export function HowToSetupYourProject() {
           label="Use an existing Next.js project"
           description="Use Trigger.dev in an existing Next.js project in less than 5 mins."
           value={"v2"}
-          variant="description"
+          variant="icon"
         />
         <RadioGroupItem
           id="r2"
           label="Create a new Next.js project"
           description="This is the quickest way to try out Trigger.dev in a new Next.js project and takes 2 mins."
           value={"v1"}
-          variant="description"
+          variant="icon"
         />
       </RadioGroup>
       {selectedValue === "v1" && (
         <>
+          <StepNumber stepNumber="1" title="Create a new Next.js project" />
+          <StepContentContainer>
+            <ClientTabs defaultValue="npm">
+              <ClientTabsList>
+                <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
+                <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
+                <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
+              </ClientTabsList>
+              <ClientTabsContent value={"npm"}>
+                <ClipboardField
+                  variant="primary/medium"
+                  className="mb-4"
+                  value={`npx create-next-app@latest
+                  `}
+                />
+              </ClientTabsContent>
+              <ClientTabsContent value={"pnpm"}>
+                <ClipboardField
+                  variant="primary/medium"
+                  className="mb-4"
+                  value={`pnpm create next-app`}
+                />
+              </ClientTabsContent>
+              <ClientTabsContent value={"yarn"}>
+                <ClipboardField
+                  variant="primary/medium"
+                  className="mb-4"
+                  value={`yarn create next-app`}
+                />
+              </ClientTabsContent>
+            </ClientTabs>
+
+            <Paragraph spacing>
+              Trigger.dev works with either the Pages or App Router configuration.
+            </Paragraph>
+          </StepContentContainer>
+          <StepNumber stepNumber="2" title="Navigate to your new Next.js project" />
+          <StepContentContainer>
+            <Paragraph spacing>
+              You have now created a new Next.js project. Let’s <InlineCode>cd</InlineCode> into it
+              using the project name you just provided:
+            </Paragraph>
+            <ClipboardField
+              value={"cd [replace with your project name]"}
+              variant={"primary/medium"}
+            ></ClipboardField>
+          </StepContentContainer>
           <StepNumber
-            stepNumber="1"
-            title="Run the CLI 'new-next-app' command to create a new Next.js project"
+            stepNumber="3"
+            title="Run the CLI 'init' command in your new Next.js project"
           />
           <StepContentContainer>
             <ClientTabs defaultValue="npm">
@@ -82,24 +129,24 @@ export function HowToSetupYourProject() {
                 <ClipboardField
                   variant="primary/medium"
                   className="mb-4"
-                  secure={`npx @trigger.dev/cli@latest new-next-app -k ••••••••• -t ${appOrigin}`}
-                  value={`npx @trigger.dev/cli@latest new-next-app -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
+                  secure={`npx @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
+                  value={`npx @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
                 />
               </ClientTabsContent>
               <ClientTabsContent value={"pnpm"}>
                 <ClipboardField
                   variant="primary/medium"
                   className="mb-4"
-                  secure={`pnpm dlx @trigger.dev/cli@latest new-next-app -k ••••••••• -t ${appOrigin}`}
-                  value={`pnpm dlx @trigger.dev/cli@latest new-next-app -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
+                  secure={`pnpm dlx @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
+                  value={`pnpm dlx @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
                 />
               </ClientTabsContent>
               <ClientTabsContent value={"yarn"}>
                 <ClipboardField
                   variant="primary/medium"
                   className="mb-4"
-                  secure={`yarn dlx @trigger.dev/cli@latest new-next-app -k ••••••••• -t ${appOrigin}`}
-                  value={`yarn dlx @trigger.dev/cli@latest new-next-app -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
+                  secure={`yarn dlx @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
+                  value={`yarn dlx @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
                 />
               </ClientTabsContent>
             </ClientTabs>
@@ -109,7 +156,7 @@ export function HowToSetupYourProject() {
               example Job in <InlineCode>examples.ts</InlineCode> to help you get started.
             </Paragraph>
           </StepContentContainer>
-          <StepNumber stepNumber="2" title="Run your Next.js app" />
+          <StepNumber stepNumber="4" title="Run your Next.js app" />
           <StepContentContainer>
             <Paragraph>Ensure your app is running locally.</Paragraph>
             <ClientTabs defaultValue="npm">
