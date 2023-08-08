@@ -5,7 +5,7 @@ export type PackageManager = "npm" | "pnpm" | "yarn";
 
 export async function getUserPackageManager(path: string): Promise<PackageManager> {
   try {
-    return detectPackageManagerFromArtifacts(path);
+    return await detectPackageManagerFromArtifacts(path);
   } catch (error) {
     return detectPackageManagerFromCurrentCommand();
   }
