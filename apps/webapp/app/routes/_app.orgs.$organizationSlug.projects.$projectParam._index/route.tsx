@@ -165,69 +165,136 @@ function RunYourJobPrompt() {
   );
 }
 
+const examples = [
+  {
+    icon: <ClockIcon className="h-4 w-4 pt-0.5 text-slate-100" />,
+    title: "Basic delay",
+    description: "Logs a message to the console, waits 5 minutes, and then logs another message.",
+    codeLink: "https://github.com/triggerdotdev/examples/blob/main/delays/src/jobs/delayJob.ts",
+  },
+  {
+    icon: <CalendarDaysIcon className="h-4 w-4 pt-0.5 text-slate-100" />,
+    title: "Basic interval",
+    description: "This Job runs every 60 seconds, starting 60 seconds after it is first indexed.",
+    codeLink: "https://github.com/triggerdotdev/examples/blob/main/scheduled/src/jobs/interval.ts",
+  },
+  {
+    icon: <CalendarDaysIcon className="h-4 w-4 pt-0.5 text-slate-100" />,
+    title: "Cron scheduled interval",
+    description: "A scheduled Job which runs at 2:30pm every Monday.",
+    codeLink:
+      "https://github.com/triggerdotdev/examples/blob/main/scheduled/src/jobs/cronScheduled.ts",
+  },
+  {
+    icon: <OpenAILightIcon className="ml-0.5 h-4 w-4 pt-0.5" />,
+    title: "OpenAI text summarizer",
+    description:
+      "Summarizes a block of text, pulling out the most unique / helpful points using OpenAI.",
+    codeLink:
+      "https://github.com/triggerdotdev/examples/blob/main/openai-text-summarizer/src/jobs/textSummarizer.ts",
+  },
+  {
+    icon: <OpenAILightIcon className="ml-0.5 h-4 w-4 pt-0.5" />,
+    title: "Tell me a joke using OpenAI",
+    description: "Generates a random joke using OpenAI GPT 3.5.",
+    codeLink: "https://github.com/triggerdotdev/examples/blob/main/openai/src/jobs/tellMeAJoke.ts",
+  },
+  {
+    icon: <OpenAILightIcon className="ml-0.5 h-4 w-4 pt-0.5" />,
+    title: "Generate a random image using OpenAI",
+    description: "Generates a random image of a hedgehog using OpenAI DALL-E.	",
+    codeLink:
+      "https://github.com/triggerdotdev/examples/blob/main/openai/src/jobs/generateHedgehogImages.ts",
+  },
+  {
+    icon: <ResendIcon className="ml-0.5 h-4 w-4 pt-0.5" />,
+    title: "Send an email using Resend",
+    description: "Send a basic email using Resend",
+    codeLink:
+      "https://github.com/triggerdotdev/examples/blob/main/resend/src/jobs/resendBasicEmail.ts",
+  },
+  {
+    icon: <GitHubLightIcon className="ml-0.5 h-4 w-4 pt-0.5" />,
+    title: "GitHub issue reminder",
+    description: "Sends a Slack message if a GitHub issue is left for 24h",
+    codeLink:
+      "https://github.com/triggerdotdev/examples/blob/main/github-issue-reminder/jobs/githubIssue.ts",
+  },
+  {
+    icon: <GitHubLightIcon className="ml-0.5 h-4 w-4 pt-0.5" />,
+    title: "Github new star alert in Slack",
+    description: "When a repo is starred, a message is sent to a Slack.",
+    codeLink:
+      "https://github.com/triggerdotdev/examples/blob/main/github/src/jobs/newStarToSlack.ts",
+  },
+  {
+    icon: <GitHubLightIcon className="ml-0.5 h-4 w-4 pt-0.5" />,
+    title: "Add a custom label to a GitHub issue",
+    description: "When a new GitHub issue is opened it adds a “Bug” label to it.",
+    codeLink:
+      "https://github.com/triggerdotdev/examples/blob/main/github/src/jobs/onIssueOpened.ts",
+  },
+  {
+    icon: <GitHubLightIcon className="ml-0.5 h-4 w-4 pt-0.5" />,
+    title: "GitHub new star alert",
+    description: "When a repo is starred a message is logged with the new Stargazers count.",
+    codeLink: "https://github.com/triggerdotdev/examples/blob/main/github/src/jobs/newStarAlert.ts",
+  },
+  {
+    icon: <SlackIcon className="ml-0.5 h-4 w-4 pt-0.5" />,
+    title: "Send a Slack message",
+    description: "Sends a Slack message to a specific channel when an event is received.",
+    codeLink:
+      "https://github.com/triggerdotdev/examples/blob/main/slack/src/jobs/sendSlackMessage.ts",
+  },
+];
+
 function ExampleJobs() {
   return (
-    <div className="mt-6 flex w-full flex-col gap-y-2 rounded bg-slate-900 p-4">
-      <Header2 className="text-slate-300">Example Jobs</Header2>
-      <Paragraph variant="small">
-        If you want more inspiration or just want to dig into the code of a Job, check out our{" "}
-        <TextLink href="https://github.com/triggerdotdev/examples">examples repo</TextLink>.
-      </Paragraph>
+    <>
+      {/* <Header2 className="text-slate-300">Useful docs links</Header2>
+      <li>
+        <TextLink href="https://trigger.dev/docs/documentation/guides/create-a-job">
+          Create a Job in code
+        </TextLink>
+      </li> */}
+      <Header2 className=" text-slate-300">Video walk-through</Header2>
+      <div className="w-full">
+        <Paragraph variant="small" className="mt-2">
+          This video shows a full end-to-end example of a Job created with Trigger.dev. A GitHub
+          issue reminder in Slack.
+        </Paragraph>
+        <iframe
+          src="https://www.youtube.com/embed/uocBQt2HeQo?&showinfo=0&rel=0&modestbranding=1"
+          title="Trigger.dev explainer video"
+          frameBorder="0"
+          width="400"
+          height="250"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+          className="py-4"
+        />
+      </div>
       <div className="h-[1px] w-full bg-slate-800" />
-      <div className="flex gap-1.5">
-        <ClockIcon className="h-4 w-4 pt-0.5 text-slate-100" />
+
+      <div className="flex w-full flex-col gap-y-2 rounded bg-slate-900 p-4">
+        <Header2 className="text-slate-300">Example Jobs</Header2>
         <Paragraph variant="small">
-          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/delays">
-            Delays
-          </TextLink>{" "}
-          - Using delays inside Jobs
+          The best way to learn how to use Trigger.dev is to look at our{" "}
+          <TextLink href="https://github.com/triggerdotdev/examples">examples repo</TextLink>. Each
+          of these Jobs has it's own repo you can fork and run if you wish. See the links below for
+          example Job code to use as a starting point for your projects:
         </Paragraph>
+        <div className="h-[1px] w-full bg-slate-800" />
+        {examples.map((example) => (
+          <div key={example.title} className="flex gap-1.5">
+            {example.icon}
+            <Paragraph variant="small">
+              <TextLink href={example.codeLink}>{example.title} </TextLink> - {example.description}{" "}
+            </Paragraph>
+          </div>
+        ))}
       </div>
-      <div className="flex gap-1.5">
-        <CalendarDaysIcon className="h-4 w-4 pt-0.5 text-slate-100" />
-        <Paragraph variant="small">
-          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/scheduled">
-            Scheduled
-          </TextLink>{" "}
-          - Interval and cron scheduled Jobs
-        </Paragraph>
-      </div>
-      <div className="flex gap-1.5">
-        <GitHubLightIcon className="ml-0.5 h-4 w-4 pt-0.5" />
-        <Paragraph variant="small">
-          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/github">
-            GitHub
-          </TextLink>{" "}
-          - When a new GitHub issue is opened it adds a “Bug” label to it.
-        </Paragraph>
-      </div>
-      <div className="flex gap-1.5">
-        <OpenAILightIcon className="ml-0.5 h-4 w-4 pt-0.5" />
-        <Paragraph variant="small">
-          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/openai">
-            OpenAI
-          </TextLink>{" "}
-          - Generate images and jokes from a prompt
-        </Paragraph>
-      </div>
-      <div className="flex gap-1.5">
-        <ResendIcon className="ml-0.5 h-4 w-4 pt-0.5" />
-        <Paragraph variant="small">
-          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/resend">
-            Resend
-          </TextLink>{" "}
-          - Sends an email by submitting a form in the Next.js app
-        </Paragraph>
-      </div>{" "}
-      <div className="flex gap-1.5">
-        <SlackIcon className="ml-0.5 h-4 w-4 pt-0.5" />
-        <Paragraph variant="small">
-          <TextLink href="https://github.com/triggerdotdev/examples/tree/main/slack">
-            Slack
-          </TextLink>{" "}
-          - Sends a Slack message when an event is received
-        </Paragraph>
-      </div>
-    </div>
+    </>
   );
 }
