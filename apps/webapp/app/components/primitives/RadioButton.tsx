@@ -39,6 +39,13 @@ const variants = {
     description: "text-dimmed -mt-0 text-left",
     inputPosition: "mt-0",
   },
+  icon: {
+    button:
+      "w-full p-2.5 hover:bg-slate-850 transition data-[disabled]:opacity-70 data-[state=checked]:bg-slate-850 border-slate-800 border rounded-sm",
+    label: "text-bright font-semibold -mt-1 text-left",
+    description: "text-dimmed -mt-0 text-left",
+    inputPosition: "mt-0",
+  },
 };
 
 export const RadioGroup = React.forwardRef<
@@ -98,11 +105,12 @@ export const RadioGroupItem = React.forwardRef<
             </span>
           )}
         </div>
-        {variant === "description" && (
-          <Paragraph variant="small" className={cn("mt-0.5", variation.description)}>
-            {description}
-          </Paragraph>
-        )}
+        {variant === "description" ||
+          ("icon" && (
+            <Paragraph variant="small" className={cn("mt-0.5", variation.description)}>
+              {description}
+            </Paragraph>
+          ))}
       </div>
     </RadioGroupPrimitive.Item>
   );

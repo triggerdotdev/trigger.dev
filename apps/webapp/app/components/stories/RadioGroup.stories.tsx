@@ -42,6 +42,13 @@ function RadioGroupExample() {
             value={"5"}
             variant="description"
           />
+          <RadioGroupItem
+            id="r7"
+            label="This is an icon label"
+            description="This is a description"
+            value={"6"}
+            variant="icon"
+          />
         </RadioGroup>
       </form>
     </div>
