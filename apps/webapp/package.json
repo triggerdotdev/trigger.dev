@@ -62,7 +62,7 @@
     "@trigger.dev/companyicons": "^1.5.14",
     "@trigger.dev/database": "workspace:*",
     "@trigger.dev/core": "workspace:*",
-    "@trigger.dev/sdk": "workspace:2.0.5",
+    "@trigger.dev/sdk": "workspace:*",
     "@uiw/react-codemirror": "^4.19.5",
     "class-variance-authority": "^0.5.2",
     "clsx": "^1.2.1",
