@@ -121,7 +121,7 @@ export function HowToSetupYourProject() {
                     </ClientTabsContent>
                   </ClientTabs>
 
-                  <Paragraph spacing>
+                  <Paragraph spacing variant="small">
                     Trigger.dev works with either the Pages or App Router configuration.
                   </Paragraph>
                 </StepContentContainer>
@@ -142,15 +142,14 @@ export function HowToSetupYourProject() {
                 />
                 <StepContentContainer>
                   <InitCommand appOrigin={appOrigin} apiKey={devEnvironment.apiKey} />
-                  <Paragraph spacing>
+                  <Paragraph spacing variant="small">
                     You’ll notice a new folder in your project called 'jobs'. We’ve added a very
-                    simple example Job in <InlineCode>examples.ts</InlineCode> to help you get
-                    started.
+                    simple example Job in <InlineCode variant="extra-small">examples.ts</InlineCode>{" "}
+                    to help you get started.
                   </Paragraph>
                 </StepContentContainer>
                 <StepNumber stepNumber="4" title="Run your Next.js app" />
                 <StepContentContainer>
-                  <Paragraph>Ensure your app is running locally.</Paragraph>
                   <DevCommand />
                 </StepContentContainer>
                 <StepNumber stepNumber="5" title="Check for Jobs" />
@@ -178,15 +177,14 @@ export function HowToSetupYourProject() {
                 <StepContentContainer>
                   <InitCommand appOrigin={appOrigin} apiKey={devEnvironment.apiKey} />
 
-                  <Paragraph spacing>
+                  <Paragraph spacing variant="small">
                     You’ll notice a new folder in your project called 'jobs'. We’ve added a very
-                    simple example Job in <InlineCode>examples.ts</InlineCode> to help you get
-                    started.
+                    simple example Job in <InlineCode variant="extra-small">examples.ts</InlineCode>{" "}
+                    to help you get started.
                   </Paragraph>
                 </StepContentContainer>
                 <StepNumber stepNumber="2" title="Run your Next.js app" />
                 <StepContentContainer>
-                  <Paragraph>Ensure your app is running locally.</Paragraph>
                   <DevCommand />
                 </StepContentContainer>
                 <StepNumber stepNumber="3" title="Run the CLI 'dev' command" />
@@ -225,11 +223,11 @@ export function HowToSetupYourProject() {
                   </ClientTabs>
                   <Paragraph spacing variant="small">
                     If you’re not running on port 3000 you can specify the port by adding{" "}
-                    <InlineCode>--port 3001</InlineCode> to the end.
+                    <InlineCode variant="extra-small">--port 3001</InlineCode> to the end.
                   </Paragraph>
                   <Paragraph spacing variant="small">
-                    You should leave the <InlineCode>dev</InlineCode> command running when you're
-                    developing.
+                    You should leave the <InlineCode variant="extra-small">dev</InlineCode> command
+                    running when you're developing.
                   </Paragraph>
                 </StepContentContainer>
                 <StepNumber stepNumber="4" title="Check for Jobs" />
