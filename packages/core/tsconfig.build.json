@@ -1,12 +1,11 @@
 {
   "extends": "@trigger.dev/tsconfig/node18.json",
-  "include": ["src/globals.d.ts", "./src/**/*.ts", "tsup.config.ts", "./test/**/*.ts"],
+  "include": ["src/globals.d.ts", "./src/**/*.ts", "tsup.config.ts"],
   "compilerOptions": {
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "declaration": false,
-    "declarationMap": false,
-    "types": ["jest"]
+    "declarationMap": false
   },
   "exclude": ["node_modules"]
 }
