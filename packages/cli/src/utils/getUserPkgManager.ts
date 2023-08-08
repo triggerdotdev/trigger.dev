@@ -5,9 +5,13 @@ export type PackageManager = "npm" | "pnpm" | "yarn";
 
 export async function getUserPackageManager(path: string): Promise<PackageManager> {
   try {
-    return detectPackageManagerFromArtifacts(path);
-  } catch (error) {
+    const detectedFromArtifacts = await detectPackageManagerFromArtifacts(path);
+    if (detectedFromArtifacts !== null) {
+      return detectedFromArtifacts;
+    }
     return detectPackageManagerFromCurrentCommand();
+  } catch (error) {
+    throw new Error("Could not determine package manager");
   }
 }
 
@@ -29,7 +33,7 @@ function detectPackageManagerFromCurrentCommand(): PackageManager {
   }
 }
 
-async function detectPackageManagerFromArtifacts(path: string): Promise<PackageManager> {
+async function detectPackageManagerFromArtifacts(path: string): Promise<PackageManager | null> {
   const packageFiles = [
     { name: "yarn.lock", pm: "yarn" } as const,
     { name: "pnpm-lock.yaml", pm: "pnpm" } as const,
@@ -44,5 +48,5 @@ async function detectPackageManagerFromArtifacts(path: string): Promise<PackageM
     }
   }
 
-  throw new Error("Could not detect package manager from artifacts");
+  return null;
 }
