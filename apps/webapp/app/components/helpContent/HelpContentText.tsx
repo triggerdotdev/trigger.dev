@@ -50,7 +50,7 @@ export function HowToSetupYourProject() {
     <div className="-ml-4 -mt-4 h-full w-[calc(100%+32px)] bg-[url('~/assets/images/gradient-background.png')] bg-cover bg-no-repeat pt-20">
       <div className="mx-auto max-w-3xl">
         <div className="flex items-center justify-between">
-          <Header1 spacing className="text-indigo-500">
+          <Header1 spacing className="text-bright">
             Get setup in {selectedValue === newProjectValue ? "5" : "2"} minutes
           </Header1>
           <Feedback
