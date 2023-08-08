@@ -103,7 +103,7 @@ export const RadioGroupItem = React.forwardRef<
             <Circle className="h-1.5 w-1.5 fill-white text-white" />
           </RadioGroupPrimitive.Indicator>
         </div>
-        <div className={cn(variation.icon ? "flex h-full flex-col justify-end" : "")}>
+        <div className={cn(icon ? "flex h-full flex-col justify-end" : "")}>
           {variant === "icon" && <div className={variation.icon}>{icon}</div>}
           <div className="flex items-center gap-x-2">
             <label htmlFor={props.id} className={cn("cursor-pointer", variation.label)}>
