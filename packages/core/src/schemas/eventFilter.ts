@@ -19,6 +19,9 @@ const EventMatcherSchema = z.union([
         $exists: z.boolean(),
       }),
       z.object({
+        $isNull: z.boolean(),
+      }),
+      z.object({
         $anythingBut: z.union([z.string(), z.number(), z.boolean()]),
       }),
       z.object({

@@ -259,6 +259,50 @@ describe("eventFilterMatches", () => {
     expect(eventFilterMatches(payload, filter)).toBe(true);
   });
 
+  it("should return true when payload matches an isNull condition", () => {
+    const payload = {
+      name: "John",
+      age: 30,
+      score: 100,
+      isAdmin: false,
+      confirmedAt: null,
+      hobbies: ["reading", "swimming"],
+      address: {
+        street: "123 Main St",
+        city: "Anytown",
+        state: "CA",
+        zip: "12345",
+      },
+    };
+    const filter: EventFilter = {
+      confirmedAt: [{ $isNull: true }],
+    };
+
+    expect(eventFilterMatches(payload, filter)).toBe(true);
+  });
+
+  it("should return true when payload matches an isNull condition (flipped)", () => {
+    const payload = {
+      name: "John",
+      age: 30,
+      score: 100,
+      isAdmin: false,
+      confirmedAt: "2020-01-01T00:00:00.000Z",
+      hobbies: ["reading", "swimming"],
+      address: {
+        street: "123 Main St",
+        city: "Anytown",
+        state: "CA",
+        zip: "12345",
+      },
+    };
+    const filter: EventFilter = {
+      confirmedAt: [{ $isNull: false }],
+    };
+
+    expect(eventFilterMatches(payload, filter)).toBe(true);
+  });
+
   it("should return false when payload does not match string filter", () => {
     const payload = {
       name: "Jane",
@@ -516,6 +560,52 @@ describe("eventFilterMatches", () => {
     };
     const filter: EventFilter = {
       name: [{ $ignoreCaseEquals: "john" }],
+    };
+    expect(eventFilterMatches(payload, filter)).toBe(false);
+  });
+
+  it("should return false when the payload does not match an isNull condition", () => {
+    const payload = {
+      name: "Jane",
+      age: 25,
+      score: 100,
+      isAdmin: true,
+      hobbies: ["running", "yoga"],
+      confirmedAt: "2020-01-01T00:00:00.000Z",
+      address: {
+        street: "456 Elm St",
+        city: "San Francisco",
+        state: "CA",
+        zip: "67890",
+        latitude: 37.7749,
+        longitude: 122.4194,
+      },
+    };
+    const filter: EventFilter = {
+      confirmedAt: [{ $isNull: true }],
+    };
+    expect(eventFilterMatches(payload, filter)).toBe(false);
+  });
+
+  it("should return false when the payload does not match an isNull condition (flipped)", () => {
+    const payload = {
+      name: "Jane",
+      age: 25,
+      score: 100,
+      isAdmin: true,
+      hobbies: ["running", "yoga"],
+      confirmedAt: null,
+      address: {
+        street: "456 Elm St",
+        city: "San Francisco",
+        state: "CA",
+        zip: "67890",
+        latitude: 37.7749,
+        longitude: 122.4194,
+      },
+    };
+    const filter: EventFilter = {
+      confirmedAt: [{ $isNull: false }],
     };
     expect(eventFilterMatches(payload, filter)).toBe(false);
   });
