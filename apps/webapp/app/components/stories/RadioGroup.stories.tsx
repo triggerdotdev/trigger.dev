@@ -3,6 +3,7 @@ import { withDesign } from "storybook-addon-designs";
 import { useState } from "react";
 import { Button } from "../primitives/Buttons";
 import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
+import { NamedIcon } from "../primitives/NamedIcon";
 
 const meta: Meta = {
   title: "Primitives/RadioGroup",
@@ -41,6 +42,14 @@ function RadioGroupExample() {
             description="This is a description"
             value={"5"}
             variant="description"
+          />
+          <RadioGroupItem
+            id="r7"
+            label="This is an icon label"
+            description="This is a description"
+            value={"6"}
+            variant="icon"
+            icon={<NamedIcon name="tree" className="h-8 w-8" />}
           />
         </RadioGroup>
       </form>
