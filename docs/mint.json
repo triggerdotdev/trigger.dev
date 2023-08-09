@@ -50,12 +50,24 @@
       "url": "examples"
     }
   ],
+  "redirects": [
+    {
+      "source": "/documentation/quickstart",
+      "destination": "/documentation/quickstarts/nextjs"
+    }
+  ],
   "navigation": [
     {
       "group": "Getting Started",
       "pages": [
         "documentation/introduction",
-        "documentation/quickstart",
+        {
+          "group": "Quick Starts",
+          "pages": [
+            "documentation/quickstarts/nextjs",
+            "documentation/quickstarts/supabase"
+          ]
+        },
         "documentation/guides/create-a-job",
         "documentation/guides/video-walkthrough"
       ]
@@ -156,7 +168,10 @@
     },
     {
       "group": "Overview",
-      "pages": ["integrations/introduction", "integrations/create"]
+      "pages": [
+        "integrations/introduction",
+        "integrations/create"
+      ]
     },
     {
       "group": "Integrations",
@@ -179,16 +194,22 @@
         },
         {
           "group": "OpenAI",
-          "pages": ["integrations/apis/openai"]
+          "pages": [
+            "integrations/apis/openai"
+          ]
         },
         "integrations/apis/plain",
         {
           "group": "Resend",
-          "pages": ["integrations/apis/resend"]
+          "pages": [
+            "integrations/apis/resend"
+          ]
         },
         {
           "group": "Slack",
-          "pages": ["integrations/apis/slack"]
+          "pages": [
+            "integrations/apis/slack"
+          ]
         },
         "integrations/apis/typeform"
       ]
@@ -242,7 +263,10 @@
             "sdk/dynamictrigger/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamictrigger/register", "sdk/dynamictrigger/unregister"]
+              "pages": [
+                "sdk/dynamictrigger/register",
+                "sdk/dynamictrigger/unregister"
+              ]
             }
           ]
         },
@@ -253,7 +277,10 @@
             "sdk/dynamicschedule/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamicschedule/register", "sdk/dynamicschedule/unregister"]
+              "pages": [
+                "sdk/dynamicschedule/register",
+                "sdk/dynamicschedule/unregister"
+              ]
             }
           ]
         },
@@ -274,7 +301,10 @@
     },
     {
       "group": "Overview",
-      "pages": ["examples/introduction", "examples/examples-repository"]
+      "pages": [
+        "examples/introduction",
+        "examples/examples-repository"
+      ]
     }
   ],
   "footerSocials": {
