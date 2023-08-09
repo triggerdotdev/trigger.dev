@@ -8,7 +8,7 @@ import { ProjectsMenu } from "~/components/navigation/ProjectsMenu";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { ProjectPresenter } from "~/presenters/ProjectPresenter.server";
-import { analytics } from "~/services/analytics.server";
+import { telemetry } from "~/services/telemetry.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
 import { projectPath } from "~/utils/pathBuilder";
@@ -33,7 +33,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
       });
     }
 
-    analytics.project.identify({ project });
+    telemetry.project.identify({ project });
 
     return typedjson({
       project,

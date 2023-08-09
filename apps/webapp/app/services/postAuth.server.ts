@@ -1,5 +1,5 @@
 import type { User } from "~/models/user.server";
-import { analytics } from "./analytics.server";
+import { telemetry } from "./telemetry.server";
 
 export async function postAuthentication({
   user,
@@ -10,5 +10,5 @@ export async function postAuthentication({
   loginMethod: User["authenticationMethod"];
   isNewUser: boolean;
 }) {
-  analytics.user.identify({ user, isNewUser });
+  telemetry.user.identify({ user, isNewUser });
 }

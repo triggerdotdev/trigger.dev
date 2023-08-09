@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/react",
-  "version": "2.0.3",
+  "version": "2.0.7",
   "description": "Trigger.dev React SDK",
   "types": "dist/index.d.ts",
   "main": "dist/index.cjs",
@@ -26,7 +26,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "5.0.0-beta.2",
-    "@trigger.dev/core": "workspace:^2.0.3",
+    "@trigger.dev/core": "workspace:^2.0.7",
     "debug": "^4.3.4",
     "zod": "3.21.4"
   },

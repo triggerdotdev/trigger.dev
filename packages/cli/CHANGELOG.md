@@ -1,5 +1,25 @@
 # create-trigger
 
+## 2.0.7
+
+### Patch Changes
+
+- a1bc15d1: Updated the example job
+- 3ce6dece: creates a job catalog file when a new integration is created with the create-integration command
+- a90908df: CLI init fixes: don't ask for endpoint slug, fix for next.config and package manager artifact issue
+
+## 2.0.6
+
+## 2.0.5
+
+## 2.0.4
+
+### Patch Changes
+
+- ff04bf44: Detect package manager from artifacts if they exist
+- d5b8f829: The cli init command creates a jobs/index file and that is used to import jobs
+- e7402978: Detect Next.js project by looking at dependencies if can't find next.config.js
+
 ## 2.0.3
 
 ### Patch Changes

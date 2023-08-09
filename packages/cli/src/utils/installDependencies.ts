@@ -1,4 +1,4 @@
-import { getUserPkgManager, type PackageManager } from "./getUserPkgManager.js";
+import { getUserPackageManager, type PackageManager } from "./getUserPkgManager.js";
 import { logger } from "./logger.js";
 import ora, { type Ora } from "ora";
 import chalk from "chalk";
@@ -7,7 +7,7 @@ import { execa } from "execa";
 export async function installDependencies(projectDir: string) {
   logger.info("Installing dependencies...");
 
-  const pkgManager = getUserPkgManager();
+  const pkgManager = await getUserPackageManager(projectDir);
 
   const installSpinner = await runInstallCommand(pkgManager, projectDir);
 
