@@ -15,6 +15,7 @@
     "@trigger.dev/openai": "workspace:*",
     "@trigger.dev/plain": "workspace:*",
     "@trigger.dev/resend": "workspace:*",
+    "@trigger.dev/sendgrid": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "@trigger.dev/slack": "workspace:*",
     "@trigger.dev/stripe": "workspace:*",
