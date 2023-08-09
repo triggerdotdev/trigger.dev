@@ -96,6 +96,13 @@ export default function Page() {
     };
   }, [selected, clients]);
 
+  const isAnyClientFullyConfigured = useMemo(() => {
+    return clients.some((client) => {
+      const { DEVELOPMENT, PRODUCTION } = client.endpoints;
+      return PRODUCTION.state === "configured" && DEVELOPMENT.state === PRODUCTION.state;
+    });
+  }, [clients]);
+
   const organization = useOrganization();
   const project = useProject();
 
@@ -120,7 +127,7 @@ export default function Page() {
         <PageDescription>API Keys and endpoints for your environments.</PageDescription>
       </PageHeader>
       <PageBody>
-        <Help defaultOpen>
+        <Help defaultOpen={!isAnyClientFullyConfigured}>
           {(open) => (
             <div className={cn("grid h-full gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
               <div>

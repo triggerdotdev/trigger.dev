@@ -3,6 +3,7 @@ import { defineConfig } from "tsup";
 export default defineConfig([
   {
     name: "main",
+    config: "tsconfig.build.json",
     entry: ["./src/index.ts"],
     outDir: "./dist",
     platform: "neutral",

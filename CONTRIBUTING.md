@@ -169,6 +169,52 @@ pnpm exec trigger-cli dev
 
 9. Please remember to delete the temporary project you created after you've tested the changes, and before you raise a PR.
 
+## Running end-to-end webapp tests
+
+To run the end-to-end tests, follow the steps below:
+
+1. Set up environment variables (copy example envs into the correct place)
+
+```sh
+cp ./.env.example ./.env
+cp ./examples/nextjs-test/.env.example ./examples/nextjs-test/.env.local
+cp ./packages/database/.env.example ./packages/database/.env
+```
+
+2. Set up dependencies
+
+```sh
+# Build packages
+pnpm run build --filter @examples/nextjs-test^...
+pnpm --filter @trigger.dev/database generate
+
+# Move trigger-cli bin to correct place
+pnpm install --frozen-lockfile
+```
+
+3. Set up the database
+
+```sh
+pnpm run docker
+pnpm run db:migrate
+pnpm run db:seed
+```
+
+4. Run the end-to-end tests
+
+```sh
+pnpm run test:e2e
+```
+
+### Cleanup
+
+The end-to-end tests use a `setup` and `teardown` script to seed the database with test data. If the test runner doesn't exit cleanly, then the database can be left in a state where the tests can't run because the `setup` script will try to create data that already exists. If this happens, you can manually delete the `users` and `organizations` from the database using prisma studio:
+
+```sh
+# With the database running (i.e. pnpm run docker)
+pnpm run db:studio
+```
+
 ## Add sample jobs
 
 The [examples/jobs-starter](./examples/jobs-starter/) project defines simple jobs you can get started with.
