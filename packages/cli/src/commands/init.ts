@@ -7,7 +7,7 @@ import { pathToRegexp } from "path-to-regexp";
 import { simpleGit } from "simple-git";
 import { parse } from "tsconfck";
 import { pathToFileURL } from "url";
-import { promptApiKey, promptEndpointSlug, promptTriggerUrl } from "../cli/index.js";
+import { promptApiKey, promptTriggerUrl } from "../cli/index.js";
 import { CLOUD_API_URL, CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts.js";
 import { TelemetryClient, telemetryClient } from "../telemetry/telemetry.js";
 import { addDependencies } from "../utils/addDependencies.js";
