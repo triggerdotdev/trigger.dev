@@ -1,6 +1,7 @@
 import { TriggerClient } from "@trigger.dev/sdk";
 import { createExpressServer } from "@trigger.dev/express";
 import { Supabase, SupabaseManagement } from "@trigger.dev/supabase";
+import { Database } from "./supabase-types";
 
 const supabaseManagement = new SupabaseManagement({
   id: "supabase-management",
@@ -46,6 +47,62 @@ client.defineJob({
 });
 
 client.defineJob({
+  id: "supabase-management-example-users-auth",
+  name: "Supabase Management Example Users Auth",
+  version: "0.1.0",
+  trigger: triggers.onInserted({
+    table: "users",
+    schema: "auth",
+  }),
+  run: async (payload, io, ctx) => {},
+});
+
+client.defineJob({
+  id: "supabase-management-example-objects-storage",
+  name: "Supabase Management Example Object Storage",
+  version: "0.1.0",
+  trigger: triggers.onInserted({
+    schema: "storage",
+    table: "objects",
+    filter: {
+      record: {
+        bucket_id: ["example_bucket"],
+        name: [
+          {
+            $endsWith: ".png",
+          },
+        ],
+        path_tokens: [
+          {
+            $includes: "images",
+          },
+        ],
+      },
+    },
+  }),
+  integrations: {
+    supabase,
+  },
+  run: async (payload, io, ctx) => {
+    const { signedUrl } = await io.supabase.runTask("create-signed-url", async (db) => {
+      if (!payload.record.name) {
+        throw new Error("Missing record name");
+      }
+
+      const { data, error } = await db.storage
+        .from("example_bucket")
+        .createSignedUrl(payload.record.name, 60);
+
+      if (error) {
+        throw error;
+      }
+
+      return data;
+    });
+  },
+});
+
+client.defineJob({
   id: "supabase-management-example-on",
   name: "Supabase Management Example On",
   version: "0.1.0",
@@ -70,55 +127,3 @@ client.defineJob({
     return user;
   },
 });
-
-export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
-
-export interface Database {
-  public: {
-    Tables: {
-      todos: {
-        Row: {
-          id: number;
-          inserted_at: string;
-          is_complete: boolean | null;
-          task: string | null;
-          user_id: string;
-        };
-        Insert: {
-          id?: number;
-          inserted_at?: string;
-          is_complete?: boolean | null;
-          task?: string | null;
-          user_id: string;
-        };
-        Update: {
-          id?: number;
-          inserted_at?: string;
-          is_complete?: boolean | null;
-          task?: string | null;
-          user_id?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "todos_user_id_fkey";
-            columns: ["user_id"];
-            referencedRelation: "users";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-    };
-    Views: {
-      [_ in never]: never;
-    };
-    Functions: {
-      [_ in never]: never;
-    };
-    Enums: {
-      [_ in never]: never;
-    };
-    CompositeTypes: {
-      [_ in never]: never;
-    };
-  };
-}
