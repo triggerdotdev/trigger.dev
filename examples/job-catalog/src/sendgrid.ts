@@ -35,7 +35,8 @@ client.defineJob({
       to: payload.to,
       subject: payload.subject,
       text: payload.text,
-      from: "Trigger.dev <hello@email.trigger.dev>",
+      //this email must be verified in SendGrid, otherwise you'll get a forbidden error
+      from: process.env.SENDGRID_FROM_EMAIL!,
     });
   },
 });
