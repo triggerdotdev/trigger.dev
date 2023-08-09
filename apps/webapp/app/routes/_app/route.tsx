@@ -6,10 +6,8 @@ import { ImpersonationBanner } from "~/components/ImpersonationBanner";
 import { NoMobileOverlay } from "~/components/NoMobileOverlay";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { NavBar } from "~/components/navigation/NavBar";
-import { featuresForRequest } from "~/features.server";
 import { useIsProjectChildPage } from "~/hooks/useIsProjectChildPage";
 import { getOrganizations } from "~/models/organization.server";
-
 import { getImpersonationId } from "~/services/impersonation.server";
 import { clearRedirectTo, commitSession } from "~/services/redirectTo.server";
 import { requireUser } from "~/services/session.server";
