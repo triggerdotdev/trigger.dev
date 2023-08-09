@@ -1,5 +1,5 @@
 import { cn } from "~/utils/cn";
-import { Paragraph, ParagraphVariant } from "./Paragraph";
+import { Paragraph } from "./Paragraph";
 import { ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
 import { SimpleTooltip } from "./Tooltip";
 
