@@ -12,6 +12,10 @@ import { logger } from "../utils/logger.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
 import { TriggerApi } from "../utils/triggerApi.js";
 import { CLOUD_API_URL } from "../consts.js";
+import childProcess from "child_process";
+import util from "util";
+
+const asyncExecFile = util.promisify(childProcess.execFile);
 
 export const DevCommandOptionsSchema = z.object({
   port: z.coerce.number(),
@@ -293,9 +297,34 @@ async function resolveEndpointUrl(apiUrl: string, port: number) {
 async function createTunnel(port: number) {
   try {
     return await ngrok.connect(port);
-  } catch (e) {
-    logger.error(`Ngrok failed to create a tunnel for port ${port}.\n${e}`);
+  } catch (error: any) {
+    logger.error(`Ngrok failed to create a tunnel for port ${port}.\n${error}`);
+    if (
+      typeof error.message === "string" &&
+      error.message.includes("`version` property is required")
+    ) {
+      logger.info("Attempting to upgrade ngrok configuration...");
+      await upgradeNgrokConfig();
+
+      try {
+        return await ngrok.connect(port);
+      } catch (retryError) {
+        logger.error(
+          `Ngrok failed to create a tunnel for port ${port} after configuration upgrade.\n${retryError}`
+        );
+        return;
+      }
+    }
     return;
+  }
+}
+
+async function upgradeNgrokConfig() {
+  try {
+    await asyncExecFile("ngrok", ["config", "upgrade"]);
+    logger.info("Ngrok configuration upgraded successfully.");
+  } catch (error) {
+    logger.error(`Failed to upgrade ngrok configuration.\n${error}`);
   }
 }
 
