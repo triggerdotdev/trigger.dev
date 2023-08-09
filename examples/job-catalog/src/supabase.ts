@@ -1,6 +1,7 @@
 import { TriggerClient } from "@trigger.dev/sdk";
 import { createExpressServer } from "@trigger.dev/express";
 import { Supabase, SupabaseManagement } from "@trigger.dev/supabase";
+import { OpenAI } from "@trigger.dev/openai";
 import { Database } from "./supabase-types";
 
 const supabaseManagement = new SupabaseManagement({
@@ -14,6 +15,11 @@ const supabase = new Supabase({
   id: "supabase",
   supabaseKey: process.env["SUPABASE_SERVICE_ROLE_KEY"]!,
   supabaseUrl: process.env["SUPABASE_URL"]!,
+});
+
+const openai = new OpenAI({
+  id: "open-ai",
+  apiKey: process.env["OPENAI_API_KEY"]!,
 });
 
 export const client = new TriggerClient({
@@ -81,24 +87,34 @@ client.defineJob({
     },
   }),
   integrations: {
-    supabase,
+    openai,
   },
   run: async (payload, io, ctx) => {
-    const { signedUrl } = await io.supabase.runTask("create-signed-url", async (db) => {
-      if (!payload.record.name) {
-        throw new Error("Missing record name");
-      }
+    if (!payload.record.name) {
+      return;
+    }
 
-      const { data, error } = await db.storage
-        .from("example_bucket")
-        .createSignedUrl(payload.record.name, 60);
+    const {
+      data: { publicUrl },
+    } = supabase.native.storage.from("example_bucket").getPublicUrl(payload.record.name);
 
-      if (error) {
-        throw error;
-      }
-
-      return data;
+    const imageVariation = await io.openai.createImageVariation("variation-image", {
+      image: publicUrl,
+      n: 2,
+      response_format: "url",
+      size: "512x512",
     });
+
+    const imageEdit = await io.openai.createImageEdit("edit-image", {
+      image: publicUrl,
+      prompt:
+        "Fill in the background to make it seem like the cat is on the moon with a beautiful view of the earth.",
+      n: 2,
+      response_format: "url",
+      size: "512x512",
+    });
+
+    // return imageEdit;
   },
 });
 

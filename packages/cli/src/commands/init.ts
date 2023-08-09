@@ -7,7 +7,7 @@ import { pathToRegexp } from "path-to-regexp";
 import { simpleGit } from "simple-git";
 import { parse } from "tsconfck";
 import { pathToFileURL } from "url";
-import { promptApiKey, promptEndpointSlug, promptTriggerUrl } from "../cli/index.js";
+import { promptApiKey, promptTriggerUrl } from "../cli/index.js";
 import { CLOUD_API_URL, CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts.js";
 import { TelemetryClient, telemetryClient } from "../telemetry/telemetry.js";
 import { addDependencies } from "../utils/addDependencies.js";
@@ -67,24 +67,28 @@ export const initCommand = async (options: InitCommandOptions) => {
   const isTypescriptProject = await detectTypescriptProject(resolvedPath);
   telemetryClient.init.isTypescriptProject(isTypescriptProject, options);
 
-  const resolvedOptions = await resolveOptionsWithPrompts(options, resolvedPath, telemetryClient);
-  const apiKey = resolvedOptions.apiKey;
+  const optionsAfterPrompts = await resolveOptionsWithPrompts(
+    options,
+    resolvedPath,
+    telemetryClient
+  );
+  const apiKey = optionsAfterPrompts.apiKey;
 
   if (!apiKey) {
     logger.error("You must provide an API key to continue.");
-    telemetryClient.init.failed("no_api_key", resolvedOptions);
+    telemetryClient.init.failed("no_api_key", optionsAfterPrompts);
     return;
   }
 
-  const apiClient = new TriggerApi(apiKey, resolvedOptions.apiUrl);
+  const apiClient = new TriggerApi(apiKey, optionsAfterPrompts.apiUrl);
   const authorizedKey = await apiClient.whoami(apiKey);
 
   if (!authorizedKey) {
     logger.error(
-      `🛑 The API key you provided is not authorized. Try visiting your dashboard at ${resolvedOptions.triggerUrl} to get a new API key.`
+      `🛑 The API key you provided is not authorized. Try visiting your dashboard at ${optionsAfterPrompts.triggerUrl} to get a new API key.`
     );
 
-    telemetryClient.init.failed("invalid_api_key", resolvedOptions);
+    telemetryClient.init.failed("invalid_api_key", optionsAfterPrompts);
     return;
   }
 
@@ -93,6 +97,9 @@ export const initCommand = async (options: InitCommandOptions) => {
     authorizedKey.project.id,
     authorizedKey.userId
   );
+
+  const endpointSlug = authorizedKey.project.slug;
+  const resolvedOptions: ResolvedOptions = { ...optionsAfterPrompts, endpointSlug };
 
   await addDependencies(resolvedPath, [
     { name: "@trigger.dev/sdk", tag: "latest" },
@@ -174,11 +181,15 @@ async function addConfigurationToPackageJson(path: string, options: ResolvedOpti
   logger.success(`✅ Wrote trigger.dev config to package.json`);
 }
 
+type OptionsAfterPrompts = Required<Omit<InitCommandOptions, "endpointSlug">> & {
+  endpointSlug: InitCommandOptions["endpointSlug"];
+};
+
 const resolveOptionsWithPrompts = async (
   options: InitCommandOptions,
   path: string,
   telemetryClient: TelemetryClient
-): Promise<ResolvedOptions> => {
+): Promise<OptionsAfterPrompts> => {
   const resolvedOptions: InitCommandOptions = { ...options };
 
   try {
@@ -205,11 +216,8 @@ const resolveOptionsWithPrompts = async (
 
       if (packageJSON && packageJSON["trigger.dev"] && packageJSON["trigger.dev"].endpointId) {
         resolvedOptions.endpointSlug = packageJSON["trigger.dev"].endpointId;
-      } else {
-        resolvedOptions.endpointSlug = await promptEndpointSlug(path);
+        telemetryClient.init.resolvedEndpointSlug(resolvedOptions);
       }
-
-      telemetryClient.init.resolvedEndpointSlug(resolvedOptions);
     }
   } catch (err) {
     // If the user is not calling the command from an interactive terminal, inquirer will throw an error with isTTYError = true
@@ -239,7 +247,7 @@ const resolveOptionsWithPrompts = async (
     }
   }
 
-  return resolvedOptions as ResolvedOptions;
+  return resolvedOptions as OptionsAfterPrompts;
 };
 
 // Detects if there are any uncommitted git changes at path
@@ -278,7 +286,7 @@ async function detectPagesOrAppDir(
   isTypescriptProject = false
 ): Promise<"pages" | "app"> {
   const nextConfigPath = pathModule.join(path, "next.config.js");
-  const importedConfig = await import(pathToFileURL(nextConfigPath).toString());
+  const importedConfig = await import(pathToFileURL(nextConfigPath).toString()).catch(() => ({}));
 
   if (importedConfig?.default?.experimental?.appDir) {
     return "app";

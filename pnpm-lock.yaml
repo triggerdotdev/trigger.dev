@@ -956,16 +956,20 @@ importers:
     specifiers:
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
+      '@types/node-fetch': 2.6.x
       '@types/uuid': ^9.0.0
+      node-fetch: 2.6.x
       rimraf: ^3.0.2
       tsup: ^6.5.0
       tsx: ^3.12.1
       uuid: ^9.0.0
     dependencies:
+      node-fetch: 2.6.12
       uuid: 9.0.0
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 18.15.13
+      '@types/node-fetch': 2.6.2
       '@types/uuid': 9.0.0
       rimraf: 3.0.2
       tsup: 6.6.3
@@ -11081,7 +11085,7 @@ packages:
   /@types/node-fetch/2.6.2:
     resolution: {integrity: sha512-DHqhlq5jeESLy19TYhLakJ07kNumXWjcDdxXsLUMJZ6ue8VZJj4kLPQVE/2mdHh3xZziNF1xppu5lwmS53HR+A==}
     dependencies:
-      '@types/node': 20.3.2
+      '@types/node': 20.4.5
       form-data: 3.0.1
     dev: true
 
@@ -11104,10 +11108,6 @@ packages:
 
   /@types/node/18.17.1:
     resolution: {integrity: sha512-xlR1jahfizdplZYRU59JlUx9uzF1ARa8jbhM11ccpCJya8kvos5jwdm2ZAgxSCwOl0fq21svP18EVwPBXMQudw==}
-
-  /@types/node/20.3.2:
-    resolution: {integrity: sha512-vOBLVQeCQfIcF/2Y7eKFTqrMnizK5lRNQ7ykML/5RuwVXVWxYkgwS7xbt4B6fKCUPgbSL5FSsjHQpaGQP/dQmw==}
-    dev: true
 
   /@types/node/20.4.2:
     resolution: {integrity: sha512-Dd0BYtWgnWJKwO1jkmTrzofjK2QXXcai0dmtzvIBhcA+RsG5h8R3xlyta0kGOZRNfL9GuRtb1knmPEhQrePCEw==}
