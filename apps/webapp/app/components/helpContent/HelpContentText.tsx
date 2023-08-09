@@ -33,6 +33,7 @@ import { TextLink } from "../primitives/TextLink";
 import integrationButton from "./integration-button.png";
 import selectEnvironment from "./select-environment.png";
 import selectExample from "./select-example.png";
+import gradientBackground from "~/assets/images/gradient-background.png";
 
 const existingProjectValue = "use-existing-project";
 const newProjectValue = "create-new-next-app";
@@ -47,7 +48,10 @@ export function HowToSetupYourProject() {
   invariant(devEnvironment, "devEnvironment is required");
 
   return (
-    <div className="-ml-4 -mt-4 h-full w-[calc(100%+32px)] bg-[url('~/assets/images/gradient-background.png')] bg-cover bg-no-repeat pt-20">
+    <div
+      className="-ml-4 -mt-4 h-full w-[calc(100%+32px)] bg-cover bg-no-repeat pt-20"
+      style={{ backgroundImage: `url("${gradientBackground}")` }}
+    >
       <div className="mx-auto max-w-3xl">
         <div className="flex items-center justify-between">
           <Header1 spacing className="text-bright">
@@ -73,7 +77,7 @@ export function HowToSetupYourProject() {
             checked={selectedValue === existingProjectValue}
             variant="icon"
             data-action={existingProjectValue}
-            icon={<NamedIcon className="h-14 w-14 text-green-600" name={"tree"} />}
+            icon={<NamedIcon className="h-12 w-12 text-green-600" name={"tree"} />}
           />
           <RadioGroupItem
             label="Create a new Next.js project"
