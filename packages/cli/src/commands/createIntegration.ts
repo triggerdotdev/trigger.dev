@@ -6,10 +6,10 @@ import { COMMAND_NAME } from "../consts.js";
 import { getLatestPackageVersion } from "../utils/addDependencies.js";
 import { createFile, pathExists, readJSONFile, writeJSONFile } from "../utils/fileSystem.js";
 import { generateIntegrationFiles } from "../utils/generateIntegrationFiles.js";
+import { getPackageName } from "../utils/getPackagName.js";
 import { installDependencies } from "../utils/installDependencies.js";
 import { logger } from "../utils/logger.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
-import { getPackageName } from "../utils/getPackagName.js";
 
 const CLIOptionsSchema = z.object({
   packageName: z.string().optional(),
@@ -485,48 +485,6 @@ async function findGitPath(path: string): Promise<string | undefined> {
   }
 
   return findGitPath(parentPath);
-}
-
-async function updateNextJsExampleProjectWithNewIntegration(
-  monorepoPath: string,
-  integrationPath: string,
-  resolvedOptions: ResolvedCLIOptions
-) {
-  const nextjsPath = pathModule.join(monorepoPath, "examples", "nextjs-example");
-
-  const packageJsonPath = pathModule.join(nextjsPath, "package.json");
-  const packageJson = await readJSONFile(packageJsonPath);
-
-  const newPackageJson = {
-    ...packageJson,
-    dependencies: {
-      ...packageJson.dependencies,
-      [resolvedOptions.packageName]: `workspace:*`,
-    },
-  };
-
-  await writeJSONFile(packageJsonPath, newPackageJson);
-
-  const tsConfigPath = pathModule.join(nextjsPath, "tsconfig.json");
-  const tsConfig = await readJSONFile(tsConfigPath);
-
-  const newTsConfig = {
-    ...tsConfig,
-    compilerOptions: {
-      ...tsConfig.compilerOptions,
-      paths: {
-        ...tsConfig.compilerOptions.paths,
-        [resolvedOptions.packageName]: [
-          `../../integrations/${pathModule.basename(integrationPath)}/src/index`,
-        ],
-        [`${resolvedOptions.packageName}/*`]: [
-          `../../integrations/${pathModule.basename(integrationPath)}/src/*`,
-        ],
-      },
-    },
-  };
-
-  await writeJSONFile(tsConfigPath, newTsConfig);
 }
 
 async function updateJobCatalogWithNewIntegration(
