@@ -4,12 +4,9 @@ import sgMail from "@sendgrid/mail";
 import type { AuthenticatedTask } from "@trigger.dev/sdk";
 
 type SendEmailData = Parameters<(typeof sgMail)["send"]>[0];
-type SendEmailResponse = [sgMail.ClientResponse, {}];
-
-export const sendEmail: AuthenticatedTask<typeof sgMail, SendEmailData, SendEmailResponse> = {
+export const sendEmail: AuthenticatedTask<typeof sgMail, SendEmailData, void> = {
   run: async (params, client) => {
-    const response = await client.send(params);
-    return response as SendEmailResponse;
+    await client.send(params);
   },
   init: (params) => {
     const subjectProperty = Array.isArray(params)
