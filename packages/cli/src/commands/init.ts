@@ -286,7 +286,7 @@ async function detectPagesOrAppDir(
   isTypescriptProject = false
 ): Promise<"pages" | "app"> {
   const nextConfigPath = pathModule.join(path, "next.config.js");
-  const importedConfig = await import(pathToFileURL(nextConfigPath).toString());
+  const importedConfig = await import(pathToFileURL(nextConfigPath).toString()).catch(() => ({}));
 
   if (importedConfig?.default?.experimental?.appDir) {
     return "app";
