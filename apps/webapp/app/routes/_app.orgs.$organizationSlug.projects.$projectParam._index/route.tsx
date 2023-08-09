@@ -12,6 +12,7 @@ import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Input } from "~/components/primitives/Input";
+import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
   PageHeader,
   PageInfoGroup,
@@ -101,9 +102,9 @@ export default function Page() {
           ]}
         /> */}
 
-        <Help>
+        <Help defaultOpen>
           {(open) => (
-            <div className={cn("grid gap-4", open ? "h-fit grid-cols-2" : " h-full grid-cols-1")}>
+            <div className={cn("grid gap-4", open ? "h-full grid-cols-2" : " h-full grid-cols-1")}>
               <div className="h-full">
                 {jobs.length > 0 ? (
                   <>
@@ -165,28 +166,86 @@ function RunYourJobPrompt() {
   );
 }
 
+function ExampleJobs() {
+  return (
+    <>
+      <Header2 spacing>Video walk-through</Header2>
+      <Paragraph spacing variant="small">
+        Watch Matt, CEO of Trigger.dev create a GitHub issue reminder in Slack using Trigger.dev.
+        (10 mins)
+      </Paragraph>
+      <iframe
+        src="https://www.youtube.com/embed/uocBQt2HeQo?&showinfo=0&rel=0&modestbranding=1"
+        title="Trigger.dev explainer video"
+        width="400"
+        height="250"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowFullScreen
+        className="mb-4 w-full border-b border-slate-800"
+      />
+      <Header2 spacing>How to create a Job</Header2>
+      <Paragraph variant="small" spacing>
+        Our docs are a great way to learn how to create Jobs with each type of Trigger, from
+        webhooks, to delays, to triggering Jobs on a schedule.{" "}
+      </Paragraph>
+      <a
+        href="https://trigger.dev/docs/documentation/guides/create-a-job"
+        className="mb-4 flex w-full items-center rounded border-b border-slate-800 py-2 transition hover:border-transparent hover:bg-slate-800"
+      >
+        <NamedIcon name={"external-link"} className={iconStyles} />
+        <Paragraph variant="small" className="font-semibold text-bright">
+          How to create a Job
+        </Paragraph>
+      </a>
+      <Header2 spacing>Check out some example Jobs in code</Header2>
+      <Paragraph spacing variant="small">
+        If you're looking for inspiration for your next Job, check out our{" "}
+        <TextLink href="https://github.com/triggerdotdev/examples">examples repo</TextLink>. Or jump
+        straight into an example repo from the list below:
+      </Paragraph>
+      <div className="flex w-full flex-col">
+        {examples.map((example) => (
+          <a
+            href={example.codeLink}
+            key={example.title}
+            className="flex w-full items-center rounded border-b border-slate-800 py-2 transition hover:border-transparent hover:bg-slate-800"
+          >
+            {example.icon}
+            <Paragraph variant="small">
+              <span className="font-semibold text-bright">{example.title}</span> -{" "}
+              {example.description}
+            </Paragraph>
+          </a>
+        ))}
+      </div>
+    </>
+  );
+}
+
+const iconStyles = "h-7 w-7 mr-2 pl-2";
+
 const examples = [
   {
-    icon: <ClockIcon className="h-4 w-4 pt-0.5 text-slate-100" />,
+    icon: <NamedIcon name={"clock"} className={iconStyles} />,
     title: "Basic delay",
     description: "Logs a message to the console, waits 5 minutes, and then logs another message.",
     codeLink: "https://github.com/triggerdotdev/examples/blob/main/delays/src/jobs/delayJob.ts",
   },
   {
-    icon: <CalendarDaysIcon className="h-4 w-4 pt-0.5 text-slate-100" />,
+    icon: <NamedIcon name="calendar" className={iconStyles} />,
     title: "Basic interval",
     description: "This Job runs every 60 seconds, starting 60 seconds after it is first indexed.",
     codeLink: "https://github.com/triggerdotdev/examples/blob/main/scheduled/src/jobs/interval.ts",
   },
   {
-    icon: <CalendarDaysIcon className="h-4 w-4 pt-0.5 text-slate-100" />,
+    icon: <NamedIcon name="calendar" className={iconStyles} />,
     title: "Cron scheduled interval",
     description: "A scheduled Job which runs at 2:30pm every Monday.",
     codeLink:
       "https://github.com/triggerdotdev/examples/blob/main/scheduled/src/jobs/cronScheduled.ts",
   },
   {
-    icon: <OpenAILightIcon className="ml-0.5 h-4 w-4 pt-0.5" />,
+    icon: <NamedIcon name="openai" className={iconStyles} />,
     title: "OpenAI text summarizer",
     description:
       "Summarizes a block of text, pulling out the most unique / helpful points using OpenAI.",
@@ -194,107 +253,57 @@ const examples = [
       "https://github.com/triggerdotdev/examples/blob/main/openai-text-summarizer/src/jobs/textSummarizer.ts",
   },
   {
-    icon: <OpenAILightIcon className="ml-0.5 h-4 w-4 pt-0.5" />,
+    icon: <NamedIcon name="openai" className={iconStyles} />,
     title: "Tell me a joke using OpenAI",
     description: "Generates a random joke using OpenAI GPT 3.5.",
     codeLink: "https://github.com/triggerdotdev/examples/blob/main/openai/src/jobs/tellMeAJoke.ts",
   },
   {
-    icon: <OpenAILightIcon className="ml-0.5 h-4 w-4 pt-0.5" />,
+    icon: <NamedIcon name="openai" className={iconStyles} />,
     title: "Generate a random image using OpenAI",
-    description: "Generates a random image of a hedgehog using OpenAI DALL-E.	",
+    description: "Generates a random image of a hedgehog using OpenAI DALL-E.",
     codeLink:
       "https://github.com/triggerdotdev/examples/blob/main/openai/src/jobs/generateHedgehogImages.ts",
   },
   {
-    icon: <ResendIcon className="ml-0.5 h-4 w-4 pt-0.5" />,
+    icon: <NamedIcon name="resend" className={iconStyles} />,
     title: "Send an email using Resend",
-    description: "Send a basic email using Resend",
+    description: "Send a basic email using Resend.",
     codeLink:
       "https://github.com/triggerdotdev/examples/blob/main/resend/src/jobs/resendBasicEmail.ts",
   },
   {
-    icon: <GitHubLightIcon className="ml-0.5 h-4 w-4 pt-0.5" />,
+    icon: <NamedIcon name="github" className={iconStyles} />,
     title: "GitHub issue reminder",
-    description: "Sends a Slack message if a GitHub issue is left for 24h",
+    description: "Sends a Slack message if a GitHub issue is left for 24h.",
     codeLink:
       "https://github.com/triggerdotdev/examples/blob/main/github-issue-reminder/jobs/githubIssue.ts",
   },
   {
-    icon: <GitHubLightIcon className="ml-0.5 h-4 w-4 pt-0.5" />,
+    icon: <NamedIcon name="github" className={iconStyles} />,
     title: "Github new star alert in Slack",
     description: "When a repo is starred, a message is sent to a Slack.",
     codeLink:
       "https://github.com/triggerdotdev/examples/blob/main/github/src/jobs/newStarToSlack.ts",
   },
   {
-    icon: <GitHubLightIcon className="ml-0.5 h-4 w-4 pt-0.5" />,
+    icon: <NamedIcon name="github" className={iconStyles} />,
     title: "Add a custom label to a GitHub issue",
     description: "When a new GitHub issue is opened it adds a “Bug” label to it.",
     codeLink:
       "https://github.com/triggerdotdev/examples/blob/main/github/src/jobs/onIssueOpened.ts",
   },
   {
-    icon: <GitHubLightIcon className="ml-0.5 h-4 w-4 pt-0.5" />,
+    icon: <NamedIcon name="github" className={iconStyles} />,
     title: "GitHub new star alert",
     description: "When a repo is starred a message is logged with the new Stargazers count.",
     codeLink: "https://github.com/triggerdotdev/examples/blob/main/github/src/jobs/newStarAlert.ts",
   },
   {
-    icon: <SlackIcon className="ml-0.5 h-4 w-4 pt-0.5" />,
+    icon: <NamedIcon name="slack" className={iconStyles} />,
     title: "Send a Slack message",
     description: "Sends a Slack message to a specific channel when an event is received.",
     codeLink:
       "https://github.com/triggerdotdev/examples/blob/main/slack/src/jobs/sendSlackMessage.ts",
   },
 ];
-
-function ExampleJobs() {
-  return (
-    <>
-      {/* <Header2 className="text-slate-300">Useful docs links</Header2>
-      <li>
-        <TextLink href="https://trigger.dev/docs/documentation/guides/create-a-job">
-          Create a Job in code
-        </TextLink>
-      </li> */}
-      <Header2 className=" text-slate-300">Video walk-through</Header2>
-      <div className="w-full">
-        <Paragraph variant="small" className="mt-2">
-          This video shows a full end-to-end example of a Job created with Trigger.dev. A GitHub
-          issue reminder in Slack.
-        </Paragraph>
-        <iframe
-          src="https://www.youtube.com/embed/uocBQt2HeQo?&showinfo=0&rel=0&modestbranding=1"
-          title="Trigger.dev explainer video"
-          frameBorder="0"
-          width="400"
-          height="250"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-          className="py-4"
-        />
-      </div>
-      <div className="h-[1px] w-full bg-slate-800" />
-
-      <div className="flex w-full flex-col gap-y-2 rounded bg-slate-900 p-4">
-        <Header2 className="text-slate-300">Example Jobs</Header2>
-        <Paragraph variant="small">
-          The best way to learn how to use Trigger.dev is to look at our{" "}
-          <TextLink href="https://github.com/triggerdotdev/examples">examples repo</TextLink>. Each
-          of these Jobs has it's own repo you can fork and run if you wish. See the links below for
-          example Job code to use as a starting point for your projects:
-        </Paragraph>
-        <div className="h-[1px] w-full bg-slate-800" />
-        {examples.map((example) => (
-          <div key={example.title} className="flex gap-1.5">
-            {example.icon}
-            <Paragraph variant="small">
-              <TextLink href={example.codeLink}>{example.title} </TextLink> - {example.description}{" "}
-            </Paragraph>
-          </div>
-        ))}
-      </div>
-    </>
-  );
-}
