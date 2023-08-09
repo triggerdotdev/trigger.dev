@@ -157,7 +157,7 @@ async function printNextSteps(options: ResolvedOptions, authorizedKey: WhoamiRes
   logger.info("Next steps:");
   logger.info(`   1. Run your Next.js project locally with 'npm run dev'`);
   logger.info(
-    `   2. Run 'npx @trigger.dev/cli@latest dev' to watch for changes and automatically register Trigger.dev jobs`
+    `   2. In a separate terminal, run 'npx @trigger.dev/cli@latest dev' to watch for changes and automatically register Trigger.dev jobs`
   );
   logger.info(`   3. View your jobs at ${projectUrl}`);
 
@@ -486,15 +486,15 @@ import { client } from "${jobsPathPrefix}trigger";
 client.defineJob({
   // This is the unique identifier for your Job, it must be unique across all Jobs in your project
   id: "example-job",
-  name: "Example Job: A delay Job joke",
+  name: "Example Job: a joke with a delay",
   version: "0.0.1",
-  // This Job is triggered by a custom event using eventTrigger, you can also trigger Jobs with Webhooks, on schedules, and more: https://trigger.dev/docs/documentation/concepts/triggers/introduction
+  // This is triggered by an event using eventTrigger. You can also trigger Jobs with webhooks, on schedules, and more: https://trigger.dev/docs/documentation/concepts/triggers/introduction
   trigger: eventTrigger({
     name: "example.event",
   }),
   run: async (payload, io, ctx) => {
     // This logs a message to the console
-    await io.logger.info("🧪 Example Job: A delay Job joke");
+    await io.logger.info("🧪 Example Job: a joke with a delay");
     await io.logger.info("How do you comfort a JavaScript bug?");
     // This waits for 5 seconds, the second parameter is the number of seconds to wait, you can add delays of up to a year
     await io.wait("Wait 5 seconds for the punchline...", 5);
