@@ -108,7 +108,7 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
 function DiscordBanner() {
   return (
     <a
-      href="https://discord.gg/aYUfEqBP"
+      href="https://discord.gg/nkqV9xBYWy"
       target="_blank"
       className="group mb-4 flex w-full items-center justify-between rounded-md border border-slate-600 bg-gradient-to-br from-blue-400/30 to-indigo-400/50 p-4 transition hover:border-indigo-400"
     >
