@@ -13,19 +13,12 @@ import { getOrganizations } from "~/models/organization.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { clearRedirectTo, commitSession } from "~/services/redirectTo.server";
 import { requireUser } from "~/services/session.server";
-import { confirmBasicDetailsPath, invitationCodePath } from "~/utils/pathBuilder";
+import { confirmBasicDetailsPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request }: LoaderArgs) => {
   const user = await requireUser(request);
   const organizations = await getOrganizations({ userId: user.id });
   const impersonationId = await getImpersonationId(request);
-  const features = featuresForRequest(request);
-
-  const url = new URL(request.url);
-
-  if (features.isManagedCloud && !user.invitationCodeId && url.pathname !== invitationCodePath()) {
-    throw redirect(invitationCodePath());
-  }
 
   //you have to confirm basic details before you can do anything
   if (!user.confirmedBasicDetails) {
