@@ -1,5 +1,11 @@
 # @trigger.dev/slack
 
+## 2.0.7
+
+### Patch Changes
+
+- @trigger.dev/sdk@2.0.7
+
 ## 2.0.6
 
 ### Patch Changes

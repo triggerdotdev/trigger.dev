@@ -1,5 +1,11 @@
 # internal-platform
 
+## 2.0.7
+
+### Patch Changes
+
+- fa3a22eb: Added an $isNull EventFilter condition matcher
+
 ## 2.0.6
 
 ### Patch Changes
