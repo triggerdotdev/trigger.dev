@@ -1,5 +1,12 @@
 # @trigger.dev/react
 
+## 2.0.7
+
+### Patch Changes
+
+- Updated dependencies [fa3a22eb]
+  - @trigger.dev/core@2.0.7
+
 ## 2.0.6
 
 ### Patch Changes
