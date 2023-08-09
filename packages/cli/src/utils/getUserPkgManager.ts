@@ -29,7 +29,7 @@ function detectPackageManagerFromCurrentCommand(): PackageManager {
   }
 }
 
-async function detectPackageManagerFromArtifacts(path: string): Promise<PackageManager | null> {
+async function detectPackageManagerFromArtifacts(path: string): Promise<PackageManager> {
   const packageFiles = [
     { name: "yarn.lock", pm: "yarn" } as const,
     { name: "pnpm-lock.yaml", pm: "pnpm" } as const,
@@ -44,5 +44,5 @@ async function detectPackageManagerFromArtifacts(path: string): Promise<PackageM
     }
   }
 
-  return null;
+  throw new Error("Could not detect package manager from artifacts");
 }
