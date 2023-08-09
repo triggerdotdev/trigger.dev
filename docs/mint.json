@@ -103,6 +103,7 @@
           ]
         },
         "documentation/guides/cli",
+        "documentation/guides/manual",
         "documentation/guides/running-jobs",
         {
           "group": "Using the Dashboard",

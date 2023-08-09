@@ -1,5 +1,21 @@
 # @trigger.dev/slack
 
+## 2.0.7
+
+### Patch Changes
+
+- 84126808: Adding createImageEdit and createImageVariation tasks to openai
+- Updated dependencies [84126808]
+  - @trigger.dev/integration-kit@2.0.7
+  - @trigger.dev/sdk@2.0.7
+
+## 2.0.6
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@2.0.6
+- @trigger.dev/sdk@2.0.6
+
 ## 2.0.5
 
 ### Patch Changes
