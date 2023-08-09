@@ -88,6 +88,7 @@ client.defineJob({
   }),
   integrations: {
     openai,
+    supabase,
   },
   run: async (payload, io, ctx) => {
     if (!payload.record.name) {
@@ -98,8 +99,17 @@ client.defineJob({
       data: { publicUrl },
     } = supabase.native.storage.from("example_bucket").getPublicUrl(payload.record.name);
 
+    // Use the native supabase client to get a signed url
+    const { error, data } = await io.supabase.client.storage
+      .from("example_bucket")
+      .createSignedUrl(payload.record.name, 60);
+
+    if (error) {
+      throw error;
+    }
+
     const imageVariation = await io.openai.createImageVariation("variation-image", {
-      image: publicUrl,
+      image: data.signedUrl,
       n: 2,
       response_format: "url",
       size: "512x512",
