@@ -102,7 +102,7 @@ export default function Page() {
           ]}
         /> */}
 
-        <Help defaultOpen>
+        <Help>
           {(open) => (
             <div className={cn("grid gap-4", open ? "h-full grid-cols-2" : " h-full grid-cols-1")}>
               <div className="h-full">
