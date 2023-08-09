@@ -13,6 +13,8 @@ import {
   RegisterTriggerBodySchema,
   RunJobBody,
   RunJobResponseSchema,
+  ValidateResponse,
+  ValidateResponseSchema,
 } from "@trigger.dev/core";
 import { safeBodyFromResponse, safeParseBodyFromResponse } from "~/utils/json";
 import { logger } from "./logger.server";
@@ -25,16 +27,15 @@ export class EndpointApiError extends Error {
   }
 }
 
-// TODO: this should work with tunnelling
 export class EndpointApi {
-  constructor(private apiKey: string, private url: string, private id: string) {}
+  constructor(private apiKey: string, private url: string) {}
 
-  async ping(): Promise<PongResponse> {
+  async ping(endpointId: string): Promise<PongResponse> {
     const response = await safeFetch(this.url, {
       method: "POST",
       headers: {
         "x-trigger-api-key": this.apiKey,
-        "x-trigger-endpoint-id": this.id,
+        "x-trigger-endpoint-id": endpointId,
         "x-trigger-action": "PING",
       },
     });
@@ -270,6 +271,64 @@ export class EndpointApi {
     });
 
     return HttpSourceResponseSchema.parse(anyBody);
+  }
+
+  async validate(): Promise<ValidateResponse> {
+    const response = await safeFetch(this.url, {
+      method: "POST",
+      headers: {
+        "x-trigger-api-key": this.apiKey,
+        "x-trigger-action": "VALIDATE",
+      },
+    });
+
+    if (!response) {
+      return {
+        ok: false,
+        error: `Could not connect to endpoint ${this.url}`,
+      };
+    }
+
+    if (response.status === 401) {
+      const body = await safeBodyFromResponse(response, ErrorWithStackSchema);
+
+      if (body) {
+        return {
+          ok: false,
+          error: body.message,
+        } as const;
+      }
+
+      return {
+        ok: false,
+        error: `Trigger API key is invalid`,
+      } as const;
+    }
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: `Could not connect to endpoint ${this.url}. Status code: ${response.status}`,
+      };
+    }
+
+    const validateResponse = await safeParseBodyFromResponse(response, ValidateResponseSchema);
+
+    if (!validateResponse) {
+      return {
+        ok: false,
+        error: `Could not parse response from endpoint. Make sure it points to the correct URL (you might be missing /api/trigger)`,
+      };
+    }
+
+    if (!validateResponse.success) {
+      return {
+        ok: false,
+        error: `Endpoint ${this.url} responded with error: ${validateResponse.error.message}`,
+      };
+    }
+
+    return validateResponse.data;
   }
 }
 

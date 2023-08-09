@@ -7,7 +7,7 @@ import { EnvironmentLabel, environmentTitle } from "~/components/environments/En
 import { HowToUseApiKeysAndEndpoints } from "~/components/helpContent/HelpContentText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
-import { ButtonContent } from "~/components/primitives/Buttons";
+import { Button, ButtonContent } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
@@ -39,6 +39,7 @@ import { requestUrl } from "~/utils/requestUrl.server";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
 import { Badge } from "~/components/primitives/Badge";
+import { FirstEndpointSheet } from "./FirstEndpointSheet";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -95,6 +96,13 @@ export default function Page() {
     };
   }, [selected, clients]);
 
+  const isAnyClientFullyConfigured = useMemo(() => {
+    return clients.some((client) => {
+      const { DEVELOPMENT, PRODUCTION } = client.endpoints;
+      return PRODUCTION.state === "configured" && DEVELOPMENT.state === PRODUCTION.state;
+    });
+  }, [clients]);
+
   const organization = useOrganization();
   const project = useProject();
 
@@ -119,7 +127,7 @@ export default function Page() {
         <PageDescription>API Keys and endpoints for your environments.</PageDescription>
       </PageHeader>
       <PageBody>
-        <Help defaultOpen>
+        <Help defaultOpen={!isAnyClientFullyConfigured}>
           {(open) => (
             <div className={cn("grid h-full gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
               <div>
@@ -202,7 +210,12 @@ export default function Page() {
                       </div>
                     ))
                   ) : (
-                    <Paragraph>You have no clients yet</Paragraph>
+                    <>
+                      <Paragraph>Add your first endpoint</Paragraph>
+                      <Paragraph>
+                        <FirstEndpointSheet projectId={project.id} environments={environments} />
+                      </Paragraph>
+                    </>
                   )}
                 </div>
                 {selectedEndpoint && (

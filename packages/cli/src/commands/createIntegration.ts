@@ -6,6 +6,7 @@ import { COMMAND_NAME } from "../consts.js";
 import { getLatestPackageVersion } from "../utils/addDependencies.js";
 import { createFile, pathExists, readJSONFile, writeJSONFile } from "../utils/fileSystem.js";
 import { generateIntegrationFiles } from "../utils/generateIntegrationFiles.js";
+import { getPackageName } from "../utils/getPackagName.js";
 import { installDependencies } from "../utils/installDependencies.js";
 import { logger } from "../utils/logger.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
@@ -196,13 +197,9 @@ export default defineConfig([
 
   // If inside the monorepo:
   if (triggerMonorepoPath) {
-    // Add the dependency to the nextjs-example package.json
-    // Add the paths to the nextjs-example tsconfig paths
-    await updateNextJsExampleProjectWithNewIntegration(
-      triggerMonorepoPath,
-      resolvedPath,
-      resolvedOptions
-    );
+    //adds the integration run script to the job-catalog/package.json
+    //adds the path to the integration to the job-catalog/tsconfig.json
+    await updateJobCatalogWithNewIntegration(triggerMonorepoPath, resolvedPath, resolvedOptions);
   }
 
   // Install the dependencies
@@ -490,27 +487,44 @@ async function findGitPath(path: string): Promise<string | undefined> {
   return findGitPath(parentPath);
 }
 
-async function updateNextJsExampleProjectWithNewIntegration(
+async function updateJobCatalogWithNewIntegration(
   monorepoPath: string,
   integrationPath: string,
   resolvedOptions: ResolvedCLIOptions
 ) {
-  const nextjsPath = pathModule.join(monorepoPath, "examples", "nextjs-example");
+  const packageName = getPackageName(resolvedOptions.packageName);
+  const jobCatalogPath = pathModule.join(monorepoPath, "examples", "job-catalog");
+  const jobCatalogSrcFolder = pathModule.join(jobCatalogPath, "src");
 
-  const packageJsonPath = pathModule.join(nextjsPath, "package.json");
+  const integrationFile = `export {}`;
+
+  await createFileInPath(jobCatalogSrcFolder, `${packageName}.ts`, integrationFile);
+
+  const packageJsonPath = pathModule.join(jobCatalogPath, "package.json");
+
   const packageJson = await readJSONFile(packageJsonPath);
-
   const newPackageJson = {
     ...packageJson,
+    scripts: {
+      ...packageJson.scripts,
+      [packageName]: `nodemon --watch src/${packageName}.ts -r tsconfig-paths/register -r dotenv/config src/${packageName}.ts`,
+    },
     dependencies: {
       ...packageJson.dependencies,
       [resolvedOptions.packageName]: `workspace:*`,
     },
   };
 
+  // Move "dev:trigger script" to the last position in the scripts object
+  if (newPackageJson.scripts.hasOwnProperty("dev:trigger")) {
+    const devTriggerScript = newPackageJson.scripts["dev:trigger"];
+    delete newPackageJson.scripts["dev:trigger"];
+    newPackageJson.scripts["dev:trigger"] = devTriggerScript;
+  }
+
   await writeJSONFile(packageJsonPath, newPackageJson);
 
-  const tsConfigPath = pathModule.join(nextjsPath, "tsconfig.json");
+  const tsConfigPath = pathModule.join(jobCatalogPath, "tsconfig.json");
   const tsConfig = await readJSONFile(tsConfigPath);
 
   const newTsConfig = {
@@ -528,6 +542,5 @@ async function updateNextJsExampleProjectWithNewIntegration(
       },
     },
   };
-
   await writeJSONFile(tsConfigPath, newTsConfig);
 }

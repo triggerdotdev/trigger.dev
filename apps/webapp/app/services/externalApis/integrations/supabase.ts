@@ -10,11 +10,11 @@ const supabase = new SupabaseManagement({
 });
 
 new Job(client, {
-  id: "on-new-users",
-  name: "On New Users",
+  id: "on-new-todos",
+  name: "On New Todos",
   version: "0.1.1",
-  trigger: supabase.onInsert({
-    table: "users",
+  trigger: supabase.onInserted({
+    table: "todos",
   }),
   run: async (payload, io, ctx) => {
   },
@@ -33,11 +33,11 @@ const supabase = new SupabaseManagement({
 });
 
 new Job(client, {
-  id: "on-new-users",
-  name: "On New Users",
+  id: "on-new-todos",
+  name: "On New Todos",
   version: "0.1.1",
-  trigger: supabase.onInsert({
-    table: "users",
+  trigger: supabase.onInserted({
+    table: "todos",
   }),
   run: async (payload, io, ctx) => {
   },

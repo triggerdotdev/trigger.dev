@@ -7,7 +7,7 @@ import { pathToRegexp } from "path-to-regexp";
 import { simpleGit } from "simple-git";
 import { parse } from "tsconfck";
 import { pathToFileURL } from "url";
-import { promptApiKey, promptEndpointSlug, promptTriggerUrl } from "../cli/index.js";
+import { promptApiKey, promptTriggerUrl } from "../cli/index.js";
 import { CLOUD_API_URL, CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts.js";
 import { TelemetryClient, telemetryClient } from "../telemetry/telemetry.js";
 import { addDependencies } from "../utils/addDependencies.js";
@@ -30,9 +30,11 @@ export type InitCommandOptions = {
 type ResolvedOptions = Required<InitCommandOptions>;
 
 export const initCommand = async (options: InitCommandOptions) => {
-  renderTitle();
-
   telemetryClient.init.started(options);
+
+  const resolvedPath = resolvePath(options.projectPath);
+
+  await renderTitle(resolvedPath);
 
   if (options.triggerUrl === CLOUD_TRIGGER_URL) {
     logger.info(`✨ Initializing project in Trigger.dev Cloud`);
@@ -42,7 +44,6 @@ export const initCommand = async (options: InitCommandOptions) => {
     logger.info(`✨ Initializing Trigger.dev in project`);
   }
 
-  const resolvedPath = resolvePath(options.projectPath);
   // Detect if are are in a Next.js project
   const isNextJsProject = await detectNextJsProject(resolvedPath);
 
@@ -66,24 +67,28 @@ export const initCommand = async (options: InitCommandOptions) => {
   const isTypescriptProject = await detectTypescriptProject(resolvedPath);
   telemetryClient.init.isTypescriptProject(isTypescriptProject, options);
 
-  const resolvedOptions = await resolveOptionsWithPrompts(options, resolvedPath, telemetryClient);
-  const apiKey = resolvedOptions.apiKey;
+  const optionsAfterPrompts = await resolveOptionsWithPrompts(
+    options,
+    resolvedPath,
+    telemetryClient
+  );
+  const apiKey = optionsAfterPrompts.apiKey;
 
   if (!apiKey) {
     logger.error("You must provide an API key to continue.");
-    telemetryClient.init.failed("no_api_key", resolvedOptions);
+    telemetryClient.init.failed("no_api_key", optionsAfterPrompts);
     return;
   }
 
-  const apiClient = new TriggerApi(apiKey, resolvedOptions.apiUrl);
+  const apiClient = new TriggerApi(apiKey, optionsAfterPrompts.apiUrl);
   const authorizedKey = await apiClient.whoami(apiKey);
 
   if (!authorizedKey) {
     logger.error(
-      `🛑 The API key you provided is not authorized. Try visiting your dashboard at ${resolvedOptions.triggerUrl} to get a new API key.`
+      `🛑 The API key you provided is not authorized. Try visiting your dashboard at ${optionsAfterPrompts.triggerUrl} to get a new API key.`
     );
 
-    telemetryClient.init.failed("invalid_api_key", resolvedOptions);
+    telemetryClient.init.failed("invalid_api_key", optionsAfterPrompts);
     return;
   }
 
@@ -92,6 +97,9 @@ export const initCommand = async (options: InitCommandOptions) => {
     authorizedKey.project.id,
     authorizedKey.userId
   );
+
+  const endpointSlug = authorizedKey.project.slug;
+  const resolvedOptions: ResolvedOptions = { ...optionsAfterPrompts, endpointSlug };
 
   await addDependencies(resolvedPath, [
     { name: "@trigger.dev/sdk", tag: "latest" },
@@ -149,7 +157,7 @@ async function printNextSteps(options: ResolvedOptions, authorizedKey: WhoamiRes
   logger.info("Next steps:");
   logger.info(`   1. Run your Next.js project locally with 'npm run dev'`);
   logger.info(
-    `   2. Run 'npx @trigger.dev/cli@latest dev' to watch for changes and automatically register Trigger.dev jobs`
+    `   2. In a separate terminal, run 'npx @trigger.dev/cli@latest dev' to watch for changes and automatically register Trigger.dev jobs`
   );
   logger.info(`   3. View your jobs at ${projectUrl}`);
 
@@ -173,11 +181,15 @@ async function addConfigurationToPackageJson(path: string, options: ResolvedOpti
   logger.success(`✅ Wrote trigger.dev config to package.json`);
 }
 
+type OptionsAfterPrompts = Required<Omit<InitCommandOptions, "endpointSlug">> & {
+  endpointSlug: InitCommandOptions["endpointSlug"];
+};
+
 const resolveOptionsWithPrompts = async (
   options: InitCommandOptions,
   path: string,
   telemetryClient: TelemetryClient
-): Promise<ResolvedOptions> => {
+): Promise<OptionsAfterPrompts> => {
   const resolvedOptions: InitCommandOptions = { ...options };
 
   try {
@@ -204,11 +216,8 @@ const resolveOptionsWithPrompts = async (
 
       if (packageJSON && packageJSON["trigger.dev"] && packageJSON["trigger.dev"].endpointId) {
         resolvedOptions.endpointSlug = packageJSON["trigger.dev"].endpointId;
-      } else {
-        resolvedOptions.endpointSlug = await promptEndpointSlug(path);
+        telemetryClient.init.resolvedEndpointSlug(resolvedOptions);
       }
-
-      telemetryClient.init.resolvedEndpointSlug(resolvedOptions);
     }
   } catch (err) {
     // If the user is not calling the command from an interactive terminal, inquirer will throw an error with isTTYError = true
@@ -238,7 +247,7 @@ const resolveOptionsWithPrompts = async (
     }
   }
 
-  return resolvedOptions as ResolvedOptions;
+  return resolvedOptions as OptionsAfterPrompts;
 };
 
 // Detects if there are any uncommitted git changes at path
@@ -277,7 +286,7 @@ async function detectPagesOrAppDir(
   isTypescriptProject = false
 ): Promise<"pages" | "app"> {
   const nextConfigPath = pathModule.join(path, "next.config.js");
-  const importedConfig = await import(pathToFileURL(nextConfigPath).toString());
+  const importedConfig = await import(pathToFileURL(nextConfigPath).toString()).catch(() => ({}));
 
   if (importedConfig?.default?.experimental?.appDir) {
     return "app";
@@ -436,11 +445,11 @@ async function createTriggerAppRoute(
   const tsConfigPath = pathModule.join(projectPath, configFileName);
   const { tsconfig } = await parse(tsConfigPath);
 
-  const extension = isTypescriptProject ? ".ts" : ".js"
-  const triggerFileName = `trigger${extension}`
-  const examplesFileName = `examples${extension}`
-  const examplesIndexFileName = `index${extension}`
-  const routeFileName = `route${extension}`
+  const extension = isTypescriptProject ? ".ts" : ".js";
+  const triggerFileName = `trigger${extension}`;
+  const examplesFileName = `examples${extension}`;
+  const examplesIndexFileName = `index${extension}`;
+  const routeFileName = `route${extension}`;
 
   const pathAlias = getPathAlias(tsconfig, usesSrcDir);
   const routePathPrefix = pathAlias ? pathAlias + "/" : "../../../";
@@ -472,29 +481,38 @@ export const client = new TriggerClient({
 import { eventTrigger } from "@trigger.dev/sdk";
 import { client } from "${jobsPathPrefix}trigger";
 
-// your first job
+// Your first job
+// This Job will be triggered by an event, log a joke to the console, and then wait 5 seconds before logging the punchline
 client.defineJob({
+  // This is the unique identifier for your Job, it must be unique across all Jobs in your project
   id: "example-job",
-  name: "Example Job",
+  name: "Example Job: a joke with a delay",
   version: "0.0.1",
+  // This is triggered by an event using eventTrigger. You can also trigger Jobs with webhooks, on schedules, and more: https://trigger.dev/docs/documentation/concepts/triggers/introduction
   trigger: eventTrigger({
     name: "example.event",
   }),
   run: async (payload, io, ctx) => {
-    await io.logger.info("Hello world!", { payload });
-
-    return {
-      message: "Hello world!",
-    };
+    // This logs a message to the console
+    await io.logger.info("🧪 Example Job: a joke with a delay");
+    await io.logger.info("How do you comfort a JavaScript bug?");
+    // This waits for 5 seconds, the second parameter is the number of seconds to wait, you can add delays of up to a year
+    await io.wait("Wait 5 seconds for the punchline...", 5);
+    await io.logger.info("You console it! 🤦");
+    await io.logger.info(
+      "✨ Congratulations, You just ran your first successful Trigger.dev Job! ✨"
+    );
+    // To learn how to write much more complex (and probably funnier) Jobs, check out our docs: https://trigger.dev/docs/documentation/guides/create-a-job
   },
 });
+
 `;
 
   const examplesIndexContent = `
 // import all your job files here
 
 export * from "./examples"
-`
+`;
 
   const directories = pathModule.join(path, "app", "api", "trigger");
   await fs.mkdir(directories, { recursive: true });
@@ -551,10 +569,10 @@ async function createTriggerPageRoute(
   const pathAlias = getPathAlias(tsconfig, usesSrcDir);
   const routePathPrefix = pathAlias ? pathAlias + "/" : "../..";
 
-  const extension = isTypescriptProject ? ".ts" : ".js"
-  const triggerFileName = `trigger${extension}`
-  const examplesFileName = `examples${extension}`
-  const examplesIndexFileName = `index${extension}`
+  const extension = isTypescriptProject ? ".ts" : ".js";
+  const triggerFileName = `trigger${extension}`;
+  const examplesFileName = `examples${extension}`;
+  const examplesIndexFileName = `index${extension}`;
 
   const routeContent = `
 import { createPagesRoute } from "@trigger.dev/nextjs";
@@ -607,7 +625,7 @@ client.defineJob({
 // import all your job files here
 
 export * from "./examples"
-  `
+  `;
 
   const directories = pathModule.join(path, "pages", "api");
   await fs.mkdir(directories, { recursive: true });

@@ -49,3 +49,6 @@ apps/**/public/build
 .buildt
 
 **/tmp/
+/test-results/
+/playwright-report/
+/playwright/.cache/

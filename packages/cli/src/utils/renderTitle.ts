@@ -1,6 +1,6 @@
 import gradient from "gradient-string";
 import { TITLE_TEXT } from "../consts.js";
-import { getUserPkgManager } from "./getUserPkgManager.js";
+import { getUserPackageManager } from "./getUserPkgManager.js";
 
 // colors brought in from vscode poimandres theme
 const poimandresTheme = {
@@ -12,11 +12,11 @@ const poimandresTheme = {
   yellow: "#fffac2",
 };
 
-export const renderTitle = () => {
+export const renderTitle = async (projectDirectory: string) => {
   const triggerGradient = gradient(Object.values(poimandresTheme));
 
   // resolves weird behavior where the ascii is offset
-  const pkgManager = getUserPkgManager();
+  const pkgManager = await getUserPackageManager(projectDirectory);
   if (pkgManager === "yarn" || pkgManager === "pnpm") {
     console.log("");
   }
