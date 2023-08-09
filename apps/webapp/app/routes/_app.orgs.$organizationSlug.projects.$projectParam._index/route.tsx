@@ -222,7 +222,7 @@ function ExampleJobs() {
   );
 }
 
-const iconStyles = "h-7 w-7 mr-2 pl-2";
+const iconStyles = "h-7 w-7 mr-2 pl-2 min-w-[28px]";
 
 const examples = [
   {
