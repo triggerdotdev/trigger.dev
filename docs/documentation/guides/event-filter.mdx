@@ -1,0 +1,164 @@
+---
+title: "Event filters"
+description: "Harness the power of EventFilter for precise event-based job executions in your application."
+---
+
+# Event filters
+
+## What is an EventFilter?
+
+The EventFilter is a feature that allows you to define declarative pattern-matching rules for events within your application's Job triggers. It's inspired by [AWS EventBridge patterns](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-event-patterns.html) and is designed to help you filter events based on specific criteria, ensuring that only events meeting those criteria trigger certain job executions.
+
+## EventFilter Structure
+
+An EventFilter consists of JSON objects and arrays, where each field name represents a property in the event payload that you want to filter. The value associated with each field name is an array containing one or more values that you want to match against. This array of values serves as an OR condition, while the entire EventFilter functions as an AND condition.
+
+## Basic Example of EventFilter in a Job trigger
+
+Consider a scenario where you have a custom event payload and a Job trigger that should execute a specific job only when certain criteria are met. Here's an example:
+
+Event Payload:
+
+```json
+{
+  "uid": "jexAgaeJFJsrGfans1pxqm",
+  "type": "15 Min Meeting",
+  "price": 0,
+  "title": "15 Min Meeting between Eric Allam and John Doe",
+  "length": 15,
+  "status": "ACCEPTED",
+  "endTime": "2023-01-25T16:00:00Z",
+  "bookingId": 198052,
+  "organizer": {
+    "id": 32794,
+    "name": "Eric Allam",
+    "email": "eric@trigger.dev",
+    "language": { "locale": "en" },
+    "timeZone": "Europe/London"
+  }
+}
+```
+
+EventFilter:
+
+```json
+{
+  "type": ["15 Min Meeting"],
+  "status": ["ACCEPTED", "REJECTED"],
+  "organizer": {
+    "name": ["Eric Allam"]
+  }
+}
+```
+
+In this example, the EventFilter specifies that the event's type should be "15 Min Meeting," the status should be either `status == "ACCEPTED"` or `status == "REJECTED"` and the organizer's name should be "Eric Allam." The event will match if all these conditions are met.
+
+## How EventFilter Works in Job Triggers
+
+For the EventFilter to match an event and trigger a job execution, the event payload must contain all the field names listed in the EventFilter. These field names must also appear in the event payload with the same nesting structure.
+
+The value associated with each field name in the EventFilter must be an array of strings, numbers, or booleans. The EventFilter matches the event if the value of the corresponding field name in the event payload is equal to any of the values in the array.
+
+Effectively, each array of values represents an OR condition, and the entire EventFilter represents an AND condition. This means that all specified conditions must be satisfied for the event to trigger the corresponding job execution.
+
+## EventFilter Matching Conditions
+
+EventFilter allows you to use various matching conditions to define your filtering criteria:
+
+- Basic Equality: Match events where a property equals a specific value.
+- $startsWith / $endsWith: Match events where a property's value starts with or ends with a specific string.
+- $anythingBut: Match events where a property's value is not equal to a specific value.
+- $exists: Match events where a property exists (or does not exist) in the payload.
+- $gt / $lt: Match events where a numeric property is greater than or less than a specific value.
+- $between: Match events where a numeric property's value falls within a range.
+- $includes: Match events where an array property includes a specific value.
+- $ignoreCaseEquals: Match events where a property's value is equal, ignoring case.
+- $isNull: Match events where a property's value is null (or not null).
+- $notIn: Match events where a property's value matches none of several values.
+- $in: Match events where a property's value matches one of several values.
+- $matchesRegex: Match events where a property's value matches a regular expression.
+- $containsAnyOf: Match events where any element from an array property contains at least one of multiple values.
+- $containsAllOf: Match events where all elements from an array property contain every single specified value.
+- $containsNoneOf: Match events where no element from an array property contains any of multiple values.
+- $isWithinTimeRange: Match events that occur between two dates.
+- $and: Combine multiple filters into a logical 'AND' operation.
+- $or: Combine multiple filters into a logical 'OR' operation.
+- $not: Negate filter results so they match only when NOT true.
+
+## Integrating EventFilter with Job Triggers
+
+To use the EventFilter with Job triggers in your application, follow these steps:
+
+#### 1. Configure Job Trigger:
+
+Set up your Job trigger to watch for events and execute specific jobs when the EventFilter criteria are met.
+
+```typescript
+import { createJob, JobTrigger } from "your-job-library";
+
+// Define your Job Trigger configuration
+const jobTrigger: JobTrigger = {
+  eventName: "15_Min_Meeting_Event",
+  jobName: "Process_Meeting_Job",
+  // Other trigger configurations...
+};
+```
+
+#### 2. Define EventFilter:
+
+Define your EventFilter by specifying the conditions that the event payload must meet to trigger the job execution.
+
+```typescript
+interface EventFilter {
+  type: string[];
+  status: string[];
+  organizer: {
+    name: string[];
+  };
+}
+
+const eventFilter: EventFilter = {
+  type: ["15 Min Meeting"],
+  status: ["ACCEPTED", "REJECTED"],
+  organizer: {
+    name: ["Eric Allam"],
+  },
+};
+```
+
+#### 3. Filter and Execute:
+
+Within your Job trigger's implementation, check if the incoming event payload matches the EventFilter criteria. If the event matches, execute the specified job.
+
+```typescript
+import { processMeetingJob } from "your-job-library";
+
+function handleEvent(eventPayload: any) {
+  // Check if the event payload matches the EventFilter
+  if (eventMatchesFilter(eventPayload, eventFilter)) {
+    // Execute the Process_Meeting_Job with the event payload
+    const job = createJob("Process_Meeting_Job", { eventPayload });
+    processMeetingJob(job);
+  }
+}
+
+// Function to check if an event payload matches the EventFilter
+function eventMatchesFilter(eventPayload: any, filter: EventFilter): boolean {
+  return (
+    filter.type.includes(eventPayload.type) &&
+    filter.status.includes(eventPayload.status) &&
+    filter.organizer.name.includes(eventPayload.organizer.name)
+    // Additional conditions as needed...
+  );
+}
+
+// Your event handling logic
+function eventHandler(eventPayload: any) {
+  // Handle the event...
+  handleEvent(eventPayload);
+}
+```
+
+## Conclusion
+
+The EventFilter is a powerful tool that enables you to fine-tune your application's event-driven workflows by selectively triggering job executions based on specific event criteria. By understanding how the EventFilter's matching conditions work and integrating it with your Job triggers, you can streamline your application's event processing and ensure that actions are taken only when the right conditions are met.

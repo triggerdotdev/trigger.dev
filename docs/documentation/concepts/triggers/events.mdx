@@ -103,17 +103,11 @@ client.defineJob({
 });
 ```
 
-
 ## Event filters
 
-## What is an EventFilter?
-An EventFilter is a powerful feature that allows you to define declarative pattern-matching rules for events within your application. It is modeled after [AWS EventBridge patterns](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-event-patterns.html) and enables you to filter events based on specific criteria, ensuring that only events meeting those criteria trigger certain actions or workflows
+They are declarative pattern-matching rules, modeled after [AWS EventBridge patterns](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-event-patterns.html).
 
-## EventFilter Structure
-An EventFilter consists of JSON objects and arrays, where each field name represents a property in the event payload that you want to filter. The value associated with each field name is an array containing one or more values that you want to match against. The array of values acts as an OR condition, while the entire EventFilter is treated as an AND condition.
-
-## Basic EventFilter Example
-Let's take a look at a simple example using a custom event payload:
+Given the following custom event payload:
 
 ```json
 {
@@ -133,10 +127,9 @@ Let's take a look at a simple example using a custom event payload:
     "timeZone": "Europe/London"
   }
 }
-
 ```
 
-Suppose we want to filter events of type "15 Min Meeting" that have a status of either `status == "ACCEPTED"` or `status == "REJECTED"` and are organized by "Eric Allam". The following EventFilter would match such events:
+The following event filter would match the event:
 
 ```json
 {
@@ -147,177 +140,14 @@ Suppose we want to filter events of type "15 Min Meeting" that have a status of 
   }
 }
 ```
-## EventFilter Matching Conditions
 
-EventFilter allows you to use various matching conditions to define your filtering criteria:
+For an event pattern to match an event, the event must contain all the field names listed in the event pattern. The field names must also appear in the event with the same nesting structure.
 
-- Basic Equality: Match events where a property equals a specific value.
-- $startsWith / $endsWith: Match events where a property's value starts with or ends with a specific string.
-- $anythingBut: Match events where a property's value is not equal to a specific value.
-- $exists: Match events where a property exists (or does not exist) in the payload.
-- $gt / $lt: Match events where a numeric property is greater than or less than a specific value.
-- $between: Match events where a numeric property's value falls within a range.
-- $includes: Match events where an array property includes a specific value.
-- $ignoreCaseEquals: Match events where a property's value is equal, ignoring case.
-- $isNull: Match events where a property's value is null (or not null).
-- $notIn: Match events where a property's value matches none of several values.
-- $in: Match events where a property's value matches one of several values.
-- $matchesRegex: Match events where a property's value matches a regular expression.
-- $containsAnyOf: Match events where any element from an array property contains at least one of multiple values.
-- $containsAllOf: Match events where all elements from an array property contain every single specified value.
-- $containsNoneOf: Match events where no element from an array property contains any of multiple values.
-- $isWithinTimeRange: Match events that occur between two dates.
-- $and: Combine multiple filters into a logical 'AND' operation.
-- $or: Combine multiple filters into a logical 'OR' operation.
-- $not: Negate filter results so they match only when NOT true.
+The value of each field name in the event pattern must be an array of strings, numbers, or booleans. The event pattern matches the event if the value of the field name in the event is equal to any of the values in the array.
+
+Effectively, each array is an OR condition, and the entire event pattern is an AND condition.
+
+So the above event filter will match because `status == "ACCEPTED"`, and it would also match if `status == "REJECTED"`.
 
 
-## Integrating EventFilter with Event Triggers
-The EventFilter can be used with various triggers to selectively activate workflows or actions based on filtered events. Let's explore how to integrate EventFilter with event triggers:
-
-### Using EventFilter with Event Triggers
-In your codebase, you can use the EventFilter in conjunction with event triggers to ensure that only events meeting specific criteria trigger the defined actions. Here's an example of using the EventFilter with an event trigger:
-
-```typescript
-import { EventFilter } from "../src";
-import { eventFilterMatches } from "../src/eventFilterMatches";
-
-// Define your event payload
-const payload = {
-  uid: "jexAgaeJFJsrGfans1pxqm",
-  type: "15 Min Meeting",
-  price: 0,
-  title: "15 Min Meeting between Eric Allam and John Doe",
-  length: 15,
-  status: "ACCEPTED",
-  endTime: "2023-01-25T16:00:00Z",
-  bookingId: 198052,
-  organizer: {
-    id: 32794,
-    name: "Eric Allam",
-    email: "eric@trigger.dev",
-    language: { locale: "en" },
-    timeZone: "Europe/London"
-  }
-};
-
-// Define your EventFilter
-const filter: EventFilter = {
-  type: ["15 Min Meeting"],
-  status: ["ACCEPTED", "REJECTED"],
-  organizer: {
-    name: ["Eric Allam"]
-  }
-};
-
-// Check if the payload matches the EventFilter
-if (eventFilterMatches(payload, filter)) {
-  // Trigger the corresponding action or workflow
-  console.log("Event matches the filter. Triggering action...");
-} else {
-  console.log("Event does not match the filter. Skipping action...");
-}
-
-```
-### Examples of Event Triggers Using EventFilter
-#### 1. Event Trigger with EventFilter
-
-In a scenario where you have an event trigger that watches for certain events, you can integrate the EventFilter to filter events before triggering actions:
-
-```typescript
-
-import { EventFilter } from "../src";
-import { eventFilterMatches } from "../src/eventFilterMatches";
-
-function watchForEvents(triggerConfig: any) {
-  const eventsToWatch = [
-    {
-      uid: "event1",
-      type: "Event Type A",
-      // ... other event properties
-    },
-    {
-      uid: "event2",
-      type: "Event Type B",
-      // ... other event properties
-    },
-    // ... more events
-  ];
-
-  eventsToWatch.forEach(event => {
-    if (eventFilterMatches(event, triggerConfig.filter)) {
-      console.log(`Event ${event.uid} matches the filter. Triggering action...`);
-    } else {
-      console.log(`Event ${event.uid} does not match the filter. Skipping action...`);
-    }
-  });
-}
-
-const eventTrigger = {
-  // ... other trigger properties
-  filter: {
-    type: ["Event Type A"],
-    // Define filtering criteria here
-  },
-  // ... other trigger configurations
-};
-
-watchForEvents(eventTrigger);
-
-```
-#### Integrating EventFilter with Stripe Triggers
-EventFilter can also be used with Stripe triggers to handle events from Stripe integrations. Here's how you can integrate EventFilter with a Stripe trigger:
-
-```typescript
-
-
-import { EventFilter } from "../src";
-import { eventFilterMatches } from "../src/eventFilterMatches";
-
-// Stripe trigger configuration
-const stripeTrigger = {
-  // ... other trigger properties
-  filter: {
-    // Define EventFilter criteria here
-    // For example, let's say we want to trigger on successful payment events
-    eventType: ["payment.success"], // Replace this with the actual event type you want to filter
-    amount: [{ $gt: 100 }], // Example of numeric condition
-  },
-  // ... other trigger configurations
-};
-
-// Watch for Stripe events and trigger actions based on the EventFilter
-watchForStripeEvents(stripeTrigger);
-
-// Function to watch for Stripe events and trigger actions
-function watchForStripeEvents(triggerConfig) {
-  // Here you would implement the logic to listen for Stripe events
-  // For demonstration purposes, let's assume you have a function to listen for Stripe events
-
-  // Assume `stripeEvent` is the event received from Stripe
-  const stripeEvent = {
-    eventType: "payment.success",
-    amount: 150,
-    // ... other event properties
-  };
-
-  // Check if the Stripe event matches the EventFilter
-  if (eventFilterMatches(stripeEvent, triggerConfig.filter)) {
-    // Trigger the corresponding action or workflow
-    // For example:
-    performStripeAction(stripeEvent);
-  }
-}
-
-// Function to perform an action based on the Stripe event
-function performStripeAction(stripeEvent) {
-  // Implement your action logic here
-  // For example, you might send a notification, update a database, etc.
-  console.log("Performing action for Stripe event:", stripeEvent);
-}
-
-
-```
-
-## Conclusion
-The EventFilter is a powerful tool that empowers you to precisely control which events trigger specific actions or workflows in your application. By utilizing the various matching conditions and integrating EventFilter with different types of triggers, you can streamline your event-driven architecture and improve the efficiency of your application's event handling.
+For a detailed guide on using the Event Filter, please refer to our [EventFilter Usage Guide](/documentation/guides/event-filter).
