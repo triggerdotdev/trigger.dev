@@ -32,6 +32,7 @@ services:
       - db
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/postgres?schema=public
+      DIRECT_URL: postgres://postgres:postgres@db:5432/postgres?schema=public
       SESSION_SECRET: secret123
       MAGIC_LINK_SECRET: secret123
       REMIX_APP_PORT: 3030

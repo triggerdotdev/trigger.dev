@@ -81,6 +81,7 @@
     "REMIX_APP_PORT",
     "CI",
     "DATABASE_URL",
+    "DIRECT_URL",
     "SESSION_SECRET",
     "APP_ORIGIN",
     "LOGIN_ORIGIN",
