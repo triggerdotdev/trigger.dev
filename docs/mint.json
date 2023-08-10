@@ -94,8 +94,7 @@
             "documentation/concepts/triggers/webhooks",
             "documentation/concepts/triggers/events",
             "documentation/concepts/triggers/scheduled",
-            "documentation/concepts/triggers/dynamic", 
-            "documentation/concepts/triggers/event-filter"
+            "documentation/concepts/triggers/dynamic"
           ]
         },
         "documentation/concepts/resumability",
@@ -118,6 +117,7 @@
         "documentation/guides/cli",
         "documentation/guides/manual",
         "documentation/guides/running-jobs",
+        "documentation/guides/event-filter", 
         {
           "group": "Using the Dashboard",
           "pages": [
