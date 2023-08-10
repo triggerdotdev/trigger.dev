@@ -3,9 +3,7 @@ title: "Event Filters"
 description: "A guide to using event filters to create more precise and tailored job triggers."
 ---
 
-## Event Filters
-
-What are eventfilters?
+## What are Event Filters?
 
 Event filters provide a powerful way to define specific conditions that determine when a job should be triggered based on incoming events. Filters allow you to narrow down event processing to only those events that match certain criteria, ensuring that your jobs are executed in a targeted manner.
 
@@ -13,7 +11,7 @@ we will cover the various types of event filters and how they can be used to cre
 
 ### Event Filter Types
 
-### String Filters
+#### 1. String Filters
 
 String filters are used to match string values within the event payload. You can filter events based on exact string matches, case-insensitive matches, starts-with, ends-with, and more.
 
@@ -24,7 +22,7 @@ String filters are used to match string values within the event payload. You can
 - `name: [{ $endsWith: "hn" }]`: Triggers the job if the name field ends with "hn".
 - `name: [{ $ignoreCaseEquals: "john" }]` : Triggers the job if the name field is equal to "john" regardless of case.
 
-### Examples of string filters being used in a Trigger.
+#### Examples of string filters used in a Trigger.
 
 ```ts
 client.defineJob({
@@ -39,7 +37,7 @@ client.defineJob({
       hobbies: z.array(z.string()),
     }),
     filter: {
-      name: [{ $startsWith: "Jo" }],
+      name: [{ $startsWith: "Jo" }], // Only trigger for employees whose name starts with "Jo"
     },
   }),
   run: async (payload, io, ctx) => {},
@@ -59,23 +57,23 @@ client.defineJob({
       hobbies: z.array(z.string()),
     }),
     filter: {
-      name: ["John"],
+      name: ["John"], // Only trigger for employees whose name is "John"
     },
   }),
   run: async (payload, io, ctx) => {},
 });
 ```
 
-### Boolean Filters
+### 2. Boolean Filters
 
 Boolean filters are used to filter events based on boolean values within the event payload.
 
 **_Examples of boolean filters:_**
 
-- `paidPlan: [true]`: Triggers the job if the `PaidPlan` field in the event payload is true.
-- `isAdmin: [false]`: Triggers the job if the `isAdmin` field in the event payload is false.
+- `paidPlan: [true]`: Triggers the job if the `PaidPlan` field in the event payload is `true`.
+- `isAdmin: [false]`: Triggers the job if the `isAdmin` field in the event payload is `false`.
 
-#### Examples of boolean filters being used in a Trigger.
+#### Examples of boolean filters used in a Trigger.
 
 ```ts
 client.defineJob({
@@ -88,7 +86,7 @@ client.defineJob({
       name: z.string(),
       email: z.string(),
       paidPlan: z.boolean(),
-      isAdmin: z.boolean(), // New field indicating admin status
+      isAdmin: z.boolean(),
     }),
     filter: {
       paidPlan: [true],
@@ -118,19 +116,19 @@ client.defineJob({
 });
 ```
 
-### Number Filters
+### 3. Number Filters
 
 Number filters are used to filter events based on numeric values within the event payload.
 
 **_Examples of number filters:_**
 
-- `age [18]`: Triggers the job if the `age` field in the event payload is equal to 18.
-- `score: [{ $gt: 90 }]` : Triggers the job if the score field is greater than 90.
-- `score: [{ $gte: 90 }]` : Triggers the job if the score field is greater than or equal to 90.
-- `score: [{ $lt: 90 }]` : Triggers the job if the score field is less than 90.
-- `score: [{ $lte: 90 }]` : Triggers the job if the score field is less than or equal to 90.
+- `age [18]`: Triggers the job if the `age` field in the event payload is equal to `18`.
+- `score: [{ $gt: 90 }]` : Triggers the job if the score field is greater than `90`.
+- `score: [{ $gte: 90 }]` : Triggers the job if the score field is greater than or equal to `90`.
+- `score: [{ $lt: 90 }]` : Triggers the job if the score field is less than `90`.
+- `score: [{ $lte: 90 }]` : Triggers the job if the score field is less than or equal to `90`.
 
-#### Examples of number filters being used in a Trigger.
+#### Examples of number filters used in a Trigger.
 
 ```ts
 client.defineJob({
@@ -170,7 +168,7 @@ client.defineJob({
 });
 ```
 
-### Content Filters
+### 4. Content Filters
 
 Content filters are used to filter events based on the content of arrays within the event payload.
 
@@ -178,7 +176,7 @@ Content filters are used to filter events based on the content of arrays within 
 
 - `hobbies: [{ $includes: "reading" }]`: Triggers the job if the hobbies array includes the value "reading".
 
-### Example of content filters being used in a Trigger.
+#### Example of content filters being used in a Trigger.
 
 ```ts
 client.defineJob({
@@ -201,7 +199,7 @@ client.defineJob({
 });
 ```
 
-###Existence Filters
+### 5. Existence Filters
 
 Existence filters are used to filter events based on the presence or absence of certain keys within the event payload.
 
@@ -210,7 +208,7 @@ Existence filters are used to filter events based on the presence or absence of 
 - `name: [{ $exists: true }]` : Triggers the job if the `name` field exists in the event payload.
 - `foo: [{ $exists: false }]` : Triggers the job if the foo field does not exist in the event payload.
 
-#### Examples of existence filters being used in a Trigger.
+#### Examples of existence filters used in a Trigger.
 
 ```ts
 client.defineJob({
@@ -228,9 +226,7 @@ client.defineJob({
       name: [{ $exists: true }], // Only trigger for events where the 'name' field exists
     },
   }),
-  run: async (payload, io, ctx) => {
-    //run function
-  },
+  run: async (payload, io, ctx) => {},
 });
 ```
 
@@ -253,7 +249,7 @@ client.defineJob({
 });
 ```
 
-###Comparison Filters
+### 6. Comparison Filters
 
 Comparison filters are used to perform numeric comparisons on values within the event payload.
 
@@ -302,7 +298,7 @@ client.defineJob({
 });
 ```
 
-###Combining Filters
+### 7. Combining Filters
 
 Filters can be combined to create more complex conditions for triggering jobs. For example:
 
@@ -313,7 +309,7 @@ Filters can be combined to create more complex conditions for triggering jobs. F
 - `name: ["Alice", "Bob"]` : Triggers the job if the name is either "Alice" or "Bob".
 - `name: ["Alice", "Bob"], age: [30]` : Triggers the job if the name is either "Alice" or "Bob" and the age is 30.
 
-#### Examples of combining filters being used in a Trigger.
+#### Examples of combining filters used in a Trigger.
 
 ```ts
 client.defineJob({
@@ -403,12 +399,11 @@ Effectively, each array is an OR condition, and the entire event pattern is an A
 
 So the above event filter will match because status == "ACCEPTED", and it would also match if status == "REJECTED".
 
+## Other types of triggers that can also support event filters.
 
-### Other types of triggers that can also support event filters.
+#### 1. Stripe Trigger with Event Filter
 
-1. Stripe Trigger with Event Filter
-
-Here is an example of a Stripe Trigger with an Event Filter:
+**Here is an example of a Stripe Trigger with an Event Filter:**
 
 ```ts
 client.defineJob({
@@ -430,9 +425,9 @@ The job is triggered by the `onCustomerSubscriptionCreated` event from Stripe. I
 
 - Currency: Only subscriptions with the currency "USD" will trigger this job.
 
-2. Supabase trigger with Event Filter
+#### 2. Supabase trigger with Event Filter
 
-Here is an example of a Supabase Trigger with an Event Filter:
+**Here is an example of a Supabase Trigger with an Event Filter:**
 
 ```ts
 client.defineJob({
