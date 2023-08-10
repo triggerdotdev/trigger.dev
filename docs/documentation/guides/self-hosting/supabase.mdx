@@ -59,13 +59,13 @@ ENCRYPTION_KEY=1189c93e399856a2a9a1454496171b2e
   <img src="/images/supabase-db-url.png" alt="Supabase - Database URL" />
 </Frame>
 
-6. Paste it into your `.env` file
+6. Paste it into your `.env` file, and append `?schema=triggerdotdev`
 
 <Tip>Don't forget to replace `<PASSWORD>` with the project password you set in Step 3.</Tip>
 
 ```sh .env (excerpt)
 ...
-DATABASE_URL=postgresql://postgres:<PASSWORD>@db.<ID>.supabase.co:5432/postgres
+DATABASE_URL=postgresql://postgres:<PASSWORD>@db.<ID>.supabase.co:5432/postgres?schema=triggerdotdev
 ...
 ```
 
@@ -81,7 +81,7 @@ MAGIC_LINK_SECRET=15600f1236e568d6c9c400a94e16a4ed
 SESSION_SECRET=8d92078940c89588fc8b6f5481f2c6e0
 ENCRYPTION_KEY=1189c93e399856a2a9a1454496171b2e
 
-DATABASE_URL=postgresql://postgres:<PASSWORD>@db.<ID>.supabase.co:5432/postgres
+DATABASE_URL=postgresql://postgres:<PASSWORD>@db.<ID>.supabase.co:5432/postgres?schema=triggerdotdev
 
 NODE_ENV=development
 RUNTIME_PLATFORM=docker-compose
@@ -128,7 +128,7 @@ docker compose up
   <img src="/images/trigger.dev-magic-link.png" alt="Trigger.dev - CLI Magic Link" />
 </Frame>
 
-7. If everything went well, the `public` and `graphile_worker` schemas should now be populated. Check your Supabase DB dashboard to be sure:
+7. If everything went well, the `triggerdotdev` and `graphile_worker` schemas should now be populated. Check your Supabase DB dashboard to be sure:
 
 <Frame>
   <img src="/images/supabase-db-seed.png" alt="Supabase - Database Seed" />
