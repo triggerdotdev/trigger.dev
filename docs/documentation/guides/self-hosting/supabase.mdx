@@ -145,9 +145,9 @@ docker compose up
   <img src="/images/supabase-connection-pool.png" alt="Supabase - Connection Pool" />
 </Frame>
 
-When running on a single server, Prisma can be trusted to manage its own connections. It knows how many connections are open and can process its internal queue as needed.
+When running on a single server, our app can be trusted to manage its own connections. It knows how many connections are open and can process its internal queue as needed.
 
-<Tooltip tip="🐝">Serverless</Tooltip> changes things. Here, many concurrent Prisma instances are started, each unaware of the others' connections. This can lead to a huge - potentially fatal - increase in connections straight to your DB.
+<Tooltip tip="🐝">Serverless</Tooltip> changes things. Here, many concurrent app instances are started, each unaware of the others' connections. This can lead to a huge - potentially fatal - increase in connections straight to your DB.
 
 <Info>
   PostgreSQL has a [default connection limit](https://www.postgresql.org/docs/current/runtime-config-connection.html#:~:text=at%20server%20start.-,max_connections,-(integer)) of 100.
