@@ -83,7 +83,7 @@ export async function action({ request }: ActionArgs) {
     return redirectWithSuccessMessage(
       organizationsPath(),
       request,
-      "🚀 Welcome to the Trigger.dev Cloud private beta"
+      "🚀 Welcome to the Trigger.dev Cloud"
     );
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
