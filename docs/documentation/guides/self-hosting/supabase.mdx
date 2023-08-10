@@ -82,6 +82,7 @@ SESSION_SECRET=8d92078940c89588fc8b6f5481f2c6e0
 ENCRYPTION_KEY=1189c93e399856a2a9a1454496171b2e
 
 DATABASE_URL=postgresql://postgres:<PASSWORD>@db.<ID>.supabase.co:5432/postgres?schema=triggerdotdev
+DIRECT_URL=${DATABASE_URL}
 
 NODE_ENV=development
 RUNTIME_PLATFORM=docker-compose
@@ -136,8 +137,6 @@ docker compose up
 
 8. Congratulations, you're all set up and ready to go with Supabase and Docker! 🚀
 
-{/* TODO: add pooling setup */}
-
 ## Bonus: Enable connection pooling
 
 ### What is connection pooling?
@@ -145,6 +144,58 @@ docker compose up
 <Frame caption="Connection Pool - © 2023 Supabase, Apache License 2.0">
   <img src="/images/supabase-connection-pool.png" alt="Supabase - Connection Pool" />
 </Frame>
+
+When running on a single server, Prisma can be trusted to manage its own connections. It knows how many connections are open and can process its internal queue as needed.
+
+<Tooltip tip="🐝">Serverless</Tooltip> changes things. Here, many concurrent Prisma instances are started, each unaware of the others' connections. This can lead to a huge - potentially fatal - increase in connections straight to your DB.
+
+<Info>
+  PostgreSQL has a [default connection limit](https://www.postgresql.org/docs/current/runtime-config-connection.html#:~:text=at%20server%20start.-,max_connections,-(integer)) of 100.
+</Info>
+
+**External connection pools** solve this by putting an additional layer between client and server. This essentially works as a message queue and gets processed as limits allow. The clients are blind to this and can keep sending their requests as before.
+
+### Enable connection pooling
+
+1. Navigate to `Project Settings -> Database` and copy your connection pool URL
+
+<Frame>
+  <img src="/images/supabase-pool-url.png" alt="Supabase - Connection Pool URL" />
+</Frame>
+
+2. Paste it into your `.env` file next to `DIRECT_URL`
+
+3. Append `?schema=triggerdotdev&pgbouncer=true` and insert your password
+
+<CodeGroup>
+
+```sh .env (excerpt)
+...
+DIRECT_URL=postgresql://postgres:<PASSWORD>@db.<ID>.supabase.co:6543/postgres?schema=triggerdotdev&pgbouncer=true
+...
+```
+
+```sh .env
+LOGIN_ORIGIN=http://localhost:3030
+APP_ORIGIN=http://localhost:3030
+PORT=3030
+REMIX_APP_PORT=3030
+
+MAGIC_LINK_SECRET=15600f1236e568d6c9c400a94e16a4ed
+SESSION_SECRET=8d92078940c89588fc8b6f5481f2c6e0
+ENCRYPTION_KEY=1189c93e399856a2a9a1454496171b2e
+
+DATABASE_URL=postgresql://postgres:<PASSWORD>@db.<ID>.supabase.co:5432/postgres?schema=triggerdotdev
+# notice the differing port and additional query param
+DIRECT_URL=postgresql://postgres:<PASSWORD>@db.<ID>.supabase.co:6543/postgres?schema=triggerdotdev&pgbouncer=true
+
+NODE_ENV=development
+RUNTIME_PLATFORM=docker-compose
+```
+
+</CodeGroup>
+
+4. All done! You can now enjoy the benefits of connection pooling 🔌
 
 ## Next steps
 
