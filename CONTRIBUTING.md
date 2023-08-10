@@ -37,11 +37,7 @@ branch are tagged into a release monthly.
    ```
    pnpm i
    ```
-4. Create your `.env` files
-   ```
-   cp .env.example .env && cp packages/database/.env.example packages/database/.env
-   ```
-5. Open the root `.env` file and generate a new value for `ENCRYPTION_KEY`:
+4. Open the root `.env` file and generate a new value for `ENCRYPTION_KEY`:
 
    `ENCRYPTION_KEY` is used to two-way encrypt OAuth access tokens and so you'll probably want to actually generate a unique value, and it must be a random 16 byte hex string. You can generate one with the following command:
 
@@ -51,23 +47,23 @@ branch are tagged into a release monthly.
 
    Feel free to update `SESSION_SECRET` and `MAGIC_LINK_SECRET` as well using the same method.
 
-6. Start Docker. This starts the required services like Postgres. If this is your first time using Docker, consider going through this [guide](DOCKER_INSTALLATION.md)
+5. Start Docker. This starts the required services like Postgres. If this is your first time using Docker, consider going through this [guide](DOCKER_INSTALLATION.md)
    ```
    pnpm run docker
    ```
-7. Migrate the database
+6. Migrate the database
    ```
    pnpm run db:migrate
    ```
-8. Build the app
+7. Build the app
    ```
    pnpm run build --filter webapp
    ```
-9. Run the seed script
+8. Run the seed script
    ```
    pnpm run db:seed
    ```
-10. Run the app. See the section below.
+9. Run the app. See the section below.
 
 ## Running
 
@@ -178,7 +174,6 @@ To run the end-to-end tests, follow the steps below:
 ```sh
 cp ./.env.example ./.env
 cp ./examples/nextjs-test/.env.example ./examples/nextjs-test/.env.local
-cp ./packages/database/.env.example ./packages/database/.env
 ```
 
 2. Set up dependencies
