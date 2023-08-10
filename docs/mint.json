@@ -94,7 +94,8 @@
             "documentation/concepts/triggers/webhooks",
             "documentation/concepts/triggers/events",
             "documentation/concepts/triggers/scheduled",
-            "documentation/concepts/triggers/dynamic"
+            "documentation/concepts/triggers/dynamic", 
+            "documentation/concepts/triggers/event-filter"
           ]
         },
         "documentation/concepts/resumability",
