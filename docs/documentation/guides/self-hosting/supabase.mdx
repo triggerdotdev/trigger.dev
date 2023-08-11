@@ -53,7 +53,7 @@ ENCRYPTION_KEY=1189c93e399856a2a9a1454496171b2e
   <img src="/images/supabase-project-setup.png" alt="Supabase - Project Setup" />
 </Frame>
 
-5. Navigate to Project `Settings -> Database` and copy your database connection string
+5. Navigate to `Project Settings -> Database` and copy your database connection string
 
 <Frame>
   <img src="/images/supabase-db-url.png" alt="Supabase - Database URL" />
@@ -82,6 +82,7 @@ SESSION_SECRET=8d92078940c89588fc8b6f5481f2c6e0
 ENCRYPTION_KEY=1189c93e399856a2a9a1454496171b2e
 
 DATABASE_URL=postgresql://postgres:<PASSWORD>@db.<ID>.supabase.co:5432/postgres?schema=triggerdotdev
+DIRECT_URL=${DATABASE_URL}
 
 NODE_ENV=development
 RUNTIME_PLATFORM=docker-compose
@@ -136,15 +137,53 @@ docker compose up
 
 8. Congratulations, you're all set up and ready to go with Supabase and Docker! 🚀
 
-{/* TODO: add pooling setup */}
-
 ## Bonus: Connection pooling
+
+### What is connection pooling?
 
 <Frame caption="Connection Pool - © 2023 Supabase, Apache License 2.0">
   <img src="/images/supabase-connection-pool.png" alt="Supabase - Connection Pool" />
 </Frame>
 
-...coming soon!
+When running on a single server, our app can be trusted to manage its own connections - it knows how many are open and can process its internal queue as needed.
+
+<Tooltip tip="🐝">Serverless</Tooltip> changes things. Here, many concurrent app instances are started, each unaware of the others' connections. This can lead to a huge - potentially fatal - increase in connections straight to your DB.
+
+<Info>
+  PostgreSQL has a [default connection limit](https://www.postgresql.org/docs/current/runtime-config-connection.html#:~:text=at%20server%20start.-,max_connections,-(integer)) of 100.
+</Info>
+
+**External connection pools** solve this by putting an additional layer between client and server, which essentially works like a message queue that gets processed as limits allow. The clients are blind to this and can keep sending their requests as before.
+
+### Enable connection pooling
+
+1. Copy and paste the connection string from earlier to `DIRECT_URL`
+
+```sh .env (excerpt)
+...
+DIRECT_URL=postgresql://postgres:<PASSWORD>@db.<ID>.supabase.co:5432/postgres?schema=triggerdotdev
+...
+```
+
+2. Navigate to `Project Settings -> Database` and copy your connection pool URL
+
+<Frame>
+  <img src="/images/supabase-pool-url.png" alt="Supabase - Connection Pool URL" />
+</Frame>
+
+3. Paste it into your `.env` file next to `DATABASE_URL`
+
+4. Append `?schema=triggerdotdev&pgbouncer=true` and insert your password
+
+```sh .env (excerpt)
+...
+# notice the differing ports and additional query param
+DATABASE_URL=postgresql://postgres:<PASSWORD>@db.<ID>.supabase.co:6543/postgres?schema=triggerdotdev&pgbouncer=true
+DIRECT_URL=postgresql://postgres:<PASSWORD>@db.<ID>.supabase.co:5432/postgres?schema=triggerdotdev
+...
+```
+
+5. All done! You can now enjoy the benefits of connection pooling ⚡️
 
 ## Next steps
 
