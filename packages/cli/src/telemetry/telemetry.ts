@@ -38,6 +38,7 @@ export class TelemetryClient {
       groupKey: projectId,
     });
   }
+  
 
   init = {
     started: (options: InitCommandOptions) => {

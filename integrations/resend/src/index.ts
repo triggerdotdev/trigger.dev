@@ -13,7 +13,37 @@ export const sendEmail: AuthenticatedTask<
   SendEmailResponse
 > = {
   run: async (params, client) => {
-    return client.sendEmail(params) as Promise<SendEmailResponse>;
+    let retry = true;
+    let response: SendEmailResponse | null = null;
+
+    while (retry) {
+      try {
+        response = await client.sendEmail(params) as SendEmailResponse;
+        retry = false; // Success, no need to retry
+      } catch (error:any) {
+        
+        if (error.response && error.response.status === 429) {
+          // Rate limit exceeded, retry after waiting
+          const rateLimitReset = parseInt(error.response.headers['x-ratelimit-reset'] || '0', 10) * 1000;
+          const currentTime = Date.now();
+          const waitTime = Math.max(rateLimitReset - currentTime, 0);
+
+          if (waitTime > 0) {
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+          }
+        } else {
+          // Some other error occurred, do not retry
+          retry = false;
+          throw error;
+        }
+      }
+    }
+
+    if (response) {
+      return response;
+    } else {
+      throw new Error("Failed to send email after retries.");
+    }
   },
   init: (params) => {
     const subjectProperty = params.subject ? [{ label: "Subject", text: params.subject }] : [];
