@@ -1,21 +1,55 @@
 ---
 title: "Event Filters"
-description: "A guide to using event filters to create more precise and tailored job triggers."
+description: "They are declarative pattern-matching rules, modeled after [AWS EventBridge patterns](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-event-patterns.html)."
 ---
 
-## What are Event Filters?
+Given the following custom event payload:
 
-Event filters provide a powerful way to define specific conditions that determine when a job should be triggered based on incoming events. Filters allow you to narrow down event processing to only those events that match certain criteria, ensuring that your jobs are executed in a targeted manner.
+```json
+{
+  "uid": "jexAgaeJFJsrGfans1pxqm",
+  "type": "15 Min Meeting",
+  "price": 0,
+  "title": "15 Min Meeting between Eric Allam and John Doe",
+  "length": 15,
+  "status": "ACCEPTED",
+  "endTime": "2023-01-25T16:00:00Z",
+  "bookingId": 198052,
+  "organizer": {
+    "id": 32794,
+    "name": "Eric Allam",
+    "email": "eric@trigger.dev",
+    "language": { "locale": "en" },
+    "timeZone": "Europe/London"
+  }
+}
+```
 
-we will cover the various types of event filters and how they can be used to create more precise triggers.
+The following event filter would match the event:
 
-### Event Filter Types
+```json
+{
+  "type": ["15 Min Meeting"],
+  "status": ["ACCEPTED", "REJECTED"],
+  "organizer": {
+    "name": ["Eric Allam"]
+  }
+}
+```
 
-#### 1. String Filters
+For an event pattern to match an event, the event must contain all the field names listed in the event pattern. The field names must also appear in the event with the same nesting structure.
+
+The value of each field name in the event pattern must be an array of strings, numbers, or booleans. The event pattern matches the event if the value of the field name in the event is equal to any of the values in the array.
+
+Effectively, each array is an OR condition, and the entire event pattern is an AND condition.
+
+So the above event filter will match because `status == "ACCEPTED"`, and it would also match if `status == "REJECTED"`.
+
+### String Filters
 
 String filters are used to match string values within the event payload. You can filter events based on exact string matches, case-insensitive matches, starts-with, ends-with, and more.
 
-**Examples of string filters:**
+**Examples:**
 
 - `name: ["John"]`: Triggers the job if the name field in the event payload is exactly "John".
 - `name: [{ $startsWith: "Jo" }]`: Triggers the job if the name field starts with "Jo".
@@ -64,11 +98,11 @@ client.defineJob({
 });
 ```
 
-### 2. Boolean Filters
+### Boolean Filters
 
 Boolean filters are used to filter events based on boolean values within the event payload.
 
-**_Examples of boolean filters:_**
+**Examples:**
 
 - `paidPlan: [true]`: Triggers the job if the `PaidPlan` field in the event payload is `true`.
 - `isAdmin: [false]`: Triggers the job if the `isAdmin` field in the event payload is `false`.
@@ -116,17 +150,19 @@ client.defineJob({
 });
 ```
 
-### 3. Number Filters
+### Number Filters
 
-Number filters are used to filter events based on numeric values within the event payload.
+Number filters are used to filter events based on numeric values within the event payload. It can also be used to perform numeric comparisons on values within the event payload.
 
-**_Examples of number filters:_**
+**Examples:**
 
 - `age [18]`: Triggers the job if the `age` field in the event payload is equal to `18`.
 - `score: [{ $gt: 90 }]` : Triggers the job if the score field is greater than `90`.
 - `score: [{ $gte: 90 }]` : Triggers the job if the score field is greater than or equal to `90`.
 - `score: [{ $lt: 90 }]` : Triggers the job if the score field is less than `90`.
 - `score: [{ $lte: 90 }]` : Triggers the job if the score field is less than or equal to `90`.
+- `age: [{ $gt: 20 }, { $lt: 40 }]`: Triggers the job if the `age` field is greater than 20 and less than 40.
+- `score: [{ $between: [90, 110] }]`: Triggers the job if the `score` field is between 90 and 110.
 
 #### Examples of number filters used in a Trigger.
 
@@ -168,9 +204,47 @@ client.defineJob({
 });
 ```
 
-### 4. Content Filters
+```ts
+client.defineJob({
+  id: "send-discount-code",
+  name: "Send Discount Code",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "user.purchase",
+    schema: z.object({
+      userId: z.string(),
+      age: z.number(),
+    }),
+    filter: {
+      age: [{ $gt: 18 }, { $lt: 30 }], // Only trigger for users aged between 18 and 30
+    },
+  }),
+  run: async (payload, io, ctx) => {},
+});
+```
 
-Content filters are used to filter events based on the content of arrays within the event payload.
+```ts
+client.defineJob({
+  id: "update-user-level",
+  name: "Update User Level",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "user.scoreUpdated",
+    schema: z.object({
+      userId: z.string(),
+      score: z.number(),
+    }),
+    filter: {
+      score: [{ $between: [50, 100] }], // Only trigger for scores between 50 and 100 (inclusive)
+    },
+  }),
+  run: async (payload, io, ctx) => {},
+});
+```
+
+### Array Filters
+
+Array filters are used to filter events based on the content of arrays within the event payload.
 
 **Examples:**
 
@@ -199,7 +273,7 @@ client.defineJob({
 });
 ```
 
-### 5. Existence Filters
+### Existence Filters
 
 Existence filters are used to filter events based on the presence or absence of certain keys within the event payload.
 
@@ -249,58 +323,9 @@ client.defineJob({
 });
 ```
 
-### 6. Comparison Filters
+### Combining Filters
 
-Comparison filters are used to perform numeric comparisons on values within the event payload.
-
-**Examples:**
-
-- `age: [{ $gt: 20 }, { $lt: 40 }]`: Triggers the job if the `age` field is greater than 20 and less than 40.
-- `score: [{ $between: [90, 110] }]`: Triggers the job if the `score` field is between 90 and 110.
-
-#### Examples of comparison filters being used in a Trigger.
-
-```ts
-client.defineJob({
-  id: "send-discount-code",
-  name: "Send Discount Code",
-  version: "1.0.0",
-  trigger: eventTrigger({
-    name: "user.purchase",
-    schema: z.object({
-      userId: z.string(),
-      age: z.number(),
-    }),
-    filter: {
-      age: [{ $gt: 18 }, { $lt: 30 }], // Only trigger for users aged between 18 and 30
-    },
-  }),
-  run: async (payload, io, ctx) => {},
-});
-```
-
-```ts
-client.defineJob({
-  id: "update-user-level",
-  name: "Update User Level",
-  version: "1.0.0",
-  trigger: eventTrigger({
-    name: "user.scoreUpdated",
-    schema: z.object({
-      userId: z.string(),
-      score: z.number(),
-    }),
-    filter: {
-      score: [{ $between: [50, 100] }], // Only trigger for scores between 50 and 100 (inclusive)
-    },
-  }),
-  run: async (payload, io, ctx) => {},
-});
-```
-
-### 7. Combining Filters
-
-Filters can be combined to create more complex conditions for triggering jobs. For example:
+Filters can be combined to create more complex conditions for triggering jobs.
 
 **Examples:**
 
@@ -355,55 +380,9 @@ client.defineJob({
 });
 ```
 
-### Other examples
+### Stripe Trigger with Event Filter
 
-Given the following custom event payload:
-
-```json
-{
-  "uid": "jexAgaeJFJsrGfans1pxqm",
-  "type": "15 Min Meeting",
-  "price": 0,
-  "title": "15 Min Meeting between Eric Allam and John Doe",
-  "length": 15,
-  "status": "ACCEPTED",
-  "endTime": "2023-01-25T16:00:00Z",
-  "bookingId": 198052,
-  "organizer": {
-    "id": 32794,
-    "name": "Eric Allam",
-    "email": "eric@trigger.dev",
-    "language": { "locale": "en" },
-    "timeZone": "Europe/London"
-  }
-}
-```
-
-The following event filter would match the event:
-
-```json
-{
-  "type": ["15 Min Meeting"],
-  "status": ["ACCEPTED", "REJECTED"],
-  "organizer": {
-    "name": ["Eric Allam"]
-  }
-}
-```
-
-For an event pattern to match an event, the event must contain all the field names listed in the event pattern. The field names must also appear in the event with the same nesting structure.
-
-The value of each field name in the event pattern must be an array of strings, numbers, or booleans. The event pattern matches the event if the value of the field name in the event is equal to any of the values in the array.
-
-Effectively, each array is an OR condition, and the entire event pattern is an AND condition.
-
-So the above event filter will match because status == "ACCEPTED", and it would also match if status == "REJECTED".
-
-## Other types of triggers that can also support event filters.
-
-#### 1. Stripe Trigger with Event Filter
-
-**Here is an example of a Stripe Trigger with an Event Filter:**
+Here is an example of a Stripe Trigger with an Event Filter:
 
 ```ts
 client.defineJob({
@@ -425,9 +404,9 @@ The job is triggered by the `onCustomerSubscriptionCreated` event from Stripe. I
 
 - Currency: Only subscriptions with the currency "USD" will trigger this job.
 
-#### 2. Supabase trigger with Event Filter
+### Supabase trigger with Event Filter
 
-**Here is an example of a Supabase Trigger with an Event Filter:**
+Here is an example of a Supabase Trigger with an Event Filter:
 
 ```ts
 client.defineJob({
@@ -457,42 +436,7 @@ client.defineJob({
     openai,
     supabase,
   },
-  run: async (payload, io, ctx) => {
-    if (!payload.record.name) {
-      return;
-    }
-
-    const {
-      data: { publicUrl },
-    } = supabase.native.storage.from("example_bucket").getPublicUrl(payload.record.name);
-
-    // Use the native supabase client to get a signed url
-    const { error, data } = await io.supabase.client.storage
-      .from("example_bucket")
-      .createSignedUrl(payload.record.name, 60);
-
-    if (error) {
-      throw error;
-    }
-
-    const imageVariation = await io.openai.createImageVariation("variation-image", {
-      image: data.signedUrl,
-      n: 2,
-      response_format: "url",
-      size: "512x512",
-    });
-
-    const imageEdit = await io.openai.createImageEdit("edit-image", {
-      image: publicUrl,
-      prompt:
-        "Fill in the background to make it seem like the cat is on the moon with a beautiful view of the earth.",
-      n: 2,
-      response_format: "url",
-      size: "512x512",
-    });
-
-    // return imageEdit;
-  },
+  run: async (payload, io, ctx) => {},
 });
 ```
 
