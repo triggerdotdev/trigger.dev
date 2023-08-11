@@ -37,7 +37,11 @@ branch are tagged into a release monthly.
    ```
    pnpm i
    ```
-4. Open the root `.env` file and generate a new value for `ENCRYPTION_KEY`:
+4. Create your `.env` file
+   ```
+   cp .env.example .env
+   ```
+5. Open it and generate a new value for `ENCRYPTION_KEY`:
 
    `ENCRYPTION_KEY` is used to two-way encrypt OAuth access tokens and so you'll probably want to actually generate a unique value, and it must be a random 16 byte hex string. You can generate one with the following command:
 
@@ -47,23 +51,23 @@ branch are tagged into a release monthly.
 
    Feel free to update `SESSION_SECRET` and `MAGIC_LINK_SECRET` as well using the same method.
 
-5. Start Docker. This starts the required services like Postgres. If this is your first time using Docker, consider going through this [guide](DOCKER_INSTALLATION.md)
+6. Start Docker. This starts the required services like Postgres. If this is your first time using Docker, consider going through this [guide](DOCKER_INSTALLATION.md)
    ```
    pnpm run docker
    ```
-6. Migrate the database
+7. Migrate the database
    ```
    pnpm run db:migrate
    ```
-7. Build the app
+8. Build the app
    ```
    pnpm run build --filter webapp
    ```
-8. Run the seed script
+9. Run the seed script
    ```
    pnpm run db:seed
    ```
-9. Run the app. See the section below.
+10. Run the app. See the section below.
 
 ## Running
 
