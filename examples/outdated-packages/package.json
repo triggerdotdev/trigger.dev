@@ -9,15 +9,15 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@trigger.dev/nextjs": "2.0.5",
+    "@trigger.dev/sdk": "^2.0.7",
     "@types/node": "20.4.8",
     "@types/react": "18.2.17",
     "@types/react-dom": "18.2.7",
     "next": "13.4.12",
     "react": "18.2.0",
     "react-dom": "18.2.0",
-    "typescript": "5.1.6",
-    "@trigger.dev/sdk": "^2.0.7",
-    "@trigger.dev/nextjs": "^2.0.7"
+    "typescript": "5.1.6"
   },
   "trigger.dev": {
     "endpointId": "outdated-packages-4Jq5"

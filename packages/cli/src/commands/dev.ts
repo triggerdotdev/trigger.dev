@@ -14,6 +14,7 @@ import { pathExists, readFile, readJSONFile } from "../utils/fileSystem.js";
 import { logger } from "../utils/logger.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
 import { TriggerApi } from "../utils/triggerApi.js";
+import semver from "semver";
 
 const asyncExecFile = util.promisify(childProcess.execFile);
 
@@ -420,8 +421,23 @@ async function checkForOutdatedPackages(path: string) {
     const installedVersion =
       packageJSON.dependencies?.[packageName] || packageJSON.devDependencies?.[packageName];
 
-    if (installedVersion !== latestVersion) {
-      outdatedPackages.push({ name: packageName, installedVersion, latestVersion });
+    // if latestVersion isn't undefined
+    // format the versions if they include special characters like "^", so semver can parse them
+    if (latestVersion) {
+      const formtattedInstalledVersion = semver.clean(installedVersion);
+      const formattedLatestVersion = semver.clean(latestVersion);
+
+      if (
+        formtattedInstalledVersion &&
+        formattedLatestVersion &&
+        semver.gt(formattedLatestVersion, formtattedInstalledVersion)
+      ) {
+        outdatedPackages.push({
+          name: packageName,
+          installedVersion: formtattedInstalledVersion,
+          latestVersion: formattedLatestVersion,
+        });
+      }
     }
   }
 
