@@ -1,5 +1,13 @@
 # @trigger.dev/express
 
+## 2.0.8
+
+### Patch Changes
+
+- 871d6e1d: fix: support express jsonParser middleware if used in the Express app
+- 7daa82fc: fix: avoid crashing the Node.js app on uncaught exceptions
+  - @trigger.dev/sdk@2.0.8
+
 ## 2.0.7
 
 ### Patch Changes
