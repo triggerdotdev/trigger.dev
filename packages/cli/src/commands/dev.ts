@@ -18,10 +18,10 @@ import { TriggerApi } from "../utils/triggerApi.js";
 const asyncExecFile = util.promisify(childProcess.execFile);
 
 export const DevCommandOptionsSchema = z.object({
-  port: z.coerce.number().optional(),
+  port: z.coerce.number(),
   envFile: z.string(),
-  handlerPath: z.string().optional(),
-  clientId: z.string().optional(),
+  handlerPath: z.string(),
+  clientId: z.string(),
 });
 
 export type DevCommandOptions = z.infer<typeof DevCommandOptionsSchema>;
@@ -94,7 +94,7 @@ export async function devCommand(path: string, anyOptions: any) {
   telemetryClient.dev.serverRunning(path, options);
 
   // Setup tunnel
-  const endpointUrl = await resolveEndpointUrl(apiUrl, options.port!);
+  const endpointUrl = await resolveEndpointUrl(apiUrl, options.port);
   if (!endpointUrl) {
     telemetryClient.dev.failed("failed_to_create_tunnel", options);
     return;

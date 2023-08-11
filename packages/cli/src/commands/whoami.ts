@@ -3,12 +3,11 @@ import { telemetryClient } from "../telemetry/telemetry.js";
 import { logger } from "../utils/logger.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
 import { TriggerApi } from "../utils/triggerApi.js";
-import { getEndpointIdFromPackageJson, getTriggerApiDetails } from "./dev.js";
+import { DevCommandOptions, getEndpointIdFromPackageJson, getTriggerApiDetails } from "./dev.js";
 import ora from "ora";
 
 export const WhoAmICommandOptionsSchema = z.object({
-  envFile: z.string(),
-  clientId: z.string().optional(),
+  envFile: z.string()
 });
 
 export type WhoAmICommandOptions = z.infer<typeof WhoAmICommandOptionsSchema>;
@@ -30,11 +29,12 @@ export async function whoamiCommand(path: string, anyOptions: any) {
   const resolvedPath = resolvePath(path);
 
   // Read from package.json to get the endpointId
-  const endpointId = await getEndpointIdFromPackageJson(resolvedPath, options);
+  const endpointId = await getEndpointIdFromPackageJson(resolvedPath, options as DevCommandOptions);
   if (!endpointId) {
     logger.error(
       "You must run the `init` command first to setup the project – you are missing \n'trigger.dev': { 'endpointId': 'your-client-id' } from your package.json file, or pass in the --client-id option to this command"
     );
+    loadingSpinner.stop();
     telemetryClient.dev.failed("missing_endpoint_id", options);
     return;
   }
