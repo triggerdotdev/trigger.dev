@@ -8,7 +8,7 @@ import WorkflowIntegration from "../emails/workflow-integration";
 import InviteEmail, { InviteEmailSchema } from "../emails/invite";
 import { render } from "@react-email/render";
 
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import { z } from "zod";
 import React from "react";
 
@@ -42,15 +42,29 @@ export const DeliverEmailSchema = z
 
 export type DeliverEmail = z.infer<typeof DeliverEmailSchema>;
 
+export type NodeMailerTransportOptions = {
+  host: string;
+  port: number;
+  secure: boolean;
+  auth: {
+    user: string;
+    pass: string;
+  };
+};
+
 export class EmailClient {
-  #client?: Resend;
+  #client?: nodemailer.Transporter;
   #imagesBaseUrl: string;
   #from: string;
   #replyTo: string;
 
-  constructor(config: { apikey?: string; imagesBaseUrl: string; from: string; replyTo: string }) {
-    this.#client =
-      config.apikey && config.apikey.startsWith("re_") ? new Resend(config.apikey) : undefined;
+  constructor(config: {
+    smtpConfig: NodeMailerTransportOptions;
+    imagesBaseUrl: string;
+    from: string;
+    replyTo: string;
+  }) {
+    this.#client = nodemailer.createTransport(config.smtpConfig);
     this.#imagesBaseUrl = config.imagesBaseUrl;
     this.#from = config.from;
     this.#replyTo = config.replyTo;
@@ -110,12 +124,12 @@ export class EmailClient {
 
   async #sendEmail({ to, subject, react }: { to: string; subject: string; react: ReactElement }) {
     if (this.#client) {
-      await this.#client.sendEmail({
+      await this.#client.sendMail({
         from: this.#from,
         to,
         replyTo: this.#replyTo,
         subject,
-        react,
+        html: render(react),
       });
 
       return;

@@ -28,6 +28,10 @@ const EnvironmentSchema = z.object({
   FROM_EMAIL: z.string().optional(),
   REPLY_TO_EMAIL: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
+  SMTP_HOST: z.string(), 
+  SMTP_PORT: z.number(), 
+  SMTP_USER: z.string(), 
+  SMTP_PASSWORD: z.string(), 
   PLAIN_API_KEY: z.string().optional(),
   RUNTIME_PLATFORM: z.enum(["docker-compose", "ecs", "local"]).default("local"),
 });
