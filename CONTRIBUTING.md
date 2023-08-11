@@ -27,7 +27,7 @@ branch are tagged into a release monthly.
    ```
 
    > If you are on windows, run the following command on gitbash with admin privileges:
-   > `git clone -c core.symlinks=true https://triggerdotdev/trigger.dev.git`
+   > `git clone -c core.symlinks=true https://github.com/triggerdotdev/trigger.dev.git`
 
 2. Navigate to the project folder
    ```
