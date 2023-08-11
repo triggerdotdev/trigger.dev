@@ -117,6 +117,7 @@
         "documentation/guides/cli",
         "documentation/guides/manual",
         "documentation/guides/running-jobs",
+        "documentation/guides/event-filter", 
         {
           "group": "Using the Dashboard",
           "pages": [
