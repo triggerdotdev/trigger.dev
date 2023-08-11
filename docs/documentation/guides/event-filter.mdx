@@ -45,7 +45,7 @@ Effectively, each array is an OR condition, and the entire event pattern is an A
 
 So the above event filter will match because `status == "ACCEPTED"`, and it would also match if `status == "REJECTED"`.
 
-### String Filters
+## String Filters
 
 String filters are used to match string values within the event payload. You can filter events based on exact string matches, case-insensitive matches, starts-with, ends-with, and more.
 
@@ -56,7 +56,7 @@ String filters are used to match string values within the event payload. You can
 - `name: [{ $endsWith: "hn" }]`: Triggers the job if the name field ends with "hn".
 - `name: [{ $ignoreCaseEquals: "john" }]` : Triggers the job if the name field is equal to "john" regardless of case.
 
-#### Examples of string filters used in a Trigger.
+### Examples
 
 ```ts
 client.defineJob({
@@ -98,7 +98,7 @@ client.defineJob({
 });
 ```
 
-### Boolean Filters
+## Boolean Filters
 
 Boolean filters are used to filter events based on boolean values within the event payload.
 
@@ -107,7 +107,7 @@ Boolean filters are used to filter events based on boolean values within the eve
 - `paidPlan: [true]`: Triggers the job if the `PaidPlan` field in the event payload is `true`.
 - `isAdmin: [false]`: Triggers the job if the `isAdmin` field in the event payload is `false`.
 
-#### Examples of boolean filters used in a Trigger.
+### Examples
 
 ```ts
 client.defineJob({
@@ -150,7 +150,7 @@ client.defineJob({
 });
 ```
 
-### Number Filters
+## Number Filters
 
 Number filters are used to filter events based on numeric values within the event payload. It can also be used to perform numeric comparisons on values within the event payload.
 
@@ -164,7 +164,7 @@ Number filters are used to filter events based on numeric values within the even
 - `age: [{ $gt: 20 }, { $lt: 40 }]`: Triggers the job if the `age` field is greater than 20 and less than 40.
 - `score: [{ $between: [90, 110] }]`: Triggers the job if the `score` field is between 90 and 110.
 
-#### Examples of number filters used in a Trigger.
+### Examples
 
 ```ts
 client.defineJob({
@@ -242,7 +242,7 @@ client.defineJob({
 });
 ```
 
-### Array Filters
+## Array Filters
 
 Array filters are used to filter events based on the content of arrays within the event payload.
 
@@ -250,7 +250,7 @@ Array filters are used to filter events based on the content of arrays within th
 
 - `hobbies: [{ $includes: "reading" }]`: Triggers the job if the hobbies array includes the value "reading".
 
-#### Example of content filters being used in a Trigger.
+### Examples
 
 ```ts
 client.defineJob({
@@ -273,7 +273,7 @@ client.defineJob({
 });
 ```
 
-### Existence Filters
+## Existence Filters
 
 Existence filters are used to filter events based on the presence or absence of certain keys within the event payload.
 
@@ -282,7 +282,7 @@ Existence filters are used to filter events based on the presence or absence of 
 - `name: [{ $exists: true }]` : Triggers the job if the `name` field exists in the event payload.
 - `foo: [{ $exists: false }]` : Triggers the job if the foo field does not exist in the event payload.
 
-#### Examples of existence filters used in a Trigger.
+### Examples
 
 ```ts
 client.defineJob({
@@ -323,7 +323,7 @@ client.defineJob({
 });
 ```
 
-### Combining Filters
+## Combining Filters
 
 Filters can be combined to create more complex conditions for triggering jobs.
 
@@ -334,7 +334,7 @@ Filters can be combined to create more complex conditions for triggering jobs.
 - `name: ["Alice", "Bob"]` : Triggers the job if the name is either "Alice" or "Bob".
 - `name: ["Alice", "Bob"], age: [30]` : Triggers the job if the name is either "Alice" or "Bob" and the age is 30.
 
-#### Examples of combining filters used in a Trigger.
+### Examples
 
 ```ts
 client.defineJob({
@@ -380,7 +380,7 @@ client.defineJob({
 });
 ```
 
-### Stripe Trigger with Event Filter
+## Using with Stripe triggers
 
 Here is an example of a Stripe Trigger with an Event Filter:
 
@@ -404,7 +404,7 @@ The job is triggered by the `onCustomerSubscriptionCreated` event from Stripe. I
 
 - Currency: Only subscriptions with the currency "USD" will trigger this job.
 
-### Supabase trigger with Event Filter
+## Using with Supabase triggers
 
 Here is an example of a Supabase Trigger with an Event Filter:
 
