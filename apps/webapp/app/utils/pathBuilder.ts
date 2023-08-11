@@ -131,6 +131,10 @@ export function projectEnvironmentsPath(organization: OrgForPath, project: Proje
   return `${projectPath(organization, project)}/environments`;
 }
 
+export function projectStreamingPath(id: string) {
+  return `/resources/projects/${id}/jobs/stream`;
+}
+
 export function projectEnvironmentsStreamingPath(
   organization: OrgForPath,
   project: ProjectForPath
