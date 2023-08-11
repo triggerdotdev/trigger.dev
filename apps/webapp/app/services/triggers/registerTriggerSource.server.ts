@@ -76,7 +76,7 @@ export class RegisterTriggerSourceService {
           create: {
             dispatchableId: triggerSource.id,
             environmentId: environment.id,
-            event: payload.rule.event,
+            event: Array.isArray(payload.rule.event) ? payload.rule.event : [payload.rule.event], 
             source: payload.rule.source,
             payloadFilter: payload.rule.payload,
             contextFilter: payload.rule.context,
@@ -86,7 +86,7 @@ export class RegisterTriggerSourceService {
             },
           },
           update: {
-            event: payload.rule.event,
+            event: Array.isArray(payload.rule.event) ? payload.rule.event : [payload.rule.event],
             source: payload.rule.source,
             payloadFilter: payload.rule.payload,
             contextFilter: payload.rule.context,

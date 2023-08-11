@@ -79,7 +79,7 @@ export class RegisterDynamicScheduleService {
         },
       },
       create: {
-        event: SCHEDULED_EVENT,
+        event: [SCHEDULED_EVENT],
         source: "trigger.dev",
         payloadFilter: {},
         contextFilter: {},
