@@ -19,6 +19,11 @@ Once on the dashboard, click the 'New project' button to create a new project in
 
 From inside your new project, click the 'SQL Editor' button in the side menu and then click the "User Management Starter" from the Quickstarts menu:
 
+<Note>
+  Feel free to choose another starter or use hand-crafted tables, anything will work for purposes of
+  this quick start
+</Note>
+
 ![management starter](/images/supabase-user-management-starter.png)
 
 Over in a terminal window, create a new Next.js app with Supabase support:
@@ -40,6 +45,11 @@ You can find your API keys in Supabase by clicking the cog (⚙️) icon in the 
 ![find your api keys](/images/supabase-api-keys.png)
 
 Finally, in the terminal, go ahead and [Generate the Typescript types](https://supabase.com/docs/reference/javascript/typescript-support) now as we'll be using them shortly:
+
+<Tip>
+  You may need to login to the supabase CLI first. For more info see the [supabase login
+  docs](https://supabase.com/docs/reference/cli/supabase-login)
+</Tip>
 
 ```bash
 npx supabase gen types typescript --project-id <your project id> --schema public --schema auth > supabase-types.ts
@@ -99,7 +109,7 @@ client.defineJob({
   id: "supabase-test-job",
   name: "My Supabase Test Job",
   version: "1.0.0",
-  trigger: db.onInsert({
+  trigger: db.onInserted({
     schema: "auth",
     table: "users",
   }),
@@ -142,3 +152,26 @@ Head back to your Supabase Dashboard -> Auth, and create a new user (keep "Auto 
 Then navigate over to your Trigger.dev project dashboard and you should see the job running.
 
 ![job running](images/supabase-job-running.png)
+
+## What's next?
+
+Checkout our fully-functioning [Supabase Onboarding Email example](https://github.com/triggerdotdev/examples/tree/main/supabase-onboarding-emails) to learn how to build an email drip campaign in 62 lines of code.
+
+<CardGroup cols={2}>
+  <Card title="Write your first Job" icon="hexagon-plus" href="/documentation/guides/create-a-job">
+    A Guide for how to create your first real Job
+  </Card>
+  <Card
+    title="What is Trigger.dev"
+    icon="wand-magic-sparkles"
+    href="/documentation/concepts/what-is-triggerdotdev"
+  >
+    Learn more about how Trigger.dev works and how it can help you.
+  </Card>
+  <Card title="Supabase Integration" icon="grid-2" href="/integrations/apis/supabase/introduction">
+    Read more about the Supabase Integration and how it works.
+  </Card>
+  <Card title="Get help" icon="hire-a-helper" href="/documentation/get-help">
+    Struggling getting setup or have a question? We're here to help.
+  </Card>
+</CardGroup>
