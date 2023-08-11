@@ -79,8 +79,9 @@ export function createMiddleware(client: TriggerClient, path: string = "/api/tri
 
       res.status(response.status).json(response.body);
     } catch (error) {
-      next(error)
-    };
+      next(error);
+    }
+  };
 }
 
 function convertToStandardRequest(req: express.Request): StandardRequest {
