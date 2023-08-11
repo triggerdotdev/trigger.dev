@@ -84,7 +84,9 @@ export async function devCommand(path: string, anyOptions: any) {
       },
     });
   } catch (err) {
-    logger.error(`❌ [trigger.dev] No server found on port ${options.port}.`);
+    logger.error(
+      `❌ [trigger.dev] No server found on port ${options.port}. Make sure your Next.js app is running and try again.`
+    );
     telemetryClient.dev.failed("no_server_found", options);
     return;
   }
