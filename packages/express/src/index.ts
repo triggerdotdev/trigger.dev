@@ -66,18 +66,21 @@ export function createMiddleware(client: TriggerClient, path: string = "/api/tri
       return;
     }
 
-    const request = convertToStandardRequest(req);
+    try {
+      const request = convertToStandardRequest(req);
 
-    const response = await client.handleRequest(request);
+      const response = await client.handleRequest(request);
 
-    if (!response) {
-      res.status(404).json({ error: "Not found" });
+      if (!response) {
+        res.status(404).json({ error: "Not found" });
 
-      return;
-    }
+        return;
+      }
 
-    res.status(response.status).json(response.body);
-  };
+      res.status(response.status).json(response.body);
+    } catch (error) {
+      next(error)
+    };
 }
 
 function convertToStandardRequest(req: express.Request): StandardRequest {
