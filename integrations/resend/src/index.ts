@@ -1,11 +1,39 @@
 import type { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
-import { Resend as ResendClient } from "resend";
+import {Resend as ResendClient} from "resend";
+
 
 import type { AuthenticatedTask } from "@trigger.dev/sdk";
 
 type SendEmailData = Parameters<InstanceType<typeof ResendClient>["sendEmail"]>[0];
 
 type SendEmailResponse = { id: string };
+
+
+function isRequestError(error: unknown): boolean{
+  return typeof error === "object" && error !== null && "status" in error;
+
+}
+
+function onError(error: any) {
+  if (!isRequestError(error)) {
+    return;
+  }
+
+  // Check if this is a rate limit error
+  if (error.status === 429 && error.response) {
+    const rateLimitRemaining = error.response.headers["ratelimit-remaining"];
+    const rateLimitReset = error.response.headers["ratelimit-reset"];
+
+    if (rateLimitRemaining === "0" && rateLimitReset) {
+      const resetDate = new Date(Number(rateLimitReset) * 1000);
+
+      return {
+        retryAt: resetDate,
+        error,
+      };
+    }
+  }
+}
 
 export const sendEmail: AuthenticatedTask<
   InstanceType<typeof ResendClient>,
@@ -15,6 +43,7 @@ export const sendEmail: AuthenticatedTask<
   run: async (params, client) => {
     return client.sendEmail(params) as Promise<SendEmailResponse>;
   },
+  onError, 
   init: (params) => {
     const subjectProperty = params.subject ? [{ label: "Subject", text: params.subject }] : [];
 
@@ -33,13 +62,6 @@ export const sendEmail: AuthenticatedTask<
         },
         ...subjectProperty,
       ],
-      retry: {
-        limit: 8,
-        factor: 1.8,
-        minTimeoutInMs: 500,
-        maxTimeoutInMs: 30000,
-        randomize: true,
-      },
     };
   },
 };
