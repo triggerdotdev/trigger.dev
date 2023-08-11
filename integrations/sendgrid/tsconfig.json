@@ -1,12 +1,6 @@
 {
   "compilerOptions": {
     "composite": false,
-        "paths": {
-      "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
-      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
-      "@trigger.dev/integration-kit/*": ["../../packages/integration-kit/src/*"],
-      "@trigger.dev/integration-kit": ["../../packages/integration-kit/src/index"]
-    },
     "declaration": false,
     "declarationMap": false,
     "esModuleInterop": true,
@@ -23,17 +17,10 @@
     "emitDecoratorMetadata": true,
     "sourceMap": true,
     "resolveJsonModule": true,
-    "lib": [
-      "es2019"
-    ],
-    "module": "Node16",
+    "lib": ["es2019"],
+    "module": "commonjs",
     "target": "es2021"
   },
-  "include": [
-    "./src/**/*.ts",
-    "tsup.config.ts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+  "include": ["./src/**/*.ts", "tsup.config.ts"],
+  "exclude": ["node_modules"]
 }
