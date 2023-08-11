@@ -1,6 +1,5 @@
 import express, { Express } from "express";
 import { TriggerClient } from "@trigger.dev/sdk";
-import { Request as StandardRequest, Headers as StandardHeaders } from "@remix-run/web-fetch";
 
 /**
  * This is a convienence function to create an express server for the TriggerClient. If you want to use Trigger.dev with an existing express server, use `createMiddleware` instead.
@@ -66,9 +65,11 @@ export function createMiddleware(client: TriggerClient, path: string = "/api/tri
       return;
     }
 
-    try {
-      const request = convertToStandardRequest(req);
+    const request = convertToStandardRequest(req);
 
+    try {
+      // This handshake handler knows how to authenticate requests,
+      // call the run() function of the job, and so on
       const response = await client.handleRequest(request);
 
       if (!response) {
@@ -77,27 +78,35 @@ export function createMiddleware(client: TriggerClient, path: string = "/api/tri
         return;
       }
 
-      res.status(response.status).json(response.body);
+      // @ts-ignore
+      // Optionally can do something with the job's finished
+      // execution's response body
+      return res.status(response.status).json(response.body);
     } catch (error) {
       next(error);
     }
   };
 }
 
-function convertToStandardRequest(req: express.Request): StandardRequest {
-  const { headers: nextHeaders, method } = req;
+function convertToStandardRequest(req: express.Request) {
+  // Prepare the request to be a fetch-compatible Request object:
+  const requestHeaders = req.headers;
+  const requestMethod = req.method;
+  const responseHeaders = Object.create(null);
 
-  const headers = new StandardHeaders();
-
-  Object.entries(nextHeaders).forEach(([key, value]) => {
-    headers.set(key, value as string);
-  });
-
-  // Create a new Request object (hardcode the url because it doesn't really matter what it is)
-  return new StandardRequest("https://express.js/api/trigger", {
-    headers,
-    method,
+  for (const [headerName, headerValue] of Object.entries(requestHeaders)) {
     // @ts-ignore
+    responseHeaders[headerName] = headerValue;
+  }
+
+  // Create a new Request object to be passed to the TriggerClient
+  // where we pass the clone the incoming request metadata such as
+  // headers, method, body.
+  // @ts-ignore
+  return new Request("https://express.js/api/trigger", {
+    headers: responseHeaders,
+    method: requestMethod,
     body: req.body ? JSON.stringify(req.body) : req,
+    duplex: "half",
   });
 }
