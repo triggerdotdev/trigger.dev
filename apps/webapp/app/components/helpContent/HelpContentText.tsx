@@ -76,8 +76,7 @@ export function HowToSetupYourProject() {
             "rgb(217 70 239)",
           ],
         };
-        // @ts-ignore
-        function randomInRange(min, max) {
+        function randomInRange(min: number, max: number): number {
           return Math.random() * (max - min) + min;
         }
         // @ts-ignore
