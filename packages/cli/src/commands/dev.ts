@@ -1,17 +1,21 @@
+import childProcess from "child_process";
 import chokidar from "chokidar";
 import dotenv from "dotenv";
 import fs from "fs/promises";
 import ngrok from "ngrok";
 import fetch from "node-fetch";
-import ora from "ora";
+import ora, { Ora } from "ora";
 import pathModule from "path";
+import util from "util";
 import { z } from "zod";
+import { CLOUD_API_URL } from "../consts.js";
 import { telemetryClient } from "../telemetry/telemetry.js";
 import { pathExists, readFile, readJSONFile } from "../utils/fileSystem.js";
 import { logger } from "../utils/logger.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
 import { TriggerApi } from "../utils/triggerApi.js";
-import { CLOUD_API_URL } from "../consts.js";
+
+const asyncExecFile = util.promisify(childProcess.execFile);
 
 export const DevCommandOptionsSchema = z.object({
   port: z.coerce.number(),
@@ -82,7 +86,9 @@ export async function devCommand(path: string, anyOptions: any) {
       },
     });
   } catch (err) {
-    logger.error(`❌ [trigger.dev] No server found on port ${options.port}.`);
+    logger.error(
+      `❌ [trigger.dev] No server found on port ${options.port}. Make sure your Next.js app is running and try again.`
+    );
     telemetryClient.dev.failed("no_server_found", options);
     return;
   }
@@ -284,7 +290,9 @@ async function resolveEndpointUrl(apiUrl: string, port: number) {
 
   // Setup tunnel
   const tunnelSpinner = ora(`🚇 Creating tunnel`).start();
-  const tunnelUrl = await createTunnel(port);
+
+  const tunnelUrl = await createTunnel(port, tunnelSpinner);
+
   if (tunnelUrl) {
     tunnelSpinner.succeed(`🚇 Created tunnel: ${tunnelUrl}`);
   }
@@ -292,12 +300,35 @@ async function resolveEndpointUrl(apiUrl: string, port: number) {
   return tunnelUrl;
 }
 
-async function createTunnel(port: number) {
+async function createTunnel(port: number, spinner: Ora) {
   try {
     return await ngrok.connect(port);
-  } catch (e) {
-    logger.error(`Ngrok failed to create a tunnel for port ${port}.\n${e}`);
+  } catch (error: any) {
+    if (
+      typeof error.message === "string" &&
+      error.message.includes("`version` property is required")
+    ) {
+      await upgradeNgrokConfig(spinner);
+
+      try {
+        return await ngrok.connect(port);
+      } catch (retryError) {
+        spinner.fail(
+          `Ngrok failed to create a tunnel for port ${port} after configuration upgrade.\n${retryError}`
+        );
+        return;
+      }
+    }
     return;
+  }
+}
+
+async function upgradeNgrokConfig(spinner: Ora) {
+  try {
+    await asyncExecFile("ngrok", ["config", "upgrade"]);
+    spinner.info("Ngrok configuration upgraded successfully.");
+  } catch (error) {
+    spinner.fail(`Failed to upgrade ngrok configuration.\n${error}`);
   }
 }
 

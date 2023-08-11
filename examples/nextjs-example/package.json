@@ -30,7 +30,8 @@
     "typescript": "5.0.4",
     "zod": "3.21.4",
     "@trigger.dev/supabase": "workspace:*",
-    "@trigger.dev/stripe": "workspace:*"
+    "@trigger.dev/stripe": "workspace:*",
+    "@trigger.dev/sendgrid": "workspace:*"
   },
   "devDependencies": {
     "@trigger.dev/cli": "workspace:*",

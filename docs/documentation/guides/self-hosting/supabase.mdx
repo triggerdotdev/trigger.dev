@@ -1,0 +1,166 @@
+---
+title: "Deploy with Supabase"
+description: "Self-host [Trigger.dev](https://trigger.dev) with Supabase and Docker"
+---
+
+## Requirements
+
+- [docker](https://docs.docker.com/engine/install/)
+- time
+
+## Set up your project
+
+1. Create a project dir and grab the latest `.env` template
+
+```sh
+mkdir trigger-docker && cd trigger-docker
+curl -L https://github.com/triggerdotdev/docker/raw/main/.env.example > .env
+```
+
+2. Generate secrets with `openssl rand -hex 16` for the following variables:
+
+<Warning>Do NOT just copy and paste this. Generate your own secrets instead!</Warning>
+
+```sh .env (excerpt)
+...
+MAGIC_LINK_SECRET=15600f1236e568d6c9c400a94e16a4ed
+SESSION_SECRET=8d92078940c89588fc8b6f5481f2c6e0
+ENCRYPTION_KEY=1189c93e399856a2a9a1454496171b2e
+...
+```
+
+## Create a Supabase DB
+
+<Tip>Alternative: [Self-host Supabase](https://supabase.com/docs/guides/self-hosting/docker)</Tip>
+
+1. No account yet? [Click here](https://supabase.com/dashboard/sign-up) to complete onboarding
+
+2. [Create a new project](https://supabase.com/dashboard/projects)
+
+<Frame>
+  <img src="/images/supabase-new-project.png" alt="Supabase - New Project" />
+</Frame>
+
+3. Make a note of your password, we'll need it in a moment
+
+<Frame>
+  <img src="/images/supabase-project-password.png" alt="Supabase - Project Password" />
+</Frame>
+
+4. Wait until your project has finished setting up
+
+<Frame>
+  <img src="/images/supabase-project-setup.png" alt="Supabase - Project Setup" />
+</Frame>
+
+5. Navigate to Project `Settings -> Database` and copy your database connection string
+
+<Frame>
+  <img src="/images/supabase-db-url.png" alt="Supabase - Database URL" />
+</Frame>
+
+6. Paste it into your `.env` file, and append `?schema=triggerdotdev`
+
+<Tip>Don't forget to replace `<PASSWORD>` with the project password you set in Step 3.</Tip>
+
+```sh .env (excerpt)
+...
+DATABASE_URL=postgresql://postgres:<PASSWORD>@db.<ID>.supabase.co:5432/postgres?schema=triggerdotdev
+...
+```
+
+7. The complete file should look something like this now:
+
+```sh .env
+LOGIN_ORIGIN=http://localhost:3030
+APP_ORIGIN=http://localhost:3030
+PORT=3030
+REMIX_APP_PORT=3030
+
+MAGIC_LINK_SECRET=15600f1236e568d6c9c400a94e16a4ed
+SESSION_SECRET=8d92078940c89588fc8b6f5481f2c6e0
+ENCRYPTION_KEY=1189c93e399856a2a9a1454496171b2e
+
+DATABASE_URL=postgresql://postgres:<PASSWORD>@db.<ID>.supabase.co:5432/postgres?schema=triggerdotdev
+
+NODE_ENV=development
+RUNTIME_PLATFORM=docker-compose
+```
+
+## Self-host Trigger.dev with docker compose
+
+1. Create a docker compose file in your project dir
+
+```yaml docker-compose.yml
+---
+version: "3.8"
+
+services:
+  triggerdotdev:
+    image: ghcr.io/triggerdotdev/trigger.dev:latest
+    container_name: triggerdotdev
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - 3030:3030
+```
+
+2. Start your docker container
+
+```sh
+docker compose up
+```
+
+3. Wait for the database setup to finish - this might take a while
+
+4. You should now be able to visit http://localhost:3030 and see this screen:
+
+<Frame>
+  <img src="/images/trigger.dev-login.png" alt="Trigger.dev - Login" />
+</Frame>
+
+5. Click "Continue with Email", enter your email address and hit submit
+
+6. Grab the magic link from your terminal and proceed with account creation
+
+<Frame>
+  <img src="/images/trigger.dev-magic-link.png" alt="Trigger.dev - CLI Magic Link" />
+</Frame>
+
+7. If everything went well, the `triggerdotdev` and `graphile_worker` schemas should now be populated. Check your Supabase DB dashboard to be sure:
+
+<Frame>
+  <img src="/images/supabase-db-seed.png" alt="Supabase - Database Seed" />
+</Frame>
+
+8. Congratulations, you're all set up and ready to go with Supabase and Docker! 🚀
+
+{/* TODO: add pooling setup */}
+
+## Bonus: Connection pooling
+
+<Frame caption="Connection Pool - © 2023 Supabase, Apache License 2.0">
+  <img src="/images/supabase-connection-pool.png" alt="Supabase - Connection Pool" />
+</Frame>
+
+...coming soon!
+
+## Next steps
+
+<CardGroup>
+  <Card
+    title="Bootstrap your Next.js project"
+    icon="person-running-fast"
+    href="/documentation/quickstart#run-the-cli-init-command"
+  >
+    Get started in 5 minutes.
+  </Card>
+  <Card
+    title="Tunnel local traffic"
+    icon="person-digging"
+    href="/documentation/guides/tunneling-platform"
+  >
+    Start digging with ngrok.
+  </Card>
+</CardGroup>

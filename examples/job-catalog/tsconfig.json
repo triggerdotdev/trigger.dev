@@ -29,7 +29,9 @@
       "@trigger.dev/supabase": ["../../integrations/supabase/src/index"],
       "@trigger.dev/supabase/*": ["../../integrations/supabase/src/*"],
       "@trigger.dev/stripe": ["../../integrations/stripe/src/index"],
-      "@trigger.dev/stripe/*": ["../../integrations/stripe/src/*"]
+      "@trigger.dev/stripe/*": ["../../integrations/stripe/src/*"],
+      "@trigger.dev/sendgrid": ["../../integrations/sendgrid/src/index"],
+      "@trigger.dev/sendgrid/*": ["../../integrations/sendgrid/src/*"]
     }
   }
 }
