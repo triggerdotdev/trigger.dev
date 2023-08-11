@@ -144,6 +144,7 @@
             "documentation/guides/deployment-automatic"
           ]
         },
+        "documentation/guides/event-filter",
         "documentation/guides/zod",
         {
           "group": "Self hosting",

@@ -1,6 +1,9 @@
 import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
-import { Link, useSearchParams } from "@remix-run/react";
+import { Link, useRevalidator } from "@remix-run/react";
+import { useEffect, useState } from "react";
+import { useEventSource } from "remix-utils";
 import invariant from "tiny-invariant";
+import gradientBackground from "~/assets/images/gradient-background.png";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
@@ -9,7 +12,7 @@ import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { IntegrationIcon } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.integrations/route";
-import { jobTestPath } from "~/utils/pathBuilder";
+import { jobTestPath, projectStreamingPath } from "~/utils/pathBuilder";
 import { Feedback } from "../Feedback";
 import { CodeBlock } from "../code/CodeBlock";
 import { InlineCode } from "../code/InlineCode";
@@ -33,19 +36,59 @@ import { TextLink } from "../primitives/TextLink";
 import integrationButton from "./integration-button.png";
 import selectEnvironment from "./select-environment.png";
 import selectExample from "./select-example.png";
-import gradientBackground from "~/assets/images/gradient-background.png";
 
-const existingProjectValue = "use-existing-project";
-const newProjectValue = "create-new-next-app";
+type SelectionChoices = "use-existing-project" | "create-new-next-app";
 
 export function HowToSetupYourProject() {
+  const project = useProject();
   const devEnvironment = useDevEnvironment();
   const appOrigin = useAppOrigin();
 
-  const [searchQuery, setSearchQuery] = useSearchParams();
-  const selectedValue = searchQuery.get("selectedValue");
+  const [selectedValue, setSelectedValue] = useState<SelectionChoices | null>(null);
 
   invariant(devEnvironment, "devEnvironment is required");
+
+  const revalidator = useRevalidator();
+  const events = useEventSource(projectStreamingPath(project.id), {
+    event: "message",
+  });
+
+  useEffect(() => {
+    if (events !== null) {
+      // This uses https://www.npmjs.com/package/canvas-confetti
+      if ("confetti" in window && typeof window.confetti !== "undefined") {
+        var duration = 2.5 * 1000;
+        var end = Date.now() + duration;
+
+        (function frame() {
+          // launch a few confetti from the left edge
+          // @ts-ignore
+          window.confetti({
+            particleCount: 7,
+            angle: 60,
+            spread: 55,
+            origin: { x: 0 },
+          });
+          // and launch a few from the right edge
+          // @ts-ignore
+          window.confetti({
+            particleCount: 7,
+            angle: 120,
+            spread: 55,
+            origin: { x: 1 },
+          });
+
+          // keep going until we are out of time
+          if (Date.now() < end) {
+            requestAnimationFrame(frame);
+          }
+        })();
+      }
+
+      revalidator.revalidate();
+    }
+    // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
+  }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div
@@ -55,7 +98,7 @@ export function HowToSetupYourProject() {
       <div className="mx-auto max-w-3xl">
         <div className="flex items-center justify-between">
           <Header1 spacing className="text-bright">
-            Get setup in {selectedValue === newProjectValue ? "5" : "2"} minutes
+            Get setup in {selectedValue === "create-new-next-app" ? "5" : "2"} minutes
           </Header1>
           <Feedback
             button={
@@ -68,30 +111,30 @@ export function HowToSetupYourProject() {
         </div>
         <RadioGroup
           className="mb-4 flex gap-x-2"
-          onValueChange={(value) => setSearchQuery({ selectedValue: value })}
+          onValueChange={(value) => setSelectedValue(value as SelectionChoices)}
         >
           <RadioGroupItem
             label="Use an existing Next.js project"
             description="Use Trigger.dev in an existing Next.js project in less than 2 mins."
-            value={existingProjectValue}
-            checked={selectedValue === existingProjectValue}
+            value="use-existing-project"
+            checked={selectedValue === "use-existing-project"}
             variant="icon"
-            data-action={existingProjectValue}
+            data-action="use-existing-project"
             icon={<NamedIcon className="h-12 w-12 text-green-600" name={"tree"} />}
           />
           <RadioGroupItem
             label="Create a new Next.js project"
             description="This is the quickest way to try out Trigger.dev in a new Next.js project and takes 5 mins."
-            value={newProjectValue}
-            checked={selectedValue === newProjectValue}
+            value="create-new-next-app"
+            checked={selectedValue === "create-new-next-app"}
             variant="icon"
-            data-action={newProjectValue}
+            data-action="create-new-next-app"
             icon={<NamedIcon className="h-8 w-8 text-green-600" name={"sapling"} />}
           />
         </RadioGroup>
         {selectedValue && (
           <>
-            {selectedValue === newProjectValue ? (
+            {selectedValue === "create-new-next-app" ? (
               <>
                 <StepNumber stepNumber="1" title="Create a new Next.js project" />
                 <StepContentContainer>
@@ -159,20 +202,9 @@ export function HowToSetupYourProject() {
                 <StepContentContainer>
                   <TriggerDevStep />
                 </StepContentContainer>
-                <StepNumber stepNumber="6" title="Check for Jobs" />
+                <StepNumber stepNumber="6" title="Wait for Jobs" displaySpinner />
                 <StepContentContainer>
-                  <Paragraph>
-                    Once you've run the CLI command, click Refresh to view your example Job in the
-                    list.
-                  </Paragraph>
-                  <Button
-                    variant="primary/medium"
-                    className="mt-4"
-                    LeadingIcon="refresh"
-                    onClick={() => window.location.reload()}
-                  >
-                    Refresh
-                  </Button>
+                  <Paragraph>This page will automatically refresh.</Paragraph>
                 </StepContentContainer>
               </>
             ) : (
@@ -198,20 +230,9 @@ export function HowToSetupYourProject() {
                 <StepContentContainer>
                   <TriggerDevStep />
                 </StepContentContainer>
-                <StepNumber stepNumber="4" title="Check for Jobs" />
+                <StepNumber stepNumber="4" title="Wait for Jobs" displaySpinner />
                 <StepContentContainer>
-                  <Paragraph>
-                    Once you've run the CLI command, click Refresh to view your example Job in the
-                    list.
-                  </Paragraph>
-                  <Button
-                    variant="primary/medium"
-                    className="mt-4"
-                    LeadingIcon="refresh"
-                    onClick={() => window.location.reload()}
-                  >
-                    Refresh
-                  </Button>
+                  <Paragraph>This page will automatically refresh.</Paragraph>
                 </StepContentContainer>
               </>
             )}

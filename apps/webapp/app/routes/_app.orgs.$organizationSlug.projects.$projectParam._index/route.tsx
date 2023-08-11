@@ -1,9 +1,8 @@
 import { ArrowUpIcon } from "@heroicons/react/24/solid";
-import { LoaderArgs } from "@remix-run/server-runtime";
-import { GitHubLightIcon, OpenAILightIcon, ResendIcon } from "@trigger.dev/companyicons";
-import { CalendarDaysIcon, ClockIcon, SlackIcon } from "lucide-react";
+import { LoaderArgs, SerializeFrom } from "@remix-run/server-runtime";
 import useWindowSize from "react-use/lib/useWindowSize";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { ExternalScriptsFunction } from "remix-utils";
 import { HowToSetupYourProject } from "~/components/helpContent/HelpContentText";
 import { JobsTable } from "~/components/jobs/JobsTable";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -59,6 +58,12 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Jobs" />,
   expandSidebar: true,
+  scripts: (match) => [
+    {
+      src: "https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js",
+      crossOrigin: "anonymous",
+    },
+  ],
 };
 
 export default function Page() {
@@ -83,25 +88,6 @@ export default function Page() {
         </PageInfoRow>
       </PageHeader>
       <PageBody>
-        {/* Todo: this confetti component needs to trigger when the example project is created, then never again. */}
-        {/* <Confetti
-          width={width}
-          height={height}
-          recycle={false}
-          numberOfPieces={1000}
-          colors={[
-            "#E7FF52",
-            "#41FF54",
-            "rgb(245 158 11)",
-            "rgb(22 163 74)",
-            "rgb(37 99 235)",
-            "rgb(67 56 202)",
-            "rgb(219 39 119)",
-            "rgb(225 29 72)",
-            "rgb(217 70 239)",
-          ]}
-        /> */}
-
         <Help>
           {(open) => (
             <div className={cn("grid gap-4", open ? "h-full grid-cols-2" : " h-full grid-cols-1")}>
