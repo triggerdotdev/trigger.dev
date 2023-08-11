@@ -45,6 +45,8 @@ fly launch
 
 2. Follow the prompts by `fly launch` and make sure to answer them in the following way:
 
+<Warning>Do NOT get rid of your terminal output, we will need your database connection string shortly.</Warning>
+
 ```sh
 ? Would you like to copy its configuration to the new app? Yes
 ? Choose an app name (leaving blank will default to 'trigger-v2-fly-demo') <enter your preferred app name here or leave blank>
@@ -58,7 +60,7 @@ fly launch
 
 ### Required
 
-`MAGIC_LINK_SECRET`, `SESSION_SECRET` and `ENCRYPTION_KEY`
+1. `MAGIC_LINK_SECRET`, `SESSION_SECRET` and `ENCRYPTION_KEY`
 
 All of these secrets should be 16-byte random strings, which you can easily generate (and copy into your pasteboard) with the following command:
 
@@ -66,9 +68,17 @@ All of these secrets should be 16-byte random strings, which you can easily gene
 openssl rand -hex 16 | pbcopy
 ```
 
-`LOGIN_ORIGIN` and `APP_ORIGIN`
+2. `LOGIN_ORIGIN` and `APP_ORIGIN`
 
 Both of these secrets should be set to the base URL of your fly application. For example `https://trigger-v2-fly-demo.fly.dev`
+
+3. `DIRECT_URL`
+
+This needs to be set to the database connection string that was printed to your terminal after the creation step above:
+
+```sh
+Connection string: postgres://postgres:<PASSWORD>@<fly db name>.flycast:5432
+```
 
 ### Optional
 
@@ -101,6 +111,7 @@ fly secrets set \
   SESSION_SECRET=<random string> \
   LOGIN_ORIGIN="https://<fly app name>.fly.dev" \
   APP_ORIGIN="https://<fly app name>.fly.dev" \
+  DIRECT_URL="postgres://postgres:<PASSWORD>@<fly db name>.flycast:5432" \
   FROM_EMAIL="Acme Inc. <hello@yourdomain.com>" \
   REPLY_TO_EMAIL="Acme Inc. <reply@yourdomain.com>" \
   RESEND_API_KEY=<your API Key> \
