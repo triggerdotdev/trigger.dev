@@ -3,6 +3,8 @@ import { Resend as ResendClient } from "resend";
 
 import type { AuthenticatedTask } from "@trigger.dev/sdk";
 
+import { RequestError } from "@octokit/request-error";
+
 type SendEmailData = Parameters<InstanceType<typeof ResendClient>["sendEmail"]>[0];
 
 type SendEmailResponse = { id: string };
@@ -12,6 +14,16 @@ export const sendEmail: AuthenticatedTask<
   SendEmailData,
   SendEmailResponse
 > = {
+  // Error handling for the task
+   onError: (error: unknown) => {
+    if (error instanceof RequestError) {
+      if (error.status === 429 && error.response) {  // Check for rate limit error (status code 429)
+        const rateLimitReset = Number(error.response.headers["x-ratelimit-reset"]) * 1000;
+
+        return { retryAt: new Date(rateLimitReset), error };
+      }
+    }
+  },
   run: async (params, client) => {
     return client.sendEmail(params) as Promise<SendEmailResponse>;
   },
@@ -57,8 +69,8 @@ export class Resend implements TriggerIntegration<IntegrationClient<ResendClient
   client: IntegrationClient<ResendClient, typeof tasks>;
 
   constructor(private options: ResendIntegrationOptions) {
-    if (Object.keys(options).includes("apiKey") && !options.apiKey) {
-      throw `Can't create Resend integration (${options.id}) as apiKey was undefined`;
+    if (!options.apiKey) {    // Check if apiKey is defined
+      throw new Error(`Can't create Resend integration (${options.id}) as apiKey was undefined`);
     }
 
     this.client = {
