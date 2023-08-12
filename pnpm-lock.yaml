@@ -1199,6 +1199,9 @@ importers:
         specifier: 3.21.4
         version: 3.21.4
     devDependencies:
+      '@gmrchk/cli-testing-library':
+        specifier: ^0.1.2
+        version: 0.1.2
       '@types/gradient-string':
         specifier: ^1.1.2
         version: 1.1.2
@@ -4615,6 +4618,12 @@ packages:
 
   /@gar/promisify@1.1.3:
     resolution: {integrity: sha512-k2Ty1JcVojjJFwrg/ThKi2ujJ7XNLYaFGNB/bWT9wGR+oSMJHMa5w+CUq6p/pVrKeNNgA7pCqEcjSnHVoqJQFw==}
+    dev: true
+
+  /@gmrchk/cli-testing-library@0.1.2:
+    resolution: {integrity: sha512-/oALX+4Zti+92hJaR7trZlDPzI2EekIHEYoDXH3oGTdCdgq5lDT3vHAMDzTjbIfUA0X/XC8sVA2tbtSoUPB5xw==}
+    dependencies:
+      keycode: 2.2.1
     dev: true
 
   /@godaddy/terminus@4.12.1:
@@ -18671,6 +18680,10 @@ packages:
       jwa: 1.4.1
       safe-buffer: 5.2.1
     dev: false
+
+  /keycode@2.2.1:
+    resolution: {integrity: sha512-Rdgz9Hl9Iv4QKi8b0OlCRQEzp4AgVxyCtz5S/+VIHezDmrDhkp2N2TqBWOLz0/gbeREXOOiI9/4b8BY9uw2vFg==}
+    dev: true
 
   /keyv@3.1.0:
     resolution: {integrity: sha512-9ykJ/46SN/9KPM/sichzQ7OvXyGDYKGTaDlKMGCAlg2UK8KRy4jb0d8sFc+0Tt0YYnThq8X2RZgCg74RPxgcVA==}
