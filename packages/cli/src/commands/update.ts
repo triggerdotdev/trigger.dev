@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import axios from "axios";
+import fetch from "node-fetch";
 import inquirer from "inquirer";
 import { installDependencies } from "../utils/installDependencies.js";
 
@@ -28,8 +28,9 @@ export async function updateCommand(projectPath: string) {
   const newVersions = await Promise.all(
     triggerPackages.map(async (packageName) => {
       try {
-        const response = await axios.get(`https://registry.npmjs.org/${packageName}`);
-        const latestVersion = response.data["dist-tags"].latest;
+        const response = await fetch(`https://registry.npmjs.org/${packageName}`);
+        const data = await response.json();
+        const latestVersion = data["dist-tags"].latest;
         return { packageName, latestVersion };
       } catch (error) {
         // @ts-ignore
