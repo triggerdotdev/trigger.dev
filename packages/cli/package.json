@@ -35,6 +35,7 @@
     "trigger-cli": "./dist/index.js"
   },
   "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
     "@gmrchk/cli-testing-library": "^0.1.2",
     "@types/gradient-string": "^1.1.2",
     "@types/inquirer": "^9.0.3",

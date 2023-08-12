@@ -1202,6 +1202,9 @@ importers:
       '@gmrchk/cli-testing-library':
         specifier: ^0.1.2
         version: 0.1.2
+      '@trigger.dev/tsconfig':
+        specifier: workspace:*
+        version: link:../../config-packages/tsconfig
       '@types/gradient-string':
         specifier: ^1.1.2
         version: 1.1.2
