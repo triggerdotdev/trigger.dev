@@ -2,8 +2,16 @@
 
 module.exports = {
   meta: {
-    name: 'no-duplicated-task-keys',
-    version: '0.0.1',
+    type: 'suggestion',
+    docs: {
+      description: 'Prevent duplicated task keys',
+      category: 'Best Practices',
+      recommended: true
+    },
+    schema: [],
+    messages: {
+      duplicatedTaskKey: "Task key '{{taskKey}}' is duplicated"
+    }
   },
   create(context) {
     function checkForDuplicateTaskKeys(blockStatement, reportNode) {
@@ -18,7 +26,10 @@ module.exports = {
           if (uniqueTaskKeys.has(taskKeyLiteral.value)) {
             context.report({
               node: reportNode,
-              message: `Task key '${taskKeyLiteral.value}' is duplicated`
+              messageId: 'duplicatedTaskKey',
+              data: {
+                taskKey: taskKeyLiteral.value
+              },
             });
           }
     
