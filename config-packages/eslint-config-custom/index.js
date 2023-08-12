@@ -5,4 +5,7 @@ module.exports = {
       version: "detect",
     },
   },
+  rules: {
+    'no-duplicated-task-keys': require('./rules/no-duplicated-task-keys'),
+  }
 };
