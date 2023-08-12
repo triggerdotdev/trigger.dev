@@ -1205,6 +1205,9 @@ importers:
       '@types/inquirer':
         specifier: ^9.0.3
         version: 9.0.3
+      '@types/jest':
+        specifier: ^29.5.3
+        version: 29.5.3
       '@types/node':
         specifier: '16'
         version: 16.18.11
@@ -25319,7 +25322,7 @@ packages:
       esbuild: 0.16.17
       less: 4.2.0
       postcss: 8.4.27
-      resolve: 1.22.2
+      resolve: 1.22.1
       rollup: 3.10.0
     optionalDependencies:
       fsevents: 2.3.2
@@ -25387,7 +25390,7 @@ packages:
       '@types/node': 20.4.8
       esbuild: 0.16.17
       postcss: 8.4.27
-      resolve: 1.22.2
+      resolve: 1.22.1
       rollup: 3.10.0
     optionalDependencies:
       fsevents: 2.3.2
