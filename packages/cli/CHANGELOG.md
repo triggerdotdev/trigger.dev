@@ -1,5 +1,12 @@
 # create-trigger
 
+## 2.0.8
+
+### Patch Changes
+
+- c246578a: Made the CLI error more helpful if you’re not running your Next.js app
+- d395b957: fix: Handle ngrok config upgrade error in createTunnel function
+
 ## 2.0.7
 
 ### Patch Changes

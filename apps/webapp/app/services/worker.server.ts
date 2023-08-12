@@ -94,6 +94,7 @@ function getWorkerQueue() {
       connectionString: env.DATABASE_URL,
       concurrency: 5,
       pollInterval: 1000,
+      noPreparedStatements: env.DATABASE_URL !== env.DIRECT_URL,
     },
     schema: workerCatalog,
     recurringTasks: {
