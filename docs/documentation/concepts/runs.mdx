@@ -23,6 +23,8 @@ client.defineJob({
   // 1. Run function with params
   run: async (payload, io, ctx) => {
     // 2. Regular code and Tasks
+    // 3. Return data from run execution
+    return { status: 'success' }
   },
 });
 ```
