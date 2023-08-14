@@ -1,5 +1,21 @@
 # @trigger.dev/integration-kit
 
+## 2.0.8
+
+## 2.0.7
+
+### Patch Changes
+
+- 84126808: Adding createImageEdit and createImageVariation tasks to openai
+
+## 2.0.6
+
+## 2.0.5
+
+## 2.0.4
+
+## 2.0.3
+
 ## 2.0.2
 
 ### Patch Changes

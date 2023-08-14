@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "stripe": "nodemon --watch src/stripe.ts -r tsconfig-paths/register -r dotenv/config src/stripe.ts",
+    "sendgrid": "nodemon --watch src/sendgrid.ts -r tsconfig-paths/register -r dotenv/config src/sendgrid.ts",
     "supabase": "nodemon --watch src/supabase.ts -r tsconfig-paths/register -r dotenv/config src/supabase.ts",
+    "supabase:types": "npx supabase gen types typescript --project-id $SUPABASE_PROJECT_ID --schema public --schema auth --schema storage > src/supabase-types.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {
@@ -13,6 +15,7 @@
     "@trigger.dev/openai": "workspace:*",
     "@trigger.dev/plain": "workspace:*",
     "@trigger.dev/resend": "workspace:*",
+    "@trigger.dev/sendgrid": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "@trigger.dev/slack": "workspace:*",
     "@trigger.dev/stripe": "workspace:*",

@@ -20,6 +20,8 @@ import {
 } from "./primitives/Select";
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTrigger } from "./primitives/Sheet";
 import { TextArea } from "./primitives/TextArea";
+import { DiscordIcon } from "@trigger.dev/companyicons";
+import { ChevronRightIcon } from "@heroicons/react/24/solid";
 
 type FeedbackProps = {
   button: ReactNode;
@@ -55,14 +57,15 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
       <SheetContent size="sm">
         <SheetHeader className="justify-between">Help & feedback</SheetHeader>
         <SheetBody>
-          <Paragraph variant="small" className="mb-4">
-            Use this form to ask for help or give us feedback. We read every message and will get
+          <DiscordBanner />
+          <Paragraph variant="small" className="mb-4 border-t border-slate-800 pt-3">
+            Or use this form to ask for help or give us feedback. We read every message and will get
             back to you as soon as we can.
           </Paragraph>
           <Form method="post" action="/resources/feedback" {...form.props}>
-            <Fieldset>
+            <Fieldset className="max-w-full">
               <input value={location.pathname} {...conform.input(path, { type: "hidden" })} />
-              <InputGroup>
+              <InputGroup className="max-w-full">
                 <Label>How can we help?</Label>
                 <SelectGroup>
                   <Select {...conform.input(feedbackType)} defaultValue={defaultValue}>
@@ -80,14 +83,14 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
                 </SelectGroup>
                 <FormError id={feedbackType.errorId}>{feedbackType.error}</FormError>
               </InputGroup>
-              <InputGroup>
+              <InputGroup className="max-w-full">
                 <Label>Message</Label>
                 <TextArea {...conform.textarea(message)} />
                 <FormError id={message.errorId}>{message.error}</FormError>
               </InputGroup>
               <FormError>{form.error}</FormError>
               <FormButtons
-                className="max-w-md"
+                className="w-full"
                 confirmButton={
                   <Button type="submit" variant="primary/medium">
                     Send
@@ -99,5 +102,30 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
         </SheetBody>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function DiscordBanner() {
+  return (
+    <a
+      href="https://discord.gg/nkqV9xBYWy"
+      target="_blank"
+      className="group mb-4 flex w-full items-center justify-between rounded-md border border-slate-600 bg-gradient-to-br from-blue-400/30 to-indigo-400/50 p-4 transition hover:border-indigo-400"
+    >
+      <div className="flex flex-col gap-y-2">
+        <DiscordIcon className="h-8 w-8" />
+        <h2 className="font-title text-2xl text-bright transition group-hover:text-white">
+          Join the Trigger.dev
+          <br />
+          Discord community
+        </h2>
+        <Paragraph variant="small">
+          Get help or answer questions from the Trigger.dev community.
+        </Paragraph>
+      </div>
+      <div className="h-full">
+        <ChevronRightIcon className="h-5 w-5 text-slate-400 transition group-hover:translate-x-1 group-hover:text-indigo-400" />
+      </div>
+    </a>
   );
 }

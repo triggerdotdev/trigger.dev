@@ -325,7 +325,7 @@ function RerunPopover({
         <Form method="post" action={`/resources/runs/${runId}/rerun`} {...form.props}>
           <input {...conform.input(successRedirect, { type: "hidden" })} defaultValue={runsPath} />
           {environmentType === "PRODUCTION" && (
-            <Callout variant="warning">
+            <Callout variant="warning" className="mb-2">
               This will rerun this Job in your Production environment.
             </Callout>
           )}

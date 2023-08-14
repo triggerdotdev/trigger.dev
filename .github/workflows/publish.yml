@@ -64,8 +64,91 @@ jobs:
       - name: 🔎 Type check
         run: pnpm run typecheck --filter webapp
 
+  unitTests:
+    name: Unit Tests
+    runs-on: buildjet-4vcpu-ubuntu-2204
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@v2.2.4
+        with:
+          version: 7.18
+
+      - name: ⎔ Setup node
+        uses: buildjet/setup-node@v3
+        with:
+          node-version: 18
+          cache: "pnpm"
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Unit Tests
+        run: |
+          pnpm run test
+
+  e2e:
+    name: e2e Tests
+    runs-on: buildjet-4vcpu-ubuntu-2204
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@v2.2.4
+        with:
+          version: 7.18
+
+      - name: ⎔ Setup node
+        uses: buildjet/setup-node@v3
+        with:
+          node-version: 18
+          cache: "pnpm"
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
+      - name: Run Playwright tests
+        run: |
+          # Setup environment variables
+          cp ./.env.example ./.env
+          cp ./examples/nextjs-test/.env.example ./examples/nextjs-test/.env.local
+
+          # Build packages
+          pnpm run build --filter @examples/nextjs-test^...
+          pnpm --filter @trigger.dev/database generate
+
+          # Move trigger-cli bin to correct place
+          pnpm install --frozen-lockfile
+
+          # Execute tests
+          pnpm run docker
+          pnpm run db:migrate
+          pnpm run db:seed
+          pnpm run test:e2e
+
+          # Cleanup
+          pnpm run docker:stop
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
+
   publish:
-    needs: [typecheck]
+    needs: [typecheck, unitTests, e2e]
     runs-on: buildjet-4vcpu-ubuntu-2204
     outputs:
       version: ${{ steps.get_version.outputs.version }}

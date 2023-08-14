@@ -22,31 +22,53 @@ yarn add @trigger.dev/supabase
 
 </CodeGroup>
 
+## Quick links
+
+<CardGroup cols={2}>
+  <Card
+    title="Supabase Quick Start"
+    icon="bolt-lightning"
+    href="/documentation/quickstarts/supabase"
+  >
+    Get up and running with Supabase in just a few minutes.
+  </Card>
+  <Card
+    title="Supabase Onboarding Emails"
+    icon="file-code"
+    href="https://github.com/triggerdotdev/examples/tree/main/supabase-onboarding-emails"
+  >
+    Example of how to send a welcome email drip campaign using Supabase and Trigger.dev
+  </Card>
+  <Card
+    title="Introducing Supabase integration"
+    icon="grid-2"
+    href="https://trigger.dev/blog/introducing-supabase-integration"
+  >
+    Our deep-dive blog post announcing our Supabase integration
+  </Card>
+  <Card
+    title="Self-hosting"
+    icon="laptop-binary"
+    href="/documentation/guides/self-hosting/supabase"
+  >
+    Learn how to self-host Trigger.dev on your own Supabase database.
+  </Card>
+</CardGroup>
+
 ## Usage
 
 Our Supabase package supports two different integrations: One for the Supabase Management API and one that wraps the `@supabase/supabase-js` client.
 
 <CardGroup cols={2}>
-  <Card
-    title="Management API"
-    icon="server"
-    href="/integrations/apis/supabase/management"
-  >
-    The [Management API](https://supabase.com/docs/reference/api/introduction)
-    is used to manage your Supabase organization, projects, and databases. It
-    can also be used to trigger jobs based on changes in your Supabase database.
-    Works with OAuth or Personal Access Tokens.
+  <Card title="Management API" icon="server" href="/integrations/apis/supabase/management">
+    The [Management API](https://supabase.com/docs/reference/api/introduction) is used to manage
+    your Supabase organization, projects, and databases. It can also be used to trigger jobs based
+    on changes in your Supabase database. Works with OAuth or Personal Access Tokens.
   </Card>
-  <Card
-    title="Supabase Client"
-    icon="database"
-    href="/integrations/apis/supabase/client"
-  >
-    Wraps the [@supabase/supabase-js](https://github.com/supabase/supabase-js)
-    client to make it easy to use Supabase in your jobs to run queries against
-    your database and access other functionality, like auth, storage, and
-    functions. Works with your Supabase
-    [service_role](https://supabase.com/docs/guides/api/api-keys#the-servicerole-key)
-    key.
+  <Card title="Supabase Client" icon="database" href="/integrations/apis/supabase/client">
+    Wraps the [@supabase/supabase-js](https://github.com/supabase/supabase-js) client to make it
+    easy to use Supabase in your jobs to run queries against your database and access other
+    functionality, like auth, storage, and functions. Works with your Supabase
+    [service_role](https://supabase.com/docs/guides/api/api-keys#the-servicerole-key) key.
   </Card>
 </CardGroup>

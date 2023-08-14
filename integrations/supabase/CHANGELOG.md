@@ -1,5 +1,52 @@
 # @trigger.dev/supabase
 
+## 2.0.8
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@2.0.8
+- @trigger.dev/sdk@2.0.8
+
+## 2.0.7
+
+### Patch Changes
+
+- Updated dependencies [84126808]
+  - @trigger.dev/integration-kit@2.0.7
+  - @trigger.dev/sdk@2.0.7
+
+## 2.0.6
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@2.0.6
+- @trigger.dev/sdk@2.0.6
+
+## 2.0.5
+
+### Patch Changes
+
+- 3cf3eaff: You can now trigger on multiple database events in the same job
+  - @trigger.dev/integration-kit@2.0.5
+  - @trigger.dev/sdk@2.0.5
+
+## 2.0.4
+
+### Patch Changes
+
+- Updated dependencies [96384991]
+  - @trigger.dev/sdk@2.0.4
+  - @trigger.dev/integration-kit@2.0.4
+
+## 2.0.3
+
+### Patch Changes
+
+- ce901c92: Update supabase-management-js to 0.1.3
+- feaa79ec: Automatically enable database webhooks when using triggers
+  - @trigger.dev/integration-kit@2.0.3
+  - @trigger.dev/sdk@2.0.3
+
 ## 2.0.2
 
 ### Patch Changes

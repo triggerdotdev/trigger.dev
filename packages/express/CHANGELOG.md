@@ -1,5 +1,45 @@
 # @trigger.dev/express
 
+## 2.0.8
+
+### Patch Changes
+
+- 871d6e1d: fix: support express jsonParser middleware if used in the Express app
+- 7daa82fc: fix: avoid crashing the Node.js app on uncaught exceptions
+  - @trigger.dev/sdk@2.0.8
+
+## 2.0.7
+
+### Patch Changes
+
+- @trigger.dev/sdk@2.0.7
+
+## 2.0.6
+
+### Patch Changes
+
+- @trigger.dev/sdk@2.0.6
+
+## 2.0.5
+
+### Patch Changes
+
+- @trigger.dev/sdk@2.0.5
+
+## 2.0.4
+
+### Patch Changes
+
+- Updated dependencies [96384991]
+  - @trigger.dev/sdk@2.0.4
+
+## 2.0.3
+
+### Patch Changes
+
+- 81180999: The dev command should use a POST request when doing the PING to the local server
+  - @trigger.dev/sdk@2.0.3
+
 ## 2.0.2
 
 ### Patch Changes

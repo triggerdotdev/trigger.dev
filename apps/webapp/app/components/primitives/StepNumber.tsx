@@ -1,10 +1,12 @@
 import { cn } from "~/utils/cn";
 import { Header2 } from "./Headers";
+import { Spinner } from "./Spinner";
 
 export function StepNumber({
   stepNumber,
   active = false,
   complete = false,
+  displaySpinner = false,
   title,
   className,
 }: {
@@ -13,6 +15,7 @@ export function StepNumber({
   complete?: boolean;
   title?: React.ReactNode;
   className?: string;
+  displaySpinner?: boolean;
 }) {
   return (
     <div className={cn("mr-3", className)}>
@@ -28,7 +31,15 @@ export function StepNumber({
           <span className="flex h-6 w-6 items-center justify-center rounded border border-slate-700 bg-slate-800 py-1 text-xs font-semibold text-dimmed shadow">
             {complete ? "✓" : stepNumber}
           </span>
-          <Header2>{title}</Header2>
+
+          {displaySpinner ? (
+            <div className="flex items-center gap-x-2">
+              <Header2>{title}</Header2>
+              <Spinner />
+            </div>
+          ) : (
+            <Header2>{title}</Header2>
+          )}
         </div>
       )}
     </div>

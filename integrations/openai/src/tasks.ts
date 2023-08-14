@@ -10,7 +10,7 @@ import {
 } from "openai";
 import { OpenAIIntegrationAuth } from "./types";
 import { redactString } from "@trigger.dev/sdk";
-import { Prettify, fileFromString, truncate } from "@trigger.dev/integration-kit";
+import { Prettify, fileFromString, fileFromUrl, truncate } from "@trigger.dev/integration-kit";
 import { createTaskUsageProperties, onTaskError } from "./taskUtils";
 
 type OpenAIClientType = InstanceType<typeof OpenAIApi>;
@@ -326,6 +326,156 @@ export const createImage: AuthenticatedTask<
   },
 };
 
+export type CreateImageEditRequest = {
+  image: string | File;
+  prompt: string;
+  mask?: string | File;
+  n?: number;
+  size?: "256x256" | "512x512" | "1024x1024";
+  response_format?: "url" | "b64_json";
+  user?: string;
+};
+
+type CreateImageEditResponseData = Prettify<
+  Awaited<ReturnType<OpenAIClientType["createImageEdit"]>>["data"]
+>;
+
+export const createImageEdit: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<CreateImageEditRequest>,
+  CreateImageEditResponseData
+> = {
+  onError: onTaskError,
+  run: async (params, client, task) => {
+    const file = typeof params.image === "string" ? await fileFromUrl(params.image) : params.image;
+    const mask = typeof params.mask === "string" ? await fileFromUrl(params.mask) : params.mask;
+
+    const response = await client.createImageEdit(
+      file,
+      params.prompt,
+      mask,
+      params.n,
+      params.size,
+      params.response_format,
+      params.user
+    );
+
+    return response.data;
+  },
+  init: (params) => {
+    let properties = [];
+
+    properties.push({
+      label: "Prompt",
+      text: params.prompt,
+    });
+
+    if (params.n) {
+      properties.push({
+        label: "Number of images",
+        text: params.n.toString(),
+      });
+    }
+
+    if (params.size) {
+      properties.push({
+        label: "Size",
+        text: params.size,
+      });
+    }
+
+    if (params.response_format) {
+      properties.push({
+        label: "Response format",
+        text: params.response_format,
+      });
+    }
+
+    if (typeof params.image === "string") {
+      properties.push({
+        label: "Image URL",
+        text: params.image,
+        url: params.image,
+      });
+    }
+
+    return {
+      name: "Create image edit",
+      params,
+      icon: "openai",
+      properties,
+    };
+  },
+};
+
+type CreateImageVariationResponseData = Prettify<
+  Awaited<ReturnType<OpenAIClientType["createImageVariation"]>>["data"]
+>;
+
+export type CreateImageVariationRequest = {
+  image: string | File;
+  n?: number;
+  size?: "256x256" | "512x512" | "1024x1024";
+  response_format?: "url" | "b64_json";
+  user?: string;
+};
+
+export const createImageVariation: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<CreateImageVariationRequest>,
+  CreateImageVariationResponseData
+> = {
+  onError: onTaskError,
+  run: async (params, client, task) => {
+    const file = typeof params.image === "string" ? await fileFromUrl(params.image) : params.image;
+
+    const response = await client
+      .createImageVariation(file, params.n, params.size, params.response_format, params.user)
+      .then((res) => res.data);
+
+    return response;
+  },
+  init: (params) => {
+    let properties = [];
+
+    if (params.n) {
+      properties.push({
+        label: "Number of images",
+        text: params.n.toString(),
+      });
+    }
+
+    if (params.size) {
+      properties.push({
+        label: "Size",
+        text: params.size,
+      });
+    }
+
+    if (params.response_format) {
+      properties.push({
+        label: "Response format",
+        text: params.response_format,
+      });
+    }
+
+    if (typeof params.image === "string") {
+      properties.push({
+        label: "Image URL",
+        text: params.image,
+        url: params.image,
+      });
+    }
+
+    return {
+      name: "Create image variation",
+      params,
+      icon: "openai",
+      properties,
+    };
+  },
+};
+
 type CreateEmbeddingResponseData = Prettify<
   Awaited<ReturnType<OpenAIClientType["createEmbedding"]>>["data"]
 >;
@@ -383,7 +533,7 @@ export const createFile: AuthenticatedTask<
     let file: File;
 
     if (typeof params.file === "string") {
-      file = (await fileFromString(params.file, params.fileName ?? "file.txt")) as any;
+      file = await fileFromString(params.file, params.fileName ?? "file.txt");
     } else {
       file = params.file;
     }
@@ -441,10 +591,10 @@ export const createFineTuneFile: AuthenticatedTask<
 > = {
   onError: onTaskError,
   run: async (params, client) => {
-    const file = (await fileFromString(
+    const file = await fileFromString(
       params.examples.map((d) => JSON.stringify(d)).join("\n"),
       params.fileName
-    )) as any;
+    );
 
     return client.createFile(file, "fine-tune").then((res) => res.data);
   },

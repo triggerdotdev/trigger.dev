@@ -27,7 +27,7 @@ branch are tagged into a release monthly.
    ```
 
    > If you are on windows, run the following command on gitbash with admin privileges:
-   > `git clone -c core.symlinks=true https://triggerdotdev/trigger.dev.git`
+   > `git clone -c core.symlinks=true https://github.com/triggerdotdev/trigger.dev.git`
 
 2. Navigate to the project folder
    ```
@@ -37,11 +37,11 @@ branch are tagged into a release monthly.
    ```
    pnpm i
    ```
-4. Create your `.env` files
+4. Create your `.env` file
    ```
-   cp .env.example .env && cp packages/database/.env.example packages/database/.env
+   cp .env.example .env
    ```
-5. Open the root `.env` file and generate a new value for `ENCRYPTION_KEY`:
+5. Open it and generate a new value for `ENCRYPTION_KEY`:
 
    `ENCRYPTION_KEY` is used to two-way encrypt OAuth access tokens and so you'll probably want to actually generate a unique value, and it must be a random 16 byte hex string. You can generate one with the following command:
 
@@ -168,6 +168,54 @@ pnpm exec trigger-cli dev
 8. After running the CLI, start your newly created Next.js project. You should now be able to see the changes.
 
 9. Please remember to delete the temporary project you created after you've tested the changes, and before you raise a PR.
+
+## Running end-to-end webapp tests
+
+To run the end-to-end tests, follow the steps below:
+
+1. Set up environment variables (copy example envs into the correct place)
+
+```sh
+cp ./.env.example ./.env
+cp ./examples/nextjs-test/.env.example ./examples/nextjs-test/.env.local
+```
+
+2. Set up dependencies
+
+```sh
+# Build packages
+pnpm run build --filter @examples/nextjs-test^...
+pnpm --filter @trigger.dev/database generate
+
+# Move trigger-cli bin to correct place
+pnpm install --frozen-lockfile
+
+# Install playwrite browsers (ONE TIME ONLY)
+npx playwright install
+```
+
+3. Set up the database
+
+```sh
+pnpm run docker
+pnpm run db:migrate
+pnpm run db:seed
+```
+
+4. Run the end-to-end tests
+
+```sh
+pnpm run test:e2e
+```
+
+### Cleanup
+
+The end-to-end tests use a `setup` and `teardown` script to seed the database with test data. If the test runner doesn't exit cleanly, then the database can be left in a state where the tests can't run because the `setup` script will try to create data that already exists. If this happens, you can manually delete the `users` and `organizations` from the database using prisma studio:
+
+```sh
+# With the database running (i.e. pnpm run docker)
+pnpm run db:studio
+```
 
 ## Add sample jobs
 

@@ -389,6 +389,15 @@ export class TriggerClient {
           },
         };
       }
+      case "VALIDATE": {
+        return {
+          status: 200,
+          body: {
+            ok: true,
+            endpointId: this.id,
+          },
+        };
+      }
     }
 
     return {

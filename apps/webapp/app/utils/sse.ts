@@ -1,4 +1,5 @@
 import { eventStream } from "remix-utils";
+import { logger } from "~/services/logger.server";
 
 type SseProps = {
   request: Request;
@@ -30,12 +31,38 @@ export function sse({ request, pingInterval = 1000, updateInterval = 348, run }:
   };
 
   return eventStream(request.signal, (send) => {
+    const safeSend = (args: { event?: string; data: string }) => {
+      try {
+        send(args);
+      } catch (error) {
+        if (error instanceof Error) {
+          if (error.name !== "TypeError") {
+            logger.debug("Error sending SSE, aborting", {
+              error: {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+              },
+              args,
+            });
+          }
+        } else {
+          logger.debug("Uknown error sending SSE, aborting", {
+            error,
+            args,
+          });
+        }
+
+        abort();
+      }
+    };
+
     pinger = setInterval(() => {
-      send({ event: "ping", data: new Date().toISOString() });
+      safeSend({ event: "ping", data: new Date().toISOString() });
     }, pingInterval);
 
     updater = setInterval(async () => {
-      run(send, abort);
+      run(safeSend, abort);
     }, updateInterval);
 
     return abort;

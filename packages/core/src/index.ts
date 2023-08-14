@@ -5,3 +5,4 @@ export * from "./utils";
 export * from "./retry";
 export * from "./replacements";
 export * from "./searchParams";
+export * from "./eventFilterMatches";

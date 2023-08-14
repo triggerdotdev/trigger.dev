@@ -23,12 +23,15 @@ client.defineJob({
   // 1. Run function with params
   run: async (payload, io, ctx) => {
     // 2. Regular code and Tasks
+    // 3. Optionally return data from run execution
+    return { status: 'success' }
   },
 });
 ```
 
 1. The `run()` function is called with some useful parameters. More on that in a second.
 2. Inside the run function you can write regular code and use [Tasks](/documentation/concepts/tasks).
+3. You can return data, which will then be retrievable with [getRun](/sdk/triggerclient/instancemethods/getrun) or the [React hooks](/documentation/guides/react-hooks).
 
 ## Resumability
 
