@@ -1,0 +1,447 @@
+---
+title: "Event Filters"
+description: "They are declarative pattern-matching rules, modeled after [AWS EventBridge patterns](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-event-patterns.html)."
+---
+
+Given the following custom event payload:
+
+```json
+{
+  "uid": "jexAgaeJFJsrGfans1pxqm",
+  "type": "15 Min Meeting",
+  "price": 0,
+  "title": "15 Min Meeting between Eric Allam and John Doe",
+  "length": 15,
+  "status": "ACCEPTED",
+  "endTime": "2023-01-25T16:00:00Z",
+  "bookingId": 198052,
+  "organizer": {
+    "id": 32794,
+    "name": "Eric Allam",
+    "email": "eric@trigger.dev",
+    "language": { "locale": "en" },
+    "timeZone": "Europe/London"
+  }
+}
+```
+
+The following event filter would match the event:
+
+```json
+{
+  "type": ["15 Min Meeting"],
+  "status": ["ACCEPTED", "REJECTED"],
+  "organizer": {
+    "name": ["Eric Allam"]
+  }
+}
+```
+
+For an event pattern to match an event, the event must contain all the field names listed in the event pattern. The field names must also appear in the event with the same nesting structure.
+
+The value of each field name in the event pattern must be an array of strings, numbers, or booleans. The event pattern matches the event if the value of the field name in the event is equal to any of the values in the array.
+
+Effectively, each array is an OR condition, and the entire event pattern is an AND condition.
+
+So the above event filter will match because `status == "ACCEPTED"`, and it would also match if `status == "REJECTED"`.
+
+## String Filters
+
+String filters are used to match string values within the event payload. You can filter events based on exact string matches, case-insensitive matches, starts-with, ends-with, and more.
+
+**Examples:**
+
+- `name: ["John"]`: Triggers the job if the name field in the event payload is exactly "John".
+- `name: [{ $startsWith: "Jo" }]`: Triggers the job if the name field starts with "Jo".
+- `name: [{ $endsWith: "hn" }]`: Triggers the job if the name field ends with "hn".
+- `name: [{ $ignoreCaseEquals: "john" }]` : Triggers the job if the name field is equal to "john" regardless of case.
+
+### Examples
+
+```ts
+client.defineJob({
+  id: "notify-hr-new-hires-specific-hobbies",
+  name: "Notify HR of New Hires with Specific Hobbies",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "employee.hired",
+    schema: z.object({
+      name: z.string(),
+      email: z.string(),
+      hobbies: z.array(z.string()),
+    }),
+    filter: {
+      name: [{ $startsWith: "Jo" }], // Only trigger for employees whose name starts with "Jo"
+    },
+  }),
+  run: async (payload, io, ctx) => {},
+});
+```
+
+```ts
+client.defineJob({
+  id: "notify-hr-new-hires-specific-hobbies",
+  name: "Notify HR of New Hires with Specific Hobbies",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "employee.hired",
+    schema: z.object({
+      name: z.string(),
+      email: z.string(),
+      hobbies: z.array(z.string()),
+    }),
+    filter: {
+      name: ["John"], // Only trigger for employees whose name is "John"
+    },
+  }),
+  run: async (payload, io, ctx) => {},
+});
+```
+
+## Boolean Filters
+
+Boolean filters are used to filter events based on boolean values within the event payload.
+
+**Examples:**
+
+- `paidPlan: [true]`: Triggers the job if the `PaidPlan` field in the event payload is `true`.
+- `isAdmin: [false]`: Triggers the job if the `isAdmin` field in the event payload is `false`.
+
+### Examples
+
+```ts
+client.defineJob({
+  id: "notify-admins-paid-users",
+  name: "Notify Admins of New Paid Users",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "user.created",
+    schema: z.object({
+      name: z.string(),
+      email: z.string(),
+      paidPlan: z.boolean(),
+      isAdmin: z.boolean(),
+    }),
+    filter: {
+      paidPlan: [true],
+      isAdmin: [true], // Only trigger for paid users who are also admins
+    },
+  }),
+  run: async (payload, io, ctx) => {},
+});
+```
+
+```ts
+client.defineJob({
+  id: "send-premium-content",
+  name: "Send Premium Content to Subscribed Users",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "content.available",
+    schema: z.object({
+      userId: z.string(),
+      subscriptionStatus: z.boolean(),
+    }),
+    filter: {
+      subscriptionStatus: [true], // Only trigger for users with an active subscription
+    },
+  }),
+  run: async (payload, io, ctx) => {},
+});
+```
+
+## Number Filters
+
+Number filters are used to filter events based on numeric values within the event payload. It can also be used to perform numeric comparisons on values within the event payload.
+
+**Examples:**
+
+- `age [18]`: Triggers the job if the `age` field in the event payload is equal to `18`.
+- `score: [{ $gt: 90 }]` : Triggers the job if the score field is greater than `90`.
+- `score: [{ $gte: 90 }]` : Triggers the job if the score field is greater than or equal to `90`.
+- `score: [{ $lt: 90 }]` : Triggers the job if the score field is less than `90`.
+- `score: [{ $lte: 90 }]` : Triggers the job if the score field is less than or equal to `90`.
+- `age: [{ $gt: 20 }, { $lt: 40 }]`: Triggers the job if the `age` field is greater than 20 and less than 40.
+- `score: [{ $between: [90, 110] }]`: Triggers the job if the `score` field is between 90 and 110.
+
+### Examples
+
+```ts
+client.defineJob({
+  id: "send-discount-high-scores",
+  name: "Send Discount to High Scoring Customers",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "customer.score.updated",
+    schema: z.object({
+      customerId: z.string(),
+      score: z.number(),
+    }),
+    filter: {
+      score: [{ $gt: 90 }], // Only trigger for customers with a score greater than 90
+    },
+  }),
+  run: async (payload, io, ctx) => {},
+});
+```
+
+```ts
+client.defineJob({
+  id: "notify-upcoming-birthdays",
+  name: "Notify Users of Upcoming Birthdays",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "user.birthday",
+    schema: z.object({
+      userId: z.string(),
+      age: z.number(),
+    }),
+    filter: {
+      age: [25], // Only trigger for users who are turning 25
+    },
+  }),
+  run: async (payload, io, ctx) => {},
+});
+```
+
+```ts
+client.defineJob({
+  id: "send-discount-code",
+  name: "Send Discount Code",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "user.purchase",
+    schema: z.object({
+      userId: z.string(),
+      age: z.number(),
+    }),
+    filter: {
+      age: [{ $gt: 18 }, { $lt: 30 }], // Only trigger for users aged between 18 and 30
+    },
+  }),
+  run: async (payload, io, ctx) => {},
+});
+```
+
+```ts
+client.defineJob({
+  id: "update-user-level",
+  name: "Update User Level",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "user.scoreUpdated",
+    schema: z.object({
+      userId: z.string(),
+      score: z.number(),
+    }),
+    filter: {
+      score: [{ $between: [50, 100] }], // Only trigger for scores between 50 and 100 (inclusive)
+    },
+  }),
+  run: async (payload, io, ctx) => {},
+});
+```
+
+## Array Filters
+
+Array filters are used to filter events based on the content of arrays within the event payload.
+
+**Examples:**
+
+- `hobbies: [{ $includes: "reading" }]`: Triggers the job if the hobbies array includes the value "reading".
+
+### Examples
+
+```ts
+client.defineJob({
+  id: "recommend-books-avid-readers",
+  name: "Recommend Books to Avid Readers",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "user.preferences.updated",
+    schema: z.object({
+      userId: z.string(),
+      hobbies: z.array(z.string()),
+    }),
+    filter: {
+      hobbies: [{ $includes: "reading" }], // Only trigger for users whose hobbies include "reading"
+    },
+  }),
+  run: async (payload, io, ctx) => {
+    //run function
+  },
+});
+```
+
+## Existence Filters
+
+Existence filters are used to filter events based on the presence or absence of certain keys within the event payload.
+
+**Examples:**
+
+- `name: [{ $exists: true }]` : Triggers the job if the `name` field exists in the event payload.
+- `foo: [{ $exists: false }]` : Triggers the job if the foo field does not exist in the event payload.
+
+### Examples
+
+```ts
+client.defineJob({
+  id: "send-welcome-email",
+  name: "Send Welcome Email",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "user.created",
+    schema: z.object({
+      userId: z.string(),
+      name: z.string(),
+      email: z.string(),
+    }),
+    filter: {
+      name: [{ $exists: true }], // Only trigger for events where the 'name' field exists
+    },
+  }),
+  run: async (payload, io, ctx) => {},
+});
+```
+
+```ts
+client.defineJob({
+  id: "notify-admin-missing-field",
+  name: "Notify Admins of Missing Field",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "user.updated",
+    schema: z.object({
+      userId: z.string(),
+      isAdmin: z.boolean(),
+    }),
+    filter: {
+      foo: [{ $exists: false }], // Only trigger if the 'foo' field does not exist
+    },
+  }),
+  run: async (payload, io, ctx) => {},
+});
+```
+
+## Combining Filters
+
+Filters can be combined to create more complex conditions for triggering jobs.
+
+**Examples:**
+
+- `name: ["Alice"], age: [30]` : Triggers the job if the name is "Alice" and the age is 30.
+- `name: ["Alice"], age: [{ $gt: 20 }, { $lt: 40 }]` : Triggers the job if the name is "Alice" and the age is between 20 and 40.
+- `name: ["Alice", "Bob"]` : Triggers the job if the name is either "Alice" or "Bob".
+- `name: ["Alice", "Bob"], age: [30]` : Triggers the job if the name is either "Alice" or "Bob" and the age is 30.
+
+### Examples
+
+```ts
+client.defineJob({
+  id: "notify-vip-event",
+  name: "Notify VIP Customers",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "user.registration",
+    schema: z.object({
+      userId: z.string(),
+      name: z.string(),
+      age: z.number(),
+      totalPurchases: z.number(),
+    }),
+    filter: {
+      age: [{ $gt: 25 }, { $lt: 60 }], // Trigger for users aged between 25 and 60
+      totalPurchases: [{ $gte: 3 }], // Trigger for users with 3 or more total purchases
+    },
+  }),
+  run: async (payload, io, ctx) => {},
+});
+```
+
+```ts
+client.defineJob({
+  id: "process-orders",
+  name: "Process Orders",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "order.placed",
+    schema: z.object({
+      orderId: z.string(),
+      customerId: z.string(),
+      region: z.string(),
+      totalAmount: z.number(),
+    }),
+    filter: {
+      region: ["US", "Canada"], // Trigger for orders from US or Canada
+      totalAmount: [{ $gt: 100 }, { $lt: 1000 }], // Trigger for orders with a total amount between 100 and 1000
+    },
+  }),
+  run: async (payload, io, ctx) => {},
+});
+```
+
+## Using with Stripe triggers
+
+Here is an example of a Stripe Trigger with an Event Filter:
+
+```ts
+client.defineJob({
+  id: "stripe-on-subscription-created",
+  name: "Stripe On Subscription Created",
+  version: "0.1.0",
+  trigger: stripe.onCustomerSubscriptionCreated({
+    filter: {
+      currency: ["usd"],
+    },
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("ctx", { ctx });
+  },
+});
+```
+
+The job is triggered by the `onCustomerSubscriptionCreated` event from Stripe. It is configured to trigger only when certain conditions are met. In this case, the job is triggered when a subscription is created with the following condition:
+
+- Currency: Only subscriptions with the currency "USD" will trigger this job.
+
+## Using with Supabase triggers
+
+Here is an example of a Supabase Trigger with an Event Filter:
+
+```ts
+client.defineJob({
+  id: "supabase-management-example-objects-storage",
+  name: "Supabase Management Example Object Storage",
+  version: "0.1.0",
+  trigger: triggers.onInserted({
+    schema: "storage",
+    table: "objects",
+    filter: {
+      record: {
+        bucket_id: ["example_bucket"], // Only trigger for objects in the "example_bucket" bucket
+        name: [
+          {
+            $endsWith: ".png", // Only trigger for objects with a name ending in ".png"
+          },
+        ],
+        path_tokens: [
+          {
+            $includes: "images", // Only trigger for objects with a path that includes the token "images"
+          },
+        ],
+      },
+    },
+  }),
+  integrations: {
+    openai,
+    supabase,
+  },
+  run: async (payload, io, ctx) => {},
+});
+```
+
+- This Listens for insert events in the "objects" table of the "storage" schema.
+- Conditions for Triggering:
+  - Object belongs to "example_bucket".
+  - Object's name ends with ".png".
+  - Object's path includes the token "images".

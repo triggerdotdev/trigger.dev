@@ -122,7 +122,6 @@ jobs:
           # Setup environment variables
           cp ./.env.example ./.env
           cp ./examples/nextjs-test/.env.example ./examples/nextjs-test/.env.local
-          cp ./packages/database/.env.example ./packages/database/.env
 
           # Build packages
           pnpm run build --filter @examples/nextjs-test^...

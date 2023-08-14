@@ -182,5 +182,13 @@ function contentFilterMatches(actualValue: any, contentFilter: ContentFilters[nu
     );
   }
 
+  if ("$isNull" in contentFilter) {
+    if (contentFilter.$isNull) {
+      return actualValue === null;
+    }
+
+    return actualValue !== null;
+  }
+
   return true;
 }

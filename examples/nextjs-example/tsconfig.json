@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2015",
-    "lib": ["dom", "dom.iterable", "ES2015"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "ES2015"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -15,31 +19,87 @@
     "jsx": "preserve",
     "incremental": true,
     "paths": {
-      "@/*": ["./src/*"],
-      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
-      "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
-      "@trigger.dev/nextjs": ["../../packages/nextjs/src/index"],
-      "@trigger.dev/nextjs/*": ["../../packages/nextjs/src/*"],
-      "@trigger.dev/core": ["../../packages/core/src/index"],
-      "@trigger.dev/core/*": ["../../packages/core/src/*"],
-      "@trigger.dev/integration-kit": ["../../packages/integration-kit/src/index"],
-      "@trigger.dev/integration-kit/*": ["../../packages/integration-kit/src/*"],
-      "@trigger.dev/github": ["../../integrations/github/src/index"],
-      "@trigger.dev/github/*": ["../../integrations/github/src/*"],
-      "@trigger.dev/slack": ["../../integrations/slack/src/index"],
-      "@trigger.dev/slack/*": ["../../integrations/slack/src/*"],
-      "@trigger.dev/openai": ["../../integrations/openai/src/index"],
-      "@trigger.dev/openai/*": ["../../integrations/openai/src/*"],
-      "@trigger.dev/resend": ["../../integrations/resend/src/index"],
-      "@trigger.dev/resend/*": ["../../integrations/resend/src/*"],
-      "@trigger.dev/typeform": ["../../integrations/typeform/src/index"],
-      "@trigger.dev/typeform/*": ["../../integrations/typeform/src/*"],
-      "@trigger.dev/plain": ["../../integrations/plain/src/index"],
-      "@trigger.dev/plain/*": ["../../integrations/plain/src/*"],
-      "@trigger.dev/supabase": ["../../integrations/supabase/src/index"],
-      "@trigger.dev/supabase/*": ["../../integrations/supabase/src/*"],
-      "@trigger.dev/stripe": ["../../integrations/stripe/src/index"],
-      "@trigger.dev/stripe/*": ["../../integrations/stripe/src/*"]
+      "@/*": [
+        "./src/*"
+      ],
+      "@trigger.dev/sdk": [
+        "../../packages/trigger-sdk/src/index"
+      ],
+      "@trigger.dev/sdk/*": [
+        "../../packages/trigger-sdk/src/*"
+      ],
+      "@trigger.dev/nextjs": [
+        "../../packages/nextjs/src/index"
+      ],
+      "@trigger.dev/nextjs/*": [
+        "../../packages/nextjs/src/*"
+      ],
+      "@trigger.dev/core": [
+        "../../packages/core/src/index"
+      ],
+      "@trigger.dev/core/*": [
+        "../../packages/core/src/*"
+      ],
+      "@trigger.dev/integration-kit": [
+        "../../packages/integration-kit/src/index"
+      ],
+      "@trigger.dev/integration-kit/*": [
+        "../../packages/integration-kit/src/*"
+      ],
+      "@trigger.dev/github": [
+        "../../integrations/github/src/index"
+      ],
+      "@trigger.dev/github/*": [
+        "../../integrations/github/src/*"
+      ],
+      "@trigger.dev/slack": [
+        "../../integrations/slack/src/index"
+      ],
+      "@trigger.dev/slack/*": [
+        "../../integrations/slack/src/*"
+      ],
+      "@trigger.dev/openai": [
+        "../../integrations/openai/src/index"
+      ],
+      "@trigger.dev/openai/*": [
+        "../../integrations/openai/src/*"
+      ],
+      "@trigger.dev/resend": [
+        "../../integrations/resend/src/index"
+      ],
+      "@trigger.dev/resend/*": [
+        "../../integrations/resend/src/*"
+      ],
+      "@trigger.dev/typeform": [
+        "../../integrations/typeform/src/index"
+      ],
+      "@trigger.dev/typeform/*": [
+        "../../integrations/typeform/src/*"
+      ],
+      "@trigger.dev/plain": [
+        "../../integrations/plain/src/index"
+      ],
+      "@trigger.dev/plain/*": [
+        "../../integrations/plain/src/*"
+      ],
+      "@trigger.dev/supabase": [
+        "../../integrations/supabase/src/index"
+      ],
+      "@trigger.dev/supabase/*": [
+        "../../integrations/supabase/src/*"
+      ],
+      "@trigger.dev/stripe": [
+        "../../integrations/stripe/src/index"
+      ],
+      "@trigger.dev/stripe/*": [
+        "../../integrations/stripe/src/*"
+      ],
+      "@trigger.dev/sendgrid": [
+        "../../integrations/sendgrid/src/index"
+      ],
+      "@trigger.dev/sendgrid/*": [
+        "../../integrations/sendgrid/src/*"
+      ]
     },
     "plugins": [
       {
@@ -47,6 +107,13 @@
       }
     ]
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

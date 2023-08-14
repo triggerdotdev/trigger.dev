@@ -1,0 +1,262 @@
+---
+title: Using Manual Setup
+description: How to Manually Initialize Trigger.dev in your Next.js project
+---
+
+<Accordion defaultOpen title="Don't have a Next.js project yet to add Trigger.dev to? No problem, you can complete the Manual Setup using a blank Next.js project:">
+Create a blank project by running the `create-next-app` command in your terminal:
+
+```bash
+npx create-next-app@latest
+```
+
+Trigger.dev works with either the Pages or App Router configuration.
+
+</Accordion>
+
+## Installing Required Packages
+To begin, install the necessary packages in your Next.js project directory. You can choose one of the following package managers:
+
+<CodeGroup>
+
+```bash npm
+
+npm i @trigger.dev/sdk @trigger-dev/nextjs
+
+```
+
+```bash pnpm
+pnpm install @trigger.dev/sdk @trigger-dev/nextjs
+
+```
+
+```bash yarn
+yarn add @trigger.dev/sdk @trigger-dev/nextjs
+
+```
+
+</CodeGroup>
+
+<br />
+
+<Note>Ensure that you execute this command within a Next.js project.</Note>
+
+## Obtaining the Development API Key
+To locate your development API key, login to the [Trigger.dev
+dashboard](https://cloud.trigger.dev) and select the Project you want to
+connect to. Then click on the Environments & API Keys tab in the left menu.
+You can copy your development API Key from the field at the top of this page.
+(Your development key will start with `tr_dev_`).
+
+## Adding Environment Variables
+Create a `.env.local` file at the root of your project and include your Trigger API key and URL like this:
+
+```bash
+
+TRIGGER_API_KEY=ENTER_YOUR_DEVELOPMENT_API_KEY_HERE
+TRIGGER_API_URL=https://cloud.trigger.dev
+
+```
+
+Replace `ENTER_YOUR_DEVELOPMENT_API_KEY_HERE` with the actual API key obtained from the previous step.
+
+## Configuring the Trigger Client
+
+To set up the Trigger Client for your project, follow these steps:
+
+1. **Create Configuration File:**
+   
+   In your project directory, create a configuration file named `trigger.ts` or `trigger.js`, depending on whether your project uses TypeScript (`.ts`) or JavaScript (`.js`).
+
+2. **Choose Directory:**
+
+   Depending on your project structure, choose the appropriate directory for the configuration file. If your project uses a `src` directory, create the file within it. Otherwise, create it directly in the project root.
+
+3. **Add Configuration Code:**
+
+   Open the configuration file you created and add the following code:
+
+   ```typescript
+   // trigger.ts (for TypeScript) or trigger.js (for JavaScript)
+   
+   import { TriggerClient } from "@trigger.dev/sdk";
+   
+   export const client = new TriggerClient({
+     id: "my-app",
+     apiKey: process.env.TRIGGER_API_KEY,
+     apiUrl: process.env.TRIGGER_API_URL,
+   });
+
+   ```
+
+    Replace **"my-app"** with an appropriate identifier for your project. The **apiKey** and **apiUrl** are obtained from the environment variables you set earlier.
+
+4. **File Location:**
+
+    Depending on your project structure, save the configuration file in the appropriate location:
+    - If your project uses a **src** directory, save the file within the **src** directory.
+    - If your project does not use a **src** directory, save the file in the project root.
+
+    **Example Directory Structure with src:**
+
+    ```
+        project-root/
+        ├── src/
+            ├── trigger.ts
+        ├── other files...
+    ```
+
+    **Example Directory Structure without src:**
+
+    ```
+        project-root/
+        ├── trigger.ts
+        ├── other files...
+    ```
+
+By following these steps, you'll configure the Trigger Client to work with your project, regardless of whether you have a separate **src** directory and whether you're using TypeScript or JavaScript files.
+
+## Creating the API Route
+
+To establish an API route for interacting with Trigger.dev, follow these steps based on your project's file type and structure
+
+<Tabs>
+  <Tab title="App Directory">
+    1. Create a new file named `route.(ts/js)` within the `app/api/trigger/` directory.
+    2. Add the following code to `route.(ts/js)`:
+
+    ```typescript
+    import { createAppRoute } from "@trigger.dev/nextjs";
+    import { client } from "@/trigger";
+    import "@/Jobs";
+
+    export const { POST, dynamic } = createAppRoute(client);
+    ```
+
+  </Tab>
+  <Tab title="Pages Directory">
+    1. Create a new file named `trigger.(ts/js)` within the `pages/api/` directory.
+    2. Add the following code to `trigger.(ts/js)`:
+
+    ```typescript
+    import { createPagesRoute } from "@trigger.dev/nextjs";
+    import { client } from "@/trigger";
+    import "@/Jobs";
+
+    const { handler, config } = createPagesRoute(client);
+    export { config };
+    export default handler;
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>In the code blocks, replace "@/trigger" with the appropriate path to your Trigger Client configuration file, and adjust the path to the Jobs folder accordingly. Make sure to provide the correct paths if your project isn't utilizing the Next.js alias feature.</Warning>
+
+## Creating the Example Job
+1. Create a folder named `Jobs` alongside your `app` or `pages` directory
+2. Inside the `Jobs` folder, add two files named `example.(ts/js)` and `index.(ts/js)`.
+<CodeGroup>
+
+```typescript example.(ts/js)
+import { eventTrigger } from "@trigger.dev/sdk";
+import { client } from "@/trigger";
+
+// your first job
+client.defineJob({
+  id: "example-job",
+  name: "Example Job",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "example.event",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Hello world!", { payload });
+
+    return {
+      message: "Hello world!",
+    };
+  },
+});
+```
+
+```typescript index.ts/index.(ts/js)
+// import all your job files here
+
+export * from "./examples"
+```
+
+</CodeGroup>
+
+## Additonal Job Definitions
+You can define more job definitions by creating additional files in the `Jobs` folder and exporting them in `index` file.
+
+For example, in `index.(ts/js)`, you can export other job files like this:
+
+```typescript
+// import all your job files here
+
+export * from "./examples"
+export * from "./other-job-file";
+```
+
+## Adding Configuration to `package.json`
+
+Inside the `package.json` file, add the following configuration under the root object:
+
+```json
+"trigger.dev": {
+  "endpointId": "my-app"
+}
+```
+
+Your `package.json` file might look something like this:
+```json
+{
+  "name": "my-app",
+  "version": "1.0.0",
+  "dependencies": {
+    // ... other dependencies
+  },
+  "trigger.dev": {
+    "endpointId": "my-app"
+  }
+}
+```
+
+Replace **"my-app"** with the appropriate identifier you used during the step for creating the Trigger Client.
+
+## Next Steps
+
+Start your Next.js project locally locally, and then execute the `dev` CLI command to run Trigger.dev locally. You should run this command every time you want to use Trigger.dev locally.
+
+![Your first Job](/images/cli-dev.gif)
+
+<Warning>
+  Make sure your Next.js site is running locally before continuing. You must
+  also leave this `dev` terminal command running while you develop.
+</Warning>
+
+In a **new terminal window or tab** run:
+
+<CodeGroup>
+
+```bash npm
+npx @trigger.dev/cli@latest dev
+```
+
+```bash pnpm
+pnpm dlx @trigger.dev/cli@latest dev
+```
+
+```bash yarn
+yarn dlx @trigger.dev/cli@latest dev
+```
+
+</CodeGroup>
+<br />
+<Note>
+  You can optionally pass the port if you're not running on 3000 by adding
+  `--port 3001` to the end
+</Note>
+
+<Tip>If your existing Next.js project utilizes middleware and you encounter any issues, such as potential conflicts with Trigger.dev, it's recommended to refer to the troubleshooting guide at [Middleware](/documentation/guides/platforms/nextjs#middleware) for assistance. This guide can help you address any concerns related to middleware conflicts and ensure the smooth functioning of your project with Trigger.dev.</Tip>

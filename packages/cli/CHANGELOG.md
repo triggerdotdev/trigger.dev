@@ -1,5 +1,22 @@
 # create-trigger
 
+## 2.0.8
+
+### Patch Changes
+
+- c246578a: Made the CLI error more helpful if you’re not running your Next.js app
+- d395b957: fix: Handle ngrok config upgrade error in createTunnel function
+
+## 2.0.7
+
+### Patch Changes
+
+- a1bc15d1: Updated the example job
+- 3ce6dece: creates a job catalog file when a new integration is created with the create-integration command
+- a90908df: CLI init fixes: don't ask for endpoint slug, fix for next.config and package manager artifact issue
+
+## 2.0.6
+
 ## 2.0.5
 
 ## 2.0.4

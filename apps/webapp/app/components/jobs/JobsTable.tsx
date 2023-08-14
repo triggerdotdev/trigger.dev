@@ -20,6 +20,7 @@ import { useProject } from "~/hooks/useProject";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { JobRunStatus } from "~/models/job.server";
 import { cn } from "~/utils/cn";
+import { Badge } from "../primitives/Badge";
 
 export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResultsText: string }) {
   const organization = useOrganization();
@@ -44,7 +45,10 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
             return (
               <TableRow
                 key={job.id}
-                className={cn(job.hasIntegrationsRequiringAction && "bg-rose-500/30")}
+                className={cn(
+                  (job.hasIntegrationsRequiringAction && "bg-rose-500/20") ||
+                    (job.lastRun === undefined && "bg-green-500/20")
+                )}
               >
                 <TableCell to={path}>
                   <span className="flex items-center gap-2">
@@ -141,7 +145,13 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
                     <LabelValueStack label={"Never run"} value={"–"} />
                   )}
                 </TableCell>
-                <TableCellChevron to={path} />
+                <TableCellChevron to={path}>
+                  {job.lastRun === undefined && (
+                    <Badge className="mr-4" variant="green">
+                      New Job!
+                    </Badge>
+                  )}
+                </TableCellChevron>
               </TableRow>
             );
           })

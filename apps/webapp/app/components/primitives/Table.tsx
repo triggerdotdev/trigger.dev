@@ -2,6 +2,7 @@ import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { ReactNode, forwardRef } from "react";
 import { cn } from "~/utils/cn";
+import { Badge } from "./Badge";
 
 type TableProps = {
   containerClassName?: string;
@@ -172,12 +173,14 @@ export const TableCellChevron = forwardRef<
   {
     className?: string;
     to?: string;
+    children?: ReactNode;
     onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
   }
->(({ className, to, onClick }, ref) => {
+>(({ className, to, children, onClick }, ref) => {
   return (
     <TableCell className={className} to={to} onClick={onClick} ref={ref} alignment="right">
-      <ChevronRightIcon className="h-4 w-4 text-slate-700 transition group-hover:text-bright" />
+      {children}
+      <ChevronRightIcon className="h-4 w-4 text-dimmed transition group-hover:text-bright" />
     </TableCell>
   );
 });
