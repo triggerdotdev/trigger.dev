@@ -667,6 +667,9 @@ importers:
 
   examples/nextjs-example:
     dependencies:
+      '@trigger.dev/eslint-plugin':
+        specifier: workspace:*
+        version: link:../../packages/eslint-plugin
       '@trigger.dev/github':
         specifier: workspace:*
         version: link:../../integrations/github
@@ -1341,7 +1344,7 @@ importers:
         specifier: ^4.9.4
         version: 4.9.5
 
-  packages/eslint:
+  packages/eslint-plugin:
     dependencies:
       requireindex:
         specifier: ^1.2.0
