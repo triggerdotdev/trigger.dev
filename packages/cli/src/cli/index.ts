@@ -79,7 +79,7 @@ program
     await createIntegrationCommand(path, options);
   });
 
-  program
+program
   .command("whoami")
   .description("display the current logged in user and project details")
   .argument("[path]", "The path to the project", ".")
@@ -90,7 +90,6 @@ program
     try {
       await whoamiCommand(path, options);
     } catch (e) {
-      telemetryClient.dev.failed("unknown", options, e);
       throw e;
     }
   });
