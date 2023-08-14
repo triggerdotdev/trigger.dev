@@ -121,5 +121,45 @@ ruleTester.run("no-duplicated-task-keys", rule, {
       })`,
       errors: [{ message: "Task key 'list-forms' is duplicated" }]
     },
+    {
+      code: `client.defineJob({
+        id: "github-integration-on-issue-opened",
+        name: "GitHub Integration - On Issue Opened",
+        version: "0.1.0",
+        integrations: { github: githubApiKey },
+        trigger: githubApiKey.triggers.repo({
+          event: events.onIssueOpened,
+          owner: "triggerdotdev",
+          repo: "empty",
+        }),
+        run: async (payload, io, ctx) => {
+          await io.github.addIssueAssignees("add assignee", {
+            owner: payload.repository.owner.login,
+            repo: payload.repository.name,
+            issueNumber: payload.issue.number,
+            assignees: ["matt-aitken"],
+          });
+      
+          await io.github.addIssueAssignees("add assignee", {
+            owner: payload.repository.owner.login,
+            repo: payload.repository.name,
+            issueNumber: payload.issue.number,
+            assignees: ["matt-aitken"],
+          });
+      
+          await io.github.addIssueLabels("add label", {
+            owner: payload.repository.owner.login,
+            repo: payload.repository.name,
+            issueNumber: payload.issue.number,
+            labels: ["bug"],
+          });
+      
+          return { payload, ctx };
+        },
+      })`,
+      errors: [
+        { message: "Task key 'add assignee' is duplicated" },
+      ]
+    }
   ]
 });

@@ -25,37 +25,47 @@ module.exports = {
   },
 
   create(context) {
-    function checkForDuplicateTaskKeys(blockStatement, reportNode) {
-      const uniqueTaskKeys = new Set();
+    const groupByTask = ExpressionStatements => ExpressionStatements.reduce((acc, { expression }) => {
+      const property = expression.argument.callee.property;
+
+      // We need property to be an Identifier, otherwise it's not a task
+      if (property.type !== 'Identifier') return;
+
+      // for io.slack.postMessage, taskName = postMessage
+      const taskName = property.name;
+
+      const taskKey = expression.argument.arguments.find((arg) => arg.type === 'Literal').value;
+
+      if (acc.has(taskName)) {
+        acc.get(taskName).push(taskKey);
+      } else {
+        acc.set(taskName, [taskKey]);
+      }
+
+      return acc;
+    }, new Map());
     
-      blockStatement.body.forEach((expressionStatement) => {
-        const literals = expressionStatement.expression.argument.arguments.filter(arg => arg.type === 'Literal');
-    
-        if (literals.length === 0) return;
-    
-        literals.forEach((taskKeyLiteral) => {
-          if (uniqueTaskKeys.has(taskKeyLiteral.value)) {
+    return {
+      "CallExpression[callee.property.name='defineJob'] ObjectExpression BlockStatement": (node) => {
+        const ExpressionStatements = node.body.filter((arg) => arg.type === 'ExpressionStatement');
+
+        // it'll be a map of taskName => [key1, key2, ...]
+        const groupedByTask = groupByTask(ExpressionStatements);
+
+        groupedByTask.forEach((keys) => {
+          // get duplicated value from keys
+          const duplicated = keys.find((key, index) => keys.indexOf(key) !== index);
+
+          if (duplicated) {
             context.report({
-              node: reportNode,
+              node,
               messageId: 'duplicatedTaskKey',
               data: {
-                taskKey: taskKeyLiteral.value
+                taskKey: duplicated
               },
             });
           }
-    
-          uniqueTaskKeys.add(taskKeyLiteral.value);
-        });
-      });
-    }
-
-    return {
-      // visitor functions for different types of nodes
-      "CallExpression > MemberExpression > Identifier[name='defineJob']": (node) => {
-        // Closest parent between task key and defineJob
-        const RunBlockStatement = node.parent.parent.arguments[0].properties[0].value.body;
-
-        checkForDuplicateTaskKeys(RunBlockStatement, node);
+        })
       }
     }
   }
