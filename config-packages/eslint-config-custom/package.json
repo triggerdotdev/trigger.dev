@@ -1,15 +1,9 @@
 {
   "name": "eslint-config-custom",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "private": true,
   "license": "MIT",
   "main": "index.js",
-  "scripts": {
-    "test:no-duplicated-task-keys": "node ./rules/no-duplicated-task-keys.spec.js",
-    "test:no-duplicated-task-keys:watch": "node --watch ./rules/no-duplicated-task-keys.spec.js",
-    "test": "pnpm run test:no-duplicated-task-keys",
-    "test:watch": "pnpm run test:no-duplicated-task-keys:watch"
-  },
   "devDependencies": {
     "eslint": "^8.24.0",
     "eslint-config-prettier": "^8.3.0",
