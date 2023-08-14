@@ -567,7 +567,7 @@ async function createTriggerPageRoute(
   const { tsconfig } = await parse(tsConfigPath);
 
   const pathAlias = getPathAlias(tsconfig, usesSrcDir);
-  const routePathPrefix = pathAlias ? pathAlias + "/" : "../..";
+  const routePathPrefix = pathAlias ? pathAlias + "/" : "../../";
 
   const extension = isTypescriptProject ? ".ts" : ".js";
   const triggerFileName = `trigger${extension}`;
