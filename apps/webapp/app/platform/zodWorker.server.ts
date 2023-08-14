@@ -10,23 +10,19 @@ import type {
   TaskSpec,
 } from "graphile-worker";
 import { run as graphileRun, parseCronItems } from "graphile-worker";
-
 import omit from "lodash.omit";
 import { z } from "zod";
 import { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
-
 export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
 }
-
 const RawCronPayloadSchema = z.object({
   _cron: z.object({
     ts: z.coerce.date(),
     backfilled: z.boolean(),
   }),
 });
-
 const GraphileJobSchema = z.object({
   id: z.coerce.string(),
   queue_name: z.string().nullable(),
@@ -45,9 +41,7 @@ const GraphileJobSchema = z.object({
   locked_by: z.string().nullable(),
   flags: z.record(z.boolean()).nullable(),
 });
-
 const AddJobResultsSchema = z.array(GraphileJobSchema);
-
 export type ZodTasks<TConsumerSchema extends MessageCatalogSchema> = {
   [K in keyof TConsumerSchema]: {
     queueName?: string | ((payload: z.infer<TConsumerSchema[K]>) => string);
@@ -58,12 +52,10 @@ export type ZodTasks<TConsumerSchema extends MessageCatalogSchema> = {
     handler: (payload: z.infer<TConsumerSchema[K]>, job: GraphileJob) => Promise<void>;
   };
 };
-
 type RecurringTaskPayload = {
   ts: Date;
   backfilled: boolean;
 };
-
 export type ZodRecurringTasks = {
   [key: string]: {
     pattern: string;
@@ -71,8 +63,11 @@ export type ZodRecurringTasks = {
     handler: (payload: RecurringTaskPayload, job: GraphileJob) => Promise<void>;
   };
 };
-
 export type ZodWorkerEnqueueOptions = TaskSpec & {
+  tx?: PrismaClientOrTransaction;
+};
+
+export type ZodWorkerDequeueOptions = {
   tx?: PrismaClientOrTransaction;
 };
 
@@ -83,7 +78,6 @@ export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   tasks: ZodTasks<TMessageCatalog>;
   recurringTasks?: ZodRecurringTasks;
 };
-
 export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   #schema: TMessageCatalog;
   #prisma: PrismaClient;
@@ -91,7 +85,6 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   #tasks: ZodTasks<TMessageCatalog>;
   #recurringTasks?: ZodRecurringTasks;
   #runner?: GraphileRunner;
-
   constructor(options: ZodWorkerOptions<TMessageCatalog>) {
     this.#schema = options.schema;
     this.#prisma = options.prisma;
@@ -99,35 +92,27 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     this.#tasks = options.tasks;
     this.#recurringTasks = options.recurringTasks;
   }
-
   public async initialize(): Promise<boolean> {
     if (this.#runner) {
       return true;
     }
-
     logger.debug("Initializing worker queue with options", {
       runnerOptions: this.#runnerOptions,
     });
-
     const parsedCronItems = parseCronItems(this.#createCronItemsFromRecurringTasks());
-
     this.#runner = await graphileRun({
       ...this.#runnerOptions,
       taskList: this.#createTaskListFromTasks(),
       parsedCronItems,
     });
-
     if (!this.#runner) {
       throw new Error("Failed to initialize worker queue");
     }
-
     return true;
   }
-
   public async stop() {
     await this.#runner?.stop();
   }
-
   public async enqueue<K extends keyof TMessageCatalog>(
     identifier: K,
     payload: z.infer<TMessageCatalog[K]>,
@@ -136,31 +121,36 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     if (!this.#runner) {
       throw new Error("Worker not initialized");
     }
-
     const task = this.#tasks[identifier];
-
     const optionsWithoutTx = omit(options ?? {}, ["tx"]);
-
     const spec = {
       ...optionsWithoutTx,
       ...task,
     };
-
     if (typeof task.queueName === "function") {
       spec.queueName = task.queueName(payload);
     }
-
     const job = await this.#addJob(
       identifier as string,
       payload,
       spec,
       options?.tx ?? this.#prisma
     );
-
     logger.debug("Enqueued worker task", {
       identifier,
       payload,
       spec,
+      job,
+    });
+    return job;
+  }
+
+  public async dequeue(jobKey: string, option?: ZodWorkerDequeueOptions): Promise<GraphileJob> {
+    if (!this.#runner) {
+      throw new Error("Worker not initialized");
+    }
+    const job = await this.#removeJob(jobKey, option?.tx ?? this.#prisma);
+    logger.debug("dequeued worker task", {
       job,
     });
 
@@ -191,22 +181,38 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       spec.runAt || null,
       spec.maxAttempts || null,
       spec.jobKey || null,
+      identifier,
       spec.priority || null,
       spec.jobKeyMode || null,
       spec.flags || null
     );
-
     const rows = AddJobResultsSchema.safeParse(results);
-
     if (!rows.success) {
       throw new Error(
         `Failed to add job to queue, zod parsing error: ${JSON.stringify(rows.error)}`
       );
     }
-
     const job = rows.data[0];
-
     return job as GraphileJob;
+  }
+
+  async #removeJob(jobKey: string, tx: PrismaClientOrTransaction) {
+    const result = await tx.$queryRawUnsafe(
+      `SELECT * FROM graphile_worker.remove_job(
+          job_key => $1::text
+        )`,
+      jobKey
+    );
+
+    const job = GraphileJobSchema.safeParse(result);
+
+    if (!job.success) {
+      throw new Error(
+        `Failed to remove job from queue, zod parsing error: ${JSON.stringify(job.error)}`
+      );
+    }
+
+    return job.data as GraphileJob;
   }
 
   #createTaskListFromTasks() {
@@ -216,28 +222,21 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       const task: Task = (payload, helpers) => {
         return this.#handleMessage(key, payload, helpers);
       };
-
       taskList[key] = task;
     }
-
     for (const [key] of Object.entries(this.#recurringTasks ?? {})) {
       const task: Task = (payload, helpers) => {
         return this.#handleRecurringTask(key, payload, helpers);
       };
-
       taskList[key] = task;
     }
-
     return taskList;
   }
-
   #createCronItemsFromRecurringTasks() {
     const cronItems: CronItem[] = [];
-
     if (!this.#recurringTasks) {
       return cronItems;
     }
-
     for (const [key, task] of Object.entries(this.#recurringTasks)) {
       const cronItem: CronItem = {
         pattern: task.pattern,
@@ -245,13 +244,10 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
         task: key,
         options: task.options,
       };
-
       cronItems.push(cronItem);
     }
-
     return cronItems;
   }
-
   async #handleMessage<K extends keyof TMessageCatalog>(
     typeName: K,
     rawPayload: unknown,
@@ -259,60 +255,45 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   ): Promise<void> {
     const subscriberSchema = this.#schema;
     type TypeKeys = keyof typeof subscriberSchema;
-
     const messageSchema: TMessageCatalog[TypeKeys] | undefined = subscriberSchema[typeName];
-
     if (!messageSchema) {
       throw new Error(`Unknown message type: ${String(typeName)}`);
     }
-
     const payload = messageSchema.parse(rawPayload);
     const job = helpers.job;
-
     logger.debug("Received worker task, calling handler", {
       type: String(typeName),
       payload,
       job,
     });
-
     const task = this.#tasks[typeName];
-
     if (!task) {
       throw new Error(`No task for message type: ${String(typeName)}`);
     }
-
     await task.handler(payload, job);
   }
-
   async #handleRecurringTask(
     typeName: string,
     rawPayload: unknown,
     helpers: JobHelpers
   ): Promise<void> {
     const job = helpers.job;
-
     logger.debug("Received recurring task, calling handler", {
       type: String(typeName),
       payload: rawPayload,
       job,
     });
-
     const recurringTask = this.#recurringTasks?.[typeName];
-
     if (!recurringTask) {
       throw new Error(`No recurring task for message type: ${String(typeName)}`);
     }
-
     const parsedPayload = RawCronPayloadSchema.safeParse(rawPayload);
-
     if (!parsedPayload.success) {
       throw new Error(
         `Failed to parse recurring task payload: ${JSON.stringify(parsedPayload.error)}`
       );
     }
-
     const payload = parsedPayload.data;
-
     try {
       await recurringTask.handler(payload._cron, job);
     } catch (error) {
@@ -320,7 +301,6 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
         error,
         payload,
       });
-
       throw error;
     }
   }

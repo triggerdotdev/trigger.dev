@@ -639,7 +639,7 @@ model EventRecord {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
+  cancelledAt DateTime? 
   isTest Boolean  @default(false)
   runs   JobRun[]
 
