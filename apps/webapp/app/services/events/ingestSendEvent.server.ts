@@ -6,10 +6,7 @@ import { workerQueue } from "~/services/worker.server";
 export class IngestSendEvent {
   #prismaClient: PrismaClientOrTransaction;
 
-  constructor(
-    prismaClient: PrismaClientOrTransaction = prisma,
-    private deliverEvents = true
-  ) {
+  constructor(prismaClient: PrismaClientOrTransaction = prisma, private deliverEvents = true) {
     this.#prismaClient = prismaClient;
   }
 
@@ -91,7 +88,7 @@ export class IngestSendEvent {
             {
               id: eventLog.id,
             },
-            { runAt: eventLog.deliverAt, tx }
+            { runAt: eventLog.deliverAt, tx, jobKey: eventLog.id }
           );
         }
 

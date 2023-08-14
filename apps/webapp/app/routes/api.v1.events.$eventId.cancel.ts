@@ -1,4 +1,4 @@
-import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
+import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
@@ -10,7 +10,7 @@ const ParamsSchema = z.object({
   eventId: z.string(),
 });
 
-export async function loader({ request, params }: LoaderArgs) {
+export async function action({ request, params }: ActionArgs) {
   // Ensure this is a POST request
   if (request.method.toUpperCase() !== "POST") {
     return { status: 405, body: "Method Not Allowed" };
@@ -57,22 +57,15 @@ export async function loader({ request, params }: LoaderArgs) {
   if (!event) {
     return json({ error: "Event not found" }, { status: 404 });
   }
-  // Update the event with cancelledAt
-  let updatedEvent;
 
-  try {
-    updatedEvent = await prisma.eventRecord.update({
-      where: { id: event.id },
-      data: { cancelledAt: new Date() },
-    });
+//update the cancelledAt column in the eventRecord table
+  const updatedEvent = await prisma.eventRecord.update({
+    where: { id: event.id },
+    data: { cancelledAt: new Date() },
+  });
 
-    // Dequeue the event only if the update is successful
-    await workerQueue.dequeue(updatedEvent.id, { tx: prisma });
+  // Dequeue the event after the db has been updated
+  await workerQueue.dequeue(event.id, { tx: prisma });
 
-    return json(updatedEvent);
-  } catch (error) {
-    logger.error("Failed to update event", { error, event });
-
-    return json({ error: "Failed to update event" }, { status: 500 });
-  }
+  return json(updatedEvent);
 }

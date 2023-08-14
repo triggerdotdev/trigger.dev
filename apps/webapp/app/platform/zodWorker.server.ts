@@ -175,10 +175,9 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     if (!this.#runner) {
       throw new Error("Worker not initialized");
     }
+
     const job = await this.#removeJob(jobKey, option?.tx ?? this.#prisma);
-    logger.debug("dequeued worker task", {
-      job,
-    });
+    logger.debug("dequeued worker task", { job });
 
     return job;
   }
@@ -206,7 +205,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       spec.queueName || null,
       spec.runAt || null,
       spec.maxAttempts || null,
-      identifier,
+      spec.jobKey,
       spec.priority || null,
       spec.jobKeyMode || null,
       spec.flags || null
@@ -226,22 +225,25 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   }
 
   async #removeJob(jobKey: string, tx: PrismaClientOrTransaction) {
-    const result = await tx.$queryRawUnsafe(
-      `SELECT * FROM graphile_worker.remove_job(
+    try {
+      const result = await tx.$queryRawUnsafe(
+        `SELECT * FROM graphile_worker.remove_job(
           job_key => $1::text
         )`,
-      jobKey
-    );
-
-    const job = GraphileJobSchema.safeParse(result);
-
-    if (!job.success) {
-      throw new Error(
-        `Failed to remove job from queue, zod parsing error: ${JSON.stringify(job.error)}`
+        jobKey
       );
-    }
+      const job = AddJobResultsSchema.safeParse(result);
 
-    return job.data as GraphileJob;
+      if (!job.success) {
+        throw new Error(
+          `Failed to remove job from queue, zod parsing error: ${JSON.stringify(job.error)}`
+        );
+      }
+
+      return job.data[0] as GraphileJob;
+    } catch (e) {
+      throw new Error(`Failed to remove job from queue, ${e}}`);
+    }
   }
 
   #createTaskListFromTasks() {
