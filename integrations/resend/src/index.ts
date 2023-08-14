@@ -1,6 +1,6 @@
 import type { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
 import { Resend as ResendClient } from "resend";
-import { RequestError } from "@octokit/request-error";
+
 
 import type { AuthenticatedTask } from "@trigger.dev/sdk";
 
@@ -8,11 +8,11 @@ type SendEmailData = Parameters<InstanceType<typeof ResendClient>["sendEmail"]>[
 
 type SendEmailResponse = { id: string };
 
-function isRequestError(error: unknown): error is RequestError {
+function isRequestError(error: unknown): boolean {
   return typeof error === "object" && error !== null && "status" in error;
 }
 
-function onError(error: unknown) {
+function onError(error: any) {
   if (!isRequestError(error)) {
     return;
   }
@@ -20,8 +20,9 @@ function onError(error: unknown) {
   // Check if this is a rate limit error
   if (error.status === 429 && error.response) {
     const rateLimitReset = error.response.headers["x-ratelimit-reset"];
+    const rateLimitRemaining = error.response.headers["ratelimit-remaining"];
 
-    if (rateLimitReset) {
+    if (rateLimitRemaining === "0" && rateLimitReset) {
       const resetDate = new Date(Number(rateLimitReset) * 1000);
 
       return {
@@ -59,13 +60,6 @@ export const sendEmail: AuthenticatedTask<
         },
         ...subjectProperty,
       ],
-      retry: {
-        limit: 8,
-        factor: 1.8,
-        minTimeoutInMs: 500,
-        maxTimeoutInMs: 30000,
-        randomize: true,
-      },
     };
   },
 };
