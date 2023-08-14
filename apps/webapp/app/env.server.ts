@@ -4,6 +4,7 @@ import { SecretStoreOptionsSchema } from "./services/secrets/secretStore.server"
 const EnvironmentSchema = z.object({
   NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
   DATABASE_URL: z.string(),
+  DIRECT_URL: z.string(),
   SESSION_SECRET: z.string(),
   MAGIC_LINK_SECRET: z.string(),
   ENCRYPTION_KEY: z.string(),

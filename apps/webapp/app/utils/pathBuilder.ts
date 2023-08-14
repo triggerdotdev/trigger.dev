@@ -73,10 +73,6 @@ export function confirmBasicDetailsPath() {
   return `/confirm-basic-details`;
 }
 
-export function invitationCodePath() {
-  return `/invitation-code`;
-}
-
 export function acceptInvitePath(token: string) {
   return `/invite-accept?token=${token}`;
 }
@@ -129,6 +125,10 @@ export function projectTriggersPath(organization: OrgForPath, project: ProjectFo
 
 export function projectEnvironmentsPath(organization: OrgForPath, project: ProjectForPath) {
   return `${projectPath(organization, project)}/environments`;
+}
+
+export function projectStreamingPath(id: string) {
+  return `/resources/projects/${id}/jobs/stream`;
 }
 
 export function projectEnvironmentsStreamingPath(

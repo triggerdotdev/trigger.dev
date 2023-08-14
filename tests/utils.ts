@@ -9,6 +9,7 @@ export const setDB = async (cb: SetDBCallback) => {
     datasources: {
       db: {
         url: DATABASE_URL,
+        // We can't set directUrl here, and we don't have to
       },
     },
   });

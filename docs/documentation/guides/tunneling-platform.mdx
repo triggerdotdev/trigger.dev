@@ -18,6 +18,14 @@ There are a few ways to do this, but we recommend using [ngrok](https://ngrok.co
 brew install ngrok/ngrok/ngrok
 ```
 
+```sh Linux
+curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | \
+  sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null && \
+  echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | \
+  sudo tee /etc/apt/sources.list.d/ngrok.list && \
+  sudo apt update && sudo apt install ngrok
+```
+
 ```sh Windows
 choco install ngrok
 ```

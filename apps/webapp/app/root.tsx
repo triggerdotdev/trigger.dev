@@ -16,6 +16,7 @@ import { getUser } from "./services/session.server";
 import { appEnvTitleTag } from "./utils";
 import { ErrorBoundary as HighlightErrorBoundary } from "@highlight-run/react";
 import { useHighlight } from "./hooks/useHighlight";
+import { ExternalScripts } from "remix-utils";
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
@@ -104,6 +105,7 @@ function App() {
           </HighlightErrorBoundary>
           <Toast />
           <ScrollRestoration />
+          <ExternalScripts />
           <Scripts />
           <LiveReload />
         </body>

@@ -436,7 +436,7 @@ export class RegisterJobService {
             },
           },
           create: {
-            event: SCHEDULED_EVENT,
+            event: [SCHEDULED_EVENT],
             source: "trigger.dev",
             payloadFilter: {},
             contextFilter: {},
