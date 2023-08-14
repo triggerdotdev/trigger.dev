@@ -34,6 +34,6 @@ describe('cli', () => {
 
     console.log('getStdout() :>> ', getStdout());
 
-    // wait next prompt and keep going
+    // wait next prompt, make assertions and keep going
   });
 })
