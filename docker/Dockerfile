@@ -31,7 +31,7 @@ RUN corepack enable
 ENV NODE_ENV production
 RUN pnpm install --prod --no-frozen-lockfile
 COPY --from=pruner --chown=node:node /triggerdotdev/packages/database/prisma/schema.prisma /triggerdotdev/packages/database/prisma/schema.prisma
-RUN pnpx prisma@^5.1.0 generate --schema /triggerdotdev/packages/database/prisma/schema.prisma
+RUN pnpx prisma@5.1.1 generate --schema /triggerdotdev/packages/database/prisma/schema.prisma
 
 ## Builder (builds the webapp)
 FROM base AS builder
