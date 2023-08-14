@@ -205,6 +205,41 @@ ruleTester.run("no-duplicated-task-keys", rule, {
         { message: "Task key 'Tell me a joke' is duplicated" },
         { message: "Task key 'Wait 1 second' is duplicated" },
       ]
+    },
+    {
+      code: `client.defineJob({
+        id: "github-integration-get-tag",
+        name: "GitHub Integration - Get Tag",
+        version: "0.1.0",
+        integrations: { github },
+        trigger: githubApiKey.triggers.repo({
+          event: events.onNewBranchOrTag,
+          owner: "triggerdotdev",
+          repo: "empty",
+        }),
+        run: async (payload, io, ctx) => {
+          await io.logger.info("This is a simple log info message");
+          if (payload.ref_type === "tag") {
+            const tag = io.github.getTag("Get Tag", {
+              owner: payload.repository.owner.login,
+              repo: payload.repository.name,
+              tagSHA: payload.ref,
+            });
+            io.github.getTag("Get Tag", {
+              owner: payload.repository.owner.login,
+              repo: payload.repository.name,
+              tagSHA: payload.ref,
+            });
+            await io.logger.info("Tag ", tag);
+            await io.logger.info("Tag ", tag);
+          }
+          return { payload, ctx };
+        },
+      });`,
+      errors: [
+        { message: "Task key 'Get Tag' is duplicated" },
+        { message: "Task key 'Tag ' is duplicated" },
+      ]
     }
   ]
 });

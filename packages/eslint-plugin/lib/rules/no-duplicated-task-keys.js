@@ -25,22 +25,33 @@ module.exports = {
   },
 
   create(context) {
-    const getTaskNameAndKey = (expression) => {
-      const property = expression.argument.callee.property;
+    const getArguments = (node) => node.arguments || node.argument.arguments;
+
+    const getKey = (node) => {
+      const args = getArguments(node);
+
+      const key = args.find((arg) => arg.type === 'Literal');
+
+      if (!key) return;
+
+      return key.value;
+    }
+
+    const getTaskName = (expression) => {
+      const callee = expression.callee || expression.argument.callee;
+
+      const property = callee.property;
 
       // We need property to be an Identifier, otherwise it's not a task
       if (property.type !== 'Identifier') return;
 
-      // for io.slack.postMessage, taskName = postMessage
-      const taskName = property.name;
-
-      const taskKey = expression.argument.arguments.find((arg) => arg.type === 'Literal').value;
-
-      return [taskName, taskKey]
+      // for io.slack.postMessage, postMessage
+      return property.name;
     }
 
     const groupExpressionsByTask = (ExpressionStatements, map = new Map()) => ExpressionStatements.reduce((acc, { expression }) => {
-      const [taskName, taskKey] = getTaskNameAndKey(expression);
+      const taskName = getTaskName(expression);
+      const taskKey = getKey(expression);
 
       if (acc.has(taskName)) {
         acc.get(taskName).push(taskKey);
@@ -53,10 +64,11 @@ module.exports = {
 
     const groupVariableDeclarationsByTask = VariableDeclarations => VariableDeclarations.reduce((acc, { declarations }) => {
       declarations.forEach((declaration) => {
-        // We need declaration.init to be a CallExpression or AwaitExpression, otherwise it's not a task
-        if (!['CallExpression', 'AwaitExpression'].includes(declaration.init.type)) return;
+        if (!['AwaitExpression', 'CallExpression'].includes(declaration.init.type)) return;
 
-        const [taskName, taskKey] = getTaskNameAndKey(declaration.init);
+        const taskName = getTaskName(declaration.init);
+        
+        const taskKey = getKey(declaration.init);
 
         if (acc.has(taskName)) {
           acc.get(taskName).push(taskKey);
@@ -67,7 +79,7 @@ module.exports = {
 
       return acc;
     }, new Map());
-    
+
     return {
       "CallExpression[callee.property.name='defineJob'] ObjectExpression BlockStatement": (node) => {
         const VariableDeclarations = node.body.filter((arg) => arg.type === 'VariableDeclaration');
