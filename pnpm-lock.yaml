@@ -892,7 +892,7 @@ importers:
 
   packages/database:
     specifiers:
-      '@prisma/client': ^5.1.0
+      '@prisma/client': 5.1.1
       prisma: ^5.1.0
       typescript: ^4.8.4
     dependencies:
