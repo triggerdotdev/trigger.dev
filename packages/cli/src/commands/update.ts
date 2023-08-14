@@ -15,7 +15,7 @@ interface YarnListOutput {
 
 function getInstalledVersion(packageName: string, packageManager: string, projectPath: string) {
   let installedVersion = null;
-  if (packageManager === "npm" || packageManager === "pnpm") {
+  if (packageManager === "npm") {
     const { stdout } = spawnSync(packageManager, ["list", packageName, "--json", "--depth=0"], {
       cwd: projectPath,
     });
@@ -31,6 +31,12 @@ function getInstalledVersion(packageName: string, packageManager: string, projec
         installedVersion = tree.version;
       }
     }
+  }
+  else {
+    const { stdout } = spawnSync(packageManager, ["list", packageName, "--json", "--depth=0"], {
+      cwd: projectPath,
+    });
+    installedVersion = JSON.parse(stdout.toString())[0].dependencies[packageName].version;
   }
   return installedVersion;
 }
