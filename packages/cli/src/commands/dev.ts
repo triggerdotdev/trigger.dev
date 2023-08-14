@@ -1,19 +1,111 @@
-import childProcess from "child_process";
-import chokidar from "chokidar";
+import z from "zod";
+import path from "path";
+import util from "util";
+import ngrok from "ngrok";
 import dotenv from "dotenv";
 import fs from "fs/promises";
-import ngrok from "ngrok";
+import pathModule from "path";
 import fetch from "node-fetch";
 import ora, { Ora } from "ora";
-import pathModule from "path";
-import util from "util";
-import { z } from "zod";
+import chokidar from "chokidar";
+import childProcess from "child_process";
+import { logger } from "../utils/logger.js";
 import { CLOUD_API_URL } from "../consts.js";
+import { TriggerApi } from "../utils/triggerApi.js";
+import { resolvePath } from "../utils/parseNameAndPath.js";
 import { telemetryClient } from "../telemetry/telemetry.js";
 import { pathExists, readFile } from "../utils/fileSystem.js";
-import { logger } from "../utils/logger.js";
-import { resolvePath } from "../utils/parseNameAndPath.js";
-import { TriggerApi } from "../utils/triggerApi.js";
+import { getUserPackageManager } from "../utils/getUserPkgManager.js";
+
+interface YarnListOutput {
+  data: {
+    trees: Array<{ name: string; version: string }>;
+  };
+}
+
+function getInstalledVersion(packageName: string, packageManager: string, projectPath: string) {
+  let installedVersion = null;
+  if (packageManager === "npm") {
+    const { stdout } = childProcess.spawnSync(packageManager, ["list", packageName, "--json", "--depth=0"], {
+      cwd: projectPath,
+    });
+    installedVersion = JSON.parse(stdout.toString()).dependencies[packageName].version;
+  } else if (packageManager === "yarn") {
+    const { stdout } = childProcess.spawnSync(packageManager, ["list", "--json", "--depth=0"], {
+      cwd: projectPath,
+    });
+    const parsedOutput: YarnListOutput = JSON.parse(stdout.toString());
+    if (Array.isArray(parsedOutput.data.trees)) {
+      const tree = parsedOutput.data.trees.find((tree) => tree.name === packageName);
+      if (tree) {
+        installedVersion = tree.version;
+      }
+    }
+  }
+  else {
+    const { stdout } = childProcess.spawnSync(packageManager, ["list", packageName, "--json", "--depth=0"], {
+      cwd: projectPath,
+    });
+    installedVersion = JSON.parse(stdout.toString())[0].dependencies[packageName].version;
+  }
+  return installedVersion;
+}
+
+async function checkUpdates(projectPath: string) {
+  const triggerDevPackage = "@trigger.dev";
+  const packageManager = await getUserPackageManager(projectPath);
+  const packageJsonPath = path.join(projectPath, "package.json");
+  // In case no package.json found
+  if (!fs.existsSync(packageJsonPath)) return;
+  const packageJsonData = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+  const dependencies = packageJsonData.dependencies || {};
+  const devDependencies = packageJsonData.devDependencies || {};
+  const allDependencies = Object.keys({ ...dependencies, ...devDependencies });
+  const triggerPackages = allDependencies.filter((pkg) => pkg.startsWith(triggerDevPackage));
+  // If there are no @trigger.dev packages
+  if (triggerPackages.length === 0) return;
+  // Get an array of the latest versions of @trigger.dev packages
+  const newVersions = await Promise.all(
+    triggerPackages.map(async (packageName) => {
+      try {
+        const installedVersion = getInstalledVersion(packageName, packageManager, projectPath);
+        const response = await fetch(`https://registry.npmjs.org/${packageName}`);
+        if (response.ok) {
+          const data = await response.json();
+          const schema = z.object({
+            "dist-tags": z.object({
+              latest: z.string(),
+            }),
+          });
+          const parsed = schema.parse(data);
+          return { packageName, installedVersion, latestVersion: parsed["dist-tags"].latest };
+        }
+        return null;
+      } catch (error) {
+        // @ts-ignore
+        console.error(`Error fetching version for ${packageName}: ${error.message}`);
+        return null;
+      }
+    })
+  );
+  // Filter the packages with null and what don't match what
+  // they are installed with so that they can be updated
+  const packagesToUpdate = newVersions.filter(
+    (pkg) => pkg && pkg.latestVersion !== pkg.installedVersion
+  );
+  // If no packages require any updation
+  if (packagesToUpdate.length === 0) return;
+  // Inform the user of the dependencies that can be updated
+  console.log("Newer versions found for the following packages:");
+  packagesToUpdate.forEach((entry) => {
+    if (entry) {
+      console.log(
+        `- ${entry.packageName}: current ${dependencies[entry.packageName]} -> latest ${entry.latestVersion
+        }`
+      );
+    }
+  });
+}
 
 const asyncExecFile = util.promisify(childProcess.execFile);
 
@@ -46,6 +138,8 @@ export async function devCommand(path: string, anyOptions: any) {
   const options = result.data;
 
   const resolvedPath = resolvePath(path);
+
+  checkUpdates(resolvedPath)
 
   // Read from package.json to get the endpointId
   const endpointId = await getEndpointIdFromPackageJson(resolvedPath, options);
