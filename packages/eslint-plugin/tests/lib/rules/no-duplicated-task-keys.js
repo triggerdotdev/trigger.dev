@@ -160,6 +160,51 @@ ruleTester.run("no-duplicated-task-keys", rule, {
       errors: [
         { message: "Task key 'add assignee' is duplicated" },
       ]
+    },
+    {
+      code: `client.defineJob({
+        id: "react-hook",
+        name: "React Hook test",
+        version: "0.0.1",
+        trigger: eventTrigger({
+          name: "react-hook",
+        }),
+        integrations: {
+          openai,
+        },
+        run: async (_payload, io) => {
+          await io.wait("Wait 2 seconds", 2);
+          await io.wait("Wait 1 second", 1);
+          await io.wait("Wait 1 second", 1);
+      
+          await io.openai.backgroundCreateChatCompletion("Tell me a joke", {
+            model: "gpt-3.5-turbo-16k",
+            messages: [
+              {
+                role: "user",
+                content: 'Tell me a joke please',
+              },
+            ],
+          });
+          const result = await io.openai.backgroundCreateChatCompletion("Tell me a joke", {
+            model: "gpt-3.5-turbo-16k",
+            messages: [
+              {
+                role: "user",
+                content: 'Tell me a joke please',
+              },
+            ],
+          });
+      
+          return {
+            summary: result?.choices[0]?.message?.content,
+          };
+        },
+      });`,
+      errors: [
+        { message: "Task key 'Tell me a joke' is duplicated" },
+        { message: "Task key 'Wait 1 second' is duplicated" },
+      ]
     }
   ]
 });
