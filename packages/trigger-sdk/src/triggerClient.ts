@@ -556,6 +556,10 @@ export class TriggerClient {
     return this.#client.sendEvent(event, options);
   }
 
+  async cancelEvent(eventId: string) {
+    return this.#client.cancelEvent(eventId);
+  }
+
   async registerSchedule(id: string, key: string, schedule: ScheduleMetadata) {
     return this.#client.registerSchedule(this.id, id, key, schedule);
   }
