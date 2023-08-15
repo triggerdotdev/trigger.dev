@@ -256,18 +256,21 @@ export type GetFormResponse = Prettify<Typeform.Form>;
   ] as const;
 }
 
-export async function generateIntegrationFiles(payload: {
-  packageName: string;
-  sdkPackage: string;
-  extraInfo?: string;
-}) {
-  if (!process.env.OPENAI_API_KEY) {
+export async function generateIntegrationFiles(
+  payload: {
+    packageName: string;
+    sdkPackage: string;
+    extraInfo?: string;
+  },
+  apiKey: string
+) {
+  if (!apiKey) {
     return;
   }
 
   const openai = new OpenAIApi(
     new Configuration({
-      apiKey: process.env.OPENAI_API_KEY,
+      apiKey,
       organization: process.env.OPENAI_ORGANIZATION,
     })
   );
