@@ -27,7 +27,6 @@ const EnvironmentSchema = z.object({
   AUTH_GITHUB_CLIENT_SECRET: z.string().optional(),
   FROM_EMAIL: z.string().optional(),
   REPLY_TO_EMAIL: z.string().optional(),
-  RESEND_API_KEY: z.string().optional(),
   SMTP_HOST: z.string().optional(), 
   SMTP_PORT: z.number().optional(), 
   SMTP_USER: z.string().optional(), 
