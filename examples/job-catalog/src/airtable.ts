@@ -1,7 +1,7 @@
 import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
 import { createExpressServer } from "@trigger.dev/express";
 import { z } from "zod";
-import { Airtable } from "@trigger.dev/airtable";
+import { Airtable, Collaborator } from "@trigger.dev/airtable";
 
 export const client = new TriggerClient({
   id: "job-catalog",
@@ -15,6 +15,18 @@ const airtable = new Airtable({
   id: "airtable",
   token: process.env["AIRTABLE_TOKEN"],
 });
+
+type Status = "Live" | "Complete" | "In progress" | "Planning" | "In reviews";
+
+type LaunchGoalsAndOkRs = {
+  "Launch goals"?: string;
+  DRI?: Collaborator;
+  Team?: string;
+  Status?: "On track" | "In progress" | "At risk";
+  "Key results"?: Array<string>;
+  "Features (from 💻 Features table)"?: Array<string>;
+  "Status (from 💻 Features)": Array<Status>;
+};
 
 client.defineJob({
   id: "airtable-example-1",
@@ -31,10 +43,14 @@ client.defineJob({
     airtable,
   },
   run: async (payload, io, ctx) => {
-    await io.airtable.getRecords("get records", {
+    const records = await io.airtable.getRecords("get records", {
       baseId: payload.baseId,
       tableName: payload.tableName,
     });
+
+    const records2 = await io.airtable.runTask("get records", (c) =>
+      c.base(payload.baseId).table<LaunchGoalsAndOkRs>(payload.tableName).select().all()
+    );
   },
 });
 
