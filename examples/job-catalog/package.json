@@ -13,6 +13,7 @@
     "schedules": "nodemon --watch src/schedules.ts -r tsconfig-paths/register -r dotenv/config src/schedules.ts",
     "stressTest": "nodemon --watch src/stressTest.ts -r tsconfig-paths/register -r dotenv/config src/stressTest.ts",
     "delays": "nodemon --watch src/delays.ts -r tsconfig-paths/register -r dotenv/config src/delays.ts",
+    "airtable": "nodemon --watch src/airtable.ts -r tsconfig-paths/register -r dotenv/config src/airtable.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {
@@ -29,7 +30,8 @@
     "@trigger.dev/supabase": "workspace:*",
     "@types/node": "20.4.2",
     "typescript": "5.1.6",
-    "zod": "3.21.4"
+    "zod": "3.21.4",
+    "@trigger.dev/airtable": "workspace:*"
   },
   "trigger.dev": {
     "endpointId": "job-catalog"
