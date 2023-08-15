@@ -1,32 +1,35 @@
 import AirtableSDK from "airtable";
 import type { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
 import * as tasks from "./tasks";
+import { Prettify } from "@trigger.dev/integration-kit";
 
 export * from "./types";
 
 export type AirtableIntegrationOptions = {
+  /** An ID for this client  */
   id: string;
-  apiKey?: string;
+  /** Use this if you pass in a [Personal Access Token](https://airtable.com/developers/web/guides/personal-access-tokens). If omitted, it will use OAuth.  */
+  token?: string;
 };
 
 export class Airtable implements TriggerIntegration<IntegrationClient<AirtableSDK, typeof tasks>> {
   client: IntegrationClient<AirtableSDK, typeof tasks>;
 
-  constructor(private options: AirtableIntegrationOptions) {
-    if (Object.keys(options).includes("apiKey") && !options.apiKey) {
-      throw `Can't create Airtable integration (${options.id}) as apiKey was passed in but undefined`;
+  constructor(private options: Prettify<AirtableIntegrationOptions>) {
+    if (Object.keys(options).includes("token") && !options.token) {
+      throw `Can't create Airtable integration (${options.id}) as token was passed in but undefined`;
     }
 
-    if (options.apiKey) {
+    if (options.token) {
       const client = new AirtableSDK({
-        apiKey: options.apiKey,
+        apiKey: options.token,
       });
 
       this.client = {
         usesLocalAuth: true,
         client,
         tasks,
-        auth: options.apiKey,
+        auth: options.token,
       };
 
       return;
