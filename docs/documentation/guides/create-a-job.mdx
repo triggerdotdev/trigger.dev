@@ -32,10 +32,9 @@ client.defineJob({
 The `id` and `name` are important because they are used to create and identify your Job in the app.
 
 <Note>
-  This Job must be imported in the `trigger` file in order to be registered when
-  the CLI dev command is run. This can be found in either the
-  `app/api/trigger/route.ts` file if you're using the Next.js App Router, or
-  `pages/api/trigger.ts` if you're using the Next.js Pages Router.
+  This Job must be imported in the `trigger` file in order to be registered when the CLI dev command
+  is run. This can be found in either the `app/api/trigger/route.ts` file if you're using the
+  Next.js App Router, or `pages/api/trigger.ts` if you're using the Next.js Pages Router.
 </Note>
 
 ### 2. Choose a Trigger
@@ -112,8 +111,8 @@ This is what kicks-off a Job. There are a few different types of Triggers you ca
 > A Task is a resumable unit of a Run that can be retried, resumed and is logged.
 
 <Info>
-  You can use just regular code in your Jobs. But you don't get the benefits of
-  retrying, logging and resumability. More info on [Tasks vs regular
+  You can use just regular code in your Jobs. But you don't get the benefits of retrying, logging
+  and resumability. More info on [Tasks vs regular
   code](/documentation/concepts/tasks#tasks-vs-regular-code).
 </Info>
 
@@ -121,21 +120,21 @@ You can string together multiple Tasks and regular code in any order you want.
 
 **Useful built-in Tasks:**
 
-| Task                                        | Description                                                             | Task code                                                                                  |
-| ------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| [Delay](/documentation/concepts/delays)     | Wait for a period of time                                               | `await io.wait("wait", 60);`                                                               |
-| [Log](/sdk/io/logger)                       | Log a message                                                           | `await io.logger.log("Hello");`                                                            |
-| [Send Event](/sdk/io/sendevent)             | Send an event (for eventTrigger)                                        | `await io.sendEvent("my-event", { name: "my.event", payload: { hello: "world" } });`       |
-| [Run task](/sdk/io/runtask)                 | Wrap your own code in this to create a Task                             | `await io.runTask("My Task", { name: "My Task" }, async () => { console.log("Hello"); });` |
-| [Background fetch](/sdk/io/backgroundfetch) | Fetch data from a URL that can take longer that the serverless timeout. | `await io.backgroundFetch("fetch-some-data", { url: "https://example.com" });`             |
+| Task                                        | Description                                                             | Task code                                                                                 |
+| ------------------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| [Delay](/documentation/concepts/delays)     | Wait for a period of time                                               | `await io.wait("wait", 60);`                                                              |
+| [Log](/sdk/io/logger)                       | Log a message                                                           | `await io.logger.log("Hello");`                                                           |
+| [Send Event](/sdk/io/sendevent)             | Send an event (for eventTrigger)                                        | `await io.sendEvent("my-event", { name: "my.event", payload: { hello: "world" } });`      |
+| [Run task](/sdk/io/runtask)                 | Wrap your own code in this to create a Task                             | `await io.runTask("My Task", async () => { console.log("Hello"); },{ name: "My Task" });` |
+| [Background fetch](/sdk/io/backgroundfetch) | Fetch data from a URL that can take longer that the serverless timeout. | `await io.backgroundFetch("fetch-some-data", { url: "https://example.com" });`            |
 
 For a full list of built-in Tasks, see the [io SDK reference](/sdk/io).
 
 **Integration Task examples:**
 
 <Info>
-  To use our integrations you will need to set them up in the app first. Our
-  guide is [here](/documentation/guides/using-integrations).
+  To use our integrations you will need to set them up in the app first. Our guide is
+  [here](/documentation/guides/using-integrations).
 </Info>
 
 <AccordionGroup>
@@ -229,10 +228,9 @@ yarn dlx @trigger.dev/cli@latest dev
 This will register all of your Jobs, they should appear in your dashboard.
 
 <Note>
-  Not seeing your Job in the web app? It might be because you forgot to import
-  it. This will need to be either in `app/api/trigger/route.ts` file if you're
-  using the Next,js App Router, or `pages/api/trigger.ts` if you're using the
-  Next,js Pages Router.
+  Not seeing your Job in the web app? It might be because you forgot to import it. This will need to
+  be either in `app/api/trigger/route.ts` file if you're using the Next,js App Router, or
+  `pages/api/trigger.ts` if you're using the Next,js Pages Router.
 </Note>
 
 If you are having trouble getting your job running, please reach out to us and we will help you fix any issues:

@@ -44,6 +44,9 @@ export function createIOWithIntegrations<
     ) => {
       return await io.runTask(
         key,
+        async (ioTask) => {
+          return await callback(client, ioTask, io);
+        },
         {
           name: "Task",
           icon: integration.metadata.id,
@@ -55,9 +58,6 @@ export function createIOWithIntegrations<
             randomize: true,
           },
           ...options,
-        },
-        async (ioTask) => {
-          return await callback(client, ioTask, io);
         }
       );
     };
@@ -74,10 +74,10 @@ export function createIOWithIntegrations<
 
           return await io.runTask(
             key,
-            options,
             async (ioTask) => {
               return authenticatedTask.run(params, client, ioTask, io, auth);
             },
+            options,
             authenticatedTask.onError
           );
         };

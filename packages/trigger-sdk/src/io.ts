@@ -110,19 +110,15 @@ export class IO {
       }
 
       if (Logger.satisfiesLogLevel(logLevel, this._jobLogLevel)) {
-        await this.runTask(
-          [message, level],
-          {
-            name: "log",
-            icon: "log",
-            description: message,
-            params: data,
-            properties: [{ label: "Level", text: level }],
-            style: { style: "minimal", variant: level.toLowerCase() },
-            noop: true,
-          },
-          async (task) => {}
-        );
+        await this.runTask([message, level], async (task) => {}, {
+          name: "log",
+          icon: "log",
+          description: message,
+          params: data,
+          properties: [{ label: "Level", text: level }],
+          style: { style: "minimal", variant: level.toLowerCase() },
+          noop: true,
+        });
       }
     });
   }
@@ -132,18 +128,14 @@ export class IO {
    * @param seconds The number of seconds to wait. This can be very long, serverless timeouts are not an issue.
    */
   async wait(key: string | any[], seconds: number) {
-    return await this.runTask(
-      key,
-      {
-        name: "wait",
-        icon: "clock",
-        params: { seconds },
-        noop: true,
-        delayUntil: new Date(Date.now() + seconds * 1000),
-        style: { style: "minimal" },
-      },
-      async (task) => {}
-    );
+    return await this.runTask(key, async (task) => {}, {
+      name: "wait",
+      icon: "clock",
+      params: { seconds },
+      noop: true,
+      delayUntil: new Date(Date.now() + seconds * 1000),
+      style: { style: "minimal" },
+    });
   }
 
   /** `io.backgroundFetch()` fetches data from a URL that can take longer that the serverless timeout. The actual `fetch` request is performed on the Trigger.dev platform, and the response is sent back to you.
@@ -167,6 +159,9 @@ export class IO {
 
     return (await this.runTask(
       key,
+      async (task) => {
+        return task.output;
+      },
       {
         name: `fetch ${urlObject.hostname}${urlObject.pathname}`,
         params: { url, requestInit, retry },
@@ -188,9 +183,6 @@ export class IO {
             text: "true",
           },
         ],
-      },
-      async (task) => {
-        return task.output;
       }
     )) as TResponseData;
   }
@@ -203,6 +195,9 @@ export class IO {
   async sendEvent(key: string | any[], event: SendEvent, options?: SendEventOptions) {
     return await this.runTask(
       key,
+      async (task) => {
+        return await this._triggerClient.sendEvent(event, options);
+      },
       {
         name: "sendEvent",
         params: { event, options },
@@ -213,9 +208,6 @@ export class IO {
           },
           ...(event?.id ? [{ label: "ID", text: event.id }] : []),
         ],
-      },
-      async (task) => {
-        return await this._triggerClient.sendEvent(event, options);
       }
     );
   }
@@ -223,6 +215,9 @@ export class IO {
   async updateSource(key: string | any[], options: { key: string } & UpdateTriggerSourceBody) {
     return this.runTask(
       key,
+      async (task) => {
+        return await this._apiClient.updateSource(this._triggerClient.id, options.key, options);
+      },
       {
         name: "Update Source",
         description: "Update Source",
@@ -236,9 +231,6 @@ export class IO {
         redact: {
           paths: ["secret"],
         },
-      },
-      async (task) => {
-        return await this._apiClient.updateSource(this._triggerClient.id, options.key, options);
       }
     );
   }
@@ -258,6 +250,12 @@ export class IO {
   ) {
     return await this.runTask(
       key,
+      async (task) => {
+        return dynamicSchedule.register(id, {
+          type: "interval",
+          options,
+        });
+      },
       {
         name: "register-interval",
         properties: [
@@ -266,12 +264,6 @@ export class IO {
           { label: "seconds", text: options.seconds.toString() },
         ],
         params: options,
-      },
-      async (task) => {
-        return dynamicSchedule.register(id, {
-          type: "interval",
-          options,
-        });
       }
     );
   }
@@ -284,15 +276,15 @@ export class IO {
   async unregisterInterval(key: string | any[], dynamicSchedule: DynamicSchedule, id: string) {
     return await this.runTask(
       key,
+      async (task) => {
+        return dynamicSchedule.unregister(id);
+      },
       {
         name: "unregister-interval",
         properties: [
           { label: "schedule", text: dynamicSchedule.id },
           { label: "id", text: id },
         ],
-      },
-      async (task) => {
-        return dynamicSchedule.unregister(id);
       }
     );
   }
@@ -311,6 +303,12 @@ export class IO {
   ) {
     return await this.runTask(
       key,
+      async (task) => {
+        return dynamicSchedule.register(id, {
+          type: "cron",
+          options,
+        });
+      },
       {
         name: "register-cron",
         properties: [
@@ -319,12 +317,6 @@ export class IO {
           { label: "cron", text: options.cron },
         ],
         params: options,
-      },
-      async (task) => {
-        return dynamicSchedule.register(id, {
-          type: "cron",
-          options,
-        });
       }
     );
   }
@@ -337,15 +329,15 @@ export class IO {
   async unregisterCron(key: string | any[], dynamicSchedule: DynamicSchedule, id: string) {
     return await this.runTask(
       key,
+      async (task) => {
+        return dynamicSchedule.unregister(id);
+      },
       {
         name: "unregister-cron",
         properties: [
           { label: "schedule", text: dynamicSchedule.id },
           { label: "id", text: id },
         ],
-      },
-      async (task) => {
-        return dynamicSchedule.unregister(id);
       }
     );
   }
@@ -366,22 +358,14 @@ export class IO {
   ): Promise<{ id: string; key: string } | undefined> {
     return await this.runTask(
       key,
-      {
-        name: "register-trigger",
-        properties: [
-          { label: "trigger", text: trigger.id },
-          { label: "id", text: id },
-        ],
-        params: params as any,
-      },
       async (task) => {
         const registration = await this.runTask(
           "register-source",
-          {
-            name: "register-source",
-          },
           async (subtask1) => {
             return trigger.register(id, params);
+          },
+          {
+            name: "register-source",
           }
         );
 
@@ -409,6 +393,14 @@ export class IO {
           key: registration.source.key,
           ...updates,
         });
+      },
+      {
+        name: "register-trigger",
+        properties: [
+          { label: "trigger", text: trigger.id },
+          { label: "id", text: id },
+        ],
+        params: params as any,
       }
     );
   }
@@ -418,23 +410,27 @@ export class IO {
       return;
     }
 
-    return this.runTask(key, { name: "get-auth" }, async (task) => {
-      return await this._triggerClient.getAuth(clientId);
-    });
+    return this.runTask(
+      key,
+      async (task) => {
+        return await this._triggerClient.getAuth(clientId);
+      },
+      { name: "get-auth" }
+    );
   }
 
   /** `io.runTask()` allows you to run a [Task](https://trigger.dev/docs/documentation/concepts/tasks) from inside a Job run. A Task is a resumable unit of a Run that can be retried, resumed and is logged. [Integrations](https://trigger.dev/docs/integrations) use Tasks internally to perform their actions.
    *
    * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
-   * @param options The options of how you'd like to run and log the Task. Name is required.
    * @param callback The callback that will be called when the Task is run. The callback receives the Task and the IO as parameters.
+   * @param options The options of how you'd like to run and log the Task. Name is required.
 =   * @param onError The callback that will be called when the Task fails. The callback receives the error, the Task and the IO as parameters. If you wish to retry then return an object with a `retryAt` property.
    * @returns A Promise that resolves with the returned value of the callback.
    */
   async runTask<TResult extends SerializableJson | void = void>(
     key: string | any[],
-    options: RunTaskOptions,
     callback: (task: IOTask, io: IO) => Promise<TResult>,
+    options?: RunTaskOptions,
     onError?: (
       error: unknown,
       task: IOTask,
@@ -571,7 +567,7 @@ export class IO {
 
         const parsedError = ErrorWithStackSchema.safeParse(error);
 
-        if (options.retry) {
+        if (options?.retry) {
           const retryAt = calculateRetryAt(options.retry, task.attempts - 1);
 
           if (retryAt) {

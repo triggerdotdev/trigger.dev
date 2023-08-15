@@ -493,7 +493,7 @@ export type RetryOptions = z.infer<typeof RetryOptionsSchema>;
 
 export const RunTaskOptionsSchema = z.object({
   /** The name of the Task is required. This is displayed on the Task in the logs. */
-  name: z.string(),
+  name: z.string().optional(),
   /** The Task will wait and only start at the specified Date  */
   delayUntil: z.coerce.date().optional(),
   /** Retry options */

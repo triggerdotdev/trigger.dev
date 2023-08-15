@@ -141,12 +141,12 @@ client.defineJob({
   run: async (payload, io, ctx) => {
     const form = await io.runTask(
       "create-form",
-      { name: "Create Form", icon: "typeform" },
       async () => {
         return io.typeform.client.forms.create({
           data: { ... }
         })
-      }
+      }, 
+      { name: "Create Form", icon: "typeform" }
     );
   },
 });

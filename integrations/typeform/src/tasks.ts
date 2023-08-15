@@ -101,10 +101,10 @@ export const getAllResponses: AuthenticatedTask<
       // This is needed because of the index signature on the response type
       return io.runTask<ListResponsesResponse>(
         `page${before ? `-before-${before}` : ""}`,
-        listResponses.init(pageParams),
         async (t, io) => {
           return await listResponses.run(pageParams, client, t, io, auth);
-        }
+        },
+        listResponses.init(pageParams),
       );
     }
 

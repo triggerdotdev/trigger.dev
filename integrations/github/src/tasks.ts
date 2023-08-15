@@ -299,20 +299,14 @@ const createIssueCommentWithReaction: GithubAuthenticatedTask<
   run: async (params, client, task, io, auth) => {
     const comment = await io.runTask(
       `Comment on Issue #${params.issueNumber}`,
-      createIssueComment.init(params),
       async (t) => {
         return createIssueComment.run(params, client, t, io, auth);
-      }
+      },
+      createIssueComment.init(params)
     );
 
     await io.runTask(
       `React with ${params.reaction}`,
-      addIssueCommentReaction.init({
-        owner: params.owner,
-        repo: params.repo,
-        commentId: comment.id,
-        content: params.reaction,
-      }),
       async (t) => {
         return addIssueCommentReaction.run(
           {
@@ -326,7 +320,13 @@ const createIssueCommentWithReaction: GithubAuthenticatedTask<
           io,
           auth
         );
-      }
+      },
+      addIssueCommentReaction.init({
+        owner: params.owner,
+        repo: params.repo,
+        commentId: comment.id,
+        content: params.reaction,
+      })
     );
 
     return comment;

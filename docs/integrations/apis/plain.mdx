@@ -153,7 +153,6 @@ client.defineJob({
   run: async (payload, io, ctx) => {
     const issue = await io.runTask(
       "create-issue",
-      { name: "Create issue", icon: "plain" },
       async () => {
         const result = await io.plain.client.createIssue({
           customerId: "abcdefghij",
@@ -165,7 +164,8 @@ client.defineJob({
         }
 
         return result.data;
-      }
+      },
+      { name: "Create issue", icon: "plain" }
     );
   },
 });
