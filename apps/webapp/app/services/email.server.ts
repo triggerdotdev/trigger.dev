@@ -9,14 +9,14 @@ import { workerQueue } from "./worker.server";
 
 const client = new EmailClient({
   smtpConfig: {
-    host:env.SMTP_HOST,
+    host: env.SMTP_HOST,
     secure: true,
     port: env.SMTP_PORT,
     auth: {
       user: env.SMTP_USER,
       pass: env.SMTP_PASSWORD,
     },
-  }, 
+  },
   imagesBaseUrl: env.APP_ORIGIN,
   from: env.FROM_EMAIL ?? "team@email.trigger.dev",
   replyTo: env.REPLY_TO_EMAIL ?? "help@email.trigger.dev",

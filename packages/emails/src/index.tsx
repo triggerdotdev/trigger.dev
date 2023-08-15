@@ -43,12 +43,12 @@ export const DeliverEmailSchema = z
 export type DeliverEmail = z.infer<typeof DeliverEmailSchema>;
 
 export type NodeMailerTransportOptions = {
-  host: string;
-  port: number;
-  secure: boolean;
-  auth: {
-    user: string;
-    pass: string;
+  host?: string;
+  port?: number;
+  secure?: boolean;
+  auth?: {
+    user?: string;
+    pass?: string;
   };
 };
 
@@ -59,12 +59,12 @@ export class EmailClient {
   #replyTo: string;
 
   constructor(config: {
-    smtpConfig: NodeMailerTransportOptions;
+    smtpConfig?: NodeMailerTransportOptions;
     imagesBaseUrl: string;
     from: string;
     replyTo: string;
   }) {
-    this.#client = nodemailer.createTransport(config.smtpConfig);
+    this.#client = config.smtpConfig ? nodemailer.createTransport(config.smtpConfig) : undefined;
     this.#imagesBaseUrl = config.imagesBaseUrl;
     this.#from = config.from;
     this.#replyTo = config.replyTo;
