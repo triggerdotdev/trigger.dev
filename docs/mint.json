@@ -175,6 +175,7 @@
             "integrations/create",
             "integrations/create-setup",
             "integrations/create-anatomy",
+            "integrations/create-oauth",
             "integrations/create-client",
             "integrations/create-tasks",
             "integrations/create-triggers",
