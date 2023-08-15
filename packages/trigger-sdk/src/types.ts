@@ -4,12 +4,12 @@ import type {
   RuntimeEnvironmentType,
   RedactString,
   TriggerMetadata,
+  DisplayProperty,
 } from "@trigger.dev/core";
-import { DisplayProperty } from "@trigger.dev/core";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
 
-export type { RedactString, Logger };
+export type { RedactString, Logger, DisplayProperty };
 
 export interface TriggerContext {
   /** Job metadata */
