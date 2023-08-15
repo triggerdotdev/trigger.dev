@@ -1,0 +1,428 @@
+---
+title: Authenticated Tasks
+description: "Tasks are the main way that developers will interact with your Integration. They are the actions that developers will be able to perform in their jobs."
+---
+
+## `src/tasks.ts`
+
+This file contains all of the authenticated tasks that the Integration will support.
+
+## Authenticated tasks
+
+Authenticated tasks are the backbone of an Integration and so we're going to cover them in more detail before moving on the main Integration class.
+
+Authenticated tasks are a specially crafted object that allows the `@trigger.dev/sdk` to run the task seeded with an authenticated SDK client.
+
+For example, here is the `getForm` authenticated task defined in the `@trigger.dev/typeform` Integration package:
+
+<CodeGroup>
+
+```ts tasks.ts
+import type { AuthenticatedTask } from "@trigger.dev/sdk";
+import type { GetFormParams, GetFormResponse, TypeformSDK } from "./types";
+
+export const getForm: AuthenticatedTask<TypeformSDK, GetFormParams, GetFormResponse> = {
+  init: (params) => {
+    return {
+      name: "Get Form",
+      params,
+      icon: "typeform",
+      properties: [
+        {
+          label: "Form ID",
+          text: params.uid,
+        },
+      ],
+    };
+  },
+  run: async (params, client) => {
+    return client.forms.get(params);
+  },
+};
+```
+
+```ts types.ts
+import { Prettify } from "@trigger.dev/integration-kit";
+import { createClient } from "@typeform/api-client";
+
+export type TypeformSDK = ReturnType<typeof createClient>;
+
+export type GetFormParams = {
+  uid: string;
+};
+
+export type GetFormResponse = Prettify<Typeform.Form>;
+```
+
+```ts usage.ts
+client.defineJob({
+  id: "typeform-playground",
+  name: "Typeform Playground",
+  version: "0.1.1",
+  integrations: {
+    typeform,
+  },
+  run: async (payload, io, ctx) => {
+    const form = await io.typeform.getForm("get-form", {
+      uid: payload.formId,
+    });
+  },
+});
+```
+
+</CodeGroup>
+
+The first thing to notice is the explicit typing of the `getForm` export as an `AuthenticatedTask<TypeformSDK, GetFormParams, GetFormResponse>`.
+
+- The first type parameter is the type of the SDK client that will be used to run the task. In this case, it's the `TypeformSDK` type that is exported from the `src/types.ts` file.
+- The second type parameter is the type of the input params that will be passed to the task. The `params` argument in the `run` and `init` functions will be typed as this type parameter.
+- The third type parameter is the type of the output response that will be returned from the task. The return type of the `run` function needs to match this type.
+
+If you take a look at the `usage.ts` file above, you can see how this task is used in a job. The `io.typeform.getForm` function is typed as returning `Promise<GetFormResponse>` and the `params` argument is typed as `GetFormParams`.
+
+<Note>
+  Notice how the params are the _second_ argument to `getForm`, that's because the first argument is
+  always the task key. See our [Keys and Resumability docs](/documentation/concepts/resumability)
+  for more on why this is important
+</Note>
+
+#### `run` function
+
+The `run` function is the main function that will be called when the task is run. It's an async function that takes up to 5 arguments:
+
+<ParamField body="params" type="type parameter" required>
+  The input params that were passed to the task. This is the second argument to the `getForm`
+  function in the example above.
+</ParamField>
+
+<ParamField body="client" type="type parameter" required>
+  The authenticated SDK client that was seeded into the task.
+</ParamField>
+
+<ParamField body="task" type="Task">
+  The underlying [task](/documentation/concepts/tasks) object
+</ParamField>
+
+<ParamField body="io" type="IO">
+  The [IO](/sdk/io/overview) object that can be used to run subtasks using
+  [`io.runTask`](/sdk/io/runtask)
+</ParamField>
+
+<ParamField body="auth" type="ConnectionAuth">
+  If for some reason you need to access the auth object that was used to seed the SDK client, you
+  can access it here. The `AuthenticatedTask` generic type takes an optional 4th type parameter that
+  allows you to specify the auth type
+</ParamField>
+
+#### `init` function
+
+The `init` function is used to initialize the task. It's a synchronous function that takes a single argument:
+
+<ParamField body="params" type="type parameter" required>
+  The input params that were passed to the task. This is the second argument to the `getForm`
+  function in the example above.
+</ParamField>
+
+#### `onError` function
+
+Authenticated tasks take an optional `onError` function that can be used to handle errors that occur during executing of the `run` function of the task. It takes two arguments:
+
+<ParamField body="error" type="unknown" required>
+  The error that was thrown during the execution of the `run` function.
+</ParamField>
+
+<ParamField body="task" type="Task" required>
+  The underlying [task](/documentation/concepts/tasks) object
+</ParamField>
+
+The `onError` function allows you to reformated errors that occur during the execution of the `run` function. For example, all the tasks in `@trigger.dev/openai` specify the following `onError` function:
+
+<CodeGroup>
+
+```ts tasks.ts
+import { OpenAIErrorSchema } from "./types";
+
+function onTaskError(error: unknown) {
+  const openAIError = OpenAIErrorSchema.safeParse(error);
+
+  if (!openAIError.success) {
+    return;
+  }
+
+  const { message, code, type } = openAIError.data.response.data.error;
+
+  return new Error(`${type}: ${message}${code ? ` (${code})` : ""}`);
+}
+```
+
+```ts types.ts
+const OpenAIErrorSchema = z.object({
+  response: z.object({
+    data: z.object({
+      error: z.object({
+        code: z.string().nullable().optional(),
+        message: z.string(),
+        type: z.string(),
+      }),
+    }),
+  }),
+});
+```
+
+</CodeGroup>
+
+You can also use the `onError` function to specify a specific time the task should be retried. The `@trigger.dev/github` Integration uses this to retry rate-limited requests:
+
+```ts
+function isRequestError(error: unknown): error is RequestError {
+  return typeof error === "object" && error !== null && "status" in error;
+}
+
+function onError(error: unknown) {
+  if (!isRequestError(error)) {
+    return;
+  }
+
+  // Check if this is a rate limit error
+  if (error.status === 403 && error.response) {
+    const rateLimitRemaining = error.response.headers["x-ratelimit-remaining"];
+    const rateLimitReset = error.response.headers["x-ratelimit-reset"];
+
+    if (rateLimitRemaining === "0" && rateLimitReset) {
+      const resetDate = new Date(Number(rateLimitReset) * 1000);
+
+      return {
+        retryAt: resetDate,
+        error,
+      };
+    }
+  }
+}
+```
+
+### Triggers
+
+<Note>The guide on creating Integration triggers is coming soon</Note>
+
+## Testing an Integration package
+
+<Note>This section is coming soon</Note>
+
+## Publishing an Integration package
+
+<Note>This section is coming soon</Note>
+
+## Example authenticated tasks
+
+### OpenAI examples
+
+<CodeGroup>
+
+```ts retrieveModel
+export const retrieveModel: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<RetrieveModelRequest>,
+  RetrieveModelResponseData
+> = {
+  onError: onTaskError,
+  run: async (params, client) => {
+    return client.retrieveModel(params.model).then((res) => res.data);
+  },
+  init: (params) => {
+    return {
+      name: "Retrieve model",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "Model id",
+          text: params.model,
+        },
+      ],
+    };
+  },
+};
+```
+
+```ts createCompletion
+export const createCompletion: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<CreateCompletionRequest>,
+  Prettify<Awaited<ReturnType<OpenAIClientType["createCompletion"]>>["data"]>
+> = {
+  run: async (params, client, task) => {
+    const response = await client.createCompletion(params);
+
+    task.outputProperties = createTaskUsageProperties(response.data.usage);
+
+    return response.data;
+  },
+  init: (params) => {
+    return {
+      name: "Completion",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "model",
+          text: params.model,
+        },
+      ],
+    };
+  },
+};
+```
+
+```ts backgroundCompletion
+export const backgroundCreateCompletion: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<CreateCompletionRequest>,
+  Prettify<CreateCompletionResponseData>,
+  OpenAIIntegrationAuth
+> = {
+  run: async (params, client, task, io, auth) => {
+    const response = await io.backgroundFetch<CreateCompletionResponseData>(
+      "background",
+      "https://api.openai.com/v1/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: redactString`Bearer ${auth.apiKey}`,
+          ...(auth.organization ? { "OpenAI-Organization": auth.organization } : {}),
+        },
+        body: JSON.stringify(params),
+      }
+    );
+
+    task.outputProperties = createTaskUsageProperties(response.usage);
+
+    return response;
+  },
+  init: (params) => {
+    return {
+      name: "Background Completion",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "model",
+          text: params.model,
+        },
+      ],
+    };
+  },
+};
+```
+
+</CodeGroup>
+
+### GitHub examples
+
+<CodeGroup>
+
+```ts createIssue
+const createIssue: GithubAuthenticatedTask<
+  { title: string; owner: string; repo: string },
+  OctokitClient["rest"]["issues"]["create"]
+> = {
+  onError,
+  run: async (params, client, task, io) => {
+    return client.rest.issues
+      .create({
+        owner: params.owner,
+        repo: params.repo,
+        title: params.title,
+      })
+      .then((res) => res.data);
+  },
+  init: (params) => {
+    return {
+      name: "Create Issue",
+      params,
+      properties: [
+        ...repoProperties(params),
+        {
+          label: "Title",
+          text: params.title,
+        },
+      ],
+      retry: {
+        limit: 3,
+        factor: 2,
+        minTimeoutInMs: 500,
+        maxTimeoutInMs: 30000,
+        randomize: true,
+      },
+    };
+  },
+};
+```
+
+```ts createIssueCommentWithReaction
+const createIssueCommentWithReaction: GithubAuthenticatedTask<
+  {
+    body: string;
+    owner: string;
+    repo: string;
+    issueNumber: number;
+    reaction: ReactionContent;
+  },
+  OctokitClient["rest"]["issues"]["createComment"]
+> = {
+  onError,
+  run: async (params, client, task, io, auth) => {
+    const comment = await io.runTask(
+      `Comment on Issue #${params.issueNumber}`,
+      createIssueComment.init(params),
+      async (t) => {
+        return createIssueComment.run(params, client, t, io, auth);
+      }
+    );
+
+    await io.runTask(
+      `React with ${params.reaction}`,
+      addIssueCommentReaction.init({
+        owner: params.owner,
+        repo: params.repo,
+        commentId: comment.id,
+        content: params.reaction,
+      }),
+      async (t) => {
+        return addIssueCommentReaction.run(
+          {
+            owner: params.owner,
+            repo: params.repo,
+            commentId: comment.id,
+            content: params.reaction,
+          },
+          client,
+          t,
+          io,
+          auth
+        );
+      }
+    );
+
+    return comment;
+  },
+  init: (params) => {
+    return {
+      name: "Create Issue Comment",
+      params,
+      properties: [
+        {
+          label: "Repo",
+          text: params.repo,
+        },
+        {
+          label: "Issue",
+          text: `#${params.issueNumber}`,
+        },
+      ],
+    };
+  },
+};
+```
+
+</CodeGroup>

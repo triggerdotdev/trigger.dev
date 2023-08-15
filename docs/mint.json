@@ -167,7 +167,21 @@
     },
     {
       "group": "Overview",
-      "pages": ["integrations/introduction", "integrations/create"]
+      "pages": [
+        "integrations/introduction",
+        {
+          "group": "Create an Integration",
+          "pages": [
+            "integrations/create",
+            "integrations/create-setup",
+            "integrations/create-anatomy",
+            "integrations/create-client",
+            "integrations/create-tasks",
+            "integrations/create-triggers",
+            "integrations/create-publishing"
+          ]
+        }
+      ]
     },
     {
       "group": "Integrations",
@@ -180,7 +194,6 @@
             "integrations/apis/github-tasks"
           ]
         },
-
         {
           "group": "OpenAI",
           "pages": ["integrations/apis/openai"]
