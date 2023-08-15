@@ -613,6 +613,7 @@ importers:
     specifiers:
       '@trigger.dev/integration-kit': workspace:^2.0.8
       '@trigger.dev/sdk': workspace:^2.0.8
+      '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       airtable: ^0.12.1
       rimraf: ^3.0.2
@@ -623,6 +624,7 @@ importers:
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       airtable: 0.12.1
     devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
       rimraf: 3.0.2
       tsup: 7.1.0_typescript@4.9.4

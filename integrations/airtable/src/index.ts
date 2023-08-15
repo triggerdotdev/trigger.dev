@@ -1,27 +1,45 @@
-
-import { Airtable } from "airtable";
+import AirtableSDK from "airtable";
 import type { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
-import { AirtableOptions, AirtableSDK } from "./types";
 import * as tasks from "./tasks";
 
 export * from "./types";
 
-type AirtableIntegrationClient = IntegrationClient<AirtableSDK, typeof tasks>;
+export type AirtableIntegrationOptions = {
+  id: string;
+  apiKey?: string;
+};
 
-type AirtableIntegration = TriggerIntegration<AirtableIntegrationClient>;
+export class Airtable implements TriggerIntegration<IntegrationClient<AirtableSDK, typeof tasks>> {
+  client: IntegrationClient<AirtableSDK, typeof tasks>;
 
-export class AirtableIntegration
-  implements AirtableIntegration
-{
-  client: AirtableIntegrationClient;
+  constructor(private options: AirtableIntegrationOptions) {
+    if (Object.keys(options).includes("apiKey") && !options.apiKey) {
+      throw `Can't create Airtable integration (${options.id}) as apiKey was passed in but undefined`;
+    }
 
-  constructor(private options: AirtableOptions) {
+    if (options.apiKey) {
+      const client = new AirtableSDK({
+        apiKey: options.apiKey,
+      });
+
+      this.client = {
+        usesLocalAuth: true,
+        client,
+        tasks,
+        auth: options.apiKey,
+      };
+
+      return;
+    }
+
     this.client = {
-      tasks,
       usesLocalAuth: false,
       clientFactory: (auth) => {
-        return new Airtable({ apiKey: auth.accessToken });
+        return new AirtableSDK({
+          apiKey: auth.accessToken,
+        });
       },
+      tasks,
     };
   }
 
