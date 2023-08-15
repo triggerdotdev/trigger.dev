@@ -42,6 +42,7 @@ program
   .description("Tunnel your local Next.js project to Trigger.dev and start running jobs")
   .argument("[path]", "The path to the project", ".")
   .option("-p, --port <port>", "The local port your server is on", "3000")
+  .option("-H, --hostname <hostname>", "Hostname on which the application is served", "localhost")
   .option("-e, --env-file <name>", "The name of the env file to load", ".env.local")
   .option(
     "-i, --client-id <name>",
