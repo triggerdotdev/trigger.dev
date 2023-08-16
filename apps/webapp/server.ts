@@ -54,14 +54,18 @@ app.all(
 
 const port = process.env.REMIX_APP_PORT || 3000;
 
-const server = app.listen(port, () => {
-  // require the built app so we're ready when the first request comes in
-  require(BUILD_DIR);
-  console.log(`✅ app ready: http://localhost:${port}`);
-});
+if (process.env.HTTP_SERVER_DISABLED !== "true") {
+  const server = app.listen(port, () => {
+    // require the built app so we're ready when the first request comes in
+    require(BUILD_DIR);
+    console.log(`✅ app ready: http://localhost:${port}`);
+  });
 
-// Handle shutdowns gracefully
-createTerminus(server, { signals: ["SIGINT", "SIGTERM"], timeout: 5000 });
+  // Handle shutdowns gracefully
+  createTerminus(server, { signals: ["SIGINT", "SIGTERM"], timeout: 5000 });
+} else {
+  console.log(`✅ app ready (skipping http server)`);
+}
 
 function purgeRequireCache() {
   // purge require cache on requests for "server side HMR" this won't let

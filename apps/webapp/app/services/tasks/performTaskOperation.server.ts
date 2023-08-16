@@ -13,6 +13,7 @@ import {
 import { safeJsonFromResponse } from "~/utils/json";
 import { logger } from "../logger.server";
 import { formatUnknownError } from "~/utils/formatErrors.server";
+import { enqueueRunExecution } from "~/models/jobRunExecution.server";
 
 type FoundTask = Awaited<ReturnType<typeof findTask>>;
 
@@ -192,7 +193,7 @@ export class PerformTaskOperationService {
     });
   }
 
-  async #resumeTaskWithError(task: Task, output: any) {
+  async #resumeTaskWithError(task: NonNullable<FoundTask>, output: any) {
     await $transaction(this.#prismaClient, async (tx) => {
       await tx.task.update({
         where: { id: task.id },
@@ -243,7 +244,7 @@ export class PerformTaskOperationService {
     });
   }
 
-  async #resumeRunExecution(task: Task, prisma: PrismaClientOrTransaction) {
+  async #resumeRunExecution(task: NonNullable<FoundTask>, prisma: PrismaClientOrTransaction) {
     await $transaction(prisma, async (tx) => {
       const newJobExecution = await tx.jobRunExecution.create({
         data: {
@@ -254,22 +255,7 @@ export class PerformTaskOperationService {
         },
       });
 
-      const graphileJob = await workerQueue.enqueue(
-        "performRunExecution",
-        {
-          id: newJobExecution.id,
-        },
-        { tx }
-      );
-
-      await tx.jobRunExecution.update({
-        where: {
-          id: newJobExecution.id,
-        },
-        data: {
-          graphileJobId: graphileJob.id,
-        },
-      });
+      await enqueueRunExecution(newJobExecution, task.run.queueId, task.run.queue.maxJobs, tx);
     });
   }
 }
@@ -305,6 +291,11 @@ async function findTask(prisma: PrismaClient, id: string) {
     where: { id },
     include: {
       attempts: true,
+      run: {
+        include: {
+          queue: true,
+        },
+      },
     },
   });
 }

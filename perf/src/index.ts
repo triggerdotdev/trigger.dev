@@ -34,7 +34,7 @@ async function main() {
   await new Promise((resolve) => setTimeout(resolve, 1000));
 
   // Send 10 events per second for 30 seconds
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 1; i++) {
     console.log("Sending 10 events...");
 
     await Promise.all([

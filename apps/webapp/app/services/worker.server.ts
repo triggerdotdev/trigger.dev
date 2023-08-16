@@ -13,7 +13,6 @@ import { integrationAuthRepository } from "./externalApis/integrationAuthReposit
 import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
 import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated.server";
 import { PerformRunExecutionService } from "./runs/performRunExecution.server";
-import { StartQueuedRunsService } from "./runs/startQueuedRuns.server";
 import { StartRunService } from "./runs/startRun.server";
 import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.server";
 import { ActivateSourceService } from "./sources/activateSource.server";
@@ -29,9 +28,6 @@ const workerCatalog = {
   }),
   scheduleEmail: DeliverEmailSchema,
   startRun: z.object({ id: z.string() }),
-  performRunExecution: z.object({
-    id: z.string(),
-  }),
   performTaskOperation: z.object({
     id: z.string(),
   }),
@@ -44,7 +40,7 @@ const workerCatalog = {
     id: z.string(),
     orphanedEvents: z.array(z.string()).optional(),
   }),
-  startQueuedRuns: z.object({ id: z.string() }),
+
   deliverEvent: z.object({ id: z.string() }),
   "events.invokeDispatcher": z.object({
     id: z.string(),
@@ -62,10 +58,18 @@ const workerCatalog = {
   }),
 };
 
+const executionWorkerCatalog = {
+  performRunExecution: z.object({
+    id: z.string(),
+  }),
+};
+
 let workerQueue: ZodWorker<typeof workerCatalog>;
+let executionWorker: ZodWorker<typeof executionWorkerCatalog>;
 
 declare global {
   var __worker__: ZodWorker<typeof workerCatalog>;
+  var __executionWorker__: ZodWorker<typeof executionWorkerCatalog>;
 }
 
 // this is needed because in development we don't want to restart
@@ -74,15 +78,28 @@ declare global {
 // in production we'll have a single connection to the DB.
 if (env.NODE_ENV === "production") {
   workerQueue = getWorkerQueue();
+  executionWorker = getExecutionWorkerQueue();
 } else {
   if (!global.__worker__) {
     global.__worker__ = getWorkerQueue();
   }
   workerQueue = global.__worker__;
+
+  if (!global.__executionWorker__) {
+    global.__executionWorker__ = getExecutionWorkerQueue();
+  }
+
+  executionWorker = global.__executionWorker__;
 }
 
 export async function init() {
-  await workerQueue.initialize();
+  if (env.WORKER_ENABLED) {
+    await workerQueue.initialize();
+  }
+
+  if (env.EXECUTION_WORKER_ENABLED) {
+    await executionWorker.initialize();
+  }
 }
 
 function getWorkerQueue() {
@@ -94,6 +111,7 @@ function getWorkerQueue() {
       pollInterval: env.WORKER_POLL_INTERVAL,
       noPreparedStatements: env.DATABASE_URL !== env.DIRECT_URL,
       schema: env.WORKER_SCHEMA,
+      maxPoolSize: env.WORKER_CONCURRENCY,
     },
     schema: workerCatalog,
     recurringTasks: {
@@ -158,17 +176,6 @@ function getWorkerQueue() {
           await service.call(payload.id);
         },
       },
-      startQueuedRuns: {
-        priority: 1, // smaller number = higher priority
-        maxAttempts: 3,
-        jobKeyMode: "replace",
-        jobKey: (payload) => `startQueuedRuns:${payload.id}`,
-        handler: async (payload, job) => {
-          const service = new StartQueuedRunsService();
-
-          await service.call(payload.id);
-        },
-      },
       activateSource: {
         priority: 10, // smaller number = higher priority
         maxAttempts: 3,
@@ -192,16 +199,6 @@ function getWorkerQueue() {
         maxAttempts: 8,
         handler: async (payload, job) => {
           const service = new StartRunService();
-
-          await service.call(payload.id);
-        },
-      },
-      performRunExecution: {
-        priority: 0, // smaller number = higher priority
-        queueName: (payload) => `runs:${payload.id}`,
-        maxAttempts: 1,
-        handler: async (payload, job) => {
-          const service = new PerformRunExecutionService();
 
           await service.call(payload.id);
         },
@@ -254,4 +251,30 @@ function getWorkerQueue() {
   });
 }
 
-export { workerQueue };
+function getExecutionWorkerQueue() {
+  return new ZodWorker({
+    prisma,
+    runnerOptions: {
+      connectionString: env.DATABASE_URL,
+      concurrency: env.EXECUTION_WORKER_CONCURRENCY,
+      pollInterval: env.EXECUTION_WORKER_POLL_INTERVAL,
+      noPreparedStatements: env.DATABASE_URL !== env.DIRECT_URL,
+      schema: env.WORKER_SCHEMA,
+      maxPoolSize: env.EXECUTION_WORKER_CONCURRENCY,
+    },
+    schema: executionWorkerCatalog,
+    tasks: {
+      performRunExecution: {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 1,
+        handler: async (payload, job) => {
+          const service = new PerformRunExecutionService();
+
+          await service.call(payload.id);
+        },
+      },
+    },
+  });
+}
+
+export { workerQueue, executionWorker };

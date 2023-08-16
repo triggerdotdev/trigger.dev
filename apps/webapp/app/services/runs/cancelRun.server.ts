@@ -1,5 +1,4 @@
 import { PrismaClient, prisma } from "~/db.server";
-import { workerQueue } from "../worker.server";
 
 export class CancelRunService {
   #prismaClient: PrismaClient;
@@ -47,14 +46,6 @@ export class CancelRunService {
             completedAt: new Date(),
           },
         });
-
-        await workerQueue.enqueue(
-          "startQueuedRuns",
-          {
-            id: run.queueId,
-          },
-          { tx }
-        );
       });
     } catch (error) {
       throw error;

@@ -1,6 +1,7 @@
 import { EXECUTE_JOB_RETRY_LIMIT } from "~/consts";
 import { $transaction, Prisma, PrismaClient, prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
+import { enqueueRunExecution } from "~/models/jobRunExecution.server";
 
 const RESUMABLE_STATUSES = ["FAILURE", "TIMED_OUT", "ABORTED", "CANCELED"];
 
@@ -74,28 +75,7 @@ export class ContinueRunService {
             },
           });
 
-          const job = await workerQueue.enqueue(
-            "performRunExecution",
-            {
-              id: execution.id,
-            },
-            { tx }
-          );
-
-          await tx.jobRunExecution.update({
-            where: { id: execution.id },
-            data: {
-              graphileJobId: job.id,
-            },
-          });
-
-          await workerQueue.enqueue(
-            "startQueuedRuns",
-            {
-              id: run.queueId,
-            },
-            { tx }
-          );
+          await enqueueRunExecution(execution, run.queue.id, run.queue.maxJobs, tx);
         }
       },
       { timeout: 10000 }

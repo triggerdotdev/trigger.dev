@@ -1,25 +1,33 @@
-import type { Task } from "@trigger.dev/database";
 import {
   ApiEventLogSchema,
   CachedTaskSchema,
-  RunJobCanceledWithTask,
   RunJobError,
   RunJobResumeWithTask,
   RunJobRetryWithTask,
   RunJobSuccess,
   RunSourceContextSchema,
 } from "@trigger.dev/core";
+import type { Task } from "@trigger.dev/database";
 import { generateErrorMessage } from "zod-error";
 import { EXECUTE_JOB_RETRY_LIMIT } from "~/consts";
 import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { enqueueRunExecution } from "~/models/jobRunExecution.server";
 import { resolveRunConnections } from "~/models/runConnection.server";
+import { formatError } from "~/utils/formatErrors.server";
 import { safeJsonZodParse } from "~/utils/json";
 import { EndpointApi } from "../endpointApi.server";
-import { workerQueue } from "../worker.server";
-import { formatError } from "~/utils/formatErrors.server";
 import { logger } from "../logger.server";
 
 type FoundRunExecution = NonNullable<Awaited<ReturnType<typeof findRunExecution>>>;
+
+// Run starts in PENDING status in CreateRunService which is called from InvokeDispatcherService
+// CreateRunService enqueues a job to StartRunService
+// StartRunService checks to see if all the connections are ready
+// If they are, it starts the run (setting the status to QUEUED)
+// StartRunService creates a JobRunExecution and enqueues a performJobExecution job
+// The performJobExecution job is added to a JobQueue, with a suffix to control the concurrency (job:queue:<queueId>:<concurrency>)
+// The performJobExecution job is picked up by a worker
+// PerformRunExecutionService will update the run status to STARTED
 
 export class PerformRunExecutionService {
   #prismaClient: PrismaClient;
@@ -162,22 +170,7 @@ export class PerformRunExecutionService {
           },
         });
 
-        const job = await workerQueue.enqueue(
-          "performRunExecution",
-          {
-            id: runExecution.id,
-          },
-          { tx }
-        );
-
-        await tx.jobRunExecution.update({
-          where: {
-            id: runExecution.id,
-          },
-          data: {
-            graphileJobId: job.id,
-          },
-        });
+        await enqueueRunExecution(runExecution, run.queue.id, run.queue.maxJobs, tx);
       });
     }
   }
@@ -201,6 +194,12 @@ export class PerformRunExecutionService {
       data: {
         status: "STARTED",
         startedAt,
+        run: {
+          update: {
+            status: run.status === "QUEUED" ? "STARTED" : run.status,
+            startedAt: run.startedAt ?? new Date(),
+          },
+        },
       },
     });
 
@@ -388,14 +387,6 @@ export class PerformRunExecutionService {
           completedAt: new Date(),
         },
       });
-
-      await workerQueue.enqueue(
-        "startQueuedRuns",
-        {
-          id: run.queueId,
-        },
-        { tx }
-      );
     });
   }
 
@@ -426,22 +417,13 @@ export class PerformRunExecutionService {
           },
         });
 
-        const graphileJob = await workerQueue.enqueue(
-          "performRunExecution",
-          {
-            id: newJobExecution.id,
-          },
-          { tx, runAt: data.task.delayUntil ?? undefined }
+        await enqueueRunExecution(
+          newJobExecution,
+          run.queue.id,
+          run.queue.maxJobs,
+          tx,
+          data.task.delayUntil ?? undefined
         );
-
-        await tx.jobRunExecution.update({
-          where: {
-            id: newJobExecution.id,
-          },
-          data: {
-            graphileJobId: graphileJob.id,
-          },
-        });
       }
     });
   }
@@ -522,22 +504,7 @@ export class PerformRunExecutionService {
         },
       });
 
-      const graphileJob = await workerQueue.enqueue(
-        "performRunExecution",
-        {
-          id: newJobExecution.id,
-        },
-        { tx, runAt: data.retryAt }
-      );
-
-      await tx.jobRunExecution.update({
-        where: {
-          id: newJobExecution.id,
-        },
-        data: {
-          graphileJobId: graphileJob.id,
-        },
-      });
+      await enqueueRunExecution(newJobExecution, run.queue.id, run.queue.maxJobs, tx, data.retryAt);
     });
   }
 
@@ -579,20 +546,13 @@ export class PerformRunExecutionService {
 
       const runAt = new Date(Date.now() + retryDelayInMs);
 
-      const job = await workerQueue.enqueue(
-        "performRunExecution",
-        { id: execution.id },
-        { runAt, tx }
+      await enqueueRunExecution(
+        execution,
+        execution.run.queue.id,
+        execution.run.queue.maxJobs,
+        tx,
+        runAt
       );
-
-      await tx.jobRunExecution.update({
-        where: {
-          id: execution.id,
-        },
-        data: {
-          graphileJobId: job.id,
-        },
-      });
     });
   }
 
@@ -624,14 +584,6 @@ export class PerformRunExecutionService {
             },
           });
 
-          await workerQueue.enqueue(
-            "startQueuedRuns",
-            {
-              id: run.queueId,
-            },
-            { tx }
-          );
-
           break;
         }
         case "PREPROCESS": {
@@ -652,14 +604,6 @@ export class PerformRunExecutionService {
                 },
               },
             });
-
-            await workerQueue.enqueue(
-              "startQueuedRuns",
-              {
-                id: run.queueId,
-              },
-              { tx }
-            );
 
             break;
           }
@@ -683,22 +627,7 @@ export class PerformRunExecutionService {
             },
           });
 
-          const job = await workerQueue.enqueue(
-            "performRunExecution",
-            {
-              id: runExecution.id,
-            },
-            { tx }
-          );
-
-          await tx.jobRunExecution.update({
-            where: {
-              id: runExecution.id,
-            },
-            data: {
-              graphileJobId: job.id,
-            },
-          });
+          await enqueueRunExecution(runExecution, run.queue.id, run.queue.maxJobs, tx);
 
           break;
         }
@@ -741,6 +670,7 @@ async function findRunExecution(prisma: PrismaClientOrTransaction, id: string) {
           endpoint: true,
           organization: true,
           externalAccount: true,
+          queue: true,
           runConnections: {
             include: {
               integration: true,

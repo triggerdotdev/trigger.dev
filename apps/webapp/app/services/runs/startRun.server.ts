@@ -2,6 +2,7 @@ import type { ConnectionType, Integration, IntegrationConnection } from "@trigge
 import { EXECUTE_JOB_RETRY_LIMIT, PREPROCESS_RETRY_LIMIT } from "~/consts";
 import type { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
+import { enqueueRunExecution } from "~/models/jobRunExecution.server";
 import { workerQueue } from "../worker.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
@@ -21,32 +22,18 @@ export class StartRunService {
       return;
     }
 
-    if (run.queue.jobCount >= run.queue.maxJobs) {
-      await this.#queueRun(id);
-    } else {
-      const runConnectionsByKey = await createRunConnections(this.#prismaClient, run);
+    const runConnectionsByKey = await createRunConnections(this.#prismaClient, run);
 
-      if (hasMissingConnections(runConnectionsByKey)) {
-        await this.#handleMissingConnections(id, runConnectionsByKey);
-      } else {
-        await this.#startRun(id, run, runConnectionsByKey);
-      }
+    if (hasMissingConnections(runConnectionsByKey)) {
+      await this.#handleMissingConnections(id, runConnectionsByKey);
+    } else {
+      await this.#startRun(id, run, runConnectionsByKey);
     }
   }
 
   #runIsStartable(run: FoundRun) {
-    const startableStatuses = ["PENDING", "QUEUED", "WAITING_ON_CONNECTIONS"] as const;
+    const startableStatuses = ["PENDING", "WAITING_ON_CONNECTIONS"] as const;
     return startableStatuses.includes(run.status);
-  }
-
-  async #queueRun(id: string) {
-    await this.#prismaClient.jobRun.update({
-      where: { id },
-      data: {
-        status: "QUEUED",
-        queuedAt: new Date(),
-      },
-    });
   }
 
   async #startRun(id: string, run: FoundRun, runConnectionsByKey: RunConnectionsByKey) {
@@ -106,15 +93,8 @@ export class StartRunService {
         await this.#prismaClient.jobRun.update({
           where: { id },
           data: {
-            status: "STARTED",
-            startedAt: new Date(),
-            queue: {
-              update: {
-                jobCount: {
-                  increment: 1,
-                },
-              },
-            },
+            status: "QUEUED",
+            queuedAt: new Date(),
             runConnections: {
               create: createRunConnections,
             },
@@ -138,20 +118,7 @@ export class StartRunService {
 
     const execution = await updateRunAndCreateExecution();
 
-    const job = await workerQueue.enqueue("performRunExecution", {
-      id: execution.id,
-    });
-
-    await this.#prismaClient.jobRunExecution.update({
-      where: { id: execution.id },
-      data: {
-        graphileJobId: job.id,
-      },
-    });
-
-    await workerQueue.enqueue("startQueuedRuns", {
-      id: run.queueId,
-    });
+    await enqueueRunExecution(execution, run.queue.id, run.queue.maxJobs, this.#prismaClient);
   }
 
   async #handleMissingConnections(id: string, runConnectionsByKey: RunConnectionsByKey) {
