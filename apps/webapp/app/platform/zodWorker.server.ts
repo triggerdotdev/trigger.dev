@@ -51,6 +51,7 @@ const AddJobResultsSchema = z.array(GraphileJobSchema);
 export type ZodTasks<TConsumerSchema extends MessageCatalogSchema> = {
   [K in keyof TConsumerSchema]: {
     queueName?: string | ((payload: z.infer<TConsumerSchema[K]>) => string);
+    jobKey?: string | ((payload: z.infer<TConsumerSchema[K]>) => string | undefined);
     priority?: number;
     maxAttempts?: number;
     jobKeyMode?: "replace" | "preserve_run_at" | "unsafe_dedupe";
@@ -140,15 +141,30 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     const task = this.#tasks[identifier];
 
     const optionsWithoutTx = omit(options ?? {}, ["tx"]);
+    const taskWithoutJobKey = omit(task, ["jobKey"]);
 
     const spec = {
       ...optionsWithoutTx,
-      ...task,
+      ...taskWithoutJobKey,
     };
 
     if (typeof task.queueName === "function") {
       spec.queueName = task.queueName(payload);
     }
+
+    if (typeof task.jobKey === "function") {
+      const jobKey = task.jobKey(payload);
+
+      if (jobKey) {
+        spec.jobKey = jobKey;
+      }
+    }
+
+    logger.debug("Enqueuing worker task", {
+      identifier,
+      payload,
+      spec,
+    });
 
     const job = await this.#addJob(
       identifier as string,
@@ -192,8 +208,8 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       spec.maxAttempts || null,
       spec.jobKey || null,
       spec.priority || null,
-      spec.jobKeyMode || null,
-      spec.flags || null
+      spec.flags || null,
+      spec.jobKeyMode || null
     );
 
     const rows = AddJobResultsSchema.safeParse(results);

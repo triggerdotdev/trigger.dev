@@ -31,6 +31,9 @@ const EnvironmentSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   PLAIN_API_KEY: z.string().optional(),
   RUNTIME_PLATFORM: z.enum(["docker-compose", "ecs", "local"]).default("local"),
+  WORKER_SCHEMA: z.string().default("graphile_worker"),
+  WORKER_CONCURRENCY: z.coerce.number().int().default(5),
+  WORKER_POLL_INTERVAL: z.coerce.number().int().default(500),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

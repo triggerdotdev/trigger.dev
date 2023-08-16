@@ -390,9 +390,9 @@ export class PerformRunExecutionService {
       });
 
       await workerQueue.enqueue(
-        "runFinished",
+        "startQueuedRuns",
         {
-          id: run.id,
+          id: run.queueId,
         },
         { tx }
       );
@@ -557,6 +557,13 @@ export class PerformRunExecutionService {
       // So when retryCount is 1, retryDelayInMs is 500ms
       // When retryCount is 2, retryDelayInMs is 750ms
       // When retryCount is 3, retryDelayInMs is 1125ms
+      // When retryCount is 4, retryDelayInMs is 1687ms
+      // When retryCount is 5, retryDelayInMs is 2531ms
+      // When retryCount is 6, retryDelayInMs is 3796ms
+      // When retryCount is 7, retryDelayInMs is 5694ms
+      // When retryCount is 8, retryDelayInMs is 8541ms
+      // When retryCount is 9, retryDelayInMs is 12812ms
+      // When retryCount is 10, retryDelayInMs is 19218ms
       const retryDelayInMs = Math.round(500 * Math.pow(1.5, retryCount - 1));
 
       await tx.jobRunExecution.update({
@@ -618,12 +625,13 @@ export class PerformRunExecutionService {
           });
 
           await workerQueue.enqueue(
-            "runFinished",
+            "startQueuedRuns",
             {
-              id: run.id,
+              id: run.queueId,
             },
             { tx }
           );
+
           break;
         }
         case "PREPROCESS": {
@@ -646,9 +654,9 @@ export class PerformRunExecutionService {
             });
 
             await workerQueue.enqueue(
-              "runFinished",
+              "startQueuedRuns",
               {
-                id: run.id,
+                id: run.queueId,
               },
               { tx }
             );

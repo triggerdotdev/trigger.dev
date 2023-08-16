@@ -13,7 +13,6 @@ import { integrationAuthRepository } from "./externalApis/integrationAuthReposit
 import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
 import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated.server";
 import { PerformRunExecutionService } from "./runs/performRunExecution.server";
-import { RunFinishedService } from "./runs/runFinished.server";
 import { StartQueuedRunsService } from "./runs/startQueuedRuns.server";
 import { StartRunService } from "./runs/startRun.server";
 import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.server";
@@ -36,7 +35,6 @@ const workerCatalog = {
   performTaskOperation: z.object({
     id: z.string(),
   }),
-  runFinished: z.object({ id: z.string() }),
   deliverHttpSourceRequest: z.object({ id: z.string() }),
   refreshOAuthToken: z.object({
     organizationId: z.string(),
@@ -92,9 +90,10 @@ function getWorkerQueue() {
     prisma,
     runnerOptions: {
       connectionString: env.DATABASE_URL,
-      concurrency: 5,
-      pollInterval: 1000,
+      concurrency: env.WORKER_CONCURRENCY,
+      pollInterval: env.WORKER_POLL_INTERVAL,
       noPreparedStatements: env.DATABASE_URL !== env.DIRECT_URL,
+      schema: env.WORKER_SCHEMA,
     },
     schema: workerCatalog,
     recurringTasks: {
@@ -124,6 +123,7 @@ function getWorkerQueue() {
     },
     tasks: {
       "events.invokeDispatcher": {
+        priority: 0, // smaller number = higher priority
         maxAttempts: 3,
         handler: async (payload, job) => {
           const service = new InvokeDispatcherService();
@@ -132,6 +132,7 @@ function getWorkerQueue() {
         },
       },
       "events.deliverScheduled": {
+        priority: 0, // smaller number = higher priority
         maxAttempts: 5,
         handler: async ({ id, payload }, job) => {
           const service = new DeliverScheduledEventService();
@@ -140,6 +141,7 @@ function getWorkerQueue() {
         },
       },
       connectionCreated: {
+        priority: 10, // smaller number = higher priority
         maxAttempts: 3,
         handler: async (payload, job) => {
           const service = new IntegrationConnectionCreatedService();
@@ -148,6 +150,7 @@ function getWorkerQueue() {
         },
       },
       missingConnectionCreated: {
+        priority: 10, // smaller number = higher priority
         maxAttempts: 3,
         handler: async (payload, job) => {
           const service = new MissingConnectionCreatedService();
@@ -155,17 +158,11 @@ function getWorkerQueue() {
           await service.call(payload.id);
         },
       },
-      runFinished: {
-        maxAttempts: 3,
-        handler: async (payload, job) => {
-          const service = new RunFinishedService();
-
-          await service.call(payload.id);
-        },
-      },
       startQueuedRuns: {
+        priority: 1, // smaller number = higher priority
         maxAttempts: 3,
-        queueName: (payload) => `queue:${payload.id}`,
+        jobKeyMode: "replace",
+        jobKey: (payload) => `startQueuedRuns:${payload.id}`,
         handler: async (payload, job) => {
           const service = new StartQueuedRunsService();
 
@@ -173,6 +170,7 @@ function getWorkerQueue() {
         },
       },
       activateSource: {
+        priority: 10, // smaller number = higher priority
         maxAttempts: 3,
         handler: async (payload, job) => {
           const service = new ActivateSourceService();
@@ -181,6 +179,7 @@ function getWorkerQueue() {
         },
       },
       deliverHttpSourceRequest: {
+        priority: 1, // smaller number = higher priority
         maxAttempts: 25,
         handler: async (payload, job) => {
           const service = new DeliverHttpSourceRequestService();
@@ -189,6 +188,7 @@ function getWorkerQueue() {
         },
       },
       startRun: {
+        priority: 0, // smaller number = higher priority
         maxAttempts: 8,
         handler: async (payload, job) => {
           const service = new StartRunService();
@@ -197,6 +197,7 @@ function getWorkerQueue() {
         },
       },
       performRunExecution: {
+        priority: 0, // smaller number = higher priority
         queueName: (payload) => `runs:${payload.id}`,
         maxAttempts: 1,
         handler: async (payload, job) => {
@@ -206,6 +207,7 @@ function getWorkerQueue() {
         },
       },
       performTaskOperation: {
+        priority: 0, // smaller number = higher priority
         queueName: (payload) => `tasks:${payload.id}`,
         maxAttempts: 3,
         handler: async (payload, job) => {
@@ -223,6 +225,7 @@ function getWorkerQueue() {
         },
       },
       indexEndpoint: {
+        priority: 1, // smaller number = higher priority
         handler: async (payload, job) => {
           const service = new IndexEndpointService();
 
@@ -230,6 +233,7 @@ function getWorkerQueue() {
         },
       },
       deliverEvent: {
+        priority: 0, // smaller number = higher priority
         handler: async (payload, job) => {
           const service = new DeliverEventService();
 
@@ -237,6 +241,7 @@ function getWorkerQueue() {
         },
       },
       refreshOAuthToken: {
+        priority: 8, // smaller number = higher priority
         queueName: "internal-queue",
         maxAttempts: 10,
         handler: async (payload, job) => {
