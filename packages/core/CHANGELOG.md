@@ -1,5 +1,11 @@
 # internal-platform
 
+## 2.0.9
+
+### Patch Changes
+
+- 33184a81: Add subtasks to the schema/types when getting an individual run
+
 ## 2.0.8
 
 ## 2.0.7
