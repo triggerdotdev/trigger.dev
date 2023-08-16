@@ -1,6 +1,6 @@
 import AirtableSDK from "airtable";
 import type { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
-import { Tasks } from "./tasks";
+import * as tasks from "./tasks";
 import { Prettify } from "@trigger.dev/integration-kit";
 
 export * from "./types";
@@ -12,8 +12,8 @@ export type AirtableIntegrationOptions = {
   token?: string;
 };
 
-export class Airtable implements TriggerIntegration<IntegrationClient<AirtableSDK, Tasks>> {
-  client: IntegrationClient<AirtableSDK, Tasks>;
+export class Airtable implements TriggerIntegration<IntegrationClient<AirtableSDK, typeof tasks>> {
+  client: IntegrationClient<AirtableSDK, typeof tasks>;
 
   constructor(private options: Prettify<AirtableIntegrationOptions>) {
     if (Object.keys(options).includes("token") && !options.token) {
@@ -28,7 +28,7 @@ export class Airtable implements TriggerIntegration<IntegrationClient<AirtableSD
       this.client = {
         usesLocalAuth: true,
         client,
-        tasks: Tasks,
+        tasks,
         auth: options.token,
       };
 

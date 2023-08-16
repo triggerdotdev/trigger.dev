@@ -28,10 +28,6 @@ type LaunchGoalsAndOkRs = {
   "Status (from 💻 Features)": Array<Status>;
 };
 
-type BaseType = {
-  customers: LaunchGoalsAndOkRs;
-};
-
 client.defineJob({
   id: "airtable-example-1",
   name: "Airtable Example 1: getRecords",
@@ -47,14 +43,12 @@ client.defineJob({
     airtable,
   },
   run: async (payload, io, ctx) => {
-    const records1 = io.airtable.tasks
-      ?.base(payload.baseId)
-      .table<LaunchGoalsAndOkRs>(payload.tableName)
-      .getRecords("whatever", {}, io);
+    const records1 = io.airtable.tasks?.base(payload.baseId).table<LaunchGoalsAndOkRs>(payload.tableName).getRecords("whatever", {}, io);
 
     const records = await io.airtable
-      .base<BaseType>(payload.baseId)
-      .table("customers")
+      .tasks?
+      .base(payload.baseId)
+      .table<LaunchGoalsAndOkRs>("customers")
       .getRecords("whatever", {
         where: {
           createdAt: {

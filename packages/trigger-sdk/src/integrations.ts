@@ -17,12 +17,9 @@ export interface TriggerIntegration<
   metadata: IntegrationMetadata;
 }
 
-export interface IntegrationTasks<TClient> {
-  io: IO;
-  client: TClient;
-}
+// export type IntegrationTask<TParams
 
-export type IntegrationClient<TClient, TTasks extends IntegrationTasks<TClient>> =
+export type IntegrationClient<TClient, TTasks extends Record<string, any>> =
   | {
       usesLocalAuth: true;
       client: TClient;
@@ -71,3 +68,6 @@ export type IOWithIntegrations<
 > = IO & ExtractIntegrations<TIntegrations>;
 
 export type IntegrationTaskKey = string | any[];
+
+export type IOWithIntegration<TriggerIntegration> = IO &
+  ExtractIntegrationClientClient<TriggerIntegration>;
