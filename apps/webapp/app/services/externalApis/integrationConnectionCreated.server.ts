@@ -109,15 +109,9 @@ export class IntegrationConnectionCreatedService {
       });
 
       // We need to start the run again
-      await workerQueue.enqueue(
-        "startRun",
-        {
-          id: run.id,
-        },
-        {
-          queueName: `job-queue:${run.queue.id}`,
-        }
-      );
+      await workerQueue.enqueue("startRun", {
+        id: run.id,
+      });
     }
   }
 }
