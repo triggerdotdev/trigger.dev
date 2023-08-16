@@ -11,7 +11,7 @@ import type { Task } from "@trigger.dev/database";
 import { generateErrorMessage } from "zod-error";
 import { EXECUTE_JOB_RETRY_LIMIT } from "~/consts";
 import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
-import { enqueueRunExecution } from "~/models/jobRunExecution.server";
+import { enqueueRunExecutionV1 } from "~/models/jobRunExecution.server";
 import { resolveRunConnections } from "~/models/runConnection.server";
 import { formatError } from "~/utils/formatErrors.server";
 import { safeJsonZodParse } from "~/utils/json";
@@ -20,16 +20,7 @@ import { logger } from "../logger.server";
 
 type FoundRunExecution = NonNullable<Awaited<ReturnType<typeof findRunExecution>>>;
 
-// Run starts in PENDING status in CreateRunService which is called from InvokeDispatcherService
-// CreateRunService enqueues a job to StartRunService
-// StartRunService checks to see if all the connections are ready
-// If they are, it starts the run (setting the status to QUEUED)
-// StartRunService creates a JobRunExecution and enqueues a performJobExecution job
-// The performJobExecution job is added to a JobQueue, with a suffix to control the concurrency (job:queue:<queueId>:<concurrency>)
-// The performJobExecution job is picked up by a worker
-// PerformRunExecutionService will update the run status to STARTED
-
-export class PerformRunExecutionService {
+export class PerformRunExecutionV1Service {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
@@ -170,7 +161,7 @@ export class PerformRunExecutionService {
           },
         });
 
-        await enqueueRunExecution(runExecution, run.queue.id, run.queue.maxJobs, tx);
+        await enqueueRunExecutionV1(runExecution, run.queue.id, run.queue.maxJobs, tx);
       });
     }
   }
@@ -417,7 +408,7 @@ export class PerformRunExecutionService {
           },
         });
 
-        await enqueueRunExecution(
+        await enqueueRunExecutionV1(
           newJobExecution,
           run.queue.id,
           run.queue.maxJobs,
@@ -504,7 +495,13 @@ export class PerformRunExecutionService {
         },
       });
 
-      await enqueueRunExecution(newJobExecution, run.queue.id, run.queue.maxJobs, tx, data.retryAt);
+      await enqueueRunExecutionV1(
+        newJobExecution,
+        run.queue.id,
+        run.queue.maxJobs,
+        tx,
+        data.retryAt
+      );
     });
   }
 
@@ -546,7 +543,7 @@ export class PerformRunExecutionService {
 
       const runAt = new Date(Date.now() + retryDelayInMs);
 
-      await enqueueRunExecution(
+      await enqueueRunExecutionV1(
         execution,
         execution.run.queue.id,
         execution.run.queue.maxJobs,
@@ -627,7 +624,7 @@ export class PerformRunExecutionService {
             },
           });
 
-          await enqueueRunExecution(runExecution, run.queue.id, run.queue.maxJobs, tx);
+          await enqueueRunExecutionV1(runExecution, run.queue.id, run.queue.maxJobs, tx);
 
           break;
         }

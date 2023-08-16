@@ -1,7 +1,3 @@
-import type { Task } from "@trigger.dev/database";
-import { EXECUTE_JOB_RETRY_LIMIT } from "~/consts";
-import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
-import { workerQueue } from "../worker.server";
 import {
   FetchOperationSchema,
   FetchRequestInit,
@@ -10,10 +6,13 @@ import {
   RedactString,
   calculateRetryAt,
 } from "@trigger.dev/core";
+import type { Task } from "@trigger.dev/database";
+import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { enqueueRunExecutionV2 } from "~/models/jobRunExecution.server";
+import { formatUnknownError } from "~/utils/formatErrors.server";
 import { safeJsonFromResponse } from "~/utils/json";
 import { logger } from "../logger.server";
-import { formatUnknownError } from "~/utils/formatErrors.server";
-import { enqueueRunExecution } from "~/models/jobRunExecution.server";
+import { workerQueue } from "../worker.server";
 
 type FoundTask = Awaited<ReturnType<typeof findTask>>;
 
@@ -245,18 +244,7 @@ export class PerformTaskOperationService {
   }
 
   async #resumeRunExecution(task: NonNullable<FoundTask>, prisma: PrismaClientOrTransaction) {
-    await $transaction(prisma, async (tx) => {
-      const newJobExecution = await tx.jobRunExecution.create({
-        data: {
-          runId: task.runId,
-          reason: "EXECUTE_JOB",
-          status: "PENDING",
-          retryLimit: EXECUTE_JOB_RETRY_LIMIT,
-        },
-      });
-
-      await enqueueRunExecution(newJobExecution, task.run.queueId, task.run.queue.maxJobs, tx);
-    });
+    await enqueueRunExecutionV2(task.run, task.run.queueId, task.run.queue.maxJobs, prisma);
   }
 }
 

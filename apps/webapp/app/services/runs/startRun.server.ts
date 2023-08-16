@@ -1,8 +1,7 @@
 import type { ConnectionType, Integration, IntegrationConnection } from "@trigger.dev/database";
-import { EXECUTE_JOB_RETRY_LIMIT, PREPROCESS_RETRY_LIMIT } from "~/consts";
 import type { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
-import { enqueueRunExecution } from "~/models/jobRunExecution.server";
+import { enqueueRunExecutionV2 } from "~/models/jobRunExecution.server";
 import { workerQueue } from "../worker.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
@@ -56,41 +55,20 @@ export class StartRunService {
       )
       .filter(Boolean);
 
-    const updateRunAndCreateExecution = async () => {
+    const updateRun = async () => {
       if (run.preprocess) {
         // Start the jobRun and increment the jobCount
-        await this.#prismaClient.jobRun.update({
+        return await this.#prismaClient.jobRun.update({
           where: { id },
           data: {
             status: "PREPROCESSING",
-            queue: {
-              update: {
-                jobCount: {
-                  increment: 1,
-                },
-              },
-            },
             runConnections: {
               create: createRunConnections,
             },
           },
         });
-
-        return await this.#prismaClient.jobRunExecution.create({
-          data: {
-            run: {
-              connect: {
-                id,
-              },
-            },
-            status: "PENDING",
-            reason: "PREPROCESS",
-            retryLimit: PREPROCESS_RETRY_LIMIT,
-          },
-        });
       } else {
-        // Start the jobRun and increment the jobCount
-        await this.#prismaClient.jobRun.update({
+        return await this.#prismaClient.jobRun.update({
           where: { id },
           data: {
             status: "QUEUED",
@@ -100,25 +78,12 @@ export class StartRunService {
             },
           },
         });
-
-        return await this.#prismaClient.jobRunExecution.create({
-          data: {
-            run: {
-              connect: {
-                id,
-              },
-            },
-            status: "PENDING",
-            reason: "EXECUTE_JOB",
-            retryLimit: EXECUTE_JOB_RETRY_LIMIT,
-          },
-        });
       }
     };
 
-    const execution = await updateRunAndCreateExecution();
+    const updatedRun = await updateRun();
 
-    await enqueueRunExecution(execution, run.queue.id, run.queue.maxJobs, this.#prismaClient);
+    await enqueueRunExecutionV2(updatedRun, run.queue.id, run.queue.maxJobs, this.#prismaClient);
   }
 
   async #handleMissingConnections(id: string, runConnectionsByKey: RunConnectionsByKey) {
