@@ -5,7 +5,7 @@ import {
   SCHEDULED_EVENT,
   TriggerMetadata,
 } from "@trigger.dev/core";
-import { DEFAULT_MAX_CONCURRENT_RUNS } from "~/consts";
+import { DEFAULT_MAX_CONCURRENT_RUNS, MAX_CONCURRENT_RUNS_LIMIT } from "~/consts";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
@@ -189,13 +189,19 @@ export class RegisterJobService {
         name: queueName,
         maxJobs:
           typeof metadata.queue === "object"
-            ? metadata.queue.maxConcurrent || DEFAULT_MAX_CONCURRENT_RUNS
+            ? Math.min(
+                metadata.queue.maxConcurrent || DEFAULT_MAX_CONCURRENT_RUNS,
+                MAX_CONCURRENT_RUNS_LIMIT
+              )
             : DEFAULT_MAX_CONCURRENT_RUNS,
       },
       update: {
         maxJobs:
           typeof metadata.queue === "object"
-            ? metadata.queue.maxConcurrent || DEFAULT_MAX_CONCURRENT_RUNS
+            ? Math.min(
+                metadata.queue.maxConcurrent || DEFAULT_MAX_CONCURRENT_RUNS,
+                MAX_CONCURRENT_RUNS_LIMIT
+              )
             : DEFAULT_MAX_CONCURRENT_RUNS,
       },
     });

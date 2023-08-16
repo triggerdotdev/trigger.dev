@@ -16,20 +16,18 @@ for (let i = 0; i < 10; i++) {
     trigger: eventTrigger({
       name: "perf.test",
     }),
+    queue: {
+      name: "perf-test",
+      maxConcurrent: 50,
+    },
     run: async (payload, io, ctx) => {
       await io.runTask("task-1", { name: "task 1" }, async (task) => {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
         return {
           value: Math.random(),
         };
       });
 
-      await io.wait("wait-1", 1);
-
       await io.runTask("task-2", { name: "task 2" }, async (task) => {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
         return {
           value: Math.random(),
         };
