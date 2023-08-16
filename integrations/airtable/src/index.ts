@@ -12,7 +12,7 @@ export type AirtableIntegrationOptions = {
   token?: string;
 };
 
-export class Airtable implements TriggerIntegration<IntegrationClient<AirtableSDK, typeof tasks>> {
+export class Airtable implements TriggerIntegration {
   client: IntegrationClient<AirtableSDK, typeof tasks>;
 
   constructor(private options: Prettify<AirtableIntegrationOptions>) {
@@ -44,6 +44,10 @@ export class Airtable implements TriggerIntegration<IntegrationClient<AirtableSD
       },
       tasks,
     };
+  }
+
+  get authSource() {
+    return this.options.token ? ("LOCAL" as const) : ("HOSTED" as const);
   }
 
   get id() {

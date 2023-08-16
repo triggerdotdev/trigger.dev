@@ -26,7 +26,7 @@ import {
 } from "@trigger.dev/core";
 import { ApiClient } from "./apiClient";
 import { CanceledWithTaskError, ResumeWithTaskError, RetryWithTaskError } from "./errors";
-import { IntegrationClient, TriggerIntegration } from "./integrations";
+import { TriggerIntegration } from "./integrations";
 import { IO } from "./io";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { Job, JobOptions } from "./job";
@@ -844,7 +844,7 @@ export class TriggerClient {
 
   defineJob<
     TTrigger extends Trigger<EventSpecification<any>>,
-    TIntegrations extends Record<string, TriggerIntegration<IntegrationClient<any, any>>> = {},
+    TIntegrations extends Record<string, TriggerIntegration> = {},
   >(options: JobOptions<TTrigger, TIntegrations>) {
     return new Job<TTrigger, TIntegrations>(this, options);
   }

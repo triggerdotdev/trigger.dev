@@ -1,73 +1,18 @@
-import { ConnectionAuth, IntegrationMetadata, RunTaskOptions, ServerTask } from "@trigger.dev/core";
-import { IO, IOTask } from "./io";
-
-type IntegrationRunTaskFunction<TClient> = <TResult>(
-  key: string | any[],
-  callback: (client: TClient, task: IOTask, io: IO) => Promise<TResult>,
-  options?: RunTaskOptions
-) => Promise<TResult>;
+import { ConnectionAuth, IntegrationMetadata } from "@trigger.dev/core";
+import { IO } from "./io";
 
 export type ClientFactory<TClient> = (auth: ConnectionAuth) => TClient;
 
-export interface TriggerIntegration<
-  TIntegrationClient extends IntegrationClient<any, any> = IntegrationClient<any, any>,
-> {
-  client: TIntegrationClient;
+export interface TriggerIntegration {
   id: string;
   metadata: IntegrationMetadata;
+  authSource: "LOCAL" | "HOSTED";
 }
 
-// export type IntegrationTask<TParams
+//todo options.integration.authSource = "LOCAL" | "HOSTED"
+//todo an integration will get given the auth, in constructor directly via an API key, or from in each task
 
-export type IntegrationClient<TClient, TTasks extends Record<string, any>> =
-  | {
-      usesLocalAuth: true;
-      client: TClient;
-      tasks?: TTasks;
-      auth: any;
-    }
-  | {
-      usesLocalAuth: false;
-      clientFactory: ClientFactory<TClient>;
-      tasks?: TTasks;
-    };
-
-type ExtractIntegrationClientClient<TIntegrationClient extends IntegrationClient<any, any>> =
-  TIntegrationClient extends {
-    usesLocalAuth: true;
-    client: infer TClient;
-  }
-    ? {
-        client: TClient;
-        runTask: IntegrationRunTaskFunction<TClient>;
-      }
-    : TIntegrationClient extends {
-        usesLocalAuth: false;
-        clientFactory: ClientFactory<infer TClient>;
-      }
-    ? {
-        client: TClient;
-        runTask: IntegrationRunTaskFunction<TClient>;
-      }
-    : never;
-
-type ExtractIntegrationClient<TIntegrationClient extends IntegrationClient<any, any>> =
-  ExtractIntegrationClientClient<TIntegrationClient> & { tasks: TIntegrationClient["tasks"] };
-
-export type IntegrationIO<TIntegration extends TriggerIntegration<IntegrationClient<any, any>>> =
-  ExtractIntegrationClient<TIntegration["client"]>;
-
-type ExtractIntegrations<
-  TIntegrations extends Record<string, TriggerIntegration<IntegrationClient<any, any>>>,
-> = {
-  [key in keyof TIntegrations]: ExtractIntegrationClient<TIntegrations[key]["client"]>;
-};
-
-export type IOWithIntegrations<
-  TIntegrations extends Record<string, TriggerIntegration<IntegrationClient<any, any>>>,
-> = IO & ExtractIntegrations<TIntegrations>;
+export type IOWithIntegrations<TIntegrations extends Record<string, TriggerIntegration>> = IO &
+  TIntegrations;
 
 export type IntegrationTaskKey = string | any[];
-
-export type IOWithIntegration<TriggerIntegration> = IO &
-  ExtractIntegrationClientClient<TriggerIntegration>;
