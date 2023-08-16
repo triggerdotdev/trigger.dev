@@ -1,10 +1,5 @@
 import { ConnectionAuth, RunTaskOptions } from "@trigger.dev/core";
-import {
-  AuthenticatedTask,
-  IOWithIntegrations,
-  IntegrationClient,
-  TriggerIntegration,
-} from "./integrations";
+import { IOWithIntegrations, IntegrationClient, TriggerIntegration } from "./integrations";
 import { IO } from "./io";
 
 export function createIOWithIntegrations<
@@ -63,24 +58,9 @@ export function createIOWithIntegrations<
     };
 
     if (integration.client.tasks) {
-      const tasks: Record<string, AuthenticatedTask<any, any, any, any>> = integration.client.tasks;
-
+      const tasks: Record<string, any> = integration.client.tasks;
       Object.keys(tasks).forEach((taskName) => {
-        const authenticatedTask = tasks[taskName];
-
-        ioConnection[taskName] = async (key: string | string[], params: any) => {
-          const options = authenticatedTask.init(params);
-          options.connectionKey = connectionKey;
-
-          return await io.runTask(
-            key,
-            options,
-            async (ioTask) => {
-              return authenticatedTask.run(params, client, ioTask, io, auth);
-            },
-            authenticatedTask.onError
-          );
-        };
+        ioConnection[taskName] = tasks[taskName];
       });
     }
 
