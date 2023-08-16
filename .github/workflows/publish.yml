@@ -169,7 +169,7 @@ jobs:
             fi
             echo "IMAGE_TAG=${IMAGE_TAG}"
           elif [[ $GITHUB_REF == refs/heads/improvements/* ]]; then
-            ORIGINAL_VERSION="${IMAGE_BRANCH#improvements/}"
+            ORIGINAL_VERSION="${GITHUB_REF#refs/heads/improvements/}"
             IMAGE_TAG="${ORIGINAL_VERSION}.rc"
             echo "IMAGE_TAG=${IMAGE_TAG}"
           elif [[ $GITHUB_REF == refs/heads/* ]]; then
