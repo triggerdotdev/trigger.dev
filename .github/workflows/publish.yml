@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - improvements/*
     tags:
       - "v.docker.*"
     paths:
@@ -166,6 +167,10 @@ jobs:
               ORIGINAL_VERSION="${IMAGE_TAG#v.docker.}"
               IMAGE_TAG="v${ORIGINAL_VERSION}"
             fi
+            echo "IMAGE_TAG=${IMAGE_TAG}"
+          elif [[ $GITHUB_REF == refs/heads/improvements/* ]]; then
+            ORIGINAL_VERSION="${IMAGE_BRANCH#improvements/}"
+            IMAGE_TAG="${ORIGINAL_VERSION}.rc"
             echo "IMAGE_TAG=${IMAGE_TAG}"
           elif [[ $GITHUB_REF == refs/heads/* ]]; then
             IMAGE_TAG="${GITHUB_REF#refs/heads/}"
