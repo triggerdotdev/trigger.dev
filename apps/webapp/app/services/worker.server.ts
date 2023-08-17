@@ -111,6 +111,7 @@ export async function init() {
 
 function getWorkerQueue() {
   return new ZodWorker({
+    name: "workerQueue",
     prisma,
     runnerOptions: {
       connectionString: env.DATABASE_URL,
@@ -260,6 +261,7 @@ function getWorkerQueue() {
 
 function getExecutionWorkerQueue() {
   return new ZodWorker({
+    name: "executionWorker",
     prisma,
     runnerOptions: {
       connectionString: env.DATABASE_URL,

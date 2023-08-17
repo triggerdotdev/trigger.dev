@@ -82,6 +82,7 @@ export type ZodWorkerDequeueOptions = {
 };
 
 export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
+  name: string;
   runnerOptions: RunnerOptions;
   prisma: PrismaClient;
   schema: TMessageCatalog;
@@ -90,6 +91,7 @@ export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
 };
 
 export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
+  #name: string;
   #schema: TMessageCatalog;
   #prisma: PrismaClient;
   #runnerOptions: RunnerOptions;
@@ -98,6 +100,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   #runner?: GraphileRunner;
 
   constructor(options: ZodWorkerOptions<TMessageCatalog>) {
+    this.#name = options.name;
     this.#schema = options.schema;
     this.#prisma = options.prisma;
     this.#runnerOptions = options.runnerOptions;
@@ -110,7 +113,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       return true;
     }
 
-    logger.debug("Initializing worker queue with options", {
+    this.#logDebug("Initializing worker queue with options", {
       runnerOptions: this.#runnerOptions,
     });
 
@@ -126,7 +129,59 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       throw new Error("Failed to initialize worker queue");
     }
 
+    this.#runner?.events.on("pool:create", ({ workerPool }) => {
+      this.#logDebug("pool:create");
+    });
+
+    this.#runner?.events.on("pool:listen:connecting", ({ workerPool, attempts }) => {
+      this.#logDebug("pool:create", { attempts });
+    });
+
+    this.#runner?.events.on("pool:listen:success", ({ workerPool, client }) => {
+      this.#logDebug("pool:listen:success");
+    });
+
+    this.#runner?.events.on("pool:listen:error", ({ error }) => {
+      this.#logDebug("pool:listen:error", { error });
+    });
+
+    this.#runner?.events.on("pool:gracefulShutdown", ({ message }) => {
+      this.#logDebug("pool:gracefulShutdown", { workerMessage: message });
+    });
+
+    this.#runner?.events.on("pool:gracefulShutdown:error", ({ error }) => {
+      this.#logDebug("pool:gracefulShutdown:error", { error });
+    });
+
+    this.#runner?.events.on("worker:create", ({ worker }) => {
+      this.#logDebug("worker:create", { workerId: worker.workerId });
+    });
+
+    this.#runner?.events.on("worker:release", ({ worker }) => {
+      this.#logDebug("worker:release", { workerId: worker.workerId });
+    });
+
+    this.#runner?.events.on("worker:stop", ({ worker, error }) => {
+      this.#logDebug("worker:stop", { workerId: worker.workerId, error });
+    });
+
+    this.#runner?.events.on("worker:fatalError", ({ worker, error, jobError }) => {
+      this.#logDebug("worker:fatalError", { workerId: worker.workerId, error, jobError });
+    });
+
+    this.#runner?.events.on("gracefulShutdown", ({ signal }) => {
+      this.#logDebug("gracefulShutdown", { signal });
+    });
+
+    this.#runner?.events.on("stop", () => {
+      this.#logDebug("stop");
+    });
+
     return true;
+  }
+
+  #logDebug(message: string, args?: any) {
+    logger.debug(`[worker][${this.#name}] ${message}`, args);
   }
 
   public async stop() {
