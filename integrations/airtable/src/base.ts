@@ -87,13 +87,13 @@ export class Table<TFields extends AirtableFieldSet> {
         params: records,
         properties: [
           ...tableParams({ baseId: this.baseId, tableName: this.tableName }),
-          { label: "Records", text: records.length.toString() },
+          { label: "Created records", text: records.length.toString() },
         ],
       }
     );
   }
 
-  update(key: IntegrationTaskKey, records: { id: string; fields: Partial<TFields> }[]) {
+  updateRecords(key: IntegrationTaskKey, records: { id: string; fields: Partial<TFields> }[]) {
     return this.runTask(
       key,
       async (client) => {
@@ -108,7 +108,28 @@ export class Table<TFields extends AirtableFieldSet> {
         params: records,
         properties: [
           ...tableParams({ baseId: this.baseId, tableName: this.tableName }),
-          { label: "Records", text: records.length.toString() },
+          { label: "Updated records", text: records.length.toString() },
+        ],
+      }
+    );
+  }
+
+  deleteRecords(key: IntegrationTaskKey, recordIds: string[]) {
+    return this.runTask(
+      key,
+      async (client) => {
+        const result = await client
+          .base(this.baseId)
+          .table<TFields>(this.tableName)
+          .destroy(recordIds);
+        return result.map((record) => toSerializableRecord<TFields>(record));
+      },
+      {
+        name: "Delete Records",
+        params: { recordIds },
+        properties: [
+          ...tableParams({ baseId: this.baseId, tableName: this.tableName }),
+          { label: "Deleted records", text: recordIds.length.toString() },
         ],
       }
     );

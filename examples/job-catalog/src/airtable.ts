@@ -56,12 +56,19 @@ client.defineJob({
       },
     ]);
 
-    const updatedRecords = await table.update(
+    const updatedRecords = await table.updateRecords(
       "update records",
       newRecords.map((record) => ({
         id: record.id,
         fields: { Status: "At risk" },
       }))
+    );
+
+    await io.wait("5 secs", 5);
+
+    const deletedRecords = await table.deleteRecords(
+      "delete records",
+      updatedRecords.map((record) => record.id)
     );
   },
 });
