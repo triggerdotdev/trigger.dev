@@ -1,5 +1,6 @@
 import { ConnectionAuth, IntegrationMetadata } from "@trigger.dev/core";
 import { IO } from "./io";
+import { Prettify } from "@trigger.dev/core";
 export type { ConnectionAuth } from "@trigger.dev/core";
 
 export interface TriggerIntegration {
@@ -15,7 +16,7 @@ export interface TriggerIntegration {
 
 //This strips the internal properties from the integrations
 type OmitInternalProperties<T> = {
-  [P in keyof T]: Omit<T[P], "_options" | "_client" | "_io" | "cloneForRun">;
+  [P in keyof T]: Prettify<Omit<T[P], "_options" | "_client" | "_io" | "cloneForRun">>;
 };
 
 export type IOWithIntegrations<TIntegrations extends Record<string, TriggerIntegration>> = IO &
