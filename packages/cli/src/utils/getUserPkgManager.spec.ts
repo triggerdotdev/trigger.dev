@@ -64,7 +64,7 @@ describe(getUserPackageManager.name, () => {
     });
   });
   
-  describe(`if doesn't found a artifacts, should use process.env.npm_config_user_agent to detect package manager`, () => {
+  describe(`if doesn't found artifacts, should use process.env.npm_config_user_agent to detect package manager`, () => {
     beforeEach(() => {
       (pathExists as jest.Mock).mockResolvedValue(false);
     })
