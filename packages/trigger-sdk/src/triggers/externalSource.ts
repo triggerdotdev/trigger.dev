@@ -12,7 +12,7 @@ import {
   UpdateTriggerSourceBody,
   deepMergeFilters,
 } from "@trigger.dev/core";
-import { IOWithIntegrations, IntegrationClient, TriggerIntegration } from "../integrations";
+import { IOWithIntegrations, TriggerIntegration } from "../integrations";
 import { IO } from "../io";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
@@ -69,7 +69,7 @@ type RegisterFunctionEvent<TChannel extends ChannelNames, TParams extends any> =
 };
 
 type RegisterFunction<
-  TIntegration extends TriggerIntegration<IntegrationClient<any, any>>,
+  TIntegration extends TriggerIntegration,
   TParams extends any,
   TChannel extends ChannelNames,
 > = (
@@ -93,7 +93,7 @@ type FilterFunction<TParams extends any> = (params: TParams) => EventFilter;
 
 type ExternalSourceOptions<
   TChannel extends ChannelNames,
-  TIntegration extends TriggerIntegration<IntegrationClient<any, any>>,
+  TIntegration extends TriggerIntegration,
   TParams extends any,
 > = {
   id: string;
@@ -108,7 +108,7 @@ type ExternalSourceOptions<
 };
 
 export class ExternalSource<
-  TIntegration extends TriggerIntegration<IntegrationClient<any, any>>,
+  TIntegration extends TriggerIntegration,
   TParams extends any,
   TChannel extends ChannelNames = ChannelNames,
 > {

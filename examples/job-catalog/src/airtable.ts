@@ -43,25 +43,21 @@ client.defineJob({
     airtable,
   },
   run: async (payload, io, ctx) => {
-    const records1 = io.airtable.tasks?.base(payload.baseId).table<LaunchGoalsAndOkRs>(payload.tableName).getRecords("whatever", {}, io);
+    // const records1 = io.airtable.tasks?.base(payload.baseId).table<LaunchGoalsAndOkRs>(payload.tableName).getRecords("whatever", {}, io);
 
-    const records = await io.airtable
-      .tasks?
-      .base(payload.baseId)
-      .table<LaunchGoalsAndOkRs>("customers")
-      .getRecords("whatever", {
-        where: {
-          createdAt: {
-            lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-          },
-        },
-      });
+    // const records = await io.airtable
+    //   .base(payload.baseId)
+    //   .table<LaunchGoalsAndOkRs>("customers")
+    //   .getRecords("whatever", {
+    //     where: {
+    //       createdAt: {
+    //         lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+    //       },
+    //     },
+    //   });
+
+    const records = await io.airtable.getRecords("whatever", payload.baseId, payload.tableName);
   },
 });
-
-// 1. Type-level: Update IOWithIntegrations to just infer io.airtable to be the same type as integrations.airtable
-// 2. Inject the io and the auth into the integration when calling io.airtable
-// 3. Airtable integration will need to call io.runTask
-// 4. All other integrations will need updating
 
 createExpressServer(client);

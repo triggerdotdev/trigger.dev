@@ -1,7 +1,7 @@
-import AirtableSDK from "airtable";
-import type { TriggerIntegration } from "@trigger.dev/sdk";
-import * as tasks from "./tasks";
 import { Prettify } from "@trigger.dev/integration-kit";
+import type { ConnectionAuth, IO, IntegrationTaskKey, TriggerIntegration } from "@trigger.dev/sdk";
+import AirtableSDK, { FieldSet } from "airtable";
+import { AirtableFieldSet } from "./types";
 
 export * from "./types";
 
@@ -13,15 +13,16 @@ export type AirtableIntegrationOptions = {
 };
 
 export class Airtable implements TriggerIntegration {
-  //todo can I have a private property here?
-  #options: AirtableIntegrationOptions;
+  _options: AirtableIntegrationOptions;
+  _client?: AirtableSDK;
+  _io?: IO;
 
   constructor(private options: Prettify<AirtableIntegrationOptions>) {
     if (Object.keys(options).includes("token") && !options.token) {
       throw `Can't create Airtable integration (${options.id}) as token was passed in but undefined`;
     }
 
-    this.#options = options;
+    this._options = options;
   }
 
   get authSource() {
@@ -36,18 +37,39 @@ export class Airtable implements TriggerIntegration {
     return { id: "airtable", name: "Airtable" };
   }
 
-  getClient(): AirtableSDK {
-    if (this.#options.token) {
-      const client = new AirtableSDK({
-        apiKey: this.#options.token,
-      });
+  get client(): AirtableSDK {
+    if (!this._client) throw new Error("No client");
+    return this._client;
+  }
 
-      return client;
+  get io(): IO {
+    if (!this._io) throw new Error("No IO");
+    return this._io;
+  }
+
+  cloneForRun(io: IO, auth?: ConnectionAuth) {
+    const airtable = new Airtable(this._options);
+    airtable._io = io;
+    if (auth) {
+      airtable._client = new AirtableSDK({
+        apiKey: auth.accessToken,
+      });
     }
 
-    //todo get the auth details and create the client
-    return new AirtableSDK({
-      apiKey: auth.accessToken,
+    if (this._options.token) {
+      airtable._client = new AirtableSDK({
+        apiKey: this._options.token,
+      });
+    }
+
+    return airtable;
+  }
+
+  getRecords(key: IntegrationTaskKey, baseId: string, tableName: string) {
+    return this.io.runTask(key, { name: "Get record" }, async () => {
+      const result = await this.client.base(baseId).table(tableName).select().all();
+      const fields = result.map((record) => record.fields);
+      return fields as AirtableFieldSet[];
     });
   }
 }

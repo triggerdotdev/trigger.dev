@@ -1,16 +1,13 @@
 import { ConnectionAuth, IntegrationMetadata } from "@trigger.dev/core";
 import { IO } from "./io";
+export type { ConnectionAuth } from "@trigger.dev/core";
 
-export type ClientFactory<TClient> = (auth: ConnectionAuth) => TClient;
-
-export interface TriggerIntegration {
+export interface TriggerIntegration extends Object {
   id: string;
   metadata: IntegrationMetadata;
   authSource: "LOCAL" | "HOSTED";
+  cloneForRun: (io: IO, auth?: ConnectionAuth) => TriggerIntegration;
 }
-
-//todo options.integration.authSource = "LOCAL" | "HOSTED"
-//todo an integration will get given the auth, in constructor directly via an API key, or from in each task
 
 export type IOWithIntegrations<TIntegrations extends Record<string, TriggerIntegration>> = IO &
   TIntegrations;

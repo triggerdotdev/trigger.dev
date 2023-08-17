@@ -12,16 +12,25 @@ export function createIOWithIntegrations<TIntegrations extends Record<string, Tr
     return io as IOWithIntegrations<TIntegrations>;
   }
 
-  const connections = Object.entries(integrations).reduce((acc, [connectionKey, integration]) => {
-    let auth = auths?.[connectionKey];
+  const connections = Object.entries(integrations).reduce(
+    (acc, [connectionKey, integration]) => {
+      let auth = auths?.[connectionKey];
 
-    acc[connectionKey] = {
-      integration,
-      auth,
-    };
+      acc[connectionKey] = {
+        integration,
+        auth,
+      };
 
-    return acc;
-  }, {} as any);
+      return acc;
+    },
+    {} as Record<
+      string,
+      {
+        integration: TriggerIntegration;
+        auth?: ConnectionAuth;
+      }
+    >
+  );
 
   return new Proxy(io, {
     get(target, prop, receiver) {
@@ -30,15 +39,9 @@ export function createIOWithIntegrations<TIntegrations extends Record<string, Tr
         return io;
       }
 
-      if (prop in connections) {
+      if (typeof prop === "string" && prop in connections) {
         const { integration, auth } = connections[prop];
-        const asyncLocalStorage = new AsyncLocalStorage();
-        asyncLocalStorage.run({ auth, io }, () => {
-          //you can only access the auth and io from local store inside here… AND only if you have a reference to the store
-        });
-
-        //we could have an asyncLocalStorage somewhere that can be access from the integration? But it'd have to be global in some way
-        return integration;
+        return integration.cloneForRun(io, auth);
       }
 
       const value = Reflect.get(target, prop, receiver);
