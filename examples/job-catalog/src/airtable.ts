@@ -47,8 +47,8 @@ client.defineJob({
 
     const records = await io.airtable
       .base(payload.baseId)
-      .table(payload.tableName)
-      .getRecords<LaunchGoalsAndOkRs>("nested", { fields: ["Status"] });
+      .table<LaunchGoalsAndOkRs>(payload.tableName)
+      .getRecords("nested", { fields: ["Status"] });
 
     await io.logger.log(records[0].Status ?? "no status");
   },

@@ -19,12 +19,12 @@ export class Base {
     this.baseId = baseId;
   }
 
-  table(tableName: string) {
-    return new Table(this.runTask, this.baseId, tableName);
+  table<TFields extends AirtableFieldSet>(tableName: string) {
+    return new Table<TFields>(this.runTask, this.baseId, tableName);
   }
 }
 
-export class Table {
+export class Table<TFields extends AirtableFieldSet> {
   runTask: AirtableRunTask;
   baseId: string;
   tableName: string;
@@ -34,11 +34,8 @@ export class Table {
     this.baseId = baseId;
     this.tableName = tableName;
   }
-  // params?: QueryParams<TFields>
-  getRecords<TFields extends AirtableFieldSet>(
-    key: IntegrationTaskKey,
-    params?: SelectOptions<TFields>
-  ) {
+
+  getRecords(key: IntegrationTaskKey, params?: SelectOptions<TFields>) {
     return this.runTask(
       key,
       async (client) => {
