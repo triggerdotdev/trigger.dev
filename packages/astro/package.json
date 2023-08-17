@@ -1,0 +1,31 @@
+{
+  "name": "@trigger.dev/astro",
+  "description": "An Astro-native integration for Trigger.dev background jobs platform",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "main.js",
+  "scripts": {},
+  "peerDependencies": {
+    "@trigger.dev/sdk": "workspace:^2.0.9",
+    "astro": "^2.10.7"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lirantal/triggerdev-astro-integration.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lirantal/triggerdev-astro-integration/issues"
+  },
+  "homepage": "https://github.com/lirantal/triggerdev-astro-integration#readme",
+  "author": {
+    "name": "Liran Tal",
+    "email": "liran.tal@gmail.com"
+  }
+}
