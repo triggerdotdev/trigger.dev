@@ -46,9 +46,14 @@ client.defineJob({
     const records = await io.airtable
       .base(payload.baseId)
       .table<LaunchGoalsAndOkRs>(payload.tableName)
-      .getRecords("nested", { fields: ["Status"] });
+      .getRecords("muliple records", { fields: ["Status"] });
 
-    await io.logger.log(records[0].Status ?? "no status");
+    await io.logger.log(records[0].fields.Status ?? "no status");
+
+    const aRecord = await io.airtable
+      .base(payload.baseId)
+      .table<LaunchGoalsAndOkRs>(payload.tableName)
+      .getRecord("single", records[0].id);
   },
 });
 

@@ -1,6 +1,6 @@
 import { DisplayProperty, IOWithIntegrations, IntegrationTaskKey } from "@trigger.dev/sdk";
 import { FieldSet, Records, SelectOptions } from "airtable";
-import { AirtableFieldSet, AirtableRunTask } from ".";
+import { AirtableFieldSet, AirtableRecord, AirtableRunTask } from ".";
 import { QueryParams } from "airtable/lib/query_params";
 
 type TableParams<Params extends Record<string, unknown>> = {
@@ -44,13 +44,39 @@ export class Table<TFields extends AirtableFieldSet> {
           .table<TFields>(this.tableName)
           .select(params)
           .all();
-        const fields = result.map((record) => record.fields);
-        return fields as TFields[];
+        const records = result.map((record) => ({
+          id: record.id,
+          fields: record.fields,
+          commentCount: record.commentCount,
+        }));
+        return records as AirtableRecord<TFields>[];
       },
       {
         name: "Get Records",
         params,
         properties: [...tableParams({ baseId: this.baseId, tableName: this.tableName })],
+      }
+    );
+  }
+
+  getRecord(key: IntegrationTaskKey, recordId: string) {
+    return this.runTask(
+      key,
+      async (client) => {
+        const result = await client.base(this.baseId).table<TFields>(this.tableName).find(recordId);
+        return {
+          id: result.id,
+          fields: result.fields,
+          commentCount: result.commentCount,
+        } as AirtableRecord<TFields>;
+      },
+      {
+        name: "Get Record",
+        params: { recordId },
+        properties: [
+          ...tableParams({ baseId: this.baseId, tableName: this.tableName }),
+          { label: "Record", text: recordId },
+        ],
       }
     );
   }

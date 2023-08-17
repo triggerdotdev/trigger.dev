@@ -36,3 +36,9 @@ export type Thumbnail = {
   width: number;
   height: number;
 };
+
+export type AirtableRecord<TFields extends AirtableFieldSet> = {
+  id: string;
+  fields: TFields;
+  commentCount?: number;
+};
