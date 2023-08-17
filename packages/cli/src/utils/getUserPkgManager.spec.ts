@@ -65,12 +65,32 @@ describe(getUserPackageManager.name, () => {
   });
   
   describe(`if doesn't found a artifacts, should use process.env.npm_config_user_agent to detect package manager`, () => {
-    it.todo('should return "yarn" if process.env.npm_config_user_agent starts with "yarn"');
+    beforeEach(() => {
+      (pathExists as jest.Mock).mockResolvedValue(false);
+    })
 
-    it.todo('should return "pnpm" if process.env.npm_config_user_agent starts with "pnpm"');
+    it('should return "yarn" if process.env.npm_config_user_agent starts with "yarn"', async () => {
+      process.env.npm_config_user_agent = 'yarn';
 
-    it.todo('if doesn\'t start with "yarn" or "pnpm", should return "npm"');
+      expect(await getUserPackageManager(path)).toBe('yarn');
+    });
 
-    it.todo('should return "npm" if process.env.npm_config_user_agent is not set');
+    it('should return "pnpm" if process.env.npm_config_user_agent starts with "pnpm"', async () => {
+      process.env.npm_config_user_agent = 'pnpm';
+
+      expect(await getUserPackageManager(path)).toBe('pnpm');
+    });
+
+    it('if doesn\'t start with "yarn" or "pnpm", should return "npm"', async () => {
+      process.env.npm_config_user_agent = randomUUID();
+
+      expect(await getUserPackageManager(path)).toBe('npm');
+    });
+
+    it('should return "npm" if process.env.npm_config_user_agent is not set', async () => {
+      delete process.env.npm_config_user_agent;
+
+      expect(await getUserPackageManager(path)).toBe('npm');
+    });
   });
 })
