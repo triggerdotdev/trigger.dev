@@ -1,5 +1,5 @@
 import AirtableSDK from "airtable";
-import type { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
+import type { TriggerIntegration } from "@trigger.dev/sdk";
 import * as tasks from "./tasks";
 import { Prettify } from "@trigger.dev/integration-kit";
 
@@ -13,37 +13,15 @@ export type AirtableIntegrationOptions = {
 };
 
 export class Airtable implements TriggerIntegration {
-  client: IntegrationClient<AirtableSDK, typeof tasks>;
+  //todo can I have a private property here?
+  #options: AirtableIntegrationOptions;
 
   constructor(private options: Prettify<AirtableIntegrationOptions>) {
     if (Object.keys(options).includes("token") && !options.token) {
       throw `Can't create Airtable integration (${options.id}) as token was passed in but undefined`;
     }
 
-    if (options.token) {
-      const client = new AirtableSDK({
-        apiKey: options.token,
-      });
-
-      this.client = {
-        usesLocalAuth: true,
-        client,
-        tasks,
-        auth: options.token,
-      };
-
-      return;
-    }
-
-    this.client = {
-      usesLocalAuth: false,
-      clientFactory: (auth) => {
-        return new AirtableSDK({
-          apiKey: auth.accessToken,
-        });
-      },
-      tasks,
-    };
+    this.#options = options;
   }
 
   get authSource() {
@@ -56,5 +34,20 @@ export class Airtable implements TriggerIntegration {
 
   get metadata() {
     return { id: "airtable", name: "Airtable" };
+  }
+
+  getClient(): AirtableSDK {
+    if (this.#options.token) {
+      const client = new AirtableSDK({
+        apiKey: this.#options.token,
+      });
+
+      return client;
+    }
+
+    //todo get the auth details and create the client
+    return new AirtableSDK({
+      apiKey: auth.accessToken,
+    });
   }
 }
