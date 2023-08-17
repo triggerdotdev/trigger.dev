@@ -166,6 +166,7 @@ function filterKeys(obj: unknown, keys: string[]): any {
 
   for (const [key, value] of Object.entries(obj)) {
     if (keys.includes(key)) {
+      filteredObj[key] = `[filtered ${prettyPrintBytes(value)}]`;
       continue;
     }
 
@@ -173,4 +174,26 @@ function filterKeys(obj: unknown, keys: string[]): any {
   }
 
   return filteredObj;
+}
+
+function prettyPrintBytes(value: unknown): string {
+  if (process.env.NODE_ENV === "production") {
+    return "skipped size";
+  }
+
+  const sizeInBytes = Buffer.byteLength(JSON.stringify(value), "utf8");
+
+  if (sizeInBytes < 1024) {
+    return `${sizeInBytes} bytes`;
+  }
+
+  if (sizeInBytes < 1024 * 1024) {
+    return `${(sizeInBytes / 1024).toFixed(2)} KB`;
+  }
+
+  if (sizeInBytes < 1024 * 1024 * 1024) {
+    return `${(sizeInBytes / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
+  return `${(sizeInBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
