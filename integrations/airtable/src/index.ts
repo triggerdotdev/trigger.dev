@@ -24,9 +24,9 @@ export type AirtableIntegrationOptions = {
 export type AirtableRunTask = InstanceType<typeof Airtable>["runTask"];
 
 export class Airtable implements TriggerIntegration {
-  _options: AirtableIntegrationOptions;
-  _client?: AirtableSDK;
-  _io?: IO;
+  private _options: AirtableIntegrationOptions;
+  private _client?: AirtableSDK;
+  private _io?: IO;
 
   constructor(options: Prettify<AirtableIntegrationOptions>) {
     if (Object.keys(options).includes("token") && !options.token) {
