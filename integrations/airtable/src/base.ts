@@ -1,6 +1,7 @@
 import { DisplayProperty, IOWithIntegrations, IntegrationTaskKey } from "@trigger.dev/sdk";
-import { FieldSet, Records } from "airtable";
+import { FieldSet, Records, SelectOptions } from "airtable";
 import { AirtableFieldSet, AirtableRunTask } from ".";
+import { QueryParams } from "airtable/lib/query_params";
 
 type TableParams<Params extends Record<string, unknown>> = {
   tableName: string;
@@ -33,14 +34,21 @@ export class Table {
     this.baseId = baseId;
     this.tableName = tableName;
   }
-
-  getRecords(key: IntegrationTaskKey, params?: {}) {
+  // params?: QueryParams<TFields>
+  getRecords<TFields extends AirtableFieldSet>(
+    key: IntegrationTaskKey,
+    params?: SelectOptions<TFields>
+  ) {
     return this.runTask(
       key,
       async (client) => {
-        const result = await client.base(this.baseId).table(this.tableName).select().all();
+        const result = await client
+          .base(this.baseId)
+          .table<TFields>(this.tableName)
+          .select(params)
+          .all();
         const fields = result.map((record) => record.fields);
-        return fields as AirtableFieldSet[];
+        return fields as TFields[];
       },
       {
         name: "Get Records",
