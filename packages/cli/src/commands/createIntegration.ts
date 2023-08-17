@@ -99,7 +99,7 @@ export async function createIntegrationCommand(path: string, cliOptions: any) {
     publishConfig: {
       access: "public",
     },
-    files: ["dist/index", "dist/index.d.ts", "dist/index.js.map"],
+    files: ["dist/index.js", "dist/index.d.ts", "dist/index.js.map"],
     devDependencies: {
       "@types/node": "16.x",
       rimraf: "^3.0.2",
