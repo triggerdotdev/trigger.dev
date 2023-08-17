@@ -83,7 +83,7 @@ export class Airtable implements TriggerIntegration {
   ) {
     return this.io.runTask<TResult>(
       key,
-      options,
+      { icon: "airtable", ...options, connectionKey: this.id },
       (task, io) => callback(this.client, task, io),
       errorCallback
     );
