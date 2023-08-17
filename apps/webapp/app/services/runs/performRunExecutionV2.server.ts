@@ -1,5 +1,6 @@
 import {
   ApiEventLogSchema,
+  CachedTask,
   CachedTaskSchema,
   RunJobError,
   RunJobResumeWithTask,
@@ -18,6 +19,7 @@ import { EndpointApi } from "../endpointApi.server";
 import { logger } from "../logger.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
+type FoundTask = FoundRun["tasks"][number];
 
 // Run starts in PENDING status in CreateRunService which is called from InvokeDispatcherService
 // CreateRunService enqueues a job to StartRunService
@@ -231,10 +233,7 @@ export class PerformRunExecutionV2Service {
         : undefined,
       connections: connections.auth,
       source: sourceContext.success ? sourceContext.data : undefined,
-      tasks: [run.tasks, resumedTask]
-        .flat()
-        .filter(Boolean)
-        .map((t) => CachedTaskSchema.parse(t)),
+      tasks: prepareTasksForRun([run.tasks, resumedTask].flat().filter(Boolean)),
     });
 
     if (!response) {
@@ -492,6 +491,84 @@ export class PerformRunExecutionV2Service {
   async #cancelExecution(run: FoundRun) {
     return;
   }
+}
+
+function prepareTasksForRun(tasks: FoundTask[]): CachedTask[] {
+  // We need to limit the cached tasks to not be too large >3.5MB when serialized
+  const TOTAL_CACHED_TASK_BYTE_LIMIT = 3500000;
+
+  const cachedTasks = new Map<string, CachedTask>(); // Cache for prepared tasks
+  const cachedTaskSizes = new Map<string, number>(); // Cache for calculated task sizes
+
+  // Helper function to get the cached prepared task, or prepare and cache if not already cached
+  function getCachedTask(task: FoundTask): CachedTask {
+    const taskId = task.id;
+    if (!cachedTasks.has(taskId)) {
+      cachedTasks.set(taskId, prepareTaskForRun(task));
+    }
+    return cachedTasks.get(taskId)!;
+  }
+
+  // Helper function to get the cached task size, or calculate and cache if not already cached
+  function getCachedTaskSize(task: CachedTask): number {
+    const taskId = task.id;
+    if (!cachedTaskSizes.has(taskId)) {
+      cachedTaskSizes.set(taskId, calculateCachedTaskSize(task));
+    }
+    return cachedTaskSizes.get(taskId)!;
+  }
+
+  // Create a dynamic programming array to store intermediate results
+  const dp: number[][] = [];
+  for (let i = 0; i <= tasks.length; i++) {
+    dp[i] = [];
+    for (let j = 0; j <= TOTAL_CACHED_TASK_BYTE_LIMIT; j++) {
+      dp[i][j] = 0;
+    }
+  }
+
+  // Fill the dynamic programming array
+  for (let i = 1; i <= tasks.length; i++) {
+    const task = tasks[i - 1];
+    const cachedTask = getCachedTask(task);
+    const taskSize = getCachedTaskSize(cachedTask);
+    for (let j = 0; j <= TOTAL_CACHED_TASK_BYTE_LIMIT; j++) {
+      if (taskSize <= j) {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i - 1][j - taskSize] + taskSize);
+      } else {
+        dp[i][j] = dp[i - 1][j];
+      }
+    }
+  }
+
+  // Traverse the dynamic programming array to find the included tasks
+  const tasksToRun: CachedTask[] = [];
+  let j = TOTAL_CACHED_TASK_BYTE_LIMIT;
+  for (let i = tasks.length; i > 0 && j > 0; i--) {
+    if (dp[i][j] !== dp[i - 1][j]) {
+      const task = tasks[i - 1];
+      const cachedTask = getCachedTask(task);
+      tasksToRun.unshift(cachedTask);
+      j -= getCachedTaskSize(cachedTask);
+    }
+  }
+
+  return tasksToRun;
+}
+
+function prepareTaskForRun(task: FoundTask): CachedTask {
+  return {
+    id: task.id,
+    status: task.status,
+    idempotencyKey: task.idempotencyKey,
+    noop: task.noop,
+    output: task.output as any,
+    parentId: task.parentId,
+  };
+}
+
+function calculateCachedTaskSize(task: CachedTask): number {
+  return JSON.stringify(task).length;
 }
 
 async function findRun(prisma: PrismaClientOrTransaction, id: string) {
