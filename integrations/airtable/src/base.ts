@@ -37,16 +37,16 @@ export class Table {
   getRecords(key: IntegrationTaskKey, params?: {}) {
     return this.runTask(
       key,
+      async (client) => {
+        const result = await client.base(this.baseId).table(this.tableName).select().all();
+        const fields = result.map((record) => record.fields);
+        return fields as AirtableFieldSet[];
+      },
       {
         name: "Get Records",
         params,
         icon: "airtable",
         properties: [...tableParams({ baseId: this.baseId, tableName: this.tableName })],
-      },
-      async (client) => {
-        const result = await client.base(this.baseId).table(this.tableName).select().all();
-        const fields = result.map((record) => record.fields);
-        return fields as AirtableFieldSet[];
       }
     );
   }

@@ -10,7 +10,6 @@ import type {
   TriggerIntegration,
 } from "@trigger.dev/sdk";
 import AirtableSDK from "airtable";
-import { AirtableFieldSet } from "./types";
 import { Base } from "./base";
 
 export * from "./types";
@@ -79,27 +78,19 @@ export class Airtable implements TriggerIntegration {
 
   runTask<TResult extends RunTaskResult = void>(
     key: IntegrationTaskKey,
-    options: RunTaskOptions,
     callback: (client: AirtableSDK, task: IOTask, io: IO) => Promise<TResult>,
+    options?: RunTaskOptions,
     errorCallback?: RunTaskErrorCallback
   ) {
     return this.io.runTask<TResult>(
       key,
-      { icon: "airtable", ...options, connectionKey: this.id },
       (task, io) => callback(this.client, task, io),
+      { icon: "airtable", ...(options ?? {}), connectionKey: this.id },
       errorCallback
     );
   }
 
   base(baseId: string) {
     return new Base(this.runTask.bind(this), baseId);
-  }
-
-  getRecords(key: IntegrationTaskKey, baseId: string, tableName: string) {
-    return this.runTask(key, { name: "Get record" }, async (client) => {
-      const result = await client.base(baseId).table(tableName).select().all();
-      const fields = result.map((record) => record.fields);
-      return fields as AirtableFieldSet[];
-    });
   }
 }
