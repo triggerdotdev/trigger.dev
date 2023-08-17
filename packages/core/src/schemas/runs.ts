@@ -33,6 +33,15 @@ export const RunTaskSchema = z.object({
   completedAt: z.coerce.date().nullable(),
 });
 
+export type RunTaskWithSubtasks = z.infer<typeof RunTaskSchema> & {
+  /** The subtasks of the task */
+  subtasks?: RunTaskWithSubtasks[];
+};
+
+const RunTaskWithSubtasksSchema: z.ZodType<RunTaskWithSubtasks> = RunTaskSchema.extend({
+  subtasks: z.lazy(() => RunTaskWithSubtasksSchema.array()).optional(),
+});
+
 const GetRunOptionsSchema = z.object({
   /** Return subtasks, which appear in a `subtasks` array on a task. @default false */
   subtasks: z.boolean().optional(),
@@ -68,7 +77,7 @@ export const GetRunSchema = RunSchema.extend({
   /** The output of the run */
   output: z.any().optional(),
   /** The tasks from the run */
-  tasks: z.array(RunTaskSchema),
+  tasks: z.array(RunTaskWithSubtasksSchema),
   /** If there are more tasks, you can use this to get them */
   nextCursor: z.string().optional(),
 });

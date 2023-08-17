@@ -7,17 +7,17 @@ import { pathToRegexp } from "path-to-regexp";
 import { simpleGit } from "simple-git";
 import { parse } from "tsconfck";
 import { pathToFileURL } from "url";
-import { promptApiKey, promptTriggerUrl } from "../cli/index.js";
-import { CLOUD_API_URL, CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts.js";
-import { TelemetryClient, telemetryClient } from "../telemetry/telemetry.js";
-import { addDependencies } from "../utils/addDependencies.js";
-import { detectNextJsProject } from "../utils/detectNextJsProject.js";
-import { pathExists, readJSONFile } from "../utils/fileSystem.js";
-import { logger } from "../utils/logger.js";
-import { resolvePath } from "../utils/parseNameAndPath.js";
-import { renderApiKey } from "../utils/renderApiKey.js";
-import { renderTitle } from "../utils/renderTitle.js";
-import { TriggerApi, WhoamiResponse } from "../utils/triggerApi.js";
+import { promptApiKey, promptTriggerUrl } from "../cli/index";
+import { CLOUD_API_URL, CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts";
+import { TelemetryClient, telemetryClient } from "../telemetry/telemetry";
+import { addDependencies } from "../utils/addDependencies";
+import { detectNextJsProject } from "../utils/detectNextJsProject";
+import { pathExists, readJSONFile } from "../utils/fileSystem";
+import { logger } from "../utils/logger";
+import { resolvePath } from "../utils/parseNameAndPath";
+import { renderApiKey } from "../utils/renderApiKey";
+import { renderTitle } from "../utils/renderTitle";
+import { TriggerApi, WhoamiResponse } from "../utils/triggerApi";
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -567,7 +567,7 @@ async function createTriggerPageRoute(
   const { tsconfig } = await parse(tsConfigPath);
 
   const pathAlias = getPathAlias(tsconfig, usesSrcDir);
-  const routePathPrefix = pathAlias ? pathAlias + "/" : "../..";
+  const routePathPrefix = pathAlias ? pathAlias + "/" : "../../";
 
   const extension = isTypescriptProject ? ".ts" : ".js";
   const triggerFileName = `trigger${extension}`;

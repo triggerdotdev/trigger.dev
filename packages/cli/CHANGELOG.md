@@ -1,5 +1,11 @@
 # create-trigger
 
+## 2.0.9
+
+### Patch Changes
+
+- b62df731: Fixed the example Job trigger file import path when using Pages Router with no path alias
+
 ## 2.0.8
 
 ### Patch Changes
