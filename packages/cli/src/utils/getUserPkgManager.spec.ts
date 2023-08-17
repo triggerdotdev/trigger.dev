@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { pathExists } from "./fileSystem";
 import { getUserPackageManager } from "./getUserPkgManager";
-import { join } from "path";
+import * as pathModule from "path";
 
 jest.mock('path', () => ({
   join: jest.fn().mockImplementation((...paths: string[]) => paths.join('/')),
@@ -24,28 +24,44 @@ describe(getUserPackageManager.name, () => {
     it('should join the path with the artifact name', async () => {
       await getUserPackageManager(path);
 
-      expect(join).toBeCalledWith(path, 'yarn.lock');
-      expect(join).toBeCalledWith(path, 'pnpm-lock.yaml');
-      expect(join).toBeCalledWith(path, 'package-lock.json');
+      expect(pathModule.join).toBeCalledWith(path, 'yarn.lock');
+      expect(pathModule.join).toBeCalledWith(path, 'pnpm-lock.yaml');
+      expect(pathModule.join).toBeCalledWith(path, 'package-lock.json');
     });
 
     it(`should call ${pathExists.name} with the path.join result`, async () => {
       const expected = randomUUID();
 
-      (join as jest.Mock).mockReturnValue(expected);
+      (pathModule.join as jest.Mock).mockReturnValueOnce(expected);
 
       await getUserPackageManager(path);
 
       expect(pathExists).toBeCalledWith(expected);
     });
 
-    it.todo('should return "yarn" if yarn.lock exists');
+    it('should return "yarn" if yarn.lock exists', async () => {
+      (pathExists as jest.Mock).mockImplementation((path: string) => path.endsWith('yarn.lock'));
 
-    it.todo('should return "pnpm" if pnpm-lock.yaml exists');
+      expect(await getUserPackageManager(path)).toBe('yarn');
+    });
 
-    it.todo('should return "npm" if package-lock.json exists');
+    it('should return "pnpm" if pnpm-lock.yaml exists', async () => {
+      (pathExists as jest.Mock).mockImplementation(async (path: string) => path.endsWith('pnpm-lock.yaml'));
 
-    it.todo('should return "npm" if npm-shrinkwrap.json exists');
+      expect(await getUserPackageManager(path)).toBe('pnpm');
+    });
+
+    it('should return "npm" if package-lock.json exists', async () => {
+      (pathExists as jest.Mock).mockImplementation((path: string) => path.endsWith('package-lock.json'));
+
+      expect(await getUserPackageManager(path)).toBe('npm');
+    });
+
+    it('should return "npm" if npm-shrinkwrap.json exists', async () => {
+      (pathExists as jest.Mock).mockImplementation((path: string) => path.endsWith('npm-shrinkwrap.json'));
+
+      expect(await getUserPackageManager(path)).toBe('npm');
+    });
   });
   
   describe(`if doesn't found a artifacts, should use process.env.npm_config_user_agent to detect package manager`, () => {
