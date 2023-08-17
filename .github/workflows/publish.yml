@@ -96,6 +96,12 @@ jobs:
     name: e2e Tests
     runs-on: buildjet-4vcpu-ubuntu-2204
     steps:
+      - name: 🐳 Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
         with:
@@ -155,6 +161,11 @@ jobs:
       version: ${{ steps.get_version.outputs.version }}
       short_sha: ${{ steps.get_commit.outputs.sha_short }}
     steps:
+      - name: 🐳 Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
 
