@@ -38,8 +38,8 @@ const EnvironmentSchema = z.object({
   WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   EXECUTION_WORKER_CONCURRENCY: z.coerce.number().int().default(10),
   EXECUTION_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
-  WORKER_ENABLED: z.coerce.boolean().default(true),
-  EXECUTION_WORKER_ENABLED: z.coerce.boolean().default(true),
+  WORKER_ENABLED: z.string().default("true"),
+  EXECUTION_WORKER_ENABLED: z.string().default("true"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

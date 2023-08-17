@@ -100,11 +100,11 @@ if (env.NODE_ENV === "production") {
 }
 
 export async function init() {
-  if (env.WORKER_ENABLED) {
+  if (env.WORKER_ENABLED === "true") {
     await workerQueue.initialize();
   }
 
-  if (env.EXECUTION_WORKER_ENABLED) {
+  if (env.EXECUTION_WORKER_ENABLED === "true") {
     await executionWorker.initialize();
   }
 }
