@@ -28,7 +28,7 @@ export class Airtable implements TriggerIntegration {
   _client?: AirtableSDK;
   _io?: IO;
 
-  constructor(private options: Prettify<AirtableIntegrationOptions>) {
+  constructor(options: Prettify<AirtableIntegrationOptions>) {
     if (Object.keys(options).includes("token") && !options.token) {
       throw `Can't create Airtable integration (${options.id}) as token was passed in but undefined`;
     }
@@ -37,25 +37,15 @@ export class Airtable implements TriggerIntegration {
   }
 
   get authSource() {
-    return this.options.token ? ("LOCAL" as const) : ("HOSTED" as const);
+    return this._options.token ? ("LOCAL" as const) : ("HOSTED" as const);
   }
 
   get id() {
-    return this.options.id;
+    return this._options.id;
   }
 
   get metadata() {
     return { id: "airtable", name: "Airtable" };
-  }
-
-  get client(): AirtableSDK {
-    if (!this._client) throw new Error("No client");
-    return this._client;
-  }
-
-  get io(): IO {
-    if (!this._io) throw new Error("No IO");
-    return this._io;
   }
 
   cloneForRun(io: IO, auth?: ConnectionAuth) {
@@ -82,9 +72,14 @@ export class Airtable implements TriggerIntegration {
     options?: RunTaskOptions,
     errorCallback?: RunTaskErrorCallback
   ) {
-    return this.io.runTask<TResult>(
+    if (!this._io) throw new Error("No IO");
+
+    return this._io.runTask<TResult>(
       key,
-      (task, io) => callback(this.client, task, io),
+      (task, io) => {
+        if (!this._client) throw new Error("No client");
+        return callback(this._client, task, io);
+      },
       { icon: "airtable", ...(options ?? {}), connectionKey: this.id },
       errorCallback
     );

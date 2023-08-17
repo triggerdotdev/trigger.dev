@@ -1,5 +1,4 @@
 import { ConnectionAuth } from "@trigger.dev/core";
-import { AsyncLocalStorage } from "node:async_hooks";
 import { IOWithIntegrations, TriggerIntegration } from "./integrations";
 import { IO } from "./io";
 
