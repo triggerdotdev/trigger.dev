@@ -279,13 +279,13 @@ async function detectUseOfSrcDir(path: string): Promise<boolean> {
 }
 
 // Detect the use of pages or app dir in the Next.js project
-// Import the next.config.js file and check for experimental: { appDir: true }
+// Import the next.config.js.js file and check for experimental: { appDir: true }
 async function detectPagesOrAppDir(
   path: string,
   usesSrcDir = false,
   isTypescriptProject = false
 ): Promise<"pages" | "app"> {
-  const nextConfigPath = pathModule.join(path, "next.config");
+  const nextConfigPath = pathModule.join(path, "next.config.js");
   const importedConfig = await import(pathToFileURL(nextConfigPath).toString()).catch(() => ({}));
 
   if (importedConfig?.default?.experimental?.appDir) {
@@ -445,7 +445,7 @@ async function createTriggerAppRoute(
   const tsConfigPath = pathModule.join(projectPath, configFileName);
   const { tsconfig } = await parse(tsConfigPath);
 
-  const extension = isTypescriptProject ? ".ts" : "";
+  const extension = isTypescriptProject ? ".ts" : ".js";
   const triggerFileName = `trigger${extension}`;
   const examplesFileName = `examples${extension}`;
   const examplesIndexFileName = `index${extension}`;
@@ -569,7 +569,7 @@ async function createTriggerPageRoute(
   const pathAlias = getPathAlias(tsconfig, usesSrcDir);
   const routePathPrefix = pathAlias ? pathAlias + "/" : "../../";
 
-  const extension = isTypescriptProject ? ".ts" : "";
+  const extension = isTypescriptProject ? ".ts" : ".js";
   const triggerFileName = `trigger${extension}`;
   const examplesFileName = `examples${extension}`;
   const examplesIndexFileName = `index${extension}`;

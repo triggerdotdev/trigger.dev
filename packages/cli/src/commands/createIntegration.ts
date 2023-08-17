@@ -94,7 +94,7 @@ export async function createIntegrationCommand(path: string, cliOptions: any) {
     name: resolvedOptions.packageName,
     version: "0.0.1",
     description: `Trigger.dev integration for ${resolvedOptions.sdkPackage}`,
-    main: "./dist/index",
+    main: "./dist/index.js",
     types: "./dist/index.d.ts",
     publishConfig: {
       access: "public",

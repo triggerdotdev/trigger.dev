@@ -14,7 +14,7 @@ export async function detectNextJsProject(path: string): Promise<boolean> {
 
 async function detectNextConfigFile(path: string): Promise<boolean> {
   return fs
-    .access(pathModule.join(path, "next.config"))
+    .access(pathModule.join(path, "next.config.js"))
     .then(() => true)
     .catch(() => false);
 }
