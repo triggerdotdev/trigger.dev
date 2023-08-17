@@ -47,6 +47,19 @@ export type IOOptions = {
   cachedTasks?: Array<CachedTask>;
 };
 
+export type RunTaskResult = SerializableJson | void;
+
+export type RunTaskCallback<TResult extends SerializableJson | void = void> = (
+  task: ServerTask,
+  io: IO
+) => Promise<TResult>;
+
+export type RunTaskErrorCallback = (
+  error: unknown,
+  task: IOTask,
+  io: IO
+) => { retryAt: Date; error?: Error; jitter?: number } | Error | undefined | void;
+
 export class IO {
   private _id: string;
   private _apiClient: ApiClient;
@@ -483,12 +496,8 @@ export class IO {
   >(
     key: string | any[],
     options: RunTaskOptions,
-    callback: (task: IOTask, io: IO) => Promise<TCallbackResult | TResult>,
-    onError?: (
-      error: unknown,
-      task: IOTask,
-      io: IO
-    ) => { retryAt: Date; error?: Error; jitter?: number } | Error | undefined | void
+    callback: RunTaskCallback<TResult>,
+    onError?: RunTaskErrorCallback
   ): Promise<TResult> {
     const parentId = this._taskStorage.getStore()?.taskId;
 

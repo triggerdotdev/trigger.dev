@@ -11,7 +11,7 @@ import {
   RegisterDynamicSchedulePayloadSchema,
   ScheduleMetadataSchema,
 } from "./schedules";
-import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
+import { CachedTaskSchema, ServerTask, ServerTaskSchema, TaskSchema } from "./tasks";
 import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
 import { Prettify } from "../types";
 

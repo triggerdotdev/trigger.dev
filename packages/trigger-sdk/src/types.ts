@@ -1,15 +1,16 @@
 import type {
+  DisplayProperty,
   EventFilter,
   Logger,
-  RuntimeEnvironmentType,
   RedactString,
+  RunTaskOptions,
+  RuntimeEnvironmentType,
   TriggerMetadata,
-  DisplayProperty,
 } from "@trigger.dev/core";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
 
-export type { RedactString, Logger, DisplayProperty };
+export type { DisplayProperty, Logger, RedactString, RunTaskOptions };
 
 export interface TriggerContext {
   /** Job metadata */

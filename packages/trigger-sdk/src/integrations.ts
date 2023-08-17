@@ -2,7 +2,7 @@ import { ConnectionAuth, IntegrationMetadata } from "@trigger.dev/core";
 import { IO } from "./io";
 export type { ConnectionAuth } from "@trigger.dev/core";
 
-export interface TriggerIntegration extends Object {
+export interface TriggerIntegration {
   id: string;
   metadata: IntegrationMetadata;
   authSource: "LOCAL" | "HOSTED";

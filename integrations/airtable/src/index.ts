@@ -1,5 +1,15 @@
 import { Prettify } from "@trigger.dev/integration-kit";
-import type { ConnectionAuth, IO, IntegrationTaskKey, TriggerIntegration } from "@trigger.dev/sdk";
+import type {
+  ConnectionAuth,
+  IO,
+  IOTask,
+  IntegrationTaskKey,
+  RunTaskCallback,
+  RunTaskErrorCallback,
+  RunTaskOptions,
+  RunTaskResult,
+  TriggerIntegration,
+} from "@trigger.dev/sdk";
 import AirtableSDK, { FieldSet } from "airtable";
 import { AirtableFieldSet } from "./types";
 
@@ -65,9 +75,23 @@ export class Airtable implements TriggerIntegration {
     return airtable;
   }
 
+  runTask<TResult extends RunTaskResult = void>(
+    key: IntegrationTaskKey,
+    options: RunTaskOptions,
+    callback: (client: AirtableSDK, task: IOTask, io: IO) => Promise<TResult>,
+    errorCallback?: RunTaskErrorCallback
+  ) {
+    return this.io.runTask<TResult>(
+      key,
+      options,
+      (task, io) => callback(this.client, task, io),
+      errorCallback
+    );
+  }
+
   getRecords(key: IntegrationTaskKey, baseId: string, tableName: string) {
-    return this.io.runTask(key, { name: "Get record" }, async () => {
-      const result = await this.client.base(baseId).table(tableName).select().all();
+    return this.runTask(key, { name: "Get record" }, async (client) => {
+      const result = await client.base(baseId).table(tableName).select().all();
       const fields = result.map((record) => record.fields);
       return fields as AirtableFieldSet[];
     });
