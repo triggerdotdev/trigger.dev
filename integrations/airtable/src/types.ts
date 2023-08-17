@@ -42,3 +42,8 @@ export type AirtableRecord<TFields extends AirtableFieldSet> = {
   fields: TFields;
   commentCount?: number;
 };
+
+export type CreateAirtableRecord<TFields extends AirtableFieldSet> = Pick<
+  AirtableRecord<Partial<TFields>>,
+  "fields"
+>;

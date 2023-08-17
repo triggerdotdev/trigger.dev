@@ -54,6 +54,16 @@ client.defineJob({
       .base(payload.baseId)
       .table<LaunchGoalsAndOkRs>(payload.tableName)
       .getRecord("single", records[0].id);
+
+    const newRecords = await io.airtable
+      .base(payload.baseId)
+      .table<LaunchGoalsAndOkRs>(payload.tableName)
+      .createRecords("create records", [
+        {
+          "Launch goals": "Created from Trigger.dev",
+          Status: "On track",
+        },
+      ]);
   },
 });
 

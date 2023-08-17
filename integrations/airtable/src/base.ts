@@ -1,6 +1,6 @@
 import { DisplayProperty, IOWithIntegrations, IntegrationTaskKey } from "@trigger.dev/sdk";
 import { FieldSet, Records, SelectOptions } from "airtable";
-import { AirtableFieldSet, AirtableRecord, AirtableRunTask } from ".";
+import { AirtableFieldSet, AirtableRecord, AirtableRunTask, CreateAirtableRecord } from ".";
 import { QueryParams } from "airtable/lib/query_params";
 
 type TableParams<Params extends Record<string, unknown>> = {
@@ -44,12 +44,7 @@ export class Table<TFields extends AirtableFieldSet> {
           .table<TFields>(this.tableName)
           .select(params)
           .all();
-        const records = result.map((record) => ({
-          id: record.id,
-          fields: record.fields,
-          commentCount: record.commentCount,
-        }));
-        return records as AirtableRecord<TFields>[];
+        return result.map((record) => toSerializableRecord<TFields>(record));
       },
       {
         name: "Get Records",
@@ -64,11 +59,7 @@ export class Table<TFields extends AirtableFieldSet> {
       key,
       async (client) => {
         const result = await client.base(this.baseId).table<TFields>(this.tableName).find(recordId);
-        return {
-          id: result.id,
-          fields: result.fields,
-          commentCount: result.commentCount,
-        } as AirtableRecord<TFields>;
+        return toSerializableRecord<TFields>(result);
       },
       {
         name: "Get Record",
@@ -80,6 +71,35 @@ export class Table<TFields extends AirtableFieldSet> {
       }
     );
   }
+
+  createRecords(key: IntegrationTaskKey, records: Partial<TFields>[]) {
+    return this.runTask(
+      key,
+      async (client) => {
+        const result = await client
+          .base(this.baseId)
+          .table<TFields>(this.tableName)
+          .create(records.map((record) => ({ fields: record })));
+        return result.map((record) => toSerializableRecord<TFields>(record));
+      },
+      {
+        name: "Create Records",
+        params: records,
+        properties: [
+          ...tableParams({ baseId: this.baseId, tableName: this.tableName }),
+          { label: "Records", text: records.length.toString() },
+        ],
+      }
+    );
+  }
+}
+
+function toSerializableRecord<TFields extends AirtableFieldSet>(record: AirtableRecord<TFields>) {
+  return {
+    id: record.id,
+    fields: record.fields,
+    commentCount: record.commentCount,
+  } as AirtableRecord<TFields>;
 }
 
 function tableParams(params: { baseId: string; tableName: string }): DisplayProperty[] {
