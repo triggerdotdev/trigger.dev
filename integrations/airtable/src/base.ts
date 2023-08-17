@@ -72,18 +72,39 @@ export class Table<TFields extends AirtableFieldSet> {
     );
   }
 
-  createRecords(key: IntegrationTaskKey, records: Partial<TFields>[]) {
+  createRecords(key: IntegrationTaskKey, records: { fields: Partial<TFields> }[]) {
     return this.runTask(
       key,
       async (client) => {
         const result = await client
           .base(this.baseId)
           .table<TFields>(this.tableName)
-          .create(records.map((record) => ({ fields: record })));
+          .create(records);
         return result.map((record) => toSerializableRecord<TFields>(record));
       },
       {
         name: "Create Records",
+        params: records,
+        properties: [
+          ...tableParams({ baseId: this.baseId, tableName: this.tableName }),
+          { label: "Records", text: records.length.toString() },
+        ],
+      }
+    );
+  }
+
+  update(key: IntegrationTaskKey, records: { id: string; fields: Partial<TFields> }[]) {
+    return this.runTask(
+      key,
+      async (client) => {
+        const result = await client
+          .base(this.baseId)
+          .table<TFields>(this.tableName)
+          .update(records);
+        return result.map((record) => toSerializableRecord<TFields>(record));
+      },
+      {
+        name: "Update Records",
         params: records,
         properties: [
           ...tableParams({ baseId: this.baseId, tableName: this.tableName }),

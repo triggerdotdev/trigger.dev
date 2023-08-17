@@ -43,27 +43,26 @@ client.defineJob({
     airtable,
   },
   run: async (payload, io, ctx) => {
-    const records = await io.airtable
-      .base(payload.baseId)
-      .table<LaunchGoalsAndOkRs>(payload.tableName)
-      .getRecords("muliple records", { fields: ["Status"] });
+    const table = io.airtable.base(payload.baseId).table<LaunchGoalsAndOkRs>(payload.tableName);
 
+    const records = await table.getRecords("muliple records", { fields: ["Status"] });
     await io.logger.log(records[0].fields.Status ?? "no status");
 
-    const aRecord = await io.airtable
-      .base(payload.baseId)
-      .table<LaunchGoalsAndOkRs>(payload.tableName)
-      .getRecord("single", records[0].id);
+    const aRecord = await table.getRecord("single", records[0].id);
 
-    const newRecords = await io.airtable
-      .base(payload.baseId)
-      .table<LaunchGoalsAndOkRs>(payload.tableName)
-      .createRecords("create records", [
-        {
-          "Launch goals": "Created from Trigger.dev",
-          Status: "On track",
-        },
-      ]);
+    const newRecords = await table.createRecords("create records", [
+      {
+        fields: { "Launch goals": "Created from Trigger.dev", Status: "In progress" },
+      },
+    ]);
+
+    const updatedRecords = await table.update(
+      "update records",
+      newRecords.map((record) => ({
+        id: record.id,
+        fields: { Status: "At risk" },
+      }))
+    );
   },
 });
 
