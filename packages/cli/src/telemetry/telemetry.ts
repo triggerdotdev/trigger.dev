@@ -1,8 +1,8 @@
 import { PostHog } from "posthog-node";
-import { InitCommandOptions } from "../commands/init.js";
+import { InitCommandOptions } from "../commands/init";
 import { nanoid } from "nanoid";
-import { getVersion } from "../utils/getVersion.js";
-import { DevCommandOptions } from "../commands/dev.js";
+import { getVersion } from "../utils/getVersion";
+import { DevCommandOptions } from "../commands/dev";
 
 const postHogApiKey = "phc_hwYmedO564b3Ik8nhA4Csrb5SueY0EwFJWCbseGwWW";
 

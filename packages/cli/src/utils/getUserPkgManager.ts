@@ -1,5 +1,5 @@
 import pathModule from "path";
-import { pathExists } from "./fileSystem.js";
+import { pathExists } from "./fileSystem";
 
 export type PackageManager = "npm" | "pnpm" | "yarn";
 

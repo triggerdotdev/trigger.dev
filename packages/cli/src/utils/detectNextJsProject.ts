@@ -1,6 +1,6 @@
 import fs from "fs/promises";
 import pathModule from "path";
-import { readPackageJson } from "./readPackageJson.js";
+import { readPackageJson } from "./readPackageJson";
 
 /** Detects if the project is a Next.js project at path  */
 export async function detectNextJsProject(path: string): Promise<boolean> {

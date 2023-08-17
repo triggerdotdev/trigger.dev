@@ -1,12 +1,12 @@
 import { Command } from "commander";
 import inquirer from "inquirer";
 import pathModule from "node:path";
-import { createIntegrationCommand } from "../commands/createIntegration.js";
-import { devCommand } from "../commands/dev.js";
-import { initCommand } from "../commands/init.js";
-import { CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts.js";
-import { telemetryClient } from "../telemetry/telemetry.js";
-import { getVersion } from "../utils/getVersion.js";
+import { createIntegrationCommand } from "../commands/createIntegration";
+import { devCommand } from "../commands/dev";
+import { initCommand } from "../commands/init";
+import { CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts";
+import { telemetryClient } from "../telemetry/telemetry";
+import { getVersion } from "../utils/getVersion";
 
 export const program = new Command();
 
