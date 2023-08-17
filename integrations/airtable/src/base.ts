@@ -50,7 +50,6 @@ export class Table<TFields extends AirtableFieldSet> {
       {
         name: "Get Records",
         params,
-        icon: "airtable",
         properties: [...tableParams({ baseId: this.baseId, tableName: this.tableName })],
       }
     );
