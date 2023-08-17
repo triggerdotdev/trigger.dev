@@ -31,8 +31,14 @@ export function createIOWithIntegrations<TIntegrations extends Record<string, Tr
       }
 
       if (prop in connections) {
-        // set asynclocalstorage here
-        return connections[prop];
+        const { integration, auth } = connections[prop];
+        const asyncLocalStorage = new AsyncLocalStorage();
+        asyncLocalStorage.run({ auth, io }, () => {
+          //you can only access the auth and io from local store inside here… AND only if you have a reference to the store
+        });
+
+        //we could have an asyncLocalStorage somewhere that can be access from the integration? But it'd have to be global in some way
+        return integration;
       }
 
       const value = Reflect.get(target, prop, receiver);
