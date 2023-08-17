@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import inquirer from "inquirer";
 import pathModule from "node:path";
-import { createIntegrationCommand } from "../commands/createIntegration.js";
+import { createIntegrationCommand } from "../commands/createIntegration";
 import { devCommand } from "../commands/dev";
 import { initCommand } from "../commands/init";
 import { CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts";
