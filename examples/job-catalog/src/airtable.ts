@@ -43,8 +43,6 @@ client.defineJob({
     airtable,
   },
   run: async (payload, io, ctx) => {
-    // const records1 = io.airtable.tasks?.base(payload.baseId).table<LaunchGoalsAndOkRs>(payload.tableName).getRecords("whatever", {}, io);
-
     const records = await io.airtable
       .base(payload.baseId)
       .table<LaunchGoalsAndOkRs>(payload.tableName)
