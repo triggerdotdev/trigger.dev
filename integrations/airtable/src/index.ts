@@ -4,14 +4,14 @@ import type {
   IO,
   IOTask,
   IntegrationTaskKey,
-  RunTaskCallback,
   RunTaskErrorCallback,
   RunTaskOptions,
   RunTaskResult,
   TriggerIntegration,
 } from "@trigger.dev/sdk";
-import AirtableSDK, { FieldSet } from "airtable";
+import AirtableSDK from "airtable";
 import { AirtableFieldSet } from "./types";
+import { Base } from "./base";
 
 export * from "./types";
 
@@ -21,6 +21,8 @@ export type AirtableIntegrationOptions = {
   /** Use this if you pass in a [Personal Access Token](https://airtable.com/developers/web/guides/personal-access-tokens). If omitted, it will use OAuth.  */
   token?: string;
 };
+
+export type AirtableRunTask = InstanceType<typeof Airtable>["runTask"];
 
 export class Airtable implements TriggerIntegration {
   _options: AirtableIntegrationOptions;
@@ -87,6 +89,10 @@ export class Airtable implements TriggerIntegration {
       (task, io) => callback(this.client, task, io),
       errorCallback
     );
+  }
+
+  base(baseId: string) {
+    return new Base(this.runTask.bind(this), baseId);
   }
 
   getRecords(key: IntegrationTaskKey, baseId: string, tableName: string) {

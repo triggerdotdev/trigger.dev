@@ -45,28 +45,22 @@ client.defineJob({
   run: async (payload, io, ctx) => {
     // const records1 = io.airtable.tasks?.base(payload.baseId).table<LaunchGoalsAndOkRs>(payload.tableName).getRecords("whatever", {}, io);
 
-    // const records = await io.airtable
-    //   .base(payload.baseId)
-    //   .table<LaunchGoalsAndOkRs>("customers")
-    //   .getRecords("whatever", {
-    //     where: {
-    //       createdAt: {
-    //         lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-    //       },
-    //     },
-    //   });
+    const records = await io.airtable
+      .base(payload.baseId)
+      .table(payload.tableName)
+      .getRecords("nested", {});
 
-    const records = await io.airtable.getRecords("whatever", payload.baseId, payload.tableName);
+    // const records = await io.airtable.getRecords("whatever", payload.baseId, payload.tableName);
 
-    const r2 = await io.airtable.runTask("whatever 2", { name: "Get record" }, async (client) => {
-      const result = await client
-        .base(payload.baseId)
-        .table(payload.tableName)
-        .select({ fields: ["Status"] })
-        .firstPage();
-      const fields = result.map((record) => record.fields);
-      return fields as LaunchGoalsAndOkRs[];
-    });
+    // const r2 = await io.airtable.runTask("whatever 2", { name: "Get record" }, async (client) => {
+    //   const result = await client
+    //     .base(payload.baseId)
+    //     .table(payload.tableName)
+    //     .select({ fields: ["Status"] })
+    //     .firstPage();
+    //   const fields = result.map((record) => record.fields);
+    //   return fields as LaunchGoalsAndOkRs[];
+    // });
   },
 });
 
