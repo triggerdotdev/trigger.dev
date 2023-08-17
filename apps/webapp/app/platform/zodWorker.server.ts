@@ -180,10 +180,6 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     return true;
   }
 
-  #logDebug(message: string, args?: any) {
-    logger.debug(`[worker][${this.#name}] ${message}`, args);
-  }
-
   public async stop() {
     await this.#runner?.stop();
   }
@@ -193,10 +189,6 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     payload: z.infer<TMessageCatalog[K]>,
     options?: ZodWorkerEnqueueOptions
   ): Promise<GraphileJob> {
-    if (!this.#runner) {
-      throw new Error("Worker not initialized");
-    }
-
     const task = this.#tasks[identifier];
 
     const optionsWithoutTx = omit(options ?? {}, ["tx"]);
@@ -432,5 +424,9 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
       throw error;
     }
+  }
+
+  #logDebug(message: string, args?: any) {
+    logger.debug(`[worker][${this.#name}] ${message}`, args);
   }
 }
