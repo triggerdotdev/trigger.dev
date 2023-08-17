@@ -2,7 +2,7 @@ import chalk from "chalk";
 import { execa } from "execa";
 import ora, { type Ora } from "ora";
 import pathModule from "path";
-import { getUserPackageManager, type PackageManager } from "./getUserPkgManager.js";
+import { getUserPackageManager, type PackageManager } from "./getUserPkgManager";
 import fs from "fs/promises";
 import fetch from "node-fetch";
 import { z } from "zod";

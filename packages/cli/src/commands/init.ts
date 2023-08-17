@@ -7,17 +7,17 @@ import { pathToRegexp } from "path-to-regexp";
 import { simpleGit } from "simple-git";
 import { parse } from "tsconfck";
 import { pathToFileURL } from "url";
-import { promptApiKey, promptTriggerUrl } from "../cli/index.js";
-import { CLOUD_API_URL, CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts.js";
-import { TelemetryClient, telemetryClient } from "../telemetry/telemetry.js";
-import { addDependencies } from "../utils/addDependencies.js";
-import { detectNextJsProject } from "../utils/detectNextJsProject.js";
-import { pathExists, readJSONFile } from "../utils/fileSystem.js";
-import { logger } from "../utils/logger.js";
-import { resolvePath } from "../utils/parseNameAndPath.js";
-import { renderApiKey } from "../utils/renderApiKey.js";
-import { renderTitle } from "../utils/renderTitle.js";
-import { TriggerApi, WhoamiResponse } from "../utils/triggerApi.js";
+import { promptApiKey, promptTriggerUrl } from "../cli/index";
+import { CLOUD_API_URL, CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts";
+import { TelemetryClient, telemetryClient } from "../telemetry/telemetry";
+import { addDependencies } from "../utils/addDependencies";
+import { detectNextJsProject } from "../utils/detectNextJsProject";
+import { pathExists, readJSONFile } from "../utils/fileSystem";
+import { logger } from "../utils/logger";
+import { resolvePath } from "../utils/parseNameAndPath";
+import { renderApiKey } from "../utils/renderApiKey";
+import { renderTitle } from "../utils/renderTitle";
+import { TriggerApi, WhoamiResponse } from "../utils/triggerApi";
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -285,7 +285,7 @@ async function detectPagesOrAppDir(
   usesSrcDir = false,
   isTypescriptProject = false
 ): Promise<"pages" | "app"> {
-  const nextConfigPath = pathModule.join(path, "next.config.js");
+  const nextConfigPath = pathModule.join(path, "next.config");
   const importedConfig = await import(pathToFileURL(nextConfigPath).toString()).catch(() => ({}));
 
   if (importedConfig?.default?.experimental?.appDir) {
@@ -445,7 +445,7 @@ async function createTriggerAppRoute(
   const tsConfigPath = pathModule.join(projectPath, configFileName);
   const { tsconfig } = await parse(tsConfigPath);
 
-  const extension = isTypescriptProject ? ".ts" : ".js";
+  const extension = isTypescriptProject ? ".ts" : "";
   const triggerFileName = `trigger${extension}`;
   const examplesFileName = `examples${extension}`;
   const examplesIndexFileName = `index${extension}`;
@@ -569,7 +569,7 @@ async function createTriggerPageRoute(
   const pathAlias = getPathAlias(tsconfig, usesSrcDir);
   const routePathPrefix = pathAlias ? pathAlias + "/" : "../../";
 
-  const extension = isTypescriptProject ? ".ts" : ".js";
+  const extension = isTypescriptProject ? ".ts" : "";
   const triggerFileName = `trigger${extension}`;
   const examplesFileName = `examples${extension}`;
   const examplesIndexFileName = `index${extension}`;

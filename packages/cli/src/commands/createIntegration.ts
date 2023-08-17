@@ -2,14 +2,14 @@ import inquirer from "inquirer";
 import pathModule from "node:path";
 import ora from "ora";
 import { z } from "zod";
-import { COMMAND_NAME } from "../consts.js";
-import { getLatestPackageVersion } from "../utils/addDependencies.js";
-import { createFile, pathExists, readJSONFile, writeJSONFile } from "../utils/fileSystem.js";
-import { generateIntegrationFiles } from "../utils/generateIntegrationFiles.js";
-import { getPackageName } from "../utils/getPackagName.js";
-import { installDependencies } from "../utils/installDependencies.js";
-import { logger } from "../utils/logger.js";
-import { resolvePath } from "../utils/parseNameAndPath.js";
+import { COMMAND_NAME } from "../consts";
+import { getLatestPackageVersion } from "../utils/addDependencies";
+import { createFile, pathExists, readJSONFile, writeJSONFile } from "../utils/fileSystem";
+import { generateIntegrationFiles } from "../utils/generateIntegrationFiles";
+import { getPackageName } from "../utils/getPackagName";
+import { installDependencies } from "../utils/installDependencies";
+import { logger } from "../utils/logger";
+import { resolvePath } from "../utils/parseNameAndPath";
 
 const CLIOptionsSchema = z.object({
   packageName: z.string().optional(),
@@ -94,12 +94,12 @@ export async function createIntegrationCommand(path: string, cliOptions: any) {
     name: resolvedOptions.packageName,
     version: "0.0.1",
     description: `Trigger.dev integration for ${resolvedOptions.sdkPackage}`,
-    main: "./dist/index.js",
+    main: "./dist/index",
     types: "./dist/index.d.ts",
     publishConfig: {
       access: "public",
     },
-    files: ["dist/index.js", "dist/index.d.ts", "dist/index.js.map"],
+    files: ["dist/index", "dist/index.d.ts", "dist/index.js.map"],
     devDependencies: {
       "@types/node": "16.x",
       rimraf: "^3.0.2",

@@ -1,6 +1,6 @@
 import fs from "fs/promises";
 import pathModule from "path";
-import { readPackageJson } from "./readPackageJson.js";
+import { readPackageJson } from "./readPackageJson";
 
 /** Detects if the project is a Next.js project at path  */
 export async function detectNextJsProject(path: string): Promise<boolean> {
@@ -14,7 +14,7 @@ export async function detectNextJsProject(path: string): Promise<boolean> {
 
 async function detectNextConfigFile(path: string): Promise<boolean> {
   return fs
-    .access(pathModule.join(path, "next.config.js"))
+    .access(pathModule.join(path, "next.config"))
     .then(() => true)
     .catch(() => false);
 }
