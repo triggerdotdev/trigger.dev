@@ -43,13 +43,7 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
           jobs.map((job) => {
             const path = jobPath(organization, project, job);
             return (
-              <TableRow
-                key={job.id}
-                className={cn(
-                  (job.hasIntegrationsRequiringAction && "bg-rose-500/20") ||
-                    (job.lastRun === undefined && "bg-green-500/20")
-                )}
-              >
+              <TableRow key={job.id}>
                 <TableCell to={path}>
                   <span className="flex items-center gap-2">
                     <NamedIcon name={job.event.icon} className="h-8 w-8" />
