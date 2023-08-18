@@ -77,7 +77,7 @@ async function mainLong() {
   }
 }
 
-main().catch((err) => {
+mainLong().catch((err) => {
   console.error(err);
   process.exit(1);
 });

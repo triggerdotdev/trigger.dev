@@ -16,9 +16,6 @@ export class ContinueRunService {
       async (tx) => {
         const run = await tx.jobRun.findUniqueOrThrow({
           where: { id: runId },
-          include: {
-            queue: true,
-          },
         });
 
         if (!RESUMABLE_STATUSES.includes(run.status)) {

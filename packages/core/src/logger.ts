@@ -166,7 +166,11 @@ function filterKeys(obj: unknown, keys: string[]): any {
 
   for (const [key, value] of Object.entries(obj)) {
     if (keys.includes(key)) {
-      filteredObj[key] = `[filtered ${prettyPrintBytes(value)}]`;
+      if (value) {
+        filteredObj[key] = `[filtered ${prettyPrintBytes(value)}]`;
+      } else {
+        filteredObj[key] = value;
+      }
       continue;
     }
 

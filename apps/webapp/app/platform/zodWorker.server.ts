@@ -234,12 +234,15 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     return job;
   }
 
-  public async dequeue(jobKey: string, option?: ZodWorkerDequeueOptions): Promise<GraphileJob> {
-    const job = await this.#removeJob(jobKey, option?.tx ?? this.#prisma);
+  public async dequeue(
+    jobKey: string,
+    option?: ZodWorkerDequeueOptions
+  ): Promise<GraphileJob | undefined> {
+    const results = await this.#removeJob(jobKey, option?.tx ?? this.#prisma);
 
-    logger.debug("dequeued worker task", { job });
+    logger.debug("dequeued worker task", { results, jobKey });
 
-    return job;
+    return results;
   }
 
   async #addJob(
@@ -295,9 +298,13 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       const job = AddJobResultsSchema.safeParse(result);
 
       if (!job.success) {
-        throw new Error(
-          `Failed to remove job from queue, zod parsing error: ${JSON.stringify(job.error)}`
-        );
+        logger.debug("results returned from remove_job could not be parsed", {
+          error: job.error.flatten(),
+          result,
+          jobKey,
+        });
+
+        return;
       }
 
       return job.data[0] as GraphileJob;
