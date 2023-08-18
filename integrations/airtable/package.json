@@ -26,9 +26,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "airtable": "^0.12.1",
+    "@trigger.dev/integration-kit": "workspace:^2.0.8",
     "@trigger.dev/sdk": "workspace:^2.0.8",
-    "@trigger.dev/integration-kit": "workspace:^2.0.8"
+    "airtable": "^0.12.1",
+    "zod": "3.21.4"
   },
   "engines": {
     "node": ">=16.8.0"

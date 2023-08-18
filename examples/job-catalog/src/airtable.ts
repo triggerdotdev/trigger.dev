@@ -43,6 +43,15 @@ client.defineJob({
     airtable,
   },
   run: async (payload, io, ctx) => {
+    const webhooks = await io.airtable.listWebhooks("list webhooks", {
+      baseId: payload.baseId,
+    });
+
+    const webhook = await io.airtable.createWebhook("create webhook", {
+      baseId: payload.baseId,
+      url: "http://example.com",
+    });
+
     const table = io.airtable.base(payload.baseId).table<LaunchGoalsAndOkRs>(payload.tableName);
 
     const records = await table.getRecords("muliple records", { fields: ["Status"] });

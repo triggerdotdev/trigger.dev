@@ -619,10 +619,12 @@ importers:
       rimraf: ^3.0.2
       tsup: 7.1.x
       typescript: 4.9.4
+      zod: 3.21.4
     dependencies:
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       airtable: 0.12.1
+      zod: 3.21.4
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
