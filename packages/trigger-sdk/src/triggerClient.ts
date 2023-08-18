@@ -475,7 +475,7 @@ export class TriggerClient {
         integration: {
           id: options.source.integration.id,
           metadata: options.source.integration.metadata,
-          authSource: options.source.integration.client.usesLocalAuth ? "LOCAL" : "HOSTED",
+          authSource: options.source.integration.authSource,
         },
         registerSourceJob: {
           id: options.key,

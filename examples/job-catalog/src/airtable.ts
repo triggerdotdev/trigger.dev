@@ -82,4 +82,14 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "airtable-on-table",
+  name: "Airtable Example: onTable",
+  version: "0.1.0",
+  trigger: airtable.onTable({
+    baseId: "appSX6ly4nZGfdUSy",
+  }),
+  run: async (payload, io, ctx) => {},
+});
+
 createExpressServer(client);

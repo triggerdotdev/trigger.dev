@@ -88,7 +88,7 @@ export class DynamicTrigger<
         integration: {
           id: this.source.integration.id,
           metadata: this.source.integration.metadata,
-          authSource: this.source.integration.client.usesLocalAuth ? "LOCAL" : "HOSTED",
+          authSource: this.source.integration.authSource,
         },
       },
     };
