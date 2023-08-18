@@ -220,6 +220,29 @@ export class IO {
     );
   }
 
+  async cancelEvent(key: string | any[], eventId: string) {
+    return await this.runTask(
+      key,
+      {
+        name: "cancelEvent",
+        params: {
+          eventId,
+        },
+        properties: [
+          {
+            label: "id",
+            text: eventId,
+          },
+        ],
+        noop: true,
+      },
+      async (task) => {
+        return await this._triggerClient.cancelEvent(eventId);
+      }
+    );
+  }
+
+
   async updateSource(key: string | any[], options: { key: string } & UpdateTriggerSourceBody) {
     return this.runTask(
       key,

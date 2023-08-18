@@ -5,6 +5,7 @@ import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { workerQueue } from "~/services/worker.server";
 import { logger } from "~/services/logger.server";
+import { CancelEventService } from "~/services/events/cancelEvent.server";
 
 const ParamsSchema = z.object({
   eventId: z.string(),
@@ -33,39 +34,21 @@ export async function action({ request, params }: ActionArgs) {
 
   const { eventId } = parsed.data;
 
-  const event = await prisma.eventRecord.findFirst({
-    select: {
-      id: true,
-      name: true,
-      createdAt: true,
-      updatedAt: true,
-      environmentId: true,
-      runs: {
-        select: {
-          id: true,
-          status: true,
-          startedAt: true,
-          completedAt: true,
-        },
-      },
-    },
-    where: {
-      id: eventId,
-      environmentId: authenticatedEnv.id,
-    },
-  });
-  if (!event) {
-    return json({ error: "Event not found" }, { status: 404 });
+  const service = new CancelEventService();
+  try {
+    const updatedEvent = await service.call(authenticatedEnv, eventId);
+
+    if (!updatedEvent) {
+      return json({ error: "Event not found" }, { status: 404 });
+    }
+
+    return json(updatedEvent);
+  } catch (err) {
+    //send the error
+    logger.error("CancelEventService.call() error", {
+      error: err,
+    });
+
+    return json({ error: "Internal Server Error" }, { status: 500 });
   }
-
-//update the cancelledAt column in the eventRecord table
-  const updatedEvent = await prisma.eventRecord.update({
-    where: { id: event.id },
-    data: { cancelledAt: new Date() },
-  });
-
-  // Dequeue the event after the db has been updated
-  await workerQueue.dequeue(event.id, { tx: prisma });
-
-  return json(updatedEvent);
 }

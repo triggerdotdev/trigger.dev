@@ -205,7 +205,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       spec.queueName || null,
       spec.runAt || null,
       spec.maxAttempts || null,
-      spec.jobKey,
+      spec.jobKey || null,
       spec.priority || null,
       spec.jobKeyMode || null,
       spec.flags || null
