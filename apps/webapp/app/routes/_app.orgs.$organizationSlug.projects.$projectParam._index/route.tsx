@@ -102,7 +102,6 @@ export default function Page() {
                       </Callout>
                     )}
                     <div className="mb-2 flex flex-col">
-                      <Header2 spacing>Jobs</Header2>
                       <div className="flex w-full">
                         <Input
                           placeholder="Search Jobs"
