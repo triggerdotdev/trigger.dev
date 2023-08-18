@@ -206,7 +206,7 @@ export async function devCommand(path: string, anyOptions: any) {
   throttle(refresh, throttleTimeMs);
 }
 
-async function getEndpointIdFromPackageJson(path: string, options: DevCommandOptions) {
+export async function getEndpointIdFromPackageJson(path: string, options: DevCommandOptions) {
   if (options.clientId) {
     return options.clientId;
   }
@@ -221,7 +221,7 @@ async function getEndpointIdFromPackageJson(path: string, options: DevCommandOpt
   return value as string;
 }
 
-async function readEnvFilesWithBackups(
+export async function readEnvFilesWithBackups(
   path: string,
   envFile: string,
   backups: string[]
@@ -249,7 +249,7 @@ async function readEnvFilesWithBackups(
   return;
 }
 
-async function getTriggerApiDetails(path: string, envFile: string) {
+export async function getTriggerApiDetails(path: string, envFile: string) {
   const resolvedEnvFile = await readEnvFilesWithBackups(path, envFile, [
     ".env",
     ".env.local",

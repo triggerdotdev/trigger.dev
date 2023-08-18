@@ -17,7 +17,8 @@
   },
   "devDependencies": {
     "eslint": "8.44.0",
-    "eslint-config-next": "12.3.4"
+    "eslint-config-next": "12.3.4",
+    "@trigger.dev/cli": "workspace:*"
   },
   "trigger.dev": {
     "endpointId": "nextjs-12"
