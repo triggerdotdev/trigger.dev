@@ -5,14 +5,12 @@ description: "Job is used to create and configure a Job"
 
 A [Job](/documentation/concepts/jobs) is used to define the [Trigger](/documentation/concepts/triggers), metadata, and what happens when it runs.
 
-By far the most important thing to understand is the constructor.
-
-# Constructor
+You can define a job in one of two ways, using the `new Job` constructor or by using the `TriggerClient.defineJob` instance method.
 
 <RequestExample>
 
-```ts cronTrigger
-client.defineJob({
+```ts constructor
+new Job(client, {
   id: "slack-kpi-summary",
   name: "Slack kpi summary",
   version: "0.1.1",
@@ -34,7 +32,7 @@ client.defineJob({
 });
 ```
 
-```ts webhook
+```ts client.defineJob
 client.defineJob({
   id: "github-integration-on-issue",
   name: "GitHub Integration - On Issue",
@@ -51,37 +49,30 @@ client.defineJob({
 });
 ```
 
-```ts event
+```ts queue options
 client.defineJob({
-  id: "openai-joke",
-  name: "OpenAI Joke",
-  version: "0.0.1",
-  trigger: eventTrigger({
-    name: "openai.joke",
-    schema: z.object({
-      jokePrompt: z.string(),
-    }),
+  id: "github-integration-on-issue",
+  name: "GitHub Integration - On Issue",
+  version: "0.1.0",
+  trigger: github.triggers.repo({
+    event: events.onIssue,
+    owner: "triggerdotdev",
+    repo: "empty",
   }),
-  integrations: {
-    openai,
+  queue: {
+    name: "my-queue",
+    maxConcurrent: 10, // only 10 runs can happen at the same time
   },
   run: async (payload, io, ctx) => {
-    const joke = await io.openai.backgroundCreateChatCompletion("generate-jokes", {
-      model: "gpt-3.5-turbo",
-      messages: [
-        {
-          role: "user",
-          content: payload.jokePrompt,
-        },
-      ],
-    });
-
-    return joke.choices;
+    await io.logger.info("This is a simple log info message");
+    return { payload, ctx };
   },
 });
 ```
 
 </RequestExample>
+
+# Constructor
 
 ## Parameters
 

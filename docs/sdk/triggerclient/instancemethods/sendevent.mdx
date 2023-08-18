@@ -27,4 +27,29 @@ const event = client.sendEvent({
 });
 ```
 
+```ts Send an event with an ID
+const event = client.sendEvent({
+  id: "e_1234567890", // You can use this to deduplicate events
+  name: "new.user",
+  payload: {
+    userId: "u_1234567890",
+  },
+});
+```
+
+```ts Send an event to be delivered later
+const event = client.sendEvent(
+  {
+    id: "e_1234567890", // You can use this to deduplicate events
+    name: "new.user",
+    payload: {
+      userId: "u_1234567890",
+    },
+  },
+  {
+    deliverAt: new Date("2023-12-01T00:00:00.000Z"),
+  }
+);
+```
+
 </RequestExample>

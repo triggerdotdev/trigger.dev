@@ -3,7 +3,7 @@ import { TriggerClient } from "@trigger.dev/sdk";
 import { Request as StandardRequest, Headers as StandardHeaders } from "@remix-run/web-fetch";
 
 /**
- * This is a convienence function to create an express server for the TriggerClient. If you want to use Trigger.dev with an existing express server, use `createMiddleware` instead.
+ * This is a convenience function to create an express server for the TriggerClient. If you want to use Trigger.dev with an existing express server, use `createMiddleware` instead.
  * @param client - The TriggerClient to use for the server.
  * @param port - The port to listen on, defaults to 8080.
  */

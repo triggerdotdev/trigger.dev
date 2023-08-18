@@ -20,15 +20,15 @@ Add the `@trigger.dev/react` package to your project:
 <CodeGroup>
 
 ```bash npm
-npm install @trigger.dev/react@next
+npm install @trigger.dev/react@latest
 ```
 
 ```bash pnpm
-pnpm install @trigger.dev/react@next
+pnpm install @trigger.dev/react@latest
 ```
 
 ```bash yarn
-yarn add @trigger.dev/react@next
+yarn add @trigger.dev/react@latest
 ```
 
 </CodeGroup>
@@ -42,9 +42,9 @@ In the Trigger.dev dashboard you should go to your Project and then the "Environ
 You should copy the `PUBLIC` API key for the dev environment.
 
 <Accordion title="What's a public API key?">
-  A public API key is a key that can be used in the browser. It can only be used
-  to read certain data from the API and can not write data. This means that it
-  can be used to get the status of a Job Run, but not to start a new Job Run.
+  A public API key is a key that can be used in the browser. It can only be used to read certain
+  data from the API and can not write data. This means that it can be used to get the status of a
+  Job Run, but not to start a new Job Run.
 </Accordion>
 
 ### 3. Add the env var to your project
@@ -67,17 +67,11 @@ The [TriggerProvider](/sdk/react/triggerprovider) component is a React Context P
 Generally you'll want to add this to the root of your app, so that it's available everywhere. However, you can add it lower in the hierarchy but it must be above any of the hooks.
 
 ```tsx app/layout.tsx
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body className={inter.className}>
-        <TriggerProvider
-          publicApiKey={process.env.NEXT_PUBLIC_TRIGGER_API_KEY!}
-        >
+        <TriggerProvider publicApiKey={process.env.NEXT_PUBLIC_TRIGGER_API_KEY!}>
           {children}
         </TriggerProvider>
       </body>
@@ -141,9 +135,9 @@ export default function EventDetails({ eventId }: { eventId: string }) {
 The `useRunDetails` hook will get the details of a specific Run. You can use this to show the status of a specific Run.
 
 <Accordion title="How do I get a Run id?">
-  You can call [client.getRuns()](/sdk/triggerclient/instancemethods/getruns)
-  with a Job id to get a list of the most recent Runs for that Job. You can then
-  pass that run id to your frontend to use in the hook.
+  You can call [client.getRuns()](/sdk/triggerclient/instancemethods/getruns) with a Job id to get a
+  list of the most recent Runs for that Job. You can then pass that run id to your frontend to use
+  in the hook.
 </Accordion>
 
 This component will show the details of a Run and the status of each task in the Run:
