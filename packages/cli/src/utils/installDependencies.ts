@@ -1,5 +1,5 @@
-import { getUserPackageManager, type PackageManager } from "./getUserPkgManager.js";
-import { logger } from "./logger.js";
+import { getUserPackageManager, type PackageManager } from "./getUserPkgManager";
+import { logger } from "./logger";
 import ora, { type Ora } from "ora";
 import chalk from "chalk";
 import { execa } from "execa";

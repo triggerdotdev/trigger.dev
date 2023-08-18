@@ -4,8 +4,8 @@ import { execa } from "execa";
 import inquirer from "inquirer";
 import ora from "ora";
 import path from "path";
-import { logger } from "./logger.js";
-import { pathExists, removeFile } from "./fileSystem.js";
+import { logger } from "./logger";
+import { pathExists, removeFile } from "./fileSystem";
 
 const isGitInstalled = (dir: string): boolean => {
   try {

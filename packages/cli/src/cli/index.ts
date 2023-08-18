@@ -1,12 +1,13 @@
 import { Command } from "commander";
 import inquirer from "inquirer";
 import pathModule from "node:path";
-import { createIntegrationCommand } from "../commands/createIntegration.js";
-import { devCommand } from "../commands/dev.js";
-import { initCommand } from "../commands/init.js";
-import { CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts.js";
-import { telemetryClient } from "../telemetry/telemetry.js";
-import { getVersion } from "../utils/getVersion.js";
+import { createIntegrationCommand } from "../commands/createIntegration";
+import { devCommand } from "../commands/dev";
+import { whoamiCommand } from "../commands/whoami.js";
+import { initCommand } from "../commands/init";
+import { CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts";
+import { telemetryClient } from "../telemetry/telemetry";
+import { getVersion } from "../utils/getVersion";
 
 export const program = new Command();
 
@@ -76,6 +77,21 @@ program
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (path, options) => {
     await createIntegrationCommand(path, options);
+  });
+
+program
+  .command("whoami")
+  .description("display the current logged in user and project details")
+  .argument("[path]", "The path to the project", ".")
+  .option("-p, --port <port>", "The local port your server is on", "3000")
+  .option("-e, --env-file <name>", "The name of the env file to load", ".env.local")
+  .version(getVersion(), "-v, --version", "Display the version number")
+  .action(async (path, options) => {
+    try {
+      await whoamiCommand(path, options);
+    } catch (e) {
+      throw e;
+    }
   });
 
 export const promptTriggerUrl = async (): Promise<string> => {

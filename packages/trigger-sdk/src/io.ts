@@ -12,6 +12,7 @@ import {
   SendEvent,
   SendEventOptions,
   SerializableJson,
+  SerializableJsonSchema,
   ServerTask,
   UpdateTriggerSourceBody,
 } from "@trigger.dev/core";
@@ -431,10 +432,10 @@ export class IO {
 =   * @param onError The callback that will be called when the Task fails. The callback receives the error, the Task and the IO as parameters. If you wish to retry then return an object with a `retryAt` property.
    * @returns A Promise that resolves with the returned value of the callback.
    */
-  async runTask<TResult extends SerializableJson | void = void>(
+  async runTask<TResult extends SerializableJson | void = void, TCallbackResult extends unknown = TResult>(
     key: string | any[],
     options: RunTaskOptions,
-    callback: (task: IOTask, io: IO) => Promise<TResult>,
+    callback: (task: IOTask, io: IO) => Promise<TCallbackResult | TResult>,
     onError?: (
       error: unknown,
       task: IOTask,
@@ -523,13 +524,15 @@ export class IO {
       try {
         const result = await callback(task, this);
 
+        const output = SerializableJsonSchema.parse(result) as TResult;
+        
         this._logger.debug("Completing using output", {
           idempotencyKey,
           task,
         });
 
         const completedTask = await this._apiClient.completeTask(this._id, task.id, {
-          output: result ?? undefined,
+          output: output ?? undefined,
           properties: task.outputProperties ?? undefined,
         });
 
@@ -537,7 +540,7 @@ export class IO {
           throw new CanceledWithTaskError(completedTask);
         }
 
-        return result;
+        return output;
       } catch (error) {
         if (isTriggerError(error)) {
           throw error;

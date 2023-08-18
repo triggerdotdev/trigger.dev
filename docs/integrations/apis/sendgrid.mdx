@@ -1,0 +1,86 @@
+---
+title: Introduction
+---
+
+<Snippet file="integration-getting-started.mdx" />
+
+## Installation
+
+<CodeGroup>
+
+```bash npm
+npm install @trigger.dev/sendgrid@latest
+```
+
+```bash pnpm
+pnpm install @trigger.dev/sendgrid@latest
+```
+
+```bash yarn
+yarn add @trigger.dev/sendgrid@latest
+```
+
+</CodeGroup>
+
+## Authentication
+
+ SendGrid integration supports API Keys. To authenticate, you'll need to create an instance of the SendGrid class and provide your API key.
+
+```ts
+import { SendGrid } from "@trigger.dev/sendgrid";
+
+const sendgrid = new SendGrid({
+  id: "sendgrid",
+  apiKey: process.env.SENDGRID_API_KEY!,
+});
+
+```
+
+## Example
+
+In this example we use [Zod](/documentation/guides/zod), a TypeScript-first schema declaration and validation library.
+
+```ts
+import { SendGrid } from "@trigger.dev/sendgrid";
+import { Job, eventTrigger } from "@trigger.dev/sdk";
+import { z } from "zod";
+
+// Create an instance of SendGrid
+const sendgrid = new SendGrid({
+  id: "sendgrid",
+  apiKey: process.env.SENDGRID_API_KEY!,
+});
+
+// Define a Trigger.dev job
+client.defineJob({
+  id: "send-sendgrid-email",
+  name: "Send SendGrid Email",
+  version: "0.1.0",
+  trigger: eventTrigger({
+    name: "send.email",
+    schema: z.object({
+      to:z.string(),
+      subject: z.string(),
+      text: z.string(),
+    }),
+  }),
+  integrations: {
+    sendgrid,
+  },
+  run: async (payload, io, ctx) => {
+    await io.sendgrid.sendEmail({
+      to: payload.to,
+      from: "Trigger.dev <hello@email.trigger.dev>",
+      subject: payload.subject,
+      text: payload.text,
+    });
+  },
+});
+
+```
+
+## Tasks
+
+| Function Name | Description   |
+| ------------- | ------------- |
+| `sendEmail`   | Send an email |

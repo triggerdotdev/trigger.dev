@@ -8,12 +8,12 @@ import ora, { Ora } from "ora";
 import pathModule from "path";
 import util from "util";
 import { z } from "zod";
-import { CLOUD_API_URL } from "../consts.js";
-import { telemetryClient } from "../telemetry/telemetry.js";
-import { pathExists, readFile } from "../utils/fileSystem.js";
-import { logger } from "../utils/logger.js";
-import { resolvePath } from "../utils/parseNameAndPath.js";
-import { TriggerApi } from "../utils/triggerApi.js";
+import { CLOUD_API_URL } from "../consts";
+import { telemetryClient } from "../telemetry/telemetry";
+import { pathExists, readFile } from "../utils/fileSystem";
+import { logger } from "../utils/logger";
+import { resolvePath } from "../utils/parseNameAndPath";
+import { TriggerApi } from "../utils/triggerApi";
 
 const asyncExecFile = util.promisify(childProcess.execFile);
 
@@ -206,7 +206,7 @@ export async function devCommand(path: string, anyOptions: any) {
   throttle(refresh, throttleTimeMs);
 }
 
-async function getEndpointIdFromPackageJson(path: string, options: DevCommandOptions) {
+export async function getEndpointIdFromPackageJson(path: string, options: DevCommandOptions) {
   if (options.clientId) {
     return options.clientId;
   }
@@ -221,7 +221,7 @@ async function getEndpointIdFromPackageJson(path: string, options: DevCommandOpt
   return value as string;
 }
 
-async function readEnvFilesWithBackups(
+export async function readEnvFilesWithBackups(
   path: string,
   envFile: string,
   backups: string[]
@@ -249,7 +249,7 @@ async function readEnvFilesWithBackups(
   return;
 }
 
-async function getTriggerApiDetails(path: string, envFile: string) {
+export async function getTriggerApiDetails(path: string, envFile: string) {
   const resolvedEnvFile = await readEnvFilesWithBackups(path, envFile, [
     ".env",
     ".env.local",

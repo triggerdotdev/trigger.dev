@@ -273,6 +273,7 @@ function BlankTasks({
   basicStatus: RunBasicStatus;
 }) {
   switch (basicStatus) {
+    default:
     case "COMPLETED":
       return <Paragraph variant="small">There were no tasks for this run.</Paragraph>;
     case "FAILED":
@@ -288,8 +289,6 @@ function BlankTasks({
           <TaskCardSkeleton />
         </div>
       );
-    default:
-      return <Paragraph variant="small">There were no tasks for this run.</Paragraph>;
   }
 }
 

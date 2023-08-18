@@ -213,7 +213,13 @@
             "integrations/apis/slack"
           ]
         },
-        "integrations/apis/typeform"
+        "integrations/apis/typeform", 
+        {
+          "group": "Sendgrid", 
+          "pages": [
+            "integrations/apis/sendgrid"
+          ]
+        }
       ]
     },
     {
