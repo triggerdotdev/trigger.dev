@@ -142,6 +142,7 @@ export class Job<
       event: this.trigger.event,
       trigger: this.trigger.toJSON(),
       integrations: this.integrations,
+      startPosition: "latest", // this is deprecated, leaving this for now to make sure newer clients work with older servers
       enabled: typeof this.options.enabled === "boolean" ? this.options.enabled : true,
       preprocessRuns: this.trigger.preprocessRuns,
       internal,

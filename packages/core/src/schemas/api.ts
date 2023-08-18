@@ -161,6 +161,7 @@ export const JobMetadataSchema = z.object({
   integrations: z.record(IntegrationConfigSchema),
   internal: z.boolean().default(false),
   enabled: z.boolean(),
+  startPosition: z.enum(["initial", "latest"]),
   preprocessRuns: z.boolean(),
 });
 
