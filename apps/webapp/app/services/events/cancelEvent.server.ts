@@ -1,8 +1,5 @@
-import type { EventDispatcher, EventRecord } from "@trigger.dev/database";
-import type { EventFilter } from "@trigger.dev/core";
-import { EventFilterSchema, eventFilterMatches } from "@trigger.dev/core";
+import type { EventRecord } from "@trigger.dev/database";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
-import { logger } from "~/services/logger.server";
 import { workerQueue } from "../worker.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
 
@@ -13,17 +10,21 @@ export class CancelEventService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(environment: AuthenticatedEnvironment, eventId: string): Promise<EventRecord | undefined> {
+  public async call(
+    environment: AuthenticatedEnvironment,
+    eventId: string
+  ): Promise<EventRecord | undefined> {
     return await $transaction(
       this.#prismaClient,
       async (tx) => {
-        const event = await tx.eventRecord.findFirst({
+        const event = await tx.eventRecord.findUnique({
           select: {
             id: true,
             name: true,
             createdAt: true,
             updatedAt: true,
             environmentId: true,
+            cancelledAt: true,
             runs: {
               select: {
                 id: true,
@@ -34,13 +35,19 @@ export class CancelEventService {
             },
           },
           where: {
-            id: eventId,
-            environmentId: environment.id,
+            eventId_environmentId: {
+              eventId: eventId,
+              environmentId: environment.id,
+            },
           },
         });
 
         if (!event) {
           return;
+        }
+
+        if (event.cancelledAt) {
+          return event;
         }
 
         //update the cancelledAt column in the eventRecord table
@@ -50,7 +57,7 @@ export class CancelEventService {
         });
 
         // Dequeue the event after the db has been updated
-        await workerQueue.dequeue(event.id, { tx: prisma });
+        await workerQueue.dequeue(`event:${event.id}`, { tx: prisma });
 
         return updatedEvent;
       },

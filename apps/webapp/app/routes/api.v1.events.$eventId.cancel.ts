@@ -44,7 +44,6 @@ export async function action({ request, params }: ActionArgs) {
 
     return json(updatedEvent);
   } catch (err) {
-    //send the error
     logger.error("CancelEventService.call() error", {
       error: err,
     });

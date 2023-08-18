@@ -88,7 +88,7 @@ export class IngestSendEvent {
             {
               id: eventLog.id,
             },
-            { runAt: eventLog.deliverAt, tx, jobKey: eventLog.id }
+            { runAt: eventLog.deliverAt, tx, jobKey: `event:${eventLog.id}` }
           );
         }
 
