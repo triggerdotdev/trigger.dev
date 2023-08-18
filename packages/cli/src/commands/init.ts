@@ -18,6 +18,7 @@ import { resolvePath } from "../utils/parseNameAndPath.js";
 import { renderApiKey } from "../utils/renderApiKey.js";
 import { renderTitle } from "../utils/renderTitle.js";
 import { TriggerApi, WhoamiResponse } from "../utils/triggerApi.js";
+import { readPackageJson } from "../utils/readPackageJson.js";
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -47,9 +48,6 @@ export const initCommand = async (options: InitCommandOptions) => {
   // Detect if are are in a Next.js project
   const isNextJsProject = await detectNextJsProject(resolvedPath);
 
-  //Detect Next.Js version
-  const nextJsVersion = await detectNextJsVersion(resolvedPath)
-
   if (!isNextJsProject) {
     logger.error("You must run this command in a Next.js project.");
     telemetryClient.init.failed("not_nextjs_project", options);
@@ -59,6 +57,9 @@ export const initCommand = async (options: InitCommandOptions) => {
   }
 
   const hasGitChanges = await detectGitChanges(resolvedPath);
+
+  //Detect Next.Js version
+  const nextJsVersion = await detectNextJsVersion(resolvedPath);
 
   if (hasGitChanges) {
     // Warn the user that they have git changes
@@ -153,21 +154,21 @@ export const initCommand = async (options: InitCommandOptions) => {
   telemetryClient.init.completed(resolvedOptions);
 };
 
-async function printNextSteps(options: ResolvedOptions, authorizedKey: WhoamiResponse,nextJsVersion: number, nextJsDir:"pages"| "app"  ) {
+async function printNextSteps(
+  options: ResolvedOptions,
+  authorizedKey: WhoamiResponse,
+  nextJsVersion: number,
+  nextJsDir: "pages" | "app"
+) {
   const projectUrl = `${options.triggerUrl}/orgs/${authorizedKey.organization.slug}/projects/${authorizedKey.project.slug}`;
 
   logger.success(`✅ Successfully initialized Trigger.dev!`);
 
+  if (nextJsDir === "pages") {
+    const message = `Detected you are using Next.js Page Router version ${nextJsVersion}, check out this article on our docs on how to complete the setup. https://trigger.dev/docs/documentation/quickstarts/nextjs`;
 
-if (nextJsDir === "pages") {
-  const message = `Detected you are using Next.js Page Router version ${nextJsVersion}, check ${
-    nextJsVersion > 13.1
-      ? "out this article on our docs on how to complete the setup. https://trigger.dev/docs/documentation/quickstarts/nextjs"
-      : "out this article on our docs on how to complete the setup. https://trigger.dev/docs/documentation/quickstarts/nextjs"
-  }`;
-
-  logger.info(message);
-}
+    logger.info(message);
+  }
 
   logger.info("Next steps:");
   logger.info(`   1. Run your Next.js project locally with 'npm run dev'`);
@@ -742,14 +743,19 @@ async function setupEnvironmentVariable(
 }
 
 async function detectNextJsVersion(projectPath: string): Promise<number> {
-  const packageFile = pathModule.join(projectPath, "package.json");
-  const packageData = await fs.readFile(packageFile, "utf8");
-  const packageJson = JSON.parse(packageData);
-  const version = packageJson.dependencies.next || packageJson.devDependencies.next;
+  const packageJson = await readPackageJson(projectPath);
+
+  if (!packageJson) {
+    throw new Error("package.json not found or couldn't be read.");
+  }
+
+  const version = packageJson.dependencies?.next ?? packageJson.devDependencies?.next;
+
+  if (!version) {
+    throw new Error("Next.js version not found in dependencies or devDependencies.");
+  }
+
   const nextVersion = parseFloat(version);
 
   return nextVersion;
 }
-
-
-
