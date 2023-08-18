@@ -12,9 +12,8 @@ import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
 import { integrationAuthRepository } from "./externalApis/integrationAuthRepository.server";
 import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
 import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated.server";
-import { PerformRunExecutionService } from "./runs/performRunExecution.server";
-import { RunFinishedService } from "./runs/runFinished.server";
-import { StartQueuedRunsService } from "./runs/startQueuedRuns.server";
+import { PerformRunExecutionV1Service } from "./runs/performRunExecutionV1.server";
+import { PerformRunExecutionV2Service } from "./runs/performRunExecutionV2.server";
 import { StartRunService } from "./runs/startRun.server";
 import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.server";
 import { ActivateSourceService } from "./sources/activateSource.server";
@@ -30,13 +29,9 @@ const workerCatalog = {
   }),
   scheduleEmail: DeliverEmailSchema,
   startRun: z.object({ id: z.string() }),
-  performRunExecution: z.object({
-    id: z.string(),
-  }),
   performTaskOperation: z.object({
     id: z.string(),
   }),
-  runFinished: z.object({ id: z.string() }),
   deliverHttpSourceRequest: z.object({ id: z.string() }),
   refreshOAuthToken: z.object({
     organizationId: z.string(),
@@ -46,7 +41,7 @@ const workerCatalog = {
     id: z.string(),
     orphanedEvents: z.array(z.string()).optional(),
   }),
-  startQueuedRuns: z.object({ id: z.string() }),
+
   deliverEvent: z.object({ id: z.string() }),
   "events.invokeDispatcher": z.object({
     id: z.string(),
@@ -64,10 +59,24 @@ const workerCatalog = {
   }),
 };
 
+const executionWorkerCatalog = {
+  performRunExecution: z.object({
+    id: z.string(),
+  }),
+  performRunExecutionV2: z.object({
+    id: z.string(),
+    reason: z.enum(["EXECUTE_JOB", "PREPROCESS"]),
+    resumeTaskId: z.string().optional(),
+    isRetry: z.boolean(),
+  }),
+};
+
 let workerQueue: ZodWorker<typeof workerCatalog>;
+let executionWorker: ZodWorker<typeof executionWorkerCatalog>;
 
 declare global {
   var __worker__: ZodWorker<typeof workerCatalog>;
+  var __executionWorker__: ZodWorker<typeof executionWorkerCatalog>;
 }
 
 // this is needed because in development we don't want to restart
@@ -76,25 +85,41 @@ declare global {
 // in production we'll have a single connection to the DB.
 if (env.NODE_ENV === "production") {
   workerQueue = getWorkerQueue();
+  executionWorker = getExecutionWorkerQueue();
 } else {
   if (!global.__worker__) {
     global.__worker__ = getWorkerQueue();
   }
   workerQueue = global.__worker__;
+
+  if (!global.__executionWorker__) {
+    global.__executionWorker__ = getExecutionWorkerQueue();
+  }
+
+  executionWorker = global.__executionWorker__;
 }
 
 export async function init() {
-  await workerQueue.initialize();
+  if (env.WORKER_ENABLED === "true") {
+    await workerQueue.initialize();
+  }
+
+  if (env.EXECUTION_WORKER_ENABLED === "true") {
+    await executionWorker.initialize();
+  }
 }
 
 function getWorkerQueue() {
   return new ZodWorker({
+    name: "workerQueue",
     prisma,
     runnerOptions: {
       connectionString: env.DATABASE_URL,
-      concurrency: 5,
-      pollInterval: 1000,
+      concurrency: env.WORKER_CONCURRENCY,
+      pollInterval: env.WORKER_POLL_INTERVAL,
       noPreparedStatements: env.DATABASE_URL !== env.DIRECT_URL,
+      schema: env.WORKER_SCHEMA,
+      maxPoolSize: env.WORKER_CONCURRENCY,
     },
     schema: workerCatalog,
     recurringTasks: {
@@ -124,6 +149,7 @@ function getWorkerQueue() {
     },
     tasks: {
       "events.invokeDispatcher": {
+        priority: 0, // smaller number = higher priority
         maxAttempts: 3,
         handler: async (payload, job) => {
           const service = new InvokeDispatcherService();
@@ -132,6 +158,7 @@ function getWorkerQueue() {
         },
       },
       "events.deliverScheduled": {
+        priority: 0, // smaller number = higher priority
         maxAttempts: 5,
         handler: async ({ id, payload }, job) => {
           const service = new DeliverScheduledEventService();
@@ -140,6 +167,7 @@ function getWorkerQueue() {
         },
       },
       connectionCreated: {
+        priority: 10, // smaller number = higher priority
         maxAttempts: 3,
         handler: async (payload, job) => {
           const service = new IntegrationConnectionCreatedService();
@@ -148,6 +176,7 @@ function getWorkerQueue() {
         },
       },
       missingConnectionCreated: {
+        priority: 10, // smaller number = higher priority
         maxAttempts: 3,
         handler: async (payload, job) => {
           const service = new MissingConnectionCreatedService();
@@ -155,24 +184,8 @@ function getWorkerQueue() {
           await service.call(payload.id);
         },
       },
-      runFinished: {
-        maxAttempts: 3,
-        handler: async (payload, job) => {
-          const service = new RunFinishedService();
-
-          await service.call(payload.id);
-        },
-      },
-      startQueuedRuns: {
-        maxAttempts: 3,
-        queueName: (payload) => `queue:${payload.id}`,
-        handler: async (payload, job) => {
-          const service = new StartQueuedRunsService();
-
-          await service.call(payload.id);
-        },
-      },
       activateSource: {
+        priority: 10, // smaller number = higher priority
         maxAttempts: 3,
         handler: async (payload, job) => {
           const service = new ActivateSourceService();
@@ -181,6 +194,7 @@ function getWorkerQueue() {
         },
       },
       deliverHttpSourceRequest: {
+        priority: 1, // smaller number = higher priority
         maxAttempts: 25,
         handler: async (payload, job) => {
           const service = new DeliverHttpSourceRequestService();
@@ -189,6 +203,7 @@ function getWorkerQueue() {
         },
       },
       startRun: {
+        priority: 0, // smaller number = higher priority
         maxAttempts: 8,
         handler: async (payload, job) => {
           const service = new StartRunService();
@@ -196,16 +211,8 @@ function getWorkerQueue() {
           await service.call(payload.id);
         },
       },
-      performRunExecution: {
-        queueName: (payload) => `runs:${payload.id}`,
-        maxAttempts: 1,
-        handler: async (payload, job) => {
-          const service = new PerformRunExecutionService();
-
-          await service.call(payload.id);
-        },
-      },
       performTaskOperation: {
+        priority: 0, // smaller number = higher priority
         queueName: (payload) => `tasks:${payload.id}`,
         maxAttempts: 3,
         handler: async (payload, job) => {
@@ -223,6 +230,7 @@ function getWorkerQueue() {
         },
       },
       indexEndpoint: {
+        priority: 1, // smaller number = higher priority
         handler: async (payload, job) => {
           const service = new IndexEndpointService();
 
@@ -230,6 +238,7 @@ function getWorkerQueue() {
         },
       },
       deliverEvent: {
+        priority: 0, // smaller number = higher priority
         handler: async (payload, job) => {
           const service = new DeliverEventService();
 
@@ -237,6 +246,7 @@ function getWorkerQueue() {
         },
       },
       refreshOAuthToken: {
+        priority: 8, // smaller number = higher priority
         queueName: "internal-queue",
         maxAttempts: 10,
         handler: async (payload, job) => {
@@ -249,4 +259,42 @@ function getWorkerQueue() {
   });
 }
 
-export { workerQueue };
+function getExecutionWorkerQueue() {
+  return new ZodWorker({
+    name: "executionWorker",
+    prisma,
+    runnerOptions: {
+      connectionString: env.DATABASE_URL,
+      concurrency: env.EXECUTION_WORKER_CONCURRENCY,
+      pollInterval: env.EXECUTION_WORKER_POLL_INTERVAL,
+      noPreparedStatements: env.DATABASE_URL !== env.DIRECT_URL,
+      schema: env.WORKER_SCHEMA,
+      maxPoolSize: env.EXECUTION_WORKER_CONCURRENCY,
+    },
+    schema: executionWorkerCatalog,
+    tasks: {
+      performRunExecution: {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 1,
+        handler: async (payload, job) => {
+          // This is a legacy task that we don't use anymore, but needs to be here for backwards compatibility
+          // TODO: remove this once all performRunExecution tasks have been processed
+          const service = new PerformRunExecutionV1Service();
+
+          await service.call(payload.id);
+        },
+      },
+      performRunExecutionV2: {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 18,
+        handler: async (payload, job) => {
+          const service = new PerformRunExecutionV2Service();
+
+          await service.call(payload.id, payload.reason, payload.isRetry, payload.resumeTaskId);
+        },
+      },
+    },
+  });
+}
+
+export { executionWorker, workerQueue };

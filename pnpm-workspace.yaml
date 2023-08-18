@@ -5,3 +5,4 @@ packages:
   - "apps/**"
   - "examples/*"
   - "docs"
+  - "perf"

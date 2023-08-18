@@ -69,7 +69,7 @@ export class IO {
 
     if (options.cachedTasks) {
       options.cachedTasks.forEach((task) => {
-        this._cachedTasks.set(task.id, task);
+        this._cachedTasks.set(task.idempotencyKey, task);
       });
     }
 

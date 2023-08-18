@@ -162,6 +162,10 @@ export class EndpointApi {
   }
 
   async executeJobRequest(options: RunJobBody) {
+    logger.debug("executeJobRequest()", {
+      options,
+    });
+
     const response = await safeFetch(this.url, {
       method: "POST",
       headers: {

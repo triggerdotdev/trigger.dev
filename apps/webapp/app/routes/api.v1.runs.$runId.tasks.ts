@@ -107,6 +107,32 @@ export class RunTaskService {
       });
 
       if (existingTask) {
+        if (existingTask.status === "CANCELED") {
+          const existingTaskStatus =
+            (taskBody.delayUntil && taskBody.delayUntil.getTime() > Date.now()) || taskBody.trigger
+              ? "WAITING"
+              : taskBody.noop
+              ? "COMPLETED"
+              : "RUNNING";
+
+          const resumedExistingTask = await tx.task.update({
+            where: {
+              id: existingTask.id,
+            },
+            data: {
+              status: existingTaskStatus,
+              startedAt: new Date(),
+              completedAt: existingTaskStatus === "COMPLETED" ? new Date() : undefined,
+            },
+            include: {
+              run: true,
+              attempts: true,
+            },
+          });
+
+          return resumedExistingTask;
+        }
+
         return existingTask;
       }
 
