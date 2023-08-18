@@ -1,4 +1,46 @@
-import type { Integration } from "../types";
+import type { HelpSample, Integration } from "../types";
+
+function usageSample(hasApiKey: boolean): HelpSample {
+  return {
+    title: "Using the client",
+    code: `
+  import { Airtable } from "@trigger.dev/airtable";
+
+  const airtable = new Airtable({
+    id: "__SLUG__"${hasApiKey ? ",\n    token: process.env.AIRTABLE_API_KEY!" : ""}
+  });
+
+  client.defineJob({
+    id: "alert-on-new-github-issues",
+    name: "Alert on new GitHub issues",
+    version: "0.1.1",
+    trigger: github.triggers.repo({
+      event: events.onIssueOpened,
+      owner: "triggerdotdev",
+      repo: "trigger.dev",
+    }),
+    run: async (payload, io, ctx) => {
+      //wrap the SDK call in runTask
+      const { data } = await io.runTask(
+        "create-card",
+        { name: "Create card" },
+        async () => {
+          //create a project card using the underlying client
+          return io.github.client.rest.projects.createCard({
+            column_id: 123,
+            note: "test",
+          });
+        }
+      );
+  
+      //log the url of the created card
+      await io.logger.info(data.url);
+    },
+  });
+  
+  `,
+  };
+}
 
 export const airtable: Integration = {
   identifier: "airtable",
@@ -70,18 +112,13 @@ export const airtable: Integration = {
         },
       ],
       help: {
-        samples: [
-          {
-            title: "Creating the client",
-            code: `
-import { Airtable } from "@trigger.dev/airtable";
-
-const airtable = new Airtable({
-  id: "__SLUG__"
-});
-`,
-          },
-        ],
+        samples: [usageSample(false)],
+      },
+    },
+    apiKey: {
+      type: "apikey",
+      help: {
+        samples: [usageSample(true)],
       },
     },
   },
