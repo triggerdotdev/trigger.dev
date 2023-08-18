@@ -8,12 +8,12 @@ import ora, { Ora } from "ora";
 import pathModule from "path";
 import util from "util";
 import { z } from "zod";
-import { CLOUD_API_URL } from "../consts.js";
-import { telemetryClient } from "../telemetry/telemetry.js";
-import { pathExists, readFile, readJSONFile } from "../utils/fileSystem.js";
-import { logger } from "../utils/logger.js";
-import { resolvePath } from "../utils/parseNameAndPath.js";
-import { TriggerApi } from "../utils/triggerApi.js";
+import { CLOUD_API_URL } from "../consts";
+import { telemetryClient } from "../telemetry/telemetry";
+import { pathExists, readFile, readJSONFile } from "../utils/fileSystem";
+import { logger } from "../utils/logger";
+import { resolvePath } from "../utils/parseNameAndPath";
+import { TriggerApi } from "../utils/triggerApi";
 import semver from "semver";
 
 const asyncExecFile = util.promisify(childProcess.execFile);
