@@ -28,7 +28,7 @@ const EnvironmentSchema = z.object({
   FROM_EMAIL: z.string().optional(),
   REPLY_TO_EMAIL: z.string().optional(),
   SMTP_HOST: z.string().optional(), 
-  SMTP_PORT: z.number().optional(), 
+  SMTP_PORT: z.coerce.number().optional(), 
   SMTP_USER: z.string().optional(), 
   SMTP_PASSWORD: z.string().optional(), 
   PLAIN_API_KEY: z.string().optional(),
