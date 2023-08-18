@@ -1,6 +1,5 @@
 import { JobRun, JobRunExecution } from "@trigger.dev/database";
 import { PrismaClientOrTransaction } from "~/db.server";
-import { queueRoundRobin } from "~/services/runs/queuedRoundRobinStorage.server";
 import { executionWorker } from "~/services/worker.server";
 
 export async function enqueueRunExecutionV1(
@@ -16,7 +15,7 @@ export async function enqueueRunExecutionV1(
       id: execution.id,
     },
     {
-      queueName: `job:queue:${queueId}:${await queueRoundRobin.next(queueId, concurrency)}`,
+      queueName: `job:queue:${queueId}`,
       tx,
       runAt,
       jobKey: `execution:${execution.runId}`,
