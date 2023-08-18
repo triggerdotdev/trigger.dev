@@ -235,10 +235,6 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   }
 
   public async dequeue(jobKey: string, option?: ZodWorkerDequeueOptions): Promise<GraphileJob> {
-    if (!this.#runner) {
-      throw new Error("Worker not initialized");
-    }
-
     const job = await this.#removeJob(jobKey, option?.tx ?? this.#prisma);
 
     logger.debug("dequeued worker task", { job });

@@ -9,6 +9,7 @@
     "supabase:types": "npx supabase gen types typescript --project-id $SUPABASE_PROJECT_ID --schema public --schema auth --schema storage > src/supabase-types.ts",
     "events": "nodemon --watch src/events.ts -r tsconfig-paths/register -r dotenv/config src/events.ts",
     "stressTest": "nodemon --watch src/stressTest.ts -r tsconfig-paths/register -r dotenv/config src/stressTest.ts",
+    "delays": "nodemon --watch src/delays.ts -r tsconfig-paths/register -r dotenv/config src/delays.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {
