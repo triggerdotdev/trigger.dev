@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "stripe": "nodemon --watch src/stripe.ts -r tsconfig-paths/register -r dotenv/config src/stripe.ts",
+    "slack": "nodemon --watch src/slack.ts -r tsconfig-paths/register -r dotenv/config src/slack.ts",
     "openai": "nodemon --watch src/openai.ts -r tsconfig-paths/register -r dotenv/config src/openai.ts",
     "sendgrid": "nodemon --watch src/sendgrid.ts -r tsconfig-paths/register -r dotenv/config src/sendgrid.ts",
     "supabase": "nodemon --watch src/supabase.ts -r tsconfig-paths/register -r dotenv/config src/supabase.ts",
