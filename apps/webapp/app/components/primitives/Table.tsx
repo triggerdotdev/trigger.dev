@@ -1,4 +1,4 @@
-import { ChevronRightIcon } from "@heroicons/react/24/solid";
+import { ChevronRightIcon, EllipsisVerticalIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { ReactNode, forwardRef } from "react";
 import { cn } from "~/utils/cn";
@@ -181,6 +181,23 @@ export const TableCellChevron = forwardRef<
     <TableCell className={className} to={to} onClick={onClick} ref={ref} alignment="right">
       {children}
       <ChevronRightIcon className="h-4 w-4 text-dimmed transition group-hover:text-bright" />
+    </TableCell>
+  );
+});
+
+export const TableCellMenu = forwardRef<
+  HTMLTableCellElement,
+  {
+    className?: string;
+    to?: string;
+    children?: ReactNode;
+    onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
+  }
+>(({ className, to, children, onClick }, ref) => {
+  return (
+    <TableCell className={className} to={to} onClick={onClick} ref={ref} alignment="right">
+      {children}
+      <EllipsisVerticalIcon className="h-4 w-4 text-dimmed transition group-hover:text-bright" />
     </TableCell>
   );
 });

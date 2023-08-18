@@ -9,6 +9,7 @@ import {
   TableBody,
   TableCell,
   TableCellChevron,
+  TableCellMenu,
   TableHeader,
   TableHeaderCell,
   TableRow,
@@ -35,6 +36,7 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
           <TableHeaderCell>Integrations</TableHeaderCell>
           <TableHeaderCell>Properties</TableHeaderCell>
           <TableHeaderCell>Last run</TableHeaderCell>
+          <TableHeaderCell>Status</TableHeaderCell>
           <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
         </TableRow>
       </TableHeader>
@@ -43,7 +45,7 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
           jobs.map((job) => {
             const path = jobPath(organization, project, job);
             return (
-              <TableRow key={job.id}>
+              <TableRow key={job.id} className="group">
                 <TableCell to={path}>
                   <span className="flex items-center gap-2">
                     <NamedIcon name={job.event.icon} className="h-8 w-8" />
@@ -139,13 +141,17 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
                     <LabelValueStack label={"Never run"} value={"–"} />
                   )}
                 </TableCell>
-                <TableCellChevron to={path}>
+                <TableCell to={path}>
                   {job.lastRun === undefined && (
                     <Badge className="mr-4" variant="green">
                       New Job!
                     </Badge>
                   )}
-                </TableCellChevron>
+                </TableCell>
+                <TableCellMenu
+                  to={path}
+                  className="sticky right-0 z-10 bg-gradient-to-r from-transparent via-background to-background transition group-hover:bg-gradient-to-r group-hover:from-transparent group-hover:via-slate-900 group-hover:to-slate-900"
+                ></TableCellMenu>
               </TableRow>
             );
           })
