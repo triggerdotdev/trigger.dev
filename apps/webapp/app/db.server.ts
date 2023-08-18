@@ -2,6 +2,7 @@ import { PrismaClient, Prisma } from "@trigger.dev/database";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { logger } from "./services/logger.server";
+import { env } from "./env.server";
 
 export type PrismaTransactionClient = Omit<
   PrismaClient,
@@ -84,8 +85,16 @@ function getClient() {
   const { DATABASE_URL } = process.env;
   invariant(typeof DATABASE_URL === "string", "DATABASE_URL env var not set");
 
+  const databaseUrl = new URL(DATABASE_URL);
+
+  // We need to add the connection_limit and pool_timeout query params to the url, in a way that works if the DATABASE_URL already has query params
+  const query = databaseUrl.searchParams;
+  query.set("connection_limit", env.DATABASE_CONNECTION_LIMIT.toString());
+  query.set("pool_timeout", env.DATABASE_POOL_TIMEOUT.toString());
+  databaseUrl.search = query.toString();
+
   // Remove the username:password in the url and print that to the console
-  const urlWithoutCredentials = new URL(DATABASE_URL);
+  const urlWithoutCredentials = new URL(databaseUrl.href);
   urlWithoutCredentials.password = "";
 
   console.log(`🔌 setting up prisma client to ${urlWithoutCredentials.toString()}`);
@@ -93,8 +102,7 @@ function getClient() {
   const client = new PrismaClient({
     datasources: {
       db: {
-        url: DATABASE_URL,
-        // We can't set directUrl here, and we don't have to
+        url: databaseUrl.href,
       },
     },
     log: [

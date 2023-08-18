@@ -1,18 +1,18 @@
-import type { Endpoint, Integration, Job, JobIntegration, JobVersion } from "@trigger.dev/database";
 import {
   IntegrationConfig,
   JobMetadata,
   SCHEDULED_EVENT,
   TriggerMetadata,
 } from "@trigger.dev/core";
+import type { Endpoint, Integration, Job, JobIntegration, JobVersion } from "@trigger.dev/database";
 import { DEFAULT_MAX_CONCURRENT_RUNS } from "~/consts";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
+import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { logger } from "../logger.server";
-import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { RegisterScheduleSourceService } from "../schedules/registerScheduleSource.server";
-import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 
 export class RegisterJobService {
   #prismaClient: PrismaClient;
@@ -166,13 +166,9 @@ export class RegisterJobService {
     });
 
     // Upsert the JobQueue
-    const queueName =
-      typeof metadata.queue === "string"
-        ? metadata.queue
-        : typeof metadata.queue === "object"
-        ? metadata.queue.name
-        : "default";
+    const queueName = "default";
 
+    // Job Queues are going to be deprecated or used for something else, we're just doing this for now
     const jobQueue = await this.#prismaClient.jobQueue.upsert({
       where: {
         environmentId_name: {
@@ -187,16 +183,10 @@ export class RegisterJobService {
           },
         },
         name: queueName,
-        maxJobs:
-          typeof metadata.queue === "object"
-            ? metadata.queue.maxConcurrent || DEFAULT_MAX_CONCURRENT_RUNS
-            : DEFAULT_MAX_CONCURRENT_RUNS,
+        maxJobs: DEFAULT_MAX_CONCURRENT_RUNS,
       },
       update: {
-        maxJobs:
-          typeof metadata.queue === "object"
-            ? metadata.queue.maxConcurrent || DEFAULT_MAX_CONCURRENT_RUNS
-            : DEFAULT_MAX_CONCURRENT_RUNS,
+        maxJobs: DEFAULT_MAX_CONCURRENT_RUNS,
       },
     });
 
@@ -245,10 +235,10 @@ export class RegisterJobService {
         version: metadata.version,
         eventSpecification,
         preprocessRuns: metadata.preprocessRuns,
-        startPosition: metadata.startPosition === "initial" ? "INITIAL" : "LATEST",
+        startPosition: "LATEST",
       },
       update: {
-        startPosition: metadata.startPosition === "initial" ? "INITIAL" : "LATEST",
+        startPosition: "LATEST",
         eventSpecification,
         preprocessRuns: metadata.preprocessRuns,
         queue: {

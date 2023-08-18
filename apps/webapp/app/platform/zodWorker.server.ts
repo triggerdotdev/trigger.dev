@@ -51,6 +51,7 @@ const AddJobResultsSchema = z.array(GraphileJobSchema);
 export type ZodTasks<TConsumerSchema extends MessageCatalogSchema> = {
   [K in keyof TConsumerSchema]: {
     queueName?: string | ((payload: z.infer<TConsumerSchema[K]>) => string);
+    jobKey?: string | ((payload: z.infer<TConsumerSchema[K]>) => string | undefined);
     priority?: number;
     maxAttempts?: number;
     jobKeyMode?: "replace" | "preserve_run_at" | "unsafe_dedupe";
@@ -76,7 +77,12 @@ export type ZodWorkerEnqueueOptions = TaskSpec & {
   tx?: PrismaClientOrTransaction;
 };
 
+export type ZodWorkerDequeueOptions = {
+  tx?: PrismaClientOrTransaction;
+};
+
 export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
+  name: string;
   runnerOptions: RunnerOptions;
   prisma: PrismaClient;
   schema: TMessageCatalog;
@@ -85,6 +91,7 @@ export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
 };
 
 export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
+  #name: string;
   #schema: TMessageCatalog;
   #prisma: PrismaClient;
   #runnerOptions: RunnerOptions;
@@ -93,6 +100,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   #runner?: GraphileRunner;
 
   constructor(options: ZodWorkerOptions<TMessageCatalog>) {
+    this.#name = options.name;
     this.#schema = options.schema;
     this.#prisma = options.prisma;
     this.#runnerOptions = options.runnerOptions;
@@ -105,7 +113,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       return true;
     }
 
-    logger.debug("Initializing worker queue with options", {
+    this.#logDebug("Initializing worker queue with options", {
       runnerOptions: this.#runnerOptions,
     });
 
@@ -121,6 +129,54 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       throw new Error("Failed to initialize worker queue");
     }
 
+    this.#runner?.events.on("pool:create", ({ workerPool }) => {
+      this.#logDebug("pool:create");
+    });
+
+    this.#runner?.events.on("pool:listen:connecting", ({ workerPool, attempts }) => {
+      this.#logDebug("pool:create", { attempts });
+    });
+
+    this.#runner?.events.on("pool:listen:success", ({ workerPool, client }) => {
+      this.#logDebug("pool:listen:success");
+    });
+
+    this.#runner?.events.on("pool:listen:error", ({ error }) => {
+      this.#logDebug("pool:listen:error", { error });
+    });
+
+    this.#runner?.events.on("pool:gracefulShutdown", ({ message }) => {
+      this.#logDebug("pool:gracefulShutdown", { workerMessage: message });
+    });
+
+    this.#runner?.events.on("pool:gracefulShutdown:error", ({ error }) => {
+      this.#logDebug("pool:gracefulShutdown:error", { error });
+    });
+
+    this.#runner?.events.on("worker:create", ({ worker }) => {
+      this.#logDebug("worker:create", { workerId: worker.workerId });
+    });
+
+    this.#runner?.events.on("worker:release", ({ worker }) => {
+      this.#logDebug("worker:release", { workerId: worker.workerId });
+    });
+
+    this.#runner?.events.on("worker:stop", ({ worker, error }) => {
+      this.#logDebug("worker:stop", { workerId: worker.workerId, error });
+    });
+
+    this.#runner?.events.on("worker:fatalError", ({ worker, error, jobError }) => {
+      this.#logDebug("worker:fatalError", { workerId: worker.workerId, error, jobError });
+    });
+
+    this.#runner?.events.on("gracefulShutdown", ({ signal }) => {
+      this.#logDebug("gracefulShutdown", { signal });
+    });
+
+    this.#runner?.events.on("stop", () => {
+      this.#logDebug("stop");
+    });
+
     return true;
   }
 
@@ -133,22 +189,33 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     payload: z.infer<TMessageCatalog[K]>,
     options?: ZodWorkerEnqueueOptions
   ): Promise<GraphileJob> {
-    if (!this.#runner) {
-      throw new Error("Worker not initialized");
-    }
-
     const task = this.#tasks[identifier];
 
     const optionsWithoutTx = omit(options ?? {}, ["tx"]);
+    const taskWithoutJobKey = omit(task, ["jobKey"]);
 
     const spec = {
       ...optionsWithoutTx,
-      ...task,
+      ...taskWithoutJobKey,
     };
 
     if (typeof task.queueName === "function") {
       spec.queueName = task.queueName(payload);
     }
+
+    if (typeof task.jobKey === "function") {
+      const jobKey = task.jobKey(payload);
+
+      if (jobKey) {
+        spec.jobKey = jobKey;
+      }
+    }
+
+    logger.debug("Enqueuing worker task", {
+      identifier,
+      payload,
+      spec,
+    });
 
     const job = await this.#addJob(
       identifier as string,
@@ -165,6 +232,17 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     });
 
     return job;
+  }
+
+  public async dequeue(
+    jobKey: string,
+    option?: ZodWorkerDequeueOptions
+  ): Promise<GraphileJob | undefined> {
+    const results = await this.#removeJob(jobKey, option?.tx ?? this.#prisma);
+
+    logger.debug("dequeued worker task", { results, jobKey });
+
+    return results;
   }
 
   async #addJob(
@@ -192,8 +270,8 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       spec.maxAttempts || null,
       spec.jobKey || null,
       spec.priority || null,
-      spec.jobKeyMode || null,
-      spec.flags || null
+      spec.flags || null,
+      spec.jobKeyMode || null
     );
 
     const rows = AddJobResultsSchema.safeParse(results);
@@ -207,6 +285,32 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     const job = rows.data[0];
 
     return job as GraphileJob;
+  }
+
+  async #removeJob(jobKey: string, tx: PrismaClientOrTransaction) {
+    try {
+      const result = await tx.$queryRawUnsafe(
+        `SELECT * FROM graphile_worker.remove_job(
+          job_key => $1::text
+        )`,
+        jobKey
+      );
+      const job = AddJobResultsSchema.safeParse(result);
+
+      if (!job.success) {
+        logger.debug("results returned from remove_job could not be parsed", {
+          error: job.error.flatten(),
+          result,
+          jobKey,
+        });
+
+        return;
+      }
+
+      return job.data[0] as GraphileJob;
+    } catch (e) {
+      throw new Error(`Failed to remove job from queue, ${e}}`);
+    }
   }
 
   #createTaskListFromTasks() {
@@ -323,5 +427,9 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
       throw error;
     }
+  }
+
+  #logDebug(message: string, args?: any) {
+    logger.debug(`[worker][${this.#name}] ${message}`, args);
   }
 }

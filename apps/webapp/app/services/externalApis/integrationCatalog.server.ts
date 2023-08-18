@@ -4,6 +4,7 @@ import { plain } from "./integrations/plain";
 import { resend } from "./integrations/resend";
 import { slack } from "./integrations/slack";
 import { stripe } from "./integrations/stripe";
+import { sendgrid } from "./integrations/sendgrid";
 import { supabaseManagement, supabase } from "./integrations/supabase";
 import { typeform } from "./integrations/typeform";
 import type { Integration } from "./types";
@@ -34,8 +35,9 @@ export const integrationCatalog = new IntegrationCatalog({
   plain,
   resend,
   slack,
-  typeform,
   stripe,
   supabaseManagement,
   supabase,
+  sendgrid,
+  typeform,
 });

@@ -2,14 +2,14 @@ import inquirer from "inquirer";
 import pathModule from "node:path";
 import ora from "ora";
 import { z } from "zod";
-import { COMMAND_NAME } from "../consts.js";
-import { getLatestPackageVersion } from "../utils/addDependencies.js";
-import { createFile, pathExists, readJSONFile, writeJSONFile } from "../utils/fileSystem.js";
-import { generateIntegrationFiles } from "../utils/generateIntegrationFiles.js";
-import { getPackageName } from "../utils/getPackagName.js";
-import { installDependencies } from "../utils/installDependencies.js";
-import { logger } from "../utils/logger.js";
-import { resolvePath } from "../utils/parseNameAndPath.js";
+import { COMMAND_NAME } from "../consts";
+import { getLatestPackageVersion } from "../utils/addDependencies";
+import { createFile, pathExists, readJSONFile, writeJSONFile } from "../utils/fileSystem";
+import { generateIntegrationFiles } from "../utils/generateIntegrationFiles";
+import { getPackageName } from "../utils/getPackagName";
+import { installDependencies } from "../utils/installDependencies";
+import { logger } from "../utils/logger";
+import { resolvePath } from "../utils/parseNameAndPath";
 
 const CLIOptionsSchema = z.object({
   packageName: z.string().optional(),

@@ -1,0 +1,41 @@
+{
+  "name": "perf",
+  "version": "1.0.0",
+  "description": "Performance testing for Trigger.dev",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "ts-node -r tsconfig-paths/register -r dotenv/config src/index.ts",
+    "server": "ts-node -r tsconfig-paths/register -r dotenv/config src/server.ts",
+    "dev:trigger": "trigger-cli dev --port ${PORT:-3000}"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@trigger.dev/express": "workspace:*",
+    "@trigger.dev/github": "workspace:*",
+    "@trigger.dev/openai": "workspace:*",
+    "@trigger.dev/plain": "workspace:*",
+    "@trigger.dev/resend": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
+    "@trigger.dev/sendgrid": "workspace:*",
+    "@trigger.dev/slack": "workspace:*",
+    "@trigger.dev/stripe": "workspace:*",
+    "@trigger.dev/supabase": "workspace:*",
+    "@trigger.dev/typeform": "workspace:*",
+    "zod": "3.21.4"
+  },
+  "devDependencies": {
+    "@trigger.dev/cli": "workspace:*",
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/node": "^20.5.0",
+    "concurrently": "^8.2.0",
+    "dotenv": "^16.3.1",
+    "nodemon": "^3.0.1",
+    "ts-node": "^10.9.1",
+    "tsconfig-paths": "^3.14.1",
+    "typescript": "^5.1.6"
+  },
+  "trigger.dev": {
+    "endpointId": "perf"
+  }
+}

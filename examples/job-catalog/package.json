@@ -4,9 +4,14 @@
   "private": true,
   "scripts": {
     "stripe": "nodemon --watch src/stripe.ts -r tsconfig-paths/register -r dotenv/config src/stripe.ts",
+    "slack": "nodemon --watch src/slack.ts -r tsconfig-paths/register -r dotenv/config src/slack.ts",
+    "openai": "nodemon --watch src/openai.ts -r tsconfig-paths/register -r dotenv/config src/openai.ts",
     "sendgrid": "nodemon --watch src/sendgrid.ts -r tsconfig-paths/register -r dotenv/config src/sendgrid.ts",
     "supabase": "nodemon --watch src/supabase.ts -r tsconfig-paths/register -r dotenv/config src/supabase.ts",
     "supabase:types": "npx supabase gen types typescript --project-id $SUPABASE_PROJECT_ID --schema public --schema auth --schema storage > src/supabase-types.ts",
+    "events": "nodemon --watch src/events.ts -r tsconfig-paths/register -r dotenv/config src/events.ts",
+    "stressTest": "nodemon --watch src/stressTest.ts -r tsconfig-paths/register -r dotenv/config src/stressTest.ts",
+    "delays": "nodemon --watch src/delays.ts -r tsconfig-paths/register -r dotenv/config src/delays.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {

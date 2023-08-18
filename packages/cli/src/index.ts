@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { program } from "./cli/index.js";
-import { logger } from "./utils/logger.js";
+import { program } from "./cli/index";
+import { logger } from "./utils/logger";
 
 const main = async () => {
   await program.parseAsync();
