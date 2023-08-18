@@ -5,6 +5,6 @@ import { sensitiveDataReplacer } from "./sensitiveDataReplacer";
 export const logger = new Logger(
   "webapp",
   (process.env.APP_LOG_LEVEL ?? "debug") as LogLevel,
-  ["examples", "output", "connectionString"],
+  ["examples", "output", "connectionString", "payload"],
   sensitiveDataReplacer
 );

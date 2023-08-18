@@ -98,13 +98,13 @@ export class PerformRunExecutionV2Service {
     });
 
     if (!response) {
-      return await this.#failRunExecutionWithRetry("PREPROCESS", run, {
+      return await this.#failRunExecution(this.#prismaClient, "PREPROCESS", run, {
         message: "Could not connect to the endpoint",
       });
     }
 
     if (!response.ok) {
-      return await this.#failRunExecutionWithRetry("PREPROCESS", run, {
+      return await this.#failRunExecution(this.#prismaClient, "PREPROCESS", run, {
         message: `Endpoint responded with ${response.status} status code`,
       });
     }
@@ -173,7 +173,7 @@ export class PerformRunExecutionV2Service {
     const connections = await resolveRunConnections(run.runConnections);
 
     if (!connections.success) {
-      return this.#failRunExecutionWithRetry("EXECUTE_JOB", run, {
+      return this.#failRunExecutionWithRetry({
         message: `Could not resolve all connections for run ${run.id}, attempting to retry`,
       });
     }
@@ -237,7 +237,7 @@ export class PerformRunExecutionV2Service {
     });
 
     if (!response) {
-      return await this.#failRunExecutionWithRetry("EXECUTE_JOB", run, {
+      return await this.#failRunExecutionWithRetry({
         message: `Connection could not be established to the endpoint (${run.endpoint.url})`,
       });
     }
@@ -263,7 +263,7 @@ export class PerformRunExecutionV2Service {
             errorBody.data
           );
         } else {
-          return await this.#failRunExecutionWithRetry("EXECUTE_JOB", run, errorBody.data);
+          return await this.#failRunExecutionWithRetry(errorBody.data);
         }
       }
 
@@ -273,7 +273,7 @@ export class PerformRunExecutionV2Service {
           message: `Endpoint responded with ${response.status} status code`,
         });
       } else {
-        return await this.#failRunExecutionWithRetry("EXECUTE_JOB", run, {
+        return await this.#failRunExecutionWithRetry({
           message: `Endpoint responded with ${response.status} status code`,
         });
       }
@@ -423,13 +423,7 @@ export class PerformRunExecutionV2Service {
     });
   }
 
-  async #failRunExecutionWithRetry(
-    reason: "PREPROCESS" | "EXECUTE_JOB",
-    run: FoundRun,
-    output: Record<string, any>
-  ): Promise<void> {
-    await this.#failRunExecution(this.#prismaClient, reason, run, output);
-
+  async #failRunExecutionWithRetry(output: Record<string, any>): Promise<void> {
     throw new Error(JSON.stringify(output));
   }
 
