@@ -454,7 +454,7 @@ function IntegrationsWithMissingFields({
                     integration={integration}
                     organizationId={organizationId}
                     button={
-                      <ChevronRightIcon className="h-4 w-4 text-slate-700 transition group-hover:text-bright" />
+                      <ChevronRightIcon className="h-4 w-4 text-dimmed transition group-hover:text-bright" />
                     }
                     callbackUrl={callbackUrl}
                     existingIntegration={client}
@@ -482,7 +482,7 @@ function AddIntegrationConnection({
   icon?: string;
 }) {
   return (
-    <div className="group flex h-11 w-full items-center gap-2 rounded-md p-1 pr-3 transition hover:bg-slate-850">
+    <div className="group flex h-11 w-full items-center gap-2 rounded-md p-1 pr-3 transition hover:bg-slate-900">
       <NamedIconInBox
         name={icon ?? identifier}
         className="h-9 w-9 flex-none transition group-hover:border-slate-750"

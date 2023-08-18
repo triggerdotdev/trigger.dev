@@ -15,11 +15,11 @@ export const Table = forwardRef<HTMLTableElement, TableProps>(
     return (
       <div
         className={cn(
-          "overflow-x-auto whitespace-nowrap rounded-md border border-slate-900 scrollbar-thin scrollbar-track-midnight-850 scrollbar-thumb-slate-700",
+          "overflow-x-auto whitespace-nowrap rounded-md border border-uiBorder scrollbar-thin scrollbar-track-midnight-850 scrollbar-thumb-slate-700",
           containerClassName
         )}
       >
-        <table ref={ref} className={cn("w-full divide-y bg-midnight-850", className)}>
+        <table ref={ref} className={cn("w-full divide-y", className)}>
           {children}
         </table>
       </div>
@@ -37,7 +37,7 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>
     return (
       <thead
         ref={ref}
-        className={cn("rounded-t-md", "relative divide-y divide-slate-850", className)}
+        className={cn("rounded-t-md", "relative divide-y divide-uiBorder bg-slate-850", className)}
       >
         {children}
       </thead>
@@ -53,7 +53,7 @@ type TableBodyProps = {
 export const TableBody = forwardRef<HTMLTableSectionElement, TableBodyProps>(
   ({ className, children }, ref) => {
     return (
-      <tbody ref={ref} className={cn("relative divide-y divide-slate-850", className)}>
+      <tbody ref={ref} className={cn("relative divide-y divide-uiBorder", className)}>
         {children}
       </tbody>
     );
@@ -103,7 +103,7 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         ref={ref}
         scope="col"
         className={cn(
-          "px-4 py-3 align-middle text-xs font-semibold uppercase text-slate-400",
+          "px-4 py-3 align-middle text-xs font-normal uppercase tracking-wider text-dimmed",
           alignmentClassName,
           className
         )}
@@ -133,7 +133,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
     }
 
     const flexClasses = cn(
-      "flex w-full whitespace-nowrap px-4 py-3 text-xs text-slate-400",
+      "flex w-full whitespace-nowrap px-4 py-3 text-xs text-dimmed",
       alignment === "left"
         ? "justify-start text-left"
         : alignment === "center"
@@ -145,7 +145,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       <td
         ref={ref}
         className={cn(
-          "text-xs text-slate-400 transition group-hover:bg-slate-850/50",
+          "text-xs text-slate-400 transition group-hover:bg-slate-900",
           to || onClick ? "cursor-pointer" : "px-4 py-3 align-middle",
           !to && !onClick && alignmentClassName,
           className
