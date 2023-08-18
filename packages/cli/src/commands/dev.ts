@@ -21,7 +21,7 @@ export const DevCommandOptionsSchema = z.object({
   port: z.coerce.number(),
   envFile: z.string(),
   handlerPath: z.string(),
-  clientId: z.string(),
+  clientId: z.string().optional(),
 });
 
 export type DevCommandOptions = z.infer<typeof DevCommandOptionsSchema>;
