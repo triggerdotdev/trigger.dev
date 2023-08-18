@@ -25,11 +25,11 @@ export async function removeFile(path: string) {
 }
 
 export async function readFile(path: string) {
-  return await fsModule.readFile(path, "utf-8");
+  return await fsModule.readFile(path, "utf8");
 }
 
 export async function readJSONFile(path: string) {
-  const fileContents = await fsModule.readFile(path, "utf-8");
+  const fileContents = await fsModule.readFile(path, "utf8");
 
   return JSON.parse(fileContents);
 }
@@ -39,7 +39,7 @@ export async function writeJSONFile(path: string, json: any) {
 }
 
 export function readJSONFileSync(path: string) {
-  const fileContents = fsSync.readFileSync(path, "utf-8");
+  const fileContents = fsSync.readFileSync(path, "utf8");
 
   return JSON.parse(fileContents);
 }

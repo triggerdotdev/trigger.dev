@@ -45,13 +45,10 @@ export function useMatchesData(
   const paths = Array.isArray(id) ? id : [id];
 
   // Get the first matching route
-  const route = paths.reduce(
-    (acc, path) => {
-      if (acc) return acc;
-      return matchingRoutes.find((route) => route.id === path);
-    },
-    undefined as RouteMatch | undefined
-  );
+  const route = paths.reduce((acc, path) => {
+    if (acc) return acc;
+    return matchingRoutes.find((route) => route.id === path);
+  }, undefined as RouteMatch | undefined);
 
   return route;
 }
@@ -76,7 +73,7 @@ export function hydrateDates(object: any): any {
   if (
     typeof object === "string" &&
     object.match(/\d{4}-\d{2}-\d{2}/) &&
-    !isNaN(Date.parse(object))
+    !Number.isNaN(Date.parse(object))
   ) {
     return new Date(object);
   }
