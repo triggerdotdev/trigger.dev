@@ -47,6 +47,9 @@ export const initCommand = async (options: InitCommandOptions) => {
   // Detect if are are in a Next.js project
   const isNextJsProject = await detectNextJsProject(resolvedPath);
 
+  //Detect Next.Js version
+  const nextJsVersion = await detectNextJsVersion(resolvedPath)
+
   if (!isNextJsProject) {
     logger.error("You must run this command in a Next.js project.");
     telemetryClient.init.failed("not_nextjs_project", options);
@@ -104,6 +107,7 @@ export const initCommand = async (options: InitCommandOptions) => {
   await addDependencies(resolvedPath, [
     { name: "@trigger.dev/sdk", tag: "latest" },
     { name: "@trigger.dev/nextjs", tag: "latest" },
+    { name: "@trigger.dev/react", tag: "latest" },
   ]);
 
   telemetryClient.init.addedDependencies(resolvedOptions);
@@ -145,14 +149,25 @@ export const initCommand = async (options: InitCommandOptions) => {
 
   await addConfigurationToPackageJson(resolvedPath, resolvedOptions);
 
-  await printNextSteps(resolvedOptions, authorizedKey);
+  await printNextSteps(resolvedOptions, authorizedKey, nextJsVersion, nextJsDir);
   telemetryClient.init.completed(resolvedOptions);
 };
 
-async function printNextSteps(options: ResolvedOptions, authorizedKey: WhoamiResponse) {
+async function printNextSteps(options: ResolvedOptions, authorizedKey: WhoamiResponse,nextJsVersion: number, nextJsDir:"pages"| "app"  ) {
   const projectUrl = `${options.triggerUrl}/orgs/${authorizedKey.organization.slug}/projects/${authorizedKey.project.slug}`;
 
   logger.success(`✅ Successfully initialized Trigger.dev!`);
+
+
+if (nextJsDir === "pages") {
+  const message = `Detected you are using Next.js Page Router version ${nextJsVersion}, check ${
+    nextJsVersion > 13.1
+      ? "out this article on our docs on how to complete the setup. https://trigger.dev/docs/documentation/quickstarts/nextjs"
+      : "out this article on our docs on how to complete the setup. https://trigger.dev/docs/documentation/quickstarts/nextjs"
+  }`;
+
+  logger.info(message);
+}
 
   logger.info("Next steps:");
   logger.info(`   1. Run your Next.js project locally with 'npm run dev'`);
@@ -565,7 +580,6 @@ async function createTriggerPageRoute(
   const configFileName = isTypescriptProject ? "tsconfig.json" : "jsconfig.json";
   const tsConfigPath = pathModule.join(projectPath, configFileName);
   const { tsconfig } = await parse(tsConfigPath);
-
   const pathAlias = getPathAlias(tsconfig, usesSrcDir);
   const routePathPrefix = pathAlias ? pathAlias + "/" : "../../";
 
@@ -726,3 +740,16 @@ async function setupEnvironmentVariable(
     logger.success(`✅ Added ${variableName}=${renderer(value)} to ${fileName}`);
   }
 }
+
+async function detectNextJsVersion(projectPath: string): Promise<number> {
+  const packageFile = pathModule.join(projectPath, "package.json");
+  const packageData = await fs.readFile(packageFile, "utf8");
+  const packageJson = JSON.parse(packageData);
+  const version = packageJson.dependencies.next || packageJson.devDependencies.next;
+  const nextVersion = parseFloat(version);
+
+  return nextVersion;
+}
+
+
+

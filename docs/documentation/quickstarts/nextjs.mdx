@@ -67,6 +67,182 @@ It will ask you a few questions
 2. Enter your development API key. Enter the key you copied earlier.
 3. Enter a unique ID for your endpoint (you can just use the default by hitting enter)
 
+
+### Add the `TriggerProvider` component
+
+The [TriggerProvider](/sdk/react/triggerprovider) component is a React Context Provider that will make the Trigger API client available to all child components.
+
+Generally you'll want to add this to the root of your app, so that it's available everywhere. However, you can add it lower in the hierarchy but it must be above any of the hooks.
+
+```tsx app/layout.tsx
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body className={inter.className}>
+        <TriggerProvider publicApiKey={process.env.NEXT_PUBLIC_TRIGGER_API_KEY!}>
+          {children}
+        </TriggerProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+### Add hooks to your components
+
+There are three hooks that you can use to show statuses:
+
+- [useEventDetails](/sdk/react/useeventdetails): get the details of a specific event
+- [useRunDetails](/sdk/react/userundetails): get the details of a specific Run
+- [useEventRunDetails](/sdk/react/useeventrundetails): get the details of a Run triggered from a specific event
+
+All of these hooks will automatically refresh your components as the state of your Runs or events change.
+
+#### a. useEventDetails
+
+The `useEventDetails` hook will get the details of a specific event. You can use this to show the status of a specific event.
+
+<Snippet file="how-to-get-event-id.mdx" />
+
+This component will show the details of an event and the overall status of Runs that were triggered by the event:
+
+```tsx
+import { useEventDetails } from "@trigger.dev/react";
+
+export default function EventDetails({ eventId }: { eventId: string }) {
+  const { data, error } = useEventDetails(eventId);
+
+  if (error) {
+    return <div>Error: {error.message}</div>;
+  }
+
+  if (!data) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <h1>{data.name}</h1>
+      <p>Runs: {data.runs?.length}</p>
+      <div>
+        {data.runs?.map((run) => (
+          <div key={run.id}>
+            <p>
+              Run {run.id}: {run.status}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+#### b. useRunDetails
+
+The `useRunDetails` hook will get the details of a specific Run. You can use this to show the status of a specific Run.
+
+<Accordion title="How do I get a Run id?">
+  You can call [client.getRuns()](/sdk/triggerclient/instancemethods/getruns) with a Job id to get a
+  list of the most recent Runs for that Job. You can then pass that run id to your frontend to use
+  in the hook.
+</Accordion>
+
+This component will show the details of a Run and the status of each task in the Run:
+
+```tsx
+import { useRunDetails } from "@trigger.dev/react";
+
+export default function RunDetails({ runId }: { runId: string }) {
+  const { data, error } = useRunDetails(runId);
+
+  if (error) {
+    return <div>Error: {error.message}</div>;
+  }
+
+  if (!data) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <h1>Run {data.id}</h1>
+      <p>Status: {data.status}</p>
+      <div>
+        {data.tasks?.map((task) => (
+          <div key={task.id}>
+            <p>
+              Task {task.id}: {task.status}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+#### c. useEventRunDetails
+
+The `useEventRunDetails` hook will get the details of a specific Run that was triggered by a specific event. You can use this to show the status of a specific Run.
+
+<Snippet file="how-to-get-event-id.mdx" />
+
+This component will show the details of a Run and the status of each task in the Run:
+
+```tsx
+import { useEventRunDetails } from "@trigger.dev/react";
+
+export default function EventRunDetails({ eventId }: { eventId: string }) {
+  const { data, error } = useEventRunDetails(eventId);
+
+  if (error) {
+    return <div>Error: {error.message}</div>;
+  }
+
+  if (!data) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <h1>Run {data.id}</h1>
+      <p>Status: {data.status}</p>
+      <div>
+        {data.tasks?.map((task) => (
+          <div key={task.id}>
+            <p>
+              Task {task.id}: {task.status}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+<Info >For Next.Js Page Router 13.1 onwards, Add this to your next.config.js file</Info>
+```ts next.config.js
+ const nextConfig = {
+  transpilePackages: ["@trigger.dev/react"],
+};
+
+module.exports = nextConfig;
+
+```
+
+
+
+<Info >For Next.Js Page Router below 13.1, the [next-transpile-package](https://www.npmjs.com/package/next-transpile-modules) should be used in the next.config.js.</Info>
+
+```ts next.config.js
+const withTM = require('next-transpile-modules')(['@trigger.dev/react']);
+
+module.exports = withTM({});
+
+```
+
 ## Run your Next.js site
 
 Make sure your Next.js site is running locally, we will connect to it to register your Jobs.
