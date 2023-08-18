@@ -32,8 +32,6 @@ export type EnqueueRunExecutionV2Options = {
 
 export async function enqueueRunExecutionV2(
   run: JobRun,
-  queueId: string,
-  concurrency: number,
   tx: PrismaClientOrTransaction,
   options: EnqueueRunExecutionV2Options = {}
 ) {
@@ -46,16 +44,16 @@ export async function enqueueRunExecutionV2(
       isRetry: typeof options.isRetry === "boolean" ? options.isRetry : false,
     },
     {
-      queueName: `job:queue:${queueId}:${await queueRoundRobin.next(queueId, concurrency)}`,
+      queueName: `job:${run.jobId}:env:${run.environmentId}`,
       tx,
       runAt: options.runAt,
-      jobKey: `execution:${run.id}`,
+      jobKey: `job_run:${run.id}`,
     }
   );
 }
 
 export async function dequeueRunExecutionV2(run: JobRun, tx: PrismaClientOrTransaction) {
-  return await executionWorker.dequeue(`execution:${run.id}`, {
+  return await executionWorker.dequeue(`job_run:${run.id}`, {
     tx,
   });
 }

@@ -244,7 +244,7 @@ export class PerformTaskOperationService {
   }
 
   async #resumeRunExecution(task: NonNullable<FoundTask>, prisma: PrismaClientOrTransaction) {
-    await enqueueRunExecutionV2(task.run, task.run.queueId, task.run.queue.maxJobs, prisma);
+    await enqueueRunExecutionV2(task.run, prisma);
   }
 }
 

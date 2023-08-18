@@ -38,7 +38,7 @@ export class ContinueRunService {
           },
         });
 
-        await enqueueRunExecutionV2(run, run.queue.id, run.queue.maxJobs, tx);
+        await enqueueRunExecutionV2(run, tx);
       },
       { timeout: 10000 }
     );

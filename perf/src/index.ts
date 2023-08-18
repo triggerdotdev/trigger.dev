@@ -37,19 +37,23 @@ async function main() {
   // wait for 1 seconds
   await new Promise((resolve) => setTimeout(resolve, 1000));
 
-  // Send 1 event per second for 30 seconds (1 event == 10 runs)
+  // Send 5 events per second for 30 seconds (1 event == 10 runs)
   for (let i = 0; i < 30; i++) {
-    console.log("Sending 1 event...");
+    console.log("Sending 5 event...");
 
-    sendEvent();
+    await sendEvent();
+    await sendEvent();
+    await sendEvent();
+    await sendEvent();
+    await sendEvent();
 
     await new Promise((resolve) => setTimeout(resolve, 950));
   }
 
-  console.log("Sending 30 events...");
-  for (let i = 0; i < 30; i++) {
-    await sendEvent();
-  }
+  // console.log("Sending 30 events...");
+  // for (let i = 0; i < 30; i++) {
+  //   await sendEvent();
+  // }
 }
 
 async function mainLong() {
@@ -73,7 +77,7 @@ async function mainLong() {
   }
 }
 
-mainLong().catch((err) => {
+main().catch((err) => {
   console.error(err);
   process.exit(1);
 });

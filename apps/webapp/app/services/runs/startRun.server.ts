@@ -83,7 +83,7 @@ export class StartRunService {
 
     const updatedRun = await updateRun();
 
-    await enqueueRunExecutionV2(updatedRun, run.queue.id, run.queue.maxJobs, this.#prismaClient);
+    await enqueueRunExecutionV2(updatedRun, this.#prismaClient);
   }
 
   async #handleMissingConnections(id: string, runConnectionsByKey: RunConnectionsByKey) {

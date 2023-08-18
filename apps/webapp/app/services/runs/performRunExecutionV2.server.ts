@@ -1,7 +1,6 @@
 import {
   ApiEventLogSchema,
   CachedTask,
-  CachedTaskSchema,
   RunJobError,
   RunJobResumeWithTask,
   RunJobRetryWithTask,
@@ -20,15 +19,6 @@ import { logger } from "../logger.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type FoundTask = FoundRun["tasks"][number];
-
-// Run starts in PENDING status in CreateRunService which is called from InvokeDispatcherService
-// CreateRunService enqueues a job to StartRunService
-// StartRunService checks to see if all the connections are ready
-// If they are, it starts the run (setting the status to QUEUED)
-// StartRunService creates a JobRunExecution and enqueues a performJobExecution job
-// The performJobExecution job is added to a JobQueue, with a suffix to control the concurrency (job:queue:<queueId>:<concurrency>)
-// The performJobExecution job is picked up by a worker
-// PerformRunExecutionService will update the run status to STARTED
 
 export class PerformRunExecutionV2Service {
   #prismaClient: PrismaClient;
@@ -145,7 +135,7 @@ export class PerformRunExecutionV2Service {
           },
         });
 
-        await enqueueRunExecutionV2(run, run.queue.id, run.queue.maxJobs, tx);
+        await enqueueRunExecutionV2(run, tx);
       });
     }
   }
@@ -343,7 +333,7 @@ export class PerformRunExecutionV2Service {
       // If the task has an operation, then the next performRunExecution will occur
       // when that operation has finished
       if (!data.task.operation) {
-        await enqueueRunExecutionV2(run, run.queue.id, run.queue.maxJobs, tx, {
+        await enqueueRunExecutionV2(run, tx, {
           runAt: data.task.delayUntil ?? undefined,
           resumeTaskId: data.task.id,
           isRetry,
@@ -415,7 +405,7 @@ export class PerformRunExecutionV2Service {
         },
       });
 
-      await enqueueRunExecutionV2(run, run.queue.id, run.queue.maxJobs, tx, {
+      await enqueueRunExecutionV2(run, tx, {
         runAt: data.retryAt,
         resumeTaskId: data.task.id,
         isRetry,
@@ -474,7 +464,7 @@ export class PerformRunExecutionV2Service {
             },
           });
 
-          await enqueueRunExecutionV2(run, run.queue.id, run.queue.maxJobs, tx);
+          await enqueueRunExecutionV2(run, tx);
 
           break;
         }

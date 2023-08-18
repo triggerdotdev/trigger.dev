@@ -508,11 +508,6 @@ export class TriggerClient {
       integrations: {
         integration: options.source.integration,
       },
-      queue: {
-        name: options.key,
-        maxConcurrent: 1,
-      },
-      startPosition: "initial",
       run: async (event, io, ctx) => {
         const updates = await options.source.register(options.params, event, io, ctx);
 
