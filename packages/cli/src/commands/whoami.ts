@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { logger } from "../utils/logger.js";
-import { resolvePath } from "../utils/parseNameAndPath.js";
-import { TriggerApi } from "../utils/triggerApi.js";
-import { DevCommandOptions, getEndpointIdFromPackageJson, getTriggerApiDetails } from "./dev.js";
+import { logger } from "../utils/logger";
+import { resolvePath } from "../utils/parseNameAndPath";
+import { TriggerApi } from "../utils/triggerApi";
+import { DevCommandOptions, getEndpointIdFromPackageJson, getTriggerApiDetails } from "./dev";
 import ora from "ora";
 
 export const WhoAmICommandOptionsSchema = z.object({
-  envFile: z.string()
+  envFile: z.string(),
 });
 
 export type WhoAmICommandOptions = z.infer<typeof WhoAmICommandOptionsSchema>;
