@@ -1,3 +1,7 @@
 {
-  "extends": "next/core-web-vitals"
+  "extends": ["next/core-web-vitals"],
+  "plugins": ["@trigger.dev"],
+  "rules": {
+    "@trigger.dev/no-duplicated-task-keys": 2
+  }
 }
