@@ -73,8 +73,6 @@ export default function Page() {
 
   const { filterText, setFilterText, filteredItems } = useFilterJobs(jobs);
 
-  const { width, height } = useWindowSize();
-
   return (
     <PageContainer>
       <PageHeader>
@@ -122,9 +120,11 @@ export default function Page() {
                       noResultsText={`No Jobs match ${filterText}. Try a different search
           query.`}
                     />
-                    {jobs.length === 1 && jobs.every((r) => r.lastRun === undefined) && (
-                      <RunYourJobPrompt />
-                    )}
+                    {jobs.length === 1 &&
+                      jobs.every((r) => r.lastRun === undefined) &&
+                      jobs.every((i) => i.hasIntegrationsRequiringAction === false) && (
+                        <RunYourJobPrompt />
+                      )}
                   </>
                 ) : (
                   <HowToSetupYourProject />
