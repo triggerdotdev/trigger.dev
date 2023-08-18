@@ -42,6 +42,8 @@ model User {
   invitationCodeId String?
 }
 
+// @deprecated This model is no longer used as the Cloud is out of private beta
+// Leaving it here for now for historical reasons
 model InvitationCode {
   id   String @id @default(cuid())
   code String @unique
