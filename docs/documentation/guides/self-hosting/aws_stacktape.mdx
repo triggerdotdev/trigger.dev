@@ -1,0 +1,78 @@
+---
+title: "AWS ECS using Stacktape"
+description: "This configuration file outlines the deployment process for any containerized application using AWS ECS and Stacktape. The application is designed to serve as a demonstration of deploying a scalable web service using container technology."
+---
+
+
+Step 1: Set Up AWS Account
+
+1.If you haven't already, create an AWS account.
+2.Configure your AWS CLI with your access credentials. You can install AWS CLI by following the instructions in the AWS documentation.
+
+
+Step 2: Install Stacktape
+
+1.Install Node.js and npm (Node Package Manager) if you haven't already.
+2.Install Stacktape globally using npm:
+   ```npm install -g stacktape```
+
+
+Step 3: Prepare Your Application
+
+1.Organize your application code and Dockerfile.
+2.Make sure your application is containerized using Docker.
+
+
+Step 4: Create a Stacktape Configuration File
+
+In your application's root directory, create a stacktape.yml or stacktape.json configuration file. Below is an example of a stacktape.yml file:
+
+```
+name: my-ecs-app
+version: 1.0.0
+
+stages:
+  production:
+    aws:
+      region: us-east-1
+    cloudFormation:
+      stackName: my-ecs-app-production
+
+    api:
+      events:
+        - http:
+            path: /
+            method: ANY
+
+    containers:
+      - name: my-container
+        image: path-to-your-docker-image
+        memory: 512
+        portMappings:
+          - containerPort: 80
+            hostPort: 80
+```
+Customize the configuration to match your application's needs.
+
+
+Step 5: Deploy Your Application
+
+1.Open a terminal and navigate to your application's directory.
+2.Run the following command to deploy your application:
+   ```stacktape deploy production```
+   This command will create the necessary AWS resources, such as ECS clusters, services, and tasks, to host your application.
+
+
+Step 6: Monitor and Scale Your Application
+
+1.After deployment, Stacktape will provide you with URLs to access your application.
+2.Monitor your application's performance using AWS CloudWatch or other monitoring tools.
+3.To scale your application, adjust the containers section in your stacktape.yml configuration file, and then redeploy using the stacktape deploy command.
+
+
+Step 7: Cleanup
+
+If you want to remove all the resources created by Stacktape, you can run:
+```stacktape remove production```
+
+
