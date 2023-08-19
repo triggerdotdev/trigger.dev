@@ -542,7 +542,7 @@ function prepareTasksForRun(tasks: FoundTask[]): CachedTask[] {
 
 function prepareTaskForRun(task: FoundTask): CachedTask {
   return {
-    id: task.id,
+    id: task.idempotencyKey, // We should eventually move this back to task.id
     status: task.status,
     idempotencyKey: task.idempotencyKey,
     noop: task.noop,
