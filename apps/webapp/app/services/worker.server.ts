@@ -187,10 +187,10 @@ function getWorkerQueue() {
       activateSource: {
         priority: 10, // smaller number = higher priority
         maxAttempts: 3,
-        handler: async (payload, job) => {
+        handler: async (payload, graphileJob) => {
           const service = new ActivateSourceService();
 
-          await service.call(payload.id, job.id, payload.orphanedEvents);
+          await service.call(payload.id, graphileJob.id, payload.orphanedEvents);
         },
       },
       deliverHttpSourceRequest: {
