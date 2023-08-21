@@ -295,7 +295,7 @@ async function detectPagesOrAppDir(
     // If so then we return app
     // If not return pages
 
-    const extensionsToCheck = ["jsx", "tsx", "js"];
+    const extensionsToCheck = ["jsx", "tsx", "js", "ts"];
     const basePath = pathModule.join(path, usesSrcDir ? "src" : "", "app", `page.`);
 
     for (const extension of extensionsToCheck) {
