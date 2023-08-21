@@ -1,4 +1,4 @@
-import { jobPath } from "~/utils/pathBuilder";
+import { jobPath, jobTestPath } from "~/utils/pathBuilder";
 import { DateTime } from "../primitives/DateTime";
 import { LabelValueStack } from "../primitives/LabelValueStack";
 import { NamedIcon } from "../primitives/NamedIcon";
@@ -152,7 +152,7 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
                 <TableCellMenu isSticky>
                   <PopoverMenuItem to={path} title="View Job" icon="eye" />
                   <PopoverMenuItem
-                    to={path + "/test"}
+                    to={jobTestPath(organization, project, job)}
                     title="Test Job"
                     isSelected={false}
                     icon="beaker"
