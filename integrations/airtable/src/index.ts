@@ -36,6 +36,7 @@ export class Airtable implements TriggerIntegration {
   private _options: AirtableIntegrationOptions;
   private _client?: AirtableSDK;
   private _io?: IO;
+  private _connectionKey?: string;
 
   constructor(options: Prettify<AirtableIntegrationOptions>) {
     if (Object.keys(options).includes("token") && !options.token) {
@@ -61,22 +62,25 @@ export class Airtable implements TriggerIntegration {
     return createWebhookEventSource(this);
   }
 
-  cloneForRun(io: IO, auth?: ConnectionAuth) {
+  cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
     const airtable = new Airtable(this._options);
     airtable._io = io;
+    airtable._connectionKey = connectionKey;
     if (auth) {
       airtable._client = new AirtableSDK({
         apiKey: auth.accessToken,
       });
+      return airtable;
     }
 
     if (this._options.token) {
       airtable._client = new AirtableSDK({
         apiKey: this._options.token,
       });
+      return airtable;
     }
 
-    return airtable;
+    throw new Error("No auth");
   }
 
   runTask<TResult extends RunTaskResult = void>(
@@ -86,6 +90,7 @@ export class Airtable implements TriggerIntegration {
     errorCallback?: RunTaskErrorCallback
   ) {
     if (!this._io) throw new Error("No IO");
+    if (!this._connectionKey) throw new Error("No connection key");
 
     return this._io.runTask<TResult>(
       key,
@@ -93,7 +98,7 @@ export class Airtable implements TriggerIntegration {
         if (!this._client) throw new Error("No client");
         return callback(this._client, task, io);
       },
-      { icon: "airtable", ...(options ?? {}), connectionKey: this.id },
+      { icon: "airtable", ...(options ?? {}), connectionKey: this._connectionKey },
       errorCallback
     );
   }
@@ -106,6 +111,7 @@ export class Airtable implements TriggerIntegration {
     return createTrigger(this.source, events.onTableChanged, params);
   }
 
+  //todo add support for dataTypes, changeTypes and fromSources
   createWebhook(key: IntegrationTaskKey, { baseId, url }: { baseId: string; url: string }) {
     return this.runTask<WebhookRegistrationData>(key, async (client, task, io) => {
       // create webhook
@@ -203,7 +209,7 @@ const WebhookListDataSchema = z.object({
     z.object({
       id: z.string(),
       notificationUrl: z.string(),
-      expirationTime: z.date(),
+      expirationTime: z.coerce.date(),
       areNotificationsEnabled: z.boolean(),
       isHookEnabled: z.boolean(),
     })
@@ -284,16 +290,6 @@ function createWebhookEventSource(
   });
 }
 
-const webhookPayload = {
-  base: {
-    id: "app00000000000000",
-  },
-  webhook: {
-    id: "ach00000000000000",
-  },
-  timestamp: "2022-02-01T21:25:05.663Z",
-};
-
 const WebhookPayloadSchema = z.object({
   base: z.object({
     id: z.string(),
@@ -301,7 +297,7 @@ const WebhookPayloadSchema = z.object({
   webhook: z.object({
     id: z.string(),
   }),
-  timestamp: z.date(),
+  timestamp: z.coerce.date(),
 });
 
 async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {

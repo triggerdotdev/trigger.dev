@@ -40,7 +40,7 @@ export function createIOWithIntegrations<TIntegrations extends Record<string, Tr
 
       if (typeof prop === "string" && prop in connections) {
         const { integration, auth } = connections[prop];
-        return integration.cloneForRun(io, auth);
+        return integration.cloneForRun(io, prop, auth);
       }
 
       const value = Reflect.get(target, prop, receiver);
