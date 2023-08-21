@@ -43,6 +43,7 @@ import { parse } from "@conform-to/zod";
 import { z } from "zod";
 import { ActivateSourceService } from "~/services/sources/activateSource.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
+import { nanoid } from "nanoid";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
@@ -90,7 +91,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   try {
     const service = new ActivateSourceService();
 
-    const result = await service.call(triggerParam, submission.value.jobId);
+    const result = await service.call(triggerParam);
 
     return redirectWithSuccessMessage(
       externalTriggerPath({ slug: organizationSlug }, { slug: projectParam }, { id: triggerParam }),
