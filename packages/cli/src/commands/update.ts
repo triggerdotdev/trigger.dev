@@ -1,32 +1,14 @@
-import fs from "fs";
 import path from "path";
 import inquirer from "inquirer";
 import { run, RunOptions } from "npm-check-updates";
 import { installDependencies } from "../utils/installDependencies.js";
 import { Index } from "npm-check-updates/build/src/types/IndexType.js";
-
-function getPackageJSON(projectPath: string) {
-  const packageJsonPath = path.join(projectPath, "package.json");
-  if (!fs.existsSync(packageJsonPath)) {
-    console.error(`package.json not found in the ${projectPath} directory.`);
-    return;
-  }
-  return JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-}
-
-function setPackageJSON(projectPath: string, updatedPackageJSON: Index) {
-  const packageJsonPath = path.join(projectPath, "package.json");
-  if (!fs.existsSync(packageJsonPath)) {
-    console.error(`package.json not found in the ${projectPath} directory.`);
-    return;
-  }
-  fs.writeFileSync(packageJsonPath, JSON.stringify(updatedPackageJSON, null, 2), "utf8");
-  return;
-}
+import { readJSONFileSync, writeJSONFile } from "../utils/fileSystem.js";
 
 export async function updateCommand(projectPath: string) {
   const triggerDevPackage = "@trigger.dev";
-  const packageData = getPackageJSON(projectPath);
+  const packageJSONPath = path.join(projectPath, "package.json")
+  const packageData = readJSONFileSync(packageJSONPath);
 
   if (!packageData) {
     return;
@@ -113,7 +95,7 @@ export async function updateCommand(projectPath: string) {
         newPackageJSON[tmp.type][packageName] = updatedDependencies[packageName];
       }
     });
-    setPackageJSON(projectPath, newPackageJSON);
+    await writeJSONFile(packageJSONPath, newPackageJSON);
     console.log("package.json updated. Reinstalling dependencies...");
     await installDependencies(projectPath);
   } else {
