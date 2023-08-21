@@ -1,5 +1,14 @@
 # @trigger.dev/sdk
 
+## 2.0.10
+
+### Patch Changes
+
+- b1b9321a: Fixed IO not setting the cached task key correctly, resulting in unnecessary API calls to trigger.dev
+- b1b9321a: Deprecated queue options in the job and removed startPosition
+- Updated dependencies [b1b9321a]
+  - @trigger.dev/core@2.0.10
+
 ## 2.0.9
 
 ### Patch Changes
