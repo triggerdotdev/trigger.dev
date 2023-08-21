@@ -19,8 +19,8 @@ import { ProjectJob } from "~/hooks/useJobs";
 import { useProject } from "~/hooks/useProject";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { JobRunStatus } from "~/models/job.server";
-import { Badge } from "../primitives/Badge";
 import { PopoverMenuItem } from "../primitives/Popover";
+import { JobStatusBadge } from "./JobStatusBadge";
 
 export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResultsText: string }) {
   const organization = useOrganization();
@@ -141,11 +141,11 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
                   )}
                 </TableCell>
                 <TableCell to={path}>
-                  {job.lastRun === undefined && (
-                    <Badge className="mr-4" variant="green">
-                      New Job!
-                    </Badge>
-                  )}
+                  <JobStatusBadge
+                    enabled={true}
+                    hasIntegrationsRequiringAction={job.hasIntegrationsRequiringAction}
+                    hasRuns={job.lastRun !== undefined}
+                  />
                 </TableCell>
                 <TableCellMenu isSticky>
                   <PopoverMenuItem to={path} title="View Job" icon="eye" />
