@@ -21,6 +21,15 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { JobRunStatus } from "~/models/job.server";
 import { PopoverMenuItem } from "../primitives/Popover";
 import { JobStatusBadge } from "./JobStatusBadge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../primitives/Dialog";
+import { Button, ButtonContent } from "../primitives/Buttons";
 
 export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResultsText: string }) {
   const organization = useOrganization();
@@ -154,7 +163,23 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
                     title="Test Job"
                     icon="beaker"
                   />
-                  <PopoverMenuItem to="#" title="Delete Job" icon="trash-can" />
+
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button variant="menu-item" LeadingIcon="trash-can">
+                        Delete Job
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Are you sure absolutely sure?</DialogTitle>
+                        <DialogDescription>
+                          This action cannot be undone. This will permanently delete your account
+                          and remove your data from our servers.
+                        </DialogDescription>
+                      </DialogHeader>
+                    </DialogContent>
+                  </Dialog>
                 </TableCellMenu>
               </TableRow>
             );
