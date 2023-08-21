@@ -1,13 +1,13 @@
+import { REGISTER_SOURCE_EVENT, RegisterTriggerSource } from "@trigger.dev/core";
+import type { SecretReference, TriggerSource, TriggerSourceEvent } from "@trigger.dev/database";
+import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import type { TriggerSource, SecretReference, TriggerSourceEvent } from "@trigger.dev/database";
-import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { env } from "~/env.server";
-import { REGISTER_SOURCE_EVENT, RegisterTriggerSource } from "@trigger.dev/core";
-import { SecretStoreProvider, getSecretStore } from "../secrets/secretStore.server";
-import { SecretStore } from "../secrets/secretStore.server";
-import { z } from "zod";
+import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
+import { getSecretStore } from "../secrets/secretStore.server";
+import { nanoid } from "nanoid";
 
 export class ActivateSourceService {
   #prismaClient: PrismaClient;
@@ -16,7 +16,7 @@ export class ActivateSourceService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(id: string, jobId: string, orphanedEvents?: Array<string>) {
+  public async call(id: string, jobId?: string, orphanedEvents?: Array<string>) {
     const triggerSource = await this.#prismaClient.triggerSource.findUniqueOrThrow({
       where: {
         id,
@@ -34,7 +34,7 @@ export class ActivateSourceService {
       },
     });
 
-    const eventId = `${id}:${jobId}`;
+    const eventId = `${id}:${jobId ?? nanoid()}`;
 
     // TODO: support more channels
     switch (triggerSource.channel) {
@@ -91,6 +91,10 @@ export class ActivateSourceService {
         url: `${env.APP_ORIGIN}/api/v1/sources/http/${triggerSource.id}`,
       },
     };
+
+    //todo this needs to stay exactly the same for TriggerSources of version: "v1"
+    //todo ExternalSource needs to be updated so it passes "v2" through
+    //todo indexEndpoint needs to set the TriggerSource version to "v2" if it's passed through
 
     await service.call(environment, {
       id: eventId,
