@@ -178,7 +178,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
 );
 
 const stickyStyles =
-  "sticky right-0 z-10 bg-background before:absolute before:-left-8 before:top-0 before:h-full before:min-w-[2rem] before:bg-gradient-to-r before:from-transparent before:to-background before:content-[''] group-hover:before:to-slate-900";
+  "sticky right-0 z-10 bg-background before:absolute before:pointer-events-none before:-left-8 before:top-0 before:h-full before:min-w-[2rem] before:bg-gradient-to-r before:from-transparent before:to-background before:content-[''] group-hover:before:to-slate-900";
 
 export const TableCellChevron = forwardRef<
   HTMLTableCellElement,
