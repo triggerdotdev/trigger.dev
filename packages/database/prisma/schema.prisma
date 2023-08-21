@@ -879,7 +879,9 @@ model TriggerSource {
   channel     TriggerChannel @default(HTTP)
   channelData Json?
 
-  events TriggerSourceEvent[]
+  version String @default("1")
+
+  options TriggerSourceOption[]
 
   secretReference   SecretReference @relation(fields: [secretReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   secretReferenceId String
@@ -929,9 +931,10 @@ enum TriggerChannel {
   SMTP
 }
 
-model TriggerSourceEvent {
-  id   String @id @default(cuid())
-  name String
+model TriggerSourceOption {
+  id    String @id @default(cuid())
+  name  String
+  value String
 
   source   TriggerSource @relation(fields: [sourceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   sourceId String
@@ -941,7 +944,7 @@ model TriggerSourceEvent {
 
   registered Boolean @default(false)
 
-  @@unique([name, sourceId])
+  @@unique([name, value, sourceId])
 }
 
 model DynamicTriggerRegistration {
