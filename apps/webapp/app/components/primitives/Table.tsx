@@ -145,7 +145,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       <td
         ref={ref}
         className={cn(
-          "text-xs text-slate-400 transition group-hover:bg-slate-900",
+          "text-xs text-slate-400 group-hover:bg-slate-900",
           to || onClick ? "cursor-pointer" : "px-4 py-3 align-middle",
           !to && !onClick && alignmentClassName,
           className
@@ -197,7 +197,7 @@ export const TableCellMenu = forwardRef<
   return (
     <TableCell className={className} to={to} onClick={onClick} ref={ref} alignment="right">
       {children}
-      <EllipsisVerticalIcon className="h-4 w-4 text-dimmed transition group-hover:text-bright" />
+      <EllipsisVerticalIcon className="h-5 w-5 text-dimmed transition group-hover:text-bright" />
     </TableCell>
   );
 });

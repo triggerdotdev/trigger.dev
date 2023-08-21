@@ -150,7 +150,7 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
                 </TableCell>
                 <TableCellMenu
                   to={path}
-                  className="sticky right-0 z-10 bg-gradient-to-r from-transparent via-background to-background transition group-hover:bg-gradient-to-r group-hover:from-transparent group-hover:via-slate-900 group-hover:to-slate-900"
+                  className="sticky right-0 z-10 bg-background before:absolute before:-left-8 before:top-0 before:h-full before:min-w-[2rem] before:bg-gradient-to-r before:from-transparent before:to-background before:content-[''] group-hover:before:to-slate-900"
                 ></TableCellMenu>
               </TableRow>
             );
