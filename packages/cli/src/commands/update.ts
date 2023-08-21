@@ -2,7 +2,6 @@ import path from "path";
 import inquirer from "inquirer";
 import { run, RunOptions } from "npm-check-updates";
 import { installDependencies } from "../utils/installDependencies.js";
-import { Index } from "npm-check-updates/build/src/types/IndexType.js";
 import { readJSONFileSync, writeJSONFile } from "../utils/fileSystem.js";
 
 export async function updateCommand(projectPath: string) {
@@ -35,7 +34,7 @@ export async function updateCommand(projectPath: string) {
   };
 
   // Can either give a json like package.json or just with deps and their new versions
-  const updatedDependencies: Index | void = await run(ncuOptions);
+  const updatedDependencies: { [k: string]: any } | void = await run(ncuOptions);
 
   if (!updatedDependencies) return;
 
