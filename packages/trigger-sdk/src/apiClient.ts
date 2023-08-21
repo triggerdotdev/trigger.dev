@@ -201,6 +201,22 @@ export class ApiClient {
     });
   }
 
+  async cancelEvent(eventId: string) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Cancelling event", {
+      eventId,
+    });
+
+    return await zodfetch(ApiEventLogSchema, `${this.#apiUrl}/api/v1/events/${eventId}/cancel`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+  }
+
   async updateSource(
     client: string,
     key: string,
