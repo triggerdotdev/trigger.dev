@@ -221,6 +221,11 @@ export class IO {
     );
   }
 
+  /** `io.cancelEvent()` allows you to cancel an event that was previously sent with `io.sendEvent()`. This will prevent any Jobs from running that are listening for that event if the event was sent with a delay
+   * @param key
+   * @param eventId
+   * @returns
+   */
   async cancelEvent(key: string | any[], eventId: string) {
     return await this.runTask(
       key,
@@ -235,14 +240,12 @@ export class IO {
             text: eventId,
           },
         ],
-        noop: true,
       },
       async (task) => {
         return await this._triggerClient.cancelEvent(eventId);
       }
     );
   }
-
 
   async updateSource(key: string | any[], options: { key: string } & UpdateTriggerSourceBody) {
     return this.runTask(
@@ -455,7 +458,10 @@ export class IO {
 =   * @param onError The callback that will be called when the Task fails. The callback receives the error, the Task and the IO as parameters. If you wish to retry then return an object with a `retryAt` property.
    * @returns A Promise that resolves with the returned value of the callback.
    */
-  async runTask<TResult extends SerializableJson | void = void, TCallbackResult extends unknown = TResult>(
+  async runTask<
+    TResult extends SerializableJson | void = void,
+    TCallbackResult extends unknown = TResult,
+  >(
     key: string | any[],
     options: RunTaskOptions,
     callback: (task: IOTask, io: IO) => Promise<TCallbackResult | TResult>,
@@ -548,7 +554,7 @@ export class IO {
         const result = await callback(task, this);
 
         const output = SerializableJsonSchema.parse(result) as TResult;
-        
+
         this._logger.debug("Completing using output", {
           idempotencyKey,
           task,

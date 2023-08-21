@@ -29,4 +29,26 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "cancel-event-example",
+  name: "Cancel Event Example",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "cancel.event.example",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.sendEvent(
+      "send-event",
+      { name: "Cancellable Event", id: payload.id },
+      {
+        deliverAt: new Date(Date.now() + 1000 * 60 * 60 * 24), // 24 hours from now
+      }
+    );
+
+    await io.wait("wait-1", 60); // 1 minute
+
+    await io.cancelEvent("cancel-event", payload.id);
+  },
+});
+
 createExpressServer(client);
