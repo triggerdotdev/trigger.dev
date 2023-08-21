@@ -2,6 +2,7 @@
   "name": "@trigger.dev/integration-kit",
   "version": "2.0.10",
   "description": "Trigger.dev Integration Kit has helpers to make creating integrations easier",
+  "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "publishConfig": {

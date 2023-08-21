@@ -2,6 +2,7 @@
   "name": "@trigger.dev/nextjs",
   "version": "2.0.10",
   "description": "Trigger.dev Next.js integration",
+  "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "publishConfig": {
