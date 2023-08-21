@@ -35,9 +35,7 @@ export async function updateCommand(projectPath: string) {
   };
 
   // Can either give a json like package.json or just with deps and their new versions
-  const updatedDependencies: Index | void = await new Promise((resolve, reject) =>
-    run(ncuOptions).then(resolve).catch(reject)
-  );
+  const updatedDependencies: Index | void = await run(ncuOptions);
 
   if (!updatedDependencies) return;
 
