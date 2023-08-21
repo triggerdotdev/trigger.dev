@@ -1,8 +1,15 @@
+import { ProjectJob } from "~/hooks/useJobs";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
+import { JobRunStatus } from "~/models/job.server";
 import { jobPath, jobTestPath } from "~/utils/pathBuilder";
+import { Button } from "../primitives/Buttons";
 import { DateTime } from "../primitives/DateTime";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
 import { LabelValueStack } from "../primitives/LabelValueStack";
 import { NamedIcon } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
+import { PopoverMenuItem } from "../primitives/Popover";
 import {
   Table,
   TableBlankRow,
@@ -15,21 +22,8 @@ import {
 } from "../primitives/Table";
 import { SimpleTooltip } from "../primitives/Tooltip";
 import { runStatusTitle } from "../runs/RunStatuses";
-import { ProjectJob } from "~/hooks/useJobs";
-import { useProject } from "~/hooks/useProject";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { JobRunStatus } from "~/models/job.server";
-import { PopoverMenuItem } from "../primitives/Popover";
+import { DeleteJobDialogContent } from "./DeleteJobModalContent";
 import { JobStatusBadge } from "./JobStatusBadge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "../primitives/Dialog";
-import { Button, ButtonContent } from "../primitives/Buttons";
 
 export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResultsText: string }) {
   const organization = useOrganization();
@@ -172,11 +166,11 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
-                        <DialogTitle>Are you sure absolutely sure?</DialogTitle>
-                        <DialogDescription>
-                          This action cannot be undone. This will permanently delete your account
-                          and remove your data from our servers.
-                        </DialogDescription>
+                        <DeleteJobDialogContent
+                          title={job.title}
+                          slug={job.slug}
+                          environments={[]}
+                        />
                       </DialogHeader>
                     </DialogContent>
                   </Dialog>
