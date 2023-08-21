@@ -152,10 +152,9 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
                   <PopoverMenuItem
                     to={jobTestPath(organization, project, job)}
                     title="Test Job"
-                    isSelected={false}
                     icon="beaker"
                   />
-                  <PopoverMenuItem to="#" title="Delete Job" isSelected={false} icon="trash-can" />
+                  <PopoverMenuItem to="#" title="Delete Job" icon="trash-can" />
                 </TableCellMenu>
               </TableRow>
             );
