@@ -71,12 +71,13 @@ export const TableBody = forwardRef<HTMLTableSectionElement, TableBodyProps>(
 type TableRowProps = {
   className?: string;
   children: ReactNode;
+  disabled?: boolean;
 };
 
 export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
-  ({ className, children }, ref) => {
+  ({ className, disabled, children }, ref) => {
     return (
-      <tr ref={ref} className={cn("group w-full", className)}>
+      <tr ref={ref} className={cn(disabled && "opacity-50", "group w-full", className)}>
         {children}
       </tr>
     );
