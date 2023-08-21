@@ -8,7 +8,6 @@ import {
   TableBlankRow,
   TableBody,
   TableCell,
-  TableCellChevron,
   TableCellMenu,
   TableHeader,
   TableHeaderCell,
@@ -20,7 +19,6 @@ import { ProjectJob } from "~/hooks/useJobs";
 import { useProject } from "~/hooks/useProject";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { JobRunStatus } from "~/models/job.server";
-import { cn } from "~/utils/cn";
 import { Badge } from "../primitives/Badge";
 import { PopoverMenuItem } from "../primitives/Popover";
 
