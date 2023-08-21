@@ -1,5 +1,11 @@
 # internal-platform
 
+## 2.0.10
+
+### Patch Changes
+
+- b1b9321a: Deprecated queue options in the job and removed startPosition
+
 ## 2.0.9
 
 ### Patch Changes

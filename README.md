@@ -62,4 +62,4 @@ We provide an official trigger.dev docker image you can use to easily self-host 
 
 ## Development
 
-To setup and develop locally or contribute to the open source project, follow our [developement guide](./CONTRIBUTING.md).
+To setup and develop locally or contribute to the open source project, follow our [development guide](./CONTRIBUTING.md).

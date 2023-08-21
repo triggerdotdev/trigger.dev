@@ -195,7 +195,7 @@ function getWorkerQueue() {
       },
       deliverHttpSourceRequest: {
         priority: 1, // smaller number = higher priority
-        maxAttempts: 25,
+        maxAttempts: 14,
         handler: async (payload, job) => {
           const service = new DeliverHttpSourceRequestService();
 
@@ -204,7 +204,7 @@ function getWorkerQueue() {
       },
       startRun: {
         priority: 0, // smaller number = higher priority
-        maxAttempts: 8,
+        maxAttempts: 4,
         handler: async (payload, job) => {
           const service = new StartRunService();
 
@@ -231,6 +231,7 @@ function getWorkerQueue() {
       },
       indexEndpoint: {
         priority: 1, // smaller number = higher priority
+        maxAttempts: 7,
         handler: async (payload, job) => {
           const service = new IndexEndpointService();
 
@@ -239,6 +240,7 @@ function getWorkerQueue() {
       },
       deliverEvent: {
         priority: 0, // smaller number = higher priority
+        maxAttempts: 5,
         handler: async (payload, job) => {
           const service = new DeliverEventService();
 
@@ -248,7 +250,7 @@ function getWorkerQueue() {
       refreshOAuthToken: {
         priority: 8, // smaller number = higher priority
         queueName: "internal-queue",
-        maxAttempts: 10,
+        maxAttempts: 7,
         handler: async (payload, job) => {
           await integrationAuthRepository.refreshConnection({
             connectionId: payload.connectionId,
@@ -286,7 +288,7 @@ function getExecutionWorkerQueue() {
       },
       performRunExecutionV2: {
         priority: 0, // smaller number = higher priority
-        maxAttempts: 18,
+        maxAttempts: 12,
         handler: async (payload, job) => {
           const service = new PerformRunExecutionV2Service();
 
