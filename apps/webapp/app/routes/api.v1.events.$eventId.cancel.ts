@@ -1,11 +1,9 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { workerQueue } from "~/services/worker.server";
-import { logger } from "~/services/logger.server";
 import { CancelEventService } from "~/services/events/cancelEvent.server";
+import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
   eventId: z.string(),

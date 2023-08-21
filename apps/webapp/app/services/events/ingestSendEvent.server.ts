@@ -2,6 +2,7 @@ import type { RawEvent, SendEventOptions } from "@trigger.dev/core";
 import { $transaction, PrismaClientOrTransaction, PrismaErrorSchema, prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { workerQueue } from "~/services/worker.server";
+import { logger } from "../logger.server";
 
 export class IngestSendEvent {
   #prismaClient: PrismaClientOrTransaction;
@@ -33,71 +34,87 @@ export class IngestSendEvent {
     try {
       const deliverAt = this.#calculateDeliverAt(options);
 
-      return await $transaction(this.#prismaClient, async (tx) => {
-        const externalAccount = options?.accountId
-          ? await tx.externalAccount.findUniqueOrThrow({
-              where: {
-                environmentId_identifier: {
-                  environmentId: environment.id,
-                  identifier: options.accountId,
+      return await $transaction(
+        this.#prismaClient,
+        async (tx) => {
+          const externalAccount = options?.accountId
+            ? await tx.externalAccount.findUniqueOrThrow({
+                where: {
+                  environmentId_identifier: {
+                    environmentId: environment.id,
+                    identifier: options.accountId,
+                  },
+                },
+              })
+            : undefined;
+
+          // Create a new event in the database
+          const eventLog = await tx.eventRecord.create({
+            data: {
+              organization: {
+                connect: {
+                  id: environment.organizationId,
                 },
               },
-            })
-          : undefined;
-
-        // Create a new event in the database
-        const eventLog = await tx.eventRecord.create({
-          data: {
-            organization: {
-              connect: {
-                id: environment.organizationId,
+              project: {
+                connect: {
+                  id: environment.projectId,
+                },
               },
-            },
-            project: {
-              connect: {
-                id: environment.projectId,
+              environment: {
+                connect: {
+                  id: environment.id,
+                },
               },
+              eventId: event.id,
+              name: event.name,
+              timestamp: event.timestamp ?? new Date(),
+              payload: event.payload ?? {},
+              context: event.context ?? {},
+              source: event.source ?? "trigger.dev",
+              sourceContext,
+              deliverAt: deliverAt,
+              externalAccount: externalAccount
+                ? {
+                    connect: {
+                      id: externalAccount.id,
+                    },
+                  }
+                : {},
             },
-            environment: {
-              connect: {
-                id: environment.id,
+          });
+
+          if (this.deliverEvents) {
+            // Produce a message to the event bus
+            await workerQueue.enqueue(
+              "deliverEvent",
+              {
+                id: eventLog.id,
               },
-            },
-            eventId: event.id,
-            name: event.name,
-            timestamp: event.timestamp ?? new Date(),
-            payload: event.payload ?? {},
-            context: event.context ?? {},
-            source: event.source ?? "trigger.dev",
-            sourceContext,
-            deliverAt: deliverAt,
-            externalAccount: externalAccount
-              ? {
-                  connect: {
-                    id: externalAccount.id,
-                  },
-                }
-              : {},
-          },
-        });
+              { runAt: eventLog.deliverAt, tx, jobKey: `event:${eventLog.id}` }
+            );
+          }
 
-        if (this.deliverEvents) {
-          // Produce a message to the event bus
-          await workerQueue.enqueue(
-            "deliverEvent",
-            {
-              id: eventLog.id,
-            },
-            { runAt: eventLog.deliverAt, tx, jobKey: `event:${eventLog.id}` }
-          );
-        }
-
-        return eventLog;
-      });
+          return eventLog;
+        },
+        { rethrowPrismaErrors: true }
+      );
     } catch (error) {
       const prismaError = PrismaErrorSchema.safeParse(error);
+
+      if (!prismaError.success) {
+        logger.debug("Error parsing prisma error", {
+          error,
+          parseError: prismaError.error.format(),
+        });
+
+        throw error;
+      }
+
       // If the error is a Prisma unique constraint error, it means that the event already exists
       if (prismaError.success && prismaError.data.code === "P2002") {
+        logger.debug("Event already exists, finding and returning", { event, environment });
+
         return this.#prismaClient.eventRecord.findUniqueOrThrow({
           where: {
             eventId_environmentId: {
