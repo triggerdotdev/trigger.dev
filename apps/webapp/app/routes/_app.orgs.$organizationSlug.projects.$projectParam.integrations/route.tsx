@@ -355,7 +355,7 @@ function ConnectedIntegrationsList({
                         <TableCell to={path}>
                           <DateTime date={client.createdAt} includeSeconds={false} />
                         </TableCell>
-                        <TableCellChevron to={path} />
+                        <TableCellChevron to={path} isSticky />
                       </TableRow>
                     );
                   })}
