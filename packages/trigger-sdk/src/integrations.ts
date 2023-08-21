@@ -7,7 +7,7 @@ export interface TriggerIntegration {
   id: string;
   metadata: IntegrationMetadata;
   authSource: "LOCAL" | "HOSTED";
-  cloneForRun: (io: IO, auth?: ConnectionAuth) => TriggerIntegration;
+  cloneForRun: (io: IO, connectionKey: string, auth?: ConnectionAuth) => TriggerIntegration;
 }
 
 export type IOWithIntegrations<TIntegrations extends Record<string, TriggerIntegration>> = IO &
