@@ -1,5 +1,4 @@
 import {
-  ApiEventLogSchema,
   CachedTask,
   RunJobError,
   RunJobResumeWithTask,
@@ -9,6 +8,7 @@ import {
 } from "@trigger.dev/core";
 import type { Task } from "@trigger.dev/database";
 import { generateErrorMessage } from "zod-error";
+import { eventRecordToApiJson } from "~/api.server";
 import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { enqueueRunExecutionV2 } from "~/models/jobRunExecution.server";
 import { resolveRunConnections } from "~/models/runConnection.server";
@@ -57,7 +57,7 @@ export class PerformRunExecutionV2Service {
   // the run execution will be marked as failed and the run will start
   async #executePreprocessing(run: FoundRun) {
     const client = new EndpointApi(run.environment.apiKey, run.endpoint.url);
-    const event = ApiEventLogSchema.parse({ ...run.event, id: run.eventId });
+    const event = eventRecordToApiJson(run.event);
 
     const { response, parser } = await client.preprocessRunRequest({
       event,
@@ -146,7 +146,7 @@ export class PerformRunExecutionV2Service {
     }
 
     const client = new EndpointApi(run.environment.apiKey, run.endpoint.url);
-    const event = ApiEventLogSchema.parse({ ...run.event, id: run.eventId });
+    const event = eventRecordToApiJson(run.event);
 
     const startedAt = new Date();
 

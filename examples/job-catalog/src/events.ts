@@ -39,15 +39,19 @@ client.defineJob({
   run: async (payload, io, ctx) => {
     await io.sendEvent(
       "send-event",
-      { name: "Cancellable Event", id: payload.id },
+      { name: "Cancellable Event", id: payload.id, payload: { payload, ctx } },
       {
         deliverAt: new Date(Date.now() + 1000 * 60 * 60 * 24), // 24 hours from now
       }
     );
 
+    await io.getEvent("get-event", payload.id);
+
     await io.wait("wait-1", 60); // 1 minute
 
     await io.cancelEvent("cancel-event", payload.id);
+
+    await io.getEvent("get-event-2", payload.id);
   },
 });
 
