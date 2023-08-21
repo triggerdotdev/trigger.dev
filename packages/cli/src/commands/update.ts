@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import inquirer from "inquirer";
-import ncu from "npm-check-updates";
+import { run, RunOptions } from "npm-check-updates";
 import { installDependencies } from "../utils/installDependencies.js";
 import { Index } from "npm-check-updates/build/src/types/IndexType.js";
 
@@ -14,7 +14,7 @@ function getPackageJSON(projectPath: string) {
   return JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
 }
 
-function setPackageJSON(projectPath: string, updatedPackageJSON: Object) {
+function setPackageJSON(projectPath: string, updatedPackageJSON: Index) {
   const packageJsonPath = path.join(projectPath, "package.json");
   if (!fs.existsSync(packageJsonPath)) {
     console.error(`package.json not found in the ${projectPath} directory.`);
@@ -25,7 +25,7 @@ function setPackageJSON(projectPath: string, updatedPackageJSON: Object) {
 }
 
 export async function updateCommand(projectPath: string) {
-  const triggerDevPackage = "";
+  const triggerDevPackage = "@trigger.dev";
   const packageData = getPackageJSON(projectPath);
 
   if (!packageData) {
@@ -46,7 +46,7 @@ export async function updateCommand(projectPath: string) {
   });
 
   // Use npm-check-updates to get updated dependency versions
-  const ncuOptions = {
+  const ncuOptions: RunOptions = {
     packageData,
     upgrade: true,
     jsonUpgraded: true,
@@ -54,7 +54,7 @@ export async function updateCommand(projectPath: string) {
 
   // Can either give a json like package.json or just with deps and their new versions
   const updatedDependencies: Index | void = await new Promise((resolve, reject) =>
-    ncu(ncuOptions).then(resolve).catch(reject)
+    run(ncuOptions).then(resolve).catch(reject)
   );
 
   if (!updatedDependencies) return;
