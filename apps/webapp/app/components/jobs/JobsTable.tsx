@@ -22,6 +22,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { JobRunStatus } from "~/models/job.server";
 import { cn } from "~/utils/cn";
 import { Badge } from "../primitives/Badge";
+import { PopoverMenuItem } from "../primitives/Popover";
 
 export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResultsText: string }) {
   const organization = useOrganization();
@@ -148,7 +149,16 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
                     </Badge>
                   )}
                 </TableCell>
-                <TableCellMenu to={path} isSticky></TableCellMenu>
+                <TableCellMenu isSticky>
+                  <PopoverMenuItem to={path} title="View Job" icon="eye" />
+                  <PopoverMenuItem
+                    to={path + "/test"}
+                    title="Test Job"
+                    isSelected={false}
+                    icon="beaker"
+                  />
+                  <PopoverMenuItem to="#" title="Delete Job" isSelected={false} icon="trash-can" />
+                </TableCellMenu>
               </TableRow>
             );
           })

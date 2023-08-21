@@ -27,6 +27,7 @@ import {
   Cog8ToothIcon,
   CreditCardIcon,
   EnvelopeIcon,
+  EyeIcon,
   FingerPrintIcon,
   FlagIcon,
   FolderIcon,
@@ -41,6 +42,7 @@ import {
   QrCodeIcon,
   SquaresPlusIcon,
   StarIcon,
+  TrashIcon,
   UserCircleIcon,
   UserGroupIcon,
   UserIcon,
@@ -100,6 +102,7 @@ const icons = {
   folder: (className: string) => <FolderIcon className={cn("text-indigo-600", className)} />,
   envelope: (className: string) => <EnvelopeIcon className={cn("text-cyan-500", className)} />,
   environment: (className: string) => <KeyIcon className={cn("text-yellow-500", className)} />,
+  eye: (className: string) => <EyeIcon className={cn("text-blue-500", className)} />,
   globe: (className: string) => <GlobeAltIcon className={cn("text-fuchsia-600", className)} />,
   "hand-raised": (className: string) => (
     <HandRaisedIcon className={cn("text-amber-400", className)} />
@@ -139,6 +142,7 @@ const icons = {
   star: (className: string) => <StarIcon className={cn("text-yellow-500", className)} />,
   stop: (className: string) => <StopIcon className={cn("text-rose-500", className)} />,
   team: (className: string) => <UserGroupIcon className={cn("text-blue-500", className)} />,
+  "trash-can": (className: string) => <TrashIcon className={cn("text-rose-500", className)} />,
   tree: (className: string) => <OneTreeIcon className={cn("text-green-500", className)} />,
   trees: (className: string) => <TwoTreesIcon className={cn("text-green-500", className)} />,
   trigger: (className: string) => <BoltIcon className={cn("text-orange-500", className)} />,

@@ -1,8 +1,16 @@
 import { ChevronRightIcon, EllipsisVerticalIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
-import { ReactNode, forwardRef } from "react";
+import { Fragment, ReactNode, forwardRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Badge } from "./Badge";
+import {
+  Popover,
+  PopoverArrowTrigger,
+  PopoverContent,
+  PopoverMenuItem,
+  PopoverSectionHeader,
+  PopoverVerticalEllipseTrigger,
+} from "./Popover";
 
 type TableProps = {
   containerClassName?: string;
@@ -199,22 +207,28 @@ export const TableCellMenu = forwardRef<
   HTMLTableCellElement,
   {
     className?: string;
-    to?: string;
     children?: ReactNode;
     isSticky?: boolean;
     onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
   }
->(({ className, to, children, isSticky, onClick }, ref) => {
+>(({ className, children, isSticky, onClick }, ref) => {
+  const [isOpen, setIsOpen] = useState(false);
   return (
     <TableCell
       className={cn(isSticky && stickyStyles, className)}
-      to={to}
       onClick={onClick}
       ref={ref}
       alignment="right"
     >
-      {children}
-      <EllipsisVerticalIcon className="h-5 w-5 text-dimmed transition group-hover:text-bright" />
+      <Popover onOpenChange={(open) => setIsOpen(open)}>
+        <PopoverVerticalEllipseTrigger isOpen={isOpen} />
+        <PopoverContent
+          className="w-fit max-w-[10rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+          align="end"
+        >
+          <div className="flex flex-col gap-1 p-1">{children}</div>
+        </PopoverContent>
+      </Popover>
     </TableCell>
   );
 });
