@@ -1,5 +1,14 @@
 # @trigger.dev/sendgrid
 
+## 2.0.10
+
+### Patch Changes
+
+- Updated dependencies [b1b9321a]
+- Updated dependencies [b1b9321a]
+  - @trigger.dev/sdk@2.0.10
+  - @trigger.dev/integration-kit@2.0.10
+
 ## 2.0.9
 
 ### Patch Changes

@@ -160,9 +160,8 @@ export const JobMetadataSchema = z.object({
   trigger: TriggerMetadataSchema,
   integrations: z.record(IntegrationConfigSchema),
   internal: z.boolean().default(false),
-  queue: z.union([QueueOptionsSchema, z.string()]).optional(),
-  startPosition: z.enum(["initial", "latest"]),
   enabled: z.boolean(),
+  startPosition: z.enum(["initial", "latest"]),
   preprocessRuns: z.boolean(),
 });
 

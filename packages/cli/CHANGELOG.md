@@ -1,5 +1,13 @@
 # create-trigger
 
+## 2.0.10
+
+### Patch Changes
+
+- 4ca9f182: Added tests to the CLI, updated tsconfig file accordingly
+- 591422b8: Added whoami command, fixed TypeScript error
+- a69f756e: Updated example job for the pages router
+
 ## 2.0.9
 
 ### Patch Changes

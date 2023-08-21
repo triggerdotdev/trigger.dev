@@ -42,9 +42,9 @@ export type JobOptions<
       });
       ``` */
   integrations?: TIntegrations;
-  /** The `queue` property is used to specify a custom queue. If you use an Object and specify the `maxConcurrent` option, you can control how many simulataneous runs can happen. */
+  /** @deprecated This property is deprecated and no longer effects the execution of the Job
+   * */
   queue?: QueueOptions | string;
-  startPosition?: "initial" | "latest";
   /** The `enabled` property is used to enable or disable the Job. If you disable a Job, it will not run. */
   enabled?: boolean;
   /** This function gets called automatically when a Run is Triggered.
@@ -142,8 +142,7 @@ export class Job<
       event: this.trigger.event,
       trigger: this.trigger.toJSON(),
       integrations: this.integrations,
-      queue: this.options.queue,
-      startPosition: this.options.startPosition ?? "latest",
+      startPosition: "latest", // this is deprecated, leaving this for now to make sure newer clients work with older servers
       enabled: typeof this.options.enabled === "boolean" ? this.options.enabled : true,
       preprocessRuns: this.trigger.preprocessRuns,
       internal,

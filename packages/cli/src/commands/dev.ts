@@ -19,6 +19,7 @@ const asyncExecFile = util.promisify(childProcess.execFile);
 
 export const DevCommandOptionsSchema = z.object({
   port: z.coerce.number(),
+  hostname: z.string(),
   envFile: z.string(),
   handlerPath: z.string(),
   clientId: z.string().optional(),
@@ -72,7 +73,7 @@ export async function devCommand(path: string, anyOptions: any) {
 
   logger.info(`  [trigger.dev] Looking for Next.js site on port ${options.port}`);
 
-  const localEndpointHandlerUrl = `http://localhost:${options.port}${options.handlerPath}`;
+  const localEndpointHandlerUrl = `http://${options.hostname}:${options.port}${options.handlerPath}`;
 
   try {
     await fetch(localEndpointHandlerUrl, {
@@ -94,7 +95,7 @@ export async function devCommand(path: string, anyOptions: any) {
   telemetryClient.dev.serverRunning(path, options);
 
   // Setup tunnel
-  const endpointUrl = await resolveEndpointUrl(apiUrl, options.port);
+  const endpointUrl = await resolveEndpointUrl(apiUrl, options.port, options.hostname);
   if (!endpointUrl) {
     telemetryClient.dev.failed("failed_to_create_tunnel", options);
     return;
@@ -279,11 +280,11 @@ export async function getTriggerApiDetails(path: string, envFile: string) {
   return { apiKey, apiUrl: apiUrl ?? CLOUD_API_URL, envFile: resolvedEnvFile.fileName };
 }
 
-async function resolveEndpointUrl(apiUrl: string, port: number) {
+async function resolveEndpointUrl(apiUrl: string, port: number, hostname: string) {
   const apiURL = new URL(apiUrl);
 
   if (apiURL.hostname === "localhost") {
-    return `http://localhost:${port}`;
+    return `http://${hostname}:${port}`;
   }
 
   // Setup tunnel

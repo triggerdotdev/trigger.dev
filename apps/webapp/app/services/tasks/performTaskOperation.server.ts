@@ -1,7 +1,3 @@
-import type { Task } from "@trigger.dev/database";
-import { EXECUTE_JOB_RETRY_LIMIT } from "~/consts";
-import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
-import { workerQueue } from "../worker.server";
 import {
   FetchOperationSchema,
   FetchRequestInit,
@@ -10,9 +6,13 @@ import {
   RedactString,
   calculateRetryAt,
 } from "@trigger.dev/core";
+import type { Task } from "@trigger.dev/database";
+import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { enqueueRunExecutionV2 } from "~/models/jobRunExecution.server";
+import { formatUnknownError } from "~/utils/formatErrors.server";
 import { safeJsonFromResponse } from "~/utils/json";
 import { logger } from "../logger.server";
-import { formatUnknownError } from "~/utils/formatErrors.server";
+import { workerQueue } from "../worker.server";
 
 type FoundTask = Awaited<ReturnType<typeof findTask>>;
 
@@ -192,7 +192,7 @@ export class PerformTaskOperationService {
     });
   }
 
-  async #resumeTaskWithError(task: Task, output: any) {
+  async #resumeTaskWithError(task: NonNullable<FoundTask>, output: any) {
     await $transaction(this.#prismaClient, async (tx) => {
       await tx.task.update({
         where: { id: task.id },
@@ -243,34 +243,8 @@ export class PerformTaskOperationService {
     });
   }
 
-  async #resumeRunExecution(task: Task, prisma: PrismaClientOrTransaction) {
-    await $transaction(prisma, async (tx) => {
-      const newJobExecution = await tx.jobRunExecution.create({
-        data: {
-          runId: task.runId,
-          reason: "EXECUTE_JOB",
-          status: "PENDING",
-          retryLimit: EXECUTE_JOB_RETRY_LIMIT,
-        },
-      });
-
-      const graphileJob = await workerQueue.enqueue(
-        "performRunExecution",
-        {
-          id: newJobExecution.id,
-        },
-        { tx }
-      );
-
-      await tx.jobRunExecution.update({
-        where: {
-          id: newJobExecution.id,
-        },
-        data: {
-          graphileJobId: graphileJob.id,
-        },
-      });
-    });
+  async #resumeRunExecution(task: NonNullable<FoundTask>, prisma: PrismaClientOrTransaction) {
+    await enqueueRunExecutionV2(task.run, prisma);
   }
 }
 
@@ -305,6 +279,11 @@ async function findTask(prisma: PrismaClient, id: string) {
     where: { id },
     include: {
       attempts: true,
+      run: {
+        include: {
+          queue: true,
+        },
+      },
     },
   });
 }

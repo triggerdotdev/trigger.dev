@@ -1,5 +1,6 @@
 import { PrismaClient, prisma } from "~/db.server";
-import { workerQueue } from "../worker.server";
+import { executionWorker } from "../worker.server";
+import { dequeueRunExecutionV2 } from "~/models/jobRunExecution.server";
 
 export class CancelRunService {
   #prismaClient: PrismaClient;
@@ -17,21 +18,11 @@ export class CancelRunService {
           },
         });
 
-        const shouldDecrementQueue = run.status === "STARTED" || run.status === "PREPROCESSING";
         await tx.jobRun.update({
           where: { id: runId },
           data: {
             status: "CANCELED",
             completedAt: new Date(),
-            queue: shouldDecrementQueue
-              ? {
-                  update: {
-                    jobCount: {
-                      decrement: 1,
-                    },
-                  },
-                }
-              : undefined,
           },
         });
 
@@ -48,13 +39,7 @@ export class CancelRunService {
           },
         });
 
-        await workerQueue.enqueue(
-          "startQueuedRuns",
-          {
-            id: run.queueId,
-          },
-          { tx }
-        );
+        await dequeueRunExecutionV2(run, tx);
       });
     } catch (error) {
       throw error;

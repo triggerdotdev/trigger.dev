@@ -114,12 +114,6 @@ client.defineJob({
       Imports the specified integrations into the Job. The integrations will be available on the `io` object in the `run()` function with the same name as the key. For example:
       <Snippet file="how-to-pass-integrations.mdx" />
     </ParamField>
-    <ParamField body="enabled" type="boolean">
-      The `enabled` property is used to enable or disable the Job. If you disable a Job, it will not run.
-    </ParamField>
-    <ParamField body="queue" type="string | QueueOptions">
-      The `queue` property is used to specify a custom queue. If you use an Object and specify the `maxConcurrent` option, you can control how many simulataneous runs can happen.
-    </ParamField>
     <ParamField body="logLevel" type="log | error | warn | info | debug">
       The `logLevel` property is an optional property that specifies the level of
       logging for the Job. The level is inherited from the client if you omit this property.

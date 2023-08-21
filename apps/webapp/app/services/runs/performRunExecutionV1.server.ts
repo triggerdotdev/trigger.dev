@@ -1,27 +1,26 @@
-import type { Task } from "@trigger.dev/database";
 import {
   ApiEventLogSchema,
   CachedTaskSchema,
-  RunJobCanceledWithTask,
   RunJobError,
   RunJobResumeWithTask,
   RunJobRetryWithTask,
   RunJobSuccess,
   RunSourceContextSchema,
 } from "@trigger.dev/core";
+import type { Task } from "@trigger.dev/database";
 import { generateErrorMessage } from "zod-error";
 import { EXECUTE_JOB_RETRY_LIMIT } from "~/consts";
 import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { enqueueRunExecutionV1 } from "~/models/jobRunExecution.server";
 import { resolveRunConnections } from "~/models/runConnection.server";
+import { formatError } from "~/utils/formatErrors.server";
 import { safeJsonZodParse } from "~/utils/json";
 import { EndpointApi } from "../endpointApi.server";
-import { workerQueue } from "../worker.server";
-import { formatError } from "~/utils/formatErrors.server";
 import { logger } from "../logger.server";
 
 type FoundRunExecution = NonNullable<Awaited<ReturnType<typeof findRunExecution>>>;
 
-export class PerformRunExecutionService {
+export class PerformRunExecutionV1Service {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
@@ -162,22 +161,7 @@ export class PerformRunExecutionService {
           },
         });
 
-        const job = await workerQueue.enqueue(
-          "performRunExecution",
-          {
-            id: runExecution.id,
-          },
-          { tx }
-        );
-
-        await tx.jobRunExecution.update({
-          where: {
-            id: runExecution.id,
-          },
-          data: {
-            graphileJobId: job.id,
-          },
-        });
+        await enqueueRunExecutionV1(runExecution, run.queue.id, run.queue.maxJobs, tx);
       });
     }
   }
@@ -201,6 +185,12 @@ export class PerformRunExecutionService {
       data: {
         status: "STARTED",
         startedAt,
+        run: {
+          update: {
+            status: run.status === "QUEUED" ? "STARTED" : run.status,
+            startedAt: run.startedAt ?? new Date(),
+          },
+        },
       },
     });
 
@@ -388,14 +378,6 @@ export class PerformRunExecutionService {
           completedAt: new Date(),
         },
       });
-
-      await workerQueue.enqueue(
-        "runFinished",
-        {
-          id: run.id,
-        },
-        { tx }
-      );
     });
   }
 
@@ -426,22 +408,13 @@ export class PerformRunExecutionService {
           },
         });
 
-        const graphileJob = await workerQueue.enqueue(
-          "performRunExecution",
-          {
-            id: newJobExecution.id,
-          },
-          { tx, runAt: data.task.delayUntil ?? undefined }
+        await enqueueRunExecutionV1(
+          newJobExecution,
+          run.queue.id,
+          run.queue.maxJobs,
+          tx,
+          data.task.delayUntil ?? undefined
         );
-
-        await tx.jobRunExecution.update({
-          where: {
-            id: newJobExecution.id,
-          },
-          data: {
-            graphileJobId: graphileJob.id,
-          },
-        });
       }
     });
   }
@@ -522,22 +495,13 @@ export class PerformRunExecutionService {
         },
       });
 
-      const graphileJob = await workerQueue.enqueue(
-        "performRunExecution",
-        {
-          id: newJobExecution.id,
-        },
-        { tx, runAt: data.retryAt }
+      await enqueueRunExecutionV1(
+        newJobExecution,
+        run.queue.id,
+        run.queue.maxJobs,
+        tx,
+        data.retryAt
       );
-
-      await tx.jobRunExecution.update({
-        where: {
-          id: newJobExecution.id,
-        },
-        data: {
-          graphileJobId: graphileJob.id,
-        },
-      });
     });
   }
 
@@ -557,6 +521,13 @@ export class PerformRunExecutionService {
       // So when retryCount is 1, retryDelayInMs is 500ms
       // When retryCount is 2, retryDelayInMs is 750ms
       // When retryCount is 3, retryDelayInMs is 1125ms
+      // When retryCount is 4, retryDelayInMs is 1687ms
+      // When retryCount is 5, retryDelayInMs is 2531ms
+      // When retryCount is 6, retryDelayInMs is 3796ms
+      // When retryCount is 7, retryDelayInMs is 5694ms
+      // When retryCount is 8, retryDelayInMs is 8541ms
+      // When retryCount is 9, retryDelayInMs is 12812ms
+      // When retryCount is 10, retryDelayInMs is 19218ms
       const retryDelayInMs = Math.round(500 * Math.pow(1.5, retryCount - 1));
 
       await tx.jobRunExecution.update({
@@ -572,20 +543,13 @@ export class PerformRunExecutionService {
 
       const runAt = new Date(Date.now() + retryDelayInMs);
 
-      const job = await workerQueue.enqueue(
-        "performRunExecution",
-        { id: execution.id },
-        { runAt, tx }
+      await enqueueRunExecutionV1(
+        execution,
+        execution.run.queue.id,
+        execution.run.queue.maxJobs,
+        tx,
+        runAt
       );
-
-      await tx.jobRunExecution.update({
-        where: {
-          id: execution.id,
-        },
-        data: {
-          graphileJobId: job.id,
-        },
-      });
     });
   }
 
@@ -617,13 +581,6 @@ export class PerformRunExecutionService {
             },
           });
 
-          await workerQueue.enqueue(
-            "runFinished",
-            {
-              id: run.id,
-            },
-            { tx }
-          );
           break;
         }
         case "PREPROCESS": {
@@ -644,14 +601,6 @@ export class PerformRunExecutionService {
                 },
               },
             });
-
-            await workerQueue.enqueue(
-              "runFinished",
-              {
-                id: run.id,
-              },
-              { tx }
-            );
 
             break;
           }
@@ -675,22 +624,7 @@ export class PerformRunExecutionService {
             },
           });
 
-          const job = await workerQueue.enqueue(
-            "performRunExecution",
-            {
-              id: runExecution.id,
-            },
-            { tx }
-          );
-
-          await tx.jobRunExecution.update({
-            where: {
-              id: runExecution.id,
-            },
-            data: {
-              graphileJobId: job.id,
-            },
-          });
+          await enqueueRunExecutionV1(runExecution, run.queue.id, run.queue.maxJobs, tx);
 
           break;
         }
@@ -733,6 +667,7 @@ async function findRunExecution(prisma: PrismaClientOrTransaction, id: string) {
           endpoint: true,
           organization: true,
           externalAccount: true,
+          queue: true,
           runConnections: {
             include: {
               integration: true,
