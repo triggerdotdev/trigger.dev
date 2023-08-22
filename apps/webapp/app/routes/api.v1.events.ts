@@ -4,6 +4,7 @@ import { SendEventBodySchema } from "@trigger.dev/core";
 import { generateErrorMessage } from "zod-error";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { IngestSendEvent } from "~/services/events/ingestSendEvent.server";
+import { eventRecordToApiJson } from "~/api.server";
 
 export async function action({ request }: ActionArgs) {
   // Ensure this is a POST request
@@ -33,5 +34,9 @@ export async function action({ request }: ActionArgs) {
 
   const event = await service.call(authenticatedEnv, body.data.event, body.data.options);
 
-  return json(event);
+  if (!event) {
+    return json({ error: "Failed to create event" }, { status: 500 });
+  }
+
+  return json(eventRecordToApiJson(event));
 }

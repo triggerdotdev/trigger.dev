@@ -1,6 +1,7 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { eventRecordToApiJson } from "~/api.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { CancelEventService } from "~/services/events/cancelEvent.server";
 import { logger } from "~/services/logger.server";
@@ -40,7 +41,7 @@ export async function action({ request, params }: ActionArgs) {
       return json({ error: "Event not found" }, { status: 404 });
     }
 
-    return json(updatedEvent);
+    return json(eventRecordToApiJson(updatedEvent));
   } catch (err) {
     logger.error("CancelEventService.call() error", {
       error: err,

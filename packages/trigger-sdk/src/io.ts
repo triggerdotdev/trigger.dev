@@ -221,6 +221,25 @@ export class IO {
     );
   }
 
+  async getEvent(key: string | any[], id: string) {
+    return await this.runTask(
+      key,
+      {
+        name: "getEvent",
+        params: { id },
+        properties: [
+          {
+            label: "id",
+            text: id,
+          },
+        ],
+      },
+      async (task) => {
+        return await this._triggerClient.getEvent(id);
+      }
+    );
+  }
+
   /** `io.cancelEvent()` allows you to cancel an event that was previously sent with `io.sendEvent()`. This will prevent any Jobs from running that are listening for that event if the event was sent with a delay
    * @param key
    * @param eventId

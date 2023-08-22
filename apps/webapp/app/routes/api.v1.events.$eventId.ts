@@ -1,6 +1,6 @@
-import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { cors } from "remix-utils";
+import { GetEvent } from "@trigger.dev/core";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
@@ -32,9 +32,36 @@ export async function loader({ request, params }: LoaderArgs) {
 
   const { eventId } = parsed.data;
 
-  const event = await prisma.eventRecord.findFirst({
+  const event = await findEventRecord(eventId, authenticatedEnv.id);
+
+  if (!event) {
+    return apiCors(request, json({ error: "Event not found" }, { status: 404 }));
+  }
+
+  return apiCors(request, json(toJSON(event)));
+}
+
+function toJSON(eventRecord: FoundEventRecord): GetEvent {
+  return {
+    id: eventRecord.eventId,
+    name: eventRecord.name,
+    createdAt: eventRecord.createdAt,
+    updatedAt: eventRecord.updatedAt,
+    runs: eventRecord.runs.map((run) => ({
+      id: run.id,
+      status: run.status,
+      startedAt: run.startedAt,
+      completedAt: run.completedAt,
+    })),
+  };
+}
+
+type FoundEventRecord = NonNullable<Awaited<ReturnType<typeof findEventRecord>>>;
+
+async function findEventRecord(eventId: string, environmentId: string) {
+  return await prisma.eventRecord.findUnique({
     select: {
-      id: true,
+      eventId: true,
       name: true,
       createdAt: true,
       updatedAt: true,
@@ -48,14 +75,10 @@ export async function loader({ request, params }: LoaderArgs) {
       },
     },
     where: {
-      id: eventId,
-      environmentId: authenticatedEnv.id,
+      eventId_environmentId: {
+        eventId,
+        environmentId,
+      },
     },
   });
-
-  if (!event) {
-    return apiCors(request, json({ error: "Event not found" }, { status: 404 }));
-  }
-
-  return apiCors(request, json(event));
 }
