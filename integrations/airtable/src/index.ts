@@ -314,8 +314,8 @@ function createWebhookEventSource(
     }),
     version: "0.1.0",
     integration,
-    //todo update this to take options as well
-    filter: (params) => {
+    filter: (params, options) => {
+      //todo update this to filter using the fromSources
       return {};
     },
     key: (params) =>

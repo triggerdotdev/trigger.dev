@@ -64,9 +64,8 @@ type TriggerOptionDiff = {
   orphaned: string[];
 };
 
-type TriggerOptionDiffs<
-  TTriggerOptionDefinitions extends Record<string, string[]> = Record<string, string[]>,
-> = TriggerOptionsRecordWithEvent<TriggerOptionDiff, TTriggerOptionDefinitions>;
+type TriggerOptionDiffs<TTriggerOptionDefinitions extends Record<string, string[]> = any> =
+  TriggerOptionsRecordWithEvent<TriggerOptionDiff, TTriggerOptionDefinitions>;
 
 type TriggerOptionsRecordWithEvent<
   TValue,
@@ -77,7 +76,7 @@ type TriggerOptionsRecordWithEvent<
 
 export type TriggerOptionRecord<
   TValue,
-  TTriggerOptionDefinitions extends Record<string, string[]> = Record<string, string[]>,
+  TTriggerOptionDefinitions extends Record<string, string[]> = any,
 > = {
   [K in keyof TTriggerOptionDefinitions]: TValue;
 };
@@ -85,7 +84,7 @@ export type TriggerOptionRecord<
 type RegisterFunctionEvent<
   TChannel extends ChannelNames,
   TParams extends any,
-  TTriggerOptionDefinitions extends Record<string, string[]> = Record<string, string[]>,
+  TTriggerOptionDefinitions extends Record<string, string[]> = any,
 > = {
   options: TriggerOptionDiffs<TTriggerOptionDefinitions>;
   source: {
@@ -96,18 +95,14 @@ type RegisterFunctionEvent<
   params: TParams;
 };
 
-type RegisterSourceEvent<
-  TTriggerOptionDefinitions extends Record<string, string[]> = Record<string, string[]>,
-> = {
+type RegisterSourceEvent<TTriggerOptionDefinitions extends Record<string, string[]> = any> = {
   id: string;
   source: RegisterTriggerSource;
   dynamicTriggerId?: string;
   options: TriggerOptionDiffs<TTriggerOptionDefinitions>;
 };
 
-type RegisterFunctionOutput<
-  TTriggerOptionDefinitions extends Record<string, string[]> = Record<string, string[]>,
-> = {
+type RegisterFunctionOutput<TTriggerOptionDefinitions extends Record<string, string[]> = any> = {
   secret?: string;
   data?: SerializableJson;
   options: TriggerOptionsRecordWithEvent<string[], TTriggerOptionDefinitions>;
@@ -117,7 +112,7 @@ type RegisterFunction<
   TIntegration extends TriggerIntegration,
   TParams extends any,
   TChannel extends ChannelNames,
-  TTriggerOptionDefinitions extends Record<string, string[]> = Record<string, string[]>,
+  TTriggerOptionDefinitions extends Record<string, string[]> = any,
 > = (
   event: RegisterFunctionEvent<TChannel, TParams, TTriggerOptionDefinitions>,
   io: IOWithIntegrations<{ integration: TIntegration }>,
@@ -135,7 +130,10 @@ type HandlerFunction<TChannel extends ChannelNames, TParams extends any> = (
 ) => Promise<{ events: SendEvent[]; response?: NormalizedResponse } | void>;
 
 type KeyFunction<TParams extends any> = (params: TParams) => string;
-type FilterFunction<TParams extends any> = (params: TParams) => EventFilter;
+type FilterFunction<
+  TParams extends any,
+  TTriggerOptionDefinitions extends Record<string, string[]> = any,
+> = (params: TParams, options?: TTriggerOptionDefinitions) => EventFilter;
 
 type ExternalSourceOptions<
   TChannel extends ChannelNames,
@@ -149,7 +147,7 @@ type ExternalSourceOptions<
   optionSchema?: z.Schema<TTriggerOptionDefinitions>;
   integration: TIntegration;
   register: RegisterFunction<TIntegration, TParams, TChannel, TTriggerOptionDefinitions>;
-  filter?: FilterFunction<TParams>;
+  filter?: FilterFunction<TParams, TTriggerOptionDefinitions>;
   handler: HandlerFunction<TChannel, TParams>;
   key: KeyFunction<TParams>;
   properties?: (params: TParams) => DisplayProperty[];
@@ -189,8 +187,8 @@ export class ExternalSource<
     );
   }
 
-  filter(params: TParams): EventFilter {
-    return this.options.filter?.(params) ?? {};
+  filter(params: TParams, options?: TTriggerOptionDefinitions): EventFilter {
+    return this.options.filter?.(params, options) ?? {};
   }
 
   properties(params: TParams): DisplayProperty[] {
@@ -283,7 +281,7 @@ export class ExternalSourceTrigger<
       rule: {
         event: this.event.name,
         payload: deepMergeFilters(
-          this.options.source.filter(this.options.params),
+          this.options.source.filter(this.options.params, this.options.options),
           this.event.filter ?? {},
           this.options.params.filter ?? {}
         ),
