@@ -2,6 +2,7 @@ import { Outlet, useLocation } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { Fragment } from "react";
 import { typedjson } from "remix-typedjson";
+import { JobStatusBadge } from "~/components/jobs/JobStatusBadge";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { JobsMenu } from "~/components/navigation/JobsMenu";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
@@ -134,6 +135,18 @@ export default function Job() {
                 }
               />
             )}
+            <PageInfoProperty
+              icon="pulse"
+              label={"STATUS"}
+              value={
+                <JobStatusBadge
+                  enabled={true}
+                  hasIntegrationsRequiringAction={job.hasIntegrationsRequiringAction}
+                  hasRuns={job.lastRun !== undefined}
+                  badgeSize="small"
+                />
+              }
+            />
           </PageInfoGroup>
           <PageInfoGroup alignment="right">
             <Paragraph variant="extra-small" className="text-slate-600">
