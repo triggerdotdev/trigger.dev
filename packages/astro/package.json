@@ -23,9 +23,5 @@
   "bugs": {
     "url": "https://github.com/triggerdev/trigger.dev/issues"
   },
-  "homepage": "https://github.com/triggerdev/trigger.dev#readme",
-  "author": {
-    "name": "Liran Tal",
-    "email": "liran.tal@gmail.com"
-  }
+  "homepage": "https://github.com/triggerdev/trigger.dev#readme"
 }
