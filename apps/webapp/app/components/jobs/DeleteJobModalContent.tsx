@@ -1,21 +1,11 @@
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
-import { EnvironmentLabel } from "../environments/EnvironmentLabel";
+import { cn } from "~/utils/cn";
+import { JobStatusTable } from "../JobsStatusTable";
 import { Button } from "../primitives/Buttons";
 import { Header1, Header2 } from "../primitives/Headers";
 import { NamedIcon } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-} from "../primitives/Table";
-import { cn } from "~/utils/cn";
 import { TextLink } from "../primitives/TextLink";
-import { DateTime } from "../primitives/DateTime";
-import { ActiveBadge } from "../ActiveBadge";
 
 type JobEnvironment = {
   type: RuntimeEnvironmentType;
@@ -39,32 +29,7 @@ export function DeleteJobDialogContent({ title, slug, environments }: DeleteJobD
         <Header1>{title}</Header1>
         <Paragraph variant="small">ID: {slug}</Paragraph>
       </div>
-      <Table fullWidth>
-        <TableHeader>
-          <TableRow>
-            <TableHeaderCell>Env</TableHeaderCell>
-            <TableHeaderCell>Last Run</TableHeaderCell>
-            <TableHeaderCell alignment="right">Version</TableHeaderCell>
-            <TableHeaderCell alignment="right">Status</TableHeaderCell>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {environments.map((environment) => (
-            <TableRow>
-              <TableCell>
-                <EnvironmentLabel environment={environment} />
-              </TableCell>
-              <TableCell>
-                {environment.lastRun ? <DateTime date={environment.lastRun} /> : "Never Run"}
-              </TableCell>
-              <TableCell alignment="right">{environment.version}</TableCell>
-              <TableCell alignment="right">
-                <ActiveBadge active={environment.enabled} />
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      <JobStatusTable environments={environments} />
 
       <Header2
         className={cn(
@@ -92,8 +57,8 @@ export function DeleteJobDialogContent({ title, slug, environments }: DeleteJobD
 
       <Button variant="danger/large" fullWidth disabled={!canDelete}>
         <NamedIcon
-          name={"trash-can"}
-          className={"mr-1.5 h-4 w-4 text-bright transition group-hover:text-bright"}
+          name="trash-can"
+          className="mr-1.5 h-4 w-4 text-bright transition group-hover:text-bright"
         />
         I want to delete this Job
       </Button>
