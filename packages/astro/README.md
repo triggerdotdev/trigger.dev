@@ -7,7 +7,7 @@ This Astro integration project provides a `createAstroRoute` function that can b
 1. Install the package:
 
 ```bash
-npm install --save https://github.com/lirantal/triggerdev-astro-integration
+npm install --save @trigger.dev/astro
 ```
 
 Note: yes, right now this package isn't published to the npm registry, so you'll need to install it from my GitHub repository if you want to experiment with it. Hopefully this soon graduates into an official npm package from the Trigger.dev team 🙏🏼
