@@ -8,6 +8,7 @@ import { initCommand } from "../commands/init";
 import { CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts";
 import { telemetryClient } from "../telemetry/telemetry";
 import { getVersion } from "../utils/getVersion";
+import { updateCommand } from "../commands/update";
 
 export const program = new Command();
 
@@ -78,6 +79,14 @@ program
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (path, options) => {
     await createIntegrationCommand(path, options);
+  });
+
+program
+  .command("update")
+  .description("Updates all @trigger.dev/* packages to their latest compatible versions")
+  .argument("[path]", "The path to the directory that contains the package.json file", ".")
+  .action(async (path) => {
+    await updateCommand(path);
   });
 
 program
