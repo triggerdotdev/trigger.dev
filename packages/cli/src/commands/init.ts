@@ -280,10 +280,7 @@ async function detectUseOfSrcDir(path: string): Promise<boolean> {
 
 // Detect the use of pages or app dir in the Next.js project
 // Import the next.config.js file and check for experimental: { appDir: true }
-async function detectPagesOrAppDir(
-  path: string,
-  usesSrcDir = false,
-): Promise<"pages" | "app"> {
+async function detectPagesOrAppDir(path: string, usesSrcDir = false): Promise<"pages" | "app"> {
   const nextConfigPath = pathModule.join(path, "next.config.js");
   const importedConfig = await import(pathToFileURL(nextConfigPath).toString()).catch(() => ({}));
 
@@ -554,9 +551,7 @@ export * from "./examples"
       examplesIndexContent
     );
 
-    logger.success(
-      `✅ Created example job at ${usesSrcDir ? "src/" : ""}jobs/examples/examplesFileName`
-    );
+    logger.success(`✅ Created example job at ${usesSrcDir ? "src/" : ""}jobs/examples.ts`);
   }
 }
 

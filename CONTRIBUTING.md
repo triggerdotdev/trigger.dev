@@ -136,7 +136,7 @@ pnpm run dev
 3. Create a new temporary Next.js app in examples directory
 
 ```sh
-pnpm create next-app@latest
+pnpm create next-app@latest test-cli --ts --no-eslint --tailwind --app --src-dir --import-alias "@/*"
 ```
 
 Follow the prompts to create a TypeScript project using the App Directory.
@@ -145,6 +145,7 @@ Follow the prompts to create a TypeScript project using the App Directory.
 
 ```json
 {
+  // other package.json properties
   "devDependencies": { "@trigger.dev/cli": "workspace:*" }
 }
 ```
@@ -152,7 +153,7 @@ Follow the prompts to create a TypeScript project using the App Directory.
 5. Open a new terminal window, navigate into the example, and initialize the CLI:
 
 ```sh
-cd examples/your-newly-created-nextjs-project
+cd examples/test-cli
 pnpm i
 pnpm exec trigger-cli init
 ```
