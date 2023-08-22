@@ -14,6 +14,8 @@ import {
 } from "../primitives/Table";
 import { cn } from "~/utils/cn";
 import { TextLink } from "../primitives/TextLink";
+import { DateTime } from "../primitives/DateTime";
+import { ActiveBadge } from "../ActiveBadge";
 
 type JobEnvironment = {
   type: RuntimeEnvironmentType;
@@ -22,25 +24,19 @@ type JobEnvironment = {
   enabled: boolean;
 };
 
-type DeleteJobDialogContentProps = JobEnvironment & {
+type DeleteJobDialogContentProps = {
   title: string;
   slug: string;
   environments: JobEnvironment[];
 };
 
-const backgroundTransparent = "group-hover:bg-transparent";
+export function DeleteJobDialogContent({ title, slug, environments }: DeleteJobDialogContentProps) {
+  const canDelete = environments.every((environment) => environment.enabled === false);
 
-export function DeleteJobDialogContent({
-  title,
-  slug,
-  lastRun,
-  version,
-  enabled,
-}: DeleteJobDialogContentProps) {
   return (
-    <div className="mt-4 flex w-full flex-col items-center gap-y-6 border-t border-slate-850">
+    <div className="flex w-full flex-col items-center gap-y-6">
       <div className="flex flex-col items-center justify-center gap-y-2">
-        <Header1 className="mt-4">{title}</Header1>
+        <Header1>{title}</Header1>
         <Paragraph variant="small">ID: {slug}</Paragraph>
       </div>
       <Table fullWidth>
@@ -53,64 +49,48 @@ export function DeleteJobDialogContent({
           </TableRow>
         </TableHeader>
         <TableBody>
-          <TableRow>
-            <TableCell className={backgroundTransparent}>
-              <EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />
-            </TableCell>
-            <TableCell className={backgroundTransparent}>
-              {lastRun ? lastRun.toDateString() : "Never Run"}
-            </TableCell>
-            <TableCell alignment="right" className={backgroundTransparent}>
-              {version}
-            </TableCell>
-            <TableCell alignment="right" className={backgroundTransparent}>
-              {enabled}
-            </TableCell>
-          </TableRow>
-          <TableRow>
-            <TableCell className={backgroundTransparent}>
-              <EnvironmentLabel environment={{ type: "PRODUCTION" }} />
-            </TableCell>
-            <TableCell className={backgroundTransparent}>
-              {lastRun ? lastRun.toDateString() : "Never Run"}
-            </TableCell>
-            <TableCell alignment="right" className={backgroundTransparent}>
-              {version}
-            </TableCell>
-            <TableCell alignment="right" className={backgroundTransparent}>
-              {enabled}
-            </TableCell>
-          </TableRow>
+          {environments.map((environment) => (
+            <TableRow>
+              <TableCell>
+                <EnvironmentLabel environment={environment} />
+              </TableCell>
+              <TableCell>
+                {environment.lastRun ? <DateTime date={environment.lastRun} /> : "Never Run"}
+              </TableCell>
+              <TableCell alignment="right">{environment.version}</TableCell>
+              <TableCell alignment="right">
+                <ActiveBadge active={environment.enabled} />
+              </TableCell>
+            </TableRow>
+          ))}
         </TableBody>
       </Table>
 
       <Header2
         className={cn(
-          enabled === true ? "border-amber-500 bg-amber-500/10" : "border-rose-500 bg-rose-500/10",
+          canDelete ? "border-rose-500 bg-rose-500/10" : "border-amber-500 bg-amber-500/10",
           "rounded border px-3.5 py-2 text-center text-bright"
         )}
       >
-        {enabled === true
-          ? "You can't delete this Job yet."
-          : "Are you sure you want to delete this Job?"}
+        {canDelete
+          ? "Are you sure you want to delete this Job?"
+          : "You can't delete this Job until all env are disabled"}
       </Header2>
       <Paragraph variant="small" className="px-6 text-center">
-        {enabled === true ? (
+        {canDelete ? (
           <>
-            This Job is still active in your dev environment. You need to disable it in your Job
-            code first before it can be deleted.{" "}
-            <TextLink to="#">Learn how to disable a Job</TextLink>.
+            This will permanently delete the Job <span className="strong text-bright">{title}</span>
+            . This includes the deletion of all Run history. This cannot be undone.
           </>
         ) : (
           <>
-            This will permanently delete the Job
-            <span className="strong text-bright">{title}</span>. This includes the deletion of all
-            Run history. This cannot be undone.
+            This Job is still active in an environment. You need to disable it in your Job code
+            first before it can be deleted. <TextLink to="#">Learn how to disable a Job</TextLink>.
           </>
         )}
       </Paragraph>
 
-      <Button variant="danger/large" fullWidth disabled={enabled}>
+      <Button variant="danger/large" fullWidth disabled={!canDelete}>
         <NamedIcon
           name={"trash-can"}
           className={"mr-1.5 h-4 w-4 text-bright transition group-hover:text-bright"}

@@ -121,10 +121,11 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
 type TableCellProps = TableCellBasicProps & {
   to?: string;
   onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
+  hasAction?: boolean;
 };
 
 export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
-  ({ className, alignment = "left", children, colSpan, to, onClick }, ref) => {
+  ({ className, alignment = "left", children, colSpan, to, onClick, hasAction = false }, ref) => {
     let alignmentClassName = "text-left";
     switch (alignment) {
       case "center":
@@ -148,8 +149,10 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       <td
         ref={ref}
         className={cn(
-          "text-xs text-slate-400 group-hover:bg-slate-900",
-          to || onClick ? "cursor-pointer" : "px-4 py-3 align-middle",
+          "text-xs text-slate-400",
+          to || onClick || hasAction
+            ? "cursor-pointer group-hover:bg-slate-900"
+            : "px-4 py-3 align-middle",
           !to && !onClick && alignmentClassName,
           className
         )}
@@ -172,7 +175,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
 );
 
 const stickyStyles =
-  "sticky right-0 z-10 bg-background before:absolute before:pointer-events-none before:-left-8 before:top-0 before:h-full before:min-w-[2rem] before:bg-gradient-to-r before:from-transparent before:to-background before:content-[''] group-hover:before:to-slate-900";
+  "sticky right-0 z-10 w-[2.8rem] min-w-[2.8rem] bg-background before:absolute before:pointer-events-none before:-left-8 before:top-0 before:h-full before:min-w-[2rem] before:bg-gradient-to-r before:from-transparent before:to-background before:content-[''] group-hover:before:to-slate-900";
 
 export const TableCellChevron = forwardRef<
   HTMLTableCellElement,
@@ -214,6 +217,7 @@ export const TableCellMenu = forwardRef<
       onClick={onClick}
       ref={ref}
       alignment="right"
+      hasAction={true}
     >
       <Popover onOpenChange={(open) => setIsOpen(open)}>
         <PopoverVerticalEllipseTrigger isOpen={isOpen} />
