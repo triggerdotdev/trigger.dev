@@ -70,6 +70,7 @@ export class RegisterScheduleSourceService {
           },
           metadata: schedule.metadata ?? {},
           externalAccountId: externalAccount ? externalAccount.id : undefined,
+          active: environment.autoEnableInternalSources,
         },
       });
 
