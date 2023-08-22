@@ -1,6 +1,7 @@
 import { JobEnvironment, JobStatusTable } from "~/components/JobsStatusTable";
 import { HowToDisableAJob } from "~/components/helpContent/HelpContentText";
 import { Button } from "~/components/primitives/Buttons";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -21,13 +22,40 @@ export default function Page({ environments = [] }: { environments: JobEnvironme
               <Paragraph variant="small">
                 Disable this Job in all environments before deleting
               </Paragraph>
-              <Button
-                variant="danger/small"
-                leadingIconClassName="text-bright"
-                LeadingIcon="trash-can"
-              >
-                Delete Job
-              </Button>
+
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="danger/small"
+                    leadingIconClassName="text-bright"
+                    LeadingIcon="trash-can"
+                  >
+                    Delete Job
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    {/* <DeleteJobDialogContent
+                      title={job.title}
+                      slug={job.slug}
+                      environments={[
+                        {
+                          type: "DEVELOPMENT",
+                          enabled: false,
+                          lastRun: job.lastRun?.createdAt,
+                          version: job.version,
+                        },
+                        {
+                          type: "PRODUCTION",
+                          enabled: true,
+                          lastRun: job.lastRun?.createdAt,
+                          version: job.version,
+                        },
+                      ]}
+                    /> */}
+                  </DialogHeader>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
           <HelpContent title="How to disable a Job">
