@@ -149,7 +149,7 @@ pnpm create next-app@latest test-cli --ts --no-eslint --tailwind --app --src-dir
 }
 ```
 
-5. Back in the terminal, navigate into the example, and initialize the CLI:
+5. Back in the terminal, navigate into the example, and initialize the CLI. When prompted, select `self-hosted` and enter `localhost:3030` if you are testing against the local instance of Trigger.dev, or you can just use the Trigger.dev cloud. When asked for an API key, use the key you copied earlier.
 
 ```sh
 cd ./test-cli
@@ -157,17 +157,19 @@ pnpm i
 pnpm exec trigger-cli init
 ```
 
-6. When prompted, select `self-hosted` and enter `localhost:3030` for your local version of the webapp. (You can also use the Trigger.dev cloud). When asked for an API key, use the key you copied earlier.
+6. If you are just testing the `init` command, you can stop here. If you'd like to test the `dev` command, first start the Next.js app on port 3000:
 
-7. Run the CLI
+```sh
+pnpm run dev
+```
+
+7. Open a new terminal window, and then run the `dev` command like so:
 
 ```sh
 pnpm exec trigger-cli dev
 ```
 
-8. After running the CLI, start your newly created Next.js project. You should now be able to see the changes.
-
-9. Please remember to delete the temporary project you created after you've tested the changes, and before you raise a PR.
+8. Please remember to delete the temporary project you created after you've tested the changes, and before you raise a PR.
 
 ## Running end-to-end webapp tests
 
