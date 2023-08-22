@@ -2,7 +2,7 @@ import { cn } from "~/utils/cn";
 
 const variant = {
   small:
-    "py-0.5 px-1 text-xxs font-normal inline-flex items-center justify-center whitespace-nowrap rounded-[0.125rem]",
+    "py-[0.25rem] px-1.5 text-xxs font-normal inline-flex items-center justify-center whitespace-nowrap rounded-[0.125rem]",
   normal:
     "py-1 px-1.5 text-xs font-normal inline-flex items-center justify-center whitespace-nowrap rounded-sm",
 };
