@@ -52,7 +52,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/solid";
 import { CompanyIcon, hasIcon } from "@trigger.dev/companyicons";
-import { HourglassIcon } from "lucide-react";
+import { ActivityIcon, HourglassIcon } from "lucide-react";
 import { DynamicTriggerIcon } from "~/assets/icons/DynamicTriggerIcon";
 import { ErrorIcon } from "~/assets/icons/ErrorIcon";
 import { ScheduleIcon } from "~/assets/icons/ScheduleIcon";
@@ -132,6 +132,7 @@ const icons = {
     <PlusSmallIcon className={cn("text-green-600", className)} />
   ),
   property: (className: string) => <Cog8ToothIcon className={cn("text-slate-600", className)} />,
+  pulse: (className: string) => <ActivityIcon className={cn("text-green-600", className)} />,
   "qr-code": (className: string) => <QrCodeIcon className={cn("text-amber-400", className)} />,
   refresh: (className: string) => <ArrowPathIcon className={cn("text-bright", className)} />,
   sapling: (className: string) => <SaplingIcon className={cn("text-green-500", className)} />,
