@@ -31,7 +31,7 @@ import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { Job, JobOptions } from "./job";
 import { DynamicTrigger } from "./triggers/dynamic";
 import { EventTrigger } from "./triggers/eventTrigger";
-import { ExternalSource } from "./triggers/externalSource";
+import { ExternalSource, TriggerOptionRecord } from "./triggers/externalSource";
 import type {
   EventSpecification,
   Trigger,
@@ -459,6 +459,7 @@ export class TriggerClient {
     source: ExternalSource<any, any>;
     event: EventSpecification<any>;
     params: any;
+    options?: Record<string, string[]>;
   }): void {
     this.#registeredHttpSourceHandlers[options.key] = async (s, r) => {
       return await options.source.handle(s, r, this.#internalLogger);
@@ -484,13 +485,14 @@ export class TriggerClient {
       };
     }
 
-    //todo combine the options, which would include "event" as well as the passed in options
-    registeredSource.events = Array.from(
-      new Set([
-        ...registeredSource.events,
-        ...(typeof options.event.name === "string" ? [options.event.name] : options.event.name),
-      ])
+    //combined the previous source options with this one, making sure to include event
+    const newOptions = deepMergeOptions(
+      {
+        event: typeof options.event.name === "string" ? [options.event.name] : options.event.name,
+      },
+      options.options ?? {}
     );
+    registeredSource.options = deepMergeOptions(registeredSource.options, newOptions);
 
     this.#registeredSources[options.key] = registeredSource;
 
@@ -853,4 +855,22 @@ export class TriggerClient {
 
 function dynamicTriggerRegisterSourceJobId(id: string) {
   return `register-dynamic-trigger-${id}`;
+}
+
+type Options = Record<string, string[]>;
+
+function deepMergeOptions(obj1: Options, obj2: Options): Options {
+  const mergedOptions: Options = { ...obj1 };
+
+  for (const key in obj2) {
+    if (obj2.hasOwnProperty(key)) {
+      if (key in mergedOptions) {
+        mergedOptions[key] = [...mergedOptions[key], ...obj2[key]];
+      } else {
+        mergedOptions[key] = obj2[key];
+      }
+    }
+  }
+
+  return mergedOptions;
 }

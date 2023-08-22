@@ -75,7 +75,7 @@ type TriggerOptionsRecordWithEvent<
   event: TValue;
 } & TriggerOptionRecord<TValue, TTriggerOptionDefinitions>;
 
-type TriggerOptionRecord<
+export type TriggerOptionRecord<
   TValue,
   TTriggerOptionDefinitions extends Record<string, string[]> = Record<string, string[]>,
 > = {
@@ -257,10 +257,12 @@ export type ExternalSourceParams<TExternalSource extends ExternalSource<any, any
 export type ExternalSourceTriggerOptions<
   TEventSpecification extends EventSpecification<any>,
   TEventSource extends ExternalSource<any, any, any>,
+  TTriggerOptionDefinitions extends Record<string, string[]> = any,
 > = {
   event: TEventSpecification;
   source: TEventSource;
   params: ExternalSourceParams<TEventSource>;
+  options: TriggerOptionRecord<string[], TTriggerOptionDefinitions>;
 };
 
 export class ExternalSourceTrigger<

@@ -140,8 +140,16 @@ export class Airtable implements TriggerIntegration {
     return new Base(this.runTask.bind(this), baseId);
   }
 
-  onTable(params: { baseId: string; tableId: string; changes?: WebhookChangeType[] }) {
-    return createTrigger(this.source, events.onTableChanged, params);
+  onTable(params: {
+    baseId: string;
+    tableId: string;
+    changeTypes?: WebhookChangeType[];
+    dataTypes?: WebhookDataType[];
+  }) {
+    return createTrigger(this.source, events.onTableChanged, params, {
+      changeTypes: params.changeTypes,
+      dataTypes: ["tableData", "tableFields", "tableMetadata"],
+    });
   }
 
   //todo add support for dataTypes, changeTypes and fromSources
@@ -253,7 +261,11 @@ function createTrigger<TEventSpecification extends AirtableEvents>(
   source: ReturnType<typeof createWebhookEventSource>,
   event: TEventSpecification,
   params: TriggerParams,
-  options: TriggerOptions
+  options: {
+    dataTypes: WebhookDataType[];
+    changeTypes?: WebhookChangeType[];
+    fromSources?: WebhookFromSource[];
+  }
 ): CreateTriggersResult<TEventSpecification> {
   return new ExternalSourceTrigger({
     event,

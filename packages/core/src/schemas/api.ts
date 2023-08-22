@@ -81,7 +81,7 @@ const SourceEventOptionSchema = z.object({
 export type SourceEventOption = z.infer<typeof SourceEventOptionSchema>;
 
 const RegisteredOptionsDiffSchema = z.object({
-  registered: z.array(z.string()),
+  desired: z.array(z.string()),
   missing: z.array(z.string()),
   orphaned: z.array(z.string()),
 });
@@ -200,7 +200,7 @@ export const SourceMetadataSchema = z.object({
   integration: IntegrationConfigSchema,
   key: z.string(),
   params: z.any(),
-  events: z.array(z.string()),
+  options: z.record(z.array(z.string())),
   registerSourceJob: z
     .object({
       id: z.string(),
