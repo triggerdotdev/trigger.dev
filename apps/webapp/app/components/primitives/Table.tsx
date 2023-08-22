@@ -1,30 +1,24 @@
-import { ChevronRightIcon, EllipsisVerticalIcon } from "@heroicons/react/24/solid";
+import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
-import { Fragment, ReactNode, forwardRef, useState } from "react";
+import { ReactNode, forwardRef, useState } from "react";
 import { cn } from "~/utils/cn";
-import { Badge } from "./Badge";
-import {
-  Popover,
-  PopoverArrowTrigger,
-  PopoverContent,
-  PopoverMenuItem,
-  PopoverSectionHeader,
-  PopoverVerticalEllipseTrigger,
-} from "./Popover";
+import { Popover, PopoverContent, PopoverVerticalEllipseTrigger } from "./Popover";
 
 type TableProps = {
   containerClassName?: string;
   className?: string;
   children: ReactNode;
+  fullWidth?: boolean;
 };
 
 export const Table = forwardRef<HTMLTableElement, TableProps>(
-  ({ className, containerClassName, children }, ref) => {
+  ({ className, containerClassName, children, fullWidth }, ref) => {
     return (
       <div
         className={cn(
           "overflow-x-auto whitespace-nowrap rounded-md border border-uiBorder scrollbar-thin scrollbar-track-midnight-850 scrollbar-thumb-slate-700",
-          containerClassName
+          containerClassName,
+          fullWidth && "w-full"
         )}
       >
         <table ref={ref} className={cn("w-full divide-y", className)}>
