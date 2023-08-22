@@ -108,6 +108,10 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     this.#recurringTasks = options.recurringTasks;
   }
 
+  get graphileWorkerSchema() {
+    return this.#runnerOptions.schema ?? "graphile_worker";
+  }
+
   public async initialize(): Promise<boolean> {
     if (this.#runner) {
       return true;
@@ -252,7 +256,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     tx: PrismaClientOrTransaction
   ) {
     const results = await tx.$queryRawUnsafe(
-      `SELECT * FROM graphile_worker.add_job(
+      `SELECT * FROM ${this.graphileWorkerSchema}.add_job(
           identifier => $1::text,
           payload => $2::json,
           queue_name => $3::text,
@@ -290,7 +294,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   async #removeJob(jobKey: string, tx: PrismaClientOrTransaction) {
     try {
       const result = await tx.$queryRawUnsafe(
-        `SELECT * FROM graphile_worker.remove_job(
+        `SELECT * FROM ${this.graphileWorkerSchema}.remove_job(
           job_key => $1::text
         )`,
         jobKey
