@@ -527,7 +527,11 @@ export * from "./examples"
 
   await fs.writeFile(pathModule.join(directories, routeFileName), routeContent);
 
-  logger.success(`✅ Created app route at ${usesSrcDir ? "src/" : ""}app/api/trigger.ts`);
+  logger.success(
+    `✅ Created app route at ${usesSrcDir ? "src/" : ""}app/api/${removeFileExtension(
+      triggerFileName
+    )}/${routeFileName}`
+  );
 
   const triggerFileExists = await pathExists(pathModule.join(path, triggerFileName));
 
@@ -734,4 +738,8 @@ async function setupEnvironmentVariable(
 
     logger.success(`✅ Added ${variableName}=${renderer(value)} to ${fileName}`);
   }
+}
+
+function removeFileExtension(filename: string) {
+  return filename.replace(/\.[^.]+$/, "");
 }
