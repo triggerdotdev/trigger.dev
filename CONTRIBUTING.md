@@ -136,10 +136,9 @@ pnpm run dev
 3. Create a new temporary Next.js app in examples directory
 
 ```sh
+cd ./examples
 pnpm create next-app@latest test-cli --ts --no-eslint --tailwind --app --src-dir --import-alias "@/*"
 ```
-
-Follow the prompts to create a TypeScript project using the App Directory.
 
 4. Then once that's finished, add the `@trigger.dev/cli` to the `devDependencies` of the newly created Next.js app's `package.json` file, like so:
 
@@ -150,15 +149,15 @@ Follow the prompts to create a TypeScript project using the App Directory.
 }
 ```
 
-5. Open a new terminal window, navigate into the example, and initialize the CLI:
+5. Back in the terminal, navigate into the example, and initialize the CLI:
 
 ```sh
-cd examples/test-cli
+cd ./test-cli
 pnpm i
 pnpm exec trigger-cli init
 ```
 
-6. When prompted, select `self-hosted` and enter `localhost:3030` for your local version of the webapp. When asked for an API key, use the key you copied earlier.
+6. When prompted, select `self-hosted` and enter `localhost:3030` for your local version of the webapp. (You can also use the Trigger.dev cloud). When asked for an API key, use the key you copied earlier.
 
 7. Run the CLI
 

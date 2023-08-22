@@ -153,11 +153,21 @@ export const promptApiKey = async (instanceUrl: string): Promise<string> => {
   const { apiKey } = await inquirer.prompt<{ apiKey: string }>({
     type: "password",
     name: "apiKey",
-    message: `Enter your development API key (Find yours ➡️ ${instanceUrl})`,
+    message: `Enter your secret dev API key (Find yours ➡️ ${instanceUrl})`,
     validate: (input) => {
       // Make sure they enter something like tr_dev_********
       if (!input) {
-        return "Please enter your development API key";
+        return "Please enter your secret dev API key";
+      }
+
+      // If they enter a public key like pk_dev_, let them know
+      if (input.startsWith("pk_dev_")) {
+        return "Please enter your secret dev API key, you've entered a public key";
+      }
+
+      // If they enter a prod key (tr_prod_), let them know
+      if (input.startsWith("tr_prod_")) {
+        return "Please enter your secret dev API key, you've entered a production key";
       }
 
       if (!input.startsWith("tr_dev_")) {
