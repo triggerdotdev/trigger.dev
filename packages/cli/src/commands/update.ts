@@ -3,10 +3,11 @@ import inquirer from "inquirer";
 import { run, RunOptions } from "npm-check-updates";
 import { installDependencies } from "../utils/installDependencies.js";
 import { readJSONFileSync, writeJSONFile } from "../utils/fileSystem.js";
+import { logger } from "../utils/logger.js";
 
 export async function updateCommand(projectPath: string) {
   const triggerDevPackage = "@trigger.dev";
-  const packageJSONPath = path.join(projectPath, "package.json")
+  const packageJSONPath = path.join(projectPath, "package.json");
   const packageData = readJSONFileSync(packageJSONPath);
 
   if (!packageData) {
@@ -31,6 +32,7 @@ export async function updateCommand(projectPath: string) {
     packageData,
     upgrade: true,
     jsonUpgraded: true,
+    target: "latest",
   };
 
   // Can either give a json like package.json or just with deps and their new versions
@@ -53,7 +55,7 @@ export async function updateCommand(projectPath: string) {
 
   // If there are no @trigger.dev packages
   if (triggerPackages.length === 0) {
-    console.log("No @trigger.dev/* packages found in package.json.");
+    logger.success(`✅ All @trigger.dev/* packages are up to date.`);
     return;
   }
 
@@ -63,7 +65,7 @@ export async function updateCommand(projectPath: string) {
 
   // If no packages require any updation
   if (packagesToUpdate.length === 0) {
-    console.log("All @trigger.dev/* packages are up to date.");
+    logger.success(`✅ All @trigger.dev/* packages are up to date.`);
     return;
   }
 
@@ -93,9 +95,6 @@ export async function updateCommand(projectPath: string) {
       }
     });
     await writeJSONFile(packageJSONPath, newPackageJSON);
-    console.log("package.json updated. Reinstalling dependencies...");
     await installDependencies(projectPath);
-  } else {
-    console.log("Operation canceled. No changes were made.");
   }
 }
