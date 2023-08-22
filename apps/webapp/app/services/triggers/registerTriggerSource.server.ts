@@ -1,4 +1,4 @@
-import { RegisterSourceEvent, RegisterTriggerBody } from "@trigger.dev/core";
+import { RegisterSourceEventV1, RegisterTriggerBody } from "@trigger.dev/core";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
@@ -29,7 +29,7 @@ export class RegisterTriggerSourceService {
     key: string;
     accountId?: string;
     registrationMetadata?: any;
-  }): Promise<RegisterSourceEvent | undefined> {
+  }): Promise<RegisterSourceEventV1 | undefined> {
     const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
       where: {
         environmentId_slug: {
@@ -76,7 +76,7 @@ export class RegisterTriggerSourceService {
           create: {
             dispatchableId: triggerSource.id,
             environmentId: environment.id,
-            event: Array.isArray(payload.rule.event) ? payload.rule.event : [payload.rule.event], 
+            event: Array.isArray(payload.rule.event) ? payload.rule.event : [payload.rule.event],
             source: payload.rule.source,
             payloadFilter: payload.rule.payload,
             contextFilter: payload.rule.context,

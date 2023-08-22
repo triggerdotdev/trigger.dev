@@ -3,14 +3,23 @@ import type {
   EventFilter,
   Logger,
   RedactString,
+  RegisteredOptionsDiff,
   RunTaskOptions,
   RuntimeEnvironmentType,
+  SourceEventOption,
   TriggerMetadata,
 } from "@trigger.dev/core";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
 
-export type { DisplayProperty, Logger, RedactString, RunTaskOptions };
+export type {
+  DisplayProperty,
+  Logger,
+  RedactString,
+  RegisteredOptionsDiff,
+  RunTaskOptions,
+  SourceEventOption,
+};
 
 export interface TriggerContext {
   /** Job metadata */

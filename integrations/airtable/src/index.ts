@@ -30,6 +30,39 @@ export type AirtableIntegrationOptions = {
 
 export type AirtableRunTask = InstanceType<typeof Airtable>["runTask"];
 
+const WebhookFromSourceSchema = z.union([
+  z.literal("client"),
+  z.literal("publicApi"),
+  z.literal("formSubmission"),
+  z.literal("automation"),
+  z.literal("system"),
+  z.literal("sync"),
+  z.literal("anonymousUser"),
+  z.literal("unknown"),
+]);
+
+type WebhookFromSource = z.infer<typeof WebhookFromSourceSchema>;
+const WebhookDataTypeSchema = z.union([
+  z.literal("tableData"),
+  z.literal("tableFields"),
+  z.literal("tableMetadata"),
+]);
+type WebhookDataType = z.infer<typeof WebhookDataTypeSchema>;
+const WebhookChangeTypeSchema = z.union([
+  z.literal("add"),
+  z.literal("remove"),
+  z.literal("update"),
+]);
+type WebhookChangeType = z.infer<typeof WebhookChangeTypeSchema>;
+type WebhookSpecification = {
+  filters: {
+    dataTypes: WebhookDataType[];
+    recordChangeScope?: string;
+    changeTypes?: WebhookChangeType[];
+    fromSources?: WebhookFromSource[];
+  };
+};
+
 const apiUrl = "https://api.airtable.com/v0/bases";
 
 export class Airtable implements TriggerIntegration {
@@ -107,12 +140,15 @@ export class Airtable implements TriggerIntegration {
     return new Base(this.runTask.bind(this), baseId);
   }
 
-  onTable(params: { baseId: string }) {
+  onTable(params: { baseId: string; tableId: string; changes?: WebhookChangeType[] }) {
     return createTrigger(this.source, events.onTableChanged, params);
   }
 
   //todo add support for dataTypes, changeTypes and fromSources
-  createWebhook(key: IntegrationTaskKey, { baseId, url }: { baseId: string; url: string }) {
+  createWebhook(
+    key: IntegrationTaskKey,
+    { baseId, url, options }: { baseId: string; url: string; options: WebhookSpecification }
+  ) {
     return this.runTask<WebhookRegistrationData>(key, async (client, task, io) => {
       // create webhook
       const response = await fetch(`${apiUrl}/${baseId}/webhooks`, {
@@ -124,11 +160,7 @@ export class Airtable implements TriggerIntegration {
         body: JSON.stringify({
           notificationUrl: url,
           specification: {
-            options: {
-              filters: {
-                dataTypes: ["tableData"],
-              },
-            },
+            options,
           },
         }),
         redirect: "follow",
@@ -170,6 +202,39 @@ export class Airtable implements TriggerIntegration {
       return parsed;
     });
   }
+
+  deleteWebhook(
+    key: IntegrationTaskKey,
+    { baseId, webhookId }: { baseId: string; webhookId: string }
+  ) {
+    return this.runTask(key, async (client, task, io) => {
+      // create webhook
+      const response = await fetch(`${apiUrl}/${baseId}/webhooks/${webhookId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${client._apiKey}`,
+        },
+        redirect: "follow",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete webhook: ${response.statusText}`);
+      }
+    });
+  }
+
+  async updateWebhook(
+    key: IntegrationTaskKey,
+    {
+      baseId,
+      url,
+      webhookId,
+      options,
+    }: { baseId: string; url: string; webhookId: string; options: WebhookSpecification }
+  ) {
+    await this.deleteWebhook(`${key}-delete`, { baseId, webhookId });
+    return await this.createWebhook(`${key}-create`, { baseId, url, options });
+  }
 }
 
 type AirtableEvents = (typeof events)[keyof typeof events];
@@ -187,12 +252,14 @@ type CreateTriggersResult<TEventSpecification extends AirtableEvents> = External
 function createTrigger<TEventSpecification extends AirtableEvents>(
   source: ReturnType<typeof createWebhookEventSource>,
   event: TEventSpecification,
-  params: TriggerParams
+  params: TriggerParams,
+  options: TriggerOptions
 ): CreateTriggersResult<TEventSpecification> {
   return new ExternalSourceTrigger({
     event,
     params,
     source,
+    options,
   });
 }
 
@@ -220,37 +287,65 @@ type WebhookListData = z.infer<typeof WebhookListDataSchema>;
 
 function createWebhookEventSource(
   integration: Airtable
-): ExternalSource<Airtable, { baseId: string }, "HTTP"> {
+): ExternalSource<
+  Airtable,
+  { baseId: string; tableId?: string },
+  "HTTP",
+  { dataTypes: WebhookDataType[]; fromSources?: WebhookFromSource[] }
+> {
   return new ExternalSource("HTTP", {
     id: "airtable.webhook",
-    schema: z.object({ baseId: z.string() }),
+    schema: z.object({ baseId: z.string(), tableId: z.string().optional() }),
+    optionSchema: z.object({
+      dataTypes: z.array(WebhookDataTypeSchema),
+      fromSources: z.array(WebhookFromSourceSchema).optional(),
+    }),
     version: "0.1.0",
     integration,
-    key: (params) => `airtable.webhook.${params.baseId}`,
+    //todo update this to take options as well
+    filter: (params) => {
+      return {};
+    },
+    key: (params) =>
+      `airtable.webhook.${params.baseId}${params.tableId ? `.${params.tableId}` : ""}`,
     handler: webhookHandler,
     register: async (event, io, ctx) => {
-      const { params, source: httpSource, events, missingEvents } = event;
+      const { params, source: httpSource, options } = event;
 
       const webhookData = WebhookRegistrationDataSchema.safeParse(httpSource.data);
 
-      const allEvents = Array.from(new Set([...events, ...missingEvents]));
+      const registeredOptions = {
+        event: options.event.desired,
+        dataTypes: options.dataTypes.desired,
+        fromSources: options.fromSources?.desired,
+      };
+
+      const specification: WebhookSpecification = {
+        filters: {
+          dataTypes: options.dataTypes.desired as WebhookDataType[],
+          changeTypes: options.event.desired as WebhookChangeType[],
+          fromSources: options.fromSources?.desired as WebhookFromSource[],
+          recordChangeScope: params.tableId,
+        },
+      };
 
       if (httpSource.active && webhookData.success) {
-        if (missingEvents.length === 0) return;
+        const hasMissingOptions = Object.values(options).some(
+          (option) => option.missing.length > 0
+        );
+        if (!hasMissingOptions) return;
 
-        throw Error("Not implemented adding missing events to a webhook");
+        const updatedWebhook = await io.integration.updateWebhook("update-webhook", {
+          baseId: params.baseId,
+          url: httpSource.url,
+          webhookId: webhookData.data.id,
+          options: specification,
+        });
 
-        //todo delete and recreate
-        // const updatedWebhook = await io.integration.updateWebhook("update-webhook", {
-        //   id: webhookData.data.id,
-        //   url: httpSource.url,
-        //   enabled_events: allEvents as unknown as WebhookEvents[],
-        // });
-
-        // return {
-        //   data: WebhookRegistrationDataSchema.parse(updatedWebhook),
-        //   registeredEvents: allEvents,
-        // };
+        return {
+          data: WebhookRegistrationDataSchema.parse(updatedWebhook),
+          options: registeredOptions,
+        };
       }
 
       const listResponse = await io.integration.listWebhooks("list-webhooks", {
@@ -262,29 +357,29 @@ function createWebhookEventSource(
       );
 
       if (existingWebhook) {
-        throw Error("Not implemented updating an existing webhook");
-        // const updatedWebhook = await io.integration.updateWebhook("update-found-webhook", {
-        //   id: existingWebhook.id,
-        //   url: httpSource.url,
-        //   enabled_events: allEvents as unknown as WebhookEvents[],
-        //   disabled: false,
-        // });
+        const updatedWebhook = await io.integration.updateWebhook("update-webhook", {
+          baseId: params.baseId,
+          url: httpSource.url,
+          webhookId: existingWebhook.id,
+          options: specification,
+        });
 
-        // return {
-        //   data: WebhookRegistrationDataSchema.parse(updatedWebhook),
-        //   registeredEvents: allEvents,
-        // };
+        return {
+          data: WebhookRegistrationDataSchema.parse(updatedWebhook),
+          options: registeredOptions,
+        };
       }
 
       const webhook = await io.integration.createWebhook("create-webhook", {
         url: httpSource.url,
         baseId: params.baseId,
+        options: specification,
       });
 
       return {
         data: WebhookRegistrationDataSchema.parse(webhook),
         secret: webhook.macSecretBase64,
-        registeredEvents: allEvents,
+        options: registeredOptions,
       };
     },
   });

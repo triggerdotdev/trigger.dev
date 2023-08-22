@@ -249,7 +249,7 @@ export class RegisterSourceService {
         id: id,
       },
       include: {
-        events: true,
+        options: true,
         secretReference: true,
         integration: true,
       },

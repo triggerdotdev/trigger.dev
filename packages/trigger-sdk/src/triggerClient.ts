@@ -13,7 +13,6 @@ import {
   PreprocessRunBodySchema,
   Prettify,
   REGISTER_SOURCE_EVENT,
-  RegisterSourceEvent,
   RegisterSourceEventSchema,
   RegisterTriggerBody,
   RunJobBody,
@@ -39,6 +38,7 @@ import type {
   TriggerContext,
   TriggerPreprocessContext,
 } from "./types";
+import { RegisterSourceEvent } from "@trigger.dev/core";
 
 const registerSourceEvent: EventSpecification<RegisterSourceEvent> = {
   name: REGISTER_SOURCE_EVENT,
@@ -471,7 +471,7 @@ export class TriggerClient {
         channel: options.source.channel,
         key: options.key,
         params: options.params,
-        events: [],
+        options: {},
         integration: {
           id: options.source.integration.id,
           metadata: options.source.integration.metadata,
@@ -484,6 +484,7 @@ export class TriggerClient {
       };
     }
 
+    //todo combine the options, which would include "event" as well as the passed in options
     registeredSource.events = Array.from(
       new Set([
         ...registeredSource.events,

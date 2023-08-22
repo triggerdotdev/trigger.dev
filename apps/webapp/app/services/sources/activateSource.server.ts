@@ -1,5 +1,9 @@
-import { REGISTER_SOURCE_EVENT, RegisterTriggerSource } from "@trigger.dev/core";
-import type { SecretReference, TriggerSource, TriggerSourceEvent } from "@trigger.dev/database";
+import {
+  REGISTER_SOURCE_EVENT,
+  REGISTER_SOURCE_EVENT_V1,
+  RegisterTriggerSource,
+} from "@trigger.dev/core";
+import type { SecretReference, TriggerSource, TriggerSourceOption } from "@trigger.dev/database";
 import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
@@ -29,7 +33,7 @@ export class ActivateSourceService {
             project: true,
           },
         },
-        events: true,
+        options: true,
         secretReference: true,
       },
     });
@@ -42,7 +46,7 @@ export class ActivateSourceService {
         await this.#activateHttpSource(
           triggerSource.environment,
           triggerSource,
-          triggerSource.events,
+          triggerSource.options,
           triggerSource.secretReference,
           eventId,
           orphanedEvents
@@ -54,7 +58,7 @@ export class ActivateSourceService {
   async #activateHttpSource(
     environment: AuthenticatedEnvironment,
     triggerSource: TriggerSource,
-    events: Array<TriggerSourceEvent>,
+    options: Array<TriggerSourceOption>,
     secretReference: SecretReference,
     eventId: string,
     orphanedEvents?: Array<string>
@@ -71,42 +75,79 @@ export class ActivateSourceService {
       throw new Error("HTTP Secret not found");
     }
 
-    const eventNames = triggerSource.active
-      ? events.filter((e) => e.registered).map((e) => e.name)
-      : events.map((e) => e.name);
+    switch (triggerSource.version) {
+      case "1": {
+        const eventNames = triggerSource.active
+          ? options.filter((e) => e.registered).map((e) => e.name)
+          : options.map((e) => e.name);
+        const missingEvents = triggerSource.active
+          ? options.filter((e) => !e.registered).map((e) => e.name)
+          : [];
 
-    const missingEvents = triggerSource.active
-      ? events.filter((e) => !e.registered).map((e) => e.name)
-      : [];
+        const service = new IngestSendEvent();
 
-    const service = new IngestSendEvent();
+        const source: RegisterTriggerSource = {
+          key: triggerSource.key,
+          active: triggerSource.active,
+          secret: httpSecret.secret,
+          data: triggerSource.channelData as any,
+          channel: {
+            type: "HTTP",
+            url: `${env.APP_ORIGIN}/api/v1/sources/http/${triggerSource.id}`,
+          },
+        };
 
-    const source: RegisterTriggerSource = {
-      key: triggerSource.key,
-      active: triggerSource.active,
-      secret: httpSecret.secret,
-      data: triggerSource.channelData as any,
-      channel: {
-        type: "HTTP",
-        url: `${env.APP_ORIGIN}/api/v1/sources/http/${triggerSource.id}`,
-      },
-    };
+        await service.call(environment, {
+          id: eventId,
+          name: REGISTER_SOURCE_EVENT_V1,
+          source: "trigger.dev",
+          payload: {
+            id: triggerSource.id,
+            source,
+            events: eventNames,
+            missingEvents,
+            orphanedEvents: orphanedEvents ?? [],
+          },
+        });
 
-    //todo this needs to stay exactly the same for TriggerSources of version: "v1"
-    //todo ExternalSource needs to be updated so it passes "v2" through
-    //todo indexEndpoint needs to set the TriggerSource version to "v2" if it's passed through
+        break;
+      }
+      case "2": {
+        const events = triggerSource.active
+          ? options.filter((e) => e.registered).map((e) => ({ name: e.name, value: e.value }))
+          : options.map((e) => ({ name: e.name, value: e.value }));
 
-    await service.call(environment, {
-      id: eventId,
-      name: REGISTER_SOURCE_EVENT,
-      source: "trigger.dev",
-      payload: {
-        id: triggerSource.id,
-        source,
-        events: eventNames,
-        missingEvents,
-        orphanedEvents: orphanedEvents ?? [],
-      },
-    });
+        const missingEvents = triggerSource.active
+          ? options.filter((e) => !e.registered).map((e) => ({ name: e.name, value: e.value }))
+          : [];
+
+        const service = new IngestSendEvent();
+
+        const source: RegisterTriggerSource = {
+          key: triggerSource.key,
+          active: triggerSource.active,
+          secret: httpSecret.secret,
+          data: triggerSource.channelData as any,
+          channel: {
+            type: "HTTP",
+            url: `${env.APP_ORIGIN}/api/v1/sources/http/${triggerSource.id}`,
+          },
+        };
+
+        await service.call(environment, {
+          id: eventId,
+          name: REGISTER_SOURCE_EVENT,
+          source: "trigger.dev",
+          payload: {
+            id: triggerSource.id,
+            source,
+            events: events,
+            missingEvents,
+            orphanedEvents: orphanedEvents ?? [],
+          },
+        });
+        break;
+      }
+    }
   }
 }

@@ -1,5 +1,5 @@
 import { ulid } from "ulid";
-import { z } from "zod";
+import { ZodType, z } from "zod";
 import { ErrorWithStackSchema } from "./errors";
 import { EventRuleSchema } from "./eventFilter";
 import { ConnectionAuthSchema, IntegrationConfigSchema } from "./integrations";
@@ -16,18 +16,16 @@ import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
 import { Prettify } from "../types";
 
 export const UpdateTriggerSourceBodySchema = z.object({
-  registeredEvents: z.array(z.string()),
   secret: z.string().optional(),
   data: SerializableJsonSchema.optional(),
+  options: z
+    .object({
+      event: z.array(z.string()),
+    })
+    .and(z.record(z.string(), z.array(z.string())).optional()),
 });
 
 export type UpdateTriggerSourceBody = z.infer<typeof UpdateTriggerSourceBodySchema>;
-
-export const HttpEventSourceSchema = UpdateTriggerSourceBodySchema.extend({
-  id: z.string(),
-  active: z.boolean(),
-  url: z.string().url(),
-});
 
 export const RegisterHTTPTriggerSourceBodySchema = z.object({
   type: z.literal("HTTP"),
@@ -48,7 +46,8 @@ export const RegisterSourceChannelBodySchema = z.discriminatedUnion("type", [
   RegisterSQSTriggerSourceBodySchema,
 ]);
 
-export const REGISTER_SOURCE_EVENT = "dev.trigger.source.register";
+export const REGISTER_SOURCE_EVENT_V1 = "dev.trigger.source.register";
+export const REGISTER_SOURCE_EVENT = "dev.trigger.source.register.v2";
 
 export const RegisterTriggerSourceSchema = z.object({
   key: z.string(),
@@ -62,13 +61,42 @@ export const RegisterTriggerSourceSchema = z.object({
 
 export type RegisterTriggerSource = z.infer<typeof RegisterTriggerSourceSchema>;
 
-export const RegisterSourceEventSchema = z.object({
+export const RegisterSourceEventV1Schema = z.object({
   /** The id of the source */
   id: z.string(),
   source: RegisterTriggerSourceSchema,
   events: z.array(z.string()),
   missingEvents: z.array(z.string()),
   orphanedEvents: z.array(z.string()),
+  dynamicTriggerId: z.string().optional(),
+});
+
+export type RegisterSourceEventV1 = z.infer<typeof RegisterSourceEventV1Schema>;
+
+const SourceEventOptionSchema = z.object({
+  name: z.string(),
+  value: z.string(),
+});
+
+export type SourceEventOption = z.infer<typeof SourceEventOptionSchema>;
+
+const RegisteredOptionsDiffSchema = z.object({
+  registered: z.array(z.string()),
+  missing: z.array(z.string()),
+  orphaned: z.array(z.string()),
+});
+
+export type RegisteredOptionsDiff = Prettify<z.infer<typeof RegisteredOptionsDiffSchema>>;
+
+export const RegisterSourceEventSchema = z.object({
+  /** The id of the source */
+  id: z.string(),
+  source: RegisterTriggerSourceSchema,
+  options: z
+    .object({
+      event: RegisteredOptionsDiffSchema,
+    })
+    .and(z.record(z.string(), RegisteredOptionsDiffSchema)),
   dynamicTriggerId: z.string().optional(),
 });
 
