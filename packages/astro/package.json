@@ -18,12 +18,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lirantal/triggerdev-astro-integration.git"
+    "url": "git+https://github.com/triggerdev/trigger.dev.git"
   },
   "bugs": {
-    "url": "https://github.com/lirantal/triggerdev-astro-integration/issues"
+    "url": "https://github.com/triggerdev/trigger.dev/issues"
   },
-  "homepage": "https://github.com/lirantal/triggerdev-astro-integration#readme",
+  "homepage": "https://github.com/triggerdev/trigger.dev#readme",
   "author": {
     "name": "Liran Tal",
     "email": "liran.tal@gmail.com"
