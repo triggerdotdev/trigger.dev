@@ -414,6 +414,41 @@ export function HowToUseThisIntegration({ integration, help, integrationClient }
   );
 }
 
+export function HowToDisableAJob() {
+  return (
+    <>
+      <Paragraph spacing>
+        Disabling a Job happens in your Job code. Here’s how to set a Job as disabled:
+      </Paragraph>
+      <StepNumber
+        stepNumber="1"
+        title={
+          <>
+            Set disabled to
+            <InlineCode>true</InlineCode>
+          </>
+        }
+      />
+      <StepContentContainer>
+        <CodeBlock
+          showLineNumbers={false}
+          className="mb-4"
+          code={`export const client = new TriggerClient({
+    id: "nextjs-example",
+    //this environment variable should be set to your Server DEV API Key locally,
+    //and your Server PROD API Key in production
+    apiKey: process.env.TRIGGER_API_KEY!,
+  });`}
+        />
+      </StepContentContainer>
+      <StepNumber stepNumber="2" title="Step 2" />
+      <StepContentContainer>
+        <Paragraph spacing>Step 2 info.</Paragraph>
+      </StepContentContainer>
+    </>
+  );
+}
+
 export function HowToUseApiKeysAndEndpoints() {
   return (
     <>
