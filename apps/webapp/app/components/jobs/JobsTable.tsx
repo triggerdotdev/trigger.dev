@@ -169,6 +169,10 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
                         <DeleteJobDialogContent
                           title={job.title}
                           slug={job.slug}
+                          type={"PRODUCTION"}
+                          lastRun={job.lastRun?.createdAt}
+                          version={job.version}
+                          enabled={true}
                           environments={[]}
                         />
                       </DialogHeader>
