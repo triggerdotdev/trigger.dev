@@ -1,5 +1,5 @@
 import type { Endpoint } from "@trigger.dev/database";
-import type { SourceMetadataV1 } from "@trigger.dev/core";
+import type { SourceMetadataV2 } from "@trigger.dev/core";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
@@ -7,7 +7,7 @@ import { workerQueue } from "../worker.server";
 import { generateSecret } from "./utils.server";
 import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 
-export class RegisterSourceServiceV1 {
+export class RegisterSourceServiceV2 {
   #prismaClient: PrismaClientOrTransaction;
 
   constructor(prismaClient: PrismaClientOrTransaction = prisma) {
@@ -16,7 +16,7 @@ export class RegisterSourceServiceV1 {
 
   public async call(
     endpointIdOrEndpoint: string | ExtendedEndpoint,
-    metadata: SourceMetadataV1,
+    metadata: SourceMetadataV2,
     dynamicTriggerId?: string,
     accountId?: string,
     dynamicSource?: { id: string; metadata: any }
@@ -39,7 +39,7 @@ export class RegisterSourceServiceV1 {
   async #upsertSource(
     endpoint: Endpoint,
     environment: AuthenticatedEnvironment,
-    metadata: SourceMetadataV1,
+    metadata: SourceMetadataV2,
     dynamicTriggerId?: string,
     accountId?: string,
     dynamicSource?: { id: string; metadata: any }
@@ -121,10 +121,9 @@ export class RegisterSourceServiceV1 {
                 }
               : undefined,
             externalAccount: externalAccount ? { connect: { id: externalAccount.id } } : undefined,
-            options: {
+            events: {
               create: metadata.events.map((event) => ({
-                name: "event",
-                value: event,
+                name: event,
               })),
             },
             secretReference: {
@@ -176,7 +175,7 @@ export class RegisterSourceServiceV1 {
                 : undefined,
           },
           include: {
-            options: true,
+            events: true,
             secretReference: true,
           },
         });
@@ -201,24 +200,22 @@ export class RegisterSourceServiceV1 {
         const newEvents = new Set<string>(metadata.events);
         const orphanedEvents = new Set<string>();
 
-        for (const option of triggerSource.options) {
-          if (!newEvents.has(option.value)) {
-            orphanedEvents.add(option.value);
+        for (const event of triggerSource.events) {
+          if (!newEvents.has(event.name)) {
+            orphanedEvents.add(event.name);
           }
         }
 
         for (const event of newEvents) {
-          await tx.triggerSourceOption.upsert({
+          await tx.triggerSourceEvent.upsert({
             where: {
-              name_value_sourceId: {
-                name: "event",
-                value: event,
+              name_sourceId: {
+                name: event,
                 sourceId: triggerSource.id,
               },
             },
             create: {
-              name: "event",
-              value: event,
+              name: event,
               source: {
                 connect: {
                   id: triggerSource.id,
@@ -264,12 +261,10 @@ export class RegisterSourceServiceV1 {
 
     const triggerIsActive = triggerSource.active;
     const triggerHasOrphanedEvents = orphanedEvents.length > 0;
-    const triggerHasUnregisteredEvents = triggerSource.options.some((option) => !option.registered);
+    const triggerHasUnregisteredEvents = triggerSource.events.some((event) => !event.registered);
 
     if (!triggerIsActive || triggerHasOrphanedEvents || triggerHasUnregisteredEvents) {
       // We need to re-activate the source, and there could be orphaned events
-      //todo we can't change the activateSource schema, because their might be some queued when we push
-      //todo so either we need to create a new "activateSourceV2", or add version data to the payload
       await workerQueue.enqueue("activateSource", {
         id: triggerSource.id,
         orphanedEvents: orphanedEvents,

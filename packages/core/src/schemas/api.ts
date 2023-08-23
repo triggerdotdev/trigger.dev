@@ -14,6 +14,7 @@ import {
 import { CachedTaskSchema, ServerTask, ServerTaskSchema, TaskSchema } from "./tasks";
 import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
 import { Prettify } from "../types";
+import { addMissingVersionField } from "./addMissingVersionField";
 
 export const UpdateTriggerSourceBodySchema = z.object({
   secret: z.string().optional(),
@@ -195,7 +196,8 @@ export const JobMetadataSchema = z.object({
 
 export type JobMetadata = z.infer<typeof JobMetadataSchema>;
 
-const SourceMetadataSchema = z.object({
+const SourceMetadataV1Schema = z.object({
+  version: z.literal("1"),
   channel: z.enum(["HTTP", "SQS", "SMTP"]),
   integration: IntegrationConfigSchema,
   key: z.string(),
@@ -209,9 +211,10 @@ const SourceMetadataSchema = z.object({
     .optional(),
 });
 
-export type SourceMetadata = z.infer<typeof SourceMetadataSchema>;
+export type SourceMetadataV1 = z.infer<typeof SourceMetadataV1Schema>;
 
 export const SourceMetadataV2Schema = z.object({
+  version: z.literal("2"),
   channel: z.enum(["HTTP", "SQS", "SMTP"]),
   integration: IntegrationConfigSchema,
   key: z.string(),
@@ -226,6 +229,13 @@ export const SourceMetadataV2Schema = z.object({
 });
 
 export type SourceMetadataV2 = z.infer<typeof SourceMetadataV2Schema>;
+
+const SourceMetadataSchema = z.preprocess(
+  addMissingVersionField,
+  z.discriminatedUnion("version", [SourceMetadataV1Schema, SourceMetadataV2Schema])
+);
+
+type SourceMetadata = Prettify<z.infer<typeof SourceMetadataSchema>>;
 
 export const DynamicTriggerEndpointMetadataSchema = z.object({
   id: z.string(),
@@ -618,7 +628,7 @@ export const HttpSourceResponseSchema = z.object({
 
 export const RegisterTriggerBodySchema = z.object({
   rule: EventRuleSchema,
-  source: SourceMetadataSchema,
+  source: SourceMetadataV1Schema,
 });
 
 export type RegisterTriggerBody = z.infer<typeof RegisterTriggerBodySchema>;

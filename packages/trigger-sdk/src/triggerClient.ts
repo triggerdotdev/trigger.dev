@@ -21,7 +21,7 @@ import {
   ScheduleMetadata,
   SendEvent,
   SendEventOptions,
-  SourceMetadata,
+  SourceMetadataV1,
   SourceMetadataV2,
 } from "@trigger.dev/core";
 import { ApiClient } from "./apiClient";
@@ -470,6 +470,7 @@ export class TriggerClient {
 
     if (!registeredSource) {
       registeredSource = {
+        version: "2",
         channel: options.source.channel,
         key: options.key,
         params: options.params,

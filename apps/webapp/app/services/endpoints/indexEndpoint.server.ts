@@ -4,16 +4,18 @@ import { findEndpoint } from "~/models/endpoint.server";
 import { EndpointApi } from "../endpointApi.server";
 import { RegisterJobService } from "../jobs/registerJob.server";
 import { logger } from "../logger.server";
-import { RegisterSourceService } from "../sources/registerSource.server";
+import { RegisterSourceServiceV1 } from "../sources/registerSource.server";
 import { RegisterDynamicScheduleService } from "../triggers/registerDynamicSchedule.server";
 import { RegisterDynamicTriggerService } from "../triggers/registerDynamicTrigger.server";
 import { DisableJobService } from "../jobs/disableJob.server";
+import { RegisterSourceServiceV2 } from "../sources/registerSourceV2.server";
 
 export class IndexEndpointService {
   #prismaClient: PrismaClient;
   #registerJobService = new RegisterJobService();
   #disableJobService = new DisableJobService();
-  #registerSourceService = new RegisterSourceService();
+  #registerSourceServiceV1 = new RegisterSourceServiceV1();
+  #registerSourceServiceV2 = new RegisterSourceServiceV2();
   #registerDynamicTriggerService = new RegisterDynamicTriggerService();
   #registerDynamicScheduleService = new RegisterDynamicScheduleService();
 
@@ -153,7 +155,17 @@ export class IndexEndpointService {
 
     for (const source of sources) {
       try {
-        await this.#registerSourceService.call(endpoint, source);
+        switch (source.version) {
+          default:
+          case "1": {
+            await this.#registerSourceServiceV1.call(endpoint, source);
+            break;
+          }
+          case "2": {
+            await this.#registerSourceServiceV2.call(endpoint, source);
+            break;
+          }
+        }
 
         indexStats.sources++;
       } catch (error) {

@@ -4,7 +4,7 @@ import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
 import { getSecretStore } from "../secrets/secretStore.server";
-import { RegisterSourceService } from "../sources/registerSource.server";
+import { RegisterSourceServiceV1 } from "../sources/registerSource.server";
 
 export class RegisterTriggerSourceService {
   #prismaClient: PrismaClient;
@@ -52,7 +52,7 @@ export class RegisterTriggerSourceService {
     return await $transaction(
       this.#prismaClient,
       async (tx) => {
-        const service = new RegisterSourceService(tx);
+        const service = new RegisterSourceServiceV1(tx);
 
         const triggerSource = await service.call(
           endpoint.id,
