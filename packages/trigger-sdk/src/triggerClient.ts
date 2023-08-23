@@ -12,8 +12,8 @@ import {
   PreprocessRunBody,
   PreprocessRunBodySchema,
   Prettify,
-  REGISTER_SOURCE_EVENT,
-  RegisterSourceEventSchema,
+  REGISTER_SOURCE_EVENT_V2,
+  RegisterSourceEventSchemaV2,
   RegisterTriggerBody,
   RunJobBody,
   RunJobBodySchema,
@@ -39,14 +39,14 @@ import type {
   TriggerContext,
   TriggerPreprocessContext,
 } from "./types";
-import { RegisterSourceEvent } from "@trigger.dev/core";
+import { RegisterSourceEventV2 } from "@trigger.dev/core";
 
-const registerSourceEvent: EventSpecification<RegisterSourceEvent> = {
-  name: REGISTER_SOURCE_EVENT,
+const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
+  name: REGISTER_SOURCE_EVENT_V2,
   title: "Register Source",
   source: "internal",
   icon: "register-source",
-  parsePayload: RegisterSourceEventSchema.parse,
+  parsePayload: RegisterSourceEventSchemaV2.parse,
 };
 
 export type TriggerClientOptions = {

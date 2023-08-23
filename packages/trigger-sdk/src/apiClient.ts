@@ -12,8 +12,8 @@ import {
   LogLevel,
   Logger,
   RegisterScheduleResponseBodySchema,
-  RegisterSourceEvent,
-  RegisterSourceEventSchema,
+  RegisterSourceEventV2,
+  RegisterSourceEventSchemaV2,
   RegisterTriggerBody,
   RunTaskBodyInput,
   ScheduleMetadata,
@@ -230,7 +230,7 @@ export class ApiClient {
     id: string,
     key: string,
     payload: RegisterTriggerBody
-  ): Promise<RegisterSourceEvent> {
+  ): Promise<RegisterSourceEventV2> {
     const apiKey = await this.#apiKey();
 
     this.#logger.debug("registering trigger", {
@@ -239,7 +239,7 @@ export class ApiClient {
     });
 
     const response = await zodfetch(
-      RegisterSourceEventSchema,
+      RegisterSourceEventSchemaV2,
       `${this.#apiUrl}/api/v1/${client}/triggers/${id}/registrations/${key}`,
       {
         method: "PUT",

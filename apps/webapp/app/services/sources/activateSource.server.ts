@@ -1,7 +1,11 @@
 import {
-  REGISTER_SOURCE_EVENT,
+  REGISTER_SOURCE_EVENT_V2,
   REGISTER_SOURCE_EVENT_V1,
   RegisterTriggerSource,
+  RegisterSourceEventV1,
+  RegisterSourceEventV2,
+  RegisterSourceEventOptions,
+  RegisteredOptionsDiff,
 } from "@trigger.dev/core";
 import type { SecretReference, TriggerSource, TriggerSourceOption } from "@trigger.dev/database";
 import { z } from "zod";
@@ -20,7 +24,7 @@ export class ActivateSourceService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(id: string, jobId?: string, orphanedEvents?: Array<string>) {
+  public async call(id: string, jobId?: string, orphanedOptions?: Record<string, string[]>) {
     const triggerSource = await this.#prismaClient.triggerSource.findUniqueOrThrow({
       where: {
         id,
@@ -49,7 +53,7 @@ export class ActivateSourceService {
           triggerSource.options,
           triggerSource.secretReference,
           eventId,
-          orphanedEvents
+          orphanedOptions
         );
       }
     }
@@ -61,7 +65,7 @@ export class ActivateSourceService {
     options: Array<TriggerSourceOption>,
     secretReference: SecretReference,
     eventId: string,
-    orphanedEvents?: Array<string>
+    orphanedOptions?: Record<string, string[]>
   ) {
     const secretStore = getSecretStore(secretReference.provider);
     const httpSecret = await secretStore.getSecret(
@@ -75,79 +79,98 @@ export class ActivateSourceService {
       throw new Error("HTTP Secret not found");
     }
 
+    const service = new IngestSendEvent();
+
+    const source: RegisterTriggerSource = {
+      key: triggerSource.key,
+      active: triggerSource.active,
+      secret: httpSecret.secret,
+      data: triggerSource.channelData as any,
+      channel: {
+        type: "HTTP",
+        url: `${env.APP_ORIGIN}/api/v1/sources/http/${triggerSource.id}`,
+      },
+    };
+
     switch (triggerSource.version) {
       case "1": {
-        const eventNames = triggerSource.active
-          ? options.filter((e) => e.registered).map((e) => e.name)
-          : options.map((e) => e.name);
+        const events = triggerSource.active
+          ? options.filter((e) => e.registered).map((e) => e.value)
+          : options.map((e) => e.value);
         const missingEvents = triggerSource.active
-          ? options.filter((e) => !e.registered).map((e) => e.name)
+          ? options.filter((e) => !e.registered).map((e) => e.value)
+          : [];
+        const orphanedEvents = orphanedOptions
+          ? Object.values(orphanedOptions).flatMap((vals) => vals)
           : [];
 
-        const service = new IngestSendEvent();
-
-        const source: RegisterTriggerSource = {
-          key: triggerSource.key,
-          active: triggerSource.active,
-          secret: httpSecret.secret,
-          data: triggerSource.channelData as any,
-          channel: {
-            type: "HTTP",
-            url: `${env.APP_ORIGIN}/api/v1/sources/http/${triggerSource.id}`,
-          },
+        const payload: RegisterSourceEventV1 = {
+          id: triggerSource.id,
+          source,
+          events,
+          missingEvents,
+          orphanedEvents,
         };
 
         await service.call(environment, {
           id: eventId,
           name: REGISTER_SOURCE_EVENT_V1,
           source: "trigger.dev",
-          payload: {
-            id: triggerSource.id,
-            source,
-            events: eventNames,
-            missingEvents,
-            orphanedEvents: orphanedEvents ?? [],
-          },
+          payload,
         });
-
         break;
       }
       case "2": {
-        const events = triggerSource.active
-          ? options.filter((e) => e.registered).map((e) => ({ name: e.name, value: e.value }))
-          : options.map((e) => ({ name: e.name, value: e.value }));
+        //group the options by the name
+        const optionsRecord = options.reduce((acc, option) => {
+          if (!acc[option.name]) {
+            acc[option.name] = [];
+          }
 
-        const missingEvents = triggerSource.active
-          ? options.filter((e) => !e.registered).map((e) => ({ name: e.name, value: e.value }))
-          : [];
+          acc[option.name].push(option);
 
-        const service = new IngestSendEvent();
+          return acc;
+        }, {} as Record<string, Array<TriggerSourceOption>>);
 
-        const source: RegisterTriggerSource = {
-          key: triggerSource.key,
-          active: triggerSource.active,
-          secret: httpSecret.secret,
-          data: triggerSource.channelData as any,
-          channel: {
-            type: "HTTP",
-            url: `${env.APP_ORIGIN}/api/v1/sources/http/${triggerSource.id}`,
-          },
+        //for each of the optionsRecord, create the diff
+        const payloadOptions = Object.entries(optionsRecord).reduce(
+          (acc, [key, value]) => ({
+            ...acc,
+            [key]: getOptionsDiff(triggerSource.active, orphanedOptions?.[key] ?? [], value),
+          }),
+          {} as Record<string, RegisteredOptionsDiff>
+        ) as RegisterSourceEventOptions;
+
+        const payload: RegisterSourceEventV2 = {
+          id: triggerSource.id,
+          source,
+          options: payloadOptions,
         };
 
         await service.call(environment, {
           id: eventId,
-          name: REGISTER_SOURCE_EVENT,
+          name: REGISTER_SOURCE_EVENT_V2,
           source: "trigger.dev",
-          payload: {
-            id: triggerSource.id,
-            source,
-            events: events,
-            missingEvents,
-            orphanedEvents: orphanedEvents ?? [],
-          },
+          payload,
         });
-        break;
       }
     }
   }
+}
+
+function getOptionsDiff(
+  sourceIsActive: boolean,
+  orphaned: string[],
+  options: Array<TriggerSourceOption>
+): RegisteredOptionsDiff {
+  const desired = sourceIsActive
+    ? options.filter((e) => e.registered).map((e) => e.value)
+    : options.map((e) => e.value);
+  const missing = sourceIsActive ? options.filter((e) => !e.registered).map((e) => e.value) : [];
+
+  return {
+    desired,
+    missing,
+    orphaned,
+  };
 }

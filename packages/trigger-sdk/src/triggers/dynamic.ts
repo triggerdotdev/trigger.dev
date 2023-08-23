@@ -1,5 +1,5 @@
 import {
-  RegisterSourceEvent,
+  RegisterSourceEventV2,
   RegisterTriggerBody,
   TriggerMetadata,
   deepMergeFilters,
@@ -104,7 +104,7 @@ export class DynamicTrigger<
   async register(
     key: string,
     params: ExternalSourceParams<TExternalSource>
-  ): Promise<RegisterSourceEvent> {
+  ): Promise<RegisterSourceEventV2> {
     return this.#client.registerTrigger(this.id, key, this.registeredTriggerForParams(params));
   }
 

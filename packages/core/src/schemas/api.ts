@@ -48,7 +48,7 @@ export const RegisterSourceChannelBodySchema = z.discriminatedUnion("type", [
 ]);
 
 export const REGISTER_SOURCE_EVENT_V1 = "dev.trigger.source.register";
-export const REGISTER_SOURCE_EVENT = "dev.trigger.source.register.v2";
+export const REGISTER_SOURCE_EVENT_V2 = "dev.trigger.source.register.v2";
 
 export const RegisterTriggerSourceSchema = z.object({
   key: z.string(),
@@ -89,19 +89,23 @@ const RegisteredOptionsDiffSchema = z.object({
 
 export type RegisteredOptionsDiff = Prettify<z.infer<typeof RegisteredOptionsDiffSchema>>;
 
-export const RegisterSourceEventSchema = z.object({
+const RegisterSourceEventOptionsSchema = z
+  .object({
+    event: RegisteredOptionsDiffSchema,
+  })
+  .and(z.record(z.string(), RegisteredOptionsDiffSchema));
+
+export type RegisterSourceEventOptions = z.infer<typeof RegisterSourceEventOptionsSchema>;
+
+export const RegisterSourceEventSchemaV2 = z.object({
   /** The id of the source */
   id: z.string(),
   source: RegisterTriggerSourceSchema,
-  options: z
-    .object({
-      event: RegisteredOptionsDiffSchema,
-    })
-    .and(z.record(z.string(), RegisteredOptionsDiffSchema)),
+  options: RegisterSourceEventOptionsSchema,
   dynamicTriggerId: z.string().optional(),
 });
 
-export type RegisterSourceEvent = z.infer<typeof RegisterSourceEventSchema>;
+export type RegisterSourceEventV2 = z.infer<typeof RegisterSourceEventSchemaV2>;
 
 export const TriggerSourceSchema = z.object({
   id: z.string(),

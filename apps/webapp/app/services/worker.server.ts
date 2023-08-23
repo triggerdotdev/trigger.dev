@@ -200,8 +200,25 @@ function getWorkerQueue() {
         maxAttempts: 3,
         handler: async (payload, graphileJob) => {
           const service = new ActivateSourceService();
-
-          await service.call(payload.id, graphileJob.id, payload.orphanedEvents);
+          switch (payload.version) {
+            case "1": {
+              //change the input data to match the new schema
+              await service.call(
+                payload.id,
+                graphileJob.id,
+                payload.orphanedEvents
+                  ? {
+                      event: payload.orphanedEvents,
+                    }
+                  : undefined
+              );
+              break;
+            }
+            case "2": {
+              await service.call(payload.id, graphileJob.id, payload.orphanedOptions);
+              break;
+            }
+          }
         },
       },
       deliverHttpSourceRequest: {
