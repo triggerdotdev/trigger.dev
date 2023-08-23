@@ -49,10 +49,10 @@ export type IOOptions = {
 
 export type RunTaskResult = SerializableJson | void;
 
-export type RunTaskCallback<TResult extends SerializableJson | void = void> = (
-  task: ServerTask,
-  io: IO
-) => Promise<TResult>;
+export type RunTaskCallback<
+  TResult extends SerializableJson | void = void,
+  TCallbackResult extends unknown = TResult,
+> = (task: ServerTask, io: IO) => Promise<TCallbackResult | TResult>;
 
 export type RunTaskErrorCallback = (
   error: unknown,
@@ -491,7 +491,7 @@ export class IO {
     TCallbackResult extends unknown = TResult,
   >(
     key: string | any[],
-    callback: RunTaskCallback<TResult>,
+    callback: RunTaskCallback<TResult, TCallbackResult>,
     options?: RunTaskOptions,
     onError?: RunTaskErrorCallback
   ): Promise<TResult> {
