@@ -7,10 +7,8 @@ import {
   Logger,
   NormalizedResponse,
   RegisterTriggerSource,
-  RegisteredOptionsDiff,
   SendEvent,
   TriggerMetadata,
-  UpdateTriggerSourceBody,
   deepMergeFilters,
 } from "@trigger.dev/core";
 import { IOWithIntegrations, TriggerIntegration } from "../integrations";
