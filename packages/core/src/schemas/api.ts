@@ -1,5 +1,7 @@
 import { ulid } from "ulid";
-import { ZodType, z } from "zod";
+import { z } from "zod";
+import { Prettify } from "../types";
+import { addMissingVersionField } from "./addMissingVersionField";
 import { ErrorWithStackSchema } from "./errors";
 import { EventRuleSchema } from "./eventFilter";
 import { ConnectionAuthSchema, IntegrationConfigSchema } from "./integrations";
@@ -11,12 +13,17 @@ import {
   RegisterDynamicSchedulePayloadSchema,
   ScheduleMetadataSchema,
 } from "./schedules";
-import { CachedTaskSchema, ServerTask, ServerTaskSchema, TaskSchema } from "./tasks";
+import { CachedTaskSchema, TaskSchema } from "./tasks";
 import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
-import { Prettify } from "../types";
-import { addMissingVersionField } from "./addMissingVersionField";
 
-export const UpdateTriggerSourceBodySchema = z.object({
+export const UpdateTriggerSourceBodyV1Schema = z.object({
+  registeredEvents: z.array(z.string()),
+  secret: z.string().optional(),
+  data: SerializableJsonSchema.optional(),
+});
+export type UpdateTriggerSourceBodyV1 = z.infer<typeof UpdateTriggerSourceBodyV1Schema>;
+
+export const UpdateTriggerSourceBodyV2Schema = z.object({
   secret: z.string().optional(),
   data: SerializableJsonSchema.optional(),
   options: z
@@ -25,8 +32,7 @@ export const UpdateTriggerSourceBodySchema = z.object({
     })
     .and(z.record(z.string(), z.array(z.string())).optional()),
 });
-
-export type UpdateTriggerSourceBody = z.infer<typeof UpdateTriggerSourceBodySchema>;
+export type UpdateTriggerSourceBodyV2 = z.infer<typeof UpdateTriggerSourceBodyV2Schema>;
 
 export const RegisterHTTPTriggerSourceBodySchema = z.object({
   type: z.literal("HTTP"),

@@ -22,8 +22,8 @@ import {
   ServerTaskSchema,
   TriggerSource,
   TriggerSourceSchema,
-  UpdateTriggerSourceBody,
   urlWithSearchParams,
+  UpdateTriggerSourceBodyV2,
 } from "@trigger.dev/core";
 
 import fetch, { type RequestInit } from "node-fetch";
@@ -201,7 +201,7 @@ export class ApiClient {
   async updateSource(
     client: string,
     key: string,
-    source: UpdateTriggerSourceBody
+    source: UpdateTriggerSourceBodyV2
   ): Promise<TriggerSource> {
     const apiKey = await this.#apiKey();
 
@@ -211,7 +211,7 @@ export class ApiClient {
 
     const response = await zodfetch(
       TriggerSourceSchema,
-      `${this.#apiUrl}/api/v1/${client}/sources/${key}`,
+      `${this.#apiUrl}/api/v2/${client}/sources/${key}`,
       {
         method: "PUT",
         headers: {

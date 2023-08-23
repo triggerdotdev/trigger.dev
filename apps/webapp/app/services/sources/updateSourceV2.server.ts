@@ -1,10 +1,10 @@
+import type { TriggerSource, UpdateTriggerSourceBodyV2 } from "@trigger.dev/core";
 import type { RuntimeEnvironment } from "@trigger.dev/database";
-import type { TriggerSource, UpdateTriggerSourceBody } from "@trigger.dev/core";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { getSecretStore } from "../secrets/secretStore.server";
 
-export class UpdateSourceService {
+export class UpdateSourceServiceV2 {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
@@ -18,7 +18,7 @@ export class UpdateSourceService {
     endpointSlug,
   }: {
     environment: RuntimeEnvironment;
-    payload: UpdateTriggerSourceBody;
+    payload: UpdateTriggerSourceBodyV2;
     id: string;
     endpointSlug: string;
   }): Promise<TriggerSource> {
@@ -54,11 +54,19 @@ export class UpdateSourceService {
       },
     });
 
-    for (const event of payload.registeredEvents) {
-      await this.#prismaClient.triggerSourceEvent.update({
+    const flatOptions = Object.entries(payload.options).flatMap(([name, value]) =>
+      value.map((v) => ({
+        name,
+        value: v,
+      }))
+    );
+
+    for (const { name, value } of flatOptions) {
+      await this.#prismaClient.triggerSourceOption.update({
         where: {
-          name_sourceId: {
-            name: event,
+          name_value_sourceId: {
+            name,
+            value,
             sourceId: triggerSource.id,
           },
         },

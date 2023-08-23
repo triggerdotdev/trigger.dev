@@ -14,7 +14,7 @@ import {
   SerializableJson,
   SerializableJsonSchema,
   ServerTask,
-  UpdateTriggerSourceBody,
+  UpdateTriggerSourceBodyV2,
 } from "@trigger.dev/core";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { webcrypto } from "node:crypto";
@@ -271,7 +271,7 @@ export class IO {
     );
   }
 
-  async updateSource(key: string | any[], options: { key: string } & UpdateTriggerSourceBody) {
+  async updateSource(key: string | any[], options: { key: string } & UpdateTriggerSourceBodyV2) {
     return this.runTask(
       key,
       async (task) => {
