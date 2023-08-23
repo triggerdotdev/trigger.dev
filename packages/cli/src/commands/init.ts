@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import fs from "fs/promises";
 import inquirer from "inquirer";
 import pathModule from "path";
@@ -686,6 +684,20 @@ export * from "./examples"
 }
 
 async function setupEnvironmentVariables(path: string, options: ResolvedOptions) {
+  if (options.apiKey && options.apiUrl) {
+    const apiClient = new TriggerApi(options.apiKey, options.apiUrl);
+    const userData = await apiClient.whoami(options.apiKey);
+    const publicApiKey = userData?.pkApiKey;
+    if (!publicApiKey) return;
+    await setupEnvironmentVariable(
+      path,
+      ".env.local",
+      "NEXT_PUBLIC_TRIGGER_API_KEY",
+      publicApiKey,
+      true,
+      renderApiKey
+    );
+  }
   if (options.apiKey) {
     await setupEnvironmentVariable(
       path,
