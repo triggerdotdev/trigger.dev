@@ -407,6 +407,8 @@ const WebhookPayloadSchema = z.object({
   timestamp: z.coerce.date(),
 });
 
+//todo add "metadata" to event: HandlerEvent<"HTTP">
+//todo need to pass through the integration (ExternalSource has it), plus the auth
 async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
   logger.debug("[@trigger.dev/airtable] Handling webhook payload");
 
@@ -437,12 +439,11 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
 
   const payload = WebhookPayloadSchema.parse(JSON.parse(rawBody));
 
-  // const event = stripeClient.webhooks.constructEvent(rawBody, signature, source.secret);
+  //todo this all needs updating, to be the data fetched from the list payloads endpoint
 
   return {
     events: [
       {
-        //todo this all needs updating, to be the data fetched from the list payloads endpoint
         id: payload.base.id,
         payload: payload,
         source: "airtable.com",
@@ -451,5 +452,7 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
         context: {},
       },
     ],
+    //todo the last cursor, for next time
+    // metadata: { cursor },
   };
 }

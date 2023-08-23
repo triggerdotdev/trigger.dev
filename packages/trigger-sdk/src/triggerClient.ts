@@ -372,6 +372,8 @@ export class TriggerClient {
         const params = headers.data["x-ts-params"];
         const data = headers.data["x-ts-data"];
 
+        //todo auth details as a header, JSON stringified, passed down all the way to ExternalSource handler
+
         const source = {
           key,
           dynamicId,

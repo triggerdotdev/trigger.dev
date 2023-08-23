@@ -20,6 +20,7 @@ import { TriggerClient } from "../triggerClient";
 import type { EventSpecification, Trigger, TriggerContext } from "../types";
 import { slugifyId } from "../utils";
 import { SerializableJson } from "@trigger.dev/core";
+import { ConnectionAuth } from "@trigger.dev/core";
 
 export type HttpSourceEvent = {
   url: string;
@@ -176,12 +177,16 @@ export class ExternalSource<
   async handle(
     source: HandleTriggerSource,
     rawEvent: ExternalSourceChannelMap[TChannel]["event"],
-    logger: Logger
+    logger: Logger,
+    auth?: ConnectionAuth
   ) {
     return this.options.handler(
       {
         source: { ...source, params: source.params as TParams },
         rawEvent,
+        //todo pass the integration and auth through
+        // integration: this.options.integration,
+        // auth,
       },
       logger
     );
