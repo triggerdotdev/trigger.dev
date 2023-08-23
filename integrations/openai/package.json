@@ -24,7 +24,7 @@
     "build:tsup": "tsup"
   },
   "dependencies": {
-    "openai": "^3.3.0",
+    "openai": "^4.2.0",
     "@trigger.dev/sdk": "workspace:^2.0.10",
     "@trigger.dev/integration-kit": "workspace:^2.0.10",
     "zod": "3.21.4"

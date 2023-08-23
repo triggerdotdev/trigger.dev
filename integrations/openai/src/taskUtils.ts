@@ -1,8 +1,8 @@
-import { CreateCompletionResponseUsage, CreateEmbeddingResponseUsage } from "openai";
+import OpenAI from "openai";
 import { z } from "zod";
 
 export function createTaskUsageProperties(
-  usage: CreateCompletionResponseUsage | CreateEmbeddingResponseUsage | undefined
+  usage: OpenAI.Completions.CompletionUsage | OpenAI.CreateEmbeddingResponse.Usage | undefined
 ) {
   if (!usage) {
     return;
