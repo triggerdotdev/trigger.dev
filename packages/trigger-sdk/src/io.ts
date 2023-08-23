@@ -229,6 +229,9 @@ export class IO {
   async getEvent(key: string | any[], id: string) {
     return await this.runTask(
       key,
+      async (task) => {
+        return await this._triggerClient.getEvent(id);
+      },
       {
         name: "getEvent",
         params: { id },
@@ -238,9 +241,6 @@ export class IO {
             text: id,
           },
         ],
-      },
-      async (task) => {
-        return await this._triggerClient.getEvent(id);
       }
     );
   }
@@ -253,6 +253,9 @@ export class IO {
   async cancelEvent(key: string | any[], eventId: string) {
     return await this.runTask(
       key,
+      async (task) => {
+        return await this._triggerClient.cancelEvent(eventId);
+      },
       {
         name: "cancelEvent",
         params: {
@@ -264,9 +267,6 @@ export class IO {
             text: eventId,
           },
         ],
-      },
-      async (task) => {
-        return await this._triggerClient.cancelEvent(eventId);
       }
     );
   }
