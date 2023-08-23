@@ -117,7 +117,7 @@ export const initCommand = async (options: InitCommandOptions) => {
     logger.info("📁 Detected use of src directory");
   }
 
-  const nextJsDir = await detectPagesOrAppDir(resolvedPath, usesSrcDir, isTypescriptProject);
+  const nextJsDir = await detectPagesOrAppDir(resolvedPath, usesSrcDir);
 
   const routeDir = pathModule.join(resolvedPath, usesSrcDir ? "src" : "");
 
@@ -280,11 +280,7 @@ async function detectUseOfSrcDir(path: string): Promise<boolean> {
 
 // Detect the use of pages or app dir in the Next.js project
 // Import the next.config.js file and check for experimental: { appDir: true }
-async function detectPagesOrAppDir(
-  path: string,
-  usesSrcDir = false,
-  isTypescriptProject = false
-): Promise<"pages" | "app"> {
+async function detectPagesOrAppDir(path: string, usesSrcDir = false): Promise<"pages" | "app"> {
   const nextConfigPath = pathModule.join(path, "next.config.js");
   const importedConfig = await import(pathToFileURL(nextConfigPath).toString()).catch(() => ({}));
 
@@ -296,14 +292,16 @@ async function detectPagesOrAppDir(
     // If so then we return app
     // If not return pages
 
-    const extension = isTypescriptProject ? "tsx" : "js";
+    const extensionsToCheck = ["jsx", "tsx", "js", "ts"];
+    const basePath = pathModule.join(path, usesSrcDir ? "src" : "", "app", `page.`);
 
-    const appPagePath = pathModule.join(path, usesSrcDir ? "src" : "", "app", `page.${extension}`);
+    for (const extension of extensionsToCheck) {
+      const appPagePath = basePath + extension;
+      const appPageExists = await pathExists(appPagePath);
 
-    const appPageExists = await pathExists(appPagePath);
-
-    if (appPageExists) {
-      return "app";
+      if (appPageExists) {
+        return "app";
+      }
     }
 
     return "pages";
@@ -526,7 +524,11 @@ export * from "./examples"
 
   await fs.writeFile(pathModule.join(directories, routeFileName), routeContent);
 
-  logger.success(`✅ Created app route at ${usesSrcDir ? "src/" : ""}app/api/trigger.ts`);
+  logger.success(
+    `✅ Created app route at ${usesSrcDir ? "src/" : ""}app/api/${removeFileExtension(
+      triggerFileName
+    )}/${routeFileName}`
+  );
 
   const triggerFileExists = await pathExists(pathModule.join(path, triggerFileName));
 
@@ -549,9 +551,7 @@ export * from "./examples"
       examplesIndexContent
     );
 
-    logger.success(
-      `✅ Created example job at ${usesSrcDir ? "src/" : ""}jobs/examples/examplesFileName`
-    );
+    logger.success(`✅ Created example job at ${usesSrcDir ? "src/" : ""}jobs/examples.ts`);
   }
 }
 
@@ -733,4 +733,8 @@ async function setupEnvironmentVariable(
 
     logger.success(`✅ Added ${variableName}=${renderer(value)} to ${fileName}`);
   }
+}
+
+function removeFileExtension(filename: string) {
+  return filename.replace(/\.[^.]+$/, "");
 }

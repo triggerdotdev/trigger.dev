@@ -30,6 +30,8 @@ export type PrismaTransactionOptions = {
 
   /**  Sets the transaction isolation level. By default this is set to the value currently configured in your database. */
   isolationLevel?: Prisma.TransactionIsolationLevel;
+
+  rethrowPrismaErrors?: boolean;
 };
 
 export async function $transaction<R>(
@@ -52,6 +54,10 @@ export async function $transaction<R>(
         message: error.message,
         name: error.name,
       });
+
+      if (options?.rethrowPrismaErrors) {
+        throw error;
+      }
 
       return;
     }

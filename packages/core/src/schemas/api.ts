@@ -257,6 +257,9 @@ export const ApiEventLogSchema = z.object({
   /** The timestamp when the event was delivered. Is `undefined` if `deliverAt`
       or `deliverAfter` were set when sending the event. */
   deliveredAt: z.coerce.date().optional().nullable(),
+  /** The timestamp when the event was cancelled. Is `undefined` if the event
+   * wasn't cancelled. */
+  cancelledAt: z.coerce.date().optional().nullable(),
 });
 
 export type ApiEventLog = z.infer<typeof ApiEventLogSchema>;
@@ -423,15 +426,6 @@ export const PreprocessRunResponseSchema = z.object({
 });
 
 export type PreprocessRunResponse = z.infer<typeof PreprocessRunResponseSchema>;
-
-export const CreateRunBodySchema = z.object({
-  client: z.string(),
-  job: JobMetadataSchema,
-  event: ApiEventLogSchema,
-  properties: z.array(DisplayPropertySchema).optional(),
-});
-
-export type CreateRunBody = z.infer<typeof CreateRunBodySchema>;
 
 const CreateRunResponseOkSchema = z.object({
   ok: z.literal(true),

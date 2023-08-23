@@ -60,15 +60,13 @@ yarn dlx @trigger.dev/cli@latest init
 
 <Accordion title="Enter your development API key">
   To locate your development API key, login to the [Trigger.dev
-  dashboard](https://cloud.trigger.dev) and select the Project you want to
-  connect to. Then click on the Environments & API Keys tab in the left menu.
-  You can copy your development API Key from the field at the top of this page.
-  (Your development key will start with `tr_dev_`).
+  dashboard](https://cloud.trigger.dev) and select the Project you want to connect to. Then click on
+  the Environments & API Keys tab in the left menu. You can copy your development API Key from the
+  field at the top of this page. (Your development key will start with `tr_dev_`).
 </Accordion>
 
 <Accordion title="Enter a unique ID for your endpoint">
-  Enter a custom ID or use the default by hitting enter. You can learn more
-  about endpoints
+  Enter a custom ID or use the default by hitting enter. You can learn more about endpoints
   [here](/documentation/concepts/environments-endpoints#endpoints).
 </Accordion>
 
@@ -81,8 +79,8 @@ Once you're running your Next.js project locally, you can then execute the `dev`
 ![Your first Job](/images/cli-dev.gif)
 
 <Warning>
-  Make sure your Next.js site is running locally before continuing. You must
-  also leave this `dev` terminal command running while you develop.
+  Make sure your Next.js site is running locally before continuing. You must also leave this `dev`
+  terminal command running while you develop.
 </Warning>
 
 In a **new terminal window or tab** run:
@@ -107,3 +105,47 @@ yarn dlx @trigger.dev/cli@latest dev
   You can optionally pass the port if you're not running on 3000 by adding
   `--port 3001` to the end
 </Note>
+<Note>
+  You can optionally pass the hostname if you're not running on localhost by adding
+  `--hostname <host>`. Example, in case your Next.js is running on 0.0.0.0: `--hostname 0.0.0.0`.
+</Note>
+
+## update Command
+
+The `update` command will update all Trigger.dev packages to the latest version.
+
+<CodeGroup>
+
+```bash npm
+npx @trigger.dev/cli@latest update
+```
+
+```bash pnpm
+pnpm dlx @trigger.dev/cli@latest update
+```
+
+```bash yarn
+yarn dlx @trigger.dev/cli@latest update
+```
+
+</CodeGroup>
+
+## whoami Command
+
+The `whoami` command will print out information about your current Trigger.dev project and environment, based on the API key found in your `.env` or `.env.local` file
+
+<CodeGroup>
+
+```bash npm
+npx @trigger.dev/cli@latest whoami
+```
+
+```bash pnpm
+pnpm dlx @trigger.dev/cli@latest whoami
+```
+
+```bash yarn
+yarn dlx @trigger.dev/cli@latest whoami
+```
+
+</CodeGroup>

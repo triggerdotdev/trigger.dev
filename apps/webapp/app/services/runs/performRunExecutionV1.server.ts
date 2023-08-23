@@ -1,5 +1,4 @@
 import {
-  ApiEventLogSchema,
   CachedTaskSchema,
   RunJobError,
   RunJobResumeWithTask,
@@ -9,6 +8,7 @@ import {
 } from "@trigger.dev/core";
 import type { Task } from "@trigger.dev/database";
 import { generateErrorMessage } from "zod-error";
+import { eventRecordToApiJson } from "~/api.server";
 import { EXECUTE_JOB_RETRY_LIMIT } from "~/consts";
 import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { enqueueRunExecutionV1 } from "~/models/jobRunExecution.server";
@@ -54,7 +54,7 @@ export class PerformRunExecutionV1Service {
     const { run } = execution;
 
     const client = new EndpointApi(run.environment.apiKey, run.endpoint.url);
-    const event = ApiEventLogSchema.parse({ ...run.event, id: run.eventId });
+    const event = eventRecordToApiJson(run.event);
     const startedAt = new Date();
 
     await this.#prismaClient.jobRunExecution.update({
@@ -174,7 +174,7 @@ export class PerformRunExecutionV1Service {
     }
 
     const client = new EndpointApi(run.environment.apiKey, run.endpoint.url);
-    const event = ApiEventLogSchema.parse({ ...run.event, id: run.eventId });
+    const event = eventRecordToApiJson(run.event);
 
     const startedAt = new Date();
 

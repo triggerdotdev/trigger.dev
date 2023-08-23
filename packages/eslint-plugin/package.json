@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/eslint-plugin",
-  "version": "2.0.9",
+  "version": "2.0.10",
   "description": "ESLint plugin with trigger.dev best practices",
   "keywords": [
     "eslint",
@@ -34,5 +34,5 @@
   "peerDependencies": {
     "eslint": ">=7"
   },
-  "license": "ISC"
+  "license": "MIT"
 }

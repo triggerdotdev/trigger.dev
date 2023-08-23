@@ -3,8 +3,6 @@ import {
   ApiEventLogSchema,
   CompleteTaskBodyInput,
   ConnectionAuthSchema,
-  CreateRunBody,
-  CreateRunResponseBodySchema,
   FailTaskBodyInput,
   GetEventSchema,
   GetRunOptionsWithTaskDetails,
@@ -105,23 +103,6 @@ export class ApiClient {
     return await response.json();
   }
 
-  async createRun(params: CreateRunBody) {
-    const apiKey = await this.#apiKey();
-
-    this.#logger.debug("Creating run", {
-      params,
-    });
-
-    return await zodfetch(CreateRunResponseBodySchema, `${this.#apiUrl}/api/v1/runs`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(params),
-    });
-  }
-
   async runTask(runId: string, task: RunTaskBodyInput) {
     const apiKey = await this.#apiKey();
 
@@ -198,6 +179,22 @@ export class ApiClient {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({ event, options }),
+    });
+  }
+
+  async cancelEvent(eventId: string) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Cancelling event", {
+      eventId,
+    });
+
+    return await zodfetch(ApiEventLogSchema, `${this.#apiUrl}/api/v1/events/${eventId}/cancel`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
     });
   }
 

@@ -8,6 +8,7 @@ import { initCommand } from "../commands/init";
 import { CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts";
 import { telemetryClient } from "../telemetry/telemetry";
 import { getVersion } from "../utils/getVersion";
+import { updateCommand } from "../commands/update";
 
 export const program = new Command();
 
@@ -42,6 +43,7 @@ program
   .description("Tunnel your local Next.js project to Trigger.dev and start running jobs")
   .argument("[path]", "The path to the project", ".")
   .option("-p, --port <port>", "The local port your server is on", "3000")
+  .option("-H, --hostname <hostname>", "Hostname on which the application is served", "localhost")
   .option("-e, --env-file <name>", "The name of the env file to load", ".env.local")
   .option(
     "-i, --client-id <name>",
@@ -77,6 +79,14 @@ program
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (path, options) => {
     await createIntegrationCommand(path, options);
+  });
+
+program
+  .command("update")
+  .description("Updates all @trigger.dev/* packages to their latest compatible versions")
+  .argument("[path]", "The path to the directory that contains the package.json file", ".")
+  .action(async (path) => {
+    await updateCommand(path);
   });
 
 program
@@ -152,11 +162,21 @@ export const promptApiKey = async (instanceUrl: string): Promise<string> => {
   const { apiKey } = await inquirer.prompt<{ apiKey: string }>({
     type: "password",
     name: "apiKey",
-    message: `Enter your development API key (Find yours ➡️ ${instanceUrl})`,
+    message: `Enter your secret dev API key (Find yours ➡️ ${instanceUrl})`,
     validate: (input) => {
       // Make sure they enter something like tr_dev_********
       if (!input) {
-        return "Please enter your development API key";
+        return "Please enter your secret dev API key";
+      }
+
+      // If they enter a public key like pk_dev_, let them know
+      if (input.startsWith("pk_dev_")) {
+        return "Please enter your secret dev API key, you've entered a public key";
+      }
+
+      // If they enter a prod key (tr_prod_), let them know
+      if (input.startsWith("tr_prod_")) {
+        return "Please enter your secret dev API key, you've entered a production key";
       }
 
       if (!input.startsWith("tr_dev_")) {
