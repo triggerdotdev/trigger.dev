@@ -53,7 +53,7 @@ export class HandleHttpSourceService {
             id: delivery.id,
           },
           {
-            queueName: `endpoint-${triggerSource.endpointId}`,
+            queueName: `deliver:${triggerSource.id}`,
             tx,
           }
         );
