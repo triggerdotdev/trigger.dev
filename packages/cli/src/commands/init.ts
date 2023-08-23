@@ -112,7 +112,7 @@ export const initCommand = async (options: InitCommandOptions) => {
   telemetryClient.init.addedDependencies(resolvedOptions);
 
   // Setup environment variables
-  await setupEnvironmentVariables(resolvedPath, resolvedOptions);
+  await setupEnvironmentVariables(resolvedPath, resolvedOptions, authorizedKey);
 
   const usesSrcDir = await detectUseOfSrcDir(resolvedPath);
 
@@ -683,12 +683,9 @@ export * from "./examples"
   }
 }
 
-async function setupEnvironmentVariables(path: string, options: ResolvedOptions) {
+async function setupEnvironmentVariables(path: string, options: ResolvedOptions, authorizedKey: WhoamiResponse) {
   if (options.apiKey && options.apiUrl) {
-    const apiClient = new TriggerApi(options.apiKey, options.apiUrl);
-    const userData = await apiClient.whoami(options.apiKey);
-    const publicApiKey = userData?.pkApiKey;
-    if (!publicApiKey) return;
+    const publicApiKey = authorizedKey.pkApiKey;
     await setupEnvironmentVariable(
       path,
       ".env.local",
