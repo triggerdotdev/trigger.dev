@@ -22,6 +22,7 @@ import {
   SendEvent,
   SendEventOptions,
   SourceMetadata,
+  SourceMetadataV2,
 } from "@trigger.dev/core";
 import { ApiClient } from "./apiClient";
 import { CanceledWithTaskError, ResumeWithTaskError, RetryWithTaskError } from "./errors";
@@ -72,7 +73,7 @@ export type TriggerClientOptions = {
 export class TriggerClient {
   #options: TriggerClientOptions;
   #registeredJobs: Record<string, Job<Trigger<EventSpecification<any>>, any>> = {};
-  #registeredSources: Record<string, SourceMetadata> = {};
+  #registeredSources: Record<string, SourceMetadataV2> = {};
   #registeredHttpSourceHandlers: Record<
     string,
     (

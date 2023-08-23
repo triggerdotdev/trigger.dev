@@ -195,7 +195,23 @@ export const JobMetadataSchema = z.object({
 
 export type JobMetadata = z.infer<typeof JobMetadataSchema>;
 
-export const SourceMetadataSchema = z.object({
+const SourceMetadataSchema = z.object({
+  channel: z.enum(["HTTP", "SQS", "SMTP"]),
+  integration: IntegrationConfigSchema,
+  key: z.string(),
+  params: z.any(),
+  events: z.array(z.string()),
+  registerSourceJob: z
+    .object({
+      id: z.string(),
+      version: z.string(),
+    })
+    .optional(),
+});
+
+export type SourceMetadata = z.infer<typeof SourceMetadataSchema>;
+
+export const SourceMetadataV2Schema = z.object({
   channel: z.enum(["HTTP", "SQS", "SMTP"]),
   integration: IntegrationConfigSchema,
   key: z.string(),
@@ -209,7 +225,7 @@ export const SourceMetadataSchema = z.object({
     .optional(),
 });
 
-export type SourceMetadata = z.infer<typeof SourceMetadataSchema>;
+export type SourceMetadataV2 = z.infer<typeof SourceMetadataV2Schema>;
 
 export const DynamicTriggerEndpointMetadataSchema = z.object({
   id: z.string(),
