@@ -236,8 +236,10 @@ export class RegisterJobService {
         eventSpecification,
         preprocessRuns: metadata.preprocessRuns,
         startPosition: "LATEST",
+        status: "ACTIVE",
       },
       update: {
+        status: "ACTIVE",
         startPosition: "LATEST",
         eventSpecification,
         preprocessRuns: metadata.preprocessRuns,
@@ -401,6 +403,7 @@ export class RegisterJobService {
               type: "JOB_VERSION",
               id: jobVersion.id,
             },
+            enabled: true,
           },
         });
 
@@ -444,6 +447,7 @@ export class RegisterJobService {
               type: "JOB_VERSION",
               id: jobVersion.id,
             },
+            enabled: true,
           },
         });
 

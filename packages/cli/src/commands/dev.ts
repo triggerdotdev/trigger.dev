@@ -1,6 +1,5 @@
 import childProcess from "child_process";
 import chokidar from "chokidar";
-import dotenv from "dotenv";
 import fs from "fs/promises";
 import ngrok from "ngrok";
 import fetch from "node-fetch";
@@ -8,9 +7,8 @@ import ora, { Ora } from "ora";
 import pathModule from "path";
 import util from "util";
 import { z } from "zod";
-import { CLOUD_API_URL } from "../consts";
 import { telemetryClient } from "../telemetry/telemetry";
-import { pathExists, readFile } from "../utils/fileSystem";
+import { getTriggerApiDetails } from "../utils/getTriggerApiDetails";
 import { logger } from "../utils/logger";
 import { resolvePath } from "../utils/parseNameAndPath";
 import { TriggerApi } from "../utils/triggerApi";
@@ -220,64 +218,6 @@ export async function getEndpointIdFromPackageJson(path: string, options: DevCom
   if (!value || typeof value !== "string") return;
 
   return value as string;
-}
-
-export async function readEnvFilesWithBackups(
-  path: string,
-  envFile: string,
-  backups: string[]
-): Promise<{ content: string; fileName: string } | undefined> {
-  const envFilePath = pathModule.join(path, envFile);
-  const envFileExists = await pathExists(envFilePath);
-
-  if (envFileExists) {
-    const content = await readFile(envFilePath);
-
-    return { content, fileName: envFile };
-  }
-
-  for (const backup of backups) {
-    const backupPath = pathModule.join(path, backup);
-    const backupExists = await pathExists(backupPath);
-
-    if (backupExists) {
-      const content = await readFile(backupPath);
-
-      return { content, fileName: backup };
-    }
-  }
-
-  return;
-}
-
-export async function getTriggerApiDetails(path: string, envFile: string) {
-  const resolvedEnvFile = await readEnvFilesWithBackups(path, envFile, [
-    ".env",
-    ".env.local",
-    ".env.development.local",
-  ]);
-
-  if (!resolvedEnvFile) {
-    logger.error(`You must add TRIGGER_API_KEY to your ${envFile} file.`);
-    return;
-  }
-
-  const parsedEnvFile = dotenv.parse(resolvedEnvFile.content);
-
-  if (!parsedEnvFile) {
-    logger.error(`You must add TRIGGER_API_KEY to your ${envFile} file.`);
-    return;
-  }
-
-  const apiKey = parsedEnvFile.TRIGGER_API_KEY;
-  const apiUrl = parsedEnvFile.TRIGGER_API_URL;
-
-  if (!apiKey) {
-    logger.error(`You must add TRIGGER_API_KEY to your ${envFile} file.`);
-    return;
-  }
-
-  return { apiKey, apiUrl: apiUrl ?? CLOUD_API_URL, envFile: resolvedEnvFile.fileName };
 }
 
 async function resolveEndpointUrl(apiUrl: string, port: number, hostname: string) {

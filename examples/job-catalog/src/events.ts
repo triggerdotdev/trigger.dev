@@ -13,6 +13,7 @@ client.defineJob({
   id: "event-example-1",
   name: "Event Example 1",
   version: "1.0.0",
+  enabled: true,
   trigger: eventTrigger({
     name: "event.example",
   }),

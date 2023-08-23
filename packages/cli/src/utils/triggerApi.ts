@@ -80,6 +80,25 @@ export class TriggerApi {
     return;
   }
 
+  async sendEvent(id: string, name: string, payload: any) {
+    const response = await fetch(`${this.baseUrl}/api/v1/events`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify({
+        event: {
+          id,
+          name,
+          payload,
+        },
+      }),
+    });
+
+    return response.ok;
+  }
+
   async registerEndpoint(options: CreateEndpointOptions): Promise<EndpointResponse> {
     const response = await fetch(`${this.baseUrl}/api/v1/endpoints`, {
       method: "POST",

@@ -56,7 +56,6 @@ export class NextScheduledEventService {
         },
         {
           runAt: scheduleTime,
-          queueName: `scheduler:${scheduleSource.environmentId}`,
           tx,
           jobKey: `scheduled:${scheduleSource.id}`,
         }

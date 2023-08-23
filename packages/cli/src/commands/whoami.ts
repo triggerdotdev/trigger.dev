@@ -2,8 +2,9 @@ import { z } from "zod";
 import { logger } from "../utils/logger";
 import { resolvePath } from "../utils/parseNameAndPath";
 import { TriggerApi } from "../utils/triggerApi";
-import { DevCommandOptions, getEndpointIdFromPackageJson, getTriggerApiDetails } from "./dev";
+import { DevCommandOptions, getEndpointIdFromPackageJson } from "./dev";
 import ora from "ora";
+import { getTriggerApiDetails } from "../utils/getTriggerApiDetails";
 
 export const WhoAmICommandOptionsSchema = z.object({
   envFile: z.string(),

@@ -9,6 +9,7 @@ import { CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts";
 import { telemetryClient } from "../telemetry/telemetry";
 import { getVersion } from "../utils/getVersion";
 import { updateCommand } from "../commands/update";
+import { sendEventCommand } from "../commands/sendEvent";
 
 export const program = new Command();
 
@@ -99,6 +100,23 @@ program
   .action(async (path, options) => {
     try {
       await whoamiCommand(path, options);
+    } catch (e) {
+      throw e;
+    }
+  });
+
+program
+  .command("send-event")
+  .description("Sends an event to the Trigger.dev API")
+  .argument("[path]", "The path to the project", ".")
+  .option("-e, --env-file <name>", "The name of the env file to load", ".env.local")
+  .requiredOption("-n, --name <name>", "The name of the event to send")
+  .requiredOption("-p, --payload <payload>", "The JSON payload to send with the event")
+  .option("-i, --id <id>", "The ID of the event to send")
+  .version(getVersion(), "-v, --version", "Display the version number")
+  .action(async (path, options) => {
+    try {
+      await sendEventCommand(path, options);
     } catch (e) {
       throw e;
     }
