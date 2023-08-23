@@ -4,7 +4,7 @@ import { findEndpoint } from "~/models/endpoint.server";
 import { EndpointApi } from "../endpointApi.server";
 import { RegisterJobService } from "../jobs/registerJob.server";
 import { logger } from "../logger.server";
-import { RegisterSourceServiceV1 } from "../sources/registerSource.server";
+import { RegisterSourceServiceV1 } from "../sources/registerSourceV1.server";
 import { RegisterDynamicScheduleService } from "../triggers/registerDynamicSchedule.server";
 import { RegisterDynamicTriggerService } from "../triggers/registerDynamicTrigger.server";
 import { DisableJobService } from "../jobs/disableJob.server";

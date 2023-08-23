@@ -268,9 +268,8 @@ export class RegisterSourceServiceV1 {
 
     if (!triggerIsActive || triggerHasOrphanedEvents || triggerHasUnregisteredEvents) {
       // We need to re-activate the source, and there could be orphaned events
-      //todo we can't change the activateSource schema, because their might be some queued when we push
-      //todo so either we need to create a new "activateSourceV2", or add version data to the payload
       await workerQueue.enqueue("activateSource", {
+        version: "1",
         id: triggerSource.id,
         orphanedEvents: orphanedEvents,
       });

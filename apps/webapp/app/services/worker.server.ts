@@ -19,6 +19,7 @@ import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.
 import { ActivateSourceService } from "./sources/activateSource.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
+import { addMissingVersionField } from "@trigger.dev/core/src/schemas/addMissingVersionField";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -37,11 +38,21 @@ const workerCatalog = {
     organizationId: z.string(),
     connectionId: z.string(),
   }),
-  activateSource: z.object({
-    id: z.string(),
-    orphanedEvents: z.array(z.string()).optional(),
-  }),
-
+  activateSource: z.preprocess(
+    addMissingVersionField,
+    z.discriminatedUnion("version", [
+      z.object({
+        version: z.literal("1"),
+        id: z.string(),
+        orphanedEvents: z.array(z.string()).optional(),
+      }),
+      z.object({
+        version: z.literal("2"),
+        id: z.string(),
+        orphanedOptions: z.record(z.string(), z.array(z.string())).optional(),
+      }),
+    ])
+  ),
   deliverEvent: z.object({ id: z.string() }),
   "events.invokeDispatcher": z.object({
     id: z.string(),

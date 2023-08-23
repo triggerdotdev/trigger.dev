@@ -89,6 +89,7 @@ export class RegisterSourceServiceV2 {
             },
           },
           create: {
+            version: "2",
             params: metadata.params,
             key,
             channel: metadata.channel,
@@ -121,10 +122,10 @@ export class RegisterSourceServiceV2 {
                 }
               : undefined,
             externalAccount: externalAccount ? { connect: { id: externalAccount.id } } : undefined,
-            events: {
-              create: metadata.events.map((event) => ({
-                name: event,
-              })),
+            options: {
+              create: Object.entries(metadata.options).flatMap(([name, values]) =>
+                values.map((value) => ({ name, value }))
+              ),
             },
             secretReference: {
               connectOrCreate: {
@@ -175,7 +176,7 @@ export class RegisterSourceServiceV2 {
                 : undefined,
           },
           include: {
-            events: true,
+            options: true,
             secretReference: true,
           },
         });
@@ -197,25 +198,37 @@ export class RegisterSourceServiceV2 {
           }
         }
 
-        const newEvents = new Set<string>(metadata.events);
-        const orphanedEvents = new Set<string>();
+        // Collect the options that are no longer being used so we can remove them
+        const newOptions = metadata.options;
+        const orphanedOptions: Record<string, string[]> = {};
+        for (const event of triggerSource.options) {
+          const values = newOptions[event.name];
+          if (values === undefined) {
+            orphanedOptions[event.name] = [event.value];
+            continue;
+          }
 
-        for (const event of triggerSource.events) {
-          if (!newEvents.has(event.name)) {
-            orphanedEvents.add(event.name);
+          if (values!.includes(event.value)) {
+            orphanedOptions[event.name] = [...values, event.value];
           }
         }
 
-        for (const event of newEvents) {
-          await tx.triggerSourceEvent.upsert({
+        //add or update the options
+        const flatOptions = Object.entries(newOptions).flatMap(([name, values]) =>
+          values.map((v) => ({ name, value: v }))
+        );
+        for (const { name, value } of flatOptions) {
+          await tx.triggerSourceOption.upsert({
             where: {
-              name_sourceId: {
-                name: event,
+              name_value_sourceId: {
+                name,
+                value,
                 sourceId: triggerSource.id,
               },
             },
             create: {
-              name: event,
+              name,
+              value,
               source: {
                 connect: {
                   id: triggerSource.id,
@@ -228,7 +241,7 @@ export class RegisterSourceServiceV2 {
 
         return {
           id: triggerSource.id,
-          orphanedEvents: Array.from(orphanedEvents),
+          orphanedOptions,
         };
       },
       { timeout: 15000 }
@@ -238,7 +251,7 @@ export class RegisterSourceServiceV2 {
       return;
     }
 
-    const { id, orphanedEvents } = source;
+    const { id, orphanedOptions } = source;
 
     // We need to activate the source if:
     // 1. It's not active
@@ -260,14 +273,15 @@ export class RegisterSourceServiceV2 {
     }
 
     const triggerIsActive = triggerSource.active;
-    const triggerHasOrphanedEvents = orphanedEvents.length > 0;
-    const triggerHasUnregisteredEvents = triggerSource.events.some((event) => !event.registered);
+    const triggerHasOrphanedEvents = Object.keys(orphanedOptions).length > 0;
+    const triggerHasUnregisteredEvents = triggerSource.options.some((option) => !option.registered);
 
     if (!triggerIsActive || triggerHasOrphanedEvents || triggerHasUnregisteredEvents) {
       // We need to re-activate the source, and there could be orphaned events
       await workerQueue.enqueue("activateSource", {
+        version: "2",
         id: triggerSource.id,
-        orphanedEvents: orphanedEvents,
+        orphanedOptions,
       });
     }
 
@@ -277,7 +291,7 @@ export class RegisterSourceServiceV2 {
   async #findOrCreateIntegration(
     tx: PrismaClientOrTransaction,
     organizationId: string,
-    config: SourceMetadataV1["integration"]
+    config: SourceMetadataV2["integration"]
   ) {
     if (config.authSource === "HOSTED") {
       return tx.integration.findUnique({

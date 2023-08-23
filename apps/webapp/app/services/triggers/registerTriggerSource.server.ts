@@ -4,7 +4,7 @@ import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
 import { getSecretStore } from "../secrets/secretStore.server";
-import { RegisterSourceServiceV1 } from "../sources/registerSource.server";
+import { RegisterSourceServiceV1 } from "../sources/registerSourceV1.server";
 
 export class RegisterTriggerSourceService {
   #prismaClient: PrismaClient;
