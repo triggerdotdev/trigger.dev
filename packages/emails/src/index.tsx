@@ -64,7 +64,9 @@ export class EmailClient {
     from: string;
     replyTo: string;
   }) {
-    this.#client = config.smtpConfig ? nodemailer.createTransport(config.smtpConfig) : undefined;
+    this.#client = config.smtpConfig?.host
+      ? nodemailer.createTransport(config.smtpConfig)
+      : undefined;
     this.#imagesBaseUrl = config.imagesBaseUrl;
     this.#from = config.from;
     this.#replyTo = config.replyTo;
