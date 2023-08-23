@@ -81,13 +81,16 @@ export class DynamicTrigger<
         payload: deepMergeFilters(this.source.filter(params), this.event.filter ?? {}),
       },
       source: {
+        //todo change this to 2
+        version: "1",
         key,
         channel: this.source.channel,
         params,
-        options: {
-          //todo add other options here
-          event: typeof this.event.name === "string" ? [this.event.name] : this.event.name,
-        },
+        events: typeof this.event.name === "string" ? [this.event.name] : this.event.name,
+        //   //todo add other options here
+        // options: {
+        //   event: typeof this.event.name === "string" ? [this.event.name] : this.event.name,
+        // },
         integration: {
           id: this.source.integration.id,
           metadata: this.source.integration.metadata,
