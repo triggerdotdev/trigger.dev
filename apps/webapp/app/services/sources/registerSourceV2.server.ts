@@ -154,6 +154,7 @@ export class RegisterSourceServiceV2 {
                 : undefined,
           },
           update: {
+            version: "2",
             endpoint: {
               connect: {
                 id: endpoint.id,
