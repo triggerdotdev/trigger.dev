@@ -605,15 +605,6 @@ export class TriggerClient {
   }
 
   async #executeJob(body: RunJobBody, job: Job<Trigger<any>, any>): Promise<RunJobResponse> {
-    if (!job.enabled) {
-      return {
-        status: "ERROR",
-        error: {
-          message: "Job is disabled",
-        },
-      };
-    }
-
     this.#internalLogger.debug("executing job", {
       execution: body,
       job: job.toJSON(),

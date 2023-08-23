@@ -65,6 +65,7 @@ export class IndexEndpointService {
     const existingJobs = await this.#prismaClient.job.findMany({
       where: {
         projectId: endpoint.projectId,
+        deletedAt: null,
       },
       include: {
         aliases: {
@@ -99,9 +100,11 @@ export class IndexEndpointService {
         }
       } else {
         try {
-          await this.#registerJobService.call(endpoint, job);
+          const registeredVersion = await this.#registerJobService.call(endpoint, job);
 
-          indexStats.jobs++;
+          if (registeredVersion) {
+            indexStats.jobs++;
+          }
         } catch (error) {
           logger.error("Failed to register job", {
             endpointId: endpoint.id,

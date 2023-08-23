@@ -145,7 +145,7 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
                 </TableCell>
                 <TableCell to={path}>
                   <JobStatusBadge
-                    enabled={true}
+                    enabled={job.status === "ACTIVE"}
                     hasIntegrationsRequiringAction={job.hasIntegrationsRequiringAction}
                     hasRuns={job.lastRun !== undefined}
                   />
@@ -167,22 +167,10 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
                     <DialogContent>
                       <DialogHeader>
                         <DeleteJobDialogContent
+                          id={job.id}
                           title={job.title}
                           slug={job.slug}
-                          environments={[
-                            {
-                              type: "DEVELOPMENT",
-                              enabled: false,
-                              lastRun: job.lastRun?.createdAt,
-                              version: job.version,
-                            },
-                            {
-                              type: "PRODUCTION",
-                              enabled: true,
-                              lastRun: job.lastRun?.createdAt,
-                              version: job.version,
-                            },
-                          ]}
+                          environments={job.environments}
                         />
                       </DialogHeader>
                     </DialogContent>

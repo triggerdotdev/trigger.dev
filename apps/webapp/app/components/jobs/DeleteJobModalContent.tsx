@@ -6,6 +6,8 @@ import { Header1, Header2 } from "../primitives/Headers";
 import { NamedIcon } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
 import { TextLink } from "../primitives/TextLink";
+import { useFetcher } from "@remix-run/react";
+import { Spinner } from "../primitives/Spinner";
 
 type JobEnvironment = {
   type: RuntimeEnvironmentType;
@@ -15,13 +17,26 @@ type JobEnvironment = {
 };
 
 type DeleteJobDialogContentProps = {
+  id: string;
   title: string;
   slug: string;
   environments: JobEnvironment[];
+  redirectTo?: string;
 };
 
-export function DeleteJobDialogContent({ title, slug, environments }: DeleteJobDialogContentProps) {
-  const canDelete = environments.every((environment) => environment.enabled === false);
+export function DeleteJobDialogContent({
+  title,
+  slug,
+  environments,
+  id,
+  redirectTo,
+}: DeleteJobDialogContentProps) {
+  const canDelete = environments.every((environment) => !environment.enabled);
+  const fetcher = useFetcher();
+
+  const isLoading =
+    fetcher.state === "submitting" ||
+    (fetcher.state === "loading" && fetcher.formMethod === "DELETE");
 
   return (
     <div className="flex w-full flex-col items-center gap-y-6">
@@ -50,18 +65,44 @@ export function DeleteJobDialogContent({ title, slug, environments }: DeleteJobD
         ) : (
           <>
             This Job is still active in an environment. You need to disable it in your Job code
-            first before it can be deleted. <TextLink to="#">Learn how to disable a Job</TextLink>.
+            first before it can be deleted.{" "}
+            <TextLink to="https://trigger.dev/docs/documentation/guides/jobs/managing#disabling-jobs">
+              Learn how to disable a Job
+            </TextLink>
+            .
           </>
         )}
       </Paragraph>
-
-      <Button variant="danger/large" fullWidth disabled={!canDelete}>
-        <NamedIcon
-          name="trash-can"
-          className="mr-1.5 h-4 w-4 text-bright transition group-hover:text-bright"
-        />
-        I want to delete this Job
-      </Button>
+      {canDelete ? (
+        <fetcher.Form
+          method="delete"
+          action={`/resources/jobs/${id}${redirectTo ? `?redirectTo=${redirectTo}` : ""}`}
+        >
+          <Button variant="danger/large" fullWidth>
+            {isLoading ? (
+              <Spinner />
+            ) : (
+              <>
+                <NamedIcon
+                  name="trash-can"
+                  className="mr-1.5 h-4 w-4 text-bright transition group-hover:text-bright"
+                />
+                Delete this job
+              </>
+            )}
+          </Button>
+        </fetcher.Form>
+      ) : (
+        <Button variant="danger/large" fullWidth disabled>
+          <>
+            <NamedIcon
+              name="trash-can"
+              className="mr-1.5 h-4 w-4 text-bright transition group-hover:text-bright"
+            />
+            Delete this job
+          </>
+        </Button>
+      )}
     </div>
   );
 }

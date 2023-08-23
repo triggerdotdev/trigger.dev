@@ -71,6 +71,7 @@ export class IntegrationsPresenter {
                     slug: projectSlug,
                   },
                   internal: false,
+                  deletedAt: null,
                 },
               },
             },

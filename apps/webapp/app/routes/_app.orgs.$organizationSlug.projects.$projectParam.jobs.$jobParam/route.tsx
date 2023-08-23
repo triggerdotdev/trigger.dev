@@ -140,7 +140,7 @@ export default function Job() {
               label={"STATUS"}
               value={
                 <JobStatusBadge
-                  enabled={true}
+                  enabled={job.status === "ACTIVE"}
                   hasIntegrationsRequiringAction={job.hasIntegrationsRequiringAction}
                   hasRuns={job.lastRun !== undefined}
                   badgeSize="small"
