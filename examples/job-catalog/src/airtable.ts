@@ -88,11 +88,11 @@ client.defineJob({
     airtable,
   },
   run: async (payload, io, ctx) => {
-    const webhooks = await io.airtable.listWebhooks("list webhooks", { baseId: payload.baseId });
+    const webhooks = await io.airtable.webhooks().list("list webhooks", { baseId: payload.baseId });
 
     if (payload.deleteWebhooks === true) {
       for (const webhook of webhooks.webhooks) {
-        await io.airtable.deleteWebhook(`delete webhook: ${webhook.id}`, {
+        await io.airtable.webhooks().delete(`delete webhook: ${webhook.id}`, {
           baseId: payload.baseId,
           webhookId: webhook.id,
         });
