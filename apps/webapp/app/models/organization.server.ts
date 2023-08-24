@@ -49,6 +49,7 @@ export function getOrganizations({ userId }: { userId: User["id"] }) {
               jobs: {
                 where: {
                   internal: false,
+                  deletedAt: null,
                 },
               },
             },

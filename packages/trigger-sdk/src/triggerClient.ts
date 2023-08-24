@@ -409,10 +409,6 @@ export class TriggerClient {
   }
 
   attach(job: Job<Trigger<any>, any>): void {
-    if (!job.enabled) {
-      return;
-    }
-
     this.#registeredJobs[job.id] = job;
 
     job.trigger.attachToJob(this, job);

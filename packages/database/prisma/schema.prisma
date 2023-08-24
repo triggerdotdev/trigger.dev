@@ -420,6 +420,8 @@ model Job {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
+  deletedAt DateTime?
+
   @@unique([projectId, slug])
 }
 
@@ -461,7 +463,14 @@ model JobVersion {
   dynamicTriggers DynamicTrigger[]
   triggerSources  TriggerSource[]
 
+  status JobVersionStatus @default(ACTIVE)
+
   @@unique([jobId, version, environmentId])
+}
+
+enum JobVersionStatus {
+  ACTIVE
+  DISABLED
 }
 
 model EventExample {
@@ -640,9 +649,9 @@ model EventRecord {
   deliverAt   DateTime  @default(now())
   deliveredAt DateTime?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  cancelledAt DateTime? 
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  cancelledAt DateTime?
 
   isTest Boolean  @default(false)
   runs   JobRun[]

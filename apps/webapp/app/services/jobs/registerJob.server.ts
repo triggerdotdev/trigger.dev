@@ -34,7 +34,21 @@ export class RegisterJobService {
     endpoint: Endpoint,
     environment: AuthenticatedEnvironment,
     metadata: JobMetadata
-  ): Promise<JobVersion> {
+  ): Promise<JobVersion | undefined> {
+    // Check the job doesn't already exist and is deleted
+    const existingJob = await this.#prismaClient.job.findUnique({
+      where: {
+        projectId_slug: {
+          projectId: environment.projectId,
+          slug: metadata.id,
+        },
+      },
+    });
+
+    if (existingJob && existingJob.deletedAt && !metadata.enabled) {
+      return;
+    }
+
     const integrations = new Map<string, Integration>();
 
     for (const [, jobIntegration] of Object.entries(metadata.integrations)) {
@@ -155,6 +169,7 @@ export class RegisterJobService {
       },
       update: {
         title: metadata.name,
+        deletedAt: metadata.enabled ? null : undefined,
       },
       include: {
         integrations: {
@@ -236,8 +251,10 @@ export class RegisterJobService {
         eventSpecification,
         preprocessRuns: metadata.preprocessRuns,
         startPosition: "LATEST",
+        status: "ACTIVE",
       },
       update: {
+        status: "ACTIVE",
         startPosition: "LATEST",
         eventSpecification,
         preprocessRuns: metadata.preprocessRuns,
@@ -401,6 +418,7 @@ export class RegisterJobService {
               type: "JOB_VERSION",
               id: jobVersion.id,
             },
+            enabled: true,
           },
         });
 
@@ -444,6 +462,7 @@ export class RegisterJobService {
               type: "JOB_VERSION",
               id: jobVersion.id,
             },
+            enabled: true,
           },
         });
 

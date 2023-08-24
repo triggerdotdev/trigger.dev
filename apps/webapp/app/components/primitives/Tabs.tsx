@@ -12,7 +12,7 @@ export type TabsProps = {
 
 export function Tabs({ tabs, className }: TabsProps) {
   return (
-    <div className={cn(`flex flex-row gap-x-6 border-b border-slate-800`, className)}>
+    <div className={cn(`flex flex-row gap-x-6 border-b border-uiBorder`, className)}>
       {tabs.map((tab, index) => (
         <NavLink key={index} to={tab.to} className="group flex flex-col items-center pt-1" end>
           {({ isActive, isPending }) => (

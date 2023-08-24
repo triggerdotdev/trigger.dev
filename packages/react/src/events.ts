@@ -42,7 +42,7 @@ export function useEventDetails(eventId: string | undefined): UseEventDetailsRes
 }
 
 export function useEventRunDetails(
-  eventId: string,
+  eventId: string | undefined,
   options?: RunDetailOptions
 ): UseRunDetailsResult {
   const event = useEventDetails(eventId);

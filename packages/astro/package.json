@@ -1,0 +1,27 @@
+{
+  "name": "@trigger.dev/astro",
+  "description": "An Astro-native integration for Trigger.dev background jobs platform",
+  "version": "2.0.11",
+  "type": "module",
+  "main": "main.js",
+  "scripts": {},
+  "peerDependencies": {
+    "@trigger.dev/sdk": "workspace:^2.0.11",
+    "astro": "^2.10.7"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/triggerdev/trigger.dev.git"
+  },
+  "bugs": {
+    "url": "https://github.com/triggerdev/trigger.dev/issues"
+  },
+  "homepage": "https://github.com/triggerdev/trigger.dev#readme"
+}

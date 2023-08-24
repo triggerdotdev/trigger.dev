@@ -7,10 +7,12 @@ import { logger } from "../logger.server";
 import { RegisterSourceService } from "../sources/registerSource.server";
 import { RegisterDynamicScheduleService } from "../triggers/registerDynamicSchedule.server";
 import { RegisterDynamicTriggerService } from "../triggers/registerDynamicTrigger.server";
+import { DisableJobService } from "../jobs/disableJob.server";
 
 export class IndexEndpointService {
   #prismaClient: PrismaClient;
   #registerJobService = new RegisterJobService();
+  #disableJobService = new DisableJobService();
   #registerSourceService = new RegisterSourceService();
   #registerDynamicTriggerService = new RegisterDynamicTriggerService();
   #registerDynamicScheduleService = new RegisterDynamicScheduleService();
@@ -57,23 +59,98 @@ export class IndexEndpointService {
       sources: 0,
       dynamicTriggers: 0,
       dynamicSchedules: 0,
+      disabledJobs: 0,
     };
+
+    const existingJobs = await this.#prismaClient.job.findMany({
+      where: {
+        projectId: endpoint.projectId,
+        deletedAt: null,
+      },
+      include: {
+        aliases: {
+          where: {
+            name: "latest",
+            environmentId: endpoint.environmentId,
+          },
+          include: {
+            version: true,
+          },
+          take: 1,
+        },
+      },
+    });
 
     for (const job of jobs) {
       if (!job.enabled) {
-        continue;
+        const disabledJob = await this.#disableJobService
+          .call(endpoint, { slug: job.id, version: job.version })
+          .catch((error) => {
+            logger.error("Failed to disable job", {
+              endpointId: endpoint.id,
+              job,
+              error,
+            });
+
+            return;
+          });
+
+        if (disabledJob) {
+          indexStats.disabledJobs++;
+        }
+      } else {
+        try {
+          const registeredVersion = await this.#registerJobService.call(endpoint, job);
+
+          if (registeredVersion) {
+            indexStats.jobs++;
+          }
+        } catch (error) {
+          logger.error("Failed to register job", {
+            endpointId: endpoint.id,
+            job,
+            error,
+          });
+        }
       }
+    }
 
-      try {
-        await this.#registerJobService.call(endpoint, job);
+    // TODO: we need to do this for sources, dynamic triggers, and dynamic schedules
+    const missingJobs = existingJobs.filter((job) => {
+      return !jobs.find((j) => j.id === job.slug);
+    });
 
-        indexStats.jobs++;
-      } catch (error) {
-        logger.error("Failed to register job", {
-          endpointId: endpoint.id,
-          job,
-          error,
-        });
+    if (missingJobs.length > 0) {
+      logger.debug("Disabling missing jobs", {
+        endpointId: endpoint.id,
+        missingJobIds: missingJobs.map((job) => job.slug),
+      });
+
+      for (const job of missingJobs) {
+        const latestVersion = job.aliases[0]?.version;
+
+        if (!latestVersion) {
+          continue;
+        }
+
+        const disabledJob = await this.#disableJobService
+          .call(endpoint, {
+            slug: job.slug,
+            version: latestVersion.version,
+          })
+          .catch((error) => {
+            logger.error("Failed to disable job", {
+              endpointId: endpoint.id,
+              job,
+              error,
+            });
+
+            return;
+          });
+
+        if (disabledJob) {
+          indexStats.disabledJobs++;
+        }
       }
     }
 

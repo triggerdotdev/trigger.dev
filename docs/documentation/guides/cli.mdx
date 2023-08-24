@@ -149,3 +149,23 @@ yarn dlx @trigger.dev/cli@latest whoami
 ```
 
 </CodeGroup>
+
+## send-event Command
+
+The `send-event` command will send an event to your Trigger.dev project. This is useful for testing your Trigger.dev project locally.
+
+<CodeGroup>
+
+```bash npm
+npx @trigger.dev/cli@latest send-event -n "event.name" -p "{ \"key\": \"value\" }"
+```
+
+```bash pnpm
+pnpm dlx @trigger.dev/cli@latest send-event -n "event.name" -p "{ \"key\": \"value\" }"
+```
+
+```bash yarn
+yarn dlx @trigger.dev/cli@latest send-event -n "event.name" -p "{ \"key\": \"value\" }"
+```
+
+</CodeGroup>

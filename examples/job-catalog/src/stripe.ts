@@ -129,10 +129,13 @@ client.defineJob({
   },
 });
 
+// Use the stripe CLI to test this job:
+// stripe trigger price.created
 client.defineJob({
   id: "stripe-on-price",
   name: "Stripe On Price",
   version: "0.1.0",
+  enabled: true,
   trigger: stripe.onPrice({ events: ["price.created", "price.updated"] }),
   run: async (payload, io, ctx) => {
     if (ctx.event.name === "price.created") {
@@ -143,6 +146,8 @@ client.defineJob({
   },
 });
 
+// Use the stripe CLI to test this job:
+// stripe trigger product.created
 client.defineJob({
   id: "stripe-on-product",
   name: "Stripe On Product",

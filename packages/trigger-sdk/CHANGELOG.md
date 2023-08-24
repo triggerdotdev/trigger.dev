@@ -1,5 +1,17 @@
 # @trigger.dev/sdk
 
+## 2.0.11
+
+### Patch Changes
+
+- ac98219b: Adding the ability to cancel events that were sent with a delayed delivery
+- 302bd02f: Issue #377: only expose the external eventId in the API
+- b5db9f5e: Adding MIT license
+- 3ce53970: Support disabling jobs using the `enabled` flag
+- Updated dependencies [302bd02f]
+- Updated dependencies [b5db9f5e]
+  - @trigger.dev/core@2.0.11
+
 ## 2.0.10
 
 ### Patch Changes

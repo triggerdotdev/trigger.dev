@@ -47,6 +47,7 @@ export class JobListPresenter {
                 version: true,
                 eventSpecification: true,
                 properties: true,
+                status: true,
                 runs: {
                   select: {
                     createdAt: true,
@@ -92,6 +93,7 @@ export class JobListPresenter {
       },
       where: {
         internal: false,
+        deletedAt: null,
         organization: orgWhere,
         project: {
           slug: projectSlug,
@@ -162,11 +164,19 @@ export class JobListPresenter {
           properties = [...properties, ...versionProperties];
         }
 
+        const environments = job.aliases.map((alias) => ({
+          type: alias.environment.type,
+          enabled: alias.version.status === "ACTIVE",
+          lastRun: alias.version.runs.at(0)?.createdAt,
+          version: alias.version.version,
+        }));
+
         return {
           id: job.id,
           slug: job.slug,
           title: job.title,
           version: alias.version.version,
+          status: alias.version.status,
           dynamic: job.dynamicTriggers.length > 0,
           event: {
             title: eventSpecification.title,
@@ -179,6 +189,7 @@ export class JobListPresenter {
           ),
           lastRun,
           properties,
+          environments,
         };
       })
       .filter(Boolean);
