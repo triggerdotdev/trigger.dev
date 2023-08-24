@@ -152,83 +152,112 @@ export class Airtable implements TriggerIntegration {
     });
   }
 
-  //todo add support for dataTypes, changeTypes and fromSources
   createWebhook(
     key: IntegrationTaskKey,
     { baseId, url, options }: { baseId: string; url: string; options: WebhookSpecification }
   ) {
-    return this.runTask<WebhookRegistrationData>(key, async (client, task, io) => {
-      // create webhook
-      const response = await fetch(`${apiUrl}/${baseId}/webhooks`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${client._apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          notificationUrl: url,
-          specification: {
-            options,
+    return this.runTask<WebhookRegistrationData>(
+      key,
+      async (client, task, io) => {
+        // create webhook
+        const response = await fetch(`${apiUrl}/${baseId}/webhooks`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${client._apiKey}`,
+            "Content-Type": "application/json",
           },
-        }),
-        redirect: "follow",
-      });
+          body: JSON.stringify({
+            notificationUrl: url,
+            specification: {
+              options,
+            },
+          }),
+          redirect: "follow",
+        });
 
-      if (!response.ok) {
-        const errorText = await response
-          .text()
-          .then((t) => t)
-          .catch((e) => "No body");
+        if (!response.ok) {
+          const errorText = await response
+            .text()
+            .then((t) => t)
+            .catch((e) => "No body");
 
-        throw new Error(
-          `Failed to create webhook: ${response.status} ${response.statusText}\n${errorText}`
-        );
+          throw new Error(
+            `Failed to create webhook: ${response.status} ${response.statusText}\n${errorText}`
+          );
+        }
+
+        const webhook = await response.json();
+        const parsed = WebhookRegistrationDataSchema.parse(webhook);
+        return parsed;
+      },
+      {
+        name: "Create webhook",
+        params: {
+          baseId,
+          url,
+          options,
+        },
       }
-
-      const webhook = await response.json();
-      const parsed = WebhookRegistrationDataSchema.parse(webhook);
-      return parsed;
-    });
+    );
   }
 
   listWebhooks(key: IntegrationTaskKey, { baseId }: { baseId: string }) {
-    return this.runTask<WebhookListData>(key, async (client, task, io) => {
-      // create webhook
-      const response = await fetch(`${apiUrl}/${baseId}/webhooks`, {
-        headers: {
-          Authorization: `Bearer ${client._apiKey}`,
+    return this.runTask<WebhookListData>(
+      key,
+      async (client, task, io) => {
+        // create webhook
+        const response = await fetch(`${apiUrl}/${baseId}/webhooks`, {
+          headers: {
+            Authorization: `Bearer ${client._apiKey}`,
+          },
+          redirect: "follow",
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to list webhooks: ${response.statusText}`);
+        }
+
+        const webhook = await response.json();
+        const parsed = WebhookListDataSchema.parse(webhook);
+        return parsed;
+      },
+      {
+        name: "List webhooks",
+        params: {
+          baseId,
         },
-        redirect: "follow",
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to list webhooks: ${response.statusText}`);
       }
-
-      const webhook = await response.json();
-      const parsed = WebhookListDataSchema.parse(webhook);
-      return parsed;
-    });
+    );
   }
 
   deleteWebhook(
     key: IntegrationTaskKey,
     { baseId, webhookId }: { baseId: string; webhookId: string }
   ) {
-    return this.runTask(key, async (client, task, io) => {
-      // create webhook
-      const response = await fetch(`${apiUrl}/${baseId}/webhooks/${webhookId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${client._apiKey}`,
-        },
-        redirect: "follow",
-      });
+    return this.runTask(
+      key,
+      async (client, task, io) => {
+        // create webhook
+        const response = await fetch(`${apiUrl}/${baseId}/webhooks/${webhookId}`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${client._apiKey}`,
+          },
+          redirect: "follow",
+        });
 
-      if (!response.ok) {
-        throw new Error(`Failed to delete webhook: ${response.statusText}`);
+        if (!response.ok) {
+          throw new Error(`Failed to delete webhook: ${response.statusText}`);
+        }
+      },
+      {
+        name: "Delete webhook",
+        params: {
+          baseId,
+          webhookId,
+        },
       }
-    });
+    );
   }
 
   async updateWebhook(
@@ -341,6 +370,8 @@ function createWebhookEventSource(
         },
       };
 
+      console.log("specification", JSON.stringify(specification));
+
       if (httpSource.active && webhookData.success) {
         const hasMissingOptions = Object.values(options).some(
           (option) => option.missing.length > 0
@@ -444,10 +475,10 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
   return {
     events: [
       {
-        id: payload.base.id,
+        // id: payload.base.id,
         payload: payload,
         source: "airtable.com",
-        name: "an event that needs updating",
+        name: "add",
         timestamp: payload.timestamp,
         context: {},
       },

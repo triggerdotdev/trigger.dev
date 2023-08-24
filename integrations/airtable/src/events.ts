@@ -3,7 +3,7 @@ import { EventSpecification } from "@trigger.dev/sdk";
 type OnTableChanged = any;
 
 export const onTableChanged: EventSpecification<OnTableChanged> = {
-  name: ["add", "change", "delete"],
+  name: ["add", "remove", "update"],
   title: "On Table Changed",
   source: "airtable.com",
   icon: "airtable",
