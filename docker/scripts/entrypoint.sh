@@ -14,4 +14,4 @@ cp node_modules/@prisma/engines/*.node apps/webapp/prisma/
 pnpm --filter webapp db:seed
 
 cd /triggerdotdev/apps/webapp
-exec dumb-init pnpm run start-from-docker
+exec dumb-init pnpm run start:local

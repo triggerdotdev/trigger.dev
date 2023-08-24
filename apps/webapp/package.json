@@ -12,7 +12,7 @@
     "format": "prettier --write .",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
     "start": "cross-env NODE_ENV=production node --max-old-space-size=8192 ./build/server.js",
-    "start-from-docker": "cross-env node --max-old-space-size=8192 ./build/server.js",
+    "start:local": "cross-env node --max-old-space-size=8192 ./build/server.js",
     "typecheck": "tsc --noEmit",
     "db:seed": "node prisma/seed.js",
     "db:seed:local": "ts-node prisma/seed.ts",
