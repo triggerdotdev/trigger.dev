@@ -5,6 +5,7 @@ import { AuthenticatedEnvironment } from "../apiAuth.server";
 import { workerQueue } from "../worker.server";
 import { CreateEndpointError } from "./createEndpoint.server";
 import { EndpointApi } from "../endpointApi.server";
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
 
 const indexingHookIdentifier = customAlphabet("0123456789abcdefghijklmnopqrstuvxyz", 10);
 
@@ -34,6 +35,9 @@ export class ValidateCreateEndpointService {
               environmentId: environment.id,
               slug: validationResult.endpointId,
             },
+          },
+          include: {
+            environment: true,
           },
           create: {
             environment: {
@@ -67,7 +71,11 @@ export class ValidateCreateEndpointService {
             id: endpoint.id,
             source: "INTERNAL",
           },
-          { tx }
+          {
+            tx,
+            maxAttempts:
+              endpoint.environment.type === RuntimeEnvironmentType.DEVELOPMENT ? 1 : undefined,
+          }
         );
 
         return endpoint;
