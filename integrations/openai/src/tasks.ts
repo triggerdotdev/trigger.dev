@@ -1,36 +1,20 @@
 import type { AuthenticatedTask } from "@trigger.dev/sdk";
-import {
-  CreateChatCompletionRequest,
-  CreateCompletionRequest,
-  CreateEditRequest,
-  CreateEmbeddingRequest,
-  CreateFineTuneRequest,
-  CreateImageRequest,
-  OpenAIApi,
-} from "openai";
+import OpenAI from "openai";
 import { OpenAIIntegrationAuth } from "./types";
 import { redactString } from "@trigger.dev/sdk";
 import { Prettify, fileFromString, fileFromUrl, truncate } from "@trigger.dev/integration-kit";
 import { createTaskUsageProperties, onTaskError } from "./taskUtils";
 
-type OpenAIClientType = InstanceType<typeof OpenAIApi>;
-
-type RetrieveModelRequest = {
-  model: string;
-};
-
-type RetrieveModelResponseData = Prettify<
-  Awaited<ReturnType<OpenAIClientType["retrieveModel"]>>["data"]
->;
+type OpenAIClientType = InstanceType<typeof OpenAI>;
 
 export const retrieveModel: AuthenticatedTask<
   OpenAIClientType,
-  Prettify<RetrieveModelRequest>,
-  RetrieveModelResponseData
+  { model: string },
+  OpenAI.Models.Model
 > = {
   onError: onTaskError,
   run: async (params, client) => {
-    return client.retrieveModel(params.model).then((res) => res.data);
+    return await client.models.retrieve(params.model);
   },
   init: (params) => {
     return {
@@ -47,16 +31,12 @@ export const retrieveModel: AuthenticatedTask<
   },
 };
 
-type ListModelsResponseData = Awaited<ReturnType<OpenAIClientType["listModels"]>>["data"];
-
-export const listModels: AuthenticatedTask<
-  OpenAIClientType,
-  void,
-  Prettify<ListModelsResponseData>
-> = {
+export const listModels: AuthenticatedTask<OpenAIClientType, void, OpenAI.Models.Model[]> = {
   onError: onTaskError,
   run: async (params, client) => {
-    return client.listModels().then((res) => res.data);
+    const response = await client.models.list();
+
+    return response.data;
   },
   init: (params) => {
     return {
@@ -70,15 +50,15 @@ export const listModels: AuthenticatedTask<
 
 export const createCompletion: AuthenticatedTask<
   OpenAIClientType,
-  Prettify<CreateCompletionRequest>,
-  Prettify<Awaited<ReturnType<OpenAIClientType["createCompletion"]>>["data"]>
+  Prettify<OpenAI.CompletionCreateParamsNonStreaming>,
+  OpenAI.Completion
 > = {
   run: async (params, client, task) => {
-    const response = await client.createCompletion(params);
+    const response = await client.completions.create(params);
 
-    task.outputProperties = createTaskUsageProperties(response.data.usage);
+    task.outputProperties = createTaskUsageProperties(response.usage);
 
-    return response.data;
+    return response;
   },
   init: (params) => {
     return {
@@ -95,18 +75,14 @@ export const createCompletion: AuthenticatedTask<
   },
 };
 
-type CreateCompletionResponseData = Awaited<
-  ReturnType<OpenAIClientType["createCompletion"]>
->["data"];
-
 export const backgroundCreateCompletion: AuthenticatedTask<
   OpenAIClientType,
-  Prettify<CreateCompletionRequest>,
-  Prettify<CreateCompletionResponseData>,
+  Prettify<OpenAI.CompletionCreateParamsNonStreaming>,
+  Prettify<OpenAI.Completion>,
   OpenAIIntegrationAuth
 > = {
   run: async (params, client, task, io, auth) => {
-    const response = await io.backgroundFetch<CreateCompletionResponseData>(
+    const response = await io.backgroundFetch<OpenAI.Completion>(
       "background",
       "https://api.openai.com/v1/completions",
       {
@@ -139,22 +115,18 @@ export const backgroundCreateCompletion: AuthenticatedTask<
   },
 };
 
-type CreateChatCompetionResponseData = Awaited<
-  ReturnType<OpenAIClientType["createChatCompletion"]>
->["data"];
-
 export const createChatCompletion: AuthenticatedTask<
   OpenAIClientType,
-  Prettify<CreateChatCompletionRequest>,
-  Prettify<CreateChatCompetionResponseData>
+  Prettify<OpenAI.Chat.CompletionCreateParamsNonStreaming>,
+  Prettify<OpenAI.Chat.ChatCompletion>
 > = {
   onError: onTaskError,
   run: async (params, client, task) => {
-    const response = await client.createChatCompletion(params);
+    const response = await client.chat.completions.create(params);
 
-    task.outputProperties = createTaskUsageProperties(response.data.usage);
+    task.outputProperties = createTaskUsageProperties(response.usage);
 
-    return response.data;
+    return response;
   },
   init: (params) => {
     return {
@@ -173,12 +145,12 @@ export const createChatCompletion: AuthenticatedTask<
 
 export const backgroundCreateChatCompletion: AuthenticatedTask<
   OpenAIClientType,
-  Prettify<CreateChatCompletionRequest>,
-  Prettify<CreateChatCompetionResponseData>,
+  Prettify<OpenAI.Chat.CompletionCreateParamsNonStreaming>,
+  Prettify<OpenAI.Chat.ChatCompletion>,
   OpenAIIntegrationAuth
 > = {
   run: async (params, client, task, io, auth) => {
-    const response = await io.backgroundFetch<CreateChatCompetionResponseData>(
+    const response = await io.backgroundFetch<OpenAI.Chat.ChatCompletion>(
       "background",
       "https://api.openai.com/v1/chat/completions",
       {
@@ -229,20 +201,21 @@ export const backgroundCreateChatCompletion: AuthenticatedTask<
   },
 };
 
-type CreateEditResponseData = Prettify<Awaited<ReturnType<OpenAIClientType["createEdit"]>>["data"]>;
-
+/**
+ * @deprecated The Edits API is deprecated; please use Chat Completions instead.
+ */
 export const createEdit: AuthenticatedTask<
   OpenAIClientType,
-  Prettify<CreateEditRequest>,
-  CreateEditResponseData
+  Prettify<OpenAI.EditCreateParams>,
+  OpenAI.Edit
 > = {
   onError: onTaskError,
   run: async (params, client, task) => {
-    const response = await client.createEdit(params);
+    const response = await client.edits.create(params);
 
-    task.outputProperties = createTaskUsageProperties(response.data.usage);
+    task.outputProperties = createTaskUsageProperties(response.usage);
 
-    return response.data;
+    return response;
   },
   init: (params) => {
     let properties = [
@@ -273,20 +246,16 @@ export const createEdit: AuthenticatedTask<
   },
 };
 
-type CreateImageResponseData = Prettify<
-  Awaited<ReturnType<OpenAIClientType["createImage"]>>["data"]
->;
-
-export const createImage: AuthenticatedTask<
+export const generateImage: AuthenticatedTask<
   OpenAIClientType,
-  Prettify<CreateImageRequest>,
-  CreateImageResponseData
+  Prettify<OpenAI.Images.ImageGenerateParams>,
+  OpenAI.Images.ImagesResponse
 > = {
   onError: onTaskError,
   run: async (params, client, task) => {
-    const response = await client.createImage(params);
+    const response = await client.images.generate(params);
 
-    return response.data;
+    return response;
   },
   init: (params) => {
     let properties = [
@@ -326,6 +295,8 @@ export const createImage: AuthenticatedTask<
   },
 };
 
+export const createImage = generateImage;
+
 export type CreateImageEditRequest = {
   image: string | File;
   prompt: string;
@@ -336,31 +307,27 @@ export type CreateImageEditRequest = {
   user?: string;
 };
 
-type CreateImageEditResponseData = Prettify<
-  Awaited<ReturnType<OpenAIClientType["createImageEdit"]>>["data"]
->;
-
 export const createImageEdit: AuthenticatedTask<
   OpenAIClientType,
   Prettify<CreateImageEditRequest>,
-  CreateImageEditResponseData
+  OpenAI.Images.ImagesResponse
 > = {
   onError: onTaskError,
   run: async (params, client, task) => {
     const file = typeof params.image === "string" ? await fileFromUrl(params.image) : params.image;
     const mask = typeof params.mask === "string" ? await fileFromUrl(params.mask) : params.mask;
 
-    const response = await client.createImageEdit(
-      file,
-      params.prompt,
-      mask,
-      params.n,
-      params.size,
-      params.response_format,
-      params.user
-    );
+    const response = await client.images.edit({
+      image: file,
+      prompt: params.prompt,
+      mask: mask,
+      n: params.n,
+      size: params.size,
+      response_format: params.response_format,
+      user: params.user,
+    });
 
-    return response.data;
+    return response;
   },
   init: (params) => {
     let properties = [];
@@ -408,10 +375,6 @@ export const createImageEdit: AuthenticatedTask<
   },
 };
 
-type CreateImageVariationResponseData = Prettify<
-  Awaited<ReturnType<OpenAIClientType["createImageVariation"]>>["data"]
->;
-
 export type CreateImageVariationRequest = {
   image: string | File;
   n?: number;
@@ -423,15 +386,19 @@ export type CreateImageVariationRequest = {
 export const createImageVariation: AuthenticatedTask<
   OpenAIClientType,
   Prettify<CreateImageVariationRequest>,
-  CreateImageVariationResponseData
+  OpenAI.Images.ImagesResponse
 > = {
   onError: onTaskError,
   run: async (params, client, task) => {
     const file = typeof params.image === "string" ? await fileFromUrl(params.image) : params.image;
 
-    const response = await client
-      .createImageVariation(file, params.n, params.size, params.response_format, params.user)
-      .then((res) => res.data);
+    const response = await client.images.createVariation({
+      image: file,
+      n: params.n,
+      size: params.size,
+      response_format: params.response_format,
+      user: params.user,
+    });
 
     return response;
   },
@@ -476,22 +443,18 @@ export const createImageVariation: AuthenticatedTask<
   },
 };
 
-type CreateEmbeddingResponseData = Prettify<
-  Awaited<ReturnType<OpenAIClientType["createEmbedding"]>>["data"]
->;
-
 export const createEmbedding: AuthenticatedTask<
   OpenAIClientType,
-  Prettify<CreateEmbeddingRequest>,
-  CreateEmbeddingResponseData
+  Prettify<OpenAI.EmbeddingCreateParams>,
+  OpenAI.Embeddings.CreateEmbeddingResponse
 > = {
   onError: onTaskError,
   run: async (params, client, task) => {
-    const response = await client.createEmbedding(params);
+    const response = await client.embeddings.create(params);
 
-    task.outputProperties = createTaskUsageProperties(response.data.usage);
+    task.outputProperties = createTaskUsageProperties(response.usage);
 
-    return response.data;
+    return response;
   },
   init: (params) => {
     return {
@@ -503,19 +466,10 @@ export const createEmbedding: AuthenticatedTask<
           label: "Model",
           text: params.model,
         },
-        {
-          label: "Input",
-          text:
-            typeof params.input === "string"
-              ? truncate(params.input, 40)
-              : truncate(params.input.at(0) ?? "none", 40),
-        },
       ],
     };
   },
 };
-
-type CreateFileResponseData = Awaited<ReturnType<OpenAIClientType["createFile"]>>["data"];
 
 type CreateFileRequest = {
   file: string | File;
@@ -526,7 +480,7 @@ type CreateFileRequest = {
 export const createFile: AuthenticatedTask<
   OpenAIClientType,
   Prettify<CreateFileRequest>,
-  Prettify<CreateFileResponseData>
+  Prettify<OpenAI.Files.FileObject>
 > = {
   onError: onTaskError,
   run: async (params, client) => {
@@ -538,7 +492,7 @@ export const createFile: AuthenticatedTask<
       file = params.file;
     }
 
-    return client.createFile(file, params.purpose).then((res) => res.data);
+    return client.files.create({ file, purpose: params.purpose });
   },
   init: (params) => {
     return {
@@ -559,12 +513,12 @@ export const createFile: AuthenticatedTask<
   },
 };
 
-type ListFilesResponseData = Prettify<Awaited<ReturnType<OpenAIClientType["listFiles"]>>["data"]>;
-
-export const listFiles: AuthenticatedTask<OpenAIClientType, void, ListFilesResponseData> = {
+export const listFiles: AuthenticatedTask<OpenAIClientType, void, OpenAI.Files.FileObject[]> = {
   onError: onTaskError,
   run: async (params, client) => {
-    return client.listFiles().then((res) => res.data);
+    const response = await client.files.list();
+
+    return response.data;
   },
   init: (params) => {
     return {
@@ -587,7 +541,7 @@ type CreateFineTuneFileRequest = {
 export const createFineTuneFile: AuthenticatedTask<
   OpenAIClientType,
   Prettify<CreateFineTuneFileRequest>,
-  Prettify<CreateFileResponseData>
+  Prettify<OpenAI.Files.FileObject>
 > = {
   onError: onTaskError,
   run: async (params, client) => {
@@ -596,7 +550,7 @@ export const createFineTuneFile: AuthenticatedTask<
       params.fileName
     );
 
-    return client.createFile(file, "fine-tune").then((res) => res.data);
+    return client.files.create({ file, purpose: "fine-tune" });
   },
   init: (params) => {
     return {
@@ -613,18 +567,14 @@ export const createFineTuneFile: AuthenticatedTask<
   },
 };
 
-type CreateFineTuneResponseData = Prettify<
-  Awaited<ReturnType<OpenAIClientType["createFineTune"]>>["data"]
->;
-
 export const createFineTune: AuthenticatedTask<
   OpenAIClientType,
-  Prettify<CreateFineTuneRequest>,
-  CreateFineTuneResponseData
+  Prettify<OpenAI.FineTuneCreateParams>,
+  OpenAI.FineTunes.FineTune
 > = {
   onError: onTaskError,
   run: async (params, client) => {
-    return client.createFineTune(params).then((res) => res.data);
+    return client.fineTunes.create(params);
   },
   init: (params) => {
     let properties = [
@@ -657,41 +607,36 @@ export const createFineTune: AuthenticatedTask<
   },
 };
 
-type ListFineTunesResponseData = Prettify<
-  Awaited<ReturnType<OpenAIClientType["listFineTunes"]>>["data"]
->;
+export const listFineTunes: AuthenticatedTask<OpenAIClientType, void, OpenAI.FineTunes.FineTune[]> =
+  {
+    onError: onTaskError,
+    run: async (params, client) => {
+      const response = await client.fineTunes.list();
 
-export const listFineTunes: AuthenticatedTask<OpenAIClientType, void, ListFineTunesResponseData> = {
-  onError: onTaskError,
-  run: async (params, client) => {
-    return client.listFineTunes().then((res) => res.data);
-  },
-  init: (params) => {
-    return {
-      name: "List fine tunes",
-      params,
-      icon: "openai",
-      properties: [],
-    };
-  },
-};
+      return response.data;
+    },
+    init: (params) => {
+      return {
+        name: "List fine tunes",
+        params,
+        icon: "openai",
+        properties: [],
+      };
+    },
+  };
 
 type SpecificFineTuneRequest = {
   fineTuneId: string;
 };
 
-type RetrieveFineTuneResponseData = Prettify<
-  Awaited<ReturnType<OpenAIClientType["retrieveFineTune"]>>["data"]
->;
-
 export const retrieveFineTune: AuthenticatedTask<
   OpenAIClientType,
   Prettify<SpecificFineTuneRequest>,
-  RetrieveFineTuneResponseData
+  OpenAI.FineTunes.FineTune
 > = {
   onError: onTaskError,
   run: async (params, client) => {
-    return client.retrieveFineTune(params.fineTuneId).then((res) => res.data);
+    return client.fineTunes.retrieve(params.fineTuneId);
   },
   init: (params) => {
     return {
@@ -708,18 +653,14 @@ export const retrieveFineTune: AuthenticatedTask<
   },
 };
 
-type CancelFineTuneResponseData = Prettify<
-  Awaited<ReturnType<OpenAIClientType["cancelFineTune"]>>["data"]
->;
-
 export const cancelFineTune: AuthenticatedTask<
   OpenAIClientType,
   Prettify<SpecificFineTuneRequest>,
-  CancelFineTuneResponseData
+  OpenAI.FineTunes.FineTune
 > = {
   onError: onTaskError,
   run: async (params, client) => {
-    return client.cancelFineTune(params.fineTuneId).then((res) => res.data);
+    return client.fineTunes.cancel(params.fineTuneId);
   },
   init: (params) => {
     return {
@@ -736,18 +677,14 @@ export const cancelFineTune: AuthenticatedTask<
   },
 };
 
-type ListFineTuneEventsResponseData = Prettify<
-  Awaited<ReturnType<OpenAIClientType["listFineTuneEvents"]>>["data"]
->;
-
 export const listFineTuneEvents: AuthenticatedTask<
   OpenAIClientType,
   Prettify<SpecificFineTuneRequest>,
-  ListFineTuneEventsResponseData
+  OpenAI.FineTuneEventsListResponse
 > = {
   onError: onTaskError,
   run: async (params, client) => {
-    return client.listFineTuneEvents(params.fineTuneId, false).then((res) => res.data);
+    return client.fineTunes.listEvents(params.fineTuneId, { stream: false });
   },
   init: (params) => {
     return {
@@ -768,18 +705,14 @@ type DeleteFineTunedModelRequest = {
   fineTunedModelId: string;
 };
 
-type DeleteFineTuneResponseData = Prettify<
-  Awaited<ReturnType<OpenAIClientType["deleteModel"]>>["data"]
->;
-
 export const deleteFineTune: AuthenticatedTask<
   OpenAIClientType,
   Prettify<DeleteFineTunedModelRequest>,
-  DeleteFineTuneResponseData
+  OpenAI.Models.ModelDeleted
 > = {
   onError: onTaskError,
   run: async (params, client) => {
-    return client.deleteModel(params.fineTunedModelId).then((res) => res.data);
+    return client.models.del(params.fineTunedModelId);
   },
   init: (params) => {
     return {
@@ -792,6 +725,157 @@ export const deleteFineTune: AuthenticatedTask<
           text: params.fineTunedModelId,
         },
       ],
+    };
+  },
+};
+
+/**
+ * Creates a job that fine-tunes a specified model from a given dataset.
+ *
+ * Response includes details of the enqueued job including job status and the name
+ * of the fine-tuned models once complete.
+ *
+ * [Learn more about fine-tuning](https://platform.openai.com/docs/guides/fine-tuning)
+ */
+export const createFineTuningJob: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<OpenAI.FineTuning.JobCreateParams>,
+  OpenAI.FineTuning.FineTuningJob
+> = {
+  onError: onTaskError,
+  run: async (params, client) => {
+    return client.fineTuning.jobs.create(params);
+  },
+  init: (params) => {
+    let properties = [
+      {
+        label: "File ID",
+        text: params.training_file,
+      },
+    ];
+
+    if (params.model) {
+      properties.push({
+        label: "Model",
+        text: params.model,
+      });
+    }
+
+    if (params.validation_file) {
+      properties.push({
+        label: "Validation file",
+        text: params.validation_file,
+      });
+    }
+
+    return {
+      name: "Create Fine Tuning Job",
+      params,
+      icon: "openai",
+      properties,
+    };
+  },
+};
+
+/**
+ * Get info about a fine-tuning job.
+ *
+ * [Learn more about fine-tuning](https://platform.openai.com/docs/guides/fine-tuning)
+ */
+export const retrieveFineTuningJob: AuthenticatedTask<
+  OpenAIClientType,
+  { id: string },
+  OpenAI.FineTuning.FineTuningJob
+> = {
+  onError: onTaskError,
+  run: async (params, client) => {
+    return client.fineTuning.jobs.retrieve(params.id);
+  },
+  init: (params) => {
+    return {
+      name: "Retrieve Fine Tuning Job",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "Job ID",
+          text: params.id,
+        },
+      ],
+    };
+  },
+};
+
+export const cancelFineTuningJob: AuthenticatedTask<
+  OpenAIClientType,
+  { id: string },
+  OpenAI.FineTuning.FineTuningJob
+> = {
+  onError: onTaskError,
+  run: async (params, client) => {
+    return client.fineTuning.jobs.cancel(params.id);
+  },
+  init: (params) => {
+    return {
+      name: "Cancel Fine Tuning Job",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "Job ID",
+          text: params.id,
+        },
+      ],
+    };
+  },
+};
+
+export const listFineTuningJobEvents: AuthenticatedTask<
+  OpenAIClientType,
+  { id: string },
+  OpenAI.FineTuning.FineTuningJobEvent[]
+> = {
+  onError: onTaskError,
+  run: async (params, client) => {
+    const response = await client.fineTuning.jobs.listEvents(params.id);
+
+    return response.data;
+  },
+  init: (params) => {
+    return {
+      name: "List Fine Tuning Job Events",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "Job ID",
+          text: params.id,
+        },
+      ],
+    };
+  },
+};
+
+/**
+ * List your organization's fine-tuning jobs
+ */
+export const listFineTuningJobs: AuthenticatedTask<
+  OpenAIClientType,
+  OpenAI.FineTuning.JobListParams,
+  OpenAI.FineTuning.FineTuningJob[]
+> = {
+  onError: onTaskError,
+  run: async (params, client) => {
+    const response = await client.fineTuning.jobs.list(params);
+
+    return response.data;
+  },
+  init: (params) => {
+    return {
+      name: "List Fine Tuning Jobs",
+      params,
+      icon: "openai",
+      properties: [],
     };
   },
 };

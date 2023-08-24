@@ -1,5 +1,5 @@
 import type { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
-import { Configuration, OpenAIApi } from "openai";
+import OpenAIApi from "openai";
 import * as tasks from "./tasks";
 import { OpenAIIntegrationOptions } from "./types";
 
@@ -28,12 +28,10 @@ export class OpenAI implements TriggerIntegration<IntegrationClient<OpenAIApi, t
       throw `Can't create OpenAI integration (${options.id}) as apiKey was undefined`;
     }
 
-    this.native = new OpenAIApi(
-      new Configuration({
-        apiKey: options.apiKey,
-        organization: options.organization,
-      })
-    );
+    this.native = new OpenAIApi({
+      apiKey: options.apiKey,
+      organization: options.organization,
+    });
 
     this.client = {
       tasks,
