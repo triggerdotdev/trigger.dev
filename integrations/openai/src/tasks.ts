@@ -7,13 +7,9 @@ import { createTaskUsageProperties, onTaskError } from "./taskUtils";
 
 type OpenAIClientType = InstanceType<typeof OpenAI>;
 
-type RetrieveModelRequest = {
-  model: string;
-};
-
 export const retrieveModel: AuthenticatedTask<
   OpenAIClientType,
-  Prettify<RetrieveModelRequest>,
+  { model: string },
   OpenAI.Models.Model
 > = {
   onError: onTaskError,
@@ -729,6 +725,157 @@ export const deleteFineTune: AuthenticatedTask<
           text: params.fineTunedModelId,
         },
       ],
+    };
+  },
+};
+
+/**
+ * Creates a job that fine-tunes a specified model from a given dataset.
+ *
+ * Response includes details of the enqueued job including job status and the name
+ * of the fine-tuned models once complete.
+ *
+ * [Learn more about fine-tuning](https://platform.openai.com/docs/guides/fine-tuning)
+ */
+export const createFineTuningJob: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<OpenAI.FineTuning.JobCreateParams>,
+  OpenAI.FineTuning.FineTuningJob
+> = {
+  onError: onTaskError,
+  run: async (params, client) => {
+    return client.fineTuning.jobs.create(params);
+  },
+  init: (params) => {
+    let properties = [
+      {
+        label: "File ID",
+        text: params.training_file,
+      },
+    ];
+
+    if (params.model) {
+      properties.push({
+        label: "Model",
+        text: params.model,
+      });
+    }
+
+    if (params.validation_file) {
+      properties.push({
+        label: "Validation file",
+        text: params.validation_file,
+      });
+    }
+
+    return {
+      name: "Create Fine Tuning Job",
+      params,
+      icon: "openai",
+      properties,
+    };
+  },
+};
+
+/**
+ * Get info about a fine-tuning job.
+ *
+ * [Learn more about fine-tuning](https://platform.openai.com/docs/guides/fine-tuning)
+ */
+export const retrieveFineTuningJob: AuthenticatedTask<
+  OpenAIClientType,
+  { id: string },
+  OpenAI.FineTuning.FineTuningJob
+> = {
+  onError: onTaskError,
+  run: async (params, client) => {
+    return client.fineTuning.jobs.retrieve(params.id);
+  },
+  init: (params) => {
+    return {
+      name: "Retrieve Fine Tuning Job",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "Job ID",
+          text: params.id,
+        },
+      ],
+    };
+  },
+};
+
+export const cancelFineTuningJob: AuthenticatedTask<
+  OpenAIClientType,
+  { id: string },
+  OpenAI.FineTuning.FineTuningJob
+> = {
+  onError: onTaskError,
+  run: async (params, client) => {
+    return client.fineTuning.jobs.cancel(params.id);
+  },
+  init: (params) => {
+    return {
+      name: "Cancel Fine Tuning Job",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "Job ID",
+          text: params.id,
+        },
+      ],
+    };
+  },
+};
+
+export const listFineTuningJobEvents: AuthenticatedTask<
+  OpenAIClientType,
+  { id: string },
+  OpenAI.FineTuning.FineTuningJobEvent[]
+> = {
+  onError: onTaskError,
+  run: async (params, client) => {
+    const response = await client.fineTuning.jobs.listEvents(params.id);
+
+    return response.data;
+  },
+  init: (params) => {
+    return {
+      name: "List Fine Tuning Job Events",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "Job ID",
+          text: params.id,
+        },
+      ],
+    };
+  },
+};
+
+/**
+ * List your organization's fine-tuning jobs
+ */
+export const listFineTuningJobs: AuthenticatedTask<
+  OpenAIClientType,
+  OpenAI.FineTuning.JobListParams,
+  OpenAI.FineTuning.FineTuningJob[]
+> = {
+  onError: onTaskError,
+  run: async (params, client) => {
+    const response = await client.fineTuning.jobs.list(params);
+
+    return response.data;
+  },
+  init: (params) => {
+    return {
+      name: "List Fine Tuning Jobs",
+      params,
+      icon: "openai",
+      properties: [],
     };
   },
 };
