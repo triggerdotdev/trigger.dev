@@ -344,7 +344,7 @@ importers:
     devDependencies:
       eslint: 8.31.0
       eslint-config-prettier: 8.6.0_eslint@8.31.0
-      eslint-config-turbo: 1.10.12_eslint@8.31.0
+      eslint-config-turbo: 1.10.13_eslint@8.31.0
       eslint-plugin-react: 7.31.8_eslint@8.31.0
       typescript: 4.9.4
 
@@ -647,12 +647,10 @@ importers:
       openai: ^4.2.0
       rimraf: ^3.0.2
       tsup: ^6.5.0
-      zod: 3.21.4
     dependencies:
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       openai: 4.2.0
-      zod: 3.21.4
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 18.15.13
@@ -15604,13 +15602,13 @@ packages:
       eslint: 8.31.0
     dev: true
 
-  /eslint-config-turbo/1.10.12_eslint@8.31.0:
-    resolution: {integrity: sha512-z3jfh+D7UGYlzMWGh+Kqz++hf8LOE96q3o5R8X4HTjmxaBWlLAWG+0Ounr38h+JLR2TJno0hU9zfzoPNkR9BdA==}
+  /eslint-config-turbo/1.10.13_eslint@8.31.0:
+    resolution: {integrity: sha512-Ffa0SxkRCPMtfUX/HDanEqsWoLwZTQTAXO9W4IsOtycb2MzJDrVcLmoFW5sMwCrg7gjqbrC4ZJoD+1SPPzIVqg==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
       eslint: 8.31.0
-      eslint-plugin-turbo: 1.10.12_eslint@8.31.0
+      eslint-plugin-turbo: 1.10.13_eslint@8.31.0
     dev: true
 
   /eslint-doc-generator/1.4.3_eslint@8.45.0:
@@ -16353,8 +16351,8 @@ packages:
       - typescript
     dev: true
 
-  /eslint-plugin-turbo/1.10.12_eslint@8.31.0:
-    resolution: {integrity: sha512-uNbdj+ohZaYo4tFJ6dStRXu2FZigwulR1b3URPXe0Q8YaE7thuekKNP+54CHtZPH9Zey9dmDx5btAQl9mfzGOw==}
+  /eslint-plugin-turbo/1.10.13_eslint@8.31.0:
+    resolution: {integrity: sha512-el4AAmn0zXmvHEyp1h0IQMfse10Vy8g5Vbg4IU3+vD9CSj5sDbX07iFVt8sCKg7og9Q5FAa9mXzlCf7t4vYgzg==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:

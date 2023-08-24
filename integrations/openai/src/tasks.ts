@@ -14,7 +14,7 @@ type RetrieveModelRequest = {
 export const retrieveModel: AuthenticatedTask<
   OpenAIClientType,
   Prettify<RetrieveModelRequest>,
-  OpenAI.Model
+  OpenAI.Models.Model
 > = {
   onError: onTaskError,
   run: async (params, client) => {
@@ -35,16 +35,12 @@ export const retrieveModel: AuthenticatedTask<
   },
 };
 
-type ListModelsResponseData = Awaited<ReturnType<OpenAIClientType["models"]["list"]>>;
-
-export const listModels: AuthenticatedTask<
-  OpenAIClientType,
-  void,
-  Prettify<ListModelsResponseData>
-> = {
+export const listModels: AuthenticatedTask<OpenAIClientType, void, OpenAI.Models.Model[]> = {
   onError: onTaskError,
   run: async (params, client) => {
-    return client.models.list();
+    const response = await client.models.list();
+
+    return response.data;
   },
   init: (params) => {
     return {
@@ -209,6 +205,9 @@ export const backgroundCreateChatCompletion: AuthenticatedTask<
   },
 };
 
+/**
+ * @deprecated The Edits API is deprecated; please use Chat Completions instead.
+ */
 export const createEdit: AuthenticatedTask<
   OpenAIClientType,
   Prettify<OpenAI.EditCreateParams>,
@@ -518,10 +517,12 @@ export const createFile: AuthenticatedTask<
   },
 };
 
-export const listFiles: AuthenticatedTask<OpenAIClientType, void, OpenAI.Files.FileObjectsPage> = {
+export const listFiles: AuthenticatedTask<OpenAIClientType, void, OpenAI.Files.FileObject[]> = {
   onError: onTaskError,
   run: async (params, client) => {
-    return client.files.list();
+    const response = await client.files.list();
+
+    return response.data;
   },
   init: (params) => {
     return {
@@ -610,24 +611,23 @@ export const createFineTune: AuthenticatedTask<
   },
 };
 
-export const listFineTunes: AuthenticatedTask<
-  OpenAIClientType,
-  void,
-  OpenAI.FineTunes.FineTunesPage
-> = {
-  onError: onTaskError,
-  run: async (params, client) => {
-    return client.fineTunes.list();
-  },
-  init: (params) => {
-    return {
-      name: "List fine tunes",
-      params,
-      icon: "openai",
-      properties: [],
-    };
-  },
-};
+export const listFineTunes: AuthenticatedTask<OpenAIClientType, void, OpenAI.FineTunes.FineTune[]> =
+  {
+    onError: onTaskError,
+    run: async (params, client) => {
+      const response = await client.fineTunes.list();
+
+      return response.data;
+    },
+    init: (params) => {
+      return {
+        name: "List fine tunes",
+        params,
+        icon: "openai",
+        properties: [],
+      };
+    },
+  };
 
 type SpecificFineTuneRequest = {
   fineTuneId: string;
