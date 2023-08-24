@@ -81,7 +81,7 @@ export function DeleteJobDialogContent({
         >
           <Button variant="danger/large" fullWidth>
             {isLoading ? (
-              <Spinner />
+              <Spinner color="white" />
             ) : (
               <>
                 <NamedIcon
