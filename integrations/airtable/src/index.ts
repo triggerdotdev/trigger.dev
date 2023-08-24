@@ -65,18 +65,21 @@ export class Airtable implements TriggerIntegration {
     const airtable = new Airtable(this._options);
     airtable._io = io;
     airtable._connectionKey = connectionKey;
+    airtable._client = this.createClient(auth);
+    return airtable;
+  }
+
+  createClient(auth?: ConnectionAuth) {
     if (auth) {
-      airtable._client = new AirtableSDK({
+      return new AirtableSDK({
         apiKey: auth.accessToken,
       });
-      return airtable;
     }
 
     if (this._options.token) {
-      airtable._client = new AirtableSDK({
+      return new AirtableSDK({
         apiKey: this._options.token,
       });
-      return airtable;
     }
 
     throw new Error("No auth");
@@ -106,9 +109,9 @@ export class Airtable implements TriggerIntegration {
     return new Base(this.runTask.bind(this), baseId);
   }
 
-  onTable(params: {
+  onTableChanges(params: {
     baseId: string;
-    tableId: string;
+    tableId?: string;
     changeTypes?: WebhookChangeType[];
     dataTypes?: WebhookDataType[];
   }) {

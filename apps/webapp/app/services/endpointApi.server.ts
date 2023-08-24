@@ -18,6 +18,7 @@ import {
 } from "@trigger.dev/core";
 import { safeBodyFromResponse, safeParseBodyFromResponse } from "~/utils/json";
 import { logger } from "./logger.server";
+import { ConnectionAuth } from "@trigger.dev/core";
 
 export class EndpointApiError extends Error {
   constructor(message: string, stack?: string) {
@@ -241,6 +242,7 @@ export class EndpointApi {
     params: any;
     data: any;
     request: HttpSourceRequest;
+    auth?: ConnectionAuth;
   }) {
     const response = await safeFetch(this.url, {
       method: "POST",
@@ -255,6 +257,7 @@ export class EndpointApi {
         "x-ts-http-url": options.request.url,
         "x-ts-http-method": options.request.method,
         "x-ts-http-headers": JSON.stringify(options.request.headers),
+        ...(options.auth && { "x-ts-auth": JSON.stringify(options.auth) }),
         ...(options.dynamicId && { "x-ts-dynamic-id": options.dynamicId }),
       },
       body: options.request.rawBody,

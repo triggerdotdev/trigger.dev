@@ -19,6 +19,7 @@ import type { EventSpecification, Trigger, TriggerContext } from "../types";
 import { slugifyId } from "../utils";
 import { SerializableJson } from "@trigger.dev/core";
 import { ConnectionAuth } from "@trigger.dev/core";
+import { Prettify } from "@trigger.dev/core";
 
 export type HttpSourceEvent = {
   url: string;
@@ -120,12 +121,19 @@ type RegisterFunction<
 
 export type HandlerEvent<TChannel extends ChannelNames, TParams extends any = any> = {
   rawEvent: ExternalSourceChannelMap[TChannel]["event"];
-  source: HandleTriggerSource & { params: TParams };
+  source: Prettify<Omit<HandleTriggerSource, "params"> & { params: TParams }>;
+  metadata?: any;
 };
 
-type HandlerFunction<TChannel extends ChannelNames, TParams extends any> = (
+type HandlerFunction<
+  TChannel extends ChannelNames,
+  TParams extends any,
+  TTriggerIntegration extends TriggerIntegration,
+> = (
   event: HandlerEvent<TChannel, TParams>,
-  logger: Logger
+  logger: Logger,
+  integration: TTriggerIntegration,
+  auth?: ConnectionAuth
 ) => Promise<{ events: SendEvent[]; response?: NormalizedResponse } | void>;
 
 type KeyFunction<TParams extends any> = (params: TParams) => string;
@@ -147,7 +155,7 @@ type ExternalSourceOptions<
   integration: TIntegration;
   register: RegisterFunction<TIntegration, TParams, TChannel, TTriggerOptionDefinitions>;
   filter?: FilterFunction<TParams, TTriggerOptionDefinitions>;
-  handler: HandlerFunction<TChannel, TParams>;
+  handler: HandlerFunction<TChannel, TParams, TIntegration>;
   key: KeyFunction<TParams>;
   properties?: (params: TParams) => DisplayProperty[];
 };
@@ -175,18 +183,16 @@ export class ExternalSource<
   async handle(
     source: HandleTriggerSource,
     rawEvent: ExternalSourceChannelMap[TChannel]["event"],
-    logger: Logger,
-    auth?: ConnectionAuth
+    logger: Logger
   ) {
     return this.options.handler(
       {
         source: { ...source, params: source.params as TParams },
         rawEvent,
         //todo pass the integration and auth through
-        // integration: this.options.integration,
-        // auth,
       },
-      logger
+      logger,
+      this.options.integration
     );
   }
 

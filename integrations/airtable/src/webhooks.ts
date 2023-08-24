@@ -6,9 +6,11 @@ import {
   IntegrationTaskKey,
   Logger,
 } from "@trigger.dev/sdk";
-import { Airtable, AirtableRunTask } from "./index";
+import AirtableSDK from "airtable";
 import { z } from "zod";
 import * as events from "./events";
+import { Airtable, AirtableRunTask } from "./index";
+import { ListWebhooksResponseSchema } from "./schemas";
 
 const WebhookFromSourceSchema = z.union([
   z.literal("client"),
@@ -69,7 +71,13 @@ export class Webhooks {
           body: JSON.stringify({
             notificationUrl: url,
             specification: {
-              options,
+              options: {
+                ...options,
+                includes: {
+                  includePreviousCellValues: true,
+                  includePreviousFieldDefinitions: true,
+                },
+              },
             },
           }),
           redirect: "follow",
@@ -323,7 +331,8 @@ export function createWebhookEventSource(
   });
 }
 
-const WebhookPayloadSchema = z.object({
+/** This is the data received from Airtable. It's not useful on its own */
+const ReceivedPayload = z.object({
   base: z.object({
     id: z.string(),
   }),
@@ -333,16 +342,16 @@ const WebhookPayloadSchema = z.object({
   timestamp: z.coerce.date(),
 });
 
-//todo add "metadata" to event: HandlerEvent<"HTTP">
-//todo need to pass through the integration (ExternalSource has it), plus the auth
-async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
+//todo add "metadata" to event: HandlerEvent<"HTTP">, we'll put the cursor in here
+async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integration: Airtable) {
   logger.debug("[@trigger.dev/airtable] Handling webhook payload");
 
-  const { rawEvent: request, source } = event;
+  const client = integration.createClient(event.source.auth);
+
+  const { rawEvent: request, source, metadata } = event;
 
   if (!request.body) {
     logger.debug("[@trigger.dev/airtable] No body found");
-
     return { events: [] };
   }
 
@@ -363,18 +372,25 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
     logger.error("[@trigger.dev/airtable] Error validating webhook signature, they don't match");
   }
 
-  const payload = WebhookPayloadSchema.parse(JSON.parse(rawBody));
+  const webhookPayload = ReceivedPayload.parse(JSON.parse(rawBody));
+
+  //fetch the actual payloads
+  const payloads = await getPayload(webhookPayload.base.id, webhookPayload.webhook.id, client);
+
+  console.log("Airtable payloads", payloads);
+
+  //todo the payload can have more to fetch, so we need to fetch the next page
 
   //todo this all needs updating, to be the data fetched from the list payloads endpoint
-
   return {
     events: [
       {
+        //todo make the event id, the timestamp + baseTransactionNumber
         // id: payload.base.id,
-        payload: payload,
+        payload: webhookPayload,
         source: "airtable.com",
-        name: "add",
-        timestamp: payload.timestamp,
+        name: "changed",
+        timestamp: webhookPayload.timestamp,
         context: {},
       },
     ],
@@ -382,3 +398,35 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
     // metadata: { cursor },
   };
 }
+
+async function getAllPayloads(
+  baseId: string,
+  webhookId: string,
+  sdk: AirtableSDK,
+  cursor?: number
+) {}
+
+async function getPayload(baseId: string, webhookId: string, sdk: AirtableSDK, cursor?: number) {
+  const url = new URL(`${apiUrl}/${baseId}/webhooks/${webhookId}/payloads`);
+  if (cursor) {
+    url.searchParams.append("cursor", cursor.toString());
+  }
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${sdk._apiKey}`,
+    },
+    redirect: "follow",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to list webhooks: ${response.statusText}`);
+  }
+
+  const webhook = await response.json();
+  const parsed = ListWebhooksResponseSchema.parse(webhook);
+
+  return webhook;
+}
+
+//todo new column on TriggerSource called metadata

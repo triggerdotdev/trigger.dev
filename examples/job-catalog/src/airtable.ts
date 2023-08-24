@@ -101,11 +101,13 @@ client.defineJob({
   },
 });
 
+//todo changes the structure of the trigger so it's airtable.base("val").onChanges({
+
 client.defineJob({
   id: "airtable-on-table",
   name: "Airtable Example: onTable",
   version: "0.1.0",
-  trigger: airtable.onTable({
+  trigger: airtable.onTableChanges({
     baseId: "appSX6ly4nZGfdUSy",
     tableId: "tblr5BReu2yeOMk7n",
   }),

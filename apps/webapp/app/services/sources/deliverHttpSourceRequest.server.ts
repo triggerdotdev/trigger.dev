@@ -4,6 +4,9 @@ import { prisma } from "~/db.server";
 import { EndpointApi } from "../endpointApi.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
 import { getSecretStore } from "../secrets/secretStore.server";
+import { resolveApiConnection, resolveRunConnection } from "~/models/runConnection.server";
+import { ConnectionAuth } from "@trigger.dev/sdk";
+import { resolveSourceConnection } from "~/models/sourceConnection.server";
 
 export class DeliverHttpSourceRequestService {
   #prismaClient: PrismaClient;
@@ -28,7 +31,11 @@ export class DeliverHttpSourceRequestService {
             secretReference: true,
             dynamicTrigger: true,
             externalAccount: true,
-            integration: true,
+            integration: {
+              include: {
+                connections: true,
+              },
+            },
           },
         },
       },
@@ -51,7 +58,7 @@ export class DeliverHttpSourceRequestService {
       throw new Error(`Secret not found for ${httpSourceRequest.source.key}`);
     }
 
-    // TODO: implement auth for http source requests
+    const auth = await resolveSourceConnection(this.#prismaClient, httpSourceRequest.source);
 
     const clientApi = new EndpointApi(
       httpSourceRequest.environment.apiKey,
@@ -70,6 +77,7 @@ export class DeliverHttpSourceRequestService {
         headers: httpSourceRequest.headers as Record<string, string>,
         rawBody: httpSourceRequest.body,
       },
+      auth,
     });
 
     await this.#prismaClient.httpSourceRequestDelivery.update({

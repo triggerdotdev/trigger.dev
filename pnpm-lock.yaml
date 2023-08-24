@@ -344,7 +344,7 @@ importers:
     devDependencies:
       eslint: 8.31.0
       eslint-config-prettier: 8.6.0_eslint@8.31.0
-      eslint-config-turbo: 1.10.12_eslint@8.31.0
+      eslint-config-turbo: 1.10.13_eslint@8.31.0
       eslint-plugin-react: 7.31.8_eslint@8.31.0
       typescript: 4.9.4
 
@@ -611,8 +611,8 @@ importers:
 
   integrations/airtable:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.0.8
-      '@trigger.dev/sdk': workspace:^2.0.8
+      '@trigger.dev/integration-kit': workspace:^2.0.10
+      '@trigger.dev/sdk': workspace:^2.0.10
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       airtable: ^0.12.1
@@ -826,6 +826,9 @@ importers:
       rimraf: 3.0.2
       tsup: 7.1.0_typescript@4.9.4
       typescript: 4.9.4
+
+  packages/astro:
+    specifiers: {}
 
   packages/cli:
     specifiers:
@@ -12752,7 +12755,7 @@ packages:
   /axios/0.26.1:
     resolution: {integrity: sha512-fPwcX4EvnSHuInCMItEhAGnaSEXRBjtzh9fOtsE6E1G6p7vl7edEeZe11QHf18+6+9gR5PbKV/sGKNaD8YaMeA==}
     dependencies:
-      follow-redirects: 1.15.2_debug@4.3.2
+      follow-redirects: 1.15.2
     transitivePeerDependencies:
       - debug
     dev: false
@@ -12760,7 +12763,7 @@ packages:
   /axios/0.27.2:
     resolution: {integrity: sha512-t+yRIyySRTp/wua5xEr+z1q60QmLq8ABsS5O9Me1AsE5dfKqgnCFzwiCZZ/cGNd1lq4/7akDWMxdhVlucjmnOQ==}
     dependencies:
-      follow-redirects: 1.15.2_debug@4.3.2
+      follow-redirects: 1.15.2
       form-data: 4.0.0
     transitivePeerDependencies:
       - debug
@@ -12768,7 +12771,7 @@ packages:
   /axios/1.4.0:
     resolution: {integrity: sha512-S4XCWMEmzvo64T9GfvQDOXgYRDJ/wsSZc7Jvdgx5u1sd0JwsuPLqb3SYmusag+edF6ziyMensPVqLTSc1PiSEA==}
     dependencies:
-      follow-redirects: 1.15.2_debug@4.3.2
+      follow-redirects: 1.15.2
       form-data: 4.0.0
       proxy-from-env: 1.1.0
     transitivePeerDependencies:
@@ -14350,6 +14353,7 @@ packages:
         optional: true
     dependencies:
       ms: 2.1.2
+    dev: false
 
   /debug/4.3.4:
     resolution: {integrity: sha512-PRWFHuSU3eDtQJPvnNY7Jcket1j0t5OuOsFzPPzsekD52Zl8qUfFIPEiswXqIvHWGVHOgX+7G/vCNNhehwxfkQ==}
@@ -15617,13 +15621,13 @@ packages:
       eslint: 8.31.0
     dev: true
 
-  /eslint-config-turbo/1.10.12_eslint@8.31.0:
-    resolution: {integrity: sha512-z3jfh+D7UGYlzMWGh+Kqz++hf8LOE96q3o5R8X4HTjmxaBWlLAWG+0Ounr38h+JLR2TJno0hU9zfzoPNkR9BdA==}
+  /eslint-config-turbo/1.10.13_eslint@8.31.0:
+    resolution: {integrity: sha512-Ffa0SxkRCPMtfUX/HDanEqsWoLwZTQTAXO9W4IsOtycb2MzJDrVcLmoFW5sMwCrg7gjqbrC4ZJoD+1SPPzIVqg==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
       eslint: 8.31.0
-      eslint-plugin-turbo: 1.10.12_eslint@8.31.0
+      eslint-plugin-turbo: 1.10.13_eslint@8.31.0
     dev: true
 
   /eslint-doc-generator/1.4.3_eslint@8.45.0:
@@ -16366,8 +16370,8 @@ packages:
       - typescript
     dev: true
 
-  /eslint-plugin-turbo/1.10.12_eslint@8.31.0:
-    resolution: {integrity: sha512-uNbdj+ohZaYo4tFJ6dStRXu2FZigwulR1b3URPXe0Q8YaE7thuekKNP+54CHtZPH9Zey9dmDx5btAQl9mfzGOw==}
+  /eslint-plugin-turbo/1.10.13_eslint@8.31.0:
+    resolution: {integrity: sha512-el4AAmn0zXmvHEyp1h0IQMfse10Vy8g5Vbg4IU3+vD9CSj5sDbX07iFVt8sCKg7og9Q5FAa9mXzlCf7t4vYgzg==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
@@ -17240,7 +17244,6 @@ packages:
     peerDependenciesMeta:
       debug:
         optional: true
-    dev: false
 
   /follow-redirects/1.15.2_debug@4.3.2:
     resolution: {integrity: sha512-VQLG33o04KaQ8uYi2tVNbdrWp1QWxNNea+nmIB4EVM28v0hmP17z7aG1+wAkNzVq4KeXTq3221ye5qTJP91JwA==}
@@ -17252,6 +17255,7 @@ packages:
         optional: true
     dependencies:
       debug: 4.3.2
+    dev: false
 
   /for-each/0.3.3:
     resolution: {integrity: sha512-jqYfLp7mo9vIyQf8ykW2v7A+2N4QjeCeI5+Dz9XraiO1ign81wjiH7Fb9vSOWvQfNtmSa4H2RoQTrrXivdUZmw==}

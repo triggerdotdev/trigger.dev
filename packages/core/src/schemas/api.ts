@@ -123,6 +123,7 @@ export const HandleTriggerSourceSchema = z.object({
   secret: z.string(),
   data: z.any(),
   params: z.any(),
+  auth: ConnectionAuthSchema.optional(),
 });
 
 export type HandleTriggerSource = z.infer<typeof HandleTriggerSourceSchema>;
@@ -147,6 +148,14 @@ export const HttpSourceRequestHeadersSchema = z.object({
   "x-ts-http-url": z.string(),
   "x-ts-http-method": z.string(),
   "x-ts-http-headers": z.string().transform((s) => z.record(z.string()).parse(JSON.parse(s))),
+  "x-ts-auth": z
+    .string()
+    .optional()
+    .transform((s) => {
+      if (s === undefined) return;
+      const json = JSON.parse(s);
+      return ConnectionAuthSchema.parse(json);
+    }),
 });
 
 export type HttpSourceRequestHeaders = z.output<typeof HttpSourceRequestHeadersSchema>;

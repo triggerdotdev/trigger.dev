@@ -39,6 +39,7 @@ import type {
   TriggerPreprocessContext,
 } from "./types";
 import { RegisterSourceEventV2 } from "@trigger.dev/core";
+import { ConnectionAuth } from "@trigger.dev/core";
 
 const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
   name: REGISTER_SOURCE_EVENT_V2,
@@ -370,8 +371,7 @@ export class TriggerClient {
         const secret = headers.data["x-ts-secret"];
         const params = headers.data["x-ts-params"];
         const data = headers.data["x-ts-data"];
-
-        //todo auth details as a header, JSON stringified, passed down all the way to ExternalSource handler
+        const auth = headers.data["x-ts-auth"];
 
         const source = {
           key,
@@ -379,6 +379,7 @@ export class TriggerClient {
           secret,
           params,
           data,
+          auth,
         };
 
         const { response, events } = await this.#handleHttpSourceRequest(source, sourceRequest);
@@ -750,6 +751,7 @@ export class TriggerClient {
       secret: string;
       data: any;
       params: any;
+      auth?: ConnectionAuth;
     },
     sourceRequest: Request
   ): Promise<{ response: NormalizedResponse; events: SendEvent[] }> {
