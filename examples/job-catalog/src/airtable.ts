@@ -102,7 +102,6 @@ client.defineJob({
 });
 
 //todo changes the structure of the trigger so it's airtable.base("val").onChanges({
-
 client.defineJob({
   id: "airtable-on-table",
   name: "Airtable Example: onTable",
@@ -111,7 +110,9 @@ client.defineJob({
     baseId: "appSX6ly4nZGfdUSy",
     tableId: "tblr5BReu2yeOMk7n",
   }),
-  run: async (payload, io, ctx) => {},
+  run: async (payload, io, ctx) => {
+    await io.logger.log(`transaction number ${payload.baseTransactionNumber}`);
+  },
 });
 
 createExpressServer(client);

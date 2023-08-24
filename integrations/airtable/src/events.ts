@@ -1,12 +1,15 @@
 import { EventSpecification } from "@trigger.dev/sdk";
+import { WebhookPayload } from "./schemas";
 
-type OnTableChanged = any;
+type OnTableChanged = WebhookPayload;
 
 export const onTableChanged: EventSpecification<OnTableChanged> = {
   name: "changed",
   title: "On Table Changed",
   source: "airtable.com",
   icon: "airtable",
+  //todo properties with base and table (if there is one), maybe other specs too
+  // properties: [
   //todo: add a payload example
   // examples: [
   //   {
@@ -43,5 +46,5 @@ export const onTableChanged: EventSpecification<OnTableChanged> = {
   //   },
   // ],
   parsePayload: (payload) => payload as OnTableChanged,
-  runProperties: (payload) => [{ label: "Changes", text: `${payload.payloads?.length}` }],
+  runProperties: (payload) => [{ label: "Change source", text: payload.actionMetadata.source }],
 };
