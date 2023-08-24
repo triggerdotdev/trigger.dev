@@ -41,7 +41,7 @@ export default function Page() {
                     leadingIconClassName="text-bright"
                     LeadingIcon="trash-can"
                   >
-                    Delete Job
+                    I want to delete this Job
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
