@@ -49,9 +49,6 @@ const WebhookAction = z.discriminatedUnion("source", [
   z.object({
     source: z.literal("unknown"),
   }),
-  z.object({
-    source: z.string(),
-  }),
 ]);
 
 const CreatedFieldSchema = z.object({
@@ -137,10 +134,12 @@ const ChangedTableSchema = z.object({
   changedRecordsById: z.record(ChangedRecordSchema).optional(),
   createdFieldsById: z.record(CreatedFieldSchema).optional(),
   createdRecordsById: z.record(CreatedRecordSchema).optional(),
-  changedMetadata: z.object({
-    current: ChangedTableMetadata,
-    previous: ChangedTableMetadata.optional(),
-  }),
+  changedMetadata: z
+    .object({
+      current: ChangedTableMetadata,
+      previous: ChangedTableMetadata.optional(),
+    })
+    .optional(),
   destroyedFieldIds: z.array(z.string()).optional(),
   destroyedRecordIds: z.array(z.string()).optional(),
 });
@@ -173,3 +172,5 @@ export const ListWebhooksResponseSchema = z.object({
   mightHaveMore: z.boolean(),
   payloads: z.array(WebhookPayloadSchema),
 });
+
+export type ListWebhooksResponse = z.infer<typeof ListWebhooksResponseSchema>;

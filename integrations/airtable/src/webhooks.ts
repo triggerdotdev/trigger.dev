@@ -10,7 +10,7 @@ import AirtableSDK from "airtable";
 import { z } from "zod";
 import * as events from "./events";
 import { Airtable, AirtableRunTask } from "./index";
-import { ListWebhooksResponseSchema } from "./schemas";
+import { ListWebhooksResponse, ListWebhooksResponseSchema } from "./schemas";
 
 const WebhookFromSourceSchema = z.union([
   z.literal("client"),
@@ -375,27 +375,30 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integ
   const webhookPayload = ReceivedPayload.parse(JSON.parse(rawBody));
 
   //fetch the actual payloads
-  const payloads = await getPayload(webhookPayload.base.id, webhookPayload.webhook.id, client);
+  //todo pass cursor in here
+  const response = await getAllPayloads(
+    webhookPayload.base.id,
+    webhookPayload.webhook.id,
+    client,
+    undefined
+  );
 
-  console.log("Airtable payloads", payloads);
-
-  //todo the payload can have more to fetch, so we need to fetch the next page
+  console.log("Airtable payloads", JSON.stringify(response));
 
   //todo this all needs updating, to be the data fetched from the list payloads endpoint
   return {
-    events: [
-      {
-        //todo make the event id, the timestamp + baseTransactionNumber
-        // id: payload.base.id,
-        payload: webhookPayload,
-        source: "airtable.com",
-        name: "changed",
-        timestamp: webhookPayload.timestamp,
-        context: {},
-      },
-    ],
+    events: response
+      ? response.payloads.map((payload) => ({
+          id: `${payload.timestamp}-${payload.baseTransactionNumber}`,
+          payload: payload,
+          source: "airtable.com",
+          name: "changed",
+          timestamp: payload.timestamp,
+          context: {},
+        }))
+      : [],
     //todo the last cursor, for next time
-    // metadata: { cursor },
+    metadata: { cursor: response?.cursor },
   };
 }
 
@@ -403,10 +406,33 @@ async function getAllPayloads(
   baseId: string,
   webhookId: string,
   sdk: AirtableSDK,
-  cursor?: number
-) {}
+  cursor: number | undefined
+) {
+  let response: ListWebhooksResponse | undefined = undefined;
+  let hasMore = true;
 
-async function getPayload(baseId: string, webhookId: string, sdk: AirtableSDK, cursor?: number) {
+  while (hasMore) {
+    const newResponse = await getPayload(baseId, webhookId, sdk, cursor);
+    cursor = newResponse.cursor;
+    hasMore = newResponse.mightHaveMore;
+
+    if (!response) {
+      response = newResponse;
+      continue;
+    }
+
+    response.payloads.push(...newResponse.payloads);
+  }
+
+  return response;
+}
+
+async function getPayload(
+  baseId: string,
+  webhookId: string,
+  sdk: AirtableSDK,
+  cursor: number | undefined
+) {
   const url = new URL(`${apiUrl}/${baseId}/webhooks/${webhookId}/payloads`);
   if (cursor) {
     url.searchParams.append("cursor", cursor.toString());
@@ -424,9 +450,7 @@ async function getPayload(baseId: string, webhookId: string, sdk: AirtableSDK, c
   }
 
   const webhook = await response.json();
-  const parsed = ListWebhooksResponseSchema.parse(webhook);
-
-  return webhook;
+  return ListWebhooksResponseSchema.parse(webhook);
 }
 
 //todo new column on TriggerSource called metadata
