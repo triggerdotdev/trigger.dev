@@ -1,6 +1,6 @@
 import type { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
 import { Resend as ResendClient } from "resend";
-
+import {ErrorResponse} from "./ErrorInterface"
 
 import type { AuthenticatedTask } from "@trigger.dev/sdk";
 
@@ -8,28 +8,28 @@ type SendEmailData = Parameters<InstanceType<typeof ResendClient>["sendEmail"]>[
 
 type SendEmailResponse = { id: string };
 
-function isRequestError(error: unknown): boolean {
+function isRequestError(error: unknown): error is ErrorResponse {
   return typeof error === "object" && error !== null && "status" in error;
 }
 
-function onError(error: any) {
+function onError(error: unknown) {
+  console.log(error);
   if (!isRequestError(error)) {
     return;
   }
 
   // Check if this is a rate limit error
-  if (error.status === 429 && error.response) {
+  if (error.status === 429) {
     const rateLimitReset = error.response.headers["x-ratelimit-reset"];
-    const rateLimitRemaining = error.response.headers["ratelimit-remaining"];
 
-    if (rateLimitRemaining === "0" && rateLimitReset) {
+    if (rateLimitReset) {
       const resetDate = new Date(Number(rateLimitReset) * 1000);
 
       return {
         retryAt: resetDate,
         error,
       };
-    }
+    } 
   }
 }
 
