@@ -1,9 +1,12 @@
 import {
+  ConnectionAuth,
+  DeserializedJson,
   ErrorWithStackSchema,
   GetRunOptionsWithTaskDetails,
   GetRunsOptions,
   HandleTriggerSource,
   HttpSourceRequestHeadersSchema,
+  HttpSourceResponseMetadata,
   IndexEndpointResponse,
   InitializeTriggerBodySchema,
   LogLevel,
@@ -14,6 +17,7 @@ import {
   Prettify,
   REGISTER_SOURCE_EVENT_V2,
   RegisterSourceEventSchemaV2,
+  RegisterSourceEventV2,
   RegisterTriggerBodyV2,
   RunJobBody,
   RunJobBodySchema,
@@ -31,15 +35,13 @@ import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { Job, JobOptions } from "./job";
 import { DynamicTrigger } from "./triggers/dynamic";
 import { EventTrigger } from "./triggers/eventTrigger";
-import { ExternalSource, TriggerOptionRecord } from "./triggers/externalSource";
+import { ExternalSource } from "./triggers/externalSource";
 import type {
   EventSpecification,
   Trigger,
   TriggerContext,
   TriggerPreprocessContext,
 } from "./types";
-import { RegisterSourceEventV2 } from "@trigger.dev/core";
-import { ConnectionAuth } from "@trigger.dev/core";
 
 const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
   name: REGISTER_SOURCE_EVENT_V2,
@@ -82,6 +84,7 @@ export class TriggerClient {
     ) => Promise<{
       events: Array<SendEvent>;
       response?: NormalizedResponse;
+      metadata?: HttpSourceResponseMetadata;
     } | void>
   > = {};
   #registeredDynamicTriggers: Record<
@@ -372,6 +375,7 @@ export class TriggerClient {
         const params = headers.data["x-ts-params"];
         const data = headers.data["x-ts-data"];
         const auth = headers.data["x-ts-auth"];
+        const inputMetadata = headers.data["x-ts-metadata"];
 
         const source = {
           key,
@@ -380,15 +384,20 @@ export class TriggerClient {
           params,
           data,
           auth,
+          metadata: inputMetadata,
         };
 
-        const { response, events } = await this.#handleHttpSourceRequest(source, sourceRequest);
+        const { response, events, metadata } = await this.#handleHttpSourceRequest(
+          source,
+          sourceRequest
+        );
 
         return {
           status: 200,
           body: {
             events,
             response,
+            metadata,
           },
         };
       }
@@ -752,9 +761,14 @@ export class TriggerClient {
       data: any;
       params: any;
       auth?: ConnectionAuth;
+      metadata?: DeserializedJson;
     },
     sourceRequest: Request
-  ): Promise<{ response: NormalizedResponse; events: SendEvent[] }> {
+  ): Promise<{
+    response: NormalizedResponse;
+    events: SendEvent[];
+    metadata?: HttpSourceResponseMetadata;
+  }> {
     this.#internalLogger.debug("Handling HTTP source request", {
       source,
     });
@@ -804,6 +818,7 @@ export class TriggerClient {
             ok: true,
           },
         },
+        metadata: results.metadata,
       };
     }
 
@@ -847,6 +862,7 @@ export class TriggerClient {
           ok: true,
         },
       },
+      metadata: results.metadata,
     };
   }
 

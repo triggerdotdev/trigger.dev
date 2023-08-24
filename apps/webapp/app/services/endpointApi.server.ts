@@ -1,6 +1,7 @@
 import {
   ApiEventLog,
   DeliverEventResponseSchema,
+  DeserializedJson,
   ErrorWithStackSchema,
   HttpSourceRequest,
   HttpSourceResponseSchema,
@@ -243,6 +244,7 @@ export class EndpointApi {
     data: any;
     request: HttpSourceRequest;
     auth?: ConnectionAuth;
+    metadata?: any;
   }) {
     const response = await safeFetch(this.url, {
       method: "POST",
@@ -259,6 +261,7 @@ export class EndpointApi {
         "x-ts-http-headers": JSON.stringify(options.request.headers),
         ...(options.auth && { "x-ts-auth": JSON.stringify(options.auth) }),
         ...(options.dynamicId && { "x-ts-dynamic-id": options.dynamicId }),
+        ...(options.metadata && { "x-ts-metadata": JSON.stringify(options.metadata) }),
       },
       body: options.request.rawBody,
     });

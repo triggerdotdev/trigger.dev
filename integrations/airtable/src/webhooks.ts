@@ -342,13 +342,20 @@ const ReceivedPayload = z.object({
   timestamp: z.coerce.date(),
 });
 
-//todo add "metadata" to event: HandlerEvent<"HTTP">, we'll put the cursor in here
+const SourceMetadataSchema = z
+  .object({
+    cursor: z.number().optional(),
+  })
+  .optional();
+
 async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integration: Airtable) {
   logger.debug("[@trigger.dev/airtable] Handling webhook payload");
 
+  console.log("webhookHandler start", JSON.stringify(event));
+
   const client = integration.createClient(event.source.auth);
 
-  const { rawEvent: request, source, metadata } = event;
+  const { rawEvent: request, source } = event;
 
   if (!request.body) {
     logger.debug("[@trigger.dev/airtable] No body found");
@@ -373,19 +380,18 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integ
   }
 
   const webhookPayload = ReceivedPayload.parse(JSON.parse(rawBody));
+  const parsedMetadata = SourceMetadataSchema.parse(source.metadata);
 
   //fetch the actual payloads
-  //todo pass cursor in here
   const response = await getAllPayloads(
     webhookPayload.base.id,
     webhookPayload.webhook.id,
     client,
-    undefined
+    parsedMetadata?.cursor
   );
 
-  console.log("Airtable payloads", JSON.stringify(response));
+  console.log("Airtable response", JSON.stringify(response));
 
-  //todo this all needs updating, to be the data fetched from the list payloads endpoint
   return {
     events: response
       ? response.payloads.map((payload) => ({
@@ -397,8 +403,7 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integ
           context: {},
         }))
       : [],
-    //todo the last cursor, for next time
-    metadata: { cursor: response?.cursor },
+    metadata: response?.cursor ? { cursor: response.cursor } : undefined,
   };
 }
 

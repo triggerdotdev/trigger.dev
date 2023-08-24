@@ -65,7 +65,7 @@ export class DeliverHttpSourceRequestService {
       httpSourceRequest.endpoint.url
     );
 
-    const { response, events } = await clientApi.deliverHttpSourceRequest({
+    const { response, events, metadata } = await clientApi.deliverHttpSourceRequest({
       key: httpSourceRequest.source.key,
       dynamicId: httpSourceRequest.source.dynamicTrigger?.slug,
       secret: secret.secret,
@@ -78,6 +78,7 @@ export class DeliverHttpSourceRequestService {
         rawBody: httpSourceRequest.body,
       },
       auth,
+      metadata: httpSourceRequest.source.metadata,
     });
 
     await this.#prismaClient.httpSourceRequestDelivery.update({
@@ -88,6 +89,17 @@ export class DeliverHttpSourceRequestService {
         deliveredAt: new Date(),
       },
     });
+
+    if (metadata) {
+      await this.#prismaClient.triggerSource.update({
+        where: {
+          id: httpSourceRequest.source.id,
+        },
+        data: {
+          metadata: metadata,
+        },
+      });
+    }
 
     const ingestService = new IngestSendEvent();
 

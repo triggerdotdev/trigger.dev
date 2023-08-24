@@ -883,6 +883,8 @@ model TriggerSource {
 
   options TriggerSourceOption[]
 
+  metadata Json?
+
   secretReference   SecretReference @relation(fields: [secretReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   secretReferenceId String
 

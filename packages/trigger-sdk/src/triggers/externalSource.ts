@@ -4,6 +4,7 @@ import {
   DisplayProperty,
   EventFilter,
   HandleTriggerSource,
+  HttpSourceResponseMetadata,
   Logger,
   NormalizedResponse,
   RegisterTriggerSource,
@@ -122,7 +123,6 @@ type RegisterFunction<
 export type HandlerEvent<TChannel extends ChannelNames, TParams extends any = any> = {
   rawEvent: ExternalSourceChannelMap[TChannel]["event"];
   source: Prettify<Omit<HandleTriggerSource, "params"> & { params: TParams }>;
-  metadata?: any;
 };
 
 type HandlerFunction<
@@ -134,7 +134,11 @@ type HandlerFunction<
   logger: Logger,
   integration: TTriggerIntegration,
   auth?: ConnectionAuth
-) => Promise<{ events: SendEvent[]; response?: NormalizedResponse } | void>;
+) => Promise<{
+  events: SendEvent[];
+  response?: NormalizedResponse;
+  metadata?: HttpSourceResponseMetadata;
+} | void>;
 
 type KeyFunction<TParams extends any> = (params: TParams) => string;
 type FilterFunction<
@@ -189,7 +193,6 @@ export class ExternalSource<
       {
         source: { ...source, params: source.params as TParams },
         rawEvent,
-        //todo pass the integration and auth through
       },
       logger,
       this.options.integration

@@ -118,12 +118,16 @@ export const TriggerSourceSchema = z.object({
   key: z.string(),
 });
 
+const HttpSourceResponseMetadataSchema = DeserializedJsonSchema;
+export type HttpSourceResponseMetadata = z.infer<typeof HttpSourceResponseMetadataSchema>;
+
 export const HandleTriggerSourceSchema = z.object({
   key: z.string(),
   secret: z.string(),
   data: z.any(),
   params: z.any(),
   auth: ConnectionAuthSchema.optional(),
+  metadata: HttpSourceResponseMetadataSchema.optional(),
 });
 
 export type HandleTriggerSource = z.infer<typeof HandleTriggerSourceSchema>;
@@ -155,6 +159,14 @@ export const HttpSourceRequestHeadersSchema = z.object({
       if (s === undefined) return;
       const json = JSON.parse(s);
       return ConnectionAuthSchema.parse(json);
+    }),
+  "x-ts-metadata": z
+    .string()
+    .optional()
+    .transform((s) => {
+      if (s === undefined) return;
+      const json = JSON.parse(s);
+      return DeserializedJsonSchema.parse(json);
     }),
 });
 
@@ -643,6 +655,7 @@ export type NormalizedResponse = z.infer<typeof NormalizedResponseSchema>;
 export const HttpSourceResponseSchema = z.object({
   response: NormalizedResponseSchema,
   events: z.array(RawEventSchema),
+  metadata: HttpSourceResponseMetadataSchema.optional(),
 });
 
 export const RegisterTriggerBodySchemaV1 = z.object({
