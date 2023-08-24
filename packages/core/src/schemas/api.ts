@@ -68,7 +68,14 @@ export const RegisterTriggerSourceSchema = z.object({
 
 export type RegisterTriggerSource = z.infer<typeof RegisterTriggerSourceSchema>;
 
-export const RegisterSourceEventV1Schema = z.object({
+const SourceEventOptionSchema = z.object({
+  name: z.string(),
+  value: z.string(),
+});
+
+export type SourceEventOption = z.infer<typeof SourceEventOptionSchema>;
+
+export const RegisterSourceEventSchemaV1 = z.object({
   /** The id of the source */
   id: z.string(),
   source: RegisterTriggerSourceSchema,
@@ -78,14 +85,7 @@ export const RegisterSourceEventV1Schema = z.object({
   dynamicTriggerId: z.string().optional(),
 });
 
-export type RegisterSourceEventV1 = z.infer<typeof RegisterSourceEventV1Schema>;
-
-const SourceEventOptionSchema = z.object({
-  name: z.string(),
-  value: z.string(),
-});
-
-export type SourceEventOption = z.infer<typeof SourceEventOptionSchema>;
+export type RegisterSourceEventV1 = z.infer<typeof RegisterSourceEventSchemaV1>;
 
 const RegisteredOptionsDiffSchema = z.object({
   desired: z.array(z.string()),
@@ -636,12 +636,19 @@ export const HttpSourceResponseSchema = z.object({
   events: z.array(RawEventSchema),
 });
 
-export const RegisterTriggerBodySchema = z.object({
+export const RegisterTriggerBodySchemaV1 = z.object({
   rule: EventRuleSchema,
   source: SourceMetadataV1Schema,
 });
 
-export type RegisterTriggerBody = z.infer<typeof RegisterTriggerBodySchema>;
+export type RegisterTriggerBodyV1 = z.infer<typeof RegisterTriggerBodySchemaV1>;
+
+export const RegisterTriggerBodySchemaV2 = z.object({
+  rule: EventRuleSchema,
+  source: SourceMetadataV2Schema,
+});
+
+export type RegisterTriggerBodyV2 = z.infer<typeof RegisterTriggerBodySchemaV2>;
 
 export const InitializeTriggerBodySchema = z.object({
   id: z.string(),

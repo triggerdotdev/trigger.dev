@@ -1,4 +1,4 @@
-import { RegisterSourceEventV1, RegisterTriggerBody } from "@trigger.dev/core";
+import { RegisterSourceEventV1, RegisterTriggerBodyV1 } from "@trigger.dev/core";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
@@ -6,7 +6,7 @@ import { AuthenticatedEnvironment } from "../apiAuth.server";
 import { getSecretStore } from "../secrets/secretStore.server";
 import { RegisterSourceServiceV1 } from "../sources/registerSourceV1.server";
 
-export class RegisterTriggerSourceService {
+export class RegisterTriggerSourceServiceV1 {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
@@ -23,7 +23,7 @@ export class RegisterTriggerSourceService {
     registrationMetadata,
   }: {
     environment: AuthenticatedEnvironment;
-    payload: RegisterTriggerBody;
+    payload: RegisterTriggerBodyV1;
     id: string;
     endpointSlug: string;
     key: string;
@@ -141,7 +141,7 @@ export class RegisterTriggerSourceService {
             },
             clientId: triggerSource.integration.slug,
           },
-          events: triggerSource.events.map((e) => e.name),
+          events: triggerSource.options.map((e) => e.value),
           missingEvents: [],
           orphanedEvents: [],
         };

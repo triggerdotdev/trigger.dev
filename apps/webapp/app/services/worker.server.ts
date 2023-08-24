@@ -19,7 +19,7 @@ import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.
 import { ActivateSourceService } from "./sources/activateSource.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
-import { addMissingVersionField } from "@trigger.dev/core/src/schemas/addMissingVersionField";
+import { addMissingVersionField } from "@trigger.dev/core";
 
 const workerCatalog = {
   indexEndpoint: z.object({

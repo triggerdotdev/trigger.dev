@@ -1,10 +1,10 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { RegisterTriggerBodySchemaV1 } from "@trigger.dev/core";
+import { RegisterTriggerBodySchemaV2 } from "@trigger.dev/core";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { RegisterTriggerSourceServiceV1 } from "~/services/triggers/registerTriggerSourceV1.server";
+import { RegisterTriggerSourceServiceV2 } from "~/services/triggers/registerTriggerSourceV2.server";
 
 const ParamsSchema = z.object({
   endpointSlug: z.string(),
@@ -41,13 +41,13 @@ export async function action({ request, params }: ActionArgs) {
   // Now parse the request body
   const anyBody = await request.json();
 
-  const body = RegisterTriggerBodySchemaV1.safeParse(anyBody);
+  const body = RegisterTriggerBodySchemaV2.safeParse(anyBody);
 
   if (!body.success) {
     return json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const service = new RegisterTriggerSourceServiceV1();
+  const service = new RegisterTriggerSourceServiceV2();
 
   try {
     const registration = await service.call({

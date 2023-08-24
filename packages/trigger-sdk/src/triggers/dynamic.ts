@@ -1,6 +1,6 @@
 import {
   RegisterSourceEventV2,
-  RegisterTriggerBody,
+  RegisterTriggerBodyV2,
   TriggerMetadata,
   deepMergeFilters,
 } from "@trigger.dev/core";
@@ -71,7 +71,7 @@ export class DynamicTrigger<
     return this.#options.event;
   }
 
-  registeredTriggerForParams(params: ExternalSourceParams<TExternalSource>): RegisterTriggerBody {
+  registeredTriggerForParams(params: ExternalSourceParams<TExternalSource>): RegisterTriggerBodyV2 {
     const key = slugifyId(this.source.key(params));
 
     return {
@@ -81,16 +81,14 @@ export class DynamicTrigger<
         payload: deepMergeFilters(this.source.filter(params), this.event.filter ?? {}),
       },
       source: {
-        //todo change this to 2
-        version: "1",
+        version: "2",
         key,
         channel: this.source.channel,
         params,
-        events: typeof this.event.name === "string" ? [this.event.name] : this.event.name,
         //   //todo add other options here
-        // options: {
-        //   event: typeof this.event.name === "string" ? [this.event.name] : this.event.name,
-        // },
+        options: {
+          event: typeof this.event.name === "string" ? [this.event.name] : this.event.name,
+        },
         integration: {
           id: this.source.integration.id,
           metadata: this.source.integration.metadata,

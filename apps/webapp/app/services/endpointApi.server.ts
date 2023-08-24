@@ -9,8 +9,8 @@ import {
   PongResponseSchema,
   PreprocessRunBody,
   PreprocessRunResponseSchema,
-  RegisterTriggerBody,
-  RegisterTriggerBodySchema,
+  RegisterTriggerBodySchemaV1,
+  RegisterTriggerBodyV1,
   RunJobBody,
   RunJobResponseSchema,
   ValidateResponse,
@@ -197,7 +197,7 @@ export class EndpointApi {
     return { response, parser: PreprocessRunResponseSchema };
   }
 
-  async initializeTrigger(id: string, params: any): Promise<RegisterTriggerBody | undefined> {
+  async initializeTrigger(id: string, params: any): Promise<RegisterTriggerBodyV1 | undefined> {
     const response = await safeFetch(this.url, {
       method: "POST",
       headers: {
@@ -231,7 +231,7 @@ export class EndpointApi {
       body: anyBody,
     });
 
-    return RegisterTriggerBodySchema.parse(anyBody);
+    return RegisterTriggerBodySchemaV1.parse(anyBody);
   }
 
   async deliverHttpSourceRequest(options: {

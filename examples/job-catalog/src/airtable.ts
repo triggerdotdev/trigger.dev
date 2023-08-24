@@ -74,11 +74,40 @@ client.defineJob({
 });
 
 client.defineJob({
+  id: "airtable-delete-webhooks",
+  name: "Airtable Example 2: webhook admin",
+  version: "0.1.0",
+  trigger: eventTrigger({
+    name: "airtable.example",
+    schema: z.object({
+      baseId: z.string(),
+      deleteWebhooks: z.boolean().optional(),
+    }),
+  }),
+  integrations: {
+    airtable,
+  },
+  run: async (payload, io, ctx) => {
+    const webhooks = await io.airtable.listWebhooks("list webhooks", { baseId: payload.baseId });
+
+    if (payload.deleteWebhooks === true) {
+      for (const webhook of webhooks.webhooks) {
+        await io.airtable.deleteWebhook(`delete webhook: ${webhook.id}`, {
+          baseId: payload.baseId,
+          webhookId: webhook.id,
+        });
+      }
+    }
+  },
+});
+
+client.defineJob({
   id: "airtable-on-table",
   name: "Airtable Example: onTable",
   version: "0.1.0",
   trigger: airtable.onTable({
     baseId: "appSX6ly4nZGfdUSy",
+    tableId: "tblr5BReu2yeOMk7n",
   }),
   run: async (payload, io, ctx) => {},
 });

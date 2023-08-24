@@ -14,14 +14,13 @@ import {
   Prettify,
   REGISTER_SOURCE_EVENT_V2,
   RegisterSourceEventSchemaV2,
-  RegisterTriggerBody,
+  RegisterTriggerBodyV2,
   RunJobBody,
   RunJobBodySchema,
   RunJobResponse,
   ScheduleMetadata,
   SendEvent,
   SendEventOptions,
-  SourceMetadataV1,
   SourceMetadataV2,
 } from "@trigger.dev/core";
 import { ApiClient } from "./apiClient";
@@ -537,7 +536,7 @@ export class TriggerClient {
     this.#registeredSchedules[key] = jobs;
   }
 
-  async registerTrigger(id: string, key: string, options: RegisterTriggerBody) {
+  async registerTrigger(id: string, key: string, options: RegisterTriggerBodyV2) {
     return this.#client.registerTrigger(this.id, id, key, options);
   }
 

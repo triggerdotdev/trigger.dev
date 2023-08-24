@@ -14,7 +14,6 @@ import {
   RegisterScheduleResponseBodySchema,
   RegisterSourceEventV2,
   RegisterSourceEventSchemaV2,
-  RegisterTriggerBody,
   RunTaskBodyInput,
   ScheduleMetadata,
   SendEvent,
@@ -24,6 +23,7 @@ import {
   TriggerSourceSchema,
   urlWithSearchParams,
   UpdateTriggerSourceBodyV2,
+  RegisterTriggerBodyV2,
 } from "@trigger.dev/core";
 
 import fetch, { type RequestInit } from "node-fetch";
@@ -229,7 +229,7 @@ export class ApiClient {
     client: string,
     id: string,
     key: string,
-    payload: RegisterTriggerBody
+    payload: RegisterTriggerBodyV2
   ): Promise<RegisterSourceEventV2> {
     const apiKey = await this.#apiKey();
 
@@ -240,7 +240,7 @@ export class ApiClient {
 
     const response = await zodfetch(
       RegisterSourceEventSchemaV2,
-      `${this.#apiUrl}/api/v1/${client}/triggers/${id}/registrations/${key}`,
+      `${this.#apiUrl}/api/v2/${client}/triggers/${id}/registrations/${key}`,
       {
         method: "PUT",
         headers: {
