@@ -1,5 +1,17 @@
 # create-trigger
 
+## 2.0.11
+
+### Patch Changes
+
+- 3ce53970: Added the send-event command
+- 3897e6e6: Make it more clear which API key the init command expects
+- b5db9f5e: Adding MIT license
+- dd107176: Added hostname option to the cli dev command
+- 8cf85443: Bugfix: @trigger.dev/cli init now correctly identifies the App Dir when using JS
+- 4e78da31: fix: Add an update sub-command the @trigger.dev/cli that updates all @trigger.dev/\* packages
+- 135cb492: fixed the cli init log message to show the correct path to the app route created
+
 ## 2.0.10
 
 ### Patch Changes
