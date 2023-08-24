@@ -102,6 +102,25 @@ export async function jsonWithSuccessMessage(
   });
 }
 
+export async function jsonWithErrorMessage(
+  data: any,
+  request: Request,
+  message: string,
+  options?: ToastMessageOptions
+) {
+  const session = await getSession(request.headers.get("cookie"));
+
+  setErrorMessage(session, message, options);
+
+  return json(data, {
+    headers: {
+      "Set-Cookie": await commitSession(session, {
+        expires: new Date(Date.now() + ONE_YEAR),
+      }),
+    },
+  });
+}
+
 export async function redirectWithSuccessMessage(
   path: string,
   request: Request,

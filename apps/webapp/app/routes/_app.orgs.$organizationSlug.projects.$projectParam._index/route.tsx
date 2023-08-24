@@ -73,8 +73,6 @@ export default function Page() {
 
   const { filterText, setFilterText, filteredItems } = useFilterJobs(jobs);
 
-  const { width, height } = useWindowSize();
-
   return (
     <PageContainer>
       <PageHeader>
@@ -104,7 +102,6 @@ export default function Page() {
                       </Callout>
                     )}
                     <div className="mb-2 flex flex-col">
-                      <Header2 spacing>Jobs</Header2>
                       <div className="flex w-full">
                         <Input
                           placeholder="Search Jobs"
@@ -122,9 +119,11 @@ export default function Page() {
                       noResultsText={`No Jobs match ${filterText}. Try a different search
           query.`}
                     />
-                    {jobs.length === 1 && jobs.every((r) => r.lastRun === undefined) && (
-                      <RunYourJobPrompt />
-                    )}
+                    {jobs.length === 1 &&
+                      jobs.every((r) => r.lastRun === undefined) &&
+                      jobs.every((i) => i.hasIntegrationsRequiringAction === false) && (
+                        <RunYourJobPrompt />
+                      )}
                   </>
                 ) : (
                   <HowToSetupYourProject />
@@ -194,7 +193,7 @@ function ExampleJobs() {
           <a
             href={example.codeLink}
             key={example.title}
-            className="flex w-full items-center rounded border-b border-slate-800 py-2 transition hover:border-transparent hover:bg-slate-800"
+            className="flex w-full items-center rounded border-b border-uiBorder py-2 transition hover:border-transparent hover:bg-slate-800"
           >
             {example.icon}
             <Paragraph variant="small">

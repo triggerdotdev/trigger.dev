@@ -87,6 +87,14 @@ const variant = {
     shortcutVariant: undefined,
     shortcut: undefined,
   },
+  "danger/large": {
+    textColor: "text-bright group-hover:text-white transition group-disabled:text-bright/50",
+    button:
+      "h-10 px-2 text-md bg-rose-600 group-hover:bg-rose-500 group-disabled:opacity-50 group-disabled:group-hover:bg-rose-600",
+    icon: "h-5",
+    shortcutVariant: "medium" as const,
+    shortcut: "ml-1.5 -mr-0.5 border-bright/40 text-bright group-hover:border-bright/60",
+  },
   "menu-item": {
     textColor: "text-bright",
     button:

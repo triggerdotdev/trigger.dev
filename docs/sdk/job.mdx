@@ -49,27 +49,6 @@ client.defineJob({
 });
 ```
 
-```ts queue options
-client.defineJob({
-  id: "github-integration-on-issue",
-  name: "GitHub Integration - On Issue",
-  version: "0.1.0",
-  trigger: github.triggers.repo({
-    event: events.onIssue,
-    owner: "triggerdotdev",
-    repo: "empty",
-  }),
-  queue: {
-    name: "my-queue",
-    maxConcurrent: 10, // only 10 runs can happen at the same time
-  },
-  run: async (payload, io, ctx) => {
-    await io.logger.info("This is a simple log info message");
-    return { payload, ctx };
-  },
-});
-```
-
 </RequestExample>
 
 # Constructor
@@ -113,6 +92,9 @@ client.defineJob({
     <ParamField body="integrations" type="object">
       Imports the specified integrations into the Job. The integrations will be available on the `io` object in the `run()` function with the same name as the key. For example:
       <Snippet file="how-to-pass-integrations.mdx" />
+    </ParamField>
+    <ParamField body="enabled" type="boolean">
+      The `enabled` property is an optional property that specifies whether the Job is enabled or not. The Job will be enabled by default if you omit this property. When a job is disabled, no new runs will be triggered or resumed. In progress runs will continue to run until they are finished or delayed by using `io.wait`.
     </ParamField>
     <ParamField body="logLevel" type="log | error | warn | info | debug">
       The `logLevel` property is an optional property that specifies the level of

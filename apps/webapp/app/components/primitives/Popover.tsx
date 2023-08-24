@@ -4,9 +4,8 @@ import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { cn } from "~/utils/cn";
 import { Paragraph } from "./Paragraph";
-import { ChevronDownIcon } from "@heroicons/react/24/solid";
+import { ChevronDownIcon, EllipsisVerticalIcon } from "@heroicons/react/24/solid";
 import { LinkButton } from "./Buttons";
-import { IconNames } from "./NamedIcon";
 
 const Popover = PopoverPrimitive.Root;
 
@@ -91,6 +90,24 @@ function PopoverArrowTrigger({
   );
 }
 
+function PopoverVerticalEllipseTrigger({
+  isOpen,
+  className,
+  ...props
+}: { isOpen?: boolean } & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
+  return (
+    <PopoverTrigger
+      {...props}
+      className={cn(
+        "group flex items-center justify-end gap-1 rounded px-1.5 py-1.5 text-dimmed transition hover:bg-slate-750 hover:text-bright",
+        className
+      )}
+    >
+      <EllipsisVerticalIcon className={cn("h-5 w-5 transition group-hover:text-bright")} />
+    </PopoverTrigger>
+  );
+}
+
 export {
   Popover,
   PopoverTrigger,
@@ -98,4 +115,5 @@ export {
   PopoverSectionHeader,
   PopoverArrowTrigger,
   PopoverMenuItem,
+  PopoverVerticalEllipseTrigger,
 };

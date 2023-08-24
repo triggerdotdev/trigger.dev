@@ -1,3 +1,4 @@
+import { Job } from "@trigger.dev/database";
 import { TriggerClient } from "@trigger.dev/sdk";
 import { PostHog } from "posthog-node";
 import { env } from "~/env.server";
@@ -146,6 +147,14 @@ class Telemetry {
           title: project.name,
           createdAt: project.createdAt,
           updatedAt: project.updatedAt,
+        },
+      });
+    },
+    deletedJob: ({ job }: { job: Job }) => {
+      this.#triggerClient?.sendEvent({
+        name: "job.deleted",
+        payload: {
+          id: job.id,
         },
       });
     },

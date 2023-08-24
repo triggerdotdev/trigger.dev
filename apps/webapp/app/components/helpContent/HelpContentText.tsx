@@ -414,6 +414,60 @@ export function HowToUseThisIntegration({ integration, help, integrationClient }
   );
 }
 
+export function HowToDisableAJob({
+  id,
+  name,
+  version,
+}: {
+  id: string;
+  name: string;
+  version: string;
+}) {
+  return (
+    <>
+      <Paragraph spacing>
+        To disable a job, you need to set the <InlineCode>enabled</InlineCode> property to{" "}
+        <InlineCode>false</InlineCode>.
+      </Paragraph>
+      <StepNumber
+        stepNumber="1"
+        title={
+          <>
+            Set <InlineCode>enabled</InlineCode> to <InlineCode>false</InlineCode>
+          </>
+        }
+      />
+      <StepContentContainer>
+        <CodeBlock
+          showLineNumbers={false}
+          className="mb-4"
+          code={`client.defineJob({
+  id: "${id}",
+  name: "${name}",
+  version: "${version}",
+  enabled: false,
+  // ...rest of your Job definition
+});`}
+        />
+      </StepContentContainer>
+      <StepNumber
+        stepNumber="2"
+        title={
+          <>
+            Run the <InlineCode>@trigger.dev/cli dev</InlineCode> command
+          </>
+        }
+      />
+      <StepContentContainer>
+        <Paragraph spacing>
+          If you aren't already running the <InlineCode>dev</InlineCode> command, run it now.
+        </Paragraph>
+        <TriggerDevCommand />
+      </StepContentContainer>
+    </>
+  );
+}
+
 export function HowToUseApiKeysAndEndpoints() {
   return (
     <>

@@ -63,7 +63,10 @@
         "documentation/introduction",
         {
           "group": "Quick Starts",
-          "pages": ["documentation/quickstarts/nextjs", "documentation/quickstarts/supabase"]
+          "pages": [
+            "documentation/quickstarts/nextjs",
+            "documentation/quickstarts/supabase"
+          ]
         },
         "documentation/guides/create-a-job",
         "documentation/guides/video-walkthrough"
@@ -114,6 +117,7 @@
         "documentation/guides/cli",
         "documentation/guides/manual",
         "documentation/guides/running-jobs",
+        "documentation/guides/jobs/managing",
         {
           "group": "Using the Dashboard",
           "pages": [
@@ -167,7 +171,10 @@
     },
     {
       "group": "Overview",
-      "pages": ["integrations/introduction", "integrations/create"]
+      "pages": [
+        "integrations/introduction",
+        "integrations/create"
+      ]
     },
     {
       "group": "Integrations",
@@ -180,23 +187,30 @@
             "integrations/apis/github-tasks"
           ]
         },
-
         {
           "group": "OpenAI",
-          "pages": ["integrations/apis/openai"]
+          "pages": [
+            "integrations/apis/openai"
+          ]
         },
         "integrations/apis/plain",
         {
           "group": "Resend",
-          "pages": ["integrations/apis/resend"]
+          "pages": [
+            "integrations/apis/resend"
+          ]
         },
         {
           "group": "SendGrid",
-          "pages": ["integrations/apis/sendgrid"]
+          "pages": [
+            "integrations/apis/sendgrid"
+          ]
         },
         {
           "group": "Slack",
-          "pages": ["integrations/apis/slack"]
+          "pages": [
+            "integrations/apis/slack"
+          ]
         },
         {
           "group": "Supabase",
@@ -258,7 +272,10 @@
             "sdk/dynamictrigger/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamictrigger/register", "sdk/dynamictrigger/unregister"]
+              "pages": [
+                "sdk/dynamictrigger/register",
+                "sdk/dynamictrigger/unregister"
+              ]
             }
           ]
         },
@@ -269,7 +286,10 @@
             "sdk/dynamicschedule/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamicschedule/register", "sdk/dynamicschedule/unregister"]
+              "pages": [
+                "sdk/dynamicschedule/register",
+                "sdk/dynamicschedule/unregister"
+              ]
             }
           ]
         },
@@ -290,7 +310,10 @@
     },
     {
       "group": "Overview",
-      "pages": ["examples/introduction", "examples/examples-repository"]
+      "pages": [
+        "examples/introduction",
+        "examples/examples-repository"
+      ]
     }
   ],
   "footerSocials": {

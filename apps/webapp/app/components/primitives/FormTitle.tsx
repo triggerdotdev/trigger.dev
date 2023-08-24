@@ -21,7 +21,7 @@ export function FormTitle({
     <div
       className={cn(
         "mb-4 flex flex-col gap-3 pb-4",
-        divide ? "border-b border-slate-800" : "",
+        divide ? "border-b border-uiBorder" : "",
         className
       )}
     >

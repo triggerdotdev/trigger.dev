@@ -253,19 +253,24 @@ function ButtonList({ primary }: { primary: string }) {
       <Header1 className="mb-2 mt-8">Large buttons</Header1>
       <div className="grid grid-cols-1 gap-8 border-b border-slate-700 pb-8">
         <div className="flex flex-col gap-2">
-          <div className="flex flex-col items-start">
+          <div className="flex flex-col items-start gap-2">
             <Button variant="primary/large" fullWidth>
               <NamedIcon name={"github"} className={"mr-1.5 h-4 w-4"} />
               Continue with GitHub
             </Button>
-          </div>
-          <div className="flex flex-col items-start">
             <Button variant="secondary/large" fullWidth>
               <NamedIcon
                 name={"envelope"}
                 className={"mr-1.5 h-4 w-4 transition group-hover:text-bright"}
               />
               Continue with Email
+            </Button>
+            <Button variant="danger/large" fullWidth>
+              <NamedIcon
+                name={"trash-can"}
+                className={"mr-1.5 h-4 w-4 text-bright transition group-hover:text-bright"}
+              />
+              This is a delete button
             </Button>
           </div>
         </div>

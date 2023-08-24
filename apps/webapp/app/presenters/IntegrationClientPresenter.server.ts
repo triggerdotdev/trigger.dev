@@ -63,6 +63,7 @@ export class IntegrationClientPresenter {
                     slug: projectSlug,
                   },
                   internal: false,
+                  deletedAt: null,
                 },
               },
             },

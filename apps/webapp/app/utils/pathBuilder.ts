@@ -115,6 +115,10 @@ export function projectPath(organization: OrgForPath, project: ProjectForPath) {
   return `/orgs/${organizationParam(organization)}/projects/${projectParam(project)}`;
 }
 
+export function projectJobsPath(organization: OrgForPath, project: ProjectForPath) {
+  return projectPath(organization, project);
+}
+
 export function projectIntegrationsPath(organization: OrgForPath, project: ProjectForPath) {
   return `${projectPath(organization, project)}/integrations`;
 }

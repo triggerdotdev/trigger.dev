@@ -51,7 +51,7 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
 const sheetVariants = cva(
-  "fixed z-50 scale-100 gap-4 bg-midnight-900 shadow-lg shadow-white/10 opacity-100 border-l border-y border-slate-800",
+  "fixed z-50 scale-100 gap-4 bg-midnight-900 shadow-lg shadow-white/10 opacity-100 border-l border-uiBorder",
   {
     variants: {
       position: {
@@ -154,7 +154,7 @@ const SheetContent = React.forwardRef<
       {...props}
     >
       <div className="grid max-h-full grid-rows-[2.75rem_1fr] overflow-hidden">
-        <div className="flex items-center gap-2 border-b border-slate-800 p-2">
+        <div className="flex items-center gap-2 border-b border-uiBorder p-2">
           <SheetPrimitive.Close className="rounded-sm p-1 transition hover:bg-slate-800 disabled:pointer-events-none">
             <NamedIcon name="close" className="h-4 w-4" />
             <span className="sr-only">Close</span>
@@ -181,7 +181,7 @@ export const SheetBody = ({ className, ...props }: React.HTMLAttributes<HTMLDivE
 export const SheetHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "mx-4 flex shrink-0 items-center gap-4 border-b border-slate-800 py-3.5",
+      "mx-4 flex shrink-0 items-center gap-4 border-b border-uiBorder py-3.5",
       className
     )}
     {...props}
@@ -194,7 +194,7 @@ export const SheetFooter = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div className={cn("shrink-0", className)} {...props}>
-    <div className="mx-4 border-t border-slate-800 py-3">{children}</div>
+    <div className="mx-4 border-t border-uiBorder py-3">{children}</div>
   </div>
 );
 
