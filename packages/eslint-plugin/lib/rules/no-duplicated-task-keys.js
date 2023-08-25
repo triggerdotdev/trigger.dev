@@ -80,7 +80,21 @@ module.exports = {
       return acc;
     }, new Map());
 
-    const getInnerIfStatementBodies = (body) => body.filter((arg) => arg.type === 'IfStatement').flatMap((arg) => arg.consequent.body);
+    const getInnerIfStatementBodies = (body) => {
+      const IfStatementBodies = body
+        .filter((arg) => arg.type === 'IfStatement')
+        .reduce((acc, arg) => {
+          const consequent = arg.consequent.body;
+
+          const AlternateBodies = getInnerIfStatementBodies(consequent);
+
+          const body = consequent.filter((arg) => arg.type !== 'IfStatement');
+
+          return acc.concat(body).concat(AlternateBodies);
+        }, []);
+
+      return IfStatementBodies;
+    }
 
     const getNodeBody = (node) => {
       const IfStatementBodies = getInnerIfStatementBodies(node.value.body.body);

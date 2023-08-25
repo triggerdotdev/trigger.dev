@@ -261,6 +261,65 @@ ruleTester.run("no-duplicated-task-keys", rule, {
       errors: [
         { message: "Task key 'example.task' is duplicated" },
       ]
+    },
+    {
+      code: `import { Job, eventTrigger } from "@trigger.dev/sdk";
+      import { client } from "@/trigger";
+      
+      // your first job
+      new Job(client, {
+        id: "example-job",
+        name: "Example Job",
+        version: "0.0.1",
+        trigger: eventTrigger({
+          name: "example.event",
+        }),
+        run: async (payload, io, ctx) => {
+          await io.runTask("example.task", { name: "Task 1" }, async () => {});
+      
+          await io.anotherTask("different task", { name: "Task 1" }, async () => {});
+      
+          if (true) {
+            await io.runTask("example.task", { name: "Task 2" }, async () => {});
+      
+            if (true) {
+              await io.runTask("example.task", { name: "Task 3" }, async () => {});
+              await io.anotherTask("different task", { name: "Task 1" }, async () => {});
+            }
+          }
+        },
+      });`,
+      errors: [
+        { message: "Task key 'example.task' is duplicated" },
+        { message: "Task key 'different task' is duplicated" },
+      ]
+    },
+    {
+      code: `import { Job, eventTrigger } from "@trigger.dev/sdk";
+      import { client } from "@/trigger";
+      
+      // your first job
+      new Job(client, {
+        id: "example-job",
+        name: "Example Job",
+        version: "0.0.1",
+        trigger: eventTrigger({
+          name: "example.event",
+        }),
+        run: async (payload, io, ctx) => {
+          if (true) {
+            await io.runTask("example.task", { name: "Task 1" }, async () => {});
+      
+            if (true) {
+              await io.runTask("example.task", { name: "Task 2" }, async () => {});
+              await io.anotherTask("different task", { name: "Task 1" }, async () => {});
+            }
+          }
+        },
+      });`,
+      errors: [
+        { message: "Task key 'example.task' is duplicated" },
+      ]
     }
   ]
 });
