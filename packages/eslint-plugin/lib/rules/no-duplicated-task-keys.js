@@ -112,10 +112,8 @@ module.exports = {
   
         // it'll be a map of taskName => [key1, key2, ...]
         const groupedByTask = groupExpressionsByTask(ExpressionStatements, grouped);
-  
         groupedByTask.forEach((keys) => {
           const duplicated = keys.find((key, index) => keys.indexOf(key) !== index);
-  
           if (duplicated) {
             context.report({
               node,
