@@ -49,10 +49,7 @@ module.exports = {
       return property.name;
     }
 
-    const groupExpressionsByTask = (ExpressionStatements, map = new Map()) => ExpressionStatements.reduce((acc, { expression }) => {
-      const taskName = getTaskName(expression);
-      const taskKey = getKey(expression);
-
+    const groupByTaskKeyAndName = (acc, { taskKey, taskName }) => {
       if (acc.has(taskName)) {
         acc.get(taskName).push(taskKey);
       } else {
@@ -60,6 +57,13 @@ module.exports = {
       }
 
       return acc;
+    }
+
+    const groupExpressionsByTask = (ExpressionStatements, map = new Map()) => ExpressionStatements.reduce((acc, { expression }) => {
+      const taskName = getTaskName(expression);
+      const taskKey = getKey(expression);
+
+      return groupByTaskKeyAndName(acc, { taskKey, taskName });
     }, map);
 
     const groupVariableDeclarationsByTask = VariableDeclarations => VariableDeclarations.reduce((acc, { declarations }) => {
@@ -70,40 +74,30 @@ module.exports = {
         
         const taskKey = getKey(declaration.init);
 
-        if (acc.has(taskName)) {
-          acc.get(taskName).push(taskKey);
-        } else {
-          acc.set(taskName, [taskKey]);
-        }
+        groupByTaskKeyAndName(acc, { taskKey, taskName });
       });
 
       return acc;
     }, new Map());
 
-    const getInnerIfStatementBodies = (body) => {
-      const IfStatementBodies = body
-        .filter((arg) => arg.type === 'IfStatement')
-        .reduce((acc, arg) => {
-          const consequent = arg.consequent.body;
+    const getInnerIfStatementBodies = (body) => body
+      .filter((arg) => arg.type === 'IfStatement')
+      .reduce((acc, arg) => {
+        const consequent = arg.consequent.body;
 
-          const AlternateBodies = getInnerIfStatementBodies(consequent);
+        const AlternateBodies = getInnerIfStatementBodies(consequent);
 
-          const body = consequent.filter((arg) => arg.type !== 'IfStatement');
+        const body = consequent.filter((arg) => arg.type !== 'IfStatement');
 
-          return acc.concat(body).concat(AlternateBodies);
-        }, []);
-
-      return IfStatementBodies;
-    }
+        return acc.concat(body).concat(AlternateBodies);
+      }, [])
 
     const getNodeBody = (node) => {
       const body = node.value.body.body;
 
-      const IfStatementBodies = getInnerIfStatementBodies(node.value.body.body);
-
       return body
         .filter((arg) => arg.type !== 'IfStatement')
-        .concat(IfStatementBodies);
+        .concat(getInnerIfStatementBodies(body));
     }
 
     return {
