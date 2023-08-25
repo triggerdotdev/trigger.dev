@@ -80,20 +80,32 @@ module.exports = {
       return acc;
     }, new Map());
 
+    const getInnerIfStatementBodies = (body) => body.filter((arg) => arg.type === 'IfStatement').flatMap((arg) => arg.consequent.body);
+
+    const getNodeBody = (node) => {
+      const IfStatementBodies = getInnerIfStatementBodies(node.value.body.body);
+
+      const body = node.value.body.body.filter((arg) => arg.type !== 'IfStatement');
+
+      return body.concat(IfStatementBodies);
+    }
+
     return {
-      "CallExpression[callee.property.name='defineJob'] ObjectExpression BlockStatement": (node) => {
-        const VariableDeclarations = node.body.filter((arg) => arg.type === 'VariableDeclaration');
+      "Property[key.name='run']": (node) => {
+        const body = getNodeBody(node);
 
+        const VariableDeclarations = body.filter((arg) => arg.type === 'VariableDeclaration');
+  
         const grouped = groupVariableDeclarationsByTask(VariableDeclarations);
-
-        const ExpressionStatements = node.body.filter((arg) => arg.type === 'ExpressionStatement');
-
+  
+        const ExpressionStatements = body.filter((arg) => arg.type === 'ExpressionStatement');
+  
         // it'll be a map of taskName => [key1, key2, ...]
         const groupedByTask = groupExpressionsByTask(ExpressionStatements, grouped);
-
+  
         groupedByTask.forEach((keys) => {
           const duplicated = keys.find((key, index) => keys.indexOf(key) !== index);
-
+  
           if (duplicated) {
             context.report({
               node,
