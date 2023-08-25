@@ -13,14 +13,15 @@ import { Airtable, AirtableRunTask } from "./index";
 import { ListWebhooksResponse, ListWebhooksResponseSchema } from "./schemas";
 
 const WebhookFromSourceSchema = z.union([
-  z.literal("client"),
-  z.literal("publicApi"),
   z.literal("formSubmission"),
-  z.literal("automation"),
-  z.literal("system"),
-  z.literal("sync"),
+  z.literal("client"),
   z.literal("anonymousUser"),
-  z.literal("unknown"),
+  // we don't currently support these as they can cause feedback loops
+  // z.literal("publicApi"),
+  // z.literal("automation"),
+  // z.literal("system"),
+  // z.literal("sync"),
+  // z.literal("unknown"),
 ]);
 
 type WebhookFromSource = z.infer<typeof WebhookFromSourceSchema>;
@@ -248,10 +249,11 @@ export function createWebhookEventSource(
     }),
     version: "0.1.0",
     integration,
-    filter: (params, options) => {
-      //todo update this to filter using the fromSources
-      return {};
-    },
+    filter: (params, options) => ({
+      actionMetadata: {
+        source: options?.fromSources ?? ["client", "anonymousUser", "formSubmission"],
+      },
+    }),
     key: (params) =>
       `airtable.webhook.${params.baseId}${params.tableId ? `.${params.tableId}` : ""}`,
     handler: webhookHandler,
@@ -270,7 +272,11 @@ export function createWebhookEventSource(
         filters: {
           dataTypes: options.dataTypes.desired as WebhookDataType[],
           changeTypes: options.event.desired as WebhookChangeType[],
-          fromSources: options.fromSources?.desired as WebhookFromSource[],
+          fromSources: (options.fromSources?.desired ?? [
+            "client",
+            "anonymousUser",
+            "formSubmission",
+          ]) as WebhookFromSource[],
           recordChangeScope: params.tableId,
         },
       };
