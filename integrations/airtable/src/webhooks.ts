@@ -351,8 +351,6 @@ const SourceMetadataSchema = z
 async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integration: Airtable) {
   logger.debug("[@trigger.dev/airtable] Handling webhook payload");
 
-  console.log("webhookHandler start", JSON.stringify(event));
-
   const client = integration.createClient(event.source.auth);
 
   const { rawEvent: request, source } = event;
@@ -390,8 +388,6 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integ
     parsedMetadata?.cursor
   );
 
-  console.log("Airtable response", JSON.stringify(response));
-
   return {
     events: response
       ? response.payloads.map((payload) => ({
@@ -421,12 +417,11 @@ async function getAllPayloads(
     cursor = newResponse.cursor;
     hasMore = newResponse.mightHaveMore;
 
-    if (!response) {
+    if (response) {
+      response.payloads.push(...newResponse.payloads);
+    } else {
       response = newResponse;
-      continue;
     }
-
-    response.payloads.push(...newResponse.payloads);
   }
 
   return response;
@@ -443,7 +438,7 @@ async function getPayload(
     url.searchParams.append("cursor", cursor.toString());
   }
 
-  const response = await fetch(url, {
+  const response = await fetch(url.href, {
     headers: {
       Authorization: `Bearer ${sdk._apiKey}`,
     },
@@ -457,5 +452,3 @@ async function getPayload(
   const webhook = await response.json();
   return ListWebhooksResponseSchema.parse(webhook);
 }
-
-//todo new column on TriggerSource called metadata
