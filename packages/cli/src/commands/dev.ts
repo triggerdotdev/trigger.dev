@@ -2,7 +2,7 @@ import childProcess from "child_process";
 import chokidar from "chokidar";
 import fs from "fs/promises";
 import ngrok from "ngrok";
-import fetch from "node-fetch";
+import fetch from "../utils/fetchUseProxy";
 import ora, { Ora } from "ora";
 import pathModule from "path";
 import util from "util";
