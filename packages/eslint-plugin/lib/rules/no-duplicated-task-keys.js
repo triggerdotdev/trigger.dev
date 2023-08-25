@@ -97,11 +97,13 @@ module.exports = {
     }
 
     const getNodeBody = (node) => {
+      const body = node.value.body.body;
+
       const IfStatementBodies = getInnerIfStatementBodies(node.value.body.body);
 
-      const body = node.value.body.body.filter((arg) => arg.type !== 'IfStatement');
-
-      return body.concat(IfStatementBodies);
+      return body
+        .filter((arg) => arg.type !== 'IfStatement')
+        .concat(IfStatementBodies);
     }
 
     return {
