@@ -253,9 +253,19 @@ const resolveOptionsWithPrompts = async (
 // Detects if there are any uncommitted git changes at path
 async function detectGitChanges(path: string): Promise<boolean> {
   const git = simpleGit(path);
-  const status = await git.status();
 
-  return status.files.length > 0;
+  try {
+    const isRepo = await git.checkIsRepo();
+
+    if (isRepo) {
+      // Check if there are uncommitted changes
+      const status = await git.status();
+      return status.files.length > 0;
+    }
+    return false;
+  } catch (error) {
+    return false;
+  }
 }
 
 async function detectTypescriptProject(path: string): Promise<boolean> {
