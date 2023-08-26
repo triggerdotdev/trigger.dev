@@ -28,8 +28,7 @@ export class TriggerManagementAPI {
 
     constructor(options: ApiClientOptions) {
         this.#options = options;
-        // this.#apiUrl = this.#options.apiUrl ?? process.env.TRIGGER_API_URL ?? "https://api.trigger.dev";
-        this.#apiUrl = "http://localhost:3030";
+        this.#apiUrl = this.#options.apiUrl ?? process.env.TRIGGER_API_URL ?? "https://api.trigger.dev";
         this.#logger = new Logger("trigger.dev", this.#options.logLevel);
     }
 

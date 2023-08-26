@@ -632,7 +632,6 @@ export const CreateExternalConnectionBodySchema = z.object({
 
 export type CreateExternalConnectionBody = z.infer<typeof CreateExternalConnectionBodySchema>;
 
-
 /* TriggerManagmentAPI Schemas */
 
 export const CancelJobSchema = z.object({
@@ -646,35 +645,28 @@ export const JobRunsSchema = z.object({
   projectSlug: z.string(),
   jobSlug: z.string(),
   status: z
-    .union([
-      z.literal("PENDING"),
-      z.literal("QUEUED"),
-      z.literal("WAITING_ON_CONNECTIONS"),
-      z.literal("PREPROCESSING"),
-      z.literal("STARTED"),
-      z.literal("SUCCESS"),
-      z.literal("FAILURE"),
-      z.literal("TIMED_OUT"),
-      z.literal("ABORTED"),
-      z.literal("CANCELED"),
+    .enum([
+      "PENDING",
+      "QUEUED",
+      "WAITING_ON_CONNECTIONS",
+      "PREPROCESSING",
+      "STARTED",
+      "SUCCESS",
+      "FAILURE",
+      "TIMED_OUT",
+      "ABORTED",
+      "CANCELED",
     ])
     .optional(),
-  environment: z
-    .union([
-      z.literal("PRODUCTION"),
-      z.literal("STAGING"),
-      z.literal("DEVELOPMENT"),
-      z.literal("PREVIEW"),
-    ])
-    .optional(),
+  environment: z.enum(["PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW"]).optional(),
 });
 
 export type JobRunsSchemaInput = z.infer<typeof JobRunsSchema>;
 
 export const RerunJobSchema = z.object({
   runId: z.string(),
-  intent: z.union([z.literal('start'), z.literal('continue')])
-})
+  intent: z.union([z.literal("start"), z.literal("continue")]),
+});
 
 export type RerunJobSchemaInput = z.infer<typeof RerunJobSchema>;
 
@@ -682,7 +674,7 @@ export const TestJobSchema = z.object({
   environmentId: z.string(),
   payload: z.any(),
   versionId: z.string(),
-})
+});
 export type TestJobSchemaInput = z.infer<typeof TestJobSchema>;
 
 export const JobRunsResponseSchema = z.object({
@@ -715,14 +707,14 @@ export const JobRunsResponseSchema = z.object({
         version: z.string(),
       }),
     })
-  )
-})
+  ),
+});
 
 export type JobRunsResponse = z.infer<typeof JobRunsResponseSchema>;
 
 export const TriggerManagementResponseSchema = z.object({
   errors: z.object({ body: z.string() }).optional(),
-  message: z.string().optional()
+  message: z.string().optional(),
 });
 
 export type TriggerManagementResponse = z.infer<typeof TriggerManagementResponseSchema>;
