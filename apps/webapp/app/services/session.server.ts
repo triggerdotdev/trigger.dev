@@ -2,6 +2,7 @@ import { redirect } from "@remix-run/node";
 import { getUserById } from "~/models/user.server";
 import { authenticator } from "./auth.server";
 import { getImpersonationId } from "./impersonation.server";
+import { prisma } from "~/db.server";
 
 export async function getUserId(request: Request): Promise<string | undefined> {
   const impersonatedUserId = await getImpersonationId(request);
@@ -20,6 +21,21 @@ export async function getUser(request: Request) {
   if (user) return user;
 
   throw await logout(request);
+}
+
+export async function requireUserIdByPAT(personalAccessToken: string) {
+  const data = await prisma.personalAccessToken.findUnique({
+    where: {
+      token: personalAccessToken
+    },
+    include: {
+      user: true
+    },
+  });
+  if (!data?.user.id) {
+    return;
+  }
+  return data?.user.id;
 }
 
 export async function requireUserId(request: Request, redirectTo?: string) {

@@ -631,3 +631,98 @@ export const CreateExternalConnectionBodySchema = z.object({
 });
 
 export type CreateExternalConnectionBody = z.infer<typeof CreateExternalConnectionBodySchema>;
+
+
+/* TriggerManagmentAPI Schemas */
+
+export const CancelJobSchema = z.object({
+  runId: z.string(),
+});
+
+export type CancelJobSchemaInput = z.infer<typeof CancelJobSchema>;
+
+export const JobRunsSchema = z.object({
+  organizationSlug: z.string(),
+  projectSlug: z.string(),
+  jobSlug: z.string(),
+  status: z
+    .union([
+      z.literal("PENDING"),
+      z.literal("QUEUED"),
+      z.literal("WAITING_ON_CONNECTIONS"),
+      z.literal("PREPROCESSING"),
+      z.literal("STARTED"),
+      z.literal("SUCCESS"),
+      z.literal("FAILURE"),
+      z.literal("TIMED_OUT"),
+      z.literal("ABORTED"),
+      z.literal("CANCELED"),
+    ])
+    .optional(),
+  environment: z
+    .union([
+      z.literal("PRODUCTION"),
+      z.literal("STAGING"),
+      z.literal("DEVELOPMENT"),
+      z.literal("PREVIEW"),
+    ])
+    .optional(),
+});
+
+export type JobRunsSchemaInput = z.infer<typeof JobRunsSchema>;
+
+export const RerunJobSchema = z.object({
+  runId: z.string(),
+  intent: z.union([z.literal('start'), z.literal('continue')])
+})
+
+export type RerunJobSchemaInput = z.infer<typeof RerunJobSchema>;
+
+export const TestJobSchema = z.object({
+  environmentId: z.string(),
+  payload: z.any(),
+  versionId: z.string(),
+})
+export type TestJobSchemaInput = z.infer<typeof TestJobSchema>;
+
+export const JobRunsResponseSchema = z.object({
+  data: z.array(
+    z.object({
+      id: z.string(),
+      number: z.number(),
+      startedAt: z.union([z.coerce.date(), z.null()]),
+      completedAt: z.union([z.coerce.date(), z.null()]),
+      createdAt: z.coerce.date(),
+      isTest: z.boolean(),
+      status: z.enum([
+        "PENDING",
+        "QUEUED",
+        "WAITING_ON_CONNECTIONS",
+        "PREPROCESSING",
+        "STARTED",
+        "SUCCESS",
+        "FAILURE",
+        "TIMED_OUT",
+        "ABORTED",
+        "CANCELED",
+      ]),
+      environment: z.object({
+        type: z.enum(["DEVELOPMENT", "PREVIEW", "PRODUCTION", "STAGING"]),
+        slug: z.string(),
+        orgMember: z.union([z.object({ userId: z.string() }), z.null()]),
+      }),
+      version: z.object({
+        version: z.string(),
+      }),
+    })
+  )
+})
+
+export type JobRunsResponse = z.infer<typeof JobRunsResponseSchema>;
+
+export const TriggerManagementResponseSchema = z.object({
+  errors: z.object({ body: z.string() }).optional(),
+  message: z.string().optional()
+});
+
+export type TriggerManagementResponse = z.infer<typeof TriggerManagementResponseSchema>;

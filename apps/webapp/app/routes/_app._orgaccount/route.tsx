@@ -15,6 +15,7 @@ import {
   organizationsPath,
   accountPath,
   logoutPath,
+  personalAccessTokensPath,
 } from "~/utils/pathBuilder";
 
 export default function Page() {
@@ -38,6 +39,7 @@ export default function Page() {
           tabs={[
             { label: "Organizations", to: organizationsPath() },
             { label: "Account", to: accountPath() },
+            { label: "Personal Access Tokens", to: personalAccessTokensPath() },
           ]}
         />
       </PageHeader>

@@ -38,8 +38,18 @@ model User {
   sentInvites    OrgMemberInvite[]
   apiVotes       ApiIntegrationVote[]
 
-  invitationCode   InvitationCode? @relation(fields: [invitationCodeId], references: [id])
-  invitationCodeId String?
+  invitationCode      InvitationCode?       @relation(fields: [invitationCodeId], references: [id])
+  invitationCodeId    String?
+  PersonalAccessToken PersonalAccessToken[]
+}
+
+model PersonalAccessToken {
+  id             String    @id @default(cuid())
+  token          String    @unique
+  revokedAt      DateTime?
+  lastAccessedAt DateTime?
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 }
 
 // @deprecated This model is no longer used as the Cloud is out of private beta
