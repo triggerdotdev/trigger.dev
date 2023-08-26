@@ -14,6 +14,7 @@
     "stressTest": "nodemon --watch src/stressTest.ts -r tsconfig-paths/register -r dotenv/config src/stressTest.ts",
     "delays": "nodemon --watch src/delays.ts -r tsconfig-paths/register -r dotenv/config src/delays.ts",
     "airtable": "nodemon --watch src/airtable.ts -r tsconfig-paths/register -r dotenv/config src/airtable.ts",
+    "resend": "nodemon --watch src/resend.ts -r tsconfig-paths/register -r dotenv/config src/resend.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {

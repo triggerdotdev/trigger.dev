@@ -1,7 +1,15 @@
-import { client } from "@/trigger";
+import { createExpressServer } from "@trigger.dev/express";
 import { Resend } from "@trigger.dev/resend";
-import { Job, eventTrigger } from "@trigger.dev/sdk";
+import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
 import { z } from "zod";
+
+export const client = new TriggerClient({
+  id: "job-catalog",
+  apiKey: process.env["TRIGGER_API_KEY"],
+  apiUrl: process.env["TRIGGER_API_URL"],
+  verbose: false,
+  ioLogLocalEnabled: true,
+});
 
 const resend = new Resend({
   id: "resend-client",
@@ -32,3 +40,5 @@ client.defineJob({
     });
   },
 });
+
+createExpressServer(client);
