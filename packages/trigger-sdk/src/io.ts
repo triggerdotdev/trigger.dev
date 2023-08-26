@@ -47,6 +47,11 @@ export type IOOptions = {
   cachedTasks?: Array<CachedTask>;
 };
 
+type WaitUntilOptions = {
+  condition: () => Promise<boolean>;
+  checkInterval?: number;
+};
+
 export class IO {
   private _id: string;
   private _apiClient: ApiClient;
@@ -262,6 +267,74 @@ export class IO {
       },
       async (task) => {
         return await this._triggerClient.cancelEvent(eventId);
+      }
+    );
+  }
+
+  async waitUntil(key: string, options: WaitUntilOptions) {
+    return this.runTask(
+      key,
+      {
+        name: "waitUntil",
+      },
+      async (task, io) => {
+        const result = await options.condition();
+        if (result) return;
+        const startedAt = task.startedAt;
+        if (!startedAt) return;
+        const now = new Date();
+        const diff = now.getTime() - startedAt.getTime();
+        const days = diff / (1000 * 60 * 60 * 24);
+        if (days > 14) {
+          throw new Error(`Waited for 14 days for condition to be true but it never was.`);
+        }
+
+        await io.wait(
+          `${key}:${new Date().toISOString()}`,
+          options.checkInterval ? Math.max(options.checkInterval, 30) : 60 * 60
+        );
+      }
+    );
+  }
+
+  async waitForNextEvent(
+    key: string,
+    options: {
+      interval?: number;
+      name: string;
+      filter: Record<string, boolean | (() => Promise<boolean>)>;
+    }
+  ) {
+    return await this.runTask(
+      key,
+      {
+        name: "waitForNextEvent",
+      },
+      async (task, io) => {
+        // Check if all values in the filter object are true (or resolve to true)
+        const filter = options.filter;
+        const allFiltersTrue = await Promise.all(
+          Object.values(filter).map(async (value) => {
+            if (typeof value === "function") {
+              return !!(await value());
+            }
+            return !!value;
+          })
+        ).then((resolvedValues) => resolvedValues.every((val) => val === true));
+
+        if (allFiltersTrue) return;
+        const startedAt = task.startedAt;
+        if (!startedAt) return;
+        const now = new Date();
+        const diff = now.getTime() - startedAt.getTime();
+        const days = diff / (1000 * 60 * 60 * 24);
+        if (days > 14) {
+          throw new Error(`Waited for 14 days for condition to be true but it never was.`);
+        }
+        await io.wait(
+          `${key}:${new Date().toISOString()}`,
+          options.interval ? Math.max(options.interval, 30) : 60 * 60
+        );
       }
     );
   }
