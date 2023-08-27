@@ -1,5 +1,6 @@
 import { $transaction, Prisma, PrismaClient, prisma } from "~/db.server";
 import { enqueueRunExecutionV2 } from "~/models/jobRunExecution.server";
+import { RuntimeEnvironmentTypeSchema } from "../../../../../packages/core/src";
 
 const RESUMABLE_STATUSES = ["FAILURE", "TIMED_OUT", "ABORTED", "CANCELED"];
 
@@ -35,7 +36,9 @@ export class ContinueRunService {
           },
         });
 
-        await enqueueRunExecutionV2(run, tx);
+        await enqueueRunExecutionV2(run, tx, {
+          skipRetrying: run.environment.type === RuntimeEnvironmentTypeSchema.Enum.DEVELOPMENT,
+        });
       },
       { timeout: 10000 }
     );

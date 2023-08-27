@@ -4,6 +4,7 @@ import {
   FetchRetryOptions,
   FetchRetryStrategy,
   RedactString,
+  RuntimeEnvironmentTypeSchema,
   calculateRetryAt,
 } from "@trigger.dev/core";
 import type { Task } from "@trigger.dev/database";
@@ -244,7 +245,9 @@ export class PerformTaskOperationService {
   }
 
   async #resumeRunExecution(task: NonNullable<FoundTask>, prisma: PrismaClientOrTransaction) {
-    await enqueueRunExecutionV2(task.run, prisma);
+    await enqueueRunExecutionV2(task.run, prisma, {
+      skipRetrying: task?.run?.environment?.type === RuntimeEnvironmentTypeSchema.Enum.DEVELOPMENT,
+    });
   }
 }
 

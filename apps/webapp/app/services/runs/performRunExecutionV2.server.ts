@@ -5,6 +5,7 @@ import {
   RunJobRetryWithTask,
   RunJobSuccess,
   RunSourceContextSchema,
+  RuntimeEnvironmentTypeSchema,
 } from "@trigger.dev/core";
 import type { Task } from "@trigger.dev/database";
 import { generateErrorMessage } from "zod-error";
@@ -81,9 +82,9 @@ export class PerformRunExecutionV2Service {
       },
       account: run.externalAccount
         ? {
-            id: run.externalAccount.identifier,
-            metadata: run.externalAccount.metadata,
-          }
+          id: run.externalAccount.identifier,
+          metadata: run.externalAccount.metadata,
+        }
         : undefined,
     });
 
@@ -135,7 +136,9 @@ export class PerformRunExecutionV2Service {
           },
         });
 
-        await enqueueRunExecutionV2(run, tx);
+        await enqueueRunExecutionV2(run, tx, {
+          skipRetrying: run.environment.type === RuntimeEnvironmentTypeSchema.Enum.DEVELOPMENT
+        });
       });
     }
   }
@@ -217,9 +220,9 @@ export class PerformRunExecutionV2Service {
       },
       account: run.externalAccount
         ? {
-            id: run.externalAccount.identifier,
-            metadata: run.externalAccount.metadata,
-          }
+          id: run.externalAccount.identifier,
+          metadata: run.externalAccount.metadata,
+        }
         : undefined,
       connections: connections.auth,
       source: sourceContext.success ? sourceContext.data : undefined,
@@ -337,6 +340,7 @@ export class PerformRunExecutionV2Service {
           runAt: data.task.delayUntil ?? undefined,
           resumeTaskId: data.task.id,
           isRetry,
+          skipRetrying: run.environment.type === RuntimeEnvironmentTypeSchema.Enum.DEVELOPMENT
         });
       }
     });
@@ -409,6 +413,7 @@ export class PerformRunExecutionV2Service {
         runAt: data.retryAt,
         resumeTaskId: data.task.id,
         isRetry,
+        skipRetrying: run.environment.type === RuntimeEnvironmentTypeSchema.Enum.DEVELOPMENT
       });
     });
   }
@@ -464,7 +469,9 @@ export class PerformRunExecutionV2Service {
             },
           });
 
-          await enqueueRunExecutionV2(run, tx);
+          await enqueueRunExecutionV2(run, tx, {
+            skipRetrying: run.environment.type === RuntimeEnvironmentTypeSchema.Enum.DEVELOPMENT
+          });
 
           break;
         }
