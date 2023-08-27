@@ -1,0 +1,215 @@
+---
+title: Stripe
+---
+
+<Snippet file="integration-getting-started.mdx" />
+
+## Installation
+
+<CodeGroup>
+
+```bash npm
+npm install @trigger.dev/stripe@latest
+```
+
+```bash pnpm
+pnpm install @trigger.dev/stripe@latest
+```
+
+```bash yarn
+yarn add @trigger.dev/stripe@latest
+```
+
+</CodeGroup>
+
+## Authentication
+
+The Stripe integration supports secret API Keys
+
+```ts
+import { Stripe } from "@trigger.dev/stripe";
+
+const stripe = new Stripe({
+  id: "stripe",
+  apiKey: process.env.STRIPE_API_KEY!,
+});
+```
+
+## Triggers
+
+The Stripe integration exposes a number of triggers that can be used on a job, powered by Stripe webhooks.
+
+```ts
+client.defineJob({
+  id: "stripe-price",
+  name: "Stripe Price",
+  version: "0.1.0",
+  trigger: stripe.onPriceCreated(),
+  run: async (payload, io, ctx) => {
+    console.log(ctx.event.name); // "price.created"
+  },
+});
+```
+
+As you can see above, the job will be triggered on the `price.created` event. If you'd like to trigger a job on multiple events, you can use the aggregate version of the trigger:
+
+```ts
+client.defineJob({
+  id: "stripe-price",
+  name: "Stripe Price",
+  version: "0.1.0",
+  trigger: stripe.onPrice(),
+  run: async (payload, io, ctx) => {
+    console.log(ctx.event.name); // "price.created", "price.updated", "price.deleted"
+  },
+});
+```
+
+"Aggregate" triggers also give you the ability to filter on specific events:
+
+```ts
+client.defineJob({
+  id: "stripe-price",
+  name: "Stripe Price",
+  version: "0.1.0",
+  trigger: stripe.onPrice({
+    events: ["price.created", "price.updated"],
+  }),
+  run: async (payload, io, ctx) => {
+    console.log(ctx.event.name); // "price.created", "price.updated"
+  },
+});
+```
+
+Available triggers are listed below:
+
+| Function Name                   | Events                                                                                                                                                                                                                                                              | Description                                       | Aggregate Version        |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ------------------------ |
+| `onCharge`                      | `charge.succeeded`, `charge.failed`, `charge.captured`, `charge.refunded`, `charge.updated`                                                                                                                                                                         | Triggered on all charge events                    | ✔️                       |
+| `onChargeSucceeded`             | `charge.succeeded`                                                                                                                                                                                                                                                  | Triggered on charge succeeded events              | `onCharge`               |
+| `onChargeFailed`                | `charge.failed`                                                                                                                                                                                                                                                     | Triggered on charge failed events                 | `onCharge`               |
+| `onChargeCaptured`              | `charge.captured`                                                                                                                                                                                                                                                   | Triggered on charge captured events               | `onCharge`               |
+| `onChargeRefunded`              | `charge.refunded`                                                                                                                                                                                                                                                   | Triggered on charge refunded events               | `onCharge`               |
+| `onChargeUpdated`               | `charge.updated`                                                                                                                                                                                                                                                    | Triggered on charge updated events                | `onCharge`               |
+| `onProduct`                     | `product.created`, `product.updated`, `product.deleted`                                                                                                                                                                                                             | Triggered on all product events                   | ✔️                       |
+| `onProductCreated`              | `product.created`                                                                                                                                                                                                                                                   | Triggered on product created events               | `onProduct`              |
+| `onProductUpdated`              | `product.updated`                                                                                                                                                                                                                                                   | Triggered on product updated events               | `onProduct`              |
+| `onProductDeleted`              | `product.deleted`                                                                                                                                                                                                                                                   | Triggered on product deleted events               | `onProduct`              |
+| `onPrice`                       | `price.created`, `price.updated`, `price.deleted`                                                                                                                                                                                                                   | Triggered on all price events                     | ✔️                       |
+| `onPriceCreated`                | `price.created`                                                                                                                                                                                                                                                     | Triggered on price created events                 | `onPrice`                |
+| `onPriceUpdated`                | `price.updated`                                                                                                                                                                                                                                                     | Triggered on price updated events                 | `onPrice`                |
+| `onPriceDeleted`                | `price.deleted`                                                                                                                                                                                                                                                     | Triggered on price deleted events                 | `onPrice`                |
+| `onCheckoutSession`             | `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`                                                                                                                       | Triggered on all checkout session events          | ✔️                       |
+| `onCheckoutSessionCompleted`    | `checkout.session.completed`                                                                                                                                                                                                                                        | Triggered on checkout session completed events    | `onCheckoutSession`      |
+| `onCheckoutSessionExpired`      | `checkout.session.expired`                                                                                                                                                                                                                                          | Triggered on checkout session expired events      | `onCheckoutSession`      |
+| `onCustomerSubscription`        | `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.paused`, `customer.subscription.pending_updated_applied`, `customer.subscription.pending_update_expired`, `customer.subscription.resumed` | Triggered on all customer subscription events     | ✔️                       |
+| `onCustomerSubscriptionCreated` | `customer.subscription.created`                                                                                                                                                                                                                                     | Triggered on customer subscription created events | `onCustomerSubscription` |
+| `onCustomerSubscriptionUpdated` | `customer.subscription.updated`                                                                                                                                                                                                                                     | Triggered on customer subscription updated events | `onCustomerSubscription` |
+| `onCustomerSubscriptionDeleted` | `customer.subscription.deleted`                                                                                                                                                                                                                                     | Triggered on customer subscription deleted events | `onCustomerSubscription` |
+| `onCustomerSubscriptionPaused`  | `customer.subscription.paused`                                                                                                                                                                                                                                      | Triggered on customer subscription paused events  | `onCustomerSubscription` |
+| `onCustomerSubscriptionPending` | `customer.subscription.pending_updated_applied`, `customer.subscription.pending_update_expired`                                                                                                                                                                     | Triggered on customer subscription pending events | `onCustomerSubscription` |
+| `onCustomerSubscriptionResumed` | `customer.subscription.resumed`                                                                                                                                                                                                                                     | Triggered on customer subscription resumed events | `onCustomerSubscription` |
+| `onCustomer`                    | `customer.created`, `customer.updated`, `customer.deleted`                                                                                                                                                                                                          | Triggered on all customer events                  | ✔️                       |
+| `onCustomerCreated`             | `customer.created`                                                                                                                                                                                                                                                  | Triggered on customer created events              | `onCustomer`             |
+| `onCustomerUpdated`             | `customer.updated`                                                                                                                                                                                                                                                  | Triggered on customer updated events              | `onCustomer`             |
+| `onCustomerDeleted`             | `customer.deleted`                                                                                                                                                                                                                                                  | Triggered on customer deleted events              | `onCustomer`             |
+| `onExternalAccount`             | `account.external_account.created`, `account.external_account.updated`, `account.external_account.deleted`                                                                                                                                                          | Triggered on all external account events          | ✔️                       |
+| `onExternalAccountCreated`      | `account.external_account.created`                                                                                                                                                                                                                                  | Triggered on external account created events      | `onExternalAccount`      |
+| `onExternalAccountUpdated`      | `account.external_account.updated`                                                                                                                                                                                                                                  | Triggered on external account updated events      | `onExternalAccount`      |
+| `onExternalAccountDeleted`      | `account.external_account.deleted`                                                                                                                                                                                                                                  | Triggered on external account deleted events      | `onExternalAccount`      |
+| `onPerson`                      | `account.person.created`, `account.person.updated`, `account.person.deleted`                                                                                                                                                                                        | Triggered on all person events                    | ✔️                       |
+| `onPersonCreated`               | `account.person.created`                                                                                                                                                                                                                                            | Triggered on person created events                | `onPerson`               |
+| `onPersonUpdated`               | `account.person.updated`                                                                                                                                                                                                                                            | Triggered on person updated events                | `onPerson`               |
+| `onPersonDeleted`               | `account.person.deleted`                                                                                                                                                                                                                                            | Triggered on person deleted events                | `onPerson`               |
+
+If there are any triggers missing that you'd like to see added, please [open a new GitHub Issue](https://github.com/triggerdotdev/trigger.dev/issues/new)
+
+## Tasks
+
+You can make reliable calls to the Stripe API inside of jobs using the exposed stripe tasks:
+
+```ts
+const stripe = new Stripe({
+  id: "stripe",
+  apiKey: process.env["STRIPE_API_KEY"]!,
+});
+
+client.defineJob({
+  id: "stripe-example-1",
+  name: "Stripe Example 1",
+  version: "0.1.0",
+  trigger: eventTrigger({
+    name: "stripe.example",
+    schema: z.object({
+      customerId: z.string(),
+      source: z.string(),
+    }),
+  }),
+  integrations: {
+    stripe,
+  },
+  run: async (payload, io, ctx) => {
+    await io.stripe.createCharge("create-charge", {
+      amount: 100,
+      currency: "usd",
+      source: payload.source,
+      customer: payload.customerId,
+    });
+  },
+});
+```
+
+We automatically fill in the `idempotencyKey` for you, so we can gaurentee that the API call will only be executed once.
+
+Available tasks are listed below:
+
+| Function Name           | Description                                                                                                                                                                                                                |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createCharge`          | Use the Payment Intents API to initiate a new payment instead of using this method. Confirmation of the PaymentIntent creates the Charge object used to request payment, so this method is limited to legacy integrations. |
+| `createCustomer`        | Creates a new customer object                                                                                                                                                                                              |
+| `updateCustomer`        | Updates the specified customer by setting the values of the parameters passed                                                                                                                                              |
+| `retrieveSubscription`  | Retrieves the subscription with the given ID.                                                                                                                                                                              |
+| `createCheckoutSession` | Creates a new Checkout Session object.                                                                                                                                                                                     |
+
+If there are any tasks missing that you'd like to see added, please [open a new GitHub Issue](https://github.com/triggerdotdev/trigger.dev/issues/new)
+
+## Using the underlying Stripe client
+
+You can use the underlying client to do anything the [stripe-node](https://github.com/stripe/stripe-node) client supports by using the `client` property on the integration:
+
+```ts
+const stripe = new Stripe({
+  id: "stripe",
+  apiKey: process.env["STRIPE_API_KEY"]!,
+});
+
+client.defineJob({
+  id: "stripe-example-1",
+  name: "Stripe Example 1",
+  version: "0.1.0",
+  trigger: eventTrigger({
+    name: "stripe.example",
+  }),
+  integrations: {
+    stripe,
+  },
+  run: async (payload, io, ctx) => {
+    await io.runTask("create-price", { name: "Create Price" }, async (task) => {
+      return stripe.client.prices.create(
+        {
+          unit_amount: 2000,
+          currency: "usd",
+          product_data: {
+            name: "T-shirt",
+          },
+        },
+        {
+          idempotencyKey: task.idempotencyKey,
+        }
+      );
+    });
+  },
+});
+```
+
+Make sure to pass the `idempotencyKey` to the underlying client to ensure that the API call is only executed once. This is only needed for mutating API calls.

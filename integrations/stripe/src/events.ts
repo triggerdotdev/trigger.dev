@@ -6,7 +6,17 @@ import {
   pausedSubscriptionExample,
   updatedSubscriptionExample,
 } from "./examples";
-import { OnCheckoutSession, OnCustomerSubscription, OnPriceEvent, OnProductEvent } from "./types";
+import {
+  OnAccountEvent,
+  OnChargeEvent,
+  OnCheckoutSession,
+  OnCustomerEvent,
+  OnCustomerSubscription,
+  OnExternalAccountEvent,
+  OnPersonEvent,
+  OnPriceEvent,
+  OnProductEvent,
+} from "./types";
 
 export const onPriceCreated: EventSpecification<OnPriceEvent> = {
   name: "price.created",
@@ -449,5 +459,254 @@ export const onCustomerSubscriptionUpdated: EventSpecification<OnCustomerSubscri
   runProperties: (payload) => [
     { label: "Subscription ID", text: payload.id },
     { label: "Status", text: payload.status },
+  ],
+};
+
+export const onAccountUpdated: EventSpecification<OnAccountEvent> = {
+  name: "account.updated",
+  title: "On Account Updated",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnAccountEvent,
+  runProperties: (payload) => [
+    { label: "Account ID", text: payload.id },
+    ...(payload.business_type ? [{ label: "Business Type", text: payload.business_type }] : []),
+  ],
+};
+
+export const onCustomer: EventSpecification<OnCustomerEvent> = {
+  name: ["customer.created", "customer.deleted", "customer.updated"],
+  title: "On Customer Event",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnCustomerEvent,
+  runProperties: (payload) => [{ label: "Customer ID", text: payload.id }],
+};
+
+export const onCustomerCreated: EventSpecification<OnCustomerEvent> = {
+  name: "customer.created",
+  title: "On Customer Created",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnCustomerEvent,
+  runProperties: (payload) => [{ label: "Customer ID", text: payload.id }],
+};
+
+export const onCustomerDeleted: EventSpecification<OnCustomerEvent> = {
+  name: "customer.deleted",
+  title: "On Customer Deleted",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnCustomerEvent,
+  runProperties: (payload) => [{ label: "Customer ID", text: payload.id }],
+};
+
+export const onCustomerUpdated: EventSpecification<OnCustomerEvent> = {
+  name: "customer.updated",
+  title: "On Customer Updated",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnCustomerEvent,
+  runProperties: (payload) => [{ label: "Customer ID", text: payload.id }],
+};
+
+export const onCharge: EventSpecification<OnChargeEvent> = {
+  name: [
+    "charge.captured",
+    "charge.expired",
+    "charge.failed",
+    "charge.pending",
+    "charge.refunded",
+    "charge.succeeded",
+    "charge.updated",
+  ],
+  title: "On Charge Event",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnChargeEvent,
+  runProperties: (payload) => [{ label: "Charge ID", text: payload.id }],
+};
+
+export const onChargeCaptured: EventSpecification<OnChargeEvent> = {
+  name: "charge.captured",
+  title: "On Charge Captured",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnChargeEvent,
+  runProperties: (payload) => [{ label: "Charge ID", text: payload.id }],
+};
+
+export const onChargeExpired: EventSpecification<OnChargeEvent> = {
+  name: "charge.expired",
+  title: "On Charge Expired",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnChargeEvent,
+  runProperties: (payload) => [{ label: "Charge ID", text: payload.id }],
+};
+
+export const onChargeFailed: EventSpecification<OnChargeEvent> = {
+  name: "charge.failed",
+  title: "On Charge Failed",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnChargeEvent,
+  runProperties: (payload) => [{ label: "Charge ID", text: payload.id }],
+};
+
+export const onChargePending: EventSpecification<OnChargeEvent> = {
+  name: "charge.pending",
+  title: "On Charge Pending",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnChargeEvent,
+  runProperties: (payload) => [{ label: "Charge ID", text: payload.id }],
+};
+
+export const onChargeRefunded: EventSpecification<OnChargeEvent> = {
+  name: "charge.refunded",
+  title: "On Charge Refunded",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnChargeEvent,
+  runProperties: (payload) => [{ label: "Charge ID", text: payload.id }],
+};
+
+export const onChargeSucceeded: EventSpecification<OnChargeEvent> = {
+  name: "charge.succeeded",
+  title: "On Charge Succeeded",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnChargeEvent,
+  runProperties: (payload) => [{ label: "Charge ID", text: payload.id }],
+};
+
+export const onChargeUpdated: EventSpecification<OnChargeEvent> = {
+  name: "charge.updated",
+  title: "On Charge Updated",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnChargeEvent,
+  runProperties: (payload) => [{ label: "Charge ID", text: payload.id }],
+};
+
+export const onExternalAccount: EventSpecification<OnExternalAccountEvent> = {
+  name: [
+    "account.external_account.created",
+    "account.external_account.deleted",
+    "account.external_account.updated",
+  ],
+  title: "On External Account Event",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnExternalAccountEvent,
+  runProperties: (payload) => [
+    { label: "Type", text: payload.object },
+    { label: payload.object === "bank_account" ? "Bank Account ID" : "Card ID", text: payload.id },
+  ],
+};
+
+export const onExternalAccountCreated: EventSpecification<OnExternalAccountEvent> = {
+  name: "account.external_account.created",
+  title: "On External Account Created",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnExternalAccountEvent,
+  runProperties: (payload) => [
+    { label: "Type", text: payload.object },
+    { label: payload.object === "bank_account" ? "Bank Account ID" : "Card ID", text: payload.id },
+  ],
+};
+
+export const onExternalAccountDeleted: EventSpecification<OnExternalAccountEvent> = {
+  name: "account.external_account.deleted",
+  title: "On External Account Deleted",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnExternalAccountEvent,
+  runProperties: (payload) => [
+    { label: "Type", text: payload.object },
+    { label: payload.object === "bank_account" ? "Bank Account ID" : "Card ID", text: payload.id },
+  ],
+};
+
+export const onExternalAccountUpdated: EventSpecification<OnExternalAccountEvent> = {
+  name: "account.external_account.updated",
+  title: "On External Account Updated",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnExternalAccountEvent,
+  runProperties: (payload) => [
+    { label: "Type", text: payload.object },
+    { label: payload.object === "bank_account" ? "Bank Account ID" : "Card ID", text: payload.id },
+  ],
+};
+
+export const onPerson: EventSpecification<OnPersonEvent> = {
+  name: ["person.created", "person.deleted", "person.updated"],
+  title: "On Person Event",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnPersonEvent,
+  runProperties: (payload) => [
+    { label: "Person ID", text: payload.id },
+    { label: "Account", text: payload.account },
+  ],
+};
+
+export const onPersonCreated: EventSpecification<OnPersonEvent> = {
+  name: "person.created",
+  title: "On Person Created",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnPersonEvent,
+  runProperties: (payload) => [
+    { label: "Person ID", text: payload.id },
+    { label: "Account", text: payload.account },
+  ],
+};
+
+export const onPersonDeleted: EventSpecification<OnPersonEvent> = {
+  name: "person.deleted",
+  title: "On Person Deleted",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnPersonEvent,
+  runProperties: (payload) => [
+    { label: "Person ID", text: payload.id },
+    { label: "Account", text: payload.account },
+  ],
+};
+
+export const onPersonUpdated: EventSpecification<OnPersonEvent> = {
+  name: "person.updated",
+  title: "On Person Updated",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnPersonEvent,
+  runProperties: (payload) => [
+    { label: "Person ID", text: payload.id },
+    { label: "Account", text: payload.account },
   ],
 };
