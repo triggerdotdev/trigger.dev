@@ -1,5 +1,13 @@
 # @trigger.dev/stripe
 
+## 2.0.12
+
+### Patch Changes
+
+- 760f5de2: Adding additional Stripe triggers for account.updated, account.external*account.*, customer._, person._, and charge.\_
+  - @trigger.dev/integration-kit@2.0.12
+  - @trigger.dev/sdk@2.0.12
+
 ## 2.0.11
 
 ### Patch Changes

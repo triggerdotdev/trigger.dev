@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/core",
-  "version": "2.0.11",
+  "version": "2.0.12",
   "description": "Core code used across the Trigger.dev SDK and platform",
   "license": "MIT",
   "main": "./dist/index.js",
