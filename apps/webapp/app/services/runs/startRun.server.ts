@@ -3,6 +3,7 @@ import type { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { enqueueRunExecutionV2 } from "~/models/jobRunExecution.server";
 import { workerQueue } from "../worker.server";
+import { RuntimeEnvironmentType, RuntimeEnvironmentTypeSchema } from "../../../../../packages/core/src";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type RunConnectionsByKey = Awaited<ReturnType<typeof createRunConnections>>;
@@ -40,18 +41,18 @@ export class StartRunService {
       .map(([key, runConnection]) =>
         runConnection.result === "resolvedHosted"
           ? ({
-              key,
-              connectionId: runConnection.connection.id,
-              integrationId: runConnection.integration.id,
-              authSource: "HOSTED",
-            } as const)
+            key,
+            connectionId: runConnection.connection.id,
+            integrationId: runConnection.integration.id,
+            authSource: "HOSTED",
+          } as const)
           : runConnection.result === "resolvedLocal"
-          ? ({
+            ? ({
               key,
               integrationId: runConnection.integration.id,
               authSource: "LOCAL",
             } as const)
-          : undefined
+            : undefined
       )
       .filter(Boolean);
 
@@ -83,7 +84,9 @@ export class StartRunService {
 
     const updatedRun = await updateRun();
 
-    await enqueueRunExecutionV2(updatedRun, this.#prismaClient);
+    await enqueueRunExecutionV2(updatedRun, this.#prismaClient, {
+      skipRetrying: run.environment.type === RuntimeEnvironmentTypeSchema.Enum.DEVELOPMENT,
+    });
   }
 
   async #handleMissingConnections(id: string, runConnectionsByKey: RunConnectionsByKey) {
@@ -160,17 +163,17 @@ async function createRunConnections(tx: PrismaClientOrTransaction, run: FoundRun
         Record<
           string,
           | {
-              result: "resolvedHosted";
-              connection: IntegrationConnection;
-              integration: Integration;
-            }
+            result: "resolvedHosted";
+            connection: IntegrationConnection;
+            integration: Integration;
+          }
           | { result: "resolvedLocal"; integration: Integration }
           | {
-              result: "missing";
-              connectionType: ConnectionType;
-              integration: Integration;
-              externalAccountId?: string;
-            }
+            result: "missing";
+            connectionType: ConnectionType;
+            integration: Integration;
+            externalAccountId?: string;
+          }
         >
       >,
       jobIntegration
@@ -185,18 +188,18 @@ async function createRunConnections(tx: PrismaClientOrTransaction, run: FoundRun
       } else {
         const connection = run.externalAccountId
           ? await tx.integrationConnection.findFirst({
-              where: {
-                integrationId: jobIntegration.integration.id,
-                connectionType: "EXTERNAL",
-                externalAccountId: run.externalAccountId,
-              },
-            })
+            where: {
+              integrationId: jobIntegration.integration.id,
+              connectionType: "EXTERNAL",
+              externalAccountId: run.externalAccountId,
+            },
+          })
           : await tx.integrationConnection.findFirst({
-              where: {
-                integrationId: jobIntegration.integration.id,
-                connectionType: "DEVELOPER",
-              },
-            });
+            where: {
+              integrationId: jobIntegration.integration.id,
+              connectionType: "DEVELOPER",
+            },
+          });
 
         if (connection) {
           acc[jobIntegration.key] = {
