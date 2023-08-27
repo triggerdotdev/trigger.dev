@@ -4,6 +4,7 @@ import { AuthenticatedEnvironment } from "../apiAuth.server";
 import { EndpointApi } from "../endpointApi.server";
 import { workerQueue } from "../worker.server";
 import { env } from "~/env.server";
+import { RuntimeEnvironmentTypeSchema } from "../../../../../packages/core/src";
 
 const indexingHookIdentifier = customAlphabet("0123456789abcdefghijklmnopqrstuvxyz", 10);
 
@@ -83,7 +84,10 @@ export class CreateEndpointService {
             id: endpoint.id,
             source: "INTERNAL",
           },
-          { tx }
+          {
+            tx,
+            maxAttempts: environment.type === RuntimeEnvironmentTypeSchema.Enum.DEVELOPMENT ? 1 : undefined
+          }
         );
 
         return endpoint;

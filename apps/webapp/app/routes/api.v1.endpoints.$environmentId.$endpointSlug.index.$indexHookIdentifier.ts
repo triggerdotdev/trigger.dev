@@ -4,6 +4,7 @@ import { PrismaClient, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { workerQueue } from "~/services/worker.server";
 import { safeJsonParse } from "~/utils/json";
+import { RuntimeEnvironmentTypeSchema } from "../../../../packages/core/src";
 
 const ParamsSchema = z.object({
   environmentId: z.string(),
@@ -99,6 +100,9 @@ export class TriggerEndpointIndexHookService {
           slug: endpointSlug,
         },
       },
+      include: {
+        environment: true
+      }
     });
 
     if (!endpoint) {
@@ -122,6 +126,7 @@ export class TriggerEndpointIndexHookService {
       },
       {
         runAt: new Date(Date.now() + 5000),
+        maxAttempts: endpoint.environment?.type === RuntimeEnvironmentTypeSchema.Enum.DEVELOPMENT ? 1 : undefined,
       }
     );
   }
@@ -146,9 +151,8 @@ function parseReasonFromBody(body: any): string | undefined {
     return `Vercel project ${payload.deployment.name} was deployed to ${payload.deployment.url}`;
   }
 
-  return `"${githubMeta.data.githubCommitMessage}" was deployed from ${
-    githubMeta.data.githubCommitRef
-  } (${githubMeta.data.githubCommitSha.slice(0, 7)}) to ${payload.deployment.name}`;
+  return `"${githubMeta.data.githubCommitMessage}" was deployed from ${githubMeta.data.githubCommitRef
+    } (${githubMeta.data.githubCommitSha.slice(0, 7)}) to ${payload.deployment.name}`;
 }
 
 // Example payload: https://jsonhero.io/j/fhIwXEFmi7qa
