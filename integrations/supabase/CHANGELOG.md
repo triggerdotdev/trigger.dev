@@ -1,5 +1,12 @@
 # @trigger.dev/supabase
 
+## 2.0.12
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@2.0.12
+- @trigger.dev/sdk@2.0.12
+
 ## 2.0.11
 
 ### Patch Changes

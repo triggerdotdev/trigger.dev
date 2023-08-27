@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/eslint-plugin",
-  "version": "2.0.11",
+  "version": "2.0.12",
   "description": "ESLint plugin with trigger.dev best practices",
   "keywords": [
     "eslint",

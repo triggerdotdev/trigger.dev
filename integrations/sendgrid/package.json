@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sendgrid",
-  "version": "2.0.11",
+  "version": "2.0.12",
   "description": "Trigger.dev integration for @sendgrid/mail",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -26,8 +26,8 @@
   },
   "dependencies": {
     "@sendgrid/mail": "^7.7.0",
-    "@trigger.dev/sdk": "workspace:^2.0.11",
-    "@trigger.dev/integration-kit": "workspace:^2.0.11"
+    "@trigger.dev/sdk": "workspace:^2.0.12",
+    "@trigger.dev/integration-kit": "workspace:^2.0.12"
   },
   "engines": {
     "node": ">=16.8.0"
