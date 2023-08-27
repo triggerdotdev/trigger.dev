@@ -2,6 +2,7 @@ import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
 import { requestUrl } from "~/utils/requestUrl.server";
+import { RuntimeEnvironmentTypeSchema } from "../../../../../packages/core/src";
 
 export class HandleHttpSourceService {
   #prismaClient: PrismaClient;
@@ -55,6 +56,7 @@ export class HandleHttpSourceService {
           {
             queueName: `endpoint-${triggerSource.endpointId}`,
             tx,
+            maxAttempts: triggerSource.environment.type === RuntimeEnvironmentTypeSchema.Enum.DEVELOPMENT ? 1 : undefined
           }
         );
       });
