@@ -1,5 +1,7 @@
 # @trigger.dev/eslint-plugin
 
+## 2.0.14
+
 ## 2.0.13
 
 ### Patch Changes
