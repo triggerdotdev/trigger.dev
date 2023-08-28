@@ -12,6 +12,8 @@ import { getTriggerApiDetails } from "../utils/getTriggerApiDetails";
 import { logger } from "../utils/logger";
 import { resolvePath } from "../utils/parseNameAndPath";
 import { TriggerApi } from "../utils/triggerApi";
+import { run as ncuRun } from 'npm-check-updates'
+import chalk from "chalk";
 
 const asyncExecFile = util.promisify(childProcess.execFile);
 
@@ -45,6 +47,7 @@ export async function devCommand(path: string, anyOptions: any) {
   const options = result.data;
 
   const resolvedPath = resolvePath(path);
+  await checkForOutdatedPackages(resolvedPath)
 
   // Read from package.json to get the endpointId
   const endpointId = await getEndpointIdFromPackageJson(resolvedPath, options);
@@ -203,6 +206,36 @@ export async function devCommand(path: string, anyOptions: any) {
 
   //Do initial refresh
   throttle(refresh, throttleTimeMs);
+}
+
+export async function checkForOutdatedPackages(path: string) {
+
+  const updates = await ncuRun({
+    packageFile: `${path}/package.json`,
+    filter: "/trigger.dev\/.+$/",
+    upgrade: false,
+  }) as {
+    [key: string]: string;
+  }
+
+  if (typeof updates === 'undefined' || Object.keys(updates).length === 0) {
+    return;
+  }
+
+  const packageFile = await fs.readFile(`${path}/package.json`);
+  const data = JSON.parse(Buffer.from(packageFile).toString('utf8'));
+  const dependencies = data.dependencies;
+  console.log(
+    chalk.bgYellow('Updates available for trigger.dev packages')
+  );
+  console.log(
+    chalk.bgBlue('Run npx @trigger.dev/cli@latest update')
+  );
+
+  for (let dep in updates) {
+    console.log(`${dep}  ${dependencies[dep]}  →  ${updates[dep]}`);
+  }
+
 }
 
 export async function getEndpointIdFromPackageJson(path: string, options: DevCommandOptions) {
