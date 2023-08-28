@@ -30,7 +30,10 @@ export class EndpointApiError extends Error {
 }
 
 export class EndpointApi {
-  constructor(private apiKey: string, private url: string) {}
+  constructor(
+    private apiKey: string,
+    private url: string
+  ) {}
 
   async ping(endpointId: string): Promise<PongResponse> {
     const response = await safeFetch(this.url, {

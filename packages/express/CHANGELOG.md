@@ -1,5 +1,36 @@
 # @trigger.dev/express
 
+## 2.0.14
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@2.0.14`
+
+## 2.0.13
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@2.0.13`
+
+## 2.0.12
+
+### Patch Changes
+
+- @trigger.dev/sdk@2.0.12
+
+## 2.0.11
+
+### Patch Changes
+
+- b5db9f5e: Adding MIT license
+- Updated dependencies [ac98219b]
+- Updated dependencies [302bd02f]
+- Updated dependencies [b5db9f5e]
+- Updated dependencies [3ce53970]
+  - @trigger.dev/sdk@2.0.11
+
 ## 2.0.10
 
 ### Patch Changes

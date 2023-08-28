@@ -1,0 +1,255 @@
+---
+title: Stripe
+---
+
+<Snippet file="integration-getting-started.mdx" />
+
+## Installation
+
+<CodeGroup>
+
+```bash npm
+npm add @trigger.dev/stripe@latest
+```
+
+```bash pnpm
+pnpm add @trigger.dev/stripe@latest
+```
+
+```bash yarn
+yarn add @trigger.dev/stripe@latest
+```
+
+</CodeGroup>
+
+## Authentication
+
+The Stripe integration supports secret API Keys
+
+```ts
+import { Stripe } from "@trigger.dev/stripe";
+
+const stripe = new Stripe({
+  id: "stripe",
+  apiKey: process.env.STRIPE_API_KEY!,
+});
+```
+
+## Triggers
+
+The Stripe integration exposes a number of triggers that can be used on a job, powered by Stripe webhooks.
+
+```ts
+client.defineJob({
+  id: "stripe-price",
+  name: "Stripe Price",
+  version: "0.1.0",
+  trigger: stripe.onPriceCreated(),
+  run: async (payload, io, ctx) => {
+    console.log(ctx.event.name); // "price.created"
+  },
+});
+```
+
+As you can see above, the job will be triggered on the `price.created` event. If you'd like to trigger a job on multiple events, you can use the aggregate version of the trigger:
+
+```ts
+client.defineJob({
+  id: "stripe-price",
+  name: "Stripe Price",
+  version: "0.1.0",
+  trigger: stripe.onPrice(),
+  run: async (payload, io, ctx) => {
+    console.log(ctx.event.name); // "price.created", "price.updated", "price.deleted"
+  },
+});
+```
+
+"Aggregate" triggers also give you the ability to filter on specific events:
+
+```ts
+client.defineJob({
+  id: "stripe-price",
+  name: "Stripe Price",
+  version: "0.1.0",
+  trigger: stripe.onPrice({
+    events: ["price.created", "price.updated"],
+  }),
+  run: async (payload, io, ctx) => {
+    console.log(ctx.event.name); // "price.created", "price.updated"
+  },
+});
+```
+
+Available triggers are listed below:
+
+| Function Name                            | Payload Object                                                                                                                                               | Events                                                                                                                                                                                                                                                              | Aggregate Version        |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| `onCharge`                               | [Charge](https://stripe.com/docs/api/events/types#charge_object)                                                                                             | `charge.succeeded`, `charge.failed`, `charge.captured`, `charge.refunded`, `charge.updated`                                                                                                                                                                         | ✔️                       |
+| `onChargeSucceeded`                      | [Charge](https://stripe.com/docs/api/events/types#charge_object)                                                                                             | `charge.succeeded`                                                                                                                                                                                                                                                  | `onCharge`               |
+| `onChargeFailed`                         | [Charge](https://stripe.com/docs/api/events/types#charge_object)                                                                                             | `charge.failed`                                                                                                                                                                                                                                                     | `onCharge`               |
+| `onChargeCaptured`                       | [Charge](https://stripe.com/docs/api/events/types#charge_object)                                                                                             | `charge.captured`                                                                                                                                                                                                                                                   | `onCharge`               |
+| `onChargeRefunded`                       | [Charge](https://stripe.com/docs/api/events/types#charge_object)                                                                                             | `charge.refunded`                                                                                                                                                                                                                                                   | `onCharge`               |
+| `onChargeUpdated`                        | [Charge](https://stripe.com/docs/api/events/types#charge_object)                                                                                             | `charge.updated`                                                                                                                                                                                                                                                    | `onCharge`               |
+| `onProduct`                              | [Product](https://stripe.com/docs/api/events/types#product_object)                                                                                           | `product.created`, `product.updated`, `product.deleted`                                                                                                                                                                                                             | ✔️                       |
+| `onProductCreated`                       | [Product](https://stripe.com/docs/api/events/types#product_object)                                                                                           | `product.created`                                                                                                                                                                                                                                                   | `onProduct`              |
+| `onProductUpdated`                       | [Product](https://stripe.com/docs/api/events/types#product_object)                                                                                           | `product.updated`                                                                                                                                                                                                                                                   | `onProduct`              |
+| `onProductDeleted`                       | [Product](https://stripe.com/docs/api/events/types#product_object)                                                                                           | `product.deleted`                                                                                                                                                                                                                                                   | `onProduct`              |
+| `onPrice`                                | [Price](https://stripe.com/docs/api/events/types#price_object)                                                                                               | `price.created`, `price.updated`, `price.deleted`                                                                                                                                                                                                                   | ✔️                       |
+| `onPriceCreated`                         | [Price](https://stripe.com/docs/api/events/types#price_object)                                                                                               | `price.created`                                                                                                                                                                                                                                                     | `onPrice`                |
+| `onPriceUpdated`                         | [Price](https://stripe.com/docs/api/events/types#price_object)                                                                                               | `price.updated`                                                                                                                                                                                                                                                     | `onPrice`                |
+| `onPriceDeleted`                         | [Price](https://stripe.com/docs/api/events/types#price_object)                                                                                               | `price.deleted`                                                                                                                                                                                                                                                     | `onPrice`                |
+| `onCheckoutSession`                      | [CheckoutSession](https://stripe.com/docs/api/events/types#checkout_session_object)                                                                          | `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`                                                                                                                       | ✔️                       |
+| `onCheckoutSessionCompleted`             | [CheckoutSession](https://stripe.com/docs/api/events/types#checkout_session_object)                                                                          | `checkout.session.completed`                                                                                                                                                                                                                                        | `onCheckoutSession`      |
+| `onCheckoutSessionExpired`               | [CheckoutSession](https://stripe.com/docs/api/events/types#checkout_session_object)                                                                          | `checkout.session.expired`                                                                                                                                                                                                                                          | `onCheckoutSession`      |
+| `onCustomerSubscription`                 | [Subscription](https://stripe.com/docs/api/events/types#subscription_object)                                                                                 | `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.paused`, `customer.subscription.pending_updated_applied`, `customer.subscription.pending_update_expired`, `customer.subscription.resumed` | ✔️                       |
+| `onCustomerSubscriptionCreated`          | [Subscription](https://stripe.com/docs/api/events/types#subscription_object)                                                                                 | `customer.subscription.created`                                                                                                                                                                                                                                     | `onCustomerSubscription` |
+| `onCustomerSubscriptionUpdated`          | [Subscription](https://stripe.com/docs/api/events/types#subscription_object)                                                                                 | `customer.subscription.updated`                                                                                                                                                                                                                                     | `onCustomerSubscription` |
+| `onCustomerSubscriptionDeleted`          | [Subscription](https://stripe.com/docs/api/events/types#subscription_object)                                                                                 | `customer.subscription.deleted`                                                                                                                                                                                                                                     | `onCustomerSubscription` |
+| `onCustomerSubscriptionPaused`           | [Subscription](https://stripe.com/docs/api/events/types#subscription_object)                                                                                 | `customer.subscription.paused`                                                                                                                                                                                                                                      | `onCustomerSubscription` |
+| `onCustomerSubscriptionPending`          | [Subscription](https://stripe.com/docs/api/events/types#subscription_object)                                                                                 | `customer.subscription.pending_updated_applied`, `customer.subscription.pending_update_expired`                                                                                                                                                                     | `onCustomerSubscription` |
+| `onCustomerSubscriptionResumed`          | [Subscription](https://stripe.com/docs/api/events/types#subscription_object)                                                                                 | `customer.subscription.resumed`                                                                                                                                                                                                                                     | `onCustomerSubscription` |
+| `onCustomer`                             | [Customer](https://stripe.com/docs/api/events/types#customer_object)                                                                                         | `customer.created`, `customer.updated`, `customer.deleted`                                                                                                                                                                                                          | ✔️                       |
+| `onCustomerCreated`                      | [Customer](https://stripe.com/docs/api/events/types#customer_object)                                                                                         | `customer.created`                                                                                                                                                                                                                                                  | `onCustomer`             |
+| `onCustomerUpdated`                      | [Customer](https://stripe.com/docs/api/events/types#customer_object)                                                                                         | `customer.updated`                                                                                                                                                                                                                                                  | `onCustomer`             |
+| `onCustomerDeleted`                      | [Customer](https://stripe.com/docs/api/events/types#customer_object)                                                                                         | `customer.deleted`                                                                                                                                                                                                                                                  | `onCustomer`             |
+| `onExternalAccount`                      | [Card](https://stripe.com/docs/api/events/types#account_card_object) or [Bank Account](https://stripe.com/docs/api/events/types#account_bank_account_object) | `account.external_account.created`, `account.external_account.updated`, `account.external_account.deleted`                                                                                                                                                          | ✔️                       |
+| `onExternalAccountCreated`               | [Card](https://stripe.com/docs/api/events/types#account_card_object) or [Bank Account](https://stripe.com/docs/api/events/types#account_bank_account_object) | `account.external_account.created`                                                                                                                                                                                                                                  | `onExternalAccount`      |
+| `onExternalAccountUpdated`               | [Card](https://stripe.com/docs/api/events/types#account_card_object) or [Bank Account](https://stripe.com/docs/api/events/types#account_bank_account_object) | `account.external_account.updated`                                                                                                                                                                                                                                  | `onExternalAccount`      |
+| `onExternalAccountDeleted`               | [Card](https://stripe.com/docs/api/events/types#account_card_object) or [Bank Account](https://stripe.com/docs/api/events/types#account_bank_account_object) | `account.external_account.deleted`                                                                                                                                                                                                                                  | `onExternalAccount`      |
+| `onPerson`                               | [Person](https://stripe.com/docs/api/events/types#person_object)                                                                                             | `account.person.created`, `account.person.updated`, `account.person.deleted`                                                                                                                                                                                        | ✔️                       |
+| `onPersonCreated`                        | [Person](https://stripe.com/docs/api/events/types#person_object)                                                                                             | `account.person.created`                                                                                                                                                                                                                                            | `onPerson`               |
+| `onPersonUpdated`                        | [Person](https://stripe.com/docs/api/events/types#person_object)                                                                                             | `account.person.updated`                                                                                                                                                                                                                                            | `onPerson`               |
+| `onPersonDeleted`                        | [Person](https://stripe.com/docs/api/events/types#person_object)                                                                                             | `account.person.deleted`                                                                                                                                                                                                                                            | `onPerson`               |
+| `onAccountUpdated`                       | [Account](https://stripe.com/docs/api/events/types#account_object)                                                                                           | `account.updated`                                                                                                                                                                                                                                                   | N/A                      |
+| `onPaymentIntent`                        | [PaymentIntent](https://stripe.com/docs/api/events/types#payment_intent_object)                                                                              | `payment_intent.created`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, `payment_intent.processing`, `payment_intent.amount_capturable_updated`, `payment_intent.requires_action`, `payment_intent.partially_funded`      | ✔️                       |
+| `onPaymentIntentCreated`                 | [PaymentIntent](https://stripe.com/docs/api/events/types#payment_intent_object)                                                                              | `payment_intent.created`                                                                                                                                                                                                                                            | `onPaymentIntent`        |
+| `onPaymentIntentSucceeded`               | [PaymentIntent](https://stripe.com/docs/api/events/types#payment_intent_object)                                                                              | `payment_intent.succeeded`                                                                                                                                                                                                                                          | `onPaymentIntent`        |
+| `onPaymentIntentPaymentFailed`           | [PaymentIntent](https://stripe.com/docs/api/events/types#payment_intent_object)                                                                              | `payment_intent.payment_failed`                                                                                                                                                                                                                                     | `onPaymentIntent`        |
+| `onPaymentIntentCanceled`                | [PaymentIntent](https://stripe.com/docs/api/events/types#payment_intent_object)                                                                              | `payment_intent.canceled`                                                                                                                                                                                                                                           | `onPaymentIntent`        |
+| `onPaymentIntentProcessing`              | [PaymentIntent](https://stripe.com/docs/api/events/types#payment_intent_object)                                                                              | `payment_intent.processing`                                                                                                                                                                                                                                         | `onPaymentIntent`        |
+| `onPaymentIntentRequiresAction`          | [PaymentIntent](https://stripe.com/docs/api/events/types#payment_intent_object)                                                                              | `payment_intent.requires_action`                                                                                                                                                                                                                                    | `onPaymentIntent`        |
+| `onPaymentIntentAmountCapturableUpdated` | [PaymentIntent](https://stripe.com/docs/api/events/types#payment_intent_object)                                                                              | `payment_intent.amount_capturable_updated`                                                                                                                                                                                                                          | `onPaymentIntent`        |
+| `onPaymentIntentPartiallyFunded`         | [PaymentIntent](https://stripe.com/docs/api/events/types#payment_intent_object)                                                                              | `payment_intent.partially_funded`                                                                                                                                                                                                                                   | `onPaymentIntent`        |
+| `onPayout`                               | [Payout](https://stripe.com/docs/api/events/types#payout_object)                                                                                             | `payout.created`, `payout.updated`, `payout.canceled`, `payout.paid`, `payout.failed`, `payout.reconciliation_completed`                                                                                                                                            | ✔️                       |
+| `onPayoutCreated`                        | [Payout](https://stripe.com/docs/api/events/types#payout_object)                                                                                             | `payout.created`                                                                                                                                                                                                                                                    | `onPayout`               |
+| `onPayoutUpdated`                        | [Payout](https://stripe.com/docs/api/events/types#payout_object)                                                                                             | `payout.updated`                                                                                                                                                                                                                                                    | `onPayout`               |
+| `onPayoutCanceled`                       | [Payout](https://stripe.com/docs/api/events/types#payout_object)                                                                                             | `payout.canceled`                                                                                                                                                                                                                                                   | `onPayout`               |
+| `onPayoutPaid`                           | [Payout](https://stripe.com/docs/api/events/types#payout_object)                                                                                             | `payout.paid`                                                                                                                                                                                                                                                       | `onPayout`               |
+| `onPayoutFailed`                         | [Payout](https://stripe.com/docs/api/events/types#payout_object)                                                                                             | `payout.failed`                                                                                                                                                                                                                                                     | `onPayout`               |
+| `onPayoutReconciliationCompleted`        | [Payout](https://stripe.com/docs/api/events/types#payout_object)                                                                                             | `payout.reconciliation_completed`                                                                                                                                                                                                                                   | `onPayout`               |
+
+If there are any triggers missing that you'd like to see added, please [open a new GitHub Issue](https://github.com/triggerdotdev/trigger.dev/issues/new)
+
+### Filtering
+
+All the Stripe triggers take an optional `filter` parameter that allows you to only run the job when the filter matches the event payload:
+
+```ts
+// Only trigger when the currency is USD
+client.defineJob({
+  id: "stripe-on-subscription-created",
+  name: "Stripe On Subscription Created",
+  version: "0.1.0",
+  trigger: stripe.onCustomerSubscriptionCreated({
+    filter: {
+      currency: ["usd"],
+    },
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("ctx", { ctx });
+  },
+});
+```
+
+Check out our [Event Filter docs](/documentation/guides/event-filter) for more information on how to use the filter.
+
+## Tasks
+
+You can make reliable calls to the Stripe API inside of jobs using the exposed stripe tasks:
+
+```ts
+const stripe = new Stripe({
+  id: "stripe",
+  apiKey: process.env["STRIPE_API_KEY"]!,
+});
+
+client.defineJob({
+  id: "stripe-example-1",
+  name: "Stripe Example 1",
+  version: "0.1.0",
+  trigger: eventTrigger({
+    name: "stripe.example",
+    schema: z.object({
+      customerId: z.string(),
+      source: z.string(),
+    }),
+  }),
+  integrations: {
+    stripe,
+  },
+  run: async (payload, io, ctx) => {
+    await io.stripe.createCharge("create-charge", {
+      amount: 100,
+      currency: "usd",
+      source: payload.source,
+      customer: payload.customerId,
+    });
+  },
+});
+```
+
+We automatically fill in the `idempotencyKey` for you, so we can gaurentee that the API call will only be executed once.
+
+Available tasks are listed below:
+
+| Function Name           | Description                                                                                                                                                                                                                |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createCharge`          | Use the Payment Intents API to initiate a new payment instead of using this method. Confirmation of the PaymentIntent creates the Charge object used to request payment, so this method is limited to legacy integrations. |
+| `createCustomer`        | Creates a new customer object                                                                                                                                                                                              |
+| `updateCustomer`        | Updates the specified customer by setting the values of the parameters passed                                                                                                                                              |
+| `retrieveSubscription`  | Retrieves the subscription with the given ID.                                                                                                                                                                              |
+| `createCheckoutSession` | Creates a new Checkout Session object.                                                                                                                                                                                     |
+
+If there are any tasks missing that you'd like to see added, please [open a new GitHub Issue](https://github.com/triggerdotdev/trigger.dev/issues/new)
+
+## Using the underlying Stripe client
+
+You can use the underlying client to do anything the [stripe-node](https://github.com/stripe/stripe-node) client supports by using the `client` property on the integration:
+
+```ts
+const stripe = new Stripe({
+  id: "stripe",
+  apiKey: process.env["STRIPE_API_KEY"]!,
+});
+
+client.defineJob({
+  id: "stripe-example-1",
+  name: "Stripe Example 1",
+  version: "0.1.0",
+  trigger: eventTrigger({
+    name: "stripe.example",
+  }),
+  integrations: {
+    stripe,
+  },
+  run: async (payload, io, ctx) => {
+    await io.runTask("create-price", { name: "Create Price" }, async (task) => {
+      return stripe.client.prices.create(
+        {
+          unit_amount: 2000,
+          currency: "usd",
+          product_data: {
+            name: "T-shirt",
+          },
+        },
+        {
+          idempotencyKey: task.idempotencyKey,
+        }
+      );
+    });
+  },
+});
+```
+
+Make sure to pass the `idempotencyKey` to the underlying client to ensure that the API call is only executed once. This is only needed for mutating API calls.

@@ -1,0 +1,84 @@
+---
+title: "Managing Jobs"
+description: "Managing Jobs in your codebase and the dashboard"
+---
+
+## Disabling Jobs
+
+To prevent a Job from processing new Runs, you can disable it by setting the `enabled` option:
+
+```ts
+client.defineJob({
+  id: "example-job",
+  name: "Example Job",
+  version: "0.1.0",
+  trigger: eventTrigger({ name: "example.event" }),
+  enabled: false,
+  run: async (payload, io, ctx) => {
+    // your Job code here
+  },
+});
+```
+
+If you omit the `enabled` option, it will default to `true`.
+
+The Job will only be disabled in environments that have seen the `enabled = false` value. So the Job will remain enabled in production until the code with the `enabled = false` is deployed to production.
+
+<Note>
+  Currently this is the only way to disable a Job. If you'd like to disable a Job in the Dashboard,
+  please reach out to us on [Discord](https://discord.gg/kA47vcd8P6) and let us know 👋
+</Note>
+
+Once a Job is disabled no **new** Runs will be created for that Job, and it will still be visible in the Dashboard as disabled:
+
+![Disabled Job](/images/disabled-job.png)
+
+### In-progress Runs
+
+In-progress Runs will be allowed to finish, even Runs that are currently delayed from a call to `io.wait`. If you'd like to completely stop in-progress Runs, you have two options:
+
+- Set the `enabled` option to false and then `throw` an error at the top of your Job `run` function.
+
+```ts
+client.defineJob({
+  id: "example-job",
+  name: "Example Job",
+  version: "0.1.0",
+  trigger: eventTrigger({ name: "example.event" }),
+  enabled: false,
+  run: async (payload, io, ctx) => {
+    throw new Error("Job disabled");
+  },
+});
+```
+
+- Delete the Job from your codebase. This will disable the Job as well but also stop in progress Runs.
+
+### Disabling in production with env vars
+
+You can easily disable Jobs in production using env vars so you don't have to deploy new code to disable a Job.
+
+```ts
+client.defineJob({
+  id: "example-job",
+  name: "Example Job",
+  version: "0.1.0",
+  trigger: eventTrigger({ name: "example.event" }),
+  enabled: process.env.TRIGGER_JOBS_DISABLED === "true",
+  run: async (payload, io, ctx) => {
+    // your Job code here
+  },
+});
+```
+
+Then you can disable the Job in production by setting the `TRIGGER_JOBS_DISABLED` env var to `"true"`. And removing the env var will re-enable the Job.
+
+## Deleting Jobs
+
+Once you have disabled a Job in all environments, you can delete it from the dashboard by navigating to the Job list page and clicking the "triple-dot" menu next to the Job you want to delete:
+
+![Job Menu](/images/job-triple-dot-menu.png)
+
+This will bring up a dialog confirming that you want to delete the Job and all of its history:
+
+![Delete Job Dialog](/images/delete-job.png)

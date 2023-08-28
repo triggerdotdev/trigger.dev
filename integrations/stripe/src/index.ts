@@ -338,6 +338,501 @@ export class Stripe implements StripeIntegration {
       params ?? { connect: false }
     );
   }
+
+  /**
+   * Occurs whenever an account status or property has changed.
+   */
+  onAccountUpdated(params?: TriggerParams) {
+    return createTrigger(this.source, events.onAccountUpdated, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs on customer.created, customer.deleted, and customer.updated
+   *
+   * @example
+   * ```ts
+   * stripe.onCustomer()
+   * ```
+   *
+   * You can detect the event name in your job by using the `ctx.event.name` property:
+   *
+   * ```ts
+   * client.defineJob({
+   *   id: "stripe-example",
+   *   name: "Stripe Example",
+   *   version: "0.1.0",
+   *   trigger: stripe.onCustomer(),
+   *   run: async (payload, io, ctx) => {
+   *     console.log(ctx.event.name); // "customer.created" or "customer.deleted"
+   *   },
+   * });
+   * ```
+   */
+  onCustomer(
+    params?: TriggerParams & {
+      events?: Array<"customer.created" | "customer.deleted">;
+    }
+  ) {
+    const event = {
+      ...events.onCustomer,
+      name: params?.events ?? events.onCustomer.name,
+    };
+
+    return createTrigger(this.source, event, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever a new customer is created.
+   */
+  onCustomerCreated(params?: TriggerParams) {
+    return createTrigger(this.source, events.onCustomerCreated, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever a new customer is deleted.
+   */
+  onCustomerDeleted(params?: TriggerParams) {
+    return createTrigger(this.source, events.onCustomerDeleted, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever a new customer is updated.
+   */
+  onCustomerUpdated(params?: TriggerParams) {
+    return createTrigger(this.source, events.onCustomerUpdated, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs on any charge.* event. Accepts an optional array of events to filter on. By default it will listen to all charge.* events.
+   *
+   * @example
+   * ```ts
+   * stripe.onCharge({ events: ["charge.refunded", "charge.succeeded"] })
+   * ```
+   *
+   * You can detect the event name in your job by using the `ctx.event.name` property:
+   *
+   * ```ts
+   * client.defineJob({
+   *   id: "stripe-example",
+   *   name: "Stripe Example",
+   *   version: "0.1.0",
+   *   trigger: stripe.onCharge({ events: ["charge.refunded", "charge.succeeded"] }),
+   *   run: async (payload, io, ctx) => {
+   *     console.log(ctx.event.name); // "charge.refunded" or "charge.succeeded"
+   *   },
+   * });
+   * ```
+   */
+  onCharge(
+    params?: TriggerParams & {
+      events?: Array<
+        | "charge.captured"
+        | "charge.expired"
+        | "charge.failed"
+        | "charge.pending"
+        | "charge.refunded"
+        | "charge.succeeded"
+        | "charge.updated"
+      >;
+    }
+  ) {
+    const event = {
+      ...events.onCharge,
+      name: params?.events ?? events.onCharge.name,
+    };
+
+    return createTrigger(this.source, event, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever a previously uncaptured charge is captured
+   */
+  onChargeCaptured(params?: TriggerParams) {
+    return createTrigger(this.source, events.onChargeCaptured, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever an uncaptured charge expires.
+   */
+  onChargeExpired(params?: TriggerParams) {
+    return createTrigger(this.source, events.onChargeExpired, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever a failed charge attempt occurs
+   */
+  onChargeFailed(params?: TriggerParams) {
+    return createTrigger(this.source, events.onChargeFailed, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever a pending charge is created
+   */
+  onChargePending(params?: TriggerParams) {
+    return createTrigger(this.source, events.onChargePending, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever a charge is refunded, including partial refunds
+   */
+  onChargeRefunded(params?: TriggerParams) {
+    return createTrigger(this.source, events.onChargeRefunded, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever a charge is successful
+   */
+  onChargeSucceeded(params?: TriggerParams) {
+    return createTrigger(this.source, events.onChargeSucceeded, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever a charge description or metadata is updated, or upon an asynchronous capture
+   */
+  onChargeUpdated(params?: TriggerParams) {
+    return createTrigger(this.source, events.onChargeUpdated, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs on any account.external_account.* event. Accepts an optional array of events to filter on. By default it will listen to all charge.* events.
+   *
+   * @example
+   * ```ts
+   * stripe.onExternalAccount({ events: ["account.external_account.created", "account.external_account.deleted"] })
+   * ```
+   *
+   * You can detect the event name in your job by using the `ctx.event.name` property:
+   *
+   * ```ts
+   * client.defineJob({
+   *   id: "stripe-example",
+   *   name: "Stripe Example",
+   *   version: "0.1.0",
+   *   trigger: stripe.onExternalAccount({ events: ["account.external_account.created", "account.external_account.deleted"] }),
+   *   run: async (payload, io, ctx) => {
+   *     console.log(ctx.event.name); // "account.external_account.created" or "account.external_account.deleted"
+   *   },
+   * });
+   * ```
+   */
+  onExternalAccount(
+    params?: TriggerParams & {
+      events?: Array<
+        | "account.external_account.created"
+        | "account.external_account.deleted"
+        | "account.external_account.updated"
+      >;
+    }
+  ) {
+    const event = {
+      ...events.onExternalAccount,
+      name: params?.events ?? events.onExternalAccount.name,
+    };
+
+    return createTrigger(this.source, event, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever an external account is created.
+   * */
+  onExternalAccountCreated(params?: TriggerParams) {
+    return createTrigger(
+      this.source,
+      events.onExternalAccountCreated,
+      params ?? { connect: false }
+    );
+  }
+
+  /**
+   * Occurs whenever an external account is deleted.
+   * */
+  onExternalAccountDeleted(params?: TriggerParams) {
+    return createTrigger(
+      this.source,
+      events.onExternalAccountDeleted,
+      params ?? { connect: false }
+    );
+  }
+
+  /**
+   * Occurs whenever an external account is updated.
+   * */
+  onExternalAccountUpdated(params?: TriggerParams) {
+    return createTrigger(
+      this.source,
+      events.onExternalAccountUpdated,
+      params ?? { connect: false }
+    );
+  }
+
+  /**
+   * Occurs on any person.* event. Accepts an optional array of events to filter on. By default it will listen to all person.* events.
+   *
+   * @example
+   * ```ts
+   * stripe.onPerson({ events: ["person.created", "person.deleted"] })
+   * ```
+   *
+   * You can detect the event name in your job by using the `ctx.event.name` property:
+   *
+   * ```ts
+   * client.defineJob({
+   *   id: "stripe-example",
+   *   name: "Stripe Example",
+   *   version: "0.1.0",
+   *   trigger: stripe.onPerson({ events: ["person.created", "person.deleted"] }),
+   *   run: async (payload, io, ctx) => {
+   *     console.log(ctx.event.name); // "person.created" or "person.deleted"
+   *   },
+   * });
+   * ```
+   */
+  onPerson(
+    params?: TriggerParams & {
+      events?: Array<"person.created" | "person.deleted" | "person.updated">;
+    }
+  ) {
+    const event = {
+      ...events.onPerson,
+      name: params?.events ?? events.onPerson.name,
+    };
+
+    return createTrigger(this.source, event, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever a person associated with an account is created.
+   * */
+  onPersonCreated(params?: TriggerParams) {
+    return createTrigger(this.source, events.onPersonCreated, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever a person associated with an account is deleted.
+   * */
+  onPersonDeleted(params?: TriggerParams) {
+    return createTrigger(this.source, events.onPersonDeleted, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever a person associated with an account is updated.
+   * */
+  onPersonUpdated(params?: TriggerParams) {
+    return createTrigger(this.source, events.onPersonUpdated, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs on any payment_intent.* event. Accepts an optional array of events to filter on. By default it will listen to all payment_intent.* events.
+   *
+   * @example
+   * ```ts
+   * stripe.onPaymentIntent({ events: ["payment_intent.created", "payment_intent.succeeded"] })
+   * ```
+   *
+   * You can detect the event name in your job by using the `ctx.event.name` property:
+   *
+   * ```ts
+   * client.defineJob({
+   *   id: "stripe-example",
+   *   name: "Stripe Example",
+   *   version: "0.1.0",
+   *   trigger: stripe.onPaymentIntent({ events: ["payment_intent.created", "payment_intent.succeeded"] }),
+   *   run: async (payload, io, ctx) => {
+   *     console.log(ctx.event.name); // "payment_intent.created" or "payment_intent.succeeded"
+   *   },
+   * });
+   * ```
+   */
+  onPaymentIntent(
+    params?: TriggerParams & {
+      events?: Array<
+        | "payment_intent.created"
+        | "payment_intent.succeeded"
+        | "payment_intent.canceled"
+        | "payment_intent.processing"
+        | "payment_intent.requires_action"
+        | "payment_intent.amount_capturable_updated"
+        | "payment_intent.payment_failed"
+        | "payment_intent.partially_funded"
+      >;
+    }
+  ) {
+    const event = {
+      ...events.onPaymentIntent,
+      name: params?.events ?? events.onPaymentIntent.name,
+    };
+
+    return createTrigger(this.source, event, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs when a new PaymentIntent is created..
+   * */
+  onPaymentIntentCreated(params?: TriggerParams) {
+    return createTrigger(this.source, events.onPaymentIntentCreated, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs when a PaymentIntent has successfully completed payment.
+   * */
+  onPaymentIntentSucceeded(params?: TriggerParams) {
+    return createTrigger(
+      this.source,
+      events.onPaymentIntentSucceeded,
+      params ?? { connect: false }
+    );
+  }
+
+  /**
+   * Occurs when a PaymentIntent is canceled.
+   * */
+  onPaymentIntentCancelled(params?: TriggerParams) {
+    return createTrigger(this.source, events.onPaymentIntentCanceled, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs when a PaymentIntent has started processing.
+   * */
+  onPaymentIntentProcessing(params?: TriggerParams) {
+    return createTrigger(
+      this.source,
+      events.onPaymentIntentProcessing,
+      params ?? { connect: false }
+    );
+  }
+
+  /**
+   * Occurs when a PaymentIntent transitions to requires_action state
+   * */
+  onPaymentIntentRequiresAction(params?: TriggerParams) {
+    return createTrigger(
+      this.source,
+      events.onPaymentIntentRequiresAction,
+      params ?? { connect: false }
+    );
+  }
+
+  /**
+   * Occurs when a PaymentIntent has funds to be captured. Check the amount_capturable property on the PaymentIntent to determine the amount that can be captured. You may capture the PaymentIntent with an amount_to_capture value up to the specified amount. [Learn more about capturing PaymentIntents](https://stripe.com/docs/api/payment_intents/capture)
+   * */
+  onPaymentIntentAmountCapturableUpdated(params?: TriggerParams) {
+    return createTrigger(
+      this.source,
+      events.onPaymentIntentAmountCapturableUpdated,
+      params ?? { connect: false }
+    );
+  }
+
+  /**
+   * Occurs when a PaymentIntent has failed the attempt to create a payment method or a payment.
+   * */
+  onPaymentIntentPaymentFailed(params?: TriggerParams) {
+    return createTrigger(
+      this.source,
+      events.onPaymentIntentPaymentFailed,
+      params ?? { connect: false }
+    );
+  }
+
+  /**
+   * Occurs when funds are applied to a customer_balance PaymentIntent and the ‘amount_remaining’ changes.
+   * */
+  onPaymentIntentPartiallyFunded(params?: TriggerParams) {
+    return createTrigger(
+      this.source,
+      events.onPaymentIntentPartiallyFunded,
+      params ?? { connect: false }
+    );
+  }
+
+  /**
+   * Occurs on any payout.* event. Accepts an optional array of events to filter on. By default it will listen to all payout.* events.
+   *
+   * @example
+   * ```ts
+   * stripe.onPayout({ events: ["payout.created", "payout.paid"] })
+   * ```
+   *
+   * You can detect the event name in your job by using the `ctx.event.name` property:
+   *
+   * ```ts
+   * client.defineJob({
+   *   id: "stripe-example",
+   *   name: "Stripe Example",
+   *   version: "0.1.0",
+   *   trigger: stripe.onPayout({ events: ["payout.created", "payout.paid"] }),
+   *   run: async (payload, io, ctx) => {
+   *     console.log(ctx.event.name); // "payout.created" or "payout.paid"
+   *   },
+   * });
+   * ```
+   */
+  onPayout(
+    params?: TriggerParams & {
+      events?: Array<
+        | "payout.canceled"
+        | "payout.created"
+        | "payout.failed"
+        | "payout.paid"
+        | "payout.reconciliation_completed"
+        | "payout.updated"
+      >;
+    }
+  ) {
+    const event = {
+      ...events.onPayout,
+      name: params?.events ?? events.onPayout.name,
+    };
+
+    return createTrigger(this.source, event, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever a payout is created.
+   * */
+  onPayoutCreated(params?: TriggerParams) {
+    return createTrigger(this.source, events.onPayoutCreated, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever a payout is updated.
+   * */
+  onPayoutUpdated(params?: TriggerParams) {
+    return createTrigger(this.source, events.onPayoutUpdated, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever a payout is canceled.
+   * */
+  onPayoutCanceled(params?: TriggerParams) {
+    return createTrigger(this.source, events.onPayoutCancelled, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever a payout attempt fails.
+   * */
+  onPayoutFailed(params?: TriggerParams) {
+    return createTrigger(this.source, events.onPayoutFailed, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever a payout is expected to be available in the destination account. If the payout fails, a `payout.failed` notification is also sent, at a later time.
+   * */
+  onPayoutPaid(params?: TriggerParams) {
+    return createTrigger(this.source, events.onPayoutPaid, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever balance transactions paid out in an automatic payout can be queried.
+   * */
+  onPayoutReconciliationCompleted(params?: TriggerParams) {
+    return createTrigger(
+      this.source,
+      events.onPayoutReconciliationCompleted,
+      params ?? { connect: false }
+    );
+  }
 }
 
 export type TriggerParams = {

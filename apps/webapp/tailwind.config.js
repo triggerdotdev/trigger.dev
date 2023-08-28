@@ -144,6 +144,7 @@ module.exports = {
         },
         devEnv: colors.pink,
         liveEnv: colors.green,
+        uiBorder: slate[800],
       },
       borderRadius: {
         lg: radius,

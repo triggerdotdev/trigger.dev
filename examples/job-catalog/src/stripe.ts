@@ -162,4 +162,14 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "stripe-on-charge",
+  name: "Stripe On Charge",
+  version: "0.1.0",
+  trigger: stripe.onCharge(),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("ctx", { ctx });
+  },
+});
+
 createExpressServer(client);

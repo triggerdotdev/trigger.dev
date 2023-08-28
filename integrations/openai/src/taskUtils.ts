@@ -1,8 +1,7 @@
-import { CreateCompletionResponseUsage, CreateEmbeddingResponseUsage } from "openai";
-import { z } from "zod";
+import OpenAI from "openai";
 
 export function createTaskUsageProperties(
-  usage: CreateCompletionResponseUsage | CreateEmbeddingResponseUsage | undefined
+  usage: OpenAI.Completions.CompletionUsage | OpenAI.CreateEmbeddingResponse.Usage | undefined
 ) {
   if (!usage) {
     return;
@@ -28,26 +27,6 @@ export function createTaskUsageProperties(
   ];
 }
 
-const OpenAIErrorSchema = z.object({
-  response: z.object({
-    data: z.object({
-      error: z.object({
-        code: z.string().nullable().optional(),
-        message: z.string(),
-        type: z.string(),
-      }),
-    }),
-  }),
-});
-
 export function onTaskError(error: unknown) {
-  const openAIError = OpenAIErrorSchema.safeParse(error);
-
-  if (!openAIError.success) {
-    return;
-  }
-
-  const { message, code, type } = openAIError.data.response.data.error;
-
-  return new Error(`${type}: ${message}${code ? ` (${code})` : ""}`);
+  return;
 }

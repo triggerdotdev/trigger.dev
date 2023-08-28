@@ -11,7 +11,7 @@ import { docsRoot } from "~/utils/pathBuilder";
 
 export function NavBar() {
   return (
-    <div className="z-50 flex w-full items-center justify-between gap-2 border-b border-divide py-1 pl-1 pr-2.5">
+    <div className="z-50 flex w-full items-center justify-between gap-2 border-b border-uiBorder py-1 pl-1 pr-2.5">
       <div className="flex gap-0.5">
         <Link to="/" className="p-2">
           <LogoIcon className="h-5 w-5" />

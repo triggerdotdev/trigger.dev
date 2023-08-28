@@ -1,26 +1,29 @@
-import { jobPath } from "~/utils/pathBuilder";
+import { ProjectJob } from "~/hooks/useJobs";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
+import { JobRunStatus } from "~/models/job.server";
+import { jobPath, jobTestPath } from "~/utils/pathBuilder";
+import { Button } from "../primitives/Buttons";
 import { DateTime } from "../primitives/DateTime";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
 import { LabelValueStack } from "../primitives/LabelValueStack";
 import { NamedIcon } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
+import { PopoverMenuItem } from "../primitives/Popover";
 import {
   Table,
   TableBlankRow,
   TableBody,
   TableCell,
-  TableCellChevron,
+  TableCellMenu,
   TableHeader,
   TableHeaderCell,
   TableRow,
 } from "../primitives/Table";
 import { SimpleTooltip } from "../primitives/Tooltip";
 import { runStatusTitle } from "../runs/RunStatuses";
-import { ProjectJob } from "~/hooks/useJobs";
-import { useProject } from "~/hooks/useProject";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { JobRunStatus } from "~/models/job.server";
-import { cn } from "~/utils/cn";
-import { Badge } from "../primitives/Badge";
+import { DeleteJobDialogContent } from "./DeleteJobModalContent";
+import { JobStatusBadge } from "./JobStatusBadge";
 
 export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResultsText: string }) {
   const organization = useOrganization();
@@ -35,6 +38,7 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
           <TableHeaderCell>Integrations</TableHeaderCell>
           <TableHeaderCell>Properties</TableHeaderCell>
           <TableHeaderCell>Last run</TableHeaderCell>
+          <TableHeaderCell>Status</TableHeaderCell>
           <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
         </TableRow>
       </TableHeader>
@@ -43,13 +47,7 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
           jobs.map((job) => {
             const path = jobPath(organization, project, job);
             return (
-              <TableRow
-                key={job.id}
-                className={cn(
-                  (job.hasIntegrationsRequiringAction && "bg-rose-500/20") ||
-                    (job.lastRun === undefined && "bg-green-500/20")
-                )}
-              >
+              <TableRow key={job.id} className="group">
                 <TableCell to={path}>
                   <span className="flex items-center gap-2">
                     <NamedIcon name={job.event.icon} className="h-8 w-8" />
@@ -145,13 +143,39 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
                     <LabelValueStack label={"Never run"} value={"–"} />
                   )}
                 </TableCell>
-                <TableCellChevron to={path}>
-                  {job.lastRun === undefined && (
-                    <Badge className="mr-4" variant="green">
-                      New Job!
-                    </Badge>
-                  )}
-                </TableCellChevron>
+                <TableCell to={path}>
+                  <JobStatusBadge
+                    enabled={job.status === "ACTIVE"}
+                    hasIntegrationsRequiringAction={job.hasIntegrationsRequiringAction}
+                    hasRuns={job.lastRun !== undefined}
+                  />
+                </TableCell>
+                <TableCellMenu isSticky>
+                  <PopoverMenuItem to={path} title="View Job" icon="eye" />
+                  <PopoverMenuItem
+                    to={jobTestPath(organization, project, job)}
+                    title="Test Job"
+                    icon="beaker"
+                  />
+
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button variant="menu-item" LeadingIcon="trash-can">
+                        Delete Job
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DeleteJobDialogContent
+                          id={job.id}
+                          title={job.title}
+                          slug={job.slug}
+                          environments={job.environments}
+                        />
+                      </DialogHeader>
+                    </DialogContent>
+                  </Dialog>
+                </TableCellMenu>
               </TableRow>
             );
           })

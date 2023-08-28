@@ -13,7 +13,7 @@ type WithChildren = {
 
 export function PageHeader({ children, hideBorder }: WithChildren & { hideBorder?: boolean }) {
   return (
-    <div className={cn("mx-4 pt-4", hideBorder ? "" : "border-b border-slate-800 pb-4")}>
+    <div className={cn("mx-4 pt-4", hideBorder ? "" : "border-b border-uiBorder pb-4")}>
       {children}
     </div>
   );

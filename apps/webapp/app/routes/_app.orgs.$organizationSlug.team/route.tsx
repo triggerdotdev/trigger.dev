@@ -103,7 +103,7 @@ export default function Page() {
       <OrgAdminHeader />
       <PageBody>
         <Header2>Members</Header2>
-        <ul className="flex w-full max-w-md flex-col divide-y divide-slate-800 border-b border-slate-800">
+        <ul className="flex w-full max-w-md flex-col divide-y divide-uiBorder border-b border-uiBorder">
           {members.map((member) => (
             <li key={member.user.id} className="flex items-center gap-x-4 py-4">
               <UserAvatar

@@ -1,5 +1,17 @@
 # @trigger.dev/integration-kit
 
+## 2.0.14
+
+## 2.0.13
+
+## 2.0.12
+
+## 2.0.11
+
+### Patch Changes
+
+- b5db9f5e: Adding MIT license
+
 ## 2.0.10
 
 ## 2.0.9

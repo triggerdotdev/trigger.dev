@@ -1,5 +1,18 @@
 # internal-platform
 
+## 2.0.14
+
+## 2.0.13
+
+## 2.0.12
+
+## 2.0.11
+
+### Patch Changes
+
+- 302bd02f: Issue #377: only expose the external eventId in the API
+- b5db9f5e: Adding MIT license
+
 ## 2.0.10
 
 ### Patch Changes

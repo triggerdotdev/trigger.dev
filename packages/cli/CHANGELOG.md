@@ -1,5 +1,29 @@
 # create-trigger
 
+## 2.0.14
+
+## 2.0.13
+
+### Patch Changes
+
+- provided a fix to the CLI dev command tunnel not working if you are already running ngrok ([#407](https://github.com/triggerdotdev/trigger.dev/pull/407))
+- fix: init will no longer fail when outside of a git repo ([`3028b6ad`](https://github.com/triggerdotdev/trigger.dev/commit/3028b6ad9d693d2f1662c4338d44ac9d3bf0da3a))
+- feat: Checks for outdated packages when running the dev command with instructions on how to update ([#412](https://github.com/triggerdotdev/trigger.dev/pull/412))
+
+## 2.0.12
+
+## 2.0.11
+
+### Patch Changes
+
+- 3ce53970: Added the send-event command
+- 3897e6e6: Make it more clear which API key the init command expects
+- b5db9f5e: Adding MIT license
+- dd107176: Added hostname option to the cli dev command
+- 8cf85443: Bugfix: @trigger.dev/cli init now correctly identifies the App Dir when using JS
+- 4e78da31: fix: Add an update sub-command the @trigger.dev/cli that updates all @trigger.dev/\* packages
+- 135cb492: fixed the cli init log message to show the correct path to the app route created
+
 ## 2.0.10
 
 ### Patch Changes

@@ -20,7 +20,6 @@ function BadgesExample() {
     <div className="flex flex-col items-start gap-y-8 p-8">
       <Badge>Default</Badge>
       <Badge variant="outline">Outline</Badge>
-      <Badge variant="green">Green</Badge>
     </div>
   );
 }

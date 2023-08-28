@@ -420,6 +420,8 @@ model Job {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
+  deletedAt DateTime?
+
   @@unique([projectId, slug])
 }
 

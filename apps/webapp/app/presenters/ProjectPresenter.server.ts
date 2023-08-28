@@ -80,6 +80,7 @@ export class ProjectPresenter {
           },
           where: {
             internal: false,
+            deletedAt: null,
           },
           orderBy: [{ title: "asc" }],
         },

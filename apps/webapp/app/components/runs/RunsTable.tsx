@@ -109,7 +109,7 @@ export function RunsTable({
                 <TableCell to={path}>
                   {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
                 </TableCell>
-                <TableCellChevron to={path} />
+                <TableCellChevron to={path} isSticky />
               </TableRow>
             );
           })

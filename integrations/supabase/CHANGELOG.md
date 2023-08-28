@@ -1,5 +1,39 @@
 # @trigger.dev/supabase
 
+## 2.0.14
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/integration-kit@2.0.14`
+  - `@trigger.dev/sdk@2.0.14`
+
+## 2.0.13
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@2.0.13`
+  - `@trigger.dev/integration-kit@2.0.13`
+
+## 2.0.12
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@2.0.12
+- @trigger.dev/sdk@2.0.12
+
+## 2.0.11
+
+### Patch Changes
+
+- Updated dependencies [ac98219b]
+- Updated dependencies [302bd02f]
+- Updated dependencies [b5db9f5e]
+- Updated dependencies [3ce53970]
+  - @trigger.dev/sdk@2.0.11
+  - @trigger.dev/integration-kit@2.0.11
+
 ## 2.0.10
 
 ### Patch Changes
