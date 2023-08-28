@@ -19,7 +19,6 @@ export class RecurringEndpointIndexService {
         environment: {
           type: RuntimeEnvironmentType.PRODUCTION,
         },
-
         indexings: {
           none: {
             createdAt: {
@@ -27,9 +26,6 @@ export class RecurringEndpointIndexService {
             },
           },
         },
-      },
-      include: {
-        environment: true,
       },
     });
 
@@ -39,17 +35,10 @@ export class RecurringEndpointIndexService {
 
     // Enqueue each endpoint for indexing
     for (const endpoint of endpoints) {
-      await workerQueue.enqueue(
-        "indexEndpoint",
-        {
-          id: endpoint.id,
-          source: "INTERNAL",
-        },
-        {
-          maxAttempts:
-            endpoint.environment.type === RuntimeEnvironmentType.DEVELOPMENT ? 1 : undefined,
-        }
-      );
+      await workerQueue.enqueue("indexEndpoint", {
+        id: endpoint.id,
+        source: "INTERNAL",
+      });
     }
   }
 }
