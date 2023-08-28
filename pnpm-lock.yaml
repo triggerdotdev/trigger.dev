@@ -7,6 +7,7 @@ importers:
       '@changesets/cli': ^2.26.0
       '@manypkg/cli': ^0.19.2
       '@playwright/test': ^1.36.2
+      '@remix-run/changelog-github': ^0.0.5
       '@tailwindcss/forms': ^0.5.3
       '@tailwindcss/typography': ^0.5.8
       '@trigger.dev/cli': workspace:*
@@ -25,6 +26,7 @@ importers:
       vitest: ^0.28.4
     dependencies:
       '@changesets/cli': 2.26.0
+      '@remix-run/changelog-github': 0.0.5
       node-fetch: 2.6.7
     devDependencies:
       '@manypkg/cli': 0.19.2
@@ -3776,6 +3778,15 @@ packages:
       chalk: 2.4.2
       fs-extra: 7.0.1
       semver: 5.7.1
+    dev: false
+
+  /@changesets/get-github-info/0.5.2:
+    resolution: {integrity: sha512-JppheLu7S114aEs157fOZDjFqUDpm7eHdq5E8SSR0gUBTEK0cNSHsrSR5a66xs0z3RWuo46QvA3vawp8BxDHvg==}
+    dependencies:
+      dataloader: 1.4.0
+      node-fetch: 2.6.12
+    transitivePeerDependencies:
+      - encoding
     dev: false
 
   /@changesets/get-release-plan/3.0.16:
@@ -8712,6 +8723,17 @@ packages:
       react: 18.2.0
     dev: false
 
+  /@remix-run/changelog-github/0.0.5:
+    resolution: {integrity: sha512-43tqwUqWqirbv6D9uzo55ASPsCJ61Ein1k/M8qn+Qpros0MmbmuzjLVPmtaxfxfe2ANX0LefLvCD0pAgr1tp4g==}
+    dependencies:
+      '@changesets/errors': 0.1.4
+      '@changesets/get-github-info': 0.5.2
+      '@changesets/types': 5.2.1
+      dotenv: 8.6.0
+    transitivePeerDependencies:
+      - encoding
+    dev: false
+
   /@remix-run/dev/1.19.2-pre.0_36n2i74sizt32vwpdxc4husnkq:
     resolution: {integrity: sha512-8s7g8jLueKcIr5Gb7qvZRJVzfHx2KqyApGYW55LrQ63kNwZwuKHglYSMoaQGB4xUhX2cfmzW7pIcunfbh3SNyA==}
     engines: {node: '>=14.0.0'}
@@ -12709,7 +12731,7 @@ packages:
   /axios/0.21.4_debug@4.3.2:
     resolution: {integrity: sha512-ut5vewkiu8jjGBdqpM44XxjuCjq9LAKeHVmoVfHVzy8eHgxxq8SbAVQNovDA8mVi05kP0Ea/n/UzcSHcTJQfNg==}
     dependencies:
-      follow-redirects: 1.15.2_debug@4.3.2
+      follow-redirects: 1.15.2
     transitivePeerDependencies:
       - debug
     dev: false
@@ -14268,6 +14290,10 @@ packages:
     engines: {node: '>= 14'}
     dev: true
 
+  /dataloader/1.4.0:
+    resolution: {integrity: sha512-68s5jYdlvasItOJnCuI2Q9s4q98g0pCyL3HrcKJu8KNugUl8ahgmZYg38ysLTgQjjXX3H8CJLkAvWrclWfcalw==}
+    dev: false
+
   /date-fns/2.30.0:
     resolution: {integrity: sha512-fnULvOpxnC5/Vg3NCiWelDsLiUc9bRwAPs/+LfTLNvetFCtCTN+yQz15C/fs4AwX1R9K5GLtLfn8QW+dWisaAw==}
     engines: {node: '>=0.11'}
@@ -14759,6 +14785,11 @@ packages:
   /dotenv/16.3.1:
     resolution: {integrity: sha512-IPzF4w4/Rd94bA9imS68tZBaYyBWSCE47V1RGuMrB94iyTOIEwRmVL2x/4An+6mETpLrKJ5hQkB8W4kFAadeIQ==}
     engines: {node: '>=12'}
+
+  /dotenv/8.6.0:
+    resolution: {integrity: sha512-IrPdXQsk2BbzvCBGBOTmmSH5SodmqZNt4ERAZDmW4CT+tL8VtvinqywuANaFu4bOMWki16nqf0e4oC0QIaDr/g==}
+    engines: {node: '>=10'}
+    dev: false
 
   /duplexer2/0.1.4:
     resolution: {integrity: sha512-asLFVfWWtJ90ZyOUHMqk7/S2w2guQKxUI2itj3d92ADHhxUSbCMGi1f1cBcJ7xM1To+pE/Khbwo1yuNbMEPKeA==}
@@ -17225,18 +17256,6 @@ packages:
     peerDependenciesMeta:
       debug:
         optional: true
-
-  /follow-redirects/1.15.2_debug@4.3.2:
-    resolution: {integrity: sha512-VQLG33o04KaQ8uYi2tVNbdrWp1QWxNNea+nmIB4EVM28v0hmP17z7aG1+wAkNzVq4KeXTq3221ye5qTJP91JwA==}
-    engines: {node: '>=4.0'}
-    peerDependencies:
-      debug: '*'
-    peerDependenciesMeta:
-      debug:
-        optional: true
-    dependencies:
-      debug: 4.3.2
-    dev: false
 
   /for-each/0.3.3:
     resolution: {integrity: sha512-jqYfLp7mo9vIyQf8ykW2v7A+2N4QjeCeI5+Dz9XraiO1ign81wjiH7Fb9vSOWvQfNtmSa4H2RoQTrrXivdUZmw==}
