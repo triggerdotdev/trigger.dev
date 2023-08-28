@@ -477,7 +477,9 @@ export class PerformRunExecutionV2Service {
   }
 }
 
-function prepareTasksForRun(tasks: FoundTask[]): CachedTask[] {
+function prepareTasksForRun(possibleTasks: FoundTask[]): CachedTask[] {
+  const tasks = possibleTasks.filter((task) => task.status === "COMPLETED");
+
   // We need to limit the cached tasks to not be too large >3.5MB when serialized
   const TOTAL_CACHED_TASK_BYTE_LIMIT = 3500000;
 
