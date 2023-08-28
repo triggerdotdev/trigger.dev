@@ -71,7 +71,7 @@ jobs:
           commit: "chore: Update version for release"
           title: "chore: Update version for release"
           publish: pnpm run changeset:release
-          createGithubReleases: true
+          createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
