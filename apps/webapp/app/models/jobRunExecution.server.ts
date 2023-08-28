@@ -27,6 +27,7 @@ export type EnqueueRunExecutionV2Options = {
   runAt?: Date;
   resumeTaskId?: string;
   isRetry?: boolean;
+  skipRetrying?: boolean;
 };
 
 export async function enqueueRunExecutionV2(
@@ -47,6 +48,7 @@ export async function enqueueRunExecutionV2(
       tx,
       runAt: options.runAt,
       jobKey: `job_run:${run.id}`,
+      maxAttempts: options.skipRetrying ? 1 : undefined,
     }
   );
 }

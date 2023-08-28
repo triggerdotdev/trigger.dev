@@ -7,7 +7,10 @@ import { logger } from "../logger.server";
 export class IngestSendEvent {
   #prismaClient: PrismaClientOrTransaction;
 
-  constructor(prismaClient: PrismaClientOrTransaction = prisma, private deliverEvents = true) {
+  constructor(
+    prismaClient: PrismaClientOrTransaction = prisma,
+    private deliverEvents = true
+  ) {
     this.#prismaClient = prismaClient;
   }
 
