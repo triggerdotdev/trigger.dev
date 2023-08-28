@@ -1,9 +1,21 @@
 import type { EventSpecification } from "@trigger.dev/sdk";
 import {
+  amountCapturablePaymentIntentExample,
+  cancelledPaymentIntentExample,
   cancelledSubscriptionExample,
+  capturedChargeExample,
   checkoutSessionExample,
+  createdCustomerExample,
+  createdPaymentIntentExample,
   customerSubscriptionExample,
+  deletedCustomerExample,
+  failedChargeExample,
+  failedPaymentIntentExample,
   pausedSubscriptionExample,
+  refundedChargeExample,
+  succeededChargeExample,
+  succeededPaymentIntentExample,
+  updatedAccountExample,
   updatedSubscriptionExample,
 } from "./examples";
 import {
@@ -13,6 +25,8 @@ import {
   OnCustomerEvent,
   OnCustomerSubscription,
   OnExternalAccountEvent,
+  OnPaymentIntentEvent,
+  OnPayoutEvent,
   OnPersonEvent,
   OnPriceEvent,
   OnProductEvent,
@@ -467,7 +481,7 @@ export const onAccountUpdated: EventSpecification<OnAccountEvent> = {
   title: "On Account Updated",
   source: "stripe.com",
   icon: "stripe",
-  examples: [],
+  examples: [updatedAccountExample],
   parsePayload: (payload) => payload as OnAccountEvent,
   runProperties: (payload) => [
     { label: "Account ID", text: payload.id },
@@ -480,7 +494,7 @@ export const onCustomer: EventSpecification<OnCustomerEvent> = {
   title: "On Customer Event",
   source: "stripe.com",
   icon: "stripe",
-  examples: [],
+  examples: [createdCustomerExample],
   parsePayload: (payload) => payload as OnCustomerEvent,
   runProperties: (payload) => [{ label: "Customer ID", text: payload.id }],
 };
@@ -490,7 +504,7 @@ export const onCustomerCreated: EventSpecification<OnCustomerEvent> = {
   title: "On Customer Created",
   source: "stripe.com",
   icon: "stripe",
-  examples: [],
+  examples: [createdCustomerExample],
   parsePayload: (payload) => payload as OnCustomerEvent,
   runProperties: (payload) => [{ label: "Customer ID", text: payload.id }],
 };
@@ -500,7 +514,7 @@ export const onCustomerDeleted: EventSpecification<OnCustomerEvent> = {
   title: "On Customer Deleted",
   source: "stripe.com",
   icon: "stripe",
-  examples: [],
+  examples: [deletedCustomerExample],
   parsePayload: (payload) => payload as OnCustomerEvent,
   runProperties: (payload) => [{ label: "Customer ID", text: payload.id }],
 };
@@ -510,7 +524,7 @@ export const onCustomerUpdated: EventSpecification<OnCustomerEvent> = {
   title: "On Customer Updated",
   source: "stripe.com",
   icon: "stripe",
-  examples: [],
+  examples: [createdCustomerExample],
   parsePayload: (payload) => payload as OnCustomerEvent,
   runProperties: (payload) => [{ label: "Customer ID", text: payload.id }],
 };
@@ -528,7 +542,12 @@ export const onCharge: EventSpecification<OnChargeEvent> = {
   title: "On Charge Event",
   source: "stripe.com",
   icon: "stripe",
-  examples: [],
+  examples: [
+    capturedChargeExample,
+    succeededChargeExample,
+    failedChargeExample,
+    refundedChargeExample,
+  ],
   parsePayload: (payload) => payload as OnChargeEvent,
   runProperties: (payload) => [{ label: "Charge ID", text: payload.id }],
 };
@@ -538,7 +557,7 @@ export const onChargeCaptured: EventSpecification<OnChargeEvent> = {
   title: "On Charge Captured",
   source: "stripe.com",
   icon: "stripe",
-  examples: [],
+  examples: [capturedChargeExample],
   parsePayload: (payload) => payload as OnChargeEvent,
   runProperties: (payload) => [{ label: "Charge ID", text: payload.id }],
 };
@@ -558,7 +577,7 @@ export const onChargeFailed: EventSpecification<OnChargeEvent> = {
   title: "On Charge Failed",
   source: "stripe.com",
   icon: "stripe",
-  examples: [],
+  examples: [failedChargeExample],
   parsePayload: (payload) => payload as OnChargeEvent,
   runProperties: (payload) => [{ label: "Charge ID", text: payload.id }],
 };
@@ -578,7 +597,7 @@ export const onChargeRefunded: EventSpecification<OnChargeEvent> = {
   title: "On Charge Refunded",
   source: "stripe.com",
   icon: "stripe",
-  examples: [],
+  examples: [refundedChargeExample],
   parsePayload: (payload) => payload as OnChargeEvent,
   runProperties: (payload) => [{ label: "Charge ID", text: payload.id }],
 };
@@ -588,7 +607,7 @@ export const onChargeSucceeded: EventSpecification<OnChargeEvent> = {
   title: "On Charge Succeeded",
   source: "stripe.com",
   icon: "stripe",
-  examples: [],
+  examples: [succeededChargeExample],
   parsePayload: (payload) => payload as OnChargeEvent,
   runProperties: (payload) => [{ label: "Charge ID", text: payload.id }],
 };
@@ -708,5 +727,208 @@ export const onPersonUpdated: EventSpecification<OnPersonEvent> = {
   runProperties: (payload) => [
     { label: "Person ID", text: payload.id },
     { label: "Account", text: payload.account },
+  ],
+};
+
+export const onPaymentIntent: EventSpecification<OnPaymentIntentEvent> = {
+  name: [
+    "payment_intent.created",
+    "payment_intent.succeeded",
+    "payment_intent.canceled",
+    "payment_intent.processing",
+    "payment_intent.requires_action",
+    "payment_intent.amount_capturable_updated",
+    "payment_intent.payment_failed",
+    "payment_intent.partially_funded",
+  ],
+  title: "On Payment Intent Event",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [
+    createdPaymentIntentExample,
+    succeededPaymentIntentExample,
+    cancelledPaymentIntentExample,
+    amountCapturablePaymentIntentExample,
+    failedPaymentIntentExample,
+  ],
+  parsePayload: (payload) => payload as OnPaymentIntentEvent,
+  runProperties: (payload) => [{ label: "Payment Intent ID", text: payload.id }],
+};
+
+export const onPaymentIntentCreated: EventSpecification<OnPaymentIntentEvent> = {
+  name: "payment_intent.created",
+  title: "On Payment Intent Created",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [createdPaymentIntentExample],
+  parsePayload: (payload) => payload as OnPaymentIntentEvent,
+  runProperties: (payload) => [{ label: "Payment Intent ID", text: payload.id }],
+};
+
+export const onPaymentIntentSucceeded: EventSpecification<OnPaymentIntentEvent> = {
+  name: "payment_intent.succeeded",
+  title: "On Payment Intent Succeeded",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [succeededPaymentIntentExample],
+  parsePayload: (payload) => payload as OnPaymentIntentEvent,
+  runProperties: (payload) => [{ label: "Payment Intent ID", text: payload.id }],
+};
+
+export const onPaymentIntentCanceled: EventSpecification<OnPaymentIntentEvent> = {
+  name: "payment_intent.canceled",
+  title: "On Payment Intent Canceled",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [cancelledPaymentIntentExample],
+  parsePayload: (payload) => payload as OnPaymentIntentEvent,
+  runProperties: (payload) => [{ label: "Payment Intent ID", text: payload.id }],
+};
+
+export const onPaymentIntentProcessing: EventSpecification<OnPaymentIntentEvent> = {
+  name: "payment_intent.processing",
+  title: "On Payment Intent Processing",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnPaymentIntentEvent,
+  runProperties: (payload) => [{ label: "Payment Intent ID", text: payload.id }],
+};
+
+export const onPaymentIntentRequiresAction: EventSpecification<OnPaymentIntentEvent> = {
+  name: "payment_intent.requires_action",
+  title: "On Payment Intent Requires Action",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnPaymentIntentEvent,
+  runProperties: (payload) => [{ label: "Payment Intent ID", text: payload.id }],
+};
+
+export const onPaymentIntentAmountCapturableUpdated: EventSpecification<OnPaymentIntentEvent> = {
+  name: "payment_intent.amount_capturable_updated",
+  title: "On Payment Intent Amount Capturable Updated",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [amountCapturablePaymentIntentExample],
+  parsePayload: (payload) => payload as OnPaymentIntentEvent,
+  runProperties: (payload) => [{ label: "Payment Intent ID", text: payload.id }],
+};
+
+export const onPaymentIntentPaymentFailed: EventSpecification<OnPaymentIntentEvent> = {
+  name: "payment_intent.payment_failed",
+  title: "On Payment Intent Payment Failed",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [failedPaymentIntentExample],
+  parsePayload: (payload) => payload as OnPaymentIntentEvent,
+  runProperties: (payload) => [{ label: "Payment Intent ID", text: payload.id }],
+};
+
+export const onPaymentIntentPartiallyFunded: EventSpecification<OnPaymentIntentEvent> = {
+  name: "payment_intent.partially_funded",
+  title: "On Payment Intent Partially Funded",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnPaymentIntentEvent,
+  runProperties: (payload) => [{ label: "Payment Intent ID", text: payload.id }],
+};
+
+export const onPayout: EventSpecification<OnPayoutEvent> = {
+  name: [
+    "payout.canceled",
+    "payout.created",
+    "payout.failed",
+    "payout.paid",
+    "payout.reconciliation_completed",
+    "payout.updated",
+  ],
+  title: "On Payout Event",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnPayoutEvent,
+  runProperties: (payload) => [
+    { label: "Payout ID", text: payload.id },
+    { label: "Amount", text: `${payload.amount} ${payload.currency}` },
+  ],
+};
+
+export const onPayoutCancelled: EventSpecification<OnPayoutEvent> = {
+  name: "payout.canceled",
+  title: "On Payout Cancelled Event",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnPayoutEvent,
+  runProperties: (payload) => [
+    { label: "Payout ID", text: payload.id },
+    { label: "Amount", text: `${payload.amount} ${payload.currency}` },
+  ],
+};
+
+export const onPayoutCreated: EventSpecification<OnPayoutEvent> = {
+  name: "payout.created",
+  title: "On Payout Created Event",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnPayoutEvent,
+  runProperties: (payload) => [
+    { label: "Payout ID", text: payload.id },
+    { label: "Amount", text: `${payload.amount} ${payload.currency}` },
+  ],
+};
+
+export const onPayoutFailed: EventSpecification<OnPayoutEvent> = {
+  name: "payout.failed",
+  title: "On Payout Failed Event",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnPayoutEvent,
+  runProperties: (payload) => [
+    { label: "Payout ID", text: payload.id },
+    { label: "Amount", text: `${payload.amount} ${payload.currency}` },
+  ],
+};
+
+export const onPayoutPaid: EventSpecification<OnPayoutEvent> = {
+  name: "payout.paid",
+  title: "On Payout Paid Event",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnPayoutEvent,
+  runProperties: (payload) => [
+    { label: "Payout ID", text: payload.id },
+    { label: "Amount", text: `${payload.amount} ${payload.currency}` },
+  ],
+};
+
+export const onPayoutReconciliationCompleted: EventSpecification<OnPayoutEvent> = {
+  name: "payout.reconciliation_completed",
+  title: "On Payout Reconciliation Completed Event",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnPayoutEvent,
+  runProperties: (payload) => [
+    { label: "Payout ID", text: payload.id },
+    { label: "Amount", text: `${payload.amount} ${payload.currency}` },
+  ],
+};
+
+export const onPayoutUpdated: EventSpecification<OnPayoutEvent> = {
+  name: "payout.updated",
+  title: "On Payout Updated Event",
+  source: "stripe.com",
+  icon: "stripe",
+  examples: [],
+  parsePayload: (payload) => payload as OnPayoutEvent,
+  runProperties: (payload) => [
+    { label: "Payout ID", text: payload.id },
+    { label: "Amount", text: `${payload.amount} ${payload.currency}` },
   ],
 };
