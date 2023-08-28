@@ -1,5 +1,12 @@
 # @trigger.dev/react
 
+## 2.0.13
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@2.0.13`
+
 ## 2.0.12
 
 ### Patch Changes
