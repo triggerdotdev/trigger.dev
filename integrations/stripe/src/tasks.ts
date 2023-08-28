@@ -1,26 +1,30 @@
+import { AuthenticatedTask } from "@trigger.dev/sdk";
 import type {
-  StripeSDK,
   CreateChargeParams,
   CreateChargeResponse,
-  CreateCustomerResponse,
-  CreateCustomerParams,
-  UpdateCustomerParams,
-  UpdateCustomerResponse,
-  RetrieveSubscriptionParams,
-  RetrieveSubscriptionResponse,
   CreateCheckoutSessionParams,
   CreateCheckoutSessionResponse,
+  CreateCustomerParams,
+  CreateCustomerResponse,
   CreateWebhookParams,
   CreateWebhookResponse,
+  ListWebhooksParams,
+  ListWebhooksResponse,
+  RetrieveSubscriptionParams,
+  RetrieveSubscriptionResponse,
+  StripeSDK,
+  UpdateCustomerParams,
+  UpdateCustomerResponse,
   UpdateWebhookParams,
   UpdateWebhookResponse,
-  ListWebhooksResponse,
-  ListWebhooksParams,
 } from "./types";
-import { AuthenticatedTask } from "@trigger.dev/sdk";
-import { Stripe } from "stripe";
 import { omit } from "./utils";
 
+/**
+ * Use the [Payment Intents API](https://stripe.com/docs/api/payment_intents) to initiate a new payment instead
+ * of using this method. Confirmation of the PaymentIntent creates the Charge
+ * object used to request payment, so this method is limited to legacy integrations.
+ */
 export const createCharge: AuthenticatedTask<StripeSDK, CreateChargeParams, CreateChargeResponse> =
   {
     run: async (params, client, task) => {
@@ -124,6 +128,11 @@ export const createCustomer: AuthenticatedTask<
   },
 };
 
+/**
+ * Updates the specified customer by setting the values of the parameters passed. Any parameters not provided will be left unchanged. For example, if you pass the source parameter, that becomes the customer's active source (e.g., a card) to be used for all charges in the future. When you update a customer to a new valid card source by passing the source parameter: for each of the customer's current subscriptions, if the subscription bills automatically and is in the past_due state, then the latest open invoice for the subscription with automatic collection enabled will be retried. This retry will not count as an automatic retry, and will not affect the next regularly scheduled payment for the invoice. Changing the default_source for a customer will not trigger this behavior.
+ *
+ * This request accepts mostly the same arguments as the customer creation call.
+ */
 export const updateCustomer: AuthenticatedTask<
   StripeSDK,
   UpdateCustomerParams,
@@ -171,6 +180,9 @@ export const updateCustomer: AuthenticatedTask<
   },
 };
 
+/**
+ * Retrieves the subscription with the given ID.
+ */
 export const retrieveSubscription: AuthenticatedTask<
   StripeSDK,
   RetrieveSubscriptionParams,
@@ -206,6 +218,9 @@ export const retrieveSubscription: AuthenticatedTask<
   },
 };
 
+/**
+ * Creates a Session object.
+ */
 export const createCheckoutSession: AuthenticatedTask<
   StripeSDK,
   CreateCheckoutSessionParams,

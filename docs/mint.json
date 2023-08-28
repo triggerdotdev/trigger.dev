@@ -193,6 +193,7 @@
             "integrations/apis/openai"
           ]
         },
+        "integrations/apis/stripe",
         "integrations/apis/plain",
         {
           "group": "Resend",
