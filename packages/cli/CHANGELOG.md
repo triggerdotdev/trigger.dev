@@ -1,5 +1,7 @@
 # create-trigger
 
+## 2.0.14
+
 ## 2.0.13
 
 ### Patch Changes
