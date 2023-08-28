@@ -1,4 +1,4 @@
-import fetch from "./fetchUseProxy";
+import fetch from "node-fetch";
 import { z } from "zod";
 
 export type CreateEndpointOptions = {

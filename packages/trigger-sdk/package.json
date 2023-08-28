@@ -34,7 +34,6 @@
     "git-remote-origin-url": "^4.0.0",
     "git-repo-info": "^2.1.1",
     "node-fetch": "2.6.x",
-    "proxy-agent": "^6.3.0",
     "slug": "^6.0.0",
     "terminal-link": "^3.0.0",
     "ulid": "^2.3.0",
