@@ -258,6 +258,16 @@ async function createTunnel(port: number, spinner: Ora) {
         return;
       }
     }
+    if (
+      typeof error.message === "string" &&
+      error.message.includes("connect ECONNREFUSED 127.0.0.1:4041")
+    ) {
+      spinner.fail(
+        `Ngrok failed to create a tunnel for port ${port} because ngrok is already running`
+      );
+      return;
+    }
+    spinner.fail(`Ngrok failed to create a tunnel for port ${port}.\n${error.message}`);
     return;
   }
 }
