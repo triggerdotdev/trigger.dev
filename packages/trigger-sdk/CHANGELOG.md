@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 2.0.13
+
+### Patch Changes
+
+- Only use cached tasks if they are completed, otherwise retrying tasks will be considered successful ([`916a3536`](https://github.com/triggerdotdev/trigger.dev/commit/916a353660e251946d76bdf565c26b7801d3beb8))
+- Updated dependencies:
+  - `@trigger.dev/core@2.0.13`
+
 ## 2.0.12
 
 ### Patch Changes

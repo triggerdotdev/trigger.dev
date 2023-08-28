@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/supabase",
-  "version": "2.0.12",
+  "version": "2.0.13",
   "description": "Trigger.dev integration for @supabase/supabase-js",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -26,8 +26,8 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.26.0",
-    "@trigger.dev/integration-kit": "workspace:^2.0.12",
-    "@trigger.dev/sdk": "workspace:^2.0.12",
+    "@trigger.dev/integration-kit": "workspace:^2.0.13",
+    "@trigger.dev/sdk": "workspace:^2.0.13",
     "supabase-management-js": "^0.1.4",
     "zod": "3.21.4"
   },
