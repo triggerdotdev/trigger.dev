@@ -1,16 +1,19 @@
-import { WebClient } from "@slack/web-api";
 import type {
   Block,
+  ChatPostMessageResponse,
   KnownBlock,
   MessageAttachment,
   MessageMetadata,
   WebAPIPlatformError,
 } from "@slack/web-api";
+import { WebClient } from "@slack/web-api";
 import type {
   ConnectionAuth,
   IO,
   IOTask,
   IntegrationTaskKey,
+  OmitIndexSignature,
+  Prettify,
   RunTaskErrorCallback,
   RunTaskOptions,
   RunTaskResult,
@@ -100,16 +103,20 @@ export class Slack implements TriggerIntegration {
   postMessage(
     key: IntegrationTaskKey,
     params: ChatPostMessageArguments
-  ) {
+  ): Promise<Prettify<OmitIndexSignature<ChatPostMessageResponse>>> {
     return this.runTask(
       key,
       async (client) => {
         try {
-          return client.chat.postMessage(params);
+          const message: Prettify<OmitIndexSignature<ChatPostMessageResponse>> =
+            await client.chat.postMessage(params);
+          return message;
         } catch (error) {
           if (isPlatformError(error)) {
             if (error.data.error === "not_in_channel") {
-              const joinResponse = await this.joinConversation(`Join ${params.channel}`, { channel: params.channel });
+              const joinResponse = await this.joinConversation(`Join ${params.channel}`, {
+                channel: params.channel,
+              });
 
               if (joinResponse.ok) {
                 return await client.chat.postMessage(params);
@@ -135,26 +142,30 @@ export class Slack implements TriggerIntegration {
     );
   }
 
-  joinConversation(key: IntegrationTaskKey, params: { channel: string} ) {
+  joinConversation(
+    key: IntegrationTaskKey,
+    params: { channel: string }
+  ): Promise<OmitIndexSignature<ConversationsJoinResponse>> {
     return this.runTask(
       key,
       async (client) => {
-        const result = await client.conversations.join(params);
+        const result: OmitIndexSignature<ConversationsJoinResponse> =
+          await client.conversations.join(params);
         return result;
-      }, {
-      name: "Join Channel",
-      params,
-      icon: "slack",
-      properties: [
-        {
-          label: "Channel ID",
-          text: params.channel,
-        },
-      ],
-    }),
-  
-}
-
+      },
+      {
+        name: "Join Channel",
+        params,
+        icon: "slack",
+        properties: [
+          {
+            label: "Channel ID",
+            text: params.channel,
+          },
+        ],
+      }
+    );
+  }
 }
 
 function isPlatformError(error: unknown): error is WebAPIPlatformError {
@@ -166,4 +177,3 @@ function isPlatformError(error: unknown): error is WebAPIPlatformError {
     error.code === "slack_webapi_platform_error"
   );
 }
-
