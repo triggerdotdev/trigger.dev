@@ -2,6 +2,8 @@ import type {
   DisplayProperty,
   EventFilter,
   Logger,
+  OmitIndexSignature,
+  Prettify,
   RedactString,
   RegisteredOptionsDiff,
   RunTaskOptions,
@@ -15,6 +17,8 @@ import { TriggerClient } from "./triggerClient";
 export type {
   DisplayProperty,
   Logger,
+  OmitIndexSignature,
+  Prettify,
   RedactString,
   RegisteredOptionsDiff,
   RunTaskOptions,
