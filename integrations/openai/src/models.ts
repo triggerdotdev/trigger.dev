@@ -1,7 +1,11 @@
 import { IntegrationTaskKey } from "@trigger.dev/sdk";
 import { Model } from "openai/resources";
-import { OpenAIRunTask } from "src";
+import { OpenAIRunTask } from "./index";
+import OpenAI from "openai";
 
+type DeleteFineTunedModelRequest = {
+  fineTunedModelId: string;
+};
 export class Models {
   runTask: OpenAIRunTask;
 
@@ -29,10 +33,38 @@ export class Models {
   }
 
   list(key: IntegrationTaskKey): Promise<Model[]> {
-    return this.runTask(key, async (client) => {
-      // return new ArrayBuffer(1);
-      const result = await client.models.list();
-      return result.data;
-    });
+    return this.runTask(
+      key,
+      async (client) => {
+        const result = await client.models.list();
+        return result.data;
+      },
+      {
+        name: "List models",
+        properties: [],
+      }
+    );
+  }
+
+  delete(
+    key: IntegrationTaskKey,
+    params: DeleteFineTunedModelRequest
+  ): Promise<OpenAI.Models.ModelDeleted> {
+    return this.runTask(
+      key,
+      async (client) => {
+        return client.models.del(params.fineTunedModelId);
+      },
+      {
+        name: "Delete fine tune model",
+        params,
+        properties: [
+          {
+            label: "Fine tuned model id",
+            text: params.fineTunedModelId,
+          },
+        ],
+      }
+    );
   }
 }
