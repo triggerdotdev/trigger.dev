@@ -26,54 +26,54 @@ client.defineJob({
     openai,
   },
   run: async (payload, io, ctx) => {
-    const models = await io.openai.models.list("list-models");
+    const models = await io.openai.listModels("list-models");
 
     if (models.length > 0) {
-      const model = await io.openai.models.retrieve("get-model", {
+      await io.openai.retrieveModel("get-model", {
         model: models[0].id,
       });
     }
 
-    // await io.openai.backgroundCreateChatCompletion("background-chat-completion", {
-    //   model: "gpt-3.5-turbo",
-    //   messages: [
-    //     {
-    //       role: "user",
-    //       content: "Create a good programming joke about background jobs",
-    //     },
-    //   ],
-    // });
+    await io.openai.backgroundCreateChatCompletion("background-chat-completion", {
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "user",
+          content: "Create a good programming joke about background jobs",
+        },
+      ],
+    });
 
-    // await io.openai.createChatCompletion("chat-completion", {
-    //   model: "gpt-3.5-turbo",
-    //   messages: [
-    //     {
-    //       role: "user",
-    //       content: "Create a good programming joke about background jobs",
-    //     },
-    //   ],
-    // });
+    await io.openai.createChatCompletion("chat-completion", {
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "user",
+          content: "Create a good programming joke about background jobs",
+        },
+      ],
+    });
 
-    // await io.openai.backgroundCreateCompletion("background-completion", {
-    //   model: "text-davinci-003",
-    //   prompt: "Create a good programming joke about Tasks",
-    // });
+    await io.openai.backgroundCreateCompletion("background-completion", {
+      model: "text-davinci-003",
+      prompt: "Create a good programming joke about Tasks",
+    });
 
-    // await io.openai.createCompletion("completion", {
-    //   model: "text-davinci-003",
-    //   prompt: "Create a good programming joke about Tasks",
-    // });
+    await io.openai.createCompletion("completion", {
+      model: "text-davinci-003",
+      prompt: "Create a good programming joke about Tasks",
+    });
 
-    // await io.openai.createEdit("edit", {
-    //   model: "text-davinci-edit-001",
-    //   input: "Thsi is ridddled with erors",
-    //   instruction: "Fix the spelling errors",
-    // });
+    await io.openai.createEdit("edit", {
+      model: "text-davinci-edit-001",
+      input: "Thsi is ridddled with erors",
+      instruction: "Fix the spelling errors",
+    });
 
-    // await io.openai.createEmbedding("embedding", {
-    //   model: "text-embedding-ada-002",
-    //   input: "The food was delicious and the waiter...",
-    // });
+    await io.openai.createEmbedding("embedding", {
+      model: "text-embedding-ada-002",
+      input: "The food was delicious and the waiter...",
+    });
   },
 });
 
