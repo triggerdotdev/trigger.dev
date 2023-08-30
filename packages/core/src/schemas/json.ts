@@ -28,8 +28,3 @@ export type SerializableJson =
 export const SerializableJsonSchema: z.ZodType<SerializableJson> = z.lazy(() =>
   z.union([SerializableSchema, z.array(SerializableJsonSchema), z.record(SerializableJsonSchema)])
 );
-
-/** Useful for stripping out [key: string] indexes from objects, to get them to be SerializableJson compatible */
-export type OmitIndexSignature<T> = {
-  [K in keyof T as string extends K ? never : K]: OmitIndexSignature<T[K]>;
-};

@@ -3,7 +3,6 @@ import {
   IO,
   IOTask,
   IntegrationTaskKey,
-  OmitIndexSignature,
   RunTaskErrorCallback,
   RunTaskOptions,
   RunTaskResult,
