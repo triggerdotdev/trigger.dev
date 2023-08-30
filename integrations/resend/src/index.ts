@@ -3,9 +3,9 @@ import type {
   IO,
   IOTask,
   IntegrationTaskKey,
+  Json,
   RunTaskErrorCallback,
   RunTaskOptions,
-  RunTaskResult,
   TriggerIntegration,
 } from "@trigger.dev/sdk";
 import { Resend as ResendClient } from "resend";
@@ -53,12 +53,12 @@ export class Resend implements TriggerIntegration {
     return { id: "resend", name: "Resend.com" };
   }
 
-  runTask<TResult extends RunTaskResult = void>(
+  runTask<T, TResult extends Json<T> | void>(
     key: IntegrationTaskKey,
     callback: (client: ResendClient, task: IOTask, io: IO) => Promise<TResult>,
     options?: RunTaskOptions,
     errorCallback?: RunTaskErrorCallback
-  ) {
+  ): Promise<TResult> {
     if (!this._io) throw new Error("No IO");
     if (!this._connectionKey) throw new Error("No connection key");
 
