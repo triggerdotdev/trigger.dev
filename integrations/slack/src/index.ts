@@ -12,11 +12,9 @@ import type {
   IO,
   IOTask,
   IntegrationTaskKey,
-  OmitIndexSignature,
-  Prettify,
+  Json,
   RunTaskErrorCallback,
   RunTaskOptions,
-  RunTaskResult,
   TriggerIntegration,
 } from "@trigger.dev/sdk";
 
@@ -80,12 +78,12 @@ export class Slack implements TriggerIntegration {
     return slack;
   }
 
-  runTask<TResult extends RunTaskResult = void>(
+  runTask<T, TResult extends Json<T> | void>(
     key: IntegrationTaskKey,
     callback: (client: WebClient, task: IOTask, io: IO) => Promise<TResult>,
     options?: RunTaskOptions,
     errorCallback?: RunTaskErrorCallback
-  ) {
+  ): Promise<TResult> {
     if (!this._io) throw new Error("No IO");
     if (!this._connectionKey) throw new Error("No connection key");
 
@@ -103,14 +101,12 @@ export class Slack implements TriggerIntegration {
   postMessage(
     key: IntegrationTaskKey,
     params: ChatPostMessageArguments
-  ): Promise<Prettify<OmitIndexSignature<ChatPostMessageResponse>>> {
+  ): Promise<ChatPostMessageResponse> {
     return this.runTask(
       key,
       async (client) => {
         try {
-          const message: Prettify<OmitIndexSignature<ChatPostMessageResponse>> =
-            await client.chat.postMessage(params);
-          return message;
+          return client.chat.postMessage(params);
         } catch (error) {
           if (isPlatformError(error)) {
             if (error.data.error === "not_in_channel") {
@@ -119,7 +115,7 @@ export class Slack implements TriggerIntegration {
               });
 
               if (joinResponse.ok) {
-                return await client.chat.postMessage(params);
+                return client.chat.postMessage(params);
               }
             }
           }
@@ -145,13 +141,11 @@ export class Slack implements TriggerIntegration {
   joinConversation(
     key: IntegrationTaskKey,
     params: { channel: string }
-  ): Promise<OmitIndexSignature<ConversationsJoinResponse>> {
+  ): Promise<ConversationsJoinResponse> {
     return this.runTask(
       key,
       async (client) => {
-        const result: OmitIndexSignature<ConversationsJoinResponse> =
-          await client.conversations.join(params);
-        return result;
+        return client.conversations.join(params);
       },
       {
         name: "Join Channel",
