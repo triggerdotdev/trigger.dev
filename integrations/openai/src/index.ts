@@ -9,10 +9,8 @@ import type {
   TriggerIntegration,
 } from "@trigger.dev/sdk";
 import OpenAIApi from "openai";
-import * as tasks from "./tasks";
-import { OpenAIIntegrationOptions } from "./types";
-import { RunTaskResult } from "@trigger.dev/sdk";
 import { Models } from "./models";
+import { OpenAIIntegrationOptions } from "./types";
 
 export type OpenAIRunTask = InstanceType<typeof OpenAI>["runTask"];
 
@@ -87,7 +85,7 @@ export class OpenAI implements TriggerIntegration {
       key,
       (task, io) => {
         if (!this._client) throw new Error("No client");
-        return callback(this._client, task, io) as Promise<TResult>;
+        return callback(this._client, task, io);
       },
       { icon: "openai", ...(options ?? {}), connectionKey: this._connectionKey },
       errorCallback
