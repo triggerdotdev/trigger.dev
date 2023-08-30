@@ -20,7 +20,7 @@ function onError(error: unknown) {
 
   // Check if this is a rate limit error
   if (error.status === 429) {
-    const rateLimitReset = error.response.headers["x-ratelimit-reset"];
+    const rateLimitReset = error.response.headers["ratelimit-reset"];
 
     if (rateLimitReset) {
       const resetDate = new Date(Number(rateLimitReset) * 1000);
