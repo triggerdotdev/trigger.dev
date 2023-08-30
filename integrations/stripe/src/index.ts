@@ -343,7 +343,7 @@ export class Stripe implements StripeIntegration {
    * Occurs whenever an account status or property has changed.
    */
   onAccountUpdated(params?: TriggerParams) {
-    return createTrigger(this.source, events.onAccountUpdated, params ?? { connect: false });
+    return createTrigger(this.source, events.onAccountUpdated, params ?? { connect: true });
   }
 
   /**
