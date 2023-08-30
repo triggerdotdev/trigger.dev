@@ -9,10 +9,36 @@ import type {
   TriggerIntegration,
 } from "@trigger.dev/sdk";
 import { Resend as ResendClient } from "resend";
+import { ErrorResponse } from "./ErrorInterface";
 
 type SendEmailData = Parameters<InstanceType<typeof ResendClient>["sendEmail"]>[0];
 
 type SendEmailResponse = { id: string };
+
+function isRequestError(error: unknown): error is ErrorResponse {
+  return typeof error === "object" && error !== null && "status" in error;
+}
+
+function onError(error: unknown) {
+  console.log(error);
+  if (!isRequestError(error)) {
+    return;
+  }
+
+  // Check if this is a rate limit error
+  if (error.status === 429) {
+    const rateLimitReset = error.response.headers["ratelimit-reset"];
+
+    if (rateLimitReset) {
+      const resetDate = new Date(Number(rateLimitReset) * 1000);
+
+      return {
+        retryAt: resetDate,
+        error,
+      };
+    }
+  }
+}
 
 export type ResendIntegrationOptions = {
   id: string;
@@ -93,7 +119,15 @@ export class Resend implements TriggerIntegration {
           },
           ...(params.subject ? [{ label: "Subject", text: params.subject }] : []),
         ],
-      }
+        retry: {
+          limit: 8,
+          factor: 1.8,
+          minTimeoutInMs: 500,
+          maxTimeoutInMs: 30000,
+          randomize: true,
+        },
+      },
+      onError
     );
   }
 }
