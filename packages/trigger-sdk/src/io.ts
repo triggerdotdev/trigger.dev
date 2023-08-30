@@ -52,8 +52,6 @@ type JsonArray = Json[];
 type JsonRecord<T> = { [Property in keyof T]: Json };
 export type Json<T = any> = JsonPrimitive | JsonArray | JsonRecord<T>;
 
-export type RunTaskResult<T> = Json<T> | void;
-
 export type RunTaskErrorCallback = (
   error: unknown,
   task: IOTask,
