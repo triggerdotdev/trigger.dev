@@ -50,14 +50,9 @@ export type IOOptions = {
 type JsonPrimitive = string | number | boolean | null | undefined | Date | symbol;
 type JsonArray = Json[];
 type JsonRecord<T> = { [Property in keyof T]: Json };
-type Json<T = any> = JsonPrimitive | JsonArray | JsonRecord<T>;
+export type Json<T = any> = JsonPrimitive | JsonArray | JsonRecord<T>;
 
 export type RunTaskResult<T> = Json<T> | void;
-
-export type RunTaskCallback<
-  TResult extends any | void = void,
-  TCallbackResult extends unknown = TResult,
-> = (task: ServerTask, io: IO) => Promise<TCallbackResult | TResult>;
 
 export type RunTaskErrorCallback = (
   error: unknown,
@@ -491,15 +486,12 @@ export class IO {
 =   * @param onError The callback that will be called when the Task fails. The callback receives the error, the Task and the IO as parameters. If you wish to retry then return an object with a `retryAt` property.
    * @returns A Promise that resolves with the returned value of the callback.
    */
-  async runTask<
-    TResult extends SerializableJson | void = void,
-    TCallbackResult extends unknown = TResult,
-  >(
+  async runTask<T extends Json<T> | void>(
     key: string | any[],
-    callback: RunTaskCallback<TResult, TCallbackResult>,
+    callback: (task: ServerTask, io: IO) => Promise<T>,
     options?: RunTaskOptions,
     onError?: RunTaskErrorCallback
-  ): Promise<TResult> {
+  ): Promise<T> {
     const parentId = this._taskStorage.getStore()?.taskId;
 
     if (parentId) {
@@ -520,7 +512,7 @@ export class IO {
         cachedTask,
       });
 
-      return cachedTask.output as TResult;
+      return cachedTask.output as T;
     }
 
     const task = await this._apiClient.runTask(this._id, {
@@ -548,7 +540,7 @@ export class IO {
 
       this.#addToCachedTasks(task);
 
-      return task.output as TResult;
+      return task.output as T;
     }
 
     if (task.status === "ERRORED") {
@@ -582,7 +574,7 @@ export class IO {
       try {
         const result = await callback(task, this);
 
-        const output = SerializableJsonSchema.parse(result) as TResult;
+        const output = SerializableJsonSchema.parse(result) as T;
 
         this._logger.debug("Completing using output", {
           idempotencyKey,
