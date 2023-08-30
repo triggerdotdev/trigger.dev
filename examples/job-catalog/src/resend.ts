@@ -32,12 +32,14 @@ client.defineJob({
     resend,
   },
   run: async (payload, io, ctx) => {
-    await io.resend.sendEmail("📧", {
+    const response = await io.resend.sendEmail("📧", {
       to: payload.to,
       subject: payload.subject,
       text: payload.text,
       from: "Trigger.dev <hello@email.trigger.dev>",
     });
+
+    await io.logger.info("Sent email", { response });
   },
 });
 

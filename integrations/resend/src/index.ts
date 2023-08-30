@@ -9,35 +9,31 @@ import type {
   TriggerIntegration,
 } from "@trigger.dev/sdk";
 import { Resend as ResendClient } from "resend";
-import { ErrorResponse } from "./ErrorInterface";
 
-type SendEmailData = Parameters<InstanceType<typeof ResendClient>["sendEmail"]>[0];
+type ResendType = InstanceType<typeof ResendClient>;
+type SendEmailData = Parameters<ResendType["sendEmail"]>[0];
+type SendEmailResponse = Awaited<ReturnType<ResendType["sendEmail"]>>;
 
-type SendEmailResponse = { id: string };
+type ErrorResponse = {
+  statusCode: number;
+  name: string;
+  message: string;
+};
 
 function isRequestError(error: unknown): error is ErrorResponse {
-  return typeof error === "object" && error !== null && "status" in error;
+  return typeof error === "object" && error !== null && "statusCode" in error;
 }
 
 function onError(error: unknown) {
-  console.log(error);
   if (!isRequestError(error)) {
-    return;
-  }
-
-  // Check if this is a rate limit error
-  if (error.status === 429) {
-    const rateLimitReset = error.response.headers["ratelimit-reset"];
-
-    if (rateLimitReset) {
-      const resetDate = new Date(Number(rateLimitReset) * 1000);
-
-      return {
-        retryAt: resetDate,
-        error,
-      };
+    if (error instanceof Error) {
+      return error;
     }
+
+    return new Error("Unknown error");
   }
+
+  return new Error(error.message);
 }
 
 export type ResendIntegrationOptions = {
@@ -103,7 +99,11 @@ export class Resend implements TriggerIntegration {
     return this.runTask(
       key,
       async (client) => {
-        return client.sendEmail(params) as Promise<SendEmailResponse>;
+        const response = await client.sendEmail(params);
+        if ("statusCode" in response) {
+          throw response;
+        }
+        return response;
       },
       {
         name: "Send Email",
