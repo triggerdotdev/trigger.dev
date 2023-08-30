@@ -47,10 +47,15 @@ export type IOOptions = {
   cachedTasks?: Array<CachedTask>;
 };
 
-export type RunTaskResult = SerializableJson | void;
+type JsonPrimitive = string | number | boolean | null | undefined | Date | symbol;
+type JsonArray = Json[];
+type JsonRecord<T> = { [Property in keyof T]: Json };
+type Json<T = any> = JsonPrimitive | JsonArray | JsonRecord<T>;
+
+export type RunTaskResult<T> = Json<T> | void;
 
 export type RunTaskCallback<
-  TResult extends SerializableJson | void = void,
+  TResult extends any | void = void,
   TCallbackResult extends unknown = TResult,
 > = (task: ServerTask, io: IO) => Promise<TCallbackResult | TResult>;
 
