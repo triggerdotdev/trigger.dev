@@ -58,8 +58,8 @@ export class Webhooks {
   create(
     key: IntegrationTaskKey,
     { baseId, url, options }: { baseId: string; url: string; options: WebhookSpecification }
-  ) {
-    return this.runTask<WebhookRegistrationData>(
+  ): Promise<WebhookRegistrationData> {
+    return this.runTask(
       key,
       async (client, task, io) => {
         // create webhook
@@ -110,8 +110,8 @@ export class Webhooks {
     );
   }
 
-  list(key: IntegrationTaskKey, { baseId }: { baseId: string }) {
-    return this.runTask<WebhookListData>(
+  list(key: IntegrationTaskKey, { baseId }: { baseId: string }): Promise<WebhookListData> {
+    return this.runTask(
       key,
       async (client, task, io) => {
         // create webhook

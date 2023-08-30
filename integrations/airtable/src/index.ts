@@ -1,12 +1,12 @@
 import { Prettify } from "@trigger.dev/integration-kit";
 import {
+  Json,
   type ConnectionAuth,
   type IO,
   type IOTask,
   type IntegrationTaskKey,
   type RunTaskErrorCallback,
   type RunTaskOptions,
-  type RunTaskResult,
   type TriggerIntegration,
 } from "@trigger.dev/sdk";
 import AirtableSDK from "airtable";
@@ -85,12 +85,12 @@ export class Airtable implements TriggerIntegration {
     throw new Error("No auth");
   }
 
-  runTask<TResult extends RunTaskResult = void>(
+  runTask<T, TResult extends Json<T> | void>(
     key: IntegrationTaskKey,
     callback: (client: AirtableSDK, task: IOTask, io: IO) => Promise<TResult>,
     options?: RunTaskOptions,
     errorCallback?: RunTaskErrorCallback
-  ) {
+  ): Promise<TResult> {
     if (!this._io) throw new Error("No IO");
     if (!this._connectionKey) throw new Error("No connection key");
 
