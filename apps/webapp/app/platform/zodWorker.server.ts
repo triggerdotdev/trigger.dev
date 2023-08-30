@@ -195,12 +195,13 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   ): Promise<GraphileJob> {
     const task = this.#tasks[identifier];
 
-    const optionsWithoutTx = omit(options ?? {}, ["tx"]);
+    const optionsWithoutTx = removeUndefinedKeys(omit(options ?? {}, ["tx"]));
     const taskWithoutJobKey = omit(task, ["jobKey"]);
 
+    // Make sure options passed in to enqueue take precedence over task options
     const spec = {
-      ...optionsWithoutTx,
       ...taskWithoutJobKey,
+      ...optionsWithoutTx,
     };
 
     if (typeof task.queueName === "function") {
@@ -436,4 +437,13 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   #logDebug(message: string, args?: any) {
     logger.debug(`[worker][${this.#name}] ${message}`, args);
   }
+}
+
+function removeUndefinedKeys<T extends object>(obj: T): T {
+  for (let key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key) && obj[key] === undefined) {
+      delete obj[key];
+    }
+  }
+  return obj;
 }

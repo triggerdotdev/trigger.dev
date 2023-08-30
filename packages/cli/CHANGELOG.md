@@ -1,5 +1,15 @@
 # create-trigger
 
+## 2.0.14
+
+## 2.0.13
+
+### Patch Changes
+
+- provided a fix to the CLI dev command tunnel not working if you are already running ngrok ([#407](https://github.com/triggerdotdev/trigger.dev/pull/407))
+- fix: init will no longer fail when outside of a git repo ([`3028b6ad`](https://github.com/triggerdotdev/trigger.dev/commit/3028b6ad9d693d2f1662c4338d44ac9d3bf0da3a))
+- feat: Checks for outdated packages when running the dev command with instructions on how to update ([#412](https://github.com/triggerdotdev/trigger.dev/pull/412))
+
 ## 2.0.12
 
 ## 2.0.11

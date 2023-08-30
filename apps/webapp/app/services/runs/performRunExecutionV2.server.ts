@@ -6,7 +6,7 @@ import {
   RunJobSuccess,
   RunSourceContextSchema,
 } from "@trigger.dev/core";
-import type { Task } from "@trigger.dev/database";
+import { RuntimeEnvironmentType, type Task } from "@trigger.dev/database";
 import { generateErrorMessage } from "zod-error";
 import { eventRecordToApiJson } from "~/api.server";
 import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
@@ -135,7 +135,9 @@ export class PerformRunExecutionV2Service {
           },
         });
 
-        await enqueueRunExecutionV2(run, tx);
+        await enqueueRunExecutionV2(run, tx, {
+          skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
+        });
       });
     }
   }
@@ -337,6 +339,7 @@ export class PerformRunExecutionV2Service {
           runAt: data.task.delayUntil ?? undefined,
           resumeTaskId: data.task.id,
           isRetry,
+          skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
         });
       }
     });
@@ -409,6 +412,7 @@ export class PerformRunExecutionV2Service {
         runAt: data.retryAt,
         resumeTaskId: data.task.id,
         isRetry,
+        skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
       });
     });
   }
@@ -464,7 +468,9 @@ export class PerformRunExecutionV2Service {
             },
           });
 
-          await enqueueRunExecutionV2(run, tx);
+          await enqueueRunExecutionV2(run, tx, {
+            skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
+          });
 
           break;
         }
@@ -477,7 +483,9 @@ export class PerformRunExecutionV2Service {
   }
 }
 
-function prepareTasksForRun(tasks: FoundTask[]): CachedTask[] {
+function prepareTasksForRun(possibleTasks: FoundTask[]): CachedTask[] {
+  const tasks = possibleTasks.filter((task) => task.status === "COMPLETED");
+
   // We need to limit the cached tasks to not be too large >3.5MB when serialized
   const TOTAL_CACHED_TASK_BYTE_LIMIT = 3500000;
 

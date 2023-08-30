@@ -1,5 +1,21 @@
 # @trigger.dev/plain
 
+## 2.0.14
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/integration-kit@2.0.14`
+  - `@trigger.dev/sdk@2.0.14`
+
+## 2.0.13
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@2.0.13`
+  - `@trigger.dev/integration-kit@2.0.13`
+
 ## 2.0.12
 
 ### Patch Changes

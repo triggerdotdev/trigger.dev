@@ -504,8 +504,8 @@ export class IO {
 
     const cachedTask = this._cachedTasks.get(idempotencyKey);
 
-    if (cachedTask) {
-      this._logger.debug("Using cached task", {
+    if (cachedTask && cachedTask.status === "COMPLETED") {
+      this._logger.debug("Using completed cached task", {
         idempotencyKey,
         cachedTask,
       });
