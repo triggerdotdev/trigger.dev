@@ -12,6 +12,7 @@ export * from "./types";
 import { ServerTask } from "@trigger.dev/core";
 import { RedactString } from "./types";
 export { isTriggerError } from "./errors";
+export { retry } from "./retry";
 
 export type { NormalizedRequest, EventFilter } from "@trigger.dev/core";
 
