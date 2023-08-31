@@ -81,6 +81,12 @@ export class RegisterSourceServiceV2 {
             })
           : undefined;
 
+        // options
+        const createOptions = Object.entries(metadata.options).flatMap(([name, values]) => {
+          const uniqueValues = [...new Set(values)];
+          return uniqueValues.map((value) => ({ name, value }));
+        });
+
         const triggerSource = await tx.triggerSource.upsert({
           where: {
             key_environmentId: {
@@ -123,9 +129,7 @@ export class RegisterSourceServiceV2 {
               : undefined,
             externalAccount: externalAccount ? { connect: { id: externalAccount.id } } : undefined,
             options: {
-              create: Object.entries(metadata.options).flatMap(([name, values]) =>
-                values.map((value) => ({ name, value }))
-              ),
+              create: createOptions,
             },
             secretReference: {
               connectOrCreate: {
