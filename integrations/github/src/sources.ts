@@ -1,15 +1,11 @@
 import { Webhooks } from "@octokit/webhooks";
-import {
-  IntegrationClient,
-  ExternalSource,
-  TriggerIntegration,
-  HandlerEvent,
-} from "@trigger.dev/sdk";
+import { ExternalSource, TriggerIntegration, HandlerEvent } from "@trigger.dev/sdk";
 import type { Logger } from "@trigger.dev/sdk";
 import { safeJsonParse, omit } from "@trigger.dev/integration-kit";
 import { Octokit } from "octokit";
 import { z } from "zod";
 import { tasks } from "./tasks";
+import { Github } from "./index";
 
 type WebhookData = {
   id: number;
@@ -30,12 +26,8 @@ function webhookData(data: any): data is WebhookData {
 }
 
 export function createRepoEventSource(
-  integration: TriggerIntegration<IntegrationClient<Octokit, typeof tasks>>
-): ExternalSource<
-  TriggerIntegration<IntegrationClient<Octokit, typeof tasks>>,
-  { owner: string; repo: string },
-  "HTTP"
-> {
+  integration: Github
+): ExternalSource<Github, { owner: string; repo: string }, "HTTP", {}> {
   return new ExternalSource("HTTP", {
     id: "github.repo",
     version: "0.1.1",
@@ -61,27 +53,32 @@ export function createRepoEventSource(
     }),
     handler: webhookHandler,
     register: async (event, io, ctx) => {
-      const { params, source: httpSource, events, missingEvents } = event;
+      const { params, source: httpSource, options } = event;
+
+      const registeredOptions = {
+        event: options.event.desired,
+      };
 
       if (httpSource.active && webhookData(httpSource.data)) {
-        if (missingEvents.length > 0) {
-          // We need to update the webhook to add the new events and then return
-          const newWebhookData = await io.integration.updateWebhook("update-webhook", {
-            owner: params.owner,
-            repo: params.repo,
-            hookId: httpSource.data.id,
-            url: httpSource.url,
-            secret: httpSource.secret,
-            addEvents: missingEvents,
-          });
+        const hasMissingOptions = Object.values(options).some(
+          (option) => option.missing.length > 0
+        );
+        if (!hasMissingOptions) return;
 
-          return {
-            data: newWebhookData,
-            registeredEvents: newWebhookData.events,
-          };
-        }
+        // We need to update the webhook to add the new events and then return
+        const newWebhookData = await io.integration.updateWebhook("update-webhook", {
+          owner: params.owner,
+          repo: params.repo,
+          hookId: httpSource.data.id,
+          url: httpSource.url,
+          secret: httpSource.secret,
+          addEvents: missingEvents,
+        });
 
-        return;
+        return {
+          data: newWebhookData,
+          options: registeredOptions,
+        };
       }
 
       const webhooks = await io.integration.listWebhooks("list-webhooks", {

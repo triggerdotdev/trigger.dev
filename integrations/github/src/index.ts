@@ -1,3 +1,4 @@
+import { RequestError } from "@octokit/request-error";
 import { RequestRequestOptions } from "@octokit/types";
 import {
   CreateEvent,
@@ -12,15 +13,22 @@ import {
   StarCreatedEvent,
   StarEvent,
 } from "@octokit/webhooks-types";
+import { truncate } from "@trigger.dev/integration-kit";
 import {
+  ConnectionAuth,
   EventSpecification,
   ExternalSourceTrigger,
-  IntegrationClient,
+  IO,
+  IOTask,
+  IntegrationTaskKey,
+  Json,
+  RunTaskErrorCallback,
+  RunTaskOptions,
   TriggerIntegration,
+  retry,
 } from "@trigger.dev/sdk";
 import { Octokit } from "octokit";
 import { createOrgEventSource, createRepoEventSource } from "./sources";
-import { tasks } from "./tasks";
 import {
   issueAssigned,
   issueCommentCreated,
@@ -31,7 +39,12 @@ import {
   push,
   starredRepo,
 } from "./webhook-examples";
-import { truncate } from "@trigger.dev/integration-kit";
+import { Issues } from "./issues";
+import { Repos } from "./repos";
+import { Reactions } from "./reactions";
+import { Compound } from "./compound";
+import { Orgs } from "./orgs";
+import { Git } from "./git";
 
 export type GithubIntegrationOptions = {
   id: string;
@@ -49,15 +62,29 @@ type GithubTriggers = {
   org: ReturnType<typeof createOrgTrigger>;
 };
 
-export class Github implements TriggerIntegration<IntegrationClient<Octokit, typeof tasks>> {
-  client: IntegrationClient<Octokit, typeof tasks>;
+export type GitHubRunTask = InstanceType<typeof Github>["runTask"];
+export type GitHubReturnType<T extends (params: any) => Promise<{ data: K }>, K = any> = Promise<
+  Awaited<ReturnType<T>>["data"]
+>;
+
+export class Github implements TriggerIntegration {
+  private _options: GithubIntegrationOptions;
+  private _client?: Octokit;
+  private _io?: IO;
+  private _connectionKey?: string;
+
   _repoSource: ReturnType<typeof createRepoEventSource>;
   _orgSource: ReturnType<typeof createOrgEventSource>;
   _repoTrigger: ReturnType<typeof createRepoTrigger>;
   _orgTrigger: ReturnType<typeof createOrgTrigger>;
 
   constructor(private options: GithubIntegrationOptions) {
-    this.client = createClientFromOptions(options);
+    if (Object.keys(options).includes("token") && !options.token) {
+      throw `Can't create GitHub integration (${options.id}) as token was undefined`;
+    }
+
+    this._options = options;
+
     this._repoSource = createRepoEventSource(this);
     this._orgSource = createOrgEventSource(this);
     this._repoTrigger = createRepoTrigger(this._repoSource);
@@ -70,6 +97,18 @@ export class Github implements TriggerIntegration<IntegrationClient<Octokit, typ
 
   get metadata() {
     return { name: "GitHub", id: "github" };
+  }
+
+  get authSource() {
+    return this._options.token ? ("LOCAL" as const) : ("HOSTED" as const);
+  }
+
+  cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
+    const github = new Github(this._options);
+    github._io = io;
+    github._connectionKey = connectionKey;
+    github._client = createClientFromOptions(this._options, auth);
+    return github;
   }
 
   get sources(): GithubSources {
@@ -85,45 +124,114 @@ export class Github implements TriggerIntegration<IntegrationClient<Octokit, typ
       org: this._orgTrigger,
     };
   }
+
+  runTask<T, TResult extends Json<T> | void>(
+    key: IntegrationTaskKey,
+    callback: (client: Octokit, task: IOTask, io: IO) => Promise<TResult>,
+    options?: RunTaskOptions,
+    errorCallback?: RunTaskErrorCallback
+  ): Promise<TResult> {
+    if (!this._io) throw new Error("No IO");
+    if (!this._connectionKey) throw new Error("No connection key");
+
+    return this._io.runTask<TResult>(
+      key,
+      (task, io) => {
+        if (!this._client) throw new Error("No client");
+        return callback(this._client, task, io);
+      },
+      {
+        icon: "github",
+        retry: retry.standardBackoff,
+        ...(options ?? {}),
+        connectionKey: this._connectionKey,
+      },
+      errorCallback
+    );
+  }
+
+  get issues() {
+    return new Issues(this.runTask.bind(this));
+  }
+
+  get repos() {
+    return new Repos(this.runTask.bind(this));
+  }
+
+  get reactions() {
+    return new Reactions(this.runTask.bind(this));
+  }
+
+  get compound() {
+    return new Compound(this.runTask.bind(this));
+  }
+
+  get orgs() {
+    return new Orgs(this.runTask.bind(this));
+  }
+
+  get git() {
+    return new Git(this.runTask.bind(this));
+  }
+
+  createIssue = this.issues.create;
+  addIssueAssignees = this.issues.addAssignees;
+  addIssueLabels = this.issues.addLabels;
+  createIssueComment = this.issues.createComment;
+  getIssue = this.issues.get;
+  getRepo = this.repos.get;
+  updateWebhook = this.repos.updateWebhook;
+  createWebhook = this.repos.createWebhook;
+  listWebhooks = this.repos.listWebhooks;
+  addIssueCommentReaction = this.reactions.createForIssueComment;
+  createIssueCommentWithReaction = this.compound.createForIssueComment;
+  updateOrgWebhook = this.orgs.updateWebhook;
+  createOrgWebhook = this.orgs.createWebhook;
+  listOrgWebhooks = this.orgs.listWebhooks;
+  createBlob = this.git.createBlob;
+  getBlob = this.git.getBlob;
+  createCommit = this.git.createCommit;
+  getCommit = this.git.getCommit;
+  listMatchingReferences = this.git.listMatchingRefs;
+  getReference = this.git.getRef;
+  createReference = this.git.createRef;
+  updateReference = this.git.updateRef;
+  deleteReference = this.git.deleteRef;
+  createTag = this.git.createTag;
+  getTag = this.git.getTag;
+  createTree = this.git.createTree;
+  getTree = this.git.getTree;
 }
 
 function createClientFromOptions(
-  options: GithubIntegrationOptions
-): IntegrationClient<Octokit, typeof tasks> {
+  options: GithubIntegrationOptions,
+  auth?: ConnectionAuth
+): Octokit {
   if (Object.keys(options).includes("token") && !options.token) {
     throw `Can't create GitHub integration (${options.id}) as token was undefined`;
   }
 
   if (options.token) {
-    const client = new Octokit({
+    return new Octokit({
       auth: options.token,
       request: options.octokitRequest,
       retry: {
         enabled: false,
       },
     });
-
-    return {
-      usesLocalAuth: true,
-      client,
-      tasks,
-      auth: options.token,
-    };
   }
 
-  return {
-    usesLocalAuth: false,
-    clientFactory: (auth) => {
-      return new Octokit({
-        auth: auth.accessToken,
-        request: options.octokitRequest,
-        retry: {
-          enabled: false,
-        },
-      });
+  if (!auth) {
+    throw new Error("No auth");
+  }
+
+  return new Octokit({
+    auth: auth.accessToken,
+    request: options.octokitRequest,
+    retry: {
+      enabled: false,
     },
-    tasks,
-  };
+  });
 }
 
 const onIssue: EventSpecification<IssuesEvent> = {
@@ -461,6 +569,7 @@ function createRepoTrigger(
       event,
       params: { owner, repo },
       source,
+      options: {},
     });
   };
 }
@@ -484,6 +593,32 @@ function createOrgTrigger(
       event,
       params: { org },
       source,
+      options: {},
     });
   };
+}
+
+export function isRequestError(error: unknown): error is RequestError {
+  return typeof error === "object" && error !== null && "status" in error;
+}
+
+export function onError(error: unknown) {
+  if (!isRequestError(error)) {
+    return;
+  }
+
+  // Check if this is a rate limit error
+  if (error.status === 403 && error.response) {
+    const rateLimitRemaining = error.response.headers["x-ratelimit-remaining"];
+    const rateLimitReset = error.response.headers["x-ratelimit-reset"];
+
+    if (rateLimitRemaining === "0" && rateLimitReset) {
+      const resetDate = new Date(Number(rateLimitReset) * 1000);
+
+      return {
+        retryAt: resetDate,
+        error,
+      };
+    }
+  }
 }
