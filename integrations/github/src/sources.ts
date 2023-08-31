@@ -4,7 +4,6 @@ import type { Logger } from "@trigger.dev/sdk";
 import { safeJsonParse, omit } from "@trigger.dev/integration-kit";
 import { Octokit } from "octokit";
 import { z } from "zod";
-import { tasks } from "./tasks";
 import { Github } from "./index";
 
 type WebhookData = {
@@ -72,7 +71,7 @@ export function createRepoEventSource(
           hookId: httpSource.data.id,
           url: httpSource.url,
           secret: httpSource.secret,
-          addEvents: missingEvents,
+          addEvents: options.event.missing,
         });
 
         return {
@@ -96,35 +95,31 @@ export function createRepoEventSource(
           hookId: existingWebhook.id,
           url: httpSource.url,
           secret: httpSource.secret,
-          addEvents: missingEvents,
+          addEvents: options.event.missing,
         });
 
         return {
           data: updatedWebhook,
-          registeredEvents: updatedWebhook.events,
+          options: registeredOptions,
         };
       }
 
       const webhook = await io.integration.createWebhook("create-webhook", {
         owner: params.owner,
         repo: params.repo,
-        events,
+        events: options.event.desired,
         url: httpSource.url,
         secret: httpSource.secret,
       });
 
-      return { data: webhook, registeredEvents: webhook.events };
+      return { data: webhook, options: registeredOptions };
     },
   });
 }
 
 export function createOrgEventSource(
-  integration: TriggerIntegration<IntegrationClient<Octokit, typeof tasks>>
-): ExternalSource<
-  TriggerIntegration<IntegrationClient<Octokit, typeof tasks>>,
-  { org: string },
-  "HTTP"
-> {
+  integration: Github
+): ExternalSource<Github, { org: string }, "HTTP", {}> {
   return new ExternalSource("HTTP", {
     id: "github.org",
     version: "0.1.1",
@@ -145,13 +140,19 @@ export function createOrgEventSource(
     }),
     handler: webhookHandler,
     register: async (event, io, ctx) => {
-      const { params, source: httpSource, events, missingEvents } = event;
+      const { params, source: httpSource, options } = event;
+
+      const registeredOptions = {
+        event: options.event.desired,
+      };
+
+      const hasMissingOptions = Object.values(options).some((option) => option.missing.length > 0);
 
       if (
         httpSource.active &&
         webhookData(httpSource.data) &&
         httpSource.secret &&
-        missingEvents.length > 0
+        hasMissingOptions
       ) {
         const existingData = httpSource.data;
 
@@ -161,13 +162,13 @@ export function createOrgEventSource(
           hookId: existingData.id,
           url: httpSource.url,
           secret: httpSource.secret,
-          addEvents: missingEvents,
+          addEvents: options.event.missing,
         });
 
         return {
           secret: httpSource.secret,
           data: newWebhookData,
-          registeredEvents: newWebhookData.events,
+          options: registeredOptions,
         };
       }
 
@@ -190,18 +191,18 @@ export function createOrgEventSource(
         return {
           secret,
           data: updatedWebhook,
-          registeredEvents: updatedWebhook.events,
+          options: registeredOptions,
         };
       }
 
       const webhook = await io.integration.createOrgWebhook("create-webhook", {
         org: params.org,
-        events,
+        events: options.event.desired,
         url: httpSource.url,
         secret,
       });
 
-      return { secret, data: webhook, registeredEvents: webhook.events };
+      return { secret, data: webhook, options: registeredOptions };
     },
   });
 }

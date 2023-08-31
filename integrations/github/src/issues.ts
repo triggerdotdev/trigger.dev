@@ -4,6 +4,7 @@ import { GitHubReturnType, GitHubRunTask, onError } from "./index";
 import { Octokit } from "octokit";
 import { issueProperties, repoProperties } from "./propertyHelpers";
 
+type AddIssueLabels = GitHubReturnType<Octokit["rest"]["issues"]["addLabels"]>;
 export class Issues {
   runTask: GitHubRunTask;
 
@@ -74,7 +75,7 @@ export class Issues {
   addLabels(
     key: IntegrationTaskKey,
     params: { owner: string; repo: string; issueNumber: number; labels: string[] }
-  ): GitHubReturnType<Octokit["rest"]["issues"]["addLabels"]> {
+  ): AddIssueLabels {
     return this.runTask(
       key,
       async (client, task) => {
