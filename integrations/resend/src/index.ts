@@ -1,12 +1,13 @@
-import type {
-  ConnectionAuth,
-  IO,
-  IOTask,
-  IntegrationTaskKey,
-  Json,
-  RunTaskErrorCallback,
-  RunTaskOptions,
-  TriggerIntegration,
+import {
+  retry,
+  type ConnectionAuth,
+  type IO,
+  type IOTask,
+  type IntegrationTaskKey,
+  type Json,
+  type RunTaskErrorCallback,
+  type RunTaskOptions,
+  type TriggerIntegration,
 } from "@trigger.dev/sdk";
 import { Resend as ResendClient } from "resend";
 
@@ -119,13 +120,7 @@ export class Resend implements TriggerIntegration {
           },
           ...(params.subject ? [{ label: "Subject", text: params.subject }] : []),
         ],
-        retry: {
-          limit: 8,
-          factor: 1.8,
-          minTimeoutInMs: 500,
-          maxTimeoutInMs: 30000,
-          randomize: true,
-        },
+        retry: retry.standardBackoff,
       },
       onError
     );

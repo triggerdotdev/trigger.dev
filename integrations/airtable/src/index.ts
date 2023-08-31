@@ -8,6 +8,7 @@ import {
   type RunTaskErrorCallback,
   type RunTaskOptions,
   type TriggerIntegration,
+  retry,
 } from "@trigger.dev/sdk";
 import AirtableSDK from "airtable";
 import { Base } from "./base";
@@ -100,7 +101,12 @@ export class Airtable implements TriggerIntegration {
         if (!this._client) throw new Error("No client");
         return callback(this._client, task, io);
       },
-      { icon: "airtable", ...(options ?? {}), connectionKey: this._connectionKey },
+      {
+        icon: "airtable",
+        ...(options ?? {}),
+        connectionKey: this._connectionKey,
+        retry: retry.standardBackoff,
+      },
       errorCallback
     );
   }

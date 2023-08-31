@@ -1,12 +1,13 @@
-import type {
-  ConnectionAuth,
-  IO,
-  IOTask,
-  IntegrationTaskKey,
-  Json,
-  RunTaskErrorCallback,
-  RunTaskOptions,
-  TriggerIntegration,
+import {
+  retry,
+  type ConnectionAuth,
+  type IO,
+  type IOTask,
+  type IntegrationTaskKey,
+  type Json,
+  type RunTaskErrorCallback,
+  type RunTaskOptions,
+  type TriggerIntegration,
 } from "@trigger.dev/sdk";
 import OpenAIApi from "openai";
 import { Models } from "./models";
@@ -94,7 +95,12 @@ export class OpenAI implements TriggerIntegration {
         if (!this._client) throw new Error("No client");
         return callback(this._client, task, io);
       },
-      { icon: "openai", ...(options ?? {}), connectionKey: this._connectionKey },
+      {
+        icon: "openai",
+        ...(options ?? {}),
+        connectionKey: this._connectionKey,
+        retry: retry.standardBackoff,
+      },
       errorCallback
     );
   }

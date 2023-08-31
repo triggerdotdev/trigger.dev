@@ -7,15 +7,16 @@ import type {
   WebAPIPlatformError,
 } from "@slack/web-api";
 import { WebClient } from "@slack/web-api";
-import type {
-  ConnectionAuth,
-  IO,
-  IOTask,
-  IntegrationTaskKey,
-  Json,
-  RunTaskErrorCallback,
-  RunTaskOptions,
-  TriggerIntegration,
+import {
+  retry,
+  type ConnectionAuth,
+  type IO,
+  type IOTask,
+  type IntegrationTaskKey,
+  type Json,
+  type RunTaskErrorCallback,
+  type RunTaskOptions,
+  type TriggerIntegration,
 } from "@trigger.dev/sdk";
 
 export type SlackIntegrationOptions = {
@@ -93,7 +94,12 @@ export class Slack implements TriggerIntegration {
         if (!this._client) throw new Error("No client");
         return callback(this._client, task, io);
       },
-      { icon: "slack", ...(options ?? {}), connectionKey: this._connectionKey },
+      {
+        icon: "slack",
+        ...(options ?? {}),
+        connectionKey: this._connectionKey,
+        retry: retry.standardBackoff,
+      },
       errorCallback
     );
   }

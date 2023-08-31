@@ -3,10 +3,11 @@ import {
   IO,
   IOTask,
   IntegrationTaskKey,
+  Json,
   RunTaskErrorCallback,
   RunTaskOptions,
-  RunTaskResult,
   TriggerIntegration,
+  retry,
 } from "@trigger.dev/sdk";
 import { MailService } from "@sendgrid/mail";
 
@@ -52,12 +53,12 @@ export class SendGrid implements TriggerIntegration {
     return { id: "sendgrid", name: "SendGrid" };
   }
 
-  runTask<TResult extends RunTaskResult = void>(
+  runTask<T, TResult extends Json<T> | void>(
     key: IntegrationTaskKey,
     callback: (client: MailService, task: IOTask, io: IO) => Promise<TResult>,
     options?: RunTaskOptions,
     errorCallback?: RunTaskErrorCallback
-  ) {
+  ): Promise<TResult> {
     if (!this._io) throw new Error("No IO");
     if (!this._connectionKey) throw new Error("No connection key");
 
@@ -67,7 +68,12 @@ export class SendGrid implements TriggerIntegration {
         if (!this._client) throw new Error("No client");
         return callback(this._client, task, io);
       },
-      { icon: "sendgrid", ...(options ?? {}), connectionKey: this._connectionKey },
+      {
+        icon: "sendgrid",
+        ...(options ?? {}),
+        connectionKey: this._connectionKey,
+        retry: retry.standardBackoff,
+      },
       errorCallback
     );
   }
@@ -104,13 +110,6 @@ export class SendGrid implements TriggerIntegration {
           },
           ...subjectProperty,
         ],
-        retry: {
-          limit: 8,
-          factor: 1.8,
-          minTimeoutInMs: 500,
-          maxTimeoutInMs: 30000,
-          randomize: true,
-        },
       }
     );
   }
