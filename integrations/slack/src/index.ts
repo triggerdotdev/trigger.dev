@@ -96,9 +96,9 @@ export class Slack implements TriggerIntegration {
       },
       {
         icon: "slack",
+        retry: retry.standardBackoff,
         ...(options ?? {}),
         connectionKey: this._connectionKey,
-        retry: retry.standardBackoff,
       },
       errorCallback
     );

@@ -103,9 +103,9 @@ export class Airtable implements TriggerIntegration {
       },
       {
         icon: "airtable",
+        retry: retry.standardBackoff,
         ...(options ?? {}),
         connectionKey: this._connectionKey,
-        retry: retry.standardBackoff,
       },
       errorCallback
     );
