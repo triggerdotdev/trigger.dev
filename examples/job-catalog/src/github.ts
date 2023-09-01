@@ -93,45 +93,6 @@ client.defineJob({
 });
 
 client.defineJob({
-  id: "new-github-issue-reminder",
-  name: "New GitHub issue reminder",
-  version: "0.1.0",
-  integrations: { github, slack },
-  trigger: github.triggers.repo({
-    event: events.onIssueOpened,
-    owner: "triggerdotdev",
-    repo: "empty",
-  }),
-  run: async (payload, io, ctx) => {
-    //delay for 24 hours (or 60 seconds in development)
-    const delayDuration = ctx.environment.type === "DEVELOPMENT" ? 60 : 60 * 60 * 24;
-    await io.wait("wait 24 hours", delayDuration);
-
-    const issue = await io.github.getIssue("get issue", {
-      owner: payload.repository.owner.login,
-      repo: payload.repository.name,
-      issueNumber: payload.issue.number,
-    });
-
-    //if the issue has had no activity
-    if (issue.updated_at === payload.issue.updated_at) {
-      await io.slack.postMessage("Slack reminder", {
-        text: `New issue needs attention: <${issue.html_url}|${issue.title}>`,
-        channel: "C04GWUTDC3W",
-      });
-
-      //assign it to someone, in this case… me
-      await io.github.addIssueAssignees("add assignee", {
-        owner: payload.repository.owner.login,
-        repo: payload.repository.name,
-        issueNumber: payload.issue.number,
-        assignees: ["ericallam"],
-      });
-    }
-  },
-});
-
-client.defineJob({
   id: "github-integration-on-issue-assigned",
   name: "GitHub Integration - On Issue assigned",
   version: "0.1.0",
