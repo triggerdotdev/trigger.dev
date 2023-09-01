@@ -1,20 +1,38 @@
 import {
+  ConnectionAuth,
   EventFilter,
   EventSpecification,
   ExternalSource,
   ExternalSourceTrigger,
   HandlerEvent,
-  IntegrationClient,
+  IO,
+  IOTask,
+  IntegrationTaskKey,
+  Json,
   Logger,
+  RunTaskErrorCallback,
+  RunTaskOptions,
   TriggerIntegration,
   isTriggerError,
+  retry,
 } from "@trigger.dev/sdk";
-import { SupabaseManagementAPI } from "supabase-management-js";
+import {
+  CreateProjectRequestBody,
+  CreateProjectResponseData,
+  GetOrganizationsResponseData,
+  GetPostgRESTConfigResponseData,
+  GetProjectPGConfigResponseData,
+  GetProjectsResponseData,
+  GetTypescriptTypesResponseData,
+  ListFunctionsResponseData,
+  RunQueryResponseData,
+  SupabaseManagementAPI,
+} from "supabase-management-js";
 import { z } from "zod";
 import { Prettify, safeParseBody } from "@trigger.dev/integration-kit";
-import * as tasks from "./tasks";
 import { randomUUID } from "crypto";
 import { GenericSchema } from "../database/types";
+import events from "events";
 
 export type SupabaseManagementIntegrationOptions =
   | {
@@ -24,9 +42,6 @@ export type SupabaseManagementIntegrationOptions =
       id: string;
       apiKey: string;
     };
-
-type SupabaseManagementIntegrationClient = IntegrationClient<SupabaseManagementAPI, typeof tasks>;
-type SupabaseManagementIntegration = TriggerIntegration<SupabaseManagementIntegrationClient>;
 
 class SupabaseDatabase<Database = any> {
   constructor(
@@ -250,31 +265,19 @@ class SupabaseDatabase<Database = any> {
   }
 }
 
-export class SupabaseManagement implements SupabaseManagementIntegration {
-  client: SupabaseManagementIntegrationClient;
+export class SupabaseManagement implements TriggerIntegration {
+  private _options: SupabaseManagementIntegrationOptions;
+  private _client?: SupabaseManagementAPI;
+  private _io?: IO;
+  private _connectionKey?: string;
 
   constructor(private options: SupabaseManagementIntegrationOptions) {
+    this._options = options;
+
     if ("apiKey" in options) {
       if (!options.apiKey || options.apiKey === "") {
         throw `Can't create SupabaseManagement integration (${options.id}) as apiKey is undefined`;
       }
-
-      this.client = {
-        tasks,
-        usesLocalAuth: true,
-        client: new SupabaseManagementAPI({ accessToken: options.apiKey }),
-        auth: {
-          apiKey: options.apiKey,
-        },
-      };
-    } else {
-      this.client = {
-        tasks,
-        usesLocalAuth: false,
-        clientFactory: (auth) => {
-          return new SupabaseManagementAPI({ accessToken: auth.accessToken });
-        },
-      };
     }
   }
 
@@ -290,6 +293,57 @@ export class SupabaseManagement implements SupabaseManagementIntegration {
     return createWebhookEventSource(this);
   }
 
+  get authSource() {
+    if ("apiKey" in this._options) {
+      return "LOCAL";
+    }
+
+    return "HOSTED" as const;
+  }
+
+  cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
+    const supabase = new SupabaseManagement(this._options);
+    supabase._io = io;
+    supabase._connectionKey = connectionKey;
+
+    if ("apiKey" in this._options) {
+      if (!this._options.apiKey || this._options.apiKey === "") {
+        throw `Can't create SupabaseManagement integration (${this._options.id}) as apiKey is undefined`;
+      }
+      supabase._client = new SupabaseManagementAPI({ accessToken: this._options.apiKey });
+    } else if (auth) {
+      supabase._client = new SupabaseManagementAPI({ accessToken: auth.accessToken });
+    } else {
+      throw `Can't create SupabaseManagement integration (${this._options.id}) as auth is undefined`;
+    }
+
+    return supabase;
+  }
+
+  runTask<T, TResult extends Json<T> | void>(
+    key: IntegrationTaskKey,
+    callback: (client: SupabaseManagementAPI, task: IOTask, io: IO) => Promise<TResult>,
+    options?: RunTaskOptions,
+    errorCallback?: RunTaskErrorCallback
+  ): Promise<TResult> {
+    if (!this._io) throw new Error("No IO");
+    if (!this._connectionKey) throw new Error("No connection key");
+    return this._io.runTask(
+      key,
+      (task, io) => {
+        if (!this._client) throw new Error("No client");
+        return callback(this._client, task, io);
+      },
+      {
+        icon: "supabase",
+        retry: retry.standardBackoff,
+        ...(options ?? {}),
+        connectionKey: this._connectionKey,
+      },
+      errorCallback
+    );
+  }
+
   /**
    * Creates a new database instance that can be used to listen to changes in the database.
    *
@@ -300,6 +354,183 @@ export class SupabaseManagement implements SupabaseManagementIntegration {
     const projectRef = getProjectRef(projectIdOrUrl);
 
     return new SupabaseDatabase<Database>(this, projectRef);
+  }
+
+  getOrganizations(key: IntegrationTaskKey): Promise<GetOrganizationsResponseData> {
+    return this.runTask(
+      key,
+      (client) => {
+        return client.getOrganizations();
+      },
+      {
+        name: "Get Organizations",
+      }
+    );
+  }
+
+  getProjects(key: IntegrationTaskKey): Promise<GetProjectsResponseData> {
+    return this.runTask(
+      key,
+      (client) => {
+        return client.getProjects();
+      },
+      {
+        name: "Get Projects",
+      }
+    );
+  }
+
+  createProject(
+    key: IntegrationTaskKey,
+    params: CreateProjectRequestBody
+  ): Promise<CreateProjectResponseData> {
+    return this.runTask(
+      key,
+      (client) => {
+        return client.createProject(params);
+      },
+      {
+        name: "Create Project",
+        params,
+        properties: [
+          { label: "Name", text: params.name },
+          { label: "Org", text: params.organization_id },
+          { label: "Region", text: params.region },
+          { label: "Plan", text: params.plan },
+        ],
+      }
+    );
+  }
+
+  listFunctions(
+    key: IntegrationTaskKey,
+    params: { ref: string }
+  ): Promise<ListFunctionsResponseData> {
+    return this.runTask(
+      key,
+      (client) => {
+        return client.listFunctions(params.ref);
+      },
+      {
+        name: "List Functions",
+        params,
+        properties: [
+          {
+            label: "Project",
+            text: params.ref,
+          },
+        ],
+      }
+    );
+  }
+
+  runQuery(
+    key: IntegrationTaskKey,
+    params: { ref: string; query: string }
+  ): Promise<RunQueryResponseData> {
+    return this.runTask(
+      key,
+      (client) => {
+        return client.runQuery(params.ref, params.query);
+      },
+      {
+        name: "Run Query",
+        params,
+        properties: [
+          {
+            label: "Project",
+            text: params.ref,
+          },
+        ],
+      }
+    );
+  }
+
+  getTypescriptTypes(
+    key: IntegrationTaskKey,
+    params: { ref: string }
+  ): Promise<GetTypescriptTypesResponseData> {
+    return this.runTask(
+      key,
+      (client) => {
+        return client.getTypescriptTypes(params.ref);
+      },
+      {
+        name: "Get Typescript Types",
+        params,
+        properties: [
+          {
+            label: "Project",
+            text: params.ref,
+          },
+        ],
+      }
+    );
+  }
+
+  getPostgRESTConfig(
+    key: IntegrationTaskKey,
+    params: { ref: string }
+  ): Promise<GetPostgRESTConfigResponseData> {
+    return this.runTask(
+      key,
+      (client) => {
+        return client.getPostgRESTConfig(params.ref);
+      },
+      {
+        name: "Get PostgREST Config",
+        params,
+        properties: [
+          {
+            label: "Project",
+            text: params.ref,
+          },
+        ],
+      }
+    );
+  }
+
+  /** Gets project's Postgres config */
+  getPGConfig(
+    key: IntegrationTaskKey,
+    params: { ref: string }
+  ): Promise<GetProjectPGConfigResponseData> {
+    return this.runTask(
+      key,
+      (client) => {
+        return client.getPGConfig(params.ref);
+      },
+      {
+        name: "Get PG Config",
+        params,
+        properties: [
+          {
+            label: "Project",
+            text: params.ref,
+          },
+        ],
+      }
+    );
+  }
+
+  /** Enable Database Webhooks in project */
+  enableDatabaseWebhooks(key: IntegrationTaskKey, params: { ref: string }): Promise<void> {
+    return this.runTask(
+      key,
+      (client) => {
+        return client.enableWebhooks(params.ref);
+      },
+      {
+        name: "Enable Database Webhooks",
+        params,
+        properties: [
+          {
+            label: "Project",
+            text: params.ref,
+          },
+        ],
+      }
+    );
   }
 }
 
@@ -386,6 +617,7 @@ function createTrigger<TEvent extends any>(
       schema: params.schema ?? "public",
     },
     source,
+    options: {},
   });
 }
 
@@ -401,16 +633,15 @@ const WebhookData = z.object({
   schema: z.string(),
 });
 
-export function createWebhookEventSource(
-  integration: SupabaseManagementIntegration
-): ExternalSource<
-  SupabaseManagementIntegration,
+export function createWebhookEventSource(integration: SupabaseManagement): ExternalSource<
+  SupabaseManagement,
   {
     projectRef: string;
     table: string;
     schema: string;
   },
-  "HTTP"
+  "HTTP",
+  {}
 > {
   return new ExternalSource("HTTP", {
     id: "supabase.webhook",
@@ -435,14 +666,21 @@ export function createWebhookEventSource(
     ],
     handler: webhookHandler,
     register: async (event, io, ctx) => {
-      const { params, source: httpSource, events, missingEvents } = event;
+      const { params, source: httpSource, options } = event;
 
       const webhookData = WebhookData.safeParse(httpSource.data);
 
       if (httpSource.active && webhookData.success) {
         const { triggerName, table, schema } = webhookData.data;
 
-        const allEvents = new Set<string>([...events, ...missingEvents]) as Set<WebhookEvents>;
+        const allEvents = new Set<string>([
+          ...options.event.desired,
+          ...options.event.missing,
+        ]) as Set<WebhookEvents>;
+
+        const registeredOptions = {
+          event: [...allEvents],
+        };
 
         const condition = createTriggerCondition(Array.from(allEvents));
 
@@ -468,7 +706,7 @@ export function createWebhookEventSource(
             table: table,
             schema: schema,
           },
-          registeredEvents: Array.from(allEvents),
+          options: registeredOptions,
         };
       }
 
@@ -491,7 +729,7 @@ export function createWebhookEventSource(
       // Create the trigger name using the last 12 characters of the id
       const triggerName = `tr_${id.slice(-12)}`;
 
-      const condition = createTriggerCondition(events as WebhookEvents[]);
+      const condition = createTriggerCondition(options.event.desired as WebhookEvents[]);
 
       const query = createTriggerQuery({
         triggerName,
@@ -515,7 +753,7 @@ export function createWebhookEventSource(
           table: params.table,
           schema: params.schema,
         },
-        registeredEvents: events,
+        options: { event: options.event.desired },
       };
     },
   });
