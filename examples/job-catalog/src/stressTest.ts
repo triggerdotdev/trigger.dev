@@ -38,4 +38,52 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "stress-test-2",
+  name: "Stress Test 2",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "stress.test.2",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.runTask(`task-1`, { name: `Task 1` }, async (task) => {
+      const response = await fetch("https://jsonplaceholder.typicode.com/photos");
+
+      return await response.json();
+    });
+
+    await io.runTask(`task-2`, { name: `Task 2` }, async (task) => {
+      const response = await fetch("https://jsonplaceholder.typicode.com/comments");
+
+      return await response.json();
+    });
+
+    await io.runTask(`task-3`, { name: `Task 3` }, async (task) => {
+      const response = await fetch("https://jsonplaceholder.typicode.com/photos");
+
+      return await response.json();
+    });
+
+    await io.runTask(`task-4`, { name: `Task 4` }, async (task) => {
+      const response = await fetch("https://jsonplaceholder.typicode.com/comments");
+
+      return await response.json();
+    });
+
+    const response = await io.runTask(`task-5`, { name: `Task 5` }, async (task) => {
+      const response = await fetch("https://jsonplaceholder.typicode.com/photos");
+
+      return await response.json();
+    });
+
+    await io.runTask(`task-6`, { name: `Task 6` }, async (task) => {
+      const response = await fetch("https://jsonplaceholder.typicode.com/users");
+
+      return await response.json();
+    });
+
+    return response;
+  },
+});
+
 createExpressServer(client);

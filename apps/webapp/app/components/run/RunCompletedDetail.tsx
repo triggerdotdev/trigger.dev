@@ -54,7 +54,7 @@ export function RunCompletedDetail({ run }: { run: MatchedRun }) {
         <RunPanelDivider />
         {run.error && <RunPanelError text={run.error.message} stackTrace={run.error.stack} />}
         {run.output ? (
-          <CodeBlock language="json" code={run.output} />
+          <CodeBlock language="json" code={run.output} maxLines={8} />
         ) : (
           run.output === null && <Paragraph variant="small">This run returned nothing</Paragraph>
         )}
