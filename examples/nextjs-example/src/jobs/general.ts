@@ -100,15 +100,19 @@ client.defineJob({
   run: async (payload, io, ctx) => {
     await io.try(
       async () => {
-        return await io.runTask("task-1", { name: "task-1", retry: { limit: 3 } }, async (task) => {
-          if (task.attempts > 2) {
-            return {
-              bar: "foo",
-            };
-          }
+        return await io.runTask(
+          "task-1",
+          async (task) => {
+            if (task.attempts > 2) {
+              return {
+                bar: "foo",
+              };
+            }
 
-          throw new Error(`Task failed on ${task.attempts} attempt(s)`);
-        });
+            throw new Error(`Task failed on ${task.attempts} attempt(s)`);
+          },
+          { name: "task-1", retry: { limit: 3 } }
+        );
       },
       async (error) => {
         // These should never be reached
@@ -126,9 +130,13 @@ client.defineJob({
     );
 
     try {
-      await io.runTask("task-2", { name: "task-2", retry: { limit: 5 } }, async (task) => {
-        throw new Error(`Task failed on ${task.attempts} attempt(s)`);
-      });
+      await io.runTask(
+        "task-2",
+        async (task) => {
+          throw new Error(`Task failed on ${task.attempts} attempt(s)`);
+        },
+        { name: "task-2", retry: { limit: 5 } }
+      );
     } catch (error) {
       if (isTriggerError(error)) {
         throw error;
@@ -169,57 +177,21 @@ client.defineJob({
       context: ctx,
     });
 
-    await io.runTask(
-      "level 1",
-      {
-        name: "Level 1",
-      },
-      async () => {
-        await io.runTask(
-          "level 2",
-          {
-            name: "Level 2",
-          },
-          async () => {
-            await io.runTask(
-              "level 3",
-              {
-                name: "Level 3",
-              },
-              async () => {
-                await io.runTask(
-                  "level 4",
-                  {
-                    name: "Level 4",
-                  },
-                  async () => {
-                    await io.runTask(
-                      "level 5",
-                      {
-                        name: "Level 5",
-                      },
-                      async () => {}
-                    );
-                  }
-                );
-              }
-            );
-          }
-        );
-      }
-    );
+    await io.runTask("level 1", async () => {
+      await io.runTask("level 2", async () => {
+        await io.runTask("level 3", async () => {
+          await io.runTask("level 4", async () => {
+            await io.runTask("level 5", async () => {});
+          });
+        });
+      });
+    });
 
     await io.wait("5 minutes", 5 * 60);
 
-    await io.runTask(
-      "Fingers crossed",
-      {
-        name: "Just a task 🤞",
-      },
-      async () => {
-        throw new Error("You messed up buddy!");
-      }
-    );
+    await io.runTask("Fingers crossed", async () => {
+      throw new Error("You messed up buddy!");
+    });
   },
 });
 
@@ -279,7 +251,7 @@ client.defineJob({
     repo: "basic-starter-12k",
   }),
   run: async (payload, io, ctx) => {
-    await io.runTask("slow task", { name: "slow task" }, async () => {
+    await io.runTask("slow task", async () => {
       await new Promise((resolve) => setTimeout(resolve, 5000));
     });
 
