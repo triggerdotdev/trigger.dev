@@ -138,7 +138,7 @@ export class RegisterTriggerSourceServiceV2 {
         });
         const options = optionsArray.reduce((acc, { name, values }) => {
           acc[name] = {
-            desired: values,
+            desired: [...new Set(values)],
             missing: [],
             orphaned: [],
           };

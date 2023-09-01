@@ -169,8 +169,8 @@ function getOptionsDiff(
   const missing = sourceIsActive ? options.filter((e) => !e.registered).map((e) => e.value) : [];
 
   return {
-    desired,
-    missing,
-    orphaned,
+    desired: [...new Set(desired)],
+    missing: [...new Set(missing)],
+    orphaned: [...new Set(orphaned)],
   };
 }
