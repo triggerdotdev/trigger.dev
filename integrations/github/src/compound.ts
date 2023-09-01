@@ -6,12 +6,16 @@ import { ReactionContent, Reactions } from "./reactions";
 
 export class Compound {
   runTask: GitHubRunTask;
+  issues: Issues;
+  reactions: Reactions;
 
-  constructor(runTask: GitHubRunTask) {
+  constructor(runTask: GitHubRunTask, issues: Issues, reactions: Reactions) {
     this.runTask = runTask;
+    this.issues = issues;
+    this.reactions = reactions;
   }
 
-  createForIssueComment(
+  createIssueCommentWithReaction(
     key: IntegrationTaskKey,
     params: {
       body: string;
@@ -21,22 +25,22 @@ export class Compound {
       reaction: ReactionContent;
     }
   ): GitHubReturnType<Octokit["rest"]["issues"]["createComment"]> {
-    const issue = new Issues(this.runTask.bind(this));
-    const reactions = new Reactions(this.runTask.bind(this));
-
     return this.runTask(
       key,
       async () => {
-        const comment = await issue.createComment(
+        const comment = await this.issues.createComment(
           `Comment on Issue #${params.issueNumber}`,
           params
         );
-        const reaction = await reactions.createForIssueComment(`React with ${params.reaction}`, {
-          owner: params.owner,
-          repo: params.repo,
-          commentId: comment.id,
-          content: params.reaction,
-        });
+        const reaction = await this.reactions.createForIssueComment(
+          `React with ${params.reaction}`,
+          {
+            owner: params.owner,
+            repo: params.repo,
+            commentId: comment.id,
+            content: params.reaction,
+          }
+        );
         return comment;
       },
       {

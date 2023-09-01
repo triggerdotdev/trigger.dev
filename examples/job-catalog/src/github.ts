@@ -40,10 +40,18 @@ client.defineJob({
     github: githubApiKey,
   },
   run: async (payload, io, ctx) => {
-    await io.github.createIssue("create issue", {
+    const issue = await io.github.createIssue("create issue", {
       title: payload.title,
       owner: payload.owner,
       repo: payload.repo,
+    });
+
+    await io.github.createIssueCommentWithReaction("comment on issue with reaction", {
+      body: "This is a comment",
+      owner: payload.owner,
+      repo: payload.repo,
+      issueNumber: issue.number,
+      reaction: "heart",
     });
   },
 });

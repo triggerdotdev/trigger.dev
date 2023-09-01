@@ -138,7 +138,6 @@ export class OpenAI implements TriggerIntegration {
   }
 
   // this provides backwards compatibility for the old API
-
   retrieveModel = this.models.retrieve;
   listModels = this.models.list;
   deleteModel = this.models.delete;

@@ -5,29 +5,20 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "command": "pnpm run dev --filter webapp",
-      "name": "Run webapp",
-      "request": "launch",
       "type": "node-terminal",
-      "cwd": "${workspaceFolder}"
+      "request": "launch",
+      "name": "Debug WebApp",
+      "command": "pnpm run dev --filter webapp",
+      "envFile": "${workspaceFolder}/apps/webapp/.env",
+      "cwd": "${workspaceFolder}",
+      "sourceMaps": true
     },
     {
       "type": "chrome",
       "request": "launch",
       "name": "Chrome webapp",
-      "url": "http://localhost:3000",
+      "url": "http://localhost:3030",
       "webRoot": "${workspaceFolder}/apps/webapp/app"
-    },
-    {
-      "type": "node",
-      "request": "launch",
-      "name": "Debug Current Test File",
-      "autoAttachChildProcesses": true,
-      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
-      "program": "${workspaceRoot}/node_modules/vitest/vitest.mjs",
-      "args": ["run", "${relativeFile}"],
-      "smartStep": true,
-      "console": "integratedTerminal"
     }
   ]
 }

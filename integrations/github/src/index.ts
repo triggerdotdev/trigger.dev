@@ -163,7 +163,7 @@ export class Github implements TriggerIntegration {
   }
 
   get compound() {
-    return new Compound(this.runTask.bind(this));
+    return new Compound(this.runTask.bind(this), this.issues, this.reactions);
   }
 
   get orgs() {
@@ -184,7 +184,7 @@ export class Github implements TriggerIntegration {
   createWebhook = this.repos.createWebhook;
   listWebhooks = this.repos.listWebhooks;
   addIssueCommentReaction = this.reactions.createForIssueComment;
-  createIssueCommentWithReaction = this.compound.createForIssueComment;
+  createIssueCommentWithReaction = this.compound.createIssueCommentWithReaction;
   updateOrgWebhook = this.orgs.updateWebhook;
   createOrgWebhook = this.orgs.createWebhook;
   listOrgWebhooks = this.orgs.listWebhooks;
