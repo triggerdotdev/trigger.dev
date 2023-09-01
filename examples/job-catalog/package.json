@@ -19,6 +19,7 @@
     "plain": "nodemon --watch src/plain.ts -r tsconfig-paths/register -r dotenv/config src/plain.ts",
     "typeform": "nodemon --watch src/typeform.ts -r tsconfig-paths/register -r dotenv/config src/typeform.ts",
     "dynamic-schedule": "nodemon --watch src/dynamic-schedule.ts -r tsconfig-paths/register -r dotenv/config src/dynamic-schedule.ts",
+    "dynamic-triggers": "nodemon --watch src/dynamic-triggers.ts -r tsconfig-paths/register -r dotenv/config src/dynamic-triggers.ts",
     "background-fetch": "nodemon --watch src/background-fetch.ts -r tsconfig-paths/register -r dotenv/config src/background-fetch.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
