@@ -79,7 +79,7 @@ export class Plain implements TriggerIntegration {
         return callback(this._client, task, io);
       },
       {
-        icon: "openai",
+        icon: "plain",
         retry: retry.standardBackoff,
         ...(options ?? {}),
         connectionKey: this._connectionKey,
