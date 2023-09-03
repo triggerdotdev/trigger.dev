@@ -97,13 +97,20 @@ export class Stripe implements StripeIntegration {
    * });
    * ```
    */
-  onPrice(
-    params?: TriggerParams & { events?: Array<"price.created" | "price.updated" | "price.deleted"> }
-  ) {
-    const event = { ...events.onPrice, name: params?.events ?? events.onPrice.name };
+  onPrice(params?: TriggerParams & { events?: Array<"price.created" | "price.updated" | "price.deleted"> }) {
 
-    return createTrigger(this.source, event, params ?? { connect: false });
+  const validEvents = ["price.created", "price.updated", "price.deleted"];
+
+  const filteredEvents = params?.events?.filter(event => validEvents.includes(event)) ?? events.onPrice.name;
+
+  if (filteredEvents.length < params?.events?.length) {
+    console.warn("Warning: Some of the provided events are invalid");
   }
+
+  const event = { ...events.onPrice, name: filteredEvents };
+
+  return createTrigger(this.source, event, params ?? { connect: false });
+}
 
   /**
    * Occurs whenever a price is created.
