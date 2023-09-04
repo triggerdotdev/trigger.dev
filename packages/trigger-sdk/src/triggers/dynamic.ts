@@ -85,7 +85,7 @@ export class DynamicTrigger<
         key,
         channel: this.source.channel,
         params,
-        //   //todo add other options here
+        //todo add other options here
         options: {
           event: typeof this.event.name === "string" ? [this.event.name] : this.event.name,
         },

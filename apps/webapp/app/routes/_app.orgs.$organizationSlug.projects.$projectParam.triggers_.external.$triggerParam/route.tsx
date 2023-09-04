@@ -168,6 +168,17 @@ export default function Page() {
                 <NamedIcon name={trigger.active ? "active" : "inactive"} className="h-4 w-4" />
               }
             />
+            {trigger.dynamic && (
+              <PageInfoProperty
+                label="Dynamic"
+                value={
+                  <span className="flex items-center gap-0.5">
+                    <NamedIcon name="dynamic" className="h-4 w-4" />
+                    {trigger.dynamic.slug}
+                  </span>
+                }
+              />
+            )}
             <PageInfoProperty
               label="Environment"
               value={<EnvironmentLabel environment={trigger.environment} />}
@@ -207,7 +218,7 @@ export default function Page() {
                   </Button>
                 </Callout>
               </Form>
-            ) : (
+            ) : trigger.dynamic ? null : (
               <Callout variant="error" className="justiy-between mb-4 items-center">
                 This External Trigger hasn't registered successfully. Contact support for help:{" "}
                 {trigger.id}

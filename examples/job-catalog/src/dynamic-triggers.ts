@@ -1,7 +1,7 @@
-import { DynamicSchedule, DynamicTrigger, TriggerClient, eventTrigger } from "@trigger.dev/sdk";
 import { createExpressServer } from "@trigger.dev/express";
-import { z } from "zod";
 import { Github, events } from "@trigger.dev/github";
+import { DynamicTrigger, TriggerClient, eventTrigger } from "@trigger.dev/sdk";
+import { z } from "zod";
 
 export const client = new TriggerClient({
   id: "job-catalog",
@@ -59,14 +59,6 @@ client.defineJob({
   version: "0.1.1",
   trigger: dynamicOnIssueOpenedTrigger,
 
-  run: async (payload, io, ctx) => {},
-});
-
-client.defineJob({
-  id: "listen-for-dynamic-trigger-3",
-  name: "Listen for dynamic trigger-3",
-  version: "0.1.1",
-  trigger: dynamicOnIssueOpenedTrigger,
   run: async (payload, io, ctx) => {},
 });
 

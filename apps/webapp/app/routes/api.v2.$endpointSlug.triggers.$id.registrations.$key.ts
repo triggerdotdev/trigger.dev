@@ -1,8 +1,13 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { RegisterTriggerBodySchemaV2 } from "@trigger.dev/core";
+import {
+  REGISTER_SOURCE_EVENT_V2,
+  RegisterSourceEventV2,
+  RegisterTriggerBodySchemaV2,
+} from "@trigger.dev/core";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { IngestSendEvent } from "~/services/events/ingestSendEvent.server";
 import { logger } from "~/services/logger.server";
 import { RegisterTriggerSourceServiceV2 } from "~/services/triggers/registerTriggerSourceV2.server";
 
@@ -61,6 +66,29 @@ export async function action({ request, params }: ActionArgs) {
     if (!registration) {
       return json({ error: "Could not register trigger" }, { status: 500 });
     }
+
+    //the source is already active
+    if (registration.source.active) {
+      return json(registration);
+    }
+
+    const payload: RegisterSourceEventV2 = {
+      ...registration,
+      dynamicTriggerId: parsedParams.data.id,
+    };
+
+    const ingestEventService = new IngestSendEvent();
+    await ingestEventService.call(
+      authenticatedEnv,
+      {
+        id: registration.id,
+        name: REGISTER_SOURCE_EVENT_V2,
+        source: "trigger.dev",
+        payload,
+      }
+      //todo accountId?
+      // {accountId: body.data.accountId}
+    );
 
     return json(registration);
   } catch (error) {

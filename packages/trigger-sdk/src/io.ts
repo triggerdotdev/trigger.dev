@@ -426,30 +426,10 @@ export class IO {
           }
         );
 
-        const connection = await this.getAuth("get-auth", registration.source.clientId);
-
-        const io = createIOWithIntegrations(
-          // @ts-ignore
-          this,
-          {
-            integration: connection,
-          },
-          {
-            integration: trigger.source.integration,
-          }
-        );
-
-        const updates = await trigger.source.register(params, registration, io, this._context);
-
-        if (!updates) {
-          // TODO: do something here?
-          return;
-        }
-
-        return await this.updateSource("update-source", {
+        return {
+          id: registration.id,
           key: registration.source.key,
-          ...updates,
-        });
+        };
       },
       {
         name: "register-trigger",
