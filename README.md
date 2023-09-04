@@ -5,7 +5,7 @@
   <img alt="Trigger.dev logo" src="https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/a45d1fa2-0ae8-4a39-4409-f4f934bfae00/public">
 </picture>
   
-### The background jobs framework for Next.js
+### The open source background jobs framework
 
 [Discord](https://discord.gg/JtBAxBr2m3) | [Website](https://trigger.dev) | [Issues](https://github.com/triggerdotdev/trigger.dev/issues) | [Docs](https://trigger.dev/docs)
 
@@ -36,7 +36,7 @@ We only receive Triggers and the data you choose to send to us. You can even com
 
 ### Don't worry about deployment
 
-Just use our SDK to write Jobs in your Next.js codebase. There's nothing extra to deploy and no CI to configure, your Jobs just connect to our cloud. Or you can always self-host.
+Just use our SDK to write Jobs in your codebase. There's nothing extra to deploy and no CI to configure, your Jobs just connect to our cloud. Or you can always self-host.
 
 ### Full visibility of every job run
 
