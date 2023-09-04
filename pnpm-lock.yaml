@@ -727,6 +727,7 @@ importers:
       '@sendgrid/mail': ^7.7.0
       '@trigger.dev/integration-kit': workspace:^2.0.14
       '@trigger.dev/sdk': workspace:^2.0.14
+      '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       rimraf: ^3.0.2
       tsup: 7.1.x
@@ -736,6 +737,7 @@ importers:
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
     devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
       rimraf: 3.0.2
       tsup: 7.1.0_typescript@4.9.4
