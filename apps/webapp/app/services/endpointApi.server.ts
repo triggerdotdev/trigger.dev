@@ -18,6 +18,7 @@ import {
 } from "@trigger.dev/core";
 import { safeBodyFromResponse, safeParseBodyFromResponse } from "~/utils/json";
 import { logger } from "./logger.server";
+import { performance } from "node:perf_hooks";
 
 export class EndpointApiError extends Error {
   constructor(message: string, stack?: string) {
@@ -28,10 +29,7 @@ export class EndpointApiError extends Error {
 }
 
 export class EndpointApi {
-  constructor(
-    private apiKey: string,
-    private url: string
-  ) {}
+  constructor(private apiKey: string, private url: string) {}
 
   async ping(endpointId: string): Promise<PongResponse> {
     const response = await safeFetch(this.url, {
@@ -165,9 +163,7 @@ export class EndpointApi {
   }
 
   async executeJobRequest(options: RunJobBody) {
-    logger.debug("executeJobRequest()", {
-      options,
-    });
+    const startTimeInMs = performance.now();
 
     const response = await safeFetch(this.url, {
       method: "POST",
@@ -183,6 +179,7 @@ export class EndpointApi {
       response,
       parser: RunJobResponseSchema,
       errorParser: ErrorWithStackSchema,
+      durationInMs: Math.floor(performance.now() - startTimeInMs),
     };
   }
 
