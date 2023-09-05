@@ -1,5 +1,14 @@
 # @trigger.dev/supabase
 
+## 2.1.0-beta.1
+
+### Patch Changes
+
+- Don't retry enableDatabaseWebhooks ([`3ef588e4`](https://github.com/triggerdotdev/trigger.dev/commit/3ef588e4e5dad888917db0937325e6280374a467))
+- Updated dependencies:
+  - `@trigger.dev/integration-kit@2.1.0-beta.1`
+  - `@trigger.dev/sdk@2.1.0-beta.1`
+
 ## 2.1.0-beta.0
 
 ### Minor Changes
