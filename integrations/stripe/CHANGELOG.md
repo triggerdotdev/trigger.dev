@@ -1,5 +1,13 @@
 # @trigger.dev/stripe
 
+## 2.1.0-beta.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/integration-kit@2.1.0-beta.1`
+  - `@trigger.dev/sdk@2.1.0-beta.1`
+
 ## 2.1.0-beta.0
 
 ### Minor Changes
