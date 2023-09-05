@@ -11,9 +11,13 @@ export const client = new TriggerClient({
   ioLogLocalEnabled: true,
 });
 
+// const airtable = new Airtable({
+//   id: "airtable",
+//   token: process.env["AIRTABLE_TOKEN"],
+// });
+
 const airtable = new Airtable({
-  id: "airtable",
-  token: process.env["AIRTABLE_TOKEN"],
+  id: "airtable-oauth",
 });
 
 type Status = "Live" | "Complete" | "In progress" | "Planning" | "In reviews";
