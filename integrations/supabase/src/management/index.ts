@@ -15,6 +15,7 @@ import {
   TriggerIntegration,
   isTriggerError,
   retry,
+  OverridableRunTaskOptions,
 } from "@trigger.dev/sdk";
 import {
   CreateProjectRequestBody,
@@ -32,7 +33,6 @@ import { z } from "zod";
 import { Prettify, safeParseBody } from "@trigger.dev/integration-kit";
 import { randomUUID } from "crypto";
 import { GenericSchema } from "../database/types";
-import events from "events";
 
 export type SupabaseManagementIntegrationOptions =
   | {
@@ -514,7 +514,11 @@ export class SupabaseManagement implements TriggerIntegration {
   }
 
   /** Enable Database Webhooks in project */
-  enableDatabaseWebhooks(key: IntegrationTaskKey, params: { ref: string }): Promise<void> {
+  enableDatabaseWebhooks(
+    key: IntegrationTaskKey,
+    params: { ref: string },
+    options: OverridableRunTaskOptions = {}
+  ): Promise<void> {
     return this.runTask(
       key,
       (client) => {
@@ -529,6 +533,7 @@ export class SupabaseManagement implements TriggerIntegration {
             text: params.ref,
           },
         ],
+        ...options,
       }
     );
   }
@@ -714,7 +719,13 @@ export function createWebhookEventSource(integration: SupabaseManagement): Exter
       const id = url.pathname.split("/").pop() ?? randomUUID();
 
       try {
-        await io.integration.enableDatabaseWebhooks("enable-webhooks", { ref: params.projectRef });
+        await io.integration.enableDatabaseWebhooks(
+          "enable-webhooks",
+          { ref: params.projectRef },
+          {
+            retry: undefined,
+          }
+        );
       } catch (error) {
         if (isTriggerError(error)) {
           throw error;

@@ -795,6 +795,7 @@ importers:
       '@supabase/supabase-js': ^2.26.0
       '@trigger.dev/integration-kit': workspace:^2.1.0-beta.0
       '@trigger.dev/sdk': workspace:^2.1.0-beta.0
+      '@trigger.dev/tsconfig': workspace:*
       '@types/node': 18.x
       rimraf: ^3.0.2
       supabase-management-js: ^0.1.4
@@ -808,6 +809,7 @@ importers:
       supabase-management-js: 0.1.4
       zod: 3.21.4
     devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 18.15.13
       rimraf: 3.0.2
       tsup: 7.1.0_typescript@4.9.4
