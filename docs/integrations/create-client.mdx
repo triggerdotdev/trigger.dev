@@ -1,0 +1,99 @@
+---
+title: Creating the client
+description: "Each integration has a client that performs the actual HTTP requests. Usually this is a wrapper around an official SDK provided by the service."
+---
+
+### `src/index.ts`
+
+This is where the client should live.
+
+<Tip>
+  We're adopting the naming convention of naming the class after the service, without a suffix or
+  prefix. We prefer the exported name be `Slack` instead of something like `SlackIntegration` or
+  `SlackConnector`
+</Tip>
+
+<Accordion title="Example: OpenAI">
+
+```ts
+import type { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
+import { Configuration, OpenAIApi } from "openai";
+import * as tasks from "./tasks";
+import { OpenAIIntegrationOptions } from "./types";
+
+export class OpenAI implements TriggerIntegration<IntegrationClient<OpenAIApi, typeof tasks>> {
+  client: IntegrationClient<OpenAIApi, typeof tasks>;
+
+  constructor(private options: OpenAIIntegrationOptions) {
+    this.client = {
+      tasks,
+      usesLocalAuth: true,
+      client: new OpenAIApi(
+        new Configuration({
+          apiKey: options.apiKey,
+          organization: options.organization,
+        })
+      ),
+      auth: {
+        apiKey: options.apiKey,
+        organization: options.organization,
+      },
+    };
+  }
+
+  get id() {
+    return this.options.id;
+  }
+
+  get metadata() {
+    return { id: "openai", name: "OpenAI" };
+  }
+}
+```
+
+</Accordion>
+
+The `TriggerIntegration` interface requires three properties to be implemented:
+
+<ParamField body="id" type="string" required>
+  The `id` that uniquely identifies the Integration. This should always be passed through the
+  constructor options.
+</ParamField>
+
+<ParamField body="metadata" type="object" required>
+  <Expandable title="properties">
+    <ParamField body="id" type="string" required>
+      A unique identifier for the Integration. For example, the OpenAI Integration has an id of
+      `"openai"`.
+    </ParamField>
+    <ParamField body="name" type="string" required>
+      The name of the Integration. For example, the OpenAI Integration has a name of `"OpenAI"`.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="client" type="IntegrationClient" required>
+  An IntegrationClient object that contains either the underlying SDK client (if
+  using local auth) or a `clientFactory` function to create new clients using
+  authenticated credentials.
+
+{" "}
+
+  <Expandable title="properties" defaultOpen>
+    <ParamField body="usesLocalAuth" type="boolean" required>
+      Specifies whether the client uses local auth or not. If `true`, the `client` property should contain the underlying SDK client. If `false`, the `client` property should contain a `clientFactory` function that can be used to create new clients using authenticated credentials.
+    </ParamField>
+    <ParamField body="tasks" type="Record<string, AuthenticatedTask>" required>
+      An object that contains all of the authenticated tasks that are supported by the Integration. The keys of the object should be the names of the tasks and the values should be the authenticated tasks. More on authenticated tasks below.
+    </ParamField>
+    <ParamField body="clientFactory" type="function">
+      A function that takes in an `auth` object (of type [ConnectionAuth](/sdk/connection-auth)) and returns a new SDK client that is authenticated with the credentials in the `auth` object. This should only be set if `usesLocalAuth` is `false`.
+    </ParamField>
+    <ParamField body="client" type="SDK Client">
+      The underlying SDK client that will be used to make requests to the service. This should only be set if `usesLocalAuth` is `true`.
+    </ParamField>
+    <ParamField body="auth" type="any">
+      The authenticated credentials that were used to create the `client`. This should only be set if `usesLocalAuth` is `true`. This is used to access the credentials inside of authenticated tasks, but is only necessary in specific cases (like when doing a [`backgroundFetch`](/sdk/io/backgroundfetch) as a subtask)
+    </ParamField>
+  </Expandable>
+</ParamField>

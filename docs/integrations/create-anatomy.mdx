@@ -1,0 +1,44 @@
+---
+title: The structure of an integration
+description: "What files are in an Integration package and what do they do?"
+---
+
+```sh
+stripe
+  ├── README.md
+  ├── package.json
+  ├── tsup.config.ts
+  ├── src
+  │   ├── index.ts
+  │   ├── tasks.ts
+  │   └── types.ts
+  └── tsconfig.json
+```
+
+Once you've created your Integration package, you can start developing it. In this stage of development, you'll mainly be making changes to the `src/index.ts`, `src/types.ts`, and `src/tasks.ts` files. Below is an explanation of each of the files and their roles:
+
+### `src/index.ts`
+
+This is the entry point of the Integration package and where the client lives. See [the Client docs](/integrations/create-client).
+
+### `src/types.ts`
+
+This file contains all of the types that are used in the Integration package. It's a good idea to keep all of the types in this file so that they can be easily imported into both the `src/index.ts` and `src/tasks.ts` files.
+
+You'll want to export the following types from this file
+
+- **SDK Client Type** - Export the type of the underlying SDK client that will be used both in authenticated tasks (more below) and the main Integration class.
+- **Authenticated Task Param Types** - Export a single type for each authenticated task input params
+- **Authenticated Task Response Types** - Export a single type for each authenticated task output response
+
+### `src/tasks.ts`
+
+This file contains all of the authenticated tasks that the Integration will support. Tasks are the main way that developers will interact with your Integration. They are the actions that developers will be able to perform in their jobs.
+
+For more about how tasks work, see the [tasks documentation](/documentation/concepts/tasks).
+
+See the guide for creating [authenticated tasks](/integrations/create-tasks) for more information.
+
+### Triggers
+
+See the guide for creating [triggers](/integrations/create-triggers) for more information.

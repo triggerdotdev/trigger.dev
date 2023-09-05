@@ -1,6 +1,7 @@
 import {
   ApiEventLog,
   DeliverEventResponseSchema,
+  DeserializedJson,
   ErrorWithStackSchema,
   HttpSourceRequest,
   HttpSourceResponseSchema,
@@ -9,8 +10,8 @@ import {
   PongResponseSchema,
   PreprocessRunBody,
   PreprocessRunResponseSchema,
-  RegisterTriggerBody,
-  RegisterTriggerBodySchema,
+  RegisterTriggerBodySchemaV1,
+  RegisterTriggerBodyV1,
   RunJobBody,
   RunJobResponseSchema,
   ValidateResponse,
@@ -18,6 +19,7 @@ import {
 } from "@trigger.dev/core";
 import { safeBodyFromResponse, safeParseBodyFromResponse } from "~/utils/json";
 import { logger } from "./logger.server";
+import { ConnectionAuth } from "@trigger.dev/core";
 import { performance } from "node:perf_hooks";
 
 export class EndpointApiError extends Error {
@@ -197,7 +199,7 @@ export class EndpointApi {
     return { response, parser: PreprocessRunResponseSchema };
   }
 
-  async initializeTrigger(id: string, params: any): Promise<RegisterTriggerBody | undefined> {
+  async initializeTrigger(id: string, params: any): Promise<RegisterTriggerBodyV1 | undefined> {
     const response = await safeFetch(this.url, {
       method: "POST",
       headers: {
@@ -231,7 +233,7 @@ export class EndpointApi {
       body: anyBody,
     });
 
-    return RegisterTriggerBodySchema.parse(anyBody);
+    return RegisterTriggerBodySchemaV1.parse(anyBody);
   }
 
   async deliverHttpSourceRequest(options: {
@@ -241,6 +243,8 @@ export class EndpointApi {
     params: any;
     data: any;
     request: HttpSourceRequest;
+    auth?: ConnectionAuth;
+    metadata?: any;
   }) {
     const response = await safeFetch(this.url, {
       method: "POST",
@@ -255,7 +259,9 @@ export class EndpointApi {
         "x-ts-http-url": options.request.url,
         "x-ts-http-method": options.request.method,
         "x-ts-http-headers": JSON.stringify(options.request.headers),
+        ...(options.auth && { "x-ts-auth": JSON.stringify(options.auth) }),
         ...(options.dynamicId && { "x-ts-dynamic-id": options.dynamicId }),
+        ...(options.metadata && { "x-ts-metadata": JSON.stringify(options.metadata) }),
       },
       body: options.request.rawBody,
     });

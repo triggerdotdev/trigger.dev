@@ -1,12 +1,17 @@
-import { RegisterSourceEvent, RegisterTriggerBody } from "@trigger.dev/core";
+import {
+  RegisterSourceEventOptions,
+  RegisterSourceEventV2,
+  RegisterTriggerBodyV2,
+  RegisteredOptionsDiff,
+} from "@trigger.dev/core";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
 import { getSecretStore } from "../secrets/secretStore.server";
-import { RegisterSourceService } from "../sources/registerSource.server";
+import { RegisterSourceServiceV2 } from "../sources/registerSourceV2.server";
 
-export class RegisterTriggerSourceService {
+export class RegisterTriggerSourceServiceV2 {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
@@ -23,13 +28,13 @@ export class RegisterTriggerSourceService {
     registrationMetadata,
   }: {
     environment: AuthenticatedEnvironment;
-    payload: RegisterTriggerBody;
+    payload: RegisterTriggerBodyV2;
     id: string;
     endpointSlug: string;
     key: string;
     accountId?: string;
     registrationMetadata?: any;
-  }): Promise<RegisterSourceEvent | undefined> {
+  }): Promise<RegisterSourceEventV2 | undefined> {
     const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
       where: {
         environmentId_slug: {
@@ -52,7 +57,7 @@ export class RegisterTriggerSourceService {
     return await $transaction(
       this.#prismaClient,
       async (tx) => {
-        const service = new RegisterSourceService(tx);
+        const service = new RegisterSourceServiceV2(tx);
 
         const triggerSource = await service.call(
           endpoint.id,
@@ -76,7 +81,7 @@ export class RegisterTriggerSourceService {
           create: {
             dispatchableId: triggerSource.id,
             environmentId: environment.id,
-            event: Array.isArray(payload.rule.event) ? payload.rule.event : [payload.rule.event], 
+            event: Array.isArray(payload.rule.event) ? payload.rule.event : [payload.rule.event],
             source: payload.rule.source,
             payloadFilter: payload.rule.payload,
             contextFilter: payload.rule.context,
@@ -127,7 +132,20 @@ export class RegisterTriggerSourceService {
           triggerSource.secretReference.key
         );
 
-        return {
+        //turn into required format
+        const optionsArray = Object.entries(payload.source.options).flatMap(([name, values]) => {
+          return { name, values };
+        });
+        const options = optionsArray.reduce((acc, { name, values }) => {
+          acc[name] = {
+            desired: [...new Set(values)],
+            missing: [],
+            orphaned: [],
+          };
+          return acc;
+        }, {} as Record<string, { desired: string[]; missing: string[]; orphaned: string[] }>) as RegisterSourceEventOptions;
+
+        const data: RegisterSourceEventV2 = {
           id: registration.id,
           source: {
             key: triggerSource.key,
@@ -141,10 +159,10 @@ export class RegisterTriggerSourceService {
             },
             clientId: triggerSource.integration.slug,
           },
-          events: triggerSource.events.map((e) => e.name),
-          missingEvents: [],
-          orphanedEvents: [],
+          options,
         };
+
+        return data;
       },
       { timeout: 15000 }
     );

@@ -41,30 +41,6 @@ client.defineJob({
 });
 
 client.defineJob({
-  id: "stripe-example-1",
-  name: "Stripe Example 1",
-  version: "0.1.0",
-  trigger: eventTrigger({
-    name: "stripe.example",
-    schema: z.object({
-      customerId: z.string(),
-      source: z.string(),
-    }),
-  }),
-  integrations: {
-    stripe,
-  },
-  run: async (payload, io, ctx) => {
-    await io.stripe.createCharge("create-charge", {
-      amount: 100,
-      currency: "usd",
-      source: payload.source,
-      customer: payload.customerId,
-    });
-  },
-});
-
-client.defineJob({
   id: "stripe-create-customer",
   name: "Stripe Create Customer",
   version: "0.1.0",

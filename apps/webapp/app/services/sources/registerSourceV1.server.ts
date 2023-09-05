@@ -1,5 +1,5 @@
 import type { Endpoint } from "@trigger.dev/database";
-import type { SourceMetadata } from "@trigger.dev/core";
+import type { SourceMetadataV1 } from "@trigger.dev/core";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
@@ -7,7 +7,7 @@ import { workerQueue } from "../worker.server";
 import { generateSecret } from "./utils.server";
 import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 
-export class RegisterSourceService {
+export class RegisterSourceServiceV1 {
   #prismaClient: PrismaClientOrTransaction;
 
   constructor(prismaClient: PrismaClientOrTransaction = prisma) {
@@ -16,7 +16,7 @@ export class RegisterSourceService {
 
   public async call(
     endpointIdOrEndpoint: string | ExtendedEndpoint,
-    metadata: SourceMetadata,
+    metadata: SourceMetadataV1,
     dynamicTriggerId?: string,
     accountId?: string,
     dynamicSource?: { id: string; metadata: any }
@@ -39,7 +39,7 @@ export class RegisterSourceService {
   async #upsertSource(
     endpoint: Endpoint,
     environment: AuthenticatedEnvironment,
-    metadata: SourceMetadata,
+    metadata: SourceMetadataV1,
     dynamicTriggerId?: string,
     accountId?: string,
     dynamicSource?: { id: string; metadata: any }
@@ -121,9 +121,10 @@ export class RegisterSourceService {
                 }
               : undefined,
             externalAccount: externalAccount ? { connect: { id: externalAccount.id } } : undefined,
-            events: {
+            options: {
               create: metadata.events.map((event) => ({
-                name: event,
+                name: "event",
+                value: event,
               })),
             },
             secretReference: {
@@ -175,7 +176,7 @@ export class RegisterSourceService {
                 : undefined,
           },
           include: {
-            events: true,
+            options: true,
             secretReference: true,
           },
         });
@@ -200,22 +201,24 @@ export class RegisterSourceService {
         const newEvents = new Set<string>(metadata.events);
         const orphanedEvents = new Set<string>();
 
-        for (const event of triggerSource.events) {
-          if (!newEvents.has(event.name)) {
-            orphanedEvents.add(event.name);
+        for (const option of triggerSource.options) {
+          if (!newEvents.has(option.value)) {
+            orphanedEvents.add(option.value);
           }
         }
 
         for (const event of newEvents) {
-          await tx.triggerSourceEvent.upsert({
+          await tx.triggerSourceOption.upsert({
             where: {
-              name_sourceId: {
-                name: event,
+              name_value_sourceId: {
+                name: "event",
+                value: event,
                 sourceId: triggerSource.id,
               },
             },
             create: {
-              name: event,
+              name: "event",
+              value: event,
               source: {
                 connect: {
                   id: triggerSource.id,
@@ -249,7 +252,7 @@ export class RegisterSourceService {
         id: id,
       },
       include: {
-        events: true,
+        options: true,
         secretReference: true,
         integration: true,
       },
@@ -261,11 +264,12 @@ export class RegisterSourceService {
 
     const triggerIsActive = triggerSource.active;
     const triggerHasOrphanedEvents = orphanedEvents.length > 0;
-    const triggerHasUnregisteredEvents = triggerSource.events.some((event) => !event.registered);
+    const triggerHasUnregisteredEvents = triggerSource.options.some((option) => !option.registered);
 
     if (!triggerIsActive || triggerHasOrphanedEvents || triggerHasUnregisteredEvents) {
       // We need to re-activate the source, and there could be orphaned events
       await workerQueue.enqueue("activateSource", {
+        version: "1",
         id: triggerSource.id,
         orphanedEvents: orphanedEvents,
       });
@@ -277,7 +281,7 @@ export class RegisterSourceService {
   async #findOrCreateIntegration(
     tx: PrismaClientOrTransaction,
     organizationId: string,
-    config: SourceMetadata["integration"]
+    config: SourceMetadataV1["integration"]
   ) {
     if (config.authSource === "HOSTED") {
       return tx.integration.findUnique({

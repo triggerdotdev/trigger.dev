@@ -19,7 +19,7 @@ client.defineJob({
     name: "event.example",
   }),
   run: async (payload, io, ctx) => {
-    await io.runTask("task-example-1", { name: "Task 1" }, async () => {
+    await io.runTask("task-example-1", async () => {
       return {
         message: "Hello World",
       };

@@ -1,5 +1,7 @@
 import { ulid } from "ulid";
 import { z } from "zod";
+import { Prettify } from "../types";
+import { addMissingVersionField } from "./addMissingVersionField";
 import { ErrorWithStackSchema } from "./errors";
 import { EventRuleSchema } from "./eventFilter";
 import { ConnectionAuthSchema, IntegrationConfigSchema } from "./integrations";
@@ -11,23 +13,26 @@ import {
   RegisterDynamicSchedulePayloadSchema,
   ScheduleMetadataSchema,
 } from "./schedules";
-import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
+import { CachedTaskSchema, TaskSchema } from "./tasks";
 import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
-import { Prettify } from "../types";
 
-export const UpdateTriggerSourceBodySchema = z.object({
+export const UpdateTriggerSourceBodyV1Schema = z.object({
   registeredEvents: z.array(z.string()),
   secret: z.string().optional(),
   data: SerializableJsonSchema.optional(),
 });
+export type UpdateTriggerSourceBodyV1 = z.infer<typeof UpdateTriggerSourceBodyV1Schema>;
 
-export type UpdateTriggerSourceBody = z.infer<typeof UpdateTriggerSourceBodySchema>;
-
-export const HttpEventSourceSchema = UpdateTriggerSourceBodySchema.extend({
-  id: z.string(),
-  active: z.boolean(),
-  url: z.string().url(),
+export const UpdateTriggerSourceBodyV2Schema = z.object({
+  secret: z.string().optional(),
+  data: SerializableJsonSchema.optional(),
+  options: z
+    .object({
+      event: z.array(z.string()),
+    })
+    .and(z.record(z.string(), z.array(z.string())).optional()),
 });
+export type UpdateTriggerSourceBodyV2 = z.infer<typeof UpdateTriggerSourceBodyV2Schema>;
 
 export const RegisterHTTPTriggerSourceBodySchema = z.object({
   type: z.literal("HTTP"),
@@ -48,7 +53,8 @@ export const RegisterSourceChannelBodySchema = z.discriminatedUnion("type", [
   RegisterSQSTriggerSourceBodySchema,
 ]);
 
-export const REGISTER_SOURCE_EVENT = "dev.trigger.source.register";
+export const REGISTER_SOURCE_EVENT_V1 = "dev.trigger.source.register";
+export const REGISTER_SOURCE_EVENT_V2 = "dev.trigger.source.register.v2";
 
 export const RegisterTriggerSourceSchema = z.object({
   key: z.string(),
@@ -62,7 +68,14 @@ export const RegisterTriggerSourceSchema = z.object({
 
 export type RegisterTriggerSource = z.infer<typeof RegisterTriggerSourceSchema>;
 
-export const RegisterSourceEventSchema = z.object({
+const SourceEventOptionSchema = z.object({
+  name: z.string(),
+  value: z.string(),
+});
+
+export type SourceEventOption = z.infer<typeof SourceEventOptionSchema>;
+
+export const RegisterSourceEventSchemaV1 = z.object({
   /** The id of the source */
   id: z.string(),
   source: RegisterTriggerSourceSchema,
@@ -72,18 +85,49 @@ export const RegisterSourceEventSchema = z.object({
   dynamicTriggerId: z.string().optional(),
 });
 
-export type RegisterSourceEvent = z.infer<typeof RegisterSourceEventSchema>;
+export type RegisterSourceEventV1 = z.infer<typeof RegisterSourceEventSchemaV1>;
+
+const RegisteredOptionsDiffSchema = z.object({
+  desired: z.array(z.string()),
+  missing: z.array(z.string()),
+  orphaned: z.array(z.string()),
+});
+
+export type RegisteredOptionsDiff = Prettify<z.infer<typeof RegisteredOptionsDiffSchema>>;
+
+const RegisterSourceEventOptionsSchema = z
+  .object({
+    event: RegisteredOptionsDiffSchema,
+  })
+  .and(z.record(z.string(), RegisteredOptionsDiffSchema));
+
+export type RegisterSourceEventOptions = z.infer<typeof RegisterSourceEventOptionsSchema>;
+
+export const RegisterSourceEventSchemaV2 = z.object({
+  /** The id of the source */
+  id: z.string(),
+  source: RegisterTriggerSourceSchema,
+  options: RegisterSourceEventOptionsSchema,
+  dynamicTriggerId: z.string().optional(),
+});
+
+export type RegisterSourceEventV2 = z.infer<typeof RegisterSourceEventSchemaV2>;
 
 export const TriggerSourceSchema = z.object({
   id: z.string(),
   key: z.string(),
 });
 
+const HttpSourceResponseMetadataSchema = DeserializedJsonSchema;
+export type HttpSourceResponseMetadata = z.infer<typeof HttpSourceResponseMetadataSchema>;
+
 export const HandleTriggerSourceSchema = z.object({
   key: z.string(),
   secret: z.string(),
   data: z.any(),
   params: z.any(),
+  auth: ConnectionAuthSchema.optional(),
+  metadata: HttpSourceResponseMetadataSchema.optional(),
 });
 
 export type HandleTriggerSource = z.infer<typeof HandleTriggerSourceSchema>;
@@ -108,6 +152,22 @@ export const HttpSourceRequestHeadersSchema = z.object({
   "x-ts-http-url": z.string(),
   "x-ts-http-method": z.string(),
   "x-ts-http-headers": z.string().transform((s) => z.record(z.string()).parse(JSON.parse(s))),
+  "x-ts-auth": z
+    .string()
+    .optional()
+    .transform((s) => {
+      if (s === undefined) return;
+      const json = JSON.parse(s);
+      return ConnectionAuthSchema.parse(json);
+    }),
+  "x-ts-metadata": z
+    .string()
+    .optional()
+    .transform((s) => {
+      if (s === undefined) return;
+      const json = JSON.parse(s);
+      return DeserializedJsonSchema.parse(json);
+    }),
 });
 
 export type HttpSourceRequestHeaders = z.output<typeof HttpSourceRequestHeadersSchema>;
@@ -167,7 +227,8 @@ export const JobMetadataSchema = z.object({
 
 export type JobMetadata = z.infer<typeof JobMetadataSchema>;
 
-export const SourceMetadataSchema = z.object({
+const SourceMetadataV1Schema = z.object({
+  version: z.literal("1"),
   channel: z.enum(["HTTP", "SQS", "SMTP"]),
   integration: IntegrationConfigSchema,
   key: z.string(),
@@ -181,7 +242,31 @@ export const SourceMetadataSchema = z.object({
     .optional(),
 });
 
-export type SourceMetadata = z.infer<typeof SourceMetadataSchema>;
+export type SourceMetadataV1 = z.infer<typeof SourceMetadataV1Schema>;
+
+export const SourceMetadataV2Schema = z.object({
+  version: z.literal("2"),
+  channel: z.enum(["HTTP", "SQS", "SMTP"]),
+  integration: IntegrationConfigSchema,
+  key: z.string(),
+  params: z.any(),
+  options: z.record(z.array(z.string())),
+  registerSourceJob: z
+    .object({
+      id: z.string(),
+      version: z.string(),
+    })
+    .optional(),
+});
+
+export type SourceMetadataV2 = z.infer<typeof SourceMetadataV2Schema>;
+
+const SourceMetadataSchema = z.preprocess(
+  addMissingVersionField,
+  z.discriminatedUnion("version", [SourceMetadataV1Schema, SourceMetadataV2Schema])
+);
+
+type SourceMetadata = Prettify<z.infer<typeof SourceMetadataSchema>>;
 
 export const DynamicTriggerEndpointMetadataSchema = z.object({
   id: z.string(),
@@ -486,7 +571,7 @@ export type RetryOptions = z.infer<typeof RetryOptionsSchema>;
 
 export const RunTaskOptionsSchema = z.object({
   /** The name of the Task is required. This is displayed on the Task in the logs. */
-  name: z.string(),
+  name: z.string().optional(),
   /** The Task will wait and only start at the specified Date  */
   delayUntil: z.coerce.date().optional(),
   /** Retry options */
@@ -570,14 +655,22 @@ export type NormalizedResponse = z.infer<typeof NormalizedResponseSchema>;
 export const HttpSourceResponseSchema = z.object({
   response: NormalizedResponseSchema,
   events: z.array(RawEventSchema),
+  metadata: HttpSourceResponseMetadataSchema.optional(),
 });
 
-export const RegisterTriggerBodySchema = z.object({
+export const RegisterTriggerBodySchemaV1 = z.object({
   rule: EventRuleSchema,
-  source: SourceMetadataSchema,
+  source: SourceMetadataV1Schema,
 });
 
-export type RegisterTriggerBody = z.infer<typeof RegisterTriggerBodySchema>;
+export type RegisterTriggerBodyV1 = z.infer<typeof RegisterTriggerBodySchemaV1>;
+
+export const RegisterTriggerBodySchemaV2 = z.object({
+  rule: EventRuleSchema,
+  source: SourceMetadataV2Schema,
+});
+
+export type RegisterTriggerBodyV2 = z.infer<typeof RegisterTriggerBodySchemaV2>;
 
 export const InitializeTriggerBodySchema = z.object({
   id: z.string(),

@@ -361,6 +361,7 @@ importers:
 
   examples/job-catalog:
     specifiers:
+      '@trigger.dev/airtable': workspace:*
       '@trigger.dev/cli': workspace:*
       '@trigger.dev/express': workspace:*
       '@trigger.dev/github': workspace:*
@@ -383,6 +384,7 @@ importers:
       typescript: 5.1.6
       zod: 3.21.4
     dependencies:
+      '@trigger.dev/airtable': link:../../integrations/airtable
       '@trigger.dev/express': link:../../packages/express
       '@trigger.dev/github': link:../../integrations/github
       '@trigger.dev/openai': link:../../integrations/openai
@@ -609,6 +611,29 @@ importers:
       '@types/react-dom': 18.2.7
       concurrently: 8.2.0
 
+  integrations/airtable:
+    specifiers:
+      '@trigger.dev/integration-kit': workspace:^2.0.10
+      '@trigger.dev/sdk': workspace:^2.0.10
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': 16.x
+      airtable: ^0.12.1
+      rimraf: ^3.0.2
+      tsup: 7.1.x
+      typescript: 4.9.4
+      zod: 3.21.4
+    dependencies:
+      '@trigger.dev/integration-kit': link:../../packages/integration-kit
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      airtable: 0.12.1
+      zod: 3.21.4
+    devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 16.18.11
+      rimraf: 3.0.2
+      tsup: 7.1.0_typescript@4.9.4
+      typescript: 4.9.4
+
   integrations/github:
     specifiers:
       '@octokit/request': ^6.2.5
@@ -702,6 +727,7 @@ importers:
       '@sendgrid/mail': ^7.7.0
       '@trigger.dev/integration-kit': workspace:^2.0.14
       '@trigger.dev/sdk': workspace:^2.0.14
+      '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       rimraf: ^3.0.2
       tsup: 7.1.x
@@ -711,6 +737,7 @@ importers:
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
     devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
       rimraf: 3.0.2
       tsup: 7.1.0_typescript@4.9.4
@@ -12166,6 +12193,10 @@ packages:
     dependencies:
       event-target-shim: 5.0.1
 
+  /abortcontroller-polyfill/1.7.5:
+    resolution: {integrity: sha512-JMJ5soJWP18htbbxJjG7bG6yuI6pRhgJ0scHHTfkUjf6wjP912xZWvM+A4sJK3gqd9E8fcPbDnOefbA9Th/FIQ==}
+    dev: false
+
   /accepts/1.3.8:
     resolution: {integrity: sha512-PYAthTa2m2VKxuvSD3DPC/Gy+U+sOA1LAuT8mkmRuvw+NACSaeXEQ+NHcVF7rONl6qcaxV3Uuemwawk+7+SJLw==}
     engines: {node: '>= 0.6'}
@@ -12282,6 +12313,19 @@ packages:
   /ahocorasick/1.0.2:
     resolution: {integrity: sha512-hCOfMzbFx5IDutmWLAt6MZwOUjIfSM9G9FyVxytmE4Rs/5YDPWQrD/+IR1w+FweD9H2oOZEnv36TmkjhNURBVA==}
     dev: true
+
+  /airtable/0.12.1:
+    resolution: {integrity: sha512-wS49QIO46YjSUbRIslX6pJaAGsdzOFPtYfaARYsBifsev10TDsyXc5IBYX6b3JQs4SZ8A5+g/vbQ5IfPvbnc+w==}
+    engines: {node: '>=8.0.0'}
+    dependencies:
+      '@types/node': 12.20.55
+      abort-controller: 3.0.0
+      abortcontroller-polyfill: 1.7.5
+      lodash: 4.17.21
+      node-fetch: 2.6.12
+    transitivePeerDependencies:
+      - encoding
+    dev: false
 
   /ajv-formats/2.1.1:
     resolution: {integrity: sha512-Wx0Kx52hxE7C18hkMEggYlEifqWZtYaRgouJor+WMdPnQyEK13vgEWyVNup7SoeeoLMsr4kf5h6dOW11I15MUA==}

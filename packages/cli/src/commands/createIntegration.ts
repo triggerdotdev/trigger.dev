@@ -17,6 +17,7 @@ const CLIOptionsSchema = z.object({
   extraInfo: z.string().optional(),
   skipGeneratingCode: z.coerce.boolean().optional(),
   authMethod: z.enum(["api-key", "oauth", "both-methods"]).optional(),
+  openaiKey: z.string().optional(),
 });
 
 type CLIOptions = z.infer<typeof CLIOptionsSchema>;
@@ -213,7 +214,7 @@ export default defineConfig([
   );
 
   if (triggerMonorepoPath) {
-    logger.info(`   3. Write some test jobs in the examples/nextjs-example project`);
+    logger.info(`   3. Write some test jobs in the examples/job-catalog`);
   }
 }
 
@@ -249,11 +250,14 @@ async function attemptToGenerateIntegrationFiles(path: string, options: Resolved
 
   const extraInfo = generateExtraInfo(options.authMethod, options.extraInfo);
 
-  const files = await generateIntegrationFiles({
-    packageName: options.packageName,
-    sdkPackage: options.sdkPackage,
-    extraInfo,
-  });
+  const files = await generateIntegrationFiles(
+    {
+      packageName: options.packageName,
+      sdkPackage: options.sdkPackage,
+      extraInfo,
+    },
+    options.openaiKey ?? process.env.OPENAI_API_KEY
+  );
 
   if (files) {
     await Promise.all(
@@ -285,7 +289,7 @@ const resolveOptionsWithPrompts = async (
       resolvedOptions.sdkPackage = await promptSdkPackage();
     }
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.OPENAI_API_KEY && !options.openaiKey) {
       resolvedOptions.skipGeneratingCode = true;
     }
 
@@ -348,7 +352,7 @@ export const promptSdkPackage = async (): Promise<string> => {
   const { sdkPackage } = await inquirer.prompt<{ sdkPackage: string }>({
     type: "input",
     name: "sdkPackage",
-    message: "What is the name of the npm package of the integration?",
+    message: "What is the name of the npm package for this API? (e.g. airtable)?",
     validate: (input) => {
       if (!input) {
         return "Please enter an SDK package name";

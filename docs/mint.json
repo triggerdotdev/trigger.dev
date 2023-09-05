@@ -173,7 +173,19 @@
       "group": "Overview",
       "pages": [
         "integrations/introduction",
-        "integrations/create"
+        {
+          "group": "Create an Integration",
+          "pages": [
+            "integrations/create",
+            "integrations/create-setup",
+            "integrations/create-anatomy",
+            "integrations/create-oauth",
+            "integrations/create-client",
+            "integrations/create-tasks",
+            "integrations/create-triggers",
+            "integrations/create-publishing"
+          ]
+        }
       ]
     },
     {
