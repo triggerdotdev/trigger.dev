@@ -602,6 +602,11 @@ export const RunTaskOptionsSchema = z.object({
 
 export type RunTaskOptions = z.input<typeof RunTaskOptionsSchema>;
 
+export type OverridableRunTaskOptions = Pick<
+  RunTaskOptions,
+  "retry" | "delayUntil" | "description"
+>;
+
 export const RunTaskBodyInputSchema = RunTaskOptionsSchema.extend({
   idempotencyKey: z.string(),
   parentId: z.string().optional(),
