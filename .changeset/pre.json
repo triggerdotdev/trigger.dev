@@ -3,7 +3,7 @@
   "tag": "beta",
   "initialVersions": {
     "webapp": "1.0.0",
-    "@trigger.dev/airtable": "2.0.10",
+    "@trigger.dev/airtable": "2.0.14",
     "@trigger.dev/github": "2.0.14",
     "@trigger.dev/openai": "2.0.14",
     "@trigger.dev/plain": "2.0.14",
