@@ -66,5 +66,10 @@
     "@changesets/cli": "2.26.2",
     "@remix-run/changelog-github": "^0.0.5",
     "node-fetch": "2.6.x"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "@changesets/assemble-release-plan@5.2.4": "patches/@changesets__assemble-release-plan@5.2.4.patch"
+    }
   }
 }
