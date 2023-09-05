@@ -86,4 +86,23 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "long.running",
+  name: "Long Running Job",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "long.running",
+  }),
+  run: async (payload, io, ctx) => {
+    // Perform X tasks in an iteration, each one taking X milliseconds
+    for (let i = 0; i < payload.iterations; i++) {
+      await io.runTask(`task.${i}`, { name: `Task ${i}` }, async (task) => {
+        await new Promise((resolve) => setTimeout(resolve, payload.duration ?? 5000));
+
+        return { i };
+      });
+    }
+  },
+});
+
 createExpressServer(client);

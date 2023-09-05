@@ -320,7 +320,12 @@ function getExecutionWorkerQueue() {
         handler: async (payload, job) => {
           const service = new PerformRunExecutionV2Service();
 
-          await service.call(payload.id, payload.reason, payload.isRetry, payload.resumeTaskId);
+          await service.call({
+            id: payload.id,
+            reason: payload.reason,
+            resumeTaskId: payload.resumeTaskId,
+            isRetry: payload.isRetry,
+          });
         },
       },
     },

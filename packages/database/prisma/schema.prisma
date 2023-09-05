@@ -63,6 +63,8 @@ model Organization {
   slug  String @unique
   title String
 
+  maximumExecutionTimePerRunInMs Int @default(900000) // 15 minutes
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -703,6 +705,9 @@ model JobRun {
 
   timedOutAt     DateTime?
   timedOutReason String?
+
+  executionCount    Int @default(0)
+  executionDuration Int @default(0)
 
   isTest     Boolean @default(false)
   preprocess Boolean @default(false)

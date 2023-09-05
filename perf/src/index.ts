@@ -77,7 +77,25 @@ async function mainLong() {
   }
 }
 
-mainLong().catch((err) => {
+async function mainSerial() {
+  console.log("Preparing serial perf tests...");
+
+  // wait for 10 seconds
+  await new Promise((resolve) => setTimeout(resolve, 10000));
+
+  console.log("Starting serial perf tests in 1 second...");
+
+  // wait for 1 seconds
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
+  // Send 25 events
+  for (let i = 0; i < 25; i++) {
+    await sendEvent();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+mainSerial().catch((err) => {
   console.error(err);
   process.exit(1);
 });
