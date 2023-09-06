@@ -54,34 +54,6 @@
     {
       "source": "/documentation/quickstart",
       "destination": "/documentation/quickstarts/introduction"
-    },
-    {
-      "source": "/documentation/quickstarts/remix",
-      "destination": "/documentation/guides/manual/remix"
-    },
-    {
-      "source": "/documentation/quickstarts/express",
-      "destination": "/documentation/guides/manual/express"
-    },
-    {
-      "source": "/documentation/quickstarts/redwood",
-      "destination": "/documentation/guides/manual/redwood"
-    },
-    {
-      "source": "/documentation/quickstarts/astro",
-      "destination": "/documentation/guides/manual/astro"
-    },
-    {
-      "source": "/documentation/quickstarts/nuxt",
-      "destination": "/documentation/guides/manual/nuxt"
-    },
-    {
-      "source": "/documentation/quickstarts/sveltekit",
-      "destination": "/documentation/guides/manual/sveltekit"
-    },
-    {
-      "source": "/documentation/quickstarts/fastify",
-      "destination": "/documentation/guides/manual/fastify"
     }
   ],
   "navigation": [
