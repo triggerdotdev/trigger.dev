@@ -64,15 +64,20 @@
         {
           "group": "Quick Starts",
           "pages": [
-            "documentation/quickstarts/frameworks",
-            "documentation/quickstarts/nextjs",
-            "documentation/quickstarts/remix",
-            "documentation/quickstarts/express",
-            "documentation/quickstarts/redwood",
-            "documentation/quickstarts/astro",
-            "documentation/quickstarts/nuxt",
-            "documentation/quickstarts/sveltekit",
-            "documentation/quickstarts/fastify",
+            "documentation/quickstarts/introduction",
+            {
+              "group": "Frameworks",
+              "pages": [
+                "documentation/quickstarts/nextjs",
+                "documentation/quickstarts/remix",
+                "documentation/quickstarts/express",
+                "documentation/quickstarts/redwood",
+                "documentation/quickstarts/astro",
+                "documentation/quickstarts/nuxt",
+                "documentation/quickstarts/sveltekit",
+                "documentation/quickstarts/fastify"
+              ]
+            },
             "documentation/quickstarts/supabase"
           ]
         },
@@ -129,7 +134,11 @@
           ]
         },
         "documentation/guides/cli",
-        "documentation/guides/manual",
+        {
+          "group": "Manual setup",
+          "pages": ["documentation/guides/manual/nextjs"]
+        },
+
         "documentation/guides/running-jobs",
         "documentation/guides/jobs/managing",
         {
