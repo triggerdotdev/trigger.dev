@@ -123,6 +123,34 @@ export function projectSetupNextjsPath(organization: OrgForPath, project: Projec
   return `${projectPath(organization, project)}/setup/nextjs`;
 }
 
+export function projectSetupRemixPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/setup/remix`;
+}
+
+export function projectSetupExpressPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/setup/express`;
+}
+
+export function projectSetupRedwoodPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/setup/redwood`;
+}
+
+export function projectSetupNuxtPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/setup/nuxt`;
+}
+
+export function projectSetupSvelteKitPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/setup/sveltekit`;
+}
+
+export function projectSetupFastifyPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/setup/fastify`;
+}
+
+export function projectSetupAstroPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/setup/astro`;
+}
+
 export function projectJobsPath(organization: OrgForPath, project: ProjectForPath) {
   return projectPath(organization, project);
 }
