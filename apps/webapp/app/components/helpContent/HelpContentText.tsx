@@ -87,7 +87,7 @@ export function HowToSetupYourProject() {
             return clearInterval(interval);
           }
 
-          const particleCount = 50 * (timeLeft / duration);
+          const particleCount = 60 * (timeLeft / duration);
           // since particles fall down, start a bit higher than random
           // @ts-ignore
           window.confetti(
