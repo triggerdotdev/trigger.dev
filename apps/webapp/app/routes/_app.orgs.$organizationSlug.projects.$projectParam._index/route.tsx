@@ -31,7 +31,7 @@ import {
   projectIntegrationsPath,
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
-import Onboarding from "../_app.orgs.$organizationSlug.projects.$projectParam.onboarding._index/route";
+import Onboarding from "../_app.orgs.$organizationSlug.projects.$projectParam.setup._index/route";
 import FrameworksSelector from "~/components/FrameworkSelector";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
