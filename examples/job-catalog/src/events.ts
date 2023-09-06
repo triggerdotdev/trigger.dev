@@ -71,28 +71,36 @@ client.defineJob({
   run: async (payload, io, ctx) => {
     await io.wait("sleeping", payload.delay);
 
-    await io.runTask("init", { name: "init" }, async () => {
-      console.log("init function ran", payload.userId);
-    });
+    await io.runTask(
+      "init",
+      async () => {
+        console.log("init function ran", payload.userId);
+      },
+      { name: "init" }
+    );
 
-    await io.runTask("failable", { name: "task-1", retry: { limit: 3 } }, async (task) => {
-      if (task.attempts > 2) {
-        console.log("task succeeded");
-        return {
-          ok: true,
-        };
-      }
-      console.log("task failed");
-      throw new Error(`Task failed on ${task.attempts} attempt(s)`);
-    });
+    await io.runTask(
+      "failable",
+      async (task) => {
+        if (task.attempts > 2) {
+          console.log("task succeeded");
+          return {
+            ok: true,
+          };
+        }
+        console.log("task failed");
+        throw new Error(`Task failed on ${task.attempts} attempt(s)`);
+      },
+      { name: "task-1", retry: { limit: 3 } }
+    );
 
     await io.runTask(
       "log",
-      {
-        name: "log",
-      },
       async () => {
         console.log("hello from the job", payload.userId);
+      },
+      {
+        name: "log",
       }
     );
   },

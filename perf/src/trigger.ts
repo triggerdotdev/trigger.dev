@@ -14,18 +14,26 @@ triggerClient.defineJob({
     name: "perf.test",
   }),
   run: async (payload, io, ctx) => {
-    await io.runTask("task-1", { name: "task 1" }, async (task) => {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+    await io.runTask(
+      "task-1",
+      async (task) => {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      return {
-        value: Math.random(),
-      };
-    });
+        return {
+          value: Math.random(),
+        };
+      },
+      { name: "task 1" }
+    );
 
-    await io.runTask("task-2", { name: "task 2" }, async (task) => {
-      return {
-        value: Math.random(),
-      };
-    });
+    await io.runTask(
+      "task-2",
+      async (task) => {
+        return {
+          value: Math.random(),
+        };
+      },
+      { name: "task 2" }
+    );
   },
 });

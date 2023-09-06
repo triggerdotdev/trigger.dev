@@ -459,9 +459,9 @@ export class IO {
   /** `io.runTask()` allows you to run a [Task](https://trigger.dev/docs/documentation/concepts/tasks) from inside a Job run. A Task is a resumable unit of a Run that can be retried, resumed and is logged. [Integrations](https://trigger.dev/docs/integrations) use Tasks internally to perform their actions.
    *
    * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
-   * @param options The options of how you'd like to run and log the Task. Name is required.
    * @param callback The callback that will be called when the Task is run. The callback receives the Task and the IO as parameters.
-=   * @param onError The callback that will be called when the Task fails. The callback receives the error, the Task and the IO as parameters. If you wish to retry then return an object with a `retryAt` property.
+   * @param options The options of how you'd like to run and log the Task.
+   * @param onError The callback that will be called when the Task fails. The callback receives the error, the Task and the IO as parameters. If you wish to retry then return an object with a `retryAt` property.
    * @returns A Promise that resolves with the returned value of the callback.
    */
   async runTask<T extends Json<T> | void>(

@@ -43,14 +43,14 @@ const usageSample: HelpSample = {
       //wrap the SDK call in runTask
       const { data } = await io.runTask(
         "create-card",
-        { name: "Create card" },
         async () => {
           //create a project card using the underlying client
           return io.github.client.rest.projects.createCard({
             column_id: 123,
             note: "test",
           });
-        }
+        },
+        { name: "Create card" }
       );
   
       //log the url of the created card

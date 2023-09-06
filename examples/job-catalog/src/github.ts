@@ -46,6 +46,17 @@ client.defineJob({
       repo: payload.repo,
     });
 
+    const { data } = await io.github.runTask(
+      "create-card",
+      async (client) => {
+        return client.rest.projects.createCard({
+          column_id: 123,
+          note: "test",
+        });
+      },
+      { name: "Create card" }
+    );
+
     await io.github.createIssueCommentWithReaction("comment on issue with reaction", {
       body: "This is a comment",
       owner: payload.owner,
