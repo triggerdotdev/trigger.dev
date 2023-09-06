@@ -4,40 +4,46 @@ function usageSample(hasApiKey: boolean): HelpSample {
   return {
     title: "Using the client",
     code: `
-  import { Airtable } from "@trigger.dev/airtable";
+import { Airtable } from "@trigger.dev/airtable";
 
-  const airtable = new Airtable({
-    id: "__SLUG__"${hasApiKey ? ",\n    token: process.env.AIRTABLE_API_KEY!" : ""}
-  });
+const airtable = new Airtable({
+  id: "__SLUG__"${hasApiKey ? ",\n  token: process.env.AIRTABLE_TOKEN!" : ""}
+});
 
-  client.defineJob({
-    id: "alert-on-new-github-issues",
-    name: "Alert on new GitHub issues",
-    version: "0.1.1",
-    trigger: github.triggers.repo({
-      event: events.onIssueOpened,
-      owner: "triggerdotdev",
-      repo: "trigger.dev",
+//you can define your Airtable table types
+type LaunchGoalsAndOkRs = {
+  "Launch goals"?: string;
+  DRI?: Collaborator;
+  Team?: string;
+  Status?: "On track" | "In progress" | "At risk";
+  "Key results"?: Array<string>;
+  "Features (from 💻 Features table)"?: Array<string>;
+  "Status (from 💻 Features)": Array<"Live" | "Complete" | "In progress" | "Planning" | "In reviews">;
+};
+
+client.defineJob({
+  id: "airtable-example-1",
+  name: "Airtable Example 1: getRecords",
+  version: "0.1.0",
+  trigger: eventTrigger({
+    name: "airtable.example",
+    schema: z.object({
+      baseId: z.string(),
+      tableName: z.string(),
     }),
-    run: async (payload, io, ctx) => {
-      //wrap the SDK call in runTask
-      const { data } = await io.runTask(
-        "create-card",
-        { name: "Create card" },
-        async () => {
-          //create a project card using the underlying client
-          return io.github.client.rest.projects.createCard({
-            column_id: 123,
-            note: "test",
-          });
-        }
-      );
-  
-      //log the url of the created card
-      await io.logger.info(data.url);
-    },
-  });
-  
+  }),
+  integrations: {
+    airtable,
+  },
+  run: async (payload, io, ctx) => {
+    //then you can set the types for your table, so you get type safety
+    const table = io.airtable.base(payload.baseId).table<LaunchGoalsAndOkRs>(payload.tableName);
+
+    const records = await table.getRecords("muliple records", { fields: ["Status"] });
+    //this will be type checked
+    await io.logger.log(records[0].fields.Status ?? "no status");
+  },
+});
   `,
   };
 }
