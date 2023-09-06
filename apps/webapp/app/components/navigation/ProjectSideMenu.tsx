@@ -11,6 +11,7 @@ import {
   organizationTeamPath,
   projectEnvironmentsPath,
   projectIntegrationsPath,
+  projectOnboardingPath,
   projectPath,
   projectTriggersPath,
 } from "~/utils/pathBuilder";
@@ -108,6 +109,13 @@ export function ProjectSideMenu() {
           to={organizationBillingPath(organization)}
           isCollapsed={isCollapsed}
           data-action="usage & billing"
+        />
+        <SideMenuItem
+          name="Onboarding"
+          icon="clipboard-checked"
+          to={projectOnboardingPath(organization, project)}
+          isCollapsed={isCollapsed}
+          data-action="onboarding"
         />
         <SideMenuItem
           name="Account"
