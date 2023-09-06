@@ -116,11 +116,11 @@ export function projectPath(organization: OrgForPath, project: ProjectForPath) {
 }
 
 export function projectSetupPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${projectPath(organization, project)}/onboarding`;
+  return `${projectPath(organization, project)}/setup`;
 }
 
 export function projectSetupNextjsPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${projectPath(organization, project)}/onboarding/nextjs`;
+  return `${projectPath(organization, project)}/setup/nextjs`;
 }
 
 export function projectJobsPath(organization: OrgForPath, project: ProjectForPath) {
