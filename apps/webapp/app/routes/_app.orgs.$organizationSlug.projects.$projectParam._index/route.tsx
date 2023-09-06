@@ -32,6 +32,7 @@ import {
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
 import Onboarding from "../_app.orgs.$organizationSlug.projects.$projectParam.onboarding._index/route";
+import FrameworksSelector from "~/components/FrameworkSelector";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -73,16 +74,18 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title="Jobs" />
-        </PageTitleRow>
-        <PageInfoRow>
-          <PageInfoGroup>
-            <PageInfoProperty icon={"job"} label={"Active Jobs"} value={jobs.length} />
-          </PageInfoGroup>
-        </PageInfoRow>
-      </PageHeader>
+      {jobs.length > 0 && (
+        <PageHeader>
+          <PageTitleRow>
+            <PageTitle title="Jobs" />
+          </PageTitleRow>
+          <PageInfoRow>
+            <PageInfoGroup>
+              <PageInfoProperty icon={"job"} label={"Active Jobs"} value={jobs.length} />
+            </PageInfoGroup>
+          </PageInfoRow>
+        </PageHeader>
+      )}
       <PageBody>
         <Help>
           {(open) => (
@@ -124,7 +127,7 @@ export default function Page() {
                       )}
                   </>
                 ) : (
-                  <Onboarding />
+                  <FrameworksSelector />
                 )}
               </div>
               <HelpContent title="Example Jobs and inspiration">

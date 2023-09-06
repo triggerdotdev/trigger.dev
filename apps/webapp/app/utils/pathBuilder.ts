@@ -115,8 +115,12 @@ export function projectPath(organization: OrgForPath, project: ProjectForPath) {
   return `/orgs/${organizationParam(organization)}/projects/${projectParam(project)}`;
 }
 
-export function projectOnboardingPath(organization: OrgForPath, project: ProjectForPath) {
+export function projectSetupPath(organization: OrgForPath, project: ProjectForPath) {
   return `${projectPath(organization, project)}/onboarding`;
+}
+
+export function projectSetupNextjsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/onboarding/nextjs`;
 }
 
 export function projectJobsPath(organization: OrgForPath, project: ProjectForPath) {

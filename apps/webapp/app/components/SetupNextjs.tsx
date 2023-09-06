@@ -1,14 +1,13 @@
-import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
+import { ChatBubbleLeftRightIcon, Squares2X2Icon } from "@heroicons/react/20/solid";
 import { useRevalidator } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { useEventSource } from "remix-utils";
 import invariant from "tiny-invariant";
-import gradientBackground from "~/assets/images/gradient-background.png";
 import { Feedback } from "~/components/Feedback";
 import { InitCommand, NextDevCommand, TriggerDevStep } from "~/components/SetupCommands";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { InlineCode } from "~/components/code/InlineCode";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import {
   ClientTabs,
   ClientTabsContent,
@@ -23,13 +22,16 @@ import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton"
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
 import { useDevEnvironment } from "~/hooks/useEnvironments";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { projectStreamingPath } from "~/utils/pathBuilder";
+import { projectSetupPath, projectStreamingPath } from "~/utils/pathBuilder";
+import { PageGradient } from "./PageGradient";
 
 type SelectionChoices = "use-existing-project" | "create-new-next-app";
 
-export default function Onboarding() {
+export function SetupNextjs() {
   const project = useProject();
+  const organization = useOrganization();
   const devEnvironment = useDevEnvironment();
   const appOrigin = useAppOrigin();
 
@@ -101,23 +103,29 @@ export default function Onboarding() {
   }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div
-      className="-ml-4 -mt-4 h-full w-[calc(100%+32px)] bg-cover bg-no-repeat pt-20"
-      style={{ backgroundImage: `url("${gradientBackground}")` }}
-    >
+    <PageGradient>
       <div className="mx-auto max-w-3xl">
         <div className="flex items-center justify-between">
           <Header1 spacing className="text-bright">
             Get setup in {selectedValue === "create-new-next-app" ? "5" : "2"} minutes
           </Header1>
-          <Feedback
-            button={
-              <Button variant="secondary/small" LeadingIcon={ChatBubbleLeftRightIcon}>
-                I'm stuck!
-              </Button>
-            }
-            defaultValue="help"
-          />
+          <div className="flex items-center gap-2">
+            <LinkButton
+              to={projectSetupPath(organization, project)}
+              variant="tertiary/small"
+              LeadingIcon={Squares2X2Icon}
+            >
+              Choose a different framework
+            </LinkButton>
+            <Feedback
+              button={
+                <Button variant="tertiary/small" LeadingIcon={ChatBubbleLeftRightIcon}>
+                  I'm stuck!
+                </Button>
+              }
+              defaultValue="help"
+            />
+          </div>
         </div>
         <RadioGroup
           className="mb-4 flex gap-x-2"
@@ -249,6 +257,6 @@ export default function Onboarding() {
           </>
         )}
       </div>
-    </div>
+    </PageGradient>
   );
 }
