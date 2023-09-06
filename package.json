@@ -39,6 +39,8 @@
     "changeset:release": "pnpm run build --filter \"@trigger.dev/*\" && changeset publish",
     "changeset:beta": "changeset pre enter beta",
     "changeset:normal": "changeset pre exit",
+    "changeset:version:snapshot": "changeset version --snapshot",
+    "changeset:release:snapshot": "pnpm run build --filter \"@trigger.dev/*\" && changeset publish --no-git-tag --snapshot",
     "clean:sourcemaps": "turbo run clean:sourcemaps",
     "storybook": "turbo run storybook"
   },
