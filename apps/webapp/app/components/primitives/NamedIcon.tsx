@@ -21,6 +21,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronUpIcon,
+  ClipboardDocumentCheckIcon,
   ClockIcon,
   CloudIcon,
   CodeBracketSquareIcon,
@@ -36,6 +37,7 @@ import {
   HeartIcon,
   KeyIcon,
   LightBulbIcon,
+  ListBulletIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   PlusSmallIcon,
@@ -120,6 +122,9 @@ const icons = {
   job: (className: string) => <WrenchScrewdriverIcon className={cn("text-teal-500", className)} />,
   key: (className: string) => <KeyIcon className={cn("text-amber-400", className)} />,
   lightbulb: (className: string) => <LightBulbIcon className={cn("text-amber-400", className)} />,
+  "clipboard-checked": (className: string) => (
+    <ClipboardDocumentCheckIcon className={cn("text-dimmed", className)} />
+  ),
   log: (className: string) => (
     <ChatBubbleLeftEllipsisIcon className={cn("text-slate-400", className)} />
   ),
