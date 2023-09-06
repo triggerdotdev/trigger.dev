@@ -18,7 +18,7 @@
 
 Create long-running jobs directly in your codebase with features like API integrations, webhooks, scheduling and delays.
 
-### Long running Jobs on serverless
+## Long running Jobs on serverless
 
 Reliably run jobs and don’t worry about function timeouts, we handle those for you.
 
@@ -26,31 +26,51 @@ Reliably run jobs and don’t worry about function timeouts, we handle those for
 - Auto-resume after a server outage
 - Add delays of up to a year
 
-### In your codebase
+## In your codebase
 
 Create Jobs where they belong: in your codebase. Version control, localhost, test, review, and deploy like you're already used to.
 
-### Secure by design
+## Secure by design
 
 We only receive Triggers and the data you choose to send to us. You can even completely self-host the entire platform.
 
-### Don't worry about deployment
+## Don't worry about deployment
 
 Just use our SDK to write Jobs in your Next.js codebase. There's nothing extra to deploy and no CI to configure, your Jobs just connect to our cloud. Or you can always self-host.
 
-### Full visibility of every job run
+## Full visibility of every job run
 
 View every Task in every Run so you can tell exactly what happened.
 
 ![image](https://www.trigger.dev/build/_assets/web-app-2QFKXFLW.png)
 
-### Built-in integrations
+## Built-in integrations
 
 Easily integrate with hundreds of third-party APIs – including your own. Use API keys (which never leave your server) or let us handle OAuth for you. Install our integration packages and easily subscribe to webhooks and perform common tasks, or you can easily use your existing favorite Node.JS SDKs and get resumability and idempotency through our `runTask` function.
 
-### Trigger.dev Connect (coming soon)
+## Our progress
 
-Easily add integrations for your users.
+We’re building the most comprehensive and easy-to-use background jobs framework for developers.
+
+Click the links to join the discussions about our upcoming features.
+
+| Feature                                                                              | What it does                                        | Status |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------- | ------ |
+| Integration kit                                                                      | Official Trigger.dev integrations or build your own | ✅     |
+| Self-hosting                                                                         | Host the platform yourself                          | ✅     |
+| Cloud                                                                                | Just write code, no deployment required             | ✅     |
+| Dashboard                                                                            | View every Task in every Run                        | ✅     |
+| Serverless                                                                           | Long-running Jobs on your serverless backend        | ✅     |
+| React hooks                                                                          | Easily update your UI with Job progress             | ✅     |
+| [Background tasks](https://github.com/triggerdotdev/trigger.dev/discussions/400)     | Offload long or intense Tasks to our infrastructure | 🛠️     |
+| [React frameworks](https://github.com/triggerdotdev/trigger.dev/discussions/411)     | Support for Remix, Astro, RedwoodJS & more          | 🛠️     |
+| [Long-running servers](https://github.com/triggerdotdev/trigger.dev/discussions/430) | Run Jobs on your long-running backend               | 🛠️     |
+| [Polling Triggers](https://github.com/triggerdotdev/trigger.dev/discussions/418)     | Subscribe to changes without webhooks               | 🕝     |
+| Vercel integration                                                                   | Easy deploy and preview environment support         | 🕝     |
+| Streaming                                                                            | Receive data from your Jobs in realtime             | 🕝     |
+| 100+ integrations                                                                    | Comprehensive support for popular APIs              | 🕝     |
+| Trigger.dev Connect                                                                  | Use integrations signed in as your users            | 🕝     |
+| File IO                                                                              | Create Tasks that have file outputs                 | 🕝     |
 
 # Getting started
 
