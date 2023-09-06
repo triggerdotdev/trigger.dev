@@ -1,6 +1,7 @@
 import { ArrowUpIcon } from "@heroicons/react/24/solid";
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { FrameworkSelector } from "~/components/FrameworkSelector";
 import { JobsTable } from "~/components/jobs/JobsTable";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
@@ -31,8 +32,6 @@ import {
   projectIntegrationsPath,
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
-import Onboarding from "../_app.orgs.$organizationSlug.projects.$projectParam.setup._index/route";
-import FrameworksSelector from "~/components/FrameworkSelector";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -127,7 +126,7 @@ export default function Page() {
                       )}
                   </>
                 ) : (
-                  <FrameworksSelector />
+                  <FrameworkSelector />
                 )}
               </div>
               <HelpContent title="Example Jobs and inspiration">

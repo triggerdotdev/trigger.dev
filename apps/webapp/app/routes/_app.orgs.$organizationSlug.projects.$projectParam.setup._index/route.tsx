@@ -1,4 +1,4 @@
-import Frameworks from "~/components/FrameworkSelector";
+import { FrameworkSelector } from "~/components/FrameworkSelector";
 import { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
@@ -8,7 +8,7 @@ export const handle: Handle = {
 export default function Page() {
   return (
     <>
-      <Frameworks />
+      <FrameworkSelector />
     </>
   );
 }
