@@ -9,6 +9,8 @@ import { RegisterDynamicScheduleService } from "../triggers/registerDynamicSched
 import { RegisterDynamicTriggerService } from "../triggers/registerDynamicTrigger.server";
 import { DisableJobService } from "../jobs/disableJob.server";
 import { RegisterSourceServiceV2 } from "../sources/registerSourceV2.server";
+import { RegisterBackgroundTaskService } from "../backgroundTasks/registerBackgroundTask.server";
+import { DisableBackgroundTaskService } from "../backgroundTasks/disableBackgroundTask.server";
 
 export class IndexEndpointService {
   #prismaClient: PrismaClient;
@@ -16,6 +18,8 @@ export class IndexEndpointService {
   #disableJobService = new DisableJobService();
   #registerSourceServiceV1 = new RegisterSourceServiceV1();
   #registerSourceServiceV2 = new RegisterSourceServiceV2();
+  #registerBackgroundTaskService = new RegisterBackgroundTaskService();
+  #disableBackgroundTaskService = new DisableBackgroundTaskService();
   #registerDynamicTriggerService = new RegisterDynamicTriggerService();
   #registerDynamicScheduleService = new RegisterDynamicScheduleService();
 
@@ -40,7 +44,13 @@ export class IndexEndpointService {
       throw new Error(indexResponse.error);
     }
 
-    const { jobs, sources, dynamicTriggers, dynamicSchedules } = indexResponse.data;
+    const {
+      jobs,
+      sources,
+      dynamicTriggers,
+      dynamicSchedules,
+      backgroundTasks = [],
+    } = indexResponse.data;
 
     logger.debug("Indexing endpoint", {
       endpointId: endpoint.id,
@@ -53,15 +63,18 @@ export class IndexEndpointService {
         sources: sources.length,
         dynamicTriggers: dynamicTriggers.length,
         dynamicSchedules: dynamicSchedules.length,
+        backgroundTasks: backgroundTasks.length,
       },
     });
 
     const indexStats = {
       jobs: 0,
+      backgroundTasks: 0,
       sources: 0,
       dynamicTriggers: 0,
       dynamicSchedules: 0,
       disabledJobs: 0,
+      disabedBackgroundTasks: 0,
     };
 
     const existingJobs = await this.#prismaClient.job.findMany({
@@ -151,6 +164,100 @@ export class IndexEndpointService {
           });
 
         if (disabledJob) {
+          indexStats.disabledJobs++;
+        }
+      }
+    }
+
+    const existingBackgroundTasks = await this.#prismaClient.backgroundTask.findMany({
+      where: {
+        projectId: endpoint.projectId,
+        deletedAt: null,
+      },
+      include: {
+        aliases: {
+          where: {
+            name: "latest",
+            environmentId: endpoint.environmentId,
+          },
+          include: {
+            version: true,
+          },
+          take: 1,
+        },
+      },
+    });
+
+    for (const backgroundTask of backgroundTasks) {
+      if (!backgroundTask.enabled) {
+        const disabledBackgroundTask = await this.#disableBackgroundTaskService
+          .call(endpoint, { slug: backgroundTask.id, version: backgroundTask.version })
+          .catch((error) => {
+            logger.error("Failed to disable background task", {
+              endpointId: endpoint.id,
+              backgroundTask,
+              error,
+            });
+
+            return;
+          });
+
+        if (disabledBackgroundTask) {
+          indexStats.disabledJobs++;
+        }
+      } else {
+        try {
+          const registeredVersion = await this.#registerBackgroundTaskService.call(
+            endpoint,
+            backgroundTask
+          );
+
+          if (registeredVersion) {
+            indexStats.backgroundTasks++;
+          }
+        } catch (error) {
+          logger.error("Failed to register background task", {
+            endpointId: endpoint.id,
+            backgroundTask,
+            error,
+          });
+        }
+      }
+    }
+
+    const missingBackgroundTasks = existingBackgroundTasks.filter((backgroundTask) => {
+      return !backgroundTasks.find((b) => b.id === backgroundTask.slug);
+    });
+
+    if (missingBackgroundTasks.length > 0) {
+      logger.debug("Disabling missing background tasks", {
+        endpointId: endpoint.id,
+        missingIds: missingBackgroundTasks.map((job) => job.slug),
+      });
+
+      for (const backgroundTask of missingBackgroundTasks) {
+        const latestVersion = backgroundTask.aliases[0]?.version;
+
+        if (!latestVersion) {
+          continue;
+        }
+
+        const disabledBackgroundTask = await this.#disableBackgroundTaskService
+          .call(endpoint, {
+            slug: backgroundTask.slug,
+            version: latestVersion.version,
+          })
+          .catch((error) => {
+            logger.error("Failed to disable background task", {
+              endpointId: endpoint.id,
+              backgroundTask,
+              error,
+            });
+
+            return;
+          });
+
+        if (disabledBackgroundTask) {
           indexStats.disabledJobs++;
         }
       }

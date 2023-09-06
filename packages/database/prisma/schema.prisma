@@ -76,12 +76,14 @@ model Organization {
   events       EventRecord[]
   jobRuns      JobRun[]
 
-  projects         Project[]
-  members          OrgMember[]
-  invites          OrgMemberInvite[]
-  externalAccounts ExternalAccount[]
-  integrations     Integration[]
-  sources          TriggerSource[]
+  projects               Project[]
+  members                OrgMember[]
+  invites                OrgMemberInvite[]
+  externalAccounts       ExternalAccount[]
+  integrations           Integration[]
+  sources                TriggerSource[]
+  backgroundTasks        BackgroundTask[]
+  backgroundTaskVersions BackgroundTaskVersion[]
 }
 
 model ExternalAccount {
@@ -316,7 +318,10 @@ model RuntimeEnvironment {
   sources           TriggerSource[]
   eventDispatchers  EventDispatcher[]
   scheduleSources   ScheduleSource[]
-  ExternalAccount   ExternalAccount[]
+  externalAccounts  ExternalAccount[]
+
+  backgroundTaskVersions BackgroundTaskVersion[]
+  backgroundTaskAliases  BackgroundTaskAlias[]
 
   @@unique([projectId, slug, orgMemberId])
 }
@@ -346,6 +351,9 @@ model Project {
   events       EventRecord[]
   runs         JobRun[]
   sources      TriggerSource[]
+
+  backgroundTasks        BackgroundTask[]
+  backgroundTaskVersions BackgroundTaskVersion[]
 }
 
 model Endpoint {
@@ -373,6 +381,8 @@ model Endpoint {
   dynamictriggers       DynamicTrigger[]
   sources               TriggerSource[]
   indexings             EndpointIndex[]
+
+  backgroundTaskVersions BackgroundTaskVersion[]
 
   @@unique([environmentId, slug])
 }
@@ -859,6 +869,8 @@ model SecretReference {
   integrations   Integration[]
   triggerSources TriggerSource[]
 
+  backgroundTaskSecrets BackgroundTaskSecret[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -1067,4 +1079,91 @@ model ApiIntegrationVote {
   updatedAt DateTime @updatedAt
 
   @@unique([apiIdentifier, userId])
+}
+
+model BackgroundTask {
+  id    String @id @default(cuid())
+  slug  String
+  title String
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  versions BackgroundTaskVersion[]
+  aliases  BackgroundTaskAlias[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  deletedAt DateTime?
+
+  @@unique([projectId, slug])
+}
+
+model BackgroundTaskVersion {
+  id      String @id @default(cuid())
+  version String
+
+  cpu         Int @default(1)
+  memory      Int @default(256)
+  concurrency Int @default(1)
+
+  backgroundTask   BackgroundTask @relation(fields: [backgroundTaskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  backgroundTaskId String
+
+  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  endpointId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  aliases BackgroundTaskAlias[]
+  secrets BackgroundTaskSecret[]
+
+  @@unique([backgroundTaskId, version, environmentId])
+}
+
+model BackgroundTaskAlias {
+  id    String @id @default(cuid())
+  name  String @default("latest")
+  value String
+
+  version   BackgroundTaskVersion @relation(fields: [versionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  versionId String
+
+  backgroundTask   BackgroundTask @relation(fields: [backgroundTaskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  backgroundTaskId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  @@unique([backgroundTaskId, environmentId, name])
+}
+
+model BackgroundTaskSecret {
+  id  String @id @default(cuid())
+  key String
+
+  secretReference   SecretReference @relation(fields: [secretReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  secretReferenceId String
+
+  backgroundTaskVersion   BackgroundTaskVersion @relation(fields: [backgroundTaskVersionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  backgroundTaskVersionId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([backgroundTaskVersionId, key])
 }

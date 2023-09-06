@@ -42,6 +42,7 @@ import type {
   TriggerContext,
   TriggerPreprocessContext,
 } from "./types";
+import { BackgroundTask, BackgroundTaskOptions } from "./backgroundTask";
 
 const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
   name: REGISTER_SOURCE_EVENT_V2,
@@ -76,6 +77,7 @@ export class TriggerClient {
   #options: TriggerClientOptions;
   #registeredJobs: Record<string, Job<Trigger<EventSpecification<any>>, any>> = {};
   #registeredSources: Record<string, SourceMetadataV2> = {};
+  #registeredBackgroundTasks: Record<string, BackgroundTask<any>> = {};
   #registeredHttpSourceHandlers: Record<
     string,
     (
@@ -221,6 +223,9 @@ export class TriggerClient {
 
         const body: IndexEndpointResponse = {
           jobs: Object.values(this.#registeredJobs).map((job) => job.toJSON()),
+          backgroundTasks: Object.values(this.#registeredBackgroundTasks).map((task) =>
+            task.toJSON()
+          ),
           sources: Object.values(this.#registeredSources),
           dynamicTriggers: Object.values(this.#registeredDynamicTriggers).map((trigger) => ({
             id: trigger.id,
@@ -424,6 +429,10 @@ export class TriggerClient {
     this.#registeredJobs[job.id] = job;
 
     job.trigger.attachToJob(this, job);
+  }
+
+  attachBackgroundTask(task: BackgroundTask<any>): void {
+    this.#registeredBackgroundTasks[task.id] = task;
   }
 
   attachDynamicTrigger(trigger: DynamicTrigger<any, any>): void {
@@ -862,6 +871,10 @@ export class TriggerClient {
     TIntegrations extends Record<string, TriggerIntegration> = {},
   >(options: JobOptions<TTrigger, TIntegrations>) {
     return new Job<TTrigger, TIntegrations>(this, options);
+  }
+
+  defineBackgroundTask<TPayload = any>(options: BackgroundTaskOptions<TPayload>) {
+    return new BackgroundTask<TPayload>(this, options);
   }
 }
 

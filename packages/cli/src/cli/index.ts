@@ -10,6 +10,7 @@ import { telemetryClient } from "../telemetry/telemetry";
 import { getVersion } from "../utils/getVersion";
 import { updateCommand } from "../commands/update";
 import { sendEventCommand } from "../commands/sendEvent";
+import { deployCommand } from "../commands/deploy";
 
 export const program = new Command();
 
@@ -121,6 +122,20 @@ program
   .action(async (path, options) => {
     try {
       await sendEventCommand(path, options);
+    } catch (e) {
+      throw e;
+    }
+  });
+
+program
+  .command("deploy")
+  .description("Deploy background tasks to Trigger.dev")
+  .argument("[path]", "The path to the project", ".")
+  .option("-e, --env-file <name>", "The name of the env file to load", ".env.local")
+  .version(getVersion(), "-v, --version", "Display the version number")
+  .action(async (path, options) => {
+    try {
+      await deployCommand(path, options);
     } catch (e) {
       throw e;
     }

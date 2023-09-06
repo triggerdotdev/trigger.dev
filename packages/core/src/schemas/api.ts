@@ -281,11 +281,25 @@ export const DynamicTriggerEndpointMetadataSchema = z.object({
 
 export type DynamicTriggerEndpointMetadata = z.infer<typeof DynamicTriggerEndpointMetadataSchema>;
 
+export const BackgroundTaskMetadataSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  version: z.string(),
+  enabled: z.boolean(),
+  cpu: z.number(),
+  memory: z.number(),
+  concurrency: z.number(),
+  secrets: z.record(z.string()).optional(),
+});
+
+export type BackgroundTaskMetadata = z.infer<typeof BackgroundTaskMetadataSchema>;
+
 export const IndexEndpointResponseSchema = z.object({
   jobs: z.array(JobMetadataSchema),
   sources: z.array(SourceMetadataSchema),
   dynamicTriggers: z.array(DynamicTriggerEndpointMetadataSchema),
   dynamicSchedules: z.array(RegisterDynamicSchedulePayloadSchema),
+  backgroundTasks: z.array(BackgroundTaskMetadataSchema).optional(),
 });
 
 export type IndexEndpointResponse = z.infer<typeof IndexEndpointResponseSchema>;

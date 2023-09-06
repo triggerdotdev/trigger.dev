@@ -19,6 +19,7 @@ type ProviderInitializationOptions = {
 export interface SecretStoreProvider {
   getSecret<T>(schema: z.Schema<T>, key: string): Promise<T | undefined>;
   setSecret<T extends object>(key: string, value: T): Promise<void>;
+  deleteSecret(key: string): Promise<boolean>;
 }
 
 /** The SecretStore will use the passed in provider. We do NOT recommend using "DATABASE" outside of localhost. */
@@ -41,6 +42,10 @@ export class SecretStore {
 
   setSecret<T extends object>(key: string, value: T): Promise<void> {
     return this.provider.setSecret(key, value);
+  }
+
+  deleteSecret<T extends object>(key: string): Promise<boolean> {
+    return this.provider.deleteSecret(key);
   }
 }
 
@@ -116,6 +121,16 @@ class PrismaSecretStore implements SecretStoreProvider {
     });
   }
 
+  async deleteSecret(key: string): Promise<boolean> {
+    const result = await this.#prismaClient.secretStore.delete({
+      where: {
+        key,
+      },
+    });
+
+    return !!result;
+  }
+
   async #decrypt(nonce: string, ciphertext: string, tag: string): Promise<string> {
     const decipher = nodeCrypto.createDecipheriv(
       "aes-256-gcm",
@@ -154,7 +169,7 @@ class PrismaSecretStore implements SecretStoreProvider {
 
 export function getSecretStore<
   K extends SecretStoreOptions,
-  TOptions extends ProviderInitializationOptions[K],
+  TOptions extends ProviderInitializationOptions[K]
 >(provider: K, options?: TOptions): SecretStore {
   switch (provider) {
     case "DATABASE": {

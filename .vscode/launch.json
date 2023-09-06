@@ -19,6 +19,14 @@
       "name": "Chrome webapp",
       "url": "http://localhost:3030",
       "webRoot": "${workspaceFolder}/apps/webapp/app"
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug Deploy CLI",
+      "command": "pnpm exec trigger-cli deploy",
+      "cwd": "${workspaceFolder}/examples/nextjs-background-tasks",
+      "sourceMaps": true
     }
   ]
 }
