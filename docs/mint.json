@@ -53,7 +53,35 @@
   "redirects": [
     {
       "source": "/documentation/quickstart",
-      "destination": "/documentation/quickstarts/nextjs"
+      "destination": "/documentation/quickstarts/introduction"
+    },
+    {
+      "source": "/documentation/quickstarts/remix",
+      "destination": "/documentation/guides/manual/remix"
+    },
+    {
+      "source": "/documentation/quickstarts/express",
+      "destination": "/documentation/guides/manual/express"
+    },
+    {
+      "source": "/documentation/quickstarts/redwood",
+      "destination": "/documentation/guides/manual/redwood"
+    },
+    {
+      "source": "/documentation/quickstarts/astro",
+      "destination": "/documentation/guides/manual/astro"
+    },
+    {
+      "source": "/documentation/quickstarts/nuxt",
+      "destination": "/documentation/guides/manual/nuxt"
+    },
+    {
+      "source": "/documentation/quickstarts/sveltekit",
+      "destination": "/documentation/guides/manual/sveltekit"
+    },
+    {
+      "source": "/documentation/quickstarts/fastify",
+      "destination": "/documentation/guides/manual/fastify"
     }
   ],
   "navigation": [
@@ -136,7 +164,16 @@
         "documentation/guides/cli",
         {
           "group": "Manual setup",
-          "pages": ["documentation/guides/manual/nextjs"]
+          "pages": [
+            "documentation/guides/manual/nextjs",
+            "documentation/guides/manual/remix",
+            "documentation/guides/manual/express",
+            "documentation/guides/manual/redwood",
+            "documentation/guides/manual/astro",
+            "documentation/guides/manual/nuxt",
+            "documentation/guides/manual/sveltekit",
+            "documentation/guides/manual/fastify"
+          ]
         },
 
         "documentation/guides/running-jobs",
