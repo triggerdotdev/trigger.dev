@@ -1,4 +1,4 @@
-import { FrameworkSelector } from "~/components/FrameworkSelector";
+import { FrameworkSelector } from "~/components/frameworks/FrameworkSelector";
 import { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
