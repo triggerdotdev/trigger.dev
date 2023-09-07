@@ -27,8 +27,6 @@ type ResolvedCLIOptions = Required<CLIOptions>;
 export async function createIntegrationCommand(path: string, cliOptions: any) {
   const result = CLIOptionsSchema.safeParse(cliOptions);
 
-  console.log(result);
-
   if (!result.success) {
     logger.error(result.error.message);
 
