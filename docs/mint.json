@@ -188,6 +188,7 @@
     {
       "group": "Integrations",
       "pages": [
+        "integrations/apis/airtable",
         {
           "group": "GitHub",
           "pages": [
