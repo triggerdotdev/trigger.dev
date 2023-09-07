@@ -45,7 +45,7 @@ export function FrameworkSelector() {
             <ExpressLogo className="w-32" />
           </Link>
           <Link to={projectSetupRedwoodPath(organization, project)} className={variant}>
-            <RedwoodLogo className="w-32" />
+            <RedwoodLogo className="w-44" />
           </Link>
           <Link to={projectSetupAstroPath(organization, project)} className={variant}>
             <AstroLogo className="w-32" />
@@ -54,10 +54,10 @@ export function FrameworkSelector() {
             <NuxtLogo className="w-32" />
           </Link>
           <Link to={projectSetupSvelteKitPath(organization, project)} className={variant}>
-            <SvelteKitLogo className="w-32" />
+            <SvelteKitLogo className="w-44" />
           </Link>
           <Link to={projectSetupFastifyPath(organization, project)} className={variant}>
-            <FastifyLogo className="w-32" />
+            <FastifyLogo className="w-36" />
           </Link>
         </div>
       </div>
