@@ -18,6 +18,7 @@ const CLIOptionsSchema = z.object({
   skipGeneratingCode: z.coerce.boolean().optional(),
   authMethod: z.enum(["api-key", "oauth", "both-methods"]).optional(),
   openaiKey: z.string().optional(),
+  openaiOrg: z.string().optional(),
 });
 
 type CLIOptions = z.infer<typeof CLIOptionsSchema>;
@@ -25,6 +26,8 @@ type ResolvedCLIOptions = Required<CLIOptions>;
 
 export async function createIntegrationCommand(path: string, cliOptions: any) {
   const result = CLIOptionsSchema.safeParse(cliOptions);
+
+  console.log(result);
 
   if (!result.success) {
     logger.error(result.error.message);
@@ -256,7 +259,8 @@ async function attemptToGenerateIntegrationFiles(path: string, options: Resolved
       sdkPackage: options.sdkPackage,
       extraInfo,
     },
-    options.openaiKey ?? process.env.OPENAI_API_KEY
+    options.openaiKey ?? process.env.OPENAI_API_KEY,
+    options.openaiOrg ?? process.env.OPENAI_ORGANIZATION
   );
 
   if (files) {
