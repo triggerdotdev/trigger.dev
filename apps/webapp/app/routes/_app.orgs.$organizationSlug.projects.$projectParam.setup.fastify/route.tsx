@@ -1,3 +1,4 @@
+import { FastifyLogo } from "~/assets/logos/FastifyLogo";
 import { FrameworkComingSoon } from "~/components/frameworks/FrameworkComingSoon";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { Handle } from "~/utils/handle";
@@ -8,5 +9,13 @@ export const handle: Handle = {
 };
 
 export default function Page() {
-  return <FrameworkComingSoon framework="Fastify" githubIssue="#" />;
+  return (
+    <FrameworkComingSoon
+      frameworkName="Fastify"
+      githubIssueUrl="https://github.com/triggerdotdev/trigger.dev"
+      githubIssueNumber={245}
+    >
+      <FastifyLogo className="w-56" />
+    </FrameworkComingSoon>
+  );
 }

@@ -1,3 +1,4 @@
+import { AstroLogo } from "~/assets/logos/AstroLogo";
 import { FrameworkComingSoon } from "~/components/frameworks/FrameworkComingSoon";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { Handle } from "~/utils/handle";
@@ -8,5 +9,13 @@ export const handle: Handle = {
 };
 
 export default function Page() {
-  return <FrameworkComingSoon framework="Astro" githubIssue="#" />;
+  return (
+    <FrameworkComingSoon
+      frameworkName="Astro"
+      githubIssueUrl="https://github.com/triggerdotdev/trigger.dev"
+      githubIssueNumber={624}
+    >
+      <AstroLogo className="w-56" />
+    </FrameworkComingSoon>
+  );
 }

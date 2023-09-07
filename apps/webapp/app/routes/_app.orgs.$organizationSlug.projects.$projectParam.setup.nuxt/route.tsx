@@ -1,3 +1,4 @@
+import { NuxtLogo } from "~/assets/logos/NuxtLogo";
 import { FrameworkComingSoon } from "~/components/frameworks/FrameworkComingSoon";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { Handle } from "~/utils/handle";
@@ -8,5 +9,13 @@ export const handle: Handle = {
 };
 
 export default function Page() {
-  return <FrameworkComingSoon framework="Nuxt" githubIssue="#" />;
+  return (
+    <FrameworkComingSoon
+      frameworkName="Nuxt"
+      githubIssueUrl="https://github.com/triggerdotdev/trigger.dev"
+      githubIssueNumber={332}
+    >
+      <NuxtLogo className="w-56" />
+    </FrameworkComingSoon>
+  );
 }

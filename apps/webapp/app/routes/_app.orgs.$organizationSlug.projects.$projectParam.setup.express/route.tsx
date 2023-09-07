@@ -1,3 +1,4 @@
+import { ExpressLogo } from "~/assets/logos/ExpressLogo";
 import { FrameworkComingSoon } from "~/components/frameworks/FrameworkComingSoon";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { Handle } from "~/utils/handle";
@@ -8,5 +9,13 @@ export const handle: Handle = {
 };
 
 export default function Page() {
-  return <FrameworkComingSoon framework="Express" githubIssue="#" />;
+  return (
+    <FrameworkComingSoon
+      frameworkName="Express"
+      githubIssueUrl="https://github.com/triggerdotdev/trigger.dev"
+      githubIssueNumber={244}
+    >
+      <ExpressLogo className="w-56" />
+    </FrameworkComingSoon>
+  );
 }
