@@ -8,5 +8,5 @@ export const handle: Handle = {
 };
 
 export default function Page() {
-  return <FrameworkComingSoon />;
+  return <FrameworkComingSoon framework="Remix" githubIssue="#" />;
 }
