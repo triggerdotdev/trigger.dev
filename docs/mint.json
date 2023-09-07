@@ -69,8 +69,8 @@
               "group": "Frameworks",
               "pages": [
                 "documentation/quickstarts/nextjs",
-                "documentation/quickstarts/remix",
                 "documentation/quickstarts/express",
+                "documentation/quickstarts/remix",
                 "documentation/quickstarts/redwood",
                 "documentation/quickstarts/astro",
                 "documentation/quickstarts/nuxt",
@@ -124,8 +124,8 @@
           "group": "Platforms",
           "pages": [
             "documentation/guides/platforms/nextjs",
-            "documentation/guides/platforms/remix",
             "documentation/guides/platforms/express",
+            "documentation/guides/platforms/remix",
             "documentation/guides/platforms/redwood",
             "documentation/guides/platforms/astro",
             "documentation/guides/platforms/nuxt",
@@ -138,8 +138,8 @@
           "group": "Manual setup",
           "pages": [
             "documentation/guides/manual/nextjs",
-            "documentation/guides/manual/remix",
             "documentation/guides/manual/express",
+            "documentation/guides/manual/remix",
             "documentation/guides/manual/redwood",
             "documentation/guides/manual/astro",
             "documentation/guides/manual/nuxt",
