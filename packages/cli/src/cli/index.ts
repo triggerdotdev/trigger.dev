@@ -132,10 +132,7 @@ program
   .description("Deploy background tasks to Trigger.dev")
   .argument("[path]", "The path to the project", ".")
   .option("-e, --env-file <name>", "The name of the env file to load", ".env.local")
-  .option(
-    "-t, --snapshot-tag <tag>",
-    "The snapshot tag to use if the @trigger.dev/* packages are linked"
-  )
+  .option("-t, --tag <tag>", "The tag to use if the @trigger.dev/* packages are linked")
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (path, options) => {
     try {

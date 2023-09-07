@@ -4,26 +4,32 @@ import { keyValueBy } from "../keyValueBy";
 import nodeSemver from "semver";
 import jsonlines from "jsonlines";
 
-export async function getVersionOfInstalledDependency(
+export async function listPackageDependencies(
   path: string,
-  dependency: string,
-  snapshotTag: string | undefined = undefined
-): Promise<string | undefined> {
+  tag: string | undefined = undefined
+): Promise<Record<string, string | undefined>> {
   const packageManager = await getPackageManagerCommands(path);
 
   const list = await packageManager.list({ cwd: path });
 
-  const version = list[dependency];
+  return Object.keys(list).reduce(
+    (acc, dependency) => {
+      const version = list[dependency];
 
-  if (!version) {
-    return;
-  }
+      if (!version) {
+        return acc;
+      }
 
-  if (version.startsWith("link:")) {
-    return snapshotTag ?? "latest";
-  }
+      if (dependency.startsWith("@trigger.dev/") && version.startsWith("link:")) {
+        acc[dependency] = tag ?? "latest";
+      } else {
+        acc[dependency] = version;
+      }
 
-  return version;
+      return acc;
+    },
+    {} as Record<string, string | undefined>
+  );
 }
 
 type PnpmList = {

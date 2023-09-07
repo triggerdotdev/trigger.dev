@@ -47,7 +47,11 @@
     "useDefineForClassFields": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "types": ["jest"]
+    "types": ["jest"],
+    "paths": {
+      "@trigger.dev/core/*": ["../core/src/*"],
+      "@trigger.dev/core": ["../core/src/index"]
+    }
   },
   "exclude": ["node_modules"]
 }

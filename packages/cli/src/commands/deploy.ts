@@ -1,16 +1,20 @@
+import { CallExpression, Expression, parse } from "@swc/core";
+import { Visitor } from "@swc/core/Visitor.js";
+import type { DeployBackgroundTaskRequestBody } from "@trigger.dev/core";
 import childProcess from "child_process";
 import { build } from "esbuild";
+import pathModule from "node:path";
 import util from "util";
 import { z } from "zod";
 import { logger } from "../utils/logger";
+import { listPackageDependencies } from "../utils/packageManagers";
 import { resolvePath } from "../utils/parseNameAndPath";
-import pathModule from "node:path";
 
 const asyncExecFile = util.promisify(childProcess.execFile);
 
 export const DeployCommandOptionsSchema = z.object({
   envFile: z.string(),
-  snapshotTag: z.string().optional(),
+  tag: z.string().optional(),
 });
 
 export type DevCommandOptions = z.infer<typeof DeployCommandOptionsSchema>;
@@ -62,7 +66,7 @@ export async function deployCommand(path: string, anyOptions: any) {
   const tasks: DeployBackgroundTaskRequestBody[] = [];
 
   for (const entryPoint of entryPoints) {
-    const task = await gatherBackgroundTaskDeployment(resolvedPath, entryPoint, bundle);
+    const task = await gatherBackgroundTaskDeployment(resolvedPath, entryPoint, bundle, options);
 
     if (task) {
       tasks.push(task);
@@ -76,7 +80,7 @@ async function gatherBackgroundTaskDeployment(
   projectPath: string,
   file: string,
   bundle: TasksBundle,
-  snapshotTag: string | undefined = undefined
+  options: DevCommandOptions
 ): Promise<DeployBackgroundTaskRequestBody | undefined> {
   const outputKey = Object.keys(bundle.metafile.outputs).find(
     (o) => bundle.metafile.outputs[o]?.entryPoint === file
@@ -108,6 +112,12 @@ async function gatherBackgroundTaskDeployment(
     return;
   }
 
+  const taskInfo = await findTask(outputFile.text);
+
+  if (!taskInfo) {
+    return;
+  }
+
   const dependencies: Record<string, string> = {};
   const imports = new Set<string>();
 
@@ -121,8 +131,10 @@ async function gatherBackgroundTaskDeployment(
     }
   }
 
+  const packageDependencies = await listPackageDependencies(projectPath, options.tag);
+
   for (const importName of imports) {
-    const version = await getVersionOfInstalledDependency(projectPath, importName, snapshotTag);
+    const version = packageDependencies[importName];
 
     if (version) {
       dependencies[importName] = version;
@@ -130,6 +142,16 @@ async function gatherBackgroundTaskDeployment(
   }
 
   logger.info(`Found ${Object.keys(dependencies).length} dependencies`);
+
+  return {
+    id: taskInfo.id,
+    version: taskInfo.version,
+    bundle: outputFile.text,
+    fileName: pathModule.basename(outputFile.path),
+    sourcemap: outputSourcemapFile.text,
+    dependencies,
+    nodeVersion: process.version,
+  };
 }
 
 function nodeBuiltIn(importName: string): boolean {
@@ -181,12 +203,6 @@ function nodeBuiltIn(importName: string): boolean {
 
   return builtInModules.includes(importName);
 }
-
-import { CallExpression, Expression, parse } from "@swc/core";
-
-import { Visitor } from "@swc/core/Visitor.js";
-import { DeployBackgroundTaskRequestBody } from "@trigger.dev/core";
-import { getVersionOfInstalledDependency } from "../utils/packageManagers";
 
 class BackgroundTaskVisitor extends Visitor {
   public id: string | null = null;

@@ -24,7 +24,7 @@
       "type": "node-terminal",
       "request": "launch",
       "name": "Debug Deploy CLI",
-      "command": "pnpm exec trigger-cli deploy",
+      "command": "pnpm exec trigger-cli deploy --tag 0.0.0-background-tasks-20230906212613",
       "cwd": "${workspaceFolder}/examples/nextjs-background-tasks",
       "sourceMaps": true
     }

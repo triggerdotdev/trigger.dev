@@ -744,18 +744,20 @@ export const CreateExternalConnectionBodySchema = z.object({
 
 export type CreateExternalConnectionBody = z.infer<typeof CreateExternalConnectionBodySchema>;
 
+export const SourceMapDefinitionSchema = z.object({
+  version: z.number(),
+  sources: z.array(z.string()),
+  mappings: z.string(),
+  sourcesContent: z.array(z.string()),
+  names: z.array(z.string()),
+});
+
 export const DeployBackgroundTaskRequestBodySchema = z.object({
   id: z.string(),
   version: z.string(),
   fileName: z.string(),
   bundle: z.string(),
-  sourcemap: z.object({
-    version: z.number(),
-    sources: z.array(z.string()),
-    mappings: z.string(),
-    sourcesContent: z.array(z.string()),
-    names: z.array(z.string()),
-  }),
+  sourcemap: z.string(),
   dependencies: z.record(z.string()),
   nodeVersion: z.string(),
 });
