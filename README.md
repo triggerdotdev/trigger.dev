@@ -69,7 +69,7 @@ Click the links to join the discussions about our upcoming features.
 | Vercel integration                                                                   | Easy deploy and preview environment support         | 🕝     |
 | Streaming                                                                            | Receive data from your Jobs in realtime             | 🕝     |
 | 100+ integrations                                                                    | Comprehensive support for popular APIs              | 🕝     |
-| Trigger.dev Connect                                                                  | Use integrations signed in as your users            | 🕝     |
+| [Trigger.dev Connect](https://github.com/triggerdotdev/trigger.dev/discussions/441)  | Use integrations signed in as your users            | 🕝     |
 | File IO                                                                              | Create Tasks that have file outputs                 | 🕝     |
 
 # Getting started
