@@ -379,7 +379,6 @@ importers:
       '@trigger.dev/stripe': workspace:*
       '@trigger.dev/supabase': workspace:*
       '@trigger.dev/tsconfig': workspace:*
-      '@trigger.dev/twitter': workspace:*
       '@trigger.dev/typeform': workspace:*
       '@types/node': 20.4.2
       concurrently: ^8.2.0
@@ -401,7 +400,6 @@ importers:
       '@trigger.dev/slack': link:../../integrations/slack
       '@trigger.dev/stripe': link:../../integrations/stripe
       '@trigger.dev/supabase': link:../../integrations/supabase
-      '@trigger.dev/twitter': link:../../integrations/twitter
       '@trigger.dev/typeform': link:../../integrations/typeform
       '@types/node': 20.4.2
       typescript: 5.1.6
@@ -813,25 +811,6 @@ importers:
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 18.15.13
-      rimraf: 3.0.2
-      tsup: 7.1.0_typescript@4.9.4
-      typescript: 4.9.4
-
-  integrations/twitter:
-    specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.1.0
-      '@trigger.dev/sdk': workspace:^2.1.0
-      '@types/node': 16.x
-      rimraf: ^3.0.2
-      tsup: 7.1.x
-      twitter-api-sdk: ^1.2.1
-      typescript: 4.9.4
-    dependencies:
-      '@trigger.dev/integration-kit': link:../../packages/integration-kit
-      '@trigger.dev/sdk': link:../../packages/trigger-sdk
-      twitter-api-sdk: 1.2.1
-    devDependencies:
-      '@types/node': 16.18.11
       rimraf: 3.0.2
       tsup: 7.1.0_typescript@4.9.4
       typescript: 4.9.4
@@ -26461,16 +26440,6 @@ packages:
       turbo-windows-64: 1.10.3
       turbo-windows-arm64: 1.10.3
     dev: true
-
-  /twitter-api-sdk/1.2.1:
-    resolution: {integrity: sha512-tNQ6DGYucFk94JlnUMsHCkHg5o1wnCdHh71Y2ukygNVssOdD1gNVjOpaojJrdwbEAhoZvcWdGHerCa55F8HKxQ==}
-    engines: {node: '>=14'}
-    dependencies:
-      abort-controller: 3.0.0
-      node-fetch: 2.6.12
-    transitivePeerDependencies:
-      - encoding
-    dev: false
 
   /type-check/0.3.2:
     resolution: {integrity: sha512-ZCmOJdvOWDBYJlzAoFkC+Q0+bUyEOS1ltgp1MGU03fqHG+dbi9tBFU2Rd9QKiDZFAYrhPh2JUf7rZRIuHRKtOg==}
