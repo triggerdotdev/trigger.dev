@@ -68,12 +68,12 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const { jobs } = useTypedLoaderData<typeof loader>();
-
   const { filterText, setFilterText, filteredItems } = useFilterJobs(jobs);
+  const hasJobs = jobs.length > 0;
 
   return (
-    <PageContainer>
-      {jobs.length > 0 && (
+    <PageContainer className={hasJobs ? "" : "grid-rows-1"}>
+      {hasJobs && (
         <PageHeader>
           <PageTitleRow>
             <PageTitle title="Jobs" />
@@ -90,7 +90,7 @@ export default function Page() {
           {(open) => (
             <div className={cn("grid gap-4", open ? "h-full grid-cols-2" : " h-full grid-cols-1")}>
               <div className="h-full">
-                {jobs.length > 0 ? (
+                {hasJobs ? (
                   <>
                     {jobs.some((j) => j.hasIntegrationsRequiringAction) && (
                       <Callout
