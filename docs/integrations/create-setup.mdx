@@ -10,7 +10,7 @@ Before you embark on creating an Integration, you have to decide where the Integ
 When you use the `@trigger.dev/cli create-integration` command you can pass in an OpenAI API key to generate the initial code for your Integration. Use the `-o` option to do this.
 
 ```bash
-npx @trigger.dev/cli create-integration -o=sk-abcdefghijk integrations/stripe
+npx @trigger.dev/cli create-integration -o "sk-abcdefghijk" integrations/stripe
 ```
 
 ## In the Trigger.dev monorepo
@@ -43,13 +43,11 @@ integrations
     ├── package.json
     ├── tsup.config.ts
     ├── src
-    │   ├── index.ts
-    │   ├── tasks.ts
-    │   └── types.ts
+    │   └── index.ts
     └── tsconfig.json
 ```
 
-Next, head to the [How to develop an Integration package](#how-to-develop-an-integration-package) section to learn how to develop your Integration.
+Next, head to the [structure of an integration](/integrations/create-anatomy) section.
 
 ## In your own repository
 

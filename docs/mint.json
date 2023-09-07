@@ -180,6 +180,7 @@
             "integrations/create-client",
             "integrations/create-tasks",
             "integrations/create-triggers",
+            "integrations/create-testing",
             "integrations/create-publishing"
           ]
         }
