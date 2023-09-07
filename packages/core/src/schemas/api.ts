@@ -763,3 +763,14 @@ export const DeployBackgroundTaskRequestBodySchema = z.object({
 });
 
 export type DeployBackgroundTaskRequestBody = z.infer<typeof DeployBackgroundTaskRequestBodySchema>;
+
+export const DeployBackgroundTaskResponseBodySchema = z.object({
+  id: z.string(),
+  hash: z.string(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+
+export type DeployBackgroundTaskResponseBody = z.infer<
+  typeof DeployBackgroundTaskResponseBodySchema
+>;

@@ -1092,8 +1092,9 @@ model BackgroundTask {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
-  versions BackgroundTaskVersion[]
-  aliases  BackgroundTaskAlias[]
+  versions  BackgroundTaskVersion[]
+  aliases   BackgroundTaskAlias[]
+  artifacts BackgroundTaskArtifact[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -1166,4 +1167,24 @@ model BackgroundTaskSecret {
   updatedAt DateTime @updatedAt
 
   @@unique([backgroundTaskVersionId, key])
+}
+
+model BackgroundTaskArtifact {
+  id      String @id @default(cuid())
+  version String
+
+  fileName     String
+  hash         String
+  bundle       String
+  sourcemap    Json
+  nodeVersion  String
+  dependencies Json
+
+  backgroundTask   BackgroundTask @relation(fields: [backgroundTaskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  backgroundTaskId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([backgroundTaskId, version, hash])
 }

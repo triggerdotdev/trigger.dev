@@ -9,6 +9,8 @@ import { z } from "zod";
 import { logger } from "../utils/logger";
 import { listPackageDependencies } from "../utils/packageManagers";
 import { resolvePath } from "../utils/parseNameAndPath";
+import { getTriggerApiDetails } from "../utils/getTriggerApiDetails";
+import { TriggerApi } from "../utils/triggerApi";
 
 const asyncExecFile = util.promisify(childProcess.execFile);
 
@@ -30,11 +32,19 @@ export async function deployCommand(path: string, anyOptions: any) {
 
   const resolvedPath = resolvePath(path);
 
+  const apiDetails = await getTriggerApiDetails(resolvedPath, options.envFile);
+
+  if (!apiDetails) {
+    logger.error("Could not find Trigger.dev API key");
+    return;
+  }
+
   logger.info(`Deploying ${resolvedPath}...`);
 
   // Find all files with .background.ts extension in the given path
   const { stdout } = await asyncExecFile("find", [resolvedPath, "-name", "*.background.ts"], {
     encoding: "utf-8",
+    cwd: resolvedPath,
   });
 
   const files = stdout
@@ -46,13 +56,16 @@ export async function deployCommand(path: string, anyOptions: any) {
 
   logger.info(`Found ${files.length} background tasks`);
 
+  // target is the process.version (e.g. v18.12.1) but we need to pass it as node18.12.1
+  const target = `node${process.version.replace("v", "")}`;
+
   // Each file is an entry point and should be built into a separate bundle (not to be output to a file but instead to be sent to the server)
   const bundle = await build({
     entryPoints: entryPoints,
     bundle: true,
     format: "cjs",
     platform: "node",
-    target: "node18.12.1",
+    target,
     write: false,
     minify: false,
     sourcemap: "external",
@@ -73,7 +86,17 @@ export async function deployCommand(path: string, anyOptions: any) {
     }
   }
 
-  logger.info(`Found ${tasks.length} task IDs`);
+  const apiClient = new TriggerApi(apiDetails.apiKey, apiDetails.apiUrl);
+
+  for (const task of tasks) {
+    const response = await apiClient.deployBackgroundTask(task);
+
+    if (!response.ok) {
+      logger.error(`Failed to deploy ${task.id}@${task.version}: ${response.error}`);
+    } else {
+      logger.info(`Deployed ${task.id}@${task.version}#${response.data.hash}`);
+    }
+  }
 }
 
 async function gatherBackgroundTaskDeployment(

@@ -1,3 +1,7 @@
+import {
+  DeployBackgroundTaskRequestBody,
+  DeployBackgroundTaskResponseBody,
+} from "@trigger.dev/core";
 import fetch from "node-fetch";
 import { z } from "zod";
 
@@ -17,6 +21,17 @@ export type EndpointData = {
   updatedAt: string;
   indexingHookIdentifier: string;
 };
+
+export type ApiResponse<TData> =
+  | {
+      ok: true;
+      data: TData;
+    }
+  | {
+      ok: false;
+      error: string;
+      retryable: boolean;
+    };
 
 export type EndpointResponse =
   | {
@@ -55,7 +70,7 @@ export type WhoamiResponse = z.infer<typeof WhoamiResponseSchema>;
 export class TriggerApi {
   constructor(
     private apiKey: string,
-    private baseUrl: string
+    private baseUrl: string = "https://api.trigger.dev"
   ) {}
 
   async whoami(apiKey: string): Promise<WhoamiResponse | undefined> {
@@ -152,6 +167,64 @@ export class TriggerApi {
     return {
       ok: true,
       data: data as any as EndpointData,
+    };
+  }
+
+  async deployBackgroundTask(
+    options: DeployBackgroundTaskRequestBody
+  ): Promise<ApiResponse<DeployBackgroundTaskResponseBody>> {
+    const response = await fetch(`${this.baseUrl}/api/v1/background/tasks`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify(options),
+    });
+
+    if (!response.ok) {
+      const rawBody = await response.text();
+
+      if (typeof rawBody === "string") {
+        const rawJson = safeJsonParse(rawBody);
+
+        if (!rawJson) {
+          return {
+            ok: false,
+            error: "An unknown issue occurred deploying to Trigger.dev",
+            retryable: true,
+          };
+        }
+
+        const parsedJson = z.object({ error: z.string() }).safeParse(rawJson);
+
+        if (!parsedJson.success) {
+          return {
+            ok: false,
+            error: "An unknown issue occurred deploying to Trigger.dev",
+            retryable: true,
+          };
+        }
+
+        return {
+          ok: false,
+          error: parsedJson.data.error,
+          retryable: RETRYABLE_PATTERN.test(parsedJson.data.error),
+        };
+      } else {
+        return {
+          ok: false,
+          error: "An unknown issue occurred deploying to Trigger.dev",
+          retryable: true,
+        };
+      }
+    }
+
+    const data = await response.json();
+
+    return {
+      ok: true,
+      data: data as any as DeployBackgroundTaskResponseBody,
     };
   }
 }
