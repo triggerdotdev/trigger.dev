@@ -48,7 +48,9 @@ export const initCommand = async (options: InitCommandOptions) => {
   const isNextJsProject = await detectNextJsProject(resolvedPath);
 
   if (!isNextJsProject) {
-    logger.error("You must run this command in a Next.js project.");
+    logger.error(
+      "We currently only support automatic setup for Next.js projects (we didn't detect one). View our manual installation guides for all frameworks: https://trigger.dev/docs/documentation/quickstarts/introduction"
+    );
     telemetryClient.init.failed("not_nextjs_project", options);
     return;
   } else {
