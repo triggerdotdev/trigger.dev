@@ -296,7 +296,7 @@
     },
     {
       "group": "Overview",
-      "pages": ["examples/introduction", "examples/examples-repository"]
+      "pages": ["examples/introduction"]
     }
   ],
   "footerSocials": {
