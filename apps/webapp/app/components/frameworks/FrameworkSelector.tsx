@@ -87,7 +87,7 @@ type FrameworkLinkProps = {
   supported?: boolean;
 };
 
-function FrameworkLink({ children, to, supported }: FrameworkLinkProps) {
+function FrameworkLink({ children, to, supported = false }: FrameworkLinkProps) {
   return (
     <Link
       to={to}
