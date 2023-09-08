@@ -1,0 +1,43 @@
+{
+  "name": "@trigger.dev/sveltekit",
+  "version": "0.0.1",
+  "description": "Trigger.dev svelteKit integration",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "devDependencies": {
+    "@sveltejs/kit": "^1.20.4",
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/debug": "^4.1.7",
+    "@types/ws": "^8.5.3",
+    "rimraf": "^3.0.2",
+    "tsup": "^6.5.0"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup"
+  },
+  "peerDependencies": {
+    "@trigger.dev/sdk": "workspace:^2.0.14"
+  },
+  "dependencies": {
+    "debug": "^4.3.4"
+  },
+  "engines": {
+    "node": ">=16.8.0"
+  }
+}
