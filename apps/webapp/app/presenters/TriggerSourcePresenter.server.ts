@@ -62,6 +62,22 @@ export class TriggerSourcePresenter {
             },
           },
         },
+        dynamicTrigger: {
+          select: {
+            id: true,
+            slug: true,
+            sourceRegistrationJob: {
+              select: {
+                job: {
+                  select: {
+                    id: true,
+                    slug: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
       where: {
         id: triggerSourceId,
@@ -73,10 +89,15 @@ export class TriggerSourcePresenter {
     }
 
     const runListPresenter = new RunListPresenter(this.#prismaClient);
-    const runList = trigger.sourceRegistrationJob
+    const jobSlug = getJobSlug(
+      trigger.sourceRegistrationJob?.job.slug,
+      trigger.dynamicTrigger?.sourceRegistrationJob?.job.slug
+    );
+
+    const runList = jobSlug
       ? await runListPresenter.call({
           userId,
-          jobSlug: trigger.sourceRegistrationJob.job.slug,
+          jobSlug,
           organizationSlug,
           projectSlug,
           direction,
@@ -95,7 +116,21 @@ export class TriggerSourcePresenter {
         params: trigger.params,
         registrationJob: trigger.sourceRegistrationJob?.job,
         runList,
+        dynamic: trigger.dynamicTrigger
+          ? { id: trigger.dynamicTrigger.id, slug: trigger.dynamicTrigger.slug }
+          : undefined,
       },
     };
   }
+}
+
+function getJobSlug(
+  sourceRegistrationJobSlug: string | undefined,
+  dynamicSourceRegistrationJobSlug: string | undefined
+) {
+  if (sourceRegistrationJobSlug) {
+    return sourceRegistrationJobSlug;
+  }
+
+  return dynamicSourceRegistrationJobSlug;
 }

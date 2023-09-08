@@ -1,15 +1,8 @@
-import { ConnectionAuth, RunTaskOptions } from "@trigger.dev/core";
-import {
-  AuthenticatedTask,
-  IOWithIntegrations,
-  IntegrationClient,
-  TriggerIntegration,
-} from "./integrations";
+import { ConnectionAuth } from "@trigger.dev/core";
+import { IOWithIntegrations, TriggerIntegration } from "./integrations";
 import { IO } from "./io";
 
-export function createIOWithIntegrations<
-  TIntegrations extends Record<string, TriggerIntegration<IntegrationClient<any, any>>>,
->(
+export function createIOWithIntegrations<TIntegrations extends Record<string, TriggerIntegration>>(
   io: IO,
   auths?: Record<string, ConnectionAuth | undefined>,
   integrations?: TIntegrations
@@ -18,76 +11,25 @@ export function createIOWithIntegrations<
     return io as IOWithIntegrations<TIntegrations>;
   }
 
-  const connections = Object.entries(integrations).reduce((acc, [connectionKey, integration]) => {
-    let auth = auths?.[connectionKey];
+  const connections = Object.entries(integrations).reduce(
+    (acc, [connectionKey, integration]) => {
+      let auth = auths?.[connectionKey];
 
-    const client = integration.client.usesLocalAuth
-      ? integration.client.client
-      : auth
-      ? integration.client.clientFactory?.(auth)
-      : undefined;
+      acc[connectionKey] = {
+        integration,
+        auth,
+      };
 
-    if (!client) {
       return acc;
-    }
-
-    auth = integration.client.usesLocalAuth ? integration.client.auth : auth;
-
-    const ioConnection = {
-      client,
-    } as any;
-
-    ioConnection.runTask = async (
-      key: string | any[],
-      callback: (client: any, task: any, io: IO) => Promise<any>,
-      options?: RunTaskOptions
-    ) => {
-      return await io.runTask(
-        key,
-        {
-          name: "Task",
-          icon: integration.metadata.id,
-          retry: {
-            limit: 10,
-            minTimeoutInMs: 1000,
-            maxTimeoutInMs: 30000,
-            factor: 2,
-            randomize: true,
-          },
-          ...options,
-        },
-        async (ioTask) => {
-          return await callback(client, ioTask, io);
-        }
-      );
-    };
-
-    if (integration.client.tasks) {
-      const tasks: Record<string, AuthenticatedTask<any, any, any, any>> = integration.client.tasks;
-
-      Object.keys(tasks).forEach((taskName) => {
-        const authenticatedTask = tasks[taskName];
-
-        ioConnection[taskName] = async (key: string | string[], params: any) => {
-          const options = authenticatedTask.init(params);
-          options.connectionKey = connectionKey;
-
-          return await io.runTask(
-            key,
-            options,
-            async (ioTask) => {
-              return authenticatedTask.run(params, client, ioTask, io, auth);
-            },
-            authenticatedTask.onError
-          );
-        };
-      });
-    }
-
-    acc[connectionKey] = ioConnection;
-
-    return acc;
-  }, {} as any);
+    },
+    {} as Record<
+      string,
+      {
+        integration: TriggerIntegration;
+        auth?: ConnectionAuth;
+      }
+    >
+  );
 
   return new Proxy(io, {
     get(target, prop, receiver) {
@@ -96,8 +38,9 @@ export function createIOWithIntegrations<
         return io;
       }
 
-      if (prop in connections) {
-        return connections[prop];
+      if (typeof prop === "string" && prop in connections) {
+        const { integration, auth } = connections[prop];
+        return integration.cloneForRun(io, prop, auth);
       }
 
       const value = Reflect.get(target, prop, receiver);

@@ -120,13 +120,13 @@ You can string together multiple Tasks and regular code in any order you want.
 
 **Useful built-in Tasks:**
 
-| Task                                        | Description                                                             | Task code                                                                                  |
-| ------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| [Delay](/documentation/concepts/delays)     | Wait for a period of time                                               | `await io.wait("wait", 60);`                                                               |
-| [Log](/sdk/io/logger)                       | Log a message                                                           | `await io.logger.log("Hello");`                                                            |
-| [Send Event](/sdk/io/sendevent)             | Send an event (for eventTrigger)                                        | `await io.sendEvent("my-event", { name: "my.event", payload: { hello: "world" } });`       |
-| [Run task](/sdk/io/runtask)                 | Wrap your own code in this to create a Task                             | `await io.runTask("My Task", { name: "My Task" }, async () => { console.log("Hello"); });` |
-| [Background fetch](/sdk/io/backgroundfetch) | Fetch data from a URL that can take longer that the serverless timeout. | `await io.backgroundFetch("fetch-some-data", { url: "https://example.com" });`             |
+| Task                                        | Description                                                             | Task code                                                                            |
+| ------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| [Delay](/documentation/concepts/delays)     | Wait for a period of time                                               | `await io.wait("wait", 60);`                                                         |
+| [Log](/sdk/io/logger)                       | Log a message                                                           | `await io.logger.log("Hello");`                                                      |
+| [Send Event](/sdk/io/sendevent)             | Send an event (for eventTrigger)                                        | `await io.sendEvent("my-event", { name: "my.event", payload: { hello: "world" } });` |
+| [Run task](/sdk/io/runtask)                 | Wrap your own code in this to create a Task                             | `await io.runTask("My Task", async () => { console.log("Hello"); });`                |
+| [Background fetch](/sdk/io/backgroundfetch) | Fetch data from a URL that can take longer that the serverless timeout. | `await io.backgroundFetch("fetch-some-data", { url: "https://example.com" });`       |
 
 For a full list of built-in Tasks, see the [io SDK reference](/sdk/io).
 

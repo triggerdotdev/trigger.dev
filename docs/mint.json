@@ -207,11 +207,28 @@
     },
     {
       "group": "Overview",
-      "pages": ["integrations/introduction", "integrations/create"]
+      "pages": [
+        "integrations/introduction",
+        {
+          "group": "Create an Integration",
+          "pages": [
+            "integrations/create",
+            "integrations/create-setup",
+            "integrations/create-anatomy",
+            "integrations/create-oauth",
+            "integrations/create-client",
+            "integrations/create-tasks",
+            "integrations/create-triggers",
+            "integrations/create-testing",
+            "integrations/create-publishing"
+          ]
+        }
+      ]
     },
     {
       "group": "Integrations",
       "pages": [
+        "integrations/apis/airtable",
         {
           "group": "GitHub",
           "pages": [
@@ -220,24 +237,12 @@
             "integrations/apis/github-tasks"
           ]
         },
-        {
-          "group": "OpenAI",
-          "pages": ["integrations/apis/openai"]
-        },
-        "integrations/apis/stripe",
+        "integrations/apis/openai",
         "integrations/apis/plain",
-        {
-          "group": "Resend",
-          "pages": ["integrations/apis/resend"]
-        },
-        {
-          "group": "SendGrid",
-          "pages": ["integrations/apis/sendgrid"]
-        },
-        {
-          "group": "Slack",
-          "pages": ["integrations/apis/slack"]
-        },
+        "integrations/apis/resend",
+        "integrations/apis/sendgrid",
+        "integrations/apis/slack",
+        "integrations/apis/stripe",
         {
           "group": "Supabase",
           "pages": [
@@ -330,7 +335,7 @@
     },
     {
       "group": "Overview",
-      "pages": ["examples/introduction", "examples/examples-repository"]
+      "pages": ["examples/introduction"]
     }
   ],
   "footerSocials": {

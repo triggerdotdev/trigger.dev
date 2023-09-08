@@ -28,6 +28,7 @@ export type EnqueueRunExecutionV2Options = {
   resumeTaskId?: string;
   isRetry?: boolean;
   skipRetrying?: boolean;
+  executionCount?: number;
 };
 
 export async function enqueueRunExecutionV2(
@@ -44,10 +45,11 @@ export async function enqueueRunExecutionV2(
       isRetry: typeof options.isRetry === "boolean" ? options.isRetry : false,
     },
     {
-      queueName: `job:${run.jobId}:env:${run.environmentId}`,
       tx,
       runAt: options.runAt,
-      jobKey: `job_run:${run.id}`,
+      jobKey: `job_run:${run.id}:${options.executionCount ?? 0}${
+        options.resumeTaskId ? `:task:${options.resumeTaskId}` : ""
+      }`,
       maxAttempts: options.skipRetrying ? 1 : undefined,
     }
   );

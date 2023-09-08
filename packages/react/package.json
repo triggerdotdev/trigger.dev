@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/react",
-  "version": "2.0.14",
+  "version": "2.1.0",
   "description": "Trigger.dev React SDK",
   "license": "MIT",
   "types": "dist/index.d.ts",
@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "5.0.0-beta.2",
-    "@trigger.dev/core": "workspace:^2.0.14",
+    "@trigger.dev/core": "workspace:^2.1.0",
     "debug": "^4.3.4",
     "zod": "3.21.4"
   },
@@ -40,7 +40,8 @@
     "react": "^18.2.0",
     "rimraf": "^3.0.2",
     "tsup": "^7.1.0",
-    "tsx": "^3.12.1"
+    "tsx": "^3.12.1",
+    "typescript": "^4.8.4"
   },
   "peerDependencies": {
     "react": "^16.8.0 || ^17.0.0 || ^18"

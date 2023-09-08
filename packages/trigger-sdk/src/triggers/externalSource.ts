@@ -4,20 +4,23 @@ import {
   DisplayProperty,
   EventFilter,
   HandleTriggerSource,
+  HttpSourceResponseMetadata,
   Logger,
   NormalizedResponse,
-  RegisterSourceEvent,
+  RegisterTriggerSource,
   SendEvent,
   TriggerMetadata,
-  UpdateTriggerSourceBody,
   deepMergeFilters,
 } from "@trigger.dev/core";
-import { IOWithIntegrations, IntegrationClient, TriggerIntegration } from "../integrations";
+import { IOWithIntegrations, TriggerIntegration } from "../integrations";
 import { IO } from "../io";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
 import type { EventSpecification, Trigger, TriggerContext } from "../types";
 import { slugifyId } from "../utils";
+import { SerializableJson } from "@trigger.dev/core";
+import { ConnectionAuth } from "@trigger.dev/core";
+import { Prettify } from "@trigger.dev/core";
 
 export type HttpSourceEvent = {
   url: string;
@@ -56,10 +59,35 @@ type ExternalSourceChannelMap = {
 
 type ChannelNames = keyof ExternalSourceChannelMap;
 
-type RegisterFunctionEvent<TChannel extends ChannelNames, TParams extends any> = {
-  events: Array<string>;
-  missingEvents: Array<string>;
-  orphanedEvents: Array<string>;
+type TriggerOptionDiff = {
+  desired: string[];
+  missing: string[];
+  orphaned: string[];
+};
+
+type TriggerOptionDiffs<TTriggerOptionDefinitions extends Record<string, string[]> = any> =
+  TriggerOptionsRecordWithEvent<TriggerOptionDiff, TTriggerOptionDefinitions>;
+
+type TriggerOptionsRecordWithEvent<
+  TValue,
+  TTriggerOptionDefinitions extends Record<string, string[]>,
+> = {
+  event: TValue;
+} & TriggerOptionRecord<TValue, TTriggerOptionDefinitions>;
+
+export type TriggerOptionRecord<
+  TValue,
+  TTriggerOptionDefinitions extends Record<string, string[]> = any,
+> = {
+  [K in keyof TTriggerOptionDefinitions]: TValue;
+};
+
+type RegisterFunctionEvent<
+  TChannel extends ChannelNames,
+  TParams extends any,
+  TTriggerOptionDefinitions extends Record<string, string[]> = any,
+> = {
+  options: TriggerOptionDiffs<TTriggerOptionDefinitions>;
   source: {
     active: boolean;
     data?: any;
@@ -68,55 +96,90 @@ type RegisterFunctionEvent<TChannel extends ChannelNames, TParams extends any> =
   params: TParams;
 };
 
+type RegisterSourceEvent<TTriggerOptionDefinitions extends Record<string, string[]> = any> = {
+  id: string;
+  source: RegisterTriggerSource;
+  dynamicTriggerId?: string;
+  options: TriggerOptionDiffs<TTriggerOptionDefinitions>;
+};
+
+type RegisterFunctionOutput<TTriggerOptionDefinitions extends Record<string, string[]> = any> = {
+  secret?: string;
+  data?: SerializableJson;
+  options: TriggerOptionsRecordWithEvent<string[], TTriggerOptionDefinitions>;
+};
+
 type RegisterFunction<
-  TIntegration extends TriggerIntegration<IntegrationClient<any, any>>,
+  TIntegration extends TriggerIntegration,
   TParams extends any,
   TChannel extends ChannelNames,
+  TTriggerOptionDefinitions extends Record<string, string[]> = any,
 > = (
-  event: RegisterFunctionEvent<TChannel, TParams>,
+  event: RegisterFunctionEvent<TChannel, TParams, TTriggerOptionDefinitions>,
   io: IOWithIntegrations<{ integration: TIntegration }>,
   ctx: TriggerContext
-) => Promise<UpdateTriggerSourceBody | undefined>;
+) => Promise<RegisterFunctionOutput<TTriggerOptionDefinitions> | undefined>;
 
 export type HandlerEvent<TChannel extends ChannelNames, TParams extends any = any> = {
   rawEvent: ExternalSourceChannelMap[TChannel]["event"];
-  source: HandleTriggerSource & { params: TParams };
+  source: Prettify<Omit<HandleTriggerSource, "params"> & { params: TParams }>;
 };
 
-type HandlerFunction<TChannel extends ChannelNames, TParams extends any> = (
+type HandlerFunction<
+  TChannel extends ChannelNames,
+  TParams extends any,
+  TTriggerIntegration extends TriggerIntegration,
+> = (
   event: HandlerEvent<TChannel, TParams>,
-  logger: Logger
-) => Promise<{ events: SendEvent[]; response?: NormalizedResponse } | void>;
+  logger: Logger,
+  integration: TTriggerIntegration,
+  auth?: ConnectionAuth
+) => Promise<{
+  events: SendEvent[];
+  response?: NormalizedResponse;
+  metadata?: HttpSourceResponseMetadata;
+} | void>;
 
 type KeyFunction<TParams extends any> = (params: TParams) => string;
-type FilterFunction<TParams extends any> = (params: TParams) => EventFilter;
+type FilterFunction<
+  TParams extends any,
+  TTriggerOptionDefinitions extends Record<string, string[]> = any,
+> = (params: TParams, options?: TTriggerOptionDefinitions) => EventFilter;
 
 type ExternalSourceOptions<
   TChannel extends ChannelNames,
-  TIntegration extends TriggerIntegration<IntegrationClient<any, any>>,
+  TIntegration extends TriggerIntegration,
   TParams extends any,
+  TTriggerOptionDefinitions extends Record<string, string[]> = any,
 > = {
   id: string;
   version: string;
   schema: z.Schema<TParams>;
+  optionSchema?: z.Schema<TTriggerOptionDefinitions>;
   integration: TIntegration;
-  register: RegisterFunction<TIntegration, TParams, TChannel>;
-  filter?: FilterFunction<TParams>;
-  handler: HandlerFunction<TChannel, TParams>;
+  register: RegisterFunction<TIntegration, TParams, TChannel, TTriggerOptionDefinitions>;
+  filter?: FilterFunction<TParams, TTriggerOptionDefinitions>;
+  handler: HandlerFunction<TChannel, TParams, TIntegration>;
   key: KeyFunction<TParams>;
   properties?: (params: TParams) => DisplayProperty[];
 };
 
 export class ExternalSource<
-  TIntegration extends TriggerIntegration<IntegrationClient<any, any>>,
+  TIntegration extends TriggerIntegration,
   TParams extends any,
   TChannel extends ChannelNames = ChannelNames,
+  TTriggerOptionDefinitions extends Record<string, string[]> = any,
 > {
   channel: TChannel;
 
   constructor(
     channel: TChannel,
-    private options: ExternalSourceOptions<TChannel, TIntegration, TParams>
+    private options: ExternalSourceOptions<
+      TChannel,
+      TIntegration,
+      TParams,
+      TTriggerOptionDefinitions
+    >
   ) {
     this.channel = channel;
   }
@@ -131,19 +194,25 @@ export class ExternalSource<
         source: { ...source, params: source.params as TParams },
         rawEvent,
       },
-      logger
+      logger,
+      this.options.integration
     );
   }
 
-  filter(params: TParams): EventFilter {
-    return this.options.filter?.(params) ?? {};
+  filter(params: TParams, options?: TTriggerOptionDefinitions): EventFilter {
+    return this.options.filter?.(params, options) ?? {};
   }
 
   properties(params: TParams): DisplayProperty[] {
     return this.options.properties?.(params) ?? [];
   }
 
-  async register(params: TParams, registerEvent: RegisterSourceEvent, io: IO, ctx: TriggerContext) {
+  async register(
+    params: TParams,
+    registerEvent: RegisterSourceEvent<TTriggerOptionDefinitions>,
+    io: IO,
+    ctx: TriggerContext
+  ) {
     const { result: event, ommited: source } = omit(registerEvent, "source");
     const { result: sourceWithoutChannel, ommited: channel } = omit(source, "channel");
     const { result: channelWithoutType } = omit(channel, "type");
@@ -198,10 +267,12 @@ export type ExternalSourceParams<TExternalSource extends ExternalSource<any, any
 export type ExternalSourceTriggerOptions<
   TEventSpecification extends EventSpecification<any>,
   TEventSource extends ExternalSource<any, any, any>,
+  TTriggerOptionDefinitions extends Record<string, string[]> = any,
 > = {
   event: TEventSpecification;
   source: TEventSource;
   params: ExternalSourceParams<TEventSource>;
+  options: TriggerOptionRecord<string[], TTriggerOptionDefinitions>;
 };
 
 export class ExternalSourceTrigger<
@@ -222,7 +293,7 @@ export class ExternalSourceTrigger<
       rule: {
         event: this.event.name,
         payload: deepMergeFilters(
-          this.options.source.filter(this.options.params),
+          this.options.source.filter(this.options.params, this.options.options),
           this.event.filter ?? {},
           this.options.params.filter ?? {}
         ),
@@ -238,6 +309,7 @@ export class ExternalSourceTrigger<
       source: this.options.source,
       event: this.options.event,
       params: this.options.params,
+      options: this.options.options,
     });
   }
 

@@ -1,0 +1,141 @@
+---
+title: Airtable
+---
+
+Use the Airtable integration to create, read, update, and delete records in your Airtable bases.
+
+Coming soon: subscribing to changes in your Airtable bases using triggers.
+
+<Snippet file="integration-getting-started.mdx" />
+
+## Installation
+
+To get started with the Airtable integration on Trigger.dev, you need to install the `@trigger.dev/airtable` package.
+You can do this using npm, pnpm, or yarn:
+
+<CodeGroup>
+
+```bash npm
+npm install @trigger.dev/airtable@latest
+```
+
+```bash pnpm
+pnpm add @trigger.dev/airtable@latest
+```
+
+```bash yarn
+yarn add @trigger.dev/airtable@latest
+```
+
+</CodeGroup>
+
+## Authentication
+
+To use the Airtable API with Trigger.dev, you can either use OAuth or a Personal Access Token.
+
+### OAuth
+
+```ts
+import { Airtable } from "@trigger.dev/airtable";
+
+//this will use OAuth
+const airtable = new Airtable({
+  id: "airtable",
+});
+```
+
+### Personal Access Token
+
+You can create an Airtable Personal Access Token [here on their developer site](https://airtable.com/create/tokens).
+
+```ts
+import { Airtable } from "@trigger.dev/airtable";
+
+//this will use the passed in token (defined in your environment variables)
+const airtable = new Airtable({
+  id: "airtable",
+  token: process.env["AIRTABLE_TOKEN"],
+});
+```
+
+## Usage
+
+Include the Airtable integration in your Trigger.dev job.
+
+You can optionally add the types for your Table – this gives you nice type inference and errors when writing your code.
+
+```ts
+//this is the type definition for my Table
+type LaunchGoalsAndOkRs = {
+  "Launch goals"?: string;
+  DRI?: Collaborator;
+  Team?: string;
+  Status?: "On track" | "In progress" | "At risk";
+  "Key results"?: Array<string>;
+  "Features (from 💻 Features table)"?: Array<string>;
+  "Status (from 💻 Features)": Array<
+    "Live" | "Complete" | "In progress" | "Planning" | "In reviews"
+  >;
+};
+
+client.defineJob({
+  id: "airtable-example-1",
+  name: "Airtable Example 1: getRecords",
+  version: "0.1.0",
+  trigger: eventTrigger({
+    name: "airtable.example",
+  }),
+  integrations: {
+    //make sure to add the integration here
+    airtable,
+  },
+  run: async (payload, io, ctx) => {
+    //adding the type to table<YourTableType>("<your table name>") gives you nice type inference and errors
+    //you can leave it out as well table("<your table name>")
+    const table = io.airtable.base("<your base id>").table<LaunchGoalsAndOkRs>("<your table name>");
+
+    //gets multiple records from the table. Here we only get the Status fields (columns)
+    const records = await table.getRecords("muliple records", { fields: ["Status"] });
+    await io.logger.log(records[0].fields.Status ?? "no status");
+
+    //Get a single record
+    const aRecord = await table.getRecord("single", records[0].id);
+
+    //create a new record
+    const newRecords = await table.createRecords("create records", [
+      {
+        fields: { "Launch goals": "Created from Trigger.dev", Status: "In progress" },
+      },
+    ]);
+
+    //update the record we just created
+    const updatedRecords = await table.updateRecords(
+      "update records",
+      newRecords.map((record) => ({
+        id: record.id,
+        fields: { Status: "At risk" },
+      }))
+    );
+
+    //wait 5 seconds
+    await io.wait("5 secs", 5);
+
+    //delete the record we just created + updated
+    const deletedRecords = await table.deleteRecords(
+      "delete records",
+      updatedRecords.map((record) => record.id)
+    );
+  },
+});
+```
+
+## Tasks
+
+| Function Name              | Description                                                     |
+| -------------------------- | --------------------------------------------------------------- |
+| `base.table.getRecords`    | Gets multiple records for a table. You can filter               |
+| `base.table.getRecord`     | Gets a single record (using the id) for a table.                |
+| `base.table.createRecords` | Create one or more records in a table.                          |
+| `base.table.updateRecords` | Update one or more records in a table.                          |
+| `base.table.deleteRecords` | Delete one or more records in a table (using ids).              |
+| `runTask`                  | Do anything that's possible with the official Airtable Node SDK |

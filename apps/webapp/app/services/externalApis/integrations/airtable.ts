@@ -1,4 +1,52 @@
-import type { Integration } from "../types";
+import type { HelpSample, Integration } from "../types";
+
+function usageSample(hasApiKey: boolean): HelpSample {
+  return {
+    title: "Using the client",
+    code: `
+import { Airtable } from "@trigger.dev/airtable";
+
+const airtable = new Airtable({
+  id: "__SLUG__"${hasApiKey ? ",\n  token: process.env.AIRTABLE_TOKEN!" : ""}
+});
+
+//you can define your Airtable table types
+type LaunchGoalsAndOkRs = {
+  "Launch goals"?: string;
+  DRI?: Collaborator;
+  Team?: string;
+  Status?: "On track" | "In progress" | "At risk";
+  "Key results"?: Array<string>;
+  "Features (from 💻 Features table)"?: Array<string>;
+  "Status (from 💻 Features)": Array<"Live" | "Complete" | "In progress" | "Planning" | "In reviews">;
+};
+
+client.defineJob({
+  id: "airtable-example-1",
+  name: "Airtable Example 1: getRecords",
+  version: "0.1.0",
+  trigger: eventTrigger({
+    name: "airtable.example",
+    schema: z.object({
+      baseId: z.string(),
+      tableName: z.string(),
+    }),
+  }),
+  integrations: {
+    airtable,
+  },
+  run: async (payload, io, ctx) => {
+    //then you can set the types for your table, so you get type safety
+    const table = io.airtable.base(payload.baseId).table<LaunchGoalsAndOkRs>(payload.tableName);
+
+    const records = await table.getRecords("muliple records", { fields: ["Status"] });
+    //this will be type checked
+    await io.logger.log(records[0].fields.Status ?? "no status");
+  },
+});
+  `,
+  };
+}
 
 export const airtable: Integration = {
   identifier: "airtable",
@@ -70,18 +118,13 @@ export const airtable: Integration = {
         },
       ],
       help: {
-        samples: [
-          {
-            title: "Creating the client",
-            code: `
-import { Airtable } from "@trigger.dev/airtable";
-
-const airtable = new Airtable({
-  id: "__SLUG__"
-});
-`,
-          },
-        ],
+        samples: [usageSample(false)],
+      },
+    },
+    apiKey: {
+      type: "apikey",
+      help: {
+        samples: [usageSample(true)],
       },
     },
   },
