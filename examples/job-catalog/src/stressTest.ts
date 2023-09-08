@@ -19,19 +19,27 @@ client.defineJob({
   run: async (payload, io, ctx) => {
     // Run 10 tasks, each with a 300KB output
     for (let i = 0; i < 10; i++) {
-      await io.runTask(`task-${i}`, { name: `Task ${i}` }, async (task) => {
-        return {
-          output: "a".repeat(300 * 1024),
-        };
-      });
+      await io.runTask(
+        `task-${i}`,
+        async (task) => {
+          return {
+            output: "a".repeat(300 * 1024),
+          };
+        },
+        { name: `Task ${i}` }
+      );
     }
 
     // Now run a single task with 5MB output
-    await io.runTask(`task-5mb`, { name: `Task 5MB` }, async (task) => {
-      return {
-        output: "a".repeat(5 * 1024 * 1024),
-      };
-    });
+    await io.runTask(
+      `task-5mb`,
+      async (task) => {
+        return {
+          output: "a".repeat(5 * 1024 * 1024),
+        };
+      },
+      { name: `Task 5MB` }
+    );
 
     // Now do a wait for 5 seconds
     await io.wait("wait", 5);
@@ -46,43 +54,88 @@ client.defineJob({
     name: "stress.test.2",
   }),
   run: async (payload, io, ctx) => {
-    await io.runTask(`task-1`, { name: `Task 1` }, async (task) => {
-      const response = await fetch("https://jsonplaceholder.typicode.com/photos");
+    await io.runTask(
+      `task-1`,
+      async (task) => {
+        const response = await fetch("https://jsonplaceholder.typicode.com/photos");
+        return await response.json();
+      },
+      { name: `Task 1` }
+    );
 
-      return await response.json();
-    });
+    await io.runTask(
+      `task-2`,
+      async (task) => {
+        const response = await fetch("https://jsonplaceholder.typicode.com/comments");
+        return await response.json();
+      },
+      { name: `Task 2` }
+    );
 
-    await io.runTask(`task-2`, { name: `Task 2` }, async (task) => {
-      const response = await fetch("https://jsonplaceholder.typicode.com/comments");
+    await io.runTask(
+      `task-3`,
+      async (task) => {
+        const response = await fetch("https://jsonplaceholder.typicode.com/photos");
 
-      return await response.json();
-    });
+        return await response.json();
+      },
+      { name: `Task 3` }
+    );
 
-    await io.runTask(`task-3`, { name: `Task 3` }, async (task) => {
-      const response = await fetch("https://jsonplaceholder.typicode.com/photos");
+    await io.runTask(
+      `task-4`,
+      async (task) => {
+        const response = await fetch("https://jsonplaceholder.typicode.com/comments");
 
-      return await response.json();
-    });
+        return await response.json();
+      },
+      { name: `Task 4` }
+    );
 
-    await io.runTask(`task-4`, { name: `Task 4` }, async (task) => {
-      const response = await fetch("https://jsonplaceholder.typicode.com/comments");
+    const response = await io.runTask(
+      `task-5`,
+      async (task) => {
+        const response = await fetch("https://jsonplaceholder.typicode.com/photos");
 
-      return await response.json();
-    });
+        return await response.json();
+      },
+      { name: `Task 5` }
+    );
 
-    const response = await io.runTask(`task-5`, { name: `Task 5` }, async (task) => {
-      const response = await fetch("https://jsonplaceholder.typicode.com/photos");
+    await io.runTask(
+      `task-6`,
+      async (task) => {
+        const response = await fetch("https://jsonplaceholder.typicode.com/users");
 
-      return await response.json();
-    });
-
-    await io.runTask(`task-6`, { name: `Task 6` }, async (task) => {
-      const response = await fetch("https://jsonplaceholder.typicode.com/users");
-
-      return await response.json();
-    });
+        return await response.json();
+      },
+      { name: `Task 6` }
+    );
 
     return response;
+  },
+});
+
+client.defineJob({
+  id: "long.running",
+  name: "Long Running Job",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "long.running",
+  }),
+  run: async (payload, io, ctx) => {
+    // Perform X tasks in an iteration, each one taking X milliseconds
+    for (let i = 0; i < payload.iterations; i++) {
+      await io.runTask(
+        `task.${i}`,
+        async (task) => {
+          await new Promise((resolve) => setTimeout(resolve, payload.duration ?? 5000));
+
+          return { i };
+        },
+        { name: `Task ${i}` }
+      );
+    }
   },
 });
 

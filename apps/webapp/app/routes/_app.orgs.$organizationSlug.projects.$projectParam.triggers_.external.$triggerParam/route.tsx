@@ -43,6 +43,7 @@ import { parse } from "@conform-to/zod";
 import { z } from "zod";
 import { ActivateSourceService } from "~/services/sources/activateSource.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
+import { nanoid } from "nanoid";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
@@ -90,7 +91,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   try {
     const service = new ActivateSourceService();
 
-    const result = await service.call(triggerParam, submission.value.jobId);
+    const result = await service.call(triggerParam);
 
     return redirectWithSuccessMessage(
       externalTriggerPath({ slug: organizationSlug }, { slug: projectParam }, { id: triggerParam }),
@@ -167,6 +168,17 @@ export default function Page() {
                 <NamedIcon name={trigger.active ? "active" : "inactive"} className="h-4 w-4" />
               }
             />
+            {trigger.dynamic && (
+              <PageInfoProperty
+                label="Dynamic"
+                value={
+                  <span className="flex items-center gap-0.5">
+                    <NamedIcon name="dynamic" className="h-4 w-4" />
+                    {trigger.dynamic.slug}
+                  </span>
+                }
+              />
+            )}
             <PageInfoProperty
               label="Environment"
               value={<EnvironmentLabel environment={trigger.environment} />}
@@ -206,7 +218,7 @@ export default function Page() {
                   </Button>
                 </Callout>
               </Form>
-            ) : (
+            ) : trigger.dynamic ? null : (
               <Callout variant="error" className="justiy-between mb-4 items-center">
                 This External Trigger hasn't registered successfully. Contact support for help:{" "}
                 {trigger.id}

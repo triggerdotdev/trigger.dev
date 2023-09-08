@@ -23,40 +23,41 @@ const userAnnotation: ScopeAnnotation = {
 const usageSample: HelpSample = {
   title: "Using the client",
   code: `
-  import { Github, events } from "@trigger.dev/github";
+import { Github, events } from "@trigger.dev/github";
 
-  const github = new Github({
-    id: "__SLUG__",
-    token: process.env.GITHUB_TOKEN,
-  });
-  
-  client.defineJob({
-    id: "alert-on-new-github-issues",
-    name: "Alert on new GitHub issues",
-    version: "0.1.1",
-    trigger: github.triggers.repo({
-      event: events.onIssueOpened,
-      owner: "triggerdotdev",
-      repo: "trigger.dev",
-    }),
-    run: async (payload, io, ctx) => {
-      //wrap the SDK call in runTask
-      const { data } = await io.runTask(
-        "create-card",
-        { name: "Create card" },
-        async () => {
-          //create a project card using the underlying client
-          return io.github.client.rest.projects.createCard({
-            column_id: 123,
-            note: "test",
-          });
-        }
-      );
-  
-      //log the url of the created card
-      await io.logger.info(data.url);
-    },
-  });
+const github = new Github({
+  id: "__SLUG__",
+  token: process.env.GITHUB_TOKEN!,
+});
+
+client.defineJob({
+  id: "github-integration-on-issue-opened",
+  name: "GitHub Integration - On Issue Opened",
+  version: "0.1.0",
+  integrations: { github },
+  trigger: github.triggers.repo({
+    event: events.onIssueOpened,
+    owner: "triggerdotdev",
+    repo: "empty",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.github.addIssueAssignees("add assignee", {
+      owner: payload.repository.owner.login,
+      repo: payload.repository.name,
+      issueNumber: payload.issue.number,
+      assignees: ["matt-aitken"],
+    });
+
+    await io.github.addIssueLabels("add label", {
+      owner: payload.repository.owner.login,
+      repo: payload.repository.name,
+      issueNumber: payload.issue.number,
+      labels: ["bug"],
+    });
+
+    return { payload, ctx };
+  },
+});
   
   `,
 };
@@ -322,7 +323,7 @@ import { Github } from "@trigger.dev/github";
 
 const github = new Github({
   id: "__SLUG__",
-  token: process.env.GITHUB_TOKEN
+  token: process.env.GITHUB_TOKEN!
 });
 `,
           },

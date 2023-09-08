@@ -1,0 +1,58 @@
+---
+title: Setup the package
+description: "How to create the folders and basic files for an integration package."
+---
+
+Before you embark on creating an Integration, you have to decide where the Integration code will be located. You have two options, either in the [Trigger.dev monorepo](https://github.com/triggerdotdev/trigger.dev) and namespaced under the `@trigger.dev` NPM organization, or in a separate repository you control and published independently.
+
+## Using OpenAI to generate the initial code
+
+When you use the `@trigger.dev/cli create-integration` command you can pass in an OpenAI API key to generate the initial code for your Integration. Use the `-o` option to do this.
+
+```bash
+npx @trigger.dev/cli create-integration -o "sk-abcdefghijk" integrations/stripe
+```
+
+## In the Trigger.dev monorepo
+
+Before you can create an Integration in the Trigger.dev monorepo, you'll need to follow our [contributing guide](https://github.com/triggerdotdev/trigger.dev/blob/main/CONTRIBUTING.md) to get your local environment setup.
+
+Once you've forked the repository and cloned it locally, create a new branch for your Integration and prefix it with the `integrations/` namespace. For example, if you were creating an Integration for [Stripe](https://stripe.com), you would create a branch named `integrations/stripe`.
+
+```bash
+git checkout -b integrations/stripe
+```
+
+Now you are ready to create your Integration. We've created a CLI tool to help you scaffold out the Integration package. You can run the following command to create a new Integration package in the `integrations` directory:
+
+```bash
+npx @trigger.dev/cli create-integration integrations/stripe
+```
+
+This will ask you a few questions about your Integration:
+
+1. `What is the name of your Integration package?` - This is the name of the NPM package that will be created. It should be prefixed with `@trigger.dev/integration-` and be all lowercase. For example, if you were creating an Integration for Stripe, you would enter `@trigger.dev/stripe`.
+2. `What is the name of the npm package of the Integration?` - This is the name of the NPM package that the Integration will be wrapping. For example, if you were creating an Integration for Stripe, you would enter `stripe`.
+
+From this point, the CLI will create the Integration package for you and install all of the dependencies. It creates the following package structure:
+
+```bash
+integrations
+└── stripe
+    ├── README.md
+    ├── package.json
+    ├── tsup.config.ts
+    ├── src
+    │   └── index.ts
+    └── tsconfig.json
+```
+
+Next, head to the [structure of an integration](/integrations/create-anatomy) section.
+
+## In your own repository
+
+You can also create an Integration in your own repository and publish it independently. This is useful if you want to keep your Integration code separate from the Trigger.dev monorepo. In this case, you should use the `@trigger.dev/cli` to create the Integration package in your repository or to start a new one:
+
+```bash
+npx @trigger.dev/cli create-integration my-internal-integration
+```

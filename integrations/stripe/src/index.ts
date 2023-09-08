@@ -1,26 +1,39 @@
 import {
+  ConnectionAuth,
   EventFilter,
   ExternalSource,
   ExternalSourceTrigger,
+  IO,
+  IOTask,
+  IntegrationTaskKey,
+  Json,
+  RunTaskErrorCallback,
+  RunTaskOptions,
+  retry,
   type HandlerEvent,
-  type IntegrationClient,
   type Logger,
   type TriggerIntegration,
 } from "@trigger.dev/sdk";
 import { Stripe as StripeClient } from "stripe";
-import type { StripeIntegrationOptions, StripeSDK, WebhookEvents } from "./types";
+import type { StripeIntegrationOptions, WebhookEvents } from "./types";
 
 import z from "zod";
+import { Charges } from "./charges";
+import { Checkout } from "./checkout";
+import { Customers } from "./customers";
 import * as events from "./events";
-import * as tasks from "./tasks";
+import { Subscriptions } from "./subscriptions";
+import { WebhookEndpoints } from "./webhookEndpoints";
 
 export * from "./types";
 
-type StripeIntegrationClient = IntegrationClient<StripeSDK, typeof tasks>;
-type StripeIntegration = TriggerIntegration<StripeIntegrationClient>;
+export type StripeRunTask = InstanceType<typeof Stripe>["runTask"];
 
-export class Stripe implements StripeIntegration {
-  client: StripeIntegrationClient;
+export class Stripe implements TriggerIntegration {
+  private _options: StripeIntegrationOptions;
+  private _client?: StripeClient;
+  private _io?: IO;
+  private _connectionKey?: string;
 
   /**
    * The native Stripe client. This is exposed for use outside of Trigger.dev jobs
@@ -40,6 +53,8 @@ export class Stripe implements StripeIntegration {
   public readonly native: StripeClient;
 
   constructor(private options: StripeIntegrationOptions) {
+    this._options = options;
+
     this.native = new StripeClient(options.apiKey, {
       apiVersion: "2022-11-15",
       typescript: true,
@@ -52,15 +67,29 @@ export class Stripe implements StripeIntegration {
         url: "https://trigger.dev",
       },
     });
+  }
 
-    this.client = {
-      tasks,
-      usesLocalAuth: true,
-      client: this.native,
-      auth: {
-        apiKey: options.apiKey,
+  get authSource() {
+    return "LOCAL" as const;
+  }
+
+  cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
+    const stripe = new Stripe(this._options);
+    stripe._io = io;
+    stripe._connectionKey = connectionKey;
+    stripe._client = new StripeClient(this._options.apiKey, {
+      apiVersion: "2022-11-15",
+      typescript: true,
+      timeout: 10000,
+      maxNetworkRetries: 0,
+      stripeAccount: this._options.stripeAccount,
+      appInfo: {
+        name: "Trigger.dev Stripe Integration",
+        version: "0.1.0",
+        url: "https://trigger.dev",
       },
-    };
+    });
+    return stripe;
   }
 
   get id() {
@@ -74,6 +103,63 @@ export class Stripe implements StripeIntegration {
   get source() {
     return createWebhookEventSource(this);
   }
+
+  runTask<T, TResult extends Json<T> | void>(
+    key: IntegrationTaskKey,
+    callback: (client: StripeClient, task: IOTask, io: IO) => Promise<TResult>,
+    options?: RunTaskOptions,
+    errorCallback?: RunTaskErrorCallback
+  ): Promise<TResult> {
+    if (!this._io) throw new Error("No IO");
+    if (!this._connectionKey) throw new Error("No connection key");
+    return this._io.runTask(
+      key,
+      (task, io) => {
+        if (!this._client) throw new Error("No client");
+        return callback(this._client, task, io);
+      },
+      {
+        icon: "stripe",
+        retry: retry.standardBackoff,
+        ...(options ?? {}),
+        connectionKey: this._connectionKey,
+      },
+      errorCallback
+    );
+  }
+
+  get charges() {
+    return new Charges(this.runTask.bind(this));
+  }
+
+  createCharge = this.charges.create;
+
+  get customers() {
+    return new Customers(this.runTask.bind(this));
+  }
+
+  createCustomer = this.customers.create;
+  updateCustomer = this.customers.update;
+
+  get subscriptions() {
+    return new Subscriptions(this.runTask.bind(this));
+  }
+
+  retrieveSubscription = this.subscriptions.retrieve;
+
+  get checkout() {
+    return new Checkout(this.runTask.bind(this));
+  }
+
+  createCheckoutSession = this.checkout.sessions.create;
+
+  get webhookEndpoints() {
+    return new WebhookEndpoints(this.runTask.bind(this));
+  }
+
+  createWebhook = this.webhookEndpoints.create;
+  updateWebhook = this.webhookEndpoints.update;
+  listWebhooks = this.webhookEndpoints.list;
 
   /**
    * Occurs whenever a price is created, updated, or deleted. Accepts an optional array of events to filter on. By default it will listen to all price events.
@@ -350,7 +436,7 @@ export class Stripe implements StripeIntegration {
    * Occurs whenever an account status or property has changed.
    */
   onAccountUpdated(params?: TriggerParams) {
-    return createTrigger(this.source, events.onAccountUpdated, params ?? { connect: false });
+    return createTrigger(this.source, events.onAccountUpdated, params ?? { connect: true });
   }
 
   /**
@@ -863,6 +949,7 @@ function createTrigger<TEventSpecification extends StripeEvents>(
     event,
     params,
     source,
+    options: {},
   });
 }
 
@@ -881,8 +968,8 @@ const WebhookDataSchema = z.object({
 });
 
 function createWebhookEventSource(
-  integration: StripeIntegration
-): ExternalSource<StripeIntegration, { connect?: boolean }, "HTTP"> {
+  integration: Stripe
+): ExternalSource<Stripe, { connect?: boolean }, "HTTP", {}> {
   return new ExternalSource("HTTP", {
     id: "stripe.webhook",
     schema: z.object({ connect: z.boolean().optional() }),
@@ -891,14 +978,18 @@ function createWebhookEventSource(
     key: (params) => `stripe.webhook${params.connect ? ".connect" : ""}`,
     handler: webhookHandler,
     register: async (event, io, ctx) => {
-      const { params, source: httpSource, events, missingEvents } = event;
+      const { params, source: httpSource, options } = event;
 
       const webhookData = WebhookDataSchema.safeParse(httpSource.data);
 
-      const allEvents = Array.from(new Set([...events, ...missingEvents]));
+      const allEvents = Array.from(new Set([...options.event.desired, ...options.event.missing]));
+
+      const registeredOptions = {
+        event: allEvents,
+      };
 
       if (httpSource.active && webhookData.success) {
-        if (missingEvents.length === 0) return;
+        if (options.event.missing.length === 0) return;
 
         const updatedWebhook = await io.integration.updateWebhook("update-webhook", {
           id: webhookData.data.id,
@@ -908,7 +999,7 @@ function createWebhookEventSource(
 
         return {
           data: WebhookDataSchema.parse(updatedWebhook),
-          registeredEvents: allEvents,
+          options: registeredOptions,
         };
       }
 
@@ -928,7 +1019,7 @@ function createWebhookEventSource(
 
         return {
           data: WebhookDataSchema.parse(updatedWebhook),
-          registeredEvents: allEvents,
+          options: registeredOptions,
         };
       }
 
@@ -941,7 +1032,7 @@ function createWebhookEventSource(
       return {
         data: WebhookDataSchema.parse(webhook),
         secret: webhook.secret,
-        registeredEvents: allEvents,
+        options: registeredOptions,
       };
     },
   });

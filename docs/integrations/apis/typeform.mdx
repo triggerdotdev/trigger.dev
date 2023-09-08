@@ -119,7 +119,7 @@ client.defineJob({
 
 ## Using the underlying client
 
-You can use the underlying client to do anything [@typeform/api-client](https://www.npmjs.com/package/@typeform/api-client) supports, but make sure to wrap it in a task:
+You can use the underlying client to do anything [@typeform/api-client](https://www.npmjs.com/package/@typeform/api-client) supports:
 
 ```ts
 import { Typeform } from "@trigger.dev/typeform";
@@ -139,14 +139,28 @@ client.defineJob({
     name: "typeform.client",
   }),
   run: async (payload, io, ctx) => {
-    const form = await io.runTask(
+    const form = await io.typeform.runTask(
       "create-form",
-      { name: "Create Form", icon: "typeform" },
-      async () => {
-        return io.typeform.client.forms.create({
-          data: { ... }
-        })
-      }
+      async (client) => {
+        return client.forms.create({
+          data: {
+            title: "My Form",
+            fields: [
+              {
+                title: "What is your name?",
+                type: "short_text",
+                ref: "name",
+              },
+              {
+                title: "What is your email?",
+                type: "email",
+                ref: "email",
+              },
+            ],
+          },
+        });
+      },
+      { name: "Create Form" }
     );
   },
 });

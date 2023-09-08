@@ -25,8 +25,6 @@ client.defineJob({
     //wrap an SDK call in io.runTask so it's resumable and displays in logs
     const repo = await io.runTask(
       "Get repo",
-      //you can add metadata to the task to improve the display in the logs
-      { name: "Get repo", icon: "github" },
       async () => {
         //this is the regular GitHub SDK
         const response = await octokit.rest.repos.get({
@@ -34,7 +32,9 @@ client.defineJob({
           repo: "trigger.dev",
         });
         return response.data;
-      }
+      },
+      //you can add metadata to the task to improve the display in the logs
+      { name: "Get repo", icon: "github" }
     );
   },
 });
@@ -60,13 +60,13 @@ client.defineJob({
     //wrap anything in io.runTask so it's resumable and displays in logs
     const repo = await io.runTask(
       "Get org",
-      //you can add metadata to the task to improve the display in the logs
-      { name: "Get org", icon: "github" },
       async () => {
         //you can use fetch, axios, or any other library to make requests
         const response = await fetch('https://api.github.com/orgs/nodejs');
         return response.json();
-      }
+      },
+      //you can add metadata to the task to improve the display in the logs
+      { name: "Get org", icon: "github" }
     );
   },
 });

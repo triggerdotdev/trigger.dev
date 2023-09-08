@@ -1,10 +1,10 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { UpdateTriggerSourceBodySchema } from "@trigger.dev/core";
+import { UpdateTriggerSourceBodyV1Schema } from "@trigger.dev/core";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { UpdateSourceService } from "~/services/sources/updateSource.server";
+import { UpdateSourceServiceV1 } from "~/services/sources/updateSourceV1.server";
 
 const ParamsSchema = z.object({
   endpointSlug: z.string(),
@@ -40,13 +40,13 @@ export async function action({ request, params }: ActionArgs) {
   // Now parse the request body
   const anyBody = await request.json();
 
-  const body = UpdateTriggerSourceBodySchema.safeParse(anyBody);
+  const body = UpdateTriggerSourceBodyV1Schema.safeParse(anyBody);
 
   if (!body.success) {
     return json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const service = new UpdateSourceService();
+  const service = new UpdateSourceServiceV1();
 
   try {
     const source = await service.call({
