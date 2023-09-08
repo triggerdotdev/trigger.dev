@@ -56,12 +56,6 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Jobs" />,
   expandSidebar: true,
-  scripts: (match) => [
-    {
-      src: "https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js",
-      crossOrigin: "anonymous",
-    },
-  ],
 };
 
 export default function Page() {
