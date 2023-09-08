@@ -164,7 +164,7 @@
           ]
         },
         {
-          "group": "Using integrations",
+          "group": "Using Integrations",
           "pages": [
             "documentation/guides/using-integrations",
             "documentation/guides/using-integrations-apikeys",
