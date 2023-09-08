@@ -10,9 +10,9 @@ import { Paragraph } from "../primitives/Paragraph";
 import { NamedIcon } from "../primitives/NamedIcon";
 export type FrameworkComingSoonProps = {
   frameworkName: string;
-  githubIssueUrl?: string;
-  githubIssueNumber?: number;
-  children?: React.ReactNode;
+  githubIssueUrl: string;
+  githubIssueNumber: number;
+  children: React.ReactNode;
 };
 
 export function FrameworkComingSoon({
