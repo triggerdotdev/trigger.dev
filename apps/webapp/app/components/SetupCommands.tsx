@@ -44,7 +44,7 @@ export function InitCommand({ appOrigin, apiKey }: { appOrigin: string; apiKey: 
   );
 }
 
-export function NextDevCommand() {
+export function RunDevCommand() {
   return (
     <ClientTabs defaultValue="npm">
       <ClientTabsList>

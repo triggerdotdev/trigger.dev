@@ -3,7 +3,7 @@ import { useState } from "react";
 import invariant from "tiny-invariant";
 import { Feedback } from "~/components/Feedback";
 import { PageGradient } from "~/components/PageGradient";
-import { InitCommand, NextDevCommand, TriggerDevStep } from "~/components/SetupCommands";
+import { InitCommand, RunDevCommand, TriggerDevStep } from "~/components/SetupCommands";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { InlineCode } from "~/components/code/InlineCode";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
@@ -165,7 +165,7 @@ export default function SetupNextjs() {
                 </StepContentContainer>
                 <StepNumber stepNumber="4" title="Run your Next.js app" />
                 <StepContentContainer>
-                  <NextDevCommand />
+                  <RunDevCommand />
                 </StepContentContainer>
                 <StepNumber stepNumber="5" title="Run the CLI 'dev' command" />
                 <StepContentContainer>
@@ -193,7 +193,7 @@ export default function SetupNextjs() {
                 </StepContentContainer>
                 <StepNumber stepNumber="2" title="Run your Next.js app" />
                 <StepContentContainer>
-                  <NextDevCommand />
+                  <RunDevCommand />
                 </StepContentContainer>
                 <StepNumber stepNumber="3" title="Run the CLI 'dev' command" />
                 <StepContentContainer>
