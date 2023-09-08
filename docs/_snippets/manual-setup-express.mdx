@@ -1,1 +1,175 @@
-We're in the process of building support for the Express framework. You can follow along with progress or contribute via [this GitHub issue](https://github.com/triggerdotdev/trigger.dev/issues).
+---
+title: "Express"
+sidebarTitle: "Express"
+description: "How to manually setup Trigger.dev in your Express project"
+---
+
+## Installing Required Packages
+
+Start by installing the necessary packages in your Express.js project directory. You can use npm, pnpm, or yarn as your package manager.
+
+<CodeGroup>
+
+```bash npm
+
+npm install @trigger.dev/sdk express @trigger-dev/express
+
+
+```
+
+```bash pnpm
+pnpm install @trigger.dev/sdk express @trigger-dev/express
+
+
+```
+
+```bash yarn
+yarn add @trigger.dev/sdk express @trigger-dev/express
+
+```
+
+</CodeGroup>
+
+<br />
+
+<Note>Ensure that you execute this command within a Express project.</Note>
+
+## Obtaining the Development API Key
+
+To locate your development API key, login to the [Trigger.dev
+dashboard](https://cloud.trigger.dev) and select the Project you want to
+connect to. Then click on the Environments & API Keys tab in the left menu.
+You can copy your development API Key from the field at the top of this page.
+(Your development key will start with `tr_dev_`).
+
+## Adding Environment Variables
+
+Create a `.env.local` file at the root of your project and include your Trigger API key and URL like this:
+
+```bash
+
+TRIGGER_API_KEY=ENTER_YOUR_DEVELOPMENT_API_KEY_HERE
+TRIGGER_API_URL=https://cloud.trigger.dev
+
+```
+
+Replace `ENTER_YOUR_DEVELOPMENT_API_KEY_HERE` with the actual API key obtained from the previous step.
+
+## Configuring the Trigger Client
+
+To set up the Trigger Client for your project, follow these steps:
+
+1. **Create Configuration File:**
+
+   In your project directory, create a configuration file named `trigger.ts` or `trigger.js`, depending on whether your project uses TypeScript (`.ts`) or JavaScript (`.js`).
+
+2. **Choose Directory:**
+
+   Depending on your project structure, choose the appropriate directory for the configuration file. If your project uses a `src` directory, create the file within it. Otherwise, create it directly in the project root.
+
+3. **Add Configuration Code:**
+
+   Open the configuration file you created and add the following code:
+
+   ```typescript
+   // trigger.ts (for TypeScript) or trigger.js (for JavaScript)
+
+  // trigger.ts
+
+import express, { Express } from 'express';
+import { TriggerClient } from '@trigger.dev/sdk';
+
+const app: Express = express();
+const port: number = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+
+const triggerClient: TriggerClient = new TriggerClient({
+  id: 'my-express-app',
+  apiKey: process.env.TRIGGER_API_KEY || '',
+  apiUrl: process.env.TRIGGER_API_URL || '',
+});
+
+// Your Express.js app configuration and routes go here
+
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+});
+
+   ```
+ Replace **"my-express-app"** with an appropriate identifier for your project.
+
+ ## Creating the Example Job
+
+1. Create a folder named `Jobs` in your project directory
+2. Inside the `Jobs` folder, add two files named `example.(ts/js)` and `index.(ts/js)`.
+
+<CodeGroup>
+
+```typescript example.(ts/js)
+// example.ts
+
+import { eventTrigger, JobDefinition } from '@trigger.dev/sdk';
+import { client } from './trigger';
+
+const exampleJob: JobDefinition = {
+  id: 'example-job',
+  name: 'Example Job',
+  version: '0.0.1',
+  trigger: eventTrigger({
+    name: 'example.event',
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info('Hello world!', { payload });
+
+    return {
+      message: 'Hello world!',
+    };
+  },
+};
+
+export default exampleJob;
+
+// index.ts
+
+// Import all your job files here
+import exampleJob from './example';
+
+export { exampleJob };
+
+```
+
+```typescript index.ts/index.(ts/js)
+// import all your job files here
+
+export * from "./examples";
+```
+
+</CodeGroup>
+
+## Adding Configuration to `package.json`
+
+Inside the `package.json` file, add the following configuration under the root object:
+
+```json
+"trigger.dev": {
+  "endpointId": "my-express-app"
+}
+
+``` 
+Replace **"my-express-app"** with the appropriate identifier you used in the trigger.js configuration file.
+
+## Next Steps
+
+Now that you have configured Trigger.dev in your Express.js project, you can start your Express.js server locally and run Trigger.dev locally as well. Run the following command to start your Express.js server:
+
+```bash
+node trigger.js
+
+```
+In a new terminal window or tab, run the Trigger.dev development CLI command:
+
+```bash
+npx @trigger.dev/cli@latest dev
+
+```
+
+Make sure your Express.js server is running locally before executing the Trigger.dev CLI command. You should leave the dev terminal command running while you develop your application.

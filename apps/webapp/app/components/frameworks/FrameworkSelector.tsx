@@ -51,7 +51,7 @@ export function FrameworkSelector() {
           <FrameworkLink to={projectSetupNextjsPath(organization, project)} supported>
             <NextjsLogo className="w-32" />
           </FrameworkLink>
-          <FrameworkLink to={projectSetupExpressPath(organization, project)}>
+          <FrameworkLink to={projectSetupExpressPath(organization, project)} supported>
             <ExpressLogo className="w-36" />
           </FrameworkLink>
           <FrameworkLink to={projectSetupRemixPath(organization, project)}>
