@@ -1,13 +1,21 @@
+import {
+  REGISTER_SOURCE_EVENT_V2,
+  REGISTER_SOURCE_EVENT_V1,
+  RegisterTriggerSource,
+  RegisterSourceEventV1,
+  RegisterSourceEventV2,
+  RegisterSourceEventOptions,
+  RegisteredOptionsDiff,
+} from "@trigger.dev/core";
+import type { SecretReference, TriggerSource, TriggerSourceOption } from "@trigger.dev/database";
+import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import type { TriggerSource, SecretReference, TriggerSourceEvent } from "@trigger.dev/database";
-import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { env } from "~/env.server";
-import { REGISTER_SOURCE_EVENT, RegisterTriggerSource } from "@trigger.dev/core";
-import { SecretStoreProvider, getSecretStore } from "../secrets/secretStore.server";
-import { SecretStore } from "../secrets/secretStore.server";
-import { z } from "zod";
+import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
+import { getSecretStore } from "../secrets/secretStore.server";
+import { nanoid } from "nanoid";
 
 export class ActivateSourceService {
   #prismaClient: PrismaClient;
@@ -16,7 +24,7 @@ export class ActivateSourceService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(id: string, jobId: string, orphanedEvents?: Array<string>) {
+  public async call(id: string, jobId?: string, orphanedOptions?: Record<string, string[]>) {
     const triggerSource = await this.#prismaClient.triggerSource.findUniqueOrThrow({
       where: {
         id,
@@ -29,12 +37,12 @@ export class ActivateSourceService {
             project: true,
           },
         },
-        events: true,
+        options: true,
         secretReference: true,
       },
     });
 
-    const eventId = `${id}:${jobId}`;
+    const eventId = `${id}:${jobId ?? nanoid()}`;
 
     // TODO: support more channels
     switch (triggerSource.channel) {
@@ -42,10 +50,10 @@ export class ActivateSourceService {
         await this.#activateHttpSource(
           triggerSource.environment,
           triggerSource,
-          triggerSource.events,
+          triggerSource.options,
           triggerSource.secretReference,
           eventId,
-          orphanedEvents
+          orphanedOptions
         );
       }
     }
@@ -54,10 +62,10 @@ export class ActivateSourceService {
   async #activateHttpSource(
     environment: AuthenticatedEnvironment,
     triggerSource: TriggerSource,
-    events: Array<TriggerSourceEvent>,
+    options: Array<TriggerSourceOption>,
     secretReference: SecretReference,
     eventId: string,
-    orphanedEvents?: Array<string>
+    orphanedOptions?: Record<string, string[]>
   ) {
     const secretStore = getSecretStore(secretReference.provider);
     const httpSecret = await secretStore.getSecret(
@@ -70,14 +78,6 @@ export class ActivateSourceService {
     if (!httpSecret) {
       throw new Error("HTTP Secret not found");
     }
-
-    const eventNames = triggerSource.active
-      ? events.filter((e) => e.registered).map((e) => e.name)
-      : events.map((e) => e.name);
-
-    const missingEvents = triggerSource.active
-      ? events.filter((e) => !e.registered).map((e) => e.name)
-      : [];
 
     const service = new IngestSendEvent();
 
@@ -92,17 +92,85 @@ export class ActivateSourceService {
       },
     };
 
-    await service.call(environment, {
-      id: eventId,
-      name: REGISTER_SOURCE_EVENT,
-      source: "trigger.dev",
-      payload: {
-        id: triggerSource.id,
-        source,
-        events: eventNames,
-        missingEvents,
-        orphanedEvents: orphanedEvents ?? [],
-      },
-    });
+    switch (triggerSource.version) {
+      case "1": {
+        const events = triggerSource.active
+          ? options.filter((e) => e.registered).map((e) => e.value)
+          : options.map((e) => e.value);
+        const missingEvents = triggerSource.active
+          ? options.filter((e) => !e.registered).map((e) => e.value)
+          : [];
+        const orphanedEvents = orphanedOptions
+          ? Object.values(orphanedOptions).flatMap((vals) => vals)
+          : [];
+
+        const payload: RegisterSourceEventV1 = {
+          id: triggerSource.id,
+          source,
+          events,
+          missingEvents,
+          orphanedEvents,
+        };
+
+        await service.call(environment, {
+          id: eventId,
+          name: REGISTER_SOURCE_EVENT_V1,
+          source: "trigger.dev",
+          payload,
+        });
+        break;
+      }
+      case "2": {
+        //group the options by the name
+        const optionsRecord = options.reduce((acc, option) => {
+          if (!acc[option.name]) {
+            acc[option.name] = [];
+          }
+
+          acc[option.name].push(option);
+
+          return acc;
+        }, {} as Record<string, Array<TriggerSourceOption>>);
+
+        //for each of the optionsRecord, create the diff
+        const payloadOptions = Object.entries(optionsRecord).reduce(
+          (acc, [key, value]) => ({
+            ...acc,
+            [key]: getOptionsDiff(triggerSource.active, orphanedOptions?.[key] ?? [], value),
+          }),
+          {} as Record<string, RegisteredOptionsDiff>
+        ) as RegisterSourceEventOptions;
+
+        const payload: RegisterSourceEventV2 = {
+          id: triggerSource.id,
+          source,
+          options: payloadOptions,
+        };
+
+        await service.call(environment, {
+          id: eventId,
+          name: REGISTER_SOURCE_EVENT_V2,
+          source: "trigger.dev",
+          payload,
+        });
+      }
+    }
   }
+}
+
+function getOptionsDiff(
+  sourceIsActive: boolean,
+  orphaned: string[],
+  options: Array<TriggerSourceOption>
+): RegisteredOptionsDiff {
+  const desired = sourceIsActive
+    ? options.filter((e) => e.registered).map((e) => e.value)
+    : options.map((e) => e.value);
+  const missing = sourceIsActive ? options.filter((e) => !e.registered).map((e) => e.value) : [];
+
+  return {
+    desired: [...new Set(desired)],
+    missing: [...new Set(missing)],
+    orphaned: [...new Set(orphaned)],
+  };
 }

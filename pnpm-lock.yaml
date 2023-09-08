@@ -1,10 +1,15 @@
 lockfileVersion: 5.4
 
+patchedDependencies:
+  '@changesets/assemble-release-plan@5.2.4':
+    hash: 3wuhjtl4hjck4itk3w32z4cd5u
+    path: patches/@changesets__assemble-release-plan@5.2.4.patch
+
 importers:
 
   .:
     specifiers:
-      '@changesets/cli': ^2.26.0
+      '@changesets/cli': 2.26.2
       '@manypkg/cli': ^0.19.2
       '@playwright/test': ^1.36.2
       '@remix-run/changelog-github': ^0.0.5
@@ -25,7 +30,7 @@ importers:
       vite-tsconfig-paths: ^4.0.5
       vitest: ^0.28.4
     dependencies:
-      '@changesets/cli': 2.26.0
+      '@changesets/cli': 2.26.2
       '@remix-run/changelog-github': 0.0.5
       node-fetch: 2.6.7
     devDependencies:
@@ -361,6 +366,7 @@ importers:
 
   examples/job-catalog:
     specifiers:
+      '@trigger.dev/airtable': workspace:*
       '@trigger.dev/cli': workspace:*
       '@trigger.dev/express': workspace:*
       '@trigger.dev/github': workspace:*
@@ -383,6 +389,7 @@ importers:
       typescript: 5.1.6
       zod: 3.21.4
     dependencies:
+      '@trigger.dev/airtable': link:../../integrations/airtable
       '@trigger.dev/express': link:../../packages/express
       '@trigger.dev/github': link:../../integrations/github
       '@trigger.dev/openai': link:../../integrations/openai
@@ -609,6 +616,29 @@ importers:
       '@types/react-dom': 18.2.7
       concurrently: 8.2.0
 
+  integrations/airtable:
+    specifiers:
+      '@trigger.dev/integration-kit': workspace:^2.1.0
+      '@trigger.dev/sdk': workspace:^2.1.0
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': 16.x
+      airtable: ^0.12.1
+      rimraf: ^3.0.2
+      tsup: 7.1.x
+      typescript: 4.9.4
+      zod: 3.21.4
+    dependencies:
+      '@trigger.dev/integration-kit': link:../../packages/integration-kit
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      airtable: 0.12.1
+      zod: 3.21.4
+    devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 16.18.11
+      rimraf: 3.0.2
+      tsup: 7.1.0_typescript@4.9.4
+      typescript: 4.9.4
+
   integrations/github:
     specifiers:
       '@octokit/request': ^6.2.5
@@ -616,8 +646,8 @@ importers:
       '@octokit/types': ^9.2.3
       '@octokit/webhooks': ^10.4.0
       '@octokit/webhooks-types': ^6.10.0
-      '@trigger.dev/integration-kit': workspace:^2.0.14
-      '@trigger.dev/sdk': workspace:^2.0.14
+      '@trigger.dev/integration-kit': workspace:^2.1.0
+      '@trigger.dev/sdk': workspace:^2.1.0
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       octokit: ^2.0.14
@@ -642,8 +672,8 @@ importers:
 
   integrations/openai:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.0.14
-      '@trigger.dev/sdk': workspace:^2.0.14
+      '@trigger.dev/integration-kit': workspace:^2.1.0
+      '@trigger.dev/sdk': workspace:^2.1.0
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       openai: ^4.2.0
@@ -662,8 +692,8 @@ importers:
   integrations/plain:
     specifiers:
       '@team-plain/typescript-sdk': ^2.7.0
-      '@trigger.dev/integration-kit': workspace:^2.0.14
-      '@trigger.dev/sdk': workspace:^2.0.14
+      '@trigger.dev/integration-kit': workspace:^2.1.0
+      '@trigger.dev/sdk': workspace:^2.1.0
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
@@ -680,8 +710,8 @@ importers:
 
   integrations/resend:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.0.14
-      '@trigger.dev/sdk': workspace:^2.0.14
+      '@trigger.dev/integration-kit': workspace:^2.1.0
+      '@trigger.dev/sdk': workspace:^2.1.0
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       resend: ^1.0.0
@@ -700,8 +730,9 @@ importers:
   integrations/sendgrid:
     specifiers:
       '@sendgrid/mail': ^7.7.0
-      '@trigger.dev/integration-kit': workspace:^2.0.14
-      '@trigger.dev/sdk': workspace:^2.0.14
+      '@trigger.dev/integration-kit': workspace:^2.1.0
+      '@trigger.dev/sdk': workspace:^2.1.0
+      '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       rimraf: ^3.0.2
       tsup: 7.1.x
@@ -711,6 +742,7 @@ importers:
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
     devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
       rimraf: 3.0.2
       tsup: 7.1.0_typescript@4.9.4
@@ -719,7 +751,7 @@ importers:
   integrations/slack:
     specifiers:
       '@slack/web-api': ^6.8.1
-      '@trigger.dev/sdk': workspace:^2.0.14
+      '@trigger.dev/sdk': workspace:^2.1.0
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
@@ -737,8 +769,8 @@ importers:
 
   integrations/stripe:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.0.14
-      '@trigger.dev/sdk': workspace:^2.0.14
+      '@trigger.dev/integration-kit': workspace:^2.1.0
+      '@trigger.dev/sdk': workspace:^2.1.0
       '@types/node': 16.x
       rimraf: ^3.0.2
       stripe: ^12.14.0
@@ -761,8 +793,9 @@ importers:
   integrations/supabase:
     specifiers:
       '@supabase/supabase-js': ^2.26.0
-      '@trigger.dev/integration-kit': workspace:^2.0.14
-      '@trigger.dev/sdk': workspace:^2.0.14
+      '@trigger.dev/integration-kit': workspace:^2.1.0
+      '@trigger.dev/sdk': workspace:^2.1.0
+      '@trigger.dev/tsconfig': workspace:*
       '@types/node': 18.x
       rimraf: ^3.0.2
       supabase-management-js: ^0.1.4
@@ -776,6 +809,7 @@ importers:
       supabase-management-js: 0.1.4
       zod: 3.21.4
     devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 18.15.13
       rimraf: 3.0.2
       tsup: 7.1.0_typescript@4.9.4
@@ -783,8 +817,8 @@ importers:
 
   integrations/typeform:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.0.14
-      '@trigger.dev/sdk': workspace:^2.0.14
+      '@trigger.dev/integration-kit': workspace:^2.1.0
+      '@trigger.dev/sdk': workspace:^2.1.0
       '@typeform/api-client': ^1.8.0
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -829,7 +863,7 @@ importers:
       ngrok: 5.0.0-beta.2
       node-fetch: ^3.3.0
       npm-check-updates: ^16.12.2
-      openai: ^3.3.0
+      openai: ^4.5.0
       ora: ^6.1.2
       path-to-regexp: ^6.2.1
       posthog-node: ^3.1.1
@@ -858,7 +892,7 @@ importers:
       ngrok: 5.0.0-beta.2
       node-fetch: 3.3.0
       npm-check-updates: 16.12.3
-      openai: 3.3.0
+      openai: 4.5.0
       ora: 6.1.2
       path-to-regexp: 6.2.1
       posthog-node: 3.1.1
@@ -989,7 +1023,7 @@ importers:
   packages/express:
     specifiers:
       '@remix-run/web-fetch': ^4.3.5
-      '@trigger.dev/sdk': workspace:^2.0.14
+      '@trigger.dev/sdk': workspace:^2.1.0
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/express': ^4.17.13
@@ -1021,6 +1055,7 @@ importers:
       rimraf: ^3.0.2
       tsup: ^6.5.0
       tsx: ^3.12.1
+      typescript: ^4.8.4
       uuid: ^9.0.0
     dependencies:
       node-fetch: 2.6.12
@@ -1031,8 +1066,9 @@ importers:
       '@types/node-fetch': 2.6.2
       '@types/uuid': 9.0.0
       rimraf: 3.0.2
-      tsup: 6.6.3
+      tsup: 6.6.3_typescript@4.9.5
       tsx: 3.12.2
+      typescript: 4.9.5
 
   packages/nextjs:
     specifiers:
@@ -1044,6 +1080,7 @@ importers:
       rimraf: ^3.0.2
       tsup: ^6.5.0
       tsx: ^3.12.1
+      typescript: ^4.8.4
     dependencies:
       debug: 4.3.4
     devDependencies:
@@ -1052,13 +1089,14 @@ importers:
       '@types/ws': 8.5.4
       next: 13.3.1
       rimraf: 3.0.2
-      tsup: 6.6.3
+      tsup: 6.6.3_typescript@4.9.5
       tsx: 3.12.2
+      typescript: 4.9.5
 
   packages/react:
     specifiers:
       '@tanstack/react-query': 5.0.0-beta.2
-      '@trigger.dev/core': workspace:^2.0.14
+      '@trigger.dev/core': workspace:^2.1.0
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/react': 18.2.17
@@ -1069,6 +1107,7 @@ importers:
       rimraf: ^3.0.2
       tsup: ^7.1.0
       tsx: ^3.12.1
+      typescript: ^4.8.4
       zod: 3.21.4
     dependencies:
       '@tanstack/react-query': 5.0.0-beta.2_react@18.2.0
@@ -1083,12 +1122,13 @@ importers:
       esbuild-plugin-file-path-extensions: 1.0.0
       react: 18.2.0
       rimraf: 3.0.2
-      tsup: 7.1.0
+      tsup: 7.1.0_typescript@4.9.5
       tsx: 3.12.2
+      typescript: 4.9.5
 
   packages/trigger-sdk:
     specifiers:
-      '@trigger.dev/core': workspace:^2.0.14
+      '@trigger.dev/core': workspace:^2.1.0
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/node': '18'
@@ -3678,11 +3718,11 @@ packages:
     resolution: {integrity: sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==}
     dev: true
 
-  /@changesets/apply-release-plan/6.1.3:
-    resolution: {integrity: sha512-ECDNeoc3nfeAe1jqJb5aFQX7CqzQhD2klXRez2JDb/aVpGUbX673HgKrnrgJRuQR/9f2TtLoYIzrGB9qwD77mg==}
+  /@changesets/apply-release-plan/6.1.4:
+    resolution: {integrity: sha512-FMpKF1fRlJyCZVYHr3CbinpZZ+6MwvOtWUuO8uo+svcATEoc1zRDcj23pAurJ2TZ/uVz1wFHH6K3NlACy0PLew==}
     dependencies:
       '@babel/runtime': 7.22.5
-      '@changesets/config': 2.3.0
+      '@changesets/config': 2.3.1
       '@changesets/get-version-range-type': 0.3.2
       '@changesets/git': 2.0.0
       '@changesets/types': 5.2.1
@@ -3693,19 +3733,20 @@ packages:
       outdent: 0.5.0
       prettier: 2.8.8
       resolve-from: 5.0.0
-      semver: 5.7.1
+      semver: 7.5.4
     dev: false
 
-  /@changesets/assemble-release-plan/5.2.3:
-    resolution: {integrity: sha512-g7EVZCmnWz3zMBAdrcKhid4hkHT+Ft1n0mLussFMcB1dE2zCuwcvGoy9ec3yOgPGF4hoMtgHaMIk3T3TBdvU9g==}
+  /@changesets/assemble-release-plan/5.2.4_3wuhjtl4hjck4itk3w32z4cd5u:
+    resolution: {integrity: sha512-xJkWX+1/CUaOUWTguXEbCDTyWJFECEhmdtbkjhn5GVBGxdP/JwaHBIU9sW3FR6gD07UwZ7ovpiPclQZs+j+mvg==}
     dependencies:
       '@babel/runtime': 7.22.5
       '@changesets/errors': 0.1.4
-      '@changesets/get-dependents-graph': 1.3.5
+      '@changesets/get-dependents-graph': 1.3.6
       '@changesets/types': 5.2.1
       '@manypkg/get-packages': 1.1.3
-      semver: 5.7.1
+      semver: 7.5.4
     dev: false
+    patched: true
 
   /@changesets/changelog-git/0.1.14:
     resolution: {integrity: sha512-+vRfnKtXVWsDDxGctOfzJsPhaCdXRYoe+KyWYoq5X/GqoISREiat0l3L8B0a453B2B4dfHGcZaGyowHbp9BSaA==}
@@ -3713,18 +3754,18 @@ packages:
       '@changesets/types': 5.2.1
     dev: false
 
-  /@changesets/cli/2.26.0:
-    resolution: {integrity: sha512-0cbTiDms+ICTVtEwAFLNW0jBNex9f5+fFv3I771nBvdnV/mOjd1QJ4+f8KtVSOrwD9SJkk9xbDkWFb0oXd8d1Q==}
+  /@changesets/cli/2.26.2:
+    resolution: {integrity: sha512-dnWrJTmRR8bCHikJHl9b9HW3gXACCehz4OasrXpMp7sx97ECuBGGNjJhjPhdZNCvMy9mn4BWdplI323IbqsRig==}
     hasBin: true
     dependencies:
-      '@babel/runtime': 7.20.7
-      '@changesets/apply-release-plan': 6.1.3
-      '@changesets/assemble-release-plan': 5.2.3
+      '@babel/runtime': 7.22.5
+      '@changesets/apply-release-plan': 6.1.4
+      '@changesets/assemble-release-plan': 5.2.4_3wuhjtl4hjck4itk3w32z4cd5u
       '@changesets/changelog-git': 0.1.14
-      '@changesets/config': 2.3.0
+      '@changesets/config': 2.3.1
       '@changesets/errors': 0.1.4
-      '@changesets/get-dependents-graph': 1.3.5
-      '@changesets/get-release-plan': 3.0.16
+      '@changesets/get-dependents-graph': 1.3.6
+      '@changesets/get-release-plan': 3.0.17
       '@changesets/git': 2.0.0
       '@changesets/logger': 0.0.5
       '@changesets/pre': 1.0.14
@@ -3733,7 +3774,7 @@ packages:
       '@changesets/write': 0.2.3
       '@manypkg/get-packages': 1.1.3
       '@types/is-ci': 3.0.0
-      '@types/semver': 6.2.3
+      '@types/semver': 7.5.1
       ansi-colors: 4.1.3
       chalk: 2.4.2
       enquirer: 2.3.6
@@ -3746,17 +3787,17 @@ packages:
       p-limit: 2.3.0
       preferred-pm: 3.0.3
       resolve-from: 5.0.0
-      semver: 5.7.1
+      semver: 7.5.4
       spawndamnit: 2.0.0
       term-size: 2.2.1
       tty-table: 4.1.6
     dev: false
 
-  /@changesets/config/2.3.0:
-    resolution: {integrity: sha512-EgP/px6mhCx8QeaMAvWtRrgyxW08k/Bx2tpGT+M84jEdX37v3VKfh4Cz1BkwrYKuMV2HZKeHOh8sHvja/HcXfQ==}
+  /@changesets/config/2.3.1:
+    resolution: {integrity: sha512-PQXaJl82CfIXddUOppj4zWu+987GCw2M+eQcOepxN5s+kvnsZOwjEJO3DH9eVy+OP6Pg/KFEWdsECFEYTtbg6w==}
     dependencies:
       '@changesets/errors': 0.1.4
-      '@changesets/get-dependents-graph': 1.3.5
+      '@changesets/get-dependents-graph': 1.3.6
       '@changesets/logger': 0.0.5
       '@changesets/types': 5.2.1
       '@manypkg/get-packages': 1.1.3
@@ -3770,14 +3811,14 @@ packages:
       extendable-error: 0.1.7
     dev: false
 
-  /@changesets/get-dependents-graph/1.3.5:
-    resolution: {integrity: sha512-w1eEvnWlbVDIY8mWXqWuYE9oKhvIaBhzqzo4ITSJY9hgoqQ3RoBqwlcAzg11qHxv/b8ReDWnMrpjpKrW6m1ZTA==}
+  /@changesets/get-dependents-graph/1.3.6:
+    resolution: {integrity: sha512-Q/sLgBANmkvUm09GgRsAvEtY3p1/5OCzgBE5vX3vgb5CvW0j7CEljocx5oPXeQSNph6FXulJlXV3Re/v3K3P3Q==}
     dependencies:
       '@changesets/types': 5.2.1
       '@manypkg/get-packages': 1.1.3
       chalk: 2.4.2
       fs-extra: 7.0.1
-      semver: 5.7.1
+      semver: 7.5.4
     dev: false
 
   /@changesets/get-github-info/0.5.2:
@@ -3789,12 +3830,12 @@ packages:
       - encoding
     dev: false
 
-  /@changesets/get-release-plan/3.0.16:
-    resolution: {integrity: sha512-OpP9QILpBp1bY2YNIKFzwigKh7Qe9KizRsZomzLe6pK8IUo8onkAAVUD8+JRKSr8R7d4+JRuQrfSSNlEwKyPYg==}
+  /@changesets/get-release-plan/3.0.17:
+    resolution: {integrity: sha512-6IwKTubNEgoOZwDontYc2x2cWXfr6IKxP3IhKeK+WjyD6y3M4Gl/jdQvBw+m/5zWILSOCAaGLu2ZF6Q+WiPniw==}
     dependencies:
       '@babel/runtime': 7.22.5
-      '@changesets/assemble-release-plan': 5.2.3
-      '@changesets/config': 2.3.0
+      '@changesets/assemble-release-plan': 5.2.4_3wuhjtl4hjck4itk3w32z4cd5u
+      '@changesets/config': 2.3.1
       '@changesets/pre': 1.0.14
       '@changesets/read': 0.5.9
       '@changesets/types': 5.2.1
@@ -7592,7 +7633,7 @@ packages:
     engines: {node: '>=16'}
     hasBin: true
     dependencies:
-      '@types/node': 20.5.0
+      '@types/node': 20.5.2
       playwright-core: 1.37.0
     optionalDependencies:
       fsevents: 2.3.2
@@ -9945,7 +9986,7 @@ packages:
       '@types/node': 16.18.11
       '@types/node-fetch': 2.6.4
       '@types/pretty-hrtime': 1.0.1
-      '@types/semver': 7.3.13
+      '@types/semver': 7.5.1
       better-opn: 2.1.1
       boxen: 5.1.2
       chalk: 4.1.2
@@ -11498,10 +11539,14 @@ packages:
 
   /@types/semver/6.2.3:
     resolution: {integrity: sha512-KQf+QAMWKMrtBMsB8/24w53tEsxllMj6TuA80TT/5igJalLI/zm0L3oXRbIAl4Ohfc85gyHX/jhMwsVkmhLU4A==}
+    dev: true
 
   /@types/semver/7.3.13:
     resolution: {integrity: sha512-21cFJr9z3g5dW8B0CVI9g2O9beqaThGQ6ZFBqHfwhzLDKUxaqTIy3vnfah/UPkfOiF2pLq+tGz+W8RyCskuslw==}
     dev: true
+
+  /@types/semver/7.5.1:
+    resolution: {integrity: sha512-cJRQXpObxfNKkFAZbJl2yjWtJCqELQIdShsogr1d2MilP8dKD9TE/nEKHkJgUNHdGKCQaf9HbIynuV2csLGVLg==}
 
   /@types/serve-static/1.15.0:
     resolution: {integrity: sha512-z5xyF6uh8CbjAu9760KDKsH2FcDxZ2tFCsA4HIMWE6IkiYMXfVoa+4f9KX+FN0ZLsaMw1WNG2ETLA6N+/YA+cg==}
@@ -11574,7 +11619,7 @@ packages:
   /@types/ws/8.5.4:
     resolution: {integrity: sha512-zdQDHKUgcX/zBc4GrwsE/7dVdAD8JR4EuiAXiiUhhfyIJXXb2+PrGshFyeXWQPMmmZ2XxgaqclgpIC7eTXc1mg==}
     dependencies:
-      '@types/node': 20.4.8
+      '@types/node': 20.5.2
     dev: true
 
   /@types/yargs-parser/21.0.0:
@@ -12166,6 +12211,10 @@ packages:
     dependencies:
       event-target-shim: 5.0.1
 
+  /abortcontroller-polyfill/1.7.5:
+    resolution: {integrity: sha512-JMJ5soJWP18htbbxJjG7bG6yuI6pRhgJ0scHHTfkUjf6wjP912xZWvM+A4sJK3gqd9E8fcPbDnOefbA9Th/FIQ==}
+    dev: false
+
   /accepts/1.3.8:
     resolution: {integrity: sha512-PYAthTa2m2VKxuvSD3DPC/Gy+U+sOA1LAuT8mkmRuvw+NACSaeXEQ+NHcVF7rONl6qcaxV3Uuemwawk+7+SJLw==}
     engines: {node: '>= 0.6'}
@@ -12282,6 +12331,19 @@ packages:
   /ahocorasick/1.0.2:
     resolution: {integrity: sha512-hCOfMzbFx5IDutmWLAt6MZwOUjIfSM9G9FyVxytmE4Rs/5YDPWQrD/+IR1w+FweD9H2oOZEnv36TmkjhNURBVA==}
     dev: true
+
+  /airtable/0.12.1:
+    resolution: {integrity: sha512-wS49QIO46YjSUbRIslX6pJaAGsdzOFPtYfaARYsBifsev10TDsyXc5IBYX6b3JQs4SZ8A5+g/vbQ5IfPvbnc+w==}
+    engines: {node: '>=8.0.0'}
+    dependencies:
+      '@types/node': 12.20.55
+      abort-controller: 3.0.0
+      abortcontroller-polyfill: 1.7.5
+      lodash: 4.17.21
+      node-fetch: 2.6.12
+    transitivePeerDependencies:
+      - encoding
+    dev: false
 
   /ajv-formats/2.1.1:
     resolution: {integrity: sha512-Wx0Kx52hxE7C18hkMEggYlEifqWZtYaRgouJor+WMdPnQyEK13vgEWyVNup7SoeeoLMsr4kf5h6dOW11I15MUA==}
@@ -14865,6 +14927,7 @@ packages:
 
   /encoding/0.1.13:
     resolution: {integrity: sha512-ETBauow1T35Y/WZMkio9jiM0Z5xjHHmJ4XmjZOq1l/dXz3lr2sRn87nJy20RupqSh1F2m3HHPSp8ShIPQJrJ3A==}
+    requiresBuild: true
     dependencies:
       iconv-lite: 0.6.3
 
@@ -19374,7 +19437,7 @@ packages:
     engines: {node: ^10.13.0 || ^12.13.0 || ^14.15.0 || >=15.0.0}
     dependencies:
       '@jest/types': 27.5.1
-      '@types/node': 20.5.0
+      '@types/node': 20.5.2
     dev: true
 
   /jest-mock/29.6.2:
@@ -22040,17 +22103,24 @@ packages:
       is-docker: 2.2.1
       is-wsl: 2.2.0
 
-  /openai/3.3.0:
-    resolution: {integrity: sha512-uqxI/Au+aPRnsaQRe8CojU0eCR7I0mBiKjD3sNMzY6DaC1ZVrc85u98mtJW6voDug8fgGN+DIZmTDxTthxb7dQ==}
-    dependencies:
-      axios: 0.26.1
-      form-data: 4.0.0
-    transitivePeerDependencies:
-      - debug
-    dev: false
-
   /openai/4.2.0:
     resolution: {integrity: sha512-zfvpO2eITIxIjTG8T6Cek7NB2dMvP/LW0TRUJ4P9E8+qbBNKw00DrtfF64b+fAV2+wUYCVyynT6iSycJ//TtbA==}
+    hasBin: true
+    dependencies:
+      '@types/node': 18.17.1
+      '@types/node-fetch': 2.6.4
+      abort-controller: 3.0.0
+      agentkeepalive: 4.5.0
+      digest-fetch: 1.3.0
+      form-data-encoder: 1.7.2
+      formdata-node: 4.4.1
+      node-fetch: 2.6.12
+    transitivePeerDependencies:
+      - encoding
+    dev: false
+
+  /openai/4.5.0:
+    resolution: {integrity: sha512-9cA5i6KpEAeLV8nZrVgOXqRmUWUIu4FV2oRKvSIwrA7Z5aMd4sXVOaqWAuRDhFFewirxhys8D6R5B2Drj1pKIQ==}
     hasBin: true
     dependencies:
       '@types/node': 18.17.1
@@ -26163,41 +26233,6 @@ packages:
       - ts-node
     dev: true
 
-  /tsup/7.1.0:
-    resolution: {integrity: sha512-mazl/GRAk70j8S43/AbSYXGgvRP54oQeX8Un4iZxzATHt0roW0t6HYDVZIXMw0ZQIpvr1nFMniIVnN5186lW7w==}
-    engines: {node: '>=16.14'}
-    hasBin: true
-    peerDependencies:
-      '@swc/core': ^1
-      postcss: ^8.4.12
-      typescript: '>=4.1.0'
-    peerDependenciesMeta:
-      '@swc/core':
-        optional: true
-      postcss:
-        optional: true
-      typescript:
-        optional: true
-    dependencies:
-      bundle-require: 4.0.1_esbuild@0.18.11
-      cac: 6.7.14
-      chokidar: 3.5.3
-      debug: 4.3.4
-      esbuild: 0.18.11
-      execa: 5.1.1
-      globby: 11.1.0
-      joycon: 3.1.1
-      postcss-load-config: 4.0.1
-      resolve-from: 5.0.0
-      rollup: 3.10.0
-      source-map: 0.8.0-beta.0
-      sucrase: 3.32.0
-      tree-kill: 1.2.2
-    transitivePeerDependencies:
-      - supports-color
-      - ts-node
-    dev: true
-
   /tsup/7.1.0_typescript@4.9.4:
     resolution: {integrity: sha512-mazl/GRAk70j8S43/AbSYXGgvRP54oQeX8Un4iZxzATHt0roW0t6HYDVZIXMw0ZQIpvr1nFMniIVnN5186lW7w==}
     engines: {node: '>=16.14'}
@@ -27074,7 +27109,7 @@ packages:
       - terser
     dev: true
 
-  /vite-node/0.28.5_@types+node@20.5.0:
+  /vite-node/0.28.5_@types+node@20.5.2:
     resolution: {integrity: sha512-LmXb9saMGlrMZbXTvOveJKwMTBTNUH66c8rJnQ0ZPNX+myPEol64+szRzXtV5ORb0Hb/91yq+/D3oERoyAt6LA==}
     engines: {node: '>=v14.16.0'}
     hasBin: true
@@ -27086,7 +27121,7 @@ packages:
       picocolors: 1.0.0
       source-map: 0.6.1
       source-map-support: 0.5.21
-      vite: 4.1.4_@types+node@20.5.0
+      vite: 4.1.4_@types+node@20.5.2
     transitivePeerDependencies:
       - '@types/node'
       - less
@@ -27176,7 +27211,7 @@ packages:
       fsevents: 2.3.2
     dev: true
 
-  /vite/4.1.4_@types+node@20.5.0:
+  /vite/4.1.4_@types+node@20.5.2:
     resolution: {integrity: sha512-3knk/HsbSTKEin43zHu7jTwYWv81f8kgAL99G5NWBcA1LKvtvcVAC4JjBH1arBunO9kQka+1oGbrMKOjk4ZrBg==}
     engines: {node: ^14.18.0 || >=16.0.0}
     hasBin: true
@@ -27201,7 +27236,7 @@ packages:
       terser:
         optional: true
     dependencies:
-      '@types/node': 20.5.0
+      '@types/node': 20.5.2
       esbuild: 0.16.17
       postcss: 8.4.27
       resolve: 1.22.1
@@ -27234,7 +27269,7 @@ packages:
     dependencies:
       '@types/chai': 4.3.4
       '@types/chai-subset': 1.3.3
-      '@types/node': 20.5.0
+      '@types/node': 20.5.2
       '@vitest/expect': 0.28.5
       '@vitest/runner': 0.28.5
       '@vitest/spy': 0.28.5
@@ -27253,8 +27288,8 @@ packages:
       tinybench: 2.3.1
       tinypool: 0.3.1
       tinyspy: 1.0.2
-      vite: 4.1.4_@types+node@20.5.0
-      vite-node: 0.28.5_@types+node@20.5.0
+      vite: 4.1.4_@types+node@20.5.2
+      vite-node: 0.28.5_@types+node@20.5.2
       why-is-node-running: 2.2.2
     transitivePeerDependencies:
       - less

@@ -215,7 +215,7 @@ If there are any tasks missing that you'd like to see added, please [open a new 
 
 ## Using the underlying Stripe client
 
-You can use the underlying client to do anything the [stripe-node](https://github.com/stripe/stripe-node) client supports by using the `client` property on the integration:
+You can use the underlying client to do anything the [stripe-node](https://github.com/stripe/stripe-node) client supports by using `runTask` on the integration:
 
 ```ts
 const stripe = new Stripe({
@@ -234,20 +234,25 @@ client.defineJob({
     stripe,
   },
   run: async (payload, io, ctx) => {
-    await io.runTask("create-price", { name: "Create Price" }, async (task) => {
-      return stripe.client.prices.create(
-        {
-          unit_amount: 2000,
-          currency: "usd",
-          product_data: {
-            name: "T-shirt",
+    const price = await io.stripe.runTask(
+      "create-price",
+      async (client, task) => {
+        return client.prices.create(
+          {
+            unit_amount: 2000,
+            currency: "usd",
+            product_data: {
+              name: "T-shirt",
+            },
           },
-        },
-        {
-          idempotencyKey: task.idempotencyKey,
-        }
-      );
-    });
+          {
+            idempotencyKey: task.idempotencyKey,
+          }
+        );
+      },
+      //this is optional, it will appear on the Run page
+      { name: "Create Price" }
+    );
   },
 });
 ```
