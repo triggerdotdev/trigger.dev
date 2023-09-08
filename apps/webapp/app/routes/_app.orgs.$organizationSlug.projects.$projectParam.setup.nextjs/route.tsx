@@ -27,6 +27,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { Handle } from "~/utils/handle";
 import { projectSetupPath, trimTrailingSlash } from "~/utils/pathBuilder";
+import { Callout } from "~/components/primitives/Callout";
 
 type SelectionChoices = "use-existing-project" | "create-new-next-app";
 
@@ -94,6 +95,14 @@ export default function SetupNextjs() {
         </RadioGroup>
         {selectedValue && (
           <>
+            <Callout
+              variant={"info"}
+              to="https://github.com/triggerdotdev/trigger.dev/discussions/430"
+              className="mb-8"
+            >
+              Trigger.dev has full support for serverless. We will be adding support for
+              long-running servers soon.
+            </Callout>
             {selectedValue === "create-new-next-app" ? (
               <>
                 <StepNumber stepNumber="1" title="Create a new Next.js project" />
