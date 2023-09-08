@@ -151,6 +151,10 @@ export function projectSetupAstroPath(organization: OrgForPath, project: Project
   return `${projectPath(organization, project)}/setup/astro`;
 }
 
+export function projectSetupNestjsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/setup/nestjs`;
+}
+
 export function projectJobsPath(organization: OrgForPath, project: ProjectForPath) {
   return projectPath(organization, project);
 }

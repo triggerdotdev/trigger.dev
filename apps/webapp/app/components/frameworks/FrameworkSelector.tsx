@@ -1,30 +1,32 @@
+import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
 import { Link } from "@remix-run/react";
+import { AstroLogo } from "~/assets/logos/AstroLogo";
+import { ExpressLogo } from "~/assets/logos/ExpressLogo";
+import { FastifyLogo } from "~/assets/logos/FastifyLogo";
+import { NestjsLogo } from "~/assets/logos/NestjsLogo";
+import { NextjsLogo } from "~/assets/logos/NextjsLogo";
+import { NuxtLogo } from "~/assets/logos/NuxtLogo";
+import { RedwoodLogo } from "~/assets/logos/RedwoodLogo";
+import { RemixLogo } from "~/assets/logos/RemixLogo";
+import { SvelteKitLogo } from "~/assets/logos/SveltekitLogo";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { cn } from "~/utils/cn";
 import {
   projectSetupAstroPath,
   projectSetupExpressPath,
   projectSetupFastifyPath,
+  projectSetupNestjsPath,
   projectSetupNextjsPath,
   projectSetupNuxtPath,
   projectSetupRedwoodPath,
   projectSetupRemixPath,
   projectSetupSvelteKitPath,
 } from "~/utils/pathBuilder";
-import { PageGradient } from "../PageGradient";
-import { Header1 } from "../primitives/Headers";
-import { NextjsLogo } from "~/assets/logos/NextjsLogo";
-import { NuxtLogo } from "~/assets/logos/NuxtLogo";
-import { SvelteKitLogo } from "~/assets/logos/SveltekitLogo";
-import { AstroLogo } from "~/assets/logos/AstroLogo";
-import { ExpressLogo } from "~/assets/logos/ExpressLogo";
-import { FastifyLogo } from "~/assets/logos/FastifyLogo";
-import { RedwoodLogo } from "~/assets/logos/RedwoodLogo";
-import { RemixLogo } from "~/assets/logos/RemixLogo";
-import { cn } from "~/utils/cn";
 import { Feedback } from "../Feedback";
+import { PageGradient } from "../PageGradient";
 import { Button } from "../primitives/Buttons";
-import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
+import { Header1 } from "../primitives/Headers";
 
 export function FrameworkSelector() {
   const organization = useOrganization();
@@ -69,6 +71,9 @@ export function FrameworkSelector() {
           </FrameworkLink>
           <FrameworkLink to={projectSetupFastifyPath(organization, project)}>
             <FastifyLogo className="w-36" />
+          </FrameworkLink>
+          <FrameworkLink to={projectSetupNestjsPath(organization, project)}>
+            <NestjsLogo className="w-36" />
           </FrameworkLink>
         </div>
       </div>
