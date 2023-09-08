@@ -29,20 +29,6 @@ export function HowToRunYourJob() {
 
   return (
     <>
-      <Callout variant="info" className="mb-6">
-        <Paragraph variant={"small"} className={variantClasses.info.textColor}>
-          Scheduled Triggers <strong>do not</strong> trigger Jobs in the DEV Environment. When
-          developing locally you should use the{" "}
-          <Link
-            to={jobTestPath(organization, project, job)}
-            className="underline underline-offset-2 transition hover:text-blue-100"
-          >
-            Test feature
-          </Link>{" "}
-          to trigger any scheduled Jobs.
-        </Paragraph>
-      </Callout>
-
       <Paragraph spacing>There are two ways to run your Job:</Paragraph>
 
       <StepNumber stepNumber="1" title="Trigger a test Run" />
@@ -76,6 +62,19 @@ export function HowToRunYourJob() {
           How to run a Job
         </LinkButton>
       </StepContentContainer>
+      <Callout variant="info">
+        <Paragraph variant={"small"} className={variantClasses.info.textColor}>
+          Scheduled Triggers <strong>do not</strong> trigger Jobs in the DEV Environment. When
+          developing locally you should use the{" "}
+          <Link
+            to={jobTestPath(organization, project, job)}
+            className="underline underline-offset-2 transition hover:text-blue-100"
+          >
+            Test feature
+          </Link>{" "}
+          to trigger any scheduled Jobs.
+        </Paragraph>
+      </Callout>
     </>
   );
 }
