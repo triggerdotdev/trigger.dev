@@ -12,8 +12,8 @@ export default function Page() {
   return (
     <FrameworkComingSoon
       frameworkName="Astro"
-      githubIssueUrl="https://github.com/triggerdotdev/trigger.dev"
-      githubIssueNumber={624}
+      githubIssueUrl="https://github.com/triggerdotdev/trigger.dev/issues/452"
+      githubIssueNumber={452}
     >
       <AstroLogo className="w-56" />
     </FrameworkComingSoon>

@@ -12,8 +12,8 @@ export default function Page() {
   return (
     <FrameworkComingSoon
       frameworkName="Express"
-      githubIssueUrl="https://github.com/triggerdotdev/trigger.dev"
-      githubIssueNumber={244}
+      githubIssueUrl="https://github.com/triggerdotdev/trigger.dev/issues/451"
+      githubIssueNumber={451}
     >
       <ExpressLogo className="w-56" />
     </FrameworkComingSoon>

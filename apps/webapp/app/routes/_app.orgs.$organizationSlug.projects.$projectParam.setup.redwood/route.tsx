@@ -12,8 +12,8 @@ export default function Page() {
   return (
     <FrameworkComingSoon
       frameworkName="Redwood"
-      githubIssueUrl="https://github.com/triggerdotdev/trigger.dev"
-      githubIssueNumber={432}
+      githubIssueUrl="https://github.com/triggerdotdev/trigger.dev/issues/448"
+      githubIssueNumber={448}
     >
       <RedwoodLogo className="w-56" />
     </FrameworkComingSoon>

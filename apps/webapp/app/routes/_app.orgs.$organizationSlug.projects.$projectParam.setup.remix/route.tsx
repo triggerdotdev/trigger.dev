@@ -12,8 +12,8 @@ export default function Page() {
   return (
     <FrameworkComingSoon
       frameworkName="Remix"
-      githubIssueUrl="https://github.com/triggerdotdev/trigger.dev"
-      githubIssueNumber={243}
+      githubIssueUrl="https://github.com/triggerdotdev/trigger.dev/issues/445"
+      githubIssueNumber={445}
     >
       <RemixLogo className="w-56" />
     </FrameworkComingSoon>

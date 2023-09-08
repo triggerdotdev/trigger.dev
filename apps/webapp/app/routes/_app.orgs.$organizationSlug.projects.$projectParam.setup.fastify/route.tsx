@@ -12,8 +12,8 @@ export default function Page() {
   return (
     <FrameworkComingSoon
       frameworkName="Fastify"
-      githubIssueUrl="https://github.com/triggerdotdev/trigger.dev"
-      githubIssueNumber={245}
+      githubIssueUrl="https://github.com/triggerdotdev/trigger.dev/issues/450"
+      githubIssueNumber={450}
     >
       <FastifyLogo className="w-56" />
     </FrameworkComingSoon>

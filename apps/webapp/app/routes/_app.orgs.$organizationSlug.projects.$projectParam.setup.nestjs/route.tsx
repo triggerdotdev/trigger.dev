@@ -12,8 +12,8 @@ export default function Page() {
   return (
     <FrameworkComingSoon
       frameworkName="Nest.js"
-      githubIssueUrl="https://github.com/triggerdotdev/trigger.dev"
-      githubIssueNumber={423}
+      githubIssueUrl="https://github.com/triggerdotdev/trigger.dev/issues/449"
+      githubIssueNumber={449}
     >
       <NestjsLogo className="w-56" />
     </FrameworkComingSoon>

@@ -14,8 +14,8 @@ export default function Page() {
   return (
     <FrameworkComingSoon
       frameworkName="SvelteKit"
-      githubIssueUrl="https://github.com/triggerdotdev/trigger.dev"
-      githubIssueNumber={423}
+      githubIssueUrl="https://github.com/triggerdotdev/trigger.dev/issues/453"
+      githubIssueNumber={453}
     >
       <SvelteKitLogo className="w-56" />
     </FrameworkComingSoon>
