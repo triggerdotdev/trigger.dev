@@ -1,1 +1,239 @@
-We're in the process of building support for the Express framework. You can follow along with progress or contribute via [this GitHub issue](https://github.com/triggerdotdev/trigger.dev/issues).
+---
+title: "Express"
+sidebarTitle: "Express"
+description: "How to manually set up Trigger.dev in your Express project"
+---
+
+<Accordion defaultOpen title="Don't have an Express project yet to add Trigger.dev to? No problem, you can complete the Manual Setup using a blank Express project:">
+Create a blank project by creating a new Express application:
+
+```bash
+npm init -y
+npm install express
+```
+
+Trigger.dev works with Express applications.
+
+</Accordion>
+
+## Installing Required Packages
+
+To begin, install the necessary packages in your Express project directory:
+
+<CodeGroup>
+
+```bash npm
+
+npm install @trigger.dev/sdk @trigger-dev/express
+
+```
+
+```bash pnpm
+pnpm install @trigger.dev/sdk @trigger-dev/express
+
+```
+
+```bash yarn
+yarn add @trigger.dev/sdk @trigger-dev/express
+
+```
+
+</CodeGroup>
+
+<br />
+
+<Note>Ensure that you execute this command within an Express project.</Note>
+
+## Obtaining the Development API Key
+
+To locate your development API key, login to the [Trigger.dev
+dashboard](https://cloud.trigger.dev) and select the Project you want to
+connect to. Then click on the Environments & API Keys tab in the left menu.
+You can copy your development API Key from the field at the top of this page.
+(Your development key will start with `tr_dev_`).
+
+## Adding Environment Variables
+
+Create a `.env` file at the root of your project and include your Trigger API key and URL like this:
+
+```bash
+
+TRIGGER_API_KEY=ENTER_YOUR_DEVELOPMENT_API_KEY_HERE
+TRIGGER_API_URL=https://cloud.trigger.dev
+
+```
+
+Replace `ENTER_YOUR_DEVELOPMENT_API_KEY_HERE` with the actual API key obtained from the previous step.
+
+## Configuring the Trigger Client
+
+To set up the Trigger Client for your project, follow these steps:
+
+1. **Create Configuration File:**
+
+   In your project directory, create a configuration file named `trigger.ts` or `trigger.js`, depending on whether your project uses TypeScript (`.ts`) or JavaScript (`.js`).
+
+2. **Add Configuration Code:**
+
+   Open the configuration file you created and add the following code:
+
+   ```typescript
+   // trigger.ts (for TypeScript) or trigger.js (for JavaScript)
+
+    import { TriggerClient } from "@trigger.dev/sdk";
+
+    export const client = new TriggerClient({
+    id: "my-app",
+    apiKey: process.env.TRIGGER_API_KEY,
+    apiUrl: process.env.TRIGGER_API_URL,
+    });
+
+   ```
+
+   Replace **"my-app"** with an appropriate identifier for your project. The **apiKey** and **apiUrl** are obtained from the environment variables you set earlier.
+
+
+By following these steps, you'll configure the Trigger Client to work with your Express project.
+
+## Creating the API Route
+
+To establish an API route for interacting with Trigger.dev, follow these steps:
+
+1. Create a new route file (e.g., `route.js`) in your Express project.
+
+2. Add the following code to your route file:
+
+```javascript
+const express = require('express');
+const { createExpressRoute } = require('@trigger.dev/express');
+const { client } = require('./trigger'); // Update the path as per your project structure
+
+const router = express.Router();
+const { POST } = createExpressRoute(client);
+
+router.post('/trigger', POST);
+
+module.exports = router;
+```
+
+Make sure to update the path in the `require('./trigger')` statement to match the location of your Trigger Client configuration file.
+
+## Creating the Example Job
+
+1. Create a folder named `Jobs` alongside your Express project files.
+2. Inside the `Jobs` folder, add two files named `example.js` and `index.js`.
+
+<CodeGroup>
+
+```typescript example.(ts/js)
+const { eventTrigger } = require('@trigger.dev/sdk');
+const { client } = require('./trigger'); // Update the path as per your project structure
+
+// Your first job
+client.defineJob({
+  id: 'example-job',
+  name: 'Example Job',
+  version: '0.0.1',
+  trigger: eventTrigger({
+    name: 'example.event',
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info('Hello world!', { payload });
+
+    return {
+      message: 'Hello world!',
+    };
+  },
+});
+
+```
+
+```typescript index.ts/index.(ts/js)
+// import all your job files here
+
+module.exports = require('./example');
+```
+
+</CodeGroup>
+
+## Adding Configuration to `package.json`
+
+Inside the `package.json` file, add the following configuration under the root object:
+
+
+```json
+"trigger.dev": {
+  "endpointId": "my-app"
+}
+```
+
+Your `package.json` file might look something like this:
+
+```json
+{
+  "name": "my-app",
+  "version": "1.0.0",
+  "dependencies": {
+    // ... other dependencies
+  },
+  "trigger.dev": {
+    "endpointId": "my-app"
+  }
+}
+```
+
+Replace **"my-app"** with the appropriate identifier you used during the step for creating the Trigger Client.
+
+## Next Steps
+
+Start your Express project, and your Trigger.dev integration should work seamlessly
+
+In your project directory, run
+    
+```bash
+node route.js
+```
+
+This command starts your Express server and enables the Trigger.dev integration
+
+![Your first Job](/images/cli-dev.gif)
+
+<Warning>
+  Ensure your Express server is running locally before continuing. You must also leave this server
+  running while you develop.
+</Warning>
+
+In a **new terminal window or tab**, you can run Trigger.dev locally:
+
+<CodeGroup>
+
+```bash npm
+npx @trigger.dev/cli@latest dev
+```
+
+```bash pnpm
+pnpm dlx @trigger.dev/cli@latest dev
+```
+
+```bash yarn
+yarn dlx @trigger.dev/cli@latest dev
+```
+
+</CodeGroup>
+<br />
+<Note>
+   You can optionally pass the port if you're not running on port 3000 by adding
+  `--port 3001` to the end.
+</Note>
+<Note>
+  You can optionally pass the hostname if you're not running on localhost by adding
+  `--hostname <host>`. Example, in case your Express server is running on 0.0.0.0: `--hostname 0.0.0.0`.
+</Note>
+
+<Tip>
+  If your existing Express project utilizes middleware and you encounter any issues, such as
+  potential conflicts with Trigger.dev, it's recommended to refer to the troubleshooting guide at
+  [Middleware](/documentation/guides/platforms/express#middleware) for assistance. This guide can
+  help you address any concerns related to middleware conflicts and ensure the smooth functioning of
+  your project with Trigger.dev.
+</Tip>
