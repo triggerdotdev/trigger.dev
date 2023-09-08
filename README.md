@@ -65,7 +65,7 @@ Click the links to join the discussions about our upcoming features.
 | [Background tasks](https://github.com/triggerdotdev/trigger.dev/discussions/400)     | Offload long or intense Tasks to our infrastructure | 🛠️     |
 | [React frameworks](https://github.com/triggerdotdev/trigger.dev/discussions/411)     | Support for Remix, Astro, RedwoodJS & more          | 🛠️     |
 | [Long-running servers](https://github.com/triggerdotdev/trigger.dev/discussions/430) | Run Jobs on your long-running backend               | 🛠️     |
-| [Polling Triggers](https://github.com/triggerdotdev/trigger.dev/discussions/418)     | Subscribe to changes without webhooks               | 🕝     |
+| Polling Triggers                                                                     | Subscribe to changes without webhooks               | 🕝     |
 | Vercel integration                                                                   | Easy deploy and preview environment support         | 🕝     |
 | Streaming                                                                            | Receive data from your Jobs in realtime             | 🕝     |
 | 100+ integrations                                                                    | Comprehensive support for popular APIs              | 🕝     |
