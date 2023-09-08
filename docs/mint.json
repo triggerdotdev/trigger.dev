@@ -54,6 +54,10 @@
     {
       "source": "/documentation/quickstart",
       "destination": "/documentation/quickstarts/introduction"
+    },
+    {
+      "source": "/documentation/guides/manual",
+      "destination": "/documentation/guides/manual/nextjs"
     }
   ],
   "navigation": [
