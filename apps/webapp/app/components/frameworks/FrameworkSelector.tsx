@@ -72,7 +72,7 @@ export function FrameworkSelector() {
           <FrameworkLink to={projectSetupFastifyPath(organization, project)}>
             <FastifyLogo className="w-36" />
           </FrameworkLink>
-          <FrameworkLink to={projectSetupNestjsPath(organization, project)}>
+          <FrameworkLink to={projectSetupNestjsPath(organization, project)} supported>
             <NestjsLogo className="w-36" />
           </FrameworkLink>
         </div>

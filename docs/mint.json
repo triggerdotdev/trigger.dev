@@ -142,6 +142,7 @@
           "group": "Manual setup",
           "pages": [
             "documentation/guides/manual/nextjs",
+            "documentation/guides/manual/nestjs",
             "documentation/guides/manual/express",
             "documentation/guides/manual/remix",
             "documentation/guides/manual/redwood",
