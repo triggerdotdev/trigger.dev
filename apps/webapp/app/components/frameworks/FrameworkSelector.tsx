@@ -63,7 +63,7 @@ export function FrameworkSelector() {
           <FrameworkLink to={projectSetupAstroPath(organization, project)}>
             <AstroLogo className="w-32" />
           </FrameworkLink>
-          <FrameworkLink to={projectSetupNuxtPath(organization, project)}>
+          <FrameworkLink to={projectSetupNuxtPath(organization, project)} supported>
             <NuxtLogo className="w-32" />
           </FrameworkLink>
           <FrameworkLink to={projectSetupSvelteKitPath(organization, project)}>
