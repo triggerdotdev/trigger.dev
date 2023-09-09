@@ -2,6 +2,7 @@ import { eventTrigger } from "@trigger.dev/sdk";
 import { client } from "~/trigger";
 
 // your first job
+export function configureJob () {
 client.defineJob({
   id: "remix-test-job",
   name: "remix test job",
@@ -17,3 +18,4 @@ client.defineJob({
     };
   },
 });
+}
