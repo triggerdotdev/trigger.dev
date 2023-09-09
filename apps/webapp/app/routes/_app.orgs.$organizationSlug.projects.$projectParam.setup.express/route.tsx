@@ -1,23 +1,21 @@
-import React from "react";
 import { useProjectSetupComplete } from "~/hooks/useProjectSetupComplete";
 import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { Handle } from "~/utils/handle";
-import { projectSetupPath, trimTrailingSlash } from "~/utils/pathBuilder";
+import { trimTrailingSlash } from "~/utils/pathBuilder";
 import { Callout } from "~/components/primitives/Callout";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { RunDevCommand, TriggerDevStep, InitCommand } from "~/components/SetupCommands";
 import { Header1 } from "~/components/primitives/Headers";
-import { LinkButton } from "~/components/primitives/Buttons";
 import { PageGradient } from "~/components/PageGradient";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
-import { Button } from "~/components/primitives/Buttons";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { InlineCode } from "~/components/code/InlineCode";
-import { ClipboardField } from "~/components/primitives/ClipboardField";
+import invariant from "tiny-invariant";
+import { LinkButton } from "~/components/primitives/Buttons";
+
 
 // Define breadcrumb handling for this page
 export const handle: Handle = {
@@ -55,13 +53,17 @@ export default function SetupExpress() {
         </Callout>
 
         {/* Step 1 */}
-        <StepNumber stepNumber="1" title="Run the CLI 'init' command in your existing Express project" />
+        <StepNumber stepNumber="1" title="Manually set up Trigger.dev in your existing Express project" />
         <StepContentContainer>
           <InitCommand appOrigin={appOrigin} apiKey={devEnvironment.apiKey} />
           <Paragraph spacing variant="small">
-            You’ll notice a new folder in your project called 'jobs'. We’ve added a very
-            simple example Job in <InlineCode variant="extra-small">examples.ts</InlineCode>{" "}
-            to help you get started.
+            To set up Trigger.dev in your existing Express project, please follow the manual installation guide in the documentation:
+          </Paragraph>
+          <LinkButton to="https://trigger.dev/docs/documentation/quickstarts/express" variant="primary">
+            Manual Installation Guide
+          </LinkButton>
+          <Paragraph spacing variant="small">
+            This guide will walk you through the necessary steps for setting up Trigger.dev with Express.js.
           </Paragraph>
         </StepContentContainer>
 
@@ -80,7 +82,7 @@ export default function SetupExpress() {
         {/* Step 4 */}
         <StepNumber stepNumber="4" title="Wait for Jobs" displaySpinner />
         <StepContentContainer>
-          <Paragraph>This page will automatically refresh.</Paragraph>
+          <Paragraph>This page will refresh itself.</Paragraph>
         </StepContentContainer>
       </div>
     </PageGradient>
