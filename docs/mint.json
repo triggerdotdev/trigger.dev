@@ -53,7 +53,11 @@
   "redirects": [
     {
       "source": "/documentation/quickstart",
-      "destination": "/documentation/quickstarts/nextjs"
+      "destination": "/documentation/quickstarts/introduction"
+    },
+    {
+      "source": "/documentation/guides/manual",
+      "destination": "/documentation/guides/manual/nextjs"
     }
   ],
   "navigation": [
@@ -64,7 +68,20 @@
         {
           "group": "Quick Starts",
           "pages": [
-            "documentation/quickstarts/nextjs",
+            "documentation/quickstarts/introduction",
+            {
+              "group": "Frameworks",
+              "pages": [
+                "documentation/quickstarts/nextjs",
+                "documentation/quickstarts/express",
+                "documentation/quickstarts/remix",
+                "documentation/quickstarts/redwood",
+                "documentation/quickstarts/astro",
+                "documentation/quickstarts/nuxt",
+                "documentation/quickstarts/sveltekit",
+                "documentation/quickstarts/fastify"
+              ]
+            },
             "documentation/quickstarts/supabase"
           ]
         },
@@ -111,11 +128,30 @@
           "group": "Platforms",
           "pages": [
             "documentation/guides/platforms/nextjs",
-            "documentation/guides/platforms/express"
+            "documentation/guides/platforms/express",
+            "documentation/guides/platforms/remix",
+            "documentation/guides/platforms/redwood",
+            "documentation/guides/platforms/astro",
+            "documentation/guides/platforms/nuxt",
+            "documentation/guides/platforms/sveltekit",
+            "documentation/guides/platforms/fastify"
           ]
         },
         "documentation/guides/cli",
-        "documentation/guides/manual",
+        {
+          "group": "Manual setup",
+          "pages": [
+            "documentation/guides/manual/nextjs",
+            "documentation/guides/manual/express",
+            "documentation/guides/manual/remix",
+            "documentation/guides/manual/redwood",
+            "documentation/guides/manual/astro",
+            "documentation/guides/manual/nuxt",
+            "documentation/guides/manual/sveltekit",
+            "documentation/guides/manual/fastify"
+          ]
+        },
+
         "documentation/guides/running-jobs",
         "documentation/guides/jobs/managing",
         {
@@ -128,7 +164,7 @@
           ]
         },
         {
-          "group": "Using integrations",
+          "group": "Using Integrations",
           "pages": [
             "documentation/guides/using-integrations",
             "documentation/guides/using-integrations-apikeys",
@@ -173,12 +209,26 @@
       "group": "Overview",
       "pages": [
         "integrations/introduction",
-        "integrations/create"
+        {
+          "group": "Create an Integration",
+          "pages": [
+            "integrations/create",
+            "integrations/create-setup",
+            "integrations/create-anatomy",
+            "integrations/create-oauth",
+            "integrations/create-client",
+            "integrations/create-tasks",
+            "integrations/create-triggers",
+            "integrations/create-testing",
+            "integrations/create-publishing"
+          ]
+        }
       ]
     },
     {
       "group": "Integrations",
       "pages": [
+        "integrations/apis/airtable",
         {
           "group": "GitHub",
           "pages": [
@@ -187,32 +237,12 @@
             "integrations/apis/github-tasks"
           ]
         },
-        {
-          "group": "OpenAI",
-          "pages": [
-            "integrations/apis/openai"
-          ]
-        },
-        "integrations/apis/stripe",
+        "integrations/apis/openai",
         "integrations/apis/plain",
-        {
-          "group": "Resend",
-          "pages": [
-            "integrations/apis/resend"
-          ]
-        },
-        {
-          "group": "SendGrid",
-          "pages": [
-            "integrations/apis/sendgrid"
-          ]
-        },
-        {
-          "group": "Slack",
-          "pages": [
-            "integrations/apis/slack"
-          ]
-        },
+        "integrations/apis/resend",
+        "integrations/apis/sendgrid",
+        "integrations/apis/slack",
+        "integrations/apis/stripe",
         {
           "group": "Supabase",
           "pages": [
@@ -273,10 +303,7 @@
             "sdk/dynamictrigger/constructor",
             {
               "group": "Instance methods",
-              "pages": [
-                "sdk/dynamictrigger/register",
-                "sdk/dynamictrigger/unregister"
-              ]
+              "pages": ["sdk/dynamictrigger/register", "sdk/dynamictrigger/unregister"]
             }
           ]
         },
@@ -287,10 +314,7 @@
             "sdk/dynamicschedule/constructor",
             {
               "group": "Instance methods",
-              "pages": [
-                "sdk/dynamicschedule/register",
-                "sdk/dynamicschedule/unregister"
-              ]
+              "pages": ["sdk/dynamicschedule/register", "sdk/dynamicschedule/unregister"]
             }
           ]
         },
@@ -311,10 +335,7 @@
     },
     {
       "group": "Overview",
-      "pages": [
-        "examples/introduction",
-        "examples/examples-repository"
-      ]
+      "pages": ["examples/introduction"]
     }
   ],
   "footerSocials": {

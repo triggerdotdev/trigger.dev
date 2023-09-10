@@ -53,6 +53,12 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 
 export const handle: Handle = {
   breadcrumb: (_match, matches) => <ProjectsMenu matches={matches} />,
+  scripts: (match) => [
+    {
+      src: "https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js",
+      crossOrigin: "anonymous",
+    },
+  ],
 };
 
 export default function Project() {

@@ -1,10 +1,9 @@
+import { Clipboard, ClipboardCheck } from "lucide-react";
 import type { Language, PrismTheme } from "prism-react-renderer";
 import Highlight, { defaultProps } from "prism-react-renderer";
 import { forwardRef, useCallback, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
-import { ClipboardDocumentCheckIcon, ClipboardIcon } from "@heroicons/react/24/solid";
-import { Clipboard, ClipboardCheck, ClipboardCheckIcon } from "lucide-react";
 
 //This is a fork of https://github.com/mantinedev/mantine/blob/master/src/mantine-prism/src/Prism/Prism.tsx
 //it didn't support highlighting lines by dimming the rest of the code, or animations on the highlighting
@@ -192,6 +191,9 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
       Array.from({ length: end - start + 1 }, (_, i) => start + i)
     );
 
+    // if there are more than 1000 lines, don't highlight
+    const shouldHighlight = lineCount <= 1000;
+
     return (
       <div
         className={cn("relative overflow-hidden rounded-md border border-slate-800", className)}
@@ -229,99 +231,113 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
           </TooltipProvider>
         )}
 
-        <Highlight {...defaultProps} theme={theme} code={code} language={language}>
-          {({
-            className: inheritedClassName,
-            style: inheritedStyle,
-            tokens,
-            getLineProps,
-            getTokenProps,
-          }) => (
-            <div
-              dir="ltr"
-              className="overflow-auto px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
-              style={{
-                maxHeight,
-              }}
-            >
-              <pre
-                className={cn(
-                  "relative mr-2 font-mono text-xs leading-relaxed",
-                  inheritedClassName
-                )}
-                style={inheritedStyle}
+        {shouldHighlight ? (
+          <Highlight {...defaultProps} theme={theme} code={code} language={language}>
+            {({
+              className: inheritedClassName,
+              style: inheritedStyle,
+              tokens,
+              getLineProps,
+              getTokenProps,
+            }) => (
+              <div
                 dir="ltr"
+                className="overflow-auto px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+                style={{
+                  maxHeight,
+                }}
               >
-                {tokens
-                  .map((line, index) => {
-                    if (
-                      index === tokens.length - 1 &&
-                      line.length === 1 &&
-                      line[0].content === "\n"
-                    ) {
-                      return null;
-                    }
+                <pre
+                  className={cn(
+                    "relative mr-2 font-mono text-xs leading-relaxed",
+                    inheritedClassName
+                  )}
+                  style={inheritedStyle}
+                  dir="ltr"
+                >
+                  {tokens
+                    .map((line, index) => {
+                      if (
+                        index === tokens.length - 1 &&
+                        line.length === 1 &&
+                        line[0].content === "\n"
+                      ) {
+                        return null;
+                      }
 
-                    const lineNumber = index + 1;
-                    const lineProps = getLineProps({ line, key: index });
+                      const lineNumber = index + 1;
+                      const lineProps = getLineProps({ line, key: index });
 
-                    let hasAnyHighlights = highlightLines ? highlightLines.length > 0 : false;
+                      let hasAnyHighlights = highlightLines ? highlightLines.length > 0 : false;
 
-                    let shouldDim = hasAnyHighlights;
-                    if (hasAnyHighlights && highlightLines?.includes(lineNumber)) {
-                      shouldDim = false;
-                    }
+                      let shouldDim = hasAnyHighlights;
+                      if (hasAnyHighlights && highlightLines?.includes(lineNumber)) {
+                        shouldDim = false;
+                      }
 
-                    return (
-                      <div
-                        key={lineProps.key}
-                        {...lineProps}
-                        className={cn(
-                          "flex w-full justify-start transition-opacity duration-500",
-                          lineProps.className
-                        )}
-                        style={{
-                          opacity: shouldDim ? dimAmount : undefined,
-                          ...lineProps.style,
-                        }}
-                      >
-                        {showLineNumbers && (
-                          <div
-                            className={
-                              "mr-2 flex-none select-none text-right text-slate-500 transition-opacity duration-500"
-                            }
-                            style={{
-                              width: `calc(8 * ${maxLineWidth / 16}rem)`,
-                            }}
-                          >
-                            {lineNumber}
+                      return (
+                        <div
+                          key={lineProps.key}
+                          {...lineProps}
+                          className={cn(
+                            "flex w-full justify-start transition-opacity duration-500",
+                            lineProps.className
+                          )}
+                          style={{
+                            opacity: shouldDim ? dimAmount : undefined,
+                            ...lineProps.style,
+                          }}
+                        >
+                          {showLineNumbers && (
+                            <div
+                              className={
+                                "mr-2 flex-none select-none text-right text-slate-500 transition-opacity duration-500"
+                              }
+                              style={{
+                                width: `calc(8 * ${maxLineWidth / 16}rem)`,
+                              }}
+                            >
+                              {lineNumber}
+                            </div>
+                          )}
+
+                          <div className="flex-1">
+                            {line.map((token, key) => {
+                              const tokenProps = getTokenProps({ token, key });
+                              return (
+                                <span
+                                  key={tokenProps.key}
+                                  {...tokenProps}
+                                  style={{
+                                    color: tokenProps?.style?.color as string,
+                                    ...tokenProps.style,
+                                  }}
+                                />
+                              );
+                            })}
                           </div>
-                        )}
-
-                        <div className="flex-1">
-                          {line.map((token, key) => {
-                            const tokenProps = getTokenProps({ token, key });
-                            return (
-                              <span
-                                key={tokenProps.key}
-                                {...tokenProps}
-                                style={{
-                                  color: tokenProps?.style?.color as string,
-                                  ...tokenProps.style,
-                                }}
-                              />
-                            );
-                          })}
+                          <div className="w-4 flex-none" />
                         </div>
-                        <div className="w-4 flex-none" />
-                      </div>
-                    );
-                  })
-                  .filter(Boolean)}
-              </pre>
-            </div>
-          )}
-        </Highlight>
+                      );
+                    })
+                    .filter(Boolean)}
+                </pre>
+              </div>
+            )}
+          </Highlight>
+        ) : (
+          <div
+            dir="ltr"
+            className="overflow-auto px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+            style={{
+              maxHeight,
+            }}
+          >
+            <pre className="relative mr-2 p-2 font-mono text-xs leading-relaxed" dir="ltr">
+              {code}
+            </pre>
+          </div>
+        )}
       </div>
     );
   }

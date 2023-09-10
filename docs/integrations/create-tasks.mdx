@@ -1,0 +1,218 @@
+---
+title: Tasks
+description: "Tasks are the main way that developers will interact with your Integration. They are the actions that developers will be able to perform in their jobs."
+---
+
+## runTask
+
+You should add a `runTask()` function to your integration, before adding individual Tasks. It will be used by all Tasks, and allows users to use any function in the official SDK as a Task.
+
+<CodeGroup>
+
+```ts integrations/github/index.ts
+
+export class Github implements TriggerIntegration {
+  ...
+
+  runTask<T, TResult extends Json<T> | void>(
+    key: IntegrationTaskKey,
+    //change Octokit to the official SDK for your integration
+    callback: (client: Octokit, task: IOTask, io: IO) => Promise<TResult>,
+    options?: RunTaskOptions,
+    errorCallback?: RunTaskErrorCallback
+  ): Promise<TResult> {
+    if (!this._io) throw new Error("No IO");
+    if (!this._connectionKey) throw new Error("No connection key");
+
+    return this._io.runTask<TResult>(
+      key,
+      (task, io) => {
+        if (!this._client) throw new Error("No client");
+        return callback(this._client, task, io);
+      },
+      {
+        //change this to the slug for your integration (lowercase, no spaces)
+        icon: "github",
+        retry: retry.standardBackoff,
+        ...(options ?? {}),
+        connectionKey: this._connectionKey,
+      },
+      errorCallback
+    );
+  }
+
+  ...
+}
+```
+
+```ts Usage
+//Users can then use it in their Jobs like this:
+client.defineJob({
+  ...
+  integrations: {
+    github,
+  },
+  run: async (payload, io, ctx) => {
+    //io.github.runTask allows you to use the underlying SDK client
+    const { data } = await io.github.runTask(
+      "create-card",
+      async (client) => {
+        //this is octokit, authenticated for the user
+        return client.rest.projects.createCard({
+          column_id: 123,
+          note: "test",
+        });
+      },
+      //this is optional, displays in the dashboard when viewing a Run
+      { name: "Create card" }
+    );
+  },
+});
+```
+
+</CodeGroup>
+
+## Matching the original SDK structure
+
+The structure of the integrtion should closely map to the official Node SDK for that API.
+
+| API              | Official SDK                | Trigger.Dev Task               |
+| ---------------- | --------------------------- | ------------------------------ |
+| GitHub (octokit) | `client.rest.issues.create` | `io.github.issues.create`      |
+| Typeform         | `client.forms.get`          | `io.typeform.forms.get`        |
+| OpenAI           | `client.completions.create` | `io.openai.completions.create` |
+
+Closely resembling the official SDK makes it far easier for developers to use integrations. Aim for 1:1 mapping wherever possible.
+
+## Adding Tasks
+
+Any tasks you add will use the `runTask` function you added above.
+
+Remember we want to structure our integration to match the original SDK. If an SDK has a `client.forms.get` function, we want to add a `myintegration.forms.get` task.
+
+This requires adding a bit of structure to the SDK, to add the Forms object, the get function and use `runTask` inside them.
+
+### Create the structure
+
+In this example, we'll add `io.github.issues.create`. This will allow users to create a GitHub issue in their jobs.
+
+Comments inline are for instructional purposes only, and should not be included in your final code.
+
+```ts integration/github/issues.ts
+import { IntegrationTaskKey } from "@trigger.dev/sdk";
+import { GitHubReturnType, GitHubRunTask, onError } from "./index";
+import { Octokit } from "octokit";
+
+export class Issues {
+  //the runTask you created in the other file, we'll use this for all Tasks
+  runTask: GitHubRunTask;
+
+  constructor(runTask: GitHubRunTask) {
+    this.runTask = runTask;
+  }
+
+  create(
+    //this must be the first parameter, it's used to identify the task
+    key: IntegrationTaskKey,
+    //if possible use the official SDK type. Here we had to define our own.
+    params: { title: string; owner: string; repo: string }
+    //you must define the return type (it will be a promise, in this case grabbed from the official SDK)
+  ): GitHubReturnType<Octokit["rest"]["issues"]["create"]> {
+    //use runTask
+    return this.runTask(
+      key,
+      async (client, task) => {
+        //the official SDK is used here
+        const result = await client.rest.issues.create({
+          owner: params.owner,
+          repo: params.repo,
+          title: params.title,
+        });
+        return result.data;
+      },
+      //all of these properties are displayed in the Trigger.dev dashboard
+      {
+        name: "Create Issue",
+        params,
+        //properties provide a great experience for developers debugging a Run
+        properties: [
+          {
+            label: "Owner",
+            text: params.owner,
+          },
+          {
+            label: "Repo",
+            text: params.repo,
+          },
+          {
+            label: "Title",
+            text: params.title,
+          },
+        ],
+      },
+      //you can define a custom error function, or omit this.
+      onError
+    );
+  }
+}
+```
+
+<Note>
+  Notice how the params are the _second_ argument, that's because the first argument is always the
+  task key. See our [Keys and Resumability docs](/documentation/concepts/resumability) for more on
+  why this is important.
+</Note>
+
+```ts integrations/github/index.ts
+//This type is used in the Issues class above
+export type GitHubRunTask = InstanceType<typeof Github>["runTask"];
+
+export class Github implements TriggerIntegration {
+  ...
+
+  //this allows us to do `io.github.issues.create()`
+  get issues() {
+    //the bind is needed to preserve the `this` context
+    return new Issues(this.runTask.bind(this));
+  }
+
+  ...
+
+}
+```
+
+### `onError` function
+
+You can optionally have logic in the `onError` param. See [the reference for runTask](/sdk/io/runtask) for more info.
+
+The GitHub integration uses this to retry rate-limited requests when the rate limit resets:
+
+```ts integrations/github/index.ts
+...
+
+function isRequestError(error: unknown): error is RequestError {
+  return typeof error === "object" && error !== null && "status" in error;
+}
+
+export function onError(error: unknown) {
+  if (!isRequestError(error)) {
+    return;
+  }
+
+  // Check if this is a rate limit error
+  if (error.status === 403 && error.response) {
+    const rateLimitRemaining = error.response.headers["x-ratelimit-remaining"];
+    const rateLimitReset = error.response.headers["x-ratelimit-reset"];
+
+    if (rateLimitRemaining === "0" && rateLimitReset) {
+      const resetDate = new Date(Number(rateLimitReset) * 1000);
+
+      return {
+        retryAt: resetDate,
+        error,
+      };
+    }
+  }
+}
+
+```

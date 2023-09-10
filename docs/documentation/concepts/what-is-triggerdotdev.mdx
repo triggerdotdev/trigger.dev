@@ -71,7 +71,7 @@ client.defineJob({
 });
 ```
 
-This code lives in a file inside your Next.js repo.
+This code lives in a file inside your project repo.
 
 It is listening for the [issueEvent](/integrations/apis/github/triggers) GitHub webhook, and when it receives one, we will take care of calling the `run` function supplied to the `Job` constructor with the webhook payload. This gives you the following advantages over traditional webhooks:
 

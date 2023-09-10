@@ -1,4 +1,3 @@
-import { DetailedTask } from "~/presenters/TaskDetailsPresenter.server";
 import {
   RunPanel,
   RunPanelBody,
@@ -29,22 +28,16 @@ import {
 } from "../primitives/Table";
 import { TaskAttemptStatusLabel } from "./TaskAttemptStatus";
 import { TaskStatusIcon } from "./TaskStatus";
+import { ClientOnly } from "remix-utils";
+import { Spinner } from "../primitives/Spinner";
+import type { DetailedTask } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam.tasks.$taskParam/route";
 
 export function TaskDetail({ task }: { task: DetailedTask }) {
-  const {
-    name,
-    description,
-    icon,
-    startedAt,
-    completedAt,
-    status,
-    delayUntil,
-    params,
-    properties,
-    output,
-    style,
-    attempts,
-  } = task;
+  const { name, description, icon, status, params, properties, output, style, attempts } = task;
+
+  const startedAt = task.startedAt ? new Date(task.startedAt) : undefined;
+  const completedAt = task.completedAt ? new Date(task.completedAt) : undefined;
+  const delayUntil = task.delayUntil ? new Date(task.delayUntil) : undefined;
 
   return (
     <RunPanel selected={false}>
@@ -150,7 +143,9 @@ export function TaskDetail({ task }: { task: DetailedTask }) {
         <div className="mt-4 flex flex-col gap-2">
           <Header3>Output</Header3>
           {output ? (
-            <CodeBlock code={JSON.stringify(output, null, 2)} />
+            <ClientOnly fallback={<Spinner />}>
+              {() => <CodeBlock code={output} maxLines={35} />}
+            </ClientOnly>
           ) : (
             <Paragraph variant="small">No output</Paragraph>
           )}

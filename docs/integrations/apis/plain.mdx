@@ -131,7 +131,7 @@ client.defineJob({
 
 ## Using the underlying client
 
-You can use the underlying client to do anything [@team-plain/typescript-sdk](https://github.com/team-plain/typescript-sdk) supports, but make sure to wrap it in a task:
+You can use the underlying client to do anything [@team-plain/typescript-sdk](https://github.com/team-plain/typescript-sdk) supports by using runTask:
 
 ```ts
 import { Plain } from "@trigger.dev/plain";
@@ -151,21 +151,14 @@ client.defineJob({
     name: "plain.client",
   }),
   run: async (payload, io, ctx) => {
-    const issue = await io.runTask(
+    const result = await io.plain.runTask(
       "create-issue",
-      { name: "Create issue", icon: "plain" },
-      async () => {
-        const result = await io.plain.client.createIssue({
+      async (client) =>
+        client.createIssue({
           customerId: "abcdefghij",
           issueTypeId: "123456",
-        });
-
-        if (result.error) {
-          throw result.error;
-        }
-
-        return result.data;
-      }
+        }),
+      { name: "Create issue" }
     );
   },
 });

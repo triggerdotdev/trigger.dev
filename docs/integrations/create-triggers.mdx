@@ -1,0 +1,442 @@
+---
+title: Triggers
+description: "Triggers cause a Job Run to start. Webhooks and polling are the most relevant for integrations."
+---
+
+<Note>
+  Polling triggers aren't currently supported. They will allow triggers to be built for APIs that
+  don't have webhooks, like Notion.
+</Note>
+
+## Webhooks AKA ExternalSource
+
+Webhooks are added to an Integration by using `ExternalSource`.
+
+## An example: Stripe onPriceCreated
+
+You can subscribe to many different events using our Stripe integration.
+
+We're going to run through the steps required to create the onPriceCreated event.
+
+Here's an example Job using it, you should create Jobs like this while you're developing so you can test your trigger. See the [integration testing guide](/integrations/create-testing) for more info.
+
+```ts
+import { Stripe } from "@trigger.dev/stripe";
+
+const stripe = new Stripe({
+  id: "stripe",
+  apiKey: process.env["STRIPE_API_KEY"]!,
+});
+
+client.defineJob({
+  id: "stripe-on-price",
+  name: "Stripe On Price",
+  version: "0.1.0",
+  //this is what we're going to add in this guide
+  trigger: stripe.onPriceCreated(),
+  run: async (payload, io, ctx) => {
+    //do stuff with the payload
+    await io.logger.info("price created!", { current: payload.currency });
+  },
+});
+```
+
+## Creating Tasks that list/create/delete/update webhooks
+
+We need to create Tasks that will be used to register webhooks. These will be used in the ExternalSource.
+
+These are created just like normal Tasks, [which we've already covered](/integrations/create-tasks). In this case we're creating three tasks:
+
+- `io.stripe.webhookEndpoints.create`
+- `io.stripe.webhookEndpoints.update`
+- `io.stripe.webhookEndpoints.delete`
+- `io.stripe.webhookEndpoints.list`
+
+<CodeGroup>
+
+```ts integrations/stripe/index.ts
+//...
+import { WebhookEndpoints } from "./webhookEndpoints";
+
+export class Stripe implements TriggerIntegration {
+  //...
+
+  get webhookEndpoints() {
+    return new WebhookEndpoints(this.runTask.bind(this));
+  }
+
+  //...
+}
+```
+
+```ts integrations/stripe/webhookEndpoints.ts
+import { IntegrationTaskKey } from "@trigger.dev/sdk";
+import {
+  CreateWebhookParams,
+  CreateWebhookResponse,
+  ListWebhooksParams,
+  ListWebhooksResponse,
+  StripeRunTask,
+  UpdateWebhookParams,
+  UpdateWebhookResponse,
+} from "./index";
+import { omit } from "./utils";
+
+export class WebhookEndpoints {
+  runTask: StripeRunTask;
+
+  constructor(runTask: StripeRunTask) {
+    this.runTask = runTask;
+  }
+
+  create(key: IntegrationTaskKey, params: CreateWebhookParams): Promise<CreateWebhookResponse> {
+    return this.runTask(
+      key,
+      async (client, task) => {
+        const response = await client.webhookEndpoints.create(params, {
+          idempotencyKey: task.idempotencyKey,
+        });
+
+        task.outputProperties = [
+          {
+            label: "Webhook ID",
+            text: response.id,
+          },
+          ...(response.lastResponse.requestId
+            ? [
+                {
+                  label: "Request ID",
+                  text: response.lastResponse.requestId,
+                },
+              ]
+            : []),
+        ];
+
+        return response;
+      },
+      {
+        name: "Create Webhook",
+        params,
+      }
+    );
+  }
+
+  update(key: IntegrationTaskKey, params: UpdateWebhookParams): Promise<UpdateWebhookResponse> {
+    return this.runTask(
+      key,
+      async (client, task) => {
+        const response = await client.webhookEndpoints.update(params.id, omit(params, "id"), {
+          idempotencyKey: task.idempotencyKey,
+        });
+
+        task.outputProperties = [
+          ...(response.lastResponse.requestId
+            ? [
+                {
+                  label: "Request ID",
+                  text: response.lastResponse.requestId,
+                },
+              ]
+            : []),
+        ];
+
+        return response;
+      },
+      {
+        name: "Update Webhook",
+        params,
+        icon: "stripe",
+        properties: [
+          {
+            label: "Webhook ID",
+            text: params.id,
+          },
+        ],
+      }
+    );
+  }
+
+  list(key: IntegrationTaskKey, params: ListWebhooksParams): Promise<ListWebhooksResponse> {
+    return this.runTask(
+      key,
+      async (client, task) => {
+        const response = await client.webhookEndpoints.list(params);
+
+        return response;
+      },
+      {
+        name: "List Webhooks",
+        params,
+      }
+    );
+  }
+}
+```
+
+</CodeGroup>
+
+## Creating events
+
+An event is something that happens in the external system. In this case, it's a price being created. We use `EventSpecification`s to define events.
+
+We have many events exported from this file, but here's the one we care about:
+
+```ts integrations/stripe/events.ts
+export const onPriceCreated: EventSpecification<OnPriceEvent> = {
+  //this name matches the name of the event in the Stripe API
+  name: "price.created",
+  //used for display in the Dashboard UI
+  title: "On Price Created",
+  source: "stripe.com",
+  icon: "stripe",
+  //examples appear in the Testing UI in the Dashboard. They're optional but they make the DX really nice :)
+  examples: [
+    {
+      id: "recurring",
+      name: "Recurring Price",
+      icon: "stripe",
+      payload: {
+        id: "price_1NYV6vI0XSgju2urKsSmI53v",
+        object: "price",
+        //...
+      },
+    },
+  ],
+  //you can just cast the payload to the type you want here
+  parsePayload: (payload) => payload as OnPriceEvent,
+  //these properties are displayed in the Dashboard UI
+  runProperties: (payload) => [{ label: "Price ID", text: payload.id }],
+};
+```
+
+## Adding a Trigger
+
+We import all the events from the file above, and then we can add a trigger for the event we want.
+
+```ts integrations/stripe/index.ts
+//... other imports
+//this imports all the events from the file above, as an Object
+import * as events from "./events";
+
+export class Stripe implements TriggerIntegration {
+  //...
+
+  //the source is used to register webhooks and to process the data when received
+  get source() {
+    return createWebhookEventSource(this);
+  }
+
+  //the actual trigger. This one has some configuration options (the optional params)
+  onPriceCreated(params?: { connect?: boolean; filter?: EventFilter }) {
+    return createTrigger(this.source, events.onPriceCreated, params ?? { connect: false });
+  }
+}
+
+//this creates a type that is the union of all the events
+type StripeEvents = (typeof events)[keyof typeof events];
+
+//this is the type of the trigger we're creating
+type CreateTriggersResult<TEventSpecification extends StripeEvents> = ExternalSourceTrigger<
+  TEventSpecification,
+  ReturnType<typeof createWebhookEventSource>
+>;
+
+function createTrigger<TEventSpecification extends StripeEvents>(
+  source: ReturnType<typeof createWebhookEventSource>,
+  event: TEventSpecification,
+  params: TriggerParams
+): CreateTriggersResult<TEventSpecification> {
+  return new ExternalSourceTrigger({
+    event,
+    params,
+    source,
+    options: {},
+  });
+}
+```
+
+## Creating the ExternalSource
+
+The ExternalSource is response for registering webhooks and processing the data when it's received.
+
+```ts integrations/stripe/index.ts
+//...everything we've already covered
+
+//this defines the shape of the data that Stripe returns when we create/update a webhook
+const WebhookDataSchema = z.object({
+  id: z.string(),
+  object: z.literal("webhook_endpoint"),
+  api_version: z.string().nullable(),
+  application: z.string().nullable(),
+  created: z.number(),
+  description: z.string().nullable(),
+  enabled_events: z.array(z.string()),
+  livemode: z.boolean(),
+  metadata: z.record(z.string()),
+  status: z.enum(["enabled", "disabled"]),
+  url: z.string(),
+});
+
+function createWebhookEventSource(
+  //the integration is used to register the webhook
+  integration: Stripe
+  // { connect?: boolean } comes through from the params in the ExternalSourceTrigger we defined above
+): ExternalSource<Stripe, { connect?: boolean }, "HTTP", {}> {
+  return new ExternalSource("HTTP", {
+    //this needs to be unique in Trigger.dev
+    //there's only one stripe webhook endpoint (for all events), so we use "stripe.webhook"
+    id: "stripe.webhook",
+    //this is the schema for the params that come through from the ExternalSourceTrigger
+    schema: z.object({ connect: z.boolean().optional() }),
+    version: "0.1.0",
+    integration,
+    //if the key is the same then a webhook will be updated (with any new events added)
+    //if the key is different then a new webhook will be created
+    //in Stripe's case we can have webhooks with multiple events BUT not shared between connect and non-connect
+    key: (params) => `stripe.webhook${params.connect ? ".connect" : ""}`,
+    //the webookHandler is called when the webhook is received, this is the last step we'll cover
+    handler: webhookHandler,
+    //this function is called when the webhook is registered
+    register: async (event, io, ctx) => {
+      const { params, source: httpSource, options } = event;
+
+      //httpSource.data is the stored data about the existing webhooks that has the same key
+      //httpSource.data will be undefined if no webhook has been registered yet with the same key
+      const webhookData = WebhookDataSchema.safeParse(httpSource.data);
+
+      //this is the full list of events that we want to register (when we add more than just onPriceCreated)
+      const allEvents = Array.from(new Set([...options.event.desired, ...options.event.missing]));
+      const registeredOptions = {
+        event: allEvents,
+      };
+
+      //if there is already an active source (i.e. a webhook has been registered)
+      //and httpSource.data was parsed successfully
+      if (httpSource.active && webhookData.success) {
+        //there are no missing events, so we don't need to update the webhook
+        if (options.event.missing.length === 0) return;
+
+        //we want to update the existing webhook with the new events
+        //this uses the Task we created above
+        const updatedWebhook = await io.integration.webhookEndpoints.update("update-webhook", {
+          id: webhookData.data.id,
+          url: httpSource.url,
+          enabled_events: allEvents as unknown as WebhookEvents[],
+        });
+
+        //when registering new events, we need to return the data and the options
+        return {
+          data: WebhookDataSchema.parse(updatedWebhook),
+          options: registeredOptions,
+        };
+      }
+
+      //if there is no active source, or httpSource.data wasn't parsed successfully,
+      //but we might be able to add events to an existing webhook
+      const listResponse = await io.integration.webhookEndpoints.list("list-webhooks", {
+        limit: 100,
+      });
+
+      //if one of these webhooks has the URL we want, we can update it
+      const existingWebhook = listResponse.data.find((w) => w.url === httpSource.url);
+      if (existingWebhook) {
+        //add all the events to the webhook
+        const updatedWebhook = await io.integration.webhookEndpoints.update(
+          "update-found-webhook",
+          {
+            id: existingWebhook.id,
+            url: httpSource.url,
+            enabled_events: allEvents as unknown as WebhookEvents[],
+            disabled: false,
+          }
+        );
+
+        //return the data and the registered options
+        return {
+          data: WebhookDataSchema.parse(updatedWebhook),
+          options: registeredOptions,
+        };
+      }
+
+      //there are no matching webhooks, so we need to create a new one
+      const webhook = await io.integration.webhookEndpoints.create("create-webhook", {
+        url: httpSource.url,
+        enabled_events: allEvents as unknown as WebhookEvents[],
+        connect: params.connect,
+      });
+
+      //when creating a new webhook, we need to also return the secret that Stripe sends us
+      //the secret is used to validate the webhook payloads we receive
+      return {
+        data: WebhookDataSchema.parse(webhook),
+        secret: webhook.secret,
+        options: registeredOptions,
+      };
+    },
+  });
+}
+```
+
+## Handling the webhook payload
+
+When a webhook is received, we need to validate the signature, parse the payload, and return the events.
+
+```ts integrations/stripe/index.ts
+//...everything we've already covered
+
+async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
+  logger.debug("[@trigger.dev/stripe] Handling webhook payload");
+
+  const { rawEvent: request, source } = event;
+
+  if (!request.body) {
+    logger.debug("[@trigger.dev/stripe] No body found");
+
+    return { events: [] };
+  }
+
+  const rawBody = await request.text();
+
+  const signature = request.headers.get("stripe-signature");
+
+  if (signature) {
+    const stripeClient = new StripeClient("", { apiVersion: "2022-11-15" });
+
+    try {
+      const event = stripeClient.webhooks.constructEvent(rawBody, signature, source.secret);
+
+      return {
+        events: [
+          {
+            id: event.id,
+            payload: event.data.object,
+            source: "stripe.com",
+            name: event.type,
+            timestamp: new Date(event.created * 1000),
+            context: {
+              apiVersion: event.api_version,
+              livemode: event.livemode,
+              request: event.request,
+              previousAttributes: event.data.previous_attributes,
+            },
+          },
+        ],
+      };
+    } catch (error) {
+      if (error instanceof Error) {
+        logger.error("[@trigger.dev/stripe] Error while validating webhook signature", {
+          error: { name: error.name, message: error.message },
+        });
+      } else {
+        logger.error("[@trigger.dev/stripe] Unknown Error while validating webhook signature");
+      }
+
+      return { events: [] };
+    }
+  }
+
+  return {
+    events: [],
+  };
+}
+```
