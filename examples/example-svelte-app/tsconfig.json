@@ -1,0 +1,50 @@
+{
+	"extends": "./.svelte-kit/tsconfig.json",
+	"compilerOptions": {
+		// "allowJs": true,
+		// "checkJs": true,
+		// "esModuleInterop": true,
+		// "forceConsistentCasingInFileNames": true,
+		// "resolveJsonModule": true,
+		// "skipLibCheck": true,
+		// "sourceMap": true,
+		// "strict": true,
+    "composite": false,
+    "inlineSources": false,
+    "isolatedModules": true,
+    "moduleResolution": "node",
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "preserveWatchOutput": true,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "module": "commonjs",
+    "target": "ES2021",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "declaration": false,
+    "declarationMap": false,
+    "lib": ["DOM", "DOM.Iterable"],
+		"paths": {
+			"@/*": ["./src/*"],
+			"@trigger.dev/svelte": ["../../packages/svelte/src/index"],
+			"@trigger.dev/svelte/*": ["../../packages/svelte/src/*"],
+			"@trigger.dev/sveltekit": ["../../packages/sveltekit/src/index"],
+			"@trigger.dev/sveltekit/*": ["../../packages/sveltekit/src/*"],
+			"@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
+			"@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
+			// "$jobs": ["./src/jobs"],
+			// "$trigger": ["./src/trigger.ts"],
+			// "$lib": ["./src/lib"],
+			// "$lib/*": ["./src/lib/*"]
+		}
+	}
+// Path aliases are handled by https://kit.svelte.dev/docs/configuration#alias
+	//
+	// If you want to overwrite includes/excludes, make sure to copy over the relevant includes/excludes
+	// from the referenced tsconfig.json - TypeScript does not merge them in
+}
