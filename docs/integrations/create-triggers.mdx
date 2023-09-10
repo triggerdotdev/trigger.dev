@@ -432,6 +432,7 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
           },
         ],
         //you can also return a response, which will be sent back to the webhook sender
+        //but this is optional, we return a 200 which is normally the requirement
         //response: {
         //  status: 200,
         //  body: "ok",
