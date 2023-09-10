@@ -1,0 +1,29 @@
+{
+	// "extends": "./.svelte-kit/tsconfig.json",
+	"compilerOptions": {
+		"strict": true,
+		"noEmit": true,
+		"jsx": "preserve",
+		"incremental": true,
+		"moduleResolution": "node",
+		// "module": "es2021",
+		"lib": ["es2021", "DOM"],
+		"target": "es2021",
+		"isolatedModules": true,
+		"resolveJsonModule": true,
+		"sourceMap": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"baseUrl": ".",
+		"allowJs": true,
+		"checkJs": true,
+		"paths": {
+			"$lib": ["src/lib"],
+			"$lib/*": ["src/lib/*"],
+		}
+	},
+	"include": ["src/**/*", "src/node_modules", ".svelte-kit/ambient.d.ts"], // see last element
+
+	"exclude": ["node_modules"]
+}
