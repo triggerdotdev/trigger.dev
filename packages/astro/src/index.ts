@@ -1,5 +1,7 @@
-export function createAstroRoute(client) {
-  return async function astroRoute(ctx) {
+import type { TriggerClient } from "@trigger.dev/sdk";
+import type { APIRoute } from "astro";
+export function createAstroRoute(client: TriggerClient) {
+  const POST: APIRoute = async (ctx) => {
     if (ctx.request.method === "HEAD") {
       return new Response(null, { status: 200 });
     }
@@ -20,8 +22,8 @@ export function createAstroRoute(client) {
       const request = new Request("https://express.js/api/trigger", {
         headers: responseHeaders,
         method: requestMethod,
-        body: ctx.request.body ? ctx.request.body : ctx.request,
-        duplex: "half",
+        body: ctx.request.body,
+        // duplex: "half",
       });
 
       // This handshake handler knows how to authenticate requests,
@@ -45,4 +47,8 @@ export function createAstroRoute(client) {
       });
     }
   };
+
+  return {
+    POST
+  }
 }
