@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/remix",
-  "version": "0.0.1",
+  "version": "2.1.0",
   "description": "Trigger.dev Remix integration",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -19,6 +19,7 @@
     "./package.json": "./package.json"
   },
   "devDependencies": {
+    "@remix-run/node": "^1.19.3",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/ws": "^8.5.3",
@@ -36,9 +37,6 @@
     "@trigger.dev/sdk": "workspace:^2.1.0"
   },
   "dependencies": {
-    "@remix-run/node": "^1.19.3",
-    "@remix-run/react": "1.19.2-pre.0",
-    "@remix-run/server-runtime": "1.19.2-pre.0",
     "debug": "^4.3.4"
   },
   "engines": {
