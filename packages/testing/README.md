@@ -62,15 +62,13 @@ const jobToTest = client.defineJob({
   expect(testRun).toHaveSucceeded();
 
   // task was called exactly once
-  expect(testRun.io.dummy.doSomething).toHaveBeenCalledOnce();
+  expect(testRun.tasks["test-task"]).toHaveBeenCalledOnce();
 
   // task was called with correct params
-  expect(testRun.io.dummy.doSomething).toHaveBeenCalledWith("test-task", {
-    foo: "bar",
-  });
+  expect(testRun.tasks["test-task"]).toHaveBeenCalledWith({ foo: "bar" });
 
   // mocked task output was correctly returned
-  expect(testRun.io.dummy.doSomething).toHaveReturnedWith({ bar: "baz" });
+  expect(testRun.tasks["test-task"]).toHaveReturnedWith({ bar: "baz" });
 
   // job run has expected output
   expect(testRun.output).toEqual({ bar: "baz" });
