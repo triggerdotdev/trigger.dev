@@ -5,30 +5,25 @@ To begin, install the necessary packages in your Remix project directory. You ca
 <CodeGroup>
 
 ```bash npm
-
 npm i @trigger.dev/sdk @trigger-dev/remix
-
 ```
 
 ```bash pnpm
 pnpm install @trigger.dev/sdk @trigger-dev/remix
-
 ```
 
 ```bash yarn
 yarn add @trigger.dev/sdk @trigger-dev/remix
-
 ```
 
 </CodeGroup>
 
+## Obtaining the Development Server API Key
 
-## Obtaining the Development API Key
-
-To locate your development API key, login to the [Trigger.dev
+To locate your development Server API key, login to the [Trigger.dev
 dashboard](https://cloud.trigger.dev) and select the Project you want to
 connect to. Then click on the Environments & API Keys tab in the left menu.
-You can copy your development API Key from the field at the top of this page.
+You can copy your development Server API Key from the field at the top of this page.
 (Your development key will start with `tr_dev_`).
 
 ## Adding Environment Variables
@@ -36,10 +31,8 @@ You can copy your development API Key from the field at the top of this page.
 Create a `.env` file at the root of your project and include your Trigger API key and URL like this:
 
 ```bash
-
 TRIGGER_API_KEY=ENTER_YOUR_DEVELOPMENT_API_KEY_HERE
 TRIGGER_API_URL=https://cloud.trigger.dev
-
 ```
 
 Replace `ENTER_YOUR_DEVELOPMENT_API_KEY_HERE` with the actual API key obtained from the previous step.
@@ -60,7 +53,7 @@ To set up the Trigger Client for your project, follow these steps:
 
    Open the configuration file you created and add the following code:
 
-   ```typescript trigger.ts/js
+   ```typescript app/trigger.(ts/js)
    // trigger.ts (for TypeScript) or trigger.js (for JavaScript)
 
    import { TriggerClient } from "@trigger.dev/sdk";
@@ -88,35 +81,35 @@ To set up the Trigger Client for your project, follow these steps:
 
 To establish an API route for interacting with Trigger.dev, follow these steps based on your project's file type and structure
 
-1. Create a new file named `trigger.(ts/js)` within the `app/routes/` directory.
-2. Add the following code to `api.trigger.(ts/js)`:
+1. Create a new file named `api.trigger.(ts/js)` within the `app/routes/` directory.
+2. Add the following code to `app/routes/api.trigger.(ts/js)`:
 
-```typescript
+```typescript app/routes/api.trigger.(ts/js)
 import { createRemixRoute } from "@trigger.dev/remix";
 import { client } from "~/trigger";
 
-//import your jobs
-import { configureJob } from "~/jobs/example";
-
-configureJob();
+// Remix will automatically strip files with side effects
+// So you need to *export* your Job definitions like this:
+export * from "~/jobs/example.server";
 
 export const { action } = createRemixRoute(client);
-
 ```
 
 ## Creating the Example Job
 
-1. Create a folder named `Jobs` alongside your `app` directory
-2. Inside the `Jobs` folder, add two files named `example.(ts/js)` and `index.(ts/js)`.
+1. Create a folder named `jobs` inside your `app` directory
+2. Inside the `jobs` folder, add a file named `example.server.(ts/js)`.
+
+`.server` files are guaranteed to be excluded from the client-side build, so you can safely import server-only dependencies here.
 
 <CodeGroup>
 
-```typescript example.(ts/js)
+```typescript app/jobs/example.server.(ts/js)
 import { eventTrigger } from "@trigger.dev/sdk";
 import { client } from "~/trigger";
 
 // your first job
-client.defineJob({
+export const job = client.defineJob({
   id: "example-job",
   name: "Example Job",
   version: "0.0.1",
@@ -133,26 +126,11 @@ client.defineJob({
 });
 ```
 
-```typescript index.ts/index.(ts/js)
-// import all your job files here
-
-export * from "./examples";
-```
-
 </CodeGroup>
 
-## Additonal Job Definitions
+## Additional Job Definitions
 
-You can define more job definitions by creating additional files in the `Jobs` folder and exporting them in `index` file.
-
-For example, in `index.(ts/js)`, you can export other job files like this:
-
-```typescript
-// import all your job files here
-
-export * from "./examples";
-export * from "./other-job-file";
-```
+You can define more job definitions by creating additional files in the `Jobs` folder, exporting from the file and from the api.trigger route.
 
 ## Adding Configuration to `package.json`
 
@@ -179,18 +157,33 @@ Your `package.json` file might look something like this:
 }
 ```
 
-Replace **"my-app"** with the appropriate identifier you used during the step for creating the Trigger Client.
+Replace **"my-app"** with the appropriate project identifier you used during the step for creating the Trigger Client.
 
-## Next Steps
+## Running
 
-Start your Remix project locally, and then execute the `dev` CLI command to run Trigger.dev locally. You should run this command every time you want to use Trigger.dev locally.
+### Run your Remix app
 
-<Warning>
-  Make sure your Remix site is running locally before continuing. You must also leave this `dev`
-  terminal command running while you develop.
-</Warning>
+Run your Remix app locally, like you normally would. For example:
 
-In a **new terminal window or tab** run:
+<CodeGroup>
+
+```bash npm
+npm run dev
+```
+
+```bash pnpm
+pnpm run dev
+```
+
+```bash yarn
+yarn run dev
+```
+
+</CodeGroup>
+
+### Run the CLI 'dev' command
+
+In a **_separate terminal window or tab_** run:
 
 <CodeGroup>
 
@@ -212,6 +205,7 @@ yarn dlx @trigger.dev/cli@latest dev
   You can optionally pass the port if you're not running on 3000 by adding
   `--port 3001` to the end
 </Note>
+
 <Note>
   You can optionally pass the hostname if you're not running on localhost by adding
   `--hostname <host>`. Example, in case your Remix is running on 0.0.0.0: `--hostname 0.0.0.0`.
