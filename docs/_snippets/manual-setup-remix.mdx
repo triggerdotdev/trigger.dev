@@ -1,9 +1,3 @@
----
-title: "Remix"
-sidebarTitle: "Remix"
-description: "How to manually setup Trigger.dev in your Remix project"
----
-
 ## Installing Required Packages
 
 To begin, install the necessary packages in your Remix project directory. You can choose one of the following package managers:
@@ -12,23 +6,22 @@ To begin, install the necessary packages in your Remix project directory. You ca
 
 ```bash npm
 
-npm i @trigger.dev/sdk @trigger-dev/Remix
+npm i @trigger.dev/sdk @trigger-dev/remix
 
 ```
 
 ```bash pnpm
-pnpm install @trigger.dev/sdk @trigger-dev/Remix
+pnpm install @trigger.dev/sdk @trigger-dev/remix
 
 ```
 
 ```bash yarn
-yarn add @trigger.dev/sdk @trigger-dev/Remix
+yarn add @trigger.dev/sdk @trigger-dev/remix
 
 ```
 
 </CodeGroup>
 
-<br />
 
 ## Obtaining the Development API Key
 
@@ -67,7 +60,7 @@ To set up the Trigger Client for your project, follow these steps:
 
    Open the configuration file you created and add the following code:
 
-   ```typescript
+   ```typescript trigger.ts/js
    // trigger.ts (for TypeScript) or trigger.js (for JavaScript)
 
    import { TriggerClient } from "@trigger.dev/sdk";
@@ -81,11 +74,7 @@ To set up the Trigger Client for your project, follow these steps:
 
    Replace **"my-app"** with an appropriate identifier for your project. The **apiKey** and **apiUrl** are obtained from the environment variables you set earlier.
 
-4. **File Location:**
-
-   Depending on your project structure, save the configuration file in the appropriate location:
-
-   **Example Directory Structure :**
+4. **Example Directory Structure :**
 
    ```
        project-root/
@@ -102,7 +91,7 @@ To establish an API route for interacting with Trigger.dev, follow these steps b
 1. Create a new file named `trigger.(ts/js)` within the `app/routes/` directory.
 2. Add the following code to `api.trigger.(ts/js)`:
 
-   ```typescript
+```typescript
 import { createRemixRoute } from "@trigger.dev/remix";
 import { client } from "~/trigger";
 
@@ -113,7 +102,7 @@ configureJob();
 
 export const { action } = createRemixRoute(client);
 
-   ```
+```
 
 ## Creating the Example Job
 
