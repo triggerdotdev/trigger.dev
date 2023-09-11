@@ -1,10 +1,4 @@
----
-title: "Astro.js"
-sidebarTitle: "Astro.js"
-description: "How to manually setup Trigger.dev in your Astro project"
----
-
-## Installing Required Packages
+## Install Required Packages
 
 To begin, install the necessary packages in your Astro project directory. You can choose one of the following package managers:
 
@@ -27,9 +21,6 @@ yarn add @trigger.dev/sdk @trigger-dev/astro
 ```
 
 </CodeGroup>
-
-<br />
-
 
 ## Obtaining the Development API Key
 
@@ -62,7 +53,7 @@ To set up the Trigger Client for your project, follow these steps:
 
 2. **Choose Directory:**
 
-   Depending on your project structure, choose the appropriate directory for the configuration file. If your project uses a `src` directory, create the file within it. Otherwise, create it directly in the project root.
+   Depending on your project structure, choose the appropriate directory for the configuration file. If your project uses a `src` directory, create the file within it or Otherwise, create it directly in the project root.
 
 3. **Add Configuration Code:**
 
@@ -84,10 +75,7 @@ To set up the Trigger Client for your project, follow these steps:
 
 4. **File Location:**
 
-   Depending on your project structure, save the configuration file in the appropriate location:
-
-   - If your project uses a **src** directory, save the file within the **src** directory.
-   - If your project does not use a **src** directory, save the file in the project root.
+   - You can save the file within the **src** directory or in the project rooot.
 
    **Example Directory Structure with src:**
 
@@ -108,15 +96,17 @@ To set up the Trigger Client for your project, follow these steps:
 
 By following these steps, you'll configure the Trigger Client to work with your project, regardless of whether you have a separate **src** directory and whether you're using TypeScript or JavaScript files.
 
+## update the astro.config file to enable ssr 
 
-## update the astro.config file, to enable ssr
+- You need to enable ssr to use API endpoints that would be in the `pages/api` folder
 
+```typescript astro.config.mjs
 import { defineConfig } from "astro/config";
 
-// https://astro.build/config
 export default defineConfig({
   output: "server",
 });
+```
 
 ## Creating the API Route
 
@@ -125,17 +115,15 @@ To establish an API route for interacting with Trigger.dev, follow these steps b
 1. Create a new file named `trigger.(ts/js)` within the `pages/api/` directory.
 2. Add the following code to `trigger.(ts/js)`:
 
-    ```typescript
-    import { createPagesRoute } from "@trigger.dev/nextjs";
-    import { client } from "@/trigger";
-    import "@/Jobs";
+   ```typescript
+   import { createPagesRoute } from "@trigger.dev/nextjs";
+   import { client } from "@/trigger";
+   import "@/Jobs";
 
-    const { handler, config } = createPagesRoute(client);
-    export { config };
-    export default handler;
-    ```
-
-
+   const { handler, config } = createPagesRoute(client);
+   export { config };
+   export default handler;
+   ```
 
 ## Creating the Example Job
 
@@ -218,8 +206,6 @@ Replace **"my-app"** with the appropriate identifier you used during the step fo
 
 Start your Astro project locally, and then execute the `dev` CLI command to run Trigger.dev locally. You should run this command every time you want to use Trigger.dev locally.
 
-![Your first Job](/images/cli-dev.gif)
-
 <Warning>
   Make sure your Astro site is running locally before continuing. You must also leave this `dev`
   terminal command running while you develop.
@@ -251,4 +237,3 @@ yarn dlx @trigger.dev/cli@latest dev
   You can optionally pass the hostname if you're not running on localhost by adding
   `--hostname <host>`. Example, in case your Astro.js is running on 0.0.0.0: `--hostname 0.0.0.0`.
 </Note>
-
