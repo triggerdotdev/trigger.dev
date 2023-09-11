@@ -25,14 +25,14 @@ import { useProject } from "~/hooks/useProject";
 import { Handle } from "~/utils/handle";
 import { projectSetupPath, trimTrailingSlash } from "~/utils/pathBuilder";
 import { Callout } from "~/components/primitives/Callout";
-import { TriggerDevStep } from "~/components/SetupCommands";
+import { RunDevCommand, TriggerDevStep } from "~/components/SetupCommands";
 
 export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Remix" />,
 };
 
 export default function SetUpRemix() {
-    const organization = useOrganization();
+  const organization = useOrganization();
   const project = useProject();
   useProjectSetupComplete();
   const devEnvironment = useDevEnvironment();
@@ -72,59 +72,24 @@ export default function SetUpRemix() {
             servers soon.
           </Callout>
           <div>
-            <StepNumber stepNumber="1" title="Create a new Remix project" />
-            <StepContentContainer>
-              <ClientTabs defaultValue="npm">
-                <ClientTabsList>
-                  <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
-                  <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
-                  <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
-                </ClientTabsList>
-                <ClientTabsContent value={"npm"}>
-                  <ClipboardField
-                    variant="primary/medium"
-                    className="mb-4"
-                    value={`npx create-remix@latest`}
-                  />
-                </ClientTabsContent>
-                <ClientTabsContent value={"pnpm"}>
-                  <ClipboardField
-                    variant="primary/medium"
-                    className="mb-4"
-                    value={`pnpm create create-remix@latest`}
-                  />
-                </ClientTabsContent>
-                <ClientTabsContent value={"yarn"}>
-                  <ClipboardField
-                    variant="primary/medium"
-                    className="mb-4"
-                    value={`yarn create-remix@latest`}
-                  />
-                </ClientTabsContent>
-              </ClientTabs>
-            </StepContentContainer>
-            <StepNumber stepNumber="2" title="Navigate to your new Remix project" />
-            <StepContentContainer>
-              <Paragraph spacing>
-                You have now created a new Remix project. Let’s <InlineCode>cd</InlineCode> into it
-                using the project name you just provided:
-              </Paragraph>
-              <ClipboardField
-                value={"cd [replace with your project name]"}
-                variant={"primary/medium"}
-              ></ClipboardField>
-            </StepContentContainer>
             <StepNumber
-              stepNumber="3"
+              stepNumber="1"
               title="Follow the steps from the Remix manual installation guide"
             />
             <StepContentContainer>
               <LinkButton
                 to="https://trigger.dev/docs/documentation/guides/manual/remix"
                 variant="primary/medium"
-              />
+                TrailingIcon="external-link"
+              >
+                Manual installation guide
+              </LinkButton>
             </StepContentContainer>
-            <StepNumber stepNumber="5" title="Run the CLI 'dev' command" />
+            <StepNumber stepNumber="2" title="Run your Remix app" />
+            <StepContentContainer>
+              <RunDevCommand />
+            </StepContentContainer>
+            <StepNumber stepNumber="3" title="Run the CLI 'dev' command" />
             <StepContentContainer>
               <TriggerDevStep />
             </StepContentContainer>
