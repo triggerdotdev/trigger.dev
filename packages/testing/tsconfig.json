@@ -1,0 +1,17 @@
+{
+  "extends": "@trigger.dev/tsconfig/node18.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["dom"]
+  },
+  "paths": {
+    "@/*": ["./src/*"],
+    "@trigger.dev/core": ["../../packages/core/src/index"],
+    "@trigger.dev/core/*": ["../../packages/core/src/*"],
+    "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
+    "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
+    "@trigger.dev/stripe": ["../../integrations/stripe/src/index"],
+    "@trigger.dev/stripe/*": ["../../integrations/stripe/src/*"]
+  },
+  "exclude": ["node_modules"]
+}
