@@ -1,16 +1,23 @@
-import { RunJobBody, SendEvent, SendEventBodySchema, SendEventOptions } from "@trigger.dev/core";
+import {
+  RunJobBody,
+  SendEvent,
+  SendEventBodySchema,
+  SendEventOptions,
+  ServerTask,
+} from "@trigger.dev/core";
 import type {
   EventSpecification,
-  IOWithIntegrations,
-  IntegrationClient,
+  IO,
   Job,
+  Json,
+  RunTaskErrorCallback,
+  RunTaskOptions,
   Trigger,
   TriggerClient,
   TriggerEventType,
   TriggerIntegration,
 } from "@trigger.dev/sdk";
-import { vi as vitestVi } from "vitest";
-import { entries } from "./utils";
+import { Mock, vi as vitestVi } from "vitest";
 
 declare module "vitest" {
   interface Assertion<T = any> extends CustomMatchers<T> {}
@@ -103,18 +110,19 @@ export const createJobTester =
   (vi: typeof vitestVi) =>
   async <
     TTrigger extends Trigger<EventSpecification<any>>,
-    TIntegrations extends Record<string, TriggerIntegration<IntegrationClient<any, any>>> = {},
+    TIntegrations extends Record<string, TriggerIntegration> = {},
+    TTasks extends Record<string, any> = {},
   >(
     job: Job<TTrigger, TIntegrations>,
     opts: {
       payload?: TriggerEventType<TTrigger>;
-      tasks?: Record<string, any>;
+      tasks?: TTasks;
     } = {}
   ): Promise<
     {
-      io: IOWithIntegrations<TIntegrations>;
-      status: string;
       output: any;
+      status: string;
+      tasks: Record<keyof TTasks, Mock> & Record<string, Mock>;
     } & Record<string, any>
   > => {
     const mockSendEvent = (client: TriggerClient) =>
@@ -158,25 +166,29 @@ export const createJobTester =
       payload: opts.payload,
     });
 
-    const { integrations, run } = job.options;
-    let ioSpy: IOWithIntegrations<TIntegrations> | undefined;
+    const tasks = new Proxy({} as Record<string, Mock>, {
+      get(target, prop, receiver) {
+        if (typeof prop === "string" && !(prop in tasks)) {
+          tasks[prop] = vi.fn((params: any) => opts.tasks?.[prop]);
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
 
-    const taskMockImplementation = async (key: string) => {
-      if (!opts.tasks || typeof key !== "string") return;
-      return opts.tasks[key];
-    };
+    async function runTaskMock<T extends Json<T> | void>(
+      key: string | any[],
+      callback: (task: ServerTask, io: IO) => Promise<T>,
+      options?: RunTaskOptions,
+      onError?: RunTaskErrorCallback
+    ): Promise<T> {
+      if (typeof key !== "string") return undefined as T;
+      return tasks[key](options?.params);
+    }
+
+    const { run } = job.options;
 
     job.options.run = (payload, io, ctx) => {
-      if (integrations) {
-        for (const [integrationName, integration] of entries(integrations)) {
-          Object.keys(integration.client.tasks).forEach((taskName) => {
-            vi.spyOn(io[integrationName], taskName).mockImplementation((key) =>
-              taskMockImplementation(key as string)
-            );
-          });
-        }
-      }
-      ioSpy = io;
+      vi.spyOn(io as IO, "runTask").mockImplementation(runTaskMock);
       return run(payload, io, ctx);
     };
 
@@ -191,7 +203,7 @@ export const createJobTester =
     return {
       output,
       status,
+      tasks,
       ...rest,
-      io: ioSpy,
     };
   };

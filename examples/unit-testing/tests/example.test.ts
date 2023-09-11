@@ -83,10 +83,10 @@ test("stripe integration", async () => {
   expect(testRun).toHaveSucceeded();
 
   // task was called exactly once
-  expect(testRun.io.stripe.createCharge).toHaveBeenCalledOnce();
+  expect(testRun.tasks["create-charge"]).toHaveBeenCalledOnce();
 
   // wask was called with correct params
-  expect(testRun.io.stripe.createCharge).toHaveBeenCalledWith("create-charge", {
+  expect(testRun.tasks["create-charge"]).toHaveBeenCalledWith({
     amount: 100,
     currency: "usd",
     customer: "cus_123",
@@ -94,7 +94,7 @@ test("stripe integration", async () => {
   });
 
   // mocked task output was correctly returned
-  expect(testRun.io.stripe.createCharge).toHaveReturnedWith({
+  expect(testRun.tasks["create-charge"]).toHaveReturnedWith({
     id: "charge_1234",
   });
 
@@ -114,7 +114,7 @@ test("dummy integration", async () => {
         rules: z.boolean(),
         thinkingOf: z.string().startsWith("git"),
         never: z.array(z.string()).length(2),
-        alsoNever: z.array(z.string())
+        alsoNever: z.array(z.string()),
       }),
     }),
     integrations: {
@@ -132,10 +132,9 @@ test("dummy integration", async () => {
       await io.dummy.taskTwo("chorus", {
         neverGonna: payload.never,
       });
-      return ["makeCry", "sayGoodbye"].concat(payload.alsoNever).reduce(
-        (rick, never) => ({ ...rick, [never]: false }),
-        {}
-      );
+      return ["makeCry", "sayGoodbye"]
+        .concat(payload.alsoNever)
+        .reduce((rick, never) => ({ ...rick, [never]: false }), {});
     },
   });
 
@@ -145,7 +144,7 @@ test("dummy integration", async () => {
       rules: true,
       thinkingOf: "git commit -a",
       never: ["give you up", "let you down"],
-      alsoNever: ["tellLie", "hurtYou"]
+      alsoNever: ["tellLie", "hurtYou"],
     },
     // mock task return
     tasks: {
@@ -165,29 +164,29 @@ test("dummy integration", async () => {
   expect(testRun).toHaveSucceeded();
 
   // each task was called exactly once
-  expect(testRun.io.dummy.taskOne).toHaveBeenCalledOnce();
-  expect(testRun.io.dummy.taskTwo).toHaveBeenCalledOnce();
+  expect(testRun.tasks["verse"]).toHaveBeenCalledOnce();
+  expect(testRun.tasks["chorus"]).toHaveBeenCalledOnce();
 
   // tasks were called with correct params
-  expect(testRun.io.dummy.taskOne).toHaveBeenCalledWith("verse", {
+  expect(testRun.tasks["verse"]).toHaveBeenCalledWith({
     we: {
       strangersToLove: false,
       knowTheRules: true,
     },
     thinkingOf: "full commitment",
   });
-  expect(testRun.io.dummy.taskTwo).toHaveBeenCalledWith("chorus", {
+  expect(testRun.tasks["chorus"]).toHaveBeenCalledWith({
     neverGonna: ["give you up", "let you down"],
   });
 
   // mocked task outputs were correctly returned
-  expect(testRun.io.dummy.taskOne).toHaveReturnedWith({
+  expect(testRun.tasks["verse"]).toHaveReturnedWith({
     tellYou: {
       how: "I'm feeling",
     },
     makeYou: "understand",
   });
-  expect(testRun.io.dummy.taskTwo).toHaveReturnedWith({
+  expect(testRun.tasks["chorus"]).toHaveReturnedWith({
     alsoNever: ["run around", "desert you"],
   });
 
@@ -255,18 +254,18 @@ test("two integrations", async () => {
   expect(testRun).toHaveSucceeded();
 
   // each task was called exactly once
-  expect(testRun.io.dummy.taskOne).toHaveBeenCalledOnce();
-  expect(testRun.io.dummy.taskTwo).toHaveBeenCalledOnce();
-  expect(testRun.io.stripe.createCharge).toHaveBeenCalledOnce();
+  expect(testRun.tasks["task-one"]).toHaveBeenCalledOnce();
+  expect(testRun.tasks["task-two"]).toHaveBeenCalledOnce();
+  expect(testRun.tasks["create-charge"]).toHaveBeenCalledOnce();
 
   // tasks were called with correct params
-  expect(testRun.io.dummy.taskOne).toHaveBeenCalledWith("task-one", {
+  expect(testRun.tasks["task-one"]).toHaveBeenCalledWith({
     foo: "bar",
   });
-  expect(testRun.io.dummy.taskTwo).toHaveBeenCalledWith("task-two", {
+  expect(testRun.tasks["task-two"]).toHaveBeenCalledWith({
     bar: "baz",
   });
-  expect(testRun.io.stripe.createCharge).toHaveBeenCalledWith("create-charge", {
+  expect(testRun.tasks["create-charge"]).toHaveBeenCalledWith({
     amount: 100,
     currency: "usd",
     customer: "cus_123",
@@ -274,9 +273,9 @@ test("two integrations", async () => {
   });
 
   // mocked task outputs were correctly returned
-  expect(testRun.io.dummy.taskOne).toHaveReturnedWith({ bar: "baz" });
-  expect(testRun.io.dummy.taskTwo).toHaveReturnedWith({ foo: "bar" });
-  expect(testRun.io.stripe.createCharge).toHaveReturnedWith({
+  expect(testRun.tasks["task-one"]).toHaveReturnedWith({ bar: "baz" });
+  expect(testRun.tasks["task-two"]).toHaveReturnedWith({ foo: "bar" });
+  expect(testRun.tasks["create-charge"]).toHaveReturnedWith({
     id: "charge_1234",
   });
 
