@@ -1,0 +1,34 @@
+---
+title: The structure of an integration
+description: "What files are in an Integration package and what do they do?"
+---
+
+```sh
+stripe
+  ├── README.md
+  ├── package.json
+  ├── tsup.config.ts
+  ├── src
+  │   ├── index.ts
+  └── tsconfig.json
+```
+
+Once you've created your Integration package, you can start developing it. In this stage of development, you'll mainly be making changes to the `src/index.ts` file.
+
+## `src/index.ts`
+
+This is the entry point of the Integration package and where the client lives.
+
+See the guide for [creating a client](/integrations/create-client) for more information.
+
+### Adding Tasks
+
+Tasks are what we call functions that are used inside the `run()` function of a Job. For more about how tasks work, see the [tasks documentation](/documentation/concepts/tasks).
+
+See the guide for [adding tasks](/integrations/create-tasks) to your integration.
+
+### Adding Triggers
+
+Triggers are what cause a Job to run. For more about how triggers work, see the [triggers documentation](/documentation/concepts/triggers).
+
+See the guide for creating [triggers](/integrations/create-triggers) for more information.

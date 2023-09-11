@@ -1,0 +1,49 @@
+{
+  "name": "@trigger.dev/testing",
+  "description": "A collection of useful tools to write tests for Trigger.dev.",
+  "version": "2.1.0",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/esm/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "bugs": {
+    "url": "https://github.com/triggerdev/trigger.dev/issues"
+  },
+  "homepage": "https://github.com/triggerdev/trigger.dev/packages/testing#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/triggerdev/trigger.dev.git"
+  },
+  "scripts": {
+    "build": "tsup --dts",
+    "test": "vitest"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@trigger.dev/core": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
+    "vitest": "^0.34.3",
+    "zod": "3.21.4"
+  },
+  "devDependencies": {
+    "@trigger.dev/stripe": "workspace:*",
+    "@trigger.dev/tsconfig": "workspace:*",
+    "tsup": "^7.2.0",
+    "typescript": "^5.2.2"
+  }
+}

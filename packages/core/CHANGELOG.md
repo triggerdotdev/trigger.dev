@@ -1,5 +1,32 @@
 # internal-platform
 
+## 2.1.0
+
+### Minor Changes
+
+- Integrations are now simpler and support authentication during webhook registration ([`878da3c0`](https://github.com/triggerdotdev/trigger.dev/commit/878da3c01f0a4dfaf33a1f8943a7ad4eed8b8877))
+
+## 2.1.0-beta.1
+
+## 2.1.0-beta.0
+
+### Minor Changes
+
+- Integrations are now simpler and support authentication during webhook registration ([`878da3c0`](https://github.com/triggerdotdev/trigger.dev/commit/878da3c01f0a4dfaf33a1f8943a7ad4eed8b8877))
+
+## 2.0.14
+
+## 2.0.13
+
+## 2.0.12
+
+## 2.0.11
+
+### Patch Changes
+
+- 302bd02f: Issue #377: only expose the external eventId in the API
+- b5db9f5e: Adding MIT license
+
 ## 2.0.10
 
 ### Patch Changes

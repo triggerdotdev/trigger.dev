@@ -12,9 +12,8 @@ import {
   LogLevel,
   Logger,
   RegisterScheduleResponseBodySchema,
-  RegisterSourceEvent,
-  RegisterSourceEventSchema,
-  RegisterTriggerBody,
+  RegisterSourceEventV2,
+  RegisterSourceEventSchemaV2,
   RunTaskBodyInput,
   ScheduleMetadata,
   SendEvent,
@@ -22,8 +21,9 @@ import {
   ServerTaskSchema,
   TriggerSource,
   TriggerSourceSchema,
-  UpdateTriggerSourceBody,
   urlWithSearchParams,
+  UpdateTriggerSourceBodyV2,
+  RegisterTriggerBodyV2,
 } from "@trigger.dev/core";
 
 import fetch, { type RequestInit } from "node-fetch";
@@ -201,7 +201,7 @@ export class ApiClient {
   async updateSource(
     client: string,
     key: string,
-    source: UpdateTriggerSourceBody
+    source: UpdateTriggerSourceBodyV2
   ): Promise<TriggerSource> {
     const apiKey = await this.#apiKey();
 
@@ -211,7 +211,7 @@ export class ApiClient {
 
     const response = await zodfetch(
       TriggerSourceSchema,
-      `${this.#apiUrl}/api/v1/${client}/sources/${key}`,
+      `${this.#apiUrl}/api/v2/${client}/sources/${key}`,
       {
         method: "PUT",
         headers: {
@@ -229,8 +229,8 @@ export class ApiClient {
     client: string,
     id: string,
     key: string,
-    payload: RegisterTriggerBody
-  ): Promise<RegisterSourceEvent> {
+    payload: RegisterTriggerBodyV2
+  ): Promise<RegisterSourceEventV2> {
     const apiKey = await this.#apiKey();
 
     this.#logger.debug("registering trigger", {
@@ -239,8 +239,8 @@ export class ApiClient {
     });
 
     const response = await zodfetch(
-      RegisterSourceEventSchema,
-      `${this.#apiUrl}/api/v1/${client}/triggers/${id}/registrations/${key}`,
+      RegisterSourceEventSchemaV2,
+      `${this.#apiUrl}/api/v2/${client}/triggers/${id}/registrations/${key}`,
       {
         method: "PUT",
         headers: {

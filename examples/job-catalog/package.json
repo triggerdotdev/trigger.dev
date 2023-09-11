@@ -13,6 +13,14 @@
     "schedules": "nodemon --watch src/schedules.ts -r tsconfig-paths/register -r dotenv/config src/schedules.ts",
     "stressTest": "nodemon --watch src/stressTest.ts -r tsconfig-paths/register -r dotenv/config src/stressTest.ts",
     "delays": "nodemon --watch src/delays.ts -r tsconfig-paths/register -r dotenv/config src/delays.ts",
+    "airtable": "nodemon --watch src/airtable.ts -r tsconfig-paths/register -r dotenv/config src/airtable.ts",
+    "resend": "nodemon --watch src/resend.ts -r tsconfig-paths/register -r dotenv/config src/resend.ts",
+    "github": "nodemon --watch src/github.ts -r tsconfig-paths/register -r dotenv/config src/github.ts",
+    "plain": "nodemon --watch src/plain.ts -r tsconfig-paths/register -r dotenv/config src/plain.ts",
+    "typeform": "nodemon --watch src/typeform.ts -r tsconfig-paths/register -r dotenv/config src/typeform.ts",
+    "dynamic-schedule": "nodemon --watch src/dynamic-schedule.ts -r tsconfig-paths/register -r dotenv/config src/dynamic-schedule.ts",
+    "dynamic-triggers": "nodemon --watch src/dynamic-triggers.ts -r tsconfig-paths/register -r dotenv/config src/dynamic-triggers.ts",
+    "background-fetch": "nodemon --watch src/background-fetch.ts -r tsconfig-paths/register -r dotenv/config src/background-fetch.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {
@@ -29,7 +37,8 @@
     "@trigger.dev/supabase": "workspace:*",
     "@types/node": "20.4.2",
     "typescript": "5.1.6",
-    "zod": "3.21.4"
+    "zod": "3.21.4",
+    "@trigger.dev/airtable": "workspace:*"
   },
   "trigger.dev": {
     "endpointId": "job-catalog"

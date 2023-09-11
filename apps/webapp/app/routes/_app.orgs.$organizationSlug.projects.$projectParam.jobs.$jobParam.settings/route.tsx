@@ -1,4 +1,4 @@
-import { JobStatusTable } from "~/components/JobsStatusTable";
+import { JobEnvironment, JobStatusTable } from "~/components/JobsStatusTable";
 import { HowToDisableAJob } from "~/components/helpContent/HelpContentText";
 import { DeleteJobDialogContent } from "~/components/jobs/DeleteJobModalContent";
 import { Button } from "~/components/primitives/Buttons";
@@ -28,9 +28,11 @@ export default function Page() {
             </div>
             <JobStatusTable environments={job.environments} />
             <div className="mt-4 flex w-full items-center justify-end gap-x-3">
-              <Paragraph variant="small">
-                Disable this Job in all environments before deleting
-              </Paragraph>
+              {job.status === "ACTIVE" && (
+                <Paragraph variant="small">
+                  Disable this Job in all environments before deleting
+                </Paragraph>
+              )}
 
               <Dialog>
                 <DialogTrigger asChild>
@@ -39,7 +41,7 @@ export default function Page() {
                     leadingIconClassName="text-bright"
                     LeadingIcon="trash-can"
                   >
-                    Delete Job
+                    I want to delete this Job
                   </Button>
                 </DialogTrigger>
                 <DialogContent>

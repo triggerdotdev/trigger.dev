@@ -10,12 +10,26 @@ A Task is a resumable unit of a Run that can be retried, resumed and is logged. 
 
 <Snippet file="stable-key-param.mdx" />
 
-<ResponseField name="options" type="object" required>
-  The options of how you'd like to run and log the Task. `name` is the only required field.
+<ResponseField name="callback" type="function" required>
+  The callback that will be called when the Task is run, this is where your logic should go. The callback receives
+  the Task and the IO as parameters.
+
+  <Expandable title="arguments">
+    <ResponseField name="task" type="Task">
+      The Task that is running. It has some useful properties like `idempotencyKey` and `attempts`.
+    </ResponseField>
+    <ResponseField name="io" type="IO">
+      [IO](/sdk/io/overview) holds Integrations and useful actions you can perform.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="options" type="object">
+  The options of how you'd like to run and log the Task.
 
 <Expandable title="options">
-  <ResponseField name="name" type="string" required>
-    The name of the Task is required. This is displayed on the Task in the logs.
+  <ResponseField name="name" type="string">
+    This is displayed on the Task in the logs.
   </ResponseField>
   <ResponseField name="delayUntil" type="date">
     The Task will wait and only start at the specified Date.
@@ -87,20 +101,6 @@ A Task is a resumable unit of a Run that can be retried, resumed and is logged. 
 </Expandable>
 </ResponseField>
 
-<ResponseField name="callback" type="function" required>
-  The callback that will be called when the Task is run, this is where your logic should go. The callback receives
-  the Task and the IO as parameters.
-
-  <Expandable title="arguments">
-    <ResponseField name="task" type="Task">
-      The Task that is running. It has some useful properties like `idempotencyKey` and `attempts`.
-    </ResponseField>
-    <ResponseField name="io" type="IO">
-      [IO](/sdk/io/overview) holds Integrations and useful actions you can perform.
-    </ResponseField>
-  </Expandable>
-</ResponseField>
-
 <ResponseField name="onError" type="function">
   An optional callback that will be called when the Task fails. You can perform
   logic in here and optionally return a custom error object. Returning an object with `{ retryAt: Date, error?: Error }` will retry the Task at the specified Date. You can also just return a new `Error` object to throw a new error. Return nothing to rethrow the original error.
@@ -138,14 +138,15 @@ client.defineJob({
     //runTask
     const response = await io.runTask(
       "create-card",
-      { name: "Create card", icon: "github" },
       async () => {
         //create a project card using the underlying GitHub Integration client
         return io.github.client.rest.projects.createCard({
           column_id: 123,
           note: "test",
         });
-      }
+      },
+      //this is optional
+      { name: "Create card", icon: "github" }
     );
 
     //log the url of the created card
@@ -164,13 +165,13 @@ client.defineJob({
     //runTask
     const response = await io.runTask(
       "on-error-test",
-      { name: "On Error" },
       async () => {
         // Only throw error 50% of the time
         if (Math.random() > 0.5) {
           throw new Error("Something went wrong");
         }
       },
+      { name: "On Error" },
       onError: (error, task) => {
         //retry the task in 5 minutes
         return {

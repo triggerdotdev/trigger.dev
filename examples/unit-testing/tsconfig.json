@@ -1,0 +1,19 @@
+{
+  "extends": "@trigger.dev/tsconfig/node18.json",
+  "include": ["**/*.ts"],
+  "compilerOptions": {
+    "allowJs": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
+      "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
+      "@trigger.dev/core": ["../../packages/core/src/index"],
+      "@trigger.dev/core/*": ["../../packages/core/src/*"],
+      "@trigger.dev/stripe": ["../../integrations/stripe/src/index"],
+      "@trigger.dev/stripe/*": ["../../integrations/stripe/src/*"],
+      "@trigger.dev/testing": ["../../packages/testing/src/index"],
+      "@trigger.dev/testing/*": ["../../packages/testing/src/*"]
+    }
+  }
+}

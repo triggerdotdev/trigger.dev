@@ -1,4 +1,4 @@
-import { DisplayPropertiesSchema, StyleSchema } from "@trigger.dev/core";
+import { StyleSchema } from "@trigger.dev/core";
 import { PrismaClient, prisma } from "~/db.server";
 import { mergeProperties } from "~/utils/mergeProperties.server";
 
@@ -6,8 +6,6 @@ type DetailsProps = {
   id: string;
   userId: string;
 };
-
-export type DetailedTask = NonNullable<Awaited<ReturnType<TaskDetailsPresenter["call"]>>>;
 
 export class TaskDetailsPresenter {
   #prismaClient: PrismaClient;
@@ -87,6 +85,7 @@ export class TaskDetailsPresenter {
 
     return {
       ...task,
+      output: task.output ? JSON.stringify(task.output, null, 2) : undefined,
       connection: task.runConnection,
       params: task.params as Record<string, any>,
       properties: mergeProperties(task.properties, task.outputProperties),

@@ -1,6 +1,6 @@
 /**
  * @fileoverview Prevent duplicated task keys on trigger.dev jobs
- * @author 
+ * @author
  */
 "use strict";
 
@@ -11,7 +11,6 @@
 const rule = require("../../../lib/rules/no-duplicated-task-keys"),
   RuleTester = require("eslint").RuleTester;
 
-
 //------------------------------------------------------------------------------
 // Tests
 //------------------------------------------------------------------------------
@@ -20,56 +19,56 @@ const ruleTester = new RuleTester({
   parserOptions: {
     sourceType: "module",
     ecmaVersion: 2020,
-  }
+  },
 });
 ruleTester.run("no-duplicated-task-keys", rule, {
   valid: [
     {
       code: `client.defineJob({
         run: async (payload, io, ctx) => {
-          await io.runTask("task", { name: "My Task" }, async () => {});
+          await io.runTask("task", async () => {}, { name: "My Task" });
         }
-      })`
+      })`,
     },
     {
       code: `client.defineJob({
         run: async (payload, io, ctx) => {
           await io.stripe.createCharge("charge", {})
         }
-      })`
+      })`,
     },
     {
       code: `client.defineJob({
         run: async (payload, io, ctx) => {
           await io.supabase.createProject("create-project", {})
         }
-      })`
+      })`,
     },
     {
       code: `client.defineJob({
         run: async (payload, io, ctx) => {
           await io.typeform.listForms("list-forms");
         }
-      })`
+      })`,
     },
   ],
 
   invalid: [
-    { 
+    {
       code: `client.defineJob({
         run: async (payload, io, ctx) => {
-          await io.runTask("duplicated-task", { name: "My Task" }, async () => {
+          await io.runTask("duplicated-task", async () => {
             return await longRunningCode(payload.userId);
-          });
+          }, { name: "My Task" });
 
-          await io.runTask("duplicated-task", { name: "My Task" }, async () => {
+          await io.runTask("duplicated-task", async () => {
             return await longRunningCode(payload.userId);
-          });
+          }, { name: "My Task" });
         }
       })`,
-      errors: [{ message: "Task key 'duplicated-task' is duplicated" }]
+      errors: [{ message: "Task key 'duplicated-task' is duplicated" }],
     },
-    { 
+    {
       code: `client.defineJob({
         run: async (payload, io, ctx) => {
           await io.stripe.createCharge("duplicated-charge", {
@@ -86,9 +85,9 @@ ruleTester.run("no-duplicated-task-keys", rule, {
           });
         }
       })`,
-      errors: [{ message: "Task key 'duplicated-charge' is duplicated" }]
+      errors: [{ message: "Task key 'duplicated-charge' is duplicated" }],
     },
-    { 
+    {
       code: `client.defineJob({
         run: async (payload, io, ctx) => {
           await io.supabase.createProject("create-project", {
@@ -109,9 +108,9 @@ ruleTester.run("no-duplicated-task-keys", rule, {
           })
         }
       });`,
-      errors: [{ message: "Task key 'create-project' is duplicated" }]
+      errors: [{ message: "Task key 'create-project' is duplicated" }],
     },
-    { 
+    {
       code: `client.defineJob({
         run: async (payload, io, ctx) => {
           await io.typeform.listForms("list-forms");
@@ -119,7 +118,7 @@ ruleTester.run("no-duplicated-task-keys", rule, {
           await io.typeform.listForms("list-forms");
         }
       })`,
-      errors: [{ message: "Task key 'list-forms' is duplicated" }]
+      errors: [{ message: "Task key 'list-forms' is duplicated" }],
     },
     {
       code: `client.defineJob({
@@ -157,9 +156,7 @@ ruleTester.run("no-duplicated-task-keys", rule, {
           return { payload, ctx };
         },
       })`,
-      errors: [
-        { message: "Task key 'add assignee' is duplicated" },
-      ]
+      errors: [{ message: "Task key 'add assignee' is duplicated" }],
     },
     {
       code: `client.defineJob({
@@ -204,7 +201,7 @@ ruleTester.run("no-duplicated-task-keys", rule, {
       errors: [
         { message: "Task key 'Tell me a joke' is duplicated" },
         { message: "Task key 'Wait 1 second' is duplicated" },
-      ]
+      ],
     },
     {
       code: `client.defineJob({
@@ -239,7 +236,83 @@ ruleTester.run("no-duplicated-task-keys", rule, {
       errors: [
         { message: "Task key 'Get Tag' is duplicated" },
         { message: "Task key 'Tag ' is duplicated" },
-      ]
-    }
-  ]
+      ],
+    },
+    {
+      code: `import { Job, eventTrigger } from "@trigger.dev/sdk";
+      import { client } from "@/trigger";
+      
+      // your first job
+      new Job(client, {
+        id: "example-job",
+        name: "Example Job",
+        version: "0.0.1",
+        trigger: eventTrigger({
+          name: "example.event",
+        }),
+        run: async (payload, io, ctx) => {
+          await io.runTask("example.task", async () => {});
+          await io.runTask("example.task", async () => {});
+        },
+      });`,
+      errors: [{ message: "Task key 'example.task' is duplicated" }],
+    },
+    {
+      code: `import { Job, eventTrigger } from "@trigger.dev/sdk";
+      import { client } from "@/trigger";
+      
+      // your first job
+      new Job(client, {
+        id: "example-job",
+        name: "Example Job",
+        version: "0.0.1",
+        trigger: eventTrigger({
+          name: "example.event",
+        }),
+        run: async (payload, io, ctx) => {
+          await io.runTask("example.task", async () => {});
+      
+          await io.anotherTask("different task", async () => {});
+      
+          if (true) {
+            await io.runTask("example.task", async () => {});
+      
+            if (true) {
+              await io.runTask("example.task", async () => {});
+              await io.anotherTask("different task", async () => {});
+            }
+          }
+        },
+      });`,
+      errors: [
+        { message: "Task key 'example.task' is duplicated" },
+        { message: "Task key 'different task' is duplicated" },
+      ],
+    },
+    {
+      code: `import { Job, eventTrigger } from "@trigger.dev/sdk";
+      import { client } from "@/trigger";
+      
+      // your first job
+      new Job(client, {
+        id: "example-job",
+        name: "Example Job",
+        version: "0.0.1",
+        trigger: eventTrigger({
+          name: "example.event",
+        }),
+        run: async (payload, io, ctx) => {
+          if (true) {
+            await io.runTask("example.task", async () => {});
+      
+            if (true) {
+              await io.runTask("example.task", async () => {});
+              await io.anotherTask("different task", async () => {});
+            }
+          }
+        },
+      });`,
+      errors: [{ message: "Task key 'example.task' is duplicated" }],
+    },
+  ],
 });
