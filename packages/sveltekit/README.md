@@ -1,6 +1,6 @@
 # SvelteKit and Trigger.dev
 
-Trigger.dev provides full support for the SvelteKit framework, including both the Pages and App router.
+Trigger.dev provides full support for the SvelteKit framework.
 
 For information about using Trigger.dev in your SvelteKit app, check out these useful documentation links:
 
