@@ -23,7 +23,8 @@ export function createAstroRoute(client: TriggerClient) {
         headers: responseHeaders,
         method: requestMethod,
         body: ctx.request.body,
-        // duplex: "half",
+        // @ts-ignore
+        duplex: "half",
       });
 
       // This handshake handler knows how to authenticate requests,
@@ -49,6 +50,6 @@ export function createAstroRoute(client: TriggerClient) {
   };
 
   return {
-    POST
-  }
+    POST,
+  };
 }

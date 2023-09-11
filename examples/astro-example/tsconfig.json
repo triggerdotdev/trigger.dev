@@ -1,3 +1,10 @@
 {
-  "extends": "astro/tsconfigs/strict", 
+  "extends": "astro/tsconfigs/strict",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@trigger.dev/astro": ["../../packages/astro/src/index"],
+      "@trigger.dev/astro/*": ["../../packages/astro/src/*"]
+    }
+  },
 }

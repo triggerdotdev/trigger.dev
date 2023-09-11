@@ -9,7 +9,8 @@
     "lib": ["DOM", "DOM.Iterable"],
     "paths": {
       "@trigger.dev/sdk": ["../trigger-sdk/src/index"],
-      "@trigger.dev/sdk/*": ["../trigger-sdk/src/*"]
+      "@trigger.dev/sdk/*": ["../trigger-sdk/src/*"], 
+
     }
   },
   "exclude": ["node_modules"]
