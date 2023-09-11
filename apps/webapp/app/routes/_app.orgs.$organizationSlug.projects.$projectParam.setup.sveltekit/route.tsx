@@ -107,8 +107,8 @@ export default function SetUpSveltekit() {
             <StepNumber stepNumber="2" title="Navigate to your new Sveltekit project" />
             <StepContentContainer>
               <Paragraph spacing>
-                You have now created a new Sveltekit project. Let’s <InlineCode>cd</InlineCode> into it
-                using the project name you just provided:
+                You have now created a new Sveltekit project. Let’s <InlineCode>cd</InlineCode> into
+                it using the project name you just provided:
               </Paragraph>
               <ClipboardField
                 value={"cd [replace with your project name]"}
@@ -120,7 +120,10 @@ export default function SetUpSveltekit() {
               title="Follow the steps from the Sveltekit manual installation guide"
             />
             <StepContentContainer>
-              <LinkButton to="" variant="primary/medium" />
+              <LinkButton
+                to="https://trigger.dev/docs/documentation/guides/manual/sveltekit"
+                variant="primary/medium"
+              />
             </StepContentContainer>
             <StepNumber stepNumber="5" title="Run the CLI 'dev' command" />
             <StepContentContainer>
