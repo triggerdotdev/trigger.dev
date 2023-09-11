@@ -379,40 +379,50 @@ function createWebhookEventSource(
 
 ## Handling the webhook payload
 
-When a webhook is received, we need to validate the signature, parse the payload, and return the events.
+When a webhook is received, we need to validate the signature, parse the payload, and return the events. Each event will turn into a payload that can trigger a Job run.
 
 ```ts integrations/stripe/index.ts
 //...everything we've already covered
 
+//this function is called when a webhook is received
 async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
   logger.debug("[@trigger.dev/stripe] Handling webhook payload");
 
+  //The rawEvent is a Request, from this you can get the body, headers, etc.
+  //The source has info on the ExternalSource that received the webhook
   const { rawEvent: request, source } = event;
 
+  //no body means no events
   if (!request.body) {
     logger.debug("[@trigger.dev/stripe] No body found");
-
     return { events: [] };
   }
 
+  //in Stripe's case, we need to get the text from the request, and we'll use their SDK to get an event
   const rawBody = await request.text();
 
+  //it's important to verify webhooks payloads because anyone can send data to a URL
   const signature = request.headers.get("stripe-signature");
 
   if (signature) {
+    //The Stripe SDK is used to validate the signature
     const stripeClient = new StripeClient("", { apiVersion: "2022-11-15" });
 
     try {
+      //this will throw an error if the signature is invalid
       const event = stripeClient.webhooks.constructEvent(rawBody, signature, source.secret);
 
       return {
+        //move than one event can be returned, but for most APIs it will just be one
         events: [
           {
             id: event.id,
             payload: event.data.object,
             source: "stripe.com",
+            //this name should match the EventSpecification name
             name: event.type,
             timestamp: new Date(event.created * 1000),
+            //the context can be any format, it will be passed to the Job run's context.source
             context: {
               apiVersion: event.api_version,
               livemode: event.livemode,
@@ -421,6 +431,19 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
             },
           },
         ],
+        //you can also return a response, which will be sent back to the webhook sender
+        //but this is optional, we return a 200 which is normally the requirement
+        //response: {
+        //  status: 200,
+        //  body: "ok",
+        //  headers: {
+        //    "Content-Type": "text/plain",
+        //  },
+        //},
+        //metadata can be any format, is stored and can be used in the next webhookHandler call
+        // metadata: {
+        //   requestId: event.request,
+        // }
       };
     } catch (error) {
       if (error instanceof Error) {
@@ -435,6 +458,7 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
     }
   }
 
+  //if there's no signature, we can't validate the payload
   return {
     events: [],
   };
