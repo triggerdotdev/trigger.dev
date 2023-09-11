@@ -11,6 +11,7 @@ import {
   organizationTeamPath,
   projectEnvironmentsPath,
   projectIntegrationsPath,
+  projectSetupPath,
   projectPath,
   projectTriggersPath,
 } from "~/utils/pathBuilder";
@@ -57,8 +58,9 @@ export function ProjectSideMenu() {
       animate={isCollapsed ? "collapsed" : "expanded"}
       variants={menuVariants}
       initial={isCollapsed ? "collapsed" : "expanded"}
+      transition={{ type: "spring", duration: 0.5 }}
       className={cn(
-        "flex h-full flex-col justify-between overflow-hidden border-r border-uiBorder p-1 transition duration-300 ease-in-out"
+        "flex h-full flex-col justify-between overflow-hidden border-r border-uiBorder p-1 transition"
       )}
     >
       <div className="flex flex-col gap-1">
@@ -108,6 +110,13 @@ export function ProjectSideMenu() {
           to={organizationBillingPath(organization)}
           isCollapsed={isCollapsed}
           data-action="usage & billing"
+        />
+        <SideMenuItem
+          name="Onboarding"
+          icon="clipboard-checked"
+          to={projectSetupPath(organization, project)}
+          isCollapsed={isCollapsed}
+          data-action="onboarding"
         />
         <SideMenuItem
           name="Account"

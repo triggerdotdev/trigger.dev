@@ -53,7 +53,11 @@
   "redirects": [
     {
       "source": "/documentation/quickstart",
-      "destination": "/documentation/quickstarts/nextjs"
+      "destination": "/documentation/quickstarts/introduction"
+    },
+    {
+      "source": "/documentation/guides/manual",
+      "destination": "/documentation/guides/manual/nextjs"
     }
   ],
   "navigation": [
@@ -63,7 +67,23 @@
         "documentation/introduction",
         {
           "group": "Quick Starts",
-          "pages": ["documentation/quickstarts/nextjs", "documentation/quickstarts/supabase"]
+          "pages": [
+            "documentation/quickstarts/introduction",
+            {
+              "group": "Frameworks",
+              "pages": [
+                "documentation/quickstarts/nextjs",
+                "documentation/quickstarts/express",
+                "documentation/quickstarts/remix",
+                "documentation/quickstarts/redwood",
+                "documentation/quickstarts/astro",
+                "documentation/quickstarts/nuxt",
+                "documentation/quickstarts/sveltekit",
+                "documentation/quickstarts/fastify"
+              ]
+            },
+            "documentation/quickstarts/supabase"
+          ]
         },
         "documentation/guides/create-a-job",
         "documentation/guides/video-walkthrough"
@@ -108,11 +128,30 @@
           "group": "Platforms",
           "pages": [
             "documentation/guides/platforms/nextjs",
-            "documentation/guides/platforms/express"
+            "documentation/guides/platforms/express",
+            "documentation/guides/platforms/remix",
+            "documentation/guides/platforms/redwood",
+            "documentation/guides/platforms/astro",
+            "documentation/guides/platforms/nuxt",
+            "documentation/guides/platforms/sveltekit",
+            "documentation/guides/platforms/fastify"
           ]
         },
         "documentation/guides/cli",
-        "documentation/guides/manual",
+        {
+          "group": "Manual setup",
+          "pages": [
+            "documentation/guides/manual/nextjs",
+            "documentation/guides/manual/express",
+            "documentation/guides/manual/remix",
+            "documentation/guides/manual/redwood",
+            "documentation/guides/manual/astro",
+            "documentation/guides/manual/nuxt",
+            "documentation/guides/manual/sveltekit",
+            "documentation/guides/manual/fastify"
+          ]
+        },
+
         "documentation/guides/running-jobs",
         "documentation/guides/jobs/managing",
         {
@@ -125,7 +164,7 @@
           ]
         },
         {
-          "group": "Using integrations",
+          "group": "Using Integrations",
           "pages": [
             "documentation/guides/using-integrations",
             "documentation/guides/using-integrations-apikeys",
@@ -296,7 +335,7 @@
     },
     {
       "group": "Overview",
-      "pages": ["examples/introduction", "examples/examples-repository"]
+      "pages": ["examples/introduction"]
     }
   ],
   "footerSocials": {

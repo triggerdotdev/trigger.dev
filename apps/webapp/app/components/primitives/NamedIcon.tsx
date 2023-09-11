@@ -21,6 +21,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronUpIcon,
+  ClipboardDocumentCheckIcon,
   ClockIcon,
   CloudIcon,
   CodeBracketSquareIcon,
@@ -36,10 +37,12 @@ import {
   HeartIcon,
   KeyIcon,
   LightBulbIcon,
+  ListBulletIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   PlusSmallIcon,
   QrCodeIcon,
+  Square2StackIcon,
   SquaresPlusIcon,
   StarIcon,
   TrashIcon,
@@ -120,6 +123,9 @@ const icons = {
   job: (className: string) => <WrenchScrewdriverIcon className={cn("text-teal-500", className)} />,
   key: (className: string) => <KeyIcon className={cn("text-amber-400", className)} />,
   lightbulb: (className: string) => <LightBulbIcon className={cn("text-amber-400", className)} />,
+  "clipboard-checked": (className: string) => (
+    <ClipboardDocumentCheckIcon className={cn("text-dimmed", className)} />
+  ),
   log: (className: string) => (
     <ChatBubbleLeftEllipsisIcon className={cn("text-slate-400", className)} />
   ),
@@ -140,6 +146,7 @@ const icons = {
   settings: (className: string) => <Cog8ToothIcon className={cn("text-slate-600", className)} />,
   spinner: (className: string) => <Spinner className={className} color="blue" />,
   "spinner-white": (className: string) => <Spinner className={className} color="white" />,
+  squares: (className: string) => <Square2StackIcon className={cn("text-dimmed", className)} />,
   star: (className: string) => <StarIcon className={cn("text-yellow-500", className)} />,
   stop: (className: string) => <StopIcon className={cn("text-rose-500", className)} />,
   team: (className: string) => <UserGroupIcon className={cn("text-blue-500", className)} />,
