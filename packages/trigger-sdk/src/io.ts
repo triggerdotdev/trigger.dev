@@ -527,7 +527,7 @@ export class IO {
         task,
       });
 
-      throw new Error(task.error ?? "Task errored");
+      throw new Error(task.error ?? JSON.stringify(task?.output));
     }
 
     if (task.status === "WAITING") {
