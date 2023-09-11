@@ -114,9 +114,15 @@ export default function SetUpRemix() {
                 variant={"primary/medium"}
               ></ClipboardField>
             </StepContentContainer>
-            <StepNumber stepNumber="3" title="Follow the step from the Remix manual installation guide" />
+            <StepNumber
+              stepNumber="3"
+              title="Follow the steps from the Remix manual installation guide"
+            />
             <StepContentContainer>
-            <LinkButton to="" variant="primary/medium"/>
+              <LinkButton
+                to="https://trigger.dev/docs/documentation/guides/manual/remix"
+                variant="primary/medium"
+              />
             </StepContentContainer>
             <StepNumber stepNumber="5" title="Run the CLI 'dev' command" />
             <StepContentContainer>
@@ -130,6 +136,5 @@ export default function SetUpRemix() {
         </div>
       </div>
     </PageGradient>
-    
   );
 }
