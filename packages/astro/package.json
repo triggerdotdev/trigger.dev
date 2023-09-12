@@ -20,10 +20,10 @@
     "build:tsup": "tsup"
   },
   "peerDependencies": {
-    "@trigger.dev/sdk": "workspace:*",
-    "astro": "^3.0.12"
+    "@trigger.dev/sdk": "workspace:*"
   },
   "devDependencies": {
+    "astro": "^3.0.12", 
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/ws": "^8.5.3",
