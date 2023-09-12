@@ -54,7 +54,7 @@ export function FrameworkSelector() {
           <FrameworkLink to={projectSetupExpressPath(organization, project)}>
             <ExpressLogo className="w-36" />
           </FrameworkLink>
-          <FrameworkLink to={projectSetupRemixPath(organization, project)}>
+          <FrameworkLink to={projectSetupRemixPath(organization, project)} supported>
             <RemixLogo className="w-32" />
           </FrameworkLink>
           <FrameworkLink to={projectSetupRedwoodPath(organization, project)}>

@@ -1,5 +1,4 @@
 {
-  "exclude": ["./cypress", "./cypress.config.ts"],
   "include": ["remix.env.d.ts", "**/*.ts", "**/*.tsx"],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2019"],
@@ -12,22 +11,18 @@
     "strict": true,
     "allowJs": true,
     "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true,
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
     "baseUrl": ".",
     "paths": {
       "~/*": ["./app/*"],
-      "@/*": ["./*"],
       "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
       "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
       "@trigger.dev/core": ["../../packages/core/src/index"],
       "@trigger.dev/core/*": ["../../packages/core/src/*"],
-      "@trigger.dev/database": ["../../packages/database/src/index"],
-      "@trigger.dev/database/*": ["../../packages/database/src/*"],
-      "emails": ["../../packages/emails/src/index"],
-      "emails/*": ["../../packages/emails/src/*"]
+      "@trigger.dev/remix": ["../../packages/remix/src/index"],
+      "@trigger.dev/remix/*": ["../../packages/remix/src/*"]
     },
+
+    // Remix takes care of building everything in `remix build`.
     "noEmit": true
   }
 }
