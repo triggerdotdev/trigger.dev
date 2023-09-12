@@ -47,7 +47,7 @@
     "useDefineForClassFields": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "types": ["jest"]
+    "types": ["vitest/globals"]
   },
   "exclude": ["node_modules"]
 }
