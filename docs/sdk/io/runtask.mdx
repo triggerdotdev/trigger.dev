@@ -138,14 +138,15 @@ client.defineJob({
     //runTask
     const response = await io.runTask(
       "create-card",
-      { name: "Create card", icon: "github" },
       async () => {
         //create a project card using the underlying GitHub Integration client
         return io.github.client.rest.projects.createCard({
           column_id: 123,
           note: "test",
         });
-      }
+      },
+      //this is optional
+      { name: "Create card", icon: "github" }
     );
 
     //log the url of the created card
@@ -164,13 +165,13 @@ client.defineJob({
     //runTask
     const response = await io.runTask(
       "on-error-test",
-      { name: "On Error" },
       async () => {
         // Only throw error 50% of the time
         if (Math.random() > 0.5) {
           throw new Error("Something went wrong");
         }
       },
+      { name: "On Error" },
       onError: (error, task) => {
         //retry the task in 5 minutes
         return {

@@ -76,6 +76,7 @@
     "ora": "^6.1.2",
     "path-to-regexp": "^6.2.1",
     "posthog-node": "^3.1.1",
+    "proxy-agent": "^6.3.0",
     "simple-git": "^3.19.0",
     "terminal-link": "^3.0.0",
     "tsconfck": "^2.1.2",
