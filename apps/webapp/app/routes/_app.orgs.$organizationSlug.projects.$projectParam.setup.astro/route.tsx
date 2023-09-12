@@ -27,17 +27,18 @@ import { useProject } from "~/hooks/useProject";
 import { Handle } from "~/utils/handle";
 import { projectSetupPath, trimTrailingSlash } from "~/utils/pathBuilder";
 import { Callout } from "~/components/primitives/Callout";
+import { Badge } from "~/components/primitives/Badge";
 
 export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Astro" />,
 };
 
-export default function Page() {
+export default function SetUpAstro() {
   const organization = useOrganization();
   const project = useProject();
   useProjectSetupComplete();
   const devEnvironment = useDevEnvironment();
-  const appOrigin = useAppOrigin();
+  invariant(devEnvironment, "Dev environment must be defined");
   return (
     <PageGradient>
       <div className="mx-auto max-w-3xl">
@@ -73,53 +74,36 @@ export default function Page() {
             servers soon.
           </Callout>
           <div>
-            <StepNumber stepNumber="1" title="Create a new Astro project" />
-            <StepContentContainer>
-              <ClientTabs defaultValue="npm">
-                <ClientTabsList>
-                  <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
-                  <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
-                  <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
-                </ClientTabsList>
-                <ClientTabsContent value={"npm"}>
-                  <ClipboardField
-                    variant="primary/medium"
-                    className="mb-4"
-                    value={`npm create astro@latest`}
-                  />
-                </ClientTabsContent>
-                <ClientTabsContent value={"pnpm"}>
-                  <ClipboardField
-                    variant="primary/medium"
-                    className="mb-4"
-                    value={`pnpm create astro@latest`}
-                  />
-                </ClientTabsContent>
-                <ClientTabsContent value={"yarn"}>
-                  <ClipboardField
-                    variant="primary/medium"
-                    className="mb-4"
-                    value={`yarn create astro`}
-                  />
-                </ClientTabsContent>
-              </ClientTabs>
+            <StepNumber
+              stepNumber="1"
+              title="Follow the steps from the Astro manual installation guide"
+            />
+            <StepContentContainer className="flex flex-col gap-2">
+              <Paragraph className="mt-2">Copy your server API Key to your clipboard:</Paragraph>
+              <div className="mb-2 flex w-full items-center justify-between">
+                <ClipboardField
+                  secure
+                  className="w-fit"
+                  value={devEnvironment.apiKey}
+                  variant={"secondary/medium"}
+                  icon={<Badge variant="outline">Server</Badge>}
+                />
+              </div>
+              <Paragraph>Now follow this guide:</Paragraph>
+              <LinkButton
+                to="https://trigger.dev/docs/documentation/guides/manual/astro"
+                variant="primary/medium"
+                TrailingIcon="external-link"
+              >
+                Manual installation guide
+              </LinkButton>
+              <div className="flex items-start justify-start gap-2"></div>
             </StepContentContainer>
-            <StepNumber stepNumber="2" title="Navigate to your new Astro project" />
+            <StepNumber stepNumber="2" title="Run your Astro app" />
             <StepContentContainer>
-              <Paragraph spacing>
-                You have now created a new Astro project. Let’s <InlineCode>cd</InlineCode> into it
-                using the project name you just provided:
-              </Paragraph>
-              <ClipboardField
-                value={"cd [replace with your project name]"}
-                variant={"primary/medium"}
-              ></ClipboardField>
+              <RunDevCommand />
             </StepContentContainer>
-            <StepNumber stepNumber="3" title="Follow the step from the Astro manual installation guide" />
-            <StepContentContainer>
-            <LinkButton to="https://trigger.dev/docs/documentation/guides/manual/astro" variant="primary/medium"/>
-            </StepContentContainer>
-            <StepNumber stepNumber="5" title="Run the CLI 'dev' command" />
+            <StepNumber stepNumber="3" title="Run the CLI 'dev' command" />
             <StepContentContainer>
               <TriggerDevStep />
             </StepContentContainer>
