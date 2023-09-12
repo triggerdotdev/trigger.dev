@@ -1,5 +1,5 @@
 import { eventTrigger } from "@trigger.dev/sdk";
-import { client } from "../trigger";
+import {client} from "@/trigger"
 
 // your first job
   client.defineJob({
