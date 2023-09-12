@@ -59,7 +59,7 @@ To set up the Trigger Client for your project, follow these steps:
 
    Open the configuration file you created and add the following code:
 
-   ```typescript
+   ```typescript src/trigger.(ts/js)
    // trigger.ts (for TypeScript) or trigger.js (for JavaScript)
 
    import { TriggerClient } from "@trigger.dev/sdk";
@@ -115,15 +115,16 @@ To establish an API route for interacting with Trigger.dev, follow these steps b
 1. Create a new file named `trigger.(ts/js)` within the `pages/api/` directory.
 2. Add the following code to `trigger.(ts/js)`:
 
-   ```typescript
-   import { createPagesRoute } from "@trigger.dev/nextjs";
-   import { client } from "@/trigger";
-   import "@/Jobs";
+```typescript api/trigger.ts/js
+import { createAstroRoute } from "@trigger.dev/astro";
+import {client} from "@/trigger"
 
-   const { handler, config } = createPagesRoute(client);
-   export { config };
-   export default handler;
-   ```
+//import your jobs
+import "@/jobs"
+
+export const { POST } = createAstroRoute(client);
+
+```
 
 ## Creating the Example Job
 
@@ -211,7 +212,7 @@ Start your Astro project locally, and then execute the `dev` CLI command to run 
   terminal command running while you develop.
 </Warning>
 
-In a **new terminal window or tab** run:
+In a **separate terminal window or tab** run:
 
 <CodeGroup>
 
@@ -235,5 +236,5 @@ yarn dlx @trigger.dev/cli@latest dev
 </Note>
 <Note>
   You can optionally pass the hostname if you're not running on localhost by adding
-  `--hostname <host>`. Example, in case your Astro.js is running on 0.0.0.0: `--hostname 0.0.0.0`.
+  `--hostname <host>`. Example, in case your Astro app is running on 0.0.0.0: `--hostname 0.0.0.0`.
 </Note>
