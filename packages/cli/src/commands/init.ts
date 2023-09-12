@@ -11,13 +11,14 @@ import { promptApiKey, promptTriggerUrl } from "../cli/index";
 import { CLOUD_API_URL, CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts";
 import { TelemetryClient, telemetryClient } from "../telemetry/telemetry";
 import { addDependencies } from "../utils/addDependencies";
-import { detectNextJsProject } from "../utils/detectNextJsProject";
 import { pathExists, readJSONFile } from "../utils/fileSystem";
 import { logger } from "../utils/logger";
 import { resolvePath } from "../utils/parseNameAndPath";
 import { renderApiKey } from "../utils/renderApiKey";
 import { renderTitle } from "../utils/renderTitle";
 import { TriggerApi, WhoamiResponse } from "../utils/triggerApi";
+import { frameworkNames, getFramework } from "../frameworks";
+import { getUserPackageManager } from "../utils/getUserPkgManager";
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -44,21 +45,19 @@ export const initCommand = async (options: InitCommandOptions) => {
     logger.info(`✨ Initializing Trigger.dev in project`);
   }
 
-  // Detect if are are in a Next.js project
-  const isNextJsProject = await detectNextJsProject(resolvedPath);
+  const packageManager = await getUserPackageManager(resolvedPath);
+  const framework = await getFramework(resolvedPath, packageManager);
 
-  if (!isNextJsProject) {
+  if (!framework) {
     logger.error(
-      "We currently only support automatic setup for Next.js projects (we didn't detect one). View our manual installation guides for all frameworks: https://trigger.dev/docs/documentation/quickstarts/introduction"
+      `We currently only support automatic setup for ${frameworkNames()} projects (we didn't detect one). View our manual installation guides for all frameworks: https://trigger.dev/docs/documentation/quickstarts/introduction`
     );
-    telemetryClient.init.failed("not_nextjs_project", options);
+    telemetryClient.init.failed("not_supported_project", options);
     return;
-  } else {
-    logger.success("✅ Detected Next.js project");
   }
+  logger.success(`✅ Detected ${framework.name} project`);
 
   const hasGitChanges = await detectGitChanges(resolvedPath);
-
   if (hasGitChanges) {
     // Warn the user that they have git changes
     logger.warn(
@@ -102,6 +101,8 @@ export const initCommand = async (options: InitCommandOptions) => {
 
   const endpointSlug = authorizedKey.project.slug;
   const resolvedOptions: ResolvedOptions = { ...optionsAfterPrompts, endpointSlug };
+
+  const dependencies = await framework.dependencies(resolvedPath, packageManager);
 
   await addDependencies(resolvedPath, [
     { name: "@trigger.dev/sdk", tag: "latest" },
