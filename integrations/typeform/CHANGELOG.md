@@ -1,5 +1,13 @@
 # @trigger.dev/typeform
 
+## 2.1.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/integration-kit@2.1.2`
+  - `@trigger.dev/sdk@2.1.2`
+
 ## 2.1.1
 
 ### Patch Changes

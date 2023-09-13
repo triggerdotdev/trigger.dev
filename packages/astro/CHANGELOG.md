@@ -1,5 +1,13 @@
 # @trigger.dev/astro
 
+## 2.1.2
+
+### Patch Changes
+
+- The first release of Astro support ([#466](https://github.com/triggerdotdev/trigger.dev/pull/466))
+- Updated dependencies:
+  - `@trigger.dev/sdk@2.1.2`
+
 ## 2.1.1
 
 ### Patch Changes

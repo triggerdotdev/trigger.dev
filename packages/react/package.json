@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/react",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Trigger.dev React SDK",
   "license": "MIT",
   "types": "dist/index.d.ts",
@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "5.0.0-beta.2",
-    "@trigger.dev/core": "workspace:^2.1.1",
+    "@trigger.dev/core": "workspace:^2.1.2",
     "debug": "^4.3.4",
     "zod": "3.21.4"
   },
