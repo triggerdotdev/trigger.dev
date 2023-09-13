@@ -34,15 +34,18 @@ client.defineJob({
       });
     }
 
-    await io.openai.backgroundCreateChatCompletion("background-chat-completion", {
-      model: "gpt-3.5-turbo",
-      messages: [
-        {
-          role: "user",
-          content: "Create a good programming joke about background jobs",
-        },
-      ],
-    });
+    await io.openai.backgroundCreateChatCompletion(
+      "background-chat-completion",
+      {
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "user",
+            content: "Create a good programming joke about background jobs",
+          },
+        ],
+      }
+    );
 
     await io.openai.createChatCompletion("chat-completion", {
       model: "gpt-3.5-turbo",
@@ -73,6 +76,19 @@ client.defineJob({
     await io.openai.createEmbedding("embedding", {
       model: "text-embedding-ada-002",
       input: "The food was delicious and the waiter...",
+    });
+
+    await io.openai.createChatCompletion("function-call-chat-completion", {
+      model: "gpt-3.5-turbo",
+      messages: [
+        { role: "system", content: "You are a helpful assistant that can do function calls." },
+        { role: "user", content: "Function: Tell me a joke about programming." },
+      ],
+      // Assuming function_call would be a parameter supported in future versions
+      function_call: {
+        name: "Tell me a joke about programming",
+        args: {}  // Any arguments you'd need
+      }
     });
   },
 });
