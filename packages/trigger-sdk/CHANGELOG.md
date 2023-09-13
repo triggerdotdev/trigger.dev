@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 2.1.1
+
+### Patch Changes
+
+- Errors now bubbled up. OpenAI background retrying improved ([#468](https://github.com/triggerdotdev/trigger.dev/pull/468))
+- Updated dependencies:
+  - `@trigger.dev/core@2.1.1`
+
 ## 2.1.0
 
 ### Minor Changes

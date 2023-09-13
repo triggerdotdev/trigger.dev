@@ -52,6 +52,24 @@ export class Completions {
               ...(client.organization ? { "OpenAI-Organization": client.organization } : {}),
             },
             body: JSON.stringify(params),
+          },
+          {
+            "500-599": {
+              strategy: "backoff",
+              limit: 5,
+              minTimeoutInMs: 1000,
+              maxTimeoutInMs: 30000,
+              factor: 1.8,
+              randomize: true,
+            },
+            "429": {
+              strategy: "backoff",
+              limit: 10,
+              minTimeoutInMs: 1000,
+              maxTimeoutInMs: 60000,
+              factor: 2,
+              randomize: true,
+            },
           }
         );
 
