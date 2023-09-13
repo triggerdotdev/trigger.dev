@@ -1,0 +1,35 @@
+{
+  "name": "@trigger.dev/linear",
+  "version": "0.0.1",
+  "description": "Trigger.dev integration for @linear/sdk",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/index.js.map"
+  ],
+  "devDependencies": {
+    "@types/node": "16.x",
+    "rimraf": "^3.0.2",
+    "tsup": "7.1.x",
+    "typescript": "4.9.4"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@linear/sdk": "^8.0.0",
+    "@trigger.dev/sdk": "workspace:^2.1.0",
+    "@trigger.dev/integration-kit": "workspace:^2.1.0"
+  },
+  "engines": {
+    "node": ">=16.8.0"
+  }
+}

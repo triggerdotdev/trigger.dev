@@ -96,6 +96,12 @@
       ],
       "@trigger.dev/airtable/*": [
         "../../integrations/airtable/src/*"
+      ],
+      "@trigger.dev/linear": [
+        "../../integrations/linear/src/index"
+      ],
+      "@trigger.dev/linear/*": [
+        "../../integrations/linear/src/*"
       ]
     }
   }

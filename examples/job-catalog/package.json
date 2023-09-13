@@ -21,6 +21,7 @@
     "dynamic-schedule": "nodemon --watch src/dynamic-schedule.ts -r tsconfig-paths/register -r dotenv/config src/dynamic-schedule.ts",
     "dynamic-triggers": "nodemon --watch src/dynamic-triggers.ts -r tsconfig-paths/register -r dotenv/config src/dynamic-triggers.ts",
     "background-fetch": "nodemon --watch src/background-fetch.ts -r tsconfig-paths/register -r dotenv/config src/background-fetch.ts",
+    "linear": "nodemon --watch src/linear.ts -r tsconfig-paths/register -r dotenv/config src/linear.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {
@@ -38,7 +39,8 @@
     "@types/node": "20.4.2",
     "typescript": "5.1.6",
     "zod": "3.21.4",
-    "@trigger.dev/airtable": "workspace:*"
+    "@trigger.dev/airtable": "workspace:*",
+    "@trigger.dev/linear": "workspace:*"
   },
   "trigger.dev": {
     "endpointId": "job-catalog"
