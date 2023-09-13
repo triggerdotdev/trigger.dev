@@ -17,5 +17,12 @@
   },
   "trigger.dev": {
     "endpointId": "astro-test"
+  },
+  "engines": {
+    "node": ">=18.14.1"
+  },
+  "devDependencies": {
+    "@trigger.dev/cli": "workspace:*"
   }
 }
+
