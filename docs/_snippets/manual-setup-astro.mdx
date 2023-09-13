@@ -5,19 +5,15 @@ To begin, install the necessary packages in your Astro project directory. You ca
 <CodeGroup>
 
 ```bash npm
-
 npm i @trigger.dev/sdk @trigger-dev/astro
-
 ```
 
 ```bash pnpm
 pnpm install @trigger.dev/sdk @trigger-dev/astro
-
 ```
 
 ```bash yarn
 yarn add @trigger.dev/sdk @trigger-dev/astro
-
 ```
 
 </CodeGroup>
@@ -35,10 +31,8 @@ You can copy your development API Key from the field at the top of this page.
 Create a `.env` file at the root of your project and include your Trigger API key and URL like this:
 
 ```bash
-
 TRIGGER_API_KEY=ENTER_YOUR_DEVELOPMENT_API_KEY_HERE
 TRIGGER_API_URL=https://cloud.trigger.dev
-
 ```
 
 Replace `ENTER_YOUR_DEVELOPMENT_API_KEY_HERE` with the actual API key obtained from the previous step.
@@ -96,7 +90,7 @@ To set up the Trigger Client for your project, follow these steps:
 
 By following these steps, you'll configure the Trigger Client to work with your project, regardless of whether you have a separate **src** directory and whether you're using TypeScript or JavaScript files.
 
-## update the astro.config file to enable ssr 
+## update the astro.config file to enable ssr
 
 - You need to enable ssr to use API endpoints that would be in the `pages/api` folder
 
@@ -117,13 +111,12 @@ To establish an API route for interacting with Trigger.dev, follow these steps b
 
 ```typescript api/trigger.ts/js
 import { createAstroRoute } from "@trigger.dev/astro";
-import {client} from "@/trigger"
+import { client } from "@/trigger";
 
 //import your jobs
-import "@/jobs"
+import "@/jobs";
 
 export const { POST } = createAstroRoute(client);
-
 ```
 
 ## Creating the Example Job
@@ -203,16 +196,31 @@ Your `package.json` file might look something like this:
 
 Replace **"my-app"** with the appropriate identifier you used during the step for creating the Trigger Client.
 
-## Next Steps
+## Running
 
-Start your Astro project locally, and then execute the `dev` CLI command to run Trigger.dev locally. You should run this command every time you want to use Trigger.dev locally.
+### Run your Astro app
 
-<Warning>
-  Make sure your Astro site is running locally before continuing. You must also leave this `dev`
-  terminal command running while you develop.
-</Warning>
+Run your Astro app locally, like you normally would. For example:
 
-In a **separate terminal window or tab** run:
+<CodeGroup>
+
+```bash npm
+npm run dev
+```
+
+```bash pnpm
+pnpm run dev
+```
+
+```bash yarn
+yarn run dev
+```
+
+</CodeGroup>
+
+### Run the CLI 'dev' command
+
+In a **_separate terminal window or tab_** run:
 
 <CodeGroup>
 
