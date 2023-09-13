@@ -1,5 +1,6 @@
 import type { TriggerClient } from "@trigger.dev/sdk";
 import type { APIRoute } from "astro";
+
 export function createAstroRoute(client: TriggerClient) {
   const POST: APIRoute = async (ctx) => {
     if (ctx.request.method === "HEAD") {
@@ -10,7 +11,7 @@ export function createAstroRoute(client: TriggerClient) {
       // Prepare the request to be a fetch-compatible Request object:
       const requestHeaders = ctx.request.headers;
       const requestMethod = ctx.request.method;
-      const responseHeaders = Object.create(null);
+      const responseHeaders: Record<string, string> = {};
 
       for (const [headerName, headerValue] of requestHeaders.entries()) {
         responseHeaders[headerName] = headerValue;
