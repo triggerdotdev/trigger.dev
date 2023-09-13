@@ -1,12 +1,12 @@
 {
   "name": "@trigger.dev/astro",
   "description": "An Astro-native integration for Trigger.dev background jobs platform",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "type": "module",
   "main": "main.js",
   "scripts": {},
   "peerDependencies": {
-    "@trigger.dev/sdk": "workspace:^2.1.0",
+    "@trigger.dev/sdk": "workspace:^2.1.1",
     "astro": "^2.10.7"
   },
   "engines": {
