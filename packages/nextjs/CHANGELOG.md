@@ -1,5 +1,27 @@
 # @trigger.dev/nextjs
 
+## 2.1.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@2.1.3`
+
+## 2.1.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@2.1.2`
+
+## 2.1.1
+
+### Patch Changes
+
+- Added a readme.md ([#446](https://github.com/triggerdotdev/trigger.dev/pull/446))
+- Updated dependencies:
+  - `@trigger.dev/sdk@2.1.1`
+
 ## 2.1.0
 
 ### Minor Changes

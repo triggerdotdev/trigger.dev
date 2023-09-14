@@ -23,6 +23,7 @@ on:
       - "turbo.json"
       - "docker/Dockerfile"
       - "docker/scripts/**"
+      - "tests/**"
 
 permissions:
   id-token: write
