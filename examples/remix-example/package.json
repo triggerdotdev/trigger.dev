@@ -1,0 +1,36 @@
+{
+  "name": "@examples/remix",
+  "private": true,
+  "sideEffects": false,
+  "scripts": {
+    "build": "remix build",
+    "dev": "remix dev",
+    "start": "remix-serve build",
+    "typecheck": "tsc --noEmit --skipLibCheck"
+  },
+  "dependencies": {
+    "@remix-run/css-bundle": "^1.19.3",
+    "@remix-run/node": "^1.19.3",
+    "@remix-run/react": "^1.19.3",
+    "@remix-run/serve": "^1.19.3",
+    "isbot": "^3.6.8",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@trigger.dev/remix": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@remix-run/dev": "^1.19.3",
+    "@remix-run/eslint-config": "^1.19.3",
+    "@types/react": "^18.0.35",
+    "@types/react-dom": "^18.0.11",
+    "eslint": "^8.38.0",
+    "typescript": "^4.8.4"
+  },
+  "trigger.dev": {
+    "endpointId": "remix-test"
+  },
+  "engines": {
+    "node": ">=16.8.0"
+  }
+}

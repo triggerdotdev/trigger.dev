@@ -3,15 +3,11 @@ title: "Next.js"
 description: "How to get setup and deploy Jobs for your Next.js project"
 ---
 
-You can write Jobs in your Next.js codebase and deploy to both serverless platforms and long-running servers.
-
-## Supported platforms
-
-We support all platforms because under-the-hood an API endpoint is used to run your Jobs.
+<Snippet file="long-running-coming-soon.mdx" />
 
 ## Initial setup
 
-View our [Quick start guide](/documentation/quickstart) to get setup.
+View our [Quick start guide](/documentation/quickstarts/nextjs) to get setup. Or [manual setup](/documentation/guides/manual/nextjs) if you'd prefer.
 
 ## Writing Jobs
 
@@ -92,3 +88,7 @@ export const config = {
   matcher: ["/((?!.*\\..*|_next).*)", "/", "/(api|trpc)(.*)"],
 };
 ```
+
+### Known issues
+
+- `Module parse failed: Identifier 'NextResponse' has already been declared .` This error is caused by version 13.4.4. For further information, please [visit](https://github.com/nextauthjs/next-auth/issues/7660)

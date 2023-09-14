@@ -1,5 +1,15 @@
 # create-trigger
 
+## 2.1.2
+
+## 2.1.1
+
+### Patch Changes
+
+- feat: add proxy support for node-fetch ([#404](https://github.com/triggerdotdev/trigger.dev/pull/404))
+- If Nextjs project detection fails, point people at the installation docs ([#446](https://github.com/triggerdotdev/trigger.dev/pull/446))
+- create-integration uses updated OpenAI prompts ([`39b8445e`](https://github.com/triggerdotdev/trigger.dev/commit/39b8445e06cc389fc5d24efc2ac23ed9644f2733))
+
 ## 2.1.0
 
 ### Minor Changes
