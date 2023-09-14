@@ -90,9 +90,9 @@ To set up the Trigger Client for your project, follow these steps:
 
 By following these steps, you'll configure the Trigger Client to work with your project, regardless of whether you have a separate **src** directory and whether you're using TypeScript or JavaScript files.
 
-## update the astro.config file to enable ssr
+## Update the astro.config file to enable ssr
 
-- You need to enable ssr to use API endpoints that would be in the `pages/api` folder
+- You need to enable ssr to use API endpoints (which are required by Trigger.dev).
 
 ```typescript astro.config.mjs
 import { defineConfig } from "astro/config";
@@ -109,12 +109,13 @@ To establish an API route for interacting with Trigger.dev, follow these steps b
 1. Create a new file named `trigger.(ts/js)` within the `pages/api/` directory.
 2. Add the following code to `trigger.(ts/js)`:
 
-```typescript api/trigger.ts/js
+```typescript src/pages/api/trigger.(ts/js)
 import { createAstroRoute } from "@trigger.dev/astro";
-import { client } from "@/trigger";
+//you may need to update this path to point at your trigger.ts file
+import { client } from "../../trigger";
 
-//import your jobs
-import "@/jobs";
+//import your jobs, this could be different depending on your project structure
+import "../../jobs";
 
 export const { POST } = createAstroRoute(client);
 ```
@@ -126,7 +127,7 @@ export const { POST } = createAstroRoute(client);
 
 <CodeGroup>
 
-```typescript example.(ts/js)
+```typescript src/jobs/example.(ts/js)
 import { eventTrigger } from "@trigger.dev/sdk";
 import { client } from "@/trigger";
 
@@ -148,10 +149,9 @@ client.defineJob({
 });
 ```
 
-```typescript index.ts/index.(ts/js)
-// import all your job files here
-
-export * from "./examples";
+```typescript src/jobs/index.(ts/js)
+// export all your job files here
+export * from "./example";
 ```
 
 </CodeGroup>
