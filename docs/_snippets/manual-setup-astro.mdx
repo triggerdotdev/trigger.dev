@@ -60,8 +60,8 @@ To set up the Trigger Client for your project, follow these steps:
 
    export const client = new TriggerClient({
      id: "my-app",
-     apiKey: process.env.TRIGGER_API_KEY,
-     apiUrl: process.env.TRIGGER_API_URL,
+     apiKey: import.meta.env.TRIGGER_API_KEY,
+     apiUrl: import.meta.env.TRIGGER_API_URL,
    });
    ```
 
