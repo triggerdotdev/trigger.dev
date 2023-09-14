@@ -23,11 +23,11 @@ branch are tagged into a release monthly.
 1. Clone the repo into a public GitHub repository or [fork the repo](https://github.com/triggerdotdev/trigger.dev/fork). If you plan to distribute the code, keep the source code public to comply with the [Apache Licence 2.0](https://github.com/triggerdotdev/trigger.dev/blob/main/LICENSE).
 
    ```
-   git clone https://github.com/triggerdotdev/trigger.dev.git
+   git clone https://github.com/<github_username>/trigger.dev.git
    ```
 
    > If you are on windows, run the following command on gitbash with admin privileges:
-   > `git clone -c core.symlinks=true https://github.com/triggerdotdev/trigger.dev.git`
+   > `git clone -c core.symlinks=true https://github.com/<github_username>/trigger.dev.git`
 
 2. Navigate to the project folder
    ```
