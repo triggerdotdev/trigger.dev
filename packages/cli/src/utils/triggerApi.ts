@@ -1,4 +1,6 @@
 import {
+  CreateBackgroundTaskImageRequestBody,
+  CreateBackgroundTaskImageResponseBody,
   DeployBackgroundTaskRequestBody,
   DeployBackgroundTaskResponseBody,
 } from "@trigger.dev/core";
@@ -225,6 +227,65 @@ export class TriggerApi {
     return {
       ok: true,
       data: data as any as DeployBackgroundTaskResponseBody,
+    };
+  }
+
+  async createBackgroundTaskArtifactImage(
+    id: string,
+    options: CreateBackgroundTaskImageRequestBody
+  ): Promise<ApiResponse<CreateBackgroundTaskImageResponseBody>> {
+    const response = await fetch(`${this.baseUrl}/api/v1/background/artifacts/${id}/images`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify(options),
+    });
+
+    if (!response.ok) {
+      const rawBody = await response.text();
+
+      if (typeof rawBody === "string") {
+        const rawJson = safeJsonParse(rawBody);
+
+        if (!rawJson) {
+          return {
+            ok: false,
+            error: "An unknown issue occurred creating image on Trigger.dev",
+            retryable: true,
+          };
+        }
+
+        const parsedJson = z.object({ error: z.string() }).safeParse(rawJson);
+
+        if (!parsedJson.success) {
+          return {
+            ok: false,
+            error: "An unknown issue occurred creating image on Trigger.dev",
+            retryable: true,
+          };
+        }
+
+        return {
+          ok: false,
+          error: parsedJson.data.error,
+          retryable: RETRYABLE_PATTERN.test(parsedJson.data.error),
+        };
+      } else {
+        return {
+          ok: false,
+          error: "An unknown issue occurred creating image on Trigger.dev",
+          retryable: true,
+        };
+      }
+    }
+
+    const data = await response.json();
+
+    return {
+      ok: true,
+      data: data as any as CreateBackgroundTaskImageResponseBody,
     };
   }
 }

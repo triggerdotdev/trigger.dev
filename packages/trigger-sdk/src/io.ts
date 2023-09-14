@@ -199,6 +199,42 @@ export class IO {
     )) as TResponseData;
   }
 
+  /** `io.backgroundTask()` invokes a background task.
+   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param taskId The id of the background task to invoke.
+   * @param payload The payload to send to the background task.
+   */
+  async backgroundTask<TResultData>(
+    key: string | any[],
+    id: string,
+    version: string,
+    payload: any
+  ): Promise<TResultData> {
+    return (await this.runTask(
+      key,
+      async (task) => {
+        return task.output;
+      },
+      {
+        name: `invoke ${id}`,
+        params: { payload, id, version },
+        operation: "backgroundTask",
+        icon: "background",
+        noop: false,
+        properties: [
+          {
+            label: "Task ID",
+            text: id,
+          },
+          {
+            label: "Version",
+            text: version,
+          },
+        ],
+      }
+    )) as TResultData;
+  }
+
   /** `io.sendEvent()` allows you to send an event from inside a Job run. The sent even will trigger any Jobs that are listening for that event (based on the name).
    * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param event The event to send. The event name must match the name of the event that your Jobs are listening for.

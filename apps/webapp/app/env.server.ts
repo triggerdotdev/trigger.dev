@@ -40,6 +40,14 @@ const EnvironmentSchema = z.object({
   EXECUTION_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   WORKER_ENABLED: z.string().default("true"),
   EXECUTION_WORKER_ENABLED: z.string().default("true"),
+  // Docker Registry
+  DOCKER_REGISTRY_HOST: z.string().optional(),
+  DOCKER_REGISTRY_USERNAME: z.string().optional(),
+  DOCKER_REGISTRY_PASSWORD: z.string().optional(),
+  // Fly Background Task Provider
+  FLY_IO_API_TOKEN: z.string().optional(),
+  FLY_IO_API_URL: z.string().url().optional(),
+  FLY_IO_ORG_SLUG: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

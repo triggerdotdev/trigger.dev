@@ -2,8 +2,9 @@ import { BackgroundTaskMetadata, LogLevel } from "@trigger.dev/core";
 import { z } from "zod";
 import { TriggerClient } from "./triggerClient";
 import { slugifyId } from "./utils";
+import { runLocalStorage } from "./runLocalStorage";
 
-export type BackgroundTaskOptions<TPayload = any> = {
+export type BackgroundTaskOptions<TPayload = any, TRunResult = any> = {
   id: string;
   name: string;
   version: string;
@@ -13,21 +14,23 @@ export type BackgroundTaskOptions<TPayload = any> = {
   cpu?: 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128;
   memory?: 256 | 512 | 1024 | 2048 | 4096 | 8192 | 16384 | 32768;
   concurrency?: number;
+  region?: string;
+  diskSizeInGB?: number;
 
   secrets?: {
     [key: string]: string;
   };
 
   enabled?: boolean;
-  run: (payload: TPayload) => Promise<any>;
+  run: (payload: TPayload) => Promise<TRunResult>;
 };
 
-export class BackgroundTask<TPayload = any> {
-  readonly options: BackgroundTaskOptions<TPayload>;
+export class BackgroundTask<TPayload = any, TRunResult = any> {
+  readonly options: BackgroundTaskOptions<TPayload, TRunResult>;
 
   client: TriggerClient;
 
-  constructor(client: TriggerClient, options: BackgroundTaskOptions<TPayload>) {
+  constructor(client: TriggerClient, options: BackgroundTaskOptions<TPayload, TRunResult>) {
     this.client = client;
     this.options = options;
     this.#validate();
@@ -59,7 +62,21 @@ export class BackgroundTask<TPayload = any> {
     return this.options.logLevel;
   }
 
-  public async invoke(key: string, payload: TPayload): Promise<any> {}
+  public async invoke(key: string | string[], payload: TPayload): Promise<TRunResult> {
+    if (!this.enabled) {
+      throw new Error(`Cannot invoke a disabled background task: ${this.id}`);
+    }
+
+    const runStore = runLocalStorage.getStore();
+
+    if (!runStore) {
+      throw new Error("Cannot invoke a background task outside of a job run");
+    }
+
+    const { io, ctx } = runStore;
+
+    return await io.backgroundTask(key, this.id, this.version, payload);
+  }
 
   toJSON(): BackgroundTaskMetadata {
     return {
@@ -69,7 +86,9 @@ export class BackgroundTask<TPayload = any> {
       enabled: this.enabled,
       cpu: this.options.cpu ?? 1,
       memory: this.options.memory ?? 256,
+      region: this.options.region,
       concurrency: this.options.concurrency ?? 1,
+      diskSizeInGB: this.options.diskSizeInGB,
       secrets: this.options.secrets ?? {},
     };
   }

@@ -30,6 +30,15 @@ export class Logger {
     this.#jsonReplacer = jsonReplacer;
   }
 
+  child(name: string): Logger {
+    return new Logger(
+      `${this.#name}:${name}`,
+      logLevels[this.#level],
+      this.#filteredKeys,
+      this.#jsonReplacer
+    );
+  }
+
   // Return a new Logger instance with the same name and a new log level
   // but filter out the keys from the log messages (at any level)
   filter(...keys: string[]) {

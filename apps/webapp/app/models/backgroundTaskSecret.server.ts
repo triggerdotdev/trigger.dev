@@ -1,6 +1,15 @@
-import { BackgroundTaskVersion } from "@trigger.dev/database";
+import {
+  BackgroundTaskSecret,
+  BackgroundTaskVersion,
+  SecretReference,
+} from "@trigger.dev/database";
+import { z } from "zod";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { SecretStore, getSecretStore } from "~/services/secrets/secretStore.server";
+
+const BackgroundTaskSecretSchema = z.object({
+  secret: z.string(),
+});
 
 export async function createBackgroundTaskSecret(
   prisma: PrismaClientOrTransaction,
@@ -115,4 +124,13 @@ export async function deleteBackgroundTaskSecret(prisma: PrismaClientOrTransacti
 
     await secretStore.deleteSecret(secret.secretReference.key);
   });
+}
+
+export async function resolveBackgroundTaskSecret(reference: SecretReference) {
+  const secretStoreProvider = getSecretStore(reference.provider);
+  const secretStore = new SecretStore(secretStoreProvider);
+
+  const secretRecord = await secretStore.getSecret(BackgroundTaskSecretSchema, reference.key);
+
+  return secretRecord?.secret;
 }

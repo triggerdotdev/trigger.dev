@@ -43,6 +43,7 @@ import type {
   TriggerPreprocessContext,
 } from "./types";
 import { BackgroundTask, BackgroundTaskOptions } from "./backgroundTask";
+import { runLocalStorage } from "./runLocalStorage";
 
 const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
   name: REGISTER_SOURCE_EVENT_V2,
@@ -657,11 +658,13 @@ export class TriggerClient {
     );
 
     try {
-      const output = await job.options.run(
-        job.trigger.event.parsePayload(body.event.payload ?? {}),
-        ioWithConnections,
-        context
-      );
+      const output = await runLocalStorage.runWith({ io, ctx: context }, () => {
+        return job.options.run(
+          job.trigger.event.parsePayload(body.event.payload ?? {}),
+          ioWithConnections,
+          context
+        );
+      });
 
       return { status: "SUCCESS", output };
     } catch (error) {
@@ -873,8 +876,10 @@ export class TriggerClient {
     return new Job<TTrigger, TIntegrations>(this, options);
   }
 
-  defineBackgroundTask<TPayload = any>(options: BackgroundTaskOptions<TPayload>) {
-    return new BackgroundTask<TPayload>(this, options);
+  defineBackgroundTask<TPayload = any, TRunResult = any>(
+    options: BackgroundTaskOptions<TPayload, TRunResult>
+  ) {
+    return new BackgroundTask<TPayload, TRunResult>(this, options);
   }
 }
 

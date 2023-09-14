@@ -20,6 +20,9 @@ import { ActivateSourceService } from "./sources/activateSource.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 import { addMissingVersionField } from "@trigger.dev/core";
+import { ExecuteBackgroundTaskOperationService } from "./backgroundTasks/executeBackgroundTaskOperation.server";
+import { AutoScalePoolService } from "./backgroundTasks/autoScalePool.server";
+import { CreateExternalMachineService } from "./backgroundTasks/createExternalMachine.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -66,6 +69,15 @@ const workerCatalog = {
     id: z.string(),
   }),
   connectionCreated: z.object({
+    id: z.string(),
+  }),
+  executeBackgroundTaskOperation: z.object({
+    id: z.string(),
+  }),
+  autoScalePool: z.object({
+    id: z.string(),
+  }),
+  createExternalMachine: z.object({
     id: z.string(),
   }),
 };
@@ -283,6 +295,33 @@ function getWorkerQueue() {
           await integrationAuthRepository.refreshConnection({
             connectionId: payload.connectionId,
           });
+        },
+      },
+      executeBackgroundTaskOperation: {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new ExecuteBackgroundTaskOperationService();
+
+          await service.call(payload.id);
+        },
+      },
+      autoScalePool: {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new AutoScalePoolService();
+
+          await service.call(payload.id);
+        },
+      },
+      createExternalMachine: {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new CreateExternalMachineService();
+
+          await service.call(payload.id);
         },
       },
     },

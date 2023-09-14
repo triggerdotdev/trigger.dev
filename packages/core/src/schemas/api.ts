@@ -288,7 +288,9 @@ export const BackgroundTaskMetadataSchema = z.object({
   enabled: z.boolean(),
   cpu: z.number(),
   memory: z.number(),
+  diskSizeInGB: z.number().optional(),
   concurrency: z.number(),
+  region: z.string().optional(),
   secrets: z.record(z.string()).optional(),
 });
 
@@ -607,7 +609,7 @@ export const RunTaskOptionsSchema = z.object({
   /** Allows you to link the Integration connection in the logs. This is handled automatically in integrations.  */
   connectionKey: z.string().optional(),
   /** An operation you want to perform on the Trigger.dev platform, current only "fetch" is supported. If you wish to `fetch` use [`io.backgroundFetch()`](https://trigger.dev/docs/sdk/io/backgroundfetch) instead. */
-  operation: z.enum(["fetch"]).optional(),
+  operation: z.enum(["fetch", "backgroundTask"]).optional(),
   /** A No Operation means that the code won't be executed. This is used internally to implement features like [io.wait()](https://trigger.dev/docs/sdk/io/wait).  */
   noop: z.boolean().default(false),
   redact: RedactSchema.optional(),
@@ -767,10 +769,40 @@ export type DeployBackgroundTaskRequestBody = z.infer<typeof DeployBackgroundTas
 export const DeployBackgroundTaskResponseBodySchema = z.object({
   id: z.string(),
   hash: z.string(),
+  image: z.string(),
+  tag: z.string(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 });
 
 export type DeployBackgroundTaskResponseBody = z.infer<
   typeof DeployBackgroundTaskResponseBodySchema
+>;
+
+export const CreateBackgroundTaskImageRequestBodySchema = z.object({
+  name: z.string(),
+  tag: z.string(),
+  digest: z.string(),
+  size: z.number(),
+});
+
+export type CreateBackgroundTaskImageRequestBody = z.infer<
+  typeof CreateBackgroundTaskImageRequestBodySchema
+>;
+
+export const CreateBackgroundTaskImageResponseBodySchema = z.object({
+  id: z.string(),
+  backgroundTaskArtifactId: z.string(),
+  backgroundTaskId: z.string(),
+  name: z.string(),
+  tag: z.string(),
+  digest: z.string(),
+  size: z.number(),
+  provider: z.string(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+
+export type CreateBackgroundTaskImageResponseBody = z.infer<
+  typeof CreateBackgroundTaskImageResponseBodySchema
 >;

@@ -1,6 +1,7 @@
-import fsModule, { writeFile } from "fs/promises";
-import fsSync from "fs";
-import pathModule from "path";
+import fsModule, { mkdtemp, writeFile } from "node:fs/promises";
+import fsSync from "node:fs";
+import pathModule from "node:path";
+import os from "node:os";
 
 // Creates a file at the given path, if the directory doesn't exist it will be created
 export async function createFile(path: string, contents: string): Promise<string> {
@@ -42,4 +43,34 @@ export function readJSONFileSync(path: string) {
   const fileContents = fsSync.readFileSync(path, "utf8");
 
   return JSON.parse(fileContents);
+}
+
+export async function createTempDir(prefix: string) {
+  return await mkdtemp(pathModule.join(os.tmpdir(), `${prefix}-`));
+}
+
+// Recursively list all the files in the directory, and returns an array a relative paths
+export async function listFilesInDir(dir: string): Promise<string[]> {
+  async function listFilesInDirRecursive(dir: string): Promise<string[]> {
+    const files = await fsModule.readdir(dir);
+
+    const filePaths = await Promise.all(
+      files.map(async (file) => {
+        const filePath = pathModule.join(dir, file);
+        const stat = await fsModule.stat(filePath);
+
+        if (stat.isDirectory()) {
+          return await listFilesInDirRecursive(filePath);
+        }
+
+        return filePath;
+      })
+    );
+
+    return filePaths.flat();
+  }
+
+  const allFiles = await listFilesInDirRecursive(dir);
+
+  return allFiles.map((file) => pathModule.relative(dir, file));
 }

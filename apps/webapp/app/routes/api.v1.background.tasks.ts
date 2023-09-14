@@ -29,9 +29,9 @@ export async function action({ request, params }: ActionArgs) {
   const service = new DeployBackgroundTaskService();
 
   try {
-    const artifact = await service.call(authenticationResult.environment, body.data);
+    const results = await service.call(authenticationResult.environment, body.data);
 
-    if (!artifact) {
+    if (!results) {
       return json(
         {
           error: `Unable to deploy background task, Task with ID = ${body.data.id} not found`,
@@ -40,9 +40,13 @@ export async function action({ request, params }: ActionArgs) {
       );
     }
 
+    const { artifact, imageConfig } = results;
+
     return json({
       id: artifact.id,
       hash: artifact.hash,
+      image: imageConfig.image,
+      tag: imageConfig.tag,
       createdAt: artifact.createdAt,
       updatedAt: artifact.updatedAt,
     });

@@ -6,10 +6,12 @@ import { build } from "esbuild";
 import pathModule from "node:path";
 import util from "util";
 import { z } from "zod";
+import { DockerWrapper } from "../utils/docker";
+import { downloadArchiveToTempDir } from "../utils/extractArchiveToTempDir";
+import { getTriggerApiDetails } from "../utils/getTriggerApiDetails";
 import { logger } from "../utils/logger";
 import { listPackageDependencies } from "../utils/packageManagers";
 import { resolvePath } from "../utils/parseNameAndPath";
-import { getTriggerApiDetails } from "../utils/getTriggerApiDetails";
 import { TriggerApi } from "../utils/triggerApi";
 
 const asyncExecFile = util.promisify(childProcess.execFile);
@@ -20,6 +22,14 @@ export const DeployCommandOptionsSchema = z.object({
 });
 
 export type DevCommandOptions = z.infer<typeof DeployCommandOptionsSchema>;
+
+type DeployedArtifact = {
+  id: string;
+  hash: string;
+  image: string;
+  tag: string;
+  task: DeployBackgroundTaskRequestBody;
+};
 
 export async function deployCommand(path: string, anyOptions: any) {
   const result = DeployCommandOptionsSchema.safeParse(anyOptions);
@@ -88,6 +98,8 @@ export async function deployCommand(path: string, anyOptions: any) {
 
   const apiClient = new TriggerApi(apiDetails.apiKey, apiDetails.apiUrl);
 
+  const artifacts: Array<DeployedArtifact> = [];
+
   for (const task of tasks) {
     const response = await apiClient.deployBackgroundTask(task);
 
@@ -95,8 +107,80 @@ export async function deployCommand(path: string, anyOptions: any) {
       logger.error(`Failed to deploy ${task.id}@${task.version}: ${response.error}`);
     } else {
       logger.info(`Deployed ${task.id}@${task.version}#${response.data.hash}`);
+
+      artifacts.push({
+        id: response.data.id,
+        hash: response.data.hash,
+        image: response.data.image,
+        tag: response.data.tag,
+        task,
+      });
     }
   }
+
+  // For each artifact, we need to build a docker image and push it to the registry
+  // The registry host is the TRIGGER_API_URL
+  for (const artifact of artifacts) {
+    const results = await buildAndPushDockerImage(apiDetails.apiUrl, apiDetails.apiKey, artifact);
+
+    if (results) {
+      await apiClient.createBackgroundTaskArtifactImage(artifact.id, {
+        digest: results.digest,
+        name: artifact.image,
+        tag: artifact.tag,
+        size: results.size,
+      });
+    }
+  }
+}
+
+async function buildAndPushDockerImage(
+  registryUrl: string,
+  apiKey: string,
+  artifact: DeployedArtifact
+) {
+  const registry = new URL(registryUrl).host;
+  const imageName = `${registry}/${artifact.image}:${artifact.tag}`;
+
+  const docker = new DockerWrapper({ docker: { socketPath: "/var/run/docker.sock" } });
+
+  logger.info(
+    `Building docker image ${imageName} for task ${artifact.task.id}@${artifact.task.version}...`
+  );
+
+  const artifactPath = await downloadArtifact(registryUrl, artifact);
+
+  const buildResults = await docker.buildImage(artifactPath, {
+    t: imageName,
+    dockerfile: "ctx/Dockerfile",
+    platform: "linux/amd64",
+    nocache: true,
+  });
+
+  if (!buildResults) {
+    logger.error(`Failed to build docker image ${imageName}`);
+    return;
+  }
+
+  logger.info(`Built docker image ${imageName}: ${JSON.stringify(buildResults)}`);
+
+  const pushResults = await docker.pushImage(imageName, {
+    authconfig: {
+      username: "x",
+      password: apiKey,
+      serveraddress: "https://index.docker.io/v1",
+    },
+  });
+
+  logger.info(`Pushed docker image ${imageName}: ${JSON.stringify(pushResults)}`);
+
+  return pushResults;
+}
+
+async function downloadArtifact(registryUrl: string, artifact: DeployedArtifact): Promise<string> {
+  const artifactArchiveUrl = `${registryUrl}/api/v1/background/artifacts/${artifact.id}.tgz`;
+
+  return await downloadArchiveToTempDir(artifactArchiveUrl, artifact.id);
 }
 
 async function gatherBackgroundTaskDeployment(

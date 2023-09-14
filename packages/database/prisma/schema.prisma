@@ -817,9 +817,10 @@ model Task {
   runConnection   RunConnection? @relation(fields: [runConnectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runConnectionId String?
 
-  children   Task[]            @relation("TaskParent")
-  executions JobRunExecution[]
-  attempts   TaskAttempt[]
+  children                Task[]                   @relation("TaskParent")
+  executions              JobRunExecution[]
+  attempts                TaskAttempt[]
+  backgroundTaskOperation BackgroundTaskOperation?
 
   @@unique([runId, idempotencyKey])
 }
@@ -1101,6 +1102,11 @@ model BackgroundTask {
 
   deletedAt DateTime?
 
+  operations                BackgroundTaskOperation[]
+  machines                  BackgroundTaskMachine[]
+  images                    BackgroundTaskImage[]
+  BackgroundTaskMachinePool BackgroundTaskMachinePool[]
+
   @@unique([projectId, slug])
 }
 
@@ -1108,9 +1114,11 @@ model BackgroundTaskVersion {
   id      String @id @default(cuid())
   version String
 
-  cpu         Int @default(1)
-  memory      Int @default(256)
-  concurrency Int @default(1)
+  cpu         Int    @default(1)
+  memory      Int    @default(256)
+  concurrency Int    @default(1)
+  diskSize    Int    @default(1)
+  region      String @default("iad")
 
   backgroundTask   BackgroundTask @relation(fields: [backgroundTaskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   backgroundTaskId String
@@ -1130,8 +1138,11 @@ model BackgroundTaskVersion {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  aliases BackgroundTaskAlias[]
-  secrets BackgroundTaskSecret[]
+  aliases    BackgroundTaskAlias[]
+  secrets    BackgroundTaskSecret[]
+  operations BackgroundTaskOperation[]
+  machines   BackgroundTaskMachine[]
+  pools      BackgroundTaskMachinePool[]
 
   @@unique([backgroundTaskId, version, environmentId])
 }
@@ -1186,5 +1197,136 @@ model BackgroundTaskArtifact {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  images BackgroundTaskImage[]
+
   @@unique([backgroundTaskId, version, hash])
+}
+
+enum BackgroundTaskProviderStrategy {
+  FLY_IO
+  UNSUPPORTED
+}
+
+model BackgroundTaskImage {
+  id       String                         @id @default(cuid())
+  provider BackgroundTaskProviderStrategy
+  name     String
+  tag      String
+  digest   String
+  size     Int
+
+  backgroundTask   BackgroundTask @relation(fields: [backgroundTaskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  backgroundTaskId String
+
+  backgroundTaskArtifact   BackgroundTaskArtifact @relation(fields: [backgroundTaskArtifactId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  backgroundTaskArtifactId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  machines BackgroundTaskMachine[]
+  pools    BackgroundTaskMachinePool[]
+
+  @@unique([backgroundTaskArtifactId, digest])
+}
+
+model BackgroundTaskMachine {
+  id String @id @default(cuid())
+
+  externalId String?
+  provider   BackgroundTaskProviderStrategy
+  data       Json?
+  status     BackgroundTaskMachineStatus    @default(PENDING)
+
+  backgroundTask   BackgroundTask @relation(fields: [backgroundTaskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  backgroundTaskId String
+
+  backgroundTaskVersion   BackgroundTaskVersion @relation(fields: [backgroundTaskVersionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  backgroundTaskVersionId String
+
+  backgroundTaskImage   BackgroundTaskImage @relation(fields: [backgroundTaskImageId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  backgroundTaskImageId String
+
+  pool   BackgroundTaskMachinePool @relation(fields: [poolId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  poolId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum BackgroundTaskMachineStatus {
+  PENDING
+  CREATED
+  STARTING
+  STARTED
+  STOPPING
+  STOPPED
+  DESTROYING
+  DESTROYED
+  REPLACING
+}
+
+model BackgroundTaskMachinePool {
+  id String @id @default(cuid())
+
+  provider BackgroundTaskProviderStrategy
+
+  region      String
+  cpu         Int    @default(1)
+  memory      Int    @default(256)
+  concurrency Int    @default(1)
+  diskSize    Int    @default(1)
+
+  image   BackgroundTaskImage @relation(fields: [imageId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  imageId String
+
+  backgroundTaskVersion   BackgroundTaskVersion @relation(fields: [backgroundTaskVersionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  backgroundTaskVersionId String
+
+  backgroundTask   BackgroundTask @relation(fields: [backgroundTaskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  backgroundTaskId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  machines   BackgroundTaskMachine[]
+  operations BackgroundTaskOperation[]
+
+  @@unique([backgroundTaskVersionId, imageId])
+}
+
+model BackgroundTaskOperation {
+  id String @id @default(cuid())
+
+  backgroundTask   BackgroundTask @relation(fields: [backgroundTaskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  backgroundTaskId String
+
+  backgroundTaskVersion   BackgroundTaskVersion @relation(fields: [backgroundTaskVersionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  backgroundTaskVersionId String
+
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskId String @unique
+
+  pool   BackgroundTaskMachinePool? @relation(fields: [poolId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  poolId String?
+
+  payload Json
+  output  Json?
+  error   Json?
+
+  status BackgroundTaskOperationStatus @default(PENDING)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  startedAt DateTime?
+  endedAt   DateTime?
+}
+
+enum BackgroundTaskOperationStatus {
+  PENDING
+  WAITING_ON_IMAGE
+  ASSIGNED_TO_POOL
+  STARTED
+  SUCCESS
+  FAILURE
 }

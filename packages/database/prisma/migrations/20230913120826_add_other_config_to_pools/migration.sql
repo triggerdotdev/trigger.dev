@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "BackgroundTaskMachinePool" ADD COLUMN     "concurrency" INTEGER NOT NULL DEFAULT 1,
+ADD COLUMN     "cpu" INTEGER NOT NULL DEFAULT 1,
+ADD COLUMN     "memory" INTEGER NOT NULL DEFAULT 256;

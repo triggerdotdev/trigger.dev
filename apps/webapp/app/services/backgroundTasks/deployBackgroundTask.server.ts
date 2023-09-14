@@ -1,8 +1,9 @@
-import { BackgroundTaskArtifact, PrismaClient } from "@trigger.dev/database";
-import { AuthenticatedEnvironment } from "../apiAuth.server";
 import { DeployBackgroundTaskRequestBody } from "@trigger.dev/core";
-import { prisma } from "~/db.server";
+import { PrismaClient } from "@trigger.dev/database";
 import nodeCrypto from "node:crypto";
+import { prisma } from "~/db.server";
+import { AuthenticatedEnvironment } from "../apiAuth.server";
+import { backgroundTaskProvider } from "./provider.server";
 
 export class DeployBackgroundTaskService {
   #prismaClient: PrismaClient;
@@ -14,7 +15,7 @@ export class DeployBackgroundTaskService {
   public async call(
     environment: AuthenticatedEnvironment,
     payload: DeployBackgroundTaskRequestBody
-  ): Promise<BackgroundTaskArtifact | undefined> {
+  ) {
     const hash = this.#hashPayload(payload);
 
     const backgroundTask = await this.#prismaClient.backgroundTask.findUnique({
@@ -30,7 +31,7 @@ export class DeployBackgroundTaskService {
       return;
     }
 
-    return this.#prismaClient.backgroundTaskArtifact.upsert({
+    const artifact = await this.#prismaClient.backgroundTaskArtifact.upsert({
       where: {
         backgroundTaskId_version_hash: {
           backgroundTaskId: backgroundTask.id,
@@ -56,6 +57,13 @@ export class DeployBackgroundTaskService {
         sourcemap: payload.sourcemap,
       },
     });
+
+    const imageConfig = await backgroundTaskProvider.prepareArtifact(backgroundTask, artifact);
+
+    return {
+      artifact,
+      imageConfig,
+    };
   }
 
   #hashPayload(payload: DeployBackgroundTaskRequestBody) {

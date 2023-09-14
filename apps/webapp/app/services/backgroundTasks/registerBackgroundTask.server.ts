@@ -10,6 +10,7 @@ import {
 } from "~/models/backgroundTaskSecret.server";
 import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
+import { backgroundTaskProvider } from "./provider.server";
 
 export class RegisterBackgroundTaskService {
   #prismaClient: PrismaClient;
@@ -114,11 +115,15 @@ export class RegisterBackgroundTaskService {
         cpu: metadata.cpu,
         memory: metadata.memory,
         concurrency: metadata.concurrency ?? DEFAULT_MAX_CONCURRENT_RUNS,
+        region: metadata.region ?? backgroundTaskProvider.defaultRegion,
+        diskSize: metadata.diskSizeInGB,
       },
       update: {
         cpu: metadata.cpu,
         memory: metadata.memory,
         concurrency: metadata.concurrency ?? DEFAULT_MAX_CONCURRENT_RUNS,
+        region: metadata.region,
+        diskSize: metadata.diskSizeInGB,
         endpoint: {
           connect: {
             id: endpoint.id,

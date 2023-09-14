@@ -26,30 +26,44 @@ export async function authenticateApiRequest(
     return;
   }
 
+  return await authenticateApiKey(result, { allowPublicKey });
+}
+
+export async function authenticateApiKey(
+  apiKey: string,
+  { allowPublicKey = false }: { allowPublicKey?: boolean } = {}
+): Promise<ApiAuthenticationResult | undefined> {
+  const type = isPublicApiKey(apiKey) ? ("PUBLIC" as const) : ("PRIVATE" as const);
+
   //if it's a public API key and we don't allow public keys, return
   if (!allowPublicKey) {
-    const environment = await findEnvironmentByApiKey(result.apiKey);
+    const environment = await findEnvironmentByApiKey(apiKey);
     if (!environment) return;
+
     return {
-      ...result,
+      apiKey,
+      type,
       environment,
     };
   }
 
-  switch (result.type) {
+  switch (type) {
     case "PUBLIC": {
-      const environment = await findEnvironmentByPublicApiKey(result.apiKey);
+      const environment = await findEnvironmentByPublicApiKey(apiKey);
       if (!environment) return;
       return {
-        ...result,
+        apiKey,
+        type,
         environment,
       };
     }
     case "PRIVATE": {
-      const environment = await findEnvironmentByApiKey(result.apiKey);
+      const environment = await findEnvironmentByApiKey(apiKey);
       if (!environment) return;
+
       return {
-        ...result,
+        apiKey,
+        type,
         environment,
       };
     }
@@ -69,6 +83,6 @@ export function getApiKeyFromRequest(request: Request) {
   }
 
   const apiKey = authorization.data.replace(/^Bearer /, "");
-  const type = isPublicApiKey(apiKey) ? ("PUBLIC" as const) : ("PRIVATE" as const);
-  return { apiKey, type };
+
+  return apiKey;
 }

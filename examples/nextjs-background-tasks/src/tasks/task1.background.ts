@@ -5,7 +5,7 @@ import { z } from "zod";
 export default client.defineBackgroundTask({
   id: "task-1",
   name: "Task 1",
-  version: "1.0.0",
+  version: "1.0.2",
   schema: z.object({
     userName: z.string(),
   }),
@@ -19,6 +19,10 @@ export default client.defineBackgroundTask({
     // This code will run in the background, as it will be bundled and shipped to a trigger.dev background worker
     await new Promise((resolve) => setTimeout(resolve, 100000));
 
-    return `Task Response for user ${payload.userName}`;
+    return {
+      username: payload.userName,
+      foo: "bar",
+      message: `Task Response for user ${payload.userName}`,
+    };
   },
 });
