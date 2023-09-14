@@ -98,9 +98,12 @@ By following these steps, you'll configure the Trigger Client to work with your 
 import { defineConfig } from "astro/config";
 
 export default defineConfig({
+  //alternatively you can use "hybrid" instead of "server"
   output: "server",
 });
 ```
+
+[Read the full Astro docs on SSR](https://docs.astro.build/en/guides/server-side-rendering/).
 
 ## Creating the API Route
 
@@ -117,6 +120,7 @@ import { client } from "../../trigger";
 //import your jobs, this could be different depending on your project structure
 import "../../jobs";
 
+export const prerender = false;
 export const { POST } = createAstroRoute(client);
 ```
 
