@@ -10,8 +10,6 @@ import { z } from "zod";
 export type InstallPackage = {
   name: string;
   tag: string;
-  /** Defaults to prod */
-  type?: "dev" | "prod";
 };
 
 export type InstalledPackage = {
