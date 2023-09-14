@@ -9,6 +9,7 @@ import { logger } from "../../utils/logger";
 import { pathExists } from "../../utils/fileSystem";
 import { parse } from "tsconfck";
 import { detectMiddlewareUsage } from "./middleware";
+import { removeFileExtension } from "../../utils/removeFileExtension";
 
 export class NextJs implements Framework {
   id = "nextjs";

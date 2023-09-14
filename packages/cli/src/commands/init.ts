@@ -111,8 +111,9 @@ export const initCommand = async (options: InitCommandOptions) => {
   // Setup environment variables (create a file if there isn't one)
   let envName = await getEnvFilename(resolvedPath, framework.possibleEnvFilenames());
   if (!envName) {
-    envName = pathModule.join(resolvedPath, framework.possibleEnvFilenames()[0]!);
-    await fs.writeFile(envName, "");
+    envName = framework.possibleEnvFilenames()[0]!;
+    const newEnvPath = pathModule.join(resolvedPath, framework.possibleEnvFilenames()[0]!);
+    await fs.writeFile(newEnvPath, "");
   }
   await setApiKeyEnvironmentVariable(resolvedPath, envName, resolvedOptions.apiKey);
   await setApiUrlEnvironmentVariable(resolvedPath, envName, resolvedOptions.apiUrl);
