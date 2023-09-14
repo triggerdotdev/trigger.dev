@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/plain",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "The official Plain.com integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -24,8 +24,8 @@
     "build:tsup": "tsup"
   },
   "dependencies": {
-    "@trigger.dev/integration-kit": "workspace:^2.1.2",
-    "@trigger.dev/sdk": "workspace:^2.1.2",
+    "@trigger.dev/integration-kit": "workspace:^2.1.3",
+    "@trigger.dev/sdk": "workspace:^2.1.3",
     "@team-plain/typescript-sdk": "^2.7.0"
   },
   "engines": {
