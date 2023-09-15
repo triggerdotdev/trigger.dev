@@ -11,12 +11,12 @@ import {
   organizationTeamPath,
   projectEnvironmentsPath,
   projectIntegrationsPath,
-  projectSetupPath,
   projectPath,
+  projectSetupPath,
   projectTriggersPath,
 } from "~/utils/pathBuilder";
 import { UserProfilePhoto } from "../UserProfilePhoto";
-import { LinkButton, NavLinkButton } from "../primitives/Buttons";
+import { NavLinkButton } from "../primitives/Buttons";
 import { NamedIcon, type IconNames } from "../primitives/NamedIcon";
 import { SimpleTooltip } from "../primitives/Tooltip";
 
