@@ -239,9 +239,7 @@ async function createTriggerAppRoute(
   isTypescriptProject: boolean,
   usesSrcDir = false
 ) {
-  const configFileName = isTypescriptProject ? "tsconfig.json" : "jsconfig.json";
-  const tsConfigPath = pathModule.join(projectPath, configFileName);
-  const { tsconfig } = await parse(tsConfigPath);
+  const pathAlias = getPathAlias({ projectPath, isTypescriptProject, usesSrcDir });
 
   const extension = isTypescriptProject ? ".ts" : ".js";
   const triggerFileName = `trigger${extension}`;
@@ -249,7 +247,6 @@ async function createTriggerAppRoute(
   const examplesIndexFileName = `index${extension}`;
   const routeFileName = `route${extension}`;
 
-  const pathAlias = getPathAlias({ projectPath, isTypescriptProject, usesSrcDir });
   const routePathPrefix = pathAlias ? pathAlias + "/" : "../../../";
 
   const routeContent = `

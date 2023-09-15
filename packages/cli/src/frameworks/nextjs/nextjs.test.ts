@@ -160,3 +160,71 @@ describe("pages install", () => {
     expect(await pathExists("jobs/examples.ts")).toEqual(true);
   });
 });
+
+describe("app install", () => {
+  test("src/app + javascript", async () => {
+    mock({
+      "src/app": {},
+    });
+
+    const projectType = await detectPagesOrAppDir("");
+    expect(projectType).toEqual("app");
+
+    const nextJs = new NextJs();
+    await nextJs.install("", { typescript: false, packageManager: "npm", endpointSlug: "foo" });
+    expect(await pathExists("src/trigger.js")).toEqual(true);
+    expect(await pathExists("src/app/api/trigger/route.js")).toEqual(true);
+    expect(await pathExists("src/jobs/index.js")).toEqual(true);
+    expect(await pathExists("src/jobs/examples.js")).toEqual(true);
+  });
+
+  test("app + javascript", async () => {
+    mock({
+      app: {},
+    });
+
+    const projectType = await detectPagesOrAppDir("");
+    expect(projectType).toEqual("app");
+
+    const nextJs = new NextJs();
+    await nextJs.install("", { typescript: false, packageManager: "npm", endpointSlug: "foo" });
+    expect(await pathExists("trigger.js")).toEqual(true);
+    expect(await pathExists("app/api/trigger/route.js")).toEqual(true);
+    expect(await pathExists("jobs/index.js")).toEqual(true);
+    expect(await pathExists("jobs/examples.js")).toEqual(true);
+  });
+
+  test("src/app + typescript", async () => {
+    mock({
+      "src/app": {},
+      "tsconfig.json": JSON.stringify({}),
+    });
+
+    const projectType = await detectPagesOrAppDir("");
+    expect(projectType).toEqual("app");
+
+    const nextJs = new NextJs();
+    await nextJs.install("", { typescript: true, packageManager: "npm", endpointSlug: "foo" });
+    expect(await pathExists("src/trigger.ts")).toEqual(true);
+    expect(await pathExists("src/app/api/trigger/route.ts")).toEqual(true);
+    expect(await pathExists("src/jobs/index.ts")).toEqual(true);
+    expect(await pathExists("src/jobs/examples.ts")).toEqual(true);
+  });
+
+  test("app + typescript", async () => {
+    mock({
+      app: {},
+      "tsconfig.json": JSON.stringify({}),
+    });
+
+    const projectType = await detectPagesOrAppDir("");
+    expect(projectType).toEqual("app");
+
+    const nextJs = new NextJs();
+    await nextJs.install("", { typescript: true, packageManager: "npm", endpointSlug: "foo" });
+    expect(await pathExists("trigger.ts")).toEqual(true);
+    expect(await pathExists("app/api/trigger/route.ts")).toEqual(true);
+    expect(await pathExists("jobs/index.ts")).toEqual(true);
+    expect(await pathExists("jobs/examples.ts")).toEqual(true);
+  });
+});
