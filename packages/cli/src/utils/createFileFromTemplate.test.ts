@@ -1,7 +1,6 @@
+import fs from "fs/promises";
 import mock from "mock-fs";
 import { createFileFromTemplate, replaceAll } from "./createFileFromTemplate";
-import fs from "fs/promises";
-import exp from "constants";
 
 afterEach(() => {
   mock.restore();
