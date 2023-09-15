@@ -26,8 +26,9 @@
   },
   "dependencies": {
     "@linear/sdk": "^8.0.0",
+    "@trigger.dev/integration-kit": "workspace:^2.1.0",
     "@trigger.dev/sdk": "workspace:^2.1.0",
-    "@trigger.dev/integration-kit": "workspace:^2.1.0"
+    "zod": "3.21.4"
   },
   "engines": {
     "node": ">=16.8.0"
