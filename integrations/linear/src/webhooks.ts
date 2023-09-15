@@ -253,9 +253,6 @@ export function createWebhookEventSource(
         url,
       });
 
-      // TODO
-      // if(!createPayload.success)
-
       return {
         data: WebhookRegistrationDataSchema.parse(createPayload),
         secret: (await createPayload.webhook)?.secret,
