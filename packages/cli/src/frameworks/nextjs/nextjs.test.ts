@@ -1,5 +1,5 @@
 import mock from "mock-fs";
-import { detectPagesOrAppDir, detectUseOfSrcDir } from ".";
+import { NextJs, detectPagesOrAppDir, detectUseOfSrcDir } from ".";
 import { getFramework } from "..";
 
 afterEach(() => {
@@ -89,5 +89,19 @@ describe("detect pages or app directory", () => {
 
     const projectType = await detectPagesOrAppDir("");
     expect(projectType).toEqual("pages");
+  });
+});
+
+describe("file creation", () => {
+  test("pages directory", async () => {
+    mock({
+      "src/app": {},
+    });
+
+    const projectType = await detectPagesOrAppDir("");
+    expect(projectType).toEqual("app");
+
+    const nextJs = new NextJs();
+    await nextJs.install("", { typescript: false, packageManager: "npm", endpointSlug: "foo" });
   });
 });
