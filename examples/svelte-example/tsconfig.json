@@ -14,7 +14,9 @@
 		"baseUrl": ".",
 		"paths": {
 			"$lib": ["src/lib"],
-			"$lib/*": ["src/lib/*"]
+			"$lib/*": ["src/lib/*"],
+			"$trigger": ["src/trigger"],
+			"$jobs/*": ["src/jobs/*"]
 		}
 	},
 	"include": ["src/**/*", "src/node_modules", ".svelte-kit/ambient.d.ts"], // see last element
