@@ -23,32 +23,32 @@ const userAnnotation: ScopeAnnotation = {
 const usageSample: HelpSample = {
   title: "Using the client",
   code: `
-import { Github, events } from "@trigger.dev/github";
+import { Linear, events } from "@trigger.dev/linear";
 
-const github = new Github({
+const linear = new Linear({
   id: "__SLUG__",
-  token: process.env.GITHUB_TOKEN!,
+  token: process.env.LINEAR_TOKEN!,
 });
 
 client.defineJob({
-  id: "github-integration-on-issue-opened",
-  name: "GitHub Integration - On Issue Opened",
+  id: "linear-integration-on-issue-opened",
+  name: "Linear Integration - On Issue Opened",
   version: "0.1.0",
-  integrations: { github },
-  trigger: github.triggers.repo({
+  integrations: { linear },
+  trigger: linear.triggers.repo({
     event: events.onIssueOpened,
     owner: "triggerdotdev",
     repo: "empty",
   }),
   run: async (payload, io, ctx) => {
-    await io.github.addIssueAssignees("add assignee", {
+    await io.linear.addIssueAssignees("add assignee", {
       owner: payload.repository.owner.login,
       repo: payload.repository.name,
       issueNumber: payload.issue.number,
       assignees: ["matt-aitken"],
     });
 
-    await io.github.addIssueLabels("add label", {
+    await io.linear.addIssueLabels("add label", {
       owner: payload.repository.owner.login,
       repo: payload.repository.name,
       issueNumber: payload.issue.number,
@@ -72,25 +72,25 @@ export const linear: Integration = {
       type: "oauth2",
       client: {
         id: {
-          envName: "CLOUD_GITHUB_CLIENT_ID",
+          envName: "CLOUD_LINEAR_CLIENT_ID",
         },
         secret: {
-          envName: "CLOUD_GITHUB_CLIENT_SECRET",
+          envName: "CLOUD_LINEAR_CLIENT_SECRET",
         },
       },
       config: {
         authorization: {
-          url: "https://github.com/login/oauth/authorize",
+          url: "https://linear.com/login/oauth/authorize",
           scopeSeparator: " ",
         },
         token: {
-          url: "https://github.com/login/oauth/access_token",
+          url: "https://linear.com/login/oauth/access_token",
           metadata: {
             accountPointer: "/team/name",
           },
         },
         refresh: {
-          url: "https://github.com/login/oauth/authorize",
+          url: "https://linear.com/login/oauth/authorize",
         },
       },
       scopes: [
@@ -256,17 +256,17 @@ export const linear: Integration = {
 
         {
           name: "write:packages",
-          description: "Grants access to upload or publish a package in GitHub Packages.",
+          description: "Grants access to upload or publish a package in Linear Packages.",
         },
 
         {
           name: "read:packages",
-          description: "Grants access to download or install packages from GitHub Packages.",
+          description: "Grants access to download or install packages from Linear Packages.",
         },
 
         {
           name: "delete:packages",
-          description: "Grants access to delete packages from GitHub Packages.",
+          description: "Grants access to delete packages from Linear Packages.",
         },
 
         {
@@ -287,13 +287,13 @@ export const linear: Integration = {
         {
           name: "codespace",
           description:
-            "Grants the ability to create and manage codespaces. Codespaces can expose a GITHUB_TOKEN which may have a different set of scopes",
+            "Grants the ability to create and manage codespaces. Codespaces can expose a LINEAR_TOKEN which may have a different set of scopes",
         },
 
         {
           name: "workflow",
           description:
-            "Grants the ability to add and update GitHub Actions workflow files. Workflow files can be committed without this scope if the same file (with both the same path and contents) exists on another branch in the same repository. Workflow files can expose GITHUB_TOKEN which may have a different set of scopes.",
+            "Grants the ability to add and update Linear Actions workflow files. Workflow files can be committed without this scope if the same file (with both the same path and contents) exists on another branch in the same repository. Workflow files can expose LINEAR_TOKEN which may have a different set of scopes.",
         },
       ],
       help: {
@@ -301,9 +301,9 @@ export const linear: Integration = {
           {
             title: "Creating the client",
             code: `
-import { Github } from "@trigger.dev/github";
+import { Linear } from "@trigger.dev/linear";
 
-const github = new Github({
+const linear = new Linear({
   id: "__SLUG__"
 });
 `,
@@ -319,11 +319,11 @@ const github = new Github({
           {
             title: "Creating the client",
             code: `
-import { Github } from "@trigger.dev/github";
+import { Linear } from "@trigger.dev/linear";
 
-const github = new Github({
+const linear = new Linear({
   id: "__SLUG__",
-  token: process.env.GITHUB_TOKEN!
+  token: process.env.LINEAR_TOKEN!
 });
 `,
           },
