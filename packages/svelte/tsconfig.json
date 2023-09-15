@@ -10,9 +10,12 @@
 		"sourceMap": true,
 		"strict": true,
 		"moduleResolution": "Node",
+		"ignoreDeprecations": "5.0", 
 		"paths": {
 			"@trigger.dev/core": ["../core/src/index"],
-			"@trigger.dev/core/*": ["../core/src/*"]
+			"@trigger.dev/core/*": ["../core/src/*"], 
+			"@trigger.dev/sdk": ["../trigger-sdk/src/index"],
+			"@trigger.dev/sdk/*": ["../trigger-sdk/src/*"]
 		}
 	},
 	"exclude": ["node_modules"]

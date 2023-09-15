@@ -1,4 +1,3 @@
-// import { writable, type Writable } from 'svelte/store';
 import { getContext, setContext } from 'svelte';
 
 
@@ -10,7 +9,6 @@ const triggerContextKey = "$$_TriggerContext"
 
 
 export function setTriggerContext(context: TriggerContext) {
-	// const context = writable<TriggerContextValue>();
 	setContext(triggerContextKey, context);
 }
 
