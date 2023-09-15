@@ -294,7 +294,7 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integ
   const payloadEvent = request.headers.get("Linear-Event");
 
   if (!payloadUuid || !payloadEvent) {
-    logger.debug("[@trigger.dev/linear] Missing expected Linear headers");
+    logger.debug("[@trigger.dev/linear] Missing required Linear headers");
     return { events: [] };
   }
 
@@ -327,7 +327,7 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integ
     events: [
       {
         id: payloadUuid,
-        name: webhookPayload.webhookTimestamp.toISOString(),
+        name: payloadEvent,
         source: "linear.app",
         payload: webhookPayload,
         context: {},
