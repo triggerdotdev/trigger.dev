@@ -13,9 +13,10 @@
 	},
 	"dependencies": {
 		"@tanstack/svelte-query": "^4.33.0",
-		"@trigger.dev/sdk": "^2.0.14",
+		"@trigger.dev/sdk": "workspace:*",
 		"@trigger.dev/svelte": "workspace:*",
-		"@trigger.dev/sveltekit": "workspace:*"
+		"@trigger.dev/sveltekit": "workspace:*", 
+		"@trigger.dev/core": "workspace:*"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^2.0.0",
