@@ -1,5 +1,8 @@
-export function createAstroRoute(client) {
-  return async function astroRoute(ctx) {
+import type { TriggerClient } from "@trigger.dev/sdk";
+import type { APIRoute } from "astro";
+
+export function createAstroRoute(client: TriggerClient) {
+  const POST: APIRoute = async (ctx) => {
     if (ctx.request.method === "HEAD") {
       return new Response(null, { status: 200 });
     }
@@ -8,7 +11,7 @@ export function createAstroRoute(client) {
       // Prepare the request to be a fetch-compatible Request object:
       const requestHeaders = ctx.request.headers;
       const requestMethod = ctx.request.method;
-      const responseHeaders = Object.create(null);
+      const responseHeaders: Record<string, string> = {};
 
       for (const [headerName, headerValue] of requestHeaders.entries()) {
         responseHeaders[headerName] = headerValue;
@@ -20,7 +23,8 @@ export function createAstroRoute(client) {
       const request = new Request("https://express.js/api/trigger", {
         headers: responseHeaders,
         method: requestMethod,
-        body: ctx.request.body ? ctx.request.body : ctx.request,
+        body: ctx.request.body,
+        // @ts-ignore
         duplex: "half",
       });
 
@@ -44,5 +48,9 @@ export function createAstroRoute(client) {
         status: 500,
       });
     }
+  };
+
+  return {
+    POST,
   };
 }
