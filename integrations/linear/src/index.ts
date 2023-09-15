@@ -101,6 +101,7 @@ export class Linear implements TriggerIntegration {
 
   // TODO: create separate sources to remove resourceTypes
 
+  /** **WARNING:** Still in alpha - use with caution! */
   onAttachment(params: OnChangeParams = {}) {
     return createTrigger(this.source, events.onAttachment, {
       ...params,
@@ -108,6 +109,7 @@ export class Linear implements TriggerIntegration {
     });
   }
 
+  /** **WARNING:** Still in alpha - use with caution! */
   onAttachmentCreate(params: OnChangeParams = {}) {
     return createTrigger(this.source, events.onAttachmentCreate, {
       ...params,
@@ -115,13 +117,14 @@ export class Linear implements TriggerIntegration {
     });
   }
 
+  /** **WARNING:** Still in alpha - use with caution! */
   onAttachmentRemove(params: OnChangeParams = {}) {
     return createTrigger(this.source, events.onAttachmentRemove, {
       ...params,
       resourceTypes: ["Attachment"],
     });
   }
-
+  /** **WARNING:** Still in alpha - use with caution! */
   onAttachmentUpdate(params: OnChangeParams = {}) {
     return createTrigger(this.source, events.onAttachmentUpdate, {
       ...params,

@@ -55,8 +55,23 @@ const IssueDataSchema = z.object({
   description: z.string(),
 });
 
-// FIXME: can't confirm schema as does not seem to trigger
-const AttachmentDataSchema = z.object({});
+/** **WARNING:** Still in alpha - use with caution! */
+const AttachmentDataSchema = z.object({
+  id: z.string(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  title: z.string(),
+  url: z.string().url(),
+  creatorId: z.string(),
+  metadata: z.object({}).passthrough(),
+  source: z.object({
+    type: z.string(),
+    imageUrl: z.string().url(),
+  }),
+  sourceType: z.string(),
+  groupBySource: z.boolean(),
+  issueId: z.string(),
+});
 
 const CommentDataSchema = z.object({
   id: z.string(),
@@ -200,6 +215,7 @@ export const IssueEventSchema = WebhookPayloadBaseSchema.extend({
 });
 export type IssueEvent = z.infer<typeof IssueEventSchema>;
 
+/** **WARNING:** Still in alpha - use with caution! */
 export const AttachmentEventSchema = WebhookPayloadBaseSchema.extend({
   type: z.literal("Attachment"),
   data: AttachmentDataSchema,

@@ -14,6 +14,7 @@ import {
 // TODO: useful properties
 // TODO: Issue SLA event
 
+/** **WARNING:** Still in alpha - use with caution! */
 export const onAttachment: EventSpecification<AttachmentEvent> = {
   name: "Attachment",
   title: "On Attachment",
@@ -23,6 +24,7 @@ export const onAttachment: EventSpecification<AttachmentEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
+/** **WARNING:** Still in alpha - use with caution! */
 export const onAttachmentCreate: EventSpecification<AttachmentEvent> = {
   name: "Attachment",
   title: "On Attachment",
@@ -35,6 +37,7 @@ export const onAttachmentCreate: EventSpecification<AttachmentEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
+/** **WARNING:** Still in alpha - use with caution! */
 export const onAttachmentRemove: EventSpecification<AttachmentEvent> = {
   name: "Attachment",
   title: "On Attachment Remove",
@@ -47,6 +50,7 @@ export const onAttachmentRemove: EventSpecification<AttachmentEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
+/** **WARNING:** Still in alpha - use with caution! */
 export const onAttachmentUpdate: EventSpecification<AttachmentEvent> = {
   name: "Attachment",
   title: "On Attachment Update",
