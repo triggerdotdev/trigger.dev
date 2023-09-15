@@ -1,9 +1,9 @@
 import { createSvelteRoute } from '@trigger.dev/sveltekit';
 
-import { client } from '../../../trigger';
+import { client } from '$trigger';
 
 // // Replace this with your own jobs
-import '../../../jobs/example';
+import '$jobs/example';
 
 // Create the Svelte route handler using the createSvelteRoute function
 const svelteRoute = createSvelteRoute(client);
