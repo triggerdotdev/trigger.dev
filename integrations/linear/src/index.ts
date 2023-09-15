@@ -11,7 +11,8 @@ import {
 } from "@trigger.dev/sdk";
 import { LinearClient } from "@linear/sdk";
 import * as events from "./events";
-import { WebhookActionType, Webhooks, createTrigger, createWebhookEventSource } from "./webhooks";
+import { Webhooks, createTrigger, createWebhookEventSource } from "./webhooks";
+import { WebhookActionType } from "./schemas";
 
 export type LinearIntegrationOptions = {
   id: string;

@@ -1,5 +1,23 @@
 import { z } from "zod";
-import { WebhookActionTypeSchema } from "./webhooks";
+
+export const WebhookResourceTypeSchema = z.union([
+  z.literal("Attachment"),
+  z.literal("Comment"),
+  z.literal("Cycle"),
+  z.literal("Issue"),
+  z.literal("IssueLabel"),
+  z.literal("Project"),
+  z.literal("ProjectUpdate"),
+  z.literal("Reaction"),
+]);
+export type WebhookResourceType = z.infer<typeof WebhookResourceTypeSchema>;
+
+export const WebhookActionTypeSchema = z.union([
+  z.literal("create"),
+  z.literal("remove"),
+  z.literal("update"),
+]);
+export type WebhookActionType = z.infer<typeof WebhookActionTypeSchema>;
 
 const ReactionShortSchema = z.object({
   emoji: z.string(),

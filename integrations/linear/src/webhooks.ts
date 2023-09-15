@@ -21,26 +21,11 @@ import {
   WebhookUpdateInput,
   WebhooksQueryVariables,
 } from "@linear/sdk/dist/_generated_documents";
-import { WebhookPayloadSchema } from "./schemas";
-
-export const WebhookResourceTypeSchema = z.union([
-  z.literal("Attachment"),
-  z.literal("Comment"),
-  z.literal("Cycle"),
-  z.literal("Issue"),
-  z.literal("IssueLabel"),
-  z.literal("Project"),
-  z.literal("ProjectUpdate"),
-  z.literal("Reaction"),
-]);
-export type WebhookResourceType = z.infer<typeof WebhookResourceTypeSchema>;
-
-export const WebhookActionTypeSchema = z.union([
-  z.literal("create"),
-  z.literal("remove"),
-  z.literal("update"),
-]);
-export type WebhookActionType = z.infer<typeof WebhookActionTypeSchema>;
+import {
+  WebhookActionTypeSchema,
+  WebhookPayloadSchema,
+  WebhookResourceTypeSchema,
+} from "./schemas";
 
 type DeleteWebhookParams = {
   id: string;
