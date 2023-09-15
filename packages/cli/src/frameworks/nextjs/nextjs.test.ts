@@ -1,7 +1,6 @@
 import mock from "mock-fs";
 import { detectPagesOrAppDir, detectUseOfSrcDir } from ".";
 import { getFramework } from "..";
-// import { detectUseOfSrcDir } from ".";
 
 afterEach(() => {
   mock.restore();
