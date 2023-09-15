@@ -290,8 +290,17 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integ
 
   const LINEAR_IPS = ["35.231.147.226", "35.243.134.228"];
 
+  const clientIp =
+    request.headers.get("cf-connecting-ip") ??
+    (
+      request.headers.get("x-real-ip") ??
+      request.headers.get("x-forwarded-for") ??
+      // default to allowing request if expected headers missing
+      LINEAR_IPS[0]
+    ).split(",")[0];
+
   // TODO: remove tunnel
-  if (!process.env["DEV_TUNNEL"] && !LINEAR_IPS.includes(request.headers.get("Host") ?? "")) {
+  if (!process.env["DEV_TUNNEL"] && !LINEAR_IPS.includes(clientIp)) {
     logger.error("[@trigger.dev/linear] Error validating webhook source, IP invalid.");
     throw Error("[@trigger.dev/linear] Invalid source IP.");
   }
