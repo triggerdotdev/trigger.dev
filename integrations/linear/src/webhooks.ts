@@ -202,11 +202,6 @@ export function createWebhookEventSource(
       // (key-specific) stored data, undefined if not registered yet
       const webhookData = WebhookRegistrationDataSchema.safeParse(httpSource.data);
 
-      console.log(webhookData);
-      if (!webhookData.success) {
-        console.log(webhookData.error);
-      }
-
       // set of events to register
       const allEvents = Array.from(new Set([...options.event.desired, ...options.event.missing]));
       const registeredOptions = {
