@@ -35,6 +35,7 @@ import {
   GlobeAltIcon,
   HandRaisedIcon,
   HeartIcon,
+  HomeIcon,
   KeyIcon,
   LightBulbIcon,
   ListBulletIcon,
@@ -50,6 +51,7 @@ import {
   UserGroupIcon,
   UserIcon,
   UserPlusIcon,
+  WindowIcon,
   WrenchScrewdriverIcon,
   XCircleIcon,
   XMarkIcon,
@@ -75,6 +77,8 @@ const icons = {
   background: (className: string) => <CloudIcon className={cn("text-sky-400", className)} />,
   beaker: (className: string) => <BeakerIcon className={cn("text-purple-500", className)} />,
   billing: (className: string) => <CreditCardIcon className={cn("text-teal-500", className)} />,
+
+  browser: (className: string) => <WindowIcon className={cn("text-dimmed", className)} />,
   calendar: (className: string) => (
     <CalendarDaysIcon className={cn("text-purple-500", className)} />
   ),
@@ -111,6 +115,7 @@ const icons = {
     <HandRaisedIcon className={cn("text-amber-400", className)} />
   ),
   heart: (className: string) => <HeartIcon className={cn("text-rose-500", className)} />,
+  house: (className: string) => <HomeIcon className={cn("text-dimmed", className)} />,
   id: (className: string) => <FingerPrintIcon className={cn("text-rose-200", className)} />,
   inactive: (className: string) => <XCircleIcon className={cn("text-rose-500", className)} />,
   info: (className: string) => <InformationCircleIcon className={cn("text-blue-500", className)} />,
