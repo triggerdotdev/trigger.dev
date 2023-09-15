@@ -25,9 +25,9 @@ export const onAttachment: EventSpecification<AttachmentEvent> = {
 };
 
 /** **WARNING:** Still in alpha - use with caution! */
-export const onAttachmentCreate: EventSpecification<AttachmentEvent> = {
+export const onAttachmentCreated: EventSpecification<AttachmentEvent> = {
   name: "Attachment",
-  title: "On Attachment",
+  title: "On Attachment Created",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -38,9 +38,9 @@ export const onAttachmentCreate: EventSpecification<AttachmentEvent> = {
 };
 
 /** **WARNING:** Still in alpha - use with caution! */
-export const onAttachmentRemove: EventSpecification<AttachmentEvent> = {
+export const onAttachmentRemoved: EventSpecification<AttachmentEvent> = {
   name: "Attachment",
-  title: "On Attachment Remove",
+  title: "On Attachment Removed",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -51,9 +51,9 @@ export const onAttachmentRemove: EventSpecification<AttachmentEvent> = {
 };
 
 /** **WARNING:** Still in alpha - use with caution! */
-export const onAttachmentUpdate: EventSpecification<AttachmentEvent> = {
+export const onAttachmentUpdated: EventSpecification<AttachmentEvent> = {
   name: "Attachment",
-  title: "On Attachment Update",
+  title: "On Attachment Updated",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -72,9 +72,9 @@ export const onComment: EventSpecification<CommentEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onCommentCreate: EventSpecification<CommentEvent> = {
+export const onCommentCreated: EventSpecification<CommentEvent> = {
   name: "Comment",
-  title: "On Comment",
+  title: "On Comment Created",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -84,9 +84,9 @@ export const onCommentCreate: EventSpecification<CommentEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onCommentRemove: EventSpecification<CommentEvent> = {
+export const onCommentRemoved: EventSpecification<CommentEvent> = {
   name: "Comment",
-  title: "On Comment Remove",
+  title: "On Comment Removed",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -96,9 +96,9 @@ export const onCommentRemove: EventSpecification<CommentEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onCommentUpdate: EventSpecification<CommentEvent> = {
+export const onCommentUpdated: EventSpecification<CommentEvent> = {
   name: "Comment",
-  title: "On Comment Update",
+  title: "On Comment Updated",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -117,9 +117,9 @@ export const onCycle: EventSpecification<CycleEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onCycleCreate: EventSpecification<CycleEvent> = {
+export const onCycleCreated: EventSpecification<CycleEvent> = {
   name: "Cycle",
-  title: "On Cycle",
+  title: "On Cycle Created",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -129,9 +129,9 @@ export const onCycleCreate: EventSpecification<CycleEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onCycleRemove: EventSpecification<CycleEvent> = {
+export const onCycleRemoved: EventSpecification<CycleEvent> = {
   name: "Cycle",
-  title: "On Cycle Remove",
+  title: "On Cycle Removed",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -141,9 +141,9 @@ export const onCycleRemove: EventSpecification<CycleEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onCycleUpdate: EventSpecification<CycleEvent> = {
+export const onCycleUpdated: EventSpecification<CycleEvent> = {
   name: "Cycle",
-  title: "On Cycle Update",
+  title: "On Cycle Updated",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -162,9 +162,9 @@ export const onIssue: EventSpecification<IssueEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onIssueCreate: EventSpecification<IssueEvent> = {
+export const onIssueCreated: EventSpecification<IssueEvent> = {
   name: "Issue",
-  title: "On Issue",
+  title: "On Issue Created",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -174,9 +174,9 @@ export const onIssueCreate: EventSpecification<IssueEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onIssueRemove: EventSpecification<IssueEvent> = {
+export const onIssueRemoved: EventSpecification<IssueEvent> = {
   name: "Issue",
-  title: "On Issue Remove",
+  title: "On Issue Removed",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -186,9 +186,9 @@ export const onIssueRemove: EventSpecification<IssueEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onIssueUpdate: EventSpecification<IssueEvent> = {
+export const onIssueUpdated: EventSpecification<IssueEvent> = {
   name: "Issue",
-  title: "On Issue Update",
+  title: "On Issue Updated",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -207,9 +207,9 @@ export const onIssueLabel: EventSpecification<IssueLabelEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onIssueLabelCreate: EventSpecification<IssueLabelEvent> = {
+export const onIssueLabelCreated: EventSpecification<IssueLabelEvent> = {
   name: "IssueLabel",
-  title: "On IssueLabel",
+  title: "On IssueLabel Created",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -219,9 +219,9 @@ export const onIssueLabelCreate: EventSpecification<IssueLabelEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onIssueLabelRemove: EventSpecification<IssueLabelEvent> = {
+export const onIssueLabelRemoved: EventSpecification<IssueLabelEvent> = {
   name: "IssueLabel",
-  title: "On IssueLabel Remove",
+  title: "On IssueLabel Removed",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -231,9 +231,9 @@ export const onIssueLabelRemove: EventSpecification<IssueLabelEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onIssueLabelUpdate: EventSpecification<IssueLabelEvent> = {
+export const onIssueLabelUpdated: EventSpecification<IssueLabelEvent> = {
   name: "IssueLabel",
-  title: "On IssueLabel Update",
+  title: "On IssueLabel Updated",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -252,9 +252,9 @@ export const onProject: EventSpecification<ProjectEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onProject_Create: EventSpecification<ProjectEvent> = {
+export const onProjectCreated: EventSpecification<ProjectEvent> = {
   name: "Project",
-  title: "On Project",
+  title: "On Project Created",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -264,9 +264,9 @@ export const onProject_Create: EventSpecification<ProjectEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onProject_Remove: EventSpecification<ProjectEvent> = {
+export const onProjectRemoved: EventSpecification<ProjectEvent> = {
   name: "Project",
-  title: "On Project Remove",
+  title: "On Project Removed",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -276,10 +276,10 @@ export const onProject_Remove: EventSpecification<ProjectEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-// TODO: think of a better naming scheme (clashes with ProjectUpdate entity)
-export const onProject_Update: EventSpecification<ProjectEvent> = {
+// TODO: think of a better naming scheme (clashes with ProjectUpdated entity)
+export const onProjectUpdated: EventSpecification<ProjectEvent> = {
   name: "Project",
-  title: "On Project Update",
+  title: "On Project Updated",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -298,9 +298,9 @@ export const onProjectUpdate: EventSpecification<ProjectUpdateEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onProjectUpdateCreate: EventSpecification<ProjectUpdateEvent> = {
+export const onProjectUpdateCreated: EventSpecification<ProjectUpdateEvent> = {
   name: "ProjectUpdate",
-  title: "On ProjectUpdate",
+  title: "On ProjectUpdate Created",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -310,9 +310,9 @@ export const onProjectUpdateCreate: EventSpecification<ProjectUpdateEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onProjectUpdateRemove: EventSpecification<ProjectUpdateEvent> = {
+export const onProjectUpdateRemoved: EventSpecification<ProjectUpdateEvent> = {
   name: "ProjectUpdate",
-  title: "On ProjectUpdate Remove",
+  title: "On ProjectUpdate Removed",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -322,9 +322,9 @@ export const onProjectUpdateRemove: EventSpecification<ProjectUpdateEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onProjectUpdateUpdate: EventSpecification<ProjectUpdateEvent> = {
+export const onProjectUpdateUpdated: EventSpecification<ProjectUpdateEvent> = {
   name: "ProjectUpdate",
-  title: "On ProjectUpdate Update",
+  title: "On ProjectUpdate Updated",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -343,9 +343,9 @@ export const onReaction: EventSpecification<ReactionEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onReactionCreate: EventSpecification<ReactionEvent> = {
+export const onReactionCreated: EventSpecification<ReactionEvent> = {
   name: "Reaction",
-  title: "On Reaction",
+  title: "On Reaction Created",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -355,9 +355,9 @@ export const onReactionCreate: EventSpecification<ReactionEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onReactionRemove: EventSpecification<ReactionEvent> = {
+export const onReactionRemoved: EventSpecification<ReactionEvent> = {
   name: "Reaction",
-  title: "On Reaction Remove",
+  title: "On Reaction Removed",
   source: "linear.app",
   icon: "linear",
   filter: {
@@ -367,9 +367,9 @@ export const onReactionRemove: EventSpecification<ReactionEvent> = {
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
-export const onReactionUpdate: EventSpecification<ReactionEvent> = {
+export const onReactionUpdated: EventSpecification<ReactionEvent> = {
   name: "Reaction",
-  title: "On Reaction Update",
+  title: "On Reaction Updated",
   source: "linear.app",
   icon: "linear",
   filter: {

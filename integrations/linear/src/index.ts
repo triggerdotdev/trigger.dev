@@ -110,23 +110,24 @@ export class Linear implements TriggerIntegration {
   }
 
   /** **WARNING:** Still in alpha - use with caution! */
-  onAttachmentCreate(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onAttachmentCreate, {
+  onAttachmentCreated(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onAttachmentCreated, {
       ...params,
       resourceTypes: ["Attachment"],
     });
   }
 
   /** **WARNING:** Still in alpha - use with caution! */
-  onAttachmentRemove(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onAttachmentRemove, {
+  onAttachmentRemoved(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onAttachmentRemoved, {
       ...params,
       resourceTypes: ["Attachment"],
     });
   }
+
   /** **WARNING:** Still in alpha - use with caution! */
-  onAttachmentUpdate(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onAttachmentUpdate, {
+  onAttachmentUpdated(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onAttachmentUpdated, {
       ...params,
       resourceTypes: ["Attachment"],
     });
@@ -136,22 +137,22 @@ export class Linear implements TriggerIntegration {
     return createTrigger(this.source, events.onComment, { ...params, resourceTypes: ["Comment"] });
   }
 
-  onCommentCreate(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onCommentCreate, {
+  onCommentCreated(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onCommentCreated, {
       ...params,
       resourceTypes: ["Comment"],
     });
   }
 
-  onCommentRemove(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onCommentRemove, {
+  onCommentRemoved(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onCommentRemoved, {
       ...params,
       resourceTypes: ["Comment"],
     });
   }
 
-  onCommentUpdate(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onCommentUpdate, {
+  onCommentUpdated(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onCommentUpdated, {
       ...params,
       resourceTypes: ["Comment"],
     });
@@ -161,22 +162,22 @@ export class Linear implements TriggerIntegration {
     return createTrigger(this.source, events.onCycle, { ...params, resourceTypes: ["Cycle"] });
   }
 
-  onCycleCreate(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onCycleCreate, {
+  onCycleCreated(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onCycleCreated, {
       ...params,
       resourceTypes: ["Cycle"],
     });
   }
 
-  onCycleRemove(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onCycleRemove, {
+  onCycleRemoved(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onCycleRemoved, {
       ...params,
       resourceTypes: ["Cycle"],
     });
   }
 
-  onCycleUpdate(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onCycleUpdate, {
+  onCycleUpdated(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onCycleUpdated, {
       ...params,
       resourceTypes: ["Cycle"],
     });
@@ -186,22 +187,22 @@ export class Linear implements TriggerIntegration {
     return createTrigger(this.source, events.onIssue, { ...params, resourceTypes: ["Issue"] });
   }
 
-  onIssueCreate(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onIssueCreate, {
+  onIssueCreated(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onIssueCreated, {
       ...params,
       resourceTypes: ["Issue"],
     });
   }
 
-  onIssueRemove(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onIssueRemove, {
+  onIssueRemoved(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onIssueRemoved, {
       ...params,
       resourceTypes: ["Issue"],
     });
   }
 
-  onIssueUpdate(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onIssueUpdate, {
+  onIssueUpdated(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onIssueUpdated, {
       ...params,
       resourceTypes: ["Issue"],
     });
@@ -214,22 +215,22 @@ export class Linear implements TriggerIntegration {
     });
   }
 
-  onIssueLabelCreate(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onIssueLabelCreate, {
+  onIssueLabelCreated(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onIssueLabelCreated, {
       ...params,
       resourceTypes: ["IssueLabel"],
     });
   }
 
-  onIssueLabelRemove(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onIssueLabelRemove, {
+  onIssueLabelRemoved(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onIssueLabelRemoved, {
       ...params,
       resourceTypes: ["IssueLabel"],
     });
   }
 
-  onIssueLabelUpdate(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onIssueLabelUpdate, {
+  onIssueLabelUpdated(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onIssueLabelUpdated, {
       ...params,
       resourceTypes: ["IssueLabel"],
     });
@@ -239,22 +240,22 @@ export class Linear implements TriggerIntegration {
     return createTrigger(this.source, events.onProject, { ...params, resourceTypes: ["Project"] });
   }
 
-  onProject_Create(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onProject_Create, {
+  onProjectCreated(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onProjectCreated, {
       ...params,
       resourceTypes: ["Project"],
     });
   }
 
-  onProject_Remove(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onProject_Remove, {
+  onProjectRemoved(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onProjectRemoved, {
       ...params,
       resourceTypes: ["Project"],
     });
   }
 
-  onProject_Update(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onProject_Update, {
+  onProjectUpdated(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onProjectUpdated, {
       ...params,
       resourceTypes: ["Project"],
     });
@@ -267,22 +268,22 @@ export class Linear implements TriggerIntegration {
     });
   }
 
-  onProjectUpdateCreate(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onProjectUpdateCreate, {
+  onProjectUpdateCreated(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onProjectUpdateCreated, {
       ...params,
       resourceTypes: ["ProjectUpdate"],
     });
   }
 
-  onProjectUpdateRemove(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onProjectUpdateRemove, {
+  onProjectUpdateRemoved(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onProjectUpdateRemoved, {
       ...params,
       resourceTypes: ["ProjectUpdate"],
     });
   }
 
-  onProjectUpdateUpdate(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onProjectUpdateUpdate, {
+  onProjectUpdateUpdated(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onProjectUpdateUpdated, {
       ...params,
       resourceTypes: ["ProjectUpdate"],
     });
@@ -295,22 +296,22 @@ export class Linear implements TriggerIntegration {
     });
   }
 
-  onReactionCreate(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onReactionCreate, {
+  onReactionCreated(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onReactionCreated, {
       ...params,
       resourceTypes: ["Reaction"],
     });
   }
 
-  onReactionRemove(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onReactionRemove, {
+  onReactionRemoved(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onReactionRemoved, {
       ...params,
       resourceTypes: ["Reaction"],
     });
   }
 
-  onReactionUpdate(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onReactionUpdate, {
+  onReactionUpdated(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onReactionUpdated, {
       ...params,
       resourceTypes: ["Reaction"],
     });

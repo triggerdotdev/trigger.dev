@@ -11,7 +11,7 @@ export const client = new TriggerClient({
 });
 
 const linear = new Linear({
-  id: "linear-v2",
+  id: "linear",
   token: process.env["LINEAR_API_KEY"],
 });
 
@@ -39,7 +39,7 @@ client.defineJob({
   id: "linear-on-Comment",
   name: "Linear On Comment",
   version: "0.1.0",
-  trigger: linear.onCommentCreate(),
+  trigger: linear.onCommentCreated(),
   run: async (payload, io, ctx) => {
     await io.logger.info("Comment created!", {
       action: payload.action,
@@ -53,7 +53,7 @@ client.defineJob({
   id: "linear-on-Reaction",
   name: "Linear On Reaction",
   version: "0.1.0",
-  trigger: linear.onReactionUpdate(),
+  trigger: linear.onReactionUpdated(),
   run: async (payload, io, ctx) => {
     await io.logger.info("Reaction updated!", {
       action: payload.action,
