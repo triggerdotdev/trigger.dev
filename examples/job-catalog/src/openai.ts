@@ -37,29 +37,17 @@ type ChatMessage = {
 const chatMessages: ChatMessage[] = [
   {
     role: "user",
-    content: "who won fifa world cup 2023 with some related links to read more about it",
+    content: "who won fifa world cup 2022 with some related links to read more about it",
   }
 ]
 
 const get_current_affairs = async (query: string) => {
-  const params = {
-    key: process.env["GOOGLE_CUSTOM_SEARCH_API_KEY"] || '',
-    cx: process.env["googleCSEId"] || '',
-    q: query
-  }
-  const queryString = new URLSearchParams(params).toString();
-  const apiUrl = `https://www.googleapis.com/customsearch/v1?${queryString}`;
-  const response = await fetch(apiUrl);
-  const data = await response.json();
-  const results = data?.items?.slice(0, 5)?.map((item: any) => ({
-    title: item.title,
-    link: item.link,
-    snippet: item.snippet,
-  })) || []
-  return JSON.stringify(results)
+  //Call to google search api
+  // const results = await fetch(`https://www.googleapis.com/customsearch/v1?${query}`);
+  return 'Argentina national football team'
 }
 
-const available_functions: { [key: string]: (query: string) => Promise<string> } = {
+const available_functions: Record<string, (query: string) => Promise<string>> = {
   get_current_affairs: get_current_affairs,
 };
 
@@ -129,6 +117,7 @@ client.defineJob({
     });
 
     //Function call example for OpenAI
+    //Send the conversation and available functions to GPT
     const createCompletion = async () => {
       const chatCompletion = await io.openai.createChatCompletion("chat-completion", {
         model: "gpt-3.5-turbo",
@@ -140,24 +129,29 @@ client.defineJob({
     }
 
     const chatCompletion = await createCompletion();
-
-    // @ts-ignore
-    const response = chatCompletion?.data?.choices[0].message;
+    // This response will contain JSON which contains function name and args 
+    // that you can use to call the function in your code.
+    const response = chatCompletion?.choices[0].message;
 
     if ('function_call' in response) {
       const function_name: string = "get_current_affairs";
       const function_call = available_functions[function_name];
-      const args = JSON.parse(response['function_call']['arguments'])
-      // @ts-ignore
-      const fn_response = await function_call(...Object.values(args));
+      //Get arguments from GPT response
+      const args = JSON.parse(response['function_call']?.['arguments'] || '{}');
+
+      //Call the function in our code using the arguments from openAI
+      const fn_response = await function_call(...Object.values(args) as [string]);
+
+      // Extend conversation with function result & Get new response from GPT 
       chatMessages.push({
         role: 'function',
         name: function_name,
         content: fn_response
       })
       const finalCompletion = await createCompletion();
-      // @ts-ignore
-      await io.logger.info(finalCompletion?.data?.choices[0].message);
+
+      //This will contain the final result
+      await io.logger.info(finalCompletion?.choices[0].message.content?.toString() || '');
     }
   },
 });
