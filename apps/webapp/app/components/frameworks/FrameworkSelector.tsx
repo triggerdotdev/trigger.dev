@@ -69,7 +69,7 @@ export function FrameworkSelector() {
           <FrameworkLink to={projectSetupSvelteKitPath(organization, project)}>
             <SvelteKitLogo className="w-44" />
           </FrameworkLink>
-          <FrameworkLink to={projectSetupFastifyPath(organization, project)}>
+          <FrameworkLink to={projectSetupFastifyPath(organization, project)} supported>
             <FastifyLogo className="w-36" />
           </FrameworkLink>
           <FrameworkLink to={projectSetupNestjsPath(organization, project)}>
