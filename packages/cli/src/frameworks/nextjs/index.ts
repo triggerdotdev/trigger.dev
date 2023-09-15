@@ -1,4 +1,3 @@
-import { pathToFileURL } from "url";
 import { Framework } from "..";
 import { InstallPackage } from "../../utils/addDependencies";
 import { PackageManager } from "../../utils/getUserPkgManager";
@@ -77,13 +76,10 @@ export class NextJs implements Framework {
 }
 
 async function detectNextConfigFile(path: string): Promise<boolean> {
-  return fs
-    .access(pathModule.join(path, "next.config.js"))
-    .then(() => true)
-    .catch(() => false);
+  return pathExists(pathModule.join(path, "next.config.js"));
 }
 
-async function detectNextDependency(path: string): Promise<boolean> {
+export async function detectNextDependency(path: string): Promise<boolean> {
   const packageJsonContent = await readPackageJson(path);
   if (!packageJsonContent) {
     return false;

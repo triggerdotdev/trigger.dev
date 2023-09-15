@@ -1,9 +1,30 @@
 import mock from "mock-fs";
 import { detectPagesOrAppDir, detectUseOfSrcDir } from ".";
+import { getFramework } from "..";
 // import { detectUseOfSrcDir } from ".";
 
 afterEach(() => {
   mock.restore();
+});
+
+describe("Next project detection", () => {
+  test("has dependency", async () => {
+    mock({
+      "package.json": JSON.stringify({ dependencies: { next: "1.0.0" } }),
+    });
+
+    const framework = await getFramework("", "npm");
+    expect(framework?.id).toEqual("nextjs");
+  });
+
+  test("no dependency", async () => {
+    mock({
+      "package.json": JSON.stringify({ dependencies: { foo: "1.0.0" } }),
+    });
+
+    const framework = await getFramework("", "npm");
+    expect(framework?.id).not.toEqual("nextjs");
+  });
 });
 
 describe("src directory", () => {
