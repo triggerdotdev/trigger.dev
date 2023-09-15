@@ -16,7 +16,7 @@ import {
   projectTriggersPath,
 } from "~/utils/pathBuilder";
 import { UserProfilePhoto } from "../UserProfilePhoto";
-import { NavLinkButton } from "../primitives/Buttons";
+import { LinkButton, NavLinkButton } from "../primitives/Buttons";
 import { NamedIcon, type IconNames } from "../primitives/NamedIcon";
 import { SimpleTooltip } from "../primitives/Tooltip";
 
@@ -96,7 +96,7 @@ export function ProjectSideMenu() {
           data-action="environments & api keys"
         />
       </div>
-      <div className="flex flex-col">
+      <div className="flex flex-col gap-1">
         <SideMenuItem
           name="Team"
           icon="team"
@@ -117,6 +117,14 @@ export function ProjectSideMenu() {
           to={projectSetupPath(organization, project)}
           isCollapsed={isCollapsed}
           data-action="onboarding"
+        />
+        <SideMenuItem
+          name="Homepage"
+          icon="external-link"
+          to="https://trigger.dev"
+          isCollapsed={isCollapsed}
+          data-action="onboarding"
+          target="_blank"
         />
         <SideMenuItem
           name="Account"
@@ -146,6 +154,7 @@ function SideMenuItem({
   isCollapsed,
   forceActive,
   hasWarning = false,
+  target,
 }: {
   icon: IconNames | React.ComponentType<any>;
   name: string;
@@ -153,6 +162,7 @@ function SideMenuItem({
   isCollapsed: boolean;
   hasWarning?: boolean;
   forceActive?: boolean;
+  target?: string;
 }) {
   return (
     <SimpleTooltip
@@ -164,13 +174,14 @@ function SideMenuItem({
           LeadingIcon={icon}
           leadingIconClassName="text-dimmed"
           to={to}
+          target={target}
           className={({ isActive, isPending }) => {
             if (forceActive !== undefined) {
               isActive = forceActive;
             }
             return cn(
               "relative",
-              isActive
+              isActive || isPending
                 ? "bg-slate-800 text-bright group-hover:bg-slate-800"
                 : "text-dimmed group-hover:bg-slate-850 group-hover:text-bright"
             );
