@@ -1,0 +1,24 @@
+{
+  "name": "fastify-example",
+  "version": "0.0.1",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node build/index.js"
+  },
+  "dependencies": {
+    "@trigger.dev/fastify": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
+    "fastify": "^4.23.2",
+    "fastify-cli": "^5.8.0"
+  },
+  "trigger.dev": {
+    "endpointId": "fastify-example"
+  },
+  "engines": {
+    "node": ">=18.14.1"
+  },
+  "devDependencies": {
+    "@trigger.dev/cli": "workspace:*",
+    "fastify-tsconfig": "^1.0.1"
+  }
+}
