@@ -98,7 +98,7 @@ const CommentDataSchema = z.object({
   body: z.string(),
   issueId: z.string(),
   userId: z.string(),
-  editedAt: z.string(),
+  editedAt: z.string().optional(),
   reactionData: z.array(ReactionShortSchema),
   issue: z.object({
     id: z.string(),
@@ -219,7 +219,7 @@ const CycleDataSchema = z.object({
 export const WebhookPayloadBaseSchema = z.object({
   action: WebhookActionTypeSchema,
   createdAt: z.coerce.date(),
-  url: z.string().url(),
+  url: z.string().url().optional(),
   // TODO: check if this is always present
   organizationId: z.string().optional(),
   webhookTimestamp: z.coerce.date(),
@@ -229,7 +229,7 @@ export const WebhookPayloadBaseSchema = z.object({
 export const IssueEventSchema = WebhookPayloadBaseSchema.extend({
   type: z.literal("Issue"),
   data: IssueDataSchema,
-  updatedFrom: IssueDataSchema.partial(),
+  updatedFrom: IssueDataSchema.partial().optional(),
 });
 export type IssueEvent = z.infer<typeof IssueEventSchema>;
 
@@ -237,49 +237,49 @@ export type IssueEvent = z.infer<typeof IssueEventSchema>;
 export const AttachmentEventSchema = WebhookPayloadBaseSchema.extend({
   type: z.literal("Attachment"),
   data: AttachmentDataSchema,
-  updatedFrom: AttachmentDataSchema.partial(),
+  updatedFrom: AttachmentDataSchema.partial().optional(),
 });
 export type AttachmentEvent = z.infer<typeof AttachmentEventSchema>;
 
 export const CommentEventSchema = WebhookPayloadBaseSchema.extend({
   type: z.literal("Comment"),
   data: CommentDataSchema,
-  updatedFrom: CommentDataSchema.partial(),
+  updatedFrom: CommentDataSchema.partial().optional(),
 });
 export type CommentEvent = z.infer<typeof CommentEventSchema>;
 
 export const IssueLabelEventSchema = WebhookPayloadBaseSchema.extend({
   type: z.literal("IssueLabel"),
   data: IssueLabelDataSchema,
-  updatedFrom: IssueLabelDataSchema.partial(),
+  updatedFrom: IssueLabelDataSchema.partial().optional(),
 });
 export type IssueLabelEvent = z.infer<typeof IssueLabelEventSchema>;
 
 export const ReactionEventSchema = WebhookPayloadBaseSchema.extend({
   type: z.literal("Reaction"),
   data: ReactionDataSchema,
-  updatedFrom: ReactionDataSchema.partial(),
+  updatedFrom: ReactionDataSchema.partial().optional(),
 });
 export type ReactionEvent = z.infer<typeof ReactionEventSchema>;
 
 export const ProjectEventSchema = WebhookPayloadBaseSchema.extend({
   type: z.literal("Project"),
   data: ProjectDataSchema,
-  updatedFrom: ProjectDataSchema.partial(),
+  updatedFrom: ProjectDataSchema.partial().optional(),
 });
 export type ProjectEvent = z.infer<typeof ProjectEventSchema>;
 
 export const ProjectUpdateEventSchema = WebhookPayloadBaseSchema.extend({
   type: z.literal("ProjectUpdate"),
   data: ProjectUpdateDataSchema,
-  updatedFrom: ProjectUpdateDataSchema.partial(),
+  updatedFrom: ProjectUpdateDataSchema.partial().optional(),
 });
 export type ProjectUpdateEvent = z.infer<typeof ProjectUpdateEventSchema>;
 
 export const CycleEventSchema = WebhookPayloadBaseSchema.extend({
   type: z.literal("Cycle"),
   data: CycleDataSchema,
-  updatedFrom: CycleDataSchema.partial(),
+  updatedFrom: CycleDataSchema.partial().optional(),
 });
 export type CycleEvent = z.infer<typeof CycleEventSchema>;
 
