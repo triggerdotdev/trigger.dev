@@ -28,7 +28,7 @@
 		"vite": "^4.4.2"
 	},
 	"dependencies": {
-		"@trigger.dev/sdk": "^2.0.14", 
+		"@trigger.dev/sdk": "workspace:*", 
 		"@trigger.dev/sveltekit": "workspace:*"
 	},
 	"trigger.dev": {

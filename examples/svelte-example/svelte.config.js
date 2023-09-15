@@ -13,8 +13,12 @@ const config = {
 		// See https://kit.svelte.dev/docs/adapters for more information about adapters.
 		adapter: adapter(),
 		alias: {
-			"@trigger.dev/sveltekit": "../../packages/sveltekit/src/index",
-			"@trigger.dev/sveltekit/*": "../../packages/sveltekit/src/*"
+			'@trigger.dev/sveltekit': '../../packages/sveltekit/src/index',
+			'@trigger.dev/sveltekit/*': '../../packages/sveltekit/src/*',
+			'@trigger.dev/sdk': '../../packages/trigger-sdk/src/index',
+			'@trigger.dev/sdk/*': '../../packages/trigger-sdk/src/*',
+			'@trigger.dev/core': '../../packages/core/src/index',
+			'@trigger.dev/core/*': '../../packages/core/src/*'
 		}
 	}
 };
