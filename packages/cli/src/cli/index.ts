@@ -77,6 +77,14 @@ program
     "-s, --sdk-package <integration package>",
     "The name of the SDK package to use (e.g. @slack/web-api)"
   )
+  .option(
+    "-o --openai-key <open ai api key>",
+    "The OpenAI API key to use to generate the initial code for this integration"
+  )
+  .option(
+    "-oo --openai-org <open ai org>",
+    "The OpenAI org id to use to generate the initial code for this integration"
+  )
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (path, options) => {
     await createIntegrationCommand(path, options);

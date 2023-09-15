@@ -40,8 +40,14 @@ export function BackgroundGradient({
 }
 
 /** This container should be placed around the content on a page */
-export function PageContainer({ children }: { children: React.ReactNode }) {
-  return <div className={cn("grid h-full grid-rows-[auto_1fr]")}>{children}</div>;
+export function PageContainer({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return <div className={cn("grid h-full grid-rows-[auto_1fr]", className)}>{children}</div>;
 }
 
 export function PageBody({

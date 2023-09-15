@@ -15,7 +15,9 @@ test("Create an account", async ({ page }) => {
   await page.getByLabel("Project name").type("Test Project");
   await page.getByRole("button", { name: "Create" }).click();
 
-  await expect(page.locator("h1").filter({ hasText: /^Jobs$/ })).toBeVisible();
+  await expect(
+    page.locator("h1").filter({ hasText: /^Choose a framework to get started/ })
+  ).toBeVisible();
 });
 
 test("Verify jobs from the test nextjs project", async ({ page }) => {
@@ -26,7 +28,6 @@ test("Verify jobs from the test nextjs project", async ({ page }) => {
   await page.getByRole("button", { name: "Send a magic link" }).click();
 
   await page.getByRole("link", { name: /Test Project/ }).click();
-  await expect(page.locator("h1").filter({ hasText: /^Jobs$/ })).toBeVisible();
 
   await page.getByRole("link", { name: "Environments & API Keys" }).click();
   await expect(page.locator("h1").filter({ hasText: "Environments & API Keys" })).toBeVisible();

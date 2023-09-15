@@ -1,8 +1,16 @@
 import { SupabaseClient, SupabaseClientOptions, createClient } from "@supabase/supabase-js";
-import { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
+import {
+  ConnectionAuth,
+  IO,
+  IOTask,
+  IntegrationTaskKey,
+  Json,
+  RunTaskErrorCallback,
+  RunTaskOptions,
+  TriggerIntegration,
+  retry,
+} from "@trigger.dev/sdk";
 import { GenericSchema } from "./types";
-
-const tasks = {};
 
 export type SupabaseIntegrationOptions<TSchema extends string> =
   | {
@@ -45,12 +53,12 @@ export class Supabase<
   Schema extends GenericSchema = Database[SchemaName] extends GenericSchema
     ? Database[SchemaName]
     : any,
-> implements
-    TriggerIntegration<
-      IntegrationClient<SupabaseClient<Database, SchemaName, Schema>, typeof tasks>
-    >
+> implements TriggerIntegration
 {
-  client: IntegrationClient<SupabaseClient<Database, SchemaName, Schema>, typeof tasks>;
+  private _options: SupabaseIntegrationOptions<SchemaName>;
+  private _client?: SupabaseClient<Database, SchemaName, Schema>;
+  private _io?: IO;
+  private _connectionKey?: string;
 
   /**
    * The native Supabase client. This is exposed for use outside of Trigger.dev jobs
@@ -72,8 +80,9 @@ export class Supabase<
   public readonly native: SupabaseClient<Database, SchemaName, Schema>;
 
   constructor(private options: SupabaseIntegrationOptions<SchemaName>) {
-    const supabaseOptions = options.options || {};
+    this._options = options;
 
+    const supabaseOptions = options.options || {};
     const supabaseUrl =
       "projectId" in options ? `https://${options.projectId}.supabase.co` : options.supabaseUrl;
 
@@ -84,16 +93,10 @@ export class Supabase<
         persistSession: false,
       },
     });
+  }
 
-    this.client = {
-      tasks,
-      usesLocalAuth: true,
-      client: this.native,
-      auth: {
-        supabaseUrl,
-        supabaseKey: options.supabaseKey,
-      },
-    };
+  get authSource() {
+    return "LOCAL" as const;
   }
 
   get id() {
@@ -102,5 +105,61 @@ export class Supabase<
 
   get metadata() {
     return { id: "supabase", name: "Supabase" };
+  }
+
+  get client() {
+    if (!this._client) {
+      throw new Error("Supabase client not initialized");
+    }
+    return this._client;
+  }
+
+  cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
+    const supabase = new Supabase<Database, SchemaName, Schema>(this._options);
+    supabase._io = io;
+    supabase._connectionKey = connectionKey;
+
+    const supabaseOptions = this._options.options || {};
+    const supabaseUrl =
+      "projectId" in this._options
+        ? `https://${this._options.projectId}.supabase.co`
+        : this._options.supabaseUrl;
+
+    supabase._client = createClient(supabaseUrl, this._options.supabaseKey, {
+      ...supabaseOptions,
+      auth: {
+        ...supabaseOptions.auth,
+        persistSession: false,
+      },
+    });
+    return supabase;
+  }
+
+  runTask<T, TResult extends Json<T> | void>(
+    key: IntegrationTaskKey,
+    callback: (
+      client: SupabaseClient<Database, SchemaName, Schema>,
+      task: IOTask,
+      io: IO
+    ) => Promise<TResult>,
+    options?: RunTaskOptions,
+    errorCallback?: RunTaskErrorCallback
+  ): Promise<TResult> {
+    if (!this._io) throw new Error("No IO");
+    if (!this._connectionKey) throw new Error("No connection key");
+    return this._io.runTask(
+      key,
+      (task, io) => {
+        if (!this._client) throw new Error("No client");
+        return callback(this._client, task, io);
+      },
+      {
+        icon: "supabase",
+        retry: retry.standardBackoff,
+        ...(options ?? {}),
+        connectionKey: this._connectionKey,
+      },
+      errorCallback
+    );
   }
 }

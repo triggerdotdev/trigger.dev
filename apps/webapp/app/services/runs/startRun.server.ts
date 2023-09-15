@@ -1,4 +1,9 @@
-import type { ConnectionType, Integration, IntegrationConnection } from "@trigger.dev/database";
+import {
+  RuntimeEnvironmentType,
+  type ConnectionType,
+  type Integration,
+  type IntegrationConnection,
+} from "@trigger.dev/database";
 import type { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { enqueueRunExecutionV2 } from "~/models/jobRunExecution.server";
@@ -83,7 +88,9 @@ export class StartRunService {
 
     const updatedRun = await updateRun();
 
-    await enqueueRunExecutionV2(updatedRun, this.#prismaClient);
+    await enqueueRunExecutionV2(updatedRun, this.#prismaClient, {
+      skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
+    });
   }
 
   async #handleMissingConnections(id: string, runConnectionsByKey: RunConnectionsByKey) {
@@ -140,6 +147,7 @@ async function findRun(tx: PrismaClientOrTransaction, id: string) {
     where: { id },
     include: {
       queue: true,
+      environment: true,
       version: {
         include: {
           integrations: {

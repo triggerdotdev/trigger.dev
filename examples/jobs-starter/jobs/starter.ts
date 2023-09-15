@@ -71,7 +71,7 @@ client.defineJob({
   run: async (_payload, io, _ctx) => {
     return await io.runTask(
       "get-stars-count",
-      { name: "Get Trigger.dev stars count" },
+
       async () => {
         try {
           const response = await fetch("https://api.github.com/repos/triggerdotdev/trigger.dev");
@@ -83,7 +83,8 @@ client.defineJob({
 
           return { success: false };
         }
-      }
+      },
+      { name: "Get Trigger.dev stars count" }
     );
   },
 });

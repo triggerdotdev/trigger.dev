@@ -1,9 +1,7 @@
 import { ArrowUpIcon } from "@heroicons/react/24/solid";
-import { LoaderArgs, SerializeFrom } from "@remix-run/server-runtime";
-import useWindowSize from "react-use/lib/useWindowSize";
+import { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { ExternalScriptsFunction } from "remix-utils";
-import { HowToSetupYourProject } from "~/components/helpContent/HelpContentText";
+import { FrameworkSelector } from "~/components/frameworks/FrameworkSelector";
 import { JobsTable } from "~/components/jobs/JobsTable";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
@@ -58,39 +56,35 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Jobs" />,
   expandSidebar: true,
-  scripts: (match) => [
-    {
-      src: "https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js",
-      crossOrigin: "anonymous",
-    },
-  ],
 };
 
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const { jobs } = useTypedLoaderData<typeof loader>();
-
   const { filterText, setFilterText, filteredItems } = useFilterJobs(jobs);
+  const hasJobs = jobs.length > 0;
 
   return (
-    <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title="Jobs" />
-        </PageTitleRow>
-        <PageInfoRow>
-          <PageInfoGroup>
-            <PageInfoProperty icon={"job"} label={"Active Jobs"} value={jobs.length} />
-          </PageInfoGroup>
-        </PageInfoRow>
-      </PageHeader>
+    <PageContainer className={hasJobs ? "" : "grid-rows-1"}>
+      {hasJobs && (
+        <PageHeader>
+          <PageTitleRow>
+            <PageTitle title="Jobs" />
+          </PageTitleRow>
+          <PageInfoRow>
+            <PageInfoGroup>
+              <PageInfoProperty icon={"job"} label={"Active Jobs"} value={jobs.length} />
+            </PageInfoGroup>
+          </PageInfoRow>
+        </PageHeader>
+      )}
       <PageBody>
         <Help>
           {(open) => (
             <div className={cn("grid gap-4", open ? "h-full grid-cols-2" : " h-full grid-cols-1")}>
               <div className="h-full">
-                {jobs.length > 0 ? (
+                {hasJobs ? (
                   <>
                     {jobs.some((j) => j.hasIntegrationsRequiringAction) && (
                       <Callout
@@ -126,7 +120,7 @@ export default function Page() {
                       )}
                   </>
                 ) : (
-                  <HowToSetupYourProject />
+                  <FrameworkSelector />
                 )}
               </div>
               <HelpContent title="Example Jobs and inspiration">

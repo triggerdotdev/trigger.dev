@@ -19,7 +19,10 @@ export async function action({ request }: ActionArgs) {
     },
     body: JSON.stringify({
       title: body.type,
-      content: body,
+      content: {
+        ...body,
+        example: { id: body.type, name: body.type, icon: "stripe", payload: body.data.object },
+      },
       readOnly: true,
     }),
   });

@@ -12,6 +12,7 @@ import {
   projectEnvironmentsPath,
   projectIntegrationsPath,
   projectPath,
+  projectSetupPath,
   projectTriggersPath,
 } from "~/utils/pathBuilder";
 import { UserProfilePhoto } from "../UserProfilePhoto";
@@ -57,8 +58,9 @@ export function ProjectSideMenu() {
       animate={isCollapsed ? "collapsed" : "expanded"}
       variants={menuVariants}
       initial={isCollapsed ? "collapsed" : "expanded"}
+      transition={{ type: "spring", duration: 0.5 }}
       className={cn(
-        "flex h-full flex-col justify-between overflow-hidden border-r border-uiBorder p-1 transition duration-300 ease-in-out"
+        "flex h-full flex-col justify-between overflow-hidden border-r border-uiBorder p-1 transition"
       )}
     >
       <div className="flex flex-col gap-1">
@@ -94,7 +96,7 @@ export function ProjectSideMenu() {
           data-action="environments & api keys"
         />
       </div>
-      <div className="flex flex-col">
+      <div className="flex flex-col gap-1">
         <SideMenuItem
           name="Team"
           icon="team"
@@ -108,6 +110,21 @@ export function ProjectSideMenu() {
           to={organizationBillingPath(organization)}
           isCollapsed={isCollapsed}
           data-action="usage & billing"
+        />
+        <SideMenuItem
+          name="Onboarding"
+          icon="clipboard-checked"
+          to={projectSetupPath(organization, project)}
+          isCollapsed={isCollapsed}
+          data-action="onboarding"
+        />
+        <SideMenuItem
+          name="Homepage"
+          icon="external-link"
+          to="https://trigger.dev"
+          isCollapsed={isCollapsed}
+          data-action="onboarding"
+          target="_blank"
         />
         <SideMenuItem
           name="Account"
@@ -137,6 +154,7 @@ function SideMenuItem({
   isCollapsed,
   forceActive,
   hasWarning = false,
+  target,
 }: {
   icon: IconNames | React.ComponentType<any>;
   name: string;
@@ -144,6 +162,7 @@ function SideMenuItem({
   isCollapsed: boolean;
   hasWarning?: boolean;
   forceActive?: boolean;
+  target?: string;
 }) {
   return (
     <SimpleTooltip
@@ -155,13 +174,14 @@ function SideMenuItem({
           LeadingIcon={icon}
           leadingIconClassName="text-dimmed"
           to={to}
+          target={target}
           className={({ isActive, isPending }) => {
             if (forceActive !== undefined) {
               isActive = forceActive;
             }
             return cn(
               "relative",
-              isActive
+              isActive || isPending
                 ? "bg-slate-800 text-bright group-hover:bg-slate-800"
                 : "text-dimmed group-hover:bg-slate-850 group-hover:text-bright"
             );

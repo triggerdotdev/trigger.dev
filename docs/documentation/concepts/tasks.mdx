@@ -44,9 +44,13 @@ client.defineJob({
     await io.wait("wait", 60 * 60 * 3); // wait for 3 hours
 
     // You can wrap your own code in a Task, for retrying, resumability and logging
-    const response = await io.runTask("my-task", { name: "My Task" }, async () => {
-      return await longRunningCode(payload.userId);
-    });
+    const response = await io.runTask(
+      "my-task",
+      async () => {
+        return await longRunningCode(payload.userId);
+      },
+      { name: "My Task" }
+    );
 
     return response;
   },

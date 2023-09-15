@@ -74,10 +74,11 @@ Both of these secrets should be set to the base URL of your fly application. For
 
 3. `DIRECT_URL`
 
-This needs to be set to the database connection string that was printed to your terminal after the creation step above:
+This needs to match the value of `DATABASE_URL` which was printed to your terminal after the creation step above:
 
 ```sh
-Connection string: postgres://postgres:<PASSWORD>@<fly db name>.flycast:5432
+The following secret was added to <app name>:
+  DATABASE_URL=postgres://postgres:<PASSWORD>@<fly db name>.flycast:5432/<app name>?sslmode=disable
 ```
 
 ### Optional
@@ -111,7 +112,7 @@ fly secrets set \
   SESSION_SECRET=<random string> \
   LOGIN_ORIGIN="https://<fly app name>.fly.dev" \
   APP_ORIGIN="https://<fly app name>.fly.dev" \
-  DIRECT_URL="postgres://postgres:<PASSWORD>@<fly db name>.flycast:5432" \
+  DIRECT_URL="postgres://postgres:<PASSWORD>@<fly db name>.flycast:5432/<app name>?sslmode=disable" \
   FROM_EMAIL="Acme Inc. <hello@yourdomain.com>" \
   REPLY_TO_EMAIL="Acme Inc. <reply@yourdomain.com>" \
   RESEND_API_KEY=<your API Key> \

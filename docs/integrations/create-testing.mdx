@@ -1,0 +1,50 @@
+---
+title: Testing
+description: "To test your integration you should create some example Jobs where you test all the functionality."
+---
+
+# examples/job-catalog
+
+When building an official integration (in the Trigger.dev monorepo) you should use the job-catalog to test your integration. This collection of examples is useful for creating docs as well as testing.
+
+## 1. Getting setup
+
+You can follow [the README](https://github.com/triggerdotdev/trigger.dev/tree/main/examples/job-catalog) to get setup. It explains how to add a new Job as well.
+
+## 2. Adding your package
+
+You'll need to add your integration to [the package.json file](https://github.com/triggerdotdev/trigger.dev/blob/main/examples/job-catalog/package.json):
+
+```json
+{
+  ...
+  "dependencies": {
+    "@trigger.dev/mynewapi": "workspace:*",
+  }
+  ...
+}
+```
+
+And to [the tsconfig.json file](https://github.com/triggerdotdev/trigger.dev/blob/main/examples/job-catalog/tsconfig.json):
+
+```json
+{
+  ...
+  "compilerOptions": {
+    ...
+    "paths": {
+      ...
+      "@trigger.dev/mynewapi": [
+        "../../integrations/mynewapi/src/index"
+      ],
+      "@trigger.dev/mynewapi/*": [
+        "../../integrations/mynewapi/src/*"
+      ]
+    }
+  }
+}
+```
+
+## 3. Adding your Jobs
+
+Create a new file in `src` that uses all the features of your integration. [The Typeform one](https://github.com/triggerdotdev/trigger.dev/blob/main/examples/job-catalog/src/typeform.ts) is a useful reference that has Tasks and Triggers.

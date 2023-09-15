@@ -1,0 +1,16 @@
+---
+title: OAuth
+description: "OAuth is used to authenticate users by passing them to a third-party service, such as Google or Facebook, to log in."
+---
+
+OAuth is the one part of creating an integration that requires new code to be deployed to the [Trigger.dev platform](https://github.com/triggerdotdev/trigger.dev).
+
+This is required because users need to be routed to the third-party service to log in, and then back to Trigger.dev once they have authenticated. Their credentials are stored (encrypted at rest) in the Trigger.dev database and automatically refreshed before they expire.
+
+## An example: GitHub
+
+You can view the [GitHub OAuth configuration here](https://github.com/triggerdotdev/trigger.dev/blob/main/apps/webapp/app/services/externalApis/integrations/github.ts). This file has configuration config for OAuth, details about the API Key implementation and metadata about the integration.
+
+## The catalog
+
+Any new integration must be exported and them imported in the [IntegrationCatalog](https://github.com/triggerdotdev/trigger.dev/blob/main/apps/webapp/app/services/externalApis/integrationCatalog.server.ts).

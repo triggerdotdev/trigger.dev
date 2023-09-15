@@ -1,4 +1,5 @@
 import { ActionArgs, LoaderArgs, json } from "@remix-run/server-runtime";
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
 import { PrismaClient, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
@@ -99,6 +100,9 @@ export class TriggerEndpointIndexHookService {
           slug: endpointSlug,
         },
       },
+      include: {
+        environment: true,
+      },
     });
 
     if (!endpoint) {
@@ -122,6 +126,8 @@ export class TriggerEndpointIndexHookService {
       },
       {
         runAt: new Date(Date.now() + 5000),
+        maxAttempts:
+          endpoint.environment.type === RuntimeEnvironmentType.DEVELOPMENT ? 1 : undefined,
       }
     );
   }

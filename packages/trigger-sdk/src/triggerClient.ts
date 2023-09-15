@@ -1,9 +1,12 @@
 import {
+  ConnectionAuth,
+  DeserializedJson,
   ErrorWithStackSchema,
   GetRunOptionsWithTaskDetails,
   GetRunsOptions,
   HandleTriggerSource,
   HttpSourceRequestHeadersSchema,
+  HttpSourceResponseMetadata,
   IndexEndpointResponse,
   InitializeTriggerBodySchema,
   LogLevel,
@@ -12,21 +15,21 @@ import {
   PreprocessRunBody,
   PreprocessRunBodySchema,
   Prettify,
-  REGISTER_SOURCE_EVENT,
-  RegisterSourceEvent,
-  RegisterSourceEventSchema,
-  RegisterTriggerBody,
+  REGISTER_SOURCE_EVENT_V2,
+  RegisterSourceEventSchemaV2,
+  RegisterSourceEventV2,
+  RegisterTriggerBodyV2,
   RunJobBody,
   RunJobBodySchema,
   RunJobResponse,
   ScheduleMetadata,
   SendEvent,
   SendEventOptions,
-  SourceMetadata,
+  SourceMetadataV2,
 } from "@trigger.dev/core";
 import { ApiClient } from "./apiClient";
 import { CanceledWithTaskError, ResumeWithTaskError, RetryWithTaskError } from "./errors";
-import { IntegrationClient, TriggerIntegration } from "./integrations";
+import { TriggerIntegration } from "./integrations";
 import { IO } from "./io";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { Job, JobOptions } from "./job";
@@ -40,12 +43,12 @@ import type {
   TriggerPreprocessContext,
 } from "./types";
 
-const registerSourceEvent: EventSpecification<RegisterSourceEvent> = {
-  name: REGISTER_SOURCE_EVENT,
+const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
+  name: REGISTER_SOURCE_EVENT_V2,
   title: "Register Source",
   source: "internal",
   icon: "register-source",
-  parsePayload: RegisterSourceEventSchema.parse,
+  parsePayload: RegisterSourceEventSchemaV2.parse,
 };
 
 export type TriggerClientOptions = {
@@ -72,7 +75,7 @@ export type TriggerClientOptions = {
 export class TriggerClient {
   #options: TriggerClientOptions;
   #registeredJobs: Record<string, Job<Trigger<EventSpecification<any>>, any>> = {};
-  #registeredSources: Record<string, SourceMetadata> = {};
+  #registeredSources: Record<string, SourceMetadataV2> = {};
   #registeredHttpSourceHandlers: Record<
     string,
     (
@@ -81,6 +84,7 @@ export class TriggerClient {
     ) => Promise<{
       events: Array<SendEvent>;
       response?: NormalizedResponse;
+      metadata?: HttpSourceResponseMetadata;
     } | void>
   > = {};
   #registeredDynamicTriggers: Record<
@@ -370,6 +374,8 @@ export class TriggerClient {
         const secret = headers.data["x-ts-secret"];
         const params = headers.data["x-ts-params"];
         const data = headers.data["x-ts-data"];
+        const auth = headers.data["x-ts-auth"];
+        const inputMetadata = headers.data["x-ts-metadata"];
 
         const source = {
           key,
@@ -377,15 +383,21 @@ export class TriggerClient {
           secret,
           params,
           data,
+          auth,
+          metadata: inputMetadata,
         };
 
-        const { response, events } = await this.#handleHttpSourceRequest(source, sourceRequest);
+        const { response, events, metadata } = await this.#handleHttpSourceRequest(
+          source,
+          sourceRequest
+        );
 
         return {
           status: 200,
           body: {
             events,
             response,
+            metadata,
           },
         };
       }
@@ -459,6 +471,7 @@ export class TriggerClient {
     source: ExternalSource<any, any>;
     event: EventSpecification<any>;
     params: any;
+    options?: Record<string, string[]>;
   }): void {
     this.#registeredHttpSourceHandlers[options.key] = async (s, r) => {
       return await options.source.handle(s, r, this.#internalLogger);
@@ -468,14 +481,15 @@ export class TriggerClient {
 
     if (!registeredSource) {
       registeredSource = {
+        version: "2",
         channel: options.source.channel,
         key: options.key,
         params: options.params,
-        events: [],
+        options: {},
         integration: {
           id: options.source.integration.id,
           metadata: options.source.integration.metadata,
-          authSource: options.source.integration.client.usesLocalAuth ? "LOCAL" : "HOSTED",
+          authSource: options.source.integration.authSource,
         },
         registerSourceJob: {
           id: options.key,
@@ -484,12 +498,14 @@ export class TriggerClient {
       };
     }
 
-    registeredSource.events = Array.from(
-      new Set([
-        ...registeredSource.events,
-        ...(typeof options.event.name === "string" ? [options.event.name] : options.event.name),
-      ])
+    //combined the previous source options with this one, making sure to include event
+    const newOptions = deepMergeOptions(
+      {
+        event: typeof options.event.name === "string" ? [options.event.name] : options.event.name,
+      },
+      options.options ?? {}
     );
+    registeredSource.options = deepMergeOptions(registeredSource.options, newOptions);
 
     this.#registeredSources[options.key] = registeredSource;
 
@@ -530,7 +546,7 @@ export class TriggerClient {
     this.#registeredSchedules[key] = jobs;
   }
 
-  async registerTrigger(id: string, key: string, options: RegisterTriggerBody) {
+  async registerTrigger(id: string, key: string, options: RegisterTriggerBodyV2) {
     return this.#client.registerTrigger(this.id, id, key, options);
   }
 
@@ -735,9 +751,15 @@ export class TriggerClient {
       secret: string;
       data: any;
       params: any;
+      auth?: ConnectionAuth;
+      metadata?: DeserializedJson;
     },
     sourceRequest: Request
-  ): Promise<{ response: NormalizedResponse; events: SendEvent[] }> {
+  ): Promise<{
+    response: NormalizedResponse;
+    events: SendEvent[];
+    metadata?: HttpSourceResponseMetadata;
+  }> {
     this.#internalLogger.debug("Handling HTTP source request", {
       source,
     });
@@ -787,6 +809,7 @@ export class TriggerClient {
             ok: true,
           },
         },
+        metadata: results.metadata,
       };
     }
 
@@ -830,12 +853,13 @@ export class TriggerClient {
           ok: true,
         },
       },
+      metadata: results.metadata,
     };
   }
 
   defineJob<
     TTrigger extends Trigger<EventSpecification<any>>,
-    TIntegrations extends Record<string, TriggerIntegration<IntegrationClient<any, any>>> = {},
+    TIntegrations extends Record<string, TriggerIntegration> = {},
   >(options: JobOptions<TTrigger, TIntegrations>) {
     return new Job<TTrigger, TIntegrations>(this, options);
   }
@@ -843,4 +867,22 @@ export class TriggerClient {
 
 function dynamicTriggerRegisterSourceJobId(id: string) {
   return `register-dynamic-trigger-${id}`;
+}
+
+type Options = Record<string, string[]>;
+
+function deepMergeOptions(obj1: Options, obj2: Options): Options {
+  const mergedOptions: Options = { ...obj1 };
+
+  for (const key in obj2) {
+    if (obj2.hasOwnProperty(key)) {
+      if (key in mergedOptions) {
+        mergedOptions[key] = [...mergedOptions[key], ...obj2[key]];
+      } else {
+        mergedOptions[key] = obj2[key];
+      }
+    }
+  }
+
+  return mergedOptions;
 }

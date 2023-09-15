@@ -1,5 +1,5 @@
 ---
-title: Introduction
+title: SendGrid
 ---
 
 <Snippet file="integration-getting-started.mdx" />
@@ -24,7 +24,7 @@ yarn add @trigger.dev/sendgrid@latest
 
 ## Authentication
 
- SendGrid integration supports API Keys. To authenticate, you'll need to create an instance of the SendGrid class and provide your API key.
+SendGrid integration supports API Keys. To authenticate, you'll need to create an instance of the SendGrid class and provide your API key.
 
 ```ts
 import { SendGrid } from "@trigger.dev/sendgrid";
@@ -33,7 +33,6 @@ const sendgrid = new SendGrid({
   id: "sendgrid",
   apiKey: process.env.SENDGRID_API_KEY!,
 });
-
 ```
 
 ## Example
@@ -59,7 +58,7 @@ client.defineJob({
   trigger: eventTrigger({
     name: "send.email",
     schema: z.object({
-      to:z.string(),
+      to: z.string(),
       subject: z.string(),
       text: z.string(),
     }),
@@ -76,7 +75,6 @@ client.defineJob({
     });
   },
 });
-
 ```
 
 ## Tasks

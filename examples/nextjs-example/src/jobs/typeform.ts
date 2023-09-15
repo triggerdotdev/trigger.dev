@@ -39,6 +39,30 @@ client.defineJob({
         uid: payload.formId,
       });
     }
+
+    await io.typeform.runTask(
+      "create-form",
+      async (client) => {
+        return client.forms.create({
+          data: {
+            title: "My Form",
+            fields: [
+              {
+                title: "What is your name?",
+                type: "short_text",
+                ref: "name",
+              },
+              {
+                title: "What is your email?",
+                type: "email",
+                ref: "email",
+              },
+            ],
+          },
+        });
+      },
+      { name: "Create Form" }
+    );
   },
 });
 

@@ -1,15 +1,29 @@
 import type {
+  DisplayProperty,
   EventFilter,
   Logger,
-  RuntimeEnvironmentType,
+  OverridableRunTaskOptions,
+  Prettify,
   RedactString,
+  RegisteredOptionsDiff,
+  RunTaskOptions,
+  RuntimeEnvironmentType,
+  SourceEventOption,
   TriggerMetadata,
 } from "@trigger.dev/core";
-import { DisplayProperty } from "@trigger.dev/core";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
 
-export type { RedactString, Logger };
+export type {
+  DisplayProperty,
+  Logger,
+  OverridableRunTaskOptions,
+  Prettify,
+  RedactString,
+  RegisteredOptionsDiff,
+  RunTaskOptions,
+  SourceEventOption,
+};
 
 export interface TriggerContext {
   /** Job metadata */

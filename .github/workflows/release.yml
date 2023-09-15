@@ -8,7 +8,7 @@ on:
       - ".github/workflows/release.yml"
       - "packages/**"
       - "!packages/**/*.md"
-      - "changesets/**"
+      - ".changeset/**"
       - "integrations/**"
       - "!integrations/**/*.md"
       - "pnpm-lock.yaml"

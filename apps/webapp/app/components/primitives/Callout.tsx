@@ -16,10 +16,10 @@ import { Paragraph } from "./Paragraph";
 
 export const variantClasses = {
   info: {
-    className: "border-blue-400/20 bg-blue-400/30",
-    icon: <InformationCircleIcon className="h-5 w-5 shrink-0 text-blue-400" />,
-    textColor: "text-blue-200",
-    linkClassName: "transition hover:bg-blue-400/40",
+    className: "border-slate-700 bg-slate-800",
+    icon: <InformationCircleIcon className="h-5 w-5 shrink-0 text-dimmed" />,
+    textColor: "text-bright",
+    linkClassName: "transition hover:bg-slate-750",
   },
   warning: {
     className: "border-yellow-400/20 bg-yellow-400/30",

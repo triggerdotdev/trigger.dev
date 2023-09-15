@@ -48,7 +48,9 @@ export const initCommand = async (options: InitCommandOptions) => {
   const isNextJsProject = await detectNextJsProject(resolvedPath);
 
   if (!isNextJsProject) {
-    logger.error("You must run this command in a Next.js project.");
+    logger.error(
+      "We currently only support automatic setup for Next.js projects (we didn't detect one). View our manual installation guides for all frameworks: https://trigger.dev/docs/documentation/quickstarts/introduction"
+    );
     telemetryClient.init.failed("not_nextjs_project", options);
     return;
   } else {
@@ -253,9 +255,19 @@ const resolveOptionsWithPrompts = async (
 // Detects if there are any uncommitted git changes at path
 async function detectGitChanges(path: string): Promise<boolean> {
   const git = simpleGit(path);
-  const status = await git.status();
 
-  return status.files.length > 0;
+  try {
+    const isRepo = await git.checkIsRepo();
+
+    if (isRepo) {
+      // Check if there are uncommitted changes
+      const status = await git.status();
+      return status.files.length > 0;
+    }
+    return false;
+  } catch (error) {
+    return false;
+  }
 }
 
 async function detectTypescriptProject(path: string): Promise<boolean> {

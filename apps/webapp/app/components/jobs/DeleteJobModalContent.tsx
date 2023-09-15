@@ -77,17 +77,18 @@ export function DeleteJobDialogContent({
         <fetcher.Form
           method="delete"
           action={`/resources/jobs/${id}${redirectTo ? `?redirectTo=${redirectTo}` : ""}`}
+          className="w-full"
         >
           <Button variant="danger/large" fullWidth>
             {isLoading ? (
-              <Spinner />
+              <Spinner color="white" />
             ) : (
               <>
                 <NamedIcon
                   name="trash-can"
                   className="mr-1.5 h-4 w-4 text-bright transition group-hover:text-bright"
                 />
-                Delete this job
+                Delete this Job
               </>
             )}
           </Button>
@@ -99,7 +100,7 @@ export function DeleteJobDialogContent({
               name="trash-can"
               className="mr-1.5 h-4 w-4 text-bright transition group-hover:text-bright"
             />
-            Delete this job
+            Delete this Job
           </>
         </Button>
       )}

@@ -1,0 +1,17 @@
+{
+  "extends": "astro/tsconfigs/strict",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/jobs/*": ["./src/jobs/*"],
+      "@/trigger": ["./src/trigger"],
+      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
+      "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
+      "@trigger.dev/core": ["../../packages/core/src/index"],
+      "@trigger.dev/core/*": ["../../packages/core/src/*"],
+      "@trigger.dev/astro": ["../../packages/astro/src/index"],
+      "@trigger.dev/astro/*": ["../../packages/astro/src/*"]
+    },
+  },
+}

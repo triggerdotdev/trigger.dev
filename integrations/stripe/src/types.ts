@@ -70,3 +70,19 @@ export type OnCheckoutSession =
 
 export type OnCustomerSubscription =
   ExtractWebhookPayload<Stripe.DiscriminatedEvent.CustomerSubscriptionEvent>;
+
+export type OnAccountEvent = ExtractWebhookPayload<Stripe.DiscriminatedEvent.AccountEvent>;
+
+export type OnCustomerEvent = ExtractWebhookPayload<Stripe.DiscriminatedEvent.CustomerEvent>;
+
+export type OnChargeEvent = ExtractWebhookPayload<Stripe.DiscriminatedEvent.ChargeEvent>;
+
+export type OnExternalAccountEvent =
+  ExtractWebhookPayload<Stripe.DiscriminatedEvent.AccountExternalAccountEvent>;
+
+export type OnPersonEvent = ExtractWebhookPayload<Stripe.DiscriminatedEvent.PersonEvent>;
+
+export type OnPaymentIntentEvent =
+  ExtractWebhookPayload<Stripe.DiscriminatedEvent.PaymentIntentEvent>;
+
+export type OnPayoutEvent = ExtractWebhookPayload<Stripe.DiscriminatedEvent.PayoutEvent>;

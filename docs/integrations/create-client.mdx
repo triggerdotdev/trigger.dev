@@ -1,0 +1,128 @@
+---
+title: Creating the client
+description: "Each integration has a client that performs the actual HTTP requests. Usually this is a wrapper around an official SDK provided by the service."
+---
+
+### `src/index.ts`
+
+This is where the client should live.
+
+<Tip>
+  We're adopting the naming convention of naming the class after the service, without a suffix or
+  prefix. We prefer the exported name be `Slack` instead of something like `SlackIntegration` or
+  `SlackConnector`
+</Tip>
+
+## Example: GitHub
+
+Comments are for instructional purposes only and should be removed in your implementation.
+
+```ts
+import { ConnectionAuth, IO, TriggerIntegration } from "@trigger.dev/sdk";
+//the official GitHub SDK
+import { Octokit } from "octokit";
+
+//define the options that will be passed to the constructor
+export type GithubIntegrationOptions = {
+  //this is required
+  id: string;
+  //GitHub can use OAuth or Personal Access Tokens, so this is optional
+  token?: string;
+};
+
+export class Github implements TriggerIntegration {
+  private _options: GithubIntegrationOptions;
+  private _client?: Octokit;
+  private _io?: IO;
+  private _connectionKey?: string;
+
+  constructor(private options: GithubIntegrationOptions) {
+    //if the token key is present but undefined, throw an error
+    //this is NOT the same as just: if (!options.token)
+    //it's a common user bug where an env var is used for the token but hasn't been set
+    if (Object.keys(options).includes("token") && !options.token) {
+      throw `Can't create GitHub integration (${options.id}) as token was undefined`;
+    }
+
+    this._options = options;
+  }
+
+  //this is used internally to identify the integration
+  get id() {
+    return this.options.id;
+  }
+
+  //this is used internally to identify the integration, and display nicely in the dashboard
+  get metadata() {
+    return { name: "GitHub", id: "github" };
+  }
+
+  //the two possible options are "LOCAL" or "HOSTED"
+  //LOCAL means that the client is using local auth (like a token)
+  //HOSTED means that the client is using hosted auth (like OAuth)
+  //GitHub supports both, and we use the presence of the token to determine which one to use
+  get authSource() {
+    return this._options.token ? ("LOCAL" as const) : ("HOSTED" as const);
+  }
+
+  //before the `run()` method is called on a Job, this function gets invoked
+  //this is important because the authentication data is dynamic, and can change (like OAuth credentials refreshing)
+  cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
+    const github = new Github(this._options);
+    github._io = io;
+    github._connectionKey = connectionKey;
+
+    if (this._options.token) {
+      github._client = new Octokit({
+        auth: this._options.token,
+        retry: {
+          enabled: false,
+        },
+      });
+    } else {
+      if (!auth) {
+        throw new Error("No auth");
+      }
+
+      github._client = new Octokit({
+        auth: auth.accessToken,
+        retry: {
+          enabled: false,
+        },
+      });
+    }
+
+    return github;
+  }
+}
+```
+
+The `TriggerIntegration` interface requires three properties and one method to be implemented:
+
+<ParamField body="id" type="string" required>
+  The `id` that uniquely identifies the Integration. This should always be passed through the
+  constructor options.
+</ParamField>
+
+<ParamField body="metadata" type="object" required>
+  <Expandable title="properties">
+    <ParamField body="id" type="string" required>
+      A unique identifier for the Integration. For example, the OpenAI Integration has an id of
+      `"openai"`.
+    </ParamField>
+    <ParamField body="name" type="string" required>
+      The name of the Integration. For example, the OpenAI Integration has a name of `"OpenAI"`.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="authSource" type="LOCAL | HOSTED" required>
+  "LOCAL" should be returned for API keys. "HOSTED" should be returned for OAuth.
+</ParamField>
+
+<ParamField body="cloneForRun" type="function" required>
+  This method is called before the `run()` method is called on a Job. This is important because the
+  authentication data is dynamic, and can change (like OAuth credentials refreshing). This method
+  should return a new instance of the Integration, with the new authentication data, io, and
+  connectionKey set so they can be used by runTask and any Triggers.
+</ParamField>

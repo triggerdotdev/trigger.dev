@@ -45,6 +45,13 @@ client.defineJob({
       },
     });
 
+    const result = await io.plain.runTask("create-issue", async (client) =>
+      client.createIssue({
+        customerId: "abcdefghij",
+        issueTypeId: "123456",
+      })
+    );
+
     const foundCustomer = await io.plain.getCustomerById("get-customer", {
       customerId: customer.id,
     });

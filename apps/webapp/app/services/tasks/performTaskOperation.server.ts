@@ -1,3 +1,5 @@
+import { env } from "process";
+import { Run } from "~/presenters/RunPresenter.server";
 import {
   FetchOperationSchema,
   FetchRequestInit,
@@ -6,7 +8,7 @@ import {
   RedactString,
   calculateRetryAt,
 } from "@trigger.dev/core";
-import type { Task } from "@trigger.dev/database";
+import { RuntimeEnvironmentType, type Task } from "@trigger.dev/database";
 import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { enqueueRunExecutionV2 } from "~/models/jobRunExecution.server";
 import { formatUnknownError } from "~/utils/formatErrors.server";
@@ -244,7 +246,9 @@ export class PerformTaskOperationService {
   }
 
   async #resumeRunExecution(task: NonNullable<FoundTask>, prisma: PrismaClientOrTransaction) {
-    await enqueueRunExecutionV2(task.run, prisma);
+    await enqueueRunExecutionV2(task.run, prisma, {
+      skipRetrying: task.run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
+    });
   }
 }
 
@@ -281,6 +285,7 @@ async function findTask(prisma: PrismaClient, id: string) {
       attempts: true,
       run: {
         include: {
+          environment: true,
           queue: true,
         },
       },

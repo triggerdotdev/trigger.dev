@@ -23,7 +23,7 @@ client.defineJob({
     slack,
   },
   run: async (payload, io, ctx) => {
-    await io.slack.postMessage("Slack 📝", {
+    const message = await io.slack.postMessage("Slack 📝", {
       channel: "C04GWUTDC3W",
       text: "Welcome to the team, Eric!",
     });
