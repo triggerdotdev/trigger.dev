@@ -9,12 +9,14 @@ afterEach(() => {
 
 const preReplacement = `import { createPagesRoute } from "@trigger.dev/nextjs";
 import { client } from "\${routePathPrefix}trigger";
+import { other } from "\${routePathPrefix}trigger";
 import "\${anotherPathPrefix}jobs";
 
 const { handler, config } = createPagesRoute(client);`;
 
 const postReplacement = `import { createPagesRoute } from "@trigger.dev/nextjs";
 import { client } from "@/trigger";
+import { other } from "@/trigger";
 import "@/src/jobs";
 
 const { handler, config } = createPagesRoute(client);`;
