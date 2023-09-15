@@ -1,4 +1,5 @@
 import mock from "mock-fs";
+import { detectUseOfSrcDir } from ".";
 // import { detectUseOfSrcDir } from ".";
 
 afterEach(() => {
@@ -13,7 +14,7 @@ describe("install", () => {
       },
     });
 
-    // const hasSrcDirectory = await detectUseOfSrcDir("/");
-    expect(true).toEqual(true);
+    const hasSrcDirectory = await detectUseOfSrcDir("");
+    expect(hasSrcDirectory).toEqual(true);
   });
 });
