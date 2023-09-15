@@ -92,7 +92,7 @@ async function detectNextDependency(path: string): Promise<boolean> {
   return packageJsonContent.dependencies?.next !== undefined;
 }
 
-async function detectUseOfSrcDir(path: string): Promise<boolean> {
+export async function detectUseOfSrcDir(path: string): Promise<boolean> {
   // Detects if the project is using a src directory
   try {
     await fs.access(pathModule.join(path, "src"));
