@@ -6,23 +6,21 @@ To begin, install the necessary packages in your Sveltekit project directory. Yo
 
 ```bash npm
 
-npm i @trigger.dev/sdk @trigger-dev/sveltekit
+npm i @trigger.dev/sdk @trigger.dev/sveltekit
 
 ```
 
 ```bash pnpm
-pnpm install @trigger.dev/sdk @trigger-dev/sveltekit
+pnpm install @trigger.dev/sdk @trigger.dev/sveltekit
 
 ```
 
 ```bash yarn
-yarn add @trigger.dev/sdk @trigger-dev/sveltekit
+yarn add @trigger.dev/sdk @trigger.dev/sveltekit
 
 ```
 
 </CodeGroup>
-
-
 
 ## Obtaining the Development API Key
 
@@ -55,21 +53,22 @@ To set up the Trigger Client for your project, follow these steps:
 
 2. **Choose Directory:**
 
-   Depending on your project structure, choose the appropriate directory for the configuration file. If your project uses a `src` directory, create the file within it. Otherwise, create it directly in the project root.
+   Create the file within the `src` directory. You can also create it directly in the project root.
 
 3. **Add Configuration Code:**
 
    Open the configuration file you created and add the following code:
 
-   ```typescript trigger.ts/js
+   ```typescript src/trigger.(ts/js)
    // trigger.ts (for TypeScript) or trigger.js (for JavaScript)
 
    import { TriggerClient } from "@trigger.dev/sdk";
+   import { TRIGGER_API_KEY, TRIGGER_API_URL } from "$env/static/private";
 
    export const client = new TriggerClient({
      id: "my-app",
-     apiKey: process.env.TRIGGER_API_KEY,
-     apiUrl: process.env.TRIGGER_API_URL,
+     apiKey: TRIGGER_API_KEY,
+     apiUrl: TRIGGER_API_URL,
    });
    ```
 
@@ -77,12 +76,7 @@ To set up the Trigger Client for your project, follow these steps:
 
 4. **File Location:**
 
-   Depending on your project structure, save the configuration file in the appropriate location:
-
-   - If your project uses a **src** directory, save the file within the **src** directory.
-   - If your project does not use a **src** directory, save the file in the project root.
-
-   **Example Directory Structure with src:**
+   Example Directory Structure:
 
    ```
        project-root/
@@ -91,31 +85,32 @@ To set up the Trigger Client for your project, follow these steps:
        ├── other files...
    ```
 
-   **Example Directory Structure without src:**
+  Example Directory Structure where the file is stored in the project root
 
    ```
        project-root/
+       |──src/
+           |──other files...
        ├── trigger.ts
        ├── other files...
    ```
 
-By following these steps, you'll configure the Trigger Client to work with your project, regardless of whether you have a separate **src** directory and whether you're using TypeScript or JavaScript files.
-
+By following these steps, you'll configure the Trigger Client to work with your project, regardless of whether you're using TypeScript or JavaScript files.
 
 ## Creating the API Route
 
 To establish an API route for interacting with Trigger.dev, follow these steps based on your project's file type and structure
 
-1. Create a new file named `+server.(ts/js)` within the `routes/api/trigger` directory.
+1. Create a new file named `+server.(ts/js)` within the `src/routes/api/trigger` directory.
 2. Add the following code to `trigger.(ts/js)`:
 
 ```typescript
-import { createSvelteRoute } from '@trigger.dev/sveltekit';
+import { createSvelteRoute } from "@trigger.dev/sveltekit";
 
-import { client } from '$trigger';
+import { client } from "$trigger";
 
 // Replace this with your own jobs
-import '$jobs/example';
+import "$jobs/example";
 
 // Create the Svelte route handler using the createSvelteRoute function
 const svelteRoute = createSvelteRoute(client);
@@ -124,8 +119,6 @@ const svelteRoute = createSvelteRoute(client);
 export const POST = svelteRoute.POST;
 ```
 
-
-
 ## Creating the Example Job
 
 1. Create a folder named `Jobs` alongside your `src` directory
@@ -133,7 +126,7 @@ export const POST = svelteRoute.POST;
 
 <CodeGroup>
 
-```typescript example.(ts/js)
+```typescript src/jobs/example.(ts/js)
 import { eventTrigger } from "@trigger.dev/sdk";
 import { client } from "$trigger";
 
@@ -155,7 +148,7 @@ client.defineJob({
 });
 ```
 
-```typescript index.ts/index.(ts/js)
+```typescript index.(ts/js)
 // import all your job files here
 
 export * from "./examples";
@@ -203,18 +196,31 @@ Your `package.json` file might look something like this:
 
 Replace **"my-app"** with the appropriate identifier you used during the step for creating the Trigger Client.
 
-## Next Steps
+## Running
 
-Start your Sveltekit project locally, and then execute the `dev` CLI command to run Trigger.dev locally. You should run this command every time you want to use Trigger.dev locally.
+### Run your Sveltekit app
 
-![Your first Job](/images/cli-dev.gif)
+Run your Sveltekit app locally, like you normally would. For example:
 
-<Warning>
-  Make sure your Sveltekit site is running locally before continuing. You must also leave this `dev`
-  terminal command running while you develop.
-</Warning>
+<CodeGroup>
 
-In a **new terminal window or tab** run:
+```bash npm
+npm run dev
+```
+
+```bash pnpm
+pnpm run dev
+```
+
+```bash yarn
+yarn run dev
+```
+
+</CodeGroup>
+
+### Run the CLI 'dev' command
+
+In a **_separate terminal window or tab_** run:
 
 <CodeGroup>
 
