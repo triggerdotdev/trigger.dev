@@ -290,6 +290,14 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integ
     throw Error("[@trigger.dev/linear] Invalid source IP.");
   }
 
+  const payloadUuid = request.headers.get("Linear-Delivery");
+  const payloadEvent = request.headers.get("Linear-Event");
+
+  if (!payloadUuid || !payloadEvent) {
+    logger.debug("[@trigger.dev/linear] Missing expected Linear headers");
+    return { events: [] };
+  }
+
   if (!request.body) {
     logger.debug("[@trigger.dev/linear] No body found");
     return { events: [] };
@@ -318,7 +326,7 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integ
   return {
     events: [
       {
-        id: webhookPayload.webhookId,
+        id: payloadUuid,
         name: webhookPayload.webhookTimestamp.toISOString(),
         source: "linear.app",
         payload: webhookPayload,
