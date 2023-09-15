@@ -5,9 +5,8 @@ import { client } from '$trigger';
 
 //this route is used to send events to Trigger.dev
 export const POST: RequestHandler = async () => {
-	console.log("this is the client",client)
 	const event = await client.sendEvent({
-		name: 'test.event'
+		name: 'test.event.testing'
 	});
 
 	return json(event);

@@ -1,6 +1,6 @@
 <!-- Home.svelte -->
 <script>
-  import SendTestEventButton from "$lib/SendEvent.svelte";
+	import SendTestEventButton from '$lib/SendEvent.svelte';
 </script>
 
 <div style="padding: 1rem;">

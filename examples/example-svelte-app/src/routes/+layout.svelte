@@ -1,12 +1,16 @@
 <script>
     import {TriggerProvider} from '@trigger.dev/svelte'
+	import {
+		PUBLIC_API_URL, 
+		PUBLIC_TRIGGER_API_KEY,
+	} from '$env/static/public';
 	import {QueryClientProvider, QueryClient} from '@tanstack/svelte-query'
 
 	const queryClient = new QueryClient()
 
 </script>
 
-    <TriggerProvider publicApiKey="pk_dev_fayCzrGd0G5jRCtlWACE" >
+    <TriggerProvider publicApiKey={PUBLIC_TRIGGER_API_KEY} apiUrl={PUBLIC_API_URL} >
 		<QueryClientProvider client={queryClient}>
 	<main>
 		<slot />
