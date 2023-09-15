@@ -281,11 +281,21 @@ export const DynamicTriggerEndpointMetadataSchema = z.object({
 
 export type DynamicTriggerEndpointMetadata = z.infer<typeof DynamicTriggerEndpointMetadataSchema>;
 
+export const BackgroundFunctionMetadataSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  version: z.string(),
+  enabled: z.boolean(),
+});
+
+export type BackgroundFunctionMetadata = z.infer<typeof BackgroundFunctionMetadataSchema>;
+
 export const IndexEndpointResponseSchema = z.object({
   jobs: z.array(JobMetadataSchema),
   sources: z.array(SourceMetadataSchema),
   dynamicTriggers: z.array(DynamicTriggerEndpointMetadataSchema),
   dynamicSchedules: z.array(RegisterDynamicSchedulePayloadSchema),
+  backgroundFunctions: z.array(BackgroundFunctionMetadataSchema).optional(),
 });
 
 export type IndexEndpointResponse = z.infer<typeof IndexEndpointResponseSchema>;
@@ -593,7 +603,7 @@ export const RunTaskOptionsSchema = z.object({
   /** Allows you to link the Integration connection in the logs. This is handled automatically in integrations.  */
   connectionKey: z.string().optional(),
   /** An operation you want to perform on the Trigger.dev platform, current only "fetch" is supported. If you wish to `fetch` use [`io.backgroundFetch()`](https://trigger.dev/docs/sdk/io/backgroundfetch) instead. */
-  operation: z.enum(["fetch"]).optional(),
+  operation: z.enum(["fetch", "invokeBackgroundFunction"]).optional(),
   /** A No Operation means that the code won't be executed. This is used internally to implement features like [io.wait()](https://trigger.dev/docs/sdk/io/wait).  */
   noop: z.boolean().default(false),
   redact: RedactSchema.optional(),
@@ -729,3 +739,57 @@ export const CreateExternalConnectionBodySchema = z.object({
 });
 
 export type CreateExternalConnectionBody = z.infer<typeof CreateExternalConnectionBodySchema>;
+
+export const UploadBackgroundFunctionRequestBodySchema = z.object({
+  id: z.string(),
+  version: z.string(),
+  fileName: z.string(),
+  bundle: z.string(),
+  sourcemap: z.string(),
+  dependencies: z.record(z.string()),
+  nodeVersion: z.string(),
+});
+
+export type UploadBackgroundFunctionRequestBody = z.infer<
+  typeof UploadBackgroundFunctionRequestBodySchema
+>;
+
+export const UploadBackgroundFunctionResponseBodySchema = z.object({
+  id: z.string(),
+  hash: z.string(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+
+export type UploadBackgroundFunctionResponseBody = z.infer<
+  typeof UploadBackgroundFunctionResponseBodySchema
+>;
+
+export const CreateBackgroundFunctionWorkerImageRequestBodySchema = z.object({
+  registry: z.string(),
+  name: z.string(),
+  tag: z.string(),
+  digest: z.string(),
+  size: z.number(),
+});
+
+export type CreateBackgroundFunctionWorkerImageRequestBody = z.infer<
+  typeof CreateBackgroundFunctionWorkerImageRequestBodySchema
+>;
+
+export const CreateBackgroundFunctionWorkerImageResponseBodySchema = z.object({
+  id: z.string(),
+  backgroundTaskArtifactId: z.string(),
+  backgroundTaskId: z.string(),
+  registry: z.string(),
+  name: z.string(),
+  tag: z.string(),
+  digest: z.string(),
+  size: z.number(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+
+export type CreateBackgroundFunctionWorkerImageResponseBody = z.infer<
+  typeof CreateBackgroundFunctionWorkerImageResponseBodySchema
+>;

@@ -9,6 +9,8 @@ import { RegisterDynamicScheduleService } from "../triggers/registerDynamicSched
 import { RegisterDynamicTriggerService } from "../triggers/registerDynamicTrigger.server";
 import { DisableJobService } from "../jobs/disableJob.server";
 import { RegisterSourceServiceV2 } from "../sources/registerSourceV2.server";
+import { DisableBackgroundFunctionService } from "../backgroundFunctions/disableBackgroundFunction.server";
+import { RegisterBackgroundFunctionService } from "../backgroundFunctions/registerBackgroundFunction.server";
 
 export class IndexEndpointService {
   #prismaClient: PrismaClient;
@@ -18,6 +20,8 @@ export class IndexEndpointService {
   #registerSourceServiceV2 = new RegisterSourceServiceV2();
   #registerDynamicTriggerService = new RegisterDynamicTriggerService();
   #registerDynamicScheduleService = new RegisterDynamicScheduleService();
+  #registerBackgroundFunctionService = new RegisterBackgroundFunctionService();
+  #disableBackgroundFunctionService = new DisableBackgroundFunctionService();
 
   constructor(prismaClient: PrismaClient = prisma) {
     this.#prismaClient = prismaClient;
@@ -40,7 +44,13 @@ export class IndexEndpointService {
       throw new Error(indexResponse.error);
     }
 
-    const { jobs, sources, dynamicTriggers, dynamicSchedules } = indexResponse.data;
+    const {
+      jobs,
+      sources,
+      dynamicTriggers,
+      dynamicSchedules,
+      backgroundFunctions = [],
+    } = indexResponse.data;
 
     logger.debug("Indexing endpoint", {
       endpointId: endpoint.id,
@@ -62,6 +72,8 @@ export class IndexEndpointService {
       dynamicTriggers: 0,
       dynamicSchedules: 0,
       disabledJobs: 0,
+      backgroundFunctions: 0,
+      disabledBackgroundFunctions: 0,
     };
 
     const existingJobs = await this.#prismaClient.job.findMany({
@@ -205,6 +217,100 @@ export class IndexEndpointService {
           dynamicSchedule,
           error,
         });
+      }
+    }
+
+    const existingBackgroundFunctions = await this.#prismaClient.backgroundFunction.findMany({
+      where: {
+        projectId: endpoint.projectId,
+        deletedAt: null,
+      },
+      include: {
+        aliases: {
+          where: {
+            name: "latest",
+            environmentId: endpoint.environmentId,
+          },
+          include: {
+            version: true,
+          },
+          take: 1,
+        },
+      },
+    });
+
+    for (const backgroundFunction of backgroundFunctions) {
+      if (!backgroundFunction.enabled) {
+        const disabledBackgroundFunction = await this.#disableBackgroundFunctionService
+          .call(endpoint, { slug: backgroundFunction.id, version: backgroundFunction.version })
+          .catch((error) => {
+            logger.error("Failed to disable background task", {
+              endpointId: endpoint.id,
+              backgroundFunction,
+              error,
+            });
+
+            return;
+          });
+
+        if (disabledBackgroundFunction) {
+          indexStats.disabledJobs++;
+        }
+      } else {
+        try {
+          const registeredVersion = await this.#registerBackgroundFunctionService.call(
+            endpoint,
+            backgroundFunction
+          );
+
+          if (registeredVersion) {
+            indexStats.backgroundFunctions++;
+          }
+        } catch (error) {
+          logger.error("Failed to register background task", {
+            endpointId: endpoint.id,
+            backgroundFunction,
+            error,
+          });
+        }
+      }
+    }
+
+    const missingBackgroundFunctions = existingBackgroundFunctions.filter((backgroundFunction) => {
+      return !backgroundFunctions.find((b) => b.id === backgroundFunction.slug);
+    });
+
+    if (missingBackgroundFunctions.length > 0) {
+      logger.debug("Disabling missing background tasks", {
+        endpointId: endpoint.id,
+        missingIds: missingBackgroundFunctions.map((job) => job.slug),
+      });
+
+      for (const backgroundFunction of missingBackgroundFunctions) {
+        const latestVersion = backgroundFunction.aliases[0]?.version;
+
+        if (!latestVersion) {
+          continue;
+        }
+
+        const disabledBackgroundFunction = await this.#disableBackgroundFunctionService
+          .call(endpoint, {
+            slug: backgroundFunction.slug,
+            version: latestVersion.version,
+          })
+          .catch((error) => {
+            logger.error("Failed to disable background task", {
+              endpointId: endpoint.id,
+              backgroundFunction,
+              error,
+            });
+
+            return;
+          });
+
+        if (disabledBackgroundFunction) {
+          indexStats.disabledJobs++;
+        }
       }
     }
 

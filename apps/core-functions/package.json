@@ -1,0 +1,23 @@
+{
+  "private": true,
+  "name": "core-functions",
+  "version": "1.0.0",
+  "sideEffects": false,
+  "scripts": {},
+  "eslintIgnore": [
+    "/node_modules",
+    "/build",
+    "/public/build"
+  ],
+  "dependencies": {
+    "@trigger.dev/functions": "workspace:*",
+    "@trigger.dev/functions-worker": "workspace:*"
+  },
+  "devDependencies": {
+    "rimraf": "^3.0.2",
+    "typescript": "^5.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

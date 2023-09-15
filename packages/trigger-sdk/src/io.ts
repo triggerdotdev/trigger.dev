@@ -11,7 +11,6 @@ import {
   RunTaskOptions,
   SendEvent,
   SendEventOptions,
-  SerializableJson,
   SerializableJsonSchema,
   ServerTask,
   UpdateTriggerSourceBodyV2,
@@ -25,7 +24,6 @@ import {
   RetryWithTaskError,
   isTriggerError,
 } from "./errors";
-import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { calculateRetryAt } from "./retry";
 import { TriggerClient } from "./triggerClient";
 import { DynamicTrigger } from "./triggers/dynamic";
@@ -197,6 +195,43 @@ export class IO {
         ],
       }
     )) as TResponseData;
+  }
+
+  /** `io.invokeBackgroundFunction()` invokes a background function by id and version.
+   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param id The id of the background function to invoke.
+   * @param version The version of the background function to invoke.
+   * @param payload The payload to send to the background function.
+   */
+  async invokeBackgroundFunction<TResultData>(
+    key: string | any[],
+    id: string,
+    version: string,
+    payload: any
+  ): Promise<TResultData> {
+    return (await this.runTask(
+      key,
+      async (task) => {
+        return task.output;
+      },
+      {
+        name: `invoke ${id}`,
+        params: { payload, id, version },
+        operation: "invokeBackgroundFunction",
+        icon: "background",
+        noop: false,
+        properties: [
+          {
+            label: "Function ID",
+            text: id,
+          },
+          {
+            label: "Version",
+            text: version,
+          },
+        ],
+      }
+    )) as TResultData;
   }
 
   /** `io.sendEvent()` allows you to send an event from inside a Job run. The sent even will trigger any Jobs that are listening for that event (based on the name).

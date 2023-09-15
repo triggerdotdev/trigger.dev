@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "paths": {
+      "@trigger.dev/core/*": ["../core/src/*"],
+      "@trigger.dev/core": ["../core/src/index"]
+    },
+    "lib": ["DOM", "DOM.Iterable"],
+    "declaration": true,
+    "declarationMap": true
+  },
+  "exclude": ["node_modules"]
+}

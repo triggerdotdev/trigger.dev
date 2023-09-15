@@ -15,8 +15,7 @@ import { formatUnknownError } from "~/utils/formatErrors.server";
 import { safeJsonFromResponse } from "~/utils/json";
 import { logger } from "../logger.server";
 import { workerQueue } from "../worker.server";
-
-type FoundTask = Awaited<ReturnType<typeof findTask>>;
+import { KitchenSinkTask, findKitchenSinkTask } from "~/models/task.server";
 
 export class PerformTaskOperationService {
   #prismaClient: PrismaClient;
@@ -26,7 +25,7 @@ export class PerformTaskOperationService {
   }
 
   public async call(id: string) {
-    const task = await findTask(this.#prismaClient, id);
+    const task = await findKitchenSinkTask(this.#prismaClient, id);
 
     if (!task) {
       return;
@@ -104,7 +103,7 @@ export class PerformTaskOperationService {
   }
 
   #calculateRetryForResponse(
-    task: NonNullable<FoundTask>,
+    task: KitchenSinkTask,
     retry: FetchRetryOptions | undefined,
     response: Response
   ): Date | undefined {
@@ -194,7 +193,7 @@ export class PerformTaskOperationService {
     });
   }
 
-  async #resumeTaskWithError(task: NonNullable<FoundTask>, output: any) {
+  async #resumeTaskWithError(task: KitchenSinkTask, output: any) {
     await $transaction(this.#prismaClient, async (tx) => {
       await tx.task.update({
         where: { id: task.id },
@@ -220,7 +219,7 @@ export class PerformTaskOperationService {
     });
   }
 
-  async #resumeTask(task: NonNullable<FoundTask>, output: any) {
+  async #resumeTask(task: KitchenSinkTask, output: any) {
     await $transaction(this.#prismaClient, async (tx) => {
       await tx.taskAttempt.updateMany({
         where: {
@@ -245,7 +244,7 @@ export class PerformTaskOperationService {
     });
   }
 
-  async #resumeRunExecution(task: NonNullable<FoundTask>, prisma: PrismaClientOrTransaction) {
+  async #resumeRunExecution(task: KitchenSinkTask, prisma: PrismaClientOrTransaction) {
     await enqueueRunExecutionV2(task.run, prisma, {
       skipRetrying: task.run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
     });
@@ -276,21 +275,6 @@ function hydrateRedactedString(value: RedactString): string {
   }
 
   return result;
-}
-
-async function findTask(prisma: PrismaClient, id: string) {
-  return prisma.task.findUnique({
-    where: { id },
-    include: {
-      attempts: true,
-      run: {
-        include: {
-          environment: true,
-          queue: true,
-        },
-      },
-    },
-  });
 }
 
 // Add a random number of ms between 0ms and 5000ms

@@ -68,6 +68,9 @@ const workerCatalog = {
   connectionCreated: z.object({
     id: z.string(),
   }),
+  executeBackgroundFunctionTask: z.object({
+    id: z.string(),
+  }),
 };
 
 const executionWorkerCatalog = {
@@ -284,6 +287,11 @@ function getWorkerQueue() {
             connectionId: payload.connectionId,
           });
         },
+      },
+      executeBackgroundFunctionTask: {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 3,
+        handler: async (payload, job) => {},
       },
     },
   });

@@ -42,6 +42,8 @@ import type {
   TriggerContext,
   TriggerPreprocessContext,
 } from "./types";
+import { BackgroundFunction, BackgroundFunctionOptions } from "./backgroundFunction";
+import { runLocalStorage } from "./runLocalStorage";
 
 const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
   name: REGISTER_SOURCE_EVENT_V2,
@@ -93,6 +95,7 @@ export class TriggerClient {
   > = {};
   #jobMetadataByDynamicTriggers: Record<string, Array<{ id: string; version: string }>> = {};
   #registeredSchedules: Record<string, Array<{ id: string; version: string }>> = {};
+  #registeredBackgroundFunctions: Record<string, BackgroundFunction<any>> = {};
 
   #client: ApiClient;
   #internalLogger: Logger;
@@ -234,6 +237,9 @@ export class TriggerClient {
             id,
             jobs,
           })),
+          backgroundFunctions: Object.values(this.#registeredBackgroundFunctions).map((func) =>
+            func.toJSON()
+          ),
         };
 
         // if the x-trigger-job-id header is not set, we return all jobs
@@ -424,6 +430,10 @@ export class TriggerClient {
     this.#registeredJobs[job.id] = job;
 
     job.trigger.attachToJob(this, job);
+  }
+
+  attachBackgroundFunction(func: BackgroundFunction<any>): void {
+    this.#registeredBackgroundFunctions[func.id] = func;
   }
 
   attachDynamicTrigger(trigger: DynamicTrigger<any, any>): void {
@@ -648,11 +658,13 @@ export class TriggerClient {
     );
 
     try {
-      const output = await job.options.run(
-        job.trigger.event.parsePayload(body.event.payload ?? {}),
-        ioWithConnections,
-        context
-      );
+      const output = await runLocalStorage.runWith({ io, ctx: context }, () => {
+        return job.options.run(
+          job.trigger.event.parsePayload(body.event.payload ?? {}),
+          ioWithConnections,
+          context
+        );
+      });
 
       return { status: "SUCCESS", output };
     } catch (error) {
@@ -862,6 +874,12 @@ export class TriggerClient {
     TIntegrations extends Record<string, TriggerIntegration> = {},
   >(options: JobOptions<TTrigger, TIntegrations>) {
     return new Job<TTrigger, TIntegrations>(this, options);
+  }
+
+  defineBackgroundFunction<TPayload = any, TRunResult = any>(
+    options: BackgroundFunctionOptions<TPayload, TRunResult>
+  ) {
+    return new BackgroundFunction<TPayload, TRunResult>(this, options);
   }
 }
 
