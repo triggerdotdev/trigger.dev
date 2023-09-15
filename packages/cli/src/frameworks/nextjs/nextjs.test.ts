@@ -1,6 +1,7 @@
 import mock from "mock-fs";
 import { NextJs, detectPagesOrAppDir, detectUseOfSrcDir } from ".";
 import { getFramework } from "..";
+import { pathExists } from "../../utils/fileSystem";
 
 afterEach(() => {
   mock.restore();
@@ -93,26 +94,39 @@ describe("detect pages or app directory", () => {
 });
 
 describe("file creation", () => {
-  test("pages + javascript (without jsconfig)", async () => {
+  test("src/pages + javascript (without jsconfig)", async () => {
     mock({
-      "src/app": {},
+      "src/pages": {},
     });
 
     const projectType = await detectPagesOrAppDir("");
-    expect(projectType).toEqual("app");
+    expect(projectType).toEqual("pages");
 
     const nextJs = new NextJs();
     await nextJs.install("", { typescript: false, packageManager: "npm", endpointSlug: "foo" });
   });
 
-  test("pages + javascript (with blank jsconfig)", async () => {
+  test("src/pages + javascript (with blank jsconfig)", async () => {
     mock({
-      "src/app": {},
+      "src/pages": {},
       "jsconfig.json": "{}",
     });
 
     const projectType = await detectPagesOrAppDir("");
-    expect(projectType).toEqual("app");
+    expect(projectType).toEqual("pages");
+
+    const nextJs = new NextJs();
+    await nextJs.install("", { typescript: false, packageManager: "npm", endpointSlug: "foo" });
+  });
+
+  test("src/pages + javascript (with alias in jsconfig)", async () => {
+    mock({
+      "src/pages": {},
+      "jsconfig.json": `{"compilerOptions": {}}`,
+    });
+
+    const projectType = await detectPagesOrAppDir("");
+    expect(projectType).toEqual("pages");
 
     const nextJs = new NextJs();
     await nextJs.install("", { typescript: false, packageManager: "npm", endpointSlug: "foo" });

@@ -9,6 +9,7 @@ import { pathExists } from "../../utils/fileSystem";
 import { parse } from "tsconfck";
 import { detectMiddlewareUsage } from "./middleware";
 import { removeFileExtension } from "../../utils/removeFileExtension";
+import { getPathAlias } from "../../utils/pathAlias";
 
 export class NextJs implements Framework {
   id = "nextjs";
@@ -119,11 +120,7 @@ async function createTriggerPageRoute(
   isTypescriptProject: boolean,
   usesSrcDir = false
 ) {
-  const configFileName = isTypescriptProject ? "tsconfig.json" : "jsconfig.json";
-  const tsConfigPath = pathModule.join(projectPath, configFileName);
-  const { tsconfig } = await parse(tsConfigPath);
-
-  const pathAlias = getPathAlias(tsconfig, usesSrcDir);
+  const pathAlias = getPathAlias({ projectPath, isTypescriptProject, usesSrcDir });
   const routePathPrefix = pathAlias ? pathAlias + "/" : "../../";
 
   const extension = isTypescriptProject ? ".ts" : ".js";
@@ -252,7 +249,7 @@ async function createTriggerAppRoute(
   const examplesIndexFileName = `index${extension}`;
   const routeFileName = `route${extension}`;
 
-  const pathAlias = getPathAlias(tsconfig, usesSrcDir);
+  const pathAlias = getPathAlias({ projectPath, isTypescriptProject, usesSrcDir });
   const routePathPrefix = pathAlias ? pathAlias + "/" : "../../../";
 
   const routeContent = `
@@ -356,41 +353,4 @@ export * from "./examples"
 
     logger.success(`✅ Created example job at ${usesSrcDir ? "src/" : ""}jobs/examples.ts`);
   }
-}
-
-// Find the alias that points to the "src" directory.
-// So for example, the paths object could be:
-// {
-//   "@/*": ["./src/*"]
-// }
-// In this case, we would return "@"
-function getPathAlias(tsconfig: any, usesSrcDir: boolean) {
-  if (!tsconfig.compilerOptions.paths) {
-    return;
-  }
-
-  const paths = tsconfig.compilerOptions.paths;
-
-  const alias = Object.keys(paths).find((key) => {
-    const value = paths[key];
-
-    if (value.length !== 1) {
-      return false;
-    }
-
-    const path = value[0];
-
-    if (usesSrcDir) {
-      return path === "./src/*";
-    } else {
-      return path === "./*";
-    }
-  });
-
-  // Make sure to remove the trailing "/*"
-  if (alias) {
-    return alias.slice(0, -2);
-  }
-
-  return;
 }
