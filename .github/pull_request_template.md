@@ -2,9 +2,15 @@ Closes #<issue>
 
 ## ✅ Checklist
 
-- [ ] I have followed every step in the [contributing guide](https://github.com/triggerdotdev/trigger.dev/blob/82c5965e8a173f4fc805befa0cb2c8cf3519bc17/CONTRIBUTING.md)
+- [ ] I have followed every step in the [contributing guide](https://github.com/triggerdotdev/trigger.dev/blob/main/CONTRIBUTING.md)
 - [ ] The PR title follows the convention.
-- [ ] I performed a functional test on my final commit
+- [ ] I ran and tested the code works
+
+---
+
+## Testing
+
+_[Describe the steps you took to test this change]_
 
 ---
 
