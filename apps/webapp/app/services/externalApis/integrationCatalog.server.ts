@@ -1,5 +1,6 @@
 import { airtable } from "./integrations/airtable";
 import { github } from "./integrations/github";
+import { linear } from "./integrations/linear";
 import { openai } from "./integrations/openai";
 import { plain } from "./integrations/plain";
 import { resend } from "./integrations/resend";
@@ -33,6 +34,7 @@ export class IntegrationCatalog {
 export const integrationCatalog = new IntegrationCatalog({
   airtable,
   github,
+  linear,
   openai,
   plain,
   resend,
