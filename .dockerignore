@@ -1,35 +1,43 @@
-*.log
+\*.log
 .git
 .github
+
 # editor
+
 .idea
 .vscode
+
 # dependencies
+
 node_modules
 .pnp
 .pnp.js
 
 # testing
+
 coverage
 
 # next.js
+
 .next/
 build
 
 # packages
+
 build
 dist
-packages/**/dist
+packages/\*\*/dist
 
 # misc
+
 .DS_Store
-*.pem
+\*.pem
 
 .turbo
 .vercel
 .cache
 .output
-apps/**/public/build
+apps/\*\*/public/build
 
 cypress/screenshots
 cypress/videos
@@ -38,6 +46,7 @@ apps/**/styles/tailwind.css
 packages/**/styles/tailwind.css
 
 .changeset
+references
 examples
 CHANGESETS.md
 CONTRIBUTING.md
