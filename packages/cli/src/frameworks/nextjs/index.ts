@@ -45,7 +45,7 @@ export class NextJs implements Framework {
       logger.info("📁 Detected use of src directory");
     }
 
-    const nextJsDir = await detectPagesOrAppDir(path, usesSrcDir);
+    const nextJsDir = await detectPagesOrAppDir(path);
 
     const routeDir = pathModule.join(path, usesSrcDir ? "src" : "");
 
@@ -102,31 +102,15 @@ export async function detectUseOfSrcDir(path: string): Promise<boolean> {
   }
 }
 
-// Detect the use of pages or app dir in the Next.js project
-// Import the next.config.js file and check for experimental: { appDir: true }
-async function detectPagesOrAppDir(path: string, usesSrcDir = false): Promise<"pages" | "app"> {
-  const nextConfigPath = pathModule.join(path, "next.config.js");
-  const importedConfig = await import(pathToFileURL(nextConfigPath).toString()).catch(() => ({}));
-
-  if (importedConfig?.default?.experimental?.appDir) {
+export async function detectPagesOrAppDir(path: string): Promise<"pages" | "app"> {
+  const withoutSrcAppPath = pathModule.join(path, "app");
+  if (await pathExists(withoutSrcAppPath)) {
     return "app";
   }
 
-  // We need to check if src/app/page.tsx exists
-  // Or app/page.tsx exists
-  // If so then we return app
-  // If not return pages
-
-  const extensionsToCheck = ["jsx", "tsx", "js", "ts"];
-  const basePath = pathModule.join(path, usesSrcDir ? "src" : "", "app", `page.`);
-
-  for (const extension of extensionsToCheck) {
-    const appPagePath = basePath + extension;
-    const appPageExists = await pathExists(appPagePath);
-
-    if (appPageExists) {
-      return "app";
-    }
+  const withSrcAppPath = pathModule.join(path, "src", "app");
+  if (await pathExists(withSrcAppPath)) {
+    return "app";
   }
 
   return "pages";
