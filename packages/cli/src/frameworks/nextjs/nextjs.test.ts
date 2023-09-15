@@ -93,9 +93,22 @@ describe("detect pages or app directory", () => {
 });
 
 describe("file creation", () => {
-  test("pages directory", async () => {
+  test("pages + javascript (without jsconfig)", async () => {
     mock({
       "src/app": {},
+    });
+
+    const projectType = await detectPagesOrAppDir("");
+    expect(projectType).toEqual("app");
+
+    const nextJs = new NextJs();
+    await nextJs.install("", { typescript: false, packageManager: "npm", endpointSlug: "foo" });
+  });
+
+  test("pages + javascript (with blank jsconfig)", async () => {
+    mock({
+      "src/app": {},
+      "jsconfig.json": "{}",
     });
 
     const projectType = await detectPagesOrAppDir("");
