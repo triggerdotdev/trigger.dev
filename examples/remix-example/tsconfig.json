@@ -1,0 +1,28 @@
+{
+  "include": ["remix.env.d.ts", "**/*.ts", "**/*.tsx"],
+  "compilerOptions": {
+    "lib": ["DOM", "DOM.Iterable", "ES2019"],
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "target": "ES2019",
+    "strict": true,
+    "allowJs": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["./app/*"],
+      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
+      "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
+      "@trigger.dev/core": ["../../packages/core/src/index"],
+      "@trigger.dev/core/*": ["../../packages/core/src/*"],
+      "@trigger.dev/remix": ["../../packages/remix/src/index"],
+      "@trigger.dev/remix/*": ["../../packages/remix/src/*"]
+    },
+
+    // Remix takes care of building everything in `remix build`.
+    "noEmit": true
+  }
+}

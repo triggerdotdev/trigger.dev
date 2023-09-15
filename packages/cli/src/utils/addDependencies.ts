@@ -4,7 +4,7 @@ import ora, { type Ora } from "ora";
 import pathModule from "path";
 import { getUserPackageManager, type PackageManager } from "./getUserPkgManager";
 import fs from "fs/promises";
-import fetch from "node-fetch";
+import fetch from "./fetchUseProxy";
 import { z } from "zod";
 
 export type InstallPackage = {
