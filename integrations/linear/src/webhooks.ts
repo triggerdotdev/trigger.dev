@@ -211,6 +211,11 @@ export function createWebhookEventSource(
       // easily identify webhooks on linear
       const label = `trigger.${params.teamId ? params.teamId : "all"}`;
 
+      // TODO: remove tunnel
+      const url = process.env["DEV_TUNNEL"]
+        ? httpSource.url.replace("http://localhost:3030", process.env["DEV_TUNNEL"])
+        : httpSource.url;
+
       if (httpSource.active && webhookData.success) {
         const hasMissingOptions = Object.values(options).some(
           (option) => option.missing.length > 0
@@ -223,7 +228,7 @@ export function createWebhookEventSource(
             label,
             resourceTypes: allEvents,
             secret: httpSource.secret,
-            url: httpSource.url,
+            url,
           },
         });
 
@@ -235,7 +240,7 @@ export function createWebhookEventSource(
 
       // check for existing hooks that match url
       const listResponse = await io.integration.webhooks().list("list-webhooks");
-      const existingWebhook = listResponse.find((w) => w.url === httpSource.url);
+      const existingWebhook = listResponse.find((w) => w.url === url);
 
       if (existingWebhook) {
         const updatedWebhook = await io.integration.webhooks().update("update-webhook", {
@@ -244,7 +249,7 @@ export function createWebhookEventSource(
             label,
             resourceTypes: allEvents,
             secret: httpSource.secret,
-            url: httpSource.url,
+            url,
           },
         });
 
@@ -260,7 +265,7 @@ export function createWebhookEventSource(
         resourceTypes: allEvents,
         secret: httpSource.secret,
         teamId: params.teamId,
-        url: httpSource.url,
+        url,
       });
 
       // TODO
@@ -294,7 +299,8 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integ
       LINEAR_IPS[0]
     ).split(",")[0];
 
-  if (!LINEAR_IPS.includes(clientIp)) {
+  // TODO: remove tunnel
+  if (!process.env["DEV_TUNNEL"] && !LINEAR_IPS.includes(clientIp)) {
     logger.error("[@trigger.dev/linear] Error validating webhook source, IP invalid.");
     throw Error("[@trigger.dev/linear] Invalid source IP.");
   }
