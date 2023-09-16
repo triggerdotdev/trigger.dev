@@ -28,11 +28,8 @@ export async function createFileFromTemplate(params: {
     const output = replaceAll(params.template, params.replacements);
 
     const directoryName = path.dirname(params.outputPath);
-    console.log(`Creating directory ${directoryName}`);
     await fs.mkdir(directoryName, { recursive: true });
     await fs.writeFile(params.outputPath, output);
-
-    console.log(`Created file ${params.outputPath}`);
 
     return {
       success: true,

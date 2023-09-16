@@ -1,18 +1,17 @@
+import fs from "fs/promises";
+import pathModule from "path";
 import { Framework } from "..";
 import { InstallPackage } from "../../utils/addDependencies";
-import { PackageManager } from "../../utils/getUserPkgManager";
-import pathModule from "path";
-import { readPackageJson } from "../../utils/readPackageJson";
-import { logger } from "../../utils/logger";
-import { pathExists } from "../../utils/fileSystem";
-import { parse } from "tsconfck";
-import { detectMiddlewareUsage } from "./middleware";
-import { removeFileExtension } from "../../utils/removeFileExtension";
-import { getPathAlias } from "../../utils/pathAlias";
 import { createFileFromTemplate } from "../../utils/createFileFromTemplate";
-import fs from "fs/promises";
-import path from "path";
-import { fileURLToPath } from "url";
+import { pathExists } from "../../utils/fileSystem";
+import { PackageManager } from "../../utils/getUserPkgManager";
+import { logger } from "../../utils/logger";
+import { getPathAlias } from "../../utils/pathAlias";
+import { readFileIgnoringMock } from "../../utils/readFileIgnoringMock";
+import { readPackageJson } from "../../utils/readPackageJson";
+import { removeFileExtension } from "../../utils/removeFileExtension";
+import { detectMiddlewareUsage } from "./middleware";
+import { rootPath, templatesPath } from "../../paths";
 
 export class NextJs implements Framework {
   id = "nextjs";
@@ -124,19 +123,14 @@ async function createTriggerPageRoute(
   isTypescriptProject: boolean,
   usesSrcDir = false
 ) {
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
+  const templatesDir = pathModule.join(templatesPath(), "nextjs");
 
-  const pathAlias = getPathAlias({ projectPath, isTypescriptProject, usesSrcDir });
+  const pathAlias = await getPathAlias({ projectPath, isTypescriptProject, usesSrcDir });
   const fileExtension = isTypescriptProject ? ".ts" : ".js";
 
   //pages/api/trigger.js or src/pages/api/trigger.js
   const apiRoutePath = pathModule.join(path, "pages", "api", `trigger${fileExtension}`);
-
-  //todo load the file from a file that is copied by tsup
-  //e.g. templates/nextjs/whatever.js
-  //load the file using the
-
+  const apiRouteTemplate = await readFileIgnoringMock(pathModule.join(templatesDir, "apiRoute.js"));
   const apiRouteResult = await createFileFromTemplate({
     template: apiRouteTemplate,
     replacements: {
@@ -151,9 +145,7 @@ async function createTriggerPageRoute(
 
   //trigger.js or src/trigger.js
   const triggerFilePath = pathModule.join(path, `trigger${fileExtension}`);
-  const triggerTemplate = await readFileIgnoringMock(
-    pathModule.join(__dirname, "files", "trigger.js")
-  );
+  const triggerTemplate = await readFileIgnoringMock(pathModule.join(templatesDir, "trigger.js"));
   const triggerResult = await createFileFromTemplate({
     template: triggerTemplate,
     replacements: {
@@ -172,7 +164,7 @@ async function createTriggerPageRoute(
   //jobs/examples.js or src/jobs/examples.js
   const exampleJobFilePath = pathModule.join(exampleDirectory, `examples${fileExtension}`);
   const exampleJobTemplate = await readFileIgnoringMock(
-    pathModule.join(__dirname, "files", "exampleJob.js")
+    pathModule.join(templatesDir, "exampleJob.js")
   );
   const exampleJobResult = await createFileFromTemplate({
     template: exampleJobTemplate,
@@ -189,7 +181,7 @@ async function createTriggerPageRoute(
   //jobs/index.js or src/jobs/index.js
   const jobsIndexFilePath = pathModule.join(exampleDirectory, `index${fileExtension}`);
   const jobsIndexTemplate = await readFileIgnoringMock(
-    pathModule.join(__dirname, "files", "jobsIndex.js")
+    pathModule.join(templatesDir, "jobsIndex.js")
   );
   const jobsIndexResult = await createFileFromTemplate({
     template: jobsIndexTemplate,
