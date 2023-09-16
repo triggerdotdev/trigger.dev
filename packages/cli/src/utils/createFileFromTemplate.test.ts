@@ -38,8 +38,9 @@ describe("Template files", () => {
       },
     });
 
+    const template = await fs.readFile("templates/some-file.js", "utf-8");
     const result = await createFileFromTemplate({
-      templatePath: "templates/some-file.js",
+      template,
       replacements: {
         routePathPrefix: "@/",
         anotherPathPrefix: "@/src/",

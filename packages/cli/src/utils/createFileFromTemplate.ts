@@ -13,7 +13,7 @@ type Result =
     };
 
 export async function createFileFromTemplate(params: {
-  templatePath: string;
+  template: string;
   replacements: Record<string, string>;
   outputPath: string;
 }): Promise<Result> {
@@ -25,12 +25,14 @@ export async function createFileFromTemplate(params: {
   }
 
   try {
-    const template = await fs.readFile(params.templatePath, "utf-8");
-    const output = replaceAll(template, params.replacements);
+    const output = replaceAll(params.template, params.replacements);
 
     const directoryName = path.dirname(params.outputPath);
+    console.log(`Creating directory ${directoryName}`);
     await fs.mkdir(directoryName, { recursive: true });
     await fs.writeFile(params.outputPath, output);
+
+    console.log(`Created file ${params.outputPath}`);
 
     return {
       success: true,

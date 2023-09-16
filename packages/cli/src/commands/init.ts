@@ -3,27 +3,24 @@
 import fs from "fs/promises";
 import inquirer from "inquirer";
 import pathModule from "path";
-import { pathToRegexp } from "path-to-regexp";
 import { simpleGit } from "simple-git";
-import { parse } from "tsconfck";
-
 import { promptApiKey, promptTriggerUrl } from "../cli/index";
 import { CLOUD_API_URL, CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts";
+import { frameworkNames, getFramework } from "../frameworks";
 import { telemetryClient } from "../telemetry/telemetry";
 import { addDependencies } from "../utils/addDependencies";
-import { pathExists, readJSONFile } from "../utils/fileSystem";
-import { logger } from "../utils/logger";
-import { resolvePath } from "../utils/parseNameAndPath";
-import { renderTitle } from "../utils/renderTitle";
-import { TriggerApi, WhoamiResponse } from "../utils/triggerApi";
-import { frameworkNames, getFramework } from "../frameworks";
-import { getUserPackageManager } from "../utils/getUserPkgManager";
 import {
   getEnvFilename,
   setApiKeyEnvironmentVariable,
   setApiUrlEnvironmentVariable,
 } from "../utils/env";
+import { readJSONFile } from "../utils/fileSystem";
+import { getUserPackageManager } from "../utils/getUserPkgManager";
+import { logger } from "../utils/logger";
+import { resolvePath } from "../utils/parseNameAndPath";
 import { readPackageJson } from "../utils/readPackageJson";
+import { renderTitle } from "../utils/renderTitle";
+import { TriggerApi, WhoamiResponse } from "../utils/triggerApi";
 
 export type InitCommandOptions = {
   projectPath: string;

@@ -1,7 +1,6 @@
 import { Framework } from "..";
 import { InstallPackage } from "../../utils/addDependencies";
 import { PackageManager } from "../../utils/getUserPkgManager";
-import fs from "fs/promises";
 import pathModule from "path";
 import { readPackageJson } from "../../utils/readPackageJson";
 import { logger } from "../../utils/logger";
@@ -10,6 +9,10 @@ import { parse } from "tsconfck";
 import { detectMiddlewareUsage } from "./middleware";
 import { removeFileExtension } from "../../utils/removeFileExtension";
 import { getPathAlias } from "../../utils/pathAlias";
+import { createFileFromTemplate } from "../../utils/createFileFromTemplate";
+import fs from "fs/promises";
+import path from "path";
+import { fileURLToPath } from "url";
 
 export class NextJs implements Framework {
   id = "nextjs";
@@ -29,6 +32,7 @@ export class NextJs implements Framework {
     return [
       { name: "@trigger.dev/sdk", tag: "latest" },
       { name: "@trigger.dev/nextjs", tag: "latest" },
+      { name: "@trigger.dev/react", tag: "latest" },
     ];
   }
 
@@ -120,116 +124,84 @@ async function createTriggerPageRoute(
   isTypescriptProject: boolean,
   usesSrcDir = false
 ) {
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+
   const pathAlias = getPathAlias({ projectPath, isTypescriptProject, usesSrcDir });
-  const routePathPrefix = pathAlias ? pathAlias + "/" : "../../";
+  const fileExtension = isTypescriptProject ? ".ts" : ".js";
 
-  const extension = isTypescriptProject ? ".ts" : ".js";
-  const triggerFileName = `trigger${extension}`;
-  const examplesFileName = `examples${extension}`;
-  const examplesIndexFileName = `index${extension}`;
+  //pages/api/trigger.js or src/pages/api/trigger.js
+  const apiRoutePath = pathModule.join(path, "pages", "api", `trigger${fileExtension}`);
 
-  const routeContent = `
-import { createPagesRoute } from "@trigger.dev/nextjs";
-import { client } from "${routePathPrefix}trigger";
+  //todo load the file from a file that is copied by tsup
+  //e.g. templates/nextjs/whatever.js
+  //load the file using the
 
-import "${routePathPrefix}jobs";
-
-//this route is used to send and receive data with Trigger.dev
-const { handler, config } = createPagesRoute(client);
-export { config };
-
-export default handler;
-  `;
-
-  const triggerContent = `
-import { TriggerClient } from "@trigger.dev/sdk";
-
-export const client = new TriggerClient({
-  id: "${endpointSlug}",
-  apiKey: process.env.TRIGGER_API_KEY,
-  apiUrl: process.env.TRIGGER_API_URL,
-});
-  `;
-
-  const jobsPathPrefix = pathAlias ? pathAlias + "/" : "../";
-
-  const jobsContent = `
-import { eventTrigger } from "@trigger.dev/sdk";
-import { client } from "${jobsPathPrefix}trigger";
-
-// Your first job
-// This Job will be triggered by an event, log a joke to the console, and then wait 5 seconds before logging the punchline
-client.defineJob({
-  // This is the unique identifier for your Job, it must be unique across all Jobs in your project
-  id: "example-job",
-  name: "Example Job: a joke with a delay",
-  version: "0.0.1",
-  // This is triggered by an event using eventTrigger. You can also trigger Jobs with webhooks, on schedules, and more: https://trigger.dev/docs/documentation/concepts/triggers/introduction
-  trigger: eventTrigger({
-    name: "example.event",
-  }),
-  run: async (payload, io, ctx) => {
-    // This logs a message to the console
-    await io.logger.info("🧪 Example Job: a joke with a delay");
-    await io.logger.info("How do you comfort a JavaScript bug?");
-    // This waits for 5 seconds, the second parameter is the number of seconds to wait, you can add delays of up to a year
-    await io.wait("Wait 5 seconds for the punchline...", 5);
-    await io.logger.info("You console it! 🤦");
-    await io.logger.info(
-      "✨ Congratulations, You just ran your first successful Trigger.dev Job! ✨"
-    );
-    // To learn how to write much more complex (and probably funnier) Jobs, check out our docs: https://trigger.dev/docs/documentation/guides/create-a-job
-  },
-});
-`;
-
-  const examplesIndexContent = `
-// import all your job files here
-
-export * from "./examples"
-  `;
-
-  const directories = pathModule.join(path, "pages", "api");
-  await fs.mkdir(directories, { recursive: true });
-
-  // Don't overwrite the file if it already exists
-  const exists = await pathExists(pathModule.join(directories, triggerFileName));
-
-  if (exists) {
-    logger.info("Skipping creation of pages route because it already exists");
-    return;
+  const apiRouteResult = await createFileFromTemplate({
+    template: apiRouteTemplate,
+    replacements: {
+      routePathPrefix: pathAlias ? pathAlias + "/" : "../../",
+    },
+    outputPath: apiRoutePath,
+  });
+  if (!apiRouteResult.success) {
+    throw new Error("Failed to create API route file");
   }
+  logger.success(`✅ Created API route at ${apiRoutePath}`);
 
-  await fs.writeFile(pathModule.join(directories, triggerFileName), routeContent);
-  logger.success(
-    `✅ Created pages route at ${usesSrcDir ? "src/" : ""}pages/api/${triggerFileName}`
+  //trigger.js or src/trigger.js
+  const triggerFilePath = pathModule.join(path, `trigger${fileExtension}`);
+  const triggerTemplate = await readFileIgnoringMock(
+    pathModule.join(__dirname, "files", "trigger.js")
   );
-
-  const triggerFileExists = await pathExists(pathModule.join(path, triggerFileName));
-
-  if (!triggerFileExists) {
-    await fs.writeFile(pathModule.join(path, triggerFileName), triggerContent);
-
-    logger.success(`✅ Created TriggerClient at ${usesSrcDir ? "src/" : ""}${triggerFileName}`);
+  const triggerResult = await createFileFromTemplate({
+    template: triggerTemplate,
+    replacements: {
+      endpointSlug,
+    },
+    outputPath: triggerFilePath,
+  });
+  if (!triggerResult.success) {
+    throw new Error("Failed to create trigger file");
   }
+  logger.success(`✅ Created Trigger client at ${triggerFilePath}`);
 
-  const exampleDirectories = pathModule.join(path, "jobs");
-  await fs.mkdir(exampleDirectories, { recursive: true });
+  //example jobs
+  const exampleDirectory = pathModule.join(path, "jobs");
 
-  const exampleFileExists = await pathExists(pathModule.join(exampleDirectories, examplesFileName));
-
-  if (!exampleFileExists) {
-    await fs.writeFile(pathModule.join(exampleDirectories, examplesFileName), jobsContent);
-
-    await fs.writeFile(
-      pathModule.join(exampleDirectories, examplesIndexFileName),
-      examplesIndexContent
-    );
-
-    logger.success(
-      `✅ Created example job at ${usesSrcDir ? "src/" : ""}jobs/examples/${examplesFileName}`
-    );
+  //jobs/examples.js or src/jobs/examples.js
+  const exampleJobFilePath = pathModule.join(exampleDirectory, `examples${fileExtension}`);
+  const exampleJobTemplate = await readFileIgnoringMock(
+    pathModule.join(__dirname, "files", "exampleJob.js")
+  );
+  const exampleJobResult = await createFileFromTemplate({
+    template: exampleJobTemplate,
+    replacements: {
+      jobsPathPrefix: pathAlias ? pathAlias + "/" : "../",
+    },
+    outputPath: exampleJobFilePath,
+  });
+  if (!exampleJobResult.success) {
+    throw new Error("Failed to create example job file");
   }
+  logger.success(`✅ Created example job at ${exampleJobFilePath}`);
+
+  //jobs/index.js or src/jobs/index.js
+  const jobsIndexFilePath = pathModule.join(exampleDirectory, `index${fileExtension}`);
+  const jobsIndexTemplate = await readFileIgnoringMock(
+    pathModule.join(__dirname, "files", "jobsIndex.js")
+  );
+  const jobsIndexResult = await createFileFromTemplate({
+    template: jobsIndexTemplate,
+    replacements: {
+      jobsPathPrefix: pathAlias ? pathAlias + "/" : "../",
+    },
+    outputPath: jobsIndexFilePath,
+  });
+  if (!jobsIndexResult.success) {
+    throw new Error("Failed to create jobs index file");
+  }
+  logger.success(`✅ Created jobs index at ${jobsIndexFilePath}`);
 }
 
 async function createTriggerAppRoute(
