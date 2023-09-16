@@ -6,7 +6,8 @@ import pathModule from "path";
 import { pathToRegexp } from "path-to-regexp";
 import { simpleGit } from "simple-git";
 import { parse } from "tsconfck";
-import { pathToFileURL } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
+import path from "path";
 import { promptApiKey, promptTriggerUrl } from "../cli/index";
 import { CLOUD_API_URL, CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts";
 import { TelemetryClient, telemetryClient } from "../telemetry/telemetry";
@@ -18,6 +19,7 @@ import { resolvePath } from "../utils/parseNameAndPath";
 import { renderApiKey } from "../utils/renderApiKey";
 import { renderTitle } from "../utils/renderTitle";
 import { TriggerApi, WhoamiResponse } from "../utils/triggerApi";
+import { readPackageJson } from "../utils/readPackageJson";
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -44,6 +46,8 @@ export const initCommand = async (options: InitCommandOptions) => {
     logger.info(`✨ Initializing Trigger.dev in project`);
   }
 
+  //Detect CLI version
+  const cliVersion = await getCliVersion();
   // Detect if are are in a Next.js project
   const isNextJsProject = await detectNextJsProject(resolvedPath);
 
@@ -104,8 +108,8 @@ export const initCommand = async (options: InitCommandOptions) => {
   const resolvedOptions: ResolvedOptions = { ...optionsAfterPrompts, endpointSlug };
 
   await addDependencies(resolvedPath, [
-    { name: "@trigger.dev/sdk", tag: "latest" },
-    { name: "@trigger.dev/nextjs", tag: "latest" },
+    { name: "@trigger.dev/sdk", tag: cliVersion ?? "latest" },
+    { name: "@trigger.dev/nextjs", tag: cliVersion ?? "latest" },
   ]);
 
   telemetryClient.init.addedDependencies(resolvedOptions);
@@ -749,4 +753,12 @@ async function setupEnvironmentVariable(
 
 function removeFileExtension(filename: string) {
   return filename.replace(/\.[^.]+$/, "");
+}
+
+async function getCliVersion(): Promise<string | undefined> {
+  const currentModuleUrl = import.meta.url;
+  const currentModulePath = fileURLToPath(currentModuleUrl);
+  const rootDir = path.resolve(path.dirname(currentModulePath), "..");
+  const cliVersion = await readPackageJson(rootDir);
+  return cliVersion?.version;
 }

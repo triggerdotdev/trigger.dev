@@ -59,39 +59,62 @@ async function addDependenciesToPackageJson(
   return packagesToInstall;
 }
 
-const PackageSchema = z.object({
+const LatestPackageSchema = z.object({
   name: z.string(),
   "dist-tags": z.record(z.string()),
+});
+
+const PackageSchema = z.object({
+  name: z.string(),
+  version: z.string(),
 });
 
 export async function getLatestPackageVersion(
   packageName: string,
   tag: string
 ): Promise<InstalledPackage | undefined> {
-  const response = await fetch(`https://registry.npmjs.org/${packageName}`);
+  if (tag === "latest") {
+    const response = await fetch(`https://registry.npmjs.org/${packageName}`);
 
-  if (!response.ok) {
-    return;
+    if (!response.ok) {
+      return;
+    }
+
+    const body = await response.json();
+
+    const parsedBody = LatestPackageSchema.safeParse(body);
+
+    if (!parsedBody.success) {
+      return;
+    }
+
+    const latestVersion = parsedBody.data["dist-tags"][tag];
+
+    if (!latestVersion) {
+      return;
+    }
+
+    return {
+      name: packageName,
+      version: latestVersion,
+    };
+  } else {
+    const response = await fetch(`https://registry.npmjs.org/${packageName}/${tag}`);
+    if (!response.ok) {
+      return;
+    }
+    const body = await response.json();
+    const parsedBody = PackageSchema.safeParse(body);
+    if (!parsedBody.success) {
+      return;
+    }
+    const { version } = parsedBody.data;
+
+    return {
+      name: packageName,
+      version: version,
+    };
   }
-
-  const body = await response.json();
-
-  const parsedBody = PackageSchema.safeParse(body);
-
-  if (!parsedBody.success) {
-    return;
-  }
-
-  const latestVersion = parsedBody.data["dist-tags"][tag];
-
-  if (!latestVersion) {
-    return;
-  }
-
-  return {
-    name: packageName,
-    version: latestVersion,
-  };
 }
 
 async function getLatestPackageVersions(
