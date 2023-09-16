@@ -6,7 +6,7 @@ import pathModule from "path";
 import { simpleGit } from "simple-git";
 import { promptApiKey, promptTriggerUrl } from "../cli/index";
 import { CLOUD_API_URL, CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts";
-import { frameworkNames, getFramework } from "../frameworks";
+import { Framework, frameworkNames, getFramework } from "../frameworks";
 import { telemetryClient } from "../telemetry/telemetry";
 import { addDependencies } from "../utils/addDependencies";
 import {
@@ -15,7 +15,7 @@ import {
   setApiUrlEnvironmentVariable,
 } from "../utils/env";
 import { readJSONFile } from "../utils/fileSystem";
-import { getUserPackageManager } from "../utils/getUserPkgManager";
+import { PackageManager, getUserPackageManager } from "../utils/getUserPkgManager";
 import { logger } from "../utils/logger";
 import { resolvePath } from "../utils/parseNameAndPath";
 import { readPackageJson } from "../utils/readPackageJson";
@@ -129,17 +129,22 @@ export const initCommand = async (options: InitCommandOptions) => {
 
   await addConfigurationToPackageJson(resolvedPath, resolvedOptions);
 
-  await printNextSteps(resolvedOptions, authorizedKey);
+  await printNextSteps(resolvedOptions, authorizedKey, packageManager, framework);
   telemetryClient.init.completed(resolvedOptions);
 };
 
-async function printNextSteps(options: ResolvedOptions, authorizedKey: WhoamiResponse) {
+async function printNextSteps(
+  options: ResolvedOptions,
+  authorizedKey: WhoamiResponse,
+  packageManager: PackageManager,
+  framework: Framework
+) {
   const projectUrl = `${options.triggerUrl}/orgs/${authorizedKey.organization.slug}/projects/${authorizedKey.project.slug}`;
 
   logger.success(`✅ Successfully initialized Trigger.dev!`);
 
   logger.info("Next steps:");
-  logger.info(`   1. Run your Next.js project locally with 'npm run dev'`);
+  logger.info(`   1. Run your ${framework.name} project locally with '${packageManager} run dev'`);
   logger.info(
     `   2. In a separate terminal, run 'npx @trigger.dev/cli@latest dev' to watch for changes and automatically register Trigger.dev jobs`
   );
