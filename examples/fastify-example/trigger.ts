@@ -2,8 +2,8 @@ import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
 
 export const client = new TriggerClient({
   id: "fastify-example",
-  apiKey: 'tr_dev_GQPzrh5d9CL4dfnmLAJ1',
-  apiUrl: process.env["TRIGGER_API_KEY"],
+  apiKey: process.env["TRIGGER_API_KEY"],
+  apiUrl: process.env["TRIGGER_API_URL"],
 });
 
 // your first job
