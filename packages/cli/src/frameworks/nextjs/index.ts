@@ -48,17 +48,15 @@ export class NextJs implements Framework {
     }
 
     const nextJsDir = await detectPagesOrAppDir(path);
-
     const routeDir = pathModule.join(path, usesSrcDir ? "src" : "");
+    const pathAlias = await getPathAlias({
+      projectPath: path,
+      isTypescriptProject: options.typescript,
+      usesSrcDir,
+    });
 
     if (nextJsDir === "pages") {
-      await createTriggerPageRoute(
-        path,
-        routeDir,
-        options.endpointSlug,
-        options.typescript,
-        usesSrcDir
-      );
+      await createTriggerPageRoute(routeDir, options.endpointSlug, options.typescript, pathAlias);
     } else {
       await createTriggerAppRoute(
         path,
@@ -116,15 +114,12 @@ export async function detectPagesOrAppDir(path: string): Promise<"pages" | "app"
 }
 
 async function createTriggerPageRoute(
-  projectPath: string,
   path: string,
   endpointSlug: string,
   isTypescriptProject: boolean,
-  usesSrcDir = false
+  pathAlias: string | undefined
 ) {
   const templatesDir = pathModule.join(templatesPath(), "nextjs");
-
-  const pathAlias = await getPathAlias({ projectPath, isTypescriptProject, usesSrcDir });
   const fileExtension = isTypescriptProject ? ".ts" : ".js";
 
   //pages/api/trigger.js or src/pages/api/trigger.js
