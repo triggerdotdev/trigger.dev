@@ -1,17 +1,16 @@
 import fs from "fs/promises";
 import pathModule from "path";
 import { Framework } from "..";
+import { templatesPath } from "../../paths";
 import { InstallPackage } from "../../utils/addDependencies";
 import { createFileFromTemplate } from "../../utils/createFileFromTemplate";
 import { pathExists } from "../../utils/fileSystem";
 import { PackageManager } from "../../utils/getUserPkgManager";
 import { logger } from "../../utils/logger";
 import { getPathAlias } from "../../utils/pathAlias";
-import { readFileIgnoringMock } from "../../utils/readFileIgnoringMock";
 import { readPackageJson } from "../../utils/readPackageJson";
 import { removeFileExtension } from "../../utils/removeFileExtension";
 import { detectMiddlewareUsage } from "./middleware";
-import { rootPath, templatesPath } from "../../paths";
 
 export class NextJs implements Framework {
   id = "nextjs";
@@ -131,7 +130,7 @@ async function createTriggerPageRoute(
   //pages/api/trigger.js or src/pages/api/trigger.js
   const apiRoutePath = pathModule.join(path, "pages", "api", `trigger${fileExtension}`);
   const apiRouteResult = await createFileFromTemplate({
-    templatePath: pathModule.join(templatesDir, "apiRoute.js"),
+    templatePath: pathModule.join(templatesDir, "pagesApiRoute.js"),
     replacements: {
       routePathPrefix: pathAlias ? pathAlias + "/" : "../../",
     },
