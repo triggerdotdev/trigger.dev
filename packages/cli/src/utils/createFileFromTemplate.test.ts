@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import mock from "mock-fs";
+import path from "path";
 import { createFileFromTemplate, replaceAll } from "./createFileFromTemplate";
 
 afterEach(() => {
@@ -38,14 +39,14 @@ describe("Template files", () => {
       },
     });
 
-    const template = await fs.readFile("templates/some-file.js", "utf-8");
     const result = await createFileFromTemplate({
-      template,
+      templatePath: path.join("templates", "some-file.js"),
       replacements: {
         routePathPrefix: "@/",
         anotherPathPrefix: "@/src/",
       },
       outputPath: "foo/output.ts",
+      mockTemplatePath: true,
     });
 
     expect(result.success).toEqual(true);

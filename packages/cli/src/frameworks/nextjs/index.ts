@@ -130,9 +130,8 @@ async function createTriggerPageRoute(
 
   //pages/api/trigger.js or src/pages/api/trigger.js
   const apiRoutePath = pathModule.join(path, "pages", "api", `trigger${fileExtension}`);
-  const apiRouteTemplate = await readFileIgnoringMock(pathModule.join(templatesDir, "apiRoute.js"));
   const apiRouteResult = await createFileFromTemplate({
-    template: apiRouteTemplate,
+    templatePath: pathModule.join(templatesDir, "apiRoute.js"),
     replacements: {
       routePathPrefix: pathAlias ? pathAlias + "/" : "../../",
     },
@@ -145,9 +144,8 @@ async function createTriggerPageRoute(
 
   //trigger.js or src/trigger.js
   const triggerFilePath = pathModule.join(path, `trigger${fileExtension}`);
-  const triggerTemplate = await readFileIgnoringMock(pathModule.join(templatesDir, "trigger.js"));
   const triggerResult = await createFileFromTemplate({
-    template: triggerTemplate,
+    templatePath: pathModule.join(templatesDir, "trigger.js"),
     replacements: {
       endpointSlug,
     },
@@ -163,11 +161,8 @@ async function createTriggerPageRoute(
 
   //jobs/examples.js or src/jobs/examples.js
   const exampleJobFilePath = pathModule.join(exampleDirectory, `examples${fileExtension}`);
-  const exampleJobTemplate = await readFileIgnoringMock(
-    pathModule.join(templatesDir, "exampleJob.js")
-  );
   const exampleJobResult = await createFileFromTemplate({
-    template: exampleJobTemplate,
+    templatePath: pathModule.join(templatesDir, "exampleJob.js"),
     replacements: {
       jobsPathPrefix: pathAlias ? pathAlias + "/" : "../",
     },
@@ -180,11 +175,8 @@ async function createTriggerPageRoute(
 
   //jobs/index.js or src/jobs/index.js
   const jobsIndexFilePath = pathModule.join(exampleDirectory, `index${fileExtension}`);
-  const jobsIndexTemplate = await readFileIgnoringMock(
-    pathModule.join(templatesDir, "jobsIndex.js")
-  );
   const jobsIndexResult = await createFileFromTemplate({
-    template: jobsIndexTemplate,
+    templatePath: pathModule.join(templatesDir, "jobsIndex.js"),
     replacements: {
       jobsPathPrefix: pathAlias ? pathAlias + "/" : "../",
     },

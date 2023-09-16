@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import { pathExists } from "./fileSystem";
 import path from "path";
+import { readFileIgnoringMock } from "./readFileIgnoringMock";
 
 type Result =
   | {
@@ -13,10 +14,18 @@ type Result =
     };
 
 export async function createFileFromTemplate(params: {
-  template: string;
+  templatePath: string;
   replacements: Record<string, string>;
   outputPath: string;
+  mockTemplatePath?: boolean;
 }): Promise<Result> {
+  let template = "";
+  if (params.mockTemplatePath === true) {
+    template = await fs.readFile(params.templatePath, "utf-8");
+  } else {
+    template = await readFileIgnoringMock(params.templatePath);
+  }
+
   if (await pathExists(params.outputPath)) {
     return {
       success: true,
@@ -25,7 +34,7 @@ export async function createFileFromTemplate(params: {
   }
 
   try {
-    const output = replaceAll(params.template, params.replacements);
+    const output = replaceAll(template, params.replacements);
 
     const directoryName = path.dirname(params.outputPath);
     await fs.mkdir(directoryName, { recursive: true });
