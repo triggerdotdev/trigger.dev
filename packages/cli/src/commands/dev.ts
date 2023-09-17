@@ -12,20 +12,24 @@ import { getTriggerApiDetails } from "../utils/getTriggerApiDetails";
 import { logger } from "../utils/logger";
 import { resolvePath } from "../utils/parseNameAndPath";
 import { TriggerApi } from "../utils/triggerApi";
-import { run as ncuRun } from 'npm-check-updates'
+import { run as ncuRun } from "npm-check-updates";
 import chalk from "chalk";
+import { getUserPackageManager } from "../utils/getUserPkgManager";
+import { Framework, getFramework } from "../frameworks";
+import { getEnvFilename } from "../utils/env";
 
 const asyncExecFile = util.promisify(childProcess.execFile);
 
 export const DevCommandOptionsSchema = z.object({
-  port: z.coerce.number(),
-  hostname: z.string(),
-  envFile: z.string(),
+  port: z.coerce.number().optional(),
+  hostname: z.string().optional(),
+  envFile: z.string().optional(),
   handlerPath: z.string(),
   clientId: z.string().optional(),
 });
 
 export type DevCommandOptions = z.infer<typeof DevCommandOptionsSchema>;
+type ResolvedOptions = Omit<Required<DevCommandOptions>, "clientId"> & { clientId?: string };
 
 const throttleTimeMs = 1000;
 
@@ -47,7 +51,7 @@ export async function devCommand(path: string, anyOptions: any) {
   const options = result.data;
 
   const resolvedPath = resolvePath(path);
-  await checkForOutdatedPackages(resolvedPath)
+  await checkForOutdatedPackages(resolvedPath);
 
   // Read from package.json to get the endpointId
   const endpointId = await getEndpointIdFromPackageJson(resolvedPath, options);
@@ -60,11 +64,16 @@ export async function devCommand(path: string, anyOptions: any) {
   }
   logger.success(`✔️ [trigger.dev] Detected TriggerClient id: ${endpointId}`);
 
+  //resolve the options using the detected framework (use default if there isn't a matching framework)
+  const packageManager = await getUserPackageManager(resolvedPath);
+  const framework = await getFramework(resolvedPath, packageManager);
+  const resolvedOptions = await resolveOptions(framework, resolvedPath, options);
+
   // Read from .env.local or .env to get the TRIGGER_API_KEY and TRIGGER_API_URL
-  const apiDetails = await getTriggerApiDetails(resolvedPath, options.envFile);
+  const apiDetails = await getTriggerApiDetails(resolvedPath, resolvedOptions.envFile);
 
   if (!apiDetails) {
-    telemetryClient.dev.failed("missing_api_key", options);
+    telemetryClient.dev.failed("missing_api_key", resolvedOptions);
     return;
   }
 
@@ -72,9 +81,9 @@ export async function devCommand(path: string, anyOptions: any) {
 
   logger.success(`✔️ [trigger.dev] Found API Key in ${envFile} file`);
 
-  logger.info(`  [trigger.dev] Looking for Next.js site on port ${options.port}`);
+  logger.info(`  [trigger.dev] Looking for Next.js site on port ${resolvedOptions.port}`);
 
-  const localEndpointHandlerUrl = `http://${options.hostname}:${options.port}${options.handlerPath}`;
+  const localEndpointHandlerUrl = `http://${resolvedOptions.hostname}:${resolvedOptions.port}${resolvedOptions.handlerPath}`;
 
   try {
     await fetch(localEndpointHandlerUrl, {
@@ -87,23 +96,27 @@ export async function devCommand(path: string, anyOptions: any) {
     });
   } catch (err) {
     logger.error(
-      `❌ [trigger.dev] No server found on port ${options.port}. Make sure your Next.js app is running and try again.`
+      `❌ [trigger.dev] No server found on port ${resolvedOptions.port}. Make sure your Next.js app is running and try again.`
     );
-    telemetryClient.dev.failed("no_server_found", options);
+    telemetryClient.dev.failed("no_server_found", resolvedOptions);
     return;
   }
 
-  telemetryClient.dev.serverRunning(path, options);
+  telemetryClient.dev.serverRunning(path, resolvedOptions);
 
   // Setup tunnel
-  const endpointUrl = await resolveEndpointUrl(apiUrl, options.port, options.hostname);
+  const endpointUrl = await resolveEndpointUrl(
+    apiUrl,
+    resolvedOptions.port,
+    resolvedOptions.hostname
+  );
   if (!endpointUrl) {
-    telemetryClient.dev.failed("failed_to_create_tunnel", options);
+    telemetryClient.dev.failed("failed_to_create_tunnel", resolvedOptions);
     return;
   }
 
-  const endpointHandlerUrl = `${endpointUrl}${options.handlerPath}`;
-  telemetryClient.dev.tunnelRunning(path, options);
+  const endpointHandlerUrl = `${endpointUrl}${resolvedOptions.handlerPath}`;
+  telemetryClient.dev.tunnelRunning(path, resolvedOptions);
 
   const connectingSpinner = ora(`[trigger.dev] Registering endpoint ${endpointHandlerUrl}...`);
 
@@ -113,7 +126,7 @@ export async function devCommand(path: string, anyOptions: any) {
   const refresh = async () => {
     connectingSpinner.start();
 
-    const refreshedEndpointId = await getEndpointIdFromPackageJson(resolvedPath, options);
+    const refreshedEndpointId = await getEndpointIdFromPackageJson(resolvedPath, resolvedOptions);
 
     // Read from .env.local to get the TRIGGER_API_KEY and TRIGGER_API_URL
     const apiDetails = await getTriggerApiDetails(resolvedPath, envFile);
@@ -134,7 +147,7 @@ export async function devCommand(path: string, anyOptions: any) {
         `🛑 The API key you provided is not authorized. Try visiting your dashboard to get a new API key.`
       );
 
-      telemetryClient.dev.failed("invalid_api_key", options);
+      telemetryClient.dev.failed("invalid_api_key", resolvedOptions);
       return;
     }
 
@@ -159,7 +172,7 @@ export async function devCommand(path: string, anyOptions: any) {
 
       if (!hasConnected) {
         hasConnected = true;
-        telemetryClient.dev.connected(path, options);
+        telemetryClient.dev.connected(path, resolvedOptions);
       }
     } else {
       attemptCount++;
@@ -170,7 +183,7 @@ export async function devCommand(path: string, anyOptions: any) {
         attemptCount = 0;
 
         if (!hasConnected) {
-          telemetryClient.dev.failed("failed_to_connect", options);
+          telemetryClient.dev.failed("failed_to_connect", resolvedOptions);
         }
         return;
       }
@@ -208,34 +221,57 @@ export async function devCommand(path: string, anyOptions: any) {
   throttle(refresh, throttleTimeMs);
 }
 
-export async function checkForOutdatedPackages(path: string) {
-
-  const updates = await ncuRun({
-    packageFile: `${path}/package.json`,
-    filter: "/trigger.dev\/.+$/",
-    upgrade: false,
-  }) as {
-    [key: string]: string;
+export async function resolveOptions(
+  framework: Framework | undefined,
+  path: string,
+  unresolvedOptions: DevCommandOptions
+): Promise<ResolvedOptions> {
+  if (!framework) {
+    logger.info("Failed to detect framework, using default values");
+    return {
+      port: unresolvedOptions.port ?? 3000,
+      hostname: unresolvedOptions.hostname ?? "localhost",
+      envFile: unresolvedOptions.envFile ?? ".env",
+      handlerPath: unresolvedOptions.handlerPath,
+      clientId: unresolvedOptions.clientId,
+    };
   }
 
-  if (typeof updates === 'undefined' || Object.keys(updates).length === 0) {
+  //get env filename
+  const envName = await getEnvFilename(path, framework.possibleEnvFilenames());
+  framework.defaultHostname;
+
+  return {
+    port: unresolvedOptions.port ?? framework.defaultPort ?? 3000,
+    hostname: unresolvedOptions.hostname ?? framework.defaultHostname ?? "localhost",
+    envFile: unresolvedOptions.envFile ?? envName ?? ".env",
+    handlerPath: unresolvedOptions.handlerPath,
+    clientId: unresolvedOptions.clientId,
+  };
+}
+
+export async function checkForOutdatedPackages(path: string) {
+  const updates = (await ncuRun({
+    packageFile: `${path}/package.json`,
+    filter: "/trigger.dev/.+$/",
+    upgrade: false,
+  })) as {
+    [key: string]: string;
+  };
+
+  if (typeof updates === "undefined" || Object.keys(updates).length === 0) {
     return;
   }
 
   const packageFile = await fs.readFile(`${path}/package.json`);
-  const data = JSON.parse(Buffer.from(packageFile).toString('utf8'));
+  const data = JSON.parse(Buffer.from(packageFile).toString("utf8"));
   const dependencies = data.dependencies;
-  console.log(
-    chalk.bgYellow('Updates available for trigger.dev packages')
-  );
-  console.log(
-    chalk.bgBlue('Run npx @trigger.dev/cli@latest update')
-  );
+  console.log(chalk.bgYellow("Updates available for trigger.dev packages"));
+  console.log(chalk.bgBlue("Run npx @trigger.dev/cli@latest update"));
 
   for (let dep in updates) {
     console.log(`${dep}  ${dependencies[dep]}  →  ${updates[dep]}`);
   }
-
 }
 
 export async function getEndpointIdFromPackageJson(path: string, options: DevCommandOptions) {

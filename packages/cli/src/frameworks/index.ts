@@ -12,6 +12,7 @@ export interface Framework {
   id: string;
   name: string;
   defaultHostname: string;
+  defaultPort: number;
   isMatch(path: string, packageManager: PackageManager): Promise<boolean>;
   dependencies(): Promise<InstallPackage[]>;
   possibleEnvFilenames(): string[];
