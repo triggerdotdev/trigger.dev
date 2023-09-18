@@ -1,9 +1,9 @@
 import { eventTrigger } from "@trigger.dev/sdk";
-import { client } from "${jobsPathPrefix}trigger";
+import { client } from "${jobsPathPrefix}trigger.server";
 
 // Your first job
 // This Job will be triggered by an event, log a joke to the console, and then wait 5 seconds before logging the punchline
-client.defineJob({
+export const job = client.defineJob({
   // This is the unique identifier for your Job, it must be unique across all Jobs in your project
   id: "example-job",
   name: "Example Job: a joke with a delay",
