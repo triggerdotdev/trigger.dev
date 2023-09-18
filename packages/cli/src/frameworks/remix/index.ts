@@ -8,12 +8,11 @@ import { createFileFromTemplate } from "../../utils/createFileFromTemplate";
 import { templatesPath } from "../../paths";
 import { logger } from "../../utils/logger";
 import { readPackageJson } from "../../utils/readPackageJson";
+import { standardWatchFilePaths } from "../watchConfig";
 
 export class Remix implements Framework {
   id = "remix";
   name = "Remix";
-  defaultHostnames = ["localhost"];
-  defaultPorts = [3000, 8788, 3333];
 
   async isMatch(path: string, packageManager: PackageManager): Promise<boolean> {
     //check for remix.config.js
@@ -103,4 +102,9 @@ export class Remix implements Framework {
   }
 
   async postInstall(path: string, options: ProjectInstallOptions): Promise<void> {}
+
+  defaultHostnames = ["localhost"];
+  defaultPorts = [3000, 8788, 3333];
+  watchFilePaths = standardWatchFilePaths;
+  watchIgnoreRegex = /(node_modules|build)/;
 }

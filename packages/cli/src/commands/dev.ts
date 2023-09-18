@@ -18,6 +18,7 @@ import { logger } from "../utils/logger";
 import { resolvePath } from "../utils/parseNameAndPath";
 import { RequireKeys } from "../utils/requiredKeys";
 import { TriggerApi } from "../utils/triggerApi";
+import { standardWatchIgnoreRegex, standardWatchFilePaths } from "../frameworks/watchConfig";
 
 const asyncExecFile = util.promisify(childProcess.execFile);
 
@@ -114,7 +115,7 @@ export async function devCommand(path: string, anyOptions: any) {
 
     const refreshedEndpointId = await getEndpointIdFromPackageJson(resolvedPath, resolvedOptions);
 
-    // Read from .env.local to get the TRIGGER_API_KEY and TRIGGER_API_URL
+    // Read from env file to get the TRIGGER_API_KEY and TRIGGER_API_URL
     const apiDetails = await getTriggerApiDetails(resolvedPath, envFile);
 
     if (!apiDetails) {
@@ -181,25 +182,18 @@ export async function devCommand(path: string, anyOptions: any) {
     }
   };
 
-  // Watch for changes to .ts files and refresh endpoints
+  // Watch for changes to files and refresh endpoints
   const watcher = chokidar.watch(
-    [
-      `${resolvedPath}/**/*.ts`,
-      `${resolvedPath}/**/*.tsx`,
-      `${resolvedPath}/**/*.js`,
-      `${resolvedPath}/**/*.jsx`,
-      `${resolvedPath}/**/*.json`,
-      `${resolvedPath}/pnpm-lock.yaml`,
-    ],
+    (framework?.watchFilePaths ?? standardWatchFilePaths).map((path) => `${resolvedPath}/${path}`),
     {
-      ignored: /(node_modules|\.next)/,
+      ignored: framework?.watchIgnoreRegex ?? standardWatchIgnoreRegex,
       //don't trigger a watch when it collects the paths
       ignoreInitial: true,
     }
   );
 
   watcher.on("all", (_event, _path) => {
-    // console.log(_event, _path);
+    console.log(_event, _path);
     throttle(refresh, throttleTimeMs);
   });
 

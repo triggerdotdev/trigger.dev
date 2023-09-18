@@ -10,12 +10,11 @@ import { logger } from "../../utils/logger";
 import { getPathAlias } from "../../utils/pathAlias";
 import { readPackageJson } from "../../utils/readPackageJson";
 import { detectMiddlewareUsage } from "./middleware";
+import { standardWatchFilePaths } from "../watchConfig";
 
 export class NextJs implements Framework {
   id = "nextjs";
   name = "Next.js";
-  defaultHostnames = ["localhost"];
-  defaultPorts = [3000, 3001, 3002];
 
   async isMatch(path: string, packageManager: PackageManager): Promise<boolean> {
     const hasNextConfigFile = await detectNextConfigFile(path);
@@ -68,6 +67,11 @@ export class NextJs implements Framework {
   ): Promise<void> {
     await detectMiddlewareUsage(path);
   }
+
+  defaultHostnames = ["localhost"];
+  defaultPorts = [3000, 3001, 3002];
+  watchFilePaths = standardWatchFilePaths;
+  watchIgnoreRegex = /(node_modules|\.next)/;
 }
 
 async function detectNextConfigFile(path: string): Promise<boolean> {
