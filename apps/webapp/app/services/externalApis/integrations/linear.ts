@@ -11,24 +11,25 @@ const linear = new Linear({
 });
 
 client.defineJob({
-  id: "linear-integration-on-issue-created",
-  name: "Linear Integration - On Issue Created",
+  id: "linear-react-to-new-issue",
+  name: "Linear - React To New Issue",
   version: "0.1.0",
   integrations: { linear },
   trigger: linear.onIssueCreated(),
   run: async (payload, io, ctx) => {
-    await io.linear.doSomething("some-task", {
-      foo: "bar"
+    await io.linear.createComment("create-comment", {
+      issueId: payload.data.id,
+      body: "Thank's for opening this issue!"
     });
 
-    await io.linear.doSomethingElse("some-other-task", {
-      bar: "baz"
+    await io.linear.createReaction("create-reaction", {
+      issueId: payload.data.id,
+      emoji: "+1"
     });
 
     return { payload, ctx };
   },
 });
-  
   `,
 };
 

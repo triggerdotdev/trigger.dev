@@ -16,19 +16,16 @@ import {
   IssuePayload,
   LinearClient,
   RatelimitedLinearError,
+  ReactionPayload,
 } from "@linear/sdk";
 import * as events from "./events";
-import {
-  TriggerParams,
-  Webhooks,
-  createTrigger,
-  createWebhookEventSource,
-} from "./webhooks";
+import { TriggerParams, Webhooks, createTrigger, createWebhookEventSource } from "./webhooks";
 import {
   AttachmentCreateInput,
   CommentCreateInput,
   IssueCreateInput,
   IssueUpdateInput,
+  ReactionCreateInput,
 } from "@linear/sdk/dist/_generated_documents";
 import { LinearReturnType, SerializedLinearOutput } from "./types";
 
@@ -213,6 +210,28 @@ export class Linear implements TriggerIntegration {
         name: "Delete Issue",
         params,
         properties: [{ label: "Issue ID", text: params.id }],
+      }
+    );
+  }
+
+  createReaction(
+    key: IntegrationTaskKey,
+    params: ReactionCreateInput & { emoji: string }
+  ): LinearReturnType<ReactionPayload, "reaction"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createReaction(params);
+        return serializeLinearOutput(await payload.reaction);
+      },
+      {
+        name: "Create Reaction",
+        params,
+        properties: [
+          { label: "Comment ID", text: params.commentId ?? "N/A" },
+          { label: "Issue ID", text: params.issueId ?? "N/A" },
+          { label: "Emoji", text: params.emoji },
+        ],
       }
     );
   }
