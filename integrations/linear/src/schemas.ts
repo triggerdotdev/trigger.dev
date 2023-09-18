@@ -6,6 +6,7 @@ export const WebhookResourceTypeSchema = z.union([
   z.literal("Cycle"),
   z.literal("Issue"),
   z.literal("IssueLabel"),
+  z.literal("IssueSLA"),
   z.literal("Project"),
   z.literal("ProjectUpdate"),
   z.literal("Reaction"),
@@ -346,12 +347,12 @@ export const IssueLabelEventSchema = z.discriminatedUnion("action", [
 export type IssueLabelEvent = z.infer<typeof IssueLabelEventSchema>;
 
 // TODO: confirm this with real-world payload(s)
-export const IssueSlaEventSchema = WebhookPayloadBaseSchema.extend({
-  type: z.literal("IssueSla"),
+export const IssueSLAEventSchema = WebhookPayloadBaseSchema.extend({
+  type: z.literal("IssueSLA"),
   action: z.union([z.literal("set"), z.literal("highRisk"), z.literal("breached")]),
   issueData: IssueDataSchema,
 });
-export type IssueSlaEvent = z.infer<typeof IssueSlaEventSchema>;
+export type IssueSLAEvent = z.infer<typeof IssueSLAEventSchema>;
 
 export const ProjectEventBaseSchema = WebhookPayloadBaseSchema.extend({
   type: z.literal("Project"),
@@ -413,10 +414,10 @@ export const WebhookPayloadSchema = z.union([
   CycleEventSchema,
   IssueEventSchema,
   IssueLabelEventSchema,
+  IssueSLAEventSchema,
   ProjectEventSchema,
   ProjectUpdateEventSchema,
   ReactionEventSchema,
-  IssueSlaEventSchema,
 ]);
 
 export type WebhookPayload = z.infer<typeof WebhookPayloadSchema>;

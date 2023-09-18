@@ -237,6 +237,13 @@ export class Linear implements TriggerIntegration {
     });
   }
 
+  onIssueSLA(params: OnChangeParams = {}) {
+    return createTrigger(this.source, events.onIssueSLA, {
+      ...params,
+      resourceTypes: ["IssueSla"],
+    });
+  }
+
   onProject(params: OnChangeParams = {}) {
     return createTrigger(this.source, events.onProject, { ...params, resourceTypes: ["Project"] });
   }

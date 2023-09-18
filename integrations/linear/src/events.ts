@@ -5,6 +5,7 @@ import {
   CycleEvent,
   IssueEvent,
   IssueLabelEvent,
+  IssueSLAEvent,
   ProjectEvent,
   ProjectUpdateEvent,
   ReactionEvent,
@@ -13,7 +14,6 @@ import { ExtractCreate, ExtractRemove, ExtractUpdate } from "./types";
 
 // TODO: payload examples
 // TODO: useful properties
-// TODO: Issue SLA event
 
 /** **WARNING:** Still in alpha - use with caution! */
 export const onAttachment: EventSpecification<AttachmentEvent> = {
@@ -241,6 +241,16 @@ export const onIssueLabelUpdated: EventSpecification<ExtractUpdate<IssueLabelEve
     action: ["update"],
   },
   parsePayload: (payload) => payload as ExtractUpdate<IssueLabelEvent>,
+  runProperties: (payload) => [{ label: "Change action", text: payload.action }],
+};
+
+// TODO: this needs to be tested
+export const onIssueSLA: EventSpecification<IssueSLAEvent> = {
+  name: "IssueSLA",
+  title: "On Issue SLA",
+  source: "linear.app",
+  icon: "linear",
+  parsePayload: (payload) => payload as IssueSLAEvent,
   runProperties: (payload) => [{ label: "Change action", text: payload.action }],
 };
 
