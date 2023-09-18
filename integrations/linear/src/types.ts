@@ -1,5 +1,6 @@
-import { WebhookPayload } from "./schemas";
+import { WebhookActionType, WebhookPayload } from "./schemas";
 
-export type ExtractCreate<T extends WebhookPayload> = Extract<T, { action: "create" }>;
-export type ExtractRemove<T extends WebhookPayload> = Extract<T, { action: "remove" }>;
-export type ExtractUpdate<T extends WebhookPayload> = Extract<T, { action: "update" }>;
+export type GetLinearPayload<
+  TPayload extends WebhookPayload,
+  TAction extends any = any,
+> = TAction extends WebhookActionType ? Extract<TPayload, { action: TAction }> : TPayload;

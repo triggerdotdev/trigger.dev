@@ -22,11 +22,7 @@ import {
   WebhookUpdateInput,
   WebhooksQueryVariables,
 } from "@linear/sdk/dist/_generated_documents";
-import {
-  WebhookActionTypeSchema,
-  WebhookPayloadSchema,
-  WebhookResourceTypeSchema,
-} from "./schemas";
+import { WebhookPayloadSchema } from "./schemas";
 
 type DeleteWebhookParams = {
   id: string;

@@ -10,7 +10,7 @@ import {
   ProjectUpdateEvent,
   ReactionEvent,
 } from "./schemas";
-import { ExtractCreate, ExtractRemove, ExtractUpdate } from "./types";
+import { GetLinearPayload } from "./types";
 import {
   attachmentCreated,
   attachmentRemoved,
@@ -39,13 +39,13 @@ import {
 } from "./payload-examples";
 
 /** **WARNING:** Still in alpha - use with caution! */
-export const onAttachment: EventSpecification<AttachmentEvent> = {
+export const onAttachment: EventSpecification<GetLinearPayload<AttachmentEvent>> = {
   name: "Attachment",
   title: "On Attachment",
   source: "linear.app",
   icon: "linear",
   examples: [attachmentCreated, attachmentRemoved, attachmentUpdated],
-  parsePayload: (payload) => payload as AttachmentEvent,
+  parsePayload: (payload) => payload as GetLinearPayload<AttachmentEvent>,
   runProperties: (payload) => [
     { label: "Event action", text: payload.action },
     { label: "Attachment ID", text: payload.data.id },
@@ -53,7 +53,7 @@ export const onAttachment: EventSpecification<AttachmentEvent> = {
 };
 
 /** **WARNING:** Still in alpha - use with caution! */
-export const onAttachmentCreated: EventSpecification<ExtractCreate<AttachmentEvent>> = {
+export const onAttachmentCreated: EventSpecification<GetLinearPayload<AttachmentEvent, "create">> = {
   name: "Attachment",
   title: "On Attachment Created",
   source: "linear.app",
@@ -62,12 +62,12 @@ export const onAttachmentCreated: EventSpecification<ExtractCreate<AttachmentEve
     action: ["create"],
   },
   examples: [attachmentCreated],
-  parsePayload: (payload) => payload as ExtractCreate<AttachmentEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<AttachmentEvent, "create">,
   runProperties: (payload) => [{ label: "Attachment ID", text: payload.data.id }],
 };
 
 /** **WARNING:** Still in alpha - use with caution! */
-export const onAttachmentRemoved: EventSpecification<ExtractRemove<AttachmentEvent>> = {
+export const onAttachmentRemoved: EventSpecification<GetLinearPayload<AttachmentEvent, "remove">> = {
   name: "Attachment",
   title: "On Attachment Removed",
   source: "linear.app",
@@ -76,12 +76,12 @@ export const onAttachmentRemoved: EventSpecification<ExtractRemove<AttachmentEve
     action: ["remove"],
   },
   examples: [attachmentRemoved],
-  parsePayload: (payload) => payload as ExtractRemove<AttachmentEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<AttachmentEvent, "remove">,
   runProperties: (payload) => [{ label: "Attachment ID", text: payload.data.id }],
 };
 
 /** **WARNING:** Still in alpha - use with caution! */
-export const onAttachmentUpdated: EventSpecification<ExtractUpdate<AttachmentEvent>> = {
+export const onAttachmentUpdated: EventSpecification<GetLinearPayload<AttachmentEvent, "update">> = {
   name: "Attachment",
   title: "On Attachment Updated",
   source: "linear.app",
@@ -90,24 +90,24 @@ export const onAttachmentUpdated: EventSpecification<ExtractUpdate<AttachmentEve
     action: ["update"],
   },
   examples: [attachmentUpdated],
-  parsePayload: (payload) => payload as ExtractUpdate<AttachmentEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<AttachmentEvent, "update">,
   runProperties: (payload) => [{ label: "Attachment ID", text: payload.data.id }],
 };
 
-export const onComment: EventSpecification<CommentEvent> = {
+export const onComment: EventSpecification<GetLinearPayload<CommentEvent>> = {
   name: "Comment",
   title: "On Comment",
   source: "linear.app",
   icon: "linear",
   examples: [commentCreated, commentRemoved, commentUpdated],
-  parsePayload: (payload) => payload as CommentEvent,
+  parsePayload: (payload) => payload as GetLinearPayload<CommentEvent>,
   runProperties: (payload) => [
     { label: "Event action", text: payload.action },
     { label: "Comment ID", text: payload.data.id },
   ],
 };
 
-export const onCommentCreated: EventSpecification<ExtractCreate<CommentEvent>> = {
+export const onCommentCreated: EventSpecification<GetLinearPayload<CommentEvent, "create">> = {
   name: "Comment",
   title: "On Comment Created",
   source: "linear.app",
@@ -116,11 +116,11 @@ export const onCommentCreated: EventSpecification<ExtractCreate<CommentEvent>> =
     action: ["create"],
   },
   examples: [commentCreated],
-  parsePayload: (payload) => payload as ExtractCreate<CommentEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<CommentEvent, "create">,
   runProperties: (payload) => [{ label: "Comment ID", text: payload.data.id }],
 };
 
-export const onCommentRemoved: EventSpecification<ExtractRemove<CommentEvent>> = {
+export const onCommentRemoved: EventSpecification<GetLinearPayload<CommentEvent, "remove">> = {
   name: "Comment",
   title: "On Comment Removed",
   source: "linear.app",
@@ -129,11 +129,11 @@ export const onCommentRemoved: EventSpecification<ExtractRemove<CommentEvent>> =
     action: ["remove"],
   },
   examples: [commentRemoved],
-  parsePayload: (payload) => payload as ExtractRemove<CommentEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<CommentEvent, "remove">,
   runProperties: (payload) => [{ label: "Comment ID", text: payload.data.id }],
 };
 
-export const onCommentUpdated: EventSpecification<ExtractUpdate<CommentEvent>> = {
+export const onCommentUpdated: EventSpecification<GetLinearPayload<CommentEvent, "update">> = {
   name: "Comment",
   title: "On Comment Updated",
   source: "linear.app",
@@ -142,24 +142,24 @@ export const onCommentUpdated: EventSpecification<ExtractUpdate<CommentEvent>> =
     action: ["update"],
   },
   examples: [commentUpdated],
-  parsePayload: (payload) => payload as ExtractUpdate<CommentEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<CommentEvent, "update">,
   runProperties: (payload) => [{ label: "Comment ID", text: payload.data.id }],
 };
 
-export const onCycle: EventSpecification<CycleEvent> = {
+export const onCycle: EventSpecification<GetLinearPayload<CycleEvent>> = {
   name: "Cycle",
   title: "On Cycle",
   source: "linear.app",
   icon: "linear",
   examples: [cycleCreated, cycleRemoved, cycleUpdated],
-  parsePayload: (payload) => payload as CycleEvent,
+  parsePayload: (payload) => payload as GetLinearPayload<CycleEvent>,
   runProperties: (payload) => [
     { label: "Event action", text: payload.action },
     { label: "Cycle ID", text: payload.data.id },
   ],
 };
 
-export const onCycleCreated: EventSpecification<ExtractCreate<CycleEvent>> = {
+export const onCycleCreated: EventSpecification<GetLinearPayload<CycleEvent, "create">> = {
   name: "Cycle",
   title: "On Cycle Created",
   source: "linear.app",
@@ -168,11 +168,11 @@ export const onCycleCreated: EventSpecification<ExtractCreate<CycleEvent>> = {
     action: ["create"],
   },
   examples: [cycleCreated],
-  parsePayload: (payload) => payload as ExtractCreate<CycleEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<CycleEvent, "create">,
   runProperties: (payload) => [{ label: "Cycle ID", text: payload.data.id }],
 };
 
-export const onCycleRemoved: EventSpecification<ExtractRemove<CycleEvent>> = {
+export const onCycleRemoved: EventSpecification<GetLinearPayload<CycleEvent, "remove">> = {
   name: "Cycle",
   title: "On Cycle Removed",
   source: "linear.app",
@@ -181,11 +181,11 @@ export const onCycleRemoved: EventSpecification<ExtractRemove<CycleEvent>> = {
     action: ["remove"],
   },
   examples: [cycleRemoved],
-  parsePayload: (payload) => payload as ExtractRemove<CycleEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<CycleEvent, "remove">,
   runProperties: (payload) => [{ label: "Cycle ID", text: payload.data.id }],
 };
 
-export const onCycleUpdated: EventSpecification<ExtractUpdate<CycleEvent>> = {
+export const onCycleUpdated: EventSpecification<GetLinearPayload<CycleEvent, "update">> = {
   name: "Cycle",
   title: "On Cycle Updated",
   source: "linear.app",
@@ -194,24 +194,24 @@ export const onCycleUpdated: EventSpecification<ExtractUpdate<CycleEvent>> = {
     action: ["update"],
   },
   examples: [cycleUpdated],
-  parsePayload: (payload) => payload as ExtractUpdate<CycleEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<CycleEvent, "update">,
   runProperties: (payload) => [{ label: "Cycle ID", text: payload.data.id }],
 };
 
-export const onIssue: EventSpecification<IssueEvent> = {
+export const onIssue: EventSpecification<GetLinearPayload<IssueEvent>> = {
   name: "Issue",
   title: "On Issue",
   source: "linear.app",
   icon: "linear",
   examples: [issueCreated, issueRemoved, issueUpdated],
-  parsePayload: (payload) => payload as IssueEvent,
+  parsePayload: (payload) => payload as GetLinearPayload<IssueEvent>,
   runProperties: (payload) => [
     { label: "Event action", text: payload.action },
     { label: "Issue ID", text: payload.data.id },
   ],
 };
 
-export const onIssueCreated: EventSpecification<ExtractCreate<IssueEvent>> = {
+export const onIssueCreated: EventSpecification<GetLinearPayload<IssueEvent, "create">> = {
   name: "Issue",
   title: "On Issue Created",
   source: "linear.app",
@@ -220,11 +220,11 @@ export const onIssueCreated: EventSpecification<ExtractCreate<IssueEvent>> = {
     action: ["create"],
   },
   examples: [issueCreated],
-  parsePayload: (payload) => payload as ExtractCreate<IssueEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<IssueEvent, "create">,
   runProperties: (payload) => [{ label: "Issue ID", text: payload.data.id }],
 };
 
-export const onIssueRemoved: EventSpecification<ExtractRemove<IssueEvent>> = {
+export const onIssueRemoved: EventSpecification<GetLinearPayload<IssueEvent, "remove">> = {
   name: "Issue",
   title: "On Issue Removed",
   source: "linear.app",
@@ -233,11 +233,11 @@ export const onIssueRemoved: EventSpecification<ExtractRemove<IssueEvent>> = {
     action: ["remove"],
   },
   examples: [issueRemoved],
-  parsePayload: (payload) => payload as ExtractRemove<IssueEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<IssueEvent, "remove">,
   runProperties: (payload) => [{ label: "Issue ID", text: payload.data.id }],
 };
 
-export const onIssueUpdated: EventSpecification<ExtractUpdate<IssueEvent>> = {
+export const onIssueUpdated: EventSpecification<GetLinearPayload<IssueEvent, "update">> = {
   name: "Issue",
   title: "On Issue Updated",
   source: "linear.app",
@@ -246,24 +246,24 @@ export const onIssueUpdated: EventSpecification<ExtractUpdate<IssueEvent>> = {
     action: ["update"],
   },
   examples: [issueUpdated],
-  parsePayload: (payload) => payload as ExtractUpdate<IssueEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<IssueEvent, "update">,
   runProperties: (payload) => [{ label: "Issue ID", text: payload.data.id }],
 };
 
-export const onIssueLabel: EventSpecification<IssueLabelEvent> = {
+export const onIssueLabel: EventSpecification<GetLinearPayload<IssueLabelEvent>> = {
   name: "IssueLabel",
   title: "On IssueLabel",
   source: "linear.app",
   icon: "linear",
   examples: [issueLabelCreated, issueLabelRemoved, issueLabelUpdated],
-  parsePayload: (payload) => payload as IssueLabelEvent,
+  parsePayload: (payload) => payload as GetLinearPayload<IssueLabelEvent>,
   runProperties: (payload) => [
     { label: "Event action", text: payload.action },
     { label: "IssueLabel ID", text: payload.data.id },
   ],
 };
 
-export const onIssueLabelCreated: EventSpecification<ExtractCreate<IssueLabelEvent>> = {
+export const onIssueLabelCreated: EventSpecification<GetLinearPayload<IssueLabelEvent, "create">> = {
   name: "IssueLabel",
   title: "On IssueLabel Created",
   source: "linear.app",
@@ -272,11 +272,11 @@ export const onIssueLabelCreated: EventSpecification<ExtractCreate<IssueLabelEve
     action: ["create"],
   },
   examples: [issueLabelCreated],
-  parsePayload: (payload) => payload as ExtractCreate<IssueLabelEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<IssueLabelEvent, "create">,
   runProperties: (payload) => [{ label: "IssueLabel ID", text: payload.data.id }],
 };
 
-export const onIssueLabelRemoved: EventSpecification<ExtractRemove<IssueLabelEvent>> = {
+export const onIssueLabelRemoved: EventSpecification<GetLinearPayload<IssueLabelEvent, "remove">> = {
   name: "IssueLabel",
   title: "On IssueLabel Removed",
   source: "linear.app",
@@ -285,11 +285,11 @@ export const onIssueLabelRemoved: EventSpecification<ExtractRemove<IssueLabelEve
     action: ["remove"],
   },
   examples: [issueLabelRemoved],
-  parsePayload: (payload) => payload as ExtractRemove<IssueLabelEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<IssueLabelEvent, "remove">,
   runProperties: (payload) => [{ label: "IssueLabel ID", text: payload.data.id }],
 };
 
-export const onIssueLabelUpdated: EventSpecification<ExtractUpdate<IssueLabelEvent>> = {
+export const onIssueLabelUpdated: EventSpecification<GetLinearPayload<IssueLabelEvent, "update">> = {
   name: "IssueLabel",
   title: "On IssueLabel Updated",
   source: "linear.app",
@@ -298,37 +298,37 @@ export const onIssueLabelUpdated: EventSpecification<ExtractUpdate<IssueLabelEve
     action: ["update"],
   },
   examples: [issueLabelUpdated],
-  parsePayload: (payload) => payload as ExtractUpdate<IssueLabelEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<IssueLabelEvent, "update">,
   runProperties: (payload) => [{ label: "IssueLabel ID", text: payload.data.id }],
 };
 
 // TODO: this needs to be tested
-export const onIssueSLA: EventSpecification<IssueSLAEvent> = {
+export const onIssueSLA: EventSpecification<GetLinearPayload<IssueSLAEvent>> = {
   name: "IssueSLA",
   title: "On Issue SLA",
   source: "linear.app",
   icon: "linear",
-  parsePayload: (payload) => payload as IssueSLAEvent,
+  parsePayload: (payload) => payload as GetLinearPayload<IssueSLAEvent>,
   runProperties: (payload) => [
     { label: "SLA action", text: payload.action },
     { label: "Issue ID", text: payload.issueData.id },
   ],
 };
 
-export const onProject: EventSpecification<ProjectEvent> = {
+export const onProject: EventSpecification<GetLinearPayload<ProjectEvent>> = {
   name: "Project",
   title: "On Project",
   source: "linear.app",
   icon: "linear",
   examples: [projectCreated, projectRemoved, projectUpdated],
-  parsePayload: (payload) => payload as ProjectEvent,
+  parsePayload: (payload) => payload as GetLinearPayload<ProjectEvent>,
   runProperties: (payload) => [
     { label: "Event action", text: payload.action },
     { label: "Project ID", text: payload.data.id },
   ],
 };
 
-export const onProjectCreated: EventSpecification<ExtractCreate<ProjectEvent>> = {
+export const onProjectCreated: EventSpecification<GetLinearPayload<ProjectEvent, "create">> = {
   name: "Project",
   title: "On Project Created",
   source: "linear.app",
@@ -337,11 +337,11 @@ export const onProjectCreated: EventSpecification<ExtractCreate<ProjectEvent>> =
     action: ["create"],
   },
   examples: [projectCreated],
-  parsePayload: (payload) => payload as ExtractCreate<ProjectEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<ProjectEvent, "create">,
   runProperties: (payload) => [{ label: "Project ID", text: payload.data.id }],
 };
 
-export const onProjectRemoved: EventSpecification<ExtractRemove<ProjectEvent>> = {
+export const onProjectRemoved: EventSpecification<GetLinearPayload<ProjectEvent, "remove">> = {
   name: "Project",
   title: "On Project Removed",
   source: "linear.app",
@@ -350,12 +350,12 @@ export const onProjectRemoved: EventSpecification<ExtractRemove<ProjectEvent>> =
     action: ["remove"],
   },
   examples: [projectRemoved],
-  parsePayload: (payload) => payload as ExtractRemove<ProjectEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<ProjectEvent, "remove">,
   runProperties: (payload) => [{ label: "Project ID", text: payload.data.id }],
 };
 
 // TODO: think of a better naming scheme (clashes with ProjectUpdated entity)
-export const onProjectUpdated: EventSpecification<ExtractUpdate<ProjectEvent>> = {
+export const onProjectUpdated: EventSpecification<GetLinearPayload<ProjectEvent, "update">> = {
   name: "Project",
   title: "On Project Updated",
   source: "linear.app",
@@ -364,24 +364,24 @@ export const onProjectUpdated: EventSpecification<ExtractUpdate<ProjectEvent>> =
     action: ["update"],
   },
   examples: [projectUpdated],
-  parsePayload: (payload) => payload as ExtractUpdate<ProjectEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<ProjectEvent, "update">,
   runProperties: (payload) => [{ label: "Project ID", text: payload.data.id }],
 };
 
-export const onProjectUpdate: EventSpecification<ProjectUpdateEvent> = {
+export const onProjectUpdate: EventSpecification<GetLinearPayload<ProjectUpdateEvent>> = {
   name: "ProjectUpdate",
   title: "On ProjectUpdate",
   source: "linear.app",
   icon: "linear",
   examples: [projectUpdateCreated, projectUpdateRemoved, projectUpdateUpdated],
-  parsePayload: (payload) => payload as ProjectUpdateEvent,
+  parsePayload: (payload) => payload as GetLinearPayload<ProjectUpdateEvent>,
   runProperties: (payload) => [
     { label: "Event action", text: payload.action },
     { label: "ProjectUpdate ID", text: payload.data.id },
   ],
 };
 
-export const onProjectUpdateCreated: EventSpecification<ExtractCreate<ProjectUpdateEvent>> = {
+export const onProjectUpdateCreated: EventSpecification<GetLinearPayload<ProjectUpdateEvent, "create">> = {
   name: "ProjectUpdate",
   title: "On ProjectUpdate Created",
   source: "linear.app",
@@ -390,11 +390,11 @@ export const onProjectUpdateCreated: EventSpecification<ExtractCreate<ProjectUpd
     action: ["create"],
   },
   examples: [projectUpdateCreated],
-  parsePayload: (payload) => payload as ExtractCreate<ProjectUpdateEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<ProjectUpdateEvent, "create">,
   runProperties: (payload) => [{ label: "ProjectUpdate ID", text: payload.data.id }],
 };
 
-export const onProjectUpdateRemoved: EventSpecification<ExtractRemove<ProjectUpdateEvent>> = {
+export const onProjectUpdateRemoved: EventSpecification<GetLinearPayload<ProjectUpdateEvent, "remove">> = {
   name: "ProjectUpdate",
   title: "On ProjectUpdate Removed",
   source: "linear.app",
@@ -403,11 +403,11 @@ export const onProjectUpdateRemoved: EventSpecification<ExtractRemove<ProjectUpd
     action: ["remove"],
   },
   examples: [projectUpdateRemoved],
-  parsePayload: (payload) => payload as ExtractRemove<ProjectUpdateEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<ProjectUpdateEvent, "remove">,
   runProperties: (payload) => [{ label: "ProjectUpdate ID", text: payload.data.id }],
 };
 
-export const onProjectUpdateUpdated: EventSpecification<ExtractUpdate<ProjectUpdateEvent>> = {
+export const onProjectUpdateUpdated: EventSpecification<GetLinearPayload<ProjectUpdateEvent, "update">> = {
   name: "ProjectUpdate",
   title: "On ProjectUpdate Updated",
   source: "linear.app",
@@ -416,24 +416,24 @@ export const onProjectUpdateUpdated: EventSpecification<ExtractUpdate<ProjectUpd
     action: ["update"],
   },
   examples: [projectUpdateUpdated],
-  parsePayload: (payload) => payload as ExtractUpdate<ProjectUpdateEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<ProjectUpdateEvent, "update">,
   runProperties: (payload) => [{ label: "ProjectUpdate ID", text: payload.data.id }],
 };
 
-export const onReaction: EventSpecification<ReactionEvent> = {
+export const onReaction: EventSpecification<GetLinearPayload<ReactionEvent>> = {
   name: "Reaction",
   title: "On Reaction",
   source: "linear.app",
   icon: "linear",
   examples: [reactionCreated, reactionRemoved, reactionUpdated],
-  parsePayload: (payload) => payload as ReactionEvent,
+  parsePayload: (payload) => payload as GetLinearPayload<ReactionEvent>,
   runProperties: (payload) => [
     { label: "Event action", text: payload.action },
     { label: "Reaction ID", text: payload.data.id },
   ],
 };
 
-export const onReactionCreated: EventSpecification<ExtractCreate<ReactionEvent>> = {
+export const onReactionCreated: EventSpecification<GetLinearPayload<ReactionEvent, "create">> = {
   name: "Reaction",
   title: "On Reaction Created",
   source: "linear.app",
@@ -442,11 +442,11 @@ export const onReactionCreated: EventSpecification<ExtractCreate<ReactionEvent>>
     action: ["create"],
   },
   examples: [reactionCreated],
-  parsePayload: (payload) => payload as ExtractCreate<ReactionEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<ReactionEvent, "create">,
   runProperties: (payload) => [{ label: "Reaction ID", text: payload.data.id }],
 };
 
-export const onReactionRemoved: EventSpecification<ExtractRemove<ReactionEvent>> = {
+export const onReactionRemoved: EventSpecification<GetLinearPayload<ReactionEvent, "remove">> = {
   name: "Reaction",
   title: "On Reaction Removed",
   source: "linear.app",
@@ -455,11 +455,11 @@ export const onReactionRemoved: EventSpecification<ExtractRemove<ReactionEvent>>
     action: ["remove"],
   },
   examples: [reactionRemoved],
-  parsePayload: (payload) => payload as ExtractRemove<ReactionEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<ReactionEvent, "remove">,
   runProperties: (payload) => [{ label: "Reaction ID", text: payload.data.id }],
 };
 
-export const onReactionUpdated: EventSpecification<ExtractUpdate<ReactionEvent>> = {
+export const onReactionUpdated: EventSpecification<GetLinearPayload<ReactionEvent, "update">> = {
   name: "Reaction",
   title: "On Reaction Updated",
   source: "linear.app",
@@ -468,6 +468,6 @@ export const onReactionUpdated: EventSpecification<ExtractUpdate<ReactionEvent>>
     action: ["update"],
   },
   examples: [reactionUpdated],
-  parsePayload: (payload) => payload as ExtractUpdate<ReactionEvent>,
+  parsePayload: (payload) => payload as GetLinearPayload<ReactionEvent, "update">,
   runProperties: (payload) => [{ label: "Reaction ID", text: payload.data.id }],
 };
