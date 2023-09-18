@@ -9,7 +9,6 @@ import { PackageManager } from "../../utils/getUserPkgManager";
 import { logger } from "../../utils/logger";
 import { getPathAlias } from "../../utils/pathAlias";
 import { readPackageJson } from "../../utils/readPackageJson";
-import { removeFileExtension } from "../../utils/removeFileExtension";
 import { detectMiddlewareUsage } from "./middleware";
 
 export class NextJs implements Framework {
