@@ -117,7 +117,7 @@ export async function devCommand(path: string, anyOptions: any) {
     const apiDetails = await getTriggerApiDetails(resolvedPath, envFile);
 
     if (!apiDetails) {
-      connectingSpinner.fail(`× [trigger.dev] Failed to connect: Missing API Key`);
+      connectingSpinner.fail(`[trigger.dev] Failed to connect: Missing API Key`);
       logger.info(`Will attempt again on the next file change…`);
       attemptCount = 0;
       return;
@@ -163,7 +163,7 @@ export async function devCommand(path: string, anyOptions: any) {
       attemptCount++;
 
       if (attemptCount === 10 || !result.retryable) {
-        connectingSpinner.fail(`× Failed to connect: ${result.error}`);
+        connectingSpinner.fail(`Failed to connect: ${result.error}`);
         logger.info(`Will attempt again on the next file change…`);
         attemptCount = 0;
 
@@ -274,14 +274,11 @@ async function verifyEndpoint(
         continue;
       }
 
-      spinner.succeed(`[trigger.dev] Found your trigger endpoint.`);
+      spinner.succeed(`[trigger.dev] Found your trigger endpoint: ${localEndpointHandlerUrl}`);
       return { hostname, port: resolvedOptions.port, handlerPath: resolvedOptions.handlerPath };
     } catch (err) {
-      logger.error(
-        `✖ [trigger.dev] No server found (${localEndpointHandlerUrl}). Make sure your app is running and try again.`
-      );
       spinner.fail(
-        `No server found (${localEndpointHandlerUrl}). Make sure your app is running and try again.`
+        `[trigger.dev] No server found (${localEndpointHandlerUrl}). Make sure your app is running and try again.`
       );
     }
   }
@@ -331,14 +328,14 @@ export async function getEndpointIdFromPackageJson(path: string, options: DevCom
 async function resolveEndpointUrl(apiUrl: string, port: number, hostname: string) {
   const apiURL = new URL(apiUrl);
 
-  if (apiURL.hostname === "localhost") {
+  //if the API is localhost and the hostname is localhost
+  if (apiURL.hostname === "localhost" && hostname === "localhost") {
     return `http://${hostname}:${port}`;
   }
 
   // Setup tunnel
   const tunnelSpinner = ora(`🚇 Creating tunnel`).start();
-
-  const tunnelUrl = await createTunnel(port, tunnelSpinner);
+  const tunnelUrl = await createTunnel(hostname, port, tunnelSpinner);
 
   if (tunnelUrl) {
     tunnelSpinner.succeed(`🚇 Created tunnel: ${tunnelUrl}`);
@@ -347,9 +344,9 @@ async function resolveEndpointUrl(apiUrl: string, port: number, hostname: string
   return tunnelUrl;
 }
 
-async function createTunnel(port: number, spinner: Ora) {
+async function createTunnel(hostname: string, port: number, spinner: Ora) {
   try {
-    return await ngrok.connect(port);
+    return await ngrok.connect({ addr: `${hostname}:${port}` });
   } catch (error: any) {
     if (
       typeof error.message === "string" &&
