@@ -24,7 +24,7 @@ import {
   WebhooksQueryVariables,
 } from "@linear/sdk/dist/_generated_documents";
 import { WebhookPayloadSchema } from "./schemas";
-import { WithoutFunctions } from "./types";
+import { SerializedLinearOutput } from "./types";
 
 type DeleteWebhookParams = {
   id: string;
@@ -35,9 +35,9 @@ type UpdateWebhookParams = {
   input: WebhookUpdateInput;
 };
 
-export const withoutFunctions = <T>(obj: T): Prettify<WithoutFunctions<T>> => {
+export const serializeLinearOutput = <T>(obj: T): Prettify<SerializedLinearOutput<T>> => {
   return JSON.parse(JSON.stringify(obj), (key, value) => {
-    if (typeof value === "function") {
+    if (typeof value === "function" || key.startsWith("_")) {
       return undefined;
     }
     return value;
@@ -54,12 +54,12 @@ export class Webhooks {
   create(
     key: IntegrationTaskKey,
     params: WebhookCreateInput
-  ): Promise<Omit<WebhookPayload, "webhook"> & { webhook: WithoutFunctions<Webhook | undefined> }> {
+  ): Promise<SerializedLinearOutput<Omit<WebhookPayload, "webhook"> & { webhook: Webhook | undefined }>> {
     return this.runTask(
       key,
       async (client, task, io) => {
         const payload = await client.createWebhook(params);
-        return withoutFunctions({
+        return serializeLinearOutput({
           ...payload,
           webhook: await payload.webhook,
         });
@@ -71,7 +71,7 @@ export class Webhooks {
     );
   }
 
-  list(key: IntegrationTaskKey, params?: WebhooksQueryVariables): Promise<WithoutFunctions<Webhook[]>> {
+  list(key: IntegrationTaskKey, params?: WebhooksQueryVariables): Promise<SerializedLinearOutput<Webhook[]>> {
     return this.runTask(
       key,
       async (client, task, io) => {
@@ -81,7 +81,7 @@ export class Webhooks {
           connections = await connections.fetchNext();
           hooks.push(...connections.nodes);
         }
-        return withoutFunctions(hooks);
+        return serializeLinearOutput(hooks);
       },
       {
         name: "List webhooks",
@@ -90,11 +90,11 @@ export class Webhooks {
     );
   }
 
-  delete(key: IntegrationTaskKey, params: DeleteWebhookParams): Promise<WithoutFunctions<DeletePayload>> {
+  delete(key: IntegrationTaskKey, params: DeleteWebhookParams): Promise<SerializedLinearOutput<DeletePayload>> {
     return this.runTask(
       key,
       async (client, task, io) => {
-        return withoutFunctions(await client.deleteWebhook(params.id));
+        return serializeLinearOutput(await client.deleteWebhook(params.id));
       },
       {
         name: "Delete webhook",
@@ -106,12 +106,12 @@ export class Webhooks {
   update(
     key: IntegrationTaskKey,
     params: UpdateWebhookParams
-  ): Promise<Omit<WebhookPayload, "webhook"> & { webhook: WithoutFunctions<Webhook | undefined> }> {
+  ): Promise<SerializedLinearOutput<Omit<WebhookPayload, "webhook"> & { webhook: Webhook | undefined }>> {
     return this.runTask(
       key,
       async (client, task) => {
         const payload = await client.updateWebhook(params.id, params.input);
-        return withoutFunctions({
+        return serializeLinearOutput({
           ...payload,
           webhook: await payload.webhook,
         });
