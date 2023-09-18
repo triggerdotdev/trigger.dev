@@ -82,6 +82,10 @@ export async function devCommand(path: string, anyOptions: any) {
   //verify that the endpoint can be reached
   const verifiedEndpoint = await verifyEndpoint(resolvedOptions, endpointId, apiKey, framework);
   if (!verifiedEndpoint) {
+    logger.error(
+      `✖ [trigger.dev] Failed to find a valid Trigger.dev endpoint. Make sure your app is running and try again.`
+    );
+    logger.info(`  [trigger.dev] You can use -H to specify a hostname, or -p to specify a port.`);
     telemetryClient.dev.failed("no_server_found", resolvedOptions);
     return;
   }
@@ -126,7 +130,7 @@ export async function devCommand(path: string, anyOptions: any) {
     const authorizedKey = await apiClient.whoami(apiKey);
     if (!authorizedKey) {
       logger.error(
-        `× The API key you provided is not authorized. Try visiting your dashboard to get a new API key.`
+        `✖ [trigger.dev] The API key you provided is not authorized. Try visiting your dashboard to get a new API key.`
       );
 
       telemetryClient.dev.failed("invalid_api_key", resolvedOptions);
@@ -288,7 +292,7 @@ async function verifyEndpoint(
 
       if (!response.ok || response.status !== 200) {
         spinner.fail(
-          `[trigger.dev] Found a server, but the trigger endpoint responded with ${response.status}.`
+          `[trigger.dev] Server responded with ${response.status} (${localEndpointHandlerUrl}).`
         );
         continue;
       }
@@ -296,9 +300,7 @@ async function verifyEndpoint(
       spinner.succeed(`[trigger.dev] Found your trigger endpoint: ${localEndpointHandlerUrl}`);
       return { hostname, port, handlerPath: resolvedOptions.handlerPath };
     } catch (err) {
-      spinner.fail(
-        `[trigger.dev] No server found (${localEndpointHandlerUrl}). Make sure your app is running and try again.`
-      );
+      spinner.fail(`[trigger.dev] No server found (${localEndpointHandlerUrl}).`);
     }
   }
 

@@ -15,7 +15,7 @@ export class NextJs implements Framework {
   id = "nextjs";
   name = "Next.js";
   defaultHostnames = ["localhost"];
-  defaultPorts = [3000];
+  defaultPorts = [3000, 3001, 3002];
 
   async isMatch(path: string, packageManager: PackageManager): Promise<boolean> {
     const hasNextConfigFile = await detectNextConfigFile(path);
