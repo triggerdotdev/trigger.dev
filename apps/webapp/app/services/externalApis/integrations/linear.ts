@@ -51,7 +51,7 @@ export const linear: Integration = {
       config: {
         authorization: {
           url: "https://linear.app/oauth/authorize",
-          scopeSeparator: " ",
+          scopeSeparator: ",",
         },
         token: {
           url: "https://api.linear.app/oauth/token",
@@ -60,13 +60,14 @@ export const linear: Integration = {
         refresh: {
           url: "https://linear.app/oauth/authorize",
         },
+        pkce: false,
       },
       scopes: [
         {
           name: "write",
           description:
             "Grants global write access to the user's account. Use a more targeted scope if you don't need full access.",
-            defaultChecked: true,
+          defaultChecked: true,
         },
 
         {
