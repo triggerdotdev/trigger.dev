@@ -1,6 +1,7 @@
 import { InstallPackage } from "../utils/addDependencies";
 import { PackageManager } from "../utils/getUserPkgManager";
 import { NextJs } from "./nextjs";
+import { Remix } from "./remix";
 
 export type ProjectInstallOptions = {
   typescript: boolean;
@@ -20,7 +21,7 @@ export interface Framework {
   postInstall(path: string, options: ProjectInstallOptions): Promise<void>;
 }
 
-const frameworks: Framework[] = [new NextJs()];
+const frameworks: Framework[] = [new NextJs(), new Remix()];
 
 export const getFramework = async (
   path: string,
