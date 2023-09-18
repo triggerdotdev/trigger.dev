@@ -66,10 +66,10 @@ async function setEnvironmentVariable(
 
     await fs.writeFile(path, updatedEnvFileContent);
 
-    logger.success(`✅ Set ${variableName}=${renderer(value)} in ${fileName}`);
+    logger.success(`✔ Set ${variableName}=${renderer(value)} in ${fileName}`);
   } else {
     await fs.appendFile(path, `\n${variableName}=${value}`);
 
-    logger.success(`✅ Added ${variableName}=${renderer(value)} to ${fileName}`);
+    logger.success(`✔ Added ${variableName}=${renderer(value)} to ${fileName}`);
   }
 }

@@ -207,7 +207,7 @@ export default defineConfig([
   // Install the dependencies
   await installDependencies(resolvedPath);
 
-  logger.success(`✅ Successfully initialized ${resolvedOptions.packageName} at ${resolvedPath}`);
+  logger.success(`✔ Successfully initialized ${resolvedOptions.packageName} at ${resolvedPath}`);
   logger.info("Next steps:");
   logger.info(`   1. If you generated code, double check it for errors.`);
   logger.info(

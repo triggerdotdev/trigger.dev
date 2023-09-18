@@ -57,7 +57,7 @@ export const initCommand = async (options: InitCommandOptions) => {
     telemetryClient.init.failed("not_supported_project", options);
     return;
   }
-  logger.success(`✅ Detected ${framework.name} project`);
+  logger.success(`✔ Detected ${framework.name} project`);
 
   const hasGitChanges = await detectGitChanges(resolvedPath);
   if (hasGitChanges) {
@@ -141,7 +141,7 @@ async function printNextSteps(
 ) {
   const projectUrl = `${options.triggerUrl}/orgs/${authorizedKey.organization.slug}/projects/${authorizedKey.project.slug}`;
 
-  logger.success(`✅ Successfully initialized Trigger.dev!`);
+  logger.success(`✔ Successfully initialized Trigger.dev!`);
 
   logger.info("Next steps:");
   logger.info(`   1. Run your ${framework.name} project locally with '${packageManager} run dev'`);
@@ -170,7 +170,7 @@ async function addConfigurationToPackageJson(path: string, options: ResolvedOpti
   const pkgJsonPath = pathModule.join(path, "package.json");
   await fs.writeFile(pkgJsonPath, JSON.stringify(pkgJson, null, 2));
 
-  logger.success(`✅ Wrote trigger.dev config to package.json`);
+  logger.success(`✔ Wrote trigger.dev config to package.json`);
 }
 
 type OptionsAfterPrompts = Required<Omit<InitCommandOptions, "endpointSlug">> & {
