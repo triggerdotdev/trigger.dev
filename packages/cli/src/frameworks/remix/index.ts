@@ -13,7 +13,7 @@ export class Remix implements Framework {
   id = "remix";
   name = "Remix";
   defaultHostnames = ["localhost"];
-  defaultPort = 3000;
+  defaultPorts = [3000, 8788, 3333];
 
   async isMatch(path: string, packageManager: PackageManager): Promise<boolean> {
     //check for remix.config.js

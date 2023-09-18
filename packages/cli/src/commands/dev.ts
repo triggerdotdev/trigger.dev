@@ -1,23 +1,23 @@
+import chalk from "chalk";
 import childProcess from "child_process";
 import chokidar from "chokidar";
 import fs from "fs/promises";
 import ngrok from "ngrok";
-import fetch from "../utils/fetchUseProxy";
+import { run as ncuRun } from "npm-check-updates";
 import ora, { Ora } from "ora";
 import pathModule from "path";
 import util from "util";
 import { z } from "zod";
+import { Framework, getFramework } from "../frameworks";
 import { telemetryClient } from "../telemetry/telemetry";
+import { getEnvFilename } from "../utils/env";
+import fetch from "../utils/fetchUseProxy";
 import { getTriggerApiDetails } from "../utils/getTriggerApiDetails";
+import { getUserPackageManager } from "../utils/getUserPkgManager";
 import { logger } from "../utils/logger";
 import { resolvePath } from "../utils/parseNameAndPath";
+import { RequireKeys } from "../utils/requiredKeys";
 import { TriggerApi } from "../utils/triggerApi";
-import { run as ncuRun } from "npm-check-updates";
-import chalk from "chalk";
-import { getUserPackageManager } from "../utils/getUserPkgManager";
-import { Framework, getFramework } from "../frameworks";
-import { getEnvFilename } from "../utils/env";
-import { verify } from "crypto";
 
 const asyncExecFile = util.promisify(childProcess.execFile);
 
@@ -30,10 +30,7 @@ export const DevCommandOptionsSchema = z.object({
 });
 
 export type DevCommandOptions = z.infer<typeof DevCommandOptionsSchema>;
-type ResolvedOptions = Omit<Required<DevCommandOptions>, "clientId" | "hostname"> & {
-  clientId?: string;
-  hostname?: string;
-};
+type ResolvedOptions = RequireKeys<DevCommandOptions, "handlerPath" | "envFile">;
 
 const throttleTimeMs = 1000;
 
@@ -226,7 +223,7 @@ async function resolveOptions(
   const envName = await getEnvFilename(path, framework.possibleEnvFilenames());
 
   return {
-    port: unresolvedOptions.port ?? framework.defaultPort ?? 3000,
+    port: unresolvedOptions.port,
     hostname: unresolvedOptions.hostname,
     envFile: unresolvedOptions.envFile ?? envName ?? ".env",
     handlerPath: unresolvedOptions.handlerPath,
@@ -247,11 +244,33 @@ async function verifyEndpoint(
   }
   if (framework) {
     hostnames.push(...framework.defaultHostnames);
+  } else {
+    hostnames.push("localhost");
+  }
+
+  //create list of ports to try
+  const ports = [];
+  if (resolvedOptions.port) {
+    ports.push(resolvedOptions.port);
+  }
+  if (framework) {
+    ports.push(...framework.defaultPorts);
+  } else {
+    ports.push(3000);
+  }
+
+  //create list of urls to try
+  const urls: { hostname: string; port: number }[] = [];
+  for (const hostname of hostnames) {
+    for (const port of ports) {
+      urls.push({ hostname, port });
+    }
   }
 
   //try each hostname
-  for (const hostname of hostnames) {
-    const localEndpointHandlerUrl = `http://${hostname}:${resolvedOptions.port}${resolvedOptions.handlerPath}`;
+  for (const url of urls) {
+    const { hostname, port } = url;
+    const localEndpointHandlerUrl = `http://${hostname}:${port}${resolvedOptions.handlerPath}`;
 
     const spinner = ora(
       `[trigger.dev] Looking for your trigger endpoint: ${localEndpointHandlerUrl}`
@@ -275,7 +294,7 @@ async function verifyEndpoint(
       }
 
       spinner.succeed(`[trigger.dev] Found your trigger endpoint: ${localEndpointHandlerUrl}`);
-      return { hostname, port: resolvedOptions.port, handlerPath: resolvedOptions.handlerPath };
+      return { hostname, port, handlerPath: resolvedOptions.handlerPath };
     } catch (err) {
       spinner.fail(
         `[trigger.dev] No server found (${localEndpointHandlerUrl}). Make sure your app is running and try again.`
