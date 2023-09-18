@@ -1,4 +1,5 @@
 import {
+  EventFilter,
   ExternalSource,
   ExternalSourceTrigger,
   HandlerEvent,
@@ -129,14 +130,10 @@ export class Webhooks {
 
 type LinearEvents = (typeof events)[keyof typeof events];
 
-const TriggerParamsSchema = z.object({
-  resourceTypes: z.array(WebhookResourceTypeSchema),
-  teamId: z.string().optional(),
-  allPublicTeams: z.boolean().optional(),
-  actionTypes: z.array(WebhookActionTypeSchema).optional(),
-});
-
-export type TriggerParams = z.infer<typeof TriggerParamsSchema>;
+export type TriggerParams = {
+  teamId?: string;
+  filter?: EventFilter;
+};
 
 type CreateTriggersResult<TEventSpecification extends LinearEvents> = ExternalSourceTrigger<
   TEventSpecification,
@@ -147,9 +144,6 @@ export function createTrigger<TEventSpecification extends LinearEvents>(
   source: ReturnType<typeof createWebhookEventSource>,
   event: TEventSpecification,
   params: TriggerParams
-  // options: {
-  //   actionTypes?: WebhookActionType[]; // via params
-  // }
 ): CreateTriggersResult<TEventSpecification> {
   return new ExternalSourceTrigger({
     event,
@@ -166,19 +160,17 @@ const WebhookRegistrationDataSchema = z.object({
     enabled: z.boolean(),
   }),
 });
-type WebhookRegistrationData = z.infer<typeof WebhookRegistrationDataSchema>;
 
 export function createWebhookEventSource(
   integration: Linear
 ): ExternalSource<Linear, TriggerParams, "HTTP", {}> {
   return new ExternalSource("HTTP", {
     id: "linear.webhook",
-    schema: TriggerParamsSchema,
-    // optionSchema: z.object({ }),
+    schema: z.object({
+      teamId: z.string().optional(),
+    }),
     version: "0.1.0",
     integration,
-    // TODO: filter by actionTypes
-    // filter: (params, options) => ({ }),
     key: (params) => `${params.teamId ? params.teamId : "all"}`,
     handler: webhookHandler,
     register: async (event, io, ctx) => {

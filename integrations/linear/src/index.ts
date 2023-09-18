@@ -11,8 +11,7 @@ import {
 } from "@trigger.dev/sdk";
 import { LinearClient } from "@linear/sdk";
 import * as events from "./events";
-import { Webhooks, createTrigger, createWebhookEventSource } from "./webhooks";
-import { WebhookActionType } from "./schemas";
+import { TriggerParams, Webhooks, createTrigger, createWebhookEventSource } from "./webhooks";
 
 export type LinearIntegrationOptions = {
   id: string;
@@ -100,241 +99,146 @@ export class Linear implements TriggerIntegration {
     );
   }
 
-  // TODO: create separate sources to remove resourceTypes
-
   /** **WARNING:** Still in alpha - use with caution! */
-  onAttachment(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onAttachment, {
-      ...params,
-      resourceTypes: ["Attachment"],
-    });
+  onAttachment(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onAttachment, params);
   }
 
   /** **WARNING:** Still in alpha - use with caution! */
-  onAttachmentCreated(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onAttachmentCreated, {
-      ...params,
-      resourceTypes: ["Attachment"],
-    });
+  onAttachmentCreated(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onAttachmentCreated, params);
   }
 
   /** **WARNING:** Still in alpha - use with caution! */
-  onAttachmentRemoved(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onAttachmentRemoved, {
-      ...params,
-      resourceTypes: ["Attachment"],
-    });
+  onAttachmentRemoved(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onAttachmentRemoved, params);
   }
 
   /** **WARNING:** Still in alpha - use with caution! */
-  onAttachmentUpdated(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onAttachmentUpdated, {
-      ...params,
-      resourceTypes: ["Attachment"],
-    });
+  onAttachmentUpdated(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onAttachmentUpdated, params);
   }
 
-  onComment(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onComment, { ...params, resourceTypes: ["Comment"] });
+  onComment(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onComment, params);
   }
 
-  onCommentCreated(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onCommentCreated, {
-      ...params,
-      resourceTypes: ["Comment"],
-    });
+  onCommentCreated(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onCommentCreated, params);
   }
 
-  onCommentRemoved(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onCommentRemoved, {
-      ...params,
-      resourceTypes: ["Comment"],
-    });
+  onCommentRemoved(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onCommentRemoved, params);
   }
 
-  onCommentUpdated(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onCommentUpdated, {
-      ...params,
-      resourceTypes: ["Comment"],
-    });
+  onCommentUpdated(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onCommentUpdated, params);
   }
 
-  onCycle(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onCycle, { ...params, resourceTypes: ["Cycle"] });
+  onCycle(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onCycle, params);
   }
 
-  onCycleCreated(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onCycleCreated, {
-      ...params,
-      resourceTypes: ["Cycle"],
-    });
+  onCycleCreated(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onCycleCreated, params);
   }
 
-  onCycleRemoved(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onCycleRemoved, {
-      ...params,
-      resourceTypes: ["Cycle"],
-    });
+  onCycleRemoved(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onCycleRemoved, params);
   }
 
-  onCycleUpdated(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onCycleUpdated, {
-      ...params,
-      resourceTypes: ["Cycle"],
-    });
+  onCycleUpdated(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onCycleUpdated, params);
   }
 
-  onIssue(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onIssue, { ...params, resourceTypes: ["Issue"] });
+  onIssue(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onIssue, params);
   }
 
-  onIssueCreated(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onIssueCreated, {
-      ...params,
-      resourceTypes: ["Issue"],
-    });
+  onIssueCreated(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onIssueCreated, params);
   }
 
-  onIssueRemoved(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onIssueRemoved, {
-      ...params,
-      resourceTypes: ["Issue"],
-    });
+  onIssueRemoved(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onIssueRemoved, params);
   }
 
-  onIssueUpdated(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onIssueUpdated, {
-      ...params,
-      resourceTypes: ["Issue"],
-    });
+  onIssueUpdated(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onIssueUpdated, params);
   }
 
-  onIssueLabel(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onIssueLabel, {
-      ...params,
-      resourceTypes: ["IssueLabel"],
-    });
+  onIssueLabel(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onIssueLabel, params);
   }
 
-  onIssueLabelCreated(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onIssueLabelCreated, {
-      ...params,
-      resourceTypes: ["IssueLabel"],
-    });
+  onIssueLabelCreated(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onIssueLabelCreated, params);
   }
 
-  onIssueLabelRemoved(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onIssueLabelRemoved, {
-      ...params,
-      resourceTypes: ["IssueLabel"],
-    });
+  onIssueLabelRemoved(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onIssueLabelRemoved, params);
   }
 
-  onIssueLabelUpdated(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onIssueLabelUpdated, {
-      ...params,
-      resourceTypes: ["IssueLabel"],
-    });
+  onIssueLabelUpdated(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onIssueLabelUpdated, params);
   }
 
-  onIssueSLA(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onIssueSLA, {
-      ...params,
-      resourceTypes: ["IssueSla"],
-    });
+  onIssueSLA(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onIssueSLA, params);
   }
 
-  onProject(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onProject, { ...params, resourceTypes: ["Project"] });
+  onProject(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onProject, params);
   }
 
-  onProjectCreated(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onProjectCreated, {
-      ...params,
-      resourceTypes: ["Project"],
-    });
+  onProjectCreated(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onProjectCreated, params);
   }
 
-  onProjectRemoved(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onProjectRemoved, {
-      ...params,
-      resourceTypes: ["Project"],
-    });
+  onProjectRemoved(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onProjectRemoved, params);
   }
 
-  onProjectUpdated(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onProjectUpdated, {
-      ...params,
-      resourceTypes: ["Project"],
-    });
+  onProjectUpdated(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onProjectUpdated, params);
   }
 
-  onProjectUpdate(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onProjectUpdate, {
-      ...params,
-      resourceTypes: ["ProjectUpdate"],
-    });
+  onProjectUpdate(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onProjectUpdate, params);
   }
 
-  onProjectUpdateCreated(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onProjectUpdateCreated, {
-      ...params,
-      resourceTypes: ["ProjectUpdate"],
-    });
+  onProjectUpdateCreated(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onProjectUpdateCreated, params);
   }
 
-  onProjectUpdateRemoved(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onProjectUpdateRemoved, {
-      ...params,
-      resourceTypes: ["ProjectUpdate"],
-    });
+  onProjectUpdateRemoved(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onProjectUpdateRemoved, params);
   }
 
-  onProjectUpdateUpdated(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onProjectUpdateUpdated, {
-      ...params,
-      resourceTypes: ["ProjectUpdate"],
-    });
+  onProjectUpdateUpdated(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onProjectUpdateUpdated, params);
   }
 
-  onReaction(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onReaction, {
-      ...params,
-      resourceTypes: ["Reaction"],
-    });
+  onReaction(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onReaction, params);
   }
 
-  onReactionCreated(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onReactionCreated, {
-      ...params,
-      resourceTypes: ["Reaction"],
-    });
+  onReactionCreated(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onReactionCreated, params);
   }
 
-  onReactionRemoved(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onReactionRemoved, {
-      ...params,
-      resourceTypes: ["Reaction"],
-    });
+  onReactionRemoved(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onReactionRemoved, params);
   }
 
-  onReactionUpdated(params: OnChangeParams = {}) {
-    return createTrigger(this.source, events.onReactionUpdated, {
-      ...params,
-      resourceTypes: ["Reaction"],
-    });
+  onReactionUpdated(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onReactionUpdated, params);
   }
 
   webhooks() {
     return new Webhooks(this.runTask.bind(this));
   }
 }
-
-type OnChangeParams = {
-  teamId?: string;
-  allPublicTeams?: boolean;
-  actionTypes?: WebhookActionType[];
-};
 
 // TODO
 export function onError(error: unknown) {}
