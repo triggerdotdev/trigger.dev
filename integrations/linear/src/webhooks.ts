@@ -5,6 +5,7 @@ import {
   HandlerEvent,
   IntegrationTaskKey,
   Logger,
+  Prettify,
 } from "@trigger.dev/sdk";
 import {
   LinearWebhooks,
@@ -23,6 +24,7 @@ import {
   WebhooksQueryVariables,
 } from "@linear/sdk/dist/_generated_documents";
 import { WebhookPayloadSchema } from "./schemas";
+import { WithoutFunctions } from "./types";
 
 type DeleteWebhookParams = {
   id: string;
@@ -33,8 +35,7 @@ type UpdateWebhookParams = {
   input: WebhookUpdateInput;
 };
 
-// TODO: types
-const withoutFunctions = <T>(obj: T): T => {
+export const withoutFunctions = <T>(obj: T): Prettify<WithoutFunctions<T>> => {
   return JSON.parse(JSON.stringify(obj), (key, value) => {
     if (typeof value === "function") {
       return undefined;
@@ -53,8 +54,7 @@ export class Webhooks {
   create(
     key: IntegrationTaskKey,
     params: WebhookCreateInput
-    // TODO: tidy up return type
-  ): Promise<Omit<WebhookPayload, "webhook"> & { webhook: Webhook | undefined }> {
+  ): Promise<Omit<WebhookPayload, "webhook"> & { webhook: WithoutFunctions<Webhook | undefined> }> {
     return this.runTask(
       key,
       async (client, task, io) => {
@@ -71,7 +71,7 @@ export class Webhooks {
     );
   }
 
-  list(key: IntegrationTaskKey, params?: WebhooksQueryVariables): Promise<Webhook[]> {
+  list(key: IntegrationTaskKey, params?: WebhooksQueryVariables): Promise<WithoutFunctions<Webhook[]>> {
     return this.runTask(
       key,
       async (client, task, io) => {
@@ -90,7 +90,7 @@ export class Webhooks {
     );
   }
 
-  delete(key: IntegrationTaskKey, params: DeleteWebhookParams): Promise<DeletePayload> {
+  delete(key: IntegrationTaskKey, params: DeleteWebhookParams): Promise<WithoutFunctions<DeletePayload>> {
     return this.runTask(
       key,
       async (client, task, io) => {
@@ -106,7 +106,7 @@ export class Webhooks {
   update(
     key: IntegrationTaskKey,
     params: UpdateWebhookParams
-  ): Promise<Omit<WebhookPayload, "webhook"> & { webhook: Webhook | undefined }> {
+  ): Promise<Omit<WebhookPayload, "webhook"> & { webhook: WithoutFunctions<Webhook | undefined> }> {
     return this.runTask(
       key,
       async (client, task) => {
