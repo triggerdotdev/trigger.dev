@@ -309,10 +309,9 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integ
 
   const rawBody = await request.text();
   const body = JSON.parse(rawBody);
-  const webhook = new LinearWebhooks(source.secret);
+  const webhookHelper = new LinearWebhooks(source.secret);
 
-  // TODO: might want to do two passes, with and without timestamp (delay parsing)
-  if (!webhook.verify(Buffer.from(rawBody), signature, body[LINEAR_WEBHOOK_TS_FIELD])) {
+  if (!webhookHelper.verify(Buffer.from(rawBody), signature, body[LINEAR_WEBHOOK_TS_FIELD])) {
     logger.error("[@trigger.dev/linear] Error validating webhook signature, they don't match");
     throw Error("[@trigger.dev/linear] Invalid signature");
   }
