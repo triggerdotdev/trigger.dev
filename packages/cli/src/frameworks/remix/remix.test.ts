@@ -47,7 +47,7 @@ describe("install", () => {
 
     const remix = new Remix();
     await remix.install("", { typescript: false, packageManager: "npm", endpointSlug: "foo" });
-    expect(await pathExists("app/trigger.js")).toEqual(true);
+    expect(await pathExists("app/trigger.server.js")).toEqual(true);
     expect(await pathExists("app/routes/api.trigger.js")).toEqual(true);
     expect(await pathExists("app/jobs/example.server.js")).toEqual(true);
   });
@@ -62,7 +62,7 @@ describe("install", () => {
 
     const remix = new Remix();
     await remix.install("", { typescript: true, packageManager: "npm", endpointSlug: "foo" });
-    expect(await pathExists("app/trigger.ts")).toEqual(true);
+    expect(await pathExists("app/trigger.server.ts")).toEqual(true);
     expect(await pathExists("app/routes/api.trigger.ts")).toEqual(true);
     expect(await pathExists("app/jobs/example.server.ts")).toEqual(true);
   });

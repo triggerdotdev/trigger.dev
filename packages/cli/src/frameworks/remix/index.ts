@@ -12,7 +12,7 @@ import { readPackageJson } from "../../utils/readPackageJson";
 export class Remix implements Framework {
   id = "remix";
   name = "Remix";
-  defaultHostname = "localhost";
+  defaultHostnames = ["localhost"];
   defaultPort = 3000;
 
   async isMatch(path: string, packageManager: PackageManager): Promise<boolean> {
@@ -71,10 +71,10 @@ export class Remix implements Framework {
     if (!apiRouteResult.success) {
       throw new Error("Failed to create API route file");
     }
-    logger.success(`✅ Created API route at ${apiRoutePath}`);
+    logger.success(`✔ Created API route at ${apiRoutePath}`);
 
-    //app/trigger.js
-    const triggerFilePath = pathModule.join(appFolder, `trigger${fileExtension}`);
+    //app/trigger.server.js
+    const triggerFilePath = pathModule.join(appFolder, `trigger.server${fileExtension}`);
     const triggerResult = await createFileFromTemplate({
       templatePath: pathModule.join(templatesDir, "trigger.js"),
       replacements: {
@@ -85,7 +85,7 @@ export class Remix implements Framework {
     if (!triggerResult.success) {
       throw new Error("Failed to create trigger file");
     }
-    logger.success(`✅ Created Trigger client at ${triggerFilePath}`);
+    logger.success(`✔ Created Trigger client at ${triggerFilePath}`);
 
     //app/jobs/example.server.js
     const exampleJobFilePath = pathModule.join(appFolder, "jobs", `example.server${fileExtension}`);
@@ -99,7 +99,7 @@ export class Remix implements Framework {
     if (!exampleJobResult.success) {
       throw new Error("Failed to create example job file");
     }
-    logger.success(`✅ Created example job at ${exampleJobFilePath}`);
+    logger.success(`✔ Created example job at ${exampleJobFilePath}`);
   }
 
   async postInstall(path: string, options: ProjectInstallOptions): Promise<void> {}

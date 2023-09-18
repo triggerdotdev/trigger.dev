@@ -17,6 +17,7 @@ import chalk from "chalk";
 import { getUserPackageManager } from "../utils/getUserPkgManager";
 import { Framework, getFramework } from "../frameworks";
 import { getEnvFilename } from "../utils/env";
+import { verify } from "crypto";
 
 const asyncExecFile = util.promisify(childProcess.execFile);
 
@@ -29,7 +30,10 @@ export const DevCommandOptionsSchema = z.object({
 });
 
 export type DevCommandOptions = z.infer<typeof DevCommandOptionsSchema>;
-type ResolvedOptions = Omit<Required<DevCommandOptions>, "clientId"> & { clientId?: string };
+type ResolvedOptions = Omit<Required<DevCommandOptions>, "clientId" | "hostname"> & {
+  clientId?: string;
+  hostname?: string;
+};
 
 const throttleTimeMs = 1000;
 
@@ -71,51 +75,32 @@ export async function devCommand(path: string, anyOptions: any) {
 
   // Read from .env.local or .env to get the TRIGGER_API_KEY and TRIGGER_API_URL
   const apiDetails = await getTriggerApiDetails(resolvedPath, resolvedOptions.envFile);
-
   if (!apiDetails) {
     telemetryClient.dev.failed("missing_api_key", resolvedOptions);
     return;
   }
-
   const { apiUrl, envFile, apiKey } = apiDetails;
-
   logger.success(`✔️ [trigger.dev] Found API Key in ${envFile} file`);
 
-  logger.info(`  [trigger.dev] Looking for your app on port ${resolvedOptions.port}`);
-
-  const localEndpointHandlerUrl = `http://${resolvedOptions.hostname}:${resolvedOptions.port}${resolvedOptions.handlerPath}`;
-
-  try {
-    await fetch(localEndpointHandlerUrl, {
-      method: "POST",
-      headers: {
-        "x-trigger-api-key": apiKey,
-        "x-trigger-action": "PING",
-        "x-trigger-endpoint-id": endpointId,
-      },
-    });
-  } catch (err) {
-    logger.error(
-      `❌ [trigger.dev] No server found on port ${resolvedOptions.port}. Make sure your app is running and try again.`
-    );
+  //verify that the endpoint can be reached
+  const verifiedEndpoint = await verifyEndpoint(resolvedOptions, endpointId, apiKey, framework);
+  if (!verifiedEndpoint) {
     telemetryClient.dev.failed("no_server_found", resolvedOptions);
     return;
   }
 
+  const { hostname, port, handlerPath } = verifiedEndpoint;
+
   telemetryClient.dev.serverRunning(path, resolvedOptions);
 
   // Setup tunnel
-  const endpointUrl = await resolveEndpointUrl(
-    apiUrl,
-    resolvedOptions.port,
-    resolvedOptions.hostname
-  );
+  const endpointUrl = await resolveEndpointUrl(apiUrl, port, hostname);
   if (!endpointUrl) {
     telemetryClient.dev.failed("failed_to_create_tunnel", resolvedOptions);
     return;
   }
 
-  const endpointHandlerUrl = `${endpointUrl}${resolvedOptions.handlerPath}`;
+  const endpointHandlerUrl = `${endpointUrl}${handlerPath}`;
   telemetryClient.dev.tunnelRunning(path, resolvedOptions);
 
   const connectingSpinner = ora(`[trigger.dev] Registering endpoint ${endpointHandlerUrl}...`);
@@ -132,7 +117,7 @@ export async function devCommand(path: string, anyOptions: any) {
     const apiDetails = await getTriggerApiDetails(resolvedPath, envFile);
 
     if (!apiDetails) {
-      connectingSpinner.fail(`❌ [trigger.dev] Failed to connect: Missing API Key`);
+      connectingSpinner.fail(`× [trigger.dev] Failed to connect: Missing API Key`);
       logger.info(`Will attempt again on the next file change…`);
       attemptCount = 0;
       return;
@@ -144,7 +129,7 @@ export async function devCommand(path: string, anyOptions: any) {
     const authorizedKey = await apiClient.whoami(apiKey);
     if (!authorizedKey) {
       logger.error(
-        `🛑 The API key you provided is not authorized. Try visiting your dashboard to get a new API key.`
+        `× The API key you provided is not authorized. Try visiting your dashboard to get a new API key.`
       );
 
       telemetryClient.dev.failed("invalid_api_key", resolvedOptions);
@@ -178,7 +163,7 @@ export async function devCommand(path: string, anyOptions: any) {
       attemptCount++;
 
       if (attemptCount === 10 || !result.retryable) {
-        connectingSpinner.fail(`🚨 Failed to connect: ${result.error}`);
+        connectingSpinner.fail(`× Failed to connect: ${result.error}`);
         logger.info(`Will attempt again on the next file change…`);
         attemptCount = 0;
 
@@ -221,7 +206,7 @@ export async function devCommand(path: string, anyOptions: any) {
   throttle(refresh, throttleTimeMs);
 }
 
-export async function resolveOptions(
+async function resolveOptions(
   framework: Framework | undefined,
   path: string,
   unresolvedOptions: DevCommandOptions
@@ -239,15 +224,69 @@ export async function resolveOptions(
 
   //get env filename
   const envName = await getEnvFilename(path, framework.possibleEnvFilenames());
-  framework.defaultHostname;
 
   return {
     port: unresolvedOptions.port ?? framework.defaultPort ?? 3000,
-    hostname: unresolvedOptions.hostname ?? framework.defaultHostname ?? "localhost",
+    hostname: unresolvedOptions.hostname,
     envFile: unresolvedOptions.envFile ?? envName ?? ".env",
     handlerPath: unresolvedOptions.handlerPath,
     clientId: unresolvedOptions.clientId,
   };
+}
+
+async function verifyEndpoint(
+  resolvedOptions: ResolvedOptions,
+  endpointId: string,
+  apiKey: string,
+  framework?: Framework
+) {
+  //create list of hostnames to try
+  const hostnames = [];
+  if (resolvedOptions.hostname) {
+    hostnames.push(resolvedOptions.hostname);
+  }
+  if (framework) {
+    hostnames.push(...framework.defaultHostnames);
+  }
+
+  //try each hostname
+  for (const hostname of hostnames) {
+    const localEndpointHandlerUrl = `http://${hostname}:${resolvedOptions.port}${resolvedOptions.handlerPath}`;
+
+    const spinner = ora(
+      `[trigger.dev] Looking for your trigger endpoint: ${localEndpointHandlerUrl}`
+    ).start();
+
+    try {
+      const response = await fetch(localEndpointHandlerUrl, {
+        method: "POST",
+        headers: {
+          "x-trigger-api-key": apiKey,
+          "x-trigger-action": "PING",
+          "x-trigger-endpoint-id": endpointId,
+        },
+      });
+
+      if (!response.ok || response.status !== 200) {
+        spinner.fail(
+          `[trigger.dev] Found a server, but the trigger endpoint responded with ${response.status}.`
+        );
+        continue;
+      }
+
+      spinner.succeed(`[trigger.dev] Found your trigger endpoint.`);
+      return { hostname, port: resolvedOptions.port, handlerPath: resolvedOptions.handlerPath };
+    } catch (err) {
+      logger.error(
+        `✖ [trigger.dev] No server found (${localEndpointHandlerUrl}). Make sure your app is running and try again.`
+      );
+      spinner.fail(
+        `No server found (${localEndpointHandlerUrl}). Make sure your app is running and try again.`
+      );
+    }
+  }
+
+  return;
 }
 
 export async function checkForOutdatedPackages(path: string) {

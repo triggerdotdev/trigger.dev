@@ -14,7 +14,7 @@ import { detectMiddlewareUsage } from "./middleware";
 export class NextJs implements Framework {
   id = "nextjs";
   name = "Next.js";
-  defaultHostname = "localhost";
+  defaultHostnames = ["localhost"];
   defaultPort = 3000;
 
   async isMatch(path: string, packageManager: PackageManager): Promise<boolean> {
@@ -128,7 +128,7 @@ async function createTriggerPageRoute(
   if (!apiRouteResult.success) {
     throw new Error("Failed to create API route file");
   }
-  logger.success(`✅ Created API route at ${apiRoutePath}`);
+  logger.success(`✔ Created API route at ${apiRoutePath}`);
 
   await createJobsAndTriggerFile(path, endpointSlug, fileExtension, pathAlias, templatesDir);
 }
@@ -154,7 +154,7 @@ async function createTriggerAppRoute(
   if (!apiRouteResult.success) {
     throw new Error("Failed to create API route file");
   }
-  logger.success(`✅ Created API route at ${apiRoutePath}`);
+  logger.success(`✔ Created API route at ${apiRoutePath}`);
 
   await createJobsAndTriggerFile(path, endpointSlug, fileExtension, pathAlias, templatesDir);
 }
@@ -178,7 +178,7 @@ async function createJobsAndTriggerFile(
   if (!triggerResult.success) {
     throw new Error("Failed to create trigger file");
   }
-  logger.success(`✅ Created Trigger client at ${triggerFilePath}`);
+  logger.success(`✔ Created Trigger client at ${triggerFilePath}`);
 
   //example jobs
   const exampleDirectory = pathModule.join(path, "jobs");
@@ -195,7 +195,7 @@ async function createJobsAndTriggerFile(
   if (!exampleJobResult.success) {
     throw new Error("Failed to create example job file");
   }
-  logger.success(`✅ Created example job at ${exampleJobFilePath}`);
+  logger.success(`✔ Created example job at ${exampleJobFilePath}`);
 
   //jobs/index.js or src/jobs/index.js
   const jobsIndexFilePath = pathModule.join(exampleDirectory, `index${fileExtension}`);
@@ -209,5 +209,5 @@ async function createJobsAndTriggerFile(
   if (!jobsIndexResult.success) {
     throw new Error("Failed to create jobs index file");
   }
-  logger.success(`✅ Created jobs index at ${jobsIndexFilePath}`);
+  logger.success(`✔ Created jobs index at ${jobsIndexFilePath}`);
 }

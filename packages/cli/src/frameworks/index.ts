@@ -12,7 +12,7 @@ export type ProjectInstallOptions = {
 export interface Framework {
   id: string;
   name: string;
-  defaultHostname: string;
+  defaultHostnames: string[];
   defaultPort: number;
   isMatch(path: string, packageManager: PackageManager): Promise<boolean>;
   dependencies(): Promise<InstallPackage[]>;
