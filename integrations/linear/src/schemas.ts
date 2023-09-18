@@ -191,7 +191,7 @@ const ProjectDataSchema = z.object({
   slackIssueStatuses: z.boolean(),
   slackNewIssue: z.boolean(),
   slugId: z.string(),
-  sortOrder: z.string(),
+  sortOrder: z.number(),
   startDate: z.coerce.date().optional().nullable(), // timeless
   startedAt: z.coerce.date().optional().nullable(),
   state: z.string(),
