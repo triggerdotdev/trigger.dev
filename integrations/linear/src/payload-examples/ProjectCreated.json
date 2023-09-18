@@ -1,0 +1,38 @@
+{
+  "url": "https://linear.app/triggerdotdev/project/ricks-world-1e55e5e64512",
+  "data": {
+    "id": "708440e6-648c-40f9-be87-9e00bbd8d1ec",
+    "name": "Rick's World",
+    "color": "#bec2c8",
+    "state": "backlog",
+    "leadId": "b552c442-62c9-40da-9932-ed8cb6e15a3f",
+    "slugId": "1e55e5e64512",
+    "teamIds": [
+      "0d9e46fb-bf4a-4d7b-9bb0-d5928d8b1c9f"
+    ],
+    "roadmaps": [],
+    "createdAt": "2023-09-17T11:24:43.171Z",
+    "creatorId": "b552c442-62c9-40da-9932-ed8cb6e15a3f",
+    "memberIds": [
+      "b552c442-62c9-40da-9932-ed8cb6e15a3f"
+    ],
+    "sortOrder": 8161.55,
+    "updatedAt": "2023-09-17T11:24:43.171Z",
+    "milestones": [],
+    "description": "We know the game and we're gonna play it",
+    "scopeHistory": [],
+    "slackNewIssue": true,
+    "issueCountHistory": [],
+    "slackIssueComments": true,
+    "slackIssueStatuses": true,
+    "completedScopeHistory": [],
+    "inProgressScopeHistory": [],
+    "completedIssueCountHistory": []
+  },
+  "type": "Project",
+  "action": "create",
+  "createdAt": "2023-09-17T11:24:43.171Z",
+  "webhookId": "d617c08b-47b6-4b09-a611-2e2f6d8fb99f",
+  "organizationId": "7c0221e0-76d2-45eb-b803-6163c046c534",
+  "webhookTimestamp": "2023-09-17T11:24:43.228Z"
+}

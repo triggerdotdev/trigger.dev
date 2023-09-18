@@ -1,0 +1,42 @@
+{
+  "url": "https://linear.app/triggerdotdev/issue/TRI-1/welcome-to-ricks-world-👋",
+  "data": {
+    "id": "ee4d5612-0752-441a-95cd-2a0de56689d3",
+    "team": {
+      "id": "0d9e46fb-bf4a-4d7b-9bb0-d5928d8b1c9f",
+      "key": "TRI",
+      "name": "Trigger.dev"
+    },
+    "state": {
+      "id": "8b77cd9c-f0cc-4be0-bd9b-52326d5c62a2",
+      "name": "Todo",
+      "type": "unstarted",
+      "color": "#e2e2e2"
+    },
+    "title": "Welcome to Rick's World ❤️‍🔥",
+    "labels": [],
+    "number": 1,
+    "teamId": "0d9e46fb-bf4a-4d7b-9bb0-d5928d8b1c9f",
+    "stateId": "8b77cd9c-f0cc-4be0-bd9b-52326d5c62a2",
+    "labelIds": [],
+    "priority": 2,
+    "createdAt": "2023-09-17T10:43:20.862Z",
+    "sortOrder": -13701.52,
+    "updatedAt": "2023-09-17T10:52:49.321Z",
+    "boardOrder": 0,
+    "description": "Hi there. Complete these issues to learn how to use Linear and discover ✨**ProTips.** When you're done, delete them or move them to another team for others to view.\n\n### **To start, type** `C` to **create your first issue.**\n\nCreate issues from any view using `C` or by clicking the `New issue` button.\n\n \n\n[1189b618-97f2-4e2c-ae25-4f25467679e7](https://uploads.linear.app/fe63b3e2-bf87-46c0-8784-cd7d639287c8/532d146d-bcd6-4602-bf1f-83f674b70fff/1189b618-97f2-4e2c-ae25-4f25467679e7)\n\nOur issue editor and comments support Markdown. You can also: \n\n* @mention a teammate\n* Drag & drop images or video (Loom & Youtube embed automatically)\n* Use emoji ✅",
+    "priorityLabel": "High",
+    "subscriberIds": [],
+    "previousIdentifiers": []
+  },
+  "type": "Issue",
+  "action": "update",
+  "createdAt": "2023-09-17T10:52:49.321Z",
+  "webhookId": "d617c08b-47b6-4b09-a611-2e2f6d8fb99f",
+  "updatedFrom": {
+    "title": "Welcome to Linear 👋",
+    "updatedAt": "2023-09-17T10:52:16.952Z"
+  },
+  "organizationId": "7c0221e0-76d2-45eb-b803-6163c046c534",
+  "webhookTimestamp": "2023-09-17T10:52:49.762Z"
+}
