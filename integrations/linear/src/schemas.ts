@@ -243,80 +243,180 @@ const CycleDataSchema = z.object({
 });
 
 export const WebhookPayloadBaseSchema = z.object({
-  action: WebhookActionTypeSchema,
   createdAt: z.coerce.date(),
-  url: z.string().url().optional().nullable(),
   organizationId: z.string().optional().nullable(), // missing from official schema - workspace id?
-  webhookTimestamp: z.coerce.date(),
+  url: z.string().url().optional().nullable(),
   webhookId: z.string(),
+  webhookTimestamp: z.coerce.date(),
 });
 
-export const IssueEventSchema = WebhookPayloadBaseSchema.extend({
-  type: z.literal("Issue"),
-  data: IssueDataSchema,
-  updatedFrom: IssueDataSchema.partial().optional(),
-});
-export type IssueEvent = z.infer<typeof IssueEventSchema>;
+const CREATE = z.literal("create");
+const REMOVE = z.literal("remove");
+const UPDATE = z.literal("update");
 
 /** **WARNING:** Still in alpha - use with caution! */
-export const AttachmentEventSchema = WebhookPayloadBaseSchema.extend({
+export const AttachmentEventBaseSchema = WebhookPayloadBaseSchema.extend({
   type: z.literal("Attachment"),
   data: AttachmentDataSchema,
-  updatedFrom: AttachmentDataSchema.partial().optional(),
 });
+export const AttachmentEventSchema = z.discriminatedUnion("action", [
+  AttachmentEventBaseSchema.extend({
+    action: CREATE,
+  }),
+  AttachmentEventBaseSchema.extend({
+    action: REMOVE,
+  }),
+  AttachmentEventBaseSchema.extend({
+    action: UPDATE,
+    updatedFrom: AttachmentDataSchema.partial(),
+  }),
+]);
 export type AttachmentEvent = z.infer<typeof AttachmentEventSchema>;
 
-export const CommentEventSchema = WebhookPayloadBaseSchema.extend({
+export const CommentEventBaseSchema = WebhookPayloadBaseSchema.extend({
   type: z.literal("Comment"),
   data: CommentDataSchema,
-  updatedFrom: CommentDataSchema.partial().optional(),
 });
+export const CommentEventSchema = z.discriminatedUnion("action", [
+  CommentEventBaseSchema.extend({
+    action: CREATE,
+  }),
+  CommentEventBaseSchema.extend({
+    action: REMOVE,
+  }),
+  CommentEventBaseSchema.extend({
+    action: UPDATE,
+    updatedFrom: CommentDataSchema.partial(),
+  }),
+]);
 export type CommentEvent = z.infer<typeof CommentEventSchema>;
 
-export const IssueLabelEventSchema = WebhookPayloadBaseSchema.extend({
-  type: z.literal("IssueLabel"),
-  data: IssueLabelDataSchema,
-  updatedFrom: IssueLabelDataSchema.partial().optional(),
-});
-export type IssueLabelEvent = z.infer<typeof IssueLabelEventSchema>;
-
-export const ReactionEventSchema = WebhookPayloadBaseSchema.extend({
-  type: z.literal("Reaction"),
-  data: ReactionDataSchema,
-  updatedFrom: ReactionDataSchema.partial().optional(),
-});
-export type ReactionEvent = z.infer<typeof ReactionEventSchema>;
-
-export const ProjectEventSchema = WebhookPayloadBaseSchema.extend({
-  type: z.literal("Project"),
-  data: ProjectDataSchema,
-  updatedFrom: ProjectDataSchema.partial().optional(),
-});
-export type ProjectEvent = z.infer<typeof ProjectEventSchema>;
-
-export const ProjectUpdateEventSchema = WebhookPayloadBaseSchema.extend({
-  type: z.literal("ProjectUpdate"),
-  data: ProjectUpdateDataSchema,
-  updatedFrom: ProjectUpdateDataSchema.partial().optional(),
-});
-export type ProjectUpdateEvent = z.infer<typeof ProjectUpdateEventSchema>;
-
-export const CycleEventSchema = WebhookPayloadBaseSchema.extend({
+export const CycleEventBaseSchema = WebhookPayloadBaseSchema.extend({
   type: z.literal("Cycle"),
   data: CycleDataSchema,
-  updatedFrom: CycleDataSchema.partial().optional(),
 });
+export const CycleEventSchema = z.discriminatedUnion("action", [
+  CycleEventBaseSchema.extend({
+    action: CREATE,
+  }),
+  CycleEventBaseSchema.extend({
+    action: REMOVE,
+  }),
+  CycleEventBaseSchema.extend({
+    action: UPDATE,
+    updatedFrom: CycleDataSchema.partial(),
+  }),
+]);
 export type CycleEvent = z.infer<typeof CycleEventSchema>;
 
-export const WebhookPayloadSchema = z.discriminatedUnion("type", [
-  IssueEventSchema,
+export const IssueEventBaseSchema = WebhookPayloadBaseSchema.extend({
+  type: z.literal("Issue"),
+  data: IssueDataSchema,
+});
+export const IssueEventSchema = z.discriminatedUnion("action", [
+  IssueEventBaseSchema.extend({
+    action: CREATE,
+  }),
+  IssueEventBaseSchema.extend({
+    action: REMOVE,
+  }),
+  IssueEventBaseSchema.extend({
+    action: UPDATE,
+    updatedFrom: IssueDataSchema.partial(),
+  }),
+]);
+export type IssueEvent = z.infer<typeof IssueEventSchema>;
+
+export const IssueLabelEventBaseSchema = WebhookPayloadBaseSchema.extend({
+  type: z.literal("IssueLabel"),
+  data: IssueLabelDataSchema,
+});
+export const IssueLabelEventSchema = z.discriminatedUnion("action", [
+  IssueLabelEventBaseSchema.extend({
+    action: CREATE,
+  }),
+  IssueLabelEventBaseSchema.extend({
+    action: REMOVE,
+  }),
+  IssueLabelEventBaseSchema.extend({
+    action: UPDATE,
+    updatedFrom: IssueLabelDataSchema.partial(),
+  }),
+]);
+export type IssueLabelEvent = z.infer<typeof IssueLabelEventSchema>;
+
+// TODO: confirm this with real-world payload(s)
+export const IssueSlaEventSchema = WebhookPayloadBaseSchema.extend({
+  type: z.literal("IssueSla"),
+  action: z.union([z.literal("set"), z.literal("highRisk"), z.literal("breached")]),
+  issueData: IssueDataSchema,
+});
+export type IssueSlaEvent = z.infer<typeof IssueSlaEventSchema>;
+
+export const ProjectEventBaseSchema = WebhookPayloadBaseSchema.extend({
+  type: z.literal("Project"),
+  data: ProjectDataSchema,
+});
+export const ProjectEventSchema = z.discriminatedUnion("action", [
+  ProjectEventBaseSchema.extend({
+    action: CREATE,
+  }),
+  ProjectEventBaseSchema.extend({
+    action: REMOVE,
+  }),
+  ProjectEventBaseSchema.extend({
+    action: UPDATE,
+    updatedFrom: ProjectDataSchema.partial(),
+  }),
+]);
+export type ProjectEvent = z.infer<typeof ProjectEventSchema>;
+
+export const ProjectUpdateEventBaseSchema = WebhookPayloadBaseSchema.extend({
+  type: z.literal("ProjectUpdate"),
+  data: ProjectUpdateDataSchema,
+});
+export const ProjectUpdateEventSchema = z.discriminatedUnion("action", [
+  ProjectUpdateEventBaseSchema.extend({
+    action: CREATE,
+  }),
+  ProjectUpdateEventBaseSchema.extend({
+    action: REMOVE,
+  }),
+  ProjectUpdateEventBaseSchema.extend({
+    action: UPDATE,
+    updatedFrom: ProjectUpdateDataSchema.partial(),
+  }),
+]);
+export type ProjectUpdateEvent = z.infer<typeof ProjectUpdateEventSchema>;
+
+export const ReactionEventBaseSchema = WebhookPayloadBaseSchema.extend({
+  type: z.literal("Reaction"),
+  data: ReactionDataSchema,
+});
+export const ReactionEventSchema = z.discriminatedUnion("action", [
+  ReactionEventBaseSchema.extend({
+    action: CREATE,
+  }),
+  ReactionEventBaseSchema.extend({
+    action: REMOVE,
+  }),
+  ReactionEventBaseSchema.extend({
+    action: UPDATE,
+    updatedFrom: ReactionDataSchema.partial(),
+  }),
+]);
+export type ReactionEvent = z.infer<typeof ReactionEventSchema>;
+
+export const WebhookPayloadSchema = z.union([
   AttachmentEventSchema,
   CommentEventSchema,
+  CycleEventSchema,
+  IssueEventSchema,
   IssueLabelEventSchema,
-  ReactionEventSchema,
   ProjectEventSchema,
   ProjectUpdateEventSchema,
-  CycleEventSchema,
+  ReactionEventSchema,
+  IssueSlaEventSchema,
 ]);
 
 export type WebhookPayload = z.infer<typeof WebhookPayloadSchema>;
