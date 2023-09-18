@@ -23,11 +23,11 @@ branch are tagged into a release monthly.
 1. Clone the repo into a public GitHub repository or [fork the repo](https://github.com/triggerdotdev/trigger.dev/fork). If you plan to distribute the code, keep the source code public to comply with the [Apache Licence 2.0](https://github.com/triggerdotdev/trigger.dev/blob/main/LICENSE).
 
    ```
-   git clone https://github.com/triggerdotdev/trigger.dev.git
+   git clone https://github.com/<github_username>/trigger.dev.git
    ```
 
    > If you are on windows, run the following command on gitbash with admin privileges:
-   > `git clone -c core.symlinks=true https://github.com/triggerdotdev/trigger.dev.git`
+   > `git clone -c core.symlinks=true https://github.com/<github_username>/trigger.dev.git`
 
 2. Navigate to the project folder
    ```
@@ -133,10 +133,10 @@ pnpm run dev
 
 2. Open a new Terminal window and run the webapp locally and then create a new project in the dashboard. Copy out the dev API key.
 
-3. Create a new temporary Next.js app in examples directory
+3. Create a new temporary Next.js app in references directory
 
 ```sh
-cd ./examples
+cd ./references
 pnpm create next-app@latest test-cli --ts --no-eslint --tailwind --app --src-dir --import-alias "@/*"
 ```
 
@@ -149,7 +149,7 @@ pnpm create next-app@latest test-cli --ts --no-eslint --tailwind --app --src-dir
 }
 ```
 
-5. Back in the terminal, navigate into the example, and initialize the CLI. When prompted, select `self-hosted` and enter `localhost:3030` if you are testing against the local instance of Trigger.dev, or you can just use the Trigger.dev cloud. When asked for an API key, use the key you copied earlier.
+5. Back in the terminal, navigate into the reference, and initialize the CLI. When prompted, select `self-hosted` and enter `localhost:3030` if you are testing against the local instance of Trigger.dev, or you can just use the Trigger.dev cloud. When asked for an API key, use the key you copied earlier.
 
 ```sh
 cd ./test-cli
@@ -179,14 +179,14 @@ To run the end-to-end tests, follow the steps below:
 
 ```sh
 cp ./.env.example ./.env
-cp ./examples/nextjs-test/.env.example ./examples/nextjs-test/.env.local
+cp ./references/nextjs-test/.env.example ./references/nextjs-test/.env.local
 ```
 
 2. Set up dependencies
 
 ```sh
 # Build packages
-pnpm run build --filter @examples/nextjs-test^...
+pnpm run build --filter @references/nextjs-test^...
 pnpm --filter @trigger.dev/database generate
 
 # Move trigger-cli bin to correct place
@@ -221,11 +221,11 @@ pnpm run db:studio
 
 ## Add sample jobs
 
-The [examples/jobs-starter](./examples/jobs-starter/) project defines simple jobs you can get started with.
+The [references/job-catalog](./references/job-catalog/) project defines simple jobs you can get started with.
 
-1. `cd` into `examples/jobs-starter`
-2. Create a `.env.local` file with the following content,
-   replacing `[TRIGGER_DEV_API_KEY]` with an actual key:
+1. `cd` into `references/job-catalog`
+2. Create a `.env` file with the following content,
+   replacing `<TRIGGER_DEV_API_KEY>` with an actual key:
 
 ```env
 TRIGGER_API_KEY=[TRIGGER_DEV_API_KEY]
@@ -235,11 +235,19 @@ TRIGGER_API_URL=http://localhost:3030
 `TRIGGER_API_URL` is used to configure the URL for your Trigger.dev instance,
 where the jobs will be registered.
 
-3. Run the `jobs-starter` app:
+3. Run one of the the `job-catalog` files:
 
 ```sh
-pnpm dev
+pnpm run events
 ```
+
+This will open up a local server using `express` on port 8080. Then in a new terminal window you can run the trigger-cli dev command:
+
+```sh
+pnpm run dev:trigger
+```
+
+See the [Job Catalog](./references/job-catalog/README.md) file for more.
 
 4. Navigate to your trigger.dev instance ([http://localhost:3030](http://localhost:3030/)), to see the jobs.
    You can use the test feature to trigger them.

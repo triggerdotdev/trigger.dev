@@ -3,6 +3,6 @@ packages:
   - "packages/*"
   - "integrations/*"
   - "apps/**"
-  - "examples/*"
+  - "references/*"
   - "docs"
   - "perf"

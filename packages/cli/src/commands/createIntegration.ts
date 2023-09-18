@@ -215,7 +215,7 @@ export default defineConfig([
   );
 
   if (triggerMonorepoPath) {
-    logger.info(`   3. Write some test jobs in the examples/job-catalog`);
+    logger.info(`   3. Write some test jobs in the references/job-catalog`);
   }
 }
 
@@ -499,7 +499,7 @@ async function updateJobCatalogWithNewIntegration(
   resolvedOptions: ResolvedCLIOptions
 ) {
   const packageName = getPackageName(resolvedOptions.packageName);
-  const jobCatalogPath = pathModule.join(monorepoPath, "examples", "job-catalog");
+  const jobCatalogPath = pathModule.join(monorepoPath, "references", "job-catalog");
   const jobCatalogSrcFolder = pathModule.join(jobCatalogPath, "src");
 
   const integrationFile = `export {}`;
