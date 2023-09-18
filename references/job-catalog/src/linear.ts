@@ -1,6 +1,6 @@
 import { createExpressServer } from "@trigger.dev/express";
-import { DynamicTrigger, TriggerClient } from "@trigger.dev/sdk";
-import { Linear, events } from "@trigger.dev/linear";
+import { DynamicTrigger, TriggerClient, eventTrigger } from "@trigger.dev/sdk";
+import { Linear, events, serializeLinearOutput } from "@trigger.dev/linear";
 
 export const client = new TriggerClient({
   id: "job-catalog",
@@ -19,6 +19,28 @@ const dynamicOnAttachmentTrigger = new DynamicTrigger(client, {
   id: "linear-attachment",
   event: events.onAttachment,
   source: linear.source,
+});
+
+client.defineJob({
+  id: "linear-create-issue",
+  name: "Linear Create Issue",
+  version: "0.1.0",
+  integrations: { linear },
+  trigger: eventTrigger({
+    name: "linear.create.issue",
+  }),
+  run: async (payload, io, ctx) => {
+    const firstTeam = await io.linear.runTask("get-first-team", async (client) => {
+      const payload = await client.teams();
+      return serializeLinearOutput(payload.nodes[0]);
+    });
+    const issue = await io.linear.createIssue("create-issue", {
+      teamId: firstTeam.id,
+      title: "This issue will be deleted shortly",
+    });
+
+    return issue && (await io.linear.deleteIssue("delete-issue", { id: issue.id }));
+  },
 });
 
 client.defineJob({

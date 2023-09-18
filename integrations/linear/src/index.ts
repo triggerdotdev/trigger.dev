@@ -4,14 +4,33 @@ import {
   IOTask,
   IntegrationTaskKey,
   Json,
+  Prettify,
   RunTaskErrorCallback,
   RunTaskOptions,
   TriggerIntegration,
   retry,
 } from "@trigger.dev/sdk";
-import { LinearClient, RatelimitedLinearError } from "@linear/sdk";
+import {
+  AttachmentPayload,
+  CommentPayload,
+  IssuePayload,
+  LinearClient,
+  RatelimitedLinearError,
+} from "@linear/sdk";
 import * as events from "./events";
-import { TriggerParams, Webhooks, createTrigger, createWebhookEventSource } from "./webhooks";
+import {
+  TriggerParams,
+  Webhooks,
+  createTrigger,
+  createWebhookEventSource,
+} from "./webhooks";
+import {
+  AttachmentCreateInput,
+  CommentCreateInput,
+  IssueCreateInput,
+  IssueUpdateInput,
+} from "@linear/sdk/dist/_generated_documents";
+import { LinearReturnType, SerializedLinearOutput } from "./types";
 
 export type LinearIntegrationOptions = {
   id: string;
@@ -96,6 +115,105 @@ export class Linear implements TriggerIntegration {
         connectionKey: this._connectionKey,
       },
       errorCallback ?? onError
+    );
+  }
+
+  createAttachment(
+    key: IntegrationTaskKey,
+    params: AttachmentCreateInput
+  ): LinearReturnType<AttachmentPayload, "attachment"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createAttachment(params);
+        return serializeLinearOutput(await payload.attachment);
+      },
+      {
+        name: "Create Attachment",
+        params,
+        properties: [
+          { label: "Title", text: params.title },
+          { label: "URL", text: params.url },
+        ],
+      }
+    );
+  }
+
+  createComment(
+    key: IntegrationTaskKey,
+    params: CommentCreateInput
+  ): LinearReturnType<CommentPayload, "comment"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createComment(params);
+        return serializeLinearOutput(await payload.comment);
+      },
+      {
+        name: "Create Comment",
+        params,
+        properties: [
+          { label: "Issue ID", text: params.issueId },
+          { label: "Body", text: params.body ?? "" },
+        ],
+      }
+    );
+  }
+
+  createIssue(
+    key: IntegrationTaskKey,
+    params: IssueCreateInput & { title: string }
+  ): LinearReturnType<IssuePayload, "issue"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createIssue(params);
+        return serializeLinearOutput(await payload.issue);
+      },
+      {
+        name: "Create Issue",
+        params,
+        properties: [
+          { label: "Team ID", text: params.teamId },
+          { label: "Title", text: params.title },
+        ],
+      }
+    );
+  }
+
+  updateIssue(
+    key: IntegrationTaskKey,
+    params: { id: string; input: IssueUpdateInput }
+  ): LinearReturnType<IssuePayload, "issue"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.updateIssue(params.id, params.input);
+        return serializeLinearOutput(await payload.issue);
+      },
+      {
+        name: "Update Issue",
+        params,
+        properties: [{ label: "Issue ID", text: params.id }],
+      }
+    );
+  }
+
+  deleteIssue(
+    key: IntegrationTaskKey,
+    params: { id: string }
+  ): LinearReturnType<IssuePayload, "issue"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.deleteIssue(params.id);
+        return serializeLinearOutput(await payload.entity);
+      },
+      {
+        name: "Delete Issue",
+        params,
+        properties: [{ label: "Issue ID", text: params.id }],
+      }
     );
   }
 
@@ -273,5 +391,14 @@ export function onError(error: unknown) {
     };
   }
 }
+
+export const serializeLinearOutput = <T>(obj: T): Prettify<SerializedLinearOutput<T>> => {
+  return JSON.parse(JSON.stringify(obj), (key, value) => {
+    if (typeof value === "function" || key.startsWith("_")) {
+      return undefined;
+    }
+    return value;
+  });
+};
 
 export { events };

@@ -5,7 +5,6 @@ import {
   HandlerEvent,
   IntegrationTaskKey,
   Logger,
-  Prettify,
 } from "@trigger.dev/sdk";
 import {
   LinearWebhooks,
@@ -17,7 +16,7 @@ import {
 } from "@linear/sdk";
 import { z } from "zod";
 import * as events from "./events";
-import { Linear, LinearRunTask } from "./index";
+import { Linear, LinearRunTask, serializeLinearOutput } from "./index";
 import {
   WebhookCreateInput,
   WebhookUpdateInput,
@@ -33,15 +32,6 @@ type DeleteWebhookParams = {
 type UpdateWebhookParams = {
   id: string;
   input: WebhookUpdateInput;
-};
-
-export const serializeLinearOutput = <T>(obj: T): Prettify<SerializedLinearOutput<T>> => {
-  return JSON.parse(JSON.stringify(obj), (key, value) => {
-    if (typeof value === "function" || key.startsWith("_")) {
-      return undefined;
-    }
-    return value;
-  });
 };
 
 export class Webhooks {

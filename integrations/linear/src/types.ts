@@ -15,3 +15,7 @@ export type SerializedLinearOutput<T> = T extends object
     ? Array<SerializedLinearOutput<U>>
     : { [K in keyof T as Exclude<K, FunctionKeys<T> | `_${string}`>]: SerializedLinearOutput<T[K]> }
   : T;
+
+export type LinearReturnType<TPayload extends Request, K extends string> = Promise<
+  Awaited<SerializedLinearOutput<Awaited<K extends keyof TPayload ? TPayload[K] : never>>>
+>;
