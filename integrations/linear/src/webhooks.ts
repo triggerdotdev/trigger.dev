@@ -254,9 +254,6 @@ export function createWebhookEventSource(
   });
 }
 
-// TODO
-const SourceMetadataSchema = z.object({}).optional();
-
 async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integration: Linear) {
   logger.debug("[@trigger.dev/linear] Handling webhook payload");
 
@@ -309,7 +306,6 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integ
   }
 
   const webhookPayload = WebhookPayloadSchema.parse(body);
-  const parsedMetadata = SourceMetadataSchema.parse(source.metadata);
 
   return {
     events: [
@@ -321,6 +317,5 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integ
         context: {},
       },
     ],
-    metadata: parsedMetadata,
   };
 }
