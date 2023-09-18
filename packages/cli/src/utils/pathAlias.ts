@@ -2,7 +2,7 @@ import pathModule from "path";
 import { pathExists } from "./fileSystem";
 import { parse } from "tsconfck";
 
-type Options = { projectPath: string; isTypescriptProject: boolean; usesSrcDir: boolean };
+type Options = { projectPath: string; isTypescriptProject: boolean; extraDirectories?: string[] };
 
 // Find the alias that points to the "src" directory.
 // So for example, the paths object could be:
@@ -10,7 +10,11 @@ type Options = { projectPath: string; isTypescriptProject: boolean; usesSrcDir: 
 //   "@/*": ["./src/*"]
 // }
 // In this case, we would return "@"
-export async function getPathAlias({ projectPath, isTypescriptProject, usesSrcDir }: Options) {
+export async function getPathAlias({
+  projectPath,
+  isTypescriptProject,
+  extraDirectories,
+}: Options) {
   const configFileName = isTypescriptProject ? "tsconfig.json" : "jsconfig.json";
   const tsConfigPath = pathModule.join(projectPath, configFileName);
   const configFileExists = await pathExists(tsConfigPath);
@@ -35,8 +39,8 @@ export async function getPathAlias({ projectPath, isTypescriptProject, usesSrcDi
     }
 
     const path = value[0];
-    if (usesSrcDir) {
-      return path === "./src/*";
+    if (extraDirectories && extraDirectories.length > 0) {
+      return path === `./${extraDirectories.join("/")}/*`;
     } else {
       return path === "./*";
     }

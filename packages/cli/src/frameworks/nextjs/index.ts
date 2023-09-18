@@ -52,7 +52,7 @@ export class NextJs implements Framework {
     const pathAlias = await getPathAlias({
       projectPath: path,
       isTypescriptProject: options.typescript,
-      usesSrcDir,
+      extraDirectories: usesSrcDir ? ["src"] : undefined,
     });
 
     if (nextJsDir === "pages") {
