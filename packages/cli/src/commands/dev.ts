@@ -183,14 +183,15 @@ export async function devCommand(path: string, anyOptions: any) {
   };
 
   // Watch for changes to files and refresh endpoints
-  const watcher = chokidar.watch(
-    (framework?.watchFilePaths ?? standardWatchFilePaths).map((path) => `${resolvedPath}/${path}`),
-    {
-      ignored: framework?.watchIgnoreRegex ?? standardWatchIgnoreRegex,
-      //don't trigger a watch when it collects the paths
-      ignoreInitial: true,
-    }
+  const watchPaths = (framework?.watchFilePaths ?? standardWatchFilePaths).map(
+    (path) => `${resolvedPath}/${path}`
   );
+  const ignored = framework?.watchIgnoreRegex ?? standardWatchIgnoreRegex;
+  const watcher = chokidar.watch(watchPaths, {
+    ignored,
+    //don't trigger a watch when it collects the paths
+    ignoreInitial: true,
+  });
 
   watcher.on("all", (_event, _path) => {
     console.log(_event, _path);
