@@ -17,7 +17,17 @@ describe("Next project detection", () => {
     expect(framework?.id).toEqual("nextjs");
   });
 
-  test("no dependency", async () => {
+  test("no dependency, has next.config.js", async () => {
+    mock({
+      "package.json": JSON.stringify({ dependencies: { foo: "1.0.0" } }),
+      "next.config.js": "module.exports = {}",
+    });
+
+    const framework = await getFramework("", "npm");
+    expect(framework?.id).toEqual("nextjs");
+  });
+
+  test("no dependency, no next.config.js", async () => {
     mock({
       "package.json": JSON.stringify({ dependencies: { foo: "1.0.0" } }),
     });
