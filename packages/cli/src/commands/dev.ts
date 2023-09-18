@@ -81,7 +81,7 @@ export async function devCommand(path: string, anyOptions: any) {
 
   logger.success(`✔️ [trigger.dev] Found API Key in ${envFile} file`);
 
-  logger.info(`  [trigger.dev] Looking for Next.js site on port ${resolvedOptions.port}`);
+  logger.info(`  [trigger.dev] Looking for your app on port ${resolvedOptions.port}`);
 
   const localEndpointHandlerUrl = `http://${resolvedOptions.hostname}:${resolvedOptions.port}${resolvedOptions.handlerPath}`;
 
@@ -96,7 +96,7 @@ export async function devCommand(path: string, anyOptions: any) {
     });
   } catch (err) {
     logger.error(
-      `❌ [trigger.dev] No server found on port ${resolvedOptions.port}. Make sure your Next.js app is running and try again.`
+      `❌ [trigger.dev] No server found on port ${resolvedOptions.port}. Make sure your app is running and try again.`
     );
     telemetryClient.dev.failed("no_server_found", resolvedOptions);
     return;
