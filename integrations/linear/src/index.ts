@@ -9,7 +9,7 @@ import {
   TriggerIntegration,
   retry,
 } from "@trigger.dev/sdk";
-import { LinearClient } from "@linear/sdk";
+import { LinearClient, RatelimitedLinearError } from "@linear/sdk";
 import * as events from "./events";
 import { TriggerParams, Webhooks, createTrigger, createWebhookEventSource } from "./webhooks";
 
@@ -95,7 +95,7 @@ export class Linear implements TriggerIntegration {
         ...(options ?? {}),
         connectionKey: this._connectionKey,
       },
-      errorCallback
+      errorCallback ?? onError
     );
   }
 
@@ -240,7 +240,38 @@ export class Linear implements TriggerIntegration {
   }
 }
 
-// TODO
-export function onError(error: unknown) {}
+export function onError(error: unknown) {
+  if (!(error instanceof RatelimitedLinearError)) {
+    return;
+  }
+
+  const rateLimitRemaining = error.raw?.response?.headers?.get("X-RateLimit-Requests-Remaining");
+  const rateLimitReset = error.raw?.response?.headers?.get("X-RateLimit-Requests-Reset");
+
+  if (rateLimitRemaining === "0" && rateLimitReset) {
+    const resetDate = new Date(Number(rateLimitReset) * 1000);
+
+    return {
+      retryAt: resetDate,
+      error,
+    };
+  }
+
+  const queryComplexity = error.raw?.response?.headers?.get("X-Complexity");
+  const complexityRemaining = error.raw?.response?.headers?.get("X-RateLimit-Complexity-Remaining");
+  const complexityReset = error.raw?.response?.headers?.get("X-RateLimit-Complexity-Reset");
+
+  if (
+    (complexityRemaining === "0" || Number(complexityRemaining) < Number(queryComplexity)) &&
+    complexityReset
+  ) {
+    const resetDate = new Date(Number(complexityReset) * 1000);
+
+    return {
+      retryAt: resetDate,
+      error,
+    };
+  }
+}
 
 export { events };
