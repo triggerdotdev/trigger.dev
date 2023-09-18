@@ -19,209 +19,234 @@ export const WebhookActionTypeSchema = z.union([
 ]);
 export type WebhookActionType = z.infer<typeof WebhookActionTypeSchema>;
 
-const ReactionShortSchema = z.object({
-  emoji: z.string(),
-  reactions: z.array(
-    z.object({
-      id: z.string(),
-      userId: z.string(),
-      reactedAt: z.string(),
-    })
-  ),
+const IssueLabelDataSchema = z.object({
+  archivedAt: z.coerce.date().optional().nullable(),
+  color: z.string(),
+  createdAt: z.coerce.date(),
+  creatorId: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+  id: z.string(),
+  // isGroup: z.boolean(), // missing
+  name: z.string(),
+  organizationId: z.string(),
+  parentId: z.string().optional().nullable(),
+  teamId: z.string().optional().nullable(),
+  updatedAt: z.coerce.date(),
 });
 
 const IssueDataSchema = z.object({
-  id: z.string(),
-  createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
-  number: z.number(),
-  title: z.string(),
-  priority: z.number(),
+  archivedAt: z.coerce.date().optional().nullable(),
+  assignee: z.object({ id: z.string(), name: z.string() }).optional().nullable(),
+  assigneeId: z.string().optional().nullable(),
+  autoArchivedAt: z.coerce.date().optional().nullable(),
+  autoClosedAt: z.coerce.date().optional().nullable(),
   boardOrder: z.number(),
-  sortOrder: z.number(),
-  teamId: z.string(),
-  previousIdentifiers: z.array(z.string()),
-  assigneeId: z.string().optional(),
-  stateId: z.string(),
-  priorityLabel: z.string(),
-  subscriberIds: z.array(z.string()),
+  canceledAt: z.coerce.date().optional().nullable(),
+  completedAt: z.coerce.date().optional().nullable(),
+  createdAt: z.coerce.date(),
+  creatorId: z.string().optional().nullable(),
+  cycleId: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+  dueDate: z.coerce.date().optional().nullable(), // timeless
+  estimate: z.number().optional().nullable(),
+  favoriteId: z.string().optional().nullable(),
+  id: z.string(),
   labelIds: z.array(z.string()),
-  assignee: z
-    .object({
-      id: z.string(),
-      name: z.string(),
-    })
-    .optional(),
-  state: z.object({
-    id: z.string(),
-    color: z.string(),
-    name: z.string(),
-    type: z.string(),
-  }),
-  team: z.object({
-    id: z.string(),
-    key: z.string(),
-    name: z.string(),
-  }),
-  labels: z.array(
-    z.object({
-      id: z.string(),
-      color: z.string(),
-      name: z.string(),
-    })
-  ),
-  description: z.string(),
+  labels: z.array(IssueLabelDataSchema.pick({ id: true, color: true, name: true })),
+  number: z.number(),
+  parentId: z.string().optional().nullable(),
+  previousIdentifiers: z.array(z.string()),
+  priority: z.number(),
+  priorityLabel: z.string(),
+  projectId: z.string().optional().nullable(),
+  sortOrder: z.number(),
+  state: z.object({ id: z.string(), color: z.string(), name: z.string(), type: z.string() }),
+  startedAt: z.coerce.date().optional().nullable(),
+  stateId: z.string(),
+  subIssueSortOrder: z.number().optional().nullable(),
+  subscriberIds: z.array(z.string()),
+  team: z.object({ id: z.string(), key: z.string(), name: z.string() }),
+  teamId: z.string(),
+  title: z.string(),
+  trashed: z.boolean().optional().nullable(),
+  triagedAt: z.coerce.date().optional().nullable(),
+  updatedAt: z.coerce.date(),
 });
 
 /** **WARNING:** Still in alpha - use with caution! */
 const AttachmentDataSchema = z.object({
-  id: z.string(),
+  archivedAt: z.coerce.date().optional().nullable(),
   createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
-  title: z.string(),
-  url: z.string().url(),
-  creatorId: z.string(),
-  metadata: z.object({}).passthrough(),
-  source: z.object({
-    type: z.string(),
-    imageUrl: z.string().url(),
-  }),
-  sourceType: z.string(),
+  creatorId: z.string().optional().nullable(),
   groupBySource: z.boolean(),
+  id: z.string(),
   issueId: z.string(),
+  metadata: z.object({}).passthrough(), // JSONObject
+  source: z
+    .object({
+      type: z.string().nullable(),
+      imageUrl: z.string().url().nullable(),
+    })
+    .passthrough()
+    .partial()
+    .nullable(), // JSONObject
+  sourceType: z.string().optional().nullable(),
+  subtitle: z.string().optional().nullable(),
+  title: z.string(),
+  updatedAt: z.coerce.date(),
+  url: z.string().url(),
 });
 
 const CommentDataSchema = z.object({
-  id: z.string(),
-  createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
+  archivedAt: z.coerce.date().optional().nullable(),
   body: z.string(),
-  issueId: z.string(),
-  userId: z.string(),
-  editedAt: z.string().optional(),
-  reactionData: z.array(ReactionShortSchema),
-  issue: z.object({
-    id: z.string(),
-    title: z.string(),
-  }),
-});
-
-const IssueLabelDataSchema = z.object({
-  id: z.string(),
+  botActorId: z.string().optional().nullable(),
   createdAt: z.coerce.date(),
+  editedAt: z.string().optional().nullable(),
+  id: z.string(),
+  issue: IssueDataSchema.pick({ id: true, title: true }),
+  issueId: z.string(),
+  parentId: z.string().optional().nullable(),
+  reactionData: z.array(z.object({}).passthrough()), // JSONObject
   updatedAt: z.coerce.date(),
-  name: z.string(),
-  color: z.string(),
-  organizationId: z.string(),
-  teamId: z.string(),
-  creatorId: z.string(),
+  userId: z.string().optional().nullable(),
 });
 
 const ReactionDataSchema = z.object({
-  id: z.string(),
+  archivedAt: z.coerce.date().optional().nullable(),
+  comment: CommentDataSchema.pick({
+    id: true,
+    body: true,
+    userId: true,
+  })
+    .optional()
+    .nullable(), // missing from official schema
   createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
   emoji: z.string(),
-  userId: z.string(),
-  comment: z.object({
-    id: z.string(),
-    body: z.string(),
-    userId: z.string(),
-  }),
-  user: z.object({
-    id: z.string(),
-    name: z.string(),
-  }),
+  id: z.string(),
+  updatedAt: z.coerce.date(),
+  user: z.object({ id: z.string(), name: z.string() }).optional().nullable(),
+  userId: z.string().optional().nullable(),
 });
 
 const MilestoneDataSchema = z.object({
-  id: z.string(),
+  archivedAt: z.coerce.date().optional().nullable(),
   createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
+  description: z.string().optional().nullable(),
+  id: z.string(),
   name: z.string(),
-  archivedAt: z.coerce.date().optional(),
-  description: z.string().optional(),
-  sortOrder: z.number().optional(),
-  targetDate: z.coerce.date().optional(),
+  projectId: z.string().optional().nullable(),
+  sortOrder: z.number(),
+  targetDate: z.coerce.date().optional().nullable(), // timeless
+  updatedAt: z.coerce.date(),
 });
 
 const RoadmapDataSchema = z.object({
-  id: z.string(),
+  archivedAt: z.coerce.date().optional().nullable(),
+  color: z.string().optional().nullable(),
   createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
+  creatorId: z.string(),
+  description: z.string().optional().nullable(),
+  id: z.string(),
   name: z.string(),
-  color: z.string().optional(),
-  archivedAt: z.coerce.date().optional(),
-  description: z.string().optional(),
-  sortOrder: z.number().optional(),
-  targetDate: z.coerce.date().optional(),
+  organizationId: z.string(),
+  ownerId: z.string(),
+  slugId: z.string(),
+  sortOrder: z.number(),
+  updatedAt: z.coerce.date(),
 });
 
 const ProjectDataSchema = z.object({
-  id: z.string(),
-  createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
-  name: z.string(),
-  description: z.string(),
-  slugId: z.string(),
+  archivedAt: z.coerce.date().optional().nullable(),
+  autoArchivedAt: z.coerce.date().optional().nullable(),
+  canceledAt: z.coerce.date().optional().nullable(),
   color: z.string(),
-  state: z.string(),
-  creatorId: z.string(),
-  leadId: z.string(),
-  sortOrder: z.string(),
-  issueCountHistory: z.array(z.number()),
+  completedAt: z.coerce.date().optional().nullable(),
   completedIssueCountHistory: z.array(z.number()),
-  scopeHistory: z.array(z.number()),
   completedScopeHistory: z.array(z.number()),
+  content: z.string().optional().nullable(),
+  convertedFromIssueId: z.string().optional().nullable(),
+  createdAt: z.coerce.date(),
+  creatorId: z.string(),
+  description: z.string(),
+  icon: z.string().optional().nullable(),
+  id: z.string(),
   inProgressScopeHistory: z.array(z.number()),
-  slackNewIssue: z.boolean(),
+  integrationsSettingsId: z.string().optional().nullable(),
+  issueCountHistory: z.array(z.number()),
+  leadId: z.string(),
+  memberIds: z.array(z.string()),
+  milestones: z.array(MilestoneDataSchema.pick({ id: true, name: true })), // at projectMilestones key in official schema
+  name: z.string(),
+  progress: z.number().optional().nullable(), // missing, should be NonNullable
+  projectUpdateRemindersPausedUntilAt: z.coerce.date().optional().nullable(),
+  roadmaps: z
+    .array(RoadmapDataSchema.pick({ id: true, name: true }))
+    .optional()
+    .nullable(), // missing from official schema
+  scope: z.number().optional().nullable(), // missing, should be NonNullable
+  scopeHistory: z.array(z.number()),
   slackIssueComments: z.boolean(),
   slackIssueStatuses: z.boolean(),
+  slackNewIssue: z.boolean(),
+  slugId: z.string(),
+  sortOrder: z.string(),
+  startDate: z.coerce.date().optional().nullable(), // timeless
+  startedAt: z.coerce.date().optional().nullable(),
+  state: z.string(),
+  targetDate: z.coerce.date().optional().nullable(), // timeless
   teamIds: z.array(z.string()),
-  memberIds: z.array(z.string()),
-  milestones: z.array(MilestoneDataSchema.partial()),
-  roadmaps: z.array(RoadmapDataSchema.partial()),
+  trashed: z.boolean().optional().nullable(),
+  updatedAt: z.coerce.date(),
 });
 
 const ProjectUpdateDataSchema = z.object({
-  id: z.string(),
-  createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
+  archivedAt: z.coerce.date().optional().nullable(),
   body: z.string(),
-  projectId: z.string(),
+  createdAt: z.coerce.date(),
+  // diff: z.any().optional().nullable(), // missing, "stringified" JSON but typed as Record
+  editedAt: z.coerce.date().optional().nullable(),
   health: z.string(),
-  userId: z.string(),
-  infoSnapshot: z.object({}).passthrough().optional(),
+  id: z.string(),
+  infoSnapshot: z.object({}).passthrough().optional().nullable(), // JSONObject, marked as "internal"
   project: ProjectDataSchema.pick({ id: true, name: true }),
-  user: z.object({
-    id: z.string(),
-    name: z.string(),
-  }),
-  roadmaps: z.array(RoadmapDataSchema.partial()),
+  projectId: z.string(),
+  roadmaps: z
+    .array(RoadmapDataSchema.pick({ id: true, name: true }))
+    .optional()
+    .nullable(), // missing from official schema
+  updatedAt: z.coerce.date(),
+  user: z.object({ id: z.string(), name: z.string() }),
+  userId: z.string(),
 });
 
 const CycleDataSchema = z.object({
-  id: z.string(),
-  createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
-  number: z.number(),
-  startsAt: z.coerce.date(),
-  endsAt: z.coerce.date(),
-  issueCountHistory: z.array(z.number()),
+  archivedAt: z.coerce.date().optional().nullable(),
+  autoArchivedAt: z.coerce.date().optional().nullable(),
+  completedAt: z.coerce.date().optional().nullable(),
   completedIssueCountHistory: z.array(z.number()),
-  scopeHistory: z.array(z.number()),
   completedScopeHistory: z.array(z.number()),
+  createdAt: z.coerce.date(),
+  description: z.string().optional().nullable(),
+  endsAt: z.coerce.date(),
+  id: z.string(),
   inProgressScopeHistory: z.array(z.number()),
+  issueCountHistory: z.array(z.number()),
+  name: z.string().optional().nullable(),
+  number: z.number(),
+  progress: z.number().optional().nullable(), // missing, should be NonNullable
+  scopeHistory: z.array(z.number()),
+  startsAt: z.coerce.date(),
   teamId: z.string(),
   uncompletedIssuesUponCloseIds: z.array(z.string()),
+  updatedAt: z.coerce.date(),
 });
 
 export const WebhookPayloadBaseSchema = z.object({
   action: WebhookActionTypeSchema,
   createdAt: z.coerce.date(),
-  url: z.string().url().optional(),
-  // TODO: check if this is always present
-  organizationId: z.string().optional(),
+  url: z.string().url().optional().nullable(),
+  organizationId: z.string().optional().nullable(), // missing from official schema - workspace id?
   webhookTimestamp: z.coerce.date(),
   webhookId: z.string(),
 });
