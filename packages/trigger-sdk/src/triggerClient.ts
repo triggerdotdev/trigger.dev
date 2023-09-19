@@ -26,6 +26,7 @@ import {
   SendEvent,
   SendEventOptions,
   SourceMetadataV2,
+  StatusUpdate,
 } from "@trigger.dev/core";
 import { ApiClient } from "./apiClient";
 import { CanceledWithTaskError, ResumeWithTaskError, RetryWithTaskError } from "./errors";
@@ -565,6 +566,10 @@ export class TriggerClient {
 
   async cancelEvent(eventId: string) {
     return this.#client.cancelEvent(eventId);
+  }
+
+  async updateStatus(runId: string, id: string, status: StatusUpdate) {
+    return this.#client.updateStatus(runId, id, status);
   }
 
   async registerSchedule(id: string, key: string, schedule: ScheduleMetadata) {
