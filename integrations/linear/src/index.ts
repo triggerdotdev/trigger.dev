@@ -11,14 +11,27 @@ import {
   retry,
 } from "@trigger.dev/sdk";
 import {
+  Attachment,
+  AttachmentConnection,
   AttachmentPayload,
+  Comment,
+  CommentConnection,
   CommentPayload,
   CyclePayload,
   DeletePayload,
+  Issue,
+  IssueConnection,
+  IssueLabel,
+  IssueLabelConnection,
   IssueLabelPayload,
   IssuePayload,
   LinearClient,
+  LinearError,
+  Project,
+  ProjectConnection,
   ProjectPayload,
+  ProjectUpdate,
+  ProjectUpdateConnection,
   ProjectUpdatePayload,
   RatelimitedLinearError,
   ReactionPayload,
@@ -28,18 +41,25 @@ import { TriggerParams, Webhooks, createTrigger, createWebhookEventSource } from
 import {
   AttachmentCreateInput,
   AttachmentUpdateInput,
+  AttachmentsQueryVariables,
   CommentCreateInput,
   CommentUpdateInput,
+  CommentsQueryVariables,
   CycleCreateInput,
   CycleUpdateInput,
   IssueCreateInput,
   IssueLabelCreateInput,
   IssueLabelUpdateInput,
+  IssueLabelsQueryVariables,
   IssueUpdateInput,
+  IssuesQueryVariables,
   ProjectCreateInput,
   ProjectUpdateCreateInput,
   ProjectUpdateInput,
+  ProjectUpdateQueryVariables,
   ProjectUpdateUpdateInput,
+  ProjectUpdatesQueryVariables,
+  ProjectsQueryVariables,
   ReactionCreateInput,
 } from "@linear/sdk/dist/_generated_documents";
 import { LinearReturnType, SerializedLinearOutput } from "./types";
@@ -130,6 +150,39 @@ export class Linear implements TriggerIntegration {
     );
   }
 
+  attachment(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<Attachment> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.attachment(params.id);
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get Attachment",
+        params,
+        properties: [{ label: "Attachment ID", text: params.id }],
+      }
+    );
+  }
+
+  attachments(
+    key: IntegrationTaskKey,
+    params: AttachmentsQueryVariables = {}
+  ): LinearReturnType<AttachmentConnection> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const edges = await client.attachments(params);
+        return serializeLinearOutput(edges);
+      },
+      {
+        name: "Get Attachments",
+        params,
+        properties: queryProperties(params),
+      }
+    );
+  }
+
   createAttachment(
     key: IntegrationTaskKey,
     params: AttachmentCreateInput
@@ -144,6 +197,7 @@ export class Linear implements TriggerIntegration {
         name: "Create Attachment",
         params,
         properties: [
+          { label: "Issue ID", text: params.issueId },
           { label: "Title", text: params.title },
           { label: "URL", text: params.url },
         ],
@@ -173,6 +227,39 @@ export class Linear implements TriggerIntegration {
         name: "Update Attachment",
         params,
         properties: [{ label: "Attachment ID", text: params.id }],
+      }
+    );
+  }
+
+  comment(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<Comment> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.comment(params.id);
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get Comment",
+        params,
+        properties: [{ label: "Comment ID", text: params.id }],
+      }
+    );
+  }
+
+  comments(
+    key: IntegrationTaskKey,
+    params: CommentsQueryVariables = {}
+  ): LinearReturnType<CommentConnection> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const edges = await client.comments(params);
+        return serializeLinearOutput(edges);
+      },
+      {
+        name: "Get Comments",
+        params,
+        properties: queryProperties(params),
       }
     );
   }
@@ -266,6 +353,39 @@ export class Linear implements TriggerIntegration {
     );
   }
 
+  issue(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<Issue> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.issue(params.id);
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get Issue",
+        params,
+        properties: [{ label: "Issue ID", text: params.id }],
+      }
+    );
+  }
+
+  issues(
+    key: IntegrationTaskKey,
+    params: IssuesQueryVariables = {}
+  ): LinearReturnType<IssueConnection> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const edges = await client.issues(params);
+        return serializeLinearOutput(edges);
+      },
+      {
+        name: "Get Issues",
+        params,
+        properties: queryProperties(params),
+      }
+    );
+  }
+
   createIssue(
     key: IntegrationTaskKey,
     params: IssueCreateInput & { title: string }
@@ -323,6 +443,39 @@ export class Linear implements TriggerIntegration {
     );
   }
 
+  issueLabel(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<IssueLabel> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.issueLabel(params.id);
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get IssueLabel",
+        params,
+        properties: [{ label: "IssueLabel ID", text: params.id }],
+      }
+    );
+  }
+
+  issueLabels(
+    key: IntegrationTaskKey,
+    params: IssueLabelsQueryVariables = {}
+  ): LinearReturnType<IssueLabelConnection> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const edges = await client.issueLabels(params);
+        return serializeLinearOutput(edges);
+      },
+      {
+        name: "Get IssueLabels",
+        params,
+        properties: queryProperties(params),
+      }
+    );
+  }
+
   createIssueLabel(
     key: IntegrationTaskKey,
     params: IssueLabelCreateInput
@@ -336,9 +489,7 @@ export class Linear implements TriggerIntegration {
       {
         name: "Create IssueLabel",
         params,
-        properties: [
-          { label: "Label name", text: params.name },
-        ],
+        properties: [{ label: "Label name", text: params.name }],
       }
     );
   }
@@ -365,6 +516,39 @@ export class Linear implements TriggerIntegration {
         name: "Update IssueLabel",
         params,
         properties: [{ label: "Label ID", text: params.id }],
+      }
+    );
+  }
+
+  project(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<Project> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.project(params.id);
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get Project",
+        params,
+        properties: [{ label: "Project ID", text: params.id }],
+      }
+    );
+  }
+
+  projects(
+    key: IntegrationTaskKey,
+    params: ProjectsQueryVariables = {}
+  ): LinearReturnType<ProjectConnection> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const edges = await client.projects(params);
+        return serializeLinearOutput(edges);
+      },
+      {
+        name: "Get Projects",
+        params,
+        properties: queryProperties(params),
       }
     );
   }
@@ -426,6 +610,39 @@ export class Linear implements TriggerIntegration {
     );
   }
 
+  projectUpdate(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<ProjectUpdate> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.projectUpdate(params.id);
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get ProjectUpdate",
+        params,
+        properties: [{ label: "ProjectUpdate ID", text: params.id }],
+      }
+    );
+  }
+
+  projectUpdates(
+    key: IntegrationTaskKey,
+    params: ProjectUpdatesQueryVariables = {}
+  ): LinearReturnType<ProjectUpdateConnection> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const edges = await client.projectUpdates(params);
+        return serializeLinearOutput(edges);
+      },
+      {
+        name: "Get ProjectUpdates",
+        params,
+        properties: queryProperties(params),
+      }
+    );
+  }
+
   createProjectUpdate(
     key: IntegrationTaskKey,
     params: ProjectUpdateCreateInput
@@ -439,26 +656,17 @@ export class Linear implements TriggerIntegration {
       {
         name: "Create ProjectUpdate",
         params,
-        properties: [
-          { label: "Project ID", text: params.projectId },
-        ],
+        properties: [{ label: "Project ID", text: params.projectId }],
       }
     );
   }
 
-  deleteProjectUpdate(
-    key: IntegrationTaskKey,
-    params: { id: string }
-  ): Promise<DeletePayload> {
-    return this.runTask(
-      key,
-      (client) => client.deleteProjectUpdate(params.id),
-      {
-        name: "Delete ProjectUpdate",
-        params,
-        properties: [{ label: "ProjectUpdate ID", text: params.id }],
-      }
-    );
+  deleteProjectUpdate(key: IntegrationTaskKey, params: { id: string }): Promise<DeletePayload> {
+    return this.runTask(key, (client) => client.deleteProjectUpdate(params.id), {
+      name: "Delete ProjectUpdate",
+      params,
+      properties: [{ label: "ProjectUpdate ID", text: params.id }],
+    });
   }
 
   updateProjectUpdate(
@@ -703,6 +911,32 @@ export const serializeLinearOutput = <T>(obj: T): Prettify<SerializedLinearOutpu
     }
     return value;
   });
+};
+
+type QueryVariables = {
+  after: string;
+  before: string;
+  first: number;
+  includeArchived: boolean;
+  last: number;
+  orderBy: string;
+};
+
+type Nullable<T> = Partial<{
+  [K in keyof T]: T[K] | null;
+}>;
+
+const queryProperties = (query: Nullable<QueryVariables>) => {
+  return [
+    ...(query.after ? [{ label: "After", text: query.after }] : []),
+    ...(query.before ? [{ label: "Before", text: query.before }] : []),
+    ...(query.first ? [{ label: "First", text: String(query.first) }] : []),
+    ...(query.last ? [{ label: "Last", text: String(query.last) }] : []),
+    ...(query.orderBy ? [{ label: "Order by", text: query.orderBy }] : []),
+    ...(query.includeArchived
+      ? [{ label: "Include archived", text: String(query.includeArchived) }]
+      : []),
+  ];
 };
 
 export { events };
