@@ -124,7 +124,12 @@ export async function loader({ request, params }: LoaderArgs) {
         const { parentId, ...rest } = task;
         return { ...rest };
       }),
-      statuses: jobRun.statuses,
+      statuses: jobRun.statuses.map((s) => ({
+        ...s,
+        state: s.state ?? undefined,
+        data: s.data ?? undefined,
+        history: s.history ?? undefined,
+      })),
       nextCursor: nextTask ? nextTask.id : undefined,
     })
   );

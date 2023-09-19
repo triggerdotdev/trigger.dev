@@ -48,7 +48,14 @@ export async function loader({ request, params }: LoaderArgs) {
       return apiCors(request, json({ error: `No run found for id ${runId}` }, { status: 404 }));
     }
 
-    const parsedStatuses = RecordsSchema.parse(run.statuses);
+    const parsedStatuses = RecordsSchema.parse(
+      run.statuses.map((s) => ({
+        ...s,
+        state: s.state ?? undefined,
+        data: s.data ?? undefined,
+        history: s.history ?? undefined,
+      }))
+    );
 
     return apiCors(
       request,
