@@ -14,11 +14,15 @@ const ParamsSchema = z.object({
 const RecordsSchema = z.array(JobRunStatusRecordSchema);
 
 export async function loader({ request, params }: LoaderArgs) {
+  if (request.method.toUpperCase() === "OPTIONS") {
+    return apiCors(request, json({}));
+  }
+
   // Next authenticate the request
   const authenticationResult = await authenticateApiRequest(request, { allowPublicKey: true });
 
   if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
+    return apiCors(request, json({ error: "Invalid or Missing API key" }, { status: 401 }));
   }
 
   const { runId } = ParamsSchema.parse(params);
@@ -38,7 +42,7 @@ export async function loader({ request, params }: LoaderArgs) {
         output: true,
         statuses: {
           orderBy: {
-            createdAt: "desc",
+            createdAt: "asc",
           },
         },
       },

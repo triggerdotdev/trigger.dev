@@ -12,8 +12,7 @@ import {
 import { useTriggerProvider } from "./TriggerProvider";
 import { zodfetch } from "./fetch";
 import { useEventDetails } from "./events";
-
-export const runResolvedStatuses = ["SUCCESS", "FAILURE", "CANCELED", "TIMED_OUT", "ABORTED"];
+import { runResolvedStatuses } from "./runs";
 
 const defaultRefreshInterval = 1000;
 
@@ -22,7 +21,23 @@ export type RunStatusesOptions = {
   refreshIntervalMs?: number;
 };
 
-export type UseRunStatusesResult = GetRunStatuses & { isFetching: boolean; error?: Error };
+export type UseRunStatusesResult =
+  | {
+      fetchStatus: "loading";
+      error: undefined;
+      statuses: undefined;
+      run: undefined;
+    }
+  | {
+      fetchStatus: "error";
+      error: Error;
+      statuses: undefined;
+      run: undefined;
+    }
+  | ({
+      fetchStatus: "success";
+      error: undefined;
+    } & GetRunStatuses);
 
 export function useRunStatuses(
   runId: string | undefined,
@@ -46,7 +61,7 @@ export function useRunStatuses(
         if (data?.run.status && runResolvedStatuses.includes(data.run.status)) {
           return false;
         }
-        if (options.refreshIntervalMs !== undefined) {
+        if (options?.refreshIntervalMs !== undefined) {
           return Math.max(options.refreshIntervalMs, 500);
         }
 
@@ -56,12 +71,32 @@ export function useRunStatuses(
     queryClient
   );
 
-  return {
-    isFetching: queryResult.isLoading,
-    error: queryResult.error,
-    run: queryResult.data.run,
-    statuses: queryResult.data.statuses,
-  };
+  switch (queryResult.status) {
+    case "pending": {
+      return {
+        fetchStatus: "loading",
+        error: undefined,
+        statuses: undefined,
+        run: undefined,
+      };
+    }
+    case "error": {
+      return {
+        fetchStatus: "error",
+        error: queryResult.error,
+        statuses: undefined,
+        run: undefined,
+      };
+    }
+    case "success": {
+      return {
+        fetchStatus: "success",
+        error: undefined,
+        run: queryResult.data.run,
+        statuses: queryResult.data.statuses,
+      };
+    }
+  }
 }
 
 export function useEventRunStatuses(
