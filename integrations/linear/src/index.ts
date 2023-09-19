@@ -653,7 +653,16 @@ export class Linear implements TriggerIntegration {
   }
 }
 
-export function onError(error: unknown) {
+export function onError(error: unknown): ReturnType<RunTaskErrorCallback> {
+  if (error instanceof LinearError) {
+    // fail fast on user errors
+    if (error.errors?.some((e) => e.userError)) {
+      return {
+        skipRetrying: true,
+      };
+    }
+  }
+
   if (!(error instanceof RatelimitedLinearError)) {
     return;
   }
