@@ -1,13 +1,13 @@
 import type { HelpSample, Integration } from "../types";
 
-const usageSample: HelpSample = {
-  title: "Using the client",
-  code: `
-import { Linear, events } from "@trigger.dev/linear";
+function usageSample(hasApiKey: boolean): HelpSample {
+  return {
+    title: "Using the client",
+    code: `
+import { Linear } from "@trigger.dev/linear";
 
 const linear = new Linear({
-  id: "__SLUG__",
-  token: process.env.LINEAR_TOKEN!,
+  id: "__SLUG__",${hasApiKey ? ",\n  token: process.env.LINEAR_TOKEN!" : ""}
 });
 
 client.defineJob({
@@ -31,7 +31,8 @@ client.defineJob({
   },
 });
   `,
-};
+  };
+}
 
 export const linear: Integration = {
   identifier: "linear",
@@ -90,38 +91,13 @@ export const linear: Integration = {
         },
       ],
       help: {
-        samples: [
-          {
-            title: "Creating the client",
-            code: `
-import { Linear } from "@trigger.dev/linear";
-
-const linear = new Linear({
-  id: "__SLUG__"
-});
-`,
-          },
-          usageSample,
-        ],
+        samples: [usageSample(false)],
       },
     },
     apikey: {
       type: "apikey",
       help: {
-        samples: [
-          {
-            title: "Creating the client",
-            code: `
-import { Linear } from "@trigger.dev/linear";
-
-const linear = new Linear({
-  id: "__SLUG__",
-  token: process.env.LINEAR_TOKEN!
-});
-`,
-          },
-          usageSample,
-        ],
+        samples: [usageSample(true)],
       },
     },
   },
