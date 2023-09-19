@@ -93,6 +93,9 @@ export async function loader({ request, params }: LoaderArgs) {
             }
           : undefined,
       },
+      statuses: {
+        select: { key: true, label: true, state: true, data: true, history: true },
+      },
     },
   });
 
@@ -122,6 +125,7 @@ export async function loader({ request, params }: LoaderArgs) {
         const { parentId, ...rest } = task;
         return { ...rest };
       }),
+      statuses: jobRun.statuses,
       nextCursor: nextTask ? nextTask.id : undefined,
     })
   );

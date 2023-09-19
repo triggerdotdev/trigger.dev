@@ -51,6 +51,10 @@ client.defineJob({
     await io.runTask("get statuses", async () => {
       return await client.getRunStatuses(ctx.run.id);
     });
+
+    await io.runTask("get run", async () => {
+      return await client.getRun(ctx.run.id);
+    });
   },
 });
 

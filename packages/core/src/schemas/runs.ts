@@ -1,5 +1,6 @@
 import { ZodObject, z } from "zod";
 import { TaskStatusSchema } from "./tasks";
+import { JobRunStatusRecord } from "./api";
 
 export const RunStatusSchema = z.union([
   z.literal("PENDING"),
@@ -78,6 +79,8 @@ export const GetRunSchema = RunSchema.extend({
   output: z.any().optional(),
   /** The tasks from the run */
   tasks: z.array(RunTaskWithSubtasksSchema),
+  /** Any status updates that were published from the run */
+  statuses: z.array(JobRunStatusRecord),
   /** If there are more tasks, you can use this to get them */
   nextCursor: z.string().optional(),
 });
