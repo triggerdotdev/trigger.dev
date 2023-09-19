@@ -13,8 +13,13 @@ import {
 import {
   AttachmentPayload,
   CommentPayload,
+  CyclePayload,
+  DeletePayload,
+  IssueLabelPayload,
   IssuePayload,
   LinearClient,
+  ProjectPayload,
+  ProjectUpdatePayload,
   RatelimitedLinearError,
   ReactionPayload,
 } from "@linear/sdk";
@@ -22,9 +27,19 @@ import * as events from "./events";
 import { TriggerParams, Webhooks, createTrigger, createWebhookEventSource } from "./webhooks";
 import {
   AttachmentCreateInput,
+  AttachmentUpdateInput,
   CommentCreateInput,
+  CommentUpdateInput,
+  CycleCreateInput,
+  CycleUpdateInput,
   IssueCreateInput,
+  IssueLabelCreateInput,
+  IssueLabelUpdateInput,
   IssueUpdateInput,
+  ProjectCreateInput,
+  ProjectUpdateCreateInput,
+  ProjectUpdateInput,
+  ProjectUpdateUpdateInput,
   ReactionCreateInput,
 } from "@linear/sdk/dist/_generated_documents";
 import { LinearReturnType, SerializedLinearOutput } from "./types";
@@ -136,6 +151,32 @@ export class Linear implements TriggerIntegration {
     );
   }
 
+  deleteAttachment(key: IntegrationTaskKey, params: { id: string }): Promise<DeletePayload> {
+    return this.runTask(key, (client) => client.deleteAttachment(params.id), {
+      name: "Delete Attachment",
+      params,
+      properties: [{ label: "Attachment ID", text: params.id }],
+    });
+  }
+
+  updateAttachment(
+    key: IntegrationTaskKey,
+    params: { id: string; input: AttachmentUpdateInput }
+  ): LinearReturnType<AttachmentPayload, "attachment"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.updateAttachment(params.id, params.input);
+        return serializeLinearOutput(await payload.attachment);
+      },
+      {
+        name: "Update Attachment",
+        params,
+        properties: [{ label: "Attachment ID", text: params.id }],
+      }
+    );
+  }
+
   createComment(
     key: IntegrationTaskKey,
     params: CommentCreateInput
@@ -153,6 +194,74 @@ export class Linear implements TriggerIntegration {
           { label: "Issue ID", text: params.issueId },
           { label: "Body", text: params.body ?? "" },
         ],
+      }
+    );
+  }
+
+  deleteComment(key: IntegrationTaskKey, params: { id: string }): Promise<DeletePayload> {
+    return this.runTask(key, (client) => client.deleteComment(params.id), {
+      name: "Delete Comment",
+      params,
+      properties: [{ label: "Comment ID", text: params.id }],
+    });
+  }
+
+  updateComment(
+    key: IntegrationTaskKey,
+    params: { id: string; input: CommentUpdateInput }
+  ): LinearReturnType<CommentPayload, "comment"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.updateComment(params.id, params.input);
+        return serializeLinearOutput(await payload.comment);
+      },
+      {
+        name: "Update Comment",
+        params,
+        properties: [{ label: "Comment ID", text: params.id }],
+      }
+    );
+  }
+
+  createCycle(
+    key: IntegrationTaskKey,
+    params: CycleCreateInput
+  ): LinearReturnType<CyclePayload, "cycle"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createCycle(params);
+        return serializeLinearOutput(await payload.cycle);
+      },
+      {
+        name: "Create Cycle",
+        params,
+        properties: [
+          { label: "Team ID", text: params.teamId },
+          { label: "Start at", text: params.startsAt.toISOString() },
+          { label: "Ends at", text: params.endsAt.toISOString() },
+        ],
+      }
+    );
+  }
+
+  // deleteCycle() does not exist
+
+  updateCycle(
+    key: IntegrationTaskKey,
+    params: { id: string; input: CycleUpdateInput }
+  ): LinearReturnType<CyclePayload, "cycle"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.updateCycle(params.id, params.input);
+        return serializeLinearOutput(await payload.cycle);
+      },
+      {
+        name: "Update Cycle",
+        params,
+        properties: [{ label: "Cycle ID", text: params.id }],
       }
     );
   }
@@ -214,6 +323,162 @@ export class Linear implements TriggerIntegration {
     );
   }
 
+  createIssueLabel(
+    key: IntegrationTaskKey,
+    params: IssueLabelCreateInput
+  ): LinearReturnType<IssueLabelPayload, "issueLabel"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createIssueLabel(params);
+        return serializeLinearOutput(await payload.issueLabel);
+      },
+      {
+        name: "Create IssueLabel",
+        params,
+        properties: [
+          { label: "Label name", text: params.name },
+        ],
+      }
+    );
+  }
+
+  deleteIssueLabel(key: IntegrationTaskKey, params: { id: string }): Promise<DeletePayload> {
+    return this.runTask(key, (client) => client.deleteIssueLabel(params.id), {
+      name: "Delete IssueLabel",
+      params,
+      properties: [{ label: "Label ID", text: params.id }],
+    });
+  }
+
+  updateIssueLabel(
+    key: IntegrationTaskKey,
+    params: { id: string; input: IssueLabelUpdateInput }
+  ): LinearReturnType<IssueLabelPayload, "issueLabel"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.updateIssueLabel(params.id, params.input);
+        return serializeLinearOutput(await payload.issueLabel);
+      },
+      {
+        name: "Update IssueLabel",
+        params,
+        properties: [{ label: "Label ID", text: params.id }],
+      }
+    );
+  }
+
+  createProject(
+    key: IntegrationTaskKey,
+    params: ProjectCreateInput
+  ): LinearReturnType<ProjectPayload, "project"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createProject(params);
+        return serializeLinearOutput(await payload.project);
+      },
+      {
+        name: "Create Project",
+        params,
+        properties: [
+          { label: "Team IDs", text: params.teamIds.join(", ") },
+          { label: "Project name", text: params.name },
+        ],
+      }
+    );
+  }
+
+  deleteProject(
+    key: IntegrationTaskKey,
+    params: { id: string }
+  ): LinearReturnType<ProjectPayload, "project"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.deleteProject(params.id);
+        return serializeLinearOutput(await payload.entity);
+      },
+      {
+        name: "Delete Project",
+        params,
+        properties: [{ label: "Project ID", text: params.id }],
+      }
+    );
+  }
+
+  updateProject(
+    key: IntegrationTaskKey,
+    params: { id: string; input: ProjectUpdateInput }
+  ): LinearReturnType<ProjectPayload, "project"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.updateProject(params.id, params.input);
+        return serializeLinearOutput(await payload.project);
+      },
+      {
+        name: "Update Project",
+        params,
+        properties: [{ label: "Project ID", text: params.id }],
+      }
+    );
+  }
+
+  createProjectUpdate(
+    key: IntegrationTaskKey,
+    params: ProjectUpdateCreateInput
+  ): LinearReturnType<ProjectUpdatePayload, "projectUpdate"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createProjectUpdate(params);
+        return serializeLinearOutput(await payload.projectUpdate);
+      },
+      {
+        name: "Create ProjectUpdate",
+        params,
+        properties: [
+          { label: "Project ID", text: params.projectId },
+        ],
+      }
+    );
+  }
+
+  deleteProjectUpdate(
+    key: IntegrationTaskKey,
+    params: { id: string }
+  ): Promise<DeletePayload> {
+    return this.runTask(
+      key,
+      (client) => client.deleteProjectUpdate(params.id),
+      {
+        name: "Delete ProjectUpdate",
+        params,
+        properties: [{ label: "ProjectUpdate ID", text: params.id }],
+      }
+    );
+  }
+
+  updateProjectUpdate(
+    key: IntegrationTaskKey,
+    params: { id: string; input: ProjectUpdateUpdateInput }
+  ): LinearReturnType<ProjectUpdatePayload, "projectUpdate"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.updateProjectUpdate(params.id, params.input);
+        return serializeLinearOutput(await payload.projectUpdate);
+      },
+      {
+        name: "Update ProjectUpdate",
+        params,
+        properties: [{ label: "ProjectUpdate ID", text: params.id }],
+      }
+    );
+  }
+
   createReaction(
     key: IntegrationTaskKey,
     params: ReactionCreateInput & { emoji: string }
@@ -235,6 +500,16 @@ export class Linear implements TriggerIntegration {
       }
     );
   }
+
+  deleteReaction(key: IntegrationTaskKey, params: { id: string }): Promise<DeletePayload> {
+    return this.runTask(key, (client) => client.deleteReaction(params.id), {
+      name: "Delete Reaction",
+      params,
+      properties: [{ label: "Reaction ID", text: params.id }],
+    });
+  }
+
+  // updateReaction() does not exist
 
   /** **WARNING:** Still in alpha - use with caution! */
   onAttachment(params: TriggerParams = {}) {
@@ -368,6 +643,7 @@ export class Linear implements TriggerIntegration {
     return createTrigger(this.source, events.onReactionRemoved, params);
   }
 
+  /** Good luck ever triggering this! */
   onReactionUpdated(params: TriggerParams = {}) {
     return createTrigger(this.source, events.onReactionUpdated, params);
   }
