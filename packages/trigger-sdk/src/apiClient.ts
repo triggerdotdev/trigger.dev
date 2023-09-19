@@ -24,9 +24,9 @@ import {
   urlWithSearchParams,
   UpdateTriggerSourceBodyV2,
   RegisterTriggerBodyV2,
-  StatusUpdate,
-  JobRunStatusRecord,
   GetRunStatusesSchema,
+  JobRunStatusRecord,
+  StatusUpdate,
 } from "@trigger.dev/core";
 
 import fetch, { type RequestInit } from "node-fetch";

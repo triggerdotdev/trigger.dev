@@ -1,16 +1,8 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import {
-  JobRunStatusRecord,
-  StatusHistory,
-  StatusHistorySchema,
-  StatusUpdate,
-  StatusUpdateData,
-  StatusUpdateState,
-} from "@trigger.dev/core";
-
+import { JobRunStatusRecord } from "@trigger.dev/core";
 import { z } from "zod";
-import { $transaction, PrismaClient, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { apiCors } from "~/utils/apiCors";
@@ -36,20 +28,34 @@ export async function loader({ request, params }: LoaderArgs) {
   });
 
   try {
-    const statuses = await prisma.jobRunStatusRecord.findMany({
+    const run = await prisma.jobRun.findUnique({
       where: {
-        runId,
+        id: runId,
       },
-      orderBy: {
-        createdAt: "desc",
+      select: {
+        id: true,
+        status: true,
+        statuses: {
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
       },
     });
 
-    const parsedStatuses = RecordsSchema.parse(statuses);
+    if (!run) {
+      return apiCors(request, json({ error: `No run found for id ${runId}` }, { status: 404 }));
+    }
+
+    const parsedStatuses = RecordsSchema.parse(run.statuses);
 
     return apiCors(
       request,
       json({
+        run: {
+          id: run.id,
+          status: run.status,
+        },
         statuses: parsedStatuses,
       })
     );

@@ -1,6 +1,6 @@
 import { ZodObject, z } from "zod";
 import { TaskStatusSchema } from "./tasks";
-import { JobRunStatusRecord } from "./api";
+import { JobRunStatusRecord } from "./statuses";
 
 export const RunStatusSchema = z.union([
   z.literal("PENDING"),

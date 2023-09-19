@@ -1,9 +1,8 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { cors } from "remix-utils";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { authenticateApiRequest, getApiKeyFromRequest } from "~/services/apiAuth.server";
+import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { apiCors } from "~/utils/apiCors";
 import { taskListToTree } from "~/utils/taskListToTree";
 
