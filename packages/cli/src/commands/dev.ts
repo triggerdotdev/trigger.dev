@@ -53,7 +53,9 @@ export async function devCommand(path: string, anyOptions: any) {
   const options = result.data;
 
   const resolvedPath = resolvePath(path);
-  await checkForOutdatedPackages(resolvedPath);
+
+  //check for outdated packages, don't await this
+  checkForOutdatedPackages(resolvedPath);
 
   // Read from package.json to get the endpointId
   const endpointId = await getEndpointIdFromPackageJson(resolvedPath, options);
