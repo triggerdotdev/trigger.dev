@@ -17,52 +17,127 @@ import {
   Comment,
   CommentConnection,
   CommentPayload,
+  CreateOrJoinOrganizationResponse,
+  CycleArchivePayload,
   CyclePayload,
   DeletePayload,
+  DocumentConnection,
+  DocumentPayload,
+  DocumentSearchPayload,
+  Favorite,
+  FavoriteConnection,
+  FavoritePayload,
   Issue,
+  IssueArchivePayload,
   IssueConnection,
   IssueLabel,
   IssueLabelConnection,
   IssueLabelPayload,
   IssuePayload,
+  IssuePriorityValue,
+  IssueRelation,
+  IssueRelationConnection,
+  IssueRelationPayload,
+  IssueSearchPayload,
   LinearClient,
   LinearError,
+  NotificationArchivePayload,
+  NotificationConnection,
+  NotificationSubscriptionPayload,
+  Organization,
+  OrganizationInvitePayload,
   Project,
+  ProjectArchivePayload,
   ProjectConnection,
+  ProjectLink,
+  ProjectLinkConnection,
+  ProjectLinkPayload,
+  ProjectMilestonePayload,
   ProjectPayload,
+  ProjectSearchPayload,
   ProjectUpdate,
   ProjectUpdateConnection,
   ProjectUpdatePayload,
   RatelimitedLinearError,
   ReactionPayload,
+  RoadmapArchivePayload,
+  RoadmapPayload,
+  Team,
+  TeamConnection,
+  TeamMembership,
+  TeamMembershipConnection,
+  TeamMembershipPayload,
+  TeamPayload,
+  Template,
+  User,
+  UserConnection,
+  UserPayload,
+  WorkflowState,
+  WorkflowStateArchivePayload,
+  WorkflowStateConnection,
+  WorkflowStatePayload,
 } from "@linear/sdk";
 import * as events from "./events";
 import { TriggerParams, Webhooks, createTrigger, createWebhookEventSource } from "./webhooks";
 import {
+  ArchiveIssueMutationVariables,
+  ArchiveProjectMutationVariables,
   AttachmentCreateInput,
+  AttachmentLinkDiscordMutationVariables,
+  AttachmentLinkFrontMutationVariables,
+  AttachmentLinkIntercomMutationVariables,
+  AttachmentLinkSlackMutationVariables,
+  AttachmentLinkUrlMutationVariables,
+  AttachmentLinkZendeskMutationVariables,
   AttachmentUpdateInput,
   AttachmentsQueryVariables,
   CommentCreateInput,
   CommentUpdateInput,
   CommentsQueryVariables,
+  CreateOrganizationFromOnboardingMutationVariables,
+  CreateOrganizationInput,
   CycleCreateInput,
   CycleUpdateInput,
+  DocumentCreateInput,
+  DocumentsQueryVariables,
+  FavoriteCreateInput,
+  FavoritesQueryVariables,
   IssueCreateInput,
   IssueLabelCreateInput,
   IssueLabelUpdateInput,
   IssueLabelsQueryVariables,
+  IssueRelationCreateInput,
+  IssueRelationsQueryVariables,
   IssueUpdateInput,
   IssuesQueryVariables,
+  NotificationSubscriptionCreateInput,
+  NotificationsQueryVariables,
+  OrganizationInviteCreateInput,
   ProjectCreateInput,
+  ProjectLinkCreateInput,
+  ProjectLinksQueryVariables,
+  ProjectMilestoneCreateInput,
   ProjectUpdateCreateInput,
   ProjectUpdateInput,
-  ProjectUpdateQueryVariables,
   ProjectUpdateUpdateInput,
   ProjectUpdatesQueryVariables,
   ProjectsQueryVariables,
   ReactionCreateInput,
+  RoadmapCreateInput,
+  SearchDocumentsQueryVariables,
+  SearchIssuesQueryVariables,
+  SearchProjectsQueryVariables,
+  TeamCreateInput,
+  TeamMembershipCreateInput,
+  TeamMembershipsQueryVariables,
+  TeamsQueryVariables,
+  UpdateUserInput,
+  UsersQueryVariables,
+  WorkflowStateCreateInput,
+  WorkflowStatesQueryVariables,
 } from "@linear/sdk/dist/_generated_documents";
 import { LinearReturnType, SerializedLinearOutput } from "./types";
+import { queryProperties } from "./utils";
 
 export type LinearIntegrationOptions = {
   id: string;
@@ -231,6 +306,222 @@ export class Linear implements TriggerIntegration {
     );
   }
 
+  attachmentLinkDiscord(
+    key: IntegrationTaskKey,
+    params: {
+      channelId: string;
+      issueId: string;
+      messageId: string;
+      url: string;
+      variables?: Omit<
+        AttachmentLinkDiscordMutationVariables,
+        "channelId" | "issueId" | "messageId" | "url"
+      >;
+    }
+  ): LinearReturnType<AttachmentPayload, "attachment"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.attachmentLinkDiscord(
+          params.channelId,
+          params.issueId,
+          params.messageId,
+          params.url,
+          params.variables
+        );
+        return serializeLinearOutput(await payload.attachment);
+      },
+      {
+        name: "Link Discord Message",
+        params,
+        properties: [
+          { label: "Issue ID", text: params.issueId },
+          { label: "Channel ID", text: params.channelId },
+          { label: "Message ID", text: params.messageId },
+          { label: "URL", text: params.url },
+        ],
+      }
+    );
+  }
+
+  attachmentLinkFront(
+    key: IntegrationTaskKey,
+    params: {
+      conversationId: string;
+      issueId: string;
+      variables?: Omit<AttachmentLinkFrontMutationVariables, "conversationId" | "issueId">;
+    }
+  ): LinearReturnType<AttachmentPayload> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.attachmentLinkFront(
+          params.conversationId,
+          params.issueId,
+          params.variables
+        );
+        return serializeLinearOutput(payload);
+      },
+      {
+        name: "Link Front Conversation",
+        params,
+        properties: [
+          { label: "Issue ID", text: params.issueId },
+          { label: "Conversation ID", text: params.conversationId },
+        ],
+      }
+    );
+  }
+
+  attachmentLinkIntercom(
+    key: IntegrationTaskKey,
+    params: {
+      conversationId: string;
+      issueId: string;
+      variables?: Omit<AttachmentLinkIntercomMutationVariables, "conversationId" | "issueId">;
+    }
+  ): LinearReturnType<AttachmentPayload, "attachment"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.attachmentLinkIntercom(
+          params.conversationId,
+          params.issueId,
+          params.variables
+        );
+        return serializeLinearOutput(await payload.attachment);
+      },
+      {
+        name: "Link Intercom Conversation",
+        params,
+        properties: [
+          { label: "Issue ID", text: params.issueId },
+          { label: "Conversation ID", text: params.conversationId },
+        ],
+      }
+    );
+  }
+
+  attachmentLinkJiraIssue(
+    key: IntegrationTaskKey,
+    params: {
+      issueId: string;
+      jiraIssueId: string;
+    }
+  ): LinearReturnType<AttachmentPayload, "attachment"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.attachmentLinkJiraIssue(params.issueId, params.jiraIssueId);
+        return serializeLinearOutput(await payload.attachment);
+      },
+      {
+        name: "Link Jira Issue",
+        params,
+        properties: [
+          { label: "Issue ID", text: params.issueId },
+          { label: "Jira Issue ID", text: params.jiraIssueId },
+        ],
+      }
+    );
+  }
+
+  attachmentLinkSlack(
+    key: IntegrationTaskKey,
+    params: {
+      channel: string;
+      issueId: string;
+      latest: string;
+      url: string;
+      variables?: Omit<
+        AttachmentLinkSlackMutationVariables,
+        "channel" | "issueId" | "latest" | "url"
+      >;
+    }
+  ): LinearReturnType<AttachmentPayload, "attachment"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.attachmentLinkSlack(
+          params.channel,
+          params.issueId,
+          params.latest,
+          params.url,
+          params.variables
+        );
+        return serializeLinearOutput(await payload.attachment);
+      },
+      {
+        name: "Link Slack Message",
+        params,
+        properties: [
+          { label: "Issue ID", text: params.issueId },
+          { label: "Channel", text: params.channel },
+          { label: "Latest", text: params.latest },
+          { label: "URL", text: params.url },
+        ],
+      }
+    );
+  }
+
+  attachmentLinkURL(
+    key: IntegrationTaskKey,
+    params: {
+      issueId: string;
+      url: string;
+      variables?: Omit<AttachmentLinkUrlMutationVariables, "issueId" | "url">;
+    }
+  ): LinearReturnType<AttachmentPayload, "attachment"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.attachmentLinkURL(
+          params.issueId,
+          params.url,
+          params.variables
+        );
+        return serializeLinearOutput(await payload.attachment);
+      },
+      {
+        name: "Link URL",
+        params,
+        properties: [
+          { label: "Issue ID", text: params.issueId },
+          { label: "URL", text: params.url },
+        ],
+      }
+    );
+  }
+
+  attachmentLinkZendesk(
+    key: IntegrationTaskKey,
+    params: {
+      issueId: string;
+      ticketId: string;
+      variables?: Omit<AttachmentLinkZendeskMutationVariables, "issueId" | "ticketId">;
+    }
+  ): LinearReturnType<AttachmentPayload, "attachment"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.attachmentLinkZendesk(
+          params.issueId,
+          params.ticketId,
+          params.variables
+        );
+        return serializeLinearOutput(await payload.attachment);
+      },
+      {
+        name: "Link Zendesk Ticket",
+        params,
+        properties: [
+          { label: "Issue ID", text: params.issueId },
+          { label: "Ticket ID", text: params.ticketId },
+        ],
+      }
+    );
+  }
+
   comment(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<Comment> {
     return this.runTask(
       key,
@@ -311,6 +602,27 @@ export class Linear implements TriggerIntegration {
     );
   }
 
+  archiveCycle(
+    key: IntegrationTaskKey,
+    params: { id: string }
+  ): LinearReturnType<CycleArchivePayload> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.archiveCycle(params.id);
+        return serializeLinearOutput({
+          ...payload,
+          entity: await payload.entity,
+        });
+      },
+      {
+        name: "Archive Cycle",
+        params,
+        properties: [{ label: "Cycle ID", text: params.id }],
+      }
+    );
+  }
+
   createCycle(
     key: IntegrationTaskKey,
     params: CycleCreateInput
@@ -353,6 +665,131 @@ export class Linear implements TriggerIntegration {
     );
   }
 
+  document(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<Document> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.document(params.id);
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get Document",
+        params,
+        properties: [{ label: "Document ID", text: params.id }],
+      }
+    );
+  }
+
+  documents(
+    key: IntegrationTaskKey,
+    params: DocumentsQueryVariables
+  ): LinearReturnType<DocumentConnection> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const edges = await client.documents(params);
+        return serializeLinearOutput(edges);
+      },
+      {
+        name: "Get Documents",
+        params,
+        properties: queryProperties(params),
+      }
+    );
+  }
+
+  createDocument(
+    key: IntegrationTaskKey,
+    params: DocumentCreateInput
+  ): LinearReturnType<DocumentPayload, "document"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createDocument(params);
+        return serializeLinearOutput(await payload.document);
+      },
+      {
+        name: "Create Document",
+        params,
+        properties: [
+          { label: "Project ID", text: params.projectId },
+          { label: "Title", text: params.title },
+        ],
+      }
+    );
+  }
+
+  searchDocuments(
+    key: IntegrationTaskKey,
+    params: {
+      term: string;
+      variables?: SearchDocumentsQueryVariables;
+    }
+  ): LinearReturnType<DocumentSearchPayload> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.searchDocuments(params.term, params.variables);
+        return serializeLinearOutput(payload);
+      },
+      {
+        name: "Search Documents",
+        params,
+        properties: [{ label: "Search Term", text: params.term }],
+      }
+    );
+  }
+
+  favorite(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<Favorite> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.favorite(params.id);
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get Favorite",
+        params,
+        properties: [{ label: "Favorite ID", text: params.id }],
+      }
+    );
+  }
+
+  favorites(
+    key: IntegrationTaskKey,
+    params: FavoritesQueryVariables = {}
+  ): LinearReturnType<FavoriteConnection> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const edges = await client.favorites(params);
+        return serializeLinearOutput(edges);
+      },
+      {
+        name: "Get Favorites",
+        params,
+        properties: queryProperties(params),
+      }
+    );
+  }
+
+  createFavorite(
+    key: IntegrationTaskKey,
+    params: FavoriteCreateInput
+  ): LinearReturnType<FavoritePayload, "favorite"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createFavorite(params);
+        return serializeLinearOutput(await payload.favorite);
+      },
+      {
+        name: "Create Favorite",
+        params,
+      }
+    );
+  }
+
   issue(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<Issue> {
     return this.runTask(
       key,
@@ -386,6 +823,30 @@ export class Linear implements TriggerIntegration {
     );
   }
 
+  archiveIssue(
+    key: IntegrationTaskKey,
+    params: {
+      id: string;
+      variables?: Omit<ArchiveIssueMutationVariables, "id">;
+    }
+  ): LinearReturnType<IssueArchivePayload> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.archiveIssue(params.id, params.variables);
+        return serializeLinearOutput({
+          ...payload,
+          entity: await payload.entity,
+        });
+      },
+      {
+        name: "Archive Issue",
+        params,
+        properties: [{ label: "Issue ID", text: params.id }],
+      }
+    );
+  }
+
   createIssue(
     key: IntegrationTaskKey,
     params: IssueCreateInput & { title: string }
@@ -407,24 +868,6 @@ export class Linear implements TriggerIntegration {
     );
   }
 
-  updateIssue(
-    key: IntegrationTaskKey,
-    params: { id: string; input: IssueUpdateInput }
-  ): LinearReturnType<IssuePayload, "issue"> {
-    return this.runTask(
-      key,
-      async (client) => {
-        const payload = await client.updateIssue(params.id, params.input);
-        return serializeLinearOutput(await payload.issue);
-      },
-      {
-        name: "Update Issue",
-        params,
-        properties: [{ label: "Issue ID", text: params.id }],
-      }
-    );
-  }
-
   deleteIssue(
     key: IntegrationTaskKey,
     params: { id: string }
@@ -437,6 +880,45 @@ export class Linear implements TriggerIntegration {
       },
       {
         name: "Delete Issue",
+        params,
+        properties: [{ label: "Issue ID", text: params.id }],
+      }
+    );
+  }
+
+  searchIssues(
+    key: IntegrationTaskKey,
+    params: {
+      term: string;
+      variables?: SearchIssuesQueryVariables;
+    }
+  ): LinearReturnType<IssueSearchPayload> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.searchIssues(params.term, params.variables);
+        return serializeLinearOutput(payload);
+      },
+      {
+        name: "Search Issues",
+        params,
+        properties: [{ label: "Search Term", text: params.term }],
+      }
+    );
+  }
+
+  updateIssue(
+    key: IntegrationTaskKey,
+    params: { id: string; input: IssueUpdateInput }
+  ): LinearReturnType<IssuePayload, "issue"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.updateIssue(params.id, params.input);
+        return serializeLinearOutput(await payload.issue);
+      },
+      {
+        name: "Update Issue",
         params,
         properties: [{ label: "Issue ID", text: params.id }],
       }
@@ -520,6 +1002,204 @@ export class Linear implements TriggerIntegration {
     );
   }
 
+  issuePriorityValues(key: IntegrationTaskKey): LinearReturnType<IssuePriorityValue[]> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.issuePriorityValues;
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get Issue Priority Values",
+      }
+    );
+  }
+
+  issueRelation(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<IssueRelation> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.issueRelation(params.id);
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get IssueRelation",
+        params,
+        properties: [{ label: "IssueRelation ID", text: params.id }],
+      }
+    );
+  }
+
+  issueRelations(
+    key: IntegrationTaskKey,
+    params: IssueRelationsQueryVariables = {}
+  ): LinearReturnType<IssueRelationConnection> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const edges = await client.issueRelations(params);
+        return serializeLinearOutput(edges);
+      },
+      {
+        name: "Get IssueRelations",
+        params,
+        properties: queryProperties(params),
+      }
+    );
+  }
+
+  createIssueRelation(
+    key: IntegrationTaskKey,
+    params: IssueRelationCreateInput
+  ): LinearReturnType<IssueRelationPayload, "issueRelation"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createIssueRelation(params);
+        return serializeLinearOutput(await payload.issueRelation);
+      },
+      {
+        name: "Create IssueRelation",
+        params,
+        properties: [
+          { label: "Issue ID", text: params.issueId },
+          { label: "Related Issue ID", text: params.relatedIssueId },
+          { label: "Relation Type", text: params.type },
+        ],
+      }
+    );
+  }
+
+  notification(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<Notification> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.notification(params.id);
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get Notification",
+        params,
+        properties: [{ label: "Notification ID", text: params.id }],
+      }
+    );
+  }
+
+  notifications(
+    key: IntegrationTaskKey,
+    params: NotificationsQueryVariables = {}
+  ): LinearReturnType<NotificationConnection> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const edges = await client.notifications(params);
+        return serializeLinearOutput(edges);
+      },
+      {
+        name: "Get Notifications",
+        params,
+        properties: queryProperties(params),
+      }
+    );
+  }
+
+  createNotificationSubscription(
+    key: IntegrationTaskKey,
+    params: {
+      input: NotificationSubscriptionCreateInput;
+    }
+  ): LinearReturnType<NotificationSubscriptionPayload> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createNotificationSubscription(params.input);
+        return serializeLinearOutput(payload);
+      },
+      {
+        name: "Create Notification Subscription",
+        params,
+      }
+    );
+  }
+
+  archiveNotification(
+    key: IntegrationTaskKey,
+    params: { id: string }
+  ): LinearReturnType<NotificationArchivePayload> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.archiveNotification(params.id);
+        return serializeLinearOutput(payload);
+      },
+      {
+        name: "Archive Notification",
+        params,
+        properties: [{ label: "Notification ID", text: params.id }],
+      }
+    );
+  }
+
+  organization(key: IntegrationTaskKey): LinearReturnType<Organization> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.organization;
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get Viewer's Organization",
+      }
+    );
+  }
+
+  createOrganizationFromOnboarding(
+    key: IntegrationTaskKey,
+    params: {
+      input: CreateOrganizationInput;
+      variables?: Omit<CreateOrganizationFromOnboardingMutationVariables, "input">;
+    }
+  ): LinearReturnType<CreateOrJoinOrganizationResponse, "organization"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createOrganizationFromOnboarding(
+          params.input,
+          params.variables
+        );
+        return serializeLinearOutput(await payload.organization);
+      },
+      {
+        name: "Create Organization",
+        params,
+        properties: [
+          { label: "Name", text: params.input.name },
+          { label: "URL Key", text: params.input.urlKey },
+        ],
+      }
+    );
+  }
+
+  createOrganizationInvite(
+    key: IntegrationTaskKey,
+    params: {
+      input: OrganizationInviteCreateInput;
+    }
+  ): LinearReturnType<OrganizationInvitePayload, "organizationInvite"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createOrganizationInvite(params.input);
+        return serializeLinearOutput(await payload.organizationInvite);
+      },
+      {
+        name: "Create Organization Invite",
+        params,
+        properties: [{ label: "Invitee Email", text: params.input.email }],
+      }
+    );
+  }
+
   project(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<Project> {
     return this.runTask(
       key,
@@ -549,6 +1229,30 @@ export class Linear implements TriggerIntegration {
         name: "Get Projects",
         params,
         properties: queryProperties(params),
+      }
+    );
+  }
+
+  archiveProject(
+    key: IntegrationTaskKey,
+    params: {
+      id: string;
+      variables?: Omit<ArchiveProjectMutationVariables, "id">;
+    }
+  ): LinearReturnType<ProjectArchivePayload> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.archiveProject(params.id, params.variables);
+        return serializeLinearOutput({
+          ...payload,
+          entity: await payload.entity,
+        });
+      },
+      {
+        name: "Archive Project",
+        params,
+        properties: [{ label: "Project ID", text: params.id }],
       }
     );
   }
@@ -592,6 +1296,27 @@ export class Linear implements TriggerIntegration {
     );
   }
 
+  searchProjects(
+    key: IntegrationTaskKey,
+    params: {
+      term: string;
+      variables?: SearchProjectsQueryVariables;
+    }
+  ): LinearReturnType<ProjectSearchPayload> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.searchProjects(params.term, params.variables);
+        return serializeLinearOutput(payload);
+      },
+      {
+        name: "Search Projects",
+        params,
+        properties: [{ label: "Search Term", text: params.term }],
+      }
+    );
+  }
+
   updateProject(
     key: IntegrationTaskKey,
     params: { id: string; input: ProjectUpdateInput }
@@ -606,6 +1331,82 @@ export class Linear implements TriggerIntegration {
         name: "Update Project",
         params,
         properties: [{ label: "Project ID", text: params.id }],
+      }
+    );
+  }
+
+  projectLink(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<ProjectLink> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.projectLink(params.id);
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get ProjectLink",
+        params,
+        properties: [{ label: "ProjectLink ID", text: params.id }],
+      }
+    );
+  }
+
+  projectLinks(
+    key: IntegrationTaskKey,
+    params: ProjectLinksQueryVariables = {}
+  ): LinearReturnType<ProjectLinkConnection> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const edges = await client.projectLinks(params);
+        return serializeLinearOutput(edges);
+      },
+      {
+        name: "Get ProjectLinks",
+        params,
+        properties: queryProperties(params),
+      }
+    );
+  }
+
+  createProjectLink(
+    key: IntegrationTaskKey,
+    params: ProjectLinkCreateInput
+  ): LinearReturnType<ProjectLinkPayload, "projectLink"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createProjectLink(params);
+        return serializeLinearOutput(await payload.projectLink);
+      },
+      {
+        name: "Create ProjectLink",
+        params,
+        properties: [
+          { label: "Project ID", text: params.projectId },
+          { label: "Link Label", text: params.label },
+          { label: "Link URL", text: params.url },
+        ],
+      }
+    );
+  }
+
+  createProjectMilestone(
+    key: IntegrationTaskKey,
+    params: ProjectMilestoneCreateInput
+  ): LinearReturnType<ProjectMilestonePayload, "projectMilestone"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createProjectMilestone(params);
+        return serializeLinearOutput(await payload.projectMilestone);
+      },
+      {
+        name: "Create ProjectMilestone",
+        params,
+        properties: [
+          { label: "Project ID", text: params.projectId },
+          { label: "Milestone Name", text: params.name },
+        ],
       }
     );
   }
@@ -715,6 +1516,321 @@ export class Linear implements TriggerIntegration {
       params,
       properties: [{ label: "Reaction ID", text: params.id }],
     });
+  }
+
+  template(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<Template> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.template(params.id);
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get Template",
+        properties: [{ label: "Template ID", text: params.id }],
+      }
+    );
+  }
+
+  archiveRoadmap(
+    key: IntegrationTaskKey,
+    params: { id: string }
+  ): LinearReturnType<RoadmapArchivePayload> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.archiveRoadmap(params.id);
+        return serializeLinearOutput({
+          ...payload,
+          entity: await payload.entity,
+        });
+      },
+      {
+        name: "Archive Roadmap",
+        params,
+        properties: [{ label: "Roadmap ID", text: params.id }],
+      }
+    );
+  }
+
+  createRoadmap(
+    key: IntegrationTaskKey,
+    params: RoadmapCreateInput
+  ): LinearReturnType<RoadmapPayload, "roadmap"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createRoadmap(params);
+        return serializeLinearOutput(await payload.roadmap);
+      },
+      {
+        name: "Create Roadmap",
+        params,
+        properties: [{ label: "Roadmap Name", text: params.name }],
+      }
+    );
+  }
+
+  team(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<Team> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.team(params.id);
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get Team",
+        params,
+        properties: [{ label: "Team ID", text: params.id }],
+      }
+    );
+  }
+
+  teams(
+    key: IntegrationTaskKey,
+    params: TeamsQueryVariables = {}
+  ): LinearReturnType<TeamConnection> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const edges = await client.teams(params);
+        return serializeLinearOutput(edges);
+      },
+      {
+        name: "Get Teams",
+        params,
+        properties: queryProperties(params),
+      }
+    );
+  }
+
+  createTeam(
+    key: IntegrationTaskKey,
+    params: TeamCreateInput
+  ): LinearReturnType<TeamPayload, "team"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createTeam(params);
+        return serializeLinearOutput(await payload.team);
+      },
+      {
+        name: "Create Team",
+        params,
+        properties: [{ label: "Team Name", text: params.name }],
+      }
+    );
+  }
+
+  teamMembership(
+    key: IntegrationTaskKey,
+    params: { id: string }
+  ): LinearReturnType<TeamMembership> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.teamMembership(params.id);
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get TeamMembership",
+        params,
+        properties: [{ label: "TeamMembership ID", text: params.id }],
+      }
+    );
+  }
+
+  teamMemberships(
+    key: IntegrationTaskKey,
+    params: TeamMembershipsQueryVariables = {}
+  ): LinearReturnType<TeamMembershipConnection> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const edges = await client.teamMemberships(params);
+        return serializeLinearOutput(edges);
+      },
+      {
+        name: "Get TeamMemberships",
+        params,
+        properties: queryProperties(params),
+      }
+    );
+  }
+
+  createTeamMembership(
+    key: IntegrationTaskKey,
+    params: TeamMembershipCreateInput
+  ): LinearReturnType<TeamMembershipPayload, "teamMembership"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createTeamMembership(params);
+        return serializeLinearOutput(await payload.teamMembership);
+      },
+      {
+        name: "Create TeamMembership",
+        params,
+        properties: [
+          { label: "Team ID", text: params.teamId },
+          { label: "User ID", text: params.userId },
+        ],
+      }
+    );
+  }
+
+  templates(key: IntegrationTaskKey): LinearReturnType<Template[]> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.templates;
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get Templates",
+      }
+    );
+  }
+
+  user(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<User> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.user(params.id);
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get User",
+        params,
+        properties: [{ label: "User ID", text: params.id }],
+      }
+    );
+  }
+
+  users(
+    key: IntegrationTaskKey,
+    params: UsersQueryVariables = {}
+  ): LinearReturnType<UserConnection> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const edges = await client.users(params);
+        return serializeLinearOutput(edges);
+      },
+      {
+        name: "Get Users",
+        params,
+        properties: queryProperties(params),
+      }
+    );
+  }
+
+  updateUser(
+    key: IntegrationTaskKey,
+    params: { id: string; input: UpdateUserInput }
+  ): LinearReturnType<UserPayload, "user"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.updateUser(params.id, params.input);
+        return serializeLinearOutput(await payload.user);
+      },
+      {
+        name: "Update User",
+        params,
+        properties: [{ label: "User ID", text: params.id }],
+      }
+    );
+  }
+
+  workflowState(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<WorkflowState> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.workflowState(params.id);
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get WorkflowState",
+        params,
+        properties: [{ label: "WorkflowState ID", text: params.id }],
+      }
+    );
+  }
+
+  viewer(key: IntegrationTaskKey): LinearReturnType<User> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.viewer;
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get Viewer",
+      }
+    );
+  }
+
+  workflowStates(
+    key: IntegrationTaskKey,
+    params: WorkflowStatesQueryVariables = {}
+  ): LinearReturnType<WorkflowStateConnection> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const edges = await client.workflowStates(params);
+        return serializeLinearOutput(edges);
+      },
+      {
+        name: "Get WorkflowStates",
+        params,
+        properties: queryProperties(params),
+      }
+    );
+  }
+
+  archiveWorkflowState(
+    key: IntegrationTaskKey,
+    params: { id: string }
+  ): LinearReturnType<WorkflowStateArchivePayload> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.archiveWorkflowState(params.id);
+        return serializeLinearOutput({
+          ...payload,
+          entity: await payload.entity,
+        });
+      },
+      {
+        name: "Archive WorkflowState",
+        params,
+        properties: [{ label: "WorkflowState ID", text: params.id }],
+      }
+    );
+  }
+
+  createWorkflowState(
+    key: IntegrationTaskKey,
+    params: WorkflowStateCreateInput
+  ): LinearReturnType<WorkflowStatePayload, "workflowState"> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.createWorkflowState(params);
+        return serializeLinearOutput(await payload.workflowState);
+      },
+      {
+        name: "Create WorkflowState",
+        params,
+        properties: [
+          { label: "Team ID", text: params.teamId },
+          { label: "Workflow Type", text: params.type },
+          { label: "State Name", text: params.name },
+          { label: "State Color", text: params.color },
+        ],
+      }
+    );
   }
 
   // updateReaction() does not exist
@@ -911,32 +2027,6 @@ export const serializeLinearOutput = <T>(obj: T): Prettify<SerializedLinearOutpu
     }
     return value;
   });
-};
-
-type QueryVariables = {
-  after: string;
-  before: string;
-  first: number;
-  includeArchived: boolean;
-  last: number;
-  orderBy: string;
-};
-
-type Nullable<T> = Partial<{
-  [K in keyof T]: T[K] | null;
-}>;
-
-const queryProperties = (query: Nullable<QueryVariables>) => {
-  return [
-    ...(query.after ? [{ label: "After", text: query.after }] : []),
-    ...(query.before ? [{ label: "Before", text: query.before }] : []),
-    ...(query.first ? [{ label: "First", text: String(query.first) }] : []),
-    ...(query.last ? [{ label: "Last", text: String(query.last) }] : []),
-    ...(query.orderBy ? [{ label: "Order by", text: query.orderBy }] : []),
-    ...(query.includeArchived
-      ? [{ label: "Include archived", text: String(query.includeArchived) }]
-      : []),
-  ];
 };
 
 export { events };
