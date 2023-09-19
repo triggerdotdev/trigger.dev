@@ -1,6 +1,6 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { JobRunStatusRecord } from "@trigger.dev/core";
+import { JobRunStatusRecordSchema } from "@trigger.dev/core";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
@@ -11,7 +11,7 @@ const ParamsSchema = z.object({
   runId: z.string(),
 });
 
-const RecordsSchema = z.array(JobRunStatusRecord);
+const RecordsSchema = z.array(JobRunStatusRecordSchema);
 
 export async function loader({ request, params }: LoaderArgs) {
   // Next authenticate the request
@@ -35,6 +35,7 @@ export async function loader({ request, params }: LoaderArgs) {
       select: {
         id: true,
         status: true,
+        output: true,
         statuses: {
           orderBy: {
             createdAt: "desc",
@@ -55,6 +56,7 @@ export async function loader({ request, params }: LoaderArgs) {
         run: {
           id: run.id,
           status: run.status,
+          output: run.output,
         },
         statuses: parsedStatuses,
       })

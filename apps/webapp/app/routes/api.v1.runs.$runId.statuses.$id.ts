@@ -1,6 +1,6 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { JobRunStatusRecord, TaskStatus } from "@trigger.dev/database";
+import { TaskStatus } from "@trigger.dev/database";
 import {
   RunTaskBodyOutput,
   RunTaskBodyOutputSchema,
@@ -19,6 +19,7 @@ import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ulid } from "~/services/ulid.server";
 import { workerQueue } from "~/services/worker.server";
+import { JobRunStatusRecordSchema } from "@trigger.dev/core";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -58,17 +59,24 @@ export async function action({ request, params }: ActionArgs) {
   const service = new SetStatusService();
 
   try {
-    const status = await service.call(runId, id, body.data);
+    const statusRecord = await service.call(runId, id, body.data);
 
     logger.debug("SetStatusService.call() response body", {
       runId,
       id,
-      status,
+      statusRecord,
     });
 
-    if (!status) {
+    if (!statusRecord) {
       return json({ error: "Something went wrong" }, { status: 500 });
     }
+
+    const status = JobRunStatusRecordSchema.parse({
+      ...statusRecord,
+      state: statusRecord.state ?? undefined,
+      history: statusRecord.history ?? undefined,
+      data: statusRecord.data ?? undefined,
+    });
 
     return json(status);
   } catch (error) {
@@ -87,11 +95,7 @@ export class SetStatusService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(
-    runId: string,
-    id: string,
-    status: StatusUpdate
-  ): Promise<JobRunStatusRecord | undefined> {
+  public async call(runId: string, id: string, status: StatusUpdate) {
     const statusRecord = await $transaction(this.#prismaClient, async (tx) => {
       const existingStatus = await tx.jobRunStatusRecord.findUnique({
         where: {
@@ -110,8 +114,8 @@ export class SetStatusService {
       if (existingStatus) {
         history.push({
           label: existingStatus.label,
-          state: existingStatus.state as StatusUpdateState,
-          data: existingStatus.data as StatusUpdateData,
+          state: (existingStatus.state ?? undefined) as StatusUpdateState,
+          data: (existingStatus.data ?? undefined) as StatusUpdateData,
         });
       }
 

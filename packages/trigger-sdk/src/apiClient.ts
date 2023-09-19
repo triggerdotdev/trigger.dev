@@ -25,7 +25,7 @@ import {
   UpdateTriggerSourceBodyV2,
   RegisterTriggerBodyV2,
   GetRunStatusesSchema,
-  JobRunStatusRecord,
+  JobRunStatusRecordSchema,
   StatusUpdate,
 } from "@trigger.dev/core";
 
@@ -210,7 +210,7 @@ export class ApiClient {
     });
 
     return await zodfetch(
-      JobRunStatusRecord,
+      JobRunStatusRecordSchema,
       `${this.#apiUrl}/api/v1/runs/${runId}/statuses/${id}`,
       {
         method: "PUT",

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { SerializableJsonSchema } from "./json";
 import { RunStatusSchema } from "./runs";
 
-const StatusUpdateStateSchema = z.union([
+export const StatusUpdateStateSchema = z.union([
   z.literal("loading"),
   z.literal("success"),
   z.literal("failure"),
@@ -25,7 +25,7 @@ export type InitialStatusUpdate = z.infer<typeof InitalStatusUpdateSchema>;
 export const StatusHistorySchema = z.array(StatusUpdateSchema);
 export type StatusHistory = z.infer<typeof StatusHistorySchema>;
 
-export const JobRunStatusRecord = InitalStatusUpdateSchema.extend({
+export const JobRunStatusRecordSchema = InitalStatusUpdateSchema.extend({
   key: z.string(),
   history: StatusHistorySchema,
 });
