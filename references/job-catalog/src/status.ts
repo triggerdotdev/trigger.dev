@@ -47,6 +47,10 @@ client.defineJob({
         urls: ["http://www.", "http://www.", "http://www."],
       },
     });
+
+    await io.runTask("get statuses", async () => {
+      return await client.getRunStatuses(ctx.run.id);
+    });
   },
 });
 

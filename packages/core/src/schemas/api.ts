@@ -757,3 +757,5 @@ export const JobRunStatusRecord = InitalStatusUpdateSchema.extend({
   key: z.string(),
   history: StatusHistorySchema,
 });
+
+export const GetRunStatusesSchema = z.object({ statuses: z.array(JobRunStatusRecord) });

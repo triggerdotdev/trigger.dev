@@ -592,6 +592,10 @@ export class TriggerClient {
     return this.#client.getRuns(jobSlug, options);
   }
 
+  async getRunStatuses(runId: string) {
+    return this.#client.getRunStatuses(runId);
+  }
+
   authorized(
     apiKey?: string | null
   ): "authorized" | "unauthorized" | "missing-client" | "missing-header" {

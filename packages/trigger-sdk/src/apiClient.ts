@@ -26,6 +26,7 @@ import {
   RegisterTriggerBodyV2,
   StatusUpdate,
   JobRunStatusRecord,
+  GetRunStatusesSchema,
 } from "@trigger.dev/core";
 
 import fetch, { type RequestInit } from "node-fetch";
@@ -381,6 +382,21 @@ export class ApiClient {
         },
       }
     );
+  }
+
+  async getRunStatuses(runId: string) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Getting Run statuses", {
+      runId,
+    });
+
+    return await zodfetch(GetRunStatusesSchema, `${this.#apiUrl}/api/v1/runs/${runId}/statuses`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
   }
 
   async getRuns(jobSlug: string, options?: GetRunsOptions) {

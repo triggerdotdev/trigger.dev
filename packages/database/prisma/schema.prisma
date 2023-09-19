@@ -716,7 +716,7 @@ model JobRun {
   runConnections     RunConnection[]
   missingConnections MissingConnection[]
   executions         JobRunExecution[]
-  JobRunStatusRecord JobRunStatusRecord[]
+  statuses           JobRunStatusRecord[]
 }
 
 enum JobRunStatus {
