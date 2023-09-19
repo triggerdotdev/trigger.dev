@@ -1,4 +1,4 @@
-import { client, github, githubUser, openai, slack } from "@/trigger";
+import { client, github, githubUser, slack } from "@/trigger";
 import { events } from "@trigger.dev/github";
 import {
   Job,

@@ -62,7 +62,12 @@ export function EventRunData({ id }: { id: string }) {
   }
 
   if (isError) {
-    return <p>Error</p>;
+    return (
+      <div>
+        <p>{error.name}</p>
+        <p>{error.message}</p>
+      </div>
+    );
   }
 
   if (!data) {
