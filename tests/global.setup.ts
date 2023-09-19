@@ -8,7 +8,7 @@ const setup = async () => {
         email: "test-user@test.com",
         name: "Test User",
         authenticationMethod: "MAGIC_LINK",
-        confirmedBasicDetails: true
+        confirmedBasicDetails: true,
       },
     });
 
@@ -53,7 +53,7 @@ const setup = async () => {
     await prisma.runtimeEnvironment.create({
       data: {
         slug: "dev",
-        // Defined in @examples/nextjs-test
+        // Defined in @references/nextjs-test
         apiKey: "tr_dev_test-api-key",
         pkApiKey: "tr_dev_pk_test-api-key",
         autoEnableInternalSources: false,
@@ -75,7 +75,7 @@ const setup = async () => {
     await prisma.runtimeEnvironment.create({
       data: {
         slug: "prod",
-        // Defined in @examples/nextjs-test
+        // Defined in @references/nextjs-test
         apiKey: "tr_prod_test-api-key",
         pkApiKey: "tr_prod_pk_test-api-key",
         autoEnableInternalSources: false,

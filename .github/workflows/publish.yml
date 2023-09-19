@@ -129,10 +129,10 @@ jobs:
         run: |
           # Setup environment variables
           cp ./.env.example ./.env
-          cp ./examples/nextjs-test/.env.example ./examples/nextjs-test/.env.local
+          cp ./references/nextjs-test/.env.example ./references/nextjs-test/.env.local
 
           # Build packages
-          pnpm run build --filter @examples/nextjs-test^...
+          pnpm run build --filter @references/nextjs-test^...
           pnpm --filter @trigger.dev/database generate
 
           # Move trigger-cli bin to correct place
