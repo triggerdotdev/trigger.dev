@@ -26,7 +26,17 @@ client.defineJob({
       },
     });
 
-    await io.wait("wait", 5);
+    await io.wait("wait", 2);
+
+    //...do stuff
+    await generatingText.update("middle-generation", {
+      data: {
+        progress: 0.5,
+        urls: ["http://www."],
+      },
+    });
+
+    await io.wait("wait-again", 2);
 
     //...do stuff
     await generatingText.update("completed-generation", {
@@ -34,7 +44,7 @@ client.defineJob({
       state: "success",
       data: {
         progress: 1.0,
-        urls: ["http://www."],
+        urls: ["http://www.", "http://www.", "http://www."],
       },
     });
   },

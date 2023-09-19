@@ -755,5 +755,5 @@ export type StatusHistory = z.infer<typeof StatusHistorySchema>;
 
 export const JobRunStatusRecord = InitalStatusUpdateSchema.extend({
   key: z.string(),
-  history: StatusHistorySchema.default([]),
+  history: StatusHistorySchema,
 });
