@@ -1183,6 +1183,7 @@ export class Linear implements TriggerIntegration {
     );
   }
 
+  /** WARNING: Causes internal server errors on Linear's side, regardless of input. */
   createOrganizationInvite(
     key: IntegrationTaskKey,
     params: {
