@@ -1,12 +1,12 @@
 ---
-title: "Using Integrations"
-description: "How to use Integrations"
+title: "Integrations Overview"
+description: "How to use Trigger.dev Integrations"
+sidebarTitle: "Overview"
 ---
 
 <Note>
-  You can use any API in your Jobs by using existing Node.js SDKs or HTTP
-  requests. Integrations just make it much easier especially when you want to
-  use OAuth. And you get great logging.
+  You can use any API in your Jobs by using existing Node.js SDKs or HTTP requests. Integrations
+  just make it much easier especially when you want to use OAuth. And you get great logging.
 </Note>
 
 [Integrations](/documentation/concepts/integrations) allow you to quickly use APIs, including webhooks and Tasks.
@@ -121,7 +121,7 @@ import { Stripe } from "@trigger.dev/stripe";
 
 const stripe = new Stripe({
   id: "stripe",
-  apiKey: process.env.STRIPE_SECRET_KEY!
+  apiKey: process.env.STRIPE_SECRET_KEY!,
 });
 
 async function createCustomer() {
@@ -161,7 +161,6 @@ client.defineJob({
 Behind the scenes, our `@trigger.dev/github` integration will create a webhook on your repository that will call our API when a new push event is received. We will then start your Job with the payload from the push event.
 
 <Note>
-  If you are just using an integration to trigger a job but not using
-  authenticated tasks inside the job run, there is no need to pass the
-  integration in the job `integrations` option.
+  If you are just using an integration to trigger a job but not using authenticated tasks inside the
+  job run, there is no need to pass the integration in the job `integrations` option.
 </Note>

@@ -56,6 +56,7 @@ export class DynamicTrigger<
     client.attachDynamicTrigger(this);
   }
 
+  // @internal
   toJSON(): TriggerMetadata {
     return {
       type: "dynamic",
@@ -71,6 +72,7 @@ export class DynamicTrigger<
     return this.#options.event;
   }
 
+  // @internal
   registeredTriggerForParams(params: ExternalSourceParams<TExternalSource>): RegisterTriggerBodyV2 {
     const key = slugifyId(this.source.key(params));
 

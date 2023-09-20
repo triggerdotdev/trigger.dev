@@ -37,19 +37,20 @@ type TypeformTrigger = ReturnType<typeof createWebhookEventTrigger>;
 export type TypeformRunTask = InstanceType<typeof Typeform>["runTask"];
 
 export class Typeform implements TriggerIntegration {
+  // @internal
   private _options: TypeformIntegrationOptions;
+  // @internal
   private _client?: TypeformSDK;
+  // @internal
   private _io?: IO;
+  // @internal
   private _connectionKey?: string;
 
   constructor(private options: TypeformIntegrationOptions) {
-    if (Object.keys(options).includes("token") && !options.token) {
-      throw `Can't create Typeform integration (${options.id}) as token was undefined`;
-    }
-
     this._options = options;
   }
 
+  // @internal
   get authSource() {
     return "LOCAL" as const;
   }
@@ -58,15 +59,25 @@ export class Typeform implements TriggerIntegration {
     return this.options.id;
   }
 
+  // @internal
   get metadata() {
     return { id: "typeform", name: "Typeform" };
   }
 
+  // @internal
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
+    const token = this._options.token ?? auth?.accessToken;
+
+    if (!token) {
+      throw new Error(
+        `Can't initialize Typeform integration (${this._options.id}) as token was undefined`
+      );
+    }
+
     const typeform = new Typeform(this._options);
     typeform._io = io;
     typeform._connectionKey = connectionKey;
-    typeform._client = createClient({ token: this._options.token });
+    typeform._client = createClient({ token });
     return typeform;
   }
 

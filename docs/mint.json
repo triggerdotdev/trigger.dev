@@ -151,7 +151,6 @@
             "documentation/guides/manual/fastify"
           ]
         },
-
         "documentation/guides/running-jobs",
         "documentation/guides/jobs/managing",
         {
@@ -168,7 +167,8 @@
           "pages": [
             "documentation/guides/using-integrations",
             "documentation/guides/using-integrations-apikeys",
-            "documentation/guides/using-integrations-oauth"
+            "documentation/guides/using-integrations-oauth",
+            "documentation/guides/using-integrations-byo-auth"
           ]
         },
         {
@@ -310,7 +310,10 @@
             "sdk/dynamictrigger/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamictrigger/register", "sdk/dynamictrigger/unregister"]
+              "pages": [
+                "sdk/dynamictrigger/register",
+                "sdk/dynamictrigger/unregister"
+              ]
             }
           ]
         },
@@ -321,7 +324,10 @@
             "sdk/dynamicschedule/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamicschedule/register", "sdk/dynamicschedule/unregister"]
+              "pages": [
+                "sdk/dynamicschedule/register",
+                "sdk/dynamicschedule/unregister"
+              ]
             }
           ]
         },
@@ -342,7 +348,9 @@
     },
     {
       "group": "Overview",
-      "pages": ["examples/introduction"]
+      "pages": [
+        "examples/introduction"
+      ]
     }
   ],
   "footerSocials": {

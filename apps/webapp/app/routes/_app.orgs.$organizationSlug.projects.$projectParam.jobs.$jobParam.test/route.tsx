@@ -1,4 +1,4 @@
-import { useForm } from "@conform-to/react";
+import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { PopoverTrigger } from "@radix-ui/react-popover";
 import { Form, useActionData, useSubmit } from "@remix-run/react";
@@ -14,6 +14,9 @@ import { Button, ButtonContent } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { FormError } from "~/components/primitives/FormError";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
+import { Input } from "~/components/primitives/Input";
+import { InputGroup } from "~/components/primitives/InputGroup";
+import { Label } from "~/components/primitives/Label";
 import { Popover, PopoverContent } from "~/components/primitives/Popover";
 import {
   Select,
@@ -69,6 +72,7 @@ const schema = z.object({
   }),
   environmentId: z.string(),
   versionId: z.string(),
+  accountId: z.string().optional(),
 });
 
 //todo save the chosen environment to a cookie (for that user), use it to default the env dropdown
@@ -84,11 +88,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 
   const testService = new TestJobService();
-  const run = await testService.call({
-    environmentId: submission.value.environmentId,
-    payload: submission.value.payload,
-    versionId: submission.value.versionId,
-  });
+  const run = await testService.call(submission.value);
 
   if (!run) {
     return redirectBackWithErrorMessage(
@@ -124,6 +124,7 @@ export default function Page() {
   const [defaultJson, setDefaultJson] = useState<string>(startingJson);
   const currentJson = useRef<string>(defaultJson);
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string>(environments[0].id);
+  const [currentAccountId, setCurrentAccountId] = useState<string | undefined>(undefined);
 
   const selectedEnvironment = environments.find((e) => e.id === selectedEnvironmentId);
 
@@ -139,6 +140,7 @@ export default function Page() {
           payload: currentJson.current,
           environmentId: selectedEnvironmentId,
           versionId: selectedEnvironment?.versionId ?? "",
+          ...(currentAccountId ? { accountId: currentAccountId } : {}),
         },
         {
           action: "",
@@ -147,10 +149,10 @@ export default function Page() {
       );
       e.preventDefault();
     },
-    [currentJson, selectedEnvironmentId]
+    [currentJson, selectedEnvironmentId, currentAccountId]
   );
 
-  const [form, { environmentId, payload }] = useForm({
+  const [form, { environmentId, payload, accountId }] = useForm({
     id: "test-job",
     lastSubmission,
     onValidate({ formData }) {
@@ -234,15 +236,32 @@ export default function Page() {
                 </div>
                 <HelpTrigger title="How do I run a test?" />
               </div>
-              <div className="flex-1 overflow-auto rounded border border-slate-850 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
-                <JSONEditor
-                  defaultValue={defaultJson}
-                  readOnly={false}
-                  basicSetup
-                  onChange={(v) => (currentJson.current = v)}
-                  minHeight="150px"
-                />
-              </div>
+              <InputGroup fullWidth>
+                <Label variant="small">Payload</Label>
+                <div className="flex-1 overflow-auto rounded border border-slate-850 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+                  <JSONEditor
+                    defaultValue={defaultJson}
+                    readOnly={false}
+                    basicSetup
+                    onChange={(v) => (currentJson.current = v)}
+                    minHeight="150px"
+                  />
+                </div>
+              </InputGroup>
+
+              {selectedEnvironment?.hasAuthResolver && (
+                <InputGroup fullWidth className="mb-4 mt-4">
+                  <Label variant="small">Account ID</Label>
+                  <Input
+                    type="text"
+                    fullWidth
+                    value={currentAccountId}
+                    placeholder={`e.g. abc_1234`}
+                    onChange={(e) => setCurrentAccountId(e.target.value)}
+                  />
+                  <FormError>{accountId.error}</FormError>
+                </InputGroup>
+              )}
               <div className="flex flex-none items-center justify-between">
                 {payload.error ? (
                   <FormError id={payload.errorId}>{payload.error}</FormError>

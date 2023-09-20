@@ -197,6 +197,7 @@ function classForJobStatus(status: JobRunStatus) {
     case "TIMED_OUT":
     case "WAITING_ON_CONNECTIONS":
     case "PENDING":
+    case "UNRESOLVED_AUTH":
       return "text-rose-500";
     default:
       return "";

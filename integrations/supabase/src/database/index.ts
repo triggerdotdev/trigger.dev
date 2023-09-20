@@ -55,9 +55,13 @@ export class Supabase<
     : any,
 > implements TriggerIntegration
 {
+  // @internal
   private _options: SupabaseIntegrationOptions<SchemaName>;
+  // @internal
   private _client?: SupabaseClient<Database, SchemaName, Schema>;
+  // @internal
   private _io?: IO;
+  // @internal
   private _connectionKey?: string;
 
   /**
@@ -95,6 +99,7 @@ export class Supabase<
     });
   }
 
+  // @internal
   get authSource() {
     return "LOCAL" as const;
   }
@@ -103,6 +108,7 @@ export class Supabase<
     return this.options.id;
   }
 
+  // @internal
   get metadata() {
     return { id: "supabase", name: "Supabase" };
   }
@@ -114,6 +120,7 @@ export class Supabase<
     return this._client;
   }
 
+  // @internal
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
     const supabase = new Supabase<Database, SchemaName, Schema>(this._options);
     supabase._io = io;

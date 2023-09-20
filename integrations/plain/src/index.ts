@@ -23,21 +23,21 @@ import {
 
 export type PlainIntegrationOptions = {
   id: string;
-  apiKey: string;
+  apiKey?: string;
   apiUrl?: string;
 };
 
 export class Plain implements TriggerIntegration {
+  // @internal
   private _options: PlainIntegrationOptions;
+  // @internal
   private _client?: PlainClient;
+  // @internal
   private _io?: IO;
+  // @internal
   private _connectionKey?: string;
 
   constructor(private options: PlainIntegrationOptions) {
-    if (Object.keys(options).includes("apiKey") && !options.apiKey) {
-      throw `Can't create Plain integration (${options.id}) as apiKey was undefined`;
-    }
-
     this._options = options;
   }
 
@@ -46,11 +46,19 @@ export class Plain implements TriggerIntegration {
   }
 
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
+    const apiKey = this._options.apiKey ?? auth?.accessToken;
+
+    if (!apiKey) {
+      throw new Error(
+        `Can't initialize Plain integration (${this._options.id}) as apiKey was undefined`
+      );
+    }
+
     const plain = new Plain(this._options);
     plain._io = io;
     plain._connectionKey = connectionKey;
     plain._client = new PlainClient({
-      apiKey: this._options.apiKey,
+      apiKey,
       apiUrl: this._options.apiUrl,
     });
     return plain;
@@ -60,6 +68,7 @@ export class Plain implements TriggerIntegration {
     return this.options.id;
   }
 
+  // @internal
   get metadata() {
     return { id: "plain", name: "Plain.com" };
   }

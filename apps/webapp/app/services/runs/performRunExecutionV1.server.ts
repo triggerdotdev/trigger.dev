@@ -4,6 +4,7 @@ import {
   RunJobResumeWithTask,
   RunJobRetryWithTask,
   RunJobSuccess,
+  RunJobUnresolvedAuthError,
   RunSourceContextSchema,
 } from "@trigger.dev/core";
 import type { Task } from "@trigger.dev/database";
@@ -342,6 +343,11 @@ export class PerformRunExecutionV1Service {
         await this.#cancelExecution(execution);
         break;
       }
+      case "UNRESOLVED_AUTH_ERROR": {
+        await this.#failRunWithUnresolvedAuthError(execution, safeBody.data);
+
+        break;
+      }
       default: {
         const _exhaustiveCheck: never = status;
         throw new Error(`Non-exhaustive match for value: ${status}`);
@@ -435,6 +441,15 @@ export class PerformRunExecutionV1Service {
       }
 
       await this.#failRunExecution(tx, execution, data.error ?? undefined);
+    });
+  }
+
+  async #failRunWithUnresolvedAuthError(
+    execution: FoundRunExecution,
+    data: RunJobUnresolvedAuthError
+  ) {
+    return await $transaction(this.#prismaClient, async (tx) => {
+      await this.#failRunExecution(tx, execution, data.issues, "UNRESOLVED_AUTH");
     });
   }
 
@@ -557,7 +572,7 @@ export class PerformRunExecutionV1Service {
     prisma: PrismaClientOrTransaction,
     execution: FoundRunExecution,
     output: Record<string, any>,
-    status: "FAILURE" | "ABORTED" = "FAILURE"
+    status: "FAILURE" | "ABORTED" | "UNRESOLVED_AUTH" = "FAILURE"
   ): Promise<void> {
     const { run } = execution;
 

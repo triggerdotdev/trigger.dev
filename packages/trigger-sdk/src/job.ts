@@ -58,6 +58,9 @@ export type JobOptions<
     io: IOWithIntegrations<TIntegrations>,
     context: TriggerContext
   ) => Promise<any>;
+
+  // @internal
+  __internal?: boolean;
 };
 
 export type JobPayload<TJob> = TJob extends Job<Trigger<EventSpecification<infer TEvent>>, any>
@@ -110,43 +113,8 @@ export class Job<
     return this.options.version;
   }
 
-  get integrations(): Record<string, IntegrationConfig> {
-    return Object.keys(this.options.integrations ?? {}).reduce(
-      (acc: Record<string, IntegrationConfig>, key) => {
-        const integration = this.options.integrations![key];
-
-        acc[key] = {
-          id: integration.id,
-          metadata: integration.metadata,
-          authSource: integration.authSource,
-        };
-
-        return acc;
-      },
-      {}
-    );
-  }
-
   get logLevel() {
     return this.options.logLevel;
-  }
-
-  toJSON(): JobMetadata {
-    // @ts-ignore
-    const internal = this.options.__internal as JobMetadata["internal"];
-
-    return {
-      id: this.id,
-      name: this.name,
-      version: this.version,
-      event: this.trigger.event,
-      trigger: this.trigger.toJSON(),
-      integrations: this.integrations,
-      startPosition: "latest", // this is deprecated, leaving this for now to make sure newer clients work with older servers
-      enabled: this.enabled,
-      preprocessRuns: this.trigger.preprocessRuns,
-      internal,
-    };
   }
 
   // Make sure the id is valid (must only contain alphanumeric characters and dashes)

@@ -47,15 +47,20 @@ export type ChatPostMessageArguments = {
 };
 
 export class Slack implements TriggerIntegration {
+  // @internal
   private _options: SlackIntegrationOptions;
+  // @internal
   private _client?: WebClient;
+  // @internal
   private _io?: IO;
+  // @internal
   private _connectionKey?: string;
 
   constructor(private options: SlackIntegrationOptions) {
     this._options = options;
   }
 
+  // @internal
   get authSource() {
     return "HOSTED" as const;
   }
@@ -64,10 +69,12 @@ export class Slack implements TriggerIntegration {
     return this.options.id;
   }
 
+  // @internal
   get metadata() {
     return { id: "slack", name: "Slack.com" };
   }
 
+  // @internal
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
     const slack = new Slack(this._options);
     slack._io = io;

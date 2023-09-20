@@ -30,6 +30,8 @@ export type CronOptions = z.infer<typeof CronOptionsSchema>;
 export const CronMetadataSchema = z.object({
   type: z.literal("cron"),
   options: CronOptionsSchema,
+  /** An optional Account ID to associate with runs triggered by this interval */
+  accountId: z.string().optional(),
   metadata: z.any(),
 });
 
@@ -40,6 +42,8 @@ export const IntervalMetadataSchema = z.object({
   type: z.literal("interval"),
   /** An object containing options about the interval. */
   options: IntervalOptionsSchema,
+  /** An optional Account ID to associate with runs triggered by this interval */
+  accountId: z.string().optional(),
   /** Any additional metadata about the schedule. */
   metadata: z.any(),
 });

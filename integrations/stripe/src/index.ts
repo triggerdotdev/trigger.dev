@@ -30,9 +30,13 @@ export * from "./types";
 export type StripeRunTask = InstanceType<typeof Stripe>["runTask"];
 
 export class Stripe implements TriggerIntegration {
+  // @internal
   private _options: StripeIntegrationOptions;
+  // @internal
   private _client?: StripeClient;
+  // @internal
   private _io?: IO;
+  // @internal
   private _connectionKey?: string;
 
   /**
@@ -50,34 +54,46 @@ export class Stripe implements TriggerIntegration {
    * const customer = await stripe.native.customers.create({}); // etc.
    * ```
    */
-  public readonly native: StripeClient;
+  public readonly native?: StripeClient;
 
   constructor(private options: StripeIntegrationOptions) {
     this._options = options;
 
-    this.native = new StripeClient(options.apiKey, {
-      apiVersion: "2022-11-15",
-      typescript: true,
-      timeout: 10000,
-      maxNetworkRetries: 0,
-      stripeAccount: options.stripeAccount,
-      appInfo: {
-        name: "Trigger.dev Stripe Integration",
-        version: "0.1.0",
-        url: "https://trigger.dev",
-      },
-    });
+    this.native = options.apiKey
+      ? new StripeClient(options.apiKey, {
+          apiVersion: "2022-11-15",
+          typescript: true,
+          timeout: 10000,
+          maxNetworkRetries: 0,
+          stripeAccount: options.stripeAccount,
+          appInfo: {
+            name: "Trigger.dev Stripe Integration",
+            version: "0.1.0",
+            url: "https://trigger.dev",
+          },
+        })
+      : undefined;
   }
 
+  // @internal
   get authSource() {
     return "LOCAL" as const;
   }
 
+  // @internal
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
+    const apiKey = this._options.apiKey ?? auth?.accessToken;
+
+    if (!apiKey) {
+      throw new Error(
+        `Can't initialize Stripe integration (${this._options.id}) as apiKey was undefined`
+      );
+    }
+
     const stripe = new Stripe(this._options);
     stripe._io = io;
     stripe._connectionKey = connectionKey;
-    stripe._client = new StripeClient(this._options.apiKey, {
+    stripe._client = new StripeClient(apiKey, {
       apiVersion: "2022-11-15",
       typescript: true,
       timeout: 10000,
@@ -96,6 +112,7 @@ export class Stripe implements TriggerIntegration {
     return this.options.id;
   }
 
+  // @internal
   get metadata() {
     return { id: "stripe", name: "Stripe" };
   }

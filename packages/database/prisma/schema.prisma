@@ -189,6 +189,7 @@ model Integration {
 enum IntegrationAuthSource {
   HOSTED
   LOCAL
+  RESOLVER
 }
 
 enum IntegrationSetupStatus {
@@ -730,6 +731,7 @@ enum JobRunStatus {
   TIMED_OUT
   ABORTED
   CANCELED
+  UNRESOLVED_AUTH
 }
 
 model JobRunExecution {
