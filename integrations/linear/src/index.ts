@@ -141,7 +141,7 @@ import { queryProperties } from "./utils";
 
 export type LinearIntegrationOptions = {
   id: string;
-  token?: string;
+  apiKey?: string;
 };
 
 export type LinearRunTask = InstanceType<typeof Linear>["runTask"];
@@ -153,15 +153,15 @@ export class Linear implements TriggerIntegration {
   private _connectionKey?: string;
 
   constructor(private options: LinearIntegrationOptions) {
-    if (Object.keys(options).includes("token") && !options.token) {
-      throw `Can't create Linear integration (${options.id}) as token was undefined`;
+    if (Object.keys(options).includes("apiKey") && !options.apiKey) {
+      throw `Can't create Linear integration (${options.id}) as apiKey was undefined`;
     }
 
     this._options = options;
   }
 
   get authSource() {
-    return this._options.token ? "LOCAL" : "HOSTED";
+    return this._options.apiKey ? "LOCAL" : "HOSTED";
   }
 
   get id() {
@@ -191,9 +191,9 @@ export class Linear implements TriggerIntegration {
       });
     }
 
-    if (this._options.token) {
+    if (this._options.apiKey) {
       return new LinearClient({
-        apiKey: this._options.token,
+        apiKey: this._options.apiKey,
       });
     }
 

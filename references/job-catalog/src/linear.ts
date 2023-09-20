@@ -12,7 +12,7 @@ export const client = new TriggerClient({
 
 const linear = new Linear({
   id: "linear",
-  token: process.env["LINEAR_API_KEY"],
+  apiKey: process.env["LINEAR_API_KEY"],
 });
 
 const dynamicOnAttachmentTrigger = new DynamicTrigger(client, {
