@@ -66,28 +66,58 @@ client.defineJob({
   version: "0.1.0",
   integrations: {
     //use the linear integration
-    linear
+    linear,
   },
   //trigger on issue created events
   trigger: linear.onIssueCreated(),
   run: async (payload, io, ctx) => {
     //get new issue ID from the event payload
-    const newIssueId = payload.data.id
+    const newIssueId = payload.data.id;
 
     //comment
     await io.linear.createComment("create-comment", {
       issueId: newIssueId,
-      body: "Thank's for opening this issue!"
+      body: "Thank's for opening this issue!",
     });
 
     //react
     await io.linear.createReaction("create-reaction", {
       issueId: newIssueId,
-      emoji: "+1"
+      emoji: "+1",
     });
 
     //store and display in the job run
     return { payload, ctx };
+  },
+});
+```
+
+### Serialization helper
+
+Use the `serializeLinearOutput` helper instead of returning raw Linear SDK responses:
+
+```ts
+import { Linear, serializeLinearOutput } from "@trigger.dev/linear";
+...
+client.defineJob({
+  id: "linear-sdk",
+  name: "Linear SDK",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  trigger: eventTrigger({
+    name: "linear.sdk",
+  }),
+  run: async (payload, io, ctx) => {
+    //the official Linear SDK is exposed as `client`
+    const issues = await io.linear.runTask("first-two", async (client) => {
+      //these nodes contain values we can't serialize, e.g. functions
+      const { nodes } = await client.issues({ first: 2 });
+      //we remove them with this little helper
+      return serializeLinearOutput(nodes);
+    });
+    return issues;
   },
 });
 ```
