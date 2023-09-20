@@ -237,6 +237,7 @@
             "integrations/apis/github-tasks"
           ]
         },
+        "integrations/apis/linear",
         "integrations/apis/openai",
         "integrations/apis/plain",
         "integrations/apis/resend",
