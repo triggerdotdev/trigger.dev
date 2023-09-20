@@ -1103,6 +1103,24 @@ export class Linear implements TriggerIntegration {
     );
   }
 
+  archiveNotification(
+    key: IntegrationTaskKey,
+    params: { id: string }
+  ): LinearReturnType<NotificationArchivePayload> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const payload = await client.archiveNotification(params.id);
+        return serializeLinearOutput(payload);
+      },
+      {
+        name: "Archive Notification",
+        params,
+        properties: [{ label: "Notification ID", text: params.id }],
+      }
+    );
+  }
+
   createNotificationSubscription(
     key: IntegrationTaskKey,
     params: {
@@ -1118,24 +1136,6 @@ export class Linear implements TriggerIntegration {
       {
         name: "Create Notification Subscription",
         params,
-      }
-    );
-  }
-
-  archiveNotification(
-    key: IntegrationTaskKey,
-    params: { id: string }
-  ): LinearReturnType<NotificationArchivePayload> {
-    return this.runTask(
-      key,
-      async (client) => {
-        const payload = await client.archiveNotification(params.id);
-        return serializeLinearOutput(payload);
-      },
-      {
-        name: "Archive Notification",
-        params,
-        properties: [{ label: "Notification ID", text: params.id }],
       }
     );
   }
@@ -1518,20 +1518,6 @@ export class Linear implements TriggerIntegration {
     });
   }
 
-  template(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<Template> {
-    return this.runTask(
-      key,
-      async (client) => {
-        const entity = await client.template(params.id);
-        return serializeLinearOutput(entity);
-      },
-      {
-        name: "Get Template",
-        properties: [{ label: "Template ID", text: params.id }],
-      }
-    );
-  }
-
   archiveRoadmap(
     key: IntegrationTaskKey,
     params: { id: string }
@@ -1679,6 +1665,20 @@ export class Linear implements TriggerIntegration {
     );
   }
 
+  template(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<Template> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.template(params.id);
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get Template",
+        properties: [{ label: "Template ID", text: params.id }],
+      }
+    );
+  }
+
   templates(key: IntegrationTaskKey): LinearReturnType<Template[]> {
     return this.runTask(
       key,
@@ -1743,6 +1743,19 @@ export class Linear implements TriggerIntegration {
     );
   }
 
+  viewer(key: IntegrationTaskKey): LinearReturnType<User> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const entity = await client.viewer;
+        return serializeLinearOutput(entity);
+      },
+      {
+        name: "Get Viewer",
+      }
+    );
+  }
+
   workflowState(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<WorkflowState> {
     return this.runTask(
       key,
@@ -1754,19 +1767,6 @@ export class Linear implements TriggerIntegration {
         name: "Get WorkflowState",
         params,
         properties: [{ label: "WorkflowState ID", text: params.id }],
-      }
-    );
-  }
-
-  viewer(key: IntegrationTaskKey): LinearReturnType<User> {
-    return this.runTask(
-      key,
-      async (client) => {
-        const entity = await client.viewer;
-        return serializeLinearOutput(entity);
-      },
-      {
-        name: "Get Viewer",
       }
     );
   }
