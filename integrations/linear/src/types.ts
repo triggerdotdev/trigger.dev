@@ -18,7 +18,11 @@ export type SerializedLinearOutput<T> = T extends object
 
 export type LinearReturnType<
   TPayload extends Omit<Request, "_request">,
-  K extends any = any,
+  K extends unknown = unknown,
 > = Promise<
   Awaited<SerializedLinearOutput<Awaited<K extends keyof TPayload ? TPayload[K] : TPayload>>>
 >;
+
+export type AwaitNested<T extends object, K extends keyof T> = Omit<T, K> & {
+  [key in K]: Awaited<T[K]>;
+};

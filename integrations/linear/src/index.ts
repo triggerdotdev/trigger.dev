@@ -21,12 +21,14 @@ import {
   CycleArchivePayload,
   CyclePayload,
   DeletePayload,
+  Document,
   DocumentConnection,
   DocumentPayload,
   DocumentSearchPayload,
   Favorite,
   FavoriteConnection,
   FavoritePayload,
+  FrontAttachmentPayload,
   Issue,
   IssueArchivePayload,
   IssueConnection,
@@ -41,6 +43,7 @@ import {
   IssueSearchPayload,
   LinearClient,
   LinearError,
+  Notification,
   NotificationArchivePayload,
   NotificationConnection,
   NotificationSubscriptionPayload,
@@ -136,7 +139,7 @@ import {
   WorkflowStateCreateInput,
   WorkflowStatesQueryVariables,
 } from "@linear/sdk/dist/_generated_documents";
-import { LinearReturnType, SerializedLinearOutput } from "./types";
+import { AwaitNested, LinearReturnType, SerializedLinearOutput } from "./types";
 import { queryProperties } from "./utils";
 
 export type LinearIntegrationOptions = {
@@ -351,7 +354,7 @@ export class Linear implements TriggerIntegration {
       issueId: string;
       variables?: Omit<AttachmentLinkFrontMutationVariables, "conversationId" | "issueId">;
     }
-  ): LinearReturnType<AttachmentPayload> {
+  ): LinearReturnType<FrontAttachmentPayload> {
     return this.runTask(
       key,
       async (client) => {
@@ -605,7 +608,7 @@ export class Linear implements TriggerIntegration {
   archiveCycle(
     key: IntegrationTaskKey,
     params: { id: string }
-  ): LinearReturnType<CycleArchivePayload> {
+  ): LinearReturnType<AwaitNested<CycleArchivePayload, "entity">> {
     return this.runTask(
       key,
       async (client) => {
@@ -829,7 +832,7 @@ export class Linear implements TriggerIntegration {
       id: string;
       variables?: Omit<ArchiveIssueMutationVariables, "id">;
     }
-  ): LinearReturnType<IssueArchivePayload> {
+  ): LinearReturnType<AwaitNested<IssueArchivePayload, "entity">> {
     return this.runTask(
       key,
       async (client) => {
@@ -1239,7 +1242,7 @@ export class Linear implements TriggerIntegration {
       id: string;
       variables?: Omit<ArchiveProjectMutationVariables, "id">;
     }
-  ): LinearReturnType<ProjectArchivePayload> {
+  ): LinearReturnType<AwaitNested<ProjectArchivePayload, "entity">> {
     return this.runTask(
       key,
       async (client) => {
@@ -1521,7 +1524,7 @@ export class Linear implements TriggerIntegration {
   archiveRoadmap(
     key: IntegrationTaskKey,
     params: { id: string }
-  ): LinearReturnType<RoadmapArchivePayload> {
+  ): LinearReturnType<AwaitNested<RoadmapArchivePayload, "entity">> {
     return this.runTask(
       key,
       async (client) => {
@@ -1792,7 +1795,7 @@ export class Linear implements TriggerIntegration {
   archiveWorkflowState(
     key: IntegrationTaskKey,
     params: { id: string }
-  ): LinearReturnType<WorkflowStateArchivePayload> {
+  ): LinearReturnType<AwaitNested<WorkflowStateArchivePayload, "entity">> {
     return this.runTask(
       key,
       async (client) => {
