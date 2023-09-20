@@ -19,7 +19,7 @@ description: "These allow you to show Run and Task progress without adding code 
 
 All of these hooks will automatically refresh your components as the state of your Runs or events change.
 
-#### 5.a useEventDetails
+#### useEventDetails
 
 The `useEventDetails` hook will get the details of a specific event. You can use this to show the status of a specific event.
 
@@ -59,15 +59,11 @@ export default function EventDetails({ eventId }: { eventId: string }) {
 }
 ```
 
-#### 5.b useRunDetails
+#### useRunDetails
 
 The `useRunDetails` hook will get the details of a specific Run. You can use this to show the status of a specific Run.
 
-<Accordion title="How do I get a Run id?">
-  You can call [client.getRuns()](/sdk/triggerclient/instancemethods/getruns) with a Job id to get a
-  list of the most recent Runs for that Job. You can then pass that run id to your frontend to use
-  in the hook.
-</Accordion>
+<Snippet file="how-to-get-run-id.mdx" />
 
 This component will show the details of a Run and the status of each task in the Run:
 
@@ -103,7 +99,7 @@ export default function RunDetails({ runId }: { runId: string }) {
 }
 ```
 
-#### 5.c useEventRunDetails
+#### useEventRunDetails
 
 The `useEventRunDetails` hook will get the details of a specific Run that was triggered by a specific event. You can use this to show the status of a specific Run.
 
