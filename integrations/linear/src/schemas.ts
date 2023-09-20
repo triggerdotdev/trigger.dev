@@ -13,11 +13,21 @@ export const WebhookResourceTypeSchema = z.union([
 ]);
 export type WebhookResourceType = z.infer<typeof WebhookResourceTypeSchema>;
 
-export const WebhookActionTypeSchema = z.union([
+export const WebhookChangeActionTypeSchema = z.union([
   z.literal("create"),
   z.literal("remove"),
   z.literal("update"),
 ]);
+export type WebhookChangeActionType = z.infer<typeof WebhookChangeActionTypeSchema>;
+
+export const WebhookSLAActionTypeSchema = z.union([
+  z.literal("set"),
+  z.literal("breached"),
+  z.literal("highRisk"),
+]);
+export type WebhookSLAActionType = z.infer<typeof WebhookSLAActionTypeSchema>;
+
+export const WebhookActionTypeSchema = WebhookChangeActionTypeSchema.or(WebhookSLAActionTypeSchema);
 export type WebhookActionType = z.infer<typeof WebhookActionTypeSchema>;
 
 const IssueLabelDataSchema = z.object({
@@ -347,12 +357,23 @@ export const IssueLabelEventSchema = z.discriminatedUnion("action", [
 export type IssueLabelEvent = z.infer<typeof IssueLabelEventSchema>;
 
 // TODO: confirm this with real-world payload(s)
-export const IssueSLAEventSchema = WebhookPayloadBaseSchema.extend({
+export const IssueSLAEventBaseSchema = WebhookPayloadBaseSchema.extend({
   type: z.literal("IssueSLA"),
-  action: z.union([z.literal("set"), z.literal("highRisk"), z.literal("breached")]),
   issueData: IssueDataSchema,
 });
+export const IssueSLAEventSchema = z.discriminatedUnion("action", [
+  IssueSLAEventBaseSchema.extend({
+    action: z.literal("set"),
+  }),
+  IssueSLAEventBaseSchema.extend({
+    action: z.literal("highRisk"),
+  }),
+  IssueSLAEventBaseSchema.extend({
+    action: z.literal("breached"),
+  }),
+]);
 export type IssueSLAEvent = z.infer<typeof IssueSLAEventSchema>;
+export type IssueSLAEventBreached = Extract<IssueSLAEvent, { action: "breached" }>;
 
 export const ProjectEventBaseSchema = WebhookPayloadBaseSchema.extend({
   type: z.literal("Project"),

@@ -1923,6 +1923,18 @@ export class Linear implements TriggerIntegration {
     return createTrigger(this.source, events.onIssueSLA, params);
   }
 
+  onIssueSLASet(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onIssueSLASet, params);
+  }
+
+  onIssueSLABreached(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onIssueSLABreached, params);
+  }
+
+  onIssueSLAHighRisk(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onIssueSLAHighRisk, params);
+  }
+
   onProject(params: TriggerParams = {}) {
     return createTrigger(this.source, events.onProject, params);
   }

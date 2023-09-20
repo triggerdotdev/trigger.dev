@@ -315,6 +315,42 @@ export const onIssueSLA: EventSpecification<GetLinearPayload<IssueSLAEvent>> = {
   ],
 };
 
+export const onIssueSLASet: EventSpecification<GetLinearPayload<IssueSLAEvent, "set">> = {
+  name: "IssueSLA",
+  title: "On Issue SLA Set",
+  source: "linear.app",
+  icon: "linear",
+  filter: {
+    action: ["set"],
+  },
+  parsePayload: (payload) => payload as GetLinearPayload<IssueSLAEvent, "set">,
+  runProperties: (payload) => [{ label: "Issue ID", text: payload.issueData.id }],
+};
+
+export const onIssueSLABreached: EventSpecification<GetLinearPayload<IssueSLAEvent, "breached">> = {
+  name: "IssueSLA",
+  title: "On Issue SLA Breached",
+  source: "linear.app",
+  icon: "linear",
+  filter: {
+    action: ["breached"],
+  },
+  parsePayload: (payload) => payload as GetLinearPayload<IssueSLAEvent, "breached">,
+  runProperties: (payload) => [{ label: "Issue ID", text: payload.issueData.id }],
+};
+
+export const onIssueSLAHighRisk: EventSpecification<GetLinearPayload<IssueSLAEvent, "highRisk">> = {
+  name: "IssueSLA",
+  title: "On Issue SLA High Risk",
+  source: "linear.app",
+  icon: "linear",
+  filter: {
+    action: ["highRisk"],
+  },
+  parsePayload: (payload) => payload as GetLinearPayload<IssueSLAEvent, "highRisk">,
+  runProperties: (payload) => [{ label: "Issue ID", text: payload.issueData.id }],
+};
+
 export const onProject: EventSpecification<GetLinearPayload<ProjectEvent>> = {
   name: "Project",
   title: "On Project",
