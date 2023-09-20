@@ -171,7 +171,15 @@
             "documentation/guides/using-integrations-oauth"
           ]
         },
-        "documentation/guides/react-hooks",
+        {
+          "group": "React hooks",
+          "pages": [
+            "documentation/guides/react-hooks",
+            "documentation/guides/react-hooks-setup",
+            "documentation/guides/react-hooks-automatic",
+            "documentation/guides/react-hooks-statuses"
+          ]
+        },
         {
           "group": "Deployment",
           "pages": [
