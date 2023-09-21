@@ -1,0 +1,17 @@
+{
+  "data": {
+    "id": "ef8d9e0d-7286-460f-b398-7aaf7d182c16",
+    "name": "Give You Up",
+    "color": "#26b5ce",
+    "createdAt": "2023-09-17T11:08:22.426Z",
+    "creatorId": "b552c442-62c9-40da-9932-ed8cb6e15a3f",
+    "updatedAt": "2023-09-17T11:08:22.426Z",
+    "organizationId": "7c0221e0-76d2-45eb-b803-6163c046c534"
+  },
+  "type": "IssueLabel",
+  "action": "create",
+  "createdAt": "2023-09-17T11:08:22.426Z",
+  "webhookId": "d617c08b-47b6-4b09-a611-2e2f6d8fb99f",
+  "organizationId": "7c0221e0-76d2-45eb-b803-6163c046c534",
+  "webhookTimestamp": "2023-09-17T11:08:22.463Z"
+}
