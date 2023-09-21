@@ -32,7 +32,7 @@ export class TriggerStatus {
       },
       {
         name: status.label ?? `Status update`,
-        icon: "clock",
+        icon: "bell",
         params: {
           ...status,
         },
