@@ -22,6 +22,7 @@
     "dynamic-triggers": "nodemon --watch src/dynamic-triggers.ts -r tsconfig-paths/register -r dotenv/config src/dynamic-triggers.ts",
     "background-fetch": "nodemon --watch src/background-fetch.ts -r tsconfig-paths/register -r dotenv/config src/background-fetch.ts",
     "linear": "nodemon --watch src/linear.ts -r tsconfig-paths/register -r dotenv/config src/linear.ts",
+    "status": "nodemon --watch src/status.ts -r tsconfig-paths/register -r dotenv/config src/status.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {

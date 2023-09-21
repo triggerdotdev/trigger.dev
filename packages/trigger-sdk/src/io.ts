@@ -5,13 +5,13 @@ import {
   ErrorWithStackSchema,
   FetchRequestInit,
   FetchRetryOptions,
+  InitialStatusUpdate,
   IntervalOptions,
   LogLevel,
   Logger,
   RunTaskOptions,
   SendEvent,
   SendEventOptions,
-  SerializableJson,
   SerializableJsonSchema,
   ServerTask,
   UpdateTriggerSourceBodyV2,
@@ -25,13 +25,14 @@ import {
   RetryWithTaskError,
   isTriggerError,
 } from "./errors";
-import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { calculateRetryAt } from "./retry";
 import { TriggerClient } from "./triggerClient";
 import { DynamicTrigger } from "./triggers/dynamic";
 import { ExternalSource, ExternalSourceParams } from "./triggers/externalSource";
 import { DynamicSchedule } from "./triggers/scheduled";
 import { EventSpecification, TaskLogger, TriggerContext } from "./types";
+import { IntegrationTaskKey } from "./integrations";
+import { TriggerStatus } from "./status";
 
 export type IOTask = ServerTask;
 
@@ -90,6 +91,16 @@ export class IO {
 
     this._taskStorage = new AsyncLocalStorage();
     this._context = options.context;
+  }
+
+  /** @internal */
+  get runId() {
+    return this._id;
+  }
+
+  /** @internal */
+  get triggerClient() {
+    return this._triggerClient;
   }
 
   /** Used to send log messages to the [Run log](https://trigger.dev/docs/documentation/guides/viewing-runs). */
@@ -152,6 +163,48 @@ export class IO {
       delayUntil: new Date(Date.now() + seconds * 1000),
       style: { style: "minimal" },
     });
+  }
+
+  /** `io.createStatus()` allows you to set a status with associated data during the Run. Statuses can be used by your UI using the react package 
+   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param initialStatus The initial status you want this status to have. You can update it during the rub using the returned object.
+   * @returns a TriggerStatus object that you can call `update()` on, to update the status.
+   * @example 
+   * ```ts
+   * client.defineJob(
+  //...
+    run: async (payload, io, ctx) => {
+      const generatingImages = await io.createStatus("generating-images", {
+        label: "Generating Images",
+        state: "loading",
+        data: {
+          progress: 0.1,
+        },
+      });
+
+      //...do stuff
+
+      await generatingImages.update("completed-generation", {
+        label: "Generated images",
+        state: "success",
+        data: {
+          progress: 1.0,
+          urls: ["http://..."]
+        },
+      });
+
+    //...
+  });
+   * ```
+  */
+  async createStatus(
+    key: IntegrationTaskKey,
+    initialStatus: InitialStatusUpdate
+  ): Promise<TriggerStatus> {
+    const id = typeof key === "string" ? key : key.join("-");
+    const status = new TriggerStatus(id, this);
+    await status.update(key, initialStatus);
+    return status;
   }
 
   /** `io.backgroundFetch()` fetches data from a URL that can take longer that the serverless timeout. The actual `fetch` request is performed on the Trigger.dev platform, and the response is sent back to you.

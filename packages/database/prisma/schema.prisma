@@ -716,6 +716,7 @@ model JobRun {
   runConnections     RunConnection[]
   missingConnections MissingConnection[]
   executions         JobRunExecution[]
+  statuses           JobRunStatusRecord[]
 }
 
 enum JobRunStatus {
@@ -848,6 +849,25 @@ enum TaskAttemptStatus {
   STARTED
   COMPLETED
   ERRORED
+}
+
+model JobRunStatusRecord {
+  id  String @id @default(cuid())
+  key String
+
+  run   JobRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runId String
+
+  label String
+  state String?
+  data  Json?
+
+  history Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([runId, key])
 }
 
 model SecretReference {

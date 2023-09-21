@@ -1,9 +1,8 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { cors } from "remix-utils";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { authenticateApiRequest, getApiKeyFromRequest } from "~/services/apiAuth.server";
+import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { apiCors } from "~/utils/apiCors";
 import { taskListToTree } from "~/utils/taskListToTree";
 
@@ -93,6 +92,9 @@ export async function loader({ request, params }: LoaderArgs) {
             }
           : undefined,
       },
+      statuses: {
+        select: { key: true, label: true, state: true, data: true, history: true },
+      },
     },
   });
 
@@ -122,6 +124,12 @@ export async function loader({ request, params }: LoaderArgs) {
         const { parentId, ...rest } = task;
         return { ...rest };
       }),
+      statuses: jobRun.statuses.map((s) => ({
+        ...s,
+        state: s.state ?? undefined,
+        data: s.data ?? undefined,
+        history: s.history ?? undefined,
+      })),
       nextCursor: nextTask ? nextTask.id : undefined,
     })
   );
