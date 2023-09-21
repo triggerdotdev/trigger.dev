@@ -43,9 +43,10 @@ client.defineJob({
     //update the generatingMemes status.
     //anything set here will override the previous values, but you'll be able to view the full history with hooks
     await generatingMemes.update("middle-generation", {
-      //label and state aren't specified so will remain the same
-      //set data, this overrides the previous value
+      //label isn't specified so will remain the same
+      //state will be updated to "success"
       state: "success",
+      //set data, this overrides the previous value
       data: {
         progress: 1,
         urls: [
