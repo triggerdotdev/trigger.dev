@@ -43,7 +43,7 @@ import {
   IssueRelationPayload,
   IssueSearchPayload,
   LinearClient,
-  LinearDocument,
+  LinearDocument as L,
   LinearError,
   Notification,
   NotificationArchivePayload,
@@ -82,63 +82,6 @@ import {
   WorkflowStateConnection,
   WorkflowStatePayload,
 } from "@linear/sdk";
-import {
-  ArchiveIssueMutationVariables,
-  ArchiveProjectMutationVariables,
-  AttachmentCreateInput,
-  AttachmentLinkDiscordMutationVariables,
-  AttachmentLinkFrontMutationVariables,
-  AttachmentLinkIntercomMutationVariables,
-  AttachmentLinkSlackMutationVariables,
-  AttachmentLinkUrlMutationVariables,
-  AttachmentLinkZendeskMutationVariables,
-  AttachmentUpdateInput,
-  AttachmentsQueryVariables,
-  CommentCreateInput,
-  CommentUpdateInput,
-  CommentsQueryVariables,
-  CreateOrganizationFromOnboardingMutationVariables,
-  CreateOrganizationInput,
-  CycleCreateInput,
-  CycleUpdateInput,
-  DocumentCreateInput,
-  DocumentsQueryVariables,
-  FavoriteCreateInput,
-  FavoritesQueryVariables,
-  IssueCreateInput,
-  IssueLabelCreateInput,
-  IssueLabelUpdateInput,
-  IssueLabelsQueryVariables,
-  IssueRelationCreateInput,
-  IssueRelationsQueryVariables,
-  IssueUpdateInput,
-  IssuesQueryVariables,
-  NotificationSubscriptionCreateInput,
-  NotificationsQueryVariables,
-  OrganizationInviteCreateInput,
-  ProjectCreateInput,
-  ProjectLinkCreateInput,
-  ProjectLinksQueryVariables,
-  ProjectMilestoneCreateInput,
-  ProjectUpdateCreateInput,
-  ProjectUpdateInput,
-  ProjectUpdateUpdateInput,
-  ProjectUpdatesQueryVariables,
-  ProjectsQueryVariables,
-  ReactionCreateInput,
-  RoadmapCreateInput,
-  SearchDocumentsQueryVariables,
-  SearchIssuesQueryVariables,
-  SearchProjectsQueryVariables,
-  TeamCreateInput,
-  TeamMembershipCreateInput,
-  TeamMembershipsQueryVariables,
-  TeamsQueryVariables,
-  UpdateUserInput,
-  UsersQueryVariables,
-  WorkflowStateCreateInput,
-  WorkflowStatesQueryVariables,
-} from "@linear/sdk/dist/_generated_documents";
 
 import * as events from "./events";
 import { AwaitNested, LinearReturnType, SerializedLinearOutput } from "./types";
@@ -271,7 +214,7 @@ export class Linear implements TriggerIntegration {
 
   attachments(
     key: IntegrationTaskKey,
-    params: AttachmentsQueryVariables = {}
+    params: L.AttachmentsQueryVariables = {}
   ): LinearReturnType<AttachmentConnection> {
     return this.runTask(
       key,
@@ -289,7 +232,7 @@ export class Linear implements TriggerIntegration {
 
   createAttachment(
     key: IntegrationTaskKey,
-    params: AttachmentCreateInput
+    params: L.AttachmentCreateInput
   ): LinearReturnType<AttachmentPayload, "attachment"> {
     return this.runTask(
       key,
@@ -319,7 +262,7 @@ export class Linear implements TriggerIntegration {
 
   updateAttachment(
     key: IntegrationTaskKey,
-    params: { id: string; input: AttachmentUpdateInput }
+    params: { id: string; input: L.AttachmentUpdateInput }
   ): LinearReturnType<AttachmentPayload, "attachment"> {
     return this.runTask(
       key,
@@ -343,7 +286,7 @@ export class Linear implements TriggerIntegration {
       messageId: string;
       url: string;
       variables?: Omit<
-        AttachmentLinkDiscordMutationVariables,
+      L.AttachmentLinkDiscordMutationVariables,
         "channelId" | "issueId" | "messageId" | "url"
       >;
     }
@@ -378,7 +321,7 @@ export class Linear implements TriggerIntegration {
     params: {
       conversationId: string;
       issueId: string;
-      variables?: Omit<AttachmentLinkFrontMutationVariables, "conversationId" | "issueId">;
+      variables?: Omit<L.AttachmentLinkFrontMutationVariables, "conversationId" | "issueId">;
     }
   ): LinearReturnType<FrontAttachmentPayload> {
     return this.runTask(
@@ -407,7 +350,7 @@ export class Linear implements TriggerIntegration {
     params: {
       conversationId: string;
       issueId: string;
-      variables?: Omit<AttachmentLinkIntercomMutationVariables, "conversationId" | "issueId">;
+      variables?: Omit<L.AttachmentLinkIntercomMutationVariables, "conversationId" | "issueId">;
     }
   ): LinearReturnType<AttachmentPayload, "attachment"> {
     return this.runTask(
@@ -463,7 +406,7 @@ export class Linear implements TriggerIntegration {
       latest: string;
       url: string;
       variables?: Omit<
-        AttachmentLinkSlackMutationVariables,
+      L.AttachmentLinkSlackMutationVariables,
         "channel" | "issueId" | "latest" | "url"
       >;
     }
@@ -498,7 +441,7 @@ export class Linear implements TriggerIntegration {
     params: {
       issueId: string;
       url: string;
-      variables?: Omit<AttachmentLinkUrlMutationVariables, "issueId" | "url">;
+      variables?: Omit<L.AttachmentLinkUrlMutationVariables, "issueId" | "url">;
     }
   ): LinearReturnType<AttachmentPayload, "attachment"> {
     return this.runTask(
@@ -527,7 +470,7 @@ export class Linear implements TriggerIntegration {
     params: {
       issueId: string;
       ticketId: string;
-      variables?: Omit<AttachmentLinkZendeskMutationVariables, "issueId" | "ticketId">;
+      variables?: Omit<L.AttachmentLinkZendeskMutationVariables, "issueId" | "ticketId">;
     }
   ): LinearReturnType<AttachmentPayload, "attachment"> {
     return this.runTask(
@@ -568,7 +511,7 @@ export class Linear implements TriggerIntegration {
 
   comments(
     key: IntegrationTaskKey,
-    params: CommentsQueryVariables = {}
+    params: L.CommentsQueryVariables = {}
   ): LinearReturnType<CommentConnection> {
     return this.runTask(
       key,
@@ -586,7 +529,7 @@ export class Linear implements TriggerIntegration {
 
   createComment(
     key: IntegrationTaskKey,
-    params: CommentCreateInput
+    params: L.CommentCreateInput
   ): LinearReturnType<CommentPayload, "comment"> {
     return this.runTask(
       key,
@@ -615,7 +558,7 @@ export class Linear implements TriggerIntegration {
 
   updateComment(
     key: IntegrationTaskKey,
-    params: { id: string; input: CommentUpdateInput }
+    params: { id: string; input: L.CommentUpdateInput }
   ): LinearReturnType<CommentPayload, "comment"> {
     return this.runTask(
       key,
@@ -654,7 +597,7 @@ export class Linear implements TriggerIntegration {
 
   createCycle(
     key: IntegrationTaskKey,
-    params: CycleCreateInput
+    params: L.CycleCreateInput
   ): LinearReturnType<CyclePayload, "cycle"> {
     return this.runTask(
       key,
@@ -678,7 +621,7 @@ export class Linear implements TriggerIntegration {
 
   updateCycle(
     key: IntegrationTaskKey,
-    params: { id: string; input: CycleUpdateInput }
+    params: { id: string; input: L.CycleUpdateInput }
   ): LinearReturnType<CyclePayload, "cycle"> {
     return this.runTask(
       key,
@@ -711,7 +654,7 @@ export class Linear implements TriggerIntegration {
 
   documents(
     key: IntegrationTaskKey,
-    params: DocumentsQueryVariables
+    params: L.DocumentsQueryVariables
   ): LinearReturnType<DocumentConnection> {
     return this.runTask(
       key,
@@ -729,7 +672,7 @@ export class Linear implements TriggerIntegration {
 
   createDocument(
     key: IntegrationTaskKey,
-    params: DocumentCreateInput
+    params: L.DocumentCreateInput
   ): LinearReturnType<DocumentPayload, "document"> {
     return this.runTask(
       key,
@@ -752,7 +695,7 @@ export class Linear implements TriggerIntegration {
     key: IntegrationTaskKey,
     params: {
       term: string;
-      variables?: SearchDocumentsQueryVariables;
+      variables?: L.SearchDocumentsQueryVariables;
     }
   ): LinearReturnType<DocumentSearchPayload> {
     return this.runTask(
@@ -786,7 +729,7 @@ export class Linear implements TriggerIntegration {
 
   favorites(
     key: IntegrationTaskKey,
-    params: FavoritesQueryVariables = {}
+    params: L.FavoritesQueryVariables = {}
   ): LinearReturnType<FavoriteConnection> {
     return this.runTask(
       key,
@@ -804,7 +747,7 @@ export class Linear implements TriggerIntegration {
 
   createFavorite(
     key: IntegrationTaskKey,
-    params: FavoriteCreateInput
+    params: L.FavoriteCreateInput
   ): LinearReturnType<FavoritePayload, "favorite"> {
     return this.runTask(
       key,
@@ -836,7 +779,7 @@ export class Linear implements TriggerIntegration {
 
   issues(
     key: IntegrationTaskKey,
-    params: IssuesQueryVariables = {}
+    params: L.IssuesQueryVariables = {}
   ): LinearReturnType<IssueConnection> {
     return this.runTask(
       key,
@@ -856,7 +799,7 @@ export class Linear implements TriggerIntegration {
     key: IntegrationTaskKey,
     params: {
       id: string;
-      variables?: Omit<ArchiveIssueMutationVariables, "id">;
+      variables?: Omit<L.ArchiveIssueMutationVariables, "id">;
     }
   ): LinearReturnType<AwaitNested<IssueArchivePayload, "entity">> {
     return this.runTask(
@@ -878,7 +821,7 @@ export class Linear implements TriggerIntegration {
 
   createIssue(
     key: IntegrationTaskKey,
-    params: IssueCreateInput & { title: string }
+    params: L.IssueCreateInput & { title: string }
   ): LinearReturnType<IssuePayload, "issue"> {
     return this.runTask(
       key,
@@ -919,7 +862,7 @@ export class Linear implements TriggerIntegration {
     key: IntegrationTaskKey,
     params: {
       term: string;
-      variables?: SearchIssuesQueryVariables;
+      variables?: L.SearchIssuesQueryVariables;
     }
   ): LinearReturnType<IssueSearchPayload> {
     return this.runTask(
@@ -938,7 +881,7 @@ export class Linear implements TriggerIntegration {
 
   updateIssue(
     key: IntegrationTaskKey,
-    params: { id: string; input: IssueUpdateInput }
+    params: { id: string; input: L.IssueUpdateInput }
   ): LinearReturnType<IssuePayload, "issue"> {
     return this.runTask(
       key,
@@ -971,7 +914,7 @@ export class Linear implements TriggerIntegration {
 
   issueLabels(
     key: IntegrationTaskKey,
-    params: IssueLabelsQueryVariables = {}
+    params: L.IssueLabelsQueryVariables = {}
   ): LinearReturnType<IssueLabelConnection> {
     return this.runTask(
       key,
@@ -989,7 +932,7 @@ export class Linear implements TriggerIntegration {
 
   createIssueLabel(
     key: IntegrationTaskKey,
-    params: IssueLabelCreateInput
+    params: L.IssueLabelCreateInput
   ): LinearReturnType<IssueLabelPayload, "issueLabel"> {
     return this.runTask(
       key,
@@ -1015,7 +958,7 @@ export class Linear implements TriggerIntegration {
 
   updateIssueLabel(
     key: IntegrationTaskKey,
-    params: { id: string; input: IssueLabelUpdateInput }
+    params: { id: string; input: L.IssueLabelUpdateInput }
   ): LinearReturnType<IssueLabelPayload, "issueLabel"> {
     return this.runTask(
       key,
@@ -1061,7 +1004,7 @@ export class Linear implements TriggerIntegration {
 
   issueRelations(
     key: IntegrationTaskKey,
-    params: IssueRelationsQueryVariables = {}
+    params: L.IssueRelationsQueryVariables = {}
   ): LinearReturnType<IssueRelationConnection> {
     return this.runTask(
       key,
@@ -1079,7 +1022,7 @@ export class Linear implements TriggerIntegration {
 
   createIssueRelation(
     key: IntegrationTaskKey,
-    params: IssueRelationCreateInput
+    params: L.IssueRelationCreateInput
   ): LinearReturnType<IssueRelationPayload, "issueRelation"> {
     return this.runTask(
       key,
@@ -1116,7 +1059,7 @@ export class Linear implements TriggerIntegration {
 
   notifications(
     key: IntegrationTaskKey,
-    params: NotificationsQueryVariables = {}
+    params: L.NotificationsQueryVariables = {}
   ): LinearReturnType<NotificationConnection> {
     return this.runTask(
       key,
@@ -1153,7 +1096,7 @@ export class Linear implements TriggerIntegration {
   createNotificationSubscription(
     key: IntegrationTaskKey,
     params: {
-      input: NotificationSubscriptionCreateInput;
+      input: L.NotificationSubscriptionCreateInput;
     }
   ): LinearReturnType<NotificationSubscriptionPayload> {
     return this.runTask(
@@ -1185,8 +1128,8 @@ export class Linear implements TriggerIntegration {
   createOrganizationFromOnboarding(
     key: IntegrationTaskKey,
     params: {
-      input: CreateOrganizationInput;
-      variables?: Omit<CreateOrganizationFromOnboardingMutationVariables, "input">;
+      input: L.CreateOrganizationInput;
+      variables?: Omit<L.CreateOrganizationFromOnboardingMutationVariables, "input">;
     }
   ): LinearReturnType<CreateOrJoinOrganizationResponse, "organization"> {
     return this.runTask(
@@ -1213,7 +1156,7 @@ export class Linear implements TriggerIntegration {
   createOrganizationInvite(
     key: IntegrationTaskKey,
     params: {
-      input: OrganizationInviteCreateInput;
+      input: L.OrganizationInviteCreateInput;
     }
   ): LinearReturnType<OrganizationInvitePayload, "organizationInvite"> {
     return this.runTask(
@@ -1247,7 +1190,7 @@ export class Linear implements TriggerIntegration {
 
   projects(
     key: IntegrationTaskKey,
-    params: ProjectsQueryVariables = {}
+    params: L.ProjectsQueryVariables = {}
   ): LinearReturnType<ProjectConnection> {
     return this.runTask(
       key,
@@ -1267,7 +1210,7 @@ export class Linear implements TriggerIntegration {
     key: IntegrationTaskKey,
     params: {
       id: string;
-      variables?: Omit<ArchiveProjectMutationVariables, "id">;
+      variables?: Omit<L.ArchiveProjectMutationVariables, "id">;
     }
   ): LinearReturnType<AwaitNested<ProjectArchivePayload, "entity">> {
     return this.runTask(
@@ -1289,7 +1232,7 @@ export class Linear implements TriggerIntegration {
 
   createProject(
     key: IntegrationTaskKey,
-    params: ProjectCreateInput
+    params: L.ProjectCreateInput
   ): LinearReturnType<ProjectPayload, "project"> {
     return this.runTask(
       key,
@@ -1330,7 +1273,7 @@ export class Linear implements TriggerIntegration {
     key: IntegrationTaskKey,
     params: {
       term: string;
-      variables?: SearchProjectsQueryVariables;
+      variables?: L.SearchProjectsQueryVariables;
     }
   ): LinearReturnType<ProjectSearchPayload> {
     return this.runTask(
@@ -1349,7 +1292,7 @@ export class Linear implements TriggerIntegration {
 
   updateProject(
     key: IntegrationTaskKey,
-    params: { id: string; input: ProjectUpdateInput }
+    params: { id: string; input: L.ProjectUpdateInput }
   ): LinearReturnType<ProjectPayload, "project"> {
     return this.runTask(
       key,
@@ -1382,7 +1325,7 @@ export class Linear implements TriggerIntegration {
 
   projectLinks(
     key: IntegrationTaskKey,
-    params: ProjectLinksQueryVariables = {}
+    params: L.ProjectLinksQueryVariables = {}
   ): LinearReturnType<ProjectLinkConnection> {
     return this.runTask(
       key,
@@ -1400,7 +1343,7 @@ export class Linear implements TriggerIntegration {
 
   createProjectLink(
     key: IntegrationTaskKey,
-    params: ProjectLinkCreateInput
+    params: L.ProjectLinkCreateInput
   ): LinearReturnType<ProjectLinkPayload, "projectLink"> {
     return this.runTask(
       key,
@@ -1422,7 +1365,7 @@ export class Linear implements TriggerIntegration {
 
   createProjectMilestone(
     key: IntegrationTaskKey,
-    params: ProjectMilestoneCreateInput
+    params: L.ProjectMilestoneCreateInput
   ): LinearReturnType<ProjectMilestonePayload, "projectMilestone"> {
     return this.runTask(
       key,
@@ -1458,7 +1401,7 @@ export class Linear implements TriggerIntegration {
 
   projectUpdates(
     key: IntegrationTaskKey,
-    params: ProjectUpdatesQueryVariables = {}
+    params: L.ProjectUpdatesQueryVariables = {}
   ): LinearReturnType<ProjectUpdateConnection> {
     return this.runTask(
       key,
@@ -1476,7 +1419,7 @@ export class Linear implements TriggerIntegration {
 
   createProjectUpdate(
     key: IntegrationTaskKey,
-    params: ProjectUpdateCreateInput
+    params: L.ProjectUpdateCreateInput
   ): LinearReturnType<ProjectUpdatePayload, "projectUpdate"> {
     return this.runTask(
       key,
@@ -1502,7 +1445,7 @@ export class Linear implements TriggerIntegration {
 
   updateProjectUpdate(
     key: IntegrationTaskKey,
-    params: { id: string; input: ProjectUpdateUpdateInput }
+    params: { id: string; input: L.ProjectUpdateUpdateInput }
   ): LinearReturnType<ProjectUpdatePayload, "projectUpdate"> {
     return this.runTask(
       key,
@@ -1520,7 +1463,7 @@ export class Linear implements TriggerIntegration {
 
   createReaction(
     key: IntegrationTaskKey,
-    params: ReactionCreateInput & { emoji: string }
+    params: L.ReactionCreateInput & { emoji: string }
   ): LinearReturnType<ReactionPayload, "reaction"> {
     return this.runTask(
       key,
@@ -1574,7 +1517,7 @@ export class Linear implements TriggerIntegration {
 
   createRoadmap(
     key: IntegrationTaskKey,
-    params: RoadmapCreateInput
+    params: L.RoadmapCreateInput
   ): LinearReturnType<RoadmapPayload, "roadmap"> {
     return this.runTask(
       key,
@@ -1607,7 +1550,7 @@ export class Linear implements TriggerIntegration {
 
   teams(
     key: IntegrationTaskKey,
-    params: TeamsQueryVariables = {}
+    params: L.TeamsQueryVariables = {}
   ): LinearReturnType<TeamConnection> {
     return this.runTask(
       key,
@@ -1625,7 +1568,7 @@ export class Linear implements TriggerIntegration {
 
   createTeam(
     key: IntegrationTaskKey,
-    params: TeamCreateInput
+    params: L.TeamCreateInput
   ): LinearReturnType<TeamPayload, "team"> {
     return this.runTask(
       key,
@@ -1661,7 +1604,7 @@ export class Linear implements TriggerIntegration {
 
   teamMemberships(
     key: IntegrationTaskKey,
-    params: TeamMembershipsQueryVariables = {}
+    params: L.TeamMembershipsQueryVariables = {}
   ): LinearReturnType<TeamMembershipConnection> {
     return this.runTask(
       key,
@@ -1679,7 +1622,7 @@ export class Linear implements TriggerIntegration {
 
   createTeamMembership(
     key: IntegrationTaskKey,
-    params: TeamMembershipCreateInput
+    params: L.TeamMembershipCreateInput
   ): LinearReturnType<TeamMembershipPayload, "teamMembership"> {
     return this.runTask(
       key,
@@ -1742,7 +1685,7 @@ export class Linear implements TriggerIntegration {
 
   users(
     key: IntegrationTaskKey,
-    params: UsersQueryVariables = {}
+    params: L.UsersQueryVariables = {}
   ): LinearReturnType<UserConnection> {
     return this.runTask(
       key,
@@ -1760,7 +1703,7 @@ export class Linear implements TriggerIntegration {
 
   updateUser(
     key: IntegrationTaskKey,
-    params: { id: string; input: UpdateUserInput }
+    params: { id: string; input: L.UpdateUserInput }
   ): LinearReturnType<UserPayload, "user"> {
     return this.runTask(
       key,
@@ -1806,7 +1749,7 @@ export class Linear implements TriggerIntegration {
 
   workflowStates(
     key: IntegrationTaskKey,
-    params: WorkflowStatesQueryVariables = {}
+    params: L.WorkflowStatesQueryVariables = {}
   ): LinearReturnType<WorkflowStateConnection> {
     return this.runTask(
       key,
@@ -1845,7 +1788,7 @@ export class Linear implements TriggerIntegration {
 
   createWorkflowState(
     key: IntegrationTaskKey,
-    params: WorkflowStateCreateInput
+    params: L.WorkflowStateCreateInput
   ): LinearReturnType<WorkflowStatePayload, "workflowState"> {
     return this.runTask(
       key,
@@ -2083,4 +2026,4 @@ export const serializeLinearOutput = <T>(obj: T): Prettify<SerializedLinearOutpu
 
 export { events };
 
-export const PaginationOrderBy = LinearDocument.PaginationOrderBy
+export const PaginationOrderBy = L.PaginationOrderBy

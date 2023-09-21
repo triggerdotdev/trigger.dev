@@ -1,6 +1,6 @@
-import { PaginationOrderBy } from "@linear/sdk/dist/_generated_documents";
 import { CommentEvent, IssueEvent, WebhookPayload } from "./schemas";
 import { GetLinearPayload } from "./types";
+import { LinearDocument as L } from "@linear/sdk";
 
 export type QueryVariables = {
   after: string;
@@ -8,7 +8,7 @@ export type QueryVariables = {
   first: number;
   includeArchived: boolean;
   last: number;
-  orderBy: PaginationOrderBy;
+  orderBy: L.PaginationOrderBy;
 };
 
 export type Nullable<T> = Partial<{

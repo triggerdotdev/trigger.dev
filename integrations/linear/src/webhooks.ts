@@ -7,6 +7,7 @@ import {
   Logger,
 } from "@trigger.dev/sdk";
 import {
+  LinearDocument as L,
   LinearWebhooks,
   LINEAR_WEBHOOK_SIGNATURE_HEADER,
   LINEAR_WEBHOOK_TS_FIELD,
@@ -17,11 +18,6 @@ import {
 import { z } from "zod";
 import * as events from "./events";
 import { Linear, LinearRunTask, serializeLinearOutput } from "./index";
-import {
-  WebhookCreateInput,
-  WebhookUpdateInput,
-  WebhooksQueryVariables,
-} from "@linear/sdk/dist/_generated_documents";
 import { WebhookPayloadSchema } from "./schemas";
 import { LinearReturnType } from "./types";
 import { queryProperties } from "./utils";
@@ -47,7 +43,7 @@ export class Webhooks {
     );
   }
 
-  webhooks(key: IntegrationTaskKey, params?: WebhooksQueryVariables): LinearReturnType<Webhook[]> {
+  webhooks(key: IntegrationTaskKey, params?: L.WebhooksQueryVariables): LinearReturnType<Webhook[]> {
     return this.runTask(
       key,
       async (client, task, io) => {
@@ -69,7 +65,7 @@ export class Webhooks {
 
   createWebhook(
     key: IntegrationTaskKey,
-    params: WebhookCreateInput
+    params: L.WebhookCreateInput
   ): LinearReturnType<Omit<WebhookPayload, "webhook"> & { webhook: Webhook | undefined }> {
     return this.runTask(
       key,
@@ -107,7 +103,7 @@ export class Webhooks {
 
   updateWebhook(
     key: IntegrationTaskKey,
-    params: { id: string; input: WebhookUpdateInput }
+    params: { id: string; input: L.WebhookUpdateInput }
   ): LinearReturnType<Omit<WebhookPayload, "webhook"> & { webhook: Webhook | undefined }> {
     return this.runTask(
       key,
