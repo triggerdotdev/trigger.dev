@@ -57,7 +57,11 @@ export type RunTaskErrorCallback = (
   error: unknown,
   task: IOTask,
   io: IO
-) => { retryAt: Date; error?: Error; jitter?: number } | Error | undefined | void;
+) =>
+  | { retryAt?: Date; error?: Error; jitter?: number; skipRetrying?: boolean }
+  | Error
+  | undefined
+  | void;
 
 export class IO {
   private _id: string;
@@ -627,6 +631,8 @@ export class IO {
           throw error;
         }
 
+        let skipRetrying = false;
+
         if (onError) {
           try {
             const onErrorResult = onError(error, task, this);
@@ -635,13 +641,17 @@ export class IO {
               if (onErrorResult instanceof Error) {
                 error = onErrorResult;
               } else {
-                const parsedError = ErrorWithStackSchema.safeParse(onErrorResult.error);
+                skipRetrying = !!onErrorResult.skipRetrying;
 
-                throw new RetryWithTaskError(
-                  parsedError.success ? parsedError.data : { message: "Unknown error" },
-                  task,
-                  onErrorResult.retryAt
-                );
+                if (onErrorResult.retryAt && !skipRetrying) {
+                  const parsedError = ErrorWithStackSchema.safeParse(onErrorResult.error);
+
+                  throw new RetryWithTaskError(
+                    parsedError.success ? parsedError.data : { message: "Unknown error" },
+                    task,
+                    onErrorResult.retryAt
+                  );
+                }
               }
             }
           } catch (innerError) {
@@ -655,7 +665,7 @@ export class IO {
 
         const parsedError = ErrorWithStackSchema.safeParse(error);
 
-        if (options?.retry) {
+        if (options?.retry && !skipRetrying) {
           const retryAt = calculateRetryAt(options.retry, task.attempts - 1);
 
           if (retryAt) {
