@@ -15,6 +15,8 @@ import {
 } from "./schedules";
 import { CachedTaskSchema, TaskSchema } from "./tasks";
 import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
+import { RunStatusSchema } from "./runs";
+import { JobRunStatusRecordSchema } from "./statuses";
 
 export const UpdateTriggerSourceBodyV1Schema = z.object({
   registeredEvents: z.array(z.string()),
@@ -729,3 +731,9 @@ export const CreateExternalConnectionBodySchema = z.object({
 });
 
 export type CreateExternalConnectionBody = z.infer<typeof CreateExternalConnectionBodySchema>;
+
+export const GetRunStatusesSchema = z.object({
+  run: z.object({ id: z.string(), status: RunStatusSchema, output: z.any().optional() }),
+  statuses: z.array(JobRunStatusRecordSchema),
+});
+export type GetRunStatuses = z.infer<typeof GetRunStatusesSchema>;

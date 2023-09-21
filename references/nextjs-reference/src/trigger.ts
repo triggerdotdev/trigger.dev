@@ -19,11 +19,6 @@ export const client = new TriggerClient({
   ioLogLocalEnabled: true,
 });
 
-export const openai = new OpenAI({
-  id: "openai",
-  apiKey: process.env["OPENAI_API_KEY"]!,
-});
-
 export const github = new Github({
   id: "github",
   octokitRequest: { fetch },

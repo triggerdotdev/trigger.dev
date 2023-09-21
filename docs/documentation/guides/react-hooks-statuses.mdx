@@ -1,0 +1,192 @@
+---
+title: "Explicit status hooks"
+description: "How to add `statuses` to your Job code and then subscribe using the hooks"
+---
+
+You can create `statuses` in your Job code. This gives you fine grained control over what you want to expose.
+
+It allows you to:
+
+- Show exactly what you want in your UI (with as many statuses as you want).
+- Pass arbitrary data to your UI, which you can use to render elements.
+- Update existing elements in your UI as the progress of the run continues.
+
+## In your Job code
+
+You should create a "status", which you can then update throughout the Job if you'd like to. You can create more than one status. Each of these will come through to the hook with the latest status and the history for each.
+
+```ts jobs/yourjob.ts
+//your job
+client.defineJob({
+  id: "meme-generator",
+  name: "Generate memes",
+  version: "0.1.1",
+  trigger: eventTrigger({
+    name: "generate-memes",
+  }),
+  run: async (payload, io, ctx) => {
+    //create a status "generating-memes"
+    //you give it the starting state. Only label is required
+    const generatingMemes = await io.createStatus("generating-memes", {
+      //the label is compulsory on this first call
+      label: "Generating memes",
+      //state is optional
+      state: "loading",
+      //data is an optional object. the values can be any type that is JSON serializable
+      data: {
+        progress: 0.1,
+      },
+    });
+
+    //...do stuff, like generate memes
+
+    //update the generatingMemes status.
+    //anything set here will override the previous values, but you'll be able to view the full history with hooks
+    await generatingMemes.update("middle-generation", {
+      //label isn't specified so will remain the same
+      //state will be updated to "success"
+      state: "success",
+      //set data, this overrides the previous value
+      data: {
+        progress: 1,
+        urls: [
+          "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExZnZoMndsdWh0MmhvY2kyaDF6YjZjZzg1ZGsxdnhhYm13a3Q1Y3lkbyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/13HgwGsXF0aiGY/giphy.gif",
+        ],
+      },
+    });
+  },
+});
+```
+
+In this case we created just a single status `generating-memes` and then updated it. It's worth noting that you can create as many statuses as you'd like in a single Job and you can update them as many times as you want.
+
+This allows you to fine-grained control over how you report progress and output data from your Job.
+
+## Using the React hooks
+
+There are two hooks you can use in your UI to display the Run statuses.
+
+- **useEventRunStatuses**: get the statuses of a run that was triggered by a specified event
+- **useRunStatuses**: get the statuses of the specified run
+
+## useEventRunStatuses
+
+The `useEventRunStatuses` hook will give you the statuses and overview data of **the first run** that is triggered by an event.
+
+<Snippet file="how-to-get-event-id.mdx" />
+
+This component will show the details of a Run and the status of each task in the Run:
+
+```ts
+import { useEventRunStatuses } from "@trigger.dev/react";
+
+export function EventRunData({ id }: { id: string }) {
+  const { fetchStatus, error, statuses, run } = useEventRunStatuses(id);
+
+  if (fetchStatus === "loading") {
+    return <p>Loading...</p>;
+  }
+
+  if (fetchStatus === "error") {
+    return (
+      <div>
+        <p>{error.name}</p>
+        <p>{error.message}</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      //you receive the overall status of the run, e.g. SUCCESS, FAIL
+      <div>Run status: {run.status}</div>
+      <div>
+        {statuses.map((status) => {
+          switch (status.key) {
+            case "generating-memes": {
+              const urls = status.data?.urls as string[] | undefined;
+              return (
+                <div key={status.key}>
+                  // Will display: "Generating memes: loading"
+                  <p>
+                    {status.label}: {status.state}
+                  </p>
+                  //will render the memes as images
+                  {urls?.map((url) => <img key={url} src={url} />)}
+                </div>
+              );
+            }
+          }
+        })}
+      </div>
+      //this is what's returned from the run function
+      {run.output && (
+        <code>
+          <pre>{JSON.stringify(run.output, null, 2)}</pre>
+        </code>
+      )}
+    </>
+  );
+}
+```
+
+## useRunStatuses
+
+The `useRunStatuses` hook will give you the statuses and overview data of a specific Run.
+
+<Snippet file="how-to-get-run-id.mdx" />
+
+This component will show the details of a Run and the status of each task in the Run:
+
+```ts
+import { useRunStatuses } from "@trigger.dev/react";
+
+export function RunData({ id }: { id: string }) {
+  const { fetchStatus, error, statuses, run } = useRunStatuses(id);
+
+  if (fetchStatus === "loading") {
+    return <p>Loading...</p>;
+  }
+
+  if (fetchStatus === "error") {
+    return (
+      <div>
+        <p>{error.name}</p>
+        <p>{error.message}</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      //you receive the overall status of the run, e.g. SUCCESS, FAIL
+      <div>Run status: {run.status}</div>
+      <div>
+        {statuses.map((status) => {
+          switch (status.key) {
+            case "generating-memes": {
+              const urls = status.data?.urls as string[] | undefined;
+              return (
+                <div key={status.key}>
+                  // Will display: "Generating memes: loading"
+                  <p>
+                    {status.label}: {status.state}
+                  </p>
+                  //will render the memes as images
+                  {urls?.map((url) => <img key={url} src={url} />)}
+                </div>
+              );
+            }
+          }
+        })}
+      </div>
+      //this is what's returned from the run function
+      {run.output && (
+        <code>
+          <pre>{JSON.stringify(run.output, null, 2)}</pre>
+        </code>
+      )}
+    </>
+  );
+}
+```

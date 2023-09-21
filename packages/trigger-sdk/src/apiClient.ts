@@ -24,6 +24,9 @@ import {
   urlWithSearchParams,
   UpdateTriggerSourceBodyV2,
   RegisterTriggerBodyV2,
+  GetRunStatusesSchema,
+  JobRunStatusRecordSchema,
+  StatusUpdate,
 } from "@trigger.dev/core";
 
 import fetch, { type RequestInit } from "node-fetch";
@@ -198,6 +201,28 @@ export class ApiClient {
     });
   }
 
+  async updateStatus(runId: string, id: string, status: StatusUpdate) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Update status", {
+      id,
+      status,
+    });
+
+    return await zodfetch(
+      JobRunStatusRecordSchema,
+      `${this.#apiUrl}/api/v1/runs/${runId}/statuses/${id}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(status),
+      }
+    );
+  }
+
   async updateSource(
     client: string,
     key: string,
@@ -357,6 +382,21 @@ export class ApiClient {
         },
       }
     );
+  }
+
+  async getRunStatuses(runId: string) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Getting Run statuses", {
+      runId,
+    });
+
+    return await zodfetch(GetRunStatusesSchema, `${this.#apiUrl}/api/v1/runs/${runId}/statuses`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
   }
 
   async getRuns(jobSlug: string, options?: GetRunsOptions) {

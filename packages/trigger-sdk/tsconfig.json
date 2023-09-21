@@ -10,7 +10,8 @@
     },
     "lib": ["DOM", "DOM.Iterable"],
     "declaration": false,
-    "declarationMap": false
+    "declarationMap": false,
+    "stripInternal": true
   },
   "exclude": ["node_modules"]
 }
