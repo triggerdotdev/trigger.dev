@@ -31,52 +31,52 @@ const testJob = createJobTester(vi);
 
 ```js
 const jobToTest = client.defineJob({
-    id: "test-job",
-    name: "Test Job",
-    version: "0.1.0",
-    trigger: eventTrigger({
-      name: "test.trigger",
-    }),
-    integrations: {
-      dummy,
+  id: "test-job",
+  name: "Test Job",
+  version: "0.1.0",
+  trigger: eventTrigger({
+    name: "test.trigger",
+  }),
+  integrations: {
+    dummy,
+  },
+  run: async (payload, io, ctx) => {
+    return await io.dummy.doSomething("test-task", {
+      foo: payload.foo,
+    });
+  },
+});
+
+const testRun = await testJob(jobToTest, {
+  payload: {
+    foo: "bar",
+  },
+  tasks: {
+    "test-task": {
+      bar: "baz",
     },
-    run: async (payload, io, ctx) => {
-      return await io.dummy.doSomething("test-task", {
-        foo: payload.foo,
-      });
-    },
-  });
+  },
+});
 
-  const testRun = await testJob(jobToTest, {
-    payload: {
-      foo: "bar",
-    },
-    tasks: {
-      "test-task": {
-        bar: "baz",
-      },
-    },
-  });
+// job run was successful
+expect(testRun).toHaveSucceeded();
 
-  // job run was successful
-  expect(testRun).toHaveSucceeded();
+// task was called exactly once
+expect(testRun.tasks["test-task"]).toHaveBeenCalledOnce();
 
-  // task was called exactly once
-  expect(testRun.tasks["test-task"]).toHaveBeenCalledOnce();
+// task was called with correct params
+expect(testRun.tasks["test-task"]).toHaveBeenCalledWith({ foo: "bar" });
 
-  // task was called with correct params
-  expect(testRun.tasks["test-task"]).toHaveBeenCalledWith({ foo: "bar" });
+// mocked task output was correctly returned
+expect(testRun.tasks["test-task"]).toHaveReturnedWith({ bar: "baz" });
 
-  // mocked task output was correctly returned
-  expect(testRun.tasks["test-task"]).toHaveReturnedWith({ bar: "baz" });
-
-  // job run has expected output
-  expect(testRun.output).toEqual({ bar: "baz" });
+// job run has expected output
+expect(testRun.output).toEqual({ bar: "baz" });
 ```
 
 ## More information
 
-See the official [Trigger.dev Unit Testing Example](https://github.com/triggerdotdev/trigger.dev/examples/unit-testing/) for a working setup with Vitest.
+See the official [Trigger.dev Unit Testing Reference](https://github.com/triggerdotdev/trigger.dev/references/unit-testing/) for a working setup with Vitest.
 
 ## License
 
