@@ -87,23 +87,10 @@ client.defineJob({
     await io.linear.viewer("get-viewer");
     await io.linear.organization("get-org");
 
-    const fourDigits = Math.floor(Math.random() * 1000);
-
-    //create an organization
-    await io.linear.createOrganizationFromOnboarding("create-org", {
-      input: {
-        name: "Rickastleydotdev",
-        urlKey: `you-know-the-rules-${fourDigits}`,
-      },
+    //create a team
+    const newTeam = await io.linear.createTeam("create-team", {
+      name: `Rickastleydotdev-${Math.floor(Math.random() * 1000)}`,
     });
-
-    //create invite
-    //DISABLED: Linear responds with internal server errors, no matter the input
-    // await io.linear.createOrganizationInvite("create-invite", {
-    //   input: {
-    //     email: `rick${fourDigits}@example.com`,
-    //   },
-    // });
 
     //get some entities
     const comments = await io.linear.comments("get-comments", { first: 2 });
@@ -111,6 +98,8 @@ client.defineJob({
     const projects = await io.linear.projects("get-projects", { first: 5 });
 
     return {
+      deletedIssueId: payload.data.id,
+      newTeamKey: newTeam?.key,
       comments: comments.nodes.length,
       issues: issues.nodes.length,
       projects: projects.nodes.length,
