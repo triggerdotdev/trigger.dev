@@ -85,7 +85,7 @@ export type AuthResolverResult = {
 export type TriggerAuthResolver = (
   ctx: TriggerContext,
   integration: TriggerIntegration
-) => Promise<AuthResolverResult | undefined>;
+) => Promise<AuthResolverResult | void | undefined>;
 
 /** A [TriggerClient](https://trigger.dev/docs/documentation/concepts/client-adaptors) is used to connect to a specific [Project](https://trigger.dev/docs/documentation/concepts/projects) by using an [API Key](https://trigger.dev/docs/documentation/concepts/environments-apikeys). */
 export class TriggerClient {

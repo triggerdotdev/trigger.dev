@@ -33,6 +33,8 @@ client.defineAuthResolver(resend, async (ctx, integration) => {
   };
 });
 
+client.defineAuthResolver(resend, async (ctx, integration) => {});
+
 client.defineAuthResolver(stripe, async (ctx, integration) => {
   return {
     type: "apiKey",
