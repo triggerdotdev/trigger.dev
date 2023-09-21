@@ -1506,8 +1506,11 @@ export class Linear implements TriggerIntegration {
         name: "Create Reaction",
         params,
         properties: [
-          { label: "Comment ID", text: params.commentId ?? "N/A" },
-          { label: "Issue ID", text: params.issueId ?? "N/A" },
+          ...(params.commentId ? [{ label: "Comment ID", text: params.commentId }] : []),
+          ...(params.issueId ? [{ label: "Issue ID", text: params.issueId }] : []),
+          ...(params.projectUpdateId
+            ? [{ label: "ProjectUpdate ID", text: params.projectUpdateId }]
+            : []),
           { label: "Emoji", text: params.emoji },
         ],
       }

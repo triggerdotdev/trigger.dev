@@ -1,15 +1,38 @@
-type QueryVariables = {
+import { PaginationOrderBy } from "@linear/sdk/dist/_generated_documents";
+import { CommentEvent, IssueEvent, WebhookPayload } from "./schemas";
+import { GetLinearPayload } from "./types";
+
+export type QueryVariables = {
   after: string;
   before: string;
   first: number;
   includeArchived: boolean;
   last: number;
-  orderBy: string;
+  orderBy: PaginationOrderBy;
 };
 
-type Nullable<T> = Partial<{
+export type Nullable<T> = Partial<{
   [K in keyof T]: T[K] | null;
 }>;
+
+export const onCommentProperties = (payload: GetLinearPayload<CommentEvent>) => {
+  return [
+    { label: "Comment ID", text: payload.data.id },
+    { label: "Issue ID", text: payload.data.issueId },
+    { label: "Issue Title", text: payload.data.issue.title, url: payload.url ?? undefined },
+  ];
+};
+
+export const onIssueProperties = (payload: GetLinearPayload<IssueEvent>) => {
+  return [
+    { label: "Issue ID", text: payload.data.id },
+    {
+      label: "Issue",
+      text: `[${payload.data.team.key}-${payload.data.number}] ${payload.data.title}`,
+      url: payload.url ?? undefined,
+    },
+  ];
+};
 
 export const queryProperties = (query: Nullable<QueryVariables>) => {
   return [
@@ -21,5 +44,17 @@ export const queryProperties = (query: Nullable<QueryVariables>) => {
     ...(query.includeArchived
       ? [{ label: "Include archived", text: String(query.includeArchived) }]
       : []),
+  ];
+};
+
+export const updatedFromProperties = (payload: WebhookPayload) => {
+  if (payload.action !== "update") return [];
+  return [
+    {
+      label: "Updated Keys",
+      text: Object.keys(payload.updatedFrom)
+        .filter((key) => !["editedAt", "updatedAt"].includes(key))
+        .join(", "),
+    },
   ];
 };
