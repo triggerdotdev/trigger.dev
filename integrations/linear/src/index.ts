@@ -17,6 +17,7 @@ import {
   Comment,
   CommentConnection,
   CommentPayload,
+  Connection,
   CreateOrJoinOrganizationResponse,
   CycleArchivePayload,
   CyclePayload,
@@ -42,6 +43,7 @@ import {
   IssueRelationPayload,
   IssueSearchPayload,
   LinearClient,
+  LinearDocument,
   LinearError,
   Notification,
   NotificationArchivePayload,
@@ -80,8 +82,6 @@ import {
   WorkflowStateConnection,
   WorkflowStatePayload,
 } from "@linear/sdk";
-import * as events from "./events";
-import { TriggerParams, Webhooks, createTrigger, createWebhookEventSource } from "./webhooks";
 import {
   ArchiveIssueMutationVariables,
   ArchiveProjectMutationVariables,
@@ -139,8 +139,11 @@ import {
   WorkflowStateCreateInput,
   WorkflowStatesQueryVariables,
 } from "@linear/sdk/dist/_generated_documents";
+
+import * as events from "./events";
 import { AwaitNested, LinearReturnType, SerializedLinearOutput } from "./types";
-import { queryProperties } from "./utils";
+import { Nullable, QueryVariables, queryProperties } from "./utils";
+import { TriggerParams, Webhooks, createTrigger, createWebhookEventSource } from "./webhooks";
 
 export type LinearIntegrationOptions = {
   id: string;
@@ -226,6 +229,29 @@ export class Linear implements TriggerIntegration {
       },
       errorCallback ?? onError
     );
+  }
+
+  async getAll<
+    TTask extends (
+      key: IntegrationTaskKey,
+      params: Partial<Nullable<QueryVariables>>
+    ) => LinearReturnType<Connection<unknown>>,
+  >(
+    task: TTask,
+    key: IntegrationTaskKey,
+    params: Nullable<QueryVariables> = {}
+  ): Promise<Awaited<ReturnType<TTask>>["nodes"]> {
+    const boundTask = task.bind(this);
+
+    let edges = await boundTask(`${key}-0`, params);
+    let nodes = edges.nodes;
+
+    for (let i = 1; edges.pageInfo.hasNextPage; i++) {
+      edges = await boundTask(`${key}-${i}`, { ...params, after: edges.pageInfo.endCursor });
+      nodes = nodes.concat(edges.nodes);
+    }
+
+    return nodes;
   }
 
   attachment(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<Attachment> {
@@ -2056,3 +2082,5 @@ export const serializeLinearOutput = <T>(obj: T): Prettify<SerializedLinearOutpu
 };
 
 export { events };
+
+export const PaginationOrderBy = LinearDocument.PaginationOrderBy

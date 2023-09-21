@@ -1,6 +1,6 @@
 import { createExpressServer } from "@trigger.dev/express";
 import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
-import { Linear, serializeLinearOutput } from "@trigger.dev/linear";
+import { Linear, PaginationOrderBy, serializeLinearOutput } from "@trigger.dev/linear";
 import { z } from "zod";
 
 export const client = new TriggerClient({
@@ -87,7 +87,7 @@ client.defineJob({
     await io.linear.viewer("get-viewer");
     await io.linear.organization("get-org");
 
-    const fourDigits = Math.floor(Math.random() * 1000)
+    const fourDigits = Math.floor(Math.random() * 1000);
 
     //create an organization
     await io.linear.createOrganizationFromOnboarding("create-org", {
@@ -114,6 +114,58 @@ client.defineJob({
       comments: comments.nodes.length,
       issues: issues.nodes.length,
       projects: projects.nodes.length,
+    };
+  },
+});
+
+client.defineJob({
+  id: "linear-pagination",
+  name: "Linear Pagination",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  trigger: eventTrigger({
+    name: "linear.paginate",
+  }),
+  run: async (payload, io, ctx) => {
+    //the same params will be used for all tasks
+    const params = { first: 5, orderBy: PaginationOrderBy.UpdatedAt };
+
+    //1. Linear SDK
+    const sdkIssues = await io.linear.runTask("all-issues-via-sdk", async (client) => {
+      const edges = await client.issues(params);
+
+      //this will keep appending nodes until there are no more
+      while (edges.pageInfo.hasNextPage) {
+        await edges.fetchNext();
+      }
+
+      //use serialization helper to remove functions etc
+      return serializeLinearOutput(edges.nodes);
+    });
+
+    //2. Linear integration - no pagination helper
+    let edges = await io.linear.issues("get-issues", params);
+    let noHelper = edges.nodes;
+
+    for (let i = 0; edges.pageInfo.hasNextPage; i++) {
+      edges = await io.linear.issues(`get-more-issues-${i}`, {
+        ...params,
+        after: edges.pageInfo.endCursor,
+      });
+      noHelper = noHelper.concat(edges.nodes);
+    }
+
+    //3. Linear integration - with the pagination helper
+    const withHelper = await io.linear.getAll(io.linear.issues, "get-all", params);
+
+    return {
+      issueCounts: {
+        withSdk: sdkIssues.length,
+        noHelper: noHelper.length,
+        withHelper: withHelper.length,
+      },
     };
   },
 });

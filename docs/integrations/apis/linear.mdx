@@ -122,6 +122,72 @@ client.defineJob({
 });
 ```
 
+### Pagination
+
+You can paginate responses three different ways:
+
+1. Via the raw Linear SDK exposed in `io.runTask()`
+2. Iterating the same integration task with different params
+3. Using the `getAll` helper exposed on the integration (**recommended!**)
+
+_When ordering results, make sure to use the `PaginationOrderBy` enum._
+
+```ts
+import { Linear, PaginationOrderBy, serializeLinearOutput } from "@trigger.dev/linear";
+...
+client.defineJob({
+  id: "linear-pagination",
+  name: "Linear Pagination",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  trigger: eventTrigger({
+    name: "linear.paginate",
+  }),
+  run: async (payload, io, ctx) => {
+    //the same params will be used for all tasks
+    const params = { first: 5, orderBy: PaginationOrderBy.UpdatedAt };
+
+    //1. Linear SDK
+    const sdkIssues = await io.linear.runTask("all-issues-via-sdk", async (client) => {
+      const edges = await client.issues(params);
+
+      //this will keep appending nodes until there are no more
+      while (edges.pageInfo.hasNextPage) {
+        await edges.fetchNext();
+      }
+
+      //use serialization helper to remove functions etc
+      return serializeLinearOutput(edges.nodes);
+    });
+
+    //2. Linear integration - no pagination helper
+    let edges = await io.linear.issues("get-issues", params);
+    let noHelper = edges.nodes;
+
+    for (let i = 0; edges.pageInfo.hasNextPage; i++) {
+      edges = await io.linear.issues(`get-more-issues-${i}`, {
+        ...params,
+        after: edges.pageInfo.endCursor,
+      });
+      noHelper = noHelper.concat(edges.nodes);
+    }
+
+    //3. Linear integration - with the pagination helper
+    const withHelper = await io.linear.getAll(io.linear.issues, "get-all", params);
+
+    return {
+      issueCounts: {
+        withSdk: sdkIssues.length,
+        noHelper: noHelper.length,
+        withHelper: withHelper.length,
+      },
+    };
+  },
+});
+```
+
 ## Triggers
 
 ### Attachments
