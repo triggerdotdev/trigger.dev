@@ -136,7 +136,7 @@ export class DynamicTrigger<
     const { io } = runStore;
 
     return await io.runTask(
-      key,
+      [key, "register"],
       async (task) => {
         return this.#client.registerTrigger(
           this.id,
