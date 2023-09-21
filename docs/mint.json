@@ -175,7 +175,6 @@
           "group": "React hooks",
           "pages": [
             "documentation/guides/react-hooks",
-            "documentation/guides/react-hooks-setup",
             "documentation/guides/react-hooks-automatic",
             "documentation/guides/react-hooks-statuses"
           ]

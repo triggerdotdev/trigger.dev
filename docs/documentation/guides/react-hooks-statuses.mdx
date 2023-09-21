@@ -1,7 +1,15 @@
 ---
-title: "Statuses hooks"
+title: "Explicit status hooks"
 description: "How to add `statuses` to your Job code and then subscribe using the hooks"
 ---
+
+You can create `statuses` in your Job code. This gives you fine grained control over what you want to expose.
+
+It allows you to:
+
+- Show exactly what you want in your UI (with as many statuses as you want).
+- Pass arbitrary data to your UI, which you can use to render elements.
+- Update existing elements in your UI as the progress of the run continues.
 
 ## In your Job code
 
