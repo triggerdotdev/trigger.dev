@@ -1,4 +1,4 @@
-import childProcess from "child_process";
+import childProcess, { exec, spawnSync } from "child_process";
 import chokidar from "chokidar";
 import fs from "fs/promises";
 import ngrok from "ngrok";
@@ -14,6 +14,12 @@ import { resolvePath } from "../utils/parseNameAndPath";
 import { TriggerApi } from "../utils/triggerApi";
 import { run as ncuRun } from 'npm-check-updates'
 import chalk from "chalk";
+import path from 'path';
+import { createRequire } from 'node:module';
+import { PackageFile } from "npm-check-updates/build/src/types/PackageFile";
+import semver from 'semver'
+import { detectAgent, Agent, AgentName } from '@skarab/detect-package-manager';
+import inquirer from "inquirer";
 
 const asyncExecFile = util.promisify(childProcess.execFile);
 
@@ -48,6 +54,7 @@ export async function devCommand(path: string, anyOptions: any) {
 
   const resolvedPath = resolvePath(path);
   await checkForOutdatedPackages(resolvedPath)
+  await detectProjectZodVersion(path)
 
   // Read from package.json to get the endpointId
   const endpointId = await getEndpointIdFromPackageJson(resolvedPath, options);
@@ -340,6 +347,74 @@ async function refreshEndpoint(apiClient: TriggerApi, endpointId: string, endpoi
         retryable: true,
       };
     }
+  }
+}
+
+const detectProjectZodVersion = async (projectPath: string) => {  
+  try {
+    const require = createRequire(import.meta.url);
+    const sdkPath = require.resolve('@trigger.dev/sdk');
+
+    const sdkPackageJsonPath = path.join(sdkPath, '../../', 'package.json');
+    const sdkPackageJsonData = JSON.parse(await fs.readFile(sdkPackageJsonPath, 'utf8')) as PackageFile;
+
+    const sdkZodVersion = sdkPackageJsonData.dependencies!['zod']!
+    
+    const projectPackageFilePath = `${projectPath}/package.json`;
+    const projectPackageFileData = JSON.parse(await fs.readFile(projectPackageFilePath, 'utf-8')) as PackageFile;
+
+    const projectZodVersion = projectPackageFileData.dependencies?.['zod']
+
+    if (!projectZodVersion) return 
+
+    const agent = await detectAgent();
+
+    if (!semver.eq(sdkZodVersion, projectZodVersion!)) {
+      console.log(
+        chalk.bgYellow('Found zod version mismatch between project and @trigger.dev/sdk')
+      );
+
+      const { shouldContinue } = await inquirer.prompt<{
+        shouldContinue: boolean;
+      }>({
+        name: "shouldContinue",
+        type: "confirm",
+        message: `Would you like to automatically correct the version mismatch?`,
+        default: false,
+      });
+
+      if (!shouldContinue) return 
+
+      projectPackageFileData.dependencies!['zod'] = sdkZodVersion;
+      await fs.writeFile(projectPackageFilePath, JSON.stringify(projectPackageFileData, null, 2));
+
+      let installCommand;
+      switch (agent?.name) {
+        case 'npm':
+          installCommand = 'npm install';
+          break;
+        case 'yarn':
+          installCommand = 'yarn';
+          break;
+        case 'pnpm':
+          installCommand = 'pnpm install';
+          break;
+        case 'bun':
+          installCommand = 'bun install';
+          break;
+        default:
+          console.error(`Unsupported package manager: ${agent?.name}`);
+          return;
+      }
+
+      console.log(
+        chalk.bgBlue(`Completed. Please execute '${installCommand}' to apply changes.`)
+      );
+
+    }
+
+  } catch (error) {
+    return null;
   }
 }
 

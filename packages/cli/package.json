@@ -42,6 +42,7 @@
     "@types/jest": "^29.5.3",
     "@types/node": "16",
     "@types/node-fetch": "^2.6.2",
+    "@types/semver": "^7.3.13",
     "rimraf": "^3.0.2",
     "ts-jest": "^29.1.1",
     "tsup": "^6.5.0",
@@ -58,6 +59,7 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@skarab/detect-package-manager": "^1.0.0",
     "@types/degit": "^2.8.3",
     "chalk": "^5.2.0",
     "chokidar": "^3.5.3",
@@ -77,6 +79,7 @@
     "path-to-regexp": "^6.2.1",
     "posthog-node": "^3.1.1",
     "proxy-agent": "^6.3.0",
+    "semver": "^7.5.0",
     "simple-git": "^3.19.0",
     "terminal-link": "^3.0.0",
     "tsconfck": "^2.1.2",
