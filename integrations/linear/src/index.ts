@@ -1988,9 +1988,16 @@ export class Linear implements TriggerIntegration {
     return createTrigger(this.source, events.onReactionUpdated, params);
   }
 
-  webhooks() {
+  get #webhooks() {
     return new Webhooks(this.runTask.bind(this));
   }
+
+  webhook = this.#webhooks.webhook;
+  webhooks = this.#webhooks.webhooks;
+
+  createWebhook = this.#webhooks.createWebhook;
+  deleteWebhook = this.#webhooks.deleteWebhook;
+  updateWebhook = this.#webhooks.updateWebhook;
 }
 
 export function onError(error: unknown): ReturnType<RunTaskErrorCallback> {

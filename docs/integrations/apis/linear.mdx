@@ -126,66 +126,66 @@ client.defineJob({
 
 ### Attachments
 
-| Function Name            | Description                                        |
-| ------------------------ | -------------------------------------------------- |
-| `onAttachment`           | When any action is performed on an attachment.     |
-| `onAttachmentCreated`    | When an attachment is created.                     |
-| `onAttachmentRemoved`    | When an attachment is removed.                     |
-| `onAttachmentUpdated`    | When an attachment is updated.                     |
+| Function Name         | Description                                    |
+| --------------------- | ---------------------------------------------- |
+| `onAttachment`        | When any action is performed on an attachment. |
+| `onAttachmentCreated` | When an attachment is created.                 |
+| `onAttachmentRemoved` | When an attachment is removed.                 |
+| `onAttachmentUpdated` | When an attachment is updated.                 |
 
 ### Comments
 
-| Function Name            | Description                                        |
-| ------------------------ | -------------------------------------------------- |
-| `onComment`              | When any action is performed on an comment.        |
-| `onCommentCreated`       | When an comment is created.                        |
-| `onCommentRemoved`       | When an comment is removed.                        |
-| `onCommentUpdated`       | When an comment is updated.                        |
+| Function Name      | Description                                 |
+| ------------------ | ------------------------------------------- |
+| `onComment`        | When any action is performed on an comment. |
+| `onCommentCreated` | When an comment is created.                 |
+| `onCommentRemoved` | When an comment is removed.                 |
+| `onCommentUpdated` | When an comment is updated.                 |
 
 ### Cycles
 
-| Function Name            | Description                                        |
-| ------------------------ | -------------------------------------------------- |
-| `onCycle`                | When any action is performed on an cycle.          |
-| `onCycleCreated`         | When an cycle is created.                          |
-| `onCycleRemoved`         | When an cycle is removed.                          |
-| `onCycleUpdated`         | When an cycle is updated.                          |
+| Function Name    | Description                               |
+| ---------------- | ----------------------------------------- |
+| `onCycle`        | When any action is performed on an cycle. |
+| `onCycleCreated` | When an cycle is created.                 |
+| `onCycleRemoved` | When an cycle is removed.                 |
+| `onCycleUpdated` | When an cycle is updated.                 |
 
 ### Issues
 
-| Function Name            | Description                                        |
-| ------------------------ | -------------------------------------------------- |
-| `onIssue`                | When any action is performed on an issue.          |
-| `onIssueCreated`         | When an issue is created.                          |
-| `onIssueRemoved`         | When an issue is removed.                          |
-| `onIssueUpdated`         | When an issue is updated.                          |
+| Function Name    | Description                               |
+| ---------------- | ----------------------------------------- |
+| `onIssue`        | When any action is performed on an issue. |
+| `onIssueCreated` | When an issue is created.                 |
+| `onIssueRemoved` | When an issue is removed.                 |
+| `onIssueUpdated` | When an issue is updated.                 |
 
 ### Issue Labels
 
-| Function Name            | Description                                        |
-| ------------------------ | -------------------------------------------------- |
-| `onIssueLabel`           | When any action is performed on an issue label.    |
-| `onIssueLabelCreated`    | When an issue label is created.                    |
-| `onIssueLabelRemoved`    | When an issue label is removed.                    |
-| `onIssueLabelUpdated`    | When an issue label is updated.                    |
+| Function Name         | Description                                     |
+| --------------------- | ----------------------------------------------- |
+| `onIssueLabel`        | When any action is performed on an issue label. |
+| `onIssueLabelCreated` | When an issue label is created.                 |
+| `onIssueLabelRemoved` | When an issue label is removed.                 |
+| `onIssueLabelUpdated` | When an issue label is updated.                 |
 
 ### Issue SLAs
 
-| Function Name            | Description                                        |
-| ------------------------ | -------------------------------------------------- |
-| `onIssueSLA`             | When any action is performed on an issue SLA.      |
-| `onIssueSLASet`          | When an issue SLA is set.                          |
-| `onIssueSLABreached`     | When an issue SLA is breached.                     |
-| `onIssueSLAHighRisk`     | When an issue SLA is high risk.                    |
+| Function Name        | Description                                   |
+| -------------------- | --------------------------------------------- |
+| `onIssueSLA`         | When any action is performed on an issue SLA. |
+| `onIssueSLASet`      | When an issue SLA is set.                     |
+| `onIssueSLABreached` | When an issue SLA is breached.                |
+| `onIssueSLAHighRisk` | When an issue SLA is high risk.               |
 
 ### Projects
 
-| Function Name            | Description                                        |
-| ------------------------ | -------------------------------------------------- |
-| `onProject`              | When any action is performed on an project.        |
-| `onProjectCreated`       | When an project is created.                        |
-| `onProjectRemoved`       | When an project is removed.                        |
-| `onProjectUpdated`       | When an project is updated.                        |
+| Function Name      | Description                                 |
+| ------------------ | ------------------------------------------- |
+| `onProject`        | When any action is performed on an project. |
+| `onProjectCreated` | When an project is created.                 |
+| `onProjectRemoved` | When an project is removed.                 |
+| `onProjectUpdated` | When an project is updated.                 |
 
 ### Project Updates
 
@@ -198,12 +198,12 @@ client.defineJob({
 
 ### Reactions
 
-| Function Name            | Description                                        |
-| ------------------------ | -------------------------------------------------- |
-| `onReaction`             | When any action is performed on an reaction.       |
-| `onReactionCreated`      | When an reaction is created.                       |
-| `onReactionRemoved`      | When an reaction is removed.                       |
-| `onReactionUpdated`      | When an reaction is updated.                       |
+| Function Name       | Description                                  |
+| ------------------- | -------------------------------------------- |
+| `onReaction`        | When any action is performed on an reaction. |
+| `onReactionCreated` | When an reaction is created.                 |
+| `onReactionRemoved` | When an reaction is removed.                 |
+| `onReactionUpdated` | When an reaction is updated.                 |
 
 ## Tasks
 
@@ -385,6 +385,16 @@ client.defineJob({
 | `users`       | Gets multiple users. |
 | `updateUser`  | Updates a user.      |
 
+### Webhooks
+
+| Function Name   | Description             |
+| --------------- | ----------------------- |
+| `webhook`       | Gets a webhook.         |
+| `webhooks`      | Gets multiple webhooks. |
+| `createWebhook` | Creates a webhook.      |
+| `deleteWebhook` | Deletes a webhook.      |
+| `updateWebhook` | Updates a webhook.      |
+
 ### Workflow States
 
 | Function Name          | Description                    |
@@ -399,5 +409,5 @@ client.defineJob({
 | Function Name            | Description                            |
 | ------------------------ | -------------------------------------- |
 | `createProjectMilestone` | Creates a project milestone.           |
-| `issuePriorityValues`    | Gets issue priority values and labels.       |
+| `issuePriorityValues`    | Gets issue priority values and labels. |
 | `viewer`                 | Gets the currently authenticated user. |

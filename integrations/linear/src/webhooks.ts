@@ -23,16 +23,8 @@ import {
   WebhooksQueryVariables,
 } from "@linear/sdk/dist/_generated_documents";
 import { WebhookPayloadSchema } from "./schemas";
-import { SerializedLinearOutput } from "./types";
-
-type DeleteWebhookParams = {
-  id: string;
-};
-
-type UpdateWebhookParams = {
-  id: string;
-  input: WebhookUpdateInput;
-};
+import { LinearReturnType } from "./types";
+import { queryProperties } from "./utils";
 
 export class Webhooks {
   runTask: LinearRunTask;
@@ -41,27 +33,21 @@ export class Webhooks {
     this.runTask = runTask;
   }
 
-  create(
-    key: IntegrationTaskKey,
-    params: WebhookCreateInput
-  ): Promise<SerializedLinearOutput<Omit<WebhookPayload, "webhook"> & { webhook: Webhook | undefined }>> {
+  webhook(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<Webhook> {
     return this.runTask(
       key,
       async (client, task, io) => {
-        const payload = await client.createWebhook(params);
-        return serializeLinearOutput({
-          ...payload,
-          webhook: await payload.webhook,
-        });
+        return serializeLinearOutput(await client.webhook(params.id));
       },
       {
-        name: "Create webhook",
+        name: "Get Webhook",
         params,
+        properties: [{ label: "Webhook ID", text: params.id }],
       }
     );
   }
 
-  list(key: IntegrationTaskKey, params?: WebhooksQueryVariables): Promise<SerializedLinearOutput<Webhook[]>> {
+  webhooks(key: IntegrationTaskKey, params?: WebhooksQueryVariables): LinearReturnType<Webhook[]> {
     return this.runTask(
       key,
       async (client, task, io) => {
@@ -74,29 +60,55 @@ export class Webhooks {
         return serializeLinearOutput(hooks);
       },
       {
-        name: "List webhooks",
+        name: "List Webhooks",
         params,
+        properties: queryProperties(params ?? {}),
       }
     );
   }
 
-  delete(key: IntegrationTaskKey, params: DeleteWebhookParams): Promise<SerializedLinearOutput<DeletePayload>> {
+  createWebhook(
+    key: IntegrationTaskKey,
+    params: WebhookCreateInput
+  ): LinearReturnType<Omit<WebhookPayload, "webhook"> & { webhook: Webhook | undefined }> {
+    return this.runTask(
+      key,
+      async (client, task, io) => {
+        const payload = await client.createWebhook({ ...params, allPublicTeams: !params.teamId });
+        return serializeLinearOutput({
+          ...payload,
+          webhook: await payload.webhook,
+        });
+      },
+      {
+        name: "Create Webhook",
+        params,
+        properties: [
+          { label: "Webhook URL", text: params.url },
+          { label: "Resource Types", text: params.resourceTypes.join(", ") },
+        ],
+      }
+    );
+  }
+
+  deleteWebhook(key: IntegrationTaskKey, params: { id: string }): LinearReturnType<DeletePayload> {
     return this.runTask(
       key,
       async (client, task, io) => {
         return serializeLinearOutput(await client.deleteWebhook(params.id));
       },
       {
-        name: "Delete webhook",
+        name: "Delete Webhook",
         params,
+        properties: [{ label: "Webhook ID", text: params.id }],
       }
     );
   }
 
-  update(
+  updateWebhook(
     key: IntegrationTaskKey,
-    params: UpdateWebhookParams
-  ): Promise<SerializedLinearOutput<Omit<WebhookPayload, "webhook"> & { webhook: Webhook | undefined }>> {
+    params: { id: string; input: WebhookUpdateInput }
+  ): LinearReturnType<Omit<WebhookPayload, "webhook"> & { webhook: Webhook | undefined }> {
     return this.runTask(
       key,
       async (client, task) => {
@@ -109,6 +121,13 @@ export class Webhooks {
       {
         name: "Update Webhook",
         params,
+        properties: [
+          { label: "Webhook ID", text: params.id },
+          ...(params.input.url ? [{ label: "Webhook URL", text: params.input.url }] : []),
+          ...(params.input.resourceTypes
+            ? [{ label: "Resource Types", text: params.input.resourceTypes.join(", ") }]
+            : []),
+        ],
       }
     );
   }
@@ -180,7 +199,7 @@ export function createWebhookEventSource(
         );
         if (!hasMissingOptions) return;
 
-        const updatedWebhook = await io.integration.webhooks().update("update-webhook", {
+        const updatedWebhook = await io.integration.updateWebhook("update-webhook", {
           id: webhookData.data.webhook.id,
           input: {
             label,
@@ -197,11 +216,11 @@ export function createWebhookEventSource(
       }
 
       // check for existing hooks that match url
-      const listResponse = await io.integration.webhooks().list("list-webhooks");
+      const listResponse = await io.integration.webhooks("list-webhooks");
       const existingWebhook = listResponse.find((w) => w.url === httpSource.url);
 
       if (existingWebhook) {
-        const updatedWebhook = await io.integration.webhooks().update("update-webhook", {
+        const updatedWebhook = await io.integration.updateWebhook("update-webhook", {
           id: existingWebhook.id,
           input: {
             label,
@@ -217,8 +236,7 @@ export function createWebhookEventSource(
         };
       }
 
-      const createPayload = await io.integration.webhooks().create("create-webhook", {
-        allPublicTeams: !params.teamId,
+      const createPayload = await io.integration.createWebhook("create-webhook", {
         label,
         resourceTypes: allEvents,
         secret: httpSource.secret,
