@@ -43,7 +43,6 @@ export class Airtable implements TriggerIntegration {
     this._options = options;
   }
 
-  // @internal
   get authSource() {
     return this._options.token ? ("LOCAL" as const) : ("HOSTED" as const);
   }
@@ -52,7 +51,6 @@ export class Airtable implements TriggerIntegration {
     return this._options.id;
   }
 
-  // @internal
   get metadata() {
     return { id: "airtable", name: "Airtable" };
   }
@@ -61,7 +59,6 @@ export class Airtable implements TriggerIntegration {
     return createWebhookEventSource(this);
   }
 
-  // @internal
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
     const airtable = new Airtable(this._options);
     airtable._io = io;

@@ -68,7 +68,6 @@ export class Plain implements TriggerIntegration {
     return this.options.id;
   }
 
-  // @internal
   get metadata() {
     return { id: "plain", name: "Plain.com" };
   }

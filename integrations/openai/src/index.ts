@@ -58,12 +58,10 @@ export class OpenAI implements TriggerIntegration {
     });
   }
 
-  // @internal
   get authSource() {
     return "LOCAL" as const;
   }
 
-  // @internal
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
     const apiKey = this._options.apiKey ?? auth?.accessToken;
 
@@ -87,7 +85,6 @@ export class OpenAI implements TriggerIntegration {
     return this.options.id;
   }
 
-  // @internal
   get metadata() {
     return { id: "openai", name: "OpenAI" };
   }

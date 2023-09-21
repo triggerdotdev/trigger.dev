@@ -289,7 +289,6 @@ export class SupabaseManagement implements TriggerIntegration {
     return this.options.id;
   }
 
-  // @internal
   get metadata() {
     return { id: "supabase-management", name: "Supabase Management API" };
   }
@@ -298,7 +297,6 @@ export class SupabaseManagement implements TriggerIntegration {
     return createWebhookEventSource(this);
   }
 
-  // @internal
   get authSource() {
     if ("apiKey" in this._options) {
       return "LOCAL";
@@ -307,7 +305,6 @@ export class SupabaseManagement implements TriggerIntegration {
     return "HOSTED" as const;
   }
 
-  // @internal
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
     const supabase = new SupabaseManagement(this._options);
     supabase._io = io;

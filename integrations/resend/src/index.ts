@@ -63,16 +63,10 @@ export class Resend implements TriggerIntegration {
     this._options = options;
   }
 
-  /**
-   * @internal
-   */
   get authSource() {
     return this._options.apiKey ? ("LOCAL" as const) : ("HOSTED" as const);
   }
 
-  /**
-   * @internal
-   */
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
     const apiKey = this._options.apiKey ?? auth?.accessToken;
 
@@ -93,7 +87,6 @@ export class Resend implements TriggerIntegration {
     return this._options.id;
   }
 
-  // @internal
   get metadata() {
     return { id: "resend", name: "Resend.com" };
   }

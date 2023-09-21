@@ -75,12 +75,10 @@ export class Stripe implements TriggerIntegration {
       : undefined;
   }
 
-  // @internal
   get authSource() {
     return "LOCAL" as const;
   }
 
-  // @internal
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
     const apiKey = this._options.apiKey ?? auth?.accessToken;
 
@@ -112,7 +110,6 @@ export class Stripe implements TriggerIntegration {
     return this.options.id;
   }
 
-  // @internal
   get metadata() {
     return { id: "stripe", name: "Stripe" };
   }

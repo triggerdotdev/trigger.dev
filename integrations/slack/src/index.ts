@@ -60,7 +60,6 @@ export class Slack implements TriggerIntegration {
     this._options = options;
   }
 
-  // @internal
   get authSource() {
     return "HOSTED" as const;
   }
@@ -69,12 +68,10 @@ export class Slack implements TriggerIntegration {
     return this.options.id;
   }
 
-  // @internal
   get metadata() {
     return { id: "slack", name: "Slack.com" };
   }
 
-  // @internal
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
     const slack = new Slack(this._options);
     slack._io = io;

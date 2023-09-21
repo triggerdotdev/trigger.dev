@@ -50,7 +50,6 @@ export class Typeform implements TriggerIntegration {
     this._options = options;
   }
 
-  // @internal
   get authSource() {
     return "LOCAL" as const;
   }
@@ -59,12 +58,10 @@ export class Typeform implements TriggerIntegration {
     return this.options.id;
   }
 
-  // @internal
   get metadata() {
     return { id: "typeform", name: "Typeform" };
   }
 
-  // @internal
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
     const token = this._options.token ?? auth?.accessToken;
 

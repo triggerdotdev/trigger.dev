@@ -99,17 +99,14 @@ export class Github implements TriggerIntegration {
     return this.options.id;
   }
 
-  // @internal
   get metadata() {
     return { name: "GitHub", id: "github" };
   }
 
-  // @internal
   get authSource() {
     return this._options.token ? ("LOCAL" as const) : ("HOSTED" as const);
   }
 
-  // @internal
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
     const github = new Github(this._options);
     github._io = io;
