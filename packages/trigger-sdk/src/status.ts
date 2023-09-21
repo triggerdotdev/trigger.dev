@@ -1,7 +1,6 @@
-import { DisplayProperty, StatusUpdate } from "@trigger.dev/core/schemas";
+import { DisplayProperty, StatusUpdate } from "@trigger.dev/core";
 import { IntegrationTaskKey } from "./integrations";
 import { IO } from "./io";
-import { TriggerClient } from "./triggerClient";
 
 export class TriggerStatus {
   constructor(
