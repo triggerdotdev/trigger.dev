@@ -80,7 +80,7 @@ export const GetRunSchema = RunSchema.extend({
   /** The tasks from the run */
   tasks: z.array(RunTaskWithSubtasksSchema),
   /** Any status updates that were published from the run */
-  statuses: z.array(JobRunStatusRecordSchema),
+  statuses: z.array(JobRunStatusRecordSchema).default([]),
   /** If there are more tasks, you can use this to get them */
   nextCursor: z.string().optional(),
 });
