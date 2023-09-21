@@ -16,13 +16,13 @@ const github = new Github({
   token: process.env["GITHUB_API_KEY"]!,
 });
 
-const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
+const dynamicOnIssueOpenedTrigger = client.defineDynamicTrigger({
   id: "github-issue-opened",
   event: events.onIssueOpened,
   source: github.sources.repo,
 });
 
-const dynamicUserTrigger = new DynamicTrigger(client, {
+const dynamicUserTrigger = client.defineDynamicTrigger({
   id: "dynamic-user-trigger",
   event: events.onIssueOpened,
   source: github.sources.repo,

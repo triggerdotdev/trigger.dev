@@ -683,6 +683,7 @@ export type RegisterTriggerBodyV1 = z.infer<typeof RegisterTriggerBodySchemaV1>;
 export const RegisterTriggerBodySchemaV2 = z.object({
   rule: EventRuleSchema,
   source: SourceMetadataV2Schema,
+  accountId: z.string().optional(),
 });
 
 export type RegisterTriggerBodyV2 = z.infer<typeof RegisterTriggerBodySchemaV2>;

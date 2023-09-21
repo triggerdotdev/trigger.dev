@@ -1,14 +1,10 @@
 ---
-title: "DynamicTrigger: Constructor"
-sidebarTitle: "Constructor"
-description: "The `DynamicTrigger()` constructor creates a new [DynamicTrigger](/sdk/dynamictrigger/overview) instance."
+title: "defineDynamicTrigger()"
+description: "Define a Dynamic Trigger"
 ---
 
 ## Parameters
 
-<ResponseField name="client" type="TriggerClient" required>
-  The `TriggerClient` instance to use for registering the trigger.
-</ResponseField>
 <ResponseField name="options" type="DynamicTriggerOptions" required>
   The options for the dynamic trigger.
   <Expandable title="options" defaultOpen>
@@ -31,8 +27,8 @@ description: "The `DynamicTrigger()` constructor creates a new [DynamicTrigger](
 
 <RequestExample>
 
-```typescript
-const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
+```ts example
+const dynamicOnIssueOpenedTrigger = client.defineDynamicTrigger({
   id: "github-issue-opened",
   event: events.onIssueOpened,
   source: github.sources.repo,

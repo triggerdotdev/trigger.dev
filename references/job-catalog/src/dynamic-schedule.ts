@@ -1,5 +1,5 @@
-import { DynamicSchedule, TriggerClient, eventTrigger } from "@trigger.dev/sdk";
 import { createExpressServer } from "@trigger.dev/express";
+import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
 import { z } from "zod";
 
 export const client = new TriggerClient({
@@ -10,7 +10,7 @@ export const client = new TriggerClient({
   ioLogLocalEnabled: true,
 });
 
-const dynamicSchedule = new DynamicSchedule(client, {
+const dynamicSchedule = client.defineDynamicSchedule({
   id: "dynamic-interval",
 });
 

@@ -12,7 +12,7 @@ Sometimes you don't know when you write the code what the trigger or schedule wi
 
 ```typescript
 //1. create a DynamicSchedule
-const dynamicSchedule = new DynamicSchedule(client, {
+const dynamicSchedule = client.defineDynamicSchedule({
   id: "dynamicinterval",
 });
 
@@ -53,15 +53,18 @@ client.defineJob({
     }),
   }),
   run: async (payload, io, ctx) => {
-    //6. Register the DynamicSchedule
-    await io.registerInterval("📆", dynamicSchedule, payload.userId, {
-      seconds: payload.seconds,
+    //6. Register the DynamicSchedule (this will automatically create a task)
+    await dynamicSchedule.register(userId, {
+      type: "cron",
+      options: {
+        cron: userSchedule,
+      },
     });
 
     await io.wait("wait", 60);
 
-    //7. Unregister the DynamicSchedule if you want
-    await io.unregisterInterval("❌📆", dynamicSchedule, payload.id);
+    //7. Unregister the DynamicSchedule if you want (this will automatically create a task)
+    await dynamicSchedule.unregister(userId);
   },
 });
 ```
@@ -70,7 +73,7 @@ client.defineJob({
 
 ```typescript
 //1. create a DynamicTrigger
-const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
+const dynamicOnIssueOpenedTrigger = client.defineDynamicTrigger({
   id: "github-issue-opened",
   event: events.onIssueOpened,
   source: github.sources.repo,
@@ -96,7 +99,7 @@ client.defineJob({
 //3. Register the DynamicTrigger anywhere in your app
 async function registerRepo(owner: string, repo: string) {
   //the first param (key) should be unique
-  await dynamicOnIssueOpenedTrigger.register(`${owner}/${repo}`, {
+  await dynamicOnIssueOpenedTrigger.register(`${owner}-${repo}`, {
     owner,
     repo,
   });
@@ -114,15 +117,10 @@ client.defineJob({
   }),
   run: async (payload, io, ctx) => {
     //6. Register the dynamic trigger so you get notified when an issue is opened
-    return await io.registerTrigger(
-      "register-repo",
-      dynamicOnIssueOpenedTrigger,
-      payload.repository.name,
-      {
-        owner: payload.repository.owner.login,
-        repo: payload.repository.name,
-      }
-    );
+    await dynamicOnIssueOpenedTrigger.register(`${owner}-${repo}`, {
+      owner,
+      repo,
+    });
   },
 });
 ```

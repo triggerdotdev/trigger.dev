@@ -37,7 +37,7 @@ import { IO } from "./io";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { Job, JobOptions } from "./job";
 import { runLocalStorage } from "./runLocalStorage";
-import { DynamicTrigger } from "./triggers/dynamic";
+import { DynamicTrigger, DynamicTriggerOptions } from "./triggers/dynamic";
 import { EventTrigger } from "./triggers/eventTrigger";
 import { ExternalSource } from "./triggers/externalSource";
 import { DynamicIntervalOptions, DynamicSchedule } from "./triggers/scheduled";
@@ -436,6 +436,15 @@ export class TriggerClient {
     return new DynamicSchedule(this, options);
   }
 
+  defineDynamicTrigger<
+    TEventSpec extends EventSpecification<any>,
+    TExternalSource extends ExternalSource<any, any, any>,
+  >(
+    options: DynamicTriggerOptions<TEventSpec, TExternalSource>
+  ): DynamicTrigger<TEventSpec, TExternalSource> {
+    return new DynamicTrigger(this, options);
+  }
+
   attach(job: Job<Trigger<any>, any>): void {
     this.#registeredJobs[job.id] = job;
 
@@ -445,7 +454,7 @@ export class TriggerClient {
   attachDynamicTrigger(trigger: DynamicTrigger<any, any>): void {
     this.#registeredDynamicTriggers[trigger.id] = trigger;
 
-    new Job(this, {
+    this.defineJob({
       id: dynamicTriggerRegisterSourceJobId(trigger.id),
       name: `Register dynamic trigger ${trigger.id}`,
       version: trigger.source.version,

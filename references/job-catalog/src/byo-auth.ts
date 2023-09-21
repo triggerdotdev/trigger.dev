@@ -4,6 +4,7 @@ import { Resend } from "@trigger.dev/resend";
 import { Stripe } from "@trigger.dev/stripe";
 import { Slack } from "@trigger.dev/slack";
 import { OpenAI } from "@trigger.dev/openai";
+import { Github, events } from "@trigger.dev/github";
 import { Clerk } from "@clerk/backend";
 
 const clerk = Clerk({ apiKey: process.env.CLERK_API_KEY });
@@ -22,6 +23,7 @@ const stripe = new Stripe({
 });
 const slack = new Slack({ id: "slack" });
 const openai = new OpenAI({ id: "openai" });
+const github = new Github({ id: "github" });
 
 client.defineAuthResolver(resend, async (ctx, integration) => {
   return {
@@ -39,6 +41,13 @@ client.defineAuthResolver(stripe, async (ctx, integration) => {
   return {
     type: "apiKey",
     token: process.env.STRIPE_API_KEY!,
+  };
+});
+
+client.defineAuthResolver(github, async (ctx, integration) => {
+  return {
+    type: "apiKey",
+    token: process.env.GITHUB_PAT!,
   };
 });
 
@@ -109,15 +118,69 @@ client.defineJob({
     name: "register.interval",
   }),
   run: async (payload, io, ctx) => {
-    await slack.postMessage("🤖", {
-      text: "asdas",
-      channel: "Asdas",
-    });
-
-    await dynamicInterval.register("schedule_123", {
+    await dynamicInterval.register("schedule_1235", {
       type: "interval",
-      options: { seconds: 3600 }, // runs every hour
-      accountId: "user_123", // associate runs triggered by this schedule with user_123
+      options: { seconds: payload.seconds }, // runs X seconds
+      accountId: "user_1235", // associate runs triggered by this schedule with user_123
+    });
+  },
+});
+
+client.defineJob({
+  id: "use-interval",
+  name: "Use Interval",
+  version: "0.0.1",
+  trigger: dynamicInterval,
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Running interval", { ctx });
+  },
+});
+
+const dynamicOnIssueOpenedTrigger = client.defineDynamicTrigger({
+  id: "github-issue-opened",
+  event: events.onIssueOpened,
+  source: github.sources.repo,
+});
+
+client.defineJob({
+  id: "register-issue-opened",
+  name: "Register Issue Opened for Account",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "register.issue.opened",
+  }),
+  run: async (payload, io, ctx) => {
+    await dynamicOnIssueOpenedTrigger.register(
+      payload.id,
+      {
+        owner: payload.owner,
+        repo: payload.repo,
+      },
+      {
+        accountId: payload.accountId,
+      }
+    );
+  },
+});
+
+client.defineJob({
+  id: "dynamic-issue-opened",
+  name: "Dynamic Issue Opened for Account",
+  version: "0.0.1",
+  trigger: dynamicOnIssueOpenedTrigger,
+  integrations: {
+    github,
+  },
+  run: async (payload, io, ctx) => {
+    await io.github.issues.createComment("create-issue-comment", {
+      owner: payload.repository.owner.login,
+      repo: payload.repository.name,
+      issueNumber: payload.issue.number,
+      body: `Hello there: \n\n\`\`\`json\n${JSON.stringify(
+        payload,
+        null,
+        2
+      )}\`\`\`\n\n\`\`\`json\n${JSON.stringify(ctx, null, 2)}\`\`\``,
     });
   },
 });

@@ -176,7 +176,7 @@ export class DynamicSchedule implements Trigger<ScheduledEventSpecification> {
     const { io } = runStore;
 
     return await io.runTask(
-      key,
+      [key, "register"],
       async (task) => {
         return this.client.registerSchedule(this.id, key, metadata);
       },
@@ -202,7 +202,7 @@ export class DynamicSchedule implements Trigger<ScheduledEventSpecification> {
     const { io } = runStore;
 
     return await io.runTask(
-      key,
+      [key, "unregister"],
       async (task) => {
         return this.client.unregisterSchedule(this.id, key);
       },

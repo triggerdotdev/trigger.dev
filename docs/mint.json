@@ -276,7 +276,11 @@
                 "sdk/triggerclient/instancemethods/sendevent",
                 "sdk/triggerclient/instancemethods/getevent",
                 "sdk/triggerclient/instancemethods/getruns",
-                "sdk/triggerclient/instancemethods/getrun"
+                "sdk/triggerclient/instancemethods/getrun",
+                "sdk/triggerclient/instancemethods/define-job",
+                "sdk/triggerclient/instancemethods/define-dynamic-trigger",
+                "sdk/triggerclient/instancemethods/define-dynamic-schedule",
+                "sdk/triggerclient/instancemethods/define-auth-resolver"
               ]
             }
           ]

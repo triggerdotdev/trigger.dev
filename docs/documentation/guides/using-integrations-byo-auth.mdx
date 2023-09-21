@@ -331,7 +331,141 @@ await dynamicInterval.register(accountId, {
 
 ## Webhook Triggers
 
-Support for Webhook triggers (i.e. Integration Triggers) is coming soon.
+Running a job with an associated account ID that is triggered by a [Webhook Trigger](/documentation/concepts/triggers/webhook) requires converting to the use of a [Dynamic Trigger](/documentation/concepts/triggers/dynamic#dynamictrigger)
+
+Dynamic Trigger's work very similarly to Dynamic Schedules, but instead of registering schedules, you register triggers:
+
+<Steps>
+  <Step title="Create Dynamic Trigger">
+
+Using the GitHub integration we'll create a Dynamic Trigger that is triggered by the `onIssueOpened` event:
+
+```ts github.ts
+import { Github, events } from "@trigger.dev/github";
+
+const github = new Github({
+  id: "github",
+});
+
+const dynamicOnIssueOpenedTrigger = client.defineDynamicTrigger({
+  id: "github-issue-opened",
+  event: events.onIssueOpened,
+  source: github.sources.repo,
+});
+```
+
+  </Step>
+
+  <Step title="Use the Dynamic Trigger">
+
+Now we'll use the Dynamic Trigger to define a Job that is triggered by it:
+
+```ts github.ts
+client.defineJob({
+  id: "listen-for-dynamic-trigger",
+  name: "Listen for dynamic trigger",
+  version: "0.1.1",
+  trigger: dynamicOnIssueOpenedTrigger,
+  integrations: {
+    github,
+  },
+  run: async (payload, io, ctx) => {
+    await io.github.issues.createComment("create-issue-comment", {
+      owner: payload.repository.owner.login,
+      repo: payload.repository.name,
+      issueNumber: payload.issue.number,
+      body: "First! 🥇",
+    });
+  },
+});
+```
+
+  </Step>
+
+  <Step title="Define Auth Resolver">
+
+Define an Auth Resolver to fetch the GitHub OAuth token from Clerk.com:
+
+```ts github.ts
+client.defineAuthResolver(github, async (ctx) => {
+  if (!ctx.account?.id) {
+    return;
+  }
+
+  const tokens = await clerk.users.getUserOauthAccessToken(ctx.account.id, "oauth_github");
+
+  if (tokens.length === 0) {
+    throw new Error(`Could not find GitHub auth for account ${ctx.account.id}`);
+  }
+
+  return {
+    type: "oauth",
+    token: tokens[0].token,
+  };
+});
+```
+
+<Note>
+  If you are using clerk, you'll probably want to [Add additional
+  scopes](https://clerk.com/docs/authentication/social-connections/oauth#request-additional-o-auth-scopes-after-sign-up)
+  to be able to do useful things with the GitHub integration. For example, if you plan on
+  registering GitHub triggers you'll need `write:repo_hook` and `read:repo_hook` or just
+  `admin:repo_hook`. If you want to create issues you'll need `repo` or `public_repo`.
+</Note>
+
+  </Step>
+
+  <Step title="Register a new trigger">
+  
+  Finally, we can register a new Trigger at "runtime", either inside another Job run or in your backend:
+
+```ts github.ts
+// Register inside another job run:
+client.defineJob({
+  id: "register-issue-opened",
+  name: "Register Issue Opened for Account",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "register.issue.opened",
+  }),
+  run: async (payload, io, ctx) => {
+    // This will automatically create a task in this run with the `payload.id` as the Task Key.
+    await dynamicOnIssueOpenedTrigger.register(
+      payload.id,
+      {
+        owner: payload.owner,
+        repo: payload.repo,
+      },
+      {
+        accountId: payload.accountId,
+      }
+    );
+  },
+});
+
+// Register in your backend:
+// This skips creating a Task since it's outside a job and will just call our backend API directly
+async function registerIssueOpenedTrigger(
+  id: string,
+  owner: string,
+  repo: string,
+  accountId?: string
+) {
+  return await dynamicOnIssueOpenedTrigger.register(
+    id,
+    {
+      owner,
+      repo,
+    },
+    {
+      accountId,
+    }
+  );
+}
+```
+
+  </Step>
+</Steps>
 
 # Testing jobs with Account ID
 
