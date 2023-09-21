@@ -22,32 +22,7 @@ Trigger.dev works with either the Pages or App Router configuration.
 
 <Step title="Run the CLI `dev` command">
 
-The CLI `dev` command allows the Trigger.dev service to send messages to your site. This is required for registering Jobs, triggering them and running tasks. To achieve this it creates a tunnel (using [ngrok](https://ngrok.com/)) so Trigger.dev can send messages to your machine.
-
-You should leave the `dev` command running when you're developing.
-
-In a **new terminal window or tab** run:
-
-<CodeGroup>
-
-```bash npm
-npx @trigger.dev/cli@latest dev
-```
-
-```bash pnpm
-pnpm dlx @trigger.dev/cli@latest dev
-```
-
-```bash yarn
-yarn dlx @trigger.dev/cli@latest dev
-```
-
-</CodeGroup>
-<br />
-<Note>
-  You can optionally pass the port if you're not running on the default port by adding
-  `--port 3001` to the end.
-</Note>
+<Snippet file="quickstart-cli-dev.mdx" />
 
 <AccordionGroup>
 <Accordion title="Experiencing an error? This could be due to middleware.">
@@ -111,23 +86,4 @@ If you navigate to your Trigger.dev project you will see this Job in the "Jobs" 
 
 </Steps>
 
-## What's next?
-
-<CardGroup cols={2}>
-  <Card title="Write your first Job" icon="hexagon-plus" href="/documentation/guides/create-a-job">
-    A Guide for how to create your first real Job
-  </Card>
-  <Card
-    title="What is Trigger.dev"
-    icon="wand-magic-sparkles"
-    href="/documentation/concepts/what-is-triggerdotdev"
-  >
-    Learn more about how Trigger.dev works and how it can help you.
-  </Card>
-  <Card title="Examples" icon="slot-machine" href="/examples">
-    One of the quickest ways to learn how Trigger.dev works is to view some example Jobs.
-  </Card>
-  <Card title="Get help" icon="hire-a-helper" href="/documentation/get-help">
-    Struggling getting setup or have a question? We're here to help.
-  </Card>
-</CardGroup>
+<Snippet file="quickstart-whats-next.mdx" />
