@@ -1,0 +1,140 @@
+---
+title: "Automatic React hooks"
+description: "These allow you to show Run and Task progress without adding extra code to your Jobs."
+---
+
+## The data you can receive
+
+- Info about an event you sent, including the Runs it triggered.
+- The overall status of the Run (in progress, success and fail statuses).
+- Metadata like start and completed times.
+- The Run output (what is returned or an error that failed the Job)
+- Information about the Tasks that have completed/failed/are running.
+
+## The hooks
+
+- [useEventDetails](/sdk/react/useeventdetails): get the details of a specific event
+- [useRunDetails](/sdk/react/userundetails): get the details of a specific Run
+- [useEventRunDetails](/sdk/react/useeventrundetails): get the details of a Run triggered from a specific event
+
+All of these hooks will automatically refresh your components as the state of your Runs or events change.
+
+#### useEventDetails
+
+The `useEventDetails` hook will get the details of a specific event. You can use this to show the status of a specific event.
+
+<Snippet file="how-to-get-event-id.mdx" />
+
+This component will show the details of an event and the overall status of Runs that were triggered by the event:
+
+```tsx
+import { useEventDetails } from "@trigger.dev/react";
+
+export default function EventDetails({ eventId }: { eventId: string }) {
+  const { data, error } = useEventDetails(eventId);
+
+  if (error) {
+    return <div>Error: {error.message}</div>;
+  }
+
+  if (!data) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <h1>{data.name}</h1>
+      <p>Runs: {data.runs?.length}</p>
+      <div>
+        {data.runs?.map((run) => (
+          <div key={run.id}>
+            <p>
+              Run {run.id}: {run.status}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+#### useRunDetails
+
+The `useRunDetails` hook will get the details of a specific Run. You can use this to show the status of a specific Run.
+
+<Snippet file="how-to-get-run-id.mdx" />
+
+This component will show the details of a Run and the status of each task in the Run:
+
+```tsx
+import { useRunDetails } from "@trigger.dev/react";
+
+export default function RunDetails({ runId }: { runId: string }) {
+  const { data, error } = useRunDetails(runId);
+
+  if (error) {
+    return <div>Error: {error.message}</div>;
+  }
+
+  if (!data) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <h1>Run {data.id}</h1>
+      <p>Status: {data.status}</p>
+      <div>
+        {data.tasks?.map((task) => (
+          <div key={task.id}>
+            <p>
+              Task {task.id}: {task.status}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+#### useEventRunDetails
+
+The `useEventRunDetails` hook will get the details of a specific Run that was triggered by a specific event. You can use this to show the status of a specific Run.
+
+<Snippet file="how-to-get-event-id.mdx" />
+
+This component will show the details of a Run and the status of each task in the Run:
+
+```tsx
+import { useEventRunDetails } from "@trigger.dev/react";
+
+export default function EventRunDetails({ eventId }: { eventId: string }) {
+  const { data, error } = useEventRunDetails(eventId);
+
+  if (error) {
+    return <div>Error: {error.message}</div>;
+  }
+
+  if (!data) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <h1>Run {data.id}</h1>
+      <p>Status: {data.status}</p>
+      <div>
+        {data.tasks?.map((task) => (
+          <div key={task.id}>
+            <p>
+              Task {task.id}: {task.status}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
