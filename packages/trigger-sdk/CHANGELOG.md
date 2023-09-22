@@ -1,5 +1,18 @@
 # @trigger.dev/sdk
 
+## 2.1.4
+
+### Patch Changes
+
+- ad14983e: You can create statuses in your Jobs that can then be read using React hooks
+- 15f17d27: First release of `@trigger.dev/linear` integration. `io.runTask()` error handlers can now prevent further retries.
+- 50137a6f: Decouple zod
+- c0dfa804: Add support for Bring Your Own Auth
+- Updated dependencies [ad14983e]
+- Updated dependencies [50137a6f]
+- Updated dependencies [c0dfa804]
+  - @trigger.dev/core@2.1.4
+
 ## 2.1.3
 
 ### Patch Changes
