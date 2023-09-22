@@ -990,7 +990,6 @@ importers:
       uuid: ^9.0.0
       ws: ^8.11.0
       zod: 3.21.4
-      zod-error: 1.5.0
     dependencies:
       '@trigger.dev/core': link:../core
       chalk: 5.2.0
@@ -1007,7 +1006,6 @@ importers:
       uuid: 9.0.0
       ws: 8.12.0
       zod: 3.21.4
-      zod-error: 1.5.0
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/debug': 4.1.7

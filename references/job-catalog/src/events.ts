@@ -58,51 +58,18 @@ client.defineJob({
 });
 
 client.defineJob({
-  id: "example-job",
-  name: "Example Job: a joke with a delay",
+  id: "zod-schema",
+  name: "Job with Zod Schema",
   version: "0.0.2",
   trigger: eventTrigger({
-    name: "shayan.event",
+    name: "zod.schema",
     schema: z.object({
       userId: z.string(),
       delay: z.number(),
     }),
   }),
   run: async (payload, io, ctx) => {
-    await io.wait("sleeping", payload.delay);
-
-    await io.runTask(
-      "init",
-      async () => {
-        console.log("init function ran", payload.userId);
-      },
-      { name: "init" }
-    );
-
-    await io.runTask(
-      "failable",
-      async (task) => {
-        if (task.attempts > 2) {
-          console.log("task succeeded");
-          return {
-            ok: true,
-          };
-        }
-        console.log("task failed");
-        throw new Error(`Task failed on ${task.attempts} attempt(s)`);
-      },
-      { name: "task-1", retry: { limit: 3 } }
-    );
-
-    await io.runTask(
-      "log",
-      async () => {
-        console.log("hello from the job", payload.userId);
-      },
-      {
-        name: "log",
-      }
-    );
+    await io.logger.info("Hello World", { ctx, payload });
   },
 });
 
