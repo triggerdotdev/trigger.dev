@@ -58,7 +58,6 @@ export class DynamicTrigger<
     client.attachDynamicTrigger(this);
   }
 
-  // @internal
   toJSON(): TriggerMetadata {
     return {
       type: "dynamic",
