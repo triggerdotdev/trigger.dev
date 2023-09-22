@@ -1,0 +1,33 @@
+{
+  "private": true,
+  "workspaces": {
+    "packages": [
+      "api",
+      "web",
+      "../../packages/redwood",
+      "../../packages/trigger-sdk",
+      "../../config-packages/tsconfig",
+      "../../packages/core",
+      "../../packages/cli"
+    ]
+  },
+  "dependencies": {
+    "@trigger.dev/redwood": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@redwoodjs/core": "6.2.1"
+  },
+  "eslintConfig": {
+    "extends": "@redwoodjs/eslint-config",
+    "root": true
+  },
+  "engines": {
+    "node": "=18.x",
+    "yarn": ">=1.15"
+  },
+  "prisma": {
+    "seed": "yarn rw exec seed"
+  },
+  "packageManager": "yarn@3.6.3"
+}
