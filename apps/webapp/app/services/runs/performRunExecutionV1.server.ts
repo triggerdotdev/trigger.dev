@@ -1,6 +1,7 @@
 import {
   CachedTaskSchema,
   RunJobError,
+  RunJobInvalidPayloadError,
   RunJobResumeWithTask,
   RunJobRetryWithTask,
   RunJobSuccess,
@@ -348,6 +349,11 @@ export class PerformRunExecutionV1Service {
 
         break;
       }
+      case "INVALID_PAYLOAD": {
+        await this.#failRunWithInvalidPayloadError(execution, safeBody.data);
+
+        break;
+      }
       default: {
         const _exhaustiveCheck: never = status;
         throw new Error(`Non-exhaustive match for value: ${status}`);
@@ -450,6 +456,15 @@ export class PerformRunExecutionV1Service {
   ) {
     return await $transaction(this.#prismaClient, async (tx) => {
       await this.#failRunExecution(tx, execution, data.issues, "UNRESOLVED_AUTH");
+    });
+  }
+
+  async #failRunWithInvalidPayloadError(
+    execution: FoundRunExecution,
+    data: RunJobInvalidPayloadError
+  ) {
+    return await $transaction(this.#prismaClient, async (tx) => {
+      await this.#failRunExecution(tx, execution, data.errors, "INVALID_PAYLOAD");
     });
   }
 
@@ -572,7 +587,7 @@ export class PerformRunExecutionV1Service {
     prisma: PrismaClientOrTransaction,
     execution: FoundRunExecution,
     output: Record<string, any>,
-    status: "FAILURE" | "ABORTED" | "UNRESOLVED_AUTH" = "FAILURE"
+    status: "FAILURE" | "ABORTED" | "UNRESOLVED_AUTH" | "INVALID_PAYLOAD" = "FAILURE"
   ): Promise<void> {
     const { run } = execution;
 

@@ -1,8 +1,9 @@
 import { EventFilter, TriggerMetadata, deepMergeFilters } from "@trigger.dev/core";
-import { z } from "zod";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
-import { EventSpecification, EventSpecificationExample, Trigger } from "../types";
+import { EventSpecification, EventSpecificationExample, SchemaParser, Trigger } from "../types";
+import { formatSchemaErrors } from "../utils/formatSchemaErrors";
+import { ParsedPayloadSchemaError } from "../errors";
 
 type EventTriggerOptions<TEventSpecification extends EventSpecification<any>> = {
   event: TEventSpecification;
@@ -50,7 +51,7 @@ type TriggerOptions<TEvent> = {
   /** A [Zod](https://trigger.dev/docs/documentation/guides/zod) schema that defines the shape of the event payload.
    * The default is `z.any()` which is `any`.
    * */
-  schema?: z.Schema<TEvent>;
+  schema?: SchemaParser<TEvent>;
   /** You can use this to filter events based on the source. */
   source?: string;
   /** Used to filter which events trigger the Job
@@ -94,7 +95,13 @@ export function eventTrigger<TEvent extends any = any>(
       examples: options.examples,
       parsePayload: (rawPayload: any) => {
         if (options.schema) {
-          return options.schema.parse(rawPayload);
+          const results = options.schema.safeParse(rawPayload);
+
+          if (!results.success) {
+            throw new ParsedPayloadSchemaError(formatSchemaErrors(results.error.issues));
+          }
+
+          return results.data;
         }
 
         return rawPayload as any;

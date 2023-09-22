@@ -31,7 +31,12 @@ import {
   StatusUpdate,
 } from "@trigger.dev/core";
 import { ApiClient } from "./apiClient";
-import { CanceledWithTaskError, ResumeWithTaskError, RetryWithTaskError } from "./errors";
+import {
+  CanceledWithTaskError,
+  ParsedPayloadSchemaError,
+  ResumeWithTaskError,
+  RetryWithTaskError,
+} from "./errors";
 import { TriggerIntegration } from "./integrations";
 import { IO } from "./io";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
@@ -712,6 +717,10 @@ export class TriggerClient {
 
       return { status: "SUCCESS", output };
     } catch (error) {
+      if (error instanceof ParsedPayloadSchemaError) {
+        return { status: "INVALID_PAYLOAD", errors: error.schemaErrors };
+      }
+
       if (error instanceof ResumeWithTaskError) {
         return { status: "RESUME_WITH_TASK", task: error.task };
       }

@@ -39,8 +39,7 @@
     "ulid": "^2.3.0",
     "uuid": "^9.0.0",
     "ws": "^8.11.0",
-    "zod": "3.21.4",
-    "zod-error": "1.5.0"
+    "zod": "3.21.4"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",

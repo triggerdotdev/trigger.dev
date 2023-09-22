@@ -14,6 +14,7 @@ export const RunStatusSchema = z.union([
   z.literal("ABORTED"),
   z.literal("CANCELED"),
   z.literal("UNRESOLVED_AUTH"),
+  z.literal("INVALID_PAYLOAD"),
 ]);
 
 export const RunTaskSchema = z.object({
