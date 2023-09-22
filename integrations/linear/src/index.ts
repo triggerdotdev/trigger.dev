@@ -184,7 +184,7 @@ export class Linear implements TriggerIntegration {
     key: IntegrationTaskKey,
     params: Nullable<QueryVariables> = {}
   ): Promise<Awaited<ReturnType<TTask>>["nodes"]> {
-    const boundTask = task.bind(this);
+    const boundTask = task.bind(this as any);
 
     let edges = await boundTask(`${key}-0`, params);
     let nodes = edges.nodes;
@@ -286,7 +286,7 @@ export class Linear implements TriggerIntegration {
       messageId: string;
       url: string;
       variables?: Omit<
-      L.AttachmentLinkDiscordMutationVariables,
+        L.AttachmentLinkDiscordMutationVariables,
         "channelId" | "issueId" | "messageId" | "url"
       >;
     }
@@ -406,7 +406,7 @@ export class Linear implements TriggerIntegration {
       latest: string;
       url: string;
       variables?: Omit<
-      L.AttachmentLinkSlackMutationVariables,
+        L.AttachmentLinkSlackMutationVariables,
         "channel" | "issueId" | "latest" | "url"
       >;
     }
@@ -2026,4 +2026,4 @@ export const serializeLinearOutput = <T>(obj: T): Prettify<SerializedLinearOutpu
 
 export { events };
 
-export const PaginationOrderBy = L.PaginationOrderBy
+export const PaginationOrderBy = L.PaginationOrderBy;

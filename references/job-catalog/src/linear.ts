@@ -121,20 +121,7 @@ client.defineJob({
     //the same params will be used for all tasks
     const params = { first: 5, orderBy: PaginationOrderBy.UpdatedAt };
 
-    //1. Linear SDK
-    const sdkIssues = await io.linear.runTask("all-issues-via-sdk", async (client) => {
-      const edges = await client.issues(params);
-
-      //this will keep appending nodes until there are no more
-      while (edges.pageInfo.hasNextPage) {
-        await edges.fetchNext();
-      }
-
-      //use serialization helper to remove functions etc
-      return serializeLinearOutput(edges.nodes);
-    });
-
-    //2. Linear integration - no pagination helper
+    //1. Linear integration - no pagination helper
     let edges = await io.linear.issues("get-issues", params);
     let noHelper = edges.nodes;
 
@@ -146,12 +133,12 @@ client.defineJob({
       noHelper = noHelper.concat(edges.nodes);
     }
 
-    //3. Linear integration - with the pagination helper
+    //2. Linear integration - with the pagination helper
     const withHelper = await io.linear.getAll(io.linear.issues, "get-all", params);
 
     return {
       issueCounts: {
-        withSdk: sdkIssues.length,
+        // withSdk: sdkIssues.length,
         noHelper: noHelper.length,
         withHelper: withHelper.length,
       },
