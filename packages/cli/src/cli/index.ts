@@ -10,6 +10,7 @@ import { telemetryClient } from "../telemetry/telemetry";
 import { getVersion } from "../utils/getVersion";
 import { updateCommand } from "../commands/update";
 import { sendEventCommand } from "../commands/sendEvent";
+import { checkApiKeyIsDevServer } from "../utils/getApiKeyType";
 
 export const program = new Command();
 
@@ -195,21 +196,17 @@ export const promptApiKey = async (instanceUrl: string): Promise<string> => {
         return "Please enter your secret dev API key";
       }
 
-      // If they enter a public key like pk_dev_, let them know
-      if (input.startsWith("pk_dev_")) {
-        return "Please enter your secret dev API key, you've entered a public key";
+      const result = checkApiKeyIsDevServer(input);
+
+      if (result.success) {
+        return true;
       }
 
-      // If they enter a prod key (tr_prod_), let them know
-      if (input.startsWith("tr_prod_")) {
-        return "Please enter your secret dev API key, you've entered a production key";
+      if (!result.type) {
+        return "Please enter a valid development API key (should start with tr_dev_)";
       }
 
-      if (!input.startsWith("tr_dev_")) {
-        return "Please enter a valid development API key or leave blank to skip (should start with tr_dev_)";
-      }
-
-      return true;
+      return `Please enter your secret dev API key, you've entered a ${result.type.environment} ${result.type.type} key`;
     },
   });
 
