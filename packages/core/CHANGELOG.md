@@ -1,5 +1,13 @@
 # internal-platform
 
+## 2.1.4
+
+### Patch Changes
+
+- ad14983e: You can create statuses in your Jobs that can then be read using React hooks
+- 50137a6f: Decouple zod
+- c0dfa804: Add support for Bring Your Own Auth
+
 ## 2.1.3
 
 ## 2.1.2

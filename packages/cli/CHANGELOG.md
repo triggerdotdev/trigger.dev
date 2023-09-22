@@ -1,5 +1,12 @@
 # create-trigger
 
+## 2.1.4
+
+### Patch Changes
+
+- 486ed20a: Moved examples to references in the monorepo
+- 1a495272: CLI now supports multiple frameworks (starting with Next.js and Remix)
+
 ## 2.1.3
 
 ## 2.1.2
