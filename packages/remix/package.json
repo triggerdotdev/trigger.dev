@@ -19,7 +19,7 @@
     "./package.json": "./package.json"
   },
   "devDependencies": {
-    "@remix-run/node": "^1.19.3",
+    "@remix-run/server-runtime": "^2.0.0",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/ws": "^8.5.3",
@@ -34,12 +34,13 @@
     "build:tsup": "tsup"
   },
   "peerDependencies": {
-    "@trigger.dev/sdk": "workspace:^2.1.3"
+    "@trigger.dev/sdk": "workspace:^2.1.3",
+    "@remix-run/server-runtime": ">1.19.0"
   },
   "dependencies": {
     "debug": "^4.3.4"
   },
   "engines": {
-    "node": ">=16.8.0"
+    "node": ">=18.0.0"
   }
 }

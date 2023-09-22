@@ -3,6 +3,7 @@ import { InitCommandOptions } from "../commands/init";
 import { nanoid } from "nanoid";
 import { getVersion } from "../utils/getVersion";
 import { DevCommandOptions } from "../commands/dev";
+import { ProjectInstallOptions } from "../frameworks";
 
 const postHogApiKey = "phc_hwYmedO564b3Ik8nhA4Csrb5SueY0EwFJWCbseGwWW";
 
@@ -82,11 +83,26 @@ export class TelemetryClient {
         properties: this.#initProperties(options),
       });
     },
-    createFiles: (options: InitCommandOptions, routerType: "pages" | "app") => {
+    install: (
+      options: InitCommandOptions,
+      framework: string,
+      installOptions: ProjectInstallOptions
+    ) => {
       this.#client.capture({
         distinctId: this.#sessionId,
-        event: "cli_init_create_files",
-        properties: { ...this.#initProperties(options), routerType },
+        event: "cli_init_install",
+        properties: { ...this.#initProperties(options), framework, ...installOptions },
+      });
+    },
+    postInstall: (
+      options: InitCommandOptions,
+      framework: string,
+      installOptions: ProjectInstallOptions
+    ) => {
+      this.#client.capture({
+        distinctId: this.#sessionId,
+        event: "cli_init_post_install",
+        properties: { ...this.#initProperties(options), framework, ...installOptions },
       });
     },
     completed: (options: InitCommandOptions) => {
