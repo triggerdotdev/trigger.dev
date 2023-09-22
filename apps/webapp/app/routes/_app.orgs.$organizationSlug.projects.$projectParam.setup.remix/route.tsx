@@ -25,7 +25,7 @@ import { useProject } from "~/hooks/useProject";
 import { Handle } from "~/utils/handle";
 import { projectSetupPath, trimTrailingSlash } from "~/utils/pathBuilder";
 import { Callout } from "~/components/primitives/Callout";
-import { RunDevCommand, TriggerDevStep } from "~/components/SetupCommands";
+import { InitCommand, RunDevCommand, TriggerDevStep } from "~/components/SetupCommands";
 import { Badge } from "~/components/primitives/Badge";
 
 export const handle: Handle = {
@@ -38,6 +38,8 @@ export default function SetUpRemix() {
   useProjectSetupComplete();
   const devEnvironment = useDevEnvironment();
   invariant(devEnvironment, "Dev environment must be defined");
+  const appOrigin = useAppOrigin();
+
   return (
     <PageGradient>
       <div className="mx-auto max-w-3xl">
@@ -75,28 +77,16 @@ export default function SetUpRemix() {
           <div>
             <StepNumber
               stepNumber="1"
-              title="Follow the steps from the Remix manual installation guide"
+              title="Run the CLI 'init' command in an existing Remix project"
             />
-            <StepContentContainer className="flex flex-col gap-2">
-              <Paragraph className="mt-2">Copy your server API Key to your clipboard:</Paragraph>
-              <div className="mb-2 flex w-full items-center justify-between">
-                <ClipboardField
-                  secure
-                  className="w-fit"
-                  value={devEnvironment.apiKey}
-                  variant={"secondary/medium"}
-                  icon={<Badge variant="outline">Server</Badge>}
-                />
-              </div>
-              <Paragraph>Now follow this guide:</Paragraph>
-              <LinkButton
-                to="https://trigger.dev/docs/documentation/guides/manual/remix"
-                variant="primary/medium"
-                TrailingIcon="external-link"
-              >
-                Manual installation guide
-              </LinkButton>
-              <div className="flex items-start justify-start gap-2"></div>
+            <StepContentContainer>
+              <InitCommand appOrigin={appOrigin} apiKey={devEnvironment.apiKey} />
+
+              <Paragraph spacing variant="small">
+                You’ll notice a new folder in your project called 'jobs'. We’ve added a very simple
+                example Job in <InlineCode variant="extra-small">example.server.ts</InlineCode> to
+                help you get started.
+              </Paragraph>
             </StepContentContainer>
             <StepNumber stepNumber="2" title="Run your Remix app" />
             <StepContentContainer>
