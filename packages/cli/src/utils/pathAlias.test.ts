@@ -10,7 +10,7 @@ describe("javascript config", () => {
     const alias = await getPathAlias({
       projectPath: "",
       isTypescriptProject: false,
-      usesSrcDir: true,
+      extraDirectories: ["src"],
     });
 
     expect(alias).toBeUndefined();
@@ -25,7 +25,7 @@ describe("javascript config", () => {
     const alias = await getPathAlias({
       projectPath: "",
       isTypescriptProject: false,
-      usesSrcDir: true,
+      extraDirectories: ["src"],
     });
 
     expect(alias).toBeUndefined();
@@ -40,7 +40,7 @@ describe("javascript config", () => {
     const alias = await getPathAlias({
       projectPath: "",
       isTypescriptProject: false,
-      usesSrcDir: true,
+      extraDirectories: ["src"],
     });
 
     expect(alias).toBeUndefined();
@@ -57,7 +57,7 @@ describe("javascript config", () => {
     const alias = await getPathAlias({
       projectPath: "",
       isTypescriptProject: false,
-      usesSrcDir: true,
+      extraDirectories: ["src"],
     });
 
     expect(alias).toBeUndefined();
@@ -74,7 +74,7 @@ describe("javascript config", () => {
     const alias = await getPathAlias({
       projectPath: "",
       isTypescriptProject: false,
-      usesSrcDir: true,
+      extraDirectories: ["src"],
     });
 
     expect(alias).toEqual("~");
@@ -91,7 +91,6 @@ describe("javascript config", () => {
     const alias = await getPathAlias({
       projectPath: "",
       isTypescriptProject: false,
-      usesSrcDir: false,
     });
 
     expect(alias).toEqual("~");
@@ -108,7 +107,7 @@ describe("javascript config", () => {
     const alias = await getPathAlias({
       projectPath: "",
       isTypescriptProject: true,
-      usesSrcDir: true,
+      extraDirectories: ["src"],
     });
 
     expect(alias).toEqual("~");
@@ -125,7 +124,6 @@ describe("javascript config", () => {
     const alias = await getPathAlias({
       projectPath: "",
       isTypescriptProject: true,
-      usesSrcDir: false,
     });
 
     expect(alias).toEqual("~");

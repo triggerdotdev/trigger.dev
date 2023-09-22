@@ -4,7 +4,7 @@ import { parse } from "tsconfck";
 
 type Options = { projectPath: string; isTypescriptProject: boolean; extraDirectories?: string[] };
 
-// Find the alias that points to the "src" directory.
+// Find the alias that points to the extra directories, or root if none are specified directory.
 // So for example, the paths object could be:
 // {
 //   "@/*": ["./src/*"]
