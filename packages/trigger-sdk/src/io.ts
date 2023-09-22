@@ -355,6 +355,7 @@ export class IO {
    * @param id A unique id for the interval. This is used to identify and unregister the interval later.
    * @param options The options for the interval.
    * @returns A promise that has information about the interval.
+   * @deprecated Use `DynamicSchedule.register` instead.
    */
   async registerInterval(
     key: string | any[],
@@ -386,6 +387,7 @@ export class IO {
    * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to unregister a schedule on.
    * @param id A unique id for the interval. This is used to identify and unregister the interval later.
+   * @deprecated Use `DynamicSchedule.unregister` instead.
    */
   async unregisterInterval(key: string | any[], dynamicSchedule: DynamicSchedule, id: string) {
     return await this.runTask(
@@ -408,6 +410,7 @@ export class IO {
    * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to register a new schedule on.
    * @param id A unique id for the schedule. This is used to identify and unregister the schedule later.
    * @param options The options for the CRON schedule.
+   * @deprecated Use `DynamicSchedule.register` instead.
    */
   async registerCron(
     key: string | any[],
@@ -439,6 +442,7 @@ export class IO {
    * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to unregister a schedule on.
    * @param id A unique id for the interval. This is used to identify and unregister the interval later.
+   * @deprecated Use `DynamicSchedule.unregister` instead.
    */
   async unregisterCron(key: string | any[], dynamicSchedule: DynamicSchedule, id: string) {
     return await this.runTask(
@@ -461,6 +465,7 @@ export class IO {
    * @param trigger The [DynamicTrigger](https://trigger.dev/docs/sdk/dynamictrigger) to register.
    * @param id A unique id for the trigger. This is used to identify and unregister the trigger later.
    * @param params The params for the trigger.
+   * @deprecated Use `DynamicTrigger.register` instead.
    */
   async registerTrigger<
     TTrigger extends DynamicTrigger<EventSpecification<any>, ExternalSource<any, any, any>>,
@@ -552,7 +557,7 @@ export class IO {
 
     const task = await this._apiClient.runTask(this._id, {
       idempotencyKey,
-      displayKey: typeof key === "string" ? key : undefined,
+      displayKey: typeof key === "string" ? key : key.join("."),
       noop: false,
       ...(options ?? {}),
       parentId,

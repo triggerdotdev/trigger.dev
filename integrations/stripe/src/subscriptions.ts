@@ -3,11 +3,7 @@ import { RetrieveSubscriptionParams, RetrieveSubscriptionResponse, StripeRunTask
 import { omit } from "./utils";
 
 export class Subscriptions {
-  runTask: StripeRunTask;
-
-  constructor(runTask: StripeRunTask) {
-    this.runTask = runTask;
-  }
+  constructor(private runTask: StripeRunTask) {}
 
   /**
    * Retrieves the subscription with the given ID.

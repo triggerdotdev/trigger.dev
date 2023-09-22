@@ -19,6 +19,15 @@
       "name": "Chrome webapp",
       "url": "http://localhost:3030",
       "webRoot": "${workspaceFolder}/apps/webapp/app"
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug BYO Auth",
+      "command": "pnpm run byo-auth",
+      "envFile": "${workspaceFolder}/references/job-catalog/.env",
+      "cwd": "${workspaceFolder}/references/job-catalog",
+      "sourceMaps": true
     }
   ]
 }

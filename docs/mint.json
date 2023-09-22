@@ -151,7 +151,6 @@
             "documentation/guides/manual/fastify"
           ]
         },
-
         "documentation/guides/running-jobs",
         "documentation/guides/jobs/managing",
         {
@@ -168,7 +167,8 @@
           "pages": [
             "documentation/guides/using-integrations",
             "documentation/guides/using-integrations-apikeys",
-            "documentation/guides/using-integrations-oauth"
+            "documentation/guides/using-integrations-oauth",
+            "documentation/guides/using-integrations-byo-auth"
           ]
         },
         {
@@ -277,7 +277,11 @@
                 "sdk/triggerclient/instancemethods/sendevent",
                 "sdk/triggerclient/instancemethods/getevent",
                 "sdk/triggerclient/instancemethods/getruns",
-                "sdk/triggerclient/instancemethods/getrun"
+                "sdk/triggerclient/instancemethods/getrun",
+                "sdk/triggerclient/instancemethods/define-job",
+                "sdk/triggerclient/instancemethods/define-dynamic-trigger",
+                "sdk/triggerclient/instancemethods/define-dynamic-schedule",
+                "sdk/triggerclient/instancemethods/define-auth-resolver"
               ]
             }
           ]
@@ -311,7 +315,10 @@
             "sdk/dynamictrigger/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamictrigger/register", "sdk/dynamictrigger/unregister"]
+              "pages": [
+                "sdk/dynamictrigger/register",
+                "sdk/dynamictrigger/unregister"
+              ]
             }
           ]
         },
@@ -322,7 +329,10 @@
             "sdk/dynamicschedule/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamicschedule/register", "sdk/dynamicschedule/unregister"]
+              "pages": [
+                "sdk/dynamicschedule/register",
+                "sdk/dynamicschedule/unregister"
+              ]
             }
           ]
         },
@@ -343,7 +353,9 @@
     },
     {
       "group": "Overview",
-      "pages": ["examples/introduction"]
+      "pages": [
+        "examples/introduction"
+      ]
     }
   ],
   "footerSocials": {

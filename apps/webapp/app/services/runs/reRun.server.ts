@@ -20,6 +20,7 @@ export class ReRunService {
             version: true,
             job: true,
             event: true,
+            externalAccount: true,
           },
           where: {
             id: runId,
@@ -43,6 +44,13 @@ export class ReRunService {
                 id: existingRun.environment.id,
               },
             },
+            externalAccount: existingRun.externalAccount
+              ? {
+                  connect: {
+                    id: existingRun.externalAccount.id,
+                  },
+                }
+              : undefined,
             eventId: `${existingRun.event.eventId}:retry:${new Date().getTime()}`,
             name: existingRun.event.name,
             timestamp: new Date(),

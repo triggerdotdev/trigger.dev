@@ -68,9 +68,13 @@ export type GitHubReturnType<T extends (params: any) => Promise<{ data: K }>, K 
 >;
 
 export class Github implements TriggerIntegration {
+  // @internal
   private _options: GithubIntegrationOptions;
+  // @internal
   private _client?: Octokit;
+  // @internal
   private _io?: IO;
+  // @internal
   private _connectionKey?: string;
 
   _repoSource: ReturnType<typeof createRepoEventSource>;

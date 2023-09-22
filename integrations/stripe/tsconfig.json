@@ -19,7 +19,8 @@
     "resolveJsonModule": true,
     "lib": ["es2019"],
     "module": "commonjs",
-    "target": "es2021"
+    "target": "es2021",
+    "stripInternal": true
   },
   "include": ["./src/**/*.ts", "tsup.config.ts"],
   "exclude": ["node_modules"]

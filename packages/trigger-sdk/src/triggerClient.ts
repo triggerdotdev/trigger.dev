@@ -9,6 +9,8 @@ import {
   HttpSourceResponseMetadata,
   IndexEndpointResponse,
   InitializeTriggerBodySchema,
+  IntegrationConfig,
+  JobMetadata,
   LogLevel,
   Logger,
   NormalizedResponse,
@@ -34,9 +36,11 @@ import { TriggerIntegration } from "./integrations";
 import { IO } from "./io";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { Job, JobOptions } from "./job";
-import { DynamicTrigger } from "./triggers/dynamic";
+import { runLocalStorage } from "./runLocalStorage";
+import { DynamicTrigger, DynamicTriggerOptions } from "./triggers/dynamic";
 import { EventTrigger } from "./triggers/eventTrigger";
 import { ExternalSource } from "./triggers/externalSource";
+import { DynamicIntervalOptions, DynamicSchedule } from "./triggers/scheduled";
 import type {
   EventSpecification,
   Trigger,
@@ -72,6 +76,17 @@ export type TriggerClientOptions = {
   ioLogLocalEnabled?: boolean;
 };
 
+export type AuthResolverResult = {
+  type: "apiKey" | "oauth";
+  token: string;
+  additionalFields?: Record<string, string>;
+};
+
+export type TriggerAuthResolver = (
+  ctx: TriggerContext,
+  integration: TriggerIntegration
+) => Promise<AuthResolverResult | void | undefined>;
+
 /** A [TriggerClient](https://trigger.dev/docs/documentation/concepts/client-adaptors) is used to connect to a specific [Project](https://trigger.dev/docs/documentation/concepts/projects) by using an [API Key](https://trigger.dev/docs/documentation/concepts/environments-apikeys). */
 export class TriggerClient {
   #options: TriggerClientOptions;
@@ -94,6 +109,7 @@ export class TriggerClient {
   > = {};
   #jobMetadataByDynamicTriggers: Record<string, Array<{ id: string; version: string }>> = {};
   #registeredSchedules: Record<string, Array<{ id: string; version: string }>> = {};
+  #authResolvers: Record<string, TriggerAuthResolver> = {};
 
   #client: ApiClient;
   #internalLogger: Logger;
@@ -199,29 +215,8 @@ export class TriggerClient {
         };
       }
       case "INDEX_ENDPOINT": {
-        // if the x-trigger-job-id header is set, we return the job with that id
-        const jobId = request.headers.get("x-trigger-job-id");
-
-        if (jobId) {
-          const job = this.#registeredJobs[jobId];
-
-          if (!job) {
-            return {
-              status: 404,
-              body: {
-                message: "Job not found",
-              },
-            };
-          }
-
-          return {
-            status: 200,
-            body: job.toJSON(),
-          };
-        }
-
         const body: IndexEndpointResponse = {
-          jobs: Object.values(this.#registeredJobs).map((job) => job.toJSON()),
+          jobs: this.#buildJobsIndex(),
           sources: Object.values(this.#registeredSources),
           dynamicTriggers: Object.values(this.#registeredDynamicTriggers).map((trigger) => ({
             id: trigger.id,
@@ -421,6 +416,35 @@ export class TriggerClient {
     };
   }
 
+  defineJob<
+    TTrigger extends Trigger<EventSpecification<any>>,
+    TIntegrations extends Record<string, TriggerIntegration> = {},
+  >(options: JobOptions<TTrigger, TIntegrations>) {
+    return new Job<TTrigger, TIntegrations>(this, options);
+  }
+
+  defineAuthResolver(
+    integration: TriggerIntegration,
+    resolver: TriggerAuthResolver
+  ): TriggerClient {
+    this.#authResolvers[integration.id] = resolver;
+
+    return this;
+  }
+
+  defineDynamicSchedule(options: DynamicIntervalOptions): DynamicSchedule {
+    return new DynamicSchedule(this, options);
+  }
+
+  defineDynamicTrigger<
+    TEventSpec extends EventSpecification<any>,
+    TExternalSource extends ExternalSource<any, any, any>,
+  >(
+    options: DynamicTriggerOptions<TEventSpec, TExternalSource>
+  ): DynamicTrigger<TEventSpec, TExternalSource> {
+    return new DynamicTrigger(this, options);
+  }
+
   attach(job: Job<Trigger<any>, any>): void {
     this.#registeredJobs[job.id] = job;
 
@@ -430,7 +454,7 @@ export class TriggerClient {
   attachDynamicTrigger(trigger: DynamicTrigger<any, any>): void {
     this.#registeredDynamicTriggers[trigger.id] = trigger;
 
-    new Job(this, {
+    this.defineJob({
       id: dynamicTriggerRegisterSourceJobId(trigger.id),
       name: `Register dynamic trigger ${trigger.id}`,
       version: trigger.source.version,
@@ -454,7 +478,6 @@ export class TriggerClient {
           ...updates,
         });
       },
-      // @ts-ignore
       __internal: true,
     });
   }
@@ -534,12 +557,17 @@ export class TriggerClient {
           ...updates,
         });
       },
-      // @ts-ignore
       __internal: true,
     });
   }
 
-  attachDynamicSchedule(key: string, job: Job<Trigger<any>, any>): void {
+  attachDynamicSchedule(key: string): void {
+    const jobs = this.#registeredSchedules[key] ?? [];
+
+    this.#registeredSchedules[key] = jobs;
+  }
+
+  attachDynamicScheduleToJob(key: string, job: Job<Trigger<any>, any>): void {
     const jobs = this.#registeredSchedules[key] ?? [];
 
     jobs.push({ id: job.id, version: job.version });
@@ -629,10 +657,14 @@ export class TriggerClient {
     };
   }
 
-  async #executeJob(body: RunJobBody, job: Job<Trigger<any>, any>): Promise<RunJobResponse> {
+  async #executeJob(
+    body: RunJobBody,
+    job: Job<Trigger<any>, Record<string, TriggerIntegration>>
+  ): Promise<RunJobResponse> {
     this.#internalLogger.debug("executing job", {
       execution: body,
-      job: job.toJSON(),
+      job: job.id,
+      version: job.version,
     });
 
     const context = this.#createRunContext(body);
@@ -650,18 +682,33 @@ export class TriggerClient {
         : undefined,
     });
 
+    const resolvedConnections = await this.#resolveConnections(
+      context,
+      job.options.integrations,
+      body.connections
+    );
+
+    if (!resolvedConnections.ok) {
+      return {
+        status: "UNRESOLVED_AUTH_ERROR",
+        issues: resolvedConnections.issues,
+      };
+    }
+
     const ioWithConnections = createIOWithIntegrations(
       io,
-      body.connections,
+      resolvedConnections.data,
       job.options.integrations
     );
 
     try {
-      const output = await job.options.run(
-        job.trigger.event.parsePayload(body.event.payload ?? {}),
-        ioWithConnections,
-        context
-      );
+      const output = await runLocalStorage.runWith({ io, ctx: context }, () => {
+        return job.options.run(
+          job.trigger.event.parsePayload(body.event.payload ?? {}),
+          ioWithConnections,
+          context
+        );
+      });
 
       return { status: "SUCCESS", output };
     } catch (error) {
@@ -866,11 +913,191 @@ export class TriggerClient {
     };
   }
 
-  defineJob<
-    TTrigger extends Trigger<EventSpecification<any>>,
-    TIntegrations extends Record<string, TriggerIntegration> = {},
-  >(options: JobOptions<TTrigger, TIntegrations>) {
-    return new Job<TTrigger, TIntegrations>(this, options);
+  async #resolveConnections(
+    ctx: TriggerContext,
+    integrations?: Record<string, TriggerIntegration>,
+    connections?: Record<string, ConnectionAuth>
+  ): Promise<
+    | { ok: true; data: Record<string, ConnectionAuth> }
+    | { ok: false; issues: Record<string, { id: string; error: string }> }
+  > {
+    if (!integrations) {
+      return { ok: true, data: {} };
+    }
+
+    const resolvedAuthResults = await Promise.all(
+      Object.keys(integrations).map(async (key) => {
+        const integration = integrations[key];
+        const auth = (connections ?? {})[key];
+
+        const result = await this.#resolveConnection(ctx, integration, auth);
+
+        if (result.ok) {
+          return {
+            ok: true as const,
+            auth: result.auth,
+            key,
+          };
+        } else {
+          return {
+            ok: false as const,
+            error: result.error,
+            key,
+          };
+        }
+      })
+    );
+
+    const allResolved = resolvedAuthResults.every((result) => result.ok);
+
+    if (allResolved) {
+      return {
+        ok: true,
+        data: resolvedAuthResults.reduce((acc: Record<string, ConnectionAuth>, result) => {
+          acc[result.key] = result.auth!;
+
+          return acc;
+        }, {}),
+      };
+    } else {
+      return {
+        ok: false,
+        issues: resolvedAuthResults.reduce(
+          (acc: Record<string, { id: string; error: string }>, result) => {
+            if (result.ok) {
+              return acc;
+            }
+
+            const integration = integrations[result.key];
+
+            acc[result.key] = { id: integration.id, error: result.error };
+
+            return acc;
+          },
+          {}
+        ),
+      };
+    }
+  }
+
+  async #resolveConnection(
+    ctx: TriggerContext,
+    integration: TriggerIntegration,
+    auth?: ConnectionAuth
+  ): Promise<{ ok: true; auth: ConnectionAuth | undefined } | { ok: false; error: string }> {
+    if (auth) {
+      return { ok: true, auth };
+    }
+
+    const authResolver = this.#authResolvers[integration.id];
+
+    if (!authResolver) {
+      if (integration.authSource === "HOSTED") {
+        return {
+          ok: false,
+          error: `Something went wrong: Integration ${integration.id} is missing auth credentials from Trigger.dev`,
+        };
+      }
+
+      return {
+        ok: true,
+        auth: undefined,
+      };
+    }
+
+    try {
+      const resolvedAuth = await authResolver(ctx, integration);
+
+      if (!resolvedAuth) {
+        return {
+          ok: false,
+          error: `Auth could not be resolved for ${integration.id}: auth resolver returned null or undefined`,
+        };
+      }
+
+      return {
+        ok: true,
+        auth:
+          resolvedAuth.type === "apiKey"
+            ? {
+                type: "apiKey",
+                accessToken: resolvedAuth.token,
+                additionalFields: resolvedAuth.additionalFields,
+              }
+            : {
+                type: "oauth2",
+                accessToken: resolvedAuth.token,
+                additionalFields: resolvedAuth.additionalFields,
+              },
+      };
+    } catch (resolverError) {
+      if (resolverError instanceof Error) {
+        return {
+          ok: false,
+          error: `Auth could not be resolved for ${integration.id}: auth resolver threw. ${resolverError.name}: ${resolverError.message}`,
+        };
+      } else if (typeof resolverError === "string") {
+        return {
+          ok: false,
+          error: `Auth could not be resolved for ${integration.id}: auth resolver threw an error: ${resolverError}`,
+        };
+      }
+
+      return {
+        ok: false,
+        error: `Auth could not be resolved for ${
+          integration.id
+        }: auth resolver threw an unknown error: ${JSON.stringify(resolverError)}`,
+      };
+    }
+  }
+
+  #buildJobsIndex(): IndexEndpointResponse["jobs"] {
+    return Object.values(this.#registeredJobs).map((job) => this.#buildJobIndex(job));
+  }
+
+  #buildJobIndex(job: Job<Trigger<any>, any>): IndexEndpointResponse["jobs"][number] {
+    const internal = job.options.__internal as JobMetadata["internal"];
+
+    return {
+      id: job.id,
+      name: job.name,
+      version: job.version,
+      event: job.trigger.event,
+      trigger: job.trigger.toJSON(),
+      integrations: this.#buildJobIntegrations(job),
+      startPosition: "latest", // job is deprecated, leaving job for now to make sure newer clients work with older servers
+      enabled: job.enabled,
+      preprocessRuns: job.trigger.preprocessRuns,
+      internal,
+    };
+  }
+
+  #buildJobIntegrations(
+    job: Job<Trigger<any>, Record<string, TriggerIntegration>>
+  ): IndexEndpointResponse["jobs"][number]["integrations"] {
+    return Object.keys(job.options.integrations ?? {}).reduce(
+      (acc: Record<string, IntegrationConfig>, key) => {
+        const integration = job.options.integrations![key];
+
+        acc[key] = this.#buildJobIntegration(integration);
+
+        return acc;
+      },
+      {}
+    );
+  }
+
+  #buildJobIntegration(
+    integration: TriggerIntegration
+  ): IndexEndpointResponse["jobs"][number]["integrations"][string] {
+    const authSource = this.#authResolvers[integration.id] ? "RESOLVER" : integration.authSource;
+
+    return {
+      id: integration.id,
+      metadata: integration.metadata,
+      authSource,
+    };
   }
 }
 

@@ -81,13 +81,19 @@ class CreateExternalConnectionService {
     environment: AuthenticatedEnvironment,
     payload: CreateExternalConnectionBody
   ) {
-    const externalAccount = await this.#prismaClient.externalAccount.findUniqueOrThrow({
+    const externalAccount = await this.#prismaClient.externalAccount.upsert({
       where: {
         environmentId_identifier: {
           environmentId: environment.id,
           identifier: accountIdentifier,
         },
       },
+      create: {
+        environmentId: environment.id,
+        organizationId: environment.organizationId,
+        identifier: accountIdentifier,
+      },
+      update: {},
     });
 
     const integration = await this.#prismaClient.integration.findUniqueOrThrow({

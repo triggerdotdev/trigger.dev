@@ -4,11 +4,7 @@ import { OpenAIRunTask } from "./index";
 import { createTaskUsageProperties } from "./taskUtils";
 
 export class Chat {
-  runTask: OpenAIRunTask;
-
-  constructor(runTask: OpenAIRunTask) {
-    this.runTask = runTask;
-  }
+  constructor(private runTask: OpenAIRunTask) {}
 
   completions = {
     create: (

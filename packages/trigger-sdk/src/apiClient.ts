@@ -12,8 +12,8 @@ import {
   LogLevel,
   Logger,
   RegisterScheduleResponseBodySchema,
-  RegisterSourceEventV2,
   RegisterSourceEventSchemaV2,
+  RegisterSourceEventV2,
   RunTaskBodyInput,
   ScheduleMetadata,
   SendEvent,
@@ -21,12 +21,12 @@ import {
   ServerTaskSchema,
   TriggerSource,
   TriggerSourceSchema,
-  urlWithSearchParams,
   UpdateTriggerSourceBodyV2,
   RegisterTriggerBodyV2,
   GetRunStatusesSchema,
   JobRunStatusRecordSchema,
   StatusUpdate,
+  urlWithSearchParams,
 } from "@trigger.dev/core";
 
 import fetch, { type RequestInit } from "node-fetch";

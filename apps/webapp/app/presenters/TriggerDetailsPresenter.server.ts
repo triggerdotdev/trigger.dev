@@ -22,6 +22,11 @@ export class TriggerDetailsPresenter {
             payload: true,
             timestamp: true,
             deliveredAt: true,
+            externalAccount: {
+              select: {
+                identifier: true,
+              },
+            },
           },
         },
       },

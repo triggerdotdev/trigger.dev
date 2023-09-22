@@ -260,9 +260,7 @@ export class ExternalSource<
 }
 
 export type ExternalSourceParams<TExternalSource extends ExternalSource<any, any, any>> =
-  TExternalSource extends ExternalSource<any, infer TParams, any>
-    ? TParams & { filter?: EventFilter }
-    : never;
+  TExternalSource extends ExternalSource<any, infer TParams, any> ? TParams : never;
 
 export type ExternalSourceTriggerOptions<
   TEventSpecification extends EventSpecification<any>,

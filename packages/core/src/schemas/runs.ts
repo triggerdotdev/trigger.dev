@@ -1,4 +1,4 @@
-import { ZodObject, z } from "zod";
+import { z } from "zod";
 import { TaskStatusSchema } from "./tasks";
 import { JobRunStatusRecordSchema } from "./statuses";
 
@@ -13,6 +13,7 @@ export const RunStatusSchema = z.union([
   z.literal("TIMED_OUT"),
   z.literal("ABORTED"),
   z.literal("CANCELED"),
+  z.literal("UNRESOLVED_AUTH"),
 ]);
 
 export const RunTaskSchema = z.object({
