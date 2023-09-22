@@ -66,6 +66,11 @@ export const linear: Integration = {
       },
       scopes: [
         {
+          name: "read",
+          description: "Read access for the user's account. This scope must always be present.",
+          defaultChecked: true,
+        },
+        {
           name: "write",
           description:
             "Grants global write access to the user's account. Use a more targeted scope if you don't need full access.",
@@ -73,7 +78,7 @@ export const linear: Integration = {
         },
 
         {
-          name: "issue:create",
+          name: "issues:create",
           description: "Grants access to create issues and attachments only.",
           annotations: [{ label: "Issues" }],
         },
