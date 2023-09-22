@@ -1,0 +1,42 @@
+{
+  "data": {
+    "id": "4ceeeecb-3442-4972-b27a-4ac7198d4eac",
+    "team": {
+      "id": "0d9e46fb-bf4a-4d7b-9bb0-d5928d8b1c9f",
+      "key": "TRI",
+      "name": "Trigger.dev"
+    },
+    "state": {
+      "id": "6b6fd762-cc10-4da8-9775-dfc0784d2a3b",
+      "name": "Backlog",
+      "type": "backlog",
+      "color": "#bec2c8"
+    },
+    "title": "You know the rules",
+    "labels": [],
+    "number": 10,
+    "teamId": "0d9e46fb-bf4a-4d7b-9bb0-d5928d8b1c9f",
+    "stateId": "6b6fd762-cc10-4da8-9775-dfc0784d2a3b",
+    "trashed": true,
+    "labelIds": [],
+    "priority": 0,
+    "createdAt": "2023-09-17T11:02:48.688Z",
+    "creatorId": "b552c442-62c9-40da-9932-ed8cb6e15a3f",
+    "sortOrder": -81,
+    "updatedAt": "2023-09-17T11:02:48.689Z",
+    "archivedAt": "2023-09-17T11:02:58.487Z",
+    "boardOrder": 0,
+    "description": "And so do I",
+    "priorityLabel": "No priority",
+    "subscriberIds": [
+      "b552c442-62c9-40da-9932-ed8cb6e15a3f"
+    ],
+    "previousIdentifiers": []
+  },
+  "type": "Issue",
+  "action": "remove",
+  "createdAt": "2023-09-17T11:02:58.487Z",
+  "webhookId": "d617c08b-47b6-4b09-a611-2e2f6d8fb99f",
+  "organizationId": "7c0221e0-76d2-45eb-b803-6163c046c534",
+  "webhookTimestamp": "2023-09-17T11:02:58.564Z"
+}
