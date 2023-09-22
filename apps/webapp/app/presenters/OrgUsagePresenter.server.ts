@@ -58,14 +58,14 @@ export class OrgUsagePresenter {
     // ]
     // This will be used to generate the chart on the usage page
     // Use prisma queryRaw for this since prisma doesn't support grouping by month
-    const runsCountLastSixMonthsRaw = await this.#prismaClient.$queryRaw<
+    const chartDataRaw = await this.#prismaClient.$queryRaw<
       {
         month: string;
         count: number;
       }[]
-    >`SELECT TO_CHAR("createdAt", 'YYYY-MM') as month, COUNT(*) as count FROM "JobRun" WHERE "organizationId" = ${organization.id} AND "createdAt" >= NOW() - INTERVAL '6 months' GROUP BY month ORDER BY month ASC`;
+    >`SELECT TO_CHAR("createdAt", 'YYYY-MM') as month, COUNT(*) as count FROM "JobRun" WHERE "organizationId" = ${organization.id} AND "createdAt" >= NOW() - INTERVAL '12 months' GROUP BY month ORDER BY month ASC`;
 
-    const runsCountLastSixMonths = runsCountLastSixMonthsRaw.map((obj) => ({
+    const chartData = chartDataRaw.map((obj) => ({
       name: obj.month,
       total: Number(obj.count), // Convert BigInt to Number
     }));
@@ -143,7 +143,7 @@ export class OrgUsagePresenter {
       id: organization.id,
       runsCount,
       runsCountLastMonth,
-      runsCountLastSixMonths,
+      chartData,
       totalJobs,
       totalJobsLastMonth,
       totalIntegrations,

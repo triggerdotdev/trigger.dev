@@ -187,7 +187,7 @@ export default function Page() {
           <div className="w-1/2 rounded border border-border py-6 pr-2">
             <Header2 className="mb-8 pl-6">Job Runs per month</Header2>
             <ResponsiveContainer width="100%" height={400}>
-              <BarChart data={loaderData.runsCountLastSixMonths}>
+              <BarChart data={loaderData.chartData}>
                 <XAxis
                   dataKey="name"
                   stroke="#888888"
