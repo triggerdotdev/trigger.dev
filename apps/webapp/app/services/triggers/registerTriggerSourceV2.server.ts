@@ -24,7 +24,6 @@ export class RegisterTriggerSourceServiceV2 {
     endpointSlug,
     id,
     key,
-    accountId,
     registrationMetadata,
   }: {
     environment: AuthenticatedEnvironment;
@@ -32,7 +31,6 @@ export class RegisterTriggerSourceServiceV2 {
     id: string;
     endpointSlug: string;
     key: string;
-    accountId?: string;
     registrationMetadata?: any;
   }): Promise<RegisterSourceEventV2 | undefined> {
     const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
@@ -63,7 +61,7 @@ export class RegisterTriggerSourceServiceV2 {
           endpoint.id,
           payload.source,
           dynamicTrigger.id,
-          accountId,
+          payload.accountId,
           { id: key, metadata: registrationMetadata }
         );
 

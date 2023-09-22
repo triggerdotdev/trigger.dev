@@ -1,6 +1,7 @@
 import { Prettify } from "@trigger.dev/integration-kit";
 import {
   Json,
+  retry,
   type ConnectionAuth,
   type IO,
   type IOTask,
@@ -8,18 +9,10 @@ import {
   type RunTaskErrorCallback,
   type RunTaskOptions,
   type TriggerIntegration,
-  retry,
 } from "@trigger.dev/sdk";
 import AirtableSDK from "airtable";
 import { Base } from "./base";
-import * as events from "./events";
-import {
-  WebhookChangeType,
-  WebhookDataType,
-  Webhooks,
-  createTrigger,
-  createWebhookEventSource,
-} from "./webhooks";
+import { Webhooks, createWebhookEventSource } from "./webhooks";
 
 export * from "./types";
 
@@ -33,9 +26,13 @@ export type AirtableIntegrationOptions = {
 export type AirtableRunTask = InstanceType<typeof Airtable>["runTask"];
 
 export class Airtable implements TriggerIntegration {
+  // @internal
   private _options: AirtableIntegrationOptions;
+  // @internal
   private _client?: AirtableSDK;
+  // @internal
   private _io?: IO;
+  // @internal
   private _connectionKey?: string;
 
   constructor(options: Prettify<AirtableIntegrationOptions>) {

@@ -7,10 +7,7 @@ import { logger } from "../logger.server";
 export class IngestSendEvent {
   #prismaClient: PrismaClientOrTransaction;
 
-  constructor(
-    prismaClient: PrismaClientOrTransaction = prisma,
-    private deliverEvents = true
-  ) {
+  constructor(prismaClient: PrismaClientOrTransaction = prisma, private deliverEvents = true) {
     this.#prismaClient = prismaClient;
   }
 
@@ -41,13 +38,19 @@ export class IngestSendEvent {
         this.#prismaClient,
         async (tx) => {
           const externalAccount = options?.accountId
-            ? await tx.externalAccount.findUniqueOrThrow({
+            ? await tx.externalAccount.upsert({
                 where: {
                   environmentId_identifier: {
                     environmentId: environment.id,
                     identifier: options.accountId,
                   },
                 },
+                create: {
+                  environmentId: environment.id,
+                  organizationId: environment.organizationId,
+                  identifier: options.accountId,
+                },
+                update: {},
               })
             : undefined;
 

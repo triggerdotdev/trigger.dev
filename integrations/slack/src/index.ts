@@ -47,9 +47,13 @@ export type ChatPostMessageArguments = {
 };
 
 export class Slack implements TriggerIntegration {
+  // @internal
   private _options: SlackIntegrationOptions;
+  // @internal
   private _client?: WebClient;
+  // @internal
   private _io?: IO;
+  // @internal
   private _connectionKey?: string;
 
   constructor(private options: SlackIntegrationOptions) {

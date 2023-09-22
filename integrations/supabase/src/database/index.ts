@@ -55,9 +55,13 @@ export class Supabase<
     : any,
 > implements TriggerIntegration
 {
+  // @internal
   private _options: SupabaseIntegrationOptions<SchemaName>;
+  // @internal
   private _client?: SupabaseClient<Database, SchemaName, Schema>;
+  // @internal
   private _io?: IO;
+  // @internal
   private _connectionKey?: string;
 
   /**

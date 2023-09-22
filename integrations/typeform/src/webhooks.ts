@@ -12,11 +12,7 @@ import {
 } from ".";
 
 export class Webhooks {
-  runTask: TypeformRunTask;
-
-  constructor(runTask: TypeformRunTask) {
-    this.runTask = runTask;
-  }
+  constructor(private runTask: TypeformRunTask) {}
 
   create(key: IntegrationTaskKey, params: CreateWebhookParams): Promise<GetWebhookResponse> {
     return this.runTask(

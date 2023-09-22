@@ -1,0 +1,29 @@
+---
+title: "defineDynamicSchedule()"
+description: "Define a Dynamic Schedule"
+---
+
+## Parameters
+
+<ResponseField name="options" type="DynamicScheduleOptions" required>
+  The options for the dynamic schedule.
+  <Expandable title="options" defaultOpen>
+    <ResponseField name="id" type="string" required>
+      Used to uniquely identify a DynamicSchedule
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Returns
+
+<ResponseField name="DynamicSchedule instance" type="DynamicSchedule" />
+
+<RequestExample>
+
+```ts example
+const dynamicSchedule = client.defineDynamicSchedule({
+  id: "dynamicinterval",
+});
+```
+
+</RequestExample>

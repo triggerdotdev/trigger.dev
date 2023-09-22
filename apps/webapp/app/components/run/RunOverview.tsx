@@ -167,7 +167,13 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
                 <RunPanelHeader icon={trigger.icon} title={trigger.title} />
                 <RunPanelBody>
                   <RunPanelProperties
-                    properties={[{ label: "Event name", text: run.event.name }, ...run.properties]}
+                    properties={[{ label: "Event name", text: run.event.name }]
+                      .concat(
+                        run.event.externalAccount
+                          ? [{ label: "Account ID", text: run.event.externalAccount.identifier }]
+                          : []
+                      )
+                      .concat(run.properties)}
                   />
                 </RunPanelBody>
               </RunPanel>

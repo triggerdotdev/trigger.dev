@@ -6,11 +6,7 @@ import { issueProperties, repoProperties } from "./propertyHelpers";
 
 type AddIssueLabels = GitHubReturnType<Octokit["rest"]["issues"]["addLabels"]>;
 export class Issues {
-  runTask: GitHubRunTask;
-
-  constructor(runTask: GitHubRunTask) {
-    this.runTask = runTask;
-  }
+  constructor(private runTask: GitHubRunTask) {}
 
   create(
     key: IntegrationTaskKey,

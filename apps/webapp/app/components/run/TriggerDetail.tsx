@@ -45,6 +45,13 @@ export function TriggerDetail({
             />
           )}
           <RunPanelIconProperty icon="id" label="Event name" value={name} />
+          {trigger.externalAccount && (
+            <RunPanelIconProperty
+              icon="account"
+              label="Account ID"
+              value={trigger.externalAccount.identifier}
+            />
+          )}
         </RunPanelIconSection>
         <RunPanelDivider />
         <div className="mt-4 flex flex-col gap-2">

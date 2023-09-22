@@ -34,11 +34,7 @@ type TreeType = {
 };
 
 export class Git {
-  runTask: GitHubRunTask;
-
-  constructor(runTask: GitHubRunTask) {
-    this.runTask = runTask;
-  }
+  constructor(private runTask: GitHubRunTask) {}
 
   createBlob(
     key: IntegrationTaskKey,

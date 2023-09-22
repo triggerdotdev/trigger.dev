@@ -6,7 +6,7 @@ export type StripeSDK = Stripe;
 
 export type StripeIntegrationOptions = {
   id: string;
-  apiKey: string;
+  apiKey?: string;
 
   /**
    * An account id on whose behalf you wish to make every request.

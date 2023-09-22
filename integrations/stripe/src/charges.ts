@@ -2,11 +2,7 @@ import { IntegrationTaskKey } from "@trigger.dev/sdk";
 import { CreateChargeParams, CreateChargeResponse, StripeRunTask } from "./index";
 
 export class Charges {
-  runTask: StripeRunTask;
-
-  constructor(runTask: StripeRunTask) {
-    this.runTask = runTask;
-  }
+  constructor(private runTask: StripeRunTask) {}
 
   /**
    * Use the [Payment Intents API](https://stripe.com/docs/api/payment_intents) to initiate a new payment instead

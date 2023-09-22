@@ -39,6 +39,15 @@ export class TestJobPresenter {
                     payload: true,
                   },
                 },
+                integrations: {
+                  select: {
+                    integration: {
+                      select: {
+                        authSource: true,
+                      },
+                    },
+                  },
+                },
               },
             },
             environment: {
@@ -99,6 +108,9 @@ export class TestJobPresenter {
           ...example,
           payload: JSON.stringify(example.payload, exampleReplacer, 2),
         })),
+        hasAuthResolver: alias.version.integrations.some(
+          (i) => i.integration.authSource === "RESOLVER"
+        ),
       })),
       hasTestRuns: job._count.runs > 0,
     };
