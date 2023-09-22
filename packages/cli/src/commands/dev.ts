@@ -1,31 +1,37 @@
+import chalk from "chalk";
 import childProcess from "child_process";
 import chokidar from "chokidar";
 import fs from "fs/promises";
 import ngrok from "ngrok";
-import fetch from "../utils/fetchUseProxy";
+import { run as ncuRun } from "npm-check-updates";
 import ora, { Ora } from "ora";
 import pathModule from "path";
 import util from "util";
 import { z } from "zod";
+import { Framework, getFramework } from "../frameworks";
 import { telemetryClient } from "../telemetry/telemetry";
+import { getEnvFilename } from "../utils/env";
+import fetch from "../utils/fetchUseProxy";
 import { getTriggerApiDetails } from "../utils/getTriggerApiDetails";
+import { getUserPackageManager } from "../utils/getUserPkgManager";
 import { logger } from "../utils/logger";
 import { resolvePath } from "../utils/parseNameAndPath";
+import { RequireKeys } from "../utils/requiredKeys";
 import { TriggerApi } from "../utils/triggerApi";
-import { run as ncuRun } from 'npm-check-updates'
-import chalk from "chalk";
+import { standardWatchIgnoreRegex, standardWatchFilePaths } from "../frameworks/watchConfig";
 
 const asyncExecFile = util.promisify(childProcess.execFile);
 
 export const DevCommandOptionsSchema = z.object({
-  port: z.coerce.number(),
-  hostname: z.string(),
-  envFile: z.string(),
+  port: z.coerce.number().optional(),
+  hostname: z.string().optional(),
+  envFile: z.string().optional(),
   handlerPath: z.string(),
   clientId: z.string().optional(),
 });
 
 export type DevCommandOptions = z.infer<typeof DevCommandOptionsSchema>;
+type ResolvedOptions = RequireKeys<DevCommandOptions, "handlerPath" | "envFile">;
 
 const throttleTimeMs = 1000;
 
@@ -47,7 +53,9 @@ export async function devCommand(path: string, anyOptions: any) {
   const options = result.data;
 
   const resolvedPath = resolvePath(path);
-  await checkForOutdatedPackages(resolvedPath)
+
+  //check for outdated packages, don't await this
+  checkForOutdatedPackages(resolvedPath);
 
   // Read from package.json to get the endpointId
   const endpointId = await getEndpointIdFromPackageJson(resolvedPath, options);
@@ -60,50 +68,44 @@ export async function devCommand(path: string, anyOptions: any) {
   }
   logger.success(`✔️ [trigger.dev] Detected TriggerClient id: ${endpointId}`);
 
-  // Read from .env.local or .env to get the TRIGGER_API_KEY and TRIGGER_API_URL
-  const apiDetails = await getTriggerApiDetails(resolvedPath, options.envFile);
+  //resolve the options using the detected framework (use default if there isn't a matching framework)
+  const packageManager = await getUserPackageManager(resolvedPath);
+  const framework = await getFramework(resolvedPath, packageManager);
+  const resolvedOptions = await resolveOptions(framework, resolvedPath, options);
 
+  // Read from .env.local or .env to get the TRIGGER_API_KEY and TRIGGER_API_URL
+  const apiDetails = await getTriggerApiDetails(resolvedPath, resolvedOptions.envFile);
   if (!apiDetails) {
-    telemetryClient.dev.failed("missing_api_key", options);
+    telemetryClient.dev.failed("missing_api_key", resolvedOptions);
     return;
   }
-
   const { apiUrl, envFile, apiKey } = apiDetails;
-
   logger.success(`✔️ [trigger.dev] Found API Key in ${envFile} file`);
 
-  logger.info(`  [trigger.dev] Looking for Next.js site on port ${options.port}`);
-
-  const localEndpointHandlerUrl = `http://${options.hostname}:${options.port}${options.handlerPath}`;
-
-  try {
-    await fetch(localEndpointHandlerUrl, {
-      method: "POST",
-      headers: {
-        "x-trigger-api-key": apiKey,
-        "x-trigger-action": "PING",
-        "x-trigger-endpoint-id": endpointId,
-      },
-    });
-  } catch (err) {
+  //verify that the endpoint can be reached
+  const verifiedEndpoint = await verifyEndpoint(resolvedOptions, endpointId, apiKey, framework);
+  if (!verifiedEndpoint) {
     logger.error(
-      `❌ [trigger.dev] No server found on port ${options.port}. Make sure your Next.js app is running and try again.`
+      `✖ [trigger.dev] Failed to find a valid Trigger.dev endpoint. Make sure your app is running and try again.`
     );
-    telemetryClient.dev.failed("no_server_found", options);
+    logger.info(`  [trigger.dev] You can use -H to specify a hostname, or -p to specify a port.`);
+    telemetryClient.dev.failed("no_server_found", resolvedOptions);
     return;
   }
 
-  telemetryClient.dev.serverRunning(path, options);
+  const { hostname, port, handlerPath } = verifiedEndpoint;
+
+  telemetryClient.dev.serverRunning(path, resolvedOptions);
 
   // Setup tunnel
-  const endpointUrl = await resolveEndpointUrl(apiUrl, options.port, options.hostname);
+  const endpointUrl = await resolveEndpointUrl(apiUrl, port, hostname);
   if (!endpointUrl) {
-    telemetryClient.dev.failed("failed_to_create_tunnel", options);
+    telemetryClient.dev.failed("failed_to_create_tunnel", resolvedOptions);
     return;
   }
 
-  const endpointHandlerUrl = `${endpointUrl}${options.handlerPath}`;
-  telemetryClient.dev.tunnelRunning(path, options);
+  const endpointHandlerUrl = `${endpointUrl}${handlerPath}`;
+  telemetryClient.dev.tunnelRunning(path, resolvedOptions);
 
   const connectingSpinner = ora(`[trigger.dev] Registering endpoint ${endpointHandlerUrl}...`);
 
@@ -113,13 +115,13 @@ export async function devCommand(path: string, anyOptions: any) {
   const refresh = async () => {
     connectingSpinner.start();
 
-    const refreshedEndpointId = await getEndpointIdFromPackageJson(resolvedPath, options);
+    const refreshedEndpointId = await getEndpointIdFromPackageJson(resolvedPath, resolvedOptions);
 
-    // Read from .env.local to get the TRIGGER_API_KEY and TRIGGER_API_URL
+    // Read from env file to get the TRIGGER_API_KEY and TRIGGER_API_URL
     const apiDetails = await getTriggerApiDetails(resolvedPath, envFile);
 
     if (!apiDetails) {
-      connectingSpinner.fail(`❌ [trigger.dev] Failed to connect: Missing API Key`);
+      connectingSpinner.fail(`[trigger.dev] Failed to connect: Missing API Key`);
       logger.info(`Will attempt again on the next file change…`);
       attemptCount = 0;
       return;
@@ -131,10 +133,10 @@ export async function devCommand(path: string, anyOptions: any) {
     const authorizedKey = await apiClient.whoami(apiKey);
     if (!authorizedKey) {
       logger.error(
-        `🛑 The API key you provided is not authorized. Try visiting your dashboard to get a new API key.`
+        `✖ [trigger.dev] The API key you provided is not authorized. Try visiting your dashboard to get a new API key.`
       );
 
-      telemetryClient.dev.failed("invalid_api_key", options);
+      telemetryClient.dev.failed("invalid_api_key", resolvedOptions);
       return;
     }
 
@@ -159,18 +161,18 @@ export async function devCommand(path: string, anyOptions: any) {
 
       if (!hasConnected) {
         hasConnected = true;
-        telemetryClient.dev.connected(path, options);
+        telemetryClient.dev.connected(path, resolvedOptions);
       }
     } else {
       attemptCount++;
 
       if (attemptCount === 10 || !result.retryable) {
-        connectingSpinner.fail(`🚨 Failed to connect: ${result.error}`);
+        connectingSpinner.fail(`Failed to connect: ${result.error}`);
         logger.info(`Will attempt again on the next file change…`);
         attemptCount = 0;
 
         if (!hasConnected) {
-          telemetryClient.dev.failed("failed_to_connect", options);
+          telemetryClient.dev.failed("failed_to_connect", resolvedOptions);
         }
         return;
       }
@@ -182,25 +184,19 @@ export async function devCommand(path: string, anyOptions: any) {
     }
   };
 
-  // Watch for changes to .ts files and refresh endpoints
-  const watcher = chokidar.watch(
-    [
-      `${resolvedPath}/**/*.ts`,
-      `${resolvedPath}/**/*.tsx`,
-      `${resolvedPath}/**/*.js`,
-      `${resolvedPath}/**/*.jsx`,
-      `${resolvedPath}/**/*.json`,
-      `${resolvedPath}/pnpm-lock.yaml`,
-    ],
-    {
-      ignored: /(node_modules|\.next)/,
-      //don't trigger a watch when it collects the paths
-      ignoreInitial: true,
-    }
+  // Watch for changes to files and refresh endpoints
+  const watchPaths = (framework?.watchFilePaths ?? standardWatchFilePaths).map(
+    (path) => `${resolvedPath}/${path}`
   );
+  const ignored = framework?.watchIgnoreRegex ?? standardWatchIgnoreRegex;
+  const watcher = chokidar.watch(watchPaths, {
+    ignored,
+    //don't trigger a watch when it collects the paths
+    ignoreInitial: true,
+  });
 
   watcher.on("all", (_event, _path) => {
-    // console.log(_event, _path);
+    console.log(_event, _path);
     throttle(refresh, throttleTimeMs);
   });
 
@@ -208,34 +204,128 @@ export async function devCommand(path: string, anyOptions: any) {
   throttle(refresh, throttleTimeMs);
 }
 
-export async function checkForOutdatedPackages(path: string) {
-
-  const updates = await ncuRun({
-    packageFile: `${path}/package.json`,
-    filter: "/trigger.dev\/.+$/",
-    upgrade: false,
-  }) as {
-    [key: string]: string;
+async function resolveOptions(
+  framework: Framework | undefined,
+  path: string,
+  unresolvedOptions: DevCommandOptions
+): Promise<ResolvedOptions> {
+  if (!framework) {
+    logger.info("Failed to detect framework, using default values");
+    return {
+      port: unresolvedOptions.port ?? 3000,
+      hostname: unresolvedOptions.hostname ?? "localhost",
+      envFile: unresolvedOptions.envFile ?? ".env",
+      handlerPath: unresolvedOptions.handlerPath,
+      clientId: unresolvedOptions.clientId,
+    };
   }
 
-  if (typeof updates === 'undefined' || Object.keys(updates).length === 0) {
+  //get env filename
+  const envName = await getEnvFilename(path, framework.possibleEnvFilenames());
+
+  return {
+    port: unresolvedOptions.port,
+    hostname: unresolvedOptions.hostname,
+    envFile: unresolvedOptions.envFile ?? envName ?? ".env",
+    handlerPath: unresolvedOptions.handlerPath,
+    clientId: unresolvedOptions.clientId,
+  };
+}
+
+async function verifyEndpoint(
+  resolvedOptions: ResolvedOptions,
+  endpointId: string,
+  apiKey: string,
+  framework?: Framework
+) {
+  //create list of hostnames to try
+  const hostnames = [];
+  if (resolvedOptions.hostname) {
+    hostnames.push(resolvedOptions.hostname);
+  }
+  if (framework) {
+    hostnames.push(...framework.defaultHostnames);
+  } else {
+    hostnames.push("localhost");
+  }
+
+  //create list of ports to try
+  const ports = [];
+  if (resolvedOptions.port) {
+    ports.push(resolvedOptions.port);
+  }
+  if (framework) {
+    ports.push(...framework.defaultPorts);
+  } else {
+    ports.push(3000);
+  }
+
+  //create list of urls to try
+  const urls: { hostname: string; port: number }[] = [];
+  for (const hostname of hostnames) {
+    for (const port of ports) {
+      urls.push({ hostname, port });
+    }
+  }
+
+  //try each hostname
+  for (const url of urls) {
+    const { hostname, port } = url;
+    const localEndpointHandlerUrl = `http://${hostname}:${port}${resolvedOptions.handlerPath}`;
+
+    const spinner = ora(
+      `[trigger.dev] Looking for your trigger endpoint: ${localEndpointHandlerUrl}`
+    ).start();
+
+    try {
+      const response = await fetch(localEndpointHandlerUrl, {
+        method: "POST",
+        headers: {
+          "x-trigger-api-key": apiKey,
+          "x-trigger-action": "PING",
+          "x-trigger-endpoint-id": endpointId,
+        },
+      });
+
+      if (!response.ok || response.status !== 200) {
+        spinner.fail(
+          `[trigger.dev] Server responded with ${response.status} (${localEndpointHandlerUrl}).`
+        );
+        continue;
+      }
+
+      spinner.succeed(`[trigger.dev] Found your trigger endpoint: ${localEndpointHandlerUrl}`);
+      return { hostname, port, handlerPath: resolvedOptions.handlerPath };
+    } catch (err) {
+      spinner.fail(`[trigger.dev] No server found (${localEndpointHandlerUrl}).`);
+    }
+  }
+
+  return;
+}
+
+export async function checkForOutdatedPackages(path: string) {
+  const updates = (await ncuRun({
+    packageFile: `${path}/package.json`,
+    filter: "/trigger.dev/.+$/",
+    upgrade: false,
+  })) as {
+    [key: string]: string;
+  };
+
+  if (typeof updates === "undefined" || Object.keys(updates).length === 0) {
     return;
   }
 
   const packageFile = await fs.readFile(`${path}/package.json`);
-  const data = JSON.parse(Buffer.from(packageFile).toString('utf8'));
+  const data = JSON.parse(Buffer.from(packageFile).toString("utf8"));
   const dependencies = data.dependencies;
-  console.log(
-    chalk.bgYellow('Updates available for trigger.dev packages')
-  );
-  console.log(
-    chalk.bgBlue('Run npx @trigger.dev/cli@latest update')
-  );
+  console.log(chalk.bgYellow("Updates available for trigger.dev packages"));
+  console.log(chalk.bgBlue("Run npx @trigger.dev/cli@latest update"));
 
   for (let dep in updates) {
     console.log(`${dep}  ${dependencies[dep]}  →  ${updates[dep]}`);
   }
-
 }
 
 export async function getEndpointIdFromPackageJson(path: string, options: DevCommandOptions) {
@@ -256,14 +346,14 @@ export async function getEndpointIdFromPackageJson(path: string, options: DevCom
 async function resolveEndpointUrl(apiUrl: string, port: number, hostname: string) {
   const apiURL = new URL(apiUrl);
 
-  if (apiURL.hostname === "localhost") {
+  //if the API is localhost and the hostname is localhost
+  if (apiURL.hostname === "localhost" && hostname === "localhost") {
     return `http://${hostname}:${port}`;
   }
 
   // Setup tunnel
   const tunnelSpinner = ora(`🚇 Creating tunnel`).start();
-
-  const tunnelUrl = await createTunnel(port, tunnelSpinner);
+  const tunnelUrl = await createTunnel(hostname, port, tunnelSpinner);
 
   if (tunnelUrl) {
     tunnelSpinner.succeed(`🚇 Created tunnel: ${tunnelUrl}`);
@@ -272,9 +362,9 @@ async function resolveEndpointUrl(apiUrl: string, port: number, hostname: string
   return tunnelUrl;
 }
 
-async function createTunnel(port: number, spinner: Ora) {
+async function createTunnel(hostname: string, port: number, spinner: Ora) {
   try {
-    return await ngrok.connect(port);
+    return await ngrok.connect({ addr: `${hostname}:${port}` });
   } catch (error: any) {
     if (
       typeof error.message === "string" &&
