@@ -57,7 +57,7 @@ export function FrameworkSelector() {
           <FrameworkLink to={projectSetupRemixPath(organization, project)} supported>
             <RemixLogo className="w-32" />
           </FrameworkLink>
-          <FrameworkLink to={projectSetupRedwoodPath(organization, project)}>
+          <FrameworkLink to={projectSetupRedwoodPath(organization, project)} supported>
             <RedwoodLogo className="w-44" />
           </FrameworkLink>
           <FrameworkLink to={projectSetupAstroPath(organization, project)}>

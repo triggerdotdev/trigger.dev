@@ -1,0 +1,52 @@
+{
+    "name": "@trigger.dev/redwood",
+    "description": "A Redwood-native integration for Trigger.dev background jobs platform",
+    "version": "0.0.1",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "require": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "scripts": {
+        "clean": "rimraf dist",
+        "build": "npm run clean && npm run build:tsup",
+        "build:tsup": "tsup"
+    },
+    "peerDependencies": {
+        "@trigger.dev/sdk": "workspace:^2.0.14"
+    },
+    "devDependencies": {
+        "@trigger.dev/tsconfig": "workspace:*",
+        "@types/debug": "^4.1.7",
+        "@types/ws": "^8.5.3",
+        "rimraf": "^3.0.2",
+        "tsup": "^6.5.0",
+        "tsx": "^3.12.1",
+        "typescript": "^4.8.4"
+    },
+    "engines": {
+        "node": ">=16.8.0"
+    },
+    "license": "MIT",
+    "publishConfig": {
+        "access": "public"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/triggerdev/trigger.dev.git"
+    },
+    "bugs": {
+        "url": "https://github.com/triggerdev/trigger.dev/issues"
+    },
+    "homepage": "https://github.com/triggerdev/trigger.dev#readme",
+    "dependencies": {
+        "debug": "^4.3.4"
+    }
+}
