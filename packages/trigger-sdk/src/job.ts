@@ -117,6 +117,41 @@ export class Job<
     return this.options.logLevel;
   }
 
+  get integrations(): Record<string, IntegrationConfig> {
+    return Object.keys(this.options.integrations ?? {}).reduce(
+      (acc: Record<string, IntegrationConfig>, key) => {
+        const integration = this.options.integrations![key];
+
+        acc[key] = {
+          id: integration.id,
+          metadata: integration.metadata,
+          authSource: integration.authSource,
+        };
+
+        return acc;
+      },
+      {}
+    );
+  }
+
+  toJSON(): JobMetadata {
+    // @ts-ignore
+    const internal = this.options.__internal as JobMetadata["internal"];
+
+    return {
+      id: this.id,
+      name: this.name,
+      version: this.version,
+      event: this.trigger.event,
+      trigger: this.trigger.toJSON(),
+      integrations: this.integrations,
+      startPosition: "latest", // this is deprecated, leaving this for now to make sure newer clients work with older servers
+      enabled: this.enabled,
+      preprocessRuns: this.trigger.preprocessRuns,
+      internal,
+    };
+  }
+
   // Make sure the id is valid (must only contain alphanumeric characters and dashes)
   // Make sure the version is valid (must be a valid semver version)
   #validate() {
