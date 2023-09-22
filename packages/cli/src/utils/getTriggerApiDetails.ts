@@ -3,6 +3,7 @@ import { pathExists, readFile } from "./fileSystem";
 import { logger } from "./logger";
 import dotenv from "dotenv";
 import { CLOUD_API_URL } from "../consts";
+import { checkApiKeyIsDevServer } from "./getApiKeyType";
 
 export async function readEnvFilesWithBackups(
   path: string,
@@ -56,6 +57,21 @@ export async function getTriggerApiDetails(path: string, envFile: string) {
 
   if (!apiKey) {
     logger.error(`You must add TRIGGER_API_KEY to your ${envFile} file.`);
+    return;
+  }
+
+  const result = checkApiKeyIsDevServer(apiKey);
+
+  if (!result.success) {
+    if (result.type) {
+      logger.error(
+        `Your TRIGGER_API_KEY isn't a secret dev API key, you've entered a ${result.type.environment} ${result.type.type} key`
+      );
+    } else {
+      logger.error(
+        "Your TRIGGER_API_KEY isn't a secret dev API key. It should start with tr_dev_."
+      );
+    }
     return;
   }
 
