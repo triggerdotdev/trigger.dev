@@ -43,7 +43,6 @@
     "@types/node": "20.4.2",
     "typescript": "5.1.6",
     "zod": "3.21.4",
-    "@trigger.dev/airtable": "workspace:*",
     "@trigger.dev/linear": "workspace:*"
   },
   "trigger.dev": {

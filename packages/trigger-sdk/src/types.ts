@@ -105,3 +105,16 @@ export interface EventSpecification<TEvent extends any> {
 
 export type EventTypeFromSpecification<TEventSpec extends EventSpecification<any>> =
   TEventSpec extends EventSpecification<infer TEvent> ? TEvent : never;
+
+export type SchemaParserIssue = { path: PropertyKey[]; message: string };
+
+export type SchemaParserResult<T> =
+  | {
+      success: true;
+      data: T;
+    }
+  | { success: false; error: { issues: SchemaParserIssue[] } };
+
+export type SchemaParser<T extends unknown = unknown> = {
+  safeParse: (a: unknown) => SchemaParserResult<T>;
+};

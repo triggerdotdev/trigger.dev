@@ -732,6 +732,7 @@ enum JobRunStatus {
   ABORTED
   CANCELED
   UNRESOLVED_AUTH
+  INVALID_PAYLOAD
 }
 
 model JobRunExecution {

@@ -2,7 +2,7 @@ import { ulid } from "ulid";
 import { z } from "zod";
 import { Prettify } from "../types";
 import { addMissingVersionField } from "./addMissingVersionField";
-import { ErrorWithStackSchema } from "./errors";
+import { ErrorWithStackSchema, SchemaErrorSchema } from "./errors";
 import { EventRuleSchema } from "./eventFilter";
 import { ConnectionAuthSchema, IntegrationConfigSchema } from "./integrations";
 import { DeserializedJsonSchema, SerializableJsonSchema } from "./json";
@@ -437,6 +437,13 @@ export const RunJobErrorSchema = z.object({
 
 export type RunJobError = z.infer<typeof RunJobErrorSchema>;
 
+export const RunJobInvalidPayloadErrorSchema = z.object({
+  status: z.literal("INVALID_PAYLOAD"),
+  errors: z.array(SchemaErrorSchema),
+});
+
+export type RunJobInvalidPayloadError = z.infer<typeof RunJobInvalidPayloadErrorSchema>;
+
 export const RunJobUnresolvedAuthErrorSchema = z.object({
   status: z.literal("UNRESOLVED_AUTH_ERROR"),
   issues: z.record(z.object({ id: z.string(), error: z.string() })),
@@ -477,6 +484,7 @@ export type RunJobSuccess = z.infer<typeof RunJobSuccessSchema>;
 export const RunJobResponseSchema = z.discriminatedUnion("status", [
   RunJobErrorSchema,
   RunJobUnresolvedAuthErrorSchema,
+  RunJobInvalidPayloadErrorSchema,
   RunJobResumeWithTaskSchema,
   RunJobRetryWithTaskSchema,
   RunJobCanceledWithTaskSchema,

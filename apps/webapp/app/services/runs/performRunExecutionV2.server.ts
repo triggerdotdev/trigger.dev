@@ -1,6 +1,7 @@
 import {
   CachedTask,
   RunJobError,
+  RunJobInvalidPayloadError,
   RunJobResumeWithTask,
   RunJobRetryWithTask,
   RunJobSuccess,
@@ -360,6 +361,11 @@ export class PerformRunExecutionV2Service {
 
         break;
       }
+      case "INVALID_PAYLOAD": {
+        await this.#failRunWithInvalidPayloadError(run, safeBody.data, durationInMs);
+
+        break;
+      }
       default: {
         const _exhaustiveCheck: never = status;
         throw new Error(`Non-exhaustive match for value: ${status}`);
@@ -450,6 +456,23 @@ export class PerformRunExecutionV2Service {
         execution,
         data.issues,
         "UNRESOLVED_AUTH",
+        durationInMs
+      );
+    });
+  }
+
+  async #failRunWithInvalidPayloadError(
+    execution: FoundRun,
+    data: RunJobInvalidPayloadError,
+    durationInMs: number
+  ) {
+    return await $transaction(this.#prismaClient, async (tx) => {
+      await this.#failRunExecution(
+        tx,
+        "EXECUTE_JOB",
+        execution,
+        data.errors,
+        "INVALID_PAYLOAD",
         durationInMs
       );
     });
@@ -579,7 +602,7 @@ export class PerformRunExecutionV2Service {
     reason: "EXECUTE_JOB" | "PREPROCESS",
     run: FoundRun,
     output: Record<string, any>,
-    status: "FAILURE" | "ABORTED" | "TIMED_OUT" | "UNRESOLVED_AUTH" = "FAILURE",
+    status: "FAILURE" | "ABORTED" | "TIMED_OUT" | "UNRESOLVED_AUTH" | "INVALID_PAYLOAD" = "FAILURE",
     durationInMs: number = 0
   ): Promise<void> {
     await $transaction(prisma, async (tx) => {
