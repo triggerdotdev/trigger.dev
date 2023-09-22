@@ -20,7 +20,7 @@ export class OrgUsagePresenter {
     });
 
     if (!organization) {
-      throw new Error("Organization not found");
+      return;
     }
 
     const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
