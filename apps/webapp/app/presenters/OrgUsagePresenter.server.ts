@@ -63,7 +63,7 @@ export class OrgUsagePresenter {
         month: string;
         count: number;
       }[]
-    >`SELECT TO_CHAR("createdAt", 'YYYY-MM') as month, COUNT(*) as count FROM "JobRun" WHERE "organizationId" = ${organization.id} AND "createdAt" >= NOW() - INTERVAL '12 months' GROUP BY month ORDER BY month ASC`;
+    >`SELECT TO_CHAR("createdAt", 'YYYY-MM') as month, COUNT(*) as count FROM "JobRun" WHERE "organizationId" = ${organization.id} AND "createdAt" >= NOW() - INTERVAL '6 months' GROUP BY month ORDER BY month ASC`;
 
     const chartData = chartDataRaw.map((obj) => ({
       name: obj.month,
@@ -143,7 +143,7 @@ export class OrgUsagePresenter {
       id: organization.id,
       runsCount,
       runsCountLastMonth,
-      chartData,
+      chartData: fillInMissingMonthlyData(chartData, 6),
       totalJobs,
       totalJobsLastMonth,
       totalIntegrations,
@@ -152,4 +152,49 @@ export class OrgUsagePresenter {
       jobs,
     };
   }
+}
+
+// This will fill in missing chart data with zeros
+// So for example, if data is [{ name: "2021-01", total: 10 }, { name: "2021-03", total: 30 }] and the totalNumberOfMonths is 6
+// And the current month is "2021-04", then this function will return:
+// [{ name: "2020-11", total: 0 }, { name: "2020-12", total: 0 }, { name: "2021-01", total: 10 }, { name: "2021-02", total: 0 }, { name: "2021-03", total: 30 }, { name: "2021-04", total: 0 }]
+function fillInMissingMonthlyData(
+  data: Array<{ name: string; total: number }>,
+  totalNumberOfMonths: number
+): Array<{ name: string; total: number }> {
+  const currentMonth = new Date().toISOString().slice(0, 7);
+
+  const startMonth = new Date(
+    new Date(currentMonth).getFullYear(),
+    new Date(currentMonth).getMonth() - totalNumberOfMonths,
+    1
+  )
+    .toISOString()
+    .slice(0, 7);
+
+  const months = getMonthsBetween(startMonth, currentMonth);
+
+  let completeData = months.map((month) => {
+    let foundData = data.find((d) => d.name === month);
+    return foundData ? { ...foundData } : { name: month, total: 0 };
+  });
+
+  return completeData;
+}
+
+function getMonthsBetween(startMonth: string, endMonth: string): string[] {
+  const startDate = new Date(startMonth);
+  const endDate = new Date(endMonth);
+
+  const months = [];
+  let currentDate = startDate;
+
+  while (currentDate <= endDate) {
+    months.push(currentDate.toISOString().slice(0, 7));
+    currentDate = new Date(currentDate.setMonth(currentDate.getMonth() + 1));
+  }
+
+  months.push(endMonth);
+
+  return months;
 }
