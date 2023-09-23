@@ -194,7 +194,5 @@ function getMonthsBetween(startMonth: string, endMonth: string): string[] {
     currentDate = new Date(currentDate.setMonth(currentDate.getMonth() + 1));
   }
 
-  months.push(endMonth);
-
   return months;
 }
