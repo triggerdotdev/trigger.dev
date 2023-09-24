@@ -76,6 +76,10 @@ export async function createOrganization(
   },
   attemptCount = 0
 ): Promise<Organization & { projects: Project[] }> {
+  if (typeof process.env.BLOCKED_USERS === "string" && process.env.BLOCKED_USERS.includes(userId)) {
+    throw new Error("Organization could not be created.");
+  }
+
   const uniqueOrgSlug = `${slug(title)}-${nanoid(4)}`;
 
   const orgWithSameSlug = await prisma.organization.findFirst({
