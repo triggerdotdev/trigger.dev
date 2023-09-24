@@ -121,8 +121,8 @@ export class Astro implements Framework {
     );
   }
 
-  defaultHostnames = ["localhost"];
-  defaultPorts = [4321, 4322, 4323, 4324, 4325];
+  defaultHostnames = ["localhost", "[::]"];
+  defaultPorts = [4321, 4322, 4323, 4324];
   watchFilePaths = standardWatchFilePaths;
   watchIgnoreRegex = /(node_modules)/;
 }
