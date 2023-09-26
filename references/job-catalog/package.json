@@ -24,6 +24,7 @@
     "linear": "nodemon --watch src/linear.ts -r tsconfig-paths/register -r dotenv/config src/linear.ts",
     "status": "nodemon --watch src/status.ts -r tsconfig-paths/register -r dotenv/config src/status.ts",
     "byo-auth": "nodemon --watch src/byo-auth.ts -r tsconfig-paths/register -r dotenv/config src/byo-auth.ts",
+    "replicate": "nodemon --watch src/replicate.ts -r tsconfig-paths/register -r dotenv/config src/replicate.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {
@@ -43,7 +44,8 @@
     "@types/node": "20.4.2",
     "typescript": "5.1.6",
     "zod": "3.21.4",
-    "@trigger.dev/linear": "workspace:*"
+    "@trigger.dev/linear": "workspace:*",
+    "@trigger.dev/replicate": "workspace:*"
   },
   "trigger.dev": {
     "endpointId": "job-catalog"
