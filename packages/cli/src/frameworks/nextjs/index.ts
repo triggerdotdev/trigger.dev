@@ -4,13 +4,13 @@ import { Framework } from "..";
 import { templatesPath } from "../../paths";
 import { InstallPackage } from "../../utils/addDependencies";
 import { createFileFromTemplate } from "../../utils/createFileFromTemplate";
-import { pathExists } from "../../utils/fileSystem";
+import { pathExists, someFileExists } from "../../utils/fileSystem";
 import { PackageManager } from "../../utils/getUserPkgManager";
 import { logger } from "../../utils/logger";
 import { getPathAlias } from "../../utils/pathAlias";
 import { readPackageJson } from "../../utils/readPackageJson";
-import { detectMiddlewareUsage } from "./middleware";
 import { standardWatchFilePaths } from "../watchConfig";
+import { detectMiddlewareUsage } from "./middleware";
 
 export class NextJs implements Framework {
   id = "nextjs";
@@ -75,7 +75,14 @@ export class NextJs implements Framework {
 }
 
 async function detectNextConfigFile(path: string): Promise<boolean> {
-  return pathExists(pathModule.join(path, "next.config.js"));
+  const configFilenames = [
+    "next.config.js",
+    "next.config.mjs",
+    "next.config.cjs",
+    "next.config.ts",
+  ];
+
+  return someFileExists(path, configFilenames);
 }
 
 export async function detectNextDependency(path: string): Promise<boolean> {
@@ -84,7 +91,10 @@ export async function detectNextDependency(path: string): Promise<boolean> {
     return false;
   }
 
-  return packageJsonContent.dependencies?.next !== undefined;
+  if (packageJsonContent.dependencies?.next !== undefined) return true;
+  if (packageJsonContent.devDependencies?.next !== undefined) return true;
+
+  return false;
 }
 
 export async function detectUseOfSrcDir(path: string): Promise<boolean> {
