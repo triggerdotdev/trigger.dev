@@ -245,7 +245,6 @@ function getWorkerQueue() {
       },
       processCallbackTimeout: {
         priority: 0, // smaller number = higher priority
-        queueName: (payload) => `tasks:${payload.id}`,
         maxAttempts: 3,
         handler: async (payload, job) => {
           const service = new ProcessCallbackTimeoutService();
