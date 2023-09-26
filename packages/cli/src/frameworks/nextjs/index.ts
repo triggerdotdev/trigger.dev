@@ -75,7 +75,10 @@ export class NextJs implements Framework {
 }
 
 async function detectNextConfigFile(path: string): Promise<boolean> {
-  return pathExists(pathModule.join(path, "next.config.js"));
+  return (
+    pathExists(pathModule.join(path, "next.config.js")) ||
+    pathExists(pathModule.join(path, "next.config.mjs"))
+  );
 }
 
 export async function detectNextDependency(path: string): Promise<boolean> {
@@ -84,7 +87,10 @@ export async function detectNextDependency(path: string): Promise<boolean> {
     return false;
   }
 
-  return packageJsonContent.dependencies?.next !== undefined;
+  return (
+    packageJsonContent.dependencies?.next !== undefined ||
+    packageJsonContent.devDependencies?.next !== undefined
+  );
 }
 
 export async function detectUseOfSrcDir(path: string): Promise<boolean> {
