@@ -429,7 +429,9 @@ export class PerformRunExecutionV2Service {
 
       // If the task has an operation, then the next performRunExecution will occur
       // when that operation has finished
-      if (!data.task.operation) {
+      // Tasks with callbacks enabled will also get processed separately, i.e. when
+      // they time out, or on valid requests to their callbackUrl
+      if (!data.task.operation && !data.task.callbackUrl) {
         await enqueueRunExecutionV2(run, tx, {
           runAt: data.task.delayUntil ?? undefined,
           resumeTaskId: data.task.id,

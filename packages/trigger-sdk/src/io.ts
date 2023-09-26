@@ -526,12 +526,12 @@ export class IO {
    * @param onError The callback that will be called when the Task fails. The callback receives the error, the Task and the IO as parameters. If you wish to retry then return an object with a `retryAt` property.
    * @returns A Promise that resolves with the returned value of the callback.
    */
-  async runTask<T extends Json<T> | void>(
+  async runTask<T extends Json<T> | void, TOptions extends RunTaskOptions = RunTaskOptions>(
     key: string | any[],
     callback: (task: ServerTask, io: IO) => Promise<T>,
-    options?: RunTaskOptions,
+    options?: TOptions,
     onError?: RunTaskErrorCallback
-  ): Promise<T> {
+  ): Promise<TOptions extends { callback: { enabled: true } } ? any : T> {
     const parentId = this._taskStorage.getStore()?.taskId;
 
     if (parentId) {
@@ -592,24 +592,6 @@ export class IO {
       throw new Error(task.error ?? task?.output ? JSON.stringify(task.output) : "Task errored");
     }
 
-    if (task.status === "WAITING") {
-      this._logger.debug("Task waiting", {
-        idempotencyKey,
-        task,
-      });
-
-      throw new ResumeWithTaskError(task);
-    }
-
-    if (task.status === "RUNNING" && typeof task.operation === "string") {
-      this._logger.debug("Task running operation", {
-        idempotencyKey,
-        task,
-      });
-
-      throw new ResumeWithTaskError(task);
-    }
-
     const executeTask = async () => {
       try {
         const result = await callback(task, this);
@@ -620,6 +602,9 @@ export class IO {
           idempotencyKey,
           task,
         });
+
+        // TODO: empty return? maybe don't even parse first
+        if (task.status === "WAITING") return output;
 
         const completedTask = await this._apiClient.completeTask(this._id, task.id, {
           output: output ?? undefined,
@@ -695,6 +680,28 @@ export class IO {
         throw error;
       }
     };
+
+    if (task.status === "WAITING") {
+      this._logger.debug("Task waiting", {
+        idempotencyKey,
+        task,
+      });
+
+      if (task.callbackUrl) {
+        await this._taskStorage.run({ taskId: task.id }, executeTask);
+      }
+
+      throw new ResumeWithTaskError(task);
+    }
+
+    if (task.status === "RUNNING" && typeof task.operation === "string") {
+      this._logger.debug("Task running operation", {
+        idempotencyKey,
+        task,
+      });
+
+      throw new ResumeWithTaskError(task);
+    }
 
     return this._taskStorage.run({ taskId: task.id }, executeTask);
   }

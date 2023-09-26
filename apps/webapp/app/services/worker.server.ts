@@ -19,6 +19,7 @@ import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.
 import { ActivateSourceService } from "./sources/activateSource.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
+import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout";
 import { addMissingVersionField } from "@trigger.dev/core";
 
 const workerCatalog = {
@@ -30,6 +31,9 @@ const workerCatalog = {
   }),
   scheduleEmail: DeliverEmailSchema,
   startRun: z.object({ id: z.string() }),
+  processCallbackTimeout: z.object({
+    id: z.string(),
+  }),
   performTaskOperation: z.object({
     id: z.string(),
   }),
@@ -235,6 +239,16 @@ function getWorkerQueue() {
         maxAttempts: 4,
         handler: async (payload, job) => {
           const service = new StartRunService();
+
+          await service.call(payload.id);
+        },
+      },
+      processCallbackTimeout: {
+        priority: 0, // smaller number = higher priority
+        queueName: (payload) => `tasks:${payload.id}`,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new ProcessCallbackTimeoutService();
 
           await service.call(payload.id);
         },
