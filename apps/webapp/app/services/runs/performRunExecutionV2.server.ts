@@ -153,6 +153,29 @@ export class PerformRunExecutionV2Service {
       return;
     }
 
+    try {
+      if (
+        typeof process.env.BLOCKED_ORGS === "string" &&
+        process.env.BLOCKED_ORGS.includes(run.organizationId)
+      ) {
+        logger.debug("Skipping execution for blocked org", {
+          orgId: run.organizationId,
+        });
+
+        await this.#prismaClient.jobRun.update({
+          where: {
+            id: run.id,
+          },
+          data: {
+            status: "CANCELED",
+            completedAt: new Date(),
+          },
+        });
+
+        return;
+      }
+    } catch (e) {}
+
     const client = new EndpointApi(run.environment.apiKey, run.endpoint.url);
     const event = eventRecordToApiJson(run.event);
 
