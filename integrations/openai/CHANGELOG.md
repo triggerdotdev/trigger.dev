@@ -1,5 +1,12 @@
 # @trigger.dev/slack
 
+## 2.1.5
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@2.1.5
+- @trigger.dev/sdk@2.1.5
+
 ## 2.1.4
 
 ### Patch Changes
