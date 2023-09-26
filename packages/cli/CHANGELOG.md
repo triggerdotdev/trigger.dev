@@ -1,5 +1,11 @@
 # create-trigger
 
+## 2.1.5
+
+### Patch Changes
+
+- 4578f6bd: Added Astro automatic installation
+
 ## 2.1.4
 
 ### Patch Changes
