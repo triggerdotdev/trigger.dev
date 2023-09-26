@@ -23,7 +23,7 @@ description: "`io.registerInterval()` allows you to register a [DynamicSchedule]
 
 <Expandable title="options" defaultOpen>
   <ResponseField name="seconds" type="number" required>
-    The number of seconds for the interval. Min = 60, Max = 86400 (1 day)
+    The number of seconds for the interval. Min = 60, Max = 2_592_000 (30 days)
   </ResponseField>
 </Expandable>
 
@@ -51,7 +51,7 @@ A Promise that resolves to an object with the following fields:
       An object containing options about the interval.
       <Expandable title="options" defaultOpen>
         <ResponseField name="seconds" type="number" required>
-          The number of seconds for the interval. Min = 60, Max = 86400 (1 day)
+          The number of seconds for the interval. Min = 60, Max = 2_592_000 (30 days)
         </ResponseField>
       </Expandable>
     </ResponseField>

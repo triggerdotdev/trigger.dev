@@ -13,7 +13,7 @@ Intervals are set with a number of seconds. There are some important considerati
 
 - The Job will first run the specified number of seconds after it has first connected to an [Environment](/documentation/concepts/environments-endpoints). This will happen when you first [deploy](/documentation/guides/deployment) that Job.
 - The minimum interval is 60 seconds (any input less than this it will default to 60).
-- The maximum interval is 86400 seconds (24 hours), if you pass more than this it will trigger every 24 hours.
+- The maximum interval is 2_592_000 seconds (30 days), if you pass more than this it will trigger every 30 days.
 
 If you wish to Run a Job at an exact time or less frequently than once pr day you should use a [cronTrigger()](/sdk/crontrigger) instead.
 
@@ -22,7 +22,7 @@ If you wish to Run a Job at an exact time or less frequently than once pr day yo
 <ResponseField name="options" type="object" required>
   <Expandable title="options" defaultOpen>
     <ResponseField name="seconds" type="number" required>
-      The number of seconds for the interval. Min = 60, Max = 86400 (1 day)
+      The number of seconds for the interval. Min = 60, Max = 2_592_000 (30 days)
     </ResponseField>
   </Expandable>
 </ResponseField>
