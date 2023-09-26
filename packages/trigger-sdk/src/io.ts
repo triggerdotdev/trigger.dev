@@ -604,7 +604,9 @@ export class IO {
         });
 
         // TODO: empty return? maybe don't even parse first
-        if (task.status === "WAITING") return output;
+        if (task.status === "WAITING" && task.callbackUrl) {
+          return output;
+        }
 
         const completedTask = await this._apiClient.completeTask(this._id, task.id, {
           output: output ?? undefined,
