@@ -608,11 +608,11 @@ export const RunTaskOptionsSchema = z.object({
   params: z.any(),
   /** The style of the log entry. */
   style: StyleSchema.optional(),
-  /** Allows you to return the data sent to task.callbackUrl instead of the async callback return */
+  /** Allows you to expose a `task.callbackUrl` to use in your tasks. Enabling this feature will cause the task to return the data sent to the callbackUrl instead of the usual async callback result. */
   callback: z.object({
-    /** Enable the callback feature */
+    /** Causes the task to wait for and return the data of the first request sent to `task.callbackUrl`. */
     enabled: z.boolean(),
-    /** Time to wait for callback requests */
+    /** Time to wait for the first request to `task.callbackUrl`. Default: One hour. */
     timeoutInSeconds: z.number(),
   }).partial().optional(),
   /** Allows you to link the Integration connection in the logs. This is handled automatically in integrations.  */
