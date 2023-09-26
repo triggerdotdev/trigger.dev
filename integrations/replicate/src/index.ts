@@ -133,13 +133,13 @@ export class Replicate implements TriggerIntegration {
     task: (key: string) => Promise<Page<T>>,
     key: IntegrationTaskKey
   ): ReplicateReturnType<T[]> {
-    let results: T[] = [];
+    const allResults: T[] = [];
 
     for await (const results of this.paginate(task, key)) {
-      results.concat(results);
+      allResults.push(...results);
     }
 
-    return results;
+    return allResults;
   }
 
   request<T = any>(
