@@ -129,7 +129,7 @@ export const initCommand = async (options: InitCommandOptions) => {
 
   await addConfigurationToPackageJson(resolvedPath, resolvedOptions);
 
-  const projectUrl = `${options.triggerUrl}/orgs/${authorizedKey.organization.slug}/projects/${authorizedKey.project.slug}`;
+  const projectUrl = `${resolvedOptions.triggerUrl}/orgs/${authorizedKey.organization.slug}/projects/${authorizedKey.project.slug}`;
   if (framework.printInstallationComplete) {
     await framework.printInstallationComplete(projectUrl);
   } else {
