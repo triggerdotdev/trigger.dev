@@ -9,7 +9,9 @@ import { generateIntegrationFiles } from "../utils/generateIntegrationFiles";
 import { getPackageName } from "../utils/getPackagName";
 import { installDependencies } from "../utils/installDependencies";
 import { logger } from "../utils/logger";
-import { resolvePath } from "../utils/parseNameAndPath";
+import { relativePath, resolvePath } from "../utils/parseNameAndPath";
+import { createFileFromTemplate } from "../utils/createFileFromTemplate";
+import { templatesPath } from "../paths";
 
 const CLIOptionsSchema = z.object({
   packageName: z.string().optional(),
@@ -91,108 +93,124 @@ export async function createIntegrationCommand(path: string, cliOptions: any) {
     process.exit(1);
   }
 
-  // Create the package.json
-  const packageJson = {
-    name: resolvedOptions.packageName,
-    version: "0.0.1",
-    description: `Trigger.dev integration for ${resolvedOptions.sdkPackage}`,
-    main: "./dist/index.js",
-    types: "./dist/index.d.ts",
-    publishConfig: {
-      access: "public",
+  const integrationVersion = await getInternalOrExternalPackageVersion({
+    path: "integrations/github",
+    packageName: "@trigger.dev/github",
+    tag: "latest",
+    monorepoPath: triggerMonorepoPath,
+    prependWorkspace: false,
+  });
+
+  if (!integrationVersion) {
+    logger.error(
+      `Could not find the latest version of @trigger.dev/github. Please try again later.`
+    );
+
+    process.exit(1);
+  }
+
+  const templatesDir = pathModule.join(templatesPath(), "integration");
+
+  // create package.json
+  const packageJsonPath = pathModule.join(resolvedPath, "package.json");
+  const packageJsonResult = await createFileFromTemplate({
+    templatePath: pathModule.join(templatesDir, "package.json.txt"),
+    replacements: {
+      packageName: resolvedOptions.packageName,
+      sdkPackageName: resolvedOptions.sdkPackage,
+      integrationVersion: integrationVersion.version,
+      latestVersion: latestVersion.version,
+      latestVersionName: latestVersion.name,
+      sdkVersion: sdkVersion.version,
+      sdkVersionName: sdkVersion.name,
+      integrationKitVersion: integrationKitVersion.version,
+      integrationKitVersionName: integrationKitVersion.name,
+      tsconfigDep: triggerMonorepoPath ? '\n    "@trigger.dev/tsconfig": "workspace:*",' : "",
+      tsupDep: triggerMonorepoPath ? '\n    "@trigger.dev/tsup": "workspace:*",' : "",
     },
-    files: ["dist/index.js", "dist/index.d.ts", "dist/index.js.map"],
-    devDependencies: {
-      "@types/node": "16.x",
-      rimraf: "^3.0.2",
-      tsup: "7.1.x",
-      typescript: "4.9.4",
+    outputPath: packageJsonPath,
+  });
+  handleCreateResult(packageJsonPath, packageJsonResult);
+
+  // create tsconfig.json
+  const tsconfigPath = pathModule.join(resolvedPath, "tsconfig.json");
+  const tsconfigResult = await createFileFromTemplate({
+    templatePath: pathModule.join(
+      templatesDir,
+      // use `tsc --showConfig` to update external tsconfig
+      `tsconfig-${triggerMonorepoPath ? "internal" : "external"}.json`
+    ),
+    replacements: {},
+    outputPath: tsconfigPath,
+  });
+  handleCreateResult(tsconfigPath, tsconfigResult);
+
+  // create README.md
+  const readmePath = pathModule.join(resolvedPath, "README.md");
+  const readmeResult = await createFileFromTemplate({
+    templatePath: pathModule.join(templatesDir, "README.md"),
+    replacements: {
+      packageName: resolvedOptions.packageName,
     },
-    scripts: {
-      clean: "rimraf dist",
-      build: "npm run clean && npm run build:tsup",
-      "build:tsup": "tsup",
-      typecheck: "tsc --noEmit",
-    },
-    dependencies: {
-      [latestVersion.name]: `^${latestVersion.version}`,
-      [sdkVersion.name]: sdkVersion.version,
-      [integrationKitVersion.name]: integrationKitVersion.version,
-    },
-    engines: {
-      node: ">=16.8.0",
-    },
-  };
+    outputPath: readmePath,
+  });
+  handleCreateResult(readmePath, readmeResult);
 
-  await createFileInPath(resolvedPath, "package.json", JSON.stringify(packageJson, null, 2));
+  // create tsup.config.ts
+  const tsupConfigPath = pathModule.join(resolvedPath, "tsup.config.ts");
+  const tsupConfigResult = await createFileFromTemplate({
+    templatePath: pathModule.join(
+      templatesDir,
+      `tsup.config-${triggerMonorepoPath ? "internal" : "external"}.js`
+    ),
+    replacements: {},
+    outputPath: tsupConfigPath,
+  });
+  handleCreateResult(tsupConfigPath, tsupConfigResult);
 
-  // Create the tsconfig.json
-  const tsconfigJson = {
-    compilerOptions: {
-      composite: false,
-      declaration: false,
-      declarationMap: false,
-      esModuleInterop: true,
-      forceConsistentCasingInFileNames: true,
-      inlineSources: false,
-      isolatedModules: true,
-      moduleResolution: "node16",
-      noUnusedLocals: false,
-      noUnusedParameters: false,
-      preserveWatchOutput: true,
-      skipLibCheck: true,
-      strict: true,
-      experimentalDecorators: true,
-      emitDecoratorMetadata: true,
-      sourceMap: true,
-      resolveJsonModule: true,
-      lib: ["es2019"],
-      module: "commonjs",
-      target: "es2021",
-    },
-    include: ["./src/**/*.ts", "tsup.config.ts"],
-    exclude: ["node_modules"],
-  };
-
-  await createFileInPath(resolvedPath, "tsconfig.json", JSON.stringify(tsconfigJson, null, 2));
-
-  const readme = `
-# ${resolvedOptions.packageName}
-  `;
-
-  await createFileInPath(resolvedPath, "README.md", readme);
-
-  // Create the tsup.config.ts
-  const tsupConfig = `
-import { defineConfig } from "tsup";
-
-export default defineConfig([
-  {
-    name: "main",
-    entry: ["./src/index.ts"],
-    outDir: "./dist",
-    platform: "node",
-    format: ["cjs"],
-    legacyOutput: true,
-    sourcemap: true,
-    clean: true,
-    bundle: true,
-    splitting: false,
-    dts: true,
-    treeshake: {
-      preset: "smallest",
-    },
-    esbuildPlugins: [],
-    external: ["http", "https", "util", "events", "tty", "os", "timers"],
-  },
-]);
-
-`;
-
-  await createFileInPath(resolvedPath, "tsup.config.ts", tsupConfig);
-
+  // create src/*
   if (resolvedOptions.skipGeneratingCode) {
-    await createFileInPath(resolvedPath, "src/index.ts", "export {}");
+    const validIdentifier = pathModule
+      .basename(path)
+      .replace(/[^a-zA-Z0-9]+/g, "")
+      .replace(/^[0-9]+/g, "");
+
+    const identifier = validIdentifier.length ? validIdentifier : "packageName";
+    const capitalizedIdentifier = identifier[0]?.toUpperCase() + identifier.slice(1);
+
+    const apiKeyPropertyName = "apiKey"; // TODO: prompt for this
+    const authSourceReturn = {
+      "api-key": '"LOCAL" as const',
+      oauth: '"HOSTED" as const',
+      "both-methods": `this._options.${apiKeyPropertyName} ? "LOCAL" : "HOSTED"`,
+    };
+
+    const srcFilenames = [
+      pathModule.join("payload-examples", "index.ts"),
+      "events.ts",
+      "index.ts",
+      "models.ts",
+      "schemas.ts",
+      "types.ts",
+      "utils.ts",
+      "webhooks.ts",
+    ];
+
+    for (const filename of srcFilenames) {
+      const filePath = pathModule.join(resolvedPath, "src", filename);
+      const fileResult = await createFileFromTemplate({
+        templatePath: pathModule.join(templatesDir, `${filename}.txt`),
+        replacements: {
+          apiKeyPropertyName,
+          authSourceReturn: authSourceReturn[resolvedOptions.authMethod],
+          identifier,
+          capitalizedIdentifier,
+          sdkPackageName: resolvedOptions.sdkPackage,
+        },
+        outputPath: filePath,
+      });
+      handleCreateResult(filePath, fileResult);
+    }
   } else {
     await attemptToGenerateIntegrationFiles(pathModule.join(resolvedPath, "src"), resolvedOptions);
   }
@@ -295,8 +313,9 @@ const resolveOptionsWithPrompts = async (
       resolvedOptions.skipGeneratingCode = true;
     }
 
+    resolvedOptions.authMethod = await promptAuthMethod();
+
     if (!resolvedOptions.skipGeneratingCode) {
-      resolvedOptions.authMethod = await promptAuthMethod();
       resolvedOptions.extraInfo = await promptExtraInfo();
     }
   } catch (err) {
@@ -448,11 +467,13 @@ async function getInternalOrExternalPackageVersion({
   tag,
   path,
   monorepoPath,
+  prependWorkspace = true,
 }: {
   packageName: string;
   tag: string;
   path: string;
   monorepoPath?: string;
+  prependWorkspace?: boolean;
 }): Promise<{ name: string; version: string } | undefined> {
   if (!monorepoPath) {
     return await getLatestPackageVersion(packageName, tag);
@@ -470,7 +491,7 @@ async function getInternalOrExternalPackageVersion({
 
   return {
     name: packageJson.name,
-    version: `workspace:^${packageJson.version}`,
+    version: `${prependWorkspace ? "workspace:^" : ""}${packageJson.version}`,
   };
 }
 
@@ -550,3 +571,13 @@ async function updateJobCatalogWithNewIntegration(
   };
   await writeJSONFile(tsConfigPath, newTsConfig);
 }
+
+const handleCreateResult = (
+  outputPath: string,
+  result: Awaited<ReturnType<typeof createFileFromTemplate>>
+) => {
+  if (!result.success) {
+    throw new Error(`Failed to create ${pathModule.basename(outputPath)}`);
+  }
+  logger.success(`✔ Created ${pathModule.basename(outputPath)} at ${relativePath(outputPath)}`);
+};
