@@ -24,6 +24,7 @@
     "linear": "nodemon --watch src/linear.ts -r tsconfig-paths/register -r dotenv/config src/linear.ts",
     "status": "nodemon --watch src/status.ts -r tsconfig-paths/register -r dotenv/config src/status.ts",
     "byo-auth": "nodemon --watch src/byo-auth.ts -r tsconfig-paths/register -r dotenv/config src/byo-auth.ts",
+    "redacted": "nodemon --watch src/redacted.ts -r tsconfig-paths/register -r dotenv/config src/redacted.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {

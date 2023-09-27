@@ -143,7 +143,6 @@ importers:
       eslint: ^8.24.0
       eslint-config-prettier: ^8.5.0
       express: ^4.18.1
-      fast-redact: ^3.1.2
       framer-motion: ^10.12.11
       graphile-worker: ^0.13.0
       highlight.run: ^7.3.4
@@ -242,7 +241,6 @@ importers:
       cuid: 2.1.8
       emails: link:../../packages/emails
       express: 4.18.2
-      fast-redact: 3.1.2
       framer-motion: 10.12.11_biqbaboplfbrettd7655fr4n2y
       graphile-worker: 0.13.0
       highlight.run: 7.3.4
@@ -18994,11 +18992,6 @@ packages:
 
   /fast-memoize/2.5.2:
     resolution: {integrity: sha512-Ue0LwpDYErFbmNnZSF0UH6eImUwDmogUO1jyE+JbN2gsQz/jICm1Ve7t9QT0rNSsfJt+Hs4/S3GnsDVjL4HVrw==}
-    dev: false
-
-  /fast-redact/3.1.2:
-    resolution: {integrity: sha512-+0em+Iya9fKGfEQGcd62Yv6onjBmmhV1uh86XVfOU8VwAe6kaFdQCWI9s0/Nnugx5Vd9tdbZ7e6gE2tR9dzXdw==}
-    engines: {node: '>=6'}
     dev: false
 
   /fast-shallow-equal/1.0.0:

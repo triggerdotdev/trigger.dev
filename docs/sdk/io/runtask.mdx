@@ -82,9 +82,12 @@ A Task is a resumable unit of a Run that can be retried, resumed and is logged. 
       </Expandable>
     </ResponseField>
 
-  <ResponseField name="params" type="any">
-    The input params to the Task, will be displayed in the logs.
-  </ResponseField>
+{" "}
+
+<ResponseField name="params" type="any">
+  The input params to the Task, will be displayed in the logs.
+</ResponseField>
+
   <ResponseField name="style" type="object">
     The style of the log entry.
 
@@ -94,6 +97,17 @@ A Task is a resumable unit of a Run that can be retried, resumed and is logged. 
       </ResponseField>
       <ResponseField name="variant" type="string">
         A variant of the style.
+      </ResponseField>
+    </Expandable>
+
+  </ResponseField>
+
+  <ResponseField name="redact" type="RedactOptions">
+    An optional object that specifies which fields to redact from the logs. This is useful for sensitive data like API keys.
+
+    <Expandable title="redact" defaultOpen>
+      <ResponseField name="paths" type="string[]">
+        An array of paths to redact. A path is a dot separated string, e.g. `user.email`. Currently does not support wildcards.
       </ResponseField>
     </Expandable>
 
