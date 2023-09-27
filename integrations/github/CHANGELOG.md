@@ -1,5 +1,12 @@
 # @trigger.dev/github
 
+## 2.1.6
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@2.1.6
+- @trigger.dev/sdk@2.1.6
+
 ## 2.1.5
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # create-trigger
 
+## 2.1.6
+
+### Patch Changes
+
+- 2397fcb6: Added Express support to the CLI
+
 ## 2.1.5
 
 ### Patch Changes
