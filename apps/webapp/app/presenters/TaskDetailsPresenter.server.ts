@@ -1,6 +1,8 @@
+import { RedactSchema } from "@trigger.dev/core";
 import { StyleSchema } from "@trigger.dev/core";
 import { PrismaClient, prisma } from "~/db.server";
 import { mergeProperties } from "~/utils/mergeProperties.server";
+import { Redactor } from "~/utils/redactor";
 
 type DetailsProps = {
   id: string;
@@ -61,6 +63,7 @@ export class TaskDetailsPresenter {
         completedAt: true,
         style: true,
         parentId: true,
+        redact: true,
         attempts: {
           select: {
             number: true,
@@ -85,11 +88,32 @@ export class TaskDetailsPresenter {
 
     return {
       ...task,
-      output: task.output ? JSON.stringify(task.output, null, 2) : undefined,
+      redact: undefined,
+      output: task.output
+        ? JSON.stringify(this.#stringifyOutputWithRedactions(task.output, task.redact), null, 2)
+        : undefined,
       connection: task.runConnection,
       params: task.params as Record<string, any>,
       properties: mergeProperties(task.properties, task.outputProperties),
       style: task.style ? StyleSchema.parse(task.style) : undefined,
     };
+  }
+
+  #stringifyOutputWithRedactions(output: any, redact: unknown): any {
+    if (!output) {
+      return;
+    }
+
+    const parsedRedact = RedactSchema.safeParse(redact);
+
+    if (!parsedRedact.success) {
+      return output;
+    }
+
+    const paths = parsedRedact.data.paths;
+
+    const redactor = new Redactor(paths);
+
+    return redactor.redact(output);
   }
 }
