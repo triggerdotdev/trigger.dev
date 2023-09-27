@@ -25,7 +25,7 @@ export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Express" />,
 };
 
-export default function SetUpRemix() {
+export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   useProjectSetupComplete();
