@@ -1091,3 +1091,12 @@ model ApiIntegrationVote {
 
   @@unique([apiIdentifier, userId])
 }
+
+model DataMigration {
+  id   String @id @default(cuid())
+  name String @unique
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+}

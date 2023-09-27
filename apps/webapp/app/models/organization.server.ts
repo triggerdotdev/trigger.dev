@@ -8,7 +8,6 @@ import type {
 import { customAlphabet } from "nanoid";
 import slug from "slug";
 import { prisma, PrismaClientOrTransaction } from "~/db.server";
-import { workerQueue } from "~/services/worker.server";
 import { createProject } from "./project.server";
 
 export type { Organization };
@@ -176,10 +175,10 @@ function envSlug(environmentType: RuntimeEnvironment["type"]) {
       return "prod";
     }
     case "STAGING": {
-      return "staging";
+      return "stg";
     }
     case "PREVIEW": {
-      return "preview";
+      return "prev";
     }
   }
 }

@@ -85,8 +85,8 @@ export default function Page() {
     const client = clients.find((c) => c.slug === selected.client);
     if (!client) return undefined;
 
-    if (selected.type === "PREVIEW" || selected.type === "STAGING") {
-      throw new Error("PREVIEW/STAGING is not yet supported");
+    if (selected.type === "PREVIEW") {
+      throw new Error("PREVIEW is not yet supported");
     }
 
     return {
@@ -195,6 +195,18 @@ export default function Page() {
                                 })
                               }
                             />
+                            {client.endpoints.STAGING && (
+                              <EndpointRow
+                                endpoint={client.endpoints.STAGING}
+                                type="STAGING"
+                                onClick={() =>
+                                  setSelected({
+                                    client: client.slug,
+                                    type: "STAGING",
+                                  })
+                                }
+                              />
+                            )}
                             <EndpointRow
                               endpoint={client.endpoints.PRODUCTION}
                               type="PRODUCTION"
@@ -218,7 +230,7 @@ export default function Page() {
                     </>
                   )}
                 </div>
-                {selectedEndpoint && (
+                {selectedEndpoint && selectedEndpoint.endpoint && (
                   <ConfigureEndpointSheet
                     slug={selectedEndpoint.clientSlug}
                     endpoint={selectedEndpoint.endpoint}

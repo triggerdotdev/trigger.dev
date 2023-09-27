@@ -2,19 +2,19 @@ import { PrismaClient, prisma } from "~/db.server";
 import { IndexEndpointStats, parseEndpointIndexStats } from "~/models/indexEndpoint.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
-import {
+import type {
   Endpoint,
   EndpointIndex,
   RuntimeEnvironment,
   RuntimeEnvironmentType,
-} from "../../../../packages/database/src";
-import { env } from "~/env.server";
+} from "@trigger.dev/database";
 
 export type Client = {
   slug: string;
   endpoints: {
     DEVELOPMENT: ClientEndpoint;
     PRODUCTION: ClientEndpoint;
+    STAGING?: ClientEndpoint;
   };
 };
 
@@ -133,6 +133,8 @@ export class EnvironmentsPresenter {
         throw new Error("Development environment not found, this should not happen");
       }
 
+      const stagingEnvironment = filtered.find((environment) => environment.type === "STAGING");
+
       const productionEnvironment = filtered.find(
         (environment) => environment.type === "PRODUCTION"
       );
@@ -151,6 +153,9 @@ export class EnvironmentsPresenter {
             state: "unconfigured",
             environment: productionEnvironment,
           },
+          STAGING: stagingEnvironment
+            ? { state: "unconfigured", environment: stagingEnvironment }
+            : undefined,
         },
       };
 
@@ -159,6 +164,16 @@ export class EnvironmentsPresenter {
       );
       if (devEndpoint) {
         client.endpoints.DEVELOPMENT = endpointClient(devEndpoint, developmentEnvironment, baseUrl);
+      }
+
+      if (stagingEnvironment) {
+        const stagingEndpoint = stagingEnvironment.endpoints.find(
+          (endpoint) => endpoint.slug === slug
+        );
+
+        if (stagingEndpoint) {
+          client.endpoints.STAGING = endpointClient(stagingEndpoint, stagingEnvironment, baseUrl);
+        }
       }
 
       const prodEndpoint = productionEnvironment.endpoints.find(
