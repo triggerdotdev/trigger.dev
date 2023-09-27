@@ -129,18 +129,20 @@ export const initCommand = async (options: InitCommandOptions) => {
 
   await addConfigurationToPackageJson(resolvedPath, resolvedOptions);
 
-  await printNextSteps(resolvedOptions, authorizedKey, packageManager, framework);
+  const projectUrl = `${options.triggerUrl}/orgs/${authorizedKey.organization.slug}/projects/${authorizedKey.project.slug}`;
+  if (framework.printInstallationComplete) {
+    await framework.printInstallationComplete(projectUrl);
+  } else {
+    await printNextSteps(projectUrl, packageManager, framework);
+  }
   telemetryClient.init.completed(resolvedOptions);
 };
 
 async function printNextSteps(
-  options: ResolvedOptions,
-  authorizedKey: WhoamiResponse,
+  projectUrl: string,
   packageManager: PackageManager,
   framework: Framework
 ) {
-  const projectUrl = `${options.triggerUrl}/orgs/${authorizedKey.organization.slug}/projects/${authorizedKey.project.slug}`;
-
   logger.success(`✔ Successfully initialized Trigger.dev!`);
 
   logger.info("Next steps:");
