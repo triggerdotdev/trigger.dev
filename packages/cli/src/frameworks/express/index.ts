@@ -1,6 +1,7 @@
 import { Framework, ProjectInstallOptions } from "..";
 import { InstallPackage } from "../../utils/addDependencies";
 import { PackageManager } from "../../utils/getUserPkgManager";
+import { logger } from "../../utils/logger";
 import { readPackageJson } from "../../utils/readPackageJson";
 import { standardWatchFilePaths } from "../watchConfig";
 import boxen from "boxen";
@@ -35,9 +36,11 @@ export class Express implements Framework {
   async postInstall(path: string, options: ProjectInstallOptions): Promise<void> {}
 
   async printInstallationComplete(projectUrl: string): Promise<void> {
-    boxen(
-      "Automatic installation isn't currently support for Express. \nFollow the steps in our manual installation guide: https://trigger.dev/docs/documentation/guides/manual/express",
-      { padding: 1, margin: 1, borderStyle: "double", borderColor: "magenta" }
+    logger.info(
+      boxen(
+        "Automatic installation isn't currently support for Express. \nFollow the steps in our manual installation guide: https://trigger.dev/docs/documentation/guides/manual/express",
+        { padding: 1, margin: 1, borderStyle: "double", borderColor: "magenta" }
+      )
     );
   }
 
