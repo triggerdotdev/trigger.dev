@@ -36,7 +36,7 @@ export async function action({ request, params }: ActionArgs) {
   const service = new CallbackRunTaskService();
 
   try {
-    await service.call(runId, id, body.data, new URL(request.url).href);
+    await service.call(runId, id, body.data, request.url);
 
     return json({ success: true });
   } catch (error) {
