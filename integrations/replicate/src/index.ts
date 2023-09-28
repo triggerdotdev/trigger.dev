@@ -1,6 +1,7 @@
 import {
   TriggerIntegration,
   RunTaskOptions,
+  RunTaskOptionsWithCallback,
   IO,
   IOTask,
   IntegrationTaskKey,
@@ -8,6 +9,7 @@ import {
   Json,
   retry,
   ConnectionAuth,
+  IOTaskWithCallback,
 } from "@trigger.dev/sdk";
 import ReplicateClient, { Page } from "replicate";
 
@@ -64,10 +66,14 @@ export class Replicate implements TriggerIntegration {
     });
   }
 
-  runTask<T, TResult extends Json<T> | void>(
+  runTask<T, TResult extends Json<T> | void, TOptions extends RunTaskOptions>(
     key: IntegrationTaskKey,
-    callback: (client: ReplicateClient, task: IOTask, io: IO) => Promise<TResult>,
-    options?: RunTaskOptions,
+    callback: (
+      client: ReplicateClient,
+      task: TOptions extends RunTaskOptionsWithCallback ? IOTaskWithCallback : IOTask,
+      io: IO
+    ) => Promise<TResult>,
+    options?: TOptions,
     errorCallback?: RunTaskErrorCallback
   ): Promise<TResult> {
     if (!this._io) throw new Error("No IO");

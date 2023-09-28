@@ -630,6 +630,8 @@ export const RunTaskOptionsSchema = z.object({
 
 export type RunTaskOptions = z.input<typeof RunTaskOptionsSchema>;
 
+export type RunTaskOptionsWithCallback = RunTaskOptions & { callback: { enabled: true } };
+
 export type OverridableRunTaskOptions = Pick<
   RunTaskOptions,
   "retry" | "delayUntil" | "description"

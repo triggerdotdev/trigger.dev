@@ -63,7 +63,7 @@ export class Trainings {
 
         return client.trainings.create(model_owner, model_name, version_id, {
           ...options,
-          webhook: task.callbackUrl ?? undefined,
+          webhook: task.callbackUrl,
           webhook_events_filter: ["completed"],
         });
       },

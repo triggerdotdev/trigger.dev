@@ -36,6 +36,8 @@ import { TriggerStatus } from "./status";
 
 export type IOTask = ServerTask;
 
+export type IOTaskWithCallback = IOTask & { callbackUrl: string };
+
 export type IOOptions = {
   id: string;
   apiClient: ApiClient;
@@ -528,7 +530,7 @@ export class IO {
    */
   async runTask<T extends Json<T> | void>(
     key: string | any[],
-    callback: (task: ServerTask, io: IO) => Promise<T>,
+    callback: (task: ServerTask & { callbackUrl: string }, io: IO) => Promise<T>,
     options?: RunTaskOptions,
     onError?: RunTaskErrorCallback
   ): Promise<T> {
@@ -594,7 +596,7 @@ export class IO {
 
     const executeTask = async () => {
       try {
-        const result = await callback(task, this);
+        const result = await callback(task as ServerTask & { callbackUrl: string }, this);
 
         const output = SerializableJsonSchema.parse(result) as T;
 
