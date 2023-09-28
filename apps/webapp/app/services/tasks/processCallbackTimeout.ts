@@ -1,4 +1,4 @@
-import { RuntimeEnvironmentType, type Task } from "@trigger.dev/database";
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { enqueueRunExecutionV2 } from "~/models/jobRunExecution.server";
 import { logger } from "../logger.server";
@@ -25,10 +25,10 @@ export class ProcessCallbackTimeoutService {
 
     logger.debug("ProcessCallbackTimeoutService.call", { task });
 
-    return await this.#resumeTask(task, null);
+    return await this.#failTask(task, "Remote callback timeout - no requests received");
   }
 
-  async #resumeTask(task: NonNullable<FoundTask>, output: any) {
+  async #failTask(task: NonNullable<FoundTask>, error: string) {
     await $transaction(this.#prismaClient, async (tx) => {
       await tx.taskAttempt.updateMany({
         where: {
@@ -36,16 +36,17 @@ export class ProcessCallbackTimeoutService {
           status: "PENDING",
         },
         data: {
-          status: "COMPLETED",
+          status: "ERRORED",
+          error
         },
       });
 
       await tx.task.update({
         where: { id: task.id },
         data: {
-          status: "COMPLETED",
+          status: "ERRORED",
           completedAt: new Date(),
-          output: output ? output : undefined,
+          output: error,
         },
       });
 
