@@ -3,7 +3,7 @@ import ReplicateClient, { Page, Training } from "replicate";
 
 import { ReplicateRunTask } from "./index";
 import { ReplicateReturnType } from "./types";
-import { modelProperties } from "./utils";
+import { callbackProperties, modelProperties } from "./utils";
 
 export class Trainings {
   constructor(private runTask: ReplicateRunTask) {}
@@ -54,7 +54,7 @@ export class Trainings {
     } & Omit<
       Parameters<ReplicateClient["trainings"]["create"]>[3],
       "webhook" | "webhook_events_filter"
-    >
+    > & { timeoutInSeconds?: number }
   ): ReplicateReturnType<Training> {
     return this.runTask(
       key,
@@ -70,7 +70,7 @@ export class Trainings {
       {
         name: "Create And Await Training",
         params,
-        properties: modelProperties(params),
+        properties: [...modelProperties(params), ...callbackProperties(params)],
         callback: { enabled: true },
       }
     );

@@ -45,3 +45,12 @@ export const modelProperties = (
 export const streamingProperty = (params: { stream?: boolean }) => {
   return [{ label: "Streaming Enabled", text: String(!!params.stream) }];
 };
+
+export const callbackProperties = (params: { timeoutInSeconds?: number }) => {
+  return [
+    {
+      label: "Callback Timeout",
+      text: params.timeoutInSeconds ? `${params.timeoutInSeconds}s` : "default",
+    },
+  ];
+};

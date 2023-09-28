@@ -3,7 +3,7 @@ import ReplicateClient, { Page, Prediction } from "replicate";
 
 import { ReplicateRunTask } from "./index";
 import { ReplicateReturnType } from "./types";
-import { createPredictionProperties } from "./utils";
+import { callbackProperties, createPredictionProperties } from "./utils";
 
 export class Predictions {
   constructor(private runTask: ReplicateRunTask) {}
@@ -44,7 +44,7 @@ export class Predictions {
     params: Omit<
       Parameters<ReplicateClient["predictions"]["create"]>[0],
       "webhook" | "webhook_events_filter"
-    >
+    > & { timeoutInSeconds?: number }
   ): ReplicateReturnType<Prediction> {
     return this.runTask(
       key,
@@ -58,7 +58,7 @@ export class Predictions {
       {
         name: "Create And Await Prediction",
         params,
-        properties: createPredictionProperties(params),
+        properties: [...createPredictionProperties(params), ...callbackProperties(params)],
         callback: { enabled: true },
       }
     );

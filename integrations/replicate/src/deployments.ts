@@ -2,7 +2,7 @@ import { IntegrationTaskKey } from "@trigger.dev/sdk";
 import ReplicateClient, { Prediction } from "replicate";
 
 import { ReplicateRunTask } from "./index";
-import { createDeploymentProperties } from "./utils";
+import { callbackProperties, createDeploymentProperties } from "./utils";
 import { ReplicateReturnType } from "./types";
 
 export class Deployments {
@@ -46,7 +46,7 @@ class Predictions {
     } & Omit<
       Parameters<ReplicateClient["deployments"]["predictions"]["create"]>[2],
       "webhook" | "webhook_events_filter"
-    >
+    > & { timeoutInSeconds?: number }
   ): ReplicateReturnType<Prediction> {
     return this.runTask(
       key,
@@ -62,7 +62,7 @@ class Predictions {
       {
         name: "Create And Await Prediction With Deployment",
         params,
-        properties: createDeploymentProperties(params),
+        properties: [...createDeploymentProperties(params), ...callbackProperties(params)],
         callback: { enabled: true },
       }
     );
