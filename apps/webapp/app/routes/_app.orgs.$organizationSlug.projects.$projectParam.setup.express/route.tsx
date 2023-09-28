@@ -1,5 +1,6 @@
 import { ChatBubbleLeftRightIcon, Squares2X2Icon } from "@heroicons/react/20/solid";
 import invariant from "tiny-invariant";
+import { ExpressLogo } from "~/assets/logos/ExpressLogo";
 import { Feedback } from "~/components/Feedback";
 import { PageGradient } from "~/components/PageGradient";
 import { InitCommand, RunDevCommand, TriggerDevStep } from "~/components/SetupCommands";
@@ -36,6 +37,9 @@ export default function Page() {
   return (
     <PageGradient>
       <div className="mx-auto max-w-3xl">
+        <div className="mb-12 grid place-items-center">
+          <ExpressLogo className="w-64" />
+        </div>
         <div className="flex items-center justify-between">
           <Header1 spacing className="text-bright">
             Get setup in 5 minutes
