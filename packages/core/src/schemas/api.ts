@@ -609,12 +609,15 @@ export const RunTaskOptionsSchema = z.object({
   /** The style of the log entry. */
   style: StyleSchema.optional(),
   /** Allows you to expose a `task.callbackUrl` to use in your tasks. Enabling this feature will cause the task to return the data sent to the callbackUrl instead of the usual async callback result. */
-  callback: z.object({
-    /** Causes the task to wait for and return the data of the first request sent to `task.callbackUrl`. */
-    enabled: z.boolean(),
-    /** Time to wait for the first request to `task.callbackUrl`. Default: One hour. */
-    timeoutInSeconds: z.number(),
-  }).partial().optional(),
+  callback: z
+    .object({
+      /** Causes the task to wait for and return the data of the first request sent to `task.callbackUrl`. */
+      enabled: z.boolean(),
+      /** Time to wait for the first request to `task.callbackUrl`. Default: One hour. */
+      timeoutInSeconds: z.number(),
+    })
+    .partial()
+    .optional(),
   /** Allows you to link the Integration connection in the logs. This is handled automatically in integrations.  */
   connectionKey: z.string().optional(),
   /** An operation you want to perform on the Trigger.dev platform, current only "fetch" is supported. If you wish to `fetch` use [`io.backgroundFetch()`](https://trigger.dev/docs/sdk/io/backgroundfetch) instead. */
@@ -641,10 +644,12 @@ export type RunTaskBodyInput = z.infer<typeof RunTaskBodyInputSchema>;
 
 export const RunTaskBodyOutputSchema = RunTaskBodyInputSchema.extend({
   params: DeserializedJsonSchema.optional().nullable(),
-  callback: z.object({
-    enabled: z.boolean(),
-    timeoutInSeconds: z.number().default(3600),
-  }).optional(),
+  callback: z
+    .object({
+      enabled: z.boolean(),
+      timeoutInSeconds: z.number().default(3600),
+    })
+    .optional(),
 });
 
 export type RunTaskBodyOutput = z.infer<typeof RunTaskBodyOutputSchema>;

@@ -526,12 +526,12 @@ export class IO {
    * @param onError The callback that will be called when the Task fails. The callback receives the error, the Task and the IO as parameters. If you wish to retry then return an object with a `retryAt` property.
    * @returns A Promise that resolves with the returned value of the callback.
    */
-  async runTask<T extends Json<T> | void, TOptions extends RunTaskOptions = RunTaskOptions>(
+  async runTask<T extends Json<T> | void>(
     key: string | any[],
     callback: (task: ServerTask, io: IO) => Promise<T>,
-    options?: TOptions,
+    options?: RunTaskOptions,
     onError?: RunTaskErrorCallback
-  ): Promise<TOptions extends { callback: { enabled: true } } ? any : T> {
+  ): Promise<T> {
     const parentId = this._taskStorage.getStore()?.taskId;
 
     if (parentId) {

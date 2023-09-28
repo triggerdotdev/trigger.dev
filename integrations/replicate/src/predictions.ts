@@ -45,7 +45,7 @@ export class Predictions {
       Parameters<ReplicateClient["predictions"]["create"]>[0],
       "webhook" | "webhook_events_filter"
     >
-  ): ReplicateReturnType<any> {
+  ): ReplicateReturnType<Prediction> {
     return this.runTask(
       key,
       (client, task) => {
