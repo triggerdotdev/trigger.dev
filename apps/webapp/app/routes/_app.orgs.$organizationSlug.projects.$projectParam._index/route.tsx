@@ -160,7 +160,7 @@ function ExampleJobs() {
         height="250"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowFullScreen
-        className="mb-4 w-full border-b border-slate-800"
+        className="mb-4 border-b border-slate-800"
       />
       <Header2 spacing>How to create a Job</Header2>
       <Paragraph variant="small" spacing>
