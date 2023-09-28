@@ -56,6 +56,32 @@ async function main() {
   // }
 }
 
+async function mainParallel() {
+  console.log("Preparing perf tests...");
+
+  // wait for 10 seconds
+  await new Promise((resolve) => setTimeout(resolve, 10000));
+
+  console.log("Starting perf tests in 1 second...");
+
+  // wait for 1 seconds
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
+  // Send 5 events per second for 30 seconds (1 event == 10 runs)
+  for (let i = 0; i < 30; i++) {
+    console.log("Sending 5 event...");
+
+    await Promise.all([sendEvent(), sendEvent(), sendEvent(), sendEvent(), sendEvent()]);
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+
+  // console.log("Sending 30 events...");
+  // for (let i = 0; i < 30; i++) {
+  //   await sendEvent();
+  // }
+}
+
 async function mainLong() {
   console.log("Preparing long perf tests...");
 
@@ -95,7 +121,7 @@ async function mainSerial() {
   }
 }
 
-mainSerial().catch((err) => {
+mainParallel().catch((err) => {
   console.error(err);
   process.exit(1);
 });

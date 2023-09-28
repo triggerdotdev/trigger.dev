@@ -34,77 +34,55 @@ export class IngestSendEvent {
     try {
       const deliverAt = this.#calculateDeliverAt(options);
 
-      return await $transaction(
-        this.#prismaClient,
-        async (tx) => {
-          const externalAccount = options?.accountId
-            ? await tx.externalAccount.upsert({
-                where: {
-                  environmentId_identifier: {
-                    environmentId: environment.id,
-                    identifier: options.accountId,
-                  },
-                },
-                create: {
+      return await $transaction(this.#prismaClient, async (tx) => {
+        const externalAccount = options?.accountId
+          ? await tx.externalAccount.upsert({
+              where: {
+                environmentId_identifier: {
                   environmentId: environment.id,
-                  organizationId: environment.organizationId,
                   identifier: options.accountId,
                 },
-                update: {},
-              })
-            : undefined;
+              },
+              create: {
+                environmentId: environment.id,
+                organizationId: environment.organizationId,
+                identifier: options.accountId,
+              },
+              update: {},
+            })
+          : undefined;
 
-          // Create a new event in the database
-          const eventLog = await tx.eventRecord.create({
-            data: {
-              organization: {
-                connect: {
-                  id: environment.organizationId,
-                },
-              },
-              project: {
-                connect: {
-                  id: environment.projectId,
-                },
-              },
-              environment: {
-                connect: {
-                  id: environment.id,
-                },
-              },
-              eventId: event.id,
-              name: event.name,
-              timestamp: event.timestamp ?? new Date(),
-              payload: event.payload ?? {},
-              context: event.context ?? {},
-              source: event.source ?? "trigger.dev",
-              sourceContext,
-              deliverAt: deliverAt,
-              externalAccount: externalAccount
-                ? {
-                    connect: {
-                      id: externalAccount.id,
-                    },
-                  }
-                : {},
+        // Create a new event in the database
+        const eventLog = await tx.eventRecord.create({
+          data: {
+            organizationId: environment.organizationId,
+            projectId: environment.projectId,
+            environmentId: environment.id,
+            eventId: event.id,
+            name: event.name,
+            timestamp: event.timestamp ?? new Date(),
+            payload: event.payload ?? {},
+            context: event.context ?? {},
+            source: event.source ?? "trigger.dev",
+            sourceContext,
+            deliverAt: deliverAt,
+            externalAccountId: externalAccount ? externalAccount.id : undefined,
+          },
+        });
+
+        if (this.deliverEvents) {
+          // Produce a message to the event bus
+          await workerQueue.enqueue(
+            "deliverEvent",
+            {
+              id: eventLog.id,
             },
-          });
+            { runAt: eventLog.deliverAt, tx, jobKey: `event:${eventLog.id}` }
+          );
+        }
 
-          if (this.deliverEvents) {
-            // Produce a message to the event bus
-            await workerQueue.enqueue(
-              "deliverEvent",
-              {
-                id: eventLog.id,
-              },
-              { runAt: eventLog.deliverAt, tx, jobKey: `event:${eventLog.id}` }
-            );
-          }
-
-          return eventLog;
-        },
-        { rethrowPrismaErrors: true }
-      );
+        return eventLog;
+      });
     } catch (error) {
       const prismaError = PrismaErrorSchema.safeParse(error);
 
