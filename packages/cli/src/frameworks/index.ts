@@ -1,6 +1,7 @@
 import { InstallPackage } from "../utils/addDependencies";
 import { PackageManager } from "../utils/getUserPkgManager";
 import { Astro } from "./astro";
+import { Express } from "./express";
 import { NextJs } from "./nextjs";
 import { Remix } from "./remix";
 
@@ -32,6 +33,9 @@ export interface Framework {
   /** You can check for middleware, add extra instructions, etc */
   postInstall(path: string, options: ProjectInstallOptions): Promise<void>;
 
+  /** You can (optionally) override the initComplete messages */
+  printInstallationComplete?(projectUrl: string): Promise<void>;
+
   /** Used by the dev command, if a hostname isn't passed in */
   defaultHostnames: string[];
 
@@ -46,7 +50,7 @@ export interface Framework {
 }
 
 /** The order of these matters. The first one that matches the folder will be used, so stricter ones should be first. */
-const frameworks: Framework[] = [new NextJs(), new Remix(), new Astro()];
+const frameworks: Framework[] = [new NextJs(), new Remix(), new Astro(), new Express()];
 
 export const getFramework = async (
   path: string,

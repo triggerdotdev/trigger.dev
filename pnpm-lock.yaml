@@ -143,7 +143,6 @@ importers:
       eslint: ^8.24.0
       eslint-config-prettier: ^8.5.0
       express: ^4.18.1
-      fast-redact: ^3.1.2
       framer-motion: ^10.12.11
       graphile-worker: ^0.13.0
       highlight.run: ^7.3.4
@@ -242,7 +241,6 @@ importers:
       cuid: 2.1.8
       emails: link:../../packages/emails
       express: 4.18.2
-      fast-redact: 3.1.2
       framer-motion: 10.12.11_biqbaboplfbrettd7655fr4n2y
       graphile-worker: 0.13.0
       highlight.run: 7.3.4
@@ -368,8 +366,8 @@ importers:
 
   integrations/airtable:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.1.5
-      '@trigger.dev/sdk': workspace:^2.1.5
+      '@trigger.dev/integration-kit': workspace:^2.1.6
+      '@trigger.dev/sdk': workspace:^2.1.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       airtable: ^0.12.1
@@ -396,8 +394,8 @@ importers:
       '@octokit/types': ^9.2.3
       '@octokit/webhooks': ^10.4.0
       '@octokit/webhooks-types': ^6.10.0
-      '@trigger.dev/integration-kit': workspace:^2.1.5
-      '@trigger.dev/sdk': workspace:^2.1.5
+      '@trigger.dev/integration-kit': workspace:^2.1.6
+      '@trigger.dev/sdk': workspace:^2.1.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       octokit: ^2.0.14
@@ -423,8 +421,8 @@ importers:
   integrations/linear:
     specifiers:
       '@linear/sdk': ^8.0.0
-      '@trigger.dev/integration-kit': workspace:^2.1.5
-      '@trigger.dev/sdk': workspace:^2.1.5
+      '@trigger.dev/integration-kit': workspace:^2.1.6
+      '@trigger.dev/sdk': workspace:^2.1.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -445,8 +443,8 @@ importers:
 
   integrations/openai:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.1.5
-      '@trigger.dev/sdk': workspace:^2.1.5
+      '@trigger.dev/integration-kit': workspace:^2.1.6
+      '@trigger.dev/sdk': workspace:^2.1.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       openai: ^4.2.0
@@ -465,8 +463,8 @@ importers:
   integrations/plain:
     specifiers:
       '@team-plain/typescript-sdk': ^2.7.0
-      '@trigger.dev/integration-kit': workspace:^2.1.5
-      '@trigger.dev/sdk': workspace:^2.1.5
+      '@trigger.dev/integration-kit': workspace:^2.1.6
+      '@trigger.dev/sdk': workspace:^2.1.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
@@ -483,8 +481,8 @@ importers:
 
   integrations/resend:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.1.5
-      '@trigger.dev/sdk': workspace:^2.1.5
+      '@trigger.dev/integration-kit': workspace:^2.1.6
+      '@trigger.dev/sdk': workspace:^2.1.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       resend: ^1.0.0
@@ -503,8 +501,8 @@ importers:
   integrations/sendgrid:
     specifiers:
       '@sendgrid/mail': ^7.7.0
-      '@trigger.dev/integration-kit': workspace:^2.1.5
-      '@trigger.dev/sdk': workspace:^2.1.5
+      '@trigger.dev/integration-kit': workspace:^2.1.6
+      '@trigger.dev/sdk': workspace:^2.1.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -524,7 +522,7 @@ importers:
   integrations/slack:
     specifiers:
       '@slack/web-api': ^6.8.1
-      '@trigger.dev/sdk': workspace:^2.1.5
+      '@trigger.dev/sdk': workspace:^2.1.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
@@ -542,8 +540,8 @@ importers:
 
   integrations/stripe:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.1.5
-      '@trigger.dev/sdk': workspace:^2.1.5
+      '@trigger.dev/integration-kit': workspace:^2.1.6
+      '@trigger.dev/sdk': workspace:^2.1.6
       '@types/node': 16.x
       rimraf: ^3.0.2
       stripe: ^12.14.0
@@ -566,8 +564,8 @@ importers:
   integrations/supabase:
     specifiers:
       '@supabase/supabase-js': ^2.26.0
-      '@trigger.dev/integration-kit': workspace:^2.1.5
-      '@trigger.dev/sdk': workspace:^2.1.5
+      '@trigger.dev/integration-kit': workspace:^2.1.6
+      '@trigger.dev/sdk': workspace:^2.1.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 18.x
       rimraf: ^3.0.2
@@ -590,8 +588,8 @@ importers:
 
   integrations/typeform:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.1.5
-      '@trigger.dev/sdk': workspace:^2.1.5
+      '@trigger.dev/integration-kit': workspace:^2.1.6
+      '@trigger.dev/sdk': workspace:^2.1.6
       '@typeform/api-client': ^1.8.0
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -641,6 +639,7 @@ importers:
       '@types/mock-fs': ^4.13.1
       '@types/node': '16'
       '@types/node-fetch': ^2.6.2
+      boxen: ^7.1.1
       chalk: ^5.2.0
       chokidar: ^3.5.3
       commander: ^9.4.1
@@ -672,6 +671,7 @@ importers:
       zod: 3.21.4
     dependencies:
       '@types/degit': 2.8.3
+      boxen: 7.1.1
       chalk: 5.2.0
       chokidar: 3.5.3
       commander: 9.5.0
@@ -816,7 +816,7 @@ importers:
   packages/express:
     specifiers:
       '@remix-run/web-fetch': ^4.3.5
-      '@trigger.dev/sdk': workspace:^2.1.5
+      '@trigger.dev/sdk': workspace:^2.1.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/express': ^4.17.13
@@ -889,7 +889,7 @@ importers:
   packages/react:
     specifiers:
       '@tanstack/react-query': 5.0.0-beta.2
-      '@trigger.dev/core': workspace:^2.1.5
+      '@trigger.dev/core': workspace:^2.1.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/react': 18.2.17
@@ -965,7 +965,7 @@ importers:
 
   packages/trigger-sdk:
     specifiers:
-      '@trigger.dev/core': workspace:^2.1.5
+      '@trigger.dev/core': workspace:^2.1.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/node': '18'
@@ -18994,11 +18994,6 @@ packages:
 
   /fast-memoize/2.5.2:
     resolution: {integrity: sha512-Ue0LwpDYErFbmNnZSF0UH6eImUwDmogUO1jyE+JbN2gsQz/jICm1Ve7t9QT0rNSsfJt+Hs4/S3GnsDVjL4HVrw==}
-    dev: false
-
-  /fast-redact/3.1.2:
-    resolution: {integrity: sha512-+0em+Iya9fKGfEQGcd62Yv6onjBmmhV1uh86XVfOU8VwAe6kaFdQCWI9s0/Nnugx5Vd9tdbZ7e6gE2tR9dzXdw==}
-    engines: {node: '>=6'}
     dev: false
 
   /fast-shallow-equal/1.0.0:
