@@ -112,6 +112,22 @@ A Task is a resumable unit of a Run that can be retried, resumed and is logged. 
     </Expandable>
 
   </ResponseField>
+
+  <ResponseField name="callback" type="object">
+    An optional object that exposes settings for the remote callback feature.
+
+    Enabling this feature will expose a `callbackUrl` property on the callback's Task parameter. Additionally, `io.runTask()` will now return a Promise that resolves with the body of the first request sent to that URL.
+
+    <Expandable title="property fields">
+      <ResponseField name="callback" type="boolean" required>
+        Whether to enable the remote callback feature.
+      </ResponseField>
+      <ResponseField name="timeoutInSeconds" type="number" required>
+        The value of the property.
+      </ResponseField>
+    </Expandable>
+  </ResponseField>
+
 </Expandable>
 </ResponseField>
 
@@ -132,6 +148,8 @@ A Task is a resumable unit of a Run that can be retried, resumed and is logged. 
 ## Returns
 
 A Promise that resolves with the returned value of the callback.
+
+If the remote callback feature `options.callback` is enabled, the Promise will instead resolve with the body of the first request sent to `task.callbackUrl`.
 
 <RequestExample>
 
