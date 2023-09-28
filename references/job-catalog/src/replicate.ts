@@ -29,7 +29,7 @@ client.defineJob({
     }),
   }),
   run: async (payload, io, ctx) => {
-    return io.replicate.predictions.createAndWaitForCompletion("await-prediction", {
+    return io.replicate.predictions.createAndAwait("await-prediction", {
       version: payload.version,
       input: { prompt: payload.prompt },
     });

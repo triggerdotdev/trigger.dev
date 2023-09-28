@@ -39,7 +39,7 @@ export class Predictions {
     );
   }
 
-  createAndWaitForCompletion(
+  createAndAwait(
     key: IntegrationTaskKey,
     params: Omit<
       Parameters<ReplicateClient["predictions"]["create"]>[0],

@@ -200,7 +200,7 @@ export class Replicate implements TriggerIntegration {
 
     const { version } = match.groups;
 
-    return this.predictions.createAndWaitForCompletion(key, { ...options, version });
+    return this.predictions.createAndAwait(key, { ...options, version });
   }
 
   // TODO: wait(prediction) - needs polling

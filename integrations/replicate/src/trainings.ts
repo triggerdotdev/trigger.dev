@@ -45,7 +45,7 @@ export class Trainings {
     );
   }
 
-  createAndWaitForCompletion(
+  createAndAwait(
     key: IntegrationTaskKey,
     params: {
       model_owner: string;

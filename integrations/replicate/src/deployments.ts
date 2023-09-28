@@ -38,7 +38,7 @@ class Predictions {
     );
   }
 
-  createAndWaitForCompletion(
+  createAndAwait(
     key: IntegrationTaskKey,
     params: {
       deployment_owner: string;
