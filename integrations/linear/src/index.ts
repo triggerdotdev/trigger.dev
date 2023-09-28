@@ -182,7 +182,7 @@ export class Linear implements TriggerIntegration {
   >(
     task: TTask,
     key: IntegrationTaskKey,
-    params: Nullable<QueryVariables> = {}
+    params: Parameters<TTask>[1] = {}
   ): Promise<Awaited<ReturnType<TTask>>["nodes"]> {
     const boundTask = task.bind(this as any);
 
