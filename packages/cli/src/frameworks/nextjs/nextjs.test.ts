@@ -2,6 +2,7 @@ import mock from "mock-fs";
 import { NextJs, detectPagesOrAppDir, detectUseOfSrcDir } from ".";
 import { getFramework } from "..";
 import { pathExists } from "../../utils/fileSystem";
+import { detectMiddlewareUsage } from "./middleware";
 
 afterEach(() => {
   mock.restore();
@@ -255,5 +256,132 @@ describe("app install", () => {
     expect(await pathExists("app/api/trigger/route.ts")).toEqual(true);
     expect(await pathExists("jobs/index.ts")).toEqual(true);
     expect(await pathExists("jobs/examples.ts")).toEqual(true);
+  });
+});
+
+describe("Next middleware detection", () => {
+  test("no middleware", async () => {
+    mock({});
+
+    const result = await detectMiddlewareUsage("", false);
+    expect(result.hasMiddleware).toEqual(false);
+  });
+
+  test("Basic middleware", async () => {
+    mock({
+      "middleware.js": `import { NextResponse } from 'next/server'
+ 
+      export function middleware(request) {
+        return NextResponse.redirect(new URL('/home', request.url))
+      }
+       
+      // See "Matching Paths" below to learn more
+      export const config = {
+        matcher: '/about/:path*',
+      }`,
+    });
+    const result = await detectMiddlewareUsage("", false);
+    expect(result.hasMiddleware).toEqual(true);
+    if (!result.hasMiddleware) throw "Should have middleware";
+    expect(result.middlewarePath).toEqual("middleware.js");
+    expect(result.conflict).toEqual("possible");
+  });
+
+  test("Wildcard that throws middleware", async () => {
+    mock({
+      "middleware.js": `export const config = {
+        matcher: "*",
+      }`,
+    });
+
+    const result = await detectMiddlewareUsage("", false);
+    expect(result.hasMiddleware).toEqual(true);
+    if (!result.hasMiddleware) throw "Should have middleware";
+    expect(result.middlewarePath).toEqual("middleware.js");
+    expect(result.conflict).toEqual("possible");
+  });
+
+  test("Array middleware", async () => {
+    mock({
+      "middleware.js": `export const config = {
+        matcher: ['/about/:path*', "/dashboard/:path*"],
+      }`,
+    });
+
+    const result = await detectMiddlewareUsage("", false);
+    expect(result.hasMiddleware).toEqual(true);
+    if (!result.hasMiddleware) throw "Should have middleware";
+    expect(result.middlewarePath).toEqual("middleware.js");
+    expect(result.conflict).toEqual("possible");
+  });
+
+  test("With dashes middleware", async () => {
+    mock({
+      "middleware.js": `export const config = {
+        matcher: ["/configurations-test/:path*", "/projects/:path*"],
+      };`,
+    });
+
+    const result = await detectMiddlewareUsage("", false);
+    expect(result.hasMiddleware).toEqual(true);
+    if (!result.hasMiddleware) throw "Should have middleware";
+    expect(result.middlewarePath).toEqual("middleware.js");
+    expect(result.conflict).toEqual("possible");
+  });
+
+  test("Likely double quoted string", async () => {
+    mock({
+      "middleware.js": `export const config = {
+        matcher: "/(.*)",
+      };`,
+    });
+
+    const result = await detectMiddlewareUsage("", false);
+    expect(result.hasMiddleware).toEqual(true);
+    if (!result.hasMiddleware) throw "Should have middleware";
+    expect(result.middlewarePath).toEqual("middleware.js");
+    expect(result.conflict).toEqual("likely");
+  });
+
+  test("Likely single quoted string", async () => {
+    mock({
+      "middleware.js": `export const config = {
+        matcher: '/(.*)',
+      };`,
+    });
+
+    const result = await detectMiddlewareUsage("", false);
+    expect(result.hasMiddleware).toEqual(true);
+    if (!result.hasMiddleware) throw "Should have middleware";
+    expect(result.middlewarePath).toEqual("middleware.js");
+    expect(result.conflict).toEqual("likely");
+  });
+
+  test("Likely double quoted array", async () => {
+    mock({
+      "middleware.js": `export const config = {
+        matcher: ["/pages/", "/(.*)"],
+      };`,
+    });
+
+    const result = await detectMiddlewareUsage("", false);
+    expect(result.hasMiddleware).toEqual(true);
+    if (!result.hasMiddleware) throw "Should have middleware";
+    expect(result.middlewarePath).toEqual("middleware.js");
+    expect(result.conflict).toEqual("likely");
+  });
+
+  test("Likely single quoted array", async () => {
+    mock({
+      "middleware.js": `export const config = {
+        matcher: ['/pages/', '/(.*)'],
+      };`,
+    });
+
+    const result = await detectMiddlewareUsage("", false);
+    expect(result.hasMiddleware).toEqual(true);
+    if (!result.hasMiddleware) throw "Should have middleware";
+    expect(result.middlewarePath).toEqual("middleware.js");
+    expect(result.conflict).toEqual("likely");
   });
 });
