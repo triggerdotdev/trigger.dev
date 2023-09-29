@@ -165,7 +165,8 @@ function getWorkerQueue() {
     tasks: {
       "events.invokeDispatcher": {
         priority: 0, // smaller number = higher priority
-        maxAttempts: 3,
+        maxAttempts: 6,
+        queueName: (payload) => `dispatcher:${payload.id}`, // use a queue for a dispatcher so runs are created sequentially
         handler: async (payload, job) => {
           const service = new InvokeDispatcherService();
 

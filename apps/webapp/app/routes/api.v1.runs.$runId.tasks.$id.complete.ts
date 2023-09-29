@@ -3,7 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import type { CompleteTaskBodyOutput, ServerTask } from "@trigger.dev/core";
 import { CompleteTaskBodyInputSchema } from "@trigger.dev/core";
 import { z } from "zod";
-import { $transaction, PrismaClient, prisma } from "~/db.server";
+import { PrismaClient, prisma } from "~/db.server";
 import { taskWithAttemptsToServerTask } from "~/models/task.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
@@ -86,8 +86,8 @@ export class CompleteRunTaskService {
   ): Promise<ServerTask | undefined> {
     // Using a transaction, we'll first check to see if the task already exists and return if if it does
     // If it doesn't exist, we'll create it and return it
-    const task = await this.#prismaClient.$transaction(async (prisma) => {
-      const existingTask = await prisma.task.findUnique({
+    const task = await this.#prismaClient.$transaction(async (tx) => {
+      const existingTask = await tx.task.findUnique({
         where: {
           id,
         },
@@ -129,35 +129,31 @@ export class CompleteRunTaskService {
         return existingTask;
       }
 
-      const task = await $transaction(prisma, async (tx) => {
-        if (existingTask.attempts.length === 1) {
-          await tx.taskAttempt.update({
-            where: {
-              id: existingTask.attempts[0].id,
-            },
-            data: {
-              status: "COMPLETED",
-            },
-          });
-        }
-
-        return await tx.task.update({
+      if (existingTask.attempts.length === 1) {
+        await tx.taskAttempt.update({
           where: {
-            id,
+            id: existingTask.attempts[0].id,
           },
           data: {
             status: "COMPLETED",
-            output: taskBody.output ?? undefined,
-            completedAt: new Date(),
-            outputProperties: taskBody.properties,
-          },
-          include: {
-            attempts: true,
           },
         });
-      });
+      }
 
-      return task;
+      return await tx.task.update({
+        where: {
+          id,
+        },
+        data: {
+          status: "COMPLETED",
+          output: taskBody.output ?? undefined,
+          completedAt: new Date(),
+          outputProperties: taskBody.properties,
+        },
+        include: {
+          attempts: true,
+        },
+      });
     });
 
     return task ? taskWithAttemptsToServerTask(task) : undefined;

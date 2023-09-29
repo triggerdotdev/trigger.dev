@@ -131,6 +131,7 @@ const icons = {
   "clipboard-checked": (className: string) => (
     <ClipboardDocumentCheckIcon className={cn("text-dimmed", className)} />
   ),
+  list: (className: string) => <ListBulletIcon className={cn("text-slate-400", className)} />,
   log: (className: string) => (
     <ChatBubbleLeftEllipsisIcon className={cn("text-slate-400", className)} />
   ),
