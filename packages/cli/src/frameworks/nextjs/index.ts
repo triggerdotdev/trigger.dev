@@ -38,6 +38,8 @@ export class NextJs implements Framework {
     return [".env.local", ".env"];
   }
 
+  publicKeyEnvName = "NEXT_PUBLIC_TRIGGER_PUBLIC_API_KEY";
+
   async install(
     path: string,
     options: { typescript: boolean; packageManager: PackageManager; endpointSlug: string }

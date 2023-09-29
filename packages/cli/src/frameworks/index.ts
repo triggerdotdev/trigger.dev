@@ -27,6 +27,9 @@ export interface Framework {
   /** Priority list of env filenames, e.g. ".env" */
   possibleEnvFilenames(): string[];
 
+  /** Defaults to TRIGGER_PUBLIC_API_KEY */
+  publicKeyEnvName?: string;
+
   /** Install the required files */
   install(path: string, options: ProjectInstallOptions): Promise<void>;
 
