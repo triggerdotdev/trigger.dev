@@ -11,7 +11,7 @@ import {
   ConnectionAuth,
   IOTaskWithCallback,
 } from "@trigger.dev/sdk";
-import ReplicateClient, { Page } from "replicate";
+import ReplicateClient, { Page, Prediction } from "replicate";
 
 import { Predictions } from "./predictions";
 import { Models } from "./models";
@@ -182,7 +182,7 @@ export class Replicate implements TriggerIntegration {
       Parameters<ReplicateClient["run"]>[1],
       "webhook" | "webhook_events_filter" | "wait" | "signal"
     >
-  ): ReplicateReturnType<object> {
+  ): ReplicateReturnType<Prediction> {
     const { identifier, ...options } = params;
 
     // see: https://github.com/replicate/replicate-javascript/blob/4b0d9cb0e226fab3d3d31de5b32261485acf5626/index.js#L102
