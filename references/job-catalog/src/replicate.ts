@@ -62,6 +62,32 @@ client.defineJob({
 });
 
 client.defineJob({
+  id: "replicate-python-answers",
+  name: "Replicate - Python Answers",
+  version: "0.1.0",
+  integrations: { replicate },
+  trigger: eventTrigger({
+    name: "replicate.serious.monty",
+    schema: z.object({
+      prompt: z.string().default("why are apples not oranges?"),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    const prediction = await io.replicate.run("await-prediction", {
+      identifier:
+        "meta/llama-2-13b-chat:f4e2de70d66816a838a89eeeb621910adffb0dd0baba3976c96980970978018d",
+      input: {
+        prompt: payload.prompt,
+        system_prompt: "Answer like John Cleese. Don't be funny.",
+        max_new_tokens: 200,
+      },
+    });
+
+    return Array.isArray(prediction.output) ? prediction.output.join("") : prediction.output;
+  },
+});
+
+client.defineJob({
   id: "replicate-cinematic-prompt",
   name: "Replicate - Cinematic Prompt",
   version: "0.1.0",
