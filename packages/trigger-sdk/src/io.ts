@@ -17,6 +17,7 @@ import {
   SerializableJsonSchema,
   ServerTask,
   UpdateTriggerSourceBodyV2,
+  supportsFeature,
 } from "@trigger.dev/core";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { webcrypto } from "node:crypto";
@@ -52,6 +53,7 @@ export type IOOptions = {
   cachedTasksCursor?: string;
   yieldedExecutions?: Array<string>;
   noopTasksSet?: string;
+  version?: string | null;
 };
 
 type JsonPrimitive = string | number | boolean | null | undefined | Date | symbol;
@@ -93,6 +95,7 @@ export class IO {
   private _yieldedExecutions: Array<string>;
   private _noopTasksBloomFilter: BloomFilter | undefined;
   private _stats: IOStats;
+  private _version: string;
 
   get stats() {
     return this._stats;
@@ -137,6 +140,7 @@ export class IO {
     }
 
     this._cachedTasksCursor = options.cachedTasksCursor;
+    this._version = options.version ?? "unversioned";
   }
 
   /** @internal */
@@ -803,6 +807,14 @@ export class IO {
    * `io.yield()` allows you to yield execution of the current run and resume it in a new function execution. Similar to `io.wait()` but does not create a task and resumes execution immediately.
    */
   yield(key: string) {
+    if (!supportsFeature("yieldExecution", this._version)) {
+      console.warn(
+        "[trigger.dev] io.yield() is not support by the version of the Trigger.dev platform you are using, you might need to upgrade your self-hosted Trigger.dev instance."
+      );
+
+      return;
+    }
+
     if (this._yieldedExecutions.includes(key)) {
       return;
     }

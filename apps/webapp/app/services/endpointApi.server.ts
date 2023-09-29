@@ -1,4 +1,5 @@
 import {
+  API_VERSIONS,
   ApiEventLog,
   DeliverEventResponseSchema,
   DeserializedJson,
@@ -359,6 +360,7 @@ function addStandardRequestOptions(options: RequestInit) {
     headers: {
       ...options.headers,
       "user-agent": "triggerdotdev-server/2.0.0",
+      "x-trigger-version": API_VERSIONS.LAZY_LOADED_CACHED_TASKS,
     },
   };
 }

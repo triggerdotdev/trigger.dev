@@ -139,6 +139,7 @@ export class TriggerClient {
     });
 
     const apiKey = request.headers.get("x-trigger-api-key");
+    const triggerVersion = request.headers.get("x-trigger-version");
 
     const authorization = this.authorized(apiKey);
 
@@ -300,7 +301,7 @@ export class TriggerClient {
           };
         }
 
-        const results = await this.#executeJob(execution.data, job);
+        const results = await this.#executeJob(execution.data, job, triggerVersion);
 
         return {
           status: 200,
@@ -668,12 +669,14 @@ export class TriggerClient {
 
   async #executeJob(
     body: RunJobBody,
-    job: Job<Trigger<any>, Record<string, TriggerIntegration>>
+    job: Job<Trigger<any>, Record<string, TriggerIntegration>>,
+    triggerVersion: string | null
   ): Promise<RunJobResponse> {
     this.#internalLogger.debug("executing job", {
       execution: body,
       job: job.id,
       version: job.version,
+      triggerVersion,
     });
 
     const context = this.#createRunContext(body);
@@ -692,6 +695,7 @@ export class TriggerClient {
       jobLogger: this.#options.ioLogLocalEnabled
         ? new Logger(job.id, job.logLevel ?? this.#options.logLevel ?? "info")
         : undefined,
+      version: triggerVersion,
     });
 
     const resolvedConnections = await this.#resolveConnections(

@@ -11,3 +11,24 @@ export * from "./bloom";
 export const API_VERSIONS = {
   LAZY_LOADED_CACHED_TASKS: "2023-09-29",
 } as const;
+
+export const PLATFORM_FEATURES = {
+  yieldExecution: API_VERSIONS.LAZY_LOADED_CACHED_TASKS,
+};
+
+export function supportsFeature<TFeatureName extends keyof typeof PLATFORM_FEATURES>(
+  featureName: TFeatureName,
+  version: string
+): boolean {
+  if (version === "unversioned") {
+    return false;
+  }
+
+  const supportedVersion = PLATFORM_FEATURES[featureName];
+
+  if (!supportedVersion) {
+    return false;
+  }
+
+  return version >= supportedVersion;
+}
