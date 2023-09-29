@@ -4,66 +4,87 @@ import pathModule from "path";
 import { logger } from "../../utils/logger";
 import { telemetryClient } from "../../telemetry/telemetry";
 import { pathToRegexp } from "path-to-regexp";
+import { detectUseOfSrcDir } from ".";
 
-export async function detectMiddlewareUsage(path: string, usesSrcDir = false) {
-  const middlewarePath = pathModule.join(path, usesSrcDir ? "src" : "", "middleware.ts");
+type Result =
+  | {
+      hasMiddleware: false;
+    }
+  | {
+      hasMiddleware: true;
+      conflict: "unlikely" | "possible" | "likely";
+      middlewarePath: string;
+    };
 
-  const middlewareExists = await pathExists(middlewarePath);
+export async function detectMiddlewareUsage(path: string, typescript: boolean): Promise<Result> {
+  const usesSrcDir = await detectUseOfSrcDir(path);
+  const middlewarePath = pathModule.join(
+    path,
+    usesSrcDir ? "src" : "",
+    `middleware.${typescript ? "ts" : "js"}`
+  );
 
-  if (!middlewareExists) {
-    return;
+  try {
+    return await detectMiddleware(path, typescript, middlewarePath);
+  } catch (e) {
+    return {
+      hasMiddleware: true,
+      conflict: "possible",
+      middlewarePath: pathModule.relative(process.cwd(), middlewarePath),
+    };
   }
+}
+
+async function detectMiddleware(
+  path: string,
+  typescript: boolean,
+  middlewarePath: string
+): Promise<Result> {
+  const middlewareExists = await pathExists(middlewarePath);
+  if (!middlewareExists) {
+    return { hasMiddleware: false };
+  }
+
+  const middlewareRelativeFilePath = pathModule.relative(process.cwd(), middlewarePath);
 
   const matcher = await getMiddlewareConfigMatcher(middlewarePath);
 
   if (!matcher || matcher.length === 0) {
-    logger.warn(
-      `⚠️ ⚠️ ⚠️  It looks like there might be conflicting Next.js middleware in ${pathModule.relative(
-        process.cwd(),
-        middlewarePath
-      )} which can cause issues with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware`
-    );
-
-    telemetryClient.init.warning("middleware_conflict", { projectPath: path });
-    return;
+    return {
+      hasMiddleware: true,
+      conflict: "possible",
+      middlewarePath: middlewareRelativeFilePath,
+    };
   }
 
   if (matcher.length === 0) {
-    return;
+    return {
+      hasMiddleware: true,
+      conflict: "unlikely",
+      middlewarePath: middlewareRelativeFilePath,
+    };
   }
 
-  if (typeof matcher === "string") {
-    const matcherRegex = pathToRegexp(matcher);
-
-    // Check to see if /api/trigger matches the regex, if it does, then we need to output a warning with a link to the docs to fix it
-    if (matcherRegex.test("/api/trigger")) {
-      logger.warn(
-        `🚨 It looks like there might be conflicting Next.js middleware in ${pathModule.relative(
-          process.cwd(),
-          middlewarePath
-        )} which will cause issues with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware`
-      );
-      telemetryClient.init.warning("middleware_conflict_api_trigger", { projectPath: path });
-    }
-  } else if (Array.isArray(matcher) && matcher.every((m) => typeof m === "string")) {
-    const matcherRegexes = matcher.map((m) => pathToRegexp(m));
-
-    if (matcherRegexes.some((r) => r.test("/api/trigger"))) {
-      logger.warn(
-        `🚨 It looks like there might be conflicting Next.js middleware in ${pathModule.relative(
-          process.cwd(),
-          middlewarePath
-        )} which will cause issues with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware`
-      );
-      telemetryClient.init.warning("middleware_conflict", { projectPath: path });
-    }
+  const matcherRegexes = matcher.map((m) => pathToRegexp(m));
+  if (matcherRegexes.some((r) => r.test("/api/trigger"))) {
+    return {
+      hasMiddleware: true,
+      conflict: "likely",
+      middlewarePath: middlewareRelativeFilePath,
+    };
   }
+
+  return {
+    hasMiddleware: true,
+    conflict: "possible",
+    middlewarePath: middlewareRelativeFilePath,
+  };
 }
 
 async function getMiddlewareConfigMatcher(path: string): Promise<Array<string>> {
   const fileContent = await fs.readFile(path, "utf-8");
 
-  const regex = /matcher:\s*(\[.*\]|".*")/s;
+  const regex = /matcher:\s*(\[.*\]|["'].*["'])/g;
   let match = regex.exec(fileContent);
 
   if (!match) {
