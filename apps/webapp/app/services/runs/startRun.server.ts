@@ -50,11 +50,11 @@ export class StartRunService {
               integrationId: runConnection.integration.id,
               authSource: "HOSTED",
             } as const)
-          : runConnection.result === "resolvedLocal"
+          : runConnection.result === "resolvedLocal" || runConnection.result === "resolvedResolver"
           ? ({
               key,
               integrationId: runConnection.integration.id,
-              authSource: "LOCAL",
+              authSource: runConnection.result === "resolvedLocal" ? "LOCAL" : "RESOLVER",
             } as const)
           : undefined
       )
@@ -173,6 +173,7 @@ async function createRunConnections(tx: PrismaClientOrTransaction, run: FoundRun
               integration: Integration;
             }
           | { result: "resolvedLocal"; integration: Integration }
+          | { result: "resolvedResolver"; integration: Integration }
           | {
               result: "missing";
               connectionType: ConnectionType;
@@ -188,6 +189,11 @@ async function createRunConnections(tx: PrismaClientOrTransaction, run: FoundRun
       if (jobIntegration.integration.authSource === "LOCAL") {
         acc[jobIntegration.key] = {
           result: "resolvedLocal",
+          integration: jobIntegration.integration,
+        };
+      } else if (jobIntegration.integration.authSource === "RESOLVER") {
+        acc[jobIntegration.key] = {
+          result: "resolvedResolver",
           integration: jobIntegration.integration,
         };
       } else {

@@ -76,8 +76,8 @@ const icons = {
   "arrow-left": (className: string) => <ArrowLeftIcon className={cn("text-white", className)} />,
   background: (className: string) => <CloudIcon className={cn("text-sky-400", className)} />,
   beaker: (className: string) => <BeakerIcon className={cn("text-purple-500", className)} />,
+  bell: (className: string) => <BellAlertIcon className={cn("text-amber-500", className)} />,
   billing: (className: string) => <CreditCardIcon className={cn("text-teal-500", className)} />,
-
   browser: (className: string) => <WindowIcon className={cn("text-dimmed", className)} />,
   calendar: (className: string) => (
     <CalendarDaysIcon className={cn("text-purple-500", className)} />
@@ -131,6 +131,7 @@ const icons = {
   "clipboard-checked": (className: string) => (
     <ClipboardDocumentCheckIcon className={cn("text-dimmed", className)} />
   ),
+  list: (className: string) => <ListBulletIcon className={cn("text-slate-400", className)} />,
   log: (className: string) => (
     <ChatBubbleLeftEllipsisIcon className={cn("text-slate-400", className)} />
   ),

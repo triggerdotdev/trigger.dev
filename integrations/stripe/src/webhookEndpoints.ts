@@ -11,11 +11,7 @@ import {
 import { omit } from "./utils";
 
 export class WebhookEndpoints {
-  runTask: StripeRunTask;
-
-  constructor(runTask: StripeRunTask) {
-    this.runTask = runTask;
-  }
+  constructor(private runTask: StripeRunTask) {}
 
   create(key: IntegrationTaskKey, params: CreateWebhookParams): Promise<CreateWebhookResponse> {
     return this.runTask(

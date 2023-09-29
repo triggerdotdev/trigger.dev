@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/cli",
-  "version": "2.1.3",
+  "version": "2.1.7",
   "description": "The Trigger.dev CLI",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -35,15 +35,13 @@
     "trigger-cli": "./dist/index.js"
   },
   "devDependencies": {
-    "@gmrchk/cli-testing-library": "^0.1.2",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/gradient-string": "^1.1.2",
     "@types/inquirer": "^9.0.3",
-    "@types/jest": "^29.5.3",
+    "@types/mock-fs": "^4.13.1",
     "@types/node": "16",
     "@types/node-fetch": "^2.6.2",
     "rimraf": "^3.0.2",
-    "ts-jest": "^29.1.1",
     "tsup": "^6.5.0",
     "type-fest": "^3.6.0",
     "typescript": "^4.9.5",
@@ -59,6 +57,7 @@
   },
   "dependencies": {
     "@types/degit": "^2.8.3",
+    "boxen": "^7.1.1",
     "chalk": "^5.2.0",
     "chokidar": "^3.5.3",
     "commander": "^9.4.1",
@@ -68,6 +67,7 @@
     "gradient-string": "^2.0.2",
     "inquirer": "^9.1.4",
     "localtunnel": "^2.0.2",
+    "mock-fs": "^5.2.0",
     "nanoid": "^4.0.2",
     "ngrok": "5.0.0-beta.2",
     "node-fetch": "^3.3.0",

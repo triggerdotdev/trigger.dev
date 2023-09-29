@@ -10,6 +10,7 @@ import { telemetryClient } from "../telemetry/telemetry";
 import { getVersion } from "../utils/getVersion";
 import { updateCommand } from "../commands/update";
 import { sendEventCommand } from "../commands/sendEvent";
+import { checkApiKeyIsDevServer } from "../utils/getApiKeyType";
 
 export const program = new Command();
 
@@ -17,12 +18,12 @@ program.name(COMMAND_NAME).description("The Trigger.dev CLI").version("0.0.1");
 
 program
   .command("init")
-  .description("Initialize Trigger.dev in your Next.js project")
-  .option("-p, --project-path <project-path>", "The path to the Next.js project", ".")
+  .description("Initialize Trigger.dev in your project")
+  .option("-p, --project-path <project-path>", "The path to the project", ".")
   .option("-k, --api-key <api-key>", "The development API key to use for the project.")
   .option(
     "-e, --endpoint-id <endpoint-id>",
-    "The unique ID for the endpoint to use for this project. (e.g. my-nextjs-project)"
+    "The unique ID for the endpoint to use for this project. (e.g. my-project)"
   )
   .option(
     "-t, --trigger-url <trigger-url>",
@@ -41,11 +42,11 @@ program
 
 program
   .command("dev")
-  .description("Tunnel your local Next.js project to Trigger.dev and start running jobs")
+  .description("Tunnel your local project to Trigger.dev and start running jobs")
   .argument("[path]", "The path to the project", ".")
-  .option("-p, --port <port>", "The local port your server is on", "3000")
-  .option("-H, --hostname <hostname>", "Hostname on which the application is served", "localhost")
-  .option("-e, --env-file <name>", "The name of the env file to load", ".env.local")
+  .option("-p, --port <port>", "Override the local port your server is on")
+  .option("-H, --hostname <hostname>", "Override the hostname on which the application is served")
+  .option("-e, --env-file <name>", "Override the name of the env file to load")
   .option(
     "-i, --client-id <name>",
     "The ID of the client to use for this project. Will use the value from the package.json file if not provided."
@@ -195,21 +196,17 @@ export const promptApiKey = async (instanceUrl: string): Promise<string> => {
         return "Please enter your secret dev API key";
       }
 
-      // If they enter a public key like pk_dev_, let them know
-      if (input.startsWith("pk_dev_")) {
-        return "Please enter your secret dev API key, you've entered a public key";
+      const result = checkApiKeyIsDevServer(input);
+
+      if (result.success) {
+        return true;
       }
 
-      // If they enter a prod key (tr_prod_), let them know
-      if (input.startsWith("tr_prod_")) {
-        return "Please enter your secret dev API key, you've entered a production key";
+      if (!result.type) {
+        return "Please enter a valid development API key (should start with tr_dev_)";
       }
 
-      if (!input.startsWith("tr_dev_")) {
-        return "Please enter a valid development API key or leave blank to skip (should start with tr_dev_)";
-      }
-
-      return true;
+      return `Please enter your secret dev API key, you've entered a ${result.type.environment} ${result.type.type} key`;
     },
   });
 

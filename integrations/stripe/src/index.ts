@@ -22,6 +22,27 @@ import { Charges } from "./charges";
 import { Checkout } from "./checkout";
 import { Customers } from "./customers";
 import * as events from "./events";
+import {
+  ChargeEventNames,
+  ChargeEventNamesSchema,
+  CheckoutSessionEventNames,
+  CheckoutSessionEventNamesSchema,
+  CustomerEventNames,
+  CustomerSubscriptionEventNames,
+  CustomerSubscriptionEventNamesSchema,
+  ExternalAccountEventNames,
+  ExternalAccountEventNamesSchema,
+  PaymentIntentEventNames,
+  PaymentIntentEventNamesSchema,
+  PayoutEventNames,
+  PayoutEventNamesSchema,
+  PersonEventNames,
+  PersonEventNamesSchema,
+  PriceEventNames,
+  PriceEventNamesSchema,
+  ProductEventNames,
+  ProductEventNamesSchema,
+} from "./schemas";
 import { Subscriptions } from "./subscriptions";
 import { WebhookEndpoints } from "./webhookEndpoints";
 
@@ -30,9 +51,13 @@ export * from "./types";
 export type StripeRunTask = InstanceType<typeof Stripe>["runTask"];
 
 export class Stripe implements TriggerIntegration {
+  // @internal
   private _options: StripeIntegrationOptions;
+  // @internal
   private _client?: StripeClient;
+  // @internal
   private _io?: IO;
+  // @internal
   private _connectionKey?: string;
 
   /**
@@ -50,23 +75,25 @@ export class Stripe implements TriggerIntegration {
    * const customer = await stripe.native.customers.create({}); // etc.
    * ```
    */
-  public readonly native: StripeClient;
+  public readonly native?: StripeClient;
 
   constructor(private options: StripeIntegrationOptions) {
     this._options = options;
 
-    this.native = new StripeClient(options.apiKey, {
-      apiVersion: "2022-11-15",
-      typescript: true,
-      timeout: 10000,
-      maxNetworkRetries: 0,
-      stripeAccount: options.stripeAccount,
-      appInfo: {
-        name: "Trigger.dev Stripe Integration",
-        version: "0.1.0",
-        url: "https://trigger.dev",
-      },
-    });
+    this.native = options.apiKey
+      ? new StripeClient(options.apiKey, {
+          apiVersion: "2022-11-15",
+          typescript: true,
+          timeout: 10000,
+          maxNetworkRetries: 0,
+          stripeAccount: options.stripeAccount,
+          appInfo: {
+            name: "Trigger.dev Stripe Integration",
+            version: "0.1.0",
+            url: "https://trigger.dev",
+          },
+        })
+      : undefined;
   }
 
   get authSource() {
@@ -74,10 +101,18 @@ export class Stripe implements TriggerIntegration {
   }
 
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
+    const apiKey = this._options.apiKey ?? auth?.accessToken;
+
+    if (!apiKey) {
+      throw new Error(
+        `Can't initialize Stripe integration (${this._options.id}) as apiKey was undefined`
+      );
+    }
+
     const stripe = new Stripe(this._options);
     stripe._io = io;
     stripe._connectionKey = connectionKey;
-    stripe._client = new StripeClient(this._options.apiKey, {
+    stripe._client = new StripeClient(apiKey, {
       apiVersion: "2022-11-15",
       typescript: true,
       timeout: 10000,
@@ -183,10 +218,13 @@ export class Stripe implements TriggerIntegration {
    * });
    * ```
    */
-  onPrice(
-    params?: TriggerParams & { events?: Array<"price.created" | "price.updated" | "price.deleted"> }
-  ) {
-    const event = { ...events.onPrice, name: params?.events ?? events.onPrice.name };
+  onPrice(params?: TriggerParams & { events?: PriceEventNames }) {
+    const parsedEvents = PriceEventNamesSchema.optional().parse(params?.events);
+
+    const event = {
+      ...events.onPrice,
+      name: parsedEvents ?? events.onPrice.name,
+    };
 
     return createTrigger(this.source, event, params ?? { connect: false });
   }
@@ -234,12 +272,13 @@ export class Stripe implements TriggerIntegration {
    * });
    * ```
    */
-  onProduct(
-    params?: TriggerParams & {
-      events?: Array<"product.created" | "product.updated" | "product.deleted">;
-    }
-  ) {
-    const event = { ...events.onProduct, name: params?.events ?? events.onProduct.name };
+  onProduct(params?: TriggerParams & { events?: ProductEventNames }) {
+    const parsedEvents = ProductEventNamesSchema.optional().parse(params?.events);
+
+    const event = {
+      ...events.onProduct,
+      name: parsedEvents ?? events.onProduct.name,
+    };
 
     return createTrigger(this.source, event, params ?? { connect: false });
   }
@@ -287,19 +326,12 @@ export class Stripe implements TriggerIntegration {
    * });
    * ```
    */
-  onCheckoutSession(
-    params?: TriggerParams & {
-      events?: Array<
-        | "checkout.session.completed"
-        | "checkout.session.async_payment_succeeded"
-        | "checkout.session.async_payment_failed"
-        | "checkout.session.expired"
-      >;
-    }
-  ) {
+  onCheckoutSession(params?: TriggerParams & { events?: CheckoutSessionEventNames }) {
+    const parsedEvents = CheckoutSessionEventNamesSchema.optional().parse(params?.events);
+
     const event = {
       ...events.onCheckoutSession,
-      name: params?.events ?? events.onCheckoutSession.name,
+      name: parsedEvents ?? events.onCheckoutSession.name,
     };
 
     return createTrigger(this.source, event, params ?? { connect: false });
@@ -349,22 +381,12 @@ export class Stripe implements TriggerIntegration {
    * });
    * ```
    */
-  onCustomerSubscription(
-    params?: TriggerParams & {
-      events?: Array<
-        | "customer.subscription.created"
-        | "customer.subscription.deleted"
-        | "customer.subscription.updated"
-        | "customer.subscription.paused"
-        | "customer.subscription.pending_update_applied"
-        | "customer.subscription.pending_update_expired"
-        | "customer.subscription.resumed"
-      >;
-    }
-  ) {
+  onCustomerSubscription(params?: TriggerParams & { events?: CustomerSubscriptionEventNames }) {
+    const parsedEvents = CustomerSubscriptionEventNamesSchema.optional().parse(params?.events);
+
     const event = {
       ...events.onCustomerSubscription,
-      name: params?.events ?? events.onCustomerSubscription.name,
+      name: parsedEvents ?? events.onCustomerSubscription.name,
     };
 
     return createTrigger(this.source, event, params ?? { connect: false });
@@ -454,11 +476,9 @@ export class Stripe implements TriggerIntegration {
    * });
    * ```
    */
-  onCustomer(
-    params?: TriggerParams & {
-      events?: Array<"customer.created" | "customer.deleted">;
-    }
-  ) {
+  onCustomer(params?: TriggerParams & { events?: CustomerEventNames }) {
+    const parsedEvents = CustomerSubscriptionEventNamesSchema.optional().parse(params?.events);
+
     const event = {
       ...events.onCustomer,
       name: params?.events ?? events.onCustomer.name,
@@ -510,22 +530,12 @@ export class Stripe implements TriggerIntegration {
    * });
    * ```
    */
-  onCharge(
-    params?: TriggerParams & {
-      events?: Array<
-        | "charge.captured"
-        | "charge.expired"
-        | "charge.failed"
-        | "charge.pending"
-        | "charge.refunded"
-        | "charge.succeeded"
-        | "charge.updated"
-      >;
-    }
-  ) {
+  onCharge(params?: TriggerParams & { events?: ChargeEventNames }) {
+    const parsedEvents = ChargeEventNamesSchema.optional().parse(params?.events);
+
     const event = {
       ...events.onCharge,
-      name: params?.events ?? events.onCharge.name,
+      name: parsedEvents ?? events.onCharge.name,
     };
 
     return createTrigger(this.source, event, params ?? { connect: false });
@@ -602,18 +612,12 @@ export class Stripe implements TriggerIntegration {
    * });
    * ```
    */
-  onExternalAccount(
-    params?: TriggerParams & {
-      events?: Array<
-        | "account.external_account.created"
-        | "account.external_account.deleted"
-        | "account.external_account.updated"
-      >;
-    }
-  ) {
+  onExternalAccount(params?: TriggerParams & { events?: ExternalAccountEventNames }) {
+    const parsedEvents = ExternalAccountEventNamesSchema.optional().parse(params?.events);
+
     const event = {
       ...events.onExternalAccount,
-      name: params?.events ?? events.onExternalAccount.name,
+      name: parsedEvents ?? events.onExternalAccount.name,
     };
 
     return createTrigger(this.source, event, params ?? { connect: false });
@@ -674,14 +678,12 @@ export class Stripe implements TriggerIntegration {
    * });
    * ```
    */
-  onPerson(
-    params?: TriggerParams & {
-      events?: Array<"person.created" | "person.deleted" | "person.updated">;
-    }
-  ) {
+  onPerson(params?: TriggerParams & { events?: PersonEventNames }) {
+    const parsedEvents = PersonEventNamesSchema.optional().parse(params?.events);
+
     const event = {
       ...events.onPerson,
-      name: params?.events ?? events.onPerson.name,
+      name: parsedEvents ?? events.onPerson.name,
     };
 
     return createTrigger(this.source, event, params ?? { connect: false });
@@ -730,23 +732,12 @@ export class Stripe implements TriggerIntegration {
    * });
    * ```
    */
-  onPaymentIntent(
-    params?: TriggerParams & {
-      events?: Array<
-        | "payment_intent.created"
-        | "payment_intent.succeeded"
-        | "payment_intent.canceled"
-        | "payment_intent.processing"
-        | "payment_intent.requires_action"
-        | "payment_intent.amount_capturable_updated"
-        | "payment_intent.payment_failed"
-        | "payment_intent.partially_funded"
-      >;
-    }
-  ) {
+  onPaymentIntent(params?: TriggerParams & { events?: PaymentIntentEventNames }) {
+    const parsedEvents = PaymentIntentEventNamesSchema.optional().parse(params?.events);
+
     const event = {
       ...events.onPaymentIntent,
-      name: params?.events ?? events.onPaymentIntent.name,
+      name: parsedEvents ?? events.onPaymentIntent.name,
     };
 
     return createTrigger(this.source, event, params ?? { connect: false });
@@ -854,21 +845,12 @@ export class Stripe implements TriggerIntegration {
    * });
    * ```
    */
-  onPayout(
-    params?: TriggerParams & {
-      events?: Array<
-        | "payout.canceled"
-        | "payout.created"
-        | "payout.failed"
-        | "payout.paid"
-        | "payout.reconciliation_completed"
-        | "payout.updated"
-      >;
-    }
-  ) {
+  onPayout(params?: TriggerParams & { events?: PayoutEventNames }) {
+    const parsedEvents = PayoutEventNamesSchema.optional().parse(params?.events);
+
     const event = {
       ...events.onPayout,
-      name: params?.events ?? events.onPayout.name,
+      name: parsedEvents ?? events.onPayout.name,
     };
 
     return createTrigger(this.source, event, params ?? { connect: false });

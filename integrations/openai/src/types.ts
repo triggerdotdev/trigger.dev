@@ -1,6 +1,6 @@
 export type OpenAIIntegrationOptions = {
   id: string;
-  apiKey: string;
+  apiKey?: string;
   organization?: string;
 };
 

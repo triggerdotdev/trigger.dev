@@ -276,6 +276,21 @@ export function HowToUseApiKeysAndEndpoints() {
         stepNumber="→"
         title={
           <span className="flex items-center gap-x-2">
+            <span>Staging</span>
+            <EnvironmentLabel environment={{ type: "STAGING" }} />
+          </span>
+        }
+      />
+      <StepContentContainer>
+        <Paragraph spacing>
+          The <InlineCode>STAGING</InlineCode> environment is where your Jobs will run in a staging
+          environment, meant to mirror your production environment.
+        </Paragraph>
+      </StepContentContainer>
+      <StepNumber
+        stepNumber="→"
+        title={
+          <span className="flex items-center gap-x-2">
             <span>Production</span>
             <EnvironmentLabel environment={{ type: "PRODUCTION" }} />
           </span>

@@ -7,8 +7,8 @@ description: "Use this method to register a new schedule with the DynamicSchedul
 ## Parameters
 
 <ResponseField name="id" type="string" required>
-  The id of the schedule to register. The identifier you use will be available
-  in the `context.source.id` when the Job runs.
+  The id of the schedule to register. The identifier you use will be available in the
+  `context.source.id` when the Job runs.
 </ResponseField>
 <ResponseField name="schedule" type="Schedule" required>
   The schedule to register. It is either a `cron` or `interval` schedule.
@@ -24,8 +24,13 @@ description: "Use this method to register a new schedule with the DynamicSchedul
       </Expandable>
     </ResponseField>
     <ResponseField name="metadata" type="any">
-      Any additional data you wish to store with the schedule. This will be
-      available in the `context.source.metadata` when the Job runs.
+      Any additional data you wish to store with the schedule. This will be available in the
+      `context.source.metadata` when the Job runs.
+    </ResponseField>
+    <ResponseField name="accountId" type="string">
+      An optional account ID to use when running the job. This will be available in the Job
+      [context](/sdk/context) and can be used in [auth
+      resolvers](/sdk/triggerclient/instancemethods/define-auth-resolver)
     </ResponseField>
   </Expandable>
   <Expandable title="interval">
@@ -40,8 +45,13 @@ description: "Use this method to register a new schedule with the DynamicSchedul
       </Expandable>
     </ResponseField>
     <ResponseField name="metadata" type="any">
-      Any additional data you wish to store with the schedule. This will be
-      available in the `context.source.metadata` when the Job runs.
+      Any additional data you wish to store with the schedule. This will be available in the
+      `context.source.metadata` when the Job runs.
+    </ResponseField>
+    <ResponseField name="accountId" type="string">
+      An optional account ID to use when running the job. This will be available in the Job
+      [context](/sdk/context) and can be used in [auth
+      resolvers](/sdk/triggerclient/instancemethods/define-auth-resolver)
     </ResponseField>
   </Expandable>
 </ResponseField>
@@ -77,7 +87,7 @@ description: "Use this method to register a new schedule with the DynamicSchedul
       An object containing options about the interval.
       <Expandable title="options" defaultOpen>
         <ResponseField name="seconds" type="number" required>
-          The number of seconds for the interval. Min = 60, Max = 86400 (1 day)
+          The number of seconds for the interval. Min = 60, Max = 2_592_000 (30 days)
         </ResponseField>
       </Expandable>
     </ResponseField>

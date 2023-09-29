@@ -1,0 +1,23 @@
+{
+  "data": {
+    "id": "fe7092dd-8a68-4a07-9477-b7c0a6f2136d",
+    "endsAt": "2023-11-13T00:00:00.000Z",
+    "number": 2,
+    "teamId": "0d9e46fb-bf4a-4d7b-9bb0-d5928d8b1c9f",
+    "startsAt": "2023-10-15T23:00:00.000Z",
+    "createdAt": "2023-09-17T11:00:19.616Z",
+    "updatedAt": "2023-09-17T11:00:47.427Z",
+    "scopeHistory": [],
+    "issueCountHistory": [],
+    "completedScopeHistory": [],
+    "inProgressScopeHistory": [],
+    "completedIssueCountHistory": [],
+    "uncompletedIssuesUponCloseIds": []
+  },
+  "type": "Cycle",
+  "action": "remove",
+  "createdAt": "2023-09-17T11:01:08.772Z",
+  "webhookId": "d617c08b-47b6-4b09-a611-2e2f6d8fb99f",
+  "organizationId": "7c0221e0-76d2-45eb-b803-6163c046c534",
+  "webhookTimestamp": "2023-09-17T11:01:08.807Z"
+}

@@ -1,5 +1,33 @@
 # @trigger.dev/react
 
+## 2.1.7
+
+### Patch Changes
+
+- @trigger.dev/core@2.1.7
+
+## 2.1.6
+
+### Patch Changes
+
+- @trigger.dev/core@2.1.6
+
+## 2.1.5
+
+### Patch Changes
+
+- @trigger.dev/core@2.1.5
+
+## 2.1.4
+
+### Patch Changes
+
+- ad14983e: You can create statuses in your Jobs that can then be read using React hooks
+- Updated dependencies [ad14983e]
+- Updated dependencies [50137a6f]
+- Updated dependencies [c0dfa804]
+  - @trigger.dev/core@2.1.4
+
 ## 2.1.3
 
 ### Patch Changes

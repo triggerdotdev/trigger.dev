@@ -7,3 +7,10 @@ export const ErrorWithStackSchema = z.object({
 });
 
 export type ErrorWithStack = z.infer<typeof ErrorWithStackSchema>;
+
+export const SchemaErrorSchema = z.object({
+  path: z.array(z.string()),
+  message: z.string(),
+});
+
+export type SchemaError = z.infer<typeof SchemaErrorSchema>;

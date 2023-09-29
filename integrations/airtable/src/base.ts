@@ -11,13 +11,10 @@ export type AirtableRecordsParams = TableParams<{}>;
 export type AirtableRecords = Records<FieldSet>;
 
 export class Base {
-  runTask: AirtableRunTask;
-  baseId: string;
-
-  constructor(runTask: AirtableRunTask, baseId: string) {
-    this.runTask = runTask;
-    this.baseId = baseId;
-  }
+  constructor(
+    private runTask: AirtableRunTask,
+    public baseId: string
+  ) {}
 
   table<TFields extends AirtableFieldSet>(tableName: string) {
     return new Table<TFields>(this.runTask, this.baseId, tableName);

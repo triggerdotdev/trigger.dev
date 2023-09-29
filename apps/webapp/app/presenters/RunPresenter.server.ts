@@ -115,6 +115,11 @@ export class RunPresenter {
             payload: true,
             timestamp: true,
             deliveredAt: true,
+            externalAccount: {
+              select: {
+                identifier: true,
+              },
+            },
           },
         },
         tasks: {

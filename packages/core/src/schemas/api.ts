@@ -2,7 +2,7 @@ import { ulid } from "ulid";
 import { z } from "zod";
 import { Prettify } from "../types";
 import { addMissingVersionField } from "./addMissingVersionField";
-import { ErrorWithStackSchema } from "./errors";
+import { ErrorWithStackSchema, SchemaErrorSchema } from "./errors";
 import { EventRuleSchema } from "./eventFilter";
 import { ConnectionAuthSchema, IntegrationConfigSchema } from "./integrations";
 import { DeserializedJsonSchema, SerializableJsonSchema } from "./json";
@@ -15,6 +15,8 @@ import {
 } from "./schedules";
 import { CachedTaskSchema, TaskSchema } from "./tasks";
 import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
+import { RunStatusSchema } from "./runs";
+import { JobRunStatusRecordSchema } from "./statuses";
 
 export const UpdateTriggerSourceBodyV1Schema = z.object({
   registeredEvents: z.array(z.string()),
@@ -435,6 +437,20 @@ export const RunJobErrorSchema = z.object({
 
 export type RunJobError = z.infer<typeof RunJobErrorSchema>;
 
+export const RunJobInvalidPayloadErrorSchema = z.object({
+  status: z.literal("INVALID_PAYLOAD"),
+  errors: z.array(SchemaErrorSchema),
+});
+
+export type RunJobInvalidPayloadError = z.infer<typeof RunJobInvalidPayloadErrorSchema>;
+
+export const RunJobUnresolvedAuthErrorSchema = z.object({
+  status: z.literal("UNRESOLVED_AUTH_ERROR"),
+  issues: z.record(z.object({ id: z.string(), error: z.string() })),
+});
+
+export type RunJobUnresolvedAuthError = z.infer<typeof RunJobUnresolvedAuthErrorSchema>;
+
 export const RunJobResumeWithTaskSchema = z.object({
   status: z.literal("RESUME_WITH_TASK"),
   task: TaskSchema,
@@ -467,6 +483,8 @@ export type RunJobSuccess = z.infer<typeof RunJobSuccessSchema>;
 
 export const RunJobResponseSchema = z.discriminatedUnion("status", [
   RunJobErrorSchema,
+  RunJobUnresolvedAuthErrorSchema,
+  RunJobInvalidPayloadErrorSchema,
   RunJobResumeWithTaskSchema,
   RunJobRetryWithTaskSchema,
   RunJobCanceledWithTaskSchema,
@@ -673,6 +691,7 @@ export type RegisterTriggerBodyV1 = z.infer<typeof RegisterTriggerBodySchemaV1>;
 export const RegisterTriggerBodySchemaV2 = z.object({
   rule: EventRuleSchema,
   source: SourceMetadataV2Schema,
+  accountId: z.string().optional(),
 });
 
 export type RegisterTriggerBodyV2 = z.infer<typeof RegisterTriggerBodySchemaV2>;
@@ -691,7 +710,7 @@ const RegisterCommonScheduleBodySchema = z.object({
   id: z.string(),
   /** Any additional metadata about the schedule. */
   metadata: z.any(),
-  /** This will be used by the Trigger.dev Connect feature, which is coming soon. */
+  /** An optional Account ID to associate with runs triggered by this schedule */
   accountId: z.string().optional(),
 });
 
@@ -729,3 +748,9 @@ export const CreateExternalConnectionBodySchema = z.object({
 });
 
 export type CreateExternalConnectionBody = z.infer<typeof CreateExternalConnectionBodySchema>;
+
+export const GetRunStatusesSchema = z.object({
+  run: z.object({ id: z.string(), status: RunStatusSchema, output: z.any().optional() }),
+  statuses: z.array(JobRunStatusRecordSchema),
+});
+export type GetRunStatuses = z.infer<typeof GetRunStatusesSchema>;

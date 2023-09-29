@@ -1,0 +1,53 @@
+{
+  "data": {
+    "id": "e5b2ae4e-acb5-4c6c-a22a-56c883e353b4",
+    "body": "You know the rules and so do I",
+    "user": {
+      "id": "b552c442-62c9-40da-9932-ed8cb6e15a3f",
+      "name": "Rick Astley"
+    },
+    "health": "onTrack",
+    "userId": "b552c442-62c9-40da-9932-ed8cb6e15a3f",
+    "project": {
+      "id": "54dac280-389f-4339-8d5d-de347a56eb79",
+      "name": "Rick's World"
+    },
+    "editedAt": "2023-09-17T11:28:39.142Z",
+    "roadmaps": [],
+    "createdAt": "2023-09-17T11:28:23.406Z",
+    "projectId": "54dac280-389f-4339-8d5d-de347a56eb79",
+    "updatedAt": "2023-09-17T11:28:39.142Z",
+    "infoSnapshot": {
+      "state": "backlog",
+      "leadId": "b552c442-62c9-40da-9932-ed8cb6e15a3f",
+      "memberIds": [
+        "b552c442-62c9-40da-9932-ed8cb6e15a3f"
+      ],
+      "teamsInfo": [
+        {
+          "id": "0d9e46fb-bf4a-4d7b-9bb0-d5928d8b1c9f",
+          "issueInfo": {
+            "triageCount": 0,
+            "backlogCount": 0,
+            "startedCount": 0,
+            "canceledCount": 0,
+            "completedCount": 0,
+            "unstartedCount": 0
+          }
+        }
+      ],
+      "milestonesInfo": []
+    }
+  },
+  "type": "ProjectUpdate",
+  "action": "update",
+  "createdAt": "2023-09-17T11:28:39.142Z",
+  "webhookId": "d617c08b-47b6-4b09-a611-2e2f6d8fb99f",
+  "updatedFrom": {
+    "body": "We're no strangers to love",
+    "editedAt": null,
+    "updatedAt": "2023-09-17T11:28:23.406Z"
+  },
+  "organizationId": "7c0221e0-76d2-45eb-b803-6163c046c534",
+  "webhookTimestamp": "2023-09-17T11:28:39.181Z"
+}

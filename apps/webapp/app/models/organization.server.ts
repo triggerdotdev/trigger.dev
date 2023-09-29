@@ -8,7 +8,6 @@ import type {
 import { customAlphabet } from "nanoid";
 import slug from "slug";
 import { prisma, PrismaClientOrTransaction } from "~/db.server";
-import { workerQueue } from "~/services/worker.server";
 import { createProject } from "./project.server";
 
 export type { Organization };
@@ -76,6 +75,10 @@ export async function createOrganization(
   },
   attemptCount = 0
 ): Promise<Organization & { projects: Project[] }> {
+  if (typeof process.env.BLOCKED_USERS === "string" && process.env.BLOCKED_USERS.includes(userId)) {
+    throw new Error("Organization could not be created.");
+  }
+
   const uniqueOrgSlug = `${slug(title)}-${nanoid(4)}`;
 
   const orgWithSameSlug = await prisma.organization.findFirst({
@@ -172,10 +175,10 @@ function envSlug(environmentType: RuntimeEnvironment["type"]) {
       return "prod";
     }
     case "STAGING": {
-      return "staging";
+      return "stg";
     }
     case "PREVIEW": {
-      return "preview";
+      return "prev";
     }
   }
 }

@@ -106,7 +106,7 @@ export function TriggerDevStep() {
       </Paragraph>
       <TriggerDevCommand />
       <Paragraph spacing variant="small">
-        If you’re not running on port 3000 you can specify the port by adding{" "}
+        If you’re not running on the default you can specify the port by adding{" "}
         <InlineCode variant="extra-small">--port 3001</InlineCode> to the end.
       </Paragraph>
       <Paragraph spacing variant="small">

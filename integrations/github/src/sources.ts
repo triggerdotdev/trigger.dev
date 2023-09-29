@@ -1,8 +1,7 @@
 import { Webhooks } from "@octokit/webhooks";
-import { ExternalSource, TriggerIntegration, HandlerEvent } from "@trigger.dev/sdk";
+import { omit, safeJsonParse } from "@trigger.dev/integration-kit";
 import type { Logger } from "@trigger.dev/sdk";
-import { safeJsonParse, omit } from "@trigger.dev/integration-kit";
-import { Octokit } from "octokit";
+import { ExternalSource, HandlerEvent } from "@trigger.dev/sdk";
 import { z } from "zod";
 import { Github } from "./index";
 

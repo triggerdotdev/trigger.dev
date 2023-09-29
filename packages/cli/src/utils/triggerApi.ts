@@ -47,6 +47,7 @@ const WhoamiResponseSchema = z.object({
     createdAt: z.coerce.date(),
     updatedAt: z.coerce.date(),
   }),
+  pkApiKey: z.string(),
   userId: z.string().optional(),
 });
 

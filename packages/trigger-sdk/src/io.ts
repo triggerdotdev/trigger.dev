@@ -5,13 +5,13 @@ import {
   ErrorWithStackSchema,
   FetchRequestInit,
   FetchRetryOptions,
+  InitialStatusUpdate,
   IntervalOptions,
   LogLevel,
   Logger,
   RunTaskOptions,
   SendEvent,
   SendEventOptions,
-  SerializableJson,
   SerializableJsonSchema,
   ServerTask,
   UpdateTriggerSourceBodyV2,
@@ -25,13 +25,14 @@ import {
   RetryWithTaskError,
   isTriggerError,
 } from "./errors";
-import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { calculateRetryAt } from "./retry";
 import { TriggerClient } from "./triggerClient";
 import { DynamicTrigger } from "./triggers/dynamic";
 import { ExternalSource, ExternalSourceParams } from "./triggers/externalSource";
 import { DynamicSchedule } from "./triggers/scheduled";
 import { EventSpecification, TaskLogger, TriggerContext } from "./types";
+import { IntegrationTaskKey } from "./integrations";
+import { TriggerStatus } from "./status";
 
 export type IOTask = ServerTask;
 
@@ -56,7 +57,11 @@ export type RunTaskErrorCallback = (
   error: unknown,
   task: IOTask,
   io: IO
-) => { retryAt: Date; error?: Error; jitter?: number } | Error | undefined | void;
+) =>
+  | { retryAt?: Date; error?: Error; jitter?: number; skipRetrying?: boolean }
+  | Error
+  | undefined
+  | void;
 
 export class IO {
   private _id: string;
@@ -86,6 +91,16 @@ export class IO {
 
     this._taskStorage = new AsyncLocalStorage();
     this._context = options.context;
+  }
+
+  /** @internal */
+  get runId() {
+    return this._id;
+  }
+
+  /** @internal */
+  get triggerClient() {
+    return this._triggerClient;
   }
 
   /** Used to send log messages to the [Run log](https://trigger.dev/docs/documentation/guides/viewing-runs). */
@@ -148,6 +163,48 @@ export class IO {
       delayUntil: new Date(Date.now() + seconds * 1000),
       style: { style: "minimal" },
     });
+  }
+
+  /** `io.createStatus()` allows you to set a status with associated data during the Run. Statuses can be used by your UI using the react package 
+   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param initialStatus The initial status you want this status to have. You can update it during the rub using the returned object.
+   * @returns a TriggerStatus object that you can call `update()` on, to update the status.
+   * @example 
+   * ```ts
+   * client.defineJob(
+  //...
+    run: async (payload, io, ctx) => {
+      const generatingImages = await io.createStatus("generating-images", {
+        label: "Generating Images",
+        state: "loading",
+        data: {
+          progress: 0.1,
+        },
+      });
+
+      //...do stuff
+
+      await generatingImages.update("completed-generation", {
+        label: "Generated images",
+        state: "success",
+        data: {
+          progress: 1.0,
+          urls: ["http://..."]
+        },
+      });
+
+    //...
+  });
+   * ```
+  */
+  async createStatus(
+    key: IntegrationTaskKey,
+    initialStatus: InitialStatusUpdate
+  ): Promise<TriggerStatus> {
+    const id = typeof key === "string" ? key : key.join("-");
+    const status = new TriggerStatus(id, this);
+    await status.update(key, initialStatus);
+    return status;
   }
 
   /** `io.backgroundFetch()` fetches data from a URL that can take longer that the serverless timeout. The actual `fetch` request is performed on the Trigger.dev platform, and the response is sent back to you.
@@ -298,6 +355,7 @@ export class IO {
    * @param id A unique id for the interval. This is used to identify and unregister the interval later.
    * @param options The options for the interval.
    * @returns A promise that has information about the interval.
+   * @deprecated Use `DynamicSchedule.register` instead.
    */
   async registerInterval(
     key: string | any[],
@@ -329,6 +387,7 @@ export class IO {
    * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to unregister a schedule on.
    * @param id A unique id for the interval. This is used to identify and unregister the interval later.
+   * @deprecated Use `DynamicSchedule.unregister` instead.
    */
   async unregisterInterval(key: string | any[], dynamicSchedule: DynamicSchedule, id: string) {
     return await this.runTask(
@@ -351,6 +410,7 @@ export class IO {
    * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to register a new schedule on.
    * @param id A unique id for the schedule. This is used to identify and unregister the schedule later.
    * @param options The options for the CRON schedule.
+   * @deprecated Use `DynamicSchedule.register` instead.
    */
   async registerCron(
     key: string | any[],
@@ -382,6 +442,7 @@ export class IO {
    * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to unregister a schedule on.
    * @param id A unique id for the interval. This is used to identify and unregister the interval later.
+   * @deprecated Use `DynamicSchedule.unregister` instead.
    */
   async unregisterCron(key: string | any[], dynamicSchedule: DynamicSchedule, id: string) {
     return await this.runTask(
@@ -404,6 +465,7 @@ export class IO {
    * @param trigger The [DynamicTrigger](https://trigger.dev/docs/sdk/dynamictrigger) to register.
    * @param id A unique id for the trigger. This is used to identify and unregister the trigger later.
    * @param params The params for the trigger.
+   * @deprecated Use `DynamicTrigger.register` instead.
    */
   async registerTrigger<
     TTrigger extends DynamicTrigger<EventSpecification<any>, ExternalSource<any, any, any>>,
@@ -495,7 +557,7 @@ export class IO {
 
     const task = await this._apiClient.runTask(this._id, {
       idempotencyKey,
-      displayKey: typeof key === "string" ? key : undefined,
+      displayKey: typeof key === "string" ? key : key.join("."),
       noop: false,
       ...(options ?? {}),
       parentId,
@@ -574,6 +636,8 @@ export class IO {
           throw error;
         }
 
+        let skipRetrying = false;
+
         if (onError) {
           try {
             const onErrorResult = onError(error, task, this);
@@ -582,13 +646,17 @@ export class IO {
               if (onErrorResult instanceof Error) {
                 error = onErrorResult;
               } else {
-                const parsedError = ErrorWithStackSchema.safeParse(onErrorResult.error);
+                skipRetrying = !!onErrorResult.skipRetrying;
 
-                throw new RetryWithTaskError(
-                  parsedError.success ? parsedError.data : { message: "Unknown error" },
-                  task,
-                  onErrorResult.retryAt
-                );
+                if (onErrorResult.retryAt && !skipRetrying) {
+                  const parsedError = ErrorWithStackSchema.safeParse(onErrorResult.error);
+
+                  throw new RetryWithTaskError(
+                    parsedError.success ? parsedError.data : { message: "Unknown error" },
+                    task,
+                    onErrorResult.retryAt
+                  );
+                }
               }
             }
           } catch (innerError) {
@@ -602,7 +670,7 @@ export class IO {
 
         const parsedError = ErrorWithStackSchema.safeParse(error);
 
-        if (options?.retry) {
+        if (options?.retry && !skipRetrying) {
           const retryAt = calculateRetryAt(options.retry, task.attempts - 1);
 
           if (retryAt) {

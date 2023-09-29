@@ -7,6 +7,7 @@ import { ConnectToOAuthForm } from "./ConnectToOAuthForm";
 import { Paragraph } from "../primitives/Paragraph";
 import { Client } from "~/presenters/IntegrationsPresenter.server";
 import { UpdateOAuthForm } from "./UpdateOAuthForm";
+import { LinkButton } from "../primitives/Buttons";
 
 export function SelectOAuthMethod({
   integration,
@@ -76,7 +77,7 @@ export function SelectOAuthMethod({
               id="EXTERNAL"
               value="EXTERNAL"
               label="Your users"
-              description="We will give you OAuth React components so you can connect as your users."
+              description="Use an external authentication provider or your own user database to provide auth credentails of your users."
               variant="description"
             />
           </RadioGroup>
@@ -108,14 +109,19 @@ export function SelectOAuthMethod({
           )
         ) : (
           <>
-            <Header2 className="mb-1 mt-4">User OAuth coming soon</Header2>
+            <Header2 className="mb-1 mt-4">BYO Auth</Header2>
             <Paragraph spacing>
-              End-user OAuth is going to be released soon. If you are interested in being an early
-              beta tester then please{" "}
-              <a href="mailto:founders@trigger.dev" className="text-indigo-500 underline">
-                message us
-              </a>
-              .
+              We support external authentication providers through Auth Resolvers. Read the docs to
+              learn more:{" "}
+              <LinkButton
+                variant="secondary/small"
+                LeadingIcon={"docs"}
+                TrailingIcon={"external-link"}
+                to="https://trigger.dev/docs/documentation/guides/using-integrations-byo-auth"
+                target="_blank"
+              >
+                Bring your own Auth
+              </LinkButton>
             </Paragraph>
           </>
         ))}

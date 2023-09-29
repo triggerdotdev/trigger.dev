@@ -3,7 +3,7 @@ import { Typeform, createClient } from "@typeform/api-client";
 
 export type TypeformIntegrationOptions = {
   id: string;
-  token: string;
+  token?: string;
   apiBaseUrl?: string;
 };
 

@@ -1,4 +1,4 @@
-import { ErrorWithStack, ServerTask } from "@trigger.dev/core";
+import { ErrorWithStack, SchemaError, ServerTask } from "@trigger.dev/core";
 
 export class ResumeWithTaskError {
   constructor(public task: ServerTask) {}
@@ -14,6 +14,10 @@ export class RetryWithTaskError {
 
 export class CanceledWithTaskError {
   constructor(public task: ServerTask) {}
+}
+
+export class ParsedPayloadSchemaError {
+  constructor(public schemaErrors: SchemaError[]) {}
 }
 
 /** Use this function if you're using a `try/catch` block to catch errors.

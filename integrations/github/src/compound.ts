@@ -5,15 +5,11 @@ import { Issues } from "./issues";
 import { ReactionContent, Reactions } from "./reactions";
 
 export class Compound {
-  runTask: GitHubRunTask;
-  issues: Issues;
-  reactions: Reactions;
-
-  constructor(runTask: GitHubRunTask, issues: Issues, reactions: Reactions) {
-    this.runTask = runTask;
-    this.issues = issues;
-    this.reactions = reactions;
-  }
+  constructor(
+    private runTask: GitHubRunTask,
+    public issues: Issues,
+    public reactions: Reactions
+  ) {}
 
   createIssueCommentWithReaction(
     key: IntegrationTaskKey,
