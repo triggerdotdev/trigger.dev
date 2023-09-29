@@ -36,9 +36,10 @@ import {
   ParsedPayloadSchemaError,
   ResumeWithTaskError,
   RetryWithTaskError,
+  YieldExecutionError,
 } from "./errors";
 import { TriggerIntegration } from "./integrations";
-import { IO } from "./io";
+import { IO, IOStats } from "./io";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { Job, JobOptions } from "./job";
 import { runLocalStorage } from "./runLocalStorage";
@@ -124,7 +125,10 @@ export class TriggerClient {
     this.id = options.id;
     this.#options = options;
     this.#client = new ApiClient(this.#options);
-    this.#internalLogger = new Logger("trigger.dev", this.#options.verbose ? "debug" : "log");
+    this.#internalLogger = new Logger("trigger.dev", this.#options.verbose ? "debug" : "log", [
+      "output",
+      "noopTasksSet",
+    ]);
   }
 
   async handleRequest(request: Request): Promise<NormalizedResponse> {
@@ -677,6 +681,9 @@ export class TriggerClient {
     const io = new IO({
       id: body.run.id,
       cachedTasks: body.tasks,
+      cachedTasksCursor: body.cachedTaskCursor,
+      yieldedExecutions: body.yieldedExecutions ?? [],
+      noopTasksSet: body.noopTasksSet,
       apiClient: this.#client,
       logger: this.#internalLogger,
       client: this,
@@ -715,8 +722,20 @@ export class TriggerClient {
         );
       });
 
+      if (this.#options.verbose) {
+        this.#logIOStats(io.stats);
+      }
+
       return { status: "SUCCESS", output };
     } catch (error) {
+      if (this.#options.verbose) {
+        this.#logIOStats(io.stats);
+      }
+
+      if (error instanceof YieldExecutionError) {
+        return { status: "YIELD_EXECUTION", key: error.key };
+      }
+
       if (error instanceof ParsedPayloadSchemaError) {
         return { status: "INVALID_PAYLOAD", errors: error.schemaErrors };
       }
@@ -1107,6 +1126,12 @@ export class TriggerClient {
       metadata: integration.metadata,
       authSource,
     };
+  }
+
+  #logIOStats(stats: IOStats) {
+    this.#internalLogger.debug("IO stats", {
+      stats,
+    });
   }
 }
 

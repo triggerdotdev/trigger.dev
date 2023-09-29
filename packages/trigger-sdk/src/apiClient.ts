@@ -27,6 +27,8 @@ import {
   JobRunStatusRecordSchema,
   StatusUpdate,
   urlWithSearchParams,
+  RunTaskResponseWithCachedTasksBodySchema,
+  API_VERSIONS,
 } from "@trigger.dev/core";
 
 import fetch, { type RequestInit } from "node-fetch";
@@ -106,22 +108,35 @@ export class ApiClient {
     return await response.json();
   }
 
-  async runTask(runId: string, task: RunTaskBodyInput) {
+  async runTask(
+    runId: string,
+    task: RunTaskBodyInput,
+    options: { cachedTasksCursor?: string } = {}
+  ) {
     const apiKey = await this.#apiKey();
 
     this.#logger.debug("Running Task", {
       task,
     });
 
-    return await zodfetch(ServerTaskSchema, `${this.#apiUrl}/api/v1/runs/${runId}/tasks`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "Idempotency-Key": task.idempotencyKey,
+    return await zodfetchWithVersions(
+      {
+        [API_VERSIONS.LAZY_LOADED_CACHED_TASKS]: RunTaskResponseWithCachedTasksBodySchema,
       },
-      body: JSON.stringify(task),
-    });
+      ServerTaskSchema,
+      `${this.#apiUrl}/api/v1/runs/${runId}/tasks`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+          "Idempotency-Key": task.idempotencyKey,
+          "X-Cached-Tasks-Cursor": options.cachedTasksCursor ?? "",
+          "Trigger-Version": API_VERSIONS.LAZY_LOADED_CACHED_TASKS,
+        },
+        body: JSON.stringify(task),
+      }
+    );
   }
 
   async completeTask(runId: string, id: string, task: CompleteTaskBodyInput) {
@@ -481,15 +496,103 @@ function getApiKey(key?: string) {
   return { status: "valid" as const, apiKey };
 }
 
-async function zodfetch<TResponseBody extends any, TOptional extends boolean = false>(
-  schema: z.Schema<TResponseBody>,
+type VersionedResponseBodyMap = {
+  [key: string]: z.ZodTypeAny;
+};
+
+// The resulting type should be a discriminating union
+// For example, if the TVersions param is { "2023_09_29": z.string() } and the TUnversioned param is z.number(), the resulting type should be:
+// type VersionedResponseBody = { version: "2023_09_29"; body: string } | { version: "unversioned"; body: number }
+type VersionedResponseBody<
+  TVersions extends VersionedResponseBodyMap,
+  TUnversioned extends z.ZodTypeAny,
+> =
+  | {
+      [TVersion in keyof TVersions]: {
+        version: TVersion;
+        body: z.infer<TVersions[TVersion]>;
+      };
+    }[keyof TVersions]
+  | {
+      version: "unversioned";
+      body: z.infer<TUnversioned>;
+    };
+
+async function zodfetchWithVersions<
+  TVersionedResponseBodyMap extends VersionedResponseBodyMap,
+  TUnversionedResponseBodySchema extends z.ZodTypeAny,
+  TOptional extends boolean = false,
+>(
+  versionedSchemaMap: TVersionedResponseBodyMap,
+  unversionedSchema: TUnversionedResponseBodySchema,
   url: string,
   requestInit?: RequestInit,
   options?: {
     errorMessage?: string;
     optional?: TOptional;
   }
-): Promise<TOptional extends true ? TResponseBody | undefined : TResponseBody> {
+): Promise<
+  TOptional extends true
+    ? VersionedResponseBody<TVersionedResponseBodyMap, TUnversionedResponseBodySchema> | undefined
+    : VersionedResponseBody<TVersionedResponseBodyMap, TUnversionedResponseBodySchema>
+> {
+  const response = await fetch(url, requestInit);
+
+  if (
+    (!requestInit || requestInit.method === "GET") &&
+    response.status === 404 &&
+    options?.optional
+  ) {
+    // @ts-ignore
+    return;
+  }
+
+  if (response.status >= 400 && response.status < 500) {
+    const body = await response.json();
+
+    throw new Error(body.error);
+  }
+
+  if (response.status !== 200) {
+    throw new Error(
+      options?.errorMessage ?? `Failed to fetch ${url}, got status code ${response.status}`
+    );
+  }
+
+  const jsonBody = await response.json();
+
+  const version = response.headers.get("trigger-version");
+
+  if (!version) {
+    return {
+      version: "unversioned",
+      body: unversionedSchema.parse(jsonBody),
+    };
+  }
+
+  const versionedSchema = versionedSchemaMap[version];
+
+  if (!versionedSchema) {
+    throw new Error(`Unknown version ${version}`);
+  }
+
+  return {
+    version,
+    body: versionedSchema.parse(jsonBody),
+  };
+}
+
+async function zodfetch<TResponseSchema extends z.ZodTypeAny, TOptional extends boolean = false>(
+  schema: TResponseSchema,
+  url: string,
+  requestInit?: RequestInit,
+  options?: {
+    errorMessage?: string;
+    optional?: TOptional;
+  }
+): Promise<
+  TOptional extends true ? z.infer<TResponseSchema> | undefined : z.infer<TResponseSchema>
+> {
   const response = await fetch(url, requestInit);
 
   if (

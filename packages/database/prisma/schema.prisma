@@ -713,6 +713,8 @@ model JobRun {
   isTest     Boolean @default(false)
   preprocess Boolean @default(false)
 
+  yieldedExecutions String[]
+
   tasks              Task[]
   runConnections     RunConnection[]
   missingConnections MissingConnection[]

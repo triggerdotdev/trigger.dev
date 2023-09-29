@@ -1,4 +1,6 @@
 import {
+  API_VERSIONS,
+  BloomFilter,
   CachedTask,
   ConnectionAuth,
   CronOptions,
@@ -23,6 +25,7 @@ import {
   CanceledWithTaskError,
   ResumeWithTaskError,
   RetryWithTaskError,
+  YieldExecutionError,
   isTriggerError,
 } from "./errors";
 import { calculateRetryAt } from "./retry";
@@ -46,6 +49,9 @@ export type IOOptions = {
   jobLogger?: Logger;
   jobLogLevel: LogLevel;
   cachedTasks?: Array<CachedTask>;
+  cachedTasksCursor?: string;
+  yieldedExecutions?: Array<string>;
+  noopTasksSet?: string;
 };
 
 type JsonPrimitive = string | number | boolean | null | undefined | Date | symbol;
@@ -63,6 +69,16 @@ export type RunTaskErrorCallback = (
   | undefined
   | void;
 
+export type IOStats = {
+  initialCachedTasks: number;
+  lazyLoadedCachedTasks: number;
+  executedTasks: number;
+  cachedTaskHits: number;
+  cachedTaskMisses: number;
+  noopCachedTaskHits: number;
+  noopCachedTaskMisses: number;
+};
+
 export class IO {
   private _id: string;
   private _apiClient: ApiClient;
@@ -72,7 +88,15 @@ export class IO {
   private _jobLogLevel: LogLevel;
   private _cachedTasks: Map<string, CachedTask>;
   private _taskStorage: AsyncLocalStorage<{ taskId: string }>;
+  private _cachedTasksCursor?: string;
   private _context: TriggerContext;
+  private _yieldedExecutions: Array<string>;
+  private _noopTasksBloomFilter: BloomFilter | undefined;
+  private _stats: IOStats;
+
+  get stats() {
+    return this._stats;
+  }
 
   constructor(options: IOOptions) {
     this._id = options.id;
@@ -83,14 +107,36 @@ export class IO {
     this._jobLogger = options.jobLogger;
     this._jobLogLevel = options.jobLogLevel;
 
+    this._stats = {
+      initialCachedTasks: 0,
+      lazyLoadedCachedTasks: 0,
+      executedTasks: 0,
+      cachedTaskHits: 0,
+      cachedTaskMisses: 0,
+      noopCachedTaskHits: 0,
+      noopCachedTaskMisses: 0,
+    };
+
     if (options.cachedTasks) {
       options.cachedTasks.forEach((task) => {
         this._cachedTasks.set(task.idempotencyKey, task);
       });
+
+      this._stats.initialCachedTasks = options.cachedTasks.length;
     }
 
     this._taskStorage = new AsyncLocalStorage();
     this._context = options.context;
+    this._yieldedExecutions = options.yieldedExecutions ?? [];
+
+    if (options.noopTasksSet) {
+      this._noopTasksBloomFilter = BloomFilter.deserialize(
+        options.noopTasksSet,
+        BloomFilter.NOOP_TASK_SET_SIZE
+      );
+    }
+
+    this._cachedTasksCursor = options.cachedTasksCursor;
   }
 
   /** @internal */
@@ -108,44 +154,48 @@ export class IO {
     return new IOLogger(async (level, message, data) => {
       let logLevel: LogLevel = "info";
 
-      switch (level) {
-        case "LOG": {
-          this._jobLogger?.log(message, data);
-          logLevel = "log";
-          break;
-        }
-        case "DEBUG": {
-          this._jobLogger?.debug(message, data);
-          logLevel = "debug";
-          break;
-        }
-        case "INFO": {
-          this._jobLogger?.info(message, data);
-          logLevel = "info";
-          break;
-        }
-        case "WARN": {
-          this._jobLogger?.warn(message, data);
-          logLevel = "warn";
-          break;
-        }
-        case "ERROR": {
-          this._jobLogger?.error(message, data);
-          logLevel = "error";
-          break;
-        }
-      }
-
       if (Logger.satisfiesLogLevel(logLevel, this._jobLogLevel)) {
-        await this.runTask([message, level], async (task) => {}, {
-          name: "log",
-          icon: "log",
-          description: message,
-          params: data,
-          properties: [{ label: "Level", text: level }],
-          style: { style: "minimal", variant: level.toLowerCase() },
-          noop: true,
-        });
+        await this.runTask(
+          [message, level],
+          async (task) => {
+            switch (level) {
+              case "LOG": {
+                this._jobLogger?.log(message, data);
+                logLevel = "log";
+                break;
+              }
+              case "DEBUG": {
+                this._jobLogger?.debug(message, data);
+                logLevel = "debug";
+                break;
+              }
+              case "INFO": {
+                this._jobLogger?.info(message, data);
+                logLevel = "info";
+                break;
+              }
+              case "WARN": {
+                this._jobLogger?.warn(message, data);
+                logLevel = "warn";
+                break;
+              }
+              case "ERROR": {
+                this._jobLogger?.error(message, data);
+                logLevel = "error";
+                break;
+              }
+            }
+          },
+          {
+            name: "log",
+            icon: "log",
+            description: message,
+            params: data,
+            properties: [{ label: "Level", text: level }],
+            style: { style: "minimal", variant: level.toLowerCase() },
+            noop: true,
+          }
+        );
       }
     });
   }
@@ -549,19 +599,59 @@ export class IO {
     if (cachedTask && cachedTask.status === "COMPLETED") {
       this._logger.debug("Using completed cached task", {
         idempotencyKey,
-        cachedTask,
       });
+
+      this._stats.cachedTaskHits++;
 
       return cachedTask.output as T;
     }
 
-    const task = await this._apiClient.runTask(this._id, {
-      idempotencyKey,
-      displayKey: typeof key === "string" ? key : key.join("."),
-      noop: false,
-      ...(options ?? {}),
-      parentId,
-    });
+    if (options?.noop && this._noopTasksBloomFilter) {
+      if (this._noopTasksBloomFilter.test(idempotencyKey)) {
+        this._logger.debug("task idempotency key exists in noopTasksBloomFilter", {
+          idempotencyKey,
+        });
+
+        this._stats.noopCachedTaskHits++;
+
+        return {} as T;
+      }
+    }
+
+    const response = await this._apiClient.runTask(
+      this._id,
+      {
+        idempotencyKey,
+        displayKey: typeof key === "string" ? key : undefined,
+        noop: false,
+        ...(options ?? {}),
+        parentId,
+      },
+      {
+        cachedTasksCursor: this._cachedTasksCursor,
+      }
+    );
+
+    const task =
+      response.version === API_VERSIONS.LAZY_LOADED_CACHED_TASKS
+        ? response.body.task
+        : response.body;
+
+    if (response.version === API_VERSIONS.LAZY_LOADED_CACHED_TASKS) {
+      this._cachedTasksCursor = response.body.cachedTasks?.cursor;
+
+      for (const cachedTask of response.body.cachedTasks?.tasks ?? []) {
+        if (!this._cachedTasks.has(cachedTask.idempotencyKey)) {
+          this._cachedTasks.set(cachedTask.idempotencyKey, cachedTask);
+
+          this._logger.debug("Injecting lazy loaded task into task cache", {
+            idempotencyKey: cachedTask.idempotencyKey,
+          });
+
+          this._stats.lazyLoadedCachedTasks++;
+        }
+      }
+    }
 
     if (task.status === "CANCELED") {
       this._logger.debug("Task canceled", {
@@ -573,12 +663,20 @@ export class IO {
     }
 
     if (task.status === "COMPLETED") {
-      this._logger.debug("Using task output", {
-        idempotencyKey,
-        task,
-      });
+      if (task.noop) {
+        this._logger.debug("Noop Task completed", {
+          idempotencyKey,
+        });
 
-      this.#addToCachedTasks(task);
+        this._noopTasksBloomFilter?.add(task.idempotencyKey);
+      } else {
+        this._logger.debug("Cache miss", {
+          idempotencyKey,
+        });
+
+        this._stats.cachedTaskMisses++;
+        this.#addToCachedTasks(task);
+      }
 
       return task.output as T;
     }
@@ -625,6 +723,8 @@ export class IO {
           output: output ?? undefined,
           properties: task.outputProperties ?? undefined,
         });
+
+        this._stats.executedTasks++;
 
         if (completedTask.status === "CANCELED") {
           throw new CanceledWithTaskError(completedTask);
@@ -698,6 +798,22 @@ export class IO {
 
     return this._taskStorage.run({ taskId: task.id }, executeTask);
   }
+
+  /**
+   * `io.yield()` allows you to yield execution of the current run and resume it in a new function execution. Similar to `io.wait()` but does not create a task and resumes execution immediately.
+   */
+  yield(key: string) {
+    if (this._yieldedExecutions.includes(key)) {
+      return;
+    }
+
+    throw new YieldExecutionError(key);
+  }
+
+  /**
+   * `io.brb()` is an alias of `io.yield()`
+   */
+  brb = this.yield.bind(this);
 
   /** `io.try()` allows you to run Tasks and catch any errors that are thrown, it's similar to a normal `try/catch` block but works with [io.runTask()](/sdk/io/runtask).
    * A regular `try/catch` block on its own won't work as expected with Tasks. Internally `runTask()` throws some special errors to control flow execution. This is necessary to deal with resumability, serverless timeouts, and retrying Tasks.

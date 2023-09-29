@@ -13,7 +13,7 @@ import {
   RegisterDynamicSchedulePayloadSchema,
   ScheduleMetadataSchema,
 } from "./schedules";
-import { CachedTaskSchema, TaskSchema } from "./tasks";
+import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
 import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
 import { RunStatusSchema } from "./runs";
 import { JobRunStatusRecordSchema } from "./statuses";
@@ -424,7 +424,10 @@ export const RunJobBodySchema = z.object({
     .optional(),
   source: RunSourceContextSchema.optional(),
   tasks: z.array(CachedTaskSchema).optional(),
+  cachedTaskCursor: z.string().optional(),
+  noopTasksSet: z.string().optional(),
   connections: z.record(ConnectionAuthSchema).optional(),
+  yieldedExecutions: z.string().array().optional(),
 });
 
 export type RunJobBody = z.infer<typeof RunJobBodySchema>;
@@ -436,6 +439,13 @@ export const RunJobErrorSchema = z.object({
 });
 
 export type RunJobError = z.infer<typeof RunJobErrorSchema>;
+
+export const RunJobYieldExecutionErrorSchema = z.object({
+  status: z.literal("YIELD_EXECUTION"),
+  key: z.string(),
+});
+
+export type RunJobYieldExecutionError = z.infer<typeof RunJobYieldExecutionErrorSchema>;
 
 export const RunJobInvalidPayloadErrorSchema = z.object({
   status: z.literal("INVALID_PAYLOAD"),
@@ -482,6 +492,7 @@ export const RunJobSuccessSchema = z.object({
 export type RunJobSuccess = z.infer<typeof RunJobSuccessSchema>;
 
 export const RunJobResponseSchema = z.discriminatedUnion("status", [
+  RunJobYieldExecutionErrorSchema,
   RunJobErrorSchema,
   RunJobUnresolvedAuthErrorSchema,
   RunJobInvalidPayloadErrorSchema,
@@ -637,6 +648,20 @@ export const RunTaskBodyOutputSchema = RunTaskBodyInputSchema.extend({
 });
 
 export type RunTaskBodyOutput = z.infer<typeof RunTaskBodyOutputSchema>;
+
+export const RunTaskResponseWithCachedTasksBodySchema = z.object({
+  task: ServerTaskSchema,
+  cachedTasks: z
+    .object({
+      tasks: z.array(CachedTaskSchema),
+      cursor: z.string().optional(),
+    })
+    .optional(),
+});
+
+export type RunTaskResponseWithCachedTasksBody = z.infer<
+  typeof RunTaskResponseWithCachedTasksBodySchema
+>;
 
 export const CompleteTaskBodyInputSchema = RunTaskBodyInputSchema.pick({
   properties: true,
