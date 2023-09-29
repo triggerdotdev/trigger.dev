@@ -2,4 +2,4 @@
 "@trigger.dev/linear": patch
 ---
 
-Fix `getAll` pagination helper params
+Fix `getAll` helper and search function params
