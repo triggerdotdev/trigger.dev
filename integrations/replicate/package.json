@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/replicate",
-  "version": "2.1.6",
+  "version": "2.1.7",
   "description": "Trigger.dev integration for replicate",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
