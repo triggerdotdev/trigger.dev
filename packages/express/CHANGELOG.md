@@ -1,5 +1,11 @@
 # @trigger.dev/express
 
+## 2.1.7
+
+### Patch Changes
+
+- @trigger.dev/sdk@2.1.7
+
 ## 2.1.6
 
 ### Patch Changes
