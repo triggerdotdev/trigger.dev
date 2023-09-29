@@ -119,11 +119,11 @@ export function ProjectSideMenu() {
           data-action="onboarding"
         />
         <SideMenuItem
-          name="Homepage"
-          icon="external-link"
-          to="https://trigger.dev"
+          name="Changelog"
+          icon="list"
+          to="https://trigger.dev/changelog"
           isCollapsed={isCollapsed}
-          data-action="onboarding"
+          data-action="changelog"
           target="_blank"
         />
         <SideMenuItem
