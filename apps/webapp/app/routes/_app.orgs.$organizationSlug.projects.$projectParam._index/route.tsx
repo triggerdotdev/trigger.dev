@@ -104,6 +104,7 @@ export default function Page() {
                           fullWidth={true}
                           value={filterText}
                           onChange={(e) => setFilterText(e.target.value)}
+                          autoFocus
                         />
                         <HelpTrigger title="Example Jobs and inspiration" />
                       </div>
