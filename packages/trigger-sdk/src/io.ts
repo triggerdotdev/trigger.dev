@@ -596,17 +596,20 @@ export class IO {
       try {
         const result = await callback(task, this);
 
+        if (task.status === "WAITING" && task.callbackUrl) {
+          this._logger.debug("Waiting for remote callback", {
+            idempotencyKey,
+            task,
+          });
+          return {} as T;
+        }
+
         const output = SerializableJsonSchema.parse(result) as T;
 
         this._logger.debug("Completing using output", {
           idempotencyKey,
           task,
         });
-
-        // TODO: empty return? maybe don't even parse first
-        if (task.status === "WAITING" && task.callbackUrl) {
-          return output;
-        }
 
         const completedTask = await this._apiClient.completeTask(this._id, task.id, {
           output: output ?? undefined,
