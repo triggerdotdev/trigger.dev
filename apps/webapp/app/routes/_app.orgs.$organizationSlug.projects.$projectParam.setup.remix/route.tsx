@@ -27,6 +27,7 @@ import { projectSetupPath, trimTrailingSlash } from "~/utils/pathBuilder";
 import { Callout } from "~/components/primitives/Callout";
 import { InitCommand, RunDevCommand, TriggerDevStep } from "~/components/SetupCommands";
 import { Badge } from "~/components/primitives/Badge";
+import { RemixLogo } from "~/assets/logos/RemixLogo";
 
 export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Remix" />,
@@ -43,6 +44,9 @@ export default function SetUpRemix() {
   return (
     <PageGradient>
       <div className="mx-auto max-w-3xl">
+        <div className="mb-12 grid place-items-center">
+          <RemixLogo className="w-64" />
+        </div>
         <div className="flex items-center justify-between">
           <Header1 spacing className="text-bright">
             Get setup in 5 minutes
