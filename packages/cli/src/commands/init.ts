@@ -13,6 +13,7 @@ import {
   getEnvFilename,
   setApiKeyEnvironmentVariable,
   setApiUrlEnvironmentVariable,
+  setPublicApiKeyEnvironmentVariable,
 } from "../utils/env";
 import { readJSONFile } from "../utils/fileSystem";
 import { PackageManager, getUserPackageManager } from "../utils/getUserPkgManager";
@@ -114,6 +115,12 @@ export const initCommand = async (options: InitCommandOptions) => {
   }
   await setApiKeyEnvironmentVariable(resolvedPath, envName, resolvedOptions.apiKey);
   await setApiUrlEnvironmentVariable(resolvedPath, envName, resolvedOptions.apiUrl);
+  await setPublicApiKeyEnvironmentVariable(
+    resolvedPath,
+    envName,
+    framework.publicKeyEnvName,
+    authorizedKey.pkApiKey
+  );
 
   const installOptions = {
     typescript: isTypescriptProject,
