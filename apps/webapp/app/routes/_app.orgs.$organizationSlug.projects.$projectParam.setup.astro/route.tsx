@@ -44,6 +44,9 @@ export default function SetUpAstro() {
   return (
     <PageGradient>
       <div className="mx-auto max-w-3xl">
+        <div className="mb-12 grid place-items-center">
+          <AstroLogo className="w-64" />
+        </div>
         <div className="flex items-center justify-between">
           <Header1 spacing className="text-bright">
             Get setup in 5 minutes
