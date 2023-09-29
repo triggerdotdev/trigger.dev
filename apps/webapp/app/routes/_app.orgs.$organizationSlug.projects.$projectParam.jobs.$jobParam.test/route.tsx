@@ -173,27 +173,63 @@ export default function Page() {
     <div className="grid h-full grid-cols-1 gap-4">
       <div className="flex h-full max-h-full overflow-hidden">
         <Form
-          className="flex h-full max-h-full grow flex-col gap-2 overflow-y-auto"
+          className="flex h-full max-h-full grow flex-col gap-4 overflow-y-auto"
           method="post"
           {...form.props}
           onSubmit={(e) => submitForm(e)}
         >
-          <InputGroup fullWidth className="h-full overflow-hidden">
-            <div className="h-full flex-1 overflow-auto rounded border border-border scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
-              <JSONEditor
-                defaultValue={defaultJson}
-                readOnly={false}
-                basicSetup
-                onChange={(v) => (currentJson.current = v)}
-                height="100%"
-                min-height="100%"
-                max-height="100%"
-                autoFocus
-                placeholder="Use your schema to enter valid JSON or add one of the example payloads then click 'Run test'"
-                className="h-full"
-              />
+          <div className="grid h-full grid-cols-[1fr_auto] overflow-hidden">
+            <InputGroup fullWidth className="h-full overflow-hidden">
+              <div className="h-full flex-1 overflow-auto rounded-l border border-border scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+                <JSONEditor
+                  defaultValue={defaultJson}
+                  readOnly={false}
+                  basicSetup
+                  onChange={(v) => (currentJson.current = v)}
+                  height="100%"
+                  min-height="100%"
+                  max-height="100%"
+                  autoFocus
+                  placeholder="Use your schema to enter valid JSON or add one of the example payloads then click 'Run test'"
+                  className="h-full"
+                />
+              </div>
+            </InputGroup>
+            <div className="h-full w-fit min-w-[20rem] rounded-r border border-l-0 border-border p-4">
+              <Header2 className="mb-2">Example payloads</Header2>
+              {selectedEnvironment && selectedEnvironment.examples.length > 0 && (
+                <div className="">
+                  {selectedEnvironment?.examples.map((example) => (
+                    <Button
+                      key={example.id}
+                      type="button"
+                      variant="menu-item"
+                      onClick={(e) => insertCode(example.payload)}
+                      LeadingIcon={example.icon ?? "beaker"}
+                      fullWidth
+                      textAlignLeft
+                    >
+                      {example.name}
+                    </Button>
+                  ))}
+                </div>
+              )}
+              <Header2 className="my-2">Recent payloads</Header2>
+              <Header2 className="my-2">Account ID</Header2>
+              {selectedEnvironment?.hasAuthResolver && (
+                <InputGroup fullWidth className="">
+                  <Input
+                    type="text"
+                    fullWidth
+                    value={currentAccountId}
+                    placeholder={`e.g. abc_1234`}
+                    onChange={(e) => setCurrentAccountId(e.target.value)}
+                  />
+                  <FormError>{accountId.error}</FormError>
+                </InputGroup>
+              )}
             </div>
-          </InputGroup>
+          </div>
           <div className="flex items-center justify-between">
             <TextLink
               href="https://trigger.dev/docs/documentation/guides/testing-jobs"
@@ -240,60 +276,4 @@ export default function Page() {
       </div>
     </div>
   );
-}
-
-// This is the panel that shows if you have an auth resolver
-
-{
-  /* {selectedEnvironment?.hasAuthResolver && (
-            <InputGroup fullWidth className="mb-4 mt-4">
-              <Label variant="small">Account ID</Label>
-              <Input
-                type="text"
-                fullWidth
-                value={currentAccountId}
-                placeholder={`e.g. abc_1234`}
-                onChange={(e) => setCurrentAccountId(e.target.value)}
-              />
-              <FormError>{accountId.error}</FormError>
-            </InputGroup>
-          )} */
-}
-
-//This is the example popover button
-
-{
-  /* <div className="flex flex-none items-center gap-2">
-            {selectedEnvironment && selectedEnvironment.examples.length > 0 && (
-              <Popover
-                open={isExamplePopoverOpen}
-                onOpenChange={(open) => setIsExamplePopoverOpen(open)}
-              >
-                <PopoverTrigger>
-                  <ButtonContent
-                    variant="secondary/small"
-                    LeadingIcon="beaker"
-                    TrailingIcon="chevron-down"
-                  >
-                    Insert an example
-                  </ButtonContent>
-                </PopoverTrigger>
-
-                <PopoverContent className="w-80 p-0" align="start">
-                  {selectedEnvironment?.examples.map((example) => (
-                    <Button
-                      key={example.id}
-                      variant="menu-item"
-                      onClick={(e) => insertCode(example.payload)}
-                      LeadingIcon={example.icon ?? "beaker"}
-                      fullWidth
-                      textAlignLeft
-                    >
-                      {example.name}
-                    </Button>
-                  ))}
-                </PopoverContent>
-              </Popover>
-            )}
-          </div> */
 }
