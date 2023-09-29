@@ -55,7 +55,7 @@ class Predictions {
 
         return client.deployments.predictions.create(deployment_owner, deployment_name, {
           ...options,
-          webhook: task.callbackUrl,
+          webhook: task.callbackUrl ?? "",
           webhook_events_filter: ["completed"],
         });
       },

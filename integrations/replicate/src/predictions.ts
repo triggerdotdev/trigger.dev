@@ -51,7 +51,7 @@ export class Predictions {
       (client, task) => {
         return client.predictions.create({
           ...params,
-          webhook: task.callbackUrl,
+          webhook: task.callbackUrl ?? "",
           webhook_events_filter: ["completed"],
         });
       },

@@ -66,14 +66,10 @@ export class Replicate implements TriggerIntegration {
     });
   }
 
-  runTask<T, TResult extends Json<T> | void, TOptions extends RunTaskOptions>(
+  runTask<T, TResult extends Json<T> | void>(
     key: IntegrationTaskKey,
-    callback: (
-      client: ReplicateClient,
-      task: TOptions extends RunTaskOptionsWithCallback ? IOTaskWithCallback : IOTask,
-      io: IO
-    ) => Promise<TResult>,
-    options?: TOptions,
+    callback: (client: ReplicateClient, task: IOTask, io: IO) => Promise<TResult>,
+    options?: RunTaskOptions,
     errorCallback?: RunTaskErrorCallback
   ): Promise<TResult> {
     if (!this._io) throw new Error("No IO");
