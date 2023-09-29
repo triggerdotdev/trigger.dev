@@ -1,7 +1,5 @@
-import { conform, useForm } from "@conform-to/react";
+import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ArrowTopRightOnSquareIcon, ArrowUpRightIcon } from "@heroicons/react/20/solid";
-import { PopoverTrigger } from "@radix-ui/react-popover";
 import { Form, useActionData, useSubmit } from "@remix-run/react";
 import { ActionFunction, LoaderArgs, json } from "@remix-run/server-runtime";
 import { useCallback, useRef, useState } from "react";
@@ -10,13 +8,12 @@ import { z } from "zod";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
-import { Button, ButtonContent } from "~/components/primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
-import { Popover, PopoverContent } from "~/components/primitives/Popover";
 import {
   Select,
   SelectContent,
@@ -30,7 +27,6 @@ import { redirectBackWithErrorMessage, redirectWithSuccessMessage } from "~/mode
 import { TestJobPresenter } from "~/presenters/TestJobPresenter.server";
 import { TestJobService } from "~/services/jobs/testJob.server";
 import { requireUserId } from "~/services/session.server";
-import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import { JobParamsSchema, jobRunDashboardPath, trimTrailingSlash } from "~/utils/pathBuilder";
 
@@ -195,10 +191,10 @@ export default function Page() {
                 />
               </div>
             </InputGroup>
-            <div className="h-full w-fit min-w-[20rem] rounded-r border border-l-0 border-border p-4">
-              <Header2 className="mb-2">Example payloads</Header2>
+            <div className="flex h-full w-fit min-w-[20rem] flex-col gap-4 rounded-r border border-l-0 border-border p-4">
               {selectedEnvironment && selectedEnvironment.examples.length > 0 && (
-                <div className="">
+                <div className="flex flex-col gap-2">
+                  <Header2>Example payloads</Header2>
                   {selectedEnvironment?.examples.map((example) => (
                     <Button
                       key={example.id}
@@ -214,19 +210,28 @@ export default function Page() {
                   ))}
                 </div>
               )}
-              <Header2 className="my-2">Recent payloads</Header2>
-              <Header2 className="my-2">Account ID</Header2>
+              <div className="flex flex-col gap-2">
+                <Header2>Recent payloads</Header2>
+                <Callout variant="info">
+                  Recent payloads will show here once you've completed a Run.
+                </Callout>
+              </div>
+
               {selectedEnvironment?.hasAuthResolver && (
-                <InputGroup fullWidth className="">
-                  <Input
-                    type="text"
-                    fullWidth
-                    value={currentAccountId}
-                    placeholder={`e.g. abc_1234`}
-                    onChange={(e) => setCurrentAccountId(e.target.value)}
-                  />
-                  <FormError>{accountId.error}</FormError>
-                </InputGroup>
+                <div className="flex flex-col gap-2">
+                  <Header2>Account ID</Header2>
+                  <InputGroup fullWidth>
+                    <Input
+                      type="text"
+                      fullWidth
+                      variant="large"
+                      value={currentAccountId}
+                      placeholder={`e.g. abc_1234`}
+                      onChange={(e) => setCurrentAccountId(e.target.value)}
+                    />
+                    <FormError>{accountId.error}</FormError>
+                  </InputGroup>
+                </div>
               )}
             </div>
           </div>
