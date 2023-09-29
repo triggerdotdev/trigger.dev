@@ -1,7 +1,6 @@
 import {
   TriggerIntegration,
   RunTaskOptions,
-  RunTaskOptionsWithCallback,
   IO,
   IOTask,
   IntegrationTaskKey,
@@ -9,7 +8,6 @@ import {
   Json,
   retry,
   ConnectionAuth,
-  IOTaskWithCallback,
 } from "@trigger.dev/sdk";
 import ReplicateClient, { Page, Prediction } from "replicate";
 

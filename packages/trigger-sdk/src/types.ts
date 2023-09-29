@@ -7,7 +7,6 @@ import type {
   RedactString,
   RegisteredOptionsDiff,
   RunTaskOptions,
-  RunTaskOptionsWithCallback,
   RuntimeEnvironmentType,
   SourceEventOption,
   TriggerMetadata,
@@ -23,7 +22,6 @@ export type {
   RedactString,
   RegisteredOptionsDiff,
   RunTaskOptions,
-  RunTaskOptionsWithCallback,
   SourceEventOption,
 };
 
