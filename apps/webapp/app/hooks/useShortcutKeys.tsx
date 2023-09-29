@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useOperatingSystem } from "~/components/primitives/OperatingSystemProvider";
 
-export type Modifier = "alt" | "ctrl" | "meta" | "shift";
+export type Modifier = "alt" | "ctrl" | "meta" | "shift" | "mod";
 
 export type Shortcut = {
   key: string;
@@ -24,7 +23,13 @@ type useShortcutKeysProps = {
 
 export function useShortcutKeys({ shortcut, action, disabled = false }: useShortcutKeysProps) {
   const keys = createKeysFromShortcut(shortcut);
-  useHotkeys(keys, action, { enabled: !disabled });
+  useHotkeys(
+    keys,
+    (event, hotkeysEvent) => {
+      action(event);
+    },
+    { enabled: !disabled }
+  );
 }
 
 function createKeysFromShortcut(shortcut: ShortcutDefinition) {
@@ -34,5 +39,5 @@ function createKeysFromShortcut(shortcut: ShortcutDefinition) {
   const modifiers = relevantShortcut.modifiers;
   const character = relevantShortcut.key;
 
-  return modifiers ? modifiers.map((k) => k).join("+") + "+" : "" + character;
+  return modifiers ? modifiers.map((k) => k).join("+") + "+" + character : character;
 }
