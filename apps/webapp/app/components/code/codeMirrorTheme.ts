@@ -17,7 +17,7 @@ export function darkTheme(): Extension {
     violet = "#c678dd",
     darkBackground = "#21252b",
     highlightBackground = "rgba(71,85,105,0.2)",
-    background = "#0f172a",
+    background = "rgba(255,255,255,0)",
     tooltipBackground = "#353a42",
     selection = "rgb(71 85 105)",
     cursor = "#528bff";
