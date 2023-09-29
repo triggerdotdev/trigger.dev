@@ -1,5 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { ArrowTopRightOnSquareIcon, ArrowUpRightIcon } from "@heroicons/react/20/solid";
 import { PopoverTrigger } from "@radix-ui/react-popover";
 import { Form, useActionData, useSubmit } from "@remix-run/react";
 import { ActionFunction, LoaderArgs, json } from "@remix-run/server-runtime";
@@ -8,15 +9,13 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { HowToRunATest } from "~/components/helpContent/HelpContentText";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { Button, ButtonContent } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { FormError } from "~/components/primitives/FormError";
-import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
+import { Header2 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
-import { Label } from "~/components/primitives/Label";
 import { Popover, PopoverContent } from "~/components/primitives/Popover";
 import {
   Select,
@@ -26,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/primitives/Select";
+import { TextLink } from "~/components/primitives/TextLink";
 import { redirectBackWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { TestJobPresenter } from "~/presenters/TestJobPresenter.server";
 import { TestJobService } from "~/services/jobs/testJob.server";
@@ -170,120 +170,130 @@ export default function Page() {
   }
 
   return (
-    <Help defaultOpen={true}>
-      {(open) => (
-        <div className={cn("grid h-full gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
-          <div className="flex h-fit max-h-full overflow-hidden">
-            <Form
-              className="flex max-h-full grow flex-col gap-2 overflow-y-auto"
-              method="post"
-              {...form.props}
-              onSubmit={(e) => submitForm(e)}
+    <div className="grid h-full grid-cols-1 gap-4">
+      <div className="flex h-full max-h-full overflow-hidden">
+        <Form
+          className="flex h-full max-h-full grow flex-col gap-2 overflow-y-auto"
+          method="post"
+          {...form.props}
+          onSubmit={(e) => submitForm(e)}
+        >
+          <InputGroup fullWidth className="h-full overflow-hidden">
+            <div className="h-full flex-1 overflow-auto rounded border border-border scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+              <JSONEditor
+                defaultValue={defaultJson}
+                readOnly={false}
+                basicSetup
+                onChange={(v) => (currentJson.current = v)}
+                height="100%"
+                min-height="100%"
+                max-height="100%"
+                autoFocus
+                placeholder="Use your schema to enter valid JSON or add one of the example payloads then click 'Run test'"
+                className="h-full"
+              />
+            </div>
+          </InputGroup>
+          <div className="flex items-center justify-between">
+            <TextLink
+              href="https://trigger.dev/docs/documentation/guides/testing-jobs"
+              trailingIcon="external-link"
+              className="text-sm text-dimmed hover:text-bright"
             >
-              <div className="flex flex-none items-center justify-between gap-2">
-                <div className="flex flex-none items-center gap-2">
-                  <SelectGroup>
-                    <Select
-                      name="environment"
-                      value={selectedEnvironmentId}
-                      onValueChange={setSelectedEnvironmentId}
-                    >
-                      <SelectTrigger size="secondary/small">
-                        <SelectValue placeholder="Select environment" className="m-0 p-0" />{" "}
-                        Environment
-                      </SelectTrigger>
-                      <SelectContent>
-                        {environments.map((environment) => (
-                          <SelectItem key={environment.id} value={environment.id}>
-                            <EnvironmentLabel environment={environment} />
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </SelectGroup>
-
-                  {selectedEnvironment && selectedEnvironment.examples.length > 0 && (
-                    <Popover
-                      open={isExamplePopoverOpen}
-                      onOpenChange={(open) => setIsExamplePopoverOpen(open)}
-                    >
-                      <PopoverTrigger>
-                        <ButtonContent
-                          variant="secondary/small"
-                          LeadingIcon="beaker"
-                          TrailingIcon="chevron-down"
-                        >
-                          Insert an example
-                        </ButtonContent>
-                      </PopoverTrigger>
-
-                      <PopoverContent className="w-80 p-0" align="start">
-                        {selectedEnvironment?.examples.map((example) => (
-                          <Button
-                            key={example.id}
-                            variant="menu-item"
-                            onClick={(e) => insertCode(example.payload)}
-                            LeadingIcon={example.icon ?? "beaker"}
-                            fullWidth
-                            textAlignLeft
-                          >
-                            {example.name}
-                          </Button>
-                        ))}
-                      </PopoverContent>
-                    </Popover>
-                  )}
-                </div>
-                <HelpTrigger title="How do I run a test?" />
-              </div>
-              <InputGroup fullWidth>
-                <Label variant="small">Payload</Label>
-                <div className="flex-1 overflow-auto rounded border border-slate-850 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
-                  <JSONEditor
-                    defaultValue={defaultJson}
-                    readOnly={false}
-                    basicSetup
-                    onChange={(v) => (currentJson.current = v)}
-                    minHeight="150px"
-                  />
-                </div>
-              </InputGroup>
-
-              {selectedEnvironment?.hasAuthResolver && (
-                <InputGroup fullWidth className="mb-4 mt-4">
-                  <Label variant="small">Account ID</Label>
-                  <Input
-                    type="text"
-                    fullWidth
-                    value={currentAccountId}
-                    placeholder={`e.g. abc_1234`}
-                    onChange={(e) => setCurrentAccountId(e.target.value)}
-                  />
-                  <FormError>{accountId.error}</FormError>
-                </InputGroup>
+              Learn more about running tests
+            </TextLink>
+            <div className="flex flex-none items-center justify-end gap-2">
+              {payload.error ? (
+                <FormError id={payload.errorId}>{payload.error}</FormError>
+              ) : (
+                <div />
               )}
-              <div className="flex flex-none items-center justify-between">
-                {payload.error ? (
-                  <FormError id={payload.errorId}>{payload.error}</FormError>
-                ) : (
-                  <div />
-                )}
-                <Button
-                  type="submit"
-                  variant="primary/medium"
-                  LeadingIcon="beaker"
-                  leadingIconClassName="text-bright"
+              <SelectGroup>
+                <Select
+                  name="environment"
+                  value={selectedEnvironmentId}
+                  onValueChange={setSelectedEnvironmentId}
                 >
-                  Run test
-                </Button>
-              </div>
-            </Form>
+                  <SelectTrigger size="medium">
+                    <SelectValue placeholder="Select environment" className="m-0 p-0" /> Environment
+                  </SelectTrigger>
+                  <SelectContent>
+                    {environments.map((environment) => (
+                      <SelectItem key={environment.id} value={environment.id}>
+                        <EnvironmentLabel environment={environment} />
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </SelectGroup>
+              <Button
+                type="submit"
+                variant="primary/medium"
+                LeadingIcon="beaker"
+                leadingIconClassName="text-bright"
+              >
+                Run test
+              </Button>
+            </div>
           </div>
-          <HelpContent title="How to run a test" className="h-fit">
-            <HowToRunATest />
-          </HelpContent>
-        </div>
-      )}
-    </Help>
+        </Form>
+      </div>
+    </div>
   );
+}
+
+// This is the panel that shows if you have an auth resolver
+
+{
+  /* {selectedEnvironment?.hasAuthResolver && (
+            <InputGroup fullWidth className="mb-4 mt-4">
+              <Label variant="small">Account ID</Label>
+              <Input
+                type="text"
+                fullWidth
+                value={currentAccountId}
+                placeholder={`e.g. abc_1234`}
+                onChange={(e) => setCurrentAccountId(e.target.value)}
+              />
+              <FormError>{accountId.error}</FormError>
+            </InputGroup>
+          )} */
+}
+
+//This is the example popover button
+
+{
+  /* <div className="flex flex-none items-center gap-2">
+            {selectedEnvironment && selectedEnvironment.examples.length > 0 && (
+              <Popover
+                open={isExamplePopoverOpen}
+                onOpenChange={(open) => setIsExamplePopoverOpen(open)}
+              >
+                <PopoverTrigger>
+                  <ButtonContent
+                    variant="secondary/small"
+                    LeadingIcon="beaker"
+                    TrailingIcon="chevron-down"
+                  >
+                    Insert an example
+                  </ButtonContent>
+                </PopoverTrigger>
+
+                <PopoverContent className="w-80 p-0" align="start">
+                  {selectedEnvironment?.examples.map((example) => (
+                    <Button
+                      key={example.id}
+                      variant="menu-item"
+                      onClick={(e) => insertCode(example.payload)}
+                      LeadingIcon={example.icon ?? "beaker"}
+                      fullWidth
+                      textAlignLeft
+                    >
+                      {example.name}
+                    </Button>
+                  ))}
+                </PopoverContent>
+              </Popover>
+            )}
+          </div> */
 }
