@@ -1,5 +1,11 @@
 # create-trigger
 
+## 2.1.7
+
+### Patch Changes
+
+- 7760e094: Improved CLI init Next.js middleware detection
+
 ## 2.1.6
 
 ### Patch Changes

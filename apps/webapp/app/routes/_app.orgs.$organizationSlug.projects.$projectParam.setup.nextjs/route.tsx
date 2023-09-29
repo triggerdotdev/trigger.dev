@@ -28,6 +28,7 @@ import { useProject } from "~/hooks/useProject";
 import { Handle } from "~/utils/handle";
 import { projectSetupPath, trimTrailingSlash } from "~/utils/pathBuilder";
 import { Callout } from "~/components/primitives/Callout";
+import { NextjsLogo } from "~/assets/logos/NextjsLogo";
 
 type SelectionChoices = "use-existing-project" | "create-new-next-app";
 
@@ -48,6 +49,9 @@ export default function SetupNextjs() {
   return (
     <PageGradient>
       <div className="mx-auto max-w-3xl">
+        <div className="mb-12 grid place-items-center">
+          <NextjsLogo className="w-56" />
+        </div>
         <div className="flex items-center justify-between">
           <Header1 spacing className="text-bright">
             Get setup in {selectedValue === "create-new-next-app" ? "5" : "2"} minutes

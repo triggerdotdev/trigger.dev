@@ -34,6 +34,22 @@ export async function setApiUrlEnvironmentVariable(dir: string, fileName: string
   await setEnvironmentVariable(dir, fileName, "TRIGGER_API_URL", apiUrl, true);
 }
 
+export async function setPublicApiKeyEnvironmentVariable(
+  dir: string,
+  fileName: string,
+  varName: string | undefined,
+  publicApiKey: string
+) {
+  await setEnvironmentVariable(
+    dir,
+    fileName,
+    varName ?? "TRIGGER_PUBLIC_API_KEY",
+    publicApiKey,
+    true,
+    renderApiKey
+  );
+}
+
 async function setEnvironmentVariable(
   dir: string,
   fileName: string,
