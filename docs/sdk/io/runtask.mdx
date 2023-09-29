@@ -119,7 +119,7 @@ A Task is a resumable unit of a Run that can be retried, resumed and is logged. 
     Enabling this feature will expose a `callbackUrl` property on the callback's Task parameter. Additionally, `io.runTask()` will now return a Promise that resolves with the body of the first request sent to that URL.
 
     <Expandable title="property fields">
-      <ResponseField name="callback" type="boolean" required>
+      <ResponseField name="enabled" type="boolean" required>
         Whether to enable the remote callback feature.
       </ResponseField>
       <ResponseField name="timeoutInSeconds" type="number" required>
@@ -215,6 +215,45 @@ client.defineJob({
 
     //log the url of the created card
     await io.logger.info(response.data.url);
+  },
+});
+```
+
+```typescript Remote callbacks
+client.defineJob({
+  id: "remote-callback-example",
+  name: "Remote Callback example",
+  version: "0.1.1",
+  trigger: eventTrigger({ name: "predict" }),
+  integrations: { replicate },
+  run: async (payload, io, ctx) => {
+    //runTask
+    const prediction = await io.runTask(
+      "create-and-await-prediction",
+      async (client, task) => {
+        //create a prediction using the underlying Replicate Integration client
+        await client.predictions.create({
+          ...payload,
+          webhook: task.callbackUrl ?? "",
+          webhook_events_filter: ["completed"],
+        });
+        //the actual return value will be the data sent to callbackUrl
+        //cast to the exact data type you expect to receive or `any` if unsure
+        return {} as Prediction;
+      },
+      {
+        name: "Create and await Prediction",
+        icon: "replicate",
+        //remote callback settings
+        callback: {
+          enabled: true,
+          timeoutInSeconds: 300,
+        },
+      }
+    );
+
+    //log the prediction output
+    await io.logger.info(prediction.output);
   },
 });
 ```
