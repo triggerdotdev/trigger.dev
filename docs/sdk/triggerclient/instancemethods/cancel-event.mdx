@@ -1,0 +1,31 @@
+---
+title: "TriggerClient: cancelEvent() instance method"
+sidebarTitle: "cancelEvent()"
+description: "The `cancelEvent()` instance method will cancel an event that is scheduled to be delivered in the future."
+---
+
+If you've scheduled an event to be delivered in the future, you can cancel it using the `cancelEvent()` instance method, passing in the ID of the event you want to cancel. This will prevent any jobs listening for that event from being triggered.
+
+```ts
+// Sending an event that will be delivered in 24 hours
+const event = await client.sendEvent(
+  {
+    id: "event_12345",
+    name: "my.event",
+    payload: {
+      foo: "bar",
+    },
+  },
+  {
+    deliverAt: new Date(Date.now() + 1000 * 60 * 60 * 24), // deliver in 24 hours
+  }
+);
+
+// Sometime later, cancel the event by ID
+await client.cancelEvent(event.id);
+```
+
+<Note>
+  Cancelling an event after it has already triggered a job run does not cancel the job run.
+  Cancelling events only prevent the event from triggering future job runs.
+</Note>
