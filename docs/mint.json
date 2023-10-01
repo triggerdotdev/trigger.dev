@@ -276,6 +276,7 @@
               "pages": [
                 "sdk/triggerclient/instancemethods/sendevent",
                 "sdk/triggerclient/instancemethods/getevent",
+                "sdk/triggerclient/instancemethods/cancel-event",
                 "sdk/triggerclient/instancemethods/getruns",
                 "sdk/triggerclient/instancemethods/getrun",
                 "sdk/triggerclient/instancemethods/define-job",
