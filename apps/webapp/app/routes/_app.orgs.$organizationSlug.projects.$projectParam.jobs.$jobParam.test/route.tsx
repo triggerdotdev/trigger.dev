@@ -191,11 +191,11 @@ export default function Page() {
                     //deselect the example if it's been edited
                     if (selectedExampleId) {
                       if (v !== selectedExample?.payload) {
+                        setDefaultJson(v);
                         setSelectedExampleId(undefined);
                       }
                     }
                   }}
-                  // key={selectedExampleId ?? "not-example"}
                   height="100%"
                   min-height="100%"
                   max-height="100%"
