@@ -68,14 +68,22 @@ export class TestJobPresenter {
             name: "latest",
           },
         },
-        _count: {
+        runs: {
           select: {
-            runs: {
-              where: {
-                isTest: true,
+            id: true,
+            createdAt: true,
+            number: true,
+            status: true,
+            event: {
+              select: {
+                payload: true,
               },
             },
           },
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 5,
         },
       },
       where: {
@@ -99,11 +107,11 @@ export class TestJobPresenter {
     }
 
     //collect together the examples, we don't care about the environments
-    const examples: EventExample[] = job.aliases.flatMap((alias) =>
+    const examples = job.aliases.flatMap((alias) =>
       alias.version.examples.map((example) => ({
         ...example,
         icon: example.icon ?? undefined,
-        payload: JSON.stringify(example.payload, exampleReplacer, 2),
+        payload: example.payload ? JSON.stringify(example.payload, exampleReplacer, 2) : undefined,
       }))
     );
 
@@ -119,7 +127,13 @@ export class TestJobPresenter {
         ),
       })),
       examples,
-      hasTestRuns: job._count.runs > 0,
+      runs: job.runs.map((r) => ({
+        id: r.id,
+        number: r.number,
+        status: r.status,
+        created: r.createdAt,
+        payload: r.event.payload ? JSON.stringify(r.event.payload, null, 2) : undefined,
+      })),
     };
   }
 }

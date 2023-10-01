@@ -35,14 +35,14 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const { organizationSlug, projectParam, jobParam } = JobParamsSchema.parse(params);
 
   const presenter = new TestJobPresenter();
-  const { environments, hasTestRuns, examples } = await presenter.call({
+  const { environments, runs, examples } = await presenter.call({
     userId,
     organizationSlug,
     projectSlug: projectParam,
     jobSlug: jobParam,
   });
 
-  return typedjson({ environments, hasTestRuns, examples });
+  return typedjson({ environments, runs, examples });
 };
 
 const schema = z.object({
@@ -112,17 +112,19 @@ export const handle: Handle = {
 const startingJson = "{\n\n}";
 
 export default function Page() {
-  const { environments, hasTestRuns, examples } = useTypedLoaderData<typeof loader>();
+  const { environments, runs, examples } = useTypedLoaderData<typeof loader>();
 
   //form submission
   const submit = useSubmit();
   const lastSubmission = useActionData();
 
   //examples
-  const [selectedExampleId, setSelectedExampleId] = useState(examples.at(0)?.id);
-  const selectedExample = examples.find((e) => e.id === selectedExampleId);
+  const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(examples.at(0)?.id);
+  const selectedCodeSample =
+    examples.find((e) => e.id === selectedCodeSampleId)?.payload ??
+    runs.find((r) => r.id === selectedCodeSampleId)?.payload;
 
-  const [defaultJson, setDefaultJson] = useState<string>(selectedExample?.payload ?? startingJson);
+  const [defaultJson, setDefaultJson] = useState<string>(selectedCodeSample ?? startingJson);
   const setCode = useCallback((code: string) => {
     setDefaultJson(code);
   }, []);
@@ -189,10 +191,10 @@ export default function Page() {
                     currentJson.current = v;
 
                     //deselect the example if it's been edited
-                    if (selectedExampleId) {
-                      if (v !== selectedExample?.payload) {
+                    if (selectedCodeSampleId) {
+                      if (v !== selectedCodeSample) {
                         setDefaultJson(v);
-                        setSelectedExampleId(undefined);
+                        setSelectedCodeSampleId(undefined);
                       }
                     }
                   }}
@@ -215,11 +217,11 @@ export default function Page() {
                       type="button"
                       variant="menu-item"
                       onClick={(e) => {
-                        setCode(example.payload);
-                        setSelectedExampleId(example.id);
+                        setCode(example.payload ?? "");
+                        setSelectedCodeSampleId(example.id);
                       }}
                       LeadingIcon={example.icon ?? "beaker"}
-                      TrailingIcon={example.id === selectedExampleId ? "check" : undefined}
+                      TrailingIcon={example.id === selectedCodeSampleId ? "check" : undefined}
                       fullWidth
                       textAlignLeft
                     >
@@ -230,9 +232,31 @@ export default function Page() {
               )}
               <div className="flex flex-col gap-2">
                 <Header2>Recent payloads</Header2>
-                <Callout variant="info">
-                  Recent payloads will show here once you've completed a Run.
-                </Callout>
+                {runs.length === 0 ? (
+                  <Callout variant="info">
+                    Recent payloads will show here once you've completed a Run.
+                  </Callout>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {runs.map((run) => (
+                      <Button
+                        key={run.id}
+                        type="button"
+                        variant="menu-item"
+                        onClick={(e) => {
+                          setCode(run.payload ?? "");
+                          setSelectedCodeSampleId(run.id);
+                        }}
+                        LeadingIcon={"clock"}
+                        TrailingIcon={run.id === selectedCodeSampleId ? "check" : undefined}
+                        fullWidth
+                        textAlignLeft
+                      >
+                        {run.number}
+                      </Button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {selectedEnvironment?.hasAuthResolver && (
