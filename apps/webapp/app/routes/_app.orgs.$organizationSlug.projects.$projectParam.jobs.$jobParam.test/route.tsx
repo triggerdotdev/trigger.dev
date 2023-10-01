@@ -2,7 +2,7 @@ import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { Form, useActionData, useSubmit } from "@remix-run/react";
 import { ActionFunction, LoaderArgs, json } from "@remix-run/server-runtime";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { JSONEditor } from "~/components/code/JSONEditor";
@@ -35,14 +35,14 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const { organizationSlug, projectParam, jobParam } = JobParamsSchema.parse(params);
 
   const presenter = new TestJobPresenter();
-  const { environments, hasTestRuns } = await presenter.call({
+  const { environments, hasTestRuns, examples } = await presenter.call({
     userId,
     organizationSlug,
     projectSlug: projectParam,
     jobSlug: jobParam,
   });
 
-  return typedjson({ environments, hasTestRuns });
+  return typedjson({ environments, hasTestRuns, examples });
 };
 
 const schema = z.object({
@@ -112,22 +112,26 @@ export const handle: Handle = {
 const startingJson = "{\n\n}";
 
 export default function Page() {
+  const { environments, hasTestRuns, examples } = useTypedLoaderData<typeof loader>();
+
+  //form submission
   const submit = useSubmit();
   const lastSubmission = useActionData();
-  const [isExamplePopoverOpen, setIsExamplePopoverOpen] = useState(false);
-  const { environments, hasTestRuns } = useTypedLoaderData<typeof loader>();
 
-  const [defaultJson, setDefaultJson] = useState<string>(startingJson);
-  const currentJson = useRef<string>(defaultJson);
+  //examples
+  const [selectedExampleId, setSelectedExampleId] = useState(examples.at(0)?.id);
+  const selectedExample = examples.find((e) => e.id === selectedExampleId);
+
+  const [defaultJson, setDefaultJson] = useState<string>(selectedExample?.payload ?? startingJson);
+  const setCode = useCallback((code: string) => {
+    setDefaultJson(code);
+  }, []);
+
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string>(environments[0].id);
-  const [currentAccountId, setCurrentAccountId] = useState<string | undefined>(undefined);
-
   const selectedEnvironment = environments.find((e) => e.id === selectedEnvironmentId);
 
-  const insertCode = useCallback((code: string) => {
-    setDefaultJson(code);
-    setIsExamplePopoverOpen(false);
-  }, []);
+  const currentJson = useRef<string>(defaultJson);
+  const [currentAccountId, setCurrentAccountId] = useState<string | undefined>(undefined);
 
   const submitForm = useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
@@ -181,7 +185,17 @@ export default function Page() {
                   defaultValue={defaultJson}
                   readOnly={false}
                   basicSetup
-                  onChange={(v) => (currentJson.current = v)}
+                  onChange={(v) => {
+                    currentJson.current = v;
+
+                    //deselect the example if it's been edited
+                    if (selectedExampleId) {
+                      if (v !== selectedExample?.payload) {
+                        setSelectedExampleId(undefined);
+                      }
+                    }
+                  }}
+                  // key={selectedExampleId ?? "not-example"}
                   height="100%"
                   min-height="100%"
                   max-height="100%"
@@ -192,16 +206,20 @@ export default function Page() {
               </div>
             </InputGroup>
             <div className="flex h-full w-fit min-w-[20rem] flex-col gap-4 rounded-r border border-l-0 border-border p-4">
-              {selectedEnvironment && selectedEnvironment.examples.length > 0 && (
+              {examples.length > 0 && (
                 <div className="flex flex-col gap-2">
                   <Header2>Example payloads</Header2>
-                  {selectedEnvironment?.examples.map((example) => (
+                  {examples.map((example) => (
                     <Button
                       key={example.id}
                       type="button"
                       variant="menu-item"
-                      onClick={(e) => insertCode(example.payload)}
+                      onClick={(e) => {
+                        setCode(example.payload);
+                        setSelectedExampleId(example.id);
+                      }}
                       LeadingIcon={example.icon ?? "beaker"}
+                      TrailingIcon={example.id === selectedExampleId ? "check" : undefined}
                       fullWidth
                       textAlignLeft
                     >

@@ -4,6 +4,7 @@ import { PrismaClient, prisma } from "~/db.server";
 import { Job } from "~/models/job.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
+import { EventExample } from "@trigger.dev/core";
 
 export class TestJobPresenter {
   #prismaClient: PrismaClient;
@@ -97,6 +98,15 @@ export class TestJobPresenter {
       throw new Error("Job not found");
     }
 
+    //collect together the examples, we don't care about the environments
+    const examples: EventExample[] = job.aliases.flatMap((alias) =>
+      alias.version.examples.map((example) => ({
+        ...example,
+        icon: example.icon ?? undefined,
+        payload: JSON.stringify(example.payload, exampleReplacer, 2),
+      }))
+    );
+
     return {
       environments: job.aliases.map((alias) => ({
         id: alias.environment.id,
@@ -104,14 +114,11 @@ export class TestJobPresenter {
         slug: alias.environment.slug,
         userId: alias.environment.orgMember?.userId,
         versionId: alias.version.id,
-        examples: alias.version.examples.map((example) => ({
-          ...example,
-          payload: JSON.stringify(example.payload, exampleReplacer, 2),
-        })),
         hasAuthResolver: alias.version.integrations.some(
           (i) => i.integration.authSource === "RESOLVER"
         ),
       })),
+      examples,
       hasTestRuns: job._count.runs > 0,
     };
   }
