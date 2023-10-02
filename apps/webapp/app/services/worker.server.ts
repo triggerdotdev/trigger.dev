@@ -111,6 +111,10 @@ if (env.NODE_ENV === "production") {
 }
 
 export async function init() {
+  if (env.FAIL_LOCKED_JOBS_ON_STARTUP === "true") {
+    return failLockedTasks();
+  }
+
   if (env.WORKER_ENABLED === "true") {
     await workerQueue.initialize();
   }
@@ -118,6 +122,57 @@ export async function init() {
   if (env.EXECUTION_WORKER_ENABLED === "true") {
     await executionWorker.initialize();
   }
+}
+
+async function failLockedTasks() {
+  console.log("⚠️  Failing all locked jobs as requested");
+  console.log("⚠️  Will NOT start any workers");
+
+  const graphileWorkerSchema = env.WORKER_SCHEMA;
+
+  const message = "Failing all locked jobs";
+
+  const migrationQueryResult = await prisma.$queryRawUnsafe(`
+    SELECT id FROM graphile_worker.migrations
+    ORDER BY id DESC LIMIT 1`);
+
+  const MigrationQueryResultSchema = z.array(z.object({ id: z.number() }));
+
+  const migrationResults = MigrationQueryResultSchema.parse(migrationQueryResult);
+  if (!migrationResults.length) {
+    throw new Error("No migrations applied yet.");
+  }
+
+  const latestMigration = migrationResults[0].id;
+  const separateJobQueuesTable = latestMigration > 10;
+
+  const unlockJobQueue = `, queues AS (
+    UPDATE ${graphileWorkerSchema}.job_queues
+    SET
+      locked_by = null,
+      locked_at = null
+    FROM j
+    WHERE job_queues.id = j.job_queue_id
+  )`;
+
+  const failJobsResult = await prisma.$queryRawUnsafe<Array<any>>(
+    `WITH j AS (
+        UPDATE ${graphileWorkerSchema}.jobs
+        SET
+          last_error = $1::text,
+          run_at = greatest(now(), run_at) + (exp(least(attempts, 10)) * interval '1 second'),
+          locked_by = null,
+          locked_at = null
+        WHERE locked_at is not null
+          AND locked_at > now() - interval '4 hours'
+        RETURNING *
+      )${separateJobQueuesTable ? unlockJobQueue : ""}
+    SELECT * FROM j;`,
+    message
+  );
+
+  console.log(`⚠️  Failed ${failJobsResult.length} locked jobs`);
+  console.log("⚠️  Unset FAIL_LOCKED_JOBS_ON_STARTUP to enable workers");
 }
 
 function getWorkerQueue() {
