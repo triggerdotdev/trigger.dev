@@ -111,7 +111,7 @@ if (env.NODE_ENV === "production") {
 }
 
 export async function init() {
-  if (env.FAIL_LOCKED_JOBS_ON_STARTUP === "true") {
+  if (env.FAIL_LOCKED_JOBS_FOR_MIGRATION === "true") {
     return failLockedTasks();
   }
 
