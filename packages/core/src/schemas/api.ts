@@ -654,11 +654,6 @@ export const RunTaskBodyOutputSchema = RunTaskBodyInputSchema.extend({
 
 export type RunTaskBodyOutput = z.infer<typeof RunTaskBodyOutputSchema>;
 
-export const CallbackTaskBodyInputSchema = z.object({}).passthrough();
-
-export type CallbackTaskBodyInput = Prettify<z.input<typeof CallbackTaskBodyInputSchema>>;
-export type CallbackTaskBodyOutput = z.infer<typeof CallbackTaskBodyInputSchema>;
-
 export const CompleteTaskBodyInputSchema = RunTaskBodyInputSchema.pick({
   properties: true,
   description: true,

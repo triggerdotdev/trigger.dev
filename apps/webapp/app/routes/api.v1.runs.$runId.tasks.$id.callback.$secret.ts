@@ -1,7 +1,5 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import type { CallbackTaskBodyOutput } from "@trigger.dev/core";
-import { CallbackTaskBodyInputSchema } from "@trigger.dev/core";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
 import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
@@ -22,21 +20,14 @@ export async function action({ request, params }: ActionArgs) {
 
   const { runId, id } = ParamsSchema.parse(params);
 
-  // Now parse the request body
-  const anyBody = await request.json();
-
-  // Allows any valid object
-  // TODO: maybe add proper schema parsing during io.runTask(), or even skip this step
-  const body = CallbackTaskBodyInputSchema.safeParse(anyBody);
-
-  if (!body.success) {
-    return json({ error: "Invalid request body" }, { status: 400 });
-  }
+  // Parse body as JSON (no schema parsing)
+  const body = await request.json();
 
   const service = new CallbackRunTaskService();
 
   try {
-    await service.call(runId, id, body.data, request.url);
+    // Complete task with request body as output
+    await service.call(runId, id, body, request.url);
 
     return json({ success: true });
   } catch (error) {
@@ -55,12 +46,7 @@ export class CallbackRunTaskService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(
-    runId: string,
-    id: string,
-    taskBody: CallbackTaskBodyOutput,
-    callbackUrl: string
-  ): Promise<void> {
+  public async call(runId: string, id: string, taskBody: any, callbackUrl: string): Promise<void> {
     const task = await findTask(prisma, id);
 
     if (!task) {
@@ -89,7 +75,7 @@ export class CallbackRunTaskService {
     await this.#resumeTask(task, taskBody);
   }
 
-  async #resumeTask(task: NonNullable<FoundTask>, output: Record<string, any>) {
+  async #resumeTask(task: NonNullable<FoundTask>, output: any) {
     await $transaction(this.#prismaClient, async (tx) => {
       await tx.taskAttempt.updateMany({
         where: {
