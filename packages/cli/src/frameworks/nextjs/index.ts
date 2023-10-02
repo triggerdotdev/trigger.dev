@@ -12,6 +12,9 @@ import { readPackageJson } from "../../utils/readPackageJson";
 import { standardWatchFilePaths } from "../watchConfig";
 import { telemetryClient } from "../../telemetry/telemetry";
 import { detectMiddlewareUsage } from "./middleware";
+import semver from "semver";
+import boxen from "boxen";
+import { createRequire } from "node:module";
 
 export class NextJs implements Framework {
   id = "nextjs";
@@ -87,6 +90,57 @@ export class NextJs implements Framework {
         }
         default:
           break;
+      }
+    }
+
+    const nextJsDir = await detectPagesOrAppDir(path);
+    const nextConfigExists = await detectNextConfigFile(path);
+
+    if (nextConfigExists && nextJsDir === "pages") {
+      const require = createRequire(import.meta.url);
+      const nextPath = require.resolve("next");
+
+      const nextPackageJsonPath = pathModule.join(nextPath, "../../../", "package.json");
+      const nextPackageJsonData = JSON.parse(await fs.readFile(nextPackageJsonPath, "utf8"));
+
+      const nextVersion = nextPackageJsonData.version;
+
+      if (semver.gte(nextVersion, "13.1.0")) {
+        logger.warn(
+          `⚠️ We've detected you're using Next.js Pages, please add the following to your next.config`
+        );
+        logger.info(
+          boxen(
+            `
+const nextConfig = {
+// existing code
+transpilePackages: ["@trigger.dev/react"],
+};
+module.exports = nextConfig;
+`,
+            { padding: 1, borderStyle: "double", borderColor: "magenta" }
+          )
+        );
+      }
+
+      if (semver.lt(nextVersion, "13.1.0")) {
+        logger.warn(
+          `⚠️ We've detected you're using Next.js Pages, please add the following to your next.config`
+        );
+        logger.info(
+          boxen(
+            `
+Add the following to your next.config file:
+            
+const withTM = require('next-transpile-modules')(['@trigger.dev/react']);
+
+module.exports = withTM({
+//...existing config object
+});
+`,
+            { margin: 1, borderStyle: "double", borderColor: "magenta" }
+          )
+        );
       }
     }
   }
