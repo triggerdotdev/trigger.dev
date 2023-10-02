@@ -112,7 +112,7 @@ if (env.NODE_ENV === "production") {
 
 export async function init() {
   if (env.FAIL_LOCKED_JOBS_FOR_MIGRATION === "true") {
-    return failLockedTasks();
+    await failLockedJobsForMigration();
   }
 
   if (env.WORKER_ENABLED === "true") {
@@ -124,13 +124,11 @@ export async function init() {
   }
 }
 
-async function failLockedTasks() {
-  console.log("⚠️  Failing all locked jobs as requested");
-  console.log("⚠️  Will NOT start any workers");
+/** Helper for graphile-worker v0.14.0 migration */
+async function failLockedJobsForMigration() {
+  console.log("⚠️  failing locked jobs for migration");
 
   const graphileWorkerSchema = env.WORKER_SCHEMA;
-
-  const message = "Failing all locked jobs";
 
   const migrationQueryResult = await prisma.$queryRawUnsafe(`
     SELECT id FROM graphile_worker.migrations
@@ -139,21 +137,23 @@ async function failLockedTasks() {
   const MigrationQueryResultSchema = z.array(z.object({ id: z.number() }));
 
   const migrationResults = MigrationQueryResultSchema.parse(migrationQueryResult);
+
   if (!migrationResults.length) {
-    throw new Error("No migrations applied yet.");
+    console.log("⚠️  nothing to do, no migrations applied yet");
+    console.log("⚠️  unset FAIL_LOCKED_JOBS_FOR_MIGRATION to hide these messages");
+    return;
   }
 
   const latestMigration = migrationResults[0].id;
-  const separateJobQueuesTable = latestMigration > 10;
 
-  const unlockJobQueue = `, queues AS (
-    UPDATE ${graphileWorkerSchema}.job_queues
-    SET
-      locked_by = null,
-      locked_at = null
-    FROM j
-    WHERE job_queues.id = j.job_queue_id
-  )`;
+  // the first v0.14.0 migration has ID 11
+  if (latestMigration > 10) {
+    console.log("⚠️  nothing to do, graphile-worker already upgraded");
+    console.log("⚠️  unset FAIL_LOCKED_JOBS_FOR_MIGRATION to hide these messages");
+    return;
+  }
+
+  const errorMessage = "Failing locked jobs for migration";
 
   const failJobsResult = await prisma.$queryRawUnsafe<Array<any>>(
     `WITH j AS (
@@ -166,13 +166,20 @@ async function failLockedTasks() {
         WHERE locked_at is not null
           AND locked_at > now() - interval '4 hours'
         RETURNING *
-      )${separateJobQueuesTable ? unlockJobQueue : ""}
+      ), queues AS (
+        UPDATE ${graphileWorkerSchema}.job_queues
+        SET
+          locked_by = null,
+          locked_at = null
+        FROM j
+        WHERE job_queues.queue_name = j.queue_name
+      )
     SELECT * FROM j;`,
-    message
+    errorMessage
   );
 
-  console.log(`⚠️  Failed ${failJobsResult.length} locked jobs`);
-  console.log("⚠️  Unset FAIL_LOCKED_JOBS_ON_STARTUP to enable workers");
+  console.log(`⚠️  failed ${failJobsResult.length} locked jobs`);
+  console.log("⚠️  You can now unset FAIL_LOCKED_JOBS_FOR_MIGRATION");
 }
 
 function getWorkerQueue() {
