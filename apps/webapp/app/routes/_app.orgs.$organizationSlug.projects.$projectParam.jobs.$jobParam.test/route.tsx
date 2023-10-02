@@ -119,7 +119,9 @@ export default function Page() {
   const lastSubmission = useActionData();
 
   //examples
-  const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(examples.at(0)?.id);
+  const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(
+    examples.at(0)?.id ?? runs.at(0)?.id
+  );
   const selectedCodeSample =
     examples.find((e) => e.id === selectedCodeSampleId)?.payload ??
     runs.find((r) => r.id === selectedCodeSampleId)?.payload;
@@ -207,7 +209,7 @@ export default function Page() {
                 />
               </div>
             </InputGroup>
-            <div className="flex h-full w-fit min-w-[20rem] flex-col gap-4 rounded-r border border-l-0 border-border p-4">
+            <div className="flex h-full w-fit min-w-[20rem] flex-col gap-4 overflow-y-auto rounded-r border border-l-0 border-border p-4">
               {examples.length > 0 && (
                 <div className="flex flex-col gap-2">
                   <Header2>Example payloads</Header2>
