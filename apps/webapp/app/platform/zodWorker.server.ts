@@ -1,7 +1,7 @@
 import type {
   CronItem,
   CronItemOptions,
-  Job as GraphileJob,
+  DbJob as GraphileJob,
   Runner as GraphileRunner,
   JobHelpers,
   RunnerOptions,
@@ -29,8 +29,8 @@ const RawCronPayloadSchema = z.object({
 
 const GraphileJobSchema = z.object({
   id: z.coerce.string(),
-  queue_name: z.string().nullable(),
-  task_identifier: z.string(),
+  job_queue_id: z.number().nullable(),
+  task_id: z.number(),
   payload: z.unknown(),
   priority: z.number(),
   run_at: z.coerce.date(),
