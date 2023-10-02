@@ -67,7 +67,7 @@ type RecurringTaskPayload = {
 
 export type ZodRecurringTasks = {
   [key: string]: {
-    pattern: string;
+    match: string;
     options?: CronItemOptions;
     handler: (payload: RecurringTaskPayload, job: GraphileJob) => Promise<void>;
   };
@@ -349,7 +349,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     for (const [key, task] of Object.entries(this.#recurringTasks)) {
       const cronItem: CronItem = {
-        pattern: task.pattern,
+        match: task.match,
         identifier: key,
         task: key,
         options: task.options,

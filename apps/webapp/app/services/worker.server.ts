@@ -136,7 +136,7 @@ function getWorkerQueue() {
     recurringTasks: {
       // Run this every 5 minutes
       autoIndexProductionEndpoints: {
-        pattern: "*/5 * * * *",
+        match: "*/5 * * * *",
         handler: async (payload, job) => {
           const service = new RecurringEndpointIndexService();
 
@@ -145,7 +145,7 @@ function getWorkerQueue() {
       },
       // Run this every hour
       purgeOldIndexings: {
-        pattern: "0 * * * *",
+        match: "0 * * * *",
         handler: async (payload, job) => {
           // Delete indexings that are older than 7 days
           await prisma.endpointIndex.deleteMany({
