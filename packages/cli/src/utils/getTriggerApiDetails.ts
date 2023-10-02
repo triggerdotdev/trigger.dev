@@ -40,23 +40,22 @@ export async function getTriggerApiDetails(path: string, envFile: string) {
     ".env.development.local",
   ]);
 
-  if (!resolvedEnvFile) {
-    logger.error(`You must add TRIGGER_API_KEY to your ${envFile} file.`);
-    return;
-  }
+  const parsedEnvFile = dotenv.parse(resolvedEnvFile?.content ?? "");
 
-  const parsedEnvFile = dotenv.parse(resolvedEnvFile.content);
-
-  if (!parsedEnvFile) {
-    logger.error(`You must add TRIGGER_API_KEY to your ${envFile} file.`);
-    return;
-  }
-
-  const apiKey = parsedEnvFile.TRIGGER_API_KEY;
-  const apiUrl = parsedEnvFile.TRIGGER_API_URL;
+  const apiKey = parsedEnvFile.TRIGGER_API_KEY ?? process.env.TRIGGER_API_KEY;
+  const apiUrl = parsedEnvFile.TRIGGER_API_URL ?? process.env.TRIGGER_API_URL ?? CLOUD_API_URL;
 
   if (!apiKey) {
-    logger.error(`You must add TRIGGER_API_KEY to your ${envFile} file.`);
+    logger.error(
+      `You must add TRIGGER_API_KEY to your ${envFile} file or define it in your environment variables.`
+    );
+    return;
+  }
+
+  if (!apiUrl) {
+    logger.error(
+      `You must add TRIGGER_API_KEY to your ${envFile} file or define it in your environment variables.`
+    );
     return;
   }
 
@@ -75,5 +74,5 @@ export async function getTriggerApiDetails(path: string, envFile: string) {
     return;
   }
 
-  return { apiKey, apiUrl: apiUrl ?? CLOUD_API_URL, envFile: resolvedEnvFile.fileName };
+  return { apiKey, apiUrl: apiUrl ?? CLOUD_API_URL, envFile: resolvedEnvFile!.fileName };
 }
