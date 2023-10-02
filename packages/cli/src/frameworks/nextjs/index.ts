@@ -96,10 +96,11 @@ export class NextJs implements Framework {
     const nextJsDir = await detectPagesOrAppDir(path);
     const nextConfigExists = await detectNextConfigFile(path);
 
-    if (nextConfigExists && nextJsDir === "pages") {
-      const require = createRequire(import.meta.url);
-      const nextPath = require.resolve("next");
+    const require = createRequire(import.meta.url);
+    const nextPath = require.resolve("next");
+    const reactPath = require.resolve("@trigger.dev/react");
 
+    if (nextConfigExists && nextJsDir === "pages" && typeof reactPath !== "undefined") {
       const nextPackageJsonPath = pathModule.join(nextPath, "../../../", "package.json");
       const nextPackageJsonData = JSON.parse(await fs.readFile(nextPackageJsonPath, "utf8"));
 
