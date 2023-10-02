@@ -12,6 +12,11 @@ export const client = new TriggerClient({
 });
 ```
 
+<Warning>
+  The `TriggerClient` should only ever be used in a server-side environment. It is not safe to use
+  in a browser environment because it exposes your API Key.
+</Warning>
+
 ## Constructor
 
 ### [TriggerClient()](/sdk/triggerclient/constructor)
@@ -35,6 +40,10 @@ You can call this function from anywhere in your code to send an event. The othe
 #### [getEvent()](/sdk/triggerclient/instancemethods/getevent)
 
 The `getEvent()` method gets the event details for a given eventId.
+
+#### [cancelEvent()](/sdk/triggerclient/instancemethods/cancel-event)
+
+The `cancelEvent()` method cancels an event that is scheduled to be delivered in the future.
 
 #### [getRuns()](/sdk/triggerclient/instancemethods/getruns)
 
