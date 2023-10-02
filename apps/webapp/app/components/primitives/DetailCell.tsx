@@ -1,18 +1,38 @@
-import { IconInBox, RenderIcon } from "./Icon";
+import { cn } from "~/utils/cn";
+import { Icon, IconInBox, RenderIcon } from "./Icon";
 import { Paragraph } from "./Paragraph";
 
 type DetailCellProps = {
   leadingIcon?: RenderIcon;
+  leadingIconClassName?: string;
   trailingIcon?: RenderIcon;
+  trailingIconClassName?: string;
   label: string;
   description?: string;
+  className?: string;
 };
 
-export function DetailCell({ leadingIcon, trailingIcon, label, description }: DetailCellProps) {
+export function DetailCell({
+  leadingIcon,
+  leadingIconClassName,
+  trailingIcon,
+  trailingIconClassName,
+  label,
+  description,
+  className,
+}: DetailCellProps) {
   return (
-    <div className="group flex h-11 w-full items-center gap-2 rounded-md p-1 pr-3 transition hover:bg-slate-900">
-      <IconInBox icon={leadingIcon} className="flex-none transition group-hover:border-slate-750" />
-      <div className="flex flex-col">
+    <div
+      className={cn(
+        "group flex h-11 w-full items-center gap-2 rounded-md p-1 pr-3 transition hover:bg-slate-900",
+        className
+      )}
+    >
+      <IconInBox
+        icon={leadingIcon}
+        className={cn("flex-none transition group-hover:border-slate-750", leadingIconClassName)}
+      />
+      <div className="flex flex-1 flex-col">
         <Paragraph
           variant="small"
           className="m-0 flex-1 text-left leading-[1.1rem] transition group-hover:text-bright"
@@ -21,9 +41,12 @@ export function DetailCell({ leadingIcon, trailingIcon, label, description }: De
         </Paragraph>
       </div>
       <div className="flex flex-none items-center gap-1">
-        <IconInBox
+        <Icon
           icon={trailingIcon}
-          className="flex-none transition group-hover:border-slate-750"
+          className={cn(
+            "h-6 w-6 flex-none transition group-hover:border-slate-750",
+            trailingIconClassName
+          )}
         />
       </div>
     </div>

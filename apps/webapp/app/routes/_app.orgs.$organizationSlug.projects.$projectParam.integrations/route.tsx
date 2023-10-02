@@ -13,6 +13,7 @@ import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
+import { DetailCell } from "~/components/primitives/DetailCell";
 import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Input } from "~/components/primitives/Input";
@@ -482,25 +483,13 @@ function AddIntegrationConnection({
   icon?: string;
 }) {
   return (
-    <div className="group flex h-11 w-full items-center gap-2 rounded-md p-1 pr-3 transition hover:bg-slate-900">
-      <NamedIconInBox
-        name={icon ?? identifier}
-        className="h-9 w-9 flex-none transition group-hover:border-slate-750"
-      />
-      <Paragraph
-        variant="small"
-        className="m-0 flex-1 text-left leading-[1.1rem] transition group-hover:text-bright"
-      >
-        {name}
-      </Paragraph>
-      <div className="flex flex-none items-center gap-1">
-        {isIntegration && <IntegrationIcon />}
-        <NamedIcon
-          name="plus"
-          className="h-6 w-6 flex-none text-slate-700 transition group-hover:text-bright"
-        />
-      </div>
-    </div>
+    <DetailCell
+      className="w-full"
+      leadingIcon={icon ?? identifier}
+      label={name}
+      trailingIcon="plus"
+      trailingIconClassName="text-slate-700 group-hover:text-bright"
+    />
   );
 }
 

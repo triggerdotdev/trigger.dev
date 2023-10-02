@@ -31,7 +31,7 @@ export function IconInBox({ boxClassName, ...props }: IconProps & { boxClassName
         boxClassName
       )}
     >
-      <Icon {...props} />
+      <Icon icon={props.icon} className={cn("h-6 w-6", props.className)} />
     </div>
   );
 }
