@@ -93,10 +93,13 @@ program
 
 program
   .command("update")
-  .description("Updates all @trigger.dev/* packages to their latest compatible versions")
+  .description(
+    "Updates all @trigger.dev/* packages to their latest compatible versions or the specified version"
+  )
   .argument("[path]", "The path to the directory that contains the package.json file", ".")
-  .action(async (path) => {
-    await updateCommand(path);
+  .option("--to <version tag>", "The version to update to (ex: 2.1.4)", "latest")
+  .action(async (path, options) => {
+    await updateCommand(path, options);
   });
 
 program
