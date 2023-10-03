@@ -8,6 +8,7 @@ type DetailCellProps = {
   trailingIcon?: RenderIcon;
   trailingIconClassName?: string;
   label: string;
+  labelSize?: "small" | "base";
   description?: string;
   className?: string;
 };
@@ -18,13 +19,14 @@ export function DetailCell({
   trailingIcon,
   trailingIconClassName,
   label,
+  labelSize = "small",
   description,
   className,
 }: DetailCellProps) {
   return (
     <div
       className={cn(
-        "group flex h-11 w-full items-center gap-2 rounded-md p-1 pr-3 transition hover:bg-slate-900",
+        "group flex h-11 w-full items-center gap-3 rounded-md p-1 pr-3 transition hover:bg-slate-900",
         className
       )}
     >
@@ -34,7 +36,7 @@ export function DetailCell({
       />
       <div className="flex flex-1 flex-col">
         <Paragraph
-          variant="small"
+          variant={labelSize}
           className="m-0 flex-1 text-left leading-[1.1rem] transition group-hover:text-bright"
         >
           {label}

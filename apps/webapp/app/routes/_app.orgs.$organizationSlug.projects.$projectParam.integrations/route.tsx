@@ -210,10 +210,13 @@ function PossibleIntegrationsList({
       <Feedback
         button={
           <button className="w-full">
-            <ExternalIntegrationLink
-              name="plus"
+            <DetailCell
+              leadingIcon="plus"
+              leadingIconClassName="text-dimmed"
               label="Request an API and we'll add it to the list as an Integration"
+              labelSize="base"
               trailingIcon="chevron-right"
+              trailingIconClassName="text-slate-700 group-hover:text-bright"
             />
           </button>
         }
@@ -222,10 +225,13 @@ function PossibleIntegrationsList({
 
       <Header2 className="mb-2 mt-6">Create an Integration</Header2>
       <a href="https://docs.trigger.dev/integrations/create" target="_blank">
-        <ExternalIntegrationLink
-          name="integration"
+        <DetailCell
+          leadingIcon="integration"
+          leadingIconClassName="text-dimmed"
           label="Learn how to create your own API Integrations"
+          labelSize="base"
           trailingIcon="external-link"
+          trailingIconClassName="text-slate-700 group-hover:text-bright"
         />
       </a>
     </div>
@@ -493,55 +499,6 @@ function AddIntegrationConnection({
   );
 }
 
-function ExternalIntegrationLink({
-  name,
-  label,
-  trailingIcon,
-}: {
-  name: string;
-  label: string;
-  trailingIcon: string;
-}) {
-  return (
-    <span className="group flex h-11 w-full items-center gap-3 rounded-md p-1 pr-3 transition hover:bg-slate-850">
-      <NamedIconInBox
-        name={name}
-        className="h-9 w-9 flex-none text-dimmed transition group-hover:border-slate-750"
-        iconClassName="text-dimmed"
-      />
-      <Paragraph variant="base" className="m-0 flex-1 text-left transition group-hover:text-bright">
-        {label}
-      </Paragraph>
-      <div className="flex flex-none items-center gap-1">
-        <NamedIcon
-          name={trailingIcon}
-          className="h-6 w-6 flex-none text-slate-700 transition group-hover:text-bright"
-        />
-      </div>
-    </span>
-  );
-}
-
 export function IntegrationIcon() {
   return <LogoIcon className="h-3.5 w-3.5 flex-none pb-0.5" />;
-}
-
-function InfoLink({ text }: { text: string }) {
-  return (
-    <div className="group flex h-11 w-full items-center gap-3 rounded-md p-1 pr-3 transition hover:bg-slate-850">
-      <NamedIconInBox
-        name="integration"
-        className="h-9 w-9 flex-none transition group-hover:border-slate-750"
-      />
-      <Paragraph variant="base" className="m-0 flex-1 text-left transition group-hover:text-bright">
-        {text}
-      </Paragraph>
-      <div className="flex flex-none items-center gap-1">
-        <NamedIcon
-          name="docs"
-          className="h-6 w-6 flex-none text-slate-700 transition group-hover:text-bright"
-        />
-      </div>
-    </div>
-  );
 }
