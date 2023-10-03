@@ -41,6 +41,7 @@ export class IndexEndpointService {
     }
 
     const { jobs, sources, dynamicTriggers, dynamicSchedules } = indexResponse.data;
+    const { "trigger-version": triggerVersion } = indexResponse.headers;
 
     logger.debug("Indexing endpoint", {
       endpointId: endpoint.id,
@@ -48,6 +49,7 @@ export class IndexEndpointService {
       endpointSlug: endpoint.slug,
       source: source,
       sourceData: sourceData,
+      triggerVersion,
       stats: {
         jobs: jobs.length,
         sources: sources.length,
@@ -55,6 +57,17 @@ export class IndexEndpointService {
         dynamicSchedules: dynamicSchedules.length,
       },
     });
+
+    if (triggerVersion && triggerVersion !== endpoint.version) {
+      await this.#prismaClient.endpoint.update({
+        where: {
+          id: endpoint.id,
+        },
+        data: {
+          version: triggerVersion,
+        },
+      });
+    }
 
     const indexStats = {
       jobs: 0,

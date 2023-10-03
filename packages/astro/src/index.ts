@@ -42,6 +42,7 @@ export function createAstroRoute(client: TriggerClient) {
       // execution's response body
       return new Response(JSON.stringify(response.body), {
         status: response.status,
+        headers: response.headers,
       });
     } catch (err) {
       return new Response(JSON.stringify({ error: "Internal server error" }), {

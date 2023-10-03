@@ -5,7 +5,7 @@ export const client = new TriggerClient({
   id: "job-catalog",
   apiKey: process.env["TRIGGER_API_KEY"],
   apiUrl: process.env["TRIGGER_API_URL"],
-  verbose: false,
+  verbose: true,
   ioLogLocalEnabled: true,
 });
 
@@ -136,6 +136,69 @@ client.defineJob({
         { name: `Task ${i}` }
       );
     }
+  },
+});
+
+client.defineJob({
+  id: "stress.logs-of-logs",
+  name: "Lots of Logs",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "lots.of.logs",
+  }),
+  run: async (payload, io, ctx) => {
+    // Do lots of logs
+    for (let i = 0; i < payload.iterations; i++) {
+      await io.logger.info(`before-yield: Iteration ${i} started`);
+    }
+
+    // Each are 300KB
+    for (let i = 0; i < payload.iterations; i++) {
+      await io.runTask(
+        `before.yield.${i}`,
+        async (task) => {
+          return {
+            i,
+            extra: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n".repeat(
+              (300 * payload.size) / 60
+            ),
+          };
+        },
+        { name: `before-yield: Task ${i}` }
+      );
+    }
+
+    io.yield("yield 1");
+
+    // Do lots of logs
+    for (let i = 0; i < payload.iterations; i++) {
+      await io.logger.info(`after-yield: Iteration ${i} started`);
+    }
+
+    for (let i = 0; i < payload.iterations; i++) {
+      await io.runTask(
+        `after-yield.task.${i}`,
+        async (task) => {
+          return {
+            i,
+            extra: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n".repeat(
+              (300 * payload.size) / 60
+            ),
+          };
+        },
+        { name: `after-yield: Task ${i}` }
+      );
+    }
+
+    await io.wait("wait-1", 10);
+
+    await io.runTask(
+      `after-wait.task`,
+      async (task) => {
+        return { i: 0 };
+      },
+      { name: `after-wait: Task 0` }
+    );
   },
 });
 
