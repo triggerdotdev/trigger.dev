@@ -74,9 +74,11 @@ export class CreateEndpointService {
             slug: id,
             url: endpointUrl,
             indexingHookIdentifier: indexingHookIdentifier(),
+            version: pong.triggerVersion,
           },
           update: {
             url: endpointUrl,
+            version: pong.triggerVersion,
           },
         });
 

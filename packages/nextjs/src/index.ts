@@ -14,6 +14,14 @@ export function createPagesRoute(client: TriggerClient) {
       return;
     }
 
+    if (response.headers) {
+      for (const [key, value] of Object.entries(response.headers)) {
+        if (typeof value === "string") {
+          res.setHeader(key, value);
+        }
+      }
+    }
+
     res.status(response.status).json(response.body);
   };
 
@@ -35,7 +43,7 @@ export function createAppRoute(client: TriggerClient) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    return NextResponse.json(response.body, { status: response.status });
+    return NextResponse.json(response.body, { status: response.status, headers: response.headers });
   };
 
   return {
