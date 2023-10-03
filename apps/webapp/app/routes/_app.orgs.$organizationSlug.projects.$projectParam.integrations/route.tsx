@@ -214,7 +214,7 @@ function PossibleIntegrationsList({
               leadingIcon="plus"
               leadingIconClassName="text-dimmed"
               label="Request an API and we'll add it to the list as an Integration"
-              labelSize="base"
+              variant="base"
               trailingIcon="chevron-right"
               trailingIconClassName="text-slate-700 group-hover:text-bright"
             />
@@ -229,7 +229,7 @@ function PossibleIntegrationsList({
           leadingIcon="integration"
           leadingIconClassName="text-dimmed"
           label="Learn how to create your own API Integrations"
-          labelSize="base"
+          variant="base"
           trailingIcon="external-link"
           trailingIconClassName="text-slate-700 group-hover:text-bright"
         />

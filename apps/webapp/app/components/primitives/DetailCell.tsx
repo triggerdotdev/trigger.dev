@@ -2,15 +2,38 @@ import { cn } from "~/utils/cn";
 import { Icon, IconInBox, RenderIcon } from "./Icon";
 import { Paragraph } from "./Paragraph";
 
+const variations = {
+  small: {
+    label: {
+      variant: "small" as const,
+      className: "m-0 leading-[1.1rem]",
+    },
+    description: {
+      variant: "extra-small" as const,
+      className: "m-0",
+    },
+  },
+  base: {
+    label: {
+      variant: "base" as const,
+      className: "m-0 leading-[1.1rem] ",
+    },
+    description: {
+      variant: "small" as const,
+      className: "m-0",
+    },
+  },
+};
+
 type DetailCellProps = {
   leadingIcon?: RenderIcon;
   leadingIconClassName?: string;
   trailingIcon?: RenderIcon;
   trailingIconClassName?: string;
   label: string;
-  labelSize?: "small" | "base";
   description?: string;
   className?: string;
+  variant?: keyof typeof variations;
 };
 
 export function DetailCell({
@@ -19,10 +42,12 @@ export function DetailCell({
   trailingIcon,
   trailingIconClassName,
   label,
-  labelSize = "small",
   description,
   className,
+  variant = "small",
 }: DetailCellProps) {
+  const variation = variations[variant];
+
   return (
     <div
       className={cn(
@@ -36,11 +61,25 @@ export function DetailCell({
       />
       <div className="flex flex-1 flex-col">
         <Paragraph
-          variant={labelSize}
-          className="m-0 flex-1 text-left leading-[1.1rem] transition group-hover:text-bright"
+          variant={variation.label.variant}
+          className={cn(
+            "flex-1 text-left transition group-hover:text-bright",
+            variation.label.className
+          )}
         >
           {label}
         </Paragraph>
+        {description && (
+          <Paragraph
+            variant={variation.description.variant}
+            className={cn(
+              "flex-1 text-left transition group-hover:text-bright",
+              variation.description.className
+            )}
+          >
+            {description}
+          </Paragraph>
+        )}
       </div>
       <div className="flex flex-none items-center gap-1">
         <Icon
