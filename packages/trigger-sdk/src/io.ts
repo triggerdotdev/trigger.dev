@@ -809,7 +809,7 @@ export class IO {
   yield(key: string) {
     if (!supportsFeature("yieldExecution", this._version)) {
       console.warn(
-        "[trigger.dev] io.yield() is not support by the version of the Trigger.dev platform you are using, you might need to upgrade your self-hosted Trigger.dev instance."
+        "[trigger.dev] io.yield() is not support by the version of the Trigger.dev server you are using, you will need to upgrade your self-hosted Trigger.dev instance."
       );
 
       return;
