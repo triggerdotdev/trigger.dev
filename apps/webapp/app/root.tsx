@@ -17,10 +17,12 @@ import { appEnvTitleTag } from "./utils";
 import { ErrorBoundary as HighlightErrorBoundary } from "@highlight-run/react";
 import { useHighlight } from "./hooks/useHighlight";
 import { ExternalScripts } from "remix-utils";
+import { withDevTools } from "remix-development-tools";
+import rdtStylesheet from "remix-development-tools/index.css";
 
 export const links: LinksFunction = () => {
-  return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
-};
+  return process.env.NODE_ENV === "development" ? [{ rel: "stylesheet", href: rdtStylesheet }, { rel: "stylesheet", href: tailwindStylesheetUrl }] : [{ rel: "stylesheet", href: tailwindStylesheetUrl }]
+}
 
 export const meta: TypedMetaFunction<typeof loader> = ({ data }) => ({
   title: `Trigger.dev${appEnvTitleTag(data?.appEnv)}`,
@@ -114,4 +116,4 @@ function App() {
   );
 }
 
-export default App;
+export default process.env.NODE_ENV === "development" ? withDevTools(App) : App;
