@@ -263,6 +263,7 @@ export class PerformRunExecutionV1Service {
         .flat()
         .filter(Boolean)
         .map((t) => CachedTaskSchema.parse(t)),
+      yieldedExecutions: run.yieldedExecutions,
     });
 
     if (!response) {
@@ -354,6 +355,11 @@ export class PerformRunExecutionV1Service {
 
         break;
       }
+      case "YIELD_EXECUTION": {
+        await this.#resumeYieldedExecution(execution, safeBody.data.key);
+
+        break;
+      }
       default: {
         const _exhaustiveCheck: never = status;
         throw new Error(`Non-exhaustive match for value: ${status}`);
@@ -390,6 +396,40 @@ export class PerformRunExecutionV1Service {
           completedAt: new Date(),
         },
       });
+    });
+  }
+
+  async #resumeYieldedExecution(execution: FoundRunExecution, key: string) {
+    const { run } = execution;
+
+    return await $transaction(this.#prismaClient, async (tx) => {
+      await tx.jobRunExecution.update({
+        where: {
+          id: execution.id,
+        },
+        data: {
+          status: "SUCCESS",
+          completedAt: new Date(),
+          run: {
+            update: {
+              yieldedExecutions: {
+                push: key,
+              },
+            },
+          },
+        },
+      });
+
+      const newJobExecution = await tx.jobRunExecution.create({
+        data: {
+          runId: run.id,
+          reason: "EXECUTE_JOB",
+          status: "PENDING",
+          retryLimit: EXECUTE_JOB_RETRY_LIMIT,
+        },
+      });
+
+      await enqueueRunExecutionV1(newJobExecution, run.queue.id, run.queue.maxJobs, tx);
     });
   }
 
