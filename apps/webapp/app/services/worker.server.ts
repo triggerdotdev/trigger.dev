@@ -179,7 +179,7 @@ async function failLockedJobsForMigration() {
   );
 
   console.log(`⚠️  failed ${failJobsResult.length} locked jobs`);
-  console.log("⚠️  You can now unset FAIL_LOCKED_JOBS_FOR_MIGRATION");
+  console.log("⚠️  you can now unset FAIL_LOCKED_JOBS_FOR_MIGRATION");
 }
 
 function getWorkerQueue() {
