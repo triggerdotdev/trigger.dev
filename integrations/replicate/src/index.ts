@@ -16,6 +16,7 @@ import { Models } from "./models";
 import { Trainings } from "./trainings";
 import { Collections } from "./collections";
 import { ReplicateReturnType } from "./types";
+import { Deployments } from "./deployments";
 
 export type ReplicateIntegrationOptions = {
   id: string;
@@ -91,6 +92,10 @@ export class Replicate implements TriggerIntegration {
 
   get collections() {
     return new Collections(this.runTask.bind(this));
+  }
+
+  get deployments() {
+    return new Deployments(this.runTask.bind(this));
   }
 
   get models() {
