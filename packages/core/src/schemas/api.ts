@@ -176,11 +176,13 @@ export type HttpSourceRequestHeaders = z.output<typeof HttpSourceRequestHeadersS
 
 export const PongSuccessResponseSchema = z.object({
   ok: z.literal(true),
+  triggerVersion: z.string().optional(),
 });
 
 export const PongErrorResponseSchema = z.object({
   ok: z.literal(false),
   error: z.string(),
+  triggerVersion: z.string().optional(),
 });
 
 export const PongResponseSchema = z.discriminatedUnion("ok", [
@@ -193,11 +195,13 @@ export type PongResponse = z.infer<typeof PongResponseSchema>;
 export const ValidateSuccessResponseSchema = z.object({
   ok: z.literal(true),
   endpointId: z.string(),
+  triggerVersion: z.string().optional(),
 });
 
 export const ValidateErrorResponseSchema = z.object({
   ok: z.literal(false),
   error: z.string(),
+  triggerVersion: z.string().optional(),
 });
 
 export const ValidateResponseSchema = z.discriminatedUnion("ok", [
@@ -291,6 +295,10 @@ export const IndexEndpointResponseSchema = z.object({
 });
 
 export type IndexEndpointResponse = z.infer<typeof IndexEndpointResponseSchema>;
+
+export const EndpointHeadersSchema = z.object({
+  "trigger-version": z.string().optional(),
+});
 
 export const RawEventSchema = z.object({
   /** The `name` property must exactly match any subscriptions you want to
@@ -393,6 +401,8 @@ export const RunSourceContextSchema = z.object({
   id: z.string(),
   metadata: z.any(),
 });
+
+export type RunSourceContext = z.infer<typeof RunSourceContextSchema>;
 
 export const RunJobBodySchema = z.object({
   event: ApiEventLogSchema,

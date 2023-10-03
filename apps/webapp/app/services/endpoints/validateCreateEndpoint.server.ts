@@ -58,9 +58,11 @@ export class ValidateCreateEndpointService {
             slug: validationResult.endpointId,
             url: endpointUrl,
             indexingHookIdentifier: indexingHookIdentifier(),
+            version: validationResult.triggerVersion,
           },
           update: {
             url: endpointUrl,
+            version: validationResult.triggerVersion,
           },
         });
 

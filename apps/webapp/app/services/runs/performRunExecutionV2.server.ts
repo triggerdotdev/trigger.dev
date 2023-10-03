@@ -1,12 +1,17 @@
 import {
+  API_VERSIONS,
   BloomFilter,
+  ConnectionAuth,
+  EndpointHeadersSchema,
   RunJobError,
   RunJobInvalidPayloadError,
   RunJobResumeWithTask,
   RunJobRetryWithTask,
   RunJobSuccess,
   RunJobUnresolvedAuthError,
+  RunSourceContext,
   RunSourceContextSchema,
+  supportsFeature,
 } from "@trigger.dev/core";
 import { RuntimeEnvironmentType, type Task } from "@trigger.dev/database";
 import { generateErrorMessage } from "zod-error";
@@ -18,8 +23,10 @@ import { formatError } from "~/utils/formatErrors.server";
 import { safeJsonZodParse } from "~/utils/json";
 import { EndpointApi } from "../endpointApi.server";
 import { logger } from "../logger.server";
-import { prepareTasksForCaching } from "~/models/task.server";
+import { prepareTasksForCaching, prepareTasksForCachingLegacy } from "~/models/task.server";
 import { MAX_RUN_YIELDED_EXECUTIONS } from "~/consts";
+import { ApiEventLog } from "@trigger.dev/core";
+import { RunJobBody } from "@trigger.dev/core";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type FoundTask = FoundRun["tasks"][number];
@@ -235,50 +242,42 @@ export class PerformRunExecutionV2Service {
 
     const sourceContext = RunSourceContextSchema.safeParse(run.event.sourceContext);
 
-    const preparedTasks = prepareTasksForCaching(
+    const executionBody = await this.#createExecutionBody(
+      run,
       [run.tasks, resumedTask].flat().filter(Boolean),
-      TOTAL_CACHED_TASK_BYTE_LIMIT
+      startedAt,
+      isRetry,
+      connections.auth,
+      event,
+      sourceContext.success ? sourceContext.data : undefined
     );
 
-    const { response, parser, errorParser, durationInMs } = await client.executeJobRequest({
-      event,
-      job: {
-        id: run.version.job.slug,
-        version: run.version.version,
-      },
-      run: {
-        id: run.id,
-        isTest: run.isTest,
-        startedAt,
-        isRetry,
-      },
-      environment: {
-        id: run.environment.id,
-        slug: run.environment.slug,
-        type: run.environment.type,
-      },
-      organization: {
-        id: run.organization.id,
-        slug: run.organization.slug,
-        title: run.organization.title,
-      },
-      account: run.externalAccount
-        ? {
-            id: run.externalAccount.identifier,
-            metadata: run.externalAccount.metadata,
-          }
-        : undefined,
-      connections: connections.auth,
-      source: sourceContext.success ? sourceContext.data : undefined,
-      tasks: preparedTasks.tasks,
-      cachedTaskCursor: preparedTasks.cursor,
-      noopTasksSet: prepareNoOpTasksBloomFilter([run.tasks, resumedTask].flat().filter(Boolean)),
-      yieldedExecutions: run.yieldedExecutions,
-    });
+    const { response, parser, errorParser, durationInMs } = await client.executeJobRequest(
+      executionBody
+    );
 
     if (!response) {
       return await this.#failRunExecutionWithRetry({
         message: `Connection could not be established to the endpoint (${run.endpoint.url})`,
+      });
+    }
+
+    // Update the endpoint version if it has changed
+    const rawHeaders = Object.fromEntries(response.headers.entries());
+    const headers = EndpointHeadersSchema.safeParse(rawHeaders);
+
+    if (
+      headers.success &&
+      headers.data["trigger-version"] &&
+      headers.data["trigger-version"] !== run.endpoint.version
+    ) {
+      await this.#prismaClient.endpoint.update({
+        where: {
+          id: run.endpoint.id,
+        },
+        data: {
+          version: headers.data["trigger-version"],
+        },
       });
     }
 
@@ -411,6 +410,91 @@ export class PerformRunExecutionV2Service {
         throw new Error(`Non-exhaustive match for value: ${status}`);
       }
     }
+  }
+
+  async #createExecutionBody(
+    run: FoundRun,
+    tasks: FoundTask[],
+    startedAt: Date,
+    isRetry: boolean,
+    connections: Record<string, ConnectionAuth>,
+    event: ApiEventLog,
+    source?: RunSourceContext
+  ): Promise<RunJobBody> {
+    if (supportsFeature("lazyLoadedCachedTasks", run.endpoint.version)) {
+      const preparedTasks = prepareTasksForCaching(tasks, TOTAL_CACHED_TASK_BYTE_LIMIT);
+
+      return {
+        event,
+        job: {
+          id: run.version.job.slug,
+          version: run.version.version,
+        },
+        run: {
+          id: run.id,
+          isTest: run.isTest,
+          startedAt,
+          isRetry,
+        },
+        environment: {
+          id: run.environment.id,
+          slug: run.environment.slug,
+          type: run.environment.type,
+        },
+        organization: {
+          id: run.organization.id,
+          slug: run.organization.slug,
+          title: run.organization.title,
+        },
+        account: run.externalAccount
+          ? {
+              id: run.externalAccount.identifier,
+              metadata: run.externalAccount.metadata,
+            }
+          : undefined,
+        connections,
+        source,
+        tasks: preparedTasks.tasks,
+        cachedTaskCursor: preparedTasks.cursor,
+        noopTasksSet: prepareNoOpTasksBloomFilter(tasks),
+        yieldedExecutions: run.yieldedExecutions,
+      };
+    }
+
+    const preparedTasks = prepareTasksForCachingLegacy(tasks, TOTAL_CACHED_TASK_BYTE_LIMIT);
+
+    return {
+      event,
+      job: {
+        id: run.version.job.slug,
+        version: run.version.version,
+      },
+      run: {
+        id: run.id,
+        isTest: run.isTest,
+        startedAt,
+        isRetry,
+      },
+      environment: {
+        id: run.environment.id,
+        slug: run.environment.slug,
+        type: run.environment.type,
+      },
+      organization: {
+        id: run.organization.id,
+        slug: run.organization.slug,
+        title: run.organization.title,
+      },
+      account: run.externalAccount
+        ? {
+            id: run.externalAccount.identifier,
+            metadata: run.externalAccount.metadata,
+          }
+        : undefined,
+      connections,
+      source,
+      tasks: preparedTasks.tasks,
+    };
   }
 
   async #completeRunWithSuccess(run: FoundRun, data: RunJobSuccess, durationInMs: number) {

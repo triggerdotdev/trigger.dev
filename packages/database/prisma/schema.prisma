@@ -367,6 +367,7 @@ model Endpoint {
   updatedAt DateTime @updatedAt
 
   indexingHookIdentifier String?
+  version                String  @default("unknown")
 
   jobVersions           JobVersion[]
   jobRuns               JobRun[]

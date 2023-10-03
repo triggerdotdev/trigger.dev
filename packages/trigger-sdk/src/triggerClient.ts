@@ -1,4 +1,5 @@
 import {
+  API_VERSIONS,
   ConnectionAuth,
   DeserializedJson,
   ErrorWithStackSchema,
@@ -153,6 +154,7 @@ export class TriggerClient {
           body: {
             message: "Unauthorized: client missing apiKey",
           },
+          headers: this.#standardResponseHeaders,
         };
       }
       case "missing-header": {
@@ -161,6 +163,7 @@ export class TriggerClient {
           body: {
             message: "Unauthorized: missing x-trigger-api-key header",
           },
+          headers: this.#standardResponseHeaders,
         };
       }
       case "unauthorized": {
@@ -169,6 +172,7 @@ export class TriggerClient {
           body: {
             message: `Forbidden: client apiKey mismatch: Make sure you are using the correct API Key for your environment`,
           },
+          headers: this.#standardResponseHeaders,
         };
       }
     }
@@ -179,6 +183,7 @@ export class TriggerClient {
         body: {
           message: "Method not allowed (only POST is allowed)",
         },
+        headers: this.#standardResponseHeaders,
       };
     }
 
@@ -190,6 +195,7 @@ export class TriggerClient {
         body: {
           message: "Missing x-trigger-action header",
         },
+        headers: this.#standardResponseHeaders,
       };
     }
 
@@ -204,6 +210,7 @@ export class TriggerClient {
               ok: false,
               error: "Missing endpoint ID",
             },
+            headers: this.#standardResponseHeaders,
           };
         }
 
@@ -214,6 +221,7 @@ export class TriggerClient {
               ok: false,
               error: `Endpoint ID mismatch error. Expected ${this.id}, got ${endpointId}`,
             },
+            headers: this.#standardResponseHeaders,
           };
         }
 
@@ -222,6 +230,7 @@ export class TriggerClient {
           body: {
             ok: true,
           },
+          headers: this.#standardResponseHeaders,
         };
       }
       case "INDEX_ENDPOINT": {
@@ -246,6 +255,7 @@ export class TriggerClient {
         return {
           status: 200,
           body,
+          headers: this.#standardResponseHeaders,
         };
       }
       case "INITIALIZE_TRIGGER": {
@@ -275,6 +285,7 @@ export class TriggerClient {
         return {
           status: 200,
           body: dynamicTrigger.registeredTriggerForParams(body.data.params),
+          headers: this.#standardResponseHeaders,
         };
       }
       case "EXECUTE_JOB": {
@@ -306,6 +317,7 @@ export class TriggerClient {
         return {
           status: 200,
           body: results,
+          headers: this.#standardResponseHeaders,
         };
       }
       case "PREPROCESS_RUN": {
@@ -340,6 +352,7 @@ export class TriggerClient {
             abort: results.abort,
             properties: results.properties,
           },
+          headers: this.#standardResponseHeaders,
         };
       }
       case "DELIVER_HTTP_SOURCE_REQUEST": {
@@ -405,6 +418,7 @@ export class TriggerClient {
             response,
             metadata,
           },
+          headers: this.#standardResponseHeaders,
         };
       }
       case "VALIDATE": {
@@ -414,6 +428,7 @@ export class TriggerClient {
             ok: true,
             endpointId: this.id,
           },
+          headers: this.#standardResponseHeaders,
         };
       }
     }
@@ -423,6 +438,7 @@ export class TriggerClient {
       body: {
         message: "Method not allowed",
       },
+      headers: this.#standardResponseHeaders,
     };
   }
 
@@ -1136,6 +1152,12 @@ export class TriggerClient {
     this.#internalLogger.debug("IO stats", {
       stats,
     });
+  }
+
+  get #standardResponseHeaders() {
+    return {
+      "Trigger-Version": API_VERSIONS.LAZY_LOADED_CACHED_TASKS,
+    };
   }
 }
 

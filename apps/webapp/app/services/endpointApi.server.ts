@@ -3,6 +3,7 @@ import {
   ApiEventLog,
   DeliverEventResponseSchema,
   DeserializedJson,
+  EndpointHeadersSchema,
   ErrorWithStackSchema,
   HttpSourceRequest,
   HttpSourceResponseSchema,
@@ -90,6 +91,15 @@ export class EndpointApi {
       };
     }
 
+    const headers = EndpointHeadersSchema.safeParse(Object.fromEntries(response.headers.entries()));
+
+    if (headers.success && headers.data["trigger-version"]) {
+      return {
+        ...pongResponse.data,
+        triggerVersion: headers.data["trigger-version"],
+      };
+    }
+
     return pongResponse.data;
   }
 
@@ -130,39 +140,13 @@ export class EndpointApi {
     const anyBody = await response.json();
 
     const data = IndexEndpointResponseSchema.parse(anyBody);
+    const headers = EndpointHeadersSchema.parse(Object.fromEntries(response.headers.entries()));
 
     return {
       ok: true,
       data,
+      headers,
     } as const;
-  }
-
-  async deliverEvent(event: ApiEventLog) {
-    const response = await safeFetch(this.url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-trigger-api-key": this.apiKey,
-        "x-trigger-action": "DELIVER_EVENT",
-      },
-      body: JSON.stringify(event),
-    });
-
-    if (!response) {
-      throw new Error(`Could not connect to endpoint ${this.url}`);
-    }
-
-    if (!response.ok) {
-      throw new Error(`Could not connect to endpoint ${this.url}. Status code: ${response.status}`);
-    }
-
-    const anyBody = await response.json();
-
-    logger.debug("deliverEvent() response from endpoint", {
-      body: anyBody,
-    });
-
-    return DeliverEventResponseSchema.parse(anyBody);
   }
 
   async executeJobRequest(options: RunJobBody) {
@@ -336,6 +320,15 @@ export class EndpointApi {
       return {
         ok: false,
         error: `Endpoint ${this.url} responded with error: ${validateResponse.error.message}`,
+      };
+    }
+
+    const headers = EndpointHeadersSchema.safeParse(Object.fromEntries(response.headers.entries()));
+
+    if (headers.success && headers.data["trigger-version"]) {
+      return {
+        ...validateResponse.data,
+        triggerVersion: headers.data["trigger-version"],
       };
     }
 
