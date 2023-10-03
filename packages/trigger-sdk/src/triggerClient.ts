@@ -711,7 +711,7 @@ export class TriggerClient {
       jobLogger: this.#options.ioLogLocalEnabled
         ? new Logger(job.id, job.logLevel ?? this.#options.logLevel ?? "info")
         : undefined,
-      version: triggerVersion,
+      serverVersion: triggerVersion,
     });
 
     const resolvedConnections = await this.#resolveConnections(
