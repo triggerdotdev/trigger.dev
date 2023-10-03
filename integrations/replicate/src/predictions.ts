@@ -2,7 +2,7 @@ import { IntegrationTaskKey } from "@trigger.dev/sdk";
 import ReplicateClient, { Page, Prediction } from "replicate";
 
 import { ReplicateRunTask } from "./index";
-import { ReplicateReturnType } from "./types";
+import { CallbackTimeout, ReplicateReturnType } from "./types";
 import { callbackProperties, createPredictionProperties } from "./utils";
 
 export class Predictions {
@@ -44,7 +44,8 @@ export class Predictions {
     params: Omit<
       Parameters<ReplicateClient["predictions"]["create"]>[0],
       "webhook" | "webhook_events_filter"
-    > & { timeoutInSeconds?: number }
+    >,
+    options: CallbackTimeout = { timeoutInSeconds: 3600 }
   ): ReplicateReturnType<Prediction> {
     return this.runTask(
       key,
@@ -58,8 +59,11 @@ export class Predictions {
       {
         name: "Create And Await Prediction",
         params,
-        properties: [...createPredictionProperties(params), ...callbackProperties(params)],
-        callback: { enabled: true },
+        properties: [...createPredictionProperties(params), ...callbackProperties(options)],
+        callback: {
+          enabled: true,
+          timeoutInSeconds: options.timeoutInSeconds,
+        },
       }
     );
   }

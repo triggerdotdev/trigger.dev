@@ -177,7 +177,7 @@ export class Replicate implements TriggerIntegration {
       "webhook" | "webhook_events_filter" | "wait" | "signal"
     >
   ): ReplicateReturnType<Prediction> {
-    const { identifier, ...options } = params;
+    const { identifier, ...paramsWithoutIdentifier } = params;
 
     // see: https://github.com/replicate/replicate-javascript/blob/4b0d9cb0e226fab3d3d31de5b32261485acf5626/index.js#L102
 
@@ -194,7 +194,7 @@ export class Replicate implements TriggerIntegration {
 
     const { version } = match.groups;
 
-    return this.predictions.createAndAwait(key, { ...options, version });
+    return this.predictions.createAndAwait(key, { ...paramsWithoutIdentifier, version });
   }
 
   // TODO: wait(prediction) - needs polling

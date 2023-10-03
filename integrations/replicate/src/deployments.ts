@@ -3,7 +3,7 @@ import ReplicateClient, { Prediction } from "replicate";
 
 import { ReplicateRunTask } from "./index";
 import { callbackProperties, createDeploymentProperties } from "./utils";
-import { ReplicateReturnType } from "./types";
+import { CallbackTimeout, ReplicateReturnType } from "./types";
 
 export class Deployments {
   constructor(private runTask: ReplicateRunTask) {}
@@ -46,7 +46,8 @@ class Predictions {
     } & Omit<
       Parameters<ReplicateClient["deployments"]["predictions"]["create"]>[2],
       "webhook" | "webhook_events_filter"
-    > & { timeoutInSeconds?: number }
+    >,
+    options: CallbackTimeout = { timeoutInSeconds: 3600 }
   ): ReplicateReturnType<Prediction> {
     return this.runTask(
       key,
@@ -62,8 +63,11 @@ class Predictions {
       {
         name: "Create And Await Prediction With Deployment",
         params,
-        properties: [...createDeploymentProperties(params), ...callbackProperties(params)],
-        callback: { enabled: true },
+        properties: [...createDeploymentProperties(params), ...callbackProperties(options)],
+        callback: {
+          enabled: true,
+          timeoutInSeconds: options.timeoutInSeconds,
+        },
       }
     );
   }
