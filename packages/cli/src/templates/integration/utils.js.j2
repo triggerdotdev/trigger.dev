@@ -1,5 +1,5 @@
 import { CommentEvent, IssueEvent, WebhookPayload } from "./schemas";
-import { Get${capitalizedIdentifier}Payload } from "./types";
+import { Get{{ identifier | capitalize }}Payload } from "./types";
 
 export type QueryVariables = {
   after: string;
@@ -13,7 +13,7 @@ export type Nullable<T> = Partial<{
   [K in keyof T]: T[K] | null;
 }>;
 
-export const onCommentProperties = (payload: Get${capitalizedIdentifier}Payload<CommentEvent>) => {
+export const onCommentProperties = (payload: Get{{ identifier | capitalize }}Payload<CommentEvent>) => {
   return [
     { label: "Comment ID", text: payload.data.id },
     { label: "Issue ID", text: payload.data.issueId },
@@ -21,7 +21,7 @@ export const onCommentProperties = (payload: Get${capitalizedIdentifier}Payload<
   ];
 };
 
-export const onIssueProperties = (payload: Get${capitalizedIdentifier}Payload<IssueEvent>) => {
+export const onIssueProperties = (payload: Get{{ identifier | capitalize }}Payload<IssueEvent>) => {
   return [
     { label: "Issue ID", text: payload.data.id },
     {

@@ -1,6 +1,6 @@
 import { EventSpecification } from "@trigger.dev/sdk";
 import { CommentEvent, IssueEvent } from "./schemas";
-import { Get${capitalizedIdentifier}Payload } from "./types";
+import { Get{{ identifier | capitalize }}Payload } from "./types";
 import {
   commentCreated,
   commentRemoved,
@@ -11,13 +11,13 @@ import {
 } from "./payload-examples";
 import { onCommentProperties, onIssueProperties, updatedFromProperties } from "./utils";
 
-export const onComment: EventSpecification<Get${capitalizedIdentifier}Payload<CommentEvent>> = {
+export const onComment: EventSpecification<Get{{ identifier | capitalize }}Payload<CommentEvent>> = {
   name: "Comment",
   title: "On Comment",
   source: "linear.app",
   icon: "linear",
   examples: [commentCreated, commentRemoved, commentUpdated],
-  parsePayload: (payload) => payload as Get${capitalizedIdentifier}Payload<CommentEvent>,
+  parsePayload: (payload) => payload as Get{{ identifier | capitalize }}Payload<CommentEvent>,
   runProperties: (payload) => [
     { label: "Event action", text: payload.action },
     ...onCommentProperties(payload),
@@ -25,7 +25,7 @@ export const onComment: EventSpecification<Get${capitalizedIdentifier}Payload<Co
   ],
 };
 
-export const onCommentCreated: EventSpecification<Get${capitalizedIdentifier}Payload<CommentEvent, "create">> = {
+export const onCommentCreated: EventSpecification<Get{{ identifier | capitalize }}Payload<CommentEvent, "create">> = {
   name: "Comment",
   title: "On Comment Created",
   source: "linear.app",
@@ -34,11 +34,11 @@ export const onCommentCreated: EventSpecification<Get${capitalizedIdentifier}Pay
     action: ["create"],
   },
   examples: [commentCreated],
-  parsePayload: (payload) => payload as Get${capitalizedIdentifier}Payload<CommentEvent, "create">,
+  parsePayload: (payload) => payload as Get{{ identifier | capitalize }}Payload<CommentEvent, "create">,
   runProperties: (payload) => onCommentProperties(payload),
 };
 
-export const onCommentRemoved: EventSpecification<Get${capitalizedIdentifier}Payload<CommentEvent, "remove">> = {
+export const onCommentRemoved: EventSpecification<Get{{ identifier | capitalize }}Payload<CommentEvent, "remove">> = {
   name: "Comment",
   title: "On Comment Removed",
   source: "linear.app",
@@ -47,11 +47,11 @@ export const onCommentRemoved: EventSpecification<Get${capitalizedIdentifier}Pay
     action: ["remove"],
   },
   examples: [commentRemoved],
-  parsePayload: (payload) => payload as Get${capitalizedIdentifier}Payload<CommentEvent, "remove">,
+  parsePayload: (payload) => payload as Get{{ identifier | capitalize }}Payload<CommentEvent, "remove">,
   runProperties: (payload) => onCommentProperties(payload),
 };
 
-export const onCommentUpdated: EventSpecification<Get${capitalizedIdentifier}Payload<CommentEvent, "update">> = {
+export const onCommentUpdated: EventSpecification<Get{{ identifier | capitalize }}Payload<CommentEvent, "update">> = {
   name: "Comment",
   title: "On Comment Updated",
   source: "linear.app",
@@ -60,17 +60,17 @@ export const onCommentUpdated: EventSpecification<Get${capitalizedIdentifier}Pay
     action: ["update"],
   },
   examples: [commentUpdated],
-  parsePayload: (payload) => payload as Get${capitalizedIdentifier}Payload<CommentEvent, "update">,
+  parsePayload: (payload) => payload as Get{{ identifier | capitalize }}Payload<CommentEvent, "update">,
   runProperties: (payload) => [...onCommentProperties(payload), ...updatedFromProperties(payload)],
 };
 
-export const onIssue: EventSpecification<Get${capitalizedIdentifier}Payload<IssueEvent>> = {
+export const onIssue: EventSpecification<Get{{ identifier | capitalize }}Payload<IssueEvent>> = {
   name: "Issue",
   title: "On Issue",
   source: "linear.app",
   icon: "linear",
   examples: [issueCreated, issueRemoved, issueUpdated],
-  parsePayload: (payload) => payload as Get${capitalizedIdentifier}Payload<IssueEvent>,
+  parsePayload: (payload) => payload as Get{{ identifier | capitalize }}Payload<IssueEvent>,
   runProperties: (payload) => [
     { label: "Event action", text: payload.action },
     ...onIssueProperties(payload),
@@ -78,7 +78,7 @@ export const onIssue: EventSpecification<Get${capitalizedIdentifier}Payload<Issu
   ],
 };
 
-export const onIssueCreated: EventSpecification<Get${capitalizedIdentifier}Payload<IssueEvent, "create">> = {
+export const onIssueCreated: EventSpecification<Get{{ identifier | capitalize }}Payload<IssueEvent, "create">> = {
   name: "Issue",
   title: "On Issue Created",
   source: "linear.app",
@@ -87,11 +87,11 @@ export const onIssueCreated: EventSpecification<Get${capitalizedIdentifier}Paylo
     action: ["create"],
   },
   examples: [issueCreated],
-  parsePayload: (payload) => payload as Get${capitalizedIdentifier}Payload<IssueEvent, "create">,
+  parsePayload: (payload) => payload as Get{{ identifier | capitalize }}Payload<IssueEvent, "create">,
   runProperties: (payload) => onIssueProperties(payload),
 };
 
-export const onIssueRemoved: EventSpecification<Get${capitalizedIdentifier}Payload<IssueEvent, "remove">> = {
+export const onIssueRemoved: EventSpecification<Get{{ identifier | capitalize }}Payload<IssueEvent, "remove">> = {
   name: "Issue",
   title: "On Issue Removed",
   source: "linear.app",
@@ -100,11 +100,11 @@ export const onIssueRemoved: EventSpecification<Get${capitalizedIdentifier}Paylo
     action: ["remove"],
   },
   examples: [issueRemoved],
-  parsePayload: (payload) => payload as Get${capitalizedIdentifier}Payload<IssueEvent, "remove">,
+  parsePayload: (payload) => payload as Get{{ identifier | capitalize }}Payload<IssueEvent, "remove">,
   runProperties: (payload) => onIssueProperties(payload),
 };
 
-export const onIssueUpdated: EventSpecification<Get${capitalizedIdentifier}Payload<IssueEvent, "update">> = {
+export const onIssueUpdated: EventSpecification<Get{{ identifier | capitalize }}Payload<IssueEvent, "update">> = {
   name: "Issue",
   title: "On Issue Updated",
   source: "linear.app",
@@ -113,6 +113,6 @@ export const onIssueUpdated: EventSpecification<Get${capitalizedIdentifier}Paylo
     action: ["update"],
   },
   examples: [issueUpdated],
-  parsePayload: (payload) => payload as Get${capitalizedIdentifier}Payload<IssueEvent, "update">,
+  parsePayload: (payload) => payload as Get{{ identifier | capitalize }}Payload<IssueEvent, "update">,
   runProperties: (payload) => [...onIssueProperties(payload), ...updatedFromProperties(payload)],
 };

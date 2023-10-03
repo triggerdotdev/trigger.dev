@@ -10,36 +10,43 @@ import {
   ConnectionAuth,
   Prettify,
 } from "@trigger.dev/sdk";
-import ${capitalizedIdentifier}Client from "${sdkPackageName}";
+import {{ identifier | capitalize }}Client from "{{ sdkPackage }}";
 
 import * as events from "./events";
-import { ${capitalizedIdentifier}ReturnType, Serialized${capitalizedIdentifier}Output } from "./types";
+import { {{ identifier | capitalize }}ReturnType, Serialized{{ identifier | capitalize }}Output } from "./types";
 import { TriggerParams, Webhooks, createTrigger, createWebhookEventSource } from "./webhooks";
 import { Models } from "./models";
 
-export type ${capitalizedIdentifier}IntegrationOptions = {
+export type {{ identifier | capitalize }}IntegrationOptions = {
   id: string;
-  ${apiKeyPropertyName}: string;
+  {{ apiKeyPropertyName }}: string;
 };
 
-export type ${capitalizedIdentifier}RunTask = InstanceType<typeof ${capitalizedIdentifier}>["runTask"];
+export type {{ identifier | capitalize }}RunTask = InstanceType<typeof {{ identifier | capitalize }}>["runTask"];
 
-export class ${capitalizedIdentifier} implements TriggerIntegration {
-  private _options: ${capitalizedIdentifier}IntegrationOptions;
+export class {{ identifier | capitalize }}{{ " " }} implements TriggerIntegration {
+  private _options: {{ identifier | capitalize }}IntegrationOptions;
   private _client?: any;
   private _io?: IO;
   private _connectionKey?: string;
 
-  constructor(private options: ${capitalizedIdentifier}IntegrationOptions) {
-    if (Object.keys(options).includes("${apiKeyPropertyName}") && !options.${apiKeyPropertyName}) {
-      throw `Can't create ${capitalizedIdentifier} integration (${options.id}) as ${apiKeyPropertyName} was undefined`;
+  constructor(private options: {{ identifier | capitalize }}IntegrationOptions) {
+    if (Object.keys(options).includes("{{ apiKeyPropertyName }}") && !options.{{ apiKeyPropertyName }}) {
+      throw `Can't create {{ identifier | capitalize }} integration (${options.id}) as {{ apiKeyPropertyName }} was undefined`;
     }
 
     this._options = options;
   }
 
   get authSource() {
-    return ${authSourceReturn};
+    {% case authMethod %}
+    {% when "api-key" %}
+      return "LOCAL" as const;
+    {% when "oauth" %}
+      return "HOSTED" as const;
+    {% when "both-methods" %}
+      return this._options.{{ apiKeyPropertyName }} ? "LOCAL" : "HOSTED";
+    {% endcase %}
   }
 
   get id() {
@@ -47,7 +54,7 @@ export class ${capitalizedIdentifier} implements TriggerIntegration {
   }
 
   get metadata() {
-    return { id: "${identifier}", name: "${capitalizedIdentifier}" };
+    return { id: "{{ identifier }}", name: "{{ identifier | capitalize }}" };
   }
 
   get source() {
@@ -55,25 +62,25 @@ export class ${capitalizedIdentifier} implements TriggerIntegration {
   }
 
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
-    const ${identifier} = new ${capitalizedIdentifier}(this._options);
-    ${identifier}._io = io;
-    ${identifier}._connectionKey = connectionKey;
-    ${identifier}._client = this.createClient(auth);
-    return ${identifier};
+    const {{ identifier }} = new {{ identifier | capitalize }}(this._options);
+    {{ identifier }}._io = io;
+    {{ identifier }}._connectionKey = connectionKey;
+    {{ identifier }}._client = this.createClient(auth);
+    return {{ identifier }};
   }
 
   createClient(auth?: ConnectionAuth) {
     // oauth
     if (auth) {
-      return new ${capitalizedIdentifier}Client({
-        auth: auth.accessToken
+      return new {{ identifier | capitalize }}Client({
+        auth: auth.accessToken,
       });
     }
 
     // apiKey auth
-    if (this._options.${apiKeyPropertyName}) {
-      return new ${capitalizedIdentifier}Client({
-        apiKey: this._options.${apiKeyPropertyName},
+    if (this._options.{{ apiKeyPropertyName }}) {
+      return new {{ identifier | capitalize }}Client({
+        apiKey: this._options.{{ apiKeyPropertyName }},
       });
     }
 
@@ -82,7 +89,7 @@ export class ${capitalizedIdentifier} implements TriggerIntegration {
 
   runTask<T, TResult extends Json<T> | void>(
     key: IntegrationTaskKey,
-    callback: (client: ${capitalizedIdentifier}Client, task: IOTask, io: IO) => Promise<TResult>,
+    callback: (client: {{ identifier | capitalize }}Client, task: IOTask, io: IO) => Promise<TResult>,
     options?: RunTaskOptions,
     errorCallback?: RunTaskErrorCallback
   ): Promise<TResult> {
@@ -96,7 +103,7 @@ export class ${capitalizedIdentifier} implements TriggerIntegration {
         return callback(this._client, task, io);
       },
       {
-        icon: "${identifier}",
+        icon: "{{ identifier }}",
         retry: retry.standardBackoff,
         ...(options ?? {}),
         connectionKey: this._connectionKey,
@@ -111,9 +118,9 @@ export class ${capitalizedIdentifier} implements TriggerIntegration {
     key: IntegrationTaskKey,
     params: {
       route: string | URL;
-      options: Parameters<${capitalizedIdentifier}Client["request"]>[1];
+      options: Parameters<{{ identifier | capitalize }}Client["request"]>[1];
     }
-  ): ${capitalizedIdentifier}ReturnType<T> {
+  ): {{ identifier | capitalize }}ReturnType<T> {
     return this.runTask(
       key,
       async (client) => {
@@ -172,26 +179,26 @@ export class ${capitalizedIdentifier} implements TriggerIntegration {
   updateWebhook = this.#webhooks.updateWebhook;
 }
 
-class ${capitalizedIdentifier}ApiError extends Error {
+class {{ identifier | capitalize }}ApiError extends Error {
   constructor(
     message: string,
     readonly request: Request,
     readonly response: Response
   ) {
     super(message);
-    this.name = "${capitalizedIdentifier}ApiError";
+    this.name = "{{ identifier | capitalize }}ApiError";
   }
 }
 
-function is${capitalizedIdentifier}ApiError(error: unknown): error is ${capitalizedIdentifier}ApiError {
+function is{{ identifier | capitalize }}ApiError(error: unknown): error is {{ identifier | capitalize }}ApiError {
   if (typeof error !== "object" || error === null) {
     return false;
   }
 
-  const apiError = error as ${capitalizedIdentifier}ApiError;
+  const apiError = error as {{ identifier | capitalize }}ApiError;
 
   return (
-    apiError.name === "${capitalizedIdentifier}ApiError" &&
+    apiError.name === "{{ identifier | capitalize }}ApiError" &&
     apiError.request instanceof Request &&
     apiError.response instanceof Response
   );
@@ -202,7 +209,7 @@ function shouldRetry(method: string, status: number) {
 }
 
 export function onError(error: unknown): ReturnType<RunTaskErrorCallback> {
-  if (!is${capitalizedIdentifier}ApiError(error)) {
+  if (!is{{ identifier | capitalize }}ApiError(error)) {
     return;
   }
 
@@ -227,7 +234,7 @@ export function onError(error: unknown): ReturnType<RunTaskErrorCallback> {
   }
 }
 
-export const serialize${capitalizedIdentifier}Output = <T>(obj: T): Prettify<Serialized${capitalizedIdentifier}Output<T>> => {
+export const serialize{{ identifier | capitalize }}Output = <T>(obj: T): Prettify<Serialized{{ identifier | capitalize }}Output<T>> => {
   return JSON.parse(JSON.stringify(obj), (key, value) => {
     if (typeof value === "function" || key.startsWith("_")) {
       return undefined;

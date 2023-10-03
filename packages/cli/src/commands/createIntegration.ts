@@ -10,8 +10,7 @@ import { getPackageName } from "../utils/getPackagName";
 import { installDependencies } from "../utils/installDependencies";
 import { logger } from "../utils/logger";
 import { relativePath, resolvePath } from "../utils/parseNameAndPath";
-import { createFileFromTemplate } from "../utils/createFileFromTemplate";
-import { templatesPath } from "../paths";
+import { createIntegrationFileFromTemplate } from "../utils/createIntegrationFileFromTemplate";
 
 const CLIOptionsSchema = z.object({
   packageName: z.string().optional(),
@@ -109,108 +108,91 @@ export async function createIntegrationCommand(path: string, cliOptions: any) {
     process.exit(1);
   }
 
-  const templatesDir = pathModule.join(templatesPath(), "integration");
+  const baseVariables = {
+    packageName: resolvedOptions.packageName,
+    sdkPackage: resolvedOptions.sdkPackage,
+    integrationVersion: integrationVersion,
+    latestVersion: latestVersion,
+    sdkVersion: sdkVersion,
+    integrationKitVersion: integrationKitVersion,
+    triggerMonorepoPath,
+  };
 
-  // create package.json
-  const packageJsonPath = pathModule.join(resolvedPath, "package.json");
-  const packageJsonResult = await createFileFromTemplate({
-    templatePath: pathModule.join(templatesDir, "package.json.txt"),
-    replacements: {
-      packageName: resolvedOptions.packageName,
-      sdkPackageName: resolvedOptions.sdkPackage,
-      integrationVersion: integrationVersion.version,
-      latestVersion: latestVersion.version,
-      latestVersionName: latestVersion.name,
-      sdkVersion: sdkVersion.version,
-      sdkVersionName: sdkVersion.name,
-      integrationKitVersion: integrationKitVersion.version,
-      integrationKitVersionName: integrationKitVersion.name,
-      tsconfigDep: triggerMonorepoPath ? '\n    "@trigger.dev/tsconfig": "workspace:*",' : "",
-      tsupDep: triggerMonorepoPath ? '\n    "@trigger.dev/tsup": "workspace:*",' : "",
+  const getOutputPath = (relativePath: string) => pathModule.join(resolvedPath, relativePath);
+
+  const miscIntegrationFiles = [
+    {
+      relativeTemplatePath: "package.json.j2",
+      outputPath: getOutputPath("package.json"),
     },
-    outputPath: packageJsonPath,
-  });
-  handleCreateResult(packageJsonPath, packageJsonResult);
-
-  // create tsconfig.json
-  const tsconfigPath = pathModule.join(resolvedPath, "tsconfig.json");
-  const tsconfigResult = await createFileFromTemplate({
-    templatePath: pathModule.join(
-      templatesDir,
+    {
       // use `tsc --showConfig` to update external tsconfig
-      `tsconfig-${triggerMonorepoPath ? "internal" : "external"}.json`
-    ),
-    replacements: {},
-    outputPath: tsconfigPath,
-  });
-  handleCreateResult(tsconfigPath, tsconfigResult);
-
-  // create README.md
-  const readmePath = pathModule.join(resolvedPath, "README.md");
-  const readmeResult = await createFileFromTemplate({
-    templatePath: pathModule.join(templatesDir, "README.md"),
-    replacements: {
-      packageName: resolvedOptions.packageName,
+      relativeTemplatePath: `tsconfig-${triggerMonorepoPath ? "internal" : "external"}.json.j2`,
+      outputPath: getOutputPath("tsconfig.json"),
     },
-    outputPath: readmePath,
-  });
-  handleCreateResult(readmePath, readmeResult);
+    {
+      relativeTemplatePath: `tsup.config-${triggerMonorepoPath ? "internal" : "external"}.js.j2`,
+      outputPath: getOutputPath("tsup.config.ts"),
+    },
+    {
+      relativeTemplatePath: "README.md.j2",
+      outputPath: getOutputPath("README.md"),
+    },
+  ];
 
-  // create tsup.config.ts
-  const tsupConfigPath = pathModule.join(resolvedPath, "tsup.config.ts");
-  const tsupConfigResult = await createFileFromTemplate({
-    templatePath: pathModule.join(
-      templatesDir,
-      `tsup.config-${triggerMonorepoPath ? "internal" : "external"}.js`
-    ),
-    replacements: {},
-    outputPath: tsupConfigPath,
-  });
-  handleCreateResult(tsupConfigPath, tsupConfigResult);
+  await createIntegrationFiles(miscIntegrationFiles, baseVariables);
 
   // create src/*
   if (resolvedOptions.skipGeneratingCode) {
+    const getSrcOutputPath = (relativePath: string) =>
+      getOutputPath(pathModule.join("src", relativePath));
+
+    const srcIntegrationFiles = [
+      {
+        relativeTemplatePath: pathModule.join("payload-examples", "index.js.j2"),
+        outputPath: getSrcOutputPath(pathModule.join("payload-examples", "index.ts")),
+      },
+      {
+        relativeTemplatePath: "events.js.j2",
+        outputPath: getSrcOutputPath("events.ts"),
+      },
+      {
+        relativeTemplatePath: "index.js.j2",
+        outputPath: getSrcOutputPath("index.ts"),
+      },
+      {
+        relativeTemplatePath: "models.js.j2",
+        outputPath: getSrcOutputPath("models.ts"),
+      },
+      {
+        relativeTemplatePath: "schemas.js.j2",
+        outputPath: getSrcOutputPath("schemas.ts"),
+      },
+      {
+        relativeTemplatePath: "types.js.j2",
+        outputPath: getSrcOutputPath("types.ts"),
+      },
+      {
+        relativeTemplatePath: "utils.js.j2",
+        outputPath: getSrcOutputPath("utils.ts"),
+      },
+      {
+        relativeTemplatePath: "webhooks.js.j2",
+        outputPath: getSrcOutputPath("webhooks.ts"),
+      },
+    ];
+
     const validIdentifier = pathModule
       .basename(path)
       .replace(/[^a-zA-Z0-9]+/g, "")
       .replace(/^[0-9]+/g, "");
 
-    const identifier = validIdentifier.length ? validIdentifier : "packageName";
-    const capitalizedIdentifier = identifier[0]?.toUpperCase() + identifier.slice(1);
-
-    const apiKeyPropertyName = "apiKey"; // TODO: prompt for this
-    const authSourceReturn = {
-      "api-key": '"LOCAL" as const',
-      oauth: '"HOSTED" as const',
-      "both-methods": `this._options.${apiKeyPropertyName} ? "LOCAL" : "HOSTED"`,
-    };
-
-    const srcFilenames = [
-      pathModule.join("payload-examples", "index.ts"),
-      "events.ts",
-      "index.ts",
-      "models.ts",
-      "schemas.ts",
-      "types.ts",
-      "utils.ts",
-      "webhooks.ts",
-    ];
-
-    for (const filename of srcFilenames) {
-      const filePath = pathModule.join(resolvedPath, "src", filename);
-      const fileResult = await createFileFromTemplate({
-        templatePath: pathModule.join(templatesDir, `${filename}.txt`),
-        replacements: {
-          apiKeyPropertyName,
-          authSourceReturn: authSourceReturn[resolvedOptions.authMethod],
-          identifier,
-          capitalizedIdentifier,
-          sdkPackageName: resolvedOptions.sdkPackage,
-        },
-        outputPath: filePath,
-      });
-      handleCreateResult(filePath, fileResult);
-    }
+    await createIntegrationFiles(srcIntegrationFiles, {
+      ...baseVariables,
+      apiKeyPropertyName: "apiKey", // TODO: prompt for this
+      authMethod: resolvedOptions.authMethod,
+      identifier: validIdentifier.length ? validIdentifier : "packageName",
+    });
   } else {
     await attemptToGenerateIntegrationFiles(pathModule.join(resolvedPath, "src"), resolvedOptions);
   }
@@ -572,12 +554,25 @@ async function updateJobCatalogWithNewIntegration(
   await writeJSONFile(tsConfigPath, newTsConfig);
 }
 
+const createIntegrationFiles = async (
+  files: {
+    relativeTemplatePath: string;
+    outputPath: string;
+  }[],
+  variables?: Record<string, any>
+) => {
+  for (const file of files) {
+    const result = await createIntegrationFileFromTemplate({ ...file, variables });
+    handleCreateResult(file.outputPath, result);
+  }
+};
+
 const handleCreateResult = (
   outputPath: string,
-  result: Awaited<ReturnType<typeof createFileFromTemplate>>
+  result: Awaited<ReturnType<typeof createIntegrationFileFromTemplate>>
 ) => {
   if (!result.success) {
-    throw new Error(`Failed to create ${pathModule.basename(outputPath)}`);
+    throw new Error(`Failed to create ${pathModule.basename(outputPath)}: ${result.error}`);
   }
   logger.success(`✔ Created ${pathModule.basename(outputPath)} at ${relativePath(outputPath)}`);
 };
