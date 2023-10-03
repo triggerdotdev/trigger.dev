@@ -168,7 +168,7 @@ export class RunTaskService {
 
       const taskId = ulid();
       const callbackUrl = callbackEnabled
-        ? `${env.APP_ORIGIN}/api/v1/runs/${runId}/tasks/${taskId}/callback/${generateSecret()}`
+        ? `${env.APP_ORIGIN}/api/v1/runs/${runId}/tasks/${taskId}/callback/${generateSecret(12)}`
         : undefined;
 
       const task = await tx.task.create({
@@ -230,14 +230,14 @@ export class RunTaskService {
         );
       } else if (task.status === "WAITING" && callbackUrl && taskBody.callback) {
         if (taskBody.callback.timeoutInSeconds > 0) {
-        // We need to schedule the callback timeout
-        await workerQueue.enqueue(
-          "processCallbackTimeout",
-          {
-            id: task.id,
-          },
-          { tx, runAt: new Date(Date.now() + taskBody.callback.timeoutInSeconds * 1000) }
-        );
+          // We need to schedule the callback timeout
+          await workerQueue.enqueue(
+            "processCallbackTimeout",
+            {
+              id: task.id,
+            },
+            { tx, runAt: new Date(Date.now() + taskBody.callback.timeoutInSeconds * 1000) }
+          );
         }
       }
 
