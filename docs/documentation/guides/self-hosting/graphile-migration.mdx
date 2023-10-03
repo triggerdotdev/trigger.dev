@@ -1,0 +1,35 @@
+---
+title: "Graphile migration"
+description: "The `graphile-worker` migration may require some manual input"
+---
+
+## See any warnings?
+
+<Frame>
+  <img src="/images/graphile-migration-error.png" alt="Graphile Migration Error" />
+</Frame>
+
+A warning like this may have brought you here. If it hasn't, you probably **don't** need this!
+
+## Semi-automatic migration steps
+
+<Warning>This SHOULD be a safe process, but it's recommended to always have backups of your database.</Warning>
+
+1. Set `FAIL_LOCKED_JOBS_FOR_MIGRATION=true` as you do with other env vars
+2. Restart your server
+
+The environment variable won't have any effect if the migration was already successful. To remove additional log output, you may want to unset it again afterwards.
+
+## Alternative: Graceful shutdown
+
+The above issue only arises if there are any locked jobs when (automatic) migration is attempted.
+
+To prevent this, please shut your server down _gracefully_. How you do this will depend on your platform. This may involve:
+
+- Sending SIGTERM via the `kill` command
+- Using `docker stop` or `docker-compose down`
+- Equivalent methods on your managed platform
+
+## Problems
+
+If you run into any other issues, you may have to temporarily scale down to using only _a single instance_. All other instructions above still apply.
