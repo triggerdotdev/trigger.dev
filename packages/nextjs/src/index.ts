@@ -16,7 +16,9 @@ export function createPagesRoute(client: TriggerClient) {
 
     if (response.headers) {
       for (const [key, value] of Object.entries(response.headers)) {
-        res.setHeader(key, value);
+        if (typeof value === "string") {
+          res.setHeader(key, value);
+        }
       }
     }
 

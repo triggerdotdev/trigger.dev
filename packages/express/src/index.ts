@@ -79,7 +79,9 @@ export function createMiddleware(client: TriggerClient, path: string = "/api/tri
 
       if (response.headers) {
         for (const [key, value] of Object.entries(response.headers)) {
-          res.setHeader(key, value);
+          if (typeof value === "string") {
+            res.setHeader(key, value);
+          }
         }
       }
 
