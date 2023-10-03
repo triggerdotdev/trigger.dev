@@ -70,6 +70,19 @@ client.defineJob({
     filter: {
       tier: ["pro"],
     },
+    //(optional) example event object
+    examples: [
+      {
+        id: "issue.opened",
+        name: "Issue opened",
+        payload: {
+          userId: "1234",
+          tier: "free",
+        },
+        //optional
+        icon: "github",
+      },
+    ],
   }),
   run: async (payload, io, ctx) => {
     await io.logger.log("New pro user created", { userId: payload.userId });
