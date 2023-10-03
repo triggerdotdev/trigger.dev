@@ -229,6 +229,7 @@ export class RunTaskService {
           { tx, runAt: task.delayUntil ?? undefined }
         );
       } else if (task.status === "WAITING" && callbackUrl && taskBody.callback) {
+        if (taskBody.callback.timeoutInSeconds > 0) {
         // We need to schedule the callback timeout
         await workerQueue.enqueue(
           "processCallbackTimeout",
@@ -237,6 +238,7 @@ export class RunTaskService {
           },
           { tx, runAt: new Date(Date.now() + taskBody.callback.timeoutInSeconds * 1000) }
         );
+        }
       }
 
       return task;
