@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { DetailCell } from "../primitives/DetailCell";
 import { ClockIcon, CodeBracketIcon } from "@heroicons/react/24/outline";
+import { DateTime, DateTimeAccurate } from "../primitives/DateTime";
 
 const meta: Meta = {
   title: "Primitives/DetailCells",
@@ -35,7 +36,7 @@ function Examples() {
       <DetailCell
         leadingIcon={ClockIcon}
         leadingIconClassName="text-slate-400"
-        label="Sep 27, 2023, 5:38:18 PM"
+        label={<DateTime date={new Date()} />}
         description="Run #42 complete"
         trailingIcon="plus"
         trailingIconClassName="text-slate-500 group-hover:text-bright"

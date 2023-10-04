@@ -30,8 +30,8 @@ type DetailCellProps = {
   leadingIconClassName?: string;
   trailingIcon?: RenderIcon;
   trailingIconClassName?: string;
-  label: string;
-  description?: string;
+  label: string | React.ReactNode;
+  description?: string | React.ReactNode;
   className?: string;
   variant?: keyof typeof variations;
 };
