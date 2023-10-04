@@ -2,7 +2,7 @@ import { z } from "zod";
 import { logger } from "../utils/logger";
 import { resolvePath } from "../utils/parseNameAndPath";
 import { TriggerApi } from "../utils/triggerApi";
-import { DevCommandOptions, getEndpointIdFromPackageJson } from "./dev";
+import { DevCommandOptions, getEndpointId } from "./dev";
 import ora from "ora";
 import { getTriggerApiDetails } from "../utils/getTriggerApiDetails";
 
@@ -26,7 +26,7 @@ export async function whoamiCommand(path: string, anyOptions: any) {
   const resolvedPath = resolvePath(path);
 
   // Read from package.json to get the endpointId
-  const endpointId = await getEndpointIdFromPackageJson(resolvedPath, options as DevCommandOptions);
+  const endpointId = await getEndpointId(resolvedPath, options as DevCommandOptions);
   if (!endpointId) {
     logger.error(
       "You must run the `init` command first to setup the project – you are missing \n'trigger.dev': { 'endpointId': 'your-client-id' } from your package.json file, or pass in the --client-id option to this command"

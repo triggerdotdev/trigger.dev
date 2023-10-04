@@ -8,7 +8,7 @@ import pathModule from "path";
 
 type SupportedRuntimeId = "node" | "deno";
 
-abstract class JsRuntime {
+export abstract class JsRuntime {
   logger: Logger;
   projectRootPath: string;
   constructor(projectRootPath: string, logger: Logger) {
@@ -19,14 +19,15 @@ abstract class JsRuntime {
   abstract getUserPackageManager(): Promise<PackageManager | undefined>;
   abstract getFramework(): Promise<Framework | undefined>;
   abstract getEndpointId(): Promise<string | undefined>;
-  static async getJsRuntime(projectRootPath: string, logger: Logger) {
-    if (await NodeJsRuntime.isNodeJsRuntime(projectRootPath)) {
-      return new NodeJsRuntime(projectRootPath, logger);
-    } else if (await DenoRuntime.isDenoJsRuntime(projectRootPath)) {
-      return new DenoRuntime(projectRootPath, logger);
-    }
-    throw new Error("Unsupported runtime");
+}
+
+export async function getJsRuntime(projectRootPath: string, logger: Logger): Promise<JsRuntime> {
+  if (await NodeJsRuntime.isNodeJsRuntime(projectRootPath)) {
+    return new NodeJsRuntime(projectRootPath, logger);
+  } else if (await DenoRuntime.isDenoJsRuntime(projectRootPath)) {
+    return new DenoRuntime(projectRootPath, logger);
   }
+  throw new Error("Unsupported runtime");
 }
 
 class NodeJsRuntime extends JsRuntime {
@@ -79,7 +80,8 @@ class NodeJsRuntime extends JsRuntime {
     const pkgJsonPath = pathModule.join(this.projectRootPath, "package.json");
     const pkgBuffer = await fs.readFile(pkgJsonPath);
     const pkgJson = JSON.parse(pkgBuffer.toString());
-    return pkgJson["trigger.dev"]?.endpointId;
+    const value = pkgJson["trigger.dev"]?.endpointId;
+    if (!value || typeof value !== "string") return undefined;
   }
 }
 
