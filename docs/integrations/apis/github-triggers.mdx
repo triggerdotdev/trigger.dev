@@ -2,9 +2,9 @@
 title: Triggers & Events
 ---
 
----
+You can use these triggers to start a job when a GitHub event occurs.
 
-## Triggers
+---
 
 ### Repo
 
@@ -52,7 +52,7 @@ client.defineJob({
     repo: "<my-github-repo>",
   }),
   run: async (payload, io, ctx) => {
-    //do stuff
+    // Add tasks here
   },
 });
 ```
@@ -259,7 +259,7 @@ client.defineJob({
     owner: "<my-github-org-name>",
   }),
   run: async (payload, io, ctx) => {
-    //do stuff
+    // Add tasks here
   },
 });
 ```
@@ -467,7 +467,7 @@ client.defineJob({
     repo: "<my-github-repo>",
   }),
   run: async (payload, io, ctx) => {
-    //do stuff
+    // Add tasks here
   },
 });
 ```
@@ -738,7 +738,7 @@ client.defineJob({
 ```
 </Accordion>
 
-### onIssueComment
+### `onIssueComment`
 
 When an issue is commented on. [Official GitHub docs](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#issues).
 
@@ -753,7 +753,7 @@ client.defineJob({
     repo: "<my-github-repo>",
   }),
   run: async (payload, io, ctx) => {
-    // do stuff
+    //  Add tasks here
   },
 });
 ```
@@ -1046,7 +1046,7 @@ client.defineJob({
 ```
 </Accordion>
 
-### onStar
+### `onStar`
 
 When a repo is starred or unstarred. [Official GitHub docs](https://docs.github.com/en/rest/activity/starring?apiVersion=2022-11-28#list-stargazers).
 
@@ -1061,7 +1061,7 @@ client.defineJob({
     repo: "<my-github-repo>",
   }),
   run: async (payload, io, ctx) => {
-    // do stuff
+    //  Add tasks here
   },
 });
 ```
@@ -1211,24 +1211,23 @@ client.defineJob({
 ```
 </Accordion>
 
-### onNewStar
+### `onNewStar`
 
 When a repo is starred. [Official GitHub docs](https://docs.github.com/en/rest/activity/starring?apiVersion=2022-11-28#list-stargazers).
 
 ```ts usage.ts
-Copy code
 client.defineJob({
-id: "<my-id>",
-name: "<my-job-name>",
-version: "0.1.0",
-trigger: github.triggers.repo({
-event: events.onNewStar,
-owner: "<my-github-org-name>",
-repo: "<my-github-repo>",
-}),
-run: async (payload, io, ctx) => {
-// do stuff
-},
+  id: "<my-id>",
+  name: "<my-job-name>",
+  version: "0.1.0",
+  trigger: github.triggers.repo({
+    event: events.onNewStar,
+    owner: "<my-github-org-name>",
+    repo: "<my-github-repo>",
+  }),
+  run: async (payload, io, ctx) => {
+    //  Add tasks here
+  },
 });
 ```
 
@@ -1377,32 +1376,27 @@ run: async (payload, io, ctx) => {
 ```
 </Accordion>
 
-### onNewRepository
+### `onNewRepository`
 
 When a new repo is created. [Official GitHub docs](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#repository).
 
 ```ts usage.ts
-Copy code
 client.defineJob({
-id: "<my-id>",
-name: "<my-job-name>",
-version: "0.1.0",
-trigger: github.triggers.repo({
-event: events.onNewRepository,
-owner: "<my-github-org-name>",
-repo: "<my-github-repo>",
-}),
-run: async (payload, io, ctx) => {
-// do stuff
-},
+  id: "<my-id>",
+  name: "<my-job-name>",
+  version: "0.1.0",
+  trigger: github.triggers.repo({
+    event: events.onNewRepository,
+    owner: "<my-github-org-name>",
+    repo: "<my-github-repo>",
+  }),
+  run: async (payload, io, ctx) => {
+    //  Add tasks here
+  },
 });
 ```
 
-// Todo find out what this is
-
-<Accordion title="Example payload">```json ```</Accordion>
-
-### onNewBranchOrTag
+### `onNewBranchOrTag`
 
 When a new branch or tag is created. [Official GitHub docs](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#push).
 
@@ -1417,7 +1411,7 @@ client.defineJob({
     repo: "<my-github-repo>",
   }),
   run: async (payload, io, ctx) => {
-    // do stuff
+    //  Add tasks here
   },
 });
 ```
@@ -1568,7 +1562,7 @@ client.defineJob({
 ```
 </Accordion>
 
-### onNewBranch
+### `onNewBranch`
 
 When a new branch is created. [Official GitHub docs](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#push).
 
@@ -1583,7 +1577,7 @@ client.defineJob({
     repo: "<my-github-repo>",
   }),
   run: async (payload, io, ctx) => {
-    // do stuff
+    //  Add tasks here
   },
 });
 ```
@@ -1734,7 +1728,7 @@ client.defineJob({
 ```
 </Accordion>
 
-### onPush
+### `onPush`
 
 When a push is made to a repo. [Official GitHub docs](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#push).
 
@@ -1749,7 +1743,7 @@ client.defineJob({
     repo: "<my-github-repo>",
   }),
   run: async (payload, io, ctx) => {
-    // do stuff
+    //  Add tasks here
   },
 });
 ```
@@ -1956,7 +1950,7 @@ client.defineJob({
 ```
 </Accordion>
 
-### onPullRequest
+### `onPullRequest`
 
 When activity occurs on a pull request (excluding reviews, issues, or comments). [Official GitHub docs](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#pull_request).
 
@@ -1971,7 +1965,7 @@ client.defineJob({
     repo: "<my-github-repo>",
   }),
   run: async (payload, io, ctx) => {
-    // do stuff
+    //  Add tasks here
   },
 });
 ```
@@ -2483,7 +2477,7 @@ client.defineJob({
 ```
 </Accordion>
 
-### onPullRequestReview
+### `onPullRequestReview`
 
 When a pull request review has activity. [Official GitHub docs](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#pull_request_review).
 
@@ -2498,7 +2492,7 @@ client.defineJob({
     repo: "<my-github-repo>",
   }),
   run: async (payload, io, ctx) => {
-    // do stuff
+    //  Add tasks here
   },
 });
 ```
