@@ -16,6 +16,7 @@ import { Models } from "./models";
 import { Trainings } from "./trainings";
 import { Collections } from "./collections";
 import { ReplicateReturnType } from "./types";
+import { Deployments } from "./deployments";
 
 export type ReplicateIntegrationOptions = {
   id: string;
@@ -93,6 +94,10 @@ export class Replicate implements TriggerIntegration {
     return new Collections(this.runTask.bind(this));
   }
 
+  get deployments() {
+    return new Deployments(this.runTask.bind(this));
+  }
+
   get models() {
     return new Models(this.runTask.bind(this));
   }
@@ -105,6 +110,7 @@ export class Replicate implements TriggerIntegration {
     return new Trainings(this.runTask.bind(this));
   }
 
+  /** Paginate through a list of results. */
   async *paginate<T>(
     task: (key: string) => Promise<Page<T>>,
     key: IntegrationTaskKey,
@@ -129,6 +135,7 @@ export class Replicate implements TriggerIntegration {
     }
   }
 
+  /** Auto-paginate and return all results. */
   async getAll<T>(
     task: (key: string) => Promise<Page<T>>,
     key: IntegrationTaskKey
@@ -142,6 +149,7 @@ export class Replicate implements TriggerIntegration {
     return allResults;
   }
 
+  /** Make a request to the Replicate API. */
   request<T = any>(
     key: IntegrationTaskKey,
     params: {
@@ -168,6 +176,7 @@ export class Replicate implements TriggerIntegration {
     );
   }
 
+  /** Run a model and await the result. */
   run(
     key: IntegrationTaskKey,
     params: {
@@ -177,7 +186,7 @@ export class Replicate implements TriggerIntegration {
       "webhook" | "webhook_events_filter" | "wait" | "signal"
     >
   ): ReplicateReturnType<Prediction> {
-    const { identifier, ...options } = params;
+    const { identifier, ...paramsWithoutIdentifier } = params;
 
     // see: https://github.com/replicate/replicate-javascript/blob/4b0d9cb0e226fab3d3d31de5b32261485acf5626/index.js#L102
 
@@ -194,7 +203,7 @@ export class Replicate implements TriggerIntegration {
 
     const { version } = match.groups;
 
-    return this.predictions.createAndAwait(key, { ...options, version });
+    return this.predictions.createAndAwait(key, { ...paramsWithoutIdentifier, version });
   }
 
   // TODO: wait(prediction) - needs polling

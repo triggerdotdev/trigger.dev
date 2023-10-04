@@ -1,3 +1,5 @@
+import { CallbackTimeout } from "./types";
+
 export const createPredictionProperties = (
   params: Partial<{
     version: string;
@@ -46,11 +48,11 @@ export const streamingProperty = (params: { stream?: boolean }) => {
   return [{ label: "Streaming Enabled", text: String(!!params.stream) }];
 };
 
-export const callbackProperties = (params: { timeoutInSeconds?: number }) => {
+export const callbackProperties = (options: CallbackTimeout) => {
   return [
     {
       label: "Callback Timeout",
-      text: params.timeoutInSeconds ? `${params.timeoutInSeconds}s` : "default",
+      text: options.timeoutInSeconds ? `${options.timeoutInSeconds}s` : "default",
     },
   ];
 };

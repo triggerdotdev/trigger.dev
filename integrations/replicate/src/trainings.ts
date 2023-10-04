@@ -2,12 +2,13 @@ import { IntegrationTaskKey } from "@trigger.dev/sdk";
 import ReplicateClient, { Page, Training } from "replicate";
 
 import { ReplicateRunTask } from "./index";
-import { ReplicateReturnType } from "./types";
+import { CallbackTimeout, ReplicateReturnType } from "./types";
 import { callbackProperties, modelProperties } from "./utils";
 
 export class Trainings {
   constructor(private runTask: ReplicateRunTask) {}
 
+  /** Cancel a training. */
   cancel(key: IntegrationTaskKey, params: { id: string }): ReplicateReturnType<Training> {
     return this.runTask(
       key,
@@ -22,6 +23,7 @@ export class Trainings {
     );
   }
 
+  /** Create a new training. */
   create(
     key: IntegrationTaskKey,
     params: {
@@ -45,6 +47,7 @@ export class Trainings {
     );
   }
 
+  /** Create a new training and await the result. */
   createAndAwait(
     key: IntegrationTaskKey,
     params: {
@@ -54,7 +57,8 @@ export class Trainings {
     } & Omit<
       Parameters<ReplicateClient["trainings"]["create"]>[3],
       "webhook" | "webhook_events_filter"
-    > & { timeoutInSeconds?: number }
+    >,
+    options: CallbackTimeout = { timeoutInSeconds: 3600 }
   ): ReplicateReturnType<Training> {
     return this.runTask(
       key,
@@ -70,12 +74,16 @@ export class Trainings {
       {
         name: "Create And Await Training",
         params,
-        properties: [...modelProperties(params), ...callbackProperties(params)],
-        callback: { enabled: true },
+        properties: [...modelProperties(params), ...callbackProperties(options)],
+        callback: {
+          enabled: true,
+          timeoutInSeconds: options.timeoutInSeconds,
+        },
       }
     );
   }
 
+  /** Fetch a training. */
   get(key: IntegrationTaskKey, params: { id: string }): ReplicateReturnType<Training> {
     return this.runTask(
       key,
@@ -90,6 +98,7 @@ export class Trainings {
     );
   }
 
+  /** List all trainings. */
   list(key: IntegrationTaskKey): ReplicateReturnType<Page<Training>> {
     return this.runTask(
       key,
