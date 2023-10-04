@@ -10,7 +10,7 @@ import { z } from "zod";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
 import { DetailCell } from "~/components/primitives/DetailCell";
@@ -296,13 +296,13 @@ export default function Page() {
             </div>
           </div>
           <div className="flex items-center justify-between">
-            <TextLink
-              href="https://trigger.dev/docs/documentation/guides/testing-jobs"
-              trailingIcon="external-link"
-              className="text-sm text-dimmed hover:text-bright"
+            <LinkButton
+              variant="tertiary/medium"
+              to="https://trigger.dev/docs/documentation/guides/testing-jobs"
+              TrailingIcon="external-link"
             >
               Learn more about running tests
-            </TextLink>
+            </LinkButton>
             <div className="flex flex-none items-center justify-end gap-2">
               {payload.error ? (
                 <FormError id={payload.errorId}>{payload.error}</FormError>
