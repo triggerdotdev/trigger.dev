@@ -332,6 +332,7 @@ export default function Page() {
                 variant="primary/medium"
                 LeadingIcon="beaker"
                 leadingIconClassName="text-bright"
+                shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
               >
                 Run test
               </Button>
