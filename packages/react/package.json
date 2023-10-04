@@ -29,7 +29,7 @@
     "@tanstack/react-query": "5.0.0-beta.2",
     "@trigger.dev/core": "workspace:^2.1.7",
     "debug": "^4.3.4",
-    "zod": "3.21.4"
+    "zod": "3.22.3"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",

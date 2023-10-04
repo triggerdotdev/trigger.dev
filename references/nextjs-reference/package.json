@@ -28,7 +28,7 @@
     "react-dom": "^18.2.0",
     "react-query": "^3.39.3",
     "typescript": "5.0.4",
-    "zod": "3.21.4",
+    "zod": "3.22.3",
     "@trigger.dev/supabase": "workspace:*",
     "@trigger.dev/stripe": "workspace:*",
     "@trigger.dev/sendgrid": "workspace:*"

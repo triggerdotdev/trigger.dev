@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "ulid": "^2.3.0",
-    "zod": "3.21.4",
+    "zod": "3.22.3",
     "zod-error": "1.5.0"
   },
   "devDependencies": {
