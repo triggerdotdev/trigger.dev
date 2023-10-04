@@ -71,7 +71,7 @@ export function JSONEditor(opts: JSONEditorProps) {
     onChange,
     onUpdate,
   };
-  const { setContainer, state } = useCodeMirror(settings);
+  const { setContainer, view } = useCodeMirror(settings);
 
   useEffect(() => {
     if (editor.current) {
@@ -81,26 +81,26 @@ export function JSONEditor(opts: JSONEditorProps) {
 
   //if the defaultValue changes update the editor
   useEffect(() => {
-    if (state !== undefined) {
-      console.log("content updated to:");
-      console.log(defaultValue);
-      state.update({
-        changes: { from: 0, to: state.doc.length, insert: defaultValue },
+    if (view !== undefined) {
+      if (view.state.doc.toString() === defaultValue) return;
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: defaultValue },
       });
     }
-  }, [defaultValue, state]);
+  }, [defaultValue, view]);
 
   const clear = useCallback(() => {
-    if (state === undefined) return;
+    if (view === undefined) return;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: undefined },
+    });
     onChange?.("");
-  }, [state]);
+  }, [view]);
 
   const copy = useCallback(() => {
-    if (state === undefined) return;
-    console.log("copying");
-    console.log(state.doc.lines);
-    navigator.clipboard.writeText(state.doc.toString());
-  }, [state]);
+    if (view === undefined) return;
+    navigator.clipboard.writeText(view.state.doc.toString());
+  }, [view]);
 
   return (
     <div className={cn(opts.className, "relative")}>
