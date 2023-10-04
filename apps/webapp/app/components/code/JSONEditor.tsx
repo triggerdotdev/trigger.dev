@@ -1,13 +1,13 @@
 import { json as jsonLang } from "@codemirror/lang-json";
 import type { ViewUpdate } from "@codemirror/view";
+import { CheckIcon, ClipboardIcon } from "@heroicons/react/20/solid";
 import type { ReactCodeMirrorProps, UseCodeMirror } from "@uiw/react-codemirror";
 import { useCodeMirror } from "@uiw/react-codemirror";
-import { useRef, useEffect, useCallback, useState } from "react";
-import { getEditorSetup } from "./codeMirrorSetup";
-import { darkTheme } from "./codeMirrorTheme";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
-import { CheckIcon, ClipboardDocumentCheckIcon, ClipboardIcon } from "@heroicons/react/20/solid";
+import { getEditorSetup } from "./codeMirrorSetup";
+import { darkTheme } from "./codeMirrorTheme";
 
 export interface JSONEditorProps extends Omit<ReactCodeMirrorProps, "onBlur"> {
   defaultValue?: string;
@@ -117,7 +117,7 @@ export function JSONEditor(opts: JSONEditorProps) {
           onBlur(editor.current?.textContent ?? "");
         }}
       />
-      <div className="absolute right-3 top-3 flex gap-2">
+      <div className="absolute right-3 top-3 flex items-center gap-2">
         {showClearButton && (
           <Button
             type="button"
