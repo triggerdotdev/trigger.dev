@@ -1,14 +1,14 @@
-import { RouteMatch, useMatches } from "@remix-run/react";
+import { UIMatch, useMatches } from "@remix-run/react";
 import { RemixSerializedType, UseDataFunctionReturn, deserializeRemix } from "remix-typedjson";
-
-type AppData = any;
+import { Handle } from "~/utils/handle";
+import { AppData } from "~/utils/appData";
 
 function useTypedDataFromMatches<T = AppData>({
   id,
   matches,
 }: {
   id: string;
-  matches: RouteMatch[];
+  matches: UIMatch<T, Handle>[];
 }): UseDataFunctionReturn<T> | undefined {
   const match = matches.find((m) => m.id === id);
   return useTypedMatchData<T>(match);
@@ -19,17 +19,17 @@ export function useTypedMatchesData<T = AppData>({
   matches,
 }: {
   id: string;
-  matches?: RouteMatch[];
+  matches?: UIMatch<T, Handle>[];
 }): UseDataFunctionReturn<T> | undefined {
   if (!matches) {
-    matches = useMatches();
+    matches = useMatches() as UIMatch<T, Handle>[];
   }
 
   return useTypedDataFromMatches<T>({ id, matches });
 }
 
 export function useTypedMatchData<T = AppData>(
-  match: RouteMatch | undefined
+  match: UIMatch<T, Handle> | undefined
 ): UseDataFunctionReturn<T> | undefined {
   if (!match) {
     return undefined;

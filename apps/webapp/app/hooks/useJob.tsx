@@ -2,14 +2,16 @@ import { UseDataFunctionReturn } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import type { loader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam/route";
 import { useChanged } from "./useChanged";
-import { RouteMatch } from "@remix-run/react";
+import { UIMatch } from "@remix-run/react";
 import { useTypedMatchesData } from "./useTypedMatchData";
+import { Handle } from "~/utils/handle";
+import { AppData } from "~/utils/appData";
 
 export type MatchedJob = UseDataFunctionReturn<typeof loader>["job"];
 
 export const jobMatchId =
   "routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam";
-export function useOptionalJob(matches?: RouteMatch[]) {
+export function useOptionalJob(matches?: AppData[]) {
   const routeMatch = useTypedMatchesData<typeof loader>({
     id: jobMatchId,
     matches,
@@ -22,7 +24,7 @@ export function useOptionalJob(matches?: RouteMatch[]) {
   return routeMatch.projectJobs.find((j) => j.id === routeMatch.job.id);
 }
 
-export function useJob(matches?: RouteMatch[]) {
+export function useJob<T = AppData>(matches?: UIMatch<T, Handle>[]) {
   const job = useOptionalJob(matches);
   invariant(job, "Job must be defined");
   return job;

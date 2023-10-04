@@ -32,7 +32,7 @@ import { ClientOnly } from "remix-utils";
 import { Spinner } from "../primitives/Spinner";
 import type { DetailedTask } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam.tasks.$taskParam/route";
 
-export function TaskDetail({ task }: { task: DetailedTask }) {
+export function TaskDetail({ task }: { task: DetailedTask & { params: {} } }) {
   const { name, description, icon, status, params, properties, output, style, attempts } = task;
 
   const startedAt = task.startedAt ? new Date(task.startedAt) : undefined;

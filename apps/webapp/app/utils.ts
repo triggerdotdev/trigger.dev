@@ -1,6 +1,6 @@
-import type { RouteMatch } from "@remix-run/react";
-import { useMatches } from "@remix-run/react";
+import { UIMatch, useMatches } from "@remix-run/react";
 import humanizeDuration from "humanize-duration";
+import { Handle } from "./utils/handle";
 
 const DEFAULT_REDIRECT = "/";
 
@@ -35,8 +35,8 @@ export function safeRedirect(
 export function useMatchesData(
   id: string | string[],
   debug: boolean = false
-): RouteMatch | undefined {
-  const matchingRoutes = useMatches();
+) {
+  const matchingRoutes = useMatches() as UIMatch<unknown, Handle>[];
 
   if (debug) {
     console.log("matchingRoutes", matchingRoutes);
@@ -45,10 +45,10 @@ export function useMatchesData(
   const paths = Array.isArray(id) ? id : [id];
 
   // Get the first matching route
-  const route = paths.reduce((acc, path) => {
+  const route = paths.reduce((acc: UIMatch<unknown, Handle> | undefined, path) => {
     if (acc) return acc;
     return matchingRoutes.find((route) => route.id === path);
-  }, undefined as RouteMatch | undefined);
+  }, undefined);
 
   return route;
 }

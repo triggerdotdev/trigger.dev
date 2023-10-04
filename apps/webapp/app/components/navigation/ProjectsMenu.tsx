@@ -1,4 +1,4 @@
-import { RouteMatch } from "@remix-run/react";
+import { UIMatch } from "@remix-run/react";
 import { Fragment, useState } from "react";
 import simplur from "simplur";
 import { Badge } from "~/components/primitives/Badge";
@@ -12,8 +12,10 @@ import {
   PopoverMenuItem,
   PopoverSectionHeader,
 } from "../primitives/Popover";
+import { AppData } from "~/utils/appData";
+import { Handle } from "~/utils/handle";
 
-export function ProjectsMenu({ matches }: { matches: RouteMatch[] }) {
+export function ProjectsMenu<T = AppData>({ matches }: { matches: UIMatch<T, Handle>[] }) {
   const [isOpen, setIsOpen] = useState(false);
   const organizations = useOrganizations(matches);
   const isNewOrgPage = useIsNewOrganizationPage(matches);
