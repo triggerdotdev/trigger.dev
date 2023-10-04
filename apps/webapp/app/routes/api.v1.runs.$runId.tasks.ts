@@ -15,6 +15,8 @@ import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ulid } from "~/services/ulid.server";
 import { workerQueue } from "~/services/worker.server";
+import { generateSecret } from "~/services/sources/utils.server";
+import { env } from "~/env.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -185,10 +187,13 @@ export class RunTaskService {
         },
       });
 
+      const delayUntilInFuture = taskBody.delayUntil && taskBody.delayUntil.getTime() > Date.now();
+      const callbackEnabled = taskBody.callback?.enabled;
+
       if (existingTask) {
         if (existingTask.status === "CANCELED") {
           const existingTaskStatus =
-            (taskBody.delayUntil && taskBody.delayUntil.getTime() > Date.now()) || taskBody.trigger
+            delayUntilInFuture || callbackEnabled || taskBody.trigger
               ? "WAITING"
               : taskBody.noop
                 ? "COMPLETED"
@@ -233,16 +238,21 @@ export class RunTaskService {
         status = "CANCELED";
       } else {
         status =
-          (taskBody.delayUntil && taskBody.delayUntil.getTime() > Date.now()) || taskBody.trigger
+          delayUntilInFuture || callbackEnabled || taskBody.trigger
             ? "WAITING"
             : taskBody.noop
               ? "COMPLETED"
               : "RUNNING";
       }
 
+      const taskId = ulid();
+      const callbackUrl = callbackEnabled
+        ? `${env.APP_ORIGIN}/api/v1/runs/${runId}/tasks/${taskId}/callback/${generateSecret(12)}`
+        : undefined;
+
       const task = await tx.task.create({
         data: {
-          id: ulid(),
+          id: taskId,
           idempotencyKey,
           displayKey: taskBody.displayKey,
           runConnection: taskBody.connectionKey
@@ -273,6 +283,7 @@ export class RunTaskService {
           properties: taskBody.properties ?? undefined,
           redact: taskBody.redact ?? undefined,
           operation: taskBody.operation,
+          callbackUrl,
           style: taskBody.style ?? { style: "normal" },
           attempts: {
             create: {
@@ -296,6 +307,17 @@ export class RunTaskService {
           },
           { tx, runAt: task.delayUntil ?? undefined }
         );
+      } else if (task.status === "WAITING" && callbackUrl && taskBody.callback) {
+        if (taskBody.callback.timeoutInSeconds > 0) {
+          // We need to schedule the callback timeout
+          await workerQueue.enqueue(
+            "processCallbackTimeout",
+            {
+              id: task.id,
+            },
+            { tx, runAt: new Date(Date.now() + taskBody.callback.timeoutInSeconds * 1000) }
+          );
+        }
       }
 
       return task;
