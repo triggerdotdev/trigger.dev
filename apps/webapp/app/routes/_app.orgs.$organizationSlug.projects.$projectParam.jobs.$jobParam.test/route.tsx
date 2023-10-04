@@ -27,11 +27,12 @@ import {
   SelectValue,
 } from "~/components/primitives/Select";
 import { TextLink } from "~/components/primitives/TextLink";
-import { runStatusTitle } from "~/components/runs/RunStatuses";
+import { runStatusClassNameColor, runStatusTitle } from "~/components/runs/RunStatuses";
 import { redirectBackWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { TestJobPresenter } from "~/presenters/TestJobPresenter.server";
 import { TestJobService } from "~/services/jobs/testJob.server";
 import { requireUserId } from "~/services/session.server";
+import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import { JobParamsSchema, jobRunDashboardPath, trimTrailingSlash } from "~/utils/pathBuilder";
 
@@ -261,9 +262,14 @@ export default function Page() {
                           leadingIcon={ClockIcon}
                           leadingIconClassName="text-slate-400"
                           label={<DateTime date={run.created} />}
-                          description={`Run #${run.number} ${runStatusTitle(
-                            run.status
-                          ).toLocaleLowerCase()}`}
+                          description={
+                            <>
+                              Run #{run.number}{" "}
+                              <span className={runStatusClassNameColor(run.status)}>
+                                {runStatusTitle(run.status).toLocaleLowerCase()}
+                              </span>
+                            </>
+                          }
                           trailingIcon={run.id === selectedCodeSampleId ? "check" : "plus"}
                           trailingIconClassName={
                             run.id === selectedCodeSampleId
