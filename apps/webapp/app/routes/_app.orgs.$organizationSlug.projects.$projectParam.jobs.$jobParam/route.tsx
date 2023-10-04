@@ -1,5 +1,5 @@
 import { Outlet, useLocation } from "@remix-run/react";
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Fragment } from "react";
 import { typedjson } from "remix-typedjson";
 import { JobStatusBadge } from "~/components/jobs/JobStatusBadge";
@@ -37,7 +37,7 @@ import {
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { jobParam, projectParam, organizationSlug } = JobParamsSchema.parse(params);
 

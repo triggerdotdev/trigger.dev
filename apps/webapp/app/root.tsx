@@ -1,7 +1,7 @@
-import type { LinksFunction, LoaderArgs } from "@remix-run/node";
+import type { LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import { Links, LiveReload, Meta, Outlet, Scripts, ScrollRestoration } from "@remix-run/react";
-import { TypedMetaFunction, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { typedjson, useTypedLoaderData, TypedMetaFunction } from "remix-typedjson";
 import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
 import tailwindStylesheetUrl from "~/tailwind.css";
@@ -22,13 +22,15 @@ export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
 };
 
-export const meta: TypedMetaFunction<typeof loader> = ({ data }) => ({
-  title: `Trigger.dev${appEnvTitleTag(data?.appEnv)}`,
-  charset: "utf-8",
-  viewport: "width=device-width,initial-scale=1",
-});
+export const meta: TypedMetaFunction<typeof loader, { root: LoaderType }> = ({ data }) => [
+  {
+    title: `Trigger.dev${appEnvTitleTag(data?.appEnv)}`,
+    charset: "utf-8",
+    viewport: "width=device-width,initial-scale=1",
+  },
+];
 
-export const loader = async ({ request }: LoaderArgs) => {
+export const loader = async ({ request }: LoaderFunctionArgs) => {
   const session = await getSession(request.headers.get("cookie"));
   const toastMessage = session.get("toastMessage") as ToastMessage;
   const posthogProjectKey = env.POSTHOG_PROJECT_KEY;

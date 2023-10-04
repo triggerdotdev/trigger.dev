@@ -1,5 +1,5 @@
 import { Outlet } from "@remix-run/react";
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
@@ -13,7 +13,7 @@ import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
 import { projectPath } from "~/utils/pathBuilder";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam } = params;
   invariant(projectParam, "projectParam not found");

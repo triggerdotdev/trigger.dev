@@ -1,5 +1,5 @@
 import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
@@ -25,7 +25,7 @@ import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import { ProjectParamSchema, externalTriggerPath, trimTrailingSlash } from "~/utils/pathBuilder";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
 

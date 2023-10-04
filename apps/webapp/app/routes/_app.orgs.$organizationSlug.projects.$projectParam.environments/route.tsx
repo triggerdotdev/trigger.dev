@@ -1,5 +1,5 @@
 import { useRevalidator } from "@remix-run/react";
-import { LoaderArgs } from "@remix-run/server-runtime";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
@@ -41,7 +41,7 @@ import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
 import { Badge } from "~/components/primitives/Badge";
 import { FirstEndpointSheet } from "./FirstEndpointSheet";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam } = ProjectParamSchema.parse(params);
 

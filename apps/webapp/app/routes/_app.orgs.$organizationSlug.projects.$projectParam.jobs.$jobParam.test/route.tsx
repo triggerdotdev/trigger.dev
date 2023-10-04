@@ -2,7 +2,7 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { PopoverTrigger } from "@radix-ui/react-popover";
 import { Form, useActionData, useSubmit } from "@remix-run/react";
-import { ActionFunction, LoaderArgs, json } from "@remix-run/server-runtime";
+import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useCallback, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -34,7 +34,7 @@ import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import { JobParamsSchema, jobRunDashboardPath, trimTrailingSlash } from "~/utils/pathBuilder";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam, jobParam } = JobParamsSchema.parse(params);
 
