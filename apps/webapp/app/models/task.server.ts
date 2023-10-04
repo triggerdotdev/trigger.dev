@@ -23,6 +23,7 @@ export function taskWithAttemptsToServerTask(task: TaskWithAttempts): ServerTask
     attempts: task.attempts.length,
     idempotencyKey: task.idempotencyKey,
     operation: task.operation,
+    callbackUrl: task.callbackUrl,
   };
 }
 
