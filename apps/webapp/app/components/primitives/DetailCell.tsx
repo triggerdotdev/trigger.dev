@@ -73,7 +73,7 @@ export function DetailCell({
           <Paragraph
             variant={variation.description.variant}
             className={cn(
-              "flex-1 text-left transition group-hover:text-bright",
+              "flex-1 text-left text-dimmed transition group-hover:text-bright",
               variation.description.className
             )}
           >
