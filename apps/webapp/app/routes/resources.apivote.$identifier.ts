@@ -1,4 +1,4 @@
-import { ActionArgs, json } from "@remix-run/server-runtime";
+import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { ApiVoteService } from "~/services/apiVote.server";
 import { requireUserId } from "~/services/session.server";
@@ -7,7 +7,7 @@ const ParamsSchema = z.object({
   identifier: z.string(),
 });
 
-export async function action({ request, params }: ActionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   const userId = await requireUserId(request);
   const { identifier } = ParamsSchema.parse(params);
 

@@ -1,4 +1,4 @@
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
@@ -17,7 +17,7 @@ const SearchQuerySchema = z.object({
   taskdetails: z.coerce.boolean().default(false),
 });
 
-export async function loader({ request, params }: LoaderArgs) {
+export async function loader({ request, params }: LoaderFunctionArgs) {
   if (request.method.toUpperCase() === "OPTIONS") {
     return apiCors(request, json({}));
   }
@@ -88,8 +88,8 @@ export async function loader({ request, params }: LoaderArgs) {
         take: take + 1,
         cursor: query.cursor
           ? {
-              id: query.cursor,
-            }
+            id: query.cursor,
+          }
           : undefined,
       },
       statuses: {

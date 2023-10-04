@@ -1,4 +1,4 @@
-import type { ActionArgs } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { TaskStatus } from "@trigger.dev/database";
 import {
@@ -26,7 +26,7 @@ const HeadersSchema = z.object({
   "x-cached-tasks-cursor": z.string().optional().nullable(),
 });
 
-export async function action({ request, params }: ActionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   // Ensure this is a POST request
   if (request.method.toUpperCase() !== "POST") {
     return { status: 405, body: "Method Not Allowed" };
@@ -191,8 +191,8 @@ export class RunTaskService {
             (taskBody.delayUntil && taskBody.delayUntil.getTime() > Date.now()) || taskBody.trigger
               ? "WAITING"
               : taskBody.noop
-              ? "COMPLETED"
-              : "RUNNING";
+                ? "COMPLETED"
+                : "RUNNING";
 
           const resumedExistingTask = await tx.task.update({
             where: {
@@ -236,8 +236,8 @@ export class RunTaskService {
           (taskBody.delayUntil && taskBody.delayUntil.getTime() > Date.now()) || taskBody.trigger
             ? "WAITING"
             : taskBody.noop
-            ? "COMPLETED"
-            : "RUNNING";
+              ? "COMPLETED"
+              : "RUNNING";
       }
 
       const task = await tx.task.create({
@@ -247,13 +247,13 @@ export class RunTaskService {
           displayKey: taskBody.displayKey,
           runConnection: taskBody.connectionKey
             ? {
-                connect: {
-                  runId_key: {
-                    runId,
-                    key: taskBody.connectionKey,
-                  },
+              connect: {
+                runId_key: {
+                  runId,
+                  key: taskBody.connectionKey,
                 },
-              }
+              },
+            }
             : undefined,
           icon: taskBody.icon,
           run: {

@@ -1,4 +1,4 @@
-import type { ActionArgs } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { RegisterTriggerBodySchemaV1 } from "@trigger.dev/core";
 import { z } from "zod";
@@ -12,7 +12,7 @@ const ParamsSchema = z.object({
   key: z.string(),
 });
 
-export async function action({ request, params }: ActionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   logger.info("Registering trigger", { url: request.url });
 
   // Ensure this is a POST request

@@ -1,5 +1,5 @@
 import { parse } from "@conform-to/zod";
-import { ActionArgs, json } from "@remix-run/server-runtime";
+import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import {
@@ -17,7 +17,7 @@ export const bodySchema = z.object({
   url: z.string().url("Must be a valid URL"),
 });
 
-export async function action({ request, params }: ActionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   const userId = await requireUserId(request);
   const { environmentParam } = ParamsSchema.parse(params);
 

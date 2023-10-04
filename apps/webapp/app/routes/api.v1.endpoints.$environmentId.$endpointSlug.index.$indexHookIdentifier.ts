@@ -1,4 +1,4 @@
-import { ActionArgs, LoaderArgs, json } from "@remix-run/server-runtime";
+import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
 import { PrismaClient, prisma } from "~/db.server";
@@ -12,7 +12,7 @@ const ParamsSchema = z.object({
   indexHookIdentifier: z.string(),
 });
 
-export async function loader({ params }: LoaderArgs) {
+export async function loader({ params }: LoaderFunctionArgs) {
   const parsedParams = ParamsSchema.safeParse(params);
 
   if (!parsedParams.success) {
@@ -39,7 +39,7 @@ export async function loader({ params }: LoaderArgs) {
   });
 }
 
-export async function action({ request, params }: ActionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   const parsedParams = ParamsSchema.safeParse(params);
 
   if (!parsedParams.success) {
@@ -152,9 +152,8 @@ function parseReasonFromBody(body: any): string | undefined {
     return `Vercel project ${payload.deployment.name} was deployed to ${payload.deployment.url}`;
   }
 
-  return `"${githubMeta.data.githubCommitMessage}" was deployed from ${
-    githubMeta.data.githubCommitRef
-  } (${githubMeta.data.githubCommitSha.slice(0, 7)}) to ${payload.deployment.name}`;
+  return `"${githubMeta.data.githubCommitMessage}" was deployed from ${githubMeta.data.githubCommitRef
+    } (${githubMeta.data.githubCommitSha.slice(0, 7)}) to ${payload.deployment.name}`;
 }
 
 // Example payload: https://jsonhero.io/j/fhIwXEFmi7qa

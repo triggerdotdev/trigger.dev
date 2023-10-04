@@ -2,7 +2,7 @@ import { Dialog, Transition } from "@headlessui/react";
 import { HomeIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { UserCircleIcon } from "@heroicons/react/24/solid";
 import { Outlet } from "@remix-run/react";
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Fragment, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import type { User } from "~/models/user.server";
@@ -11,7 +11,7 @@ import { cn } from "~/utils/cn";
 
 const navigation = [{ name: "Home", href: "/admin", icon: HomeIcon }];
 
-export async function loader({ request }: LoaderArgs) {
+export async function loader({ request }: LoaderFunctionArgs) {
   await requireUserId(request);
   const user = await getUser(request);
   if (user == null) {
@@ -66,7 +66,7 @@ export default function Page() {
                     leaveFrom="opacity-100"
                     leaveTo="opacity-0"
                   >
-                    <div className="absolute top-0 right-0 -mr-12 pt-4">
+                    <div className="absolute right-0 top-0 -mr-12 pt-4">
                       <button
                         type="button"
                         className="ml-1 flex h-10 w-10 items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white"
@@ -77,7 +77,7 @@ export default function Page() {
                       </button>
                     </div>
                   </Transition.Child>
-                  <div className="pt-5 pb-4">
+                  <div className="pb-4 pt-5">
                     <div className="flex flex-shrink-0 items-center px-4">
                       <img
                         className="h-8 w-auto"

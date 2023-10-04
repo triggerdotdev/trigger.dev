@@ -1,5 +1,5 @@
 import { parse } from "@conform-to/zod";
-import { ActionArgs, json } from "@remix-run/server-runtime";
+import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import {
@@ -14,7 +14,7 @@ const ParamsSchema = z.object({
   endpointParam: z.string(),
 });
 
-export async function action({ request, params }: ActionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   const userId = await requireUserId(request);
   const { environmentParam, endpointParam } = ParamsSchema.parse(params);
 
