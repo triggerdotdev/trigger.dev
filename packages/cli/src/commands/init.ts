@@ -22,6 +22,7 @@ import { resolvePath } from "../utils/parseNameAndPath";
 import { readPackageJson } from "../utils/readPackageJson";
 import { renderTitle } from "../utils/renderTitle";
 import { TriggerApi, WhoamiResponse } from "../utils/triggerApi";
+import { getJsRuntime } from "../utils/jsRuntime";
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -37,6 +38,17 @@ export const initCommand = async (options: InitCommandOptions) => {
   telemetryClient.init.started(options);
 
   const resolvedPath = resolvePath(options.projectPath);
+
+  // assuming nodejs by default
+  let runtimeId: string = "nodejs";
+  try {
+    runtimeId = (await getJsRuntime(resolvedPath, logger)).id;
+  } catch {}
+  if (runtimeId !== "nodejs") {
+    logger.error(`We currently only support automatic setup for NodeJS projects.`);
+    telemetryClient.init.failed("not_supported_runtime", options);
+    return;
+  }
 
   await renderTitle(resolvedPath);
 

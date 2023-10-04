@@ -13,6 +13,7 @@ export abstract class JsRuntime {
     this.logger = logger;
     this.projectRootPath = projectRootPath;
   }
+  abstract get id(): string;
   abstract checkForOutdatedPackages(): Promise<void>;
   abstract getUserPackageManager(): Promise<PackageManager | undefined>;
   abstract getFramework(): Promise<Framework | undefined>;
@@ -38,6 +39,9 @@ class NodeJsRuntime extends JsRuntime {
     }
   }
 
+  get id() {
+    return "nodejs";
+  }
   get packageJsonPath(): string {
     return pathModule.join(this.projectRootPath, "package.json");
   }
@@ -94,6 +98,10 @@ class DenoRuntime extends JsRuntime {
         .stat(pathModule.join(this.projectRootPath, "deno.jsonc"))
         .then(() => pathModule.join(this.projectRootPath, "deno.jsonc"));
     }
+  }
+
+  get id() {
+    return "deno";
   }
 
   static async isDenoJsRuntime(projectRootPath: string): Promise<boolean> {
