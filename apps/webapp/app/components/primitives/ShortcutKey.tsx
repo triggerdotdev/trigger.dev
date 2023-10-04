@@ -54,5 +54,7 @@ function modifierString(modifier: Modifier, isMac: boolean) {
       return isMac ? "⌘" : "⊞+";
     case "shift":
       return isMac ? "⇧" : "Shift+";
+    case "mod":
+      return isMac ? "⌘" : "Ctrl+";
   }
 }

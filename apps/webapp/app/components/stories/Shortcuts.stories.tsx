@@ -25,6 +25,7 @@ const shortcuts: ShortcutDefinition[] = [
   { key: "k", modifiers: ["meta"] },
   { key: "del", modifiers: ["ctrl", "alt"] },
   { key: "enter", modifiers: ["meta"] },
+  { key: "enter", modifiers: ["mod"] },
 ];
 
 function Collection() {

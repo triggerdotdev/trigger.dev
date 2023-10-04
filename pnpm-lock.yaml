@@ -168,7 +168,7 @@ importers:
       react: ^18.2.0
       react-dom: ^18.2.0
       react-hot-toast: ^2.4.0
-      react-hotkeys-hook: ^3.4.7
+      react-hotkeys-hook: ^4.4.1
       react-use: ^17.4.0
       recharts: ^2.8.0
       remix-auth: ^3.2.2
@@ -261,7 +261,7 @@ importers:
       react: 18.2.0
       react-dom: 18.2.0_react@18.2.0
       react-hot-toast: 2.4.0_biqbaboplfbrettd7655fr4n2y
-      react-hotkeys-hook: 3.4.7_biqbaboplfbrettd7655fr4n2y
+      react-hotkeys-hook: 4.4.1_biqbaboplfbrettd7655fr4n2y
       react-use: 17.4.0_biqbaboplfbrettd7655fr4n2y
       recharts: 2.8.0_v2m5e27vhdewzwhryxwfaorcca
       remix-auth: 3.4.0_mrckq3wlqfipa3hs7ezq3k3x3y
@@ -20182,10 +20182,6 @@ packages:
       lru-cache: 7.18.3
     dev: false
 
-  /hotkeys-js/3.9.4:
-    resolution: {integrity: sha512-2zuLt85Ta+gIyvs4N88pCYskNrxf1TFv3LR9t5mdAZIX8BcgQQ48F2opUptvHa6m8zsy5v/a0i9mWzTrlNWU0Q==}
-    dev: false
-
   /hpagent/0.1.2:
     resolution: {integrity: sha512-ePqFXHtSQWAFXYmj+JtOTHr84iNrII4/QRlAAPPE+zqnKy4xJo7Ie1Y4kC7AdB+LxLxSTTzBMASsEcy0q8YyvQ==}
     requiresBuild: true
@@ -25774,13 +25770,12 @@ packages:
       - csstype
     dev: false
 
-  /react-hotkeys-hook/3.4.7_biqbaboplfbrettd7655fr4n2y:
-    resolution: {integrity: sha512-+bbPmhPAl6ns9VkXkNNyxlmCAIyDAcWbB76O4I0ntr3uWCRuIQf/aRLartUahe9chVMPj+OEzzfk3CQSjclUEQ==}
+  /react-hotkeys-hook/4.4.1_biqbaboplfbrettd7655fr4n2y:
+    resolution: {integrity: sha512-sClBMBioFEgFGYLTWWRKvhxcCx1DRznd+wkFHwQZspnRBkHTgruKIHptlK/U/2DPX8BhHoRGzpMVWUXMmdZlmw==}
     peerDependencies:
       react: '>=16.8.1'
       react-dom: '>=16.8.1'
     dependencies:
-      hotkeys-js: 3.9.4
       react: 18.2.0
       react-dom: 18.2.0_react@18.2.0
     dev: false
