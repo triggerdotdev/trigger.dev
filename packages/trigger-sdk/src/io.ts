@@ -694,27 +694,17 @@ export class IO {
       throw new Error(task.error ?? task?.output ? JSON.stringify(task.output) : "Task errored");
     }
 
-    if (task.status === "WAITING") {
-      this._logger.debug("Task waiting", {
-        idempotencyKey,
-        task,
-      });
-
-      throw new ResumeWithTaskError(task);
-    }
-
-    if (task.status === "RUNNING" && typeof task.operation === "string") {
-      this._logger.debug("Task running operation", {
-        idempotencyKey,
-        task,
-      });
-
-      throw new ResumeWithTaskError(task);
-    }
-
     const executeTask = async () => {
       try {
         const result = await callback(task, this);
+
+        if (task.status === "WAITING" && task.callbackUrl) {
+          this._logger.debug("Waiting for remote callback", {
+            idempotencyKey,
+            task,
+          });
+          return {} as T;
+        }
 
         const output = SerializableJsonSchema.parse(result) as T;
 
@@ -799,6 +789,28 @@ export class IO {
         throw error;
       }
     };
+
+    if (task.status === "WAITING") {
+      this._logger.debug("Task waiting", {
+        idempotencyKey,
+        task,
+      });
+
+      if (task.callbackUrl) {
+        await this._taskStorage.run({ taskId: task.id }, executeTask);
+      }
+
+      throw new ResumeWithTaskError(task);
+    }
+
+    if (task.status === "RUNNING" && typeof task.operation === "string") {
+      this._logger.debug("Task running operation", {
+        idempotencyKey,
+        task,
+      });
+
+      throw new ResumeWithTaskError(task);
+    }
 
     return this._taskStorage.run({ taskId: task.id }, executeTask);
   }

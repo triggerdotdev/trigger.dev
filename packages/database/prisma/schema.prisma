@@ -798,6 +798,7 @@ model Task {
   redact           Json?
   style            Json?
   operation        String?
+  callbackUrl      String?
 
   startedAt   DateTime?
   completedAt DateTime?

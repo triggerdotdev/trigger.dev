@@ -248,6 +248,7 @@
         "integrations/apis/linear",
         "integrations/apis/openai",
         "integrations/apis/plain",
+        "integrations/apis/replicate",
         "integrations/apis/resend",
         "integrations/apis/sendgrid",
         "integrations/apis/slack",
