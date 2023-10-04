@@ -1,5 +1,6 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { ClipboardIcon } from "@heroicons/react/20/solid";
 import { ClockIcon, CodeBracketIcon } from "@heroicons/react/24/outline";
 import { Form, useActionData, useSubmit } from "@remix-run/react";
 import { ActionFunction, LoaderArgs, json } from "@remix-run/server-runtime";
@@ -210,22 +211,6 @@ export default function Page() {
                 placeholder="Use your schema to enter valid JSON or add one of the example payloads then click 'Run test'"
                 className="h-full"
               />
-              <div className="absolute right-4 top-4 flex gap-2">
-                <Button
-                  type="button"
-                  variant="secondary/small"
-                  onClick={(e) => {
-                    setDefaultJson(startingJson);
-                    setSelectedCodeSampleId(undefined);
-                  }}
-                >
-                  Reset
-                </Button>
-                {/* Copy button */}
-                <Button type="button" variant="secondary/small" onClick={(e) => {}}>
-                  Copy
-                </Button>
-              </div>
             </div>
             <div className="flex h-full w-fit min-w-[20rem] flex-col gap-4 overflow-y-auto rounded-r border border-l-0 border-border p-4">
               {examples.length > 0 && (
