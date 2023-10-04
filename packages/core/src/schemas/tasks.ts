@@ -31,6 +31,7 @@ export const TaskSchema = z.object({
   parentId: z.string().optional().nullable(),
   style: StyleSchema.optional().nullable(),
   operation: z.string().optional().nullable(),
+  callbackUrl: z.string().optional().nullable(),
 });
 
 export const ServerTaskSchema = TaskSchema.extend({

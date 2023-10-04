@@ -97,6 +97,12 @@
       ],
       "@trigger.dev/linear/*": [
         "../../integrations/linear/src/*"
+      ],
+      "@trigger.dev/replicate": [
+        "../../integrations/replicate/src/index"
+      ],
+      "@trigger.dev/replicate/*": [
+        "../../integrations/replicate/src/*"
       ]
     }
   }

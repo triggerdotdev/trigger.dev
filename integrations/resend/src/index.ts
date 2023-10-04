@@ -100,7 +100,7 @@ export class Resend implements TriggerIntegration {
     if (!this._io) throw new Error("No IO");
     if (!this._connectionKey) throw new Error("No connection key");
 
-    return this._io.runTask<TResult>(
+    return this._io.runTask(
       key,
       (task, io) => {
         if (!this._client) throw new Error("No client");
