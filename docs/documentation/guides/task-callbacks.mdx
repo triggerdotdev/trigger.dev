@@ -1,0 +1,65 @@
+---
+title: "Task callbacks"
+sidebarTitle: "Task callbacks"
+description: "`io.runTask()` allows you to run a [Task](/documentation/concepts/tasks) from inside a Job run."
+---
+
+Callbacks in asynchronous programming are essential communication tools that enhance task functionality.
+
+In the context of io.runTask(), callbacks enable tasks to notify external systems once they are completed. 
+
+This asynchronous approach ensures seamless communication between different components of a system.
+
+
+
+## When it makes sense to use callback URLs
+
+Using callback URLs is invaluable in scenarios beyond Replicate.
+
+ For instance, they enable real-time data synchronization, event-driven notifications, or the triggering of external workflows upon task completion. 
+ 
+ These callbacks bridge the gap between your application and external services, ensuring timely updates and coordinated actions.
+
+## How to correctly type runTask so the output type is correct
+
+```ts
+interface TaskInput {
+    // Define your input parameters here
+}
+
+interface TaskOutput {
+    // Define your output structure here
+}
+
+await io.runTask<TaskInput, TaskOutput>(
+    "task-name",
+    async (task: TaskInput) => {
+        // Task processing logic here
+        // ...
+
+        return /* output data */;
+    },
+    {
+        // Callback configuration
+        callback: {
+            enabled: true,
+            timeoutInSeconds: 300,
+        },
+    }
+);
+
+```
+
+Ensure that input and output interfaces match the task's requirements.
+
+## How the request to the task URL works
+
+When a task completes, a POST request is sent to the specified task.callbackUrl. The entire JSON body of this POST request becomes the task output. 
+
+For instance, if the task completes with data { result: "success" }, this JSON becomes the response sent to the callback URL.
+
+## How the timeout works
+
+If task.callbackUrl is not called within the specified time (in this example, 300 seconds), the task fails. 
+
+Properly managing timeouts ensures tasks are completed within an expected timeframe, preventing delays and bottlenecks in your application flow.
