@@ -17,10 +17,15 @@ export function darkTheme(): Extension {
     violet = "#c678dd",
     darkBackground = "#21252b",
     highlightBackground = "rgba(71,85,105,0.2)",
-    background = "rgba(255,255,255,0)",
+    background = "rgba(11, 16, 24 ,100)",
     tooltipBackground = "#353a42",
     selection = "rgb(71 85 105)",
-    cursor = "#528bff";
+    cursor = "#528bff",
+    scrollbarTrack = "#0E1521",
+    scrollbarTrackActive = "#131B2B",
+    scrollbarThumb = "#293649",
+    scrollbarThumbActive = "#3C4B62",
+    scrollbarBg = "#0E1521";
 
   const jsonHeroEditorTheme = EditorView.theme(
     {
@@ -93,6 +98,45 @@ export function darkTheme(): Extension {
           backgroundColor: highlightBackground,
           color: ivory,
         },
+      },
+      ".cm-scroller": {
+        scrollbarWidth: "thin",
+        scrollbarColor: `${scrollbarThumb} ${scrollbarTrack}`,
+      },
+      ".cm-scroller::-webkit-scrollbar": {
+        display: "block",
+        width: "8px",
+        height: "8px",
+      },
+      ".cm-scroller::-webkit-scrollbar-track": {
+        backgroundColor: scrollbarTrack,
+        borderRadius: "0",
+      },
+      ".cm-scroller::-webkit-scrollbar-track:hover": {
+        backgroundColor: scrollbarTrackActive,
+      },
+      ".cm-scroller::-webkit-scrollbar-track:active": {
+        backgroundColor: scrollbarTrackActive,
+      },
+      ".cm-scroller::-webkit-scrollbar-thumb": {
+        backgroundColor: scrollbarThumb,
+        borderRadius: "0",
+      },
+      ".cm-scroller::-webkit-scrollbar-thumb:hover": {
+        backgroundColor: scrollbarThumbActive,
+      },
+      ".cm-scroller::-webkit-scrollbar-thumb:active": {
+        backgroundColor: scrollbarThumbActive,
+      },
+      ".cm-scroller::-webkit-scrollbar-corner": {
+        backgroundColor: scrollbarBg,
+        borderRadius: "0",
+      },
+      ".cm-scroller::-webkit-scrollbar-corner:hover": {
+        backgroundColor: scrollbarBg,
+      },
+      ".cm-scroller::-webkit-scrollbar-corner:active": {
+        backgroundColor: scrollbarBg,
       },
     },
     { dark: true }

@@ -187,32 +187,46 @@ export default function Page() {
           onSubmit={(e) => submitForm(e)}
         >
           <div className="grid h-full grid-cols-[1fr_auto] overflow-hidden">
-            <InputGroup fullWidth className="h-full overflow-hidden">
-              <div className="h-full flex-1 overflow-auto rounded-l border border-border scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
-                <JSONEditor
-                  defaultValue={defaultJson}
-                  readOnly={false}
-                  basicSetup
-                  onChange={(v) => {
-                    currentJson.current = v;
+            <div className="relative h-full flex-1 overflow-hidden rounded-l border border-border">
+              <JSONEditor
+                defaultValue={defaultJson}
+                readOnly={false}
+                basicSetup
+                onChange={(v) => {
+                  currentJson.current = v;
 
-                    //deselect the example if it's been edited
-                    if (selectedCodeSampleId) {
-                      if (v !== selectedCodeSample) {
-                        setDefaultJson(v);
-                        setSelectedCodeSampleId(undefined);
-                      }
+                  //deselect the example if it's been edited
+                  if (selectedCodeSampleId) {
+                    if (v !== selectedCodeSample) {
+                      setDefaultJson(v);
+                      setSelectedCodeSampleId(undefined);
                     }
+                  }
+                }}
+                height="100%"
+                min-height="100%"
+                max-height="100%"
+                autoFocus
+                placeholder="Use your schema to enter valid JSON or add one of the example payloads then click 'Run test'"
+                className="h-full"
+              />
+              <div className="absolute right-4 top-4 flex gap-2">
+                <Button
+                  type="button"
+                  variant="secondary/small"
+                  onClick={(e) => {
+                    setDefaultJson(startingJson);
+                    setSelectedCodeSampleId(undefined);
                   }}
-                  height="100%"
-                  min-height="100%"
-                  max-height="100%"
-                  autoFocus
-                  placeholder="Use your schema to enter valid JSON or add one of the example payloads then click 'Run test'"
-                  className="h-full"
-                />
+                >
+                  Reset
+                </Button>
+                {/* Copy button */}
+                <Button type="button" variant="secondary/small" onClick={(e) => {}}>
+                  Copy
+                </Button>
               </div>
-            </InputGroup>
+            </div>
             <div className="flex h-full w-fit min-w-[20rem] flex-col gap-4 overflow-y-auto rounded-r border border-l-0 border-border p-4">
               {examples.length > 0 && (
                 <div className="flex flex-col gap-2">
