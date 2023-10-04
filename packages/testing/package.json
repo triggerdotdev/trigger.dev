@@ -38,7 +38,7 @@
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "vitest": "^0.34.3",
-    "zod": "3.21.4"
+    "zod": "3.22.3"
   },
   "devDependencies": {
     "@trigger.dev/stripe": "workspace:*",

@@ -22,7 +22,7 @@
     "@trigger.dev/stripe": "workspace:*",
     "@trigger.dev/supabase": "workspace:*",
     "@trigger.dev/typeform": "workspace:*",
-    "zod": "3.21.4"
+    "zod": "3.22.3"
   },
   "devDependencies": {
     "@trigger.dev/cli": "workspace:*",

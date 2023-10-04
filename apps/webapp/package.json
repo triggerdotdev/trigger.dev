@@ -111,7 +111,7 @@
     "tailwindcss-animate": "^1.0.5",
     "tiny-invariant": "^1.2.0",
     "ulid": "^2.3.0",
-    "zod": "3.21.4",
+    "zod": "3.22.3",
     "zod-error": "1.5.0"
   },
   "devDependencies": {
