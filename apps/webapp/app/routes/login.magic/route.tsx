@@ -1,6 +1,6 @@
-import type { ActionArgs, LoaderArgs } from "@remix-run/node";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
-import { Form, useTransition } from "@remix-run/react";
+import { Form, useNavigation } from "@remix-run/react";
 import { TypedMetaFunction, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { LogoIcon } from "~/components/LogoIcon";
@@ -22,11 +22,13 @@ import type { LoaderType as RootLoader } from "~/root";
 import { appEnvTitleTag } from "~/utils";
 import { TextLink } from "~/components/primitives/TextLink";
 
-export const meta: TypedMetaFunction<typeof loader, { root: RootLoader }> = ({ parentsData }) => ({
-  title: `Login to Trigger.dev${appEnvTitleTag(parentsData?.root.appEnv)}`,
-});
+export const meta: TypedMetaFunction<typeof loader, { root: RootLoader }> = ({ parentsData }) => [
+  {
+    title: `Login to Trigger.dev${appEnvTitleTag(parentsData?.root.appEnv)}`,
+  },
+];
 
-export async function loader({ request }: LoaderArgs) {
+export async function loader({ request }: LoaderFunctionArgs) {
   await authenticator.isAuthenticated(request, {
     successRedirect: "/",
   });
@@ -38,7 +40,7 @@ export async function loader({ request }: LoaderArgs) {
   });
 }
 
-export async function action({ request }: ActionArgs) {
+export async function action({ request }: ActionFunctionArgs) {
   const clonedRequest = request.clone();
 
   const payload = Object.fromEntries(await clonedRequest.formData());
@@ -68,12 +70,12 @@ export async function action({ request }: ActionArgs) {
 
 export default function LoginMagicLinkPage() {
   const { magicLinkSent } = useTypedLoaderData<typeof loader>();
-  const transition = useTransition();
+  const navigation = useNavigation();
 
   const isLoading =
-    (transition.state === "loading" || transition.state === "submitting") &&
-    transition.type === "actionSubmission" &&
-    transition.submission.formData.get("action") === "send";
+    (navigation.state === "loading" || navigation.state === "submitting") &&
+    typeof navigation.formData !== "undefined" &&
+    navigation.formData.get("action") === "send";
 
   return (
     <AppContainer showBackgroundGradient={true}>
