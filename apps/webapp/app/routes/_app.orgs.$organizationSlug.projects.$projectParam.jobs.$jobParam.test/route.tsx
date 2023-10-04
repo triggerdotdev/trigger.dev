@@ -1,8 +1,9 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { ClockIcon, CodeBracketIcon } from "@heroicons/react/24/outline";
 import { Form, useActionData, useSubmit } from "@remix-run/react";
 import { ActionFunction, LoaderArgs, json } from "@remix-run/server-runtime";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { JSONEditor } from "~/components/code/JSONEditor";
@@ -10,6 +11,8 @@ import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import { DateTime } from "~/components/primitives/DateTime";
+import { DetailCell } from "~/components/primitives/DetailCell";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
@@ -23,6 +26,7 @@ import {
   SelectValue,
 } from "~/components/primitives/Select";
 import { TextLink } from "~/components/primitives/TextLink";
+import { runStatusTitle } from "~/components/runs/RunStatuses";
 import { redirectBackWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { TestJobPresenter } from "~/presenters/TestJobPresenter.server";
 import { TestJobService } from "~/services/jobs/testJob.server";
@@ -214,21 +218,26 @@ export default function Page() {
                 <div className="flex flex-col gap-2">
                   <Header2>Example payloads</Header2>
                   {examples.map((example) => (
-                    <Button
-                      key={example.id}
+                    <button
                       type="button"
-                      variant="menu-item"
+                      key={example.id}
                       onClick={(e) => {
                         setCode(example.payload ?? "");
                         setSelectedCodeSampleId(example.id);
                       }}
-                      LeadingIcon={example.icon ?? "beaker"}
-                      TrailingIcon={example.id === selectedCodeSampleId ? "check" : undefined}
-                      fullWidth
-                      textAlignLeft
                     >
-                      {example.name}
-                    </Button>
+                      <DetailCell
+                        leadingIcon={example.icon ?? CodeBracketIcon}
+                        leadingIconClassName="text-blue-500"
+                        label={example.name}
+                        trailingIcon={example.id === selectedCodeSampleId ? "check" : "plus"}
+                        trailingIconClassName={
+                          example.id === selectedCodeSampleId
+                            ? "text-green-500 group-hover:text-green-400"
+                            : "text-slate-500 group-hover:text-bright"
+                        }
+                      />
+                    </button>
                   ))}
                 </div>
               )}
@@ -241,21 +250,29 @@ export default function Page() {
                 ) : (
                   <div className="flex flex-col gap-2">
                     {runs.map((run) => (
-                      <Button
+                      <button
                         key={run.id}
                         type="button"
-                        variant="menu-item"
                         onClick={(e) => {
                           setCode(run.payload ?? "");
                           setSelectedCodeSampleId(run.id);
                         }}
-                        LeadingIcon={"clock"}
-                        TrailingIcon={run.id === selectedCodeSampleId ? "check" : undefined}
-                        fullWidth
-                        textAlignLeft
                       >
-                        {run.number}
-                      </Button>
+                        <DetailCell
+                          leadingIcon={ClockIcon}
+                          leadingIconClassName="text-slate-400"
+                          label={<DateTime date={run.created} />}
+                          description={`Run #${run.number} ${runStatusTitle(
+                            run.status
+                          ).toLocaleLowerCase()}`}
+                          trailingIcon={run.id === selectedCodeSampleId ? "check" : "plus"}
+                          trailingIconClassName={
+                            run.id === selectedCodeSampleId
+                              ? "text-green-500 group-hover:text-green-400"
+                              : "text-slate-500 group-hover:text-bright"
+                          }
+                        />
+                      </button>
                     ))}
                   </div>
                 )}
