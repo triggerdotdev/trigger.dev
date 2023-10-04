@@ -9,7 +9,7 @@ export function createRemixRoute(client: TriggerClient) {
       return json({ error: "Not found" }, { status: 404 });
     }
 
-    return json(response.body, { status: response.status });
+    return json(response.body, { status: response.status, headers: response.headers });
   };
   return { action };
 }

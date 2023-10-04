@@ -1,10 +1,16 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { TaskStatus } from "@trigger.dev/database";
-import { RunTaskBodyOutput, RunTaskBodyOutputSchema, ServerTask } from "@trigger.dev/core";
+import {
+  API_VERSIONS,
+  RunTaskBodyOutput,
+  RunTaskBodyOutputSchema,
+  RunTaskResponseWithCachedTasksBody,
+  ServerTask,
+} from "@trigger.dev/core";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
-import { taskWithAttemptsToServerTask } from "~/models/task.server";
+import { prepareTasksForCaching, taskWithAttemptsToServerTask } from "~/models/task.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ulid } from "~/services/ulid.server";
@@ -16,6 +22,8 @@ const ParamsSchema = z.object({
 
 const HeadersSchema = z.object({
   "idempotency-key": z.string(),
+  "trigger-version": z.string().optional().nullable(),
+  "x-cached-tasks-cursor": z.string().optional().nullable(),
 });
 
 export async function action({ request, params }: ActionArgs) {
@@ -37,7 +45,11 @@ export async function action({ request, params }: ActionArgs) {
     return json({ error: "Invalid or Missing idempotency key" }, { status: 400 });
   }
 
-  const { "idempotency-key": idempotencyKey } = headers.data;
+  const {
+    "idempotency-key": idempotencyKey,
+    "trigger-version": triggerVersion,
+    "x-cached-tasks-cursor": cachedTasksCursor,
+  } = headers.data;
 
   const { runId } = ParamsSchema.parse(params);
 
@@ -48,6 +60,8 @@ export async function action({ request, params }: ActionArgs) {
     body: anyBody,
     runId,
     idempotencyKey,
+    triggerVersion,
+    cachedTasksCursor,
   });
 
   const body = RunTaskBodyOutputSchema.safeParse(anyBody);
@@ -71,6 +85,26 @@ export async function action({ request, params }: ActionArgs) {
       return json({ error: "Something went wrong" }, { status: 500 });
     }
 
+    if (triggerVersion === API_VERSIONS.LAZY_LOADED_CACHED_TASKS) {
+      const requestMigration = new ChangeRequestLazyLoadedCachedTasks();
+
+      const responseBody = await requestMigration.call(runId, task, cachedTasksCursor);
+
+      logger.debug(
+        "RunTaskService.call() response migrating with ChangeRequestLazyLoadedCachedTasks",
+        {
+          responseBody,
+          cachedTasksCursor,
+        }
+      );
+
+      return json(responseBody, {
+        headers: {
+          "trigger-version": API_VERSIONS.LAZY_LOADED_CACHED_TASKS,
+        },
+      });
+    }
+
     return json(task);
   } catch (error) {
     if (error instanceof Error) {
@@ -78,6 +112,51 @@ export async function action({ request, params }: ActionArgs) {
     }
 
     return json({ error: "Something went wrong" }, { status: 500 });
+  }
+}
+
+class ChangeRequestLazyLoadedCachedTasks {
+  #prismaClient: PrismaClient;
+
+  constructor(prismaClient: PrismaClient = prisma) {
+    this.#prismaClient = prismaClient;
+  }
+
+  public async call(
+    runId: string,
+    task: ServerTask,
+    cursor?: string | null
+  ): Promise<RunTaskResponseWithCachedTasksBody> {
+    if (!cursor) {
+      return {
+        task,
+      };
+    }
+
+    // We need to limit the cached tasks to not be too large >2MB when serialized
+    const TOTAL_CACHED_TASK_BYTE_LIMIT = 2000000;
+
+    const nextTasks = await this.#prismaClient.task.findMany({
+      where: {
+        runId,
+        status: "COMPLETED",
+        noop: false,
+      },
+      take: 250,
+      cursor: {
+        id: cursor,
+      },
+      orderBy: {
+        id: "asc",
+      },
+    });
+
+    const preparedTasks = prepareTasksForCaching(nextTasks, TOTAL_CACHED_TASK_BYTE_LIMIT);
+
+    return {
+      task,
+      cachedTasks: preparedTasks,
+    };
   }
 }
 
