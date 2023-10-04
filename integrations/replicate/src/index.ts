@@ -110,6 +110,7 @@ export class Replicate implements TriggerIntegration {
     return new Trainings(this.runTask.bind(this));
   }
 
+  /** Paginate through a list of results. */
   async *paginate<T>(
     task: (key: string) => Promise<Page<T>>,
     key: IntegrationTaskKey,
@@ -134,6 +135,7 @@ export class Replicate implements TriggerIntegration {
     }
   }
 
+  /** Auto-paginate and return all results. */
   async getAll<T>(
     task: (key: string) => Promise<Page<T>>,
     key: IntegrationTaskKey
@@ -147,6 +149,7 @@ export class Replicate implements TriggerIntegration {
     return allResults;
   }
 
+  /** Make a request to the Replicate API. */
   request<T = any>(
     key: IntegrationTaskKey,
     params: {
@@ -173,6 +176,7 @@ export class Replicate implements TriggerIntegration {
     );
   }
 
+  /** Run a model and await the result. */
   run(
     key: IntegrationTaskKey,
     params: {

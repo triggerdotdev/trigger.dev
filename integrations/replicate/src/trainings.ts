@@ -8,6 +8,7 @@ import { callbackProperties, modelProperties } from "./utils";
 export class Trainings {
   constructor(private runTask: ReplicateRunTask) {}
 
+  /** Cancel a training. */
   cancel(key: IntegrationTaskKey, params: { id: string }): ReplicateReturnType<Training> {
     return this.runTask(
       key,
@@ -22,6 +23,7 @@ export class Trainings {
     );
   }
 
+  /** Create a new training. */
   create(
     key: IntegrationTaskKey,
     params: {
@@ -45,6 +47,7 @@ export class Trainings {
     );
   }
 
+  /** Create a new training and await the result. */
   createAndAwait(
     key: IntegrationTaskKey,
     params: {
@@ -80,6 +83,7 @@ export class Trainings {
     );
   }
 
+  /** Fetch a training. */
   get(key: IntegrationTaskKey, params: { id: string }): ReplicateReturnType<Training> {
     return this.runTask(
       key,
@@ -94,6 +98,7 @@ export class Trainings {
     );
   }
 
+  /** List all trainings. */
   list(key: IntegrationTaskKey): ReplicateReturnType<Page<Training>> {
     return this.runTask(
       key,

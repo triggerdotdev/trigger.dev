@@ -8,6 +8,7 @@ import { ReplicateReturnType } from "./types";
 export class Models {
   constructor(private runTask: ReplicateRunTask) {}
 
+  /** Get information about a model. */
   get(
     key: IntegrationTaskKey,
     params: {
@@ -36,6 +37,7 @@ export class Models {
 class Versions {
   constructor(private runTask: ReplicateRunTask) {}
 
+  /** Get a specific model version. */
   get(
     key: IntegrationTaskKey,
     params: {
@@ -57,6 +59,7 @@ class Versions {
     );
   }
 
+  /** List model versions. */
   list(
     key: IntegrationTaskKey,
     params: {

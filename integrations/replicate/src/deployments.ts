@@ -16,6 +16,7 @@ export class Deployments {
 class Predictions {
   constructor(private runTask: ReplicateRunTask) {}
 
+  /** Create a new prediction with a deployment. */
   create(
     key: IntegrationTaskKey,
     params: {
@@ -38,6 +39,7 @@ class Predictions {
     );
   }
 
+  /** Create a new prediction with a deployment and await the result. */
   createAndAwait(
     key: IntegrationTaskKey,
     params: {

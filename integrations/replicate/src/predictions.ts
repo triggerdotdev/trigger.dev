@@ -8,6 +8,7 @@ import { callbackProperties, createPredictionProperties } from "./utils";
 export class Predictions {
   constructor(private runTask: ReplicateRunTask) {}
 
+  /** Cancel a prediction. */
   cancel(key: IntegrationTaskKey, params: { id: string }): ReplicateReturnType<Prediction> {
     return this.runTask(
       key,
@@ -22,6 +23,7 @@ export class Predictions {
     );
   }
 
+  /** Create a new prediction. */
   create(
     key: IntegrationTaskKey,
     params: Parameters<ReplicateClient["predictions"]["create"]>[0]
@@ -39,6 +41,7 @@ export class Predictions {
     );
   }
 
+  /** Create a new prediction and await the result. */
   createAndAwait(
     key: IntegrationTaskKey,
     params: Omit<
@@ -68,6 +71,7 @@ export class Predictions {
     );
   }
 
+  /** Fetch a prediction. */
   get(key: IntegrationTaskKey, params: { id: string }): ReplicateReturnType<Prediction> {
     return this.runTask(
       key,
@@ -82,6 +86,7 @@ export class Predictions {
     );
   }
 
+  /** List all predictions. */
   list(key: IntegrationTaskKey): ReplicateReturnType<Page<Prediction>> {
     return this.runTask(
       key,
