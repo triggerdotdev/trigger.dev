@@ -1,6 +1,6 @@
 import { H } from "@highlight-run/node";
-import type { DataFunctionArgs, EntryContext, Headers } from "@remix-run/node"; // or cloudflare/deno
-import { Response } from "@remix-run/node"; // or cloudflare/deno
+import type { DataFunctionArgs, EntryContext } from "@remix-run/node"; // or cloudflare/deno
+import { createReadableStreamFromReadable } from "@remix-run/node"; // or cloudflare/deno
 import { RemixServer } from "@remix-run/react";
 import { parseAcceptLanguage } from "intl-parse-accept-language";
 import isbot from "isbot";
@@ -78,7 +78,7 @@ function serveTheBots(
           let body = new PassThrough();
           pipe(body);
           resolve(
-            new Response(body, {
+            new Response(createReadableStreamFromReadable(body), {
               status: responseStatusCode,
               headers: responseHeaders,
             })
@@ -118,7 +118,7 @@ function serveBrowsers(
           let body = new PassThrough();
           pipe(body);
           resolve(
-            new Response(body, {
+            new Response(createReadableStreamFromReadable(body), {
               status: didError ? 500 : responseStatusCode,
               headers: responseHeaders,
             })
