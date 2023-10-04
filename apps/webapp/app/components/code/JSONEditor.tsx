@@ -2,12 +2,12 @@ import { json as jsonLang } from "@codemirror/lang-json";
 import type { ViewUpdate } from "@codemirror/view";
 import type { ReactCodeMirrorProps, UseCodeMirror } from "@uiw/react-codemirror";
 import { useCodeMirror } from "@uiw/react-codemirror";
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback, useState } from "react";
 import { getEditorSetup } from "./codeMirrorSetup";
 import { darkTheme } from "./codeMirrorTheme";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
-import { ClipboardIcon } from "@heroicons/react/20/solid";
+import { CheckIcon, ClipboardDocumentCheckIcon, ClipboardIcon } from "@heroicons/react/20/solid";
 
 export interface JSONEditorProps extends Omit<ReactCodeMirrorProps, "onBlur"> {
   defaultValue?: string;
@@ -72,6 +72,7 @@ export function JSONEditor(opts: JSONEditorProps) {
     onUpdate,
   };
   const { setContainer, view } = useCodeMirror(settings);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (editor.current) {
@@ -100,6 +101,10 @@ export function JSONEditor(opts: JSONEditorProps) {
   const copy = useCallback(() => {
     if (view === undefined) return;
     navigator.clipboard.writeText(view.state.doc.toString());
+    setCopied(true);
+    setTimeout(() => {
+      setCopied(false);
+    }, 1500);
   }, [view]);
 
   return (
@@ -130,7 +135,8 @@ export function JSONEditor(opts: JSONEditorProps) {
           <Button
             type="button"
             variant="secondary/small"
-            LeadingIcon={ClipboardIcon}
+            LeadingIcon={copied ? CheckIcon : ClipboardIcon}
+            leadingIconClassName={copied ? "text-green-500 group-hover:text-green-500" : undefined}
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
