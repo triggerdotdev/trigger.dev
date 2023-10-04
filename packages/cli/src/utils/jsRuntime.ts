@@ -6,8 +6,6 @@ import chalk from "chalk";
 import fs from "fs/promises";
 import pathModule from "path";
 
-type SupportedRuntimeId = "node" | "deno";
-
 export abstract class JsRuntime {
   logger: Logger;
   projectRootPath: string;
@@ -86,6 +84,18 @@ class NodeJsRuntime extends JsRuntime {
 }
 
 class DenoRuntime extends JsRuntime {
+  getDenoJsonPath(): Promise<string> {
+    try {
+      return fs
+        .stat(pathModule.join(this.projectRootPath, "deno.json"))
+        .then(() => pathModule.join(this.projectRootPath, "deno.json"));
+    } catch {
+      return fs
+        .stat(pathModule.join(this.projectRootPath, "deno.jsonc"))
+        .then(() => pathModule.join(this.projectRootPath, "deno.jsonc"));
+    }
+  }
+
   static async isDenoJsRuntime(projectRootPath: string): Promise<boolean> {
     try {
       try {
@@ -110,7 +120,7 @@ class DenoRuntime extends JsRuntime {
     return undefined;
   }
   async getEndpointId() {
-    const pkgJsonPath = pathModule.join(this.projectRootPath, "deno.json");
+    const pkgJsonPath = await this.getDenoJsonPath();
     const pkgBuffer = await fs.readFile(pkgJsonPath);
     const pkgJson = JSON.parse(pkgBuffer.toString());
     return pkgJson["trigger.dev"]?.endpointId;
