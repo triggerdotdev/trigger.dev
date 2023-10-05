@@ -144,7 +144,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
   const textColorClassName = variation.textColor;
 
   return (
-    <div className={cn("flex", fullWidth ? "" : "text-xxs", btnClassName, className)}>
+    <div className={cn("flex", fullWidth ? "" : "w-fit text-xxs", btnClassName, className)}>
       <div
         className={cn(
           textAlignLeft ? "text-left" : "justify-center",
