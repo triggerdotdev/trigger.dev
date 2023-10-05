@@ -1,21 +1,38 @@
-import { Body, ConfigurableModuleBuilder, Controller, Delete, DynamicModule, Get, Head, Headers, HttpCode, Inject, InjectionToken, InternalServerErrorException, Module, NotFoundException, Options, Post, Put, Res } from '@nestjs/common';
-import { Patch, Search } from '@nestjs/common/decorators/http/request-mapping.decorator';
-import { Headers as StandardHeaders, Request as StandardRequest } from '@remix-run/web-fetch';
-import { TriggerClient, TriggerClientOptions } from '@trigger.dev/sdk';
+import {
+  Body,
+  ConfigurableModuleBuilder,
+  Controller,
+  DynamicModule,
+  Head,
+  Headers,
+  HttpCode,
+  Inject,
+  InjectionToken,
+  InternalServerErrorException,
+  Module,
+  NotFoundException,
+  Post,
+  Res,
+} from "@nestjs/common";
+import { Headers as StandardHeaders, Request as StandardRequest } from "@remix-run/web-fetch";
+import { TriggerClient, TriggerClientOptions } from "@trigger.dev/sdk";
+import type { Response } from "express";
+import type { FastifyReply } from "fastify";
 
-const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN, OPTIONS_TYPE, ASYNC_OPTIONS_TYPE } = new ConfigurableModuleBuilder<TriggerClientOptions>()
-  .build();
+const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN, OPTIONS_TYPE, ASYNC_OPTIONS_TYPE } =
+  new ConfigurableModuleBuilder<TriggerClientOptions>().build();
 
 /**
  * The injection token to use for the TriggerDev client.
  */
-export const TriggerClientRef = Symbol('TriggerClientRef');
+export const TriggerClientRef = Symbol("TriggerClientRef");
 
 /**
  * Injects the TriggerDev client.
  * It will returns an instance of {@link TriggerClient}
  */
-export const InjectTriggerDevClient = (customProviderToken: InjectionToken = TriggerClientRef) => Inject(customProviderToken);
+export const InjectTriggerDevClient = (customProviderToken: InjectionToken = TriggerClientRef) =>
+  Inject(customProviderToken);
 
 /**
  * The TriggerDev module for NestJS.
@@ -58,15 +75,17 @@ export class TriggerDevModule extends ConfigurableModuleClass {
    * @param path The path to use for the controller (default: `/api/trigger`)
    * @param customProviderToken The token to use for the provider (default: {@link TriggerClientRef})
    */
-  static register(options: typeof OPTIONS_TYPE, path: string = '/api/trigger', customProviderToken: InjectionToken = TriggerClientRef): DynamicModule {
+  static register(
+    options: typeof OPTIONS_TYPE,
+    path: string = "/api/trigger",
+    customProviderToken: InjectionToken = TriggerClientRef
+  ): DynamicModule {
     const { providers, ...rest } = ConfigurableModuleClass.register(options);
     const controller = createControllerByPath(customProviderToken, path);
 
     return {
       ...rest,
-      controllers: [
-        controller,
-      ],
+      controllers: [controller],
       providers: [
         ...(providers || []),
         {
@@ -77,9 +96,7 @@ export class TriggerDevModule extends ConfigurableModuleClass {
           },
         },
       ],
-      exports: [
-        customProviderToken,
-      ],
+      exports: [customProviderToken],
     };
   }
 
@@ -92,15 +109,17 @@ export class TriggerDevModule extends ConfigurableModuleClass {
    * @param path The path to use for the controller (default: `/api/trigger`)
    * @param customProviderToken The token to use for the provider (default: {@link TriggerClientRef})
    */
-  static registerAsync(options: typeof ASYNC_OPTIONS_TYPE, path: string = '/api/trigger', customProviderToken: InjectionToken = TriggerClientRef): DynamicModule {
+  static registerAsync(
+    options: typeof ASYNC_OPTIONS_TYPE,
+    path: string = "/api/trigger",
+    customProviderToken: InjectionToken = TriggerClientRef
+  ): DynamicModule {
     const { providers, ...rest } = ConfigurableModuleClass.registerAsync(options);
     const controller = createControllerByPath(customProviderToken, path);
 
     return {
       ...rest,
-      controllers: [
-        controller,
-      ],
+      controllers: [controller],
       providers: [
         ...(providers || []),
         {
@@ -111,9 +130,7 @@ export class TriggerDevModule extends ConfigurableModuleClass {
           },
         },
       ],
-      exports: [
-        customProviderToken,
-      ],
+      exports: [customProviderToken],
     };
   }
 }
@@ -129,53 +146,31 @@ function createControllerByPath(customProvider: InjectionToken, path: string) {
   class TriggerDevController {
     constructor(
       @InjectTriggerDevClient(customProvider)
-      private readonly client: TriggerClient,
-    ) {
-    }
+      private readonly client: TriggerClient
+    ) {}
 
     @Head()
     @HttpCode(200)
     public empty() {}
 
     @Post()
-    public handleRequestPost(@Res({ passthrough: true }) res: any, @Headers() headers: unknown, @Body() body?: unknown): Promise<unknown> {
-      return this.handleRequest(res, 'POST', headers, body);
-    }
-
-    @Delete()
-    public handleRequestDelete(@Res({ passthrough: true }) res: any, @Headers() headers: unknown, @Body() body?: unknown): Promise<unknown> {
-      return this.handleRequest(res, 'DELETE', headers, body);
-    }
-
-    @Get()
-    public handleRequestGet(@Res({ passthrough: true }) res: any, @Headers() headers: unknown, @Body() body?: unknown): Promise<unknown> {
-      return this.handleRequest(res, 'GET', headers, body);
-    }
-
-    @Put()
-    public handleRequestPut(@Res({ passthrough: true }) res: any, @Headers() headers: unknown, @Body() body?: unknown): Promise<unknown> {
-      return this.handleRequest(res, 'PUT', headers, body);
-    }
-
-    @Patch()
-    public handleRequestPatch(@Res({ passthrough: true }) res: any, @Headers() headers: unknown, @Body() body?: unknown): Promise<unknown> {
-      return this.handleRequest(res, 'PATCH', headers, body);
-    }
-
-    @Options()
-    public handleRequestOptions(@Res({ passthrough: true }) res: any, @Headers() headers: unknown, @Body() body?: unknown): Promise<unknown> {
-      return this.handleRequest(res, 'OPTIONS', headers, body);
-    }
-
-    @Search()
-    public handleRequestSearch(@Res({ passthrough: true }) res: any, @Headers() headers: unknown, @Body() body?: unknown): Promise<unknown> {
-      return this.handleRequest(res, 'SEARCH', headers, body);
+    public handleRequestPost(
+      @Res({ passthrough: true }) res: any,
+      @Headers() headers: unknown,
+      @Body() body?: unknown
+    ): Promise<unknown> {
+      return this.handleRequest(res, "POST", headers, body);
     }
 
     /**
      * Forward the request to the TriggerDev client
      */
-    public async handleRequest(res: any, method: string, requestHeaders: unknown, requestBody?: unknown): Promise<unknown> {
+    public async handleRequest(
+      res: any,
+      method: string,
+      requestHeaders: unknown,
+      requestBody?: unknown
+    ): Promise<unknown> {
       // try {
       const headers = new StandardHeaders();
 
@@ -184,7 +179,7 @@ function createControllerByPath(customProvider: InjectionToken, path: string) {
       });
 
       // Create a new Request object (hardcode the url because it doesn't really matter what it is)
-      const standardRequest = new StandardRequest('https://nestjs.com/api/trigger', {
+      const standardRequest = new StandardRequest("https://nestjs.com/api/trigger", {
         headers,
         method,
         // @ts-ignore
@@ -194,15 +189,23 @@ function createControllerByPath(customProvider: InjectionToken, path: string) {
       const response = await this.client.handleRequest(standardRequest);
 
       if (!response) {
-        throw new NotFoundException({ error: 'Not found' });
+        throw new NotFoundException({ error: "Not found" });
       }
 
-      if (typeof res.status === 'function') { // express
-        res.status(response.status);
-      } else if (typeof res.code === 'function') { // fastify
-        res.code(response.status);
+      if (typeof res.status === "function") {
+        // express
+        (res as Response).status(response.status);
+        (res as Response).set(response.headers);
+      } else if (typeof res.code === "function") {
+        // fastify
+        (res as FastifyReply).code(response.status);
+        if (response.headers) {
+          (res as FastifyReply).headers(response.headers);
+        }
       } else {
-        throw new InternalServerErrorException('Unable to indetify the framework to set the status code, are you using Express or Fastify?');
+        throw new InternalServerErrorException(
+          "Unable to indetify the framework to set the status code, are you using Express or Fastify?"
+        );
       }
 
       return response.body;
