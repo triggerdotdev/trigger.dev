@@ -23,7 +23,7 @@ export function ShortcutKey({ shortcut, variant, className }: ShortcutKeyProps) 
   const isMac = platform === "mac";
   let relevantShortcut = "mac" in shortcut ? (isMac ? shortcut.mac : shortcut.windows) : shortcut;
   const modifiers = relevantShortcut.modifiers ?? [];
-  const character = relevantShortcut.key;
+  const character = keyString(relevantShortcut.key, isMac);
 
   return (
     <span className={cn(variants[variant], className)}>
@@ -35,6 +35,15 @@ export function ShortcutKey({ shortcut, variant, className }: ShortcutKeyProps) 
   );
 }
 
+function keyString(key: String, isMac: boolean) {
+  switch (key) {
+    case "enter":
+      return isMac ? "↵" : key;
+    default:
+      return key;
+  }
+}
+
 function modifierString(modifier: Modifier, isMac: boolean) {
   switch (modifier) {
     case "alt":
@@ -42,8 +51,10 @@ function modifierString(modifier: Modifier, isMac: boolean) {
     case "ctrl":
       return isMac ? "⌃" : "Ctrl+";
     case "meta":
-      return isMac ? "⌘" : "⊞";
+      return isMac ? "⌘" : "⊞+";
     case "shift":
       return isMac ? "⇧" : "Shift+";
+    case "mod":
+      return isMac ? "⌘" : "Ctrl+";
   }
 }
