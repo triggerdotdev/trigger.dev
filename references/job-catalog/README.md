@@ -28,6 +28,8 @@ cd references/job-catalog
 pnpm run dev:trigger
 ```
 
+Navigate to your trigger.dev instance ([http://localhost:3030](http://localhost:3030/) when running locally, or if you are using the cloud version it's [cloud.trigger.dev](https://cloud.trigger.dev)), to see the jobs. You can use the test feature to trigger them. See our [testing jobs docs](https://trigger.dev/docs/documentation/guides/testing-jobs) for more info.
+
 ### Adding a new file
 
 You can add a new file to `src` with it's own `TriggerClient` and set of jobs (e.g. `src/events.ts`)
