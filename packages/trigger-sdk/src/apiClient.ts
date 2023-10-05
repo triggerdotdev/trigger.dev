@@ -223,7 +223,7 @@ export class ApiClient {
       runId,
     });
 
-    return await zodfetch(ApiEventLogSchema, `${this.#apiUrl}/api/v1/runs/${runId}/cancel`, {
+    return await zodfetch(z.object({}), `${this.#apiUrl}/api/v1/runs/${runId}/cancel`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

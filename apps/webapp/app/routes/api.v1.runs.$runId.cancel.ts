@@ -23,7 +23,7 @@ const SearchQuerySchema = z.object({
 
 export const action: ActionFunction = async ({ request, params }) => {
     // Ensure this is a POST request
-    if (request.method.toUpperCase() != "POST") {
+    if (request.method.toLowerCase() !== "post") {
         return { status: 405, body: "Method Not Allowed" };
     }
 
