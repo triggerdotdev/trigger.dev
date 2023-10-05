@@ -70,6 +70,7 @@ export class CreateRunService {
             ? eventRecord.externalAccountId
             : undefined,
           isTest: eventRecord.isTest,
+          internal: job.internal
         },
       });
 

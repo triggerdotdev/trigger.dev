@@ -670,6 +670,8 @@ model JobRun {
   job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   jobId String
 
+  internal Boolean @default(false)
+
   version   JobVersion @relation(fields: [versionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   versionId String
 
