@@ -23,7 +23,7 @@ const stripe = new Stripe({
 });
 const slack = new Slack({ id: "slack" });
 const openai = new OpenAI({ id: "openai" });
-const github = new Github({ id: "github" });
+const github = new Github({ id: "github-byoa" });
 
 client.defineAuthResolver(resend, async (ctx, integration) => {
   return {

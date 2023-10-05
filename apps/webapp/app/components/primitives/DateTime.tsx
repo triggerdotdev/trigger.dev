@@ -63,16 +63,17 @@ export const DateTimeAccurate = ({ date, timeZone = "UTC" }: DateTimeProps) => {
 };
 
 function formatDateTimeAccurate(date: Date, timeZone: string, locales: string[]): string {
-  const milliseconds = `00${date.getMilliseconds()}`.slice(-3);
-
   const formattedDateTime = new Intl.DateTimeFormat(locales, {
+    year: "numeric",
     month: "short",
-    day: "2-digit",
+    day: "numeric",
     hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
+    minute: "numeric",
+    second: "numeric",
     timeZone,
+    // @ts-ignore this works in 92.5% of browsers https://caniuse.com/mdn-javascript_builtins_intl_datetimeformat_datetimeformat_options_parameter_options_fractionalseconddigits_parameter
+    fractionalSecondDigits: 3,
   }).format(date);
 
-  return `${formatDateTime}.${milliseconds}`;
+  return formattedDateTime;
 }
