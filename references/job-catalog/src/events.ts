@@ -73,4 +73,47 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "send-batched-event",
+  name: "Send Batched Event",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "batch.send",
+  }),
+  run: async (payload, io, ctx) => {
+    // unbatched
+    await io.sendEvent("unbatched",
+      { name: "new.message", payload: { message: "Not batching this!" } },
+      { deliverAfter: 5 }
+    );
+
+    // batched
+    await io.sendEvent("batched-1",
+      { name: "new.message", payload: { message: "Hey there!" } },
+      { batchKey: "user123", deliverAfter: 10 }
+    );
+    await io.sendEvent("batched-2",
+      { name: "new.message", payload: { message: "It's me!" } },
+      { batchKey: "user123" } // deliverAfter: 10 - should be preserved
+    );
+    await io.sendEvent("batched-3",
+      { name: "new.message", payload: { message: "Where are you?" } },
+      { batchKey: "user123" } // deliverAfter: 10 - should be preserved
+    );
+  },
+});
+
+client.defineJob({
+  id: "receive-batched-event",
+  name: "Receive Batched Event",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "new.message",
+    schema: z.object({ message: z.string() }),
+  }),
+  run: async (payload, io, ctx) => {
+    return payload;
+  },
+});
+
 createExpressServer(client);

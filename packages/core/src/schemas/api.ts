@@ -408,6 +408,8 @@ export type ApiEventLog = z.infer<typeof ApiEventLogSchema>;
 
 /** Options to control the delivery of the event */
 export const SendEventOptionsSchema = z.object({
+  /** An optional string to enable event batching. Events with a shared `batchKey` will be delivered together as an array of payloads. */
+  batchKey: z.string().optional(),
   /** An optional Date when you want the event to trigger Jobs. The event will
       be sent to the platform immediately but won't be acted upon until the
       specified time. */

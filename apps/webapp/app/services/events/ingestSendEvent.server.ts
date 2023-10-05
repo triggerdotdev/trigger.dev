@@ -10,6 +10,7 @@ type UpdateEventInput = {
   existingEventLog: EventRecord;
   reqEvent: RawEvent;
   deliverAt?: Date;
+  batchKey?: string;
 };
 
 type CreateEventInput = {
@@ -19,6 +20,7 @@ type CreateEventInput = {
   deliverAt?: Date;
   sourceContext?: { id: string; metadata?: any };
   externalAccount?: ExternalAccount;
+  batchKey?: string;
 };
 
 const EVENT_UPDATE_THRESHOLD_WINDOW_IN_MSECS = 5 * 1000; // 5 seconds
@@ -81,7 +83,13 @@ export class IngestSendEvent {
         });
 
         const eventLog = await (existingEventLog
-          ? this.updateEvent({ tx, existingEventLog, reqEvent: event, deliverAt })
+          ? this.updateEvent({
+              tx,
+              existingEventLog,
+              reqEvent: event,
+              deliverAt,
+              batchKey: options?.batchKey,
+            })
           : this.createEvent({
               tx,
               event,
@@ -89,6 +97,7 @@ export class IngestSendEvent {
               deliverAt,
               sourceContext,
               externalAccount,
+              batchKey: options?.batchKey,
             }));
 
         return eventLog;
@@ -116,6 +125,7 @@ export class IngestSendEvent {
     deliverAt,
     sourceContext,
     externalAccount,
+    batchKey,
   }: CreateEventInput) {
     const eventLog = await tx.eventRecord.create({
       data: {
@@ -139,7 +149,13 @@ export class IngestSendEvent {
     return eventLog;
   }
 
-  private async updateEvent({ tx, existingEventLog, reqEvent, deliverAt }: UpdateEventInput) {
+  private async updateEvent({
+    tx,
+    existingEventLog,
+    reqEvent,
+    deliverAt,
+    batchKey,
+  }: UpdateEventInput) {
     if (!this.shouldUpdateEvent(existingEventLog)) {
       logger.debug(`not updating event for event id: ${existingEventLog.eventId}`);
       return existingEventLog;
@@ -159,7 +175,7 @@ export class IngestSendEvent {
       },
     });
 
-    await this.enqueueWorkerEvent(tx, updatedEventLog);
+    await this.enqueueWorkerEvent(tx, updatedEventLog, batchKey);
 
     return updatedEventLog;
   }
@@ -170,16 +186,38 @@ export class IngestSendEvent {
     return eventLog.deliverAt >= thresholdTime;
   }
 
-  private async enqueueWorkerEvent(tx: PrismaClientOrTransaction, eventLog: EventRecord) {
+  private async enqueueWorkerEvent(
+    tx: PrismaClientOrTransaction,
+    eventLog: EventRecord,
+    batchKey?: string
+  ) {
     if (this.deliverEvents) {
       // Produce a message to the event bus
-      await workerQueue.enqueue(
-        "deliverEvent",
-        {
-          id: eventLog.id,
-        },
-        { runAt: eventLog.deliverAt, tx, jobKey: `event:${eventLog.id}` }
-      );
+      if (batchKey) {
+        await workerQueue.enqueue(
+          "deliverBatchedEvent",
+          // Batch jobs require array payloads.
+          [
+            {
+              id: eventLog.id,
+            },
+          ],
+          {
+            runAt: eventLog.deliverAt,
+            tx,
+            jobKey: `event:${eventLog.environmentId}:${batchKey}`,
+            jobKeyMode: "preserve_run_at",
+          }
+        );
+      } else {
+        await workerQueue.enqueue(
+          "deliverEvent",
+          {
+            id: eventLog.id,
+          },
+          { runAt: eventLog.deliverAt, tx, jobKey: `event:${eventLog.id}` }
+        );
+      }
     }
   }
 }

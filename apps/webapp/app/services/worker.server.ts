@@ -9,6 +9,7 @@ import { IndexEndpointService } from "./endpoints/indexEndpoint.server";
 import { PerformEndpointIndexService } from "./endpoints/performEndpointIndexService";
 import { RecurringEndpointIndexService } from "./endpoints/recurringEndpointIndex.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
+import { DeliverBatchedEventService } from "./events/deliverBatchedEvent.server";
 import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
 import { integrationAuthRepository } from "./externalApis/integrationAuthRepository.server";
 import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
@@ -62,6 +63,7 @@ const workerCatalog = {
     ])
   ),
   deliverEvent: z.object({ id: z.string() }),
+  deliverBatchedEvent: z.array(z.object({ id: z.string() })),
   "events.invokeDispatcher": z.object({
     id: z.string(),
     eventRecordId: z.string(),
@@ -364,6 +366,15 @@ function getWorkerQueue() {
           const service = new DeliverEventService();
 
           await service.call(payload.id);
+        },
+      },
+      deliverBatchedEvent: {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new DeliverBatchedEventService();
+
+          await service.call(payload.map((p) => p.id));
         },
       },
       refreshOAuthToken: {
