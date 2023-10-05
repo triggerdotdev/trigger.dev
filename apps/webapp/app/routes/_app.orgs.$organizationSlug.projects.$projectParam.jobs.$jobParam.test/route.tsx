@@ -16,6 +16,7 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { DetailCell } from "~/components/primitives/DetailCell";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
+import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import {
@@ -296,6 +297,12 @@ export default function Page() {
                       onChange={(e) => setCurrentAccountId(e.target.value)}
                     />
                     <FormError>{accountId.error}</FormError>
+                    <Hint>
+                      Learn about testing Jobs with an Account ID in our{" "}
+                      <TextLink href="https://trigger.dev/docs/documentation/guides/using-integrations-byo-auth#testing-jobs-with-account-id">
+                        BYOAuth docs
+                      </TextLink>
+                    </Hint>
                   </InputGroup>
                 </div>
               )}
