@@ -8,6 +8,16 @@ You can use these triggers to start a job when a GitHub event occurs.
 
 ### Repo
 
+Repo triggers subscribe to a change in a GitHub repo.
+
+```ts
+github.triggers.repo({
+  event: events.onIssueOpened,
+  owner: "triggerdotdev",
+  repo: "trigger.dev",
+});
+```
+
 <ParamField body="options" type="object">
   <Expandable title="fields" defaultOpen>
     <ParamField body="event" type="GitHubEvent">
@@ -23,6 +33,17 @@ You can use these triggers to start a job when a GitHub event occurs.
 </ParamField>
 
 ### Org
+
+Org triggers subscribe to a change across an entire GitHub org.
+
+```ts
+github.triggers.repo({
+  event: events.onIssueOpened,
+  owner: "triggerdotdev",
+});
+```
+
+})
 
 <ParamField body="options" type="object">
   <Expandable title="fields" defaultOpen>
