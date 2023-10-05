@@ -101,7 +101,6 @@ export async function updateCommand(projectPath: string, anyOptions: any) {
         newPackageJSON[tmp.type][packageName] = updatedDependencies[packageName];
       }
     });
-    console.log(newPackageJSON);
     await writeJSONFile(packageJSONPath, newPackageJSON);
     await installDependencies(projectPath);
   }
