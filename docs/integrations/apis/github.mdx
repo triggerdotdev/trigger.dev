@@ -3,11 +3,11 @@ title: GitHub overview & authentication
 ---
 
 <Card
-  title="GitHub job examples"
+  title="Jobs Showcase - GitHub"
   icon="rocket"
   href="https://trigger.dev/showcase?tags=&integrations=github"
 >
-  Check out our pre-built GitHub jobs in the showcase.
+  Check out pre-built GitHub jobs in our showcase.
 </Card>
 
 ## Installing the GitHub packages
@@ -34,7 +34,7 @@ GitHub supports Personal Access Tokens and OAuth. You can use either of these to
 
 ### Personal Access Token
 
-To create a personal access token in GitHub, follow the instructions [here](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token).
+To create a personal access token on GitHub, login and [follow the instructions](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token). Information on the required scopes can be found [here](https://docs.github.com/en/developers/apps/scopes-for-oauth-apps).
 
 ```ts my-job.ts
 import { GitHub } from "@trigger.dev/github";
@@ -49,7 +49,7 @@ const github = new GitHub({
 
 ### OAuth
 
-To use OAuth you can connect GitHub via the Trigger.dev [web app](https://cloud.trigger.dev). Click 'Integrations' in the side panel of any project, and configure GitHub with the required ID and scopes.
+To use OAuth you can connect to GitHub via the Trigger.dev [web app](https://cloud.trigger.dev). Click 'Integrations' in the side panel of any project, and configure GitHub with the ID you want to use in your job and the required [scopes](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps).
 
 ```ts my-job.ts
 import { GitHub } from "@trigger.dev/github";
