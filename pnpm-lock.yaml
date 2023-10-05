@@ -195,7 +195,7 @@ importers:
       tsconfig-paths: ^3.14.1
       typescript: ^4.8.4
       ulid: ^2.3.0
-      zod: 3.21.4
+      zod: 3.22.3
       zod-error: 1.5.0
     dependencies:
       '@codemirror/autocomplete': 6.4.0_czcfkg2f66rxeiodoti7r2gulu
@@ -208,7 +208,7 @@ importers:
       '@codemirror/state': 6.2.0
       '@codemirror/view': 6.7.2
       '@conform-to/react': 0.6.1_react@18.2.0
-      '@conform-to/zod': 0.6.1_zod@3.21.4
+      '@conform-to/zod': 0.6.1_zod@3.22.3
       '@godaddy/terminus': 4.12.1
       '@headlessui/react': 1.7.8_biqbaboplfbrettd7655fr4n2y
       '@heroicons/react': 2.0.13_react@18.2.0
@@ -270,7 +270,7 @@ importers:
       remix-auth-email-link: 1.5.2_xmjsiulzsxcc3znmuhq3turs2q
       remix-auth-github: 1.3.0_xmjsiulzsxcc3znmuhq3turs2q
       remix-typedjson: 0.1.7_bhtgrpeaoe6kbm4hb4gzl6x7c4
-      remix-utils: 6.0.0_c5pntwu5f7mrfmmvuwtiprk4cy
+      remix-utils: 6.0.0_7krs2yfztxu2oblf77wwc4rpoe
       semver: 7.5.0
       simple-oauth2: 5.0.0
       simplur: 3.0.1
@@ -280,7 +280,7 @@ importers:
       tailwindcss-animate: 1.0.5_tailwindcss@3.3.2
       tiny-invariant: 1.3.1
       ulid: 2.3.0
-      zod: 3.21.4
+      zod: 3.22.3
       zod-error: 1.5.0
     devDependencies:
       '@remix-run/dev': 1.19.2-pre.0_36n2i74sizt32vwpdxc4husnkq
@@ -353,7 +353,7 @@ importers:
     devDependencies:
       eslint: 8.31.0
       eslint-config-prettier: 8.6.0_eslint@8.31.0
-      eslint-config-turbo: 1.10.14_eslint@8.31.0
+      eslint-config-turbo: 1.10.15_eslint@8.31.0
       eslint-plugin-react: 7.31.8_eslint@8.31.0
       typescript: 4.9.4
 
@@ -376,12 +376,12 @@ importers:
       rimraf: ^3.0.2
       tsup: 7.1.x
       typescript: 4.9.4
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       airtable: 0.12.1
-      zod: 3.21.4
+      zod: 3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
@@ -403,7 +403,7 @@ importers:
       octokit: ^2.0.14
       rimraf: ^3.0.2
       tsup: ^6.5.0
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@octokit/request': 6.2.5
       '@octokit/request-error': 4.0.1
@@ -411,7 +411,7 @@ importers:
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       octokit: 2.0.14
-      zod: 3.21.4
+      zod: 3.22.3
     devDependencies:
       '@octokit/types': 9.2.3
       '@octokit/webhooks-types': 6.10.0
@@ -430,12 +430,12 @@ importers:
       rimraf: ^3.0.2
       tsup: 7.1.x
       typescript: 4.9.4
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@linear/sdk': 8.0.0
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
-      zod: 3.21.4
+      zod: 3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
@@ -491,12 +491,12 @@ importers:
       rimraf: ^3.0.2
       tsup: 7.1.x
       typescript: 4.9.4
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       replicate: 0.18.1
-      zod: 3.21.4
+      zod: 3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
@@ -552,11 +552,11 @@ importers:
       '@types/node': '18'
       rimraf: ^3.0.2
       tsup: ^6.5.0
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@slack/web-api': 6.8.1
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
-      zod: 3.21.4
+      zod: 3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 18.15.13
@@ -573,12 +573,12 @@ importers:
       stripe-event-types: ^2.4.0
       tsup: 7.1.x
       typescript: 4.9.4
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       stripe: 12.14.0
-      zod: 3.21.4
+      zod: 3.22.3
     devDependencies:
       '@types/node': 16.18.11
       rimraf: 3.0.2
@@ -597,13 +597,13 @@ importers:
       supabase-management-js: ^0.1.4
       tsup: 7.1.x
       typescript: 4.9.4
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@supabase/supabase-js': 2.31.0
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       supabase-management-js: 0.1.4
-      zod: 3.21.4
+      zod: 3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 18.15.13
@@ -620,12 +620,12 @@ importers:
       rimraf: ^3.0.2
       tsup: 7.1.x
       typescript: 4.9.4
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       '@typeform/api-client': 1.8.0
-      zod: 3.21.4
+      zod: 3.22.3
     devDependencies:
       '@types/node': 16.18.11
       rimraf: 3.0.2
@@ -693,7 +693,7 @@ importers:
       typescript: ^4.9.5
       url: ^0.11.1
       vitest: ^0.34.4
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@types/degit': 2.8.3
       boxen: 7.1.1
@@ -720,7 +720,7 @@ importers:
       terminal-link: 3.0.0
       tsconfck: 2.1.2_typescript@4.9.5
       url: 0.11.1
-      zod: 3.21.4
+      zod: 3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/gradient-string': 1.1.2
@@ -745,11 +745,11 @@ importers:
       tsup: ^7.1.0
       typescript: ^4.9.4
       ulid: ^2.3.0
-      zod: 3.21.4
+      zod: 3.22.3
       zod-error: 1.5.0
     dependencies:
       ulid: 2.3.0
-      zod: 3.21.4
+      zod: 3.22.3
       zod-error: 1.5.0
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
@@ -794,7 +794,7 @@ importers:
       resend: ^0.9.1
       tiny-invariant: ^1.2.0
       typescript: ^4.9.4
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@react-email/button': 0.0.4
       '@react-email/container': 0.0.4
@@ -812,7 +812,7 @@ importers:
       react-email: 1.6.1_react@18.2.0
       resend: 0.9.1
       tiny-invariant: 1.3.1
-      zod: 3.21.4
+      zod: 3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
@@ -926,12 +926,12 @@ importers:
       tsup: ^7.1.0
       tsx: ^3.12.1
       typescript: ^4.8.4
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@tanstack/react-query': 5.0.0-beta.2_react@18.2.0
       '@trigger.dev/core': link:../core
       debug: 4.3.4
-      zod: 3.21.4
+      zod: 3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/debug': 4.1.7
@@ -976,12 +976,12 @@ importers:
       tsup: ^7.2.0
       typescript: ^5.2.2
       vitest: ^0.34.3
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@trigger.dev/core': link:../core
       '@trigger.dev/sdk': link:../trigger-sdk
       vitest: 0.34.4
-      zod: 3.21.4
+      zod: 3.22.3
     devDependencies:
       '@trigger.dev/stripe': link:../../integrations/stripe
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
@@ -1016,7 +1016,7 @@ importers:
       ulid: ^2.3.0
       uuid: ^9.0.0
       ws: ^8.11.0
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@trigger.dev/core': link:../core
       chalk: 5.2.0
@@ -1032,7 +1032,7 @@ importers:
       ulid: 2.3.0
       uuid: 9.0.0
       ws: 8.12.0
-      zod: 3.21.4
+      zod: 3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/debug': 4.1.7
@@ -1069,7 +1069,7 @@ importers:
       ts-node: ^10.9.1
       tsconfig-paths: ^3.14.1
       typescript: ^5.1.6
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@trigger.dev/express': link:../packages/express
       '@trigger.dev/github': link:../integrations/github
@@ -1082,7 +1082,7 @@ importers:
       '@trigger.dev/stripe': link:../integrations/stripe
       '@trigger.dev/supabase': link:../integrations/supabase
       '@trigger.dev/typeform': link:../integrations/typeform
-      zod: 3.21.4
+      zod: 3.22.3
     devDependencies:
       '@trigger.dev/cli': link:../packages/cli
       '@trigger.dev/tsconfig': link:../config-packages/tsconfig
@@ -1135,7 +1135,7 @@ importers:
       ts-node: ^10.9.1
       tsconfig-paths: ^3.14.1
       typescript: 5.1.6
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@clerk/backend': 0.29.2
       '@trigger.dev/airtable': link:../../integrations/airtable
@@ -1154,7 +1154,7 @@ importers:
       '@trigger.dev/typeform': link:../../integrations/typeform
       '@types/node': 20.4.2
       typescript: 5.1.6
-      zod: 3.21.4
+      zod: 3.22.3
     devDependencies:
       '@trigger.dev/cli': link:../../packages/cli
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
@@ -1192,7 +1192,7 @@ importers:
       react-query: ^3.39.3
       ts-loader: ^9.4.2
       typescript: 5.0.4
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@trigger.dev/eslint-plugin': link:../../packages/eslint-plugin
       '@trigger.dev/github': link:../../integrations/github
@@ -1215,7 +1215,7 @@ importers:
       react-dom: 18.2.0_react@18.2.0
       react-query: 3.39.3_biqbaboplfbrettd7655fr4n2y
       typescript: 5.0.4
-      zod: 3.21.4
+      zod: 3.22.3
     devDependencies:
       '@trigger.dev/cli': link:../../packages/cli
       eslint: 8.42.0
@@ -1349,7 +1349,7 @@ importers:
       tsconfig-paths: ^3.14.1
       typescript: ^5.2.2
       vitest: ^0.34.3
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       '@trigger.dev/stripe': link:../../integrations/stripe
@@ -1359,7 +1359,7 @@ importers:
       tsconfig-paths: 3.14.1
       typescript: 5.2.2
       vitest: 0.34.4
-      zod: 3.21.4
+      zod: 3.22.3
 
 packages:
 
@@ -5448,13 +5448,13 @@ packages:
       react: 18.2.0
     dev: false
 
-  /@conform-to/zod/0.6.1_zod@3.21.4:
+  /@conform-to/zod/0.6.1_zod@3.22.3:
     resolution: {integrity: sha512-VYu44VfVeP0VyMrc2sNBagFAS66luZMIeFOfkHndGs1ep+LcR3Z4D+EOEqLZ2ECexmg9Y6nrX8Y2d5UUigEXCg==}
     peerDependencies:
       '@conform-to/dom': 0.6.1
       zod: ^3.21.0
     dependencies:
-      zod: 3.21.4
+      zod: 3.22.3
     dev: false
 
   /@cspotcode/source-map-support/0.8.1:
@@ -12379,7 +12379,7 @@ packages:
       '@graphql-typed-document-node/core': 3.2.0_graphql@16.6.0
       axios: 1.4.0
       graphql: 16.6.0
-      zod: 3.21.4
+      zod: 3.22.3
     transitivePeerDependencies:
       - debug
     dev: false
@@ -12390,7 +12390,7 @@ packages:
       '@graphql-typed-document-node/core': 3.2.0_graphql@16.6.0
       axios: 1.4.0
       graphql: 16.6.0
-      zod: 3.21.4
+      zod: 3.22.4
     transitivePeerDependencies:
       - debug
     dev: false
@@ -13297,8 +13297,8 @@ packages:
       '@types/yargs-parser': 21.0.0
     dev: true
 
-  /@types/yauzl/2.10.0:
-    resolution: {integrity: sha512-Cn6WYCm0tXv8p6k+A8PvbDG763EDpBoTzHdA+Q/MF6H3sapGjCm9NzoaJncJS9tUKSuCoDs9XHxYYsQDgxR6kw==}
+  /@types/yauzl/2.10.1:
+    resolution: {integrity: sha512-CHzgNU3qYBnp/O4S3yv2tXPlvMTq0YWSTVg2/JYLqWZGHwwgJGAwd00poay/11asPq8wLFwHzubyInqHIFmmiw==}
     requiresBuild: true
     dependencies:
       '@types/node': 20.6.0
@@ -14591,7 +14591,7 @@ packages:
       yargs-parser: 21.1.1
       zod: 3.21.1
     optionalDependencies:
-      sharp: 0.32.5
+      sharp: 0.32.6
     transitivePeerDependencies:
       - '@types/node'
       - less
@@ -15606,7 +15606,7 @@ packages:
       normalize-path: 3.0.0
       readdirp: 3.6.0
     optionalDependencies:
-      fsevents: 2.3.2
+      fsevents: 2.3.3
 
   /chownr/1.1.4:
     resolution: {integrity: sha512-jJ0bqzaylmJtVnNgzTeSOs8DPavpbYgEr/b0YL8/2GO3xJEhInFmhKMUnEJQjZumK7KXGFhUy89PrsJWlakBVg==}
@@ -17697,13 +17697,13 @@ packages:
       eslint: 8.31.0
     dev: true
 
-  /eslint-config-turbo/1.10.14_eslint@8.31.0:
-    resolution: {integrity: sha512-ZeB+IcuFXy1OICkLuAplVa0euoYbhK+bMEQd0nH9+Lns18lgZRm33mVz/iSoH9VdUzl/1ZmFmoK+RpZc+8R80A==}
+  /eslint-config-turbo/1.10.15_eslint@8.31.0:
+    resolution: {integrity: sha512-76mpx2x818JZE26euen14utYcFDxOahZ9NaWA+6Xa4pY2ezVKVschuOxS96EQz3o3ZRSmcgBOapw/gHbN+EKxQ==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
       eslint: 8.31.0
-      eslint-plugin-turbo: 1.10.14_eslint@8.31.0
+      eslint-plugin-turbo: 1.10.15_eslint@8.31.0
     dev: true
 
   /eslint-doc-generator/1.4.3_eslint@8.45.0:
@@ -18357,8 +18357,8 @@ packages:
       - typescript
     dev: true
 
-  /eslint-plugin-turbo/1.10.14_eslint@8.31.0:
-    resolution: {integrity: sha512-sBdBDnYr9AjT1g4lR3PBkZDonTrMnR4TvuGv5W0OiF7z9az1rI68yj2UHJZvjkwwcGu5mazWA1AfB0oaagpmfg==}
+  /eslint-plugin-turbo/1.10.15_eslint@8.31.0:
+    resolution: {integrity: sha512-Tv4QSKV/U56qGcTqS/UgOvb9HcKFmWOQcVh3HEaj7of94lfaENgfrtK48E2CckQf7amhKs1i+imhCsNCKjkQyA==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
@@ -18937,7 +18937,7 @@ packages:
       get-stream: 5.2.0
       yauzl: 2.10.0
     optionalDependencies:
-      '@types/yauzl': 2.10.0
+      '@types/yauzl': 2.10.1
     transitivePeerDependencies:
       - supports-color
     dev: false
@@ -19450,6 +19450,14 @@ packages:
 
   /fsevents/2.3.2:
     resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
+    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+    os: [darwin]
+    requiresBuild: true
+    dev: true
+    optional: true
+
+  /fsevents/2.3.3:
+    resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
     requiresBuild: true
@@ -21393,7 +21401,7 @@ packages:
       micromatch: 4.0.5
       walker: 1.0.8
     optionalDependencies:
-      fsevents: 2.3.2
+      fsevents: 2.3.3
     dev: true
 
   /jest-haste-map/29.6.2:
@@ -21412,7 +21420,7 @@ packages:
       micromatch: 4.0.5
       walker: 1.0.8
     optionalDependencies:
-      fsevents: 2.3.2
+      fsevents: 2.3.3
     dev: true
 
   /jest-leak-detector/29.6.2:
@@ -26447,7 +26455,7 @@ packages:
       react: 18.2.0
     dev: false
 
-  /remix-utils/6.0.0_c5pntwu5f7mrfmmvuwtiprk4cy:
+  /remix-utils/6.0.0_7krs2yfztxu2oblf77wwc4rpoe:
     resolution: {integrity: sha512-S7Xec0YHZxGFEDawWpIbU7HQAZC0j51FmAvcCyBRuxjo71aAIMdmez47dgF8T91yxpHV1xlIKPL7LhBzmYsOZw==}
     engines: {node: '>=14'}
     peerDependencies:
@@ -26464,7 +26472,7 @@ packages:
       schema-dts: 1.1.0_typescript@4.9.4
       type-fest: 2.19.0
       uuid: 8.3.2
-      zod: 3.21.4
+      zod: 3.22.3
     transitivePeerDependencies:
       - typescript
     dev: false
@@ -26772,7 +26780,7 @@ packages:
     engines: {node: '>=14.18.0', npm: '>=8.0.0'}
     hasBin: true
     optionalDependencies:
-      fsevents: 2.3.2
+      fsevents: 2.3.3
     dev: true
 
   /rollup/3.29.1:
@@ -26780,7 +26788,7 @@ packages:
     engines: {node: '>=14.18.0', npm: '>=8.0.0'}
     hasBin: true
     optionalDependencies:
-      fsevents: 2.3.2
+      fsevents: 2.3.3
 
   /rtl-css-js/1.16.1:
     resolution: {integrity: sha512-lRQgou1mu19e+Ya0LsTvKrVJ5TYUbqCVPAiImX3UfLTenarvPUl1QFdvu5Z3PYmHT9RCcwIfbjRQBntExyj3Zg==}
@@ -27064,8 +27072,8 @@ packages:
       kind-of: 6.0.3
     dev: true
 
-  /sharp/0.32.5:
-    resolution: {integrity: sha512-0dap3iysgDkNaPOaOL4X/0akdu0ma62GcdC2NBQ+93eqpePdDdr2/LM0sFdDSMmN7yS+odyZtPsb7tx/cYBKnQ==}
+  /sharp/0.32.6:
+    resolution: {integrity: sha512-KyLTWwgcR9Oe4d9HwCwNM2l7+J0dUQwn/yf7S0EnTtb0eVS4RxO0eUSvxPtzT4F3SY+C4K6fqdv/DO27sJ/v/w==}
     engines: {node: '>=14.15.0'}
     requiresBuild: true
     dependencies:
@@ -28893,7 +28901,7 @@ packages:
       '@esbuild-kit/core-utils': 3.0.0
       '@esbuild-kit/esm-loader': 2.5.4
     optionalDependencies:
-      fsevents: 2.3.2
+      fsevents: 2.3.3
     dev: true
 
   /tty-table/4.1.6:
@@ -29811,7 +29819,7 @@ packages:
       resolve: 1.22.1
       rollup: 3.10.0
     optionalDependencies:
-      fsevents: 2.3.2
+      fsevents: 2.3.3
     dev: true
 
   /vite/4.1.4_@types+node@18.11.18:
@@ -29845,7 +29853,7 @@ packages:
       resolve: 1.22.1
       rollup: 3.10.0
     optionalDependencies:
-      fsevents: 2.3.2
+      fsevents: 2.3.3
     dev: true
 
   /vite/4.1.4_@types+node@18.17.1:
@@ -29879,7 +29887,7 @@ packages:
       resolve: 1.22.1
       rollup: 3.10.0
     optionalDependencies:
-      fsevents: 2.3.2
+      fsevents: 2.3.3
     dev: true
 
   /vite/4.1.4_@types+node@20.6.0:
@@ -29913,7 +29921,7 @@ packages:
       resolve: 1.22.1
       rollup: 3.10.0
     optionalDependencies:
-      fsevents: 2.3.2
+      fsevents: 2.3.3
     dev: true
 
   /vite/4.4.9:
@@ -29948,7 +29956,7 @@ packages:
       postcss: 8.4.29
       rollup: 3.29.1
     optionalDependencies:
-      fsevents: 2.3.2
+      fsevents: 2.3.3
 
   /vite/4.4.9_@types+node@18.11.18:
     resolution: {integrity: sha512-2mbUn2LlUmNASWwSCNSJ/EG2HuSRTnVNaydp6vMCm5VIqJsjMfbIWtbH2kDuwUVW5mMUKKZvGPX/rqeqVvv1XA==}
@@ -29983,7 +29991,7 @@ packages:
       postcss: 8.4.29
       rollup: 3.29.1
     optionalDependencies:
-      fsevents: 2.3.2
+      fsevents: 2.3.3
     dev: true
 
   /vite/4.4.9_@types+node@20.6.0:
@@ -30019,7 +30027,7 @@ packages:
       postcss: 8.4.29
       rollup: 3.29.1
     optionalDependencies:
-      fsevents: 2.3.2
+      fsevents: 2.3.3
 
   /vitefu/0.2.4_vite@4.4.9:
     resolution: {integrity: sha512-fanAXjSaf9xXtOOeno8wZXIhgia+CZury481LsDaV++lSvcU2R9Ch2bPh3PYFyoHW+w9LqAeYRISVQjUIew14g==}
@@ -30708,7 +30716,7 @@ packages:
   /zod-error/1.5.0:
     resolution: {integrity: sha512-zzopKZ/skI9iXpqCEPj+iLCKl9b88E43ehcU+sbRoHuwGd9F1IDVGQ70TyO6kmfiRL1g4IXkjsXK+g1gLYl4WQ==}
     dependencies:
-      zod: 3.21.4
+      zod: 3.22.3
     dev: false
 
   /zod/3.21.1:
@@ -30716,6 +30724,14 @@ packages:
 
   /zod/3.21.4:
     resolution: {integrity: sha512-m46AKbrzKVzOzs/DZgVnG5H55N1sv1M8qZU3A8RIKbs3mrACDNeIOeilDymVb2HdmP8uwshOCF4uJ8uM9rCqJw==}
+    dev: false
+
+  /zod/3.22.3:
+    resolution: {integrity: sha512-EjIevzuJRiRPbVH4mGc8nApb/lVLKVpmUhAaR5R5doKGfAnGJ6Gr3CViAVjP+4FWSxCsybeWQdcgCtbX+7oZug==}
+
+  /zod/3.22.4:
+    resolution: {integrity: sha512-iC+8Io04lddc+mVqQ9AZ7OQ2MrUKGN+oIQyq1vemgt46jwCwLfhq7/pwnBnNXXXZb8VTVLKwp9EDkx+ryxIWmg==}
+    dev: false
 
   /zwitch/2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
