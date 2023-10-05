@@ -1,8 +1,8 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { GetRunInput, GetRunService } from "~/services/runs/getRun.server";
 import { apiCors } from "~/utils/apiCors";
 import { taskListToTree } from "~/utils/taskListToTree";
 
@@ -51,52 +51,16 @@ export async function loader({ request, params }: LoaderArgs) {
 
   const query = parsedQuery.data;
   const showTaskDetails = query.taskdetails && authenticationResult.type === "PRIVATE";
-
   const take = Math.min(query.take, 50);
 
-  const jobRun = await prisma.jobRun.findUnique({
-    where: {
-      id: runId,
-    },
-    select: {
-      id: true,
-      status: true,
-      startedAt: true,
-      updatedAt: true,
-      completedAt: true,
-      environmentId: true,
-      output: true,
-      tasks: {
-        select: {
-          id: true,
-          parentId: true,
-          displayKey: true,
-          status: true,
-          name: true,
-          icon: true,
-          startedAt: true,
-          completedAt: true,
-          params: showTaskDetails,
-          output: showTaskDetails,
-        },
-        where: {
-          parentId: query.subtasks ? undefined : null,
-        },
-        orderBy: {
-          id: "asc",
-        },
-        take: take + 1,
-        cursor: query.cursor
-          ? {
-              id: query.cursor,
-            }
-          : undefined,
-      },
-      statuses: {
-        select: { key: true, label: true, state: true, data: true, history: true },
-      },
-    },
-  });
+  const service = new GetRunService();
+  const jobRun = await service.call({
+    runId: runId,
+    maxTasks: take,
+    taskDetails: showTaskDetails,
+    subTasks: query.subtasks,
+    cursor: query.cursor,
+  } as GetRunInput);
 
   if (!jobRun) {
     return apiCors(request, json({ message: "Run not found" }, { status: 404 }));

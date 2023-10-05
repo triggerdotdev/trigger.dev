@@ -642,6 +642,10 @@ export class TriggerClient {
     return this.#client.getRun(runId, options);
   }
 
+  async cancelRun(runId: string) {
+    return this.#client.cancelRun(runId);
+  }
+
   async getRuns(jobSlug: string, options?: GetRunsOptions) {
     return this.#client.getRuns(jobSlug, options);
   }
