@@ -196,7 +196,6 @@ export async function devCommand(path: string, anyOptions: any) {
   });
 
   watcher.on("all", (_event, _path) => {
-    console.log(_event, _path);
     throttle(refresh, throttleTimeMs);
   });
 
