@@ -330,6 +330,9 @@ export class IO {
             text: event.name,
           },
           ...(event?.id ? [{ label: "ID", text: event.id }] : []),
+          ...(options?.batchKey ? [{ label: "Batch Key", text: options.batchKey }] : []),
+          ...(options?.deliverAfter ? [{ label: "Deliver After", text: String(options.deliverAfter) }] : []),
+          ...(options?.deliverAt ? [{ label: "Deliver At", text: options.deliverAt.toISOString() }] : []),
         ],
       }
     );
