@@ -29,7 +29,7 @@
     "@trigger.dev/integration-kit": "workspace:^2.1.8",
     "@trigger.dev/sdk": "workspace:^2.1.8",
     "replicate": "^0.18.1",
-    "zod": "3.21.4"
+    "zod": "3.22.3"
   },
   "engines": {
     "node": ">=16.8.0"
