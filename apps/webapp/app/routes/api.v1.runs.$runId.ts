@@ -1,8 +1,8 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { ApiRunPresenter } from "~/presenters/ApiRunPresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { GetRunInput, GetRunService } from "~/services/runs/getRun.server";
 import { apiCors } from "~/utils/apiCors";
 import { taskListToTree } from "~/utils/taskListToTree";
 
@@ -53,14 +53,14 @@ export async function loader({ request, params }: LoaderArgs) {
   const showTaskDetails = query.taskdetails && authenticationResult.type === "PRIVATE";
   const take = Math.min(query.take, 50);
 
-  const service = new GetRunService();
-  const jobRun = await service.call({
+  const presenter = new ApiRunPresenter();
+  const jobRun = await presenter.call({
     runId: runId,
     maxTasks: take,
     taskDetails: showTaskDetails,
     subTasks: query.subtasks,
     cursor: query.cursor,
-  } as GetRunInput);
+  });
 
   if (!jobRun) {
     return apiCors(request, json({ message: "Run not found" }, { status: 404 }));

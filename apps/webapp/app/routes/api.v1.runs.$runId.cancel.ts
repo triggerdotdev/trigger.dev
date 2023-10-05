@@ -4,7 +4,7 @@ import { PrismaErrorSchema } from "~/db.server";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { CancelRunService } from "~/services/runs/cancelRun.server";
-import { GetRunInput, GetRunService } from "~/services/runs/getRun.server";
+import { ApiRunPresenter } from "~/presenters/ApiRunPresenter.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -31,9 +31,9 @@ export async function action({ request, params }: ActionArgs) {
 
   const { runId } = parsed.data;
 
-  const cancelRunService = new CancelRunService();
+  const service = new CancelRunService();
   try {
-    await cancelRunService.call({ runId });
+    await service.call({ runId });
   } catch (error) {
     const prismaError = PrismaErrorSchema.safeParse(error);
     // Record not found in the database
@@ -44,10 +44,10 @@ export async function action({ request, params }: ActionArgs) {
     }
   }
 
-  const getRunService = new GetRunService();
-  const jobRun = await getRunService.call({
+  const presenter = new ApiRunPresenter();
+  const jobRun = await presenter.call({
     runId: runId,
-  } as GetRunInput);
+  });
 
   if (!jobRun) {
     return json({ message: "Run not found" }, { status: 404 });

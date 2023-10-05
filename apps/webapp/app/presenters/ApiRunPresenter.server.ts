@@ -1,31 +1,33 @@
+import { Job } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
-import { z } from "zod";
 
-const GetRunInputSchema = z.object({
-  runId: z.string(),
-  maxTasks: z.number().default(20),
-  taskDetails: z.boolean().default(false),
-  subTasks: z.boolean().default(false),
-  cursor: z.string().optional(),
-});
+type ApiRunOptions = {
+  runId: Job["id"];
+  maxTasks?: number;
+  taskDetails?: boolean;
+  subTasks?: boolean;
+  cursor?: string;
+};
 
-export type GetRunInput = z.infer<typeof GetRunInputSchema>;
-
-export class GetRunService {
+export class ApiRunPresenter {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(input: GetRunInput) {
-    const parsedInput = GetRunInputSchema.parse(input);
-
-    const take = Math.min(parsedInput.maxTasks, 50);
+  public async call({
+    runId,
+    maxTasks = 20,
+    taskDetails = false,
+    subTasks = false,
+    cursor,
+  }: ApiRunOptions) {
+    const take = Math.min(maxTasks, 50);
 
     return await prisma.jobRun.findUnique({
       where: {
-        id: input.runId,
+        id: runId,
       },
       select: {
         id: true,
@@ -45,19 +47,19 @@ export class GetRunService {
             icon: true,
             startedAt: true,
             completedAt: true,
-            params: parsedInput.taskDetails,
-            output: parsedInput.taskDetails,
+            params: taskDetails,
+            output: taskDetails,
           },
           where: {
-            parentId: parsedInput.subTasks ? undefined : null,
+            parentId: subTasks ? undefined : null,
           },
           orderBy: {
             id: "asc",
           },
           take: take + 1,
-          cursor: parsedInput.cursor
+          cursor: cursor
             ? {
-                id: parsedInput.cursor,
+                id: cursor,
               }
             : undefined,
         },
