@@ -399,6 +399,22 @@ export class ApiClient {
     );
   }
 
+  async cancelRun(runId: string) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Cancelling Run", {
+      runId,
+    });
+
+    return await zodfetch(GetRunSchema, `${this.#apiUrl}/api/v1/runs/${runId}/cancel`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+  }
+
   async getRunStatuses(runId: string) {
     const apiKey = await this.#apiKey();
 
