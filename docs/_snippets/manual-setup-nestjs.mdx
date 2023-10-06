@@ -1,0 +1,264 @@
+<Accordion defaultOpen title="Don't have a NestJS project yet to add Trigger.dev to? No problem, you can complete the Manual Setup using a blank NestJS project:">
+  Create a blank project by installing the NestJS CLI in your terminal:
+
+```bash
+npm i -g @nestjs/cli
+```
+
+Then, create an empty project with:
+
+```bash
+nest new project-name
+```
+
+</Accordion>
+
+## Installing Required Packages
+
+To begin, install the necessary packages in your NestJS project directory. You can choose one of the following package managers:
+
+<CodeGroup>
+```bash npm
+npm i @trigger.dev/sdk @trigger.dev/nestjs @nestjs/config
+```
+
+```bash pnpm
+pnpm install @trigger.dev/sdk @trigger.dev/nestjs @nestjs/config
+```
+
+```bash yarn
+yarn add @trigger.dev/sdk @trigger.dev/nestjs @nestjs/config
+```
+
+</CodeGroup>
+
+<br />
+
+<Note>Ensure that you execute this command within a NestJS project.</Note>
+
+## Obtaining the Development API Key
+
+To locate your development API key, login to the [Trigger.dev
+dashboard](https://cloud.trigger.dev) and select the Project you want to
+connect to. Then click on the Environments & API Keys tab in the left menu.
+You can copy your development API Key from the field at the top of this page.
+(Your development key will start with `tr_dev_`).
+
+## Adding Environment Variables
+
+Create a `.env` file at the root of your project and include your Trigger API key and URL like this:
+
+```bash
+TRIGGER_API_KEY=ENTER_YOUR_DEVELOPMENT_API_KEY_HERE
+TRIGGER_API_URL=https://api.trigger.dev # this line is only necessary if you are self-hosting Trigger
+```
+
+Replace `ENTER_YOUR_DEVELOPMENT_API_KEY_HERE` with the actual API key obtained from the previous step.
+
+<Note>
+  This configuration only will be loaded if you use [NestJS
+  Config](https://docs.nestjs.com/techniques/configuration) or
+  [dotenv](https://github.com/motdotla/dotenv).
+</Note>
+
+## Adding TriggerDev Module
+
+Open your `app.module.ts`, and add the following inside your `imports`:
+
+```typescript
+import { TriggerDevModule } from "@trigger.dev/nestjs";
+import { Module } from "@nestjs/common";
+
+//you need to load the environment variables from .env, this is one way to do it
+import "dotenv/config";
+
+@Module({
+  imports: [
+    TriggerDevModule.register({
+      id: "my-app",
+      apiKey: process.env.TRIGGER_API_KEY,
+      apiUrl: process.env.TRIGGER_API_URL,
+    }),
+    // if you use NestJS Config, you can do like this:
+    // TriggerDevModule.registerAsync({
+    //   useFactory: (configService: ConfigService) => ({
+    //     id: 'my-app',
+    //     apiKey: configService.get<string>("TRIGGER_API_KEY"),
+    //     apiUrl: configService.get<string>("TRIGGER_API_URL"),
+    //   }),
+    //   inject: [ConfigService],
+    // }),
+  ],
+})
+export class AppModule {
+  //...
+}
+```
+
+Replace **"my-app"** with an appropriate identifier for your project. The **apiKey** and **apiUrl** are obtained from the environment variables you set earlier.
+
+By following these steps, you'll configure the Trigger Client to work with your project.
+
+## Creating the Example Job
+
+When you add `TriggerDevModule` to your project, you will can have access to the `TriggerClient` instance by using the `@InjectTriggerDevClient()` decorator in the constructor.
+
+Now, let's create an example job to test the integration.
+
+1. Create a controller named `job.controller.ts` alongside your `app.module.ts`
+2. Inside that controller, add the following code:
+
+<CodeGroup>
+
+```typescript job.controller.ts
+import { Controller, Get } from "@nestjs/common";
+import { InjectTriggerDevClient } from "@trigger.dev/nestjs";
+import { eventTrigger, TriggerClient } from "@trigger.dev/sdk";
+
+@Controller()
+export class JobController {
+  constructor(@InjectTriggerDevClient() private readonly client: TriggerClient) {
+    this.client.defineJob({
+      id: "test-job",
+      name: "Test Job One",
+      version: "0.0.1",
+      trigger: eventTrigger({
+        name: "test.event",
+      }),
+      run: async (payload, io, ctx) => {
+        await io.logger.info("Hello world!", { payload });
+
+        return {
+          message: "Hello world!",
+        };
+      },
+    });
+  }
+
+  @Get()
+  getHello(): string {
+    return `Running Trigger.dev with client-id ${this.client.id}`;
+  }
+}
+```
+
+Now, add this controller to your `app.module.ts`:
+
+```typescript app.module.ts
+import { TriggerDevModule } from "@trigger.dev/nestjs";
+import { Module } from "@nestjs/common";
+import { JobController } from "./job.controller";
+
+//you need to load the environment variables from .env, this is one way to do it
+import "dotenv/config";
+
+@Module({
+  controllers: [JobController],
+  imports: [
+    TriggerDevModule.register({
+      id: "my-app",
+      apiKey: process.env.TRIGGER_API_KEY,
+      apiUrl: process.env.TRIGGER_API_URL,
+    }),
+    // if you use NestJS Config, you can do like this:
+    // TriggerDevModule.registerAsync({
+    //   useFactory: (configService: ConfigService) => ({
+    //     id: 'my-app',
+    //     apiKey: configService.get<string>("TRIGGER_API_KEY"),
+    //     apiUrl: configService.get<string>("TRIGGER_API_URL"),
+    //   }),
+    //   inject: [ConfigService],
+    // }),
+  ],
+})
+export class AppModule {
+  //...
+}
+```
+
+</CodeGroup>
+
+<br />
+<Note>
+  You can import the Trigger.dev client inside any `service` or `controller`, we recommend you to
+  create specialized `service` for each job you have for a better maintainability.
+</Note>
+
+## Adding Configuration to `package.json`
+
+Inside the `package.json` file, add the following configuration under the root object:
+
+```json
+"trigger.dev": {
+  "endpointId": "my-app"
+}
+```
+
+Your `package.json` file might look something like this:
+
+```json
+{
+  "name": "my-app",
+  "version": "1.0.0",
+  "dependencies": {
+    // ... other dependencies
+  },
+  "trigger.dev": {
+    "endpointId": "my-app"
+  }
+}
+```
+
+Replace **"my-app"** with the appropriate identifier you used during the step for creating the Trigger Client.
+
+## Running
+
+### Run your NestJS app
+
+Run your NestJS app locally, like you normally would. For example:
+
+<CodeGroup>
+
+```bash npm
+npm run start
+```
+
+```bash pnpm
+pnpm run start
+```
+
+```bash yarn
+yarn run start
+```
+
+</CodeGroup>
+
+### Run the CLI 'dev' command
+
+In a **_separate terminal window or tab_** run:
+
+<CodeGroup>
+
+```bash npm
+npx @trigger.dev/cli@latest dev
+```
+
+```bash pnpm
+pnpm dlx @trigger.dev/cli@latest dev
+```
+
+```bash yarn
+yarn dlx @trigger.dev/cli@latest dev
+```
+
+</CodeGroup>
+<br />
+<Note>
+  You can optionally pass the port if you're not running on 3000 by adding
+  `--port 3001` to the end
+</Note>
+
+<Note>
+  You can optionally pass the hostname if you're not running on localhost by adding
+  `--hostname <host>`. Example, in case your Remix is running on 0.0.0.0: `--hostname 0.0.0.0`.
+</Note>
