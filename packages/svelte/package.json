@@ -1,6 +1,6 @@
 {
 	"name": "@trigger.dev/svelte",
-	"version": "0.0.1",
+	"version": "2.1.9",
 	"description": "Trigger.dev Svelte SDK",
 	"license": "MIT",
 	"scripts": {
@@ -59,6 +59,6 @@
 		"@trigger.dev/core": "workspace:*",
 		"@trigger.dev/sdk": "workspace:*",
 		"esm-env": "^1.0.0",
-		"zod": "3.21.4"
+		"zod": "3.22.3"
 	}
 }

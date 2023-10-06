@@ -1017,13 +1017,13 @@ importers:
       typescript: ^5.0.0
       vite: ^4.4.2
       vitest: ^0.34.0
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@tanstack/svelte-query': 4.35.7_svelte@4.2.1
       '@trigger.dev/core': link:../core
       '@trigger.dev/sdk': link:../trigger-sdk
       esm-env: 1.0.0
-      zod: 3.21.4
+      zod: 3.22.3
     devDependencies:
       '@sveltejs/adapter-auto': 2.1.0_@sveltejs+kit@1.25.1
       '@sveltejs/kit': 1.25.1_svelte@4.2.1+vite@4.4.9
