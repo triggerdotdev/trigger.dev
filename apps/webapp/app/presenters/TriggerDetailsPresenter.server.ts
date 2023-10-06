@@ -36,8 +36,8 @@ export class TriggerDetailsPresenter {
     return {
       id: event.eventId,
       name: event.name,
-      payload: JSON.stringify(event.payload),
-      context: JSON.stringify(event.context),
+      payload: JSON.stringify(event.payload, null, 2),
+      context: JSON.stringify(event.context, null, 2),
       timestamp: event.timestamp,
       deliveredAt: event.deliveredAt,
       externalAccount: event.externalAccount
