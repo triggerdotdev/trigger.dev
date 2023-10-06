@@ -79,8 +79,8 @@ export async function devCommand(path: string, anyOptions: any) {
     telemetryClient.dev.failed("missing_api_key", resolvedOptions);
     return;
   }
-  const { apiUrl, envFile, apiKey } = apiDetails;
-  logger.success(`✔️ [trigger.dev] Found API Key in ${envFile} file`);
+  const { apiUrl, apiKey, apiKeySource } = apiDetails;
+  logger.success(`✔️ [trigger.dev] Found API Key in ${apiKeySource}`);
 
   //verify that the endpoint can be reached
   const verifiedEndpoint = await verifyEndpoint(resolvedOptions, endpointId, apiKey, framework);
@@ -118,7 +118,7 @@ export async function devCommand(path: string, anyOptions: any) {
     const refreshedEndpointId = await getEndpointIdFromPackageJson(resolvedPath, resolvedOptions);
 
     // Read from env file to get the TRIGGER_API_KEY and TRIGGER_API_URL
-    const apiDetails = await getTriggerApiDetails(resolvedPath, envFile);
+    const apiDetails = await getTriggerApiDetails(resolvedPath, resolvedOptions.envFile);
 
     if (!apiDetails) {
       connectingSpinner.fail(`[trigger.dev] Failed to connect: Missing API Key`);
