@@ -5,7 +5,7 @@
 	"license": "MIT",
 	"scripts": {
 		"dev": "vite dev",
-		"build": "svelte-package --input ./src --output ./build/lib",
+		"build": "svelte-package --input ./src --output ./build",
 		"preview": "vite preview",
 		"package": "svelte-kit sync && svelte-package && publint",
 		"prepublishOnly": "npm run package",
@@ -16,14 +16,14 @@
 		"format": "prettier --plugin-search-dir . --write ."
 	},
 	"type": "module",
-	"types": "build/lib/index.d.ts",
-	"module": "build/lib/index.js",
+	"types": "build/index.d.ts",
+	"module": "build/index.js",
 	"exports": {
 		".": {
-			"types": "./build/lib/index.d.ts",
-			"import": "./build/lib/index.js",
-			"svelte": "./build/lib/index.js",
-			"default": "./build/lib/index.js"
+			"types": "./build/index.d.ts",
+			"import": "./build/index.js",
+			"svelte": "./build/index.js",
+			"default": "./build/index.js"
 		},
 		"./package.json": "./package.json"
 	},
