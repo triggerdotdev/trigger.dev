@@ -25,6 +25,7 @@ import {
 } from "../../components/primitives/ClientTabs";
 import { ClipboardField } from "../../components/primitives/ClipboardField";
 import { CodeBlock } from "../../components/code/CodeBlock";
+import { InstallPackages } from "~/components/code/InstallPackages";
 
 export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="NestJS" />,
@@ -53,7 +54,7 @@ import { TriggerDevModule } from '@trigger.dev/nestjs';
   ],
 })
 export class AppModule {}
-`
+`;
 
 const JobControllerCode = `
 import { Controller, Get } from '@nestjs/common';
@@ -114,7 +115,7 @@ import { JobController } from './job.controller';
   ],
 })
 export class AppModule {}
-`
+`;
 
 export default function SetupNestJS() {
   const organization = useOrganization();
@@ -153,64 +154,48 @@ export default function SetupNestJS() {
         <>
           <StepNumber stepNumber="1" title="Add the dependencies" />
           <StepContentContainer>
-            <ClientTabs defaultValue="npm">
-              <ClientTabsList>
-                <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
-                <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
-                <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
-              </ClientTabsList>
-              <ClientTabsContent value={"npm"}>
-                <ClipboardField
-                  variant="primary/medium"
-                  className="mb-4"
-                  secure={`npm install @trigger.dev/sdk @trigger.dev/nestjs`}
-                  value={`npm install @trigger.dev/sdk @trigger.dev/nestjs`}
-                />
-              </ClientTabsContent>
-              <ClientTabsContent value={"pnpm"}>
-                <ClipboardField
-                  variant="primary/medium"
-                  className="mb-4"
-                  secure={`pnpm install @trigger.dev/sdk @trigger.dev/nestjs`}
-                  value={`pnpm install @trigger.dev/sdk @trigger.dev/nestjs`}
-                />
-              </ClientTabsContent>
-              <ClientTabsContent value={"yarn"}>
-                <ClipboardField
-                  variant="primary/medium"
-                  className="mb-4"
-                  secure={`yarn add @trigger.dev/sdk @trigger.dev/nestjs`}
-                  value={`yarn add @trigger.dev/sdk @trigger.dev/nestjs`}
-                />
-              </ClientTabsContent>
-            </ClientTabs>
+            <InstallPackages
+              packages={["@trigger.dev/sdk", "@trigger.dev/nestjs", "@nestjs/config"]}
+            />
           </StepContentContainer>
           <StepNumber stepNumber="2" title="Add the environment variables" />
-          <StepContentContainer>
-            <Paragraph>
-              Inside your `.env` file, create the following env variables:
-              <InlineCode variant="extra-small">TRIGGER_API_KEY={devEnvironment.apiKey}</InlineCode> and
-              <InlineCode variant="extra-small">TRIGGER_API_URL={appOrigin}</InlineCode>
-            </Paragraph>
+          <StepContentContainer className="flex flex-col gap-2">
+            <Paragraph>Inside your `.env` file, create the following env variables:</Paragraph>
+            <CodeBlock
+              fileName=".env"
+              showChrome
+              code={`TRIGGER_API_KEY=${devEnvironment.apiKey}\nTRIGGER_API_URL=${appOrigin}`}
+            />
           </StepContentContainer>
           <StepNumber stepNumber="3" title="Add the TriggerDevModule" />
-          <StepContentContainer>
-            <Paragraph>Now, go to your <InlineCode>app.module.ts</InlineCode> and add the <InlineCode>TriggerDevModule</InlineCode>:</Paragraph>
+          <StepContentContainer className="flex flex-col gap-2">
+            <Paragraph>
+              Now, go to your <InlineCode>app.module.ts</InlineCode> and add the{" "}
+              <InlineCode>TriggerDevModule</InlineCode>:
+            </Paragraph>
             <CodeBlock code={AppModuleCode}></CodeBlock>
           </StepContentContainer>
           <StepNumber stepNumber="4" title="Add the first job" />
           <StepContentContainer>
-            <Paragraph>Create a <InlineCode>controller</InlineCode> called <InlineCode>job.controller.ts</InlineCode> and add the following code:</Paragraph>
+            <Paragraph>
+              Create a <InlineCode>controller</InlineCode> called{" "}
+              <InlineCode>job.controller.ts</InlineCode> and add the following code:
+            </Paragraph>
             <CodeBlock code={JobControllerCode}></CodeBlock>
           </StepContentContainer>
           <StepNumber stepNumber="5" title="Update your app.module.ts" />
           <StepContentContainer>
-            <Paragraph>Now, add the new <InlineCode>controller</InlineCode> to your <InlineCode>app.module.ts</InlineCode>:</Paragraph>
+            <Paragraph>
+              Now, add the new <InlineCode>controller</InlineCode> to your{" "}
+              <InlineCode>app.module.ts</InlineCode>:
+            </Paragraph>
             <CodeBlock code={AppModuleWithControllerCode}></CodeBlock>
           </StepContentContainer>
           <StepNumber stepNumber="6" title="Run your app" />
           <StepContentContainer>
-            <Paragraph>Finally, run your project with <InlineCode>npm run start</InlineCode>:</Paragraph>
+            <Paragraph>
+              Finally, run your project with <InlineCode>npm run start</InlineCode>:
+            </Paragraph>
           </StepContentContainer>
           <StepNumber stepNumber="7" title="Wait for Jobs" displaySpinner />
           <StepContentContainer>
