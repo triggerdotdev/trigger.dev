@@ -39,6 +39,14 @@ TRIGGER_API_URL=https://api.trigger.dev # this is only necessary if you are self
 
 Replace `ENTER_YOUR_DEVELOPMENT_API_KEY_HERE` with the actual API key obtained from the previous step.
 
+## Syncing Environment Variable types (TypeScript)
+
+You will have type errors for your environment variables unless you run this command:
+
+```sh
+npx svelte-kit sync
+```
+
 ## Configuring the Trigger Client
 
 Create a file at `<root>/src/trigger.ts` or `<root>/trigger.ts` depending on whether you're using the `src` directory or not. `<root>` represents the root directory of your project.
@@ -68,11 +76,10 @@ Create a new file named `+server.(ts/js)` within the `src/routes/api/trigger` di
 
 ```typescript
 import { createSvelteRoute } from "@trigger.dev/sveltekit";
+import { client } from "../../../trigger";
 
-import { client } from "$trigger";
-
-// Replace this with your own jobs
-import "$jobs";
+//import all jobs
+import "../../../jobs";
 
 // Create the Svelte route handler using the createSvelteRoute function
 const svelteRoute = createSvelteRoute(client);
@@ -90,7 +97,7 @@ export const POST = svelteRoute.POST;
 
 ```typescript src/jobs/example.(ts/js)
 import { eventTrigger } from "@trigger.dev/sdk";
-import { client } from "$trigger";
+import { client } from "../trigger";
 
 // your first job
 client.defineJob({
@@ -110,7 +117,7 @@ client.defineJob({
 });
 ```
 
-```typescript index.(ts/js)
+```typescript src/jobs/index.(ts/js)
 // export all your job files here
 export * from "./example";
 ```
@@ -185,15 +192,15 @@ In a **_separate terminal window or tab_** run:
 <CodeGroup>
 
 ```bash npm
-npx @trigger.dev/cli@latest dev
+npx @trigger.dev/cli@latest dev --port 5173
 ```
 
 ```bash pnpm
-pnpm dlx @trigger.dev/cli@latest dev
+pnpm dlx @trigger.dev/cli@latest dev --port 5173
 ```
 
 ```bash yarn
-yarn dlx @trigger.dev/cli@latest dev
+yarn dlx @trigger.dev/cli@latest dev --port 5173
 ```
 
 </CodeGroup>
