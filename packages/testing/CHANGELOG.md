@@ -1,5 +1,15 @@
 # @trigger.dev/testing
 
+## 2.1.9
+
+### Patch Changes
+
+- 9a187f9e: upgrade zod to 3.22.3
+- Updated dependencies [9a187f9e]
+- Updated dependencies [2e9452ab]
+  - @trigger.dev/sdk@2.1.9
+  - @trigger.dev/core@2.1.9
+
 ## 2.1.8
 
 ### Patch Changes
