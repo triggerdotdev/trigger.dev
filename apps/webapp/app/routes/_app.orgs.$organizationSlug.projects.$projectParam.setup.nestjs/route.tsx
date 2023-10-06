@@ -2,9 +2,9 @@ import { ChatBubbleLeftRightIcon, Squares2X2Icon } from "@heroicons/react/20/sol
 import invariant from "tiny-invariant";
 import { Feedback } from "~/components/Feedback";
 import { PageGradient } from "~/components/PageGradient";
-import { InitCommand, RunDevCommand, TriggerDevStep } from "~/components/SetupCommands";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { InlineCode } from "~/components/code/InlineCode";
+import { InstallPackages } from "~/components/code/InstallPackages";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header1 } from "~/components/primitives/Headers";
@@ -17,15 +17,8 @@ import { useProject } from "~/hooks/useProject";
 import { useProjectSetupComplete } from "~/hooks/useProjectSetupComplete";
 import { Handle } from "~/utils/handle";
 import { projectSetupPath, trimTrailingSlash } from "~/utils/pathBuilder";
-import {
-  ClientTabs,
-  ClientTabsContent,
-  ClientTabsList,
-  ClientTabsTrigger,
-} from "../../components/primitives/ClientTabs";
-import { ClipboardField } from "../../components/primitives/ClipboardField";
 import { CodeBlock } from "../../components/code/CodeBlock";
-import { InstallPackages } from "~/components/code/InstallPackages";
+import { TriggerDevStep } from "~/components/SetupCommands";
 
 export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="NestJS" />,
@@ -85,10 +78,9 @@ export class JobController {
 
   @Get()
   getHello(): string {
-    return \`Running Trigger.dev with client-id \${ this.client.id }\`;
+    return \`Running Trigger.dev with client-id \${this.client.id}\`;
   }
-}
-`;
+}`;
 
 const AppModuleWithControllerCode = `
 import { Module } from '@nestjs/common';
@@ -98,7 +90,6 @@ import { JobController } from './job.controller';
 
 @Module({
   imports: [
-    controllers: [JobController],
     ConfigModule.forRoot({
       isGlobal: true,
     }),
@@ -113,9 +104,17 @@ import { JobController } from './job.controller';
       }),
     }),
   ],
+  controllers: [
+    //...existingControllers,
+    JobController
+  ],
 })
 export class AppModule {}
 `;
+
+const packageJsonCode = `"trigger.dev": {
+  "endpointId": "my-nest-app"
+}`;
 
 export default function SetupNestJS() {
   const organization = useOrganization();
@@ -160,7 +159,9 @@ export default function SetupNestJS() {
           </StepContentContainer>
           <StepNumber stepNumber="2" title="Add the environment variables" />
           <StepContentContainer className="flex flex-col gap-2">
-            <Paragraph>Inside your `.env` file, create the following env variables:</Paragraph>
+            <Paragraph>
+              Inside your <InlineCode>.env</InlineCode> file, create the following env variables:
+            </Paragraph>
             <CodeBlock
               fileName=".env"
               showChrome
@@ -173,31 +174,42 @@ export default function SetupNestJS() {
               Now, go to your <InlineCode>app.module.ts</InlineCode> and add the{" "}
               <InlineCode>TriggerDevModule</InlineCode>:
             </Paragraph>
-            <CodeBlock code={AppModuleCode}></CodeBlock>
+            <CodeBlock fileName="app.module.ts" showChrome code={AppModuleCode} />
           </StepContentContainer>
           <StepNumber stepNumber="4" title="Add the first job" />
-          <StepContentContainer>
+          <StepContentContainer className="flex flex-col gap-2">
             <Paragraph>
               Create a <InlineCode>controller</InlineCode> called{" "}
               <InlineCode>job.controller.ts</InlineCode> and add the following code:
             </Paragraph>
-            <CodeBlock code={JobControllerCode}></CodeBlock>
+            <CodeBlock fileName="src/job.controller.ts" showChrome code={JobControllerCode} />
           </StepContentContainer>
           <StepNumber stepNumber="5" title="Update your app.module.ts" />
-          <StepContentContainer>
+          <StepContentContainer className="flex flex-col gap-2">
             <Paragraph>
               Now, add the new <InlineCode>controller</InlineCode> to your{" "}
               <InlineCode>app.module.ts</InlineCode>:
             </Paragraph>
-            <CodeBlock code={AppModuleWithControllerCode}></CodeBlock>
+            <CodeBlock fileName="app.module.ts" showChrome code={AppModuleWithControllerCode} />
           </StepContentContainer>
-          <StepNumber stepNumber="6" title="Run your app" />
-          <StepContentContainer>
+          <StepNumber stepNumber="6" title="Update your package.json" />
+          <StepContentContainer className="flex flex-col gap-2">
+            <Paragraph>
+              Now, add this to the top-level of your <InlineCode>package.json</InlineCode>:
+            </Paragraph>
+            <CodeBlock fileName="package.json" showChrome code={packageJsonCode} />
+          </StepContentContainer>
+          <StepNumber stepNumber="7" title="Run your app" />
+          <StepContentContainer className="flex flex-col gap-2">
             <Paragraph>
               Finally, run your project with <InlineCode>npm run start</InlineCode>:
             </Paragraph>
           </StepContentContainer>
-          <StepNumber stepNumber="7" title="Wait for Jobs" displaySpinner />
+          <StepNumber stepNumber="8" title="Run the CLI 'dev' command" />
+          <StepContentContainer>
+            <TriggerDevStep />
+          </StepContentContainer>
+          <StepNumber stepNumber="9" title="Wait for Jobs" displaySpinner />
           <StepContentContainer>
             <Paragraph>This page will automatically refresh.</Paragraph>
           </StepContentContainer>
