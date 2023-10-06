@@ -69,6 +69,9 @@ Open your `app.module.ts`, and add the following inside your `imports`:
 import { TriggerDevModule } from "@trigger.dev/nestjs";
 import { Module } from "@nestjs/common";
 
+//you need to load the environment variables from .env, this is one way to do it
+import "dotenv/config";
+
 @Module({
   imports: [
     TriggerDevModule.register({
