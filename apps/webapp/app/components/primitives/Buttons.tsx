@@ -144,7 +144,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
   const textColorClassName = variation.textColor;
 
   return (
-    <div className={cn(fullWidth ? "flex" : "inline-flex text-xxs", btnClassName, className)}>
+    <div className={cn("flex", fullWidth ? "" : "w-fit text-xxs", btnClassName, className)}>
       <div
         className={cn(
           textAlignLeft ? "text-left" : "justify-center",
@@ -286,9 +286,13 @@ type NavLinkPropsType = Pick<NavLinkProps, "to" | "target"> &
   Omit<React.ComponentProps<typeof ButtonContent>, "className"> & {
     className?: (props: { isActive: boolean; isPending: boolean }) => string | undefined;
   };
-export const NavLinkButton = ({ to, className, ...props }: NavLinkPropsType) => {
+export const NavLinkButton = ({ to, className, target, ...props }: NavLinkPropsType) => {
   return (
-    <NavLink to={to} className={cn("group outline-none", props.fullWidth ? "w-full" : "")}>
+    <NavLink
+      to={to}
+      className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
+      target={target}
+    >
       {({ isActive, isPending }) => (
         <ButtonContent className={className && className({ isActive, isPending })} {...props} />
       )}

@@ -1,5 +1,35 @@
 # internal-platform
 
+## 2.1.9
+
+### Patch Changes
+
+- 9a187f9e: upgrade zod to 3.22.3
+
+## 2.1.8
+
+### Patch Changes
+
+- 6a992a19: First release of `@trigger.dev/replicate` integration with remote callback support.
+- ab9e4a98: Send client version back to the server via headers
+- ab9e4a98: Better performance when resuming a run, especially one with a large amount of tasks
+
+## 2.1.7
+
+## 2.1.6
+
+## 2.1.5
+
+## 2.1.4
+
+### Patch Changes
+
+- ad14983e: You can create statuses in your Jobs that can then be read using React hooks
+- 50137a6f: Decouple zod
+- c0dfa804: Add support for Bring Your Own Auth
+
+## 2.1.3
+
 ## 2.1.2
 
 ## 2.1.1

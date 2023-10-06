@@ -13,10 +13,11 @@ type RunOptions = {
   userId: string;
 };
 
-export type Run = NonNullable<Awaited<ReturnType<RunPresenter["call"]>>>;
-export type Task = NonNullable<Awaited<ReturnType<RunPresenter["call"]>>>["tasks"][number];
-export type Event = NonNullable<Awaited<ReturnType<RunPresenter["call"]>>>["event"];
+export type ViewRun = NonNullable<Awaited<ReturnType<RunPresenter["call"]>>>;
+export type ViewTask = NonNullable<Awaited<ReturnType<RunPresenter["call"]>>>["tasks"][number];
+export type ViewEvent = NonNullable<Awaited<ReturnType<RunPresenter["call"]>>>["event"];
 
+type QueryEvent = NonNullable<Awaited<ReturnType<RunPresenter["query"]>>>["event"];
 type QueryTask = NonNullable<Awaited<ReturnType<RunPresenter["query"]>>>["tasks"][number];
 
 export class RunPresenter {
@@ -76,11 +77,27 @@ export class RunPresenter {
         type: run.environment.type,
         slug: run.environment.slug,
       },
-      event: run.event,
+      event: this.#prepareEventData(run.event),
       tasks,
       runConnections: run.runConnections,
       missingConnections: run.missingConnections,
       error: runError,
+    };
+  }
+
+  #prepareEventData(event: QueryEvent) {
+    return {
+      id: event.eventId,
+      name: event.name,
+      payload: JSON.stringify(event.payload),
+      context: JSON.stringify(event.context),
+      timestamp: event.timestamp,
+      deliveredAt: event.deliveredAt,
+      externalAccount: event.externalAccount
+        ? {
+            identifier: event.externalAccount.identifier,
+          }
+        : undefined,
     };
   }
 
@@ -110,11 +127,17 @@ export class RunPresenter {
         },
         event: {
           select: {
-            id: true,
+            eventId: true,
             name: true,
             payload: true,
+            context: true,
             timestamp: true,
             deliveredAt: true,
+            externalAccount: {
+              select: {
+                identifier: true,
+              },
+            },
           },
         },
         tasks: {

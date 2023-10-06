@@ -4,6 +4,7 @@
     "jsx": "react",
     "moduleResolution": "node",
     "esModuleInterop": true,
+    "strict": true,
     "lib": ["es2015", "dom"],
     "paths": {
       "@trigger.dev/core": ["../core/src/index"],

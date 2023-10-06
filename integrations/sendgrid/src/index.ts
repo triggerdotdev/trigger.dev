@@ -15,20 +15,20 @@ type SendEmailData = Parameters<InstanceType<typeof MailService>["send"]>[0];
 
 export type SendGridIntegrationOptions = {
   id: string;
-  apiKey: string;
+  apiKey?: string;
 };
 
 export class SendGrid implements TriggerIntegration {
+  // @internal
   private _options: SendGridIntegrationOptions;
+  // @internal
   private _client?: MailService;
+  // @internal
   private _io?: IO;
+  // @internal
   private _connectionKey?: string;
 
   constructor(private options: SendGridIntegrationOptions) {
-    if (!options.apiKey) {
-      throw new Error(`Can't create SendGrid integration (${options.id}) as apiKey was undefined`);
-    }
-
     this._options = options;
   }
 
@@ -37,11 +37,19 @@ export class SendGrid implements TriggerIntegration {
   }
 
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
+    const apiKey = this._options.apiKey ?? auth?.accessToken;
+
+    if (!apiKey) {
+      throw new Error(
+        `Can't initialize SendGrid integration (${this._options.id}) as apiKey was undefined`
+      );
+    }
+
     const sendgrid = new SendGrid(this._options);
     sendgrid._io = io;
     sendgrid._connectionKey = connectionKey;
     sendgrid._client = new MailService();
-    sendgrid._client.setApiKey(this._options.apiKey);
+    sendgrid._client.setApiKey(apiKey);
     return sendgrid;
   }
 
@@ -62,7 +70,7 @@ export class SendGrid implements TriggerIntegration {
     if (!this._io) throw new Error("No IO");
     if (!this._connectionKey) throw new Error("No connection key");
 
-    return this._io.runTask<TResult>(
+    return this._io.runTask(
       key,
       (task, io) => {
         if (!this._client) throw new Error("No client");

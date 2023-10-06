@@ -1,9 +1,8 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { cors } from "remix-utils";
 import { z } from "zod";
-import { prisma } from "~/db.server";
-import { authenticateApiRequest, getApiKeyFromRequest } from "~/services/apiAuth.server";
+import { ApiRunPresenter } from "~/presenters/ApiRunPresenter.server";
+import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { apiCors } from "~/utils/apiCors";
 import { taskListToTree } from "~/utils/taskListToTree";
 
@@ -52,48 +51,15 @@ export async function loader({ request, params }: LoaderArgs) {
 
   const query = parsedQuery.data;
   const showTaskDetails = query.taskdetails && authenticationResult.type === "PRIVATE";
-
   const take = Math.min(query.take, 50);
 
-  const jobRun = await prisma.jobRun.findUnique({
-    where: {
-      id: runId,
-    },
-    select: {
-      id: true,
-      status: true,
-      startedAt: true,
-      updatedAt: true,
-      completedAt: true,
-      environmentId: true,
-      output: true,
-      tasks: {
-        select: {
-          id: true,
-          parentId: true,
-          displayKey: true,
-          status: true,
-          name: true,
-          icon: true,
-          startedAt: true,
-          completedAt: true,
-          params: showTaskDetails,
-          output: showTaskDetails,
-        },
-        where: {
-          parentId: query.subtasks ? undefined : null,
-        },
-        orderBy: {
-          id: "asc",
-        },
-        take: take + 1,
-        cursor: query.cursor
-          ? {
-              id: query.cursor,
-            }
-          : undefined,
-      },
-    },
+  const presenter = new ApiRunPresenter();
+  const jobRun = await presenter.call({
+    runId: runId,
+    maxTasks: take,
+    taskDetails: showTaskDetails,
+    subTasks: query.subtasks,
+    cursor: query.cursor,
   });
 
   if (!jobRun) {
@@ -122,6 +88,12 @@ export async function loader({ request, params }: LoaderArgs) {
         const { parentId, ...rest } = task;
         return { ...rest };
       }),
+      statuses: jobRun.statuses.map((s) => ({
+        ...s,
+        state: s.state ?? undefined,
+        data: s.data ?? undefined,
+        history: s.history ?? undefined,
+      })),
       nextCursor: nextTask ? nextTask.id : undefined,
     })
   );

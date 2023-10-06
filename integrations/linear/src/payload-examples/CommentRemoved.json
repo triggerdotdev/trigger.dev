@@ -1,0 +1,22 @@
+{
+  "data": {
+    "id": "a4083fcd-2513-4a9b-9a73-bab21cd56a95",
+    "body": "Gotta make you understand",
+    "issue": {
+      "id": "ee4d5612-0752-441a-95cd-2a0de56689d3",
+      "title": "Welcome to Rick's World ❤️‍🔥"
+    },
+    "userId": "b552c442-62c9-40da-9932-ed8cb6e15a3f",
+    "issueId": "ee4d5612-0752-441a-95cd-2a0de56689d3",
+    "editedAt": "2023-09-17T10:57:24.386Z",
+    "createdAt": "2023-09-17T10:57:11.751Z",
+    "updatedAt": "2023-09-17T10:57:24.387Z",
+    "reactionData": []
+  },
+  "type": "Comment",
+  "action": "remove",
+  "createdAt": "2023-09-17T10:57:37.324Z",
+  "webhookId": "d617c08b-47b6-4b09-a611-2e2f6d8fb99f",
+  "organizationId": "7c0221e0-76d2-45eb-b803-6163c046c534",
+  "webhookTimestamp": "2023-09-17T10:57:37.376Z"
+}

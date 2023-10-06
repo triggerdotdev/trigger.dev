@@ -16,24 +16,32 @@ export class RegisterScheduleSourceService {
     schedule,
     accountId,
     dynamicTrigger,
+    organizationId,
   }: {
     key: string;
     dispatcher: EventDispatcher;
     schedule: ScheduleMetadata;
     accountId?: string;
     dynamicTrigger?: DynamicTrigger;
+    organizationId: string;
   }) {
     const validatedSchedule = validateSchedule(schedule);
 
     return await $transaction(this.#prismaClient, async (tx) => {
       const externalAccount = accountId
-        ? await tx.externalAccount.findUniqueOrThrow({
+        ? await tx.externalAccount.upsert({
             where: {
               environmentId_identifier: {
                 environmentId: dispatcher.environmentId,
                 identifier: accountId,
               },
             },
+            create: {
+              environmentId: dispatcher.environmentId,
+              organizationId: organizationId,
+              identifier: accountId,
+            },
+            update: {},
           })
         : undefined;
 

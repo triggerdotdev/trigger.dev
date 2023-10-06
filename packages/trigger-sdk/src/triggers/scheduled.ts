@@ -11,6 +11,7 @@ import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
 import { EventSpecification, Trigger } from "../types";
 import cronstrue from "cronstrue";
+import { runLocalStorage } from "../runLocalStorage";
 
 type ScheduledEventSpecification = EventSpecification<ScheduledPayload>;
 
@@ -146,7 +147,9 @@ export class DynamicSchedule implements Trigger<ScheduledEventSpecification> {
   constructor(
     private client: TriggerClient,
     private options: DynamicIntervalOptions
-  ) {}
+  ) {
+    client.attachDynamicSchedule(this.options.id);
+  }
 
   get id() {
     return this.options.id;
@@ -164,18 +167,61 @@ export class DynamicSchedule implements Trigger<ScheduledEventSpecification> {
   }
 
   async register(key: string, metadata: ScheduleMetadata) {
-    return this.client.registerSchedule(this.id, key, metadata);
+    const runStore = runLocalStorage.getStore();
+
+    if (!runStore) {
+      return this.client.registerSchedule(this.id, key, metadata);
+    }
+
+    const { io } = runStore;
+
+    return await io.runTask(
+      [key, "register"],
+      async (task) => {
+        return this.client.registerSchedule(this.id, key, metadata);
+      },
+      {
+        name: "Register Schedule",
+        icon: metadata.type === "cron" ? "schedule-cron" : "schedule-interval",
+        properties: [
+          { label: "Dynamic Schedule", text: this.id },
+          { label: "Schedule ID", text: key },
+        ],
+        params: metadata,
+      }
+    );
   }
 
   async unregister(key: string) {
-    return this.client.unregisterSchedule(this.id, key);
+    const runStore = runLocalStorage.getStore();
+
+    if (!runStore) {
+      return this.client.unregisterSchedule(this.id, key);
+    }
+
+    const { io } = runStore;
+
+    return await io.runTask(
+      [key, "unregister"],
+      async (task) => {
+        return this.client.unregisterSchedule(this.id, key);
+      },
+      {
+        name: "Unregister Schedule",
+        icon: "schedule",
+        properties: [
+          { label: "Dynamic Schedule", text: this.id },
+          { label: "Schedule ID", text: key },
+        ],
+      }
+    );
   }
 
   attachToJob(
     triggerClient: TriggerClient,
     job: Job<Trigger<ScheduledEventSpecification>, any>
   ): void {
-    triggerClient.attachDynamicSchedule(this.options.id, job);
+    triggerClient.attachDynamicScheduleToJob(this.options.id, job);
   }
 
   get preprocessRuns() {

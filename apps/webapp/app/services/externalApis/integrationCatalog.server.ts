@@ -1,7 +1,9 @@
 import { airtable } from "./integrations/airtable";
 import { github } from "./integrations/github";
+import { linear } from "./integrations/linear";
 import { openai } from "./integrations/openai";
 import { plain } from "./integrations/plain";
+import { replicate } from "./integrations/replicate";
 import { resend } from "./integrations/resend";
 import { sendgrid } from "./integrations/sendgrid";
 import { slack } from "./integrations/slack";
@@ -33,8 +35,10 @@ export class IntegrationCatalog {
 export const integrationCatalog = new IntegrationCatalog({
   airtable,
   github,
+  linear,
   openai,
   plain,
+  replicate,
   resend,
   slack,
   stripe,

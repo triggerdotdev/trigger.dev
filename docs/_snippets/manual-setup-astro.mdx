@@ -5,15 +5,15 @@ To begin, install the necessary packages in your Astro project directory. You ca
 <CodeGroup>
 
 ```bash npm
-npm i @trigger.dev/sdk @trigger.dev/astro
+npm i @trigger.dev/sdk@latest @trigger.dev/astro@latest
 ```
 
 ```bash pnpm
-pnpm install @trigger.dev/sdk @trigger.dev/astro
+pnpm install @trigger.dev/sdk@latest @trigger.dev/astro@latest
 ```
 
 ```bash yarn
-yarn add @trigger.dev/sdk @trigger.dev/astro
+yarn add @trigger.dev/sdk@latest @trigger.dev/astro@latest
 ```
 
 </CodeGroup>
@@ -32,103 +32,54 @@ Create a `.env` file at the root of your project and include your Trigger API ke
 
 ```bash
 TRIGGER_API_KEY=ENTER_YOUR_DEVELOPMENT_API_KEY_HERE
-TRIGGER_API_URL=https://cloud.trigger.dev
+TRIGGER_API_URL=https://api.trigger.dev # this is only necessary if you are self-hosting
 ```
 
 Replace `ENTER_YOUR_DEVELOPMENT_API_KEY_HERE` with the actual API key obtained from the previous step.
 
 ## Configuring the Trigger Client
 
-To set up the Trigger Client for your project, follow these steps:
+Create a file at `<root>/trigger.ts` or `<root>/src/trigger.ts`, depending on if your project uses a `src` directory, where `<root>` represents the root directory of your project.
 
-1. **Create Configuration File:**
+Next, add the following code to the file which creates and exports a new `TriggerClient`:
 
-   In your project directory, create a configuration file named `trigger.ts` or `trigger.js`, depending on whether your project uses TypeScript (`.ts`) or JavaScript (`.js`).
+```typescript src/trigger.ts
+import { TriggerClient } from "@trigger.dev/sdk";
 
-2. **Choose Directory:**
+export const client = new TriggerClient({
+  id: "my-astro-app",
+  apiKey: import.meta.env.TRIGGER_API_KEY,
+  apiUrl: import.meta.env.TRIGGER_API_URL,
+});
+```
 
-   Depending on your project structure, choose the appropriate directory for the configuration file. If your project uses a `src` directory, create the file within it or Otherwise, create it directly in the project root.
+Replace **"my-astro-app"** with an appropriate identifier for your project.
 
-3. **Add Configuration Code:**
+## Update the astro.config file to enable SSR (Server Side Rendering)
 
-   Open the configuration file you created and add the following code:
-
-   ```typescript src/trigger.(ts/js)
-   // trigger.ts (for TypeScript) or trigger.js (for JavaScript)
-
-   import { TriggerClient } from "@trigger.dev/sdk";
-
-   export const client = new TriggerClient({
-     id: "my-app",
-     apiKey: process.env.TRIGGER_API_KEY,
-     apiUrl: process.env.TRIGGER_API_URL,
-   });
-   ```
-
-   Replace **"my-app"** with an appropriate identifier for your project. The **apiKey** and **apiUrl** are obtained from the environment variables you set earlier.
-
-4. **File Location:**
-
-   - You can save the file within the **src** directory or in the project rooot.
-
-   **Example Directory Structure with src:**
-
-   ```
-       project-root/
-       ├── src/
-           ├── trigger.ts
-       ├── other files...
-   ```
-
-   **Example Directory Structure without src:**
-
-   ```
-       project-root/
-       ├── trigger.ts
-       ├── other files...
-   ```
-
-By following these steps, you'll configure the Trigger Client to work with your project, regardless of whether you have a separate **src** directory and whether you're using TypeScript or JavaScript files.
-
-## update the astro.config file to enable ssr
-
-- You need to enable ssr to use API endpoints that would be in the `pages/api` folder
+- You need to enable SSR to use API endpoints (which are required by Trigger.dev).
 
 ```typescript astro.config.mjs
 import { defineConfig } from "astro/config";
 
 export default defineConfig({
+  //alternatively you can use "hybrid" instead of "server"
   output: "server",
 });
 ```
 
-## Creating the API Route
+To learn more about SSR, head over to the [Astro docs on SSR](https://docs.astro.build/en/guides/server-side-rendering/).
 
-To establish an API route for interacting with Trigger.dev, follow these steps based on your project's file type and structure
+## Creating an Example Job
 
-1. Create a new file named `trigger.(ts/js)` within the `pages/api/` directory.
-2. Add the following code to `trigger.(ts/js)`:
-
-```typescript api/trigger.ts/js
-import { createAstroRoute } from "@trigger.dev/astro";
-import { client } from "@/trigger";
-
-//import your jobs
-import "@/jobs";
-
-export const { POST } = createAstroRoute(client);
-```
-
-## Creating the Example Job
-
-1. Create a folder named `Jobs` alongside your `pages` directory
-2. Inside the `Jobs` folder, add two files named `example.(ts/js)` and `index.(ts/js)`.
+1. Create a folder named `jobs` alongside your `pages` directory
+2. Inside the `jobs` folder, add two files named `example.ts` and `index.ts`.
 
 <CodeGroup>
 
-```typescript example.(ts/js)
+```typescript src/jobs/example.ts
 import { eventTrigger } from "@trigger.dev/sdk";
-import { client } from "@/trigger";
+import { client } from "../trigger";
 
 // your first job
 client.defineJob({
@@ -148,25 +99,30 @@ client.defineJob({
 });
 ```
 
-```typescript index.ts/index.(ts/js)
-// import all your job files here
-
-export * from "./examples";
+```typescript src/jobs/index.ts
+// export all your job files here
+export * from "./example";
 ```
 
 </CodeGroup>
 
-## Additonal Job Definitions
+## Creating the API Route
 
-You can define more job definitions by creating additional files in the `Jobs` folder and exporting them in `index` file.
+To establish an API route for interacting with Trigger.dev, follow these steps based on your project's file type and structure
 
-For example, in `index.(ts/js)`, you can export other job files like this:
+1. Create a new file named `trigger.ts` within the `pages/api/` directory.
+2. Add the following code to `trigger.ts`:
 
-```typescript
-// import all your job files here
+```typescript src/pages/api/trigger.ts
+import { createAstroRoute } from "@trigger.dev/astro";
+//you may need to update this path to point at your trigger.ts file
+import { client } from "../../trigger";
 
-export * from "./examples";
-export * from "./other-job-file";
+//import your jobs, this could be different depending on your project structure
+import "../../jobs";
+
+export const prerender = false;
+export const { POST } = createAstroRoute(client);
 ```
 
 ## Adding Configuration to `package.json`
@@ -175,7 +131,7 @@ Inside the `package.json` file, add the following configuration under the root o
 
 ```json
 "trigger.dev": {
-  "endpointId": "my-app"
+  "endpointId": "my-astro-app"
 }
 ```
 
@@ -189,12 +145,25 @@ Your `package.json` file might look something like this:
     // ... other dependencies
   },
   "trigger.dev": {
-    "endpointId": "my-app"
+    "endpointId": "my-astro-app"
   }
 }
 ```
 
-Replace **"my-app"** with the appropriate identifier you used during the step for creating the Trigger Client.
+Replace **"my-astro-app"** with the appropriate identifier you used during the step for creating the `TriggerClient`.
+
+## Additonal Job Definitions
+
+You can define more job definitions by creating additional files in the `jobs` folder and exporting them in `index` file.
+
+For example, in `index.ts`, you can export other job files like this:
+
+```typescript
+// import all your job files here
+
+export * from "./examples";
+export * from "./other-job-file";
+```
 
 ## Running
 
@@ -225,24 +194,27 @@ In a **_separate terminal window or tab_** run:
 <CodeGroup>
 
 ```bash npm
-npx @trigger.dev/cli@latest dev
+npx @trigger.dev/cli@latest dev --port 4321
 ```
 
 ```bash pnpm
-pnpm dlx @trigger.dev/cli@latest dev
+pnpm dlx @trigger.dev/cli@latest dev --port 4321
 ```
 
 ```bash yarn
-yarn dlx @trigger.dev/cli@latest dev
+yarn dlx @trigger.dev/cli@latest dev --port 4321
 ```
 
 </CodeGroup>
 <br />
 <Note>
-  You can optionally pass the port if you're not running on 3000 by adding
-  `--port 4321` to the end
+  Astro by default runs on port 4321.
 </Note>
 <Note>
   You can optionally pass the hostname if you're not running on localhost by adding
   `--hostname <host>`. Example, in case your Astro app is running on 0.0.0.0: `--hostname 0.0.0.0`.
 </Note>
+
+### Next Steps
+
+You should now see your example job in the Trigger.dev dashboard. You can now create additional jobs and use the Trigger.dev dashboard to test them.

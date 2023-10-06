@@ -125,8 +125,9 @@ export class IntegrationsPresenter {
             name: c.definition.name,
           },
           authMethod: {
-            type: c.authMethod?.type ?? "local",
-            name: c.authMethod?.name ?? "Local Only",
+            type: c.authMethod?.type ?? c.authSource === "RESOLVER" ? "resolver" : "local",
+            name:
+              c.authMethod?.name ?? c.authSource === "RESOLVER" ? "Auth Resolver" : "Local Only",
           },
           authSource: c.authSource,
           setupStatus: c.setupStatus,

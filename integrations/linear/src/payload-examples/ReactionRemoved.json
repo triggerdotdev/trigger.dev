@@ -1,0 +1,24 @@
+{
+  "data": {
+    "id": "a22b3a1f-109f-427f-aa59-78b4ab1d2944",
+    "user": {
+      "id": "b552c442-62c9-40da-9932-ed8cb6e15a3f",
+      "name": "Rick Astley"
+    },
+    "emoji": "heart",
+    "userId": "b552c442-62c9-40da-9932-ed8cb6e15a3f",
+    "comment": {
+      "id": "3f44c353-a3a1-45a4-b5da-259818ae21dd",
+      "body": "Never gonna!",
+      "userId": "b552c442-62c9-40da-9932-ed8cb6e15a3f"
+    },
+    "createdAt": "2023-09-17T11:31:27.394Z",
+    "updatedAt": "2023-09-17T11:31:27.394Z"
+  },
+  "type": "Reaction",
+  "action": "remove",
+  "createdAt": "2023-09-17T11:32:07.003Z",
+  "webhookId": "d617c08b-47b6-4b09-a611-2e2f6d8fb99f",
+  "organizationId": "7c0221e0-76d2-45eb-b803-6163c046c534",
+  "webhookTimestamp": "2023-09-17T11:32:07.088Z"
+}

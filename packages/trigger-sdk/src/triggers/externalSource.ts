@@ -1,5 +1,3 @@
-import { z } from "zod";
-
 import {
   DisplayProperty,
   EventFilter,
@@ -16,7 +14,7 @@ import { IOWithIntegrations, TriggerIntegration } from "../integrations";
 import { IO } from "../io";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
-import type { EventSpecification, Trigger, TriggerContext } from "../types";
+import type { EventSpecification, SchemaParser, Trigger, TriggerContext } from "../types";
 import { slugifyId } from "../utils";
 import { SerializableJson } from "@trigger.dev/core";
 import { ConnectionAuth } from "@trigger.dev/core";
@@ -154,8 +152,8 @@ type ExternalSourceOptions<
 > = {
   id: string;
   version: string;
-  schema: z.Schema<TParams>;
-  optionSchema?: z.Schema<TTriggerOptionDefinitions>;
+  schema: SchemaParser<TParams>;
+  optionSchema?: SchemaParser<TTriggerOptionDefinitions>;
   integration: TIntegration;
   register: RegisterFunction<TIntegration, TParams, TChannel, TTriggerOptionDefinitions>;
   filter?: FilterFunction<TParams, TTriggerOptionDefinitions>;
@@ -260,9 +258,7 @@ export class ExternalSource<
 }
 
 export type ExternalSourceParams<TExternalSource extends ExternalSource<any, any, any>> =
-  TExternalSource extends ExternalSource<any, infer TParams, any>
-    ? TParams & { filter?: EventFilter }
-    : never;
+  TExternalSource extends ExternalSource<any, infer TParams, any> ? TParams : never;
 
 export type ExternalSourceTriggerOptions<
   TEventSpecification extends EventSpecification<any>,

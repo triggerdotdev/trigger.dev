@@ -1,4 +1,4 @@
-import { ErrorWithStack, ServerTask } from "@trigger.dev/core";
+import { ErrorWithStack, SchemaError, ServerTask } from "@trigger.dev/core";
 
 export class ResumeWithTaskError {
   constructor(public task: ServerTask) {}
@@ -16,6 +16,14 @@ export class CanceledWithTaskError {
   constructor(public task: ServerTask) {}
 }
 
+export class YieldExecutionError {
+  constructor(public key: string) {}
+}
+
+export class ParsedPayloadSchemaError {
+  constructor(public schemaErrors: SchemaError[]) {}
+}
+
 /** Use this function if you're using a `try/catch` block to catch errors.
  * It checks if a thrown error is a special internal error that you should ignore.
  * If this returns `true` then you must rethrow the error: `throw err;`
@@ -28,6 +36,7 @@ export function isTriggerError(
   return (
     err instanceof ResumeWithTaskError ||
     err instanceof RetryWithTaskError ||
-    err instanceof CanceledWithTaskError
+    err instanceof CanceledWithTaskError ||
+    err instanceof YieldExecutionError
   );
 }

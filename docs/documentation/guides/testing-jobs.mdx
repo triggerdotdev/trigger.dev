@@ -14,9 +14,32 @@ There's a tab on the Job page called **Test**. Or you can click the "Test" butto
 
 ![Your options on the Test page](/images/test-annotated.png)
 
-1. Select the environment you'd like the test to run against.
-2. Some Triggers provide example payloads that you can select from. This will populate the code editor below.
-3. When you're happy with the payload, click **Run test**.
+<Steps>
+  <Step title="Edit JSON payload">
+    You will see errors inline if you have any syntax errors. You can use the *Clear* and *Copy*
+    buttons in the corner.
+  </Step>
+  <Step title="Example payloads">
+    Some Triggers provide example payloads that you can select from. When selected they will
+    populate the code editor below.
+  </Step>
+  <Step title="Recent payloads">
+    If you have previously done Runs, you can select from the most recent payloads. When selected
+    they will populate the code editor below.
+  </Step>
+  <Step title="Account ID">
+    If this Job has associated Accounts, enter an Account ID. See [testing with account
+    ids](/documentation/guides/using-integrations-byo-auth#testing-jobs-with-account-id) for more
+    information.
+  </Step>
+  <Step title="Environment selection">
+    Select the environment you'd like the test to run against.
+  </Step>
+  <Step title="Run test">
+    When you're happy with the payload, click **Run test**. Or press the shortcut key: `Cmd + Enter`
+    on Mac, `Ctrl + Enter` on Windows.
+  </Step>
+</Steps>
 
 ## Identifying test runs
 

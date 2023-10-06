@@ -266,9 +266,13 @@ class SupabaseDatabase<Database = any> {
 }
 
 export class SupabaseManagement implements TriggerIntegration {
+  // @internal
   private _options: SupabaseManagementIntegrationOptions;
+  // @internal
   private _client?: SupabaseManagementAPI;
+  // @internal
   private _io?: IO;
+  // @internal
   private _connectionKey?: string;
 
   constructor(private options: SupabaseManagementIntegrationOptions) {

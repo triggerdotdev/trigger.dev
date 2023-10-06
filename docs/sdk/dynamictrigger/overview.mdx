@@ -1,5 +1,6 @@
 ---
-title: "Overview"
+title: "DynamicTrigger: Overview"
+sidebarTitle: "Overview"
 description: "`DynamicTrigger` allows you to define a trigger that can be configured dynamically at runtime."
 ---
 
@@ -9,7 +10,7 @@ Sometimes you want to subscribe to a webhook but you don't know the exact config
 
 ### [DynamicTrigger()](/sdk/dynamictrigger/constructor)
 
-Creates a new `DynamicTrigger` instance.
+Creates a new `DynamicTrigger` instance. You should use the [`TriggerClient.defineDynamicTrigger`]() method instead of calling this directly.
 
 ## Instance methods
 
@@ -33,7 +34,7 @@ Use this method to unregister a schedule from the DynamicTrigger, using the id y
 
 ```typescript DynamicTrigger
 //1. create a DynamicTrigger
-const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
+const dynamicOnIssueOpenedTrigger = client.defineDynamicTrigger({
   id: "github-issue-opened",
   event: events.onIssueOpened,
   source: github.sources.repo,
@@ -59,7 +60,7 @@ client.defineJob({
 //3. Register the DynamicTrigger anywhere in your app
 async function registerRepo(owner: string, repo: string) {
   //the first param (key) should be unique
-  await dynamicOnIssueOpenedTrigger.register(`${owner}/${repo}`, {
+  await dynamicOnIssueOpenedTrigger.register(`${owner}-${repo}`, {
     owner,
     repo,
   });
@@ -76,16 +77,13 @@ client.defineJob({
     org: "triggerdotdev",
   }),
   run: async (payload, io, ctx) => {
-    //6. Register the dynamic trigger so you get notified when an issue is opened
-    return await io.registerTrigger(
-      "register-repo",
-      dynamicOnIssueOpenedTrigger,
-      payload.repository.name,
-      {
-        owner: payload.repository.owner.login,
-        repo: payload.repository.name,
-      }
-    );
+    const owner = payload.repository.owner.login;
+    const repo = payload.repository.name;
+    //6. Register the dynamic trigger so you get notified when an issue is opened. A task will automatically be created
+    await dynamicOnIssueOpenedTrigger.register(`${owner}-${repo}`, {
+      owner,
+      repo,
+    });
   },
 });
 ```

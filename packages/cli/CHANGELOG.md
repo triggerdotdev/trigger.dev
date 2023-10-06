@@ -1,5 +1,41 @@
 # create-trigger
 
+## 2.1.9
+
+### Patch Changes
+
+- 9a187f9e: upgrade zod to 3.22.3
+- 914745f6: Removed log when a file is changed
+
+## 2.1.8
+
+## 2.1.7
+
+### Patch Changes
+
+- 7760e094: Improved CLI init Next.js middleware detection
+
+## 2.1.6
+
+### Patch Changes
+
+- 2397fcb6: Added Express support to the CLI
+
+## 2.1.5
+
+### Patch Changes
+
+- 4578f6bd: Added Astro automatic installation
+
+## 2.1.4
+
+### Patch Changes
+
+- 486ed20a: Moved examples to references in the monorepo
+- 1a495272: CLI now supports multiple frameworks (starting with Next.js and Remix)
+
+## 2.1.3
+
 ## 2.1.2
 
 ## 2.1.1

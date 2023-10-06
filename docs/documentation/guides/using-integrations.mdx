@@ -1,12 +1,12 @@
 ---
-title: "Using Integrations"
-description: "How to use Integrations"
+title: "Integrations: Overview"
+sidebarTitle: "Overview"
+description: "How to use Trigger.dev Integrations"
 ---
 
 <Note>
-  You can use any API in your Jobs by using existing Node.js SDKs or HTTP
-  requests. Integrations just make it much easier especially when you want to
-  use OAuth. And you get great logging.
+  You can use any API in your Jobs by using existing Node.js SDKs or HTTP requests. Integrations
+  just make it much easier especially when you want to use OAuth. And you get great logging.
 </Note>
 
 [Integrations](/documentation/concepts/integrations) allow you to quickly use APIs, including webhooks and Tasks.
@@ -36,6 +36,14 @@ There are two ways to authenticate Integrations, OAuth and API Keys/Access Token
     href="/documentation/guides/using-integrations-oauth"
   >
     Use OAuth to connect an Integration for your team or your users
+  </Card>
+  <Card
+    title="Bring-your-own Auth"
+    icon="user"
+    href="/documentation/guides/using-integrations-byo-auth"
+  >
+    Use our integrations with your user’s auth credentials, using Clerk.com, Nango.dev, or rolling
+    your own with our custom auth resolvers
   </Card>
 </CardGroup>
 
@@ -121,7 +129,7 @@ import { Stripe } from "@trigger.dev/stripe";
 
 const stripe = new Stripe({
   id: "stripe",
-  apiKey: process.env.STRIPE_SECRET_KEY!
+  apiKey: process.env.STRIPE_SECRET_KEY!,
 });
 
 async function createCustomer() {
@@ -161,7 +169,6 @@ client.defineJob({
 Behind the scenes, our `@trigger.dev/github` integration will create a webhook on your repository that will call our API when a new push event is received. We will then start your Job with the payload from the push event.
 
 <Note>
-  If you are just using an integration to trigger a job but not using
-  authenticated tasks inside the job run, there is no need to pass the
-  integration in the job `integrations` option.
+  If you are just using an integration to trigger a job but not using authenticated tasks inside the
+  job run, there is no need to pass the integration in the job `integrations` option.
 </Note>

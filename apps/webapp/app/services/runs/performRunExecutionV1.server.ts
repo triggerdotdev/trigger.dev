@@ -1,9 +1,11 @@
 import {
   CachedTaskSchema,
   RunJobError,
+  RunJobInvalidPayloadError,
   RunJobResumeWithTask,
   RunJobRetryWithTask,
   RunJobSuccess,
+  RunJobUnresolvedAuthError,
   RunSourceContextSchema,
 } from "@trigger.dev/core";
 import type { Task } from "@trigger.dev/database";
@@ -261,6 +263,7 @@ export class PerformRunExecutionV1Service {
         .flat()
         .filter(Boolean)
         .map((t) => CachedTaskSchema.parse(t)),
+      yieldedExecutions: run.yieldedExecutions,
     });
 
     if (!response) {
@@ -342,6 +345,21 @@ export class PerformRunExecutionV1Service {
         await this.#cancelExecution(execution);
         break;
       }
+      case "UNRESOLVED_AUTH_ERROR": {
+        await this.#failRunWithUnresolvedAuthError(execution, safeBody.data);
+
+        break;
+      }
+      case "INVALID_PAYLOAD": {
+        await this.#failRunWithInvalidPayloadError(execution, safeBody.data);
+
+        break;
+      }
+      case "YIELD_EXECUTION": {
+        await this.#resumeYieldedExecution(execution, safeBody.data.key);
+
+        break;
+      }
       default: {
         const _exhaustiveCheck: never = status;
         throw new Error(`Non-exhaustive match for value: ${status}`);
@@ -381,6 +399,40 @@ export class PerformRunExecutionV1Service {
     });
   }
 
+  async #resumeYieldedExecution(execution: FoundRunExecution, key: string) {
+    const { run } = execution;
+
+    return await $transaction(this.#prismaClient, async (tx) => {
+      await tx.jobRunExecution.update({
+        where: {
+          id: execution.id,
+        },
+        data: {
+          status: "SUCCESS",
+          completedAt: new Date(),
+          run: {
+            update: {
+              yieldedExecutions: {
+                push: key,
+              },
+            },
+          },
+        },
+      });
+
+      const newJobExecution = await tx.jobRunExecution.create({
+        data: {
+          runId: run.id,
+          reason: "EXECUTE_JOB",
+          status: "PENDING",
+          retryLimit: EXECUTE_JOB_RETRY_LIMIT,
+        },
+      });
+
+      await enqueueRunExecutionV1(newJobExecution, run.queue.id, run.queue.maxJobs, tx);
+    });
+  }
+
   async #resumeRunWithTask(execution: FoundRunExecution, data: RunJobResumeWithTask) {
     const { run } = execution;
 
@@ -397,7 +449,9 @@ export class PerformRunExecutionV1Service {
 
       // If the task has an operation, then the next performRunExecution will occur
       // when that operation has finished
-      if (!data.task.operation) {
+      // Tasks with callbacks enabled will also get processed separately, i.e. when
+      // they time out, or on valid requests to their callbackUrl
+      if (!data.task.operation && !data.task.callbackUrl) {
         const newJobExecution = await tx.jobRunExecution.create({
           data: {
             runId: run.id,
@@ -435,6 +489,24 @@ export class PerformRunExecutionV1Service {
       }
 
       await this.#failRunExecution(tx, execution, data.error ?? undefined);
+    });
+  }
+
+  async #failRunWithUnresolvedAuthError(
+    execution: FoundRunExecution,
+    data: RunJobUnresolvedAuthError
+  ) {
+    return await $transaction(this.#prismaClient, async (tx) => {
+      await this.#failRunExecution(tx, execution, data.issues, "UNRESOLVED_AUTH");
+    });
+  }
+
+  async #failRunWithInvalidPayloadError(
+    execution: FoundRunExecution,
+    data: RunJobInvalidPayloadError
+  ) {
+    return await $transaction(this.#prismaClient, async (tx) => {
+      await this.#failRunExecution(tx, execution, data.errors, "INVALID_PAYLOAD");
     });
   }
 
@@ -557,7 +629,7 @@ export class PerformRunExecutionV1Service {
     prisma: PrismaClientOrTransaction,
     execution: FoundRunExecution,
     output: Record<string, any>,
-    status: "FAILURE" | "ABORTED" = "FAILURE"
+    status: "FAILURE" | "ABORTED" | "UNRESOLVED_AUTH" | "INVALID_PAYLOAD" = "FAILURE"
   ): Promise<void> {
     const { run } = execution;
 
