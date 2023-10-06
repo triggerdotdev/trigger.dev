@@ -61,7 +61,6 @@ async function readEnvFilesWithBackups(
     const fallbackPath = pathModule.join(path, fallBack);
     const fallbackExists = await pathExists(fallbackPath);
 
-    console.log(fallbackPath, fallbackExists);
     if (fallbackExists) {
       const content = await readFile(fallbackPath);
 
