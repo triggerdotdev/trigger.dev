@@ -167,20 +167,22 @@ Replace **"my-app"** with the appropriate identifier you used during the step fo
 
 ### Run your Sveltekit app
 
-Run your Sveltekit app locally, like you normally would. For example:
+Run your Sveltekit app locally. You need to use the `--host` flag to allow the Trigger.dev CLI to connect to your app.
+
+For example:
 
 <CodeGroup>
 
 ```bash npm
-npm run dev
+npm run dev -- --open --host
 ```
 
 ```bash pnpm
-pnpm run dev
+pnpm run dev -- --open --host
 ```
 
 ```bash yarn
-yarn run dev
+yarn run dev -- --open --host
 ```
 
 </CodeGroup>

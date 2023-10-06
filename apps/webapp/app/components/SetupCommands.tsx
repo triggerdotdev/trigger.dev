@@ -44,7 +44,7 @@ export function InitCommand({ appOrigin, apiKey }: { appOrigin: string; apiKey: 
   );
 }
 
-export function RunDevCommand() {
+export function RunDevCommand({ extra }: { extra?: string }) {
   return (
     <ClientTabs defaultValue="npm">
       <ClientTabsList>
@@ -53,19 +53,19 @@ export function RunDevCommand() {
         <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
       </ClientTabsList>
       <ClientTabsContent value={"npm"}>
-        <ClipboardField variant="primary/medium" className="mb-4" value={`npm run dev`} />
+        <ClipboardField variant="primary/medium" className="mb-4" value={`npm run dev${extra}`} />
       </ClientTabsContent>
       <ClientTabsContent value={"pnpm"}>
-        <ClipboardField variant="primary/medium" className="mb-4" value={`pnpm run dev`} />
+        <ClipboardField variant="primary/medium" className="mb-4" value={`pnpm run dev${extra}`} />
       </ClientTabsContent>
       <ClientTabsContent value={"yarn"}>
-        <ClipboardField variant="primary/medium" className="mb-4" value={`yarn run dev`} />
+        <ClipboardField variant="primary/medium" className="mb-4" value={`yarn run dev${extra}`} />
       </ClientTabsContent>
     </ClientTabs>
   );
 }
 
-export function TriggerDevCommand() {
+export function TriggerDevCommand({ extra }: { extra?: string }) {
   return (
     <ClientTabs defaultValue="npm">
       <ClientTabsList>
@@ -77,34 +77,34 @@ export function TriggerDevCommand() {
         <ClipboardField
           variant="primary/medium"
           className="mb-4"
-          value={`npx @trigger.dev/cli@latest dev`}
+          value={`npx @trigger.dev/cli@latest dev${extra}`}
         />
       </ClientTabsContent>
       <ClientTabsContent value={"pnpm"}>
         <ClipboardField
           variant="primary/medium"
           className="mb-4"
-          value={`pnpm dlx @trigger.dev/cli@latest dev`}
+          value={`pnpm dlx @trigger.dev/cli@latest dev${extra}`}
         />
       </ClientTabsContent>
       <ClientTabsContent value={"yarn"}>
         <ClipboardField
           variant="primary/medium"
           className="mb-4"
-          value={`yarn dlx @trigger.dev/cli@latest dev`}
+          value={`yarn dlx @trigger.dev/cli@latest dev${extra}`}
         />
       </ClientTabsContent>
     </ClientTabs>
   );
 }
 
-export function TriggerDevStep() {
+export function TriggerDevStep({ extra }: { extra?: string }) {
   return (
     <>
       <Paragraph spacing>
         In a <span className="text-amber-400">separate terminal window or tab</span> run:
       </Paragraph>
-      <TriggerDevCommand />
+      <TriggerDevCommand extra={extra} />
       <Paragraph spacing variant="small">
         If you’re not running on the default you can specify the port by adding{" "}
         <InlineCode variant="extra-small">--port 3001</InlineCode> to the end.

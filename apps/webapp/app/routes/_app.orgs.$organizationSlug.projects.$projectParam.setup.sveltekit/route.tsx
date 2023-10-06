@@ -95,11 +95,11 @@ export default function SetUpSveltekit() {
             </StepContentContainer>
             <StepNumber stepNumber="2" title="Run your sveltekit app" />
             <StepContentContainer>
-              <RunDevCommand />
+              <RunDevCommand extra=" -- --open --host" />
             </StepContentContainer>
             <StepNumber stepNumber="3" title="Run the CLI 'dev' command" />
             <StepContentContainer>
-              <TriggerDevStep />
+              <TriggerDevStep extra=" --port 5173" />
             </StepContentContainer>
             <StepNumber stepNumber="6" title="Wait for Jobs" displaySpinner />
             <StepContentContainer>
