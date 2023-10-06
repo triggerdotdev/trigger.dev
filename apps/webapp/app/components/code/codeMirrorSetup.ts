@@ -28,7 +28,6 @@ export function getEditorSetup(showLineNumbers = true, showHighlights = true): A
         {
           key: "Mod-Enter",
           run: () => {
-            console.log("Mod-Enter");
             return true;
           },
           preventDefault: false,
