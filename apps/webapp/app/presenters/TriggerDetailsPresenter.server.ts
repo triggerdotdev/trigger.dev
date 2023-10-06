@@ -17,9 +17,10 @@ export class TriggerDetailsPresenter {
       select: {
         event: {
           select: {
-            id: true,
+            eventId: true,
             name: true,
             payload: true,
+            context: true,
             timestamp: true,
             deliveredAt: true,
             externalAccount: {
@@ -32,6 +33,18 @@ export class TriggerDetailsPresenter {
       },
     });
 
-    return event;
+    return {
+      id: event.eventId,
+      name: event.name,
+      payload: JSON.stringify(event.payload),
+      context: JSON.stringify(event.context),
+      timestamp: event.timestamp,
+      deliveredAt: event.deliveredAt,
+      externalAccount: event.externalAccount
+        ? {
+            identifier: event.externalAccount.identifier,
+          }
+        : undefined,
+    };
   }
 }
