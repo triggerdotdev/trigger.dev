@@ -12,7 +12,7 @@ export function createSvelteRoute(client: TriggerClient) {
       return json({ error: "Resource not found" }, { status: 404 });
     }
 
-    return json(response.body, { status: response.status });
+    return json(response.body, { status: response.status, headers: response.headers });
   };
   return { POST };
 }
