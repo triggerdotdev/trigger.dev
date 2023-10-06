@@ -16,7 +16,7 @@ export async function resolveRunConnections(
   const result: Record<string, ConnectionAuth> = {};
 
   for (const connection of connections) {
-    if (connection.integration.authSource === "LOCAL") {
+    if (connection.integration.authSource !== "HOSTED") {
       continue;
     }
 

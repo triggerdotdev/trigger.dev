@@ -71,13 +71,19 @@ export class RegisterSourceServiceV2 {
         }
 
         const externalAccount = accountId
-          ? await tx.externalAccount.findUniqueOrThrow({
+          ? await tx.externalAccount.upsert({
               where: {
                 environmentId_identifier: {
                   environmentId: environment.id,
                   identifier: accountId,
                 },
               },
+              create: {
+                environmentId: environment.id,
+                organizationId: environment.organizationId,
+                identifier: accountId,
+              },
+              update: {},
             })
           : undefined;
 

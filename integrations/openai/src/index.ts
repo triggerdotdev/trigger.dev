@@ -23,9 +23,13 @@ import { FineTunes } from "./fineTunes";
 export type OpenAIRunTask = InstanceType<typeof OpenAI>["runTask"];
 
 export class OpenAI implements TriggerIntegration {
+  // @internal
   private _options: OpenAIIntegrationOptions;
+  // @internal
   private _client?: OpenAIApi;
+  // @internal
   private _io?: IO;
+  // @internal
   private _connectionKey?: string;
 
   /**
@@ -46,10 +50,6 @@ export class OpenAI implements TriggerIntegration {
   public readonly native: OpenAIApi;
 
   constructor(private options: OpenAIIntegrationOptions) {
-    if (Object.keys(options).includes("apiKey") && !options.apiKey) {
-      throw `Can't create OpenAI integration (${options.id}) as apiKey was undefined`;
-    }
-
     this._options = options;
 
     this.native = new OpenAIApi({
@@ -63,11 +63,19 @@ export class OpenAI implements TriggerIntegration {
   }
 
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
+    const apiKey = this._options.apiKey ?? auth?.accessToken;
+
+    if (!apiKey) {
+      throw new Error(
+        `Can't initialize OpenAI integration (${this._options.id}) as apiKey was undefined`
+      );
+    }
+
     const openai = new OpenAI(this._options);
     openai._io = io;
     openai._connectionKey = connectionKey;
     openai._client = new OpenAIApi({
-      apiKey: this._options.apiKey,
+      apiKey,
       organization: this._options.organization,
     });
     return openai;

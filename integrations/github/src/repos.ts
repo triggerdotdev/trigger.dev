@@ -1,15 +1,9 @@
-import { truncate } from "@trigger.dev/integration-kit";
-import { IntegrationTaskKey, Prettify, retry } from "@trigger.dev/sdk";
-import { GitHubReturnType, GitHubRunTask, onError } from "./index";
+import { IntegrationTaskKey } from "@trigger.dev/sdk";
 import { Octokit } from "octokit";
-import { issueProperties, repoProperties } from "./propertyHelpers";
+import { GitHubReturnType, GitHubRunTask, onError } from "./index";
 
 export class Repos {
-  runTask: GitHubRunTask;
-
-  constructor(runTask: GitHubRunTask) {
-    this.runTask = runTask;
-  }
+  constructor(private runTask: GitHubRunTask) {}
 
   get(
     key: IntegrationTaskKey,

@@ -1,0 +1,24 @@
+## The two types of Run progress you can use
+
+1. Automatic updates of Run and Task progress (no extra Job code required)
+2. Explicitly created and updated `statuses` (more flexible and powerful)
+
+### Automatic updates
+
+These require no changes inside your Job code. You can receive:
+
+- Info about an event you sent, including the Runs it triggered.
+- The overall status of the Run (in progress, success and fail statuses).
+- Metadata like start and completed times.
+- The Run output (what is returned or an error that failed the Job)
+- Information about the Tasks that have completed/failed/are running.
+
+### Explicit `statuses`
+
+You can create `statuses` in your Job code. This gives you fine grained control over what you want to expose.
+
+It allows you to:
+
+- Show exactly what you want in your UI (with as many statuses as you want).
+- Pass arbitrary data to your UI, which you can use to render elements.
+- Update existing elements in your UI as the progress of the run continues.

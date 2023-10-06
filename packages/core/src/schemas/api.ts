@@ -2,7 +2,7 @@ import { ulid } from "ulid";
 import { z } from "zod";
 import { Prettify } from "../types";
 import { addMissingVersionField } from "./addMissingVersionField";
-import { ErrorWithStackSchema } from "./errors";
+import { ErrorWithStackSchema, SchemaErrorSchema } from "./errors";
 import { EventRuleSchema } from "./eventFilter";
 import { ConnectionAuthSchema, IntegrationConfigSchema } from "./integrations";
 import { DeserializedJsonSchema, SerializableJsonSchema } from "./json";
@@ -13,8 +13,10 @@ import {
   RegisterDynamicSchedulePayloadSchema,
   ScheduleMetadataSchema,
 } from "./schedules";
-import { CachedTaskSchema, TaskSchema } from "./tasks";
+import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
 import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
+import { RunStatusSchema } from "./runs";
+import { JobRunStatusRecordSchema } from "./statuses";
 
 export const UpdateTriggerSourceBodyV1Schema = z.object({
   registeredEvents: z.array(z.string()),
@@ -174,11 +176,13 @@ export type HttpSourceRequestHeaders = z.output<typeof HttpSourceRequestHeadersS
 
 export const PongSuccessResponseSchema = z.object({
   ok: z.literal(true),
+  triggerVersion: z.string().optional(),
 });
 
 export const PongErrorResponseSchema = z.object({
   ok: z.literal(false),
   error: z.string(),
+  triggerVersion: z.string().optional(),
 });
 
 export const PongResponseSchema = z.discriminatedUnion("ok", [
@@ -191,11 +195,13 @@ export type PongResponse = z.infer<typeof PongResponseSchema>;
 export const ValidateSuccessResponseSchema = z.object({
   ok: z.literal(true),
   endpointId: z.string(),
+  triggerVersion: z.string().optional(),
 });
 
 export const ValidateErrorResponseSchema = z.object({
   ok: z.literal(false),
   error: z.string(),
+  triggerVersion: z.string().optional(),
 });
 
 export const ValidateResponseSchema = z.discriminatedUnion("ok", [
@@ -289,6 +295,10 @@ export const IndexEndpointResponseSchema = z.object({
 });
 
 export type IndexEndpointResponse = z.infer<typeof IndexEndpointResponseSchema>;
+
+export const EndpointHeadersSchema = z.object({
+  "trigger-version": z.string().optional(),
+});
 
 export const RawEventSchema = z.object({
   /** The `name` property must exactly match any subscriptions you want to
@@ -392,6 +402,8 @@ export const RunSourceContextSchema = z.object({
   metadata: z.any(),
 });
 
+export type RunSourceContext = z.infer<typeof RunSourceContextSchema>;
+
 export const RunJobBodySchema = z.object({
   event: ApiEventLogSchema,
   job: z.object({
@@ -422,7 +434,10 @@ export const RunJobBodySchema = z.object({
     .optional(),
   source: RunSourceContextSchema.optional(),
   tasks: z.array(CachedTaskSchema).optional(),
+  cachedTaskCursor: z.string().optional(),
+  noopTasksSet: z.string().optional(),
   connections: z.record(ConnectionAuthSchema).optional(),
+  yieldedExecutions: z.string().array().optional(),
 });
 
 export type RunJobBody = z.infer<typeof RunJobBodySchema>;
@@ -434,6 +449,27 @@ export const RunJobErrorSchema = z.object({
 });
 
 export type RunJobError = z.infer<typeof RunJobErrorSchema>;
+
+export const RunJobYieldExecutionErrorSchema = z.object({
+  status: z.literal("YIELD_EXECUTION"),
+  key: z.string(),
+});
+
+export type RunJobYieldExecutionError = z.infer<typeof RunJobYieldExecutionErrorSchema>;
+
+export const RunJobInvalidPayloadErrorSchema = z.object({
+  status: z.literal("INVALID_PAYLOAD"),
+  errors: z.array(SchemaErrorSchema),
+});
+
+export type RunJobInvalidPayloadError = z.infer<typeof RunJobInvalidPayloadErrorSchema>;
+
+export const RunJobUnresolvedAuthErrorSchema = z.object({
+  status: z.literal("UNRESOLVED_AUTH_ERROR"),
+  issues: z.record(z.object({ id: z.string(), error: z.string() })),
+});
+
+export type RunJobUnresolvedAuthError = z.infer<typeof RunJobUnresolvedAuthErrorSchema>;
 
 export const RunJobResumeWithTaskSchema = z.object({
   status: z.literal("RESUME_WITH_TASK"),
@@ -466,7 +502,10 @@ export const RunJobSuccessSchema = z.object({
 export type RunJobSuccess = z.infer<typeof RunJobSuccessSchema>;
 
 export const RunJobResponseSchema = z.discriminatedUnion("status", [
+  RunJobYieldExecutionErrorSchema,
   RunJobErrorSchema,
+  RunJobUnresolvedAuthErrorSchema,
+  RunJobInvalidPayloadErrorSchema,
   RunJobResumeWithTaskSchema,
   RunJobRetryWithTaskSchema,
   RunJobCanceledWithTaskSchema,
@@ -590,6 +629,16 @@ export const RunTaskOptionsSchema = z.object({
   params: z.any(),
   /** The style of the log entry. */
   style: StyleSchema.optional(),
+  /** Allows you to expose a `task.callbackUrl` to use in your tasks. Enabling this feature will cause the task to return the data sent to the callbackUrl instead of the usual async callback result. */
+  callback: z
+    .object({
+      /** Causes the task to wait for and return the data of the first request sent to `task.callbackUrl`. */
+      enabled: z.boolean(),
+      /** Time to wait for the first request to `task.callbackUrl`. Default: One hour. */
+      timeoutInSeconds: z.number(),
+    })
+    .partial()
+    .optional(),
   /** Allows you to link the Integration connection in the logs. This is handled automatically in integrations.  */
   connectionKey: z.string().optional(),
   /** An operation you want to perform on the Trigger.dev platform, current only "fetch" is supported. If you wish to `fetch` use [`io.backgroundFetch()`](https://trigger.dev/docs/sdk/io/backgroundfetch) instead. */
@@ -616,9 +665,29 @@ export type RunTaskBodyInput = z.infer<typeof RunTaskBodyInputSchema>;
 
 export const RunTaskBodyOutputSchema = RunTaskBodyInputSchema.extend({
   params: DeserializedJsonSchema.optional().nullable(),
+  callback: z
+    .object({
+      enabled: z.boolean(),
+      timeoutInSeconds: z.number().default(3600),
+    })
+    .optional(),
 });
 
 export type RunTaskBodyOutput = z.infer<typeof RunTaskBodyOutputSchema>;
+
+export const RunTaskResponseWithCachedTasksBodySchema = z.object({
+  task: ServerTaskSchema,
+  cachedTasks: z
+    .object({
+      tasks: z.array(CachedTaskSchema),
+      cursor: z.string().optional(),
+    })
+    .optional(),
+});
+
+export type RunTaskResponseWithCachedTasksBody = z.infer<
+  typeof RunTaskResponseWithCachedTasksBodySchema
+>;
 
 export const CompleteTaskBodyInputSchema = RunTaskBodyInputSchema.pick({
   properties: true,
@@ -673,6 +742,7 @@ export type RegisterTriggerBodyV1 = z.infer<typeof RegisterTriggerBodySchemaV1>;
 export const RegisterTriggerBodySchemaV2 = z.object({
   rule: EventRuleSchema,
   source: SourceMetadataV2Schema,
+  accountId: z.string().optional(),
 });
 
 export type RegisterTriggerBodyV2 = z.infer<typeof RegisterTriggerBodySchemaV2>;
@@ -691,7 +761,7 @@ const RegisterCommonScheduleBodySchema = z.object({
   id: z.string(),
   /** Any additional metadata about the schedule. */
   metadata: z.any(),
-  /** This will be used by the Trigger.dev Connect feature, which is coming soon. */
+  /** An optional Account ID to associate with runs triggered by this schedule */
   accountId: z.string().optional(),
 });
 
@@ -729,3 +799,9 @@ export const CreateExternalConnectionBodySchema = z.object({
 });
 
 export type CreateExternalConnectionBody = z.infer<typeof CreateExternalConnectionBodySchema>;
+
+export const GetRunStatusesSchema = z.object({
+  run: z.object({ id: z.string(), status: RunStatusSchema, output: z.any().optional() }),
+  statuses: z.array(JobRunStatusRecordSchema),
+});
+export type GetRunStatuses = z.infer<typeof GetRunStatusesSchema>;

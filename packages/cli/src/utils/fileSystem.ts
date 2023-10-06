@@ -20,6 +20,20 @@ export async function pathExists(path: string): Promise<boolean> {
   }
 }
 
+export async function someFileExists(directory: string, filenames: string[]): Promise<boolean> {
+  for (let index = 0; index < filenames.length; index++) {
+    const filename = filenames[index];
+    if (!filename) continue;
+
+    const path = pathModule.join(directory, filename);
+    if (await pathExists(path)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export async function removeFile(path: string) {
   await fsModule.unlink(path);
 }

@@ -1,0 +1,67 @@
+---
+title: "defineAuthResolver()"
+description: "Define a custom auth resolver for a specific integration"
+---
+
+Auth Resolvers allow you to inject the authentication credentials of **your users**, using a third-party service like [Clerk](https://clerk.com/) or [Nango](https://www.nango.dev/) or your own custom solution.
+
+See our [Bring-your-own Auth Guide](/documentation/guides/using-integrations-byo-auth) for more about how this works.
+
+<RequestExample>
+
+```ts example
+client.defineAuthResolver(slack, async (ctx) => {
+  if (!ctx.account?.id) {
+    return;
+  }
+
+  const tokens = await clerk.users.getUserOauthAccessToken(ctx.account.id, "oauth_slack");
+
+  if (tokens.length === 0) {
+    throw new Error(`Could not find Slack auth for account ${ctx.account.id}`);
+  }
+
+  return {
+    type: "oauth",
+    token: tokens[0].token,
+  };
+});
+```
+
+</RequestExample>
+
+## Parameters
+
+<ParamField body="integration" type="TriggerIntegration" required>
+  The Integration client (e.g. `slack`) to define the auth resolver for.
+</ParamField>
+
+<ParamField body="resolver" type="AuthResolver" required>
+  The resolver function to use for this integration. Should return a [AuthResolverResult](#authresolverresult) object.
+
+{" "}
+
+<Expandable title="arguments" defaultOpen>
+  <ParamField body="ctx" type="TriggerContext" required>
+    The [TriggerContext](/sdk/context) object for the run that is requesting authentication.
+  </ParamField>
+  <ParamField body="integration" type="TriggerIntegration">
+    The Integration client that is requesting authentication.
+  </ParamField>
+</Expandable>
+
+</ParamField>
+
+## AuthResolverResult
+
+<ParamField body="type" type="string" required>
+  Should be either "apiKey" or "oauth"
+</ParamField>
+
+<ParamField body="token" type="string" required>
+  The authentication token to use for this integration.
+</ParamField>
+
+<ParamField body="additionalFields" type="Record<string, string>">
+  Additional fields to pass to the integration.
+</ParamField>

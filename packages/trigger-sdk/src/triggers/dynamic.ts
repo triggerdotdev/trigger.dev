@@ -9,6 +9,8 @@ import { TriggerClient } from "../triggerClient";
 import { EventSpecification, Trigger } from "../types";
 import { slugifyId } from "../utils";
 import { ExternalSource, ExternalSourceParams } from "./externalSource";
+import { runLocalStorage } from "../runLocalStorage";
+import { EventFilter } from "@trigger.dev/core";
 
 /** Options for a DynamicTrigger  */
 export type DynamicTriggerOptions<
@@ -24,7 +26,7 @@ export type DynamicTriggerOptions<
    * ```ts
    *  import { events } from "@trigger.dev/github";
    * 
-   *  const dynamicOnIssueOpened = new DynamicTrigger(client, {
+   *  const dynamicOnIssueOpened = client.defineDynamicTrigger({
         id: "github-issue-opened",
         event: events.onIssueOpened,
         source: github.sources.repo,
@@ -71,14 +73,22 @@ export class DynamicTrigger<
     return this.#options.event;
   }
 
-  registeredTriggerForParams(params: ExternalSourceParams<TExternalSource>): RegisterTriggerBodyV2 {
+  // @internal
+  registeredTriggerForParams(
+    params: ExternalSourceParams<TExternalSource>,
+    options: { accountId?: string; filter?: EventFilter } = {}
+  ): RegisterTriggerBodyV2 {
     const key = slugifyId(this.source.key(params));
 
     return {
       rule: {
         event: this.event.name,
         source: this.event.source,
-        payload: deepMergeFilters(this.source.filter(params), this.event.filter ?? {}),
+        payload: deepMergeFilters(
+          this.source.filter(params),
+          this.event.filter ?? {},
+          options.filter ?? {}
+        ),
       },
       source: {
         version: "2",
@@ -95,18 +105,53 @@ export class DynamicTrigger<
           authSource: this.source.integration.authSource,
         },
       },
+      accountId: options.accountId,
     };
   }
 
   /** Use this method to register a new configuration with the DynamicTrigger.
    * @param key The key for the configuration. This will be used to identify the configuration when it is triggered.
    * @param params The params for the configuration.
+   * @param options Options for the configuration.
+   * @param options.accountId The accountId to associate with the configuration.
+   * @param options.filter The filter to use for the configuration.
+   *
    */
   async register(
     key: string,
-    params: ExternalSourceParams<TExternalSource>
+    params: ExternalSourceParams<TExternalSource>,
+    options: { accountId?: string; filter?: EventFilter } = {}
   ): Promise<RegisterSourceEventV2> {
-    return this.#client.registerTrigger(this.id, key, this.registeredTriggerForParams(params));
+    const runStore = runLocalStorage.getStore();
+
+    if (!runStore) {
+      return this.#client.registerTrigger(
+        this.id,
+        key,
+        this.registeredTriggerForParams(params, options)
+      );
+    }
+
+    const { io } = runStore;
+
+    return await io.runTask(
+      [key, "register"],
+      async (task) => {
+        return this.#client.registerTrigger(
+          this.id,
+          key,
+          this.registeredTriggerForParams(params, options)
+        );
+      },
+      {
+        name: "Register Dynamic Trigger",
+        properties: [
+          { label: "Dynamic Trigger ID", text: this.id },
+          { label: "ID", text: key },
+        ],
+        params: params as any,
+      }
+    );
   }
 
   attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpec>, any>): void {

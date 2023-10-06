@@ -1,10 +1,10 @@
-## ✨ @trigger.dev/cli - Initialize your Next.js project to start using Trigger.dev
+## ✨ @trigger.dev/cli - Initialize your project to start using Trigger.dev
 
-Trigger.dev is an open source platform that makes it easy to create event-driven background tasks directly your Next.js project.
+Trigger.dev is an open source platform that makes it easy to create event-driven background tasks directly in your existing project.
 
 ## 💻 Usage
 
-To initialize your Next.js project using `@trigger.dev/cli`, run any of the following three commands and answer the prompts:
+To initialize your project using `@trigger.dev/cli`, run any of the following three commands and answer the prompts:
 
 ### npm
 

@@ -12,10 +12,6 @@ Use [eventTrigger()](/sdk/eventtrigger) on a Job to listen for events.
 
 <Snippet file="stable-key-param.mdx" />
 
-<ResponseField name="seconds" type="number" required>
-  The number of seconds to wait. This can be very long, serverless timeouts are not an issue.
-</ResponseField>
-
 <Snippet file="send-event-params.mdx" />
 
 ## Returns
@@ -24,7 +20,7 @@ Use [eventTrigger()](/sdk/eventtrigger) on a Job to listen for events.
 
 <RequestExample>
 
-```typescript Send an event
+```ts Send an event
 //this Job sends an event that triggers the second job
 client.defineJob({
   id: "job-1",

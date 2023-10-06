@@ -12,7 +12,7 @@ import {
 import { JobRunStatus, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { useMemo } from "react";
 import { usePathName } from "~/hooks/usePathName";
-import { Run } from "~/presenters/RunPresenter.server";
+import { ViewRun } from "~/presenters/RunPresenter.server";
 import { cancelSchema } from "~/routes/resources.runs.$runId.cancel";
 import { schema } from "~/routes/resources.runs.$runId.rerun";
 import { formatDuration } from "~/utils";
@@ -59,7 +59,7 @@ import { TaskCard } from "./TaskCard";
 import { TaskCardSkeleton } from "./TaskCardSkeleton";
 
 type RunOverviewProps = {
-  run: Run;
+  run: ViewRun;
   trigger: {
     icon: string;
     title: string;
@@ -167,7 +167,13 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
                 <RunPanelHeader icon={trigger.icon} title={trigger.title} />
                 <RunPanelBody>
                   <RunPanelProperties
-                    properties={[{ label: "Event name", text: run.event.name }, ...run.properties]}
+                    properties={[{ label: "Event name", text: run.event.name }]
+                      .concat(
+                        run.event.externalAccount
+                          ? [{ label: "Account ID", text: run.event.externalAccount.identifier }]
+                          : []
+                      )
+                      .concat(run.properties)}
                   />
                 </RunPanelBody>
               </RunPanel>

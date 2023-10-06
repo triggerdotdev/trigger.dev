@@ -207,7 +207,7 @@ export default defineConfig([
   // Install the dependencies
   await installDependencies(resolvedPath);
 
-  logger.success(`✅ Successfully initialized ${resolvedOptions.packageName} at ${resolvedPath}`);
+  logger.success(`✔ Successfully initialized ${resolvedOptions.packageName} at ${resolvedPath}`);
   logger.info("Next steps:");
   logger.info(`   1. If you generated code, double check it for errors.`);
   logger.info(
@@ -215,7 +215,7 @@ export default defineConfig([
   );
 
   if (triggerMonorepoPath) {
-    logger.info(`   3. Write some test jobs in the examples/job-catalog`);
+    logger.info(`   3. Write some test jobs in the references/job-catalog`);
   }
 }
 
@@ -499,7 +499,7 @@ async function updateJobCatalogWithNewIntegration(
   resolvedOptions: ResolvedCLIOptions
 ) {
   const packageName = getPackageName(resolvedOptions.packageName);
-  const jobCatalogPath = pathModule.join(monorepoPath, "examples", "job-catalog");
+  const jobCatalogPath = pathModule.join(monorepoPath, "references", "job-catalog");
   const jobCatalogSrcFolder = pathModule.join(jobCatalogPath, "src");
 
   const integrationFile = `export {}`;

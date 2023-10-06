@@ -1,5 +1,6 @@
 ---
-title: "Overview"
+title: "TriggerClient: Overview"
+sidebarTitle: "Overview"
 description: "TriggerClient is used to create a client that connects to the Trigger.dev platform"
 ---
 
@@ -11,6 +12,11 @@ export const client = new TriggerClient({
   apiKey: process.env.TRIGGER_API_KEY!,
 });
 ```
+
+<Warning>
+  The `TriggerClient` should only ever be used in a server-side environment. It is not safe to use
+  in a browser environment because it exposes your API Key.
+</Warning>
 
 ## Constructor
 
@@ -36,6 +42,10 @@ You can call this function from anywhere in your code to send an event. The othe
 
 The `getEvent()` method gets the event details for a given eventId.
 
+#### [cancelEvent()](/sdk/triggerclient/instancemethods/cancel-event)
+
+The `cancelEvent()` method cancels an event that is scheduled to be delivered in the future.
+
 #### [getRuns()](/sdk/triggerclient/instancemethods/getruns)
 
 The `getRuns()` method gets runs for a Job.
@@ -43,3 +53,19 @@ The `getRuns()` method gets runs for a Job.
 #### [getRun()](/sdk/triggerclient/instancemethods/getrun)
 
 The `getRun()` method gets the details for a given Run.
+
+#### [defineJob()](/sdk/triggerclient/instancemethods/define-job)
+
+The `defineJob()` method defines a new Job.
+
+#### [defineDynamicTrigger()](/sdk/triggerclient/instancemethods/define-dynamic-trigger)
+
+The `defineDynamicTrigger()` method defines a new Dynamic Trigger.
+
+#### [defineDynamicSchedule()](/sdk/triggerclient/instancemethods/define-dynamic-schedule)
+
+The `defineDynamicSchedule()` method defines a new Dynamic Schedule.
+
+#### [defineAuthResolver()](/sdk/triggerclient/instancemethods/define-auth-resolver)
+
+The `defineAuthResolver()` method defines a new Auth Resolver.

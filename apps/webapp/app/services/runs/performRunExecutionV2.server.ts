@@ -1,10 +1,17 @@
 import {
-  CachedTask,
+  API_VERSIONS,
+  BloomFilter,
+  ConnectionAuth,
+  EndpointHeadersSchema,
   RunJobError,
+  RunJobInvalidPayloadError,
   RunJobResumeWithTask,
   RunJobRetryWithTask,
   RunJobSuccess,
+  RunJobUnresolvedAuthError,
+  RunSourceContext,
   RunSourceContextSchema,
+  supportsFeature,
 } from "@trigger.dev/core";
 import { RuntimeEnvironmentType, type Task } from "@trigger.dev/database";
 import { generateErrorMessage } from "zod-error";
@@ -16,9 +23,16 @@ import { formatError } from "~/utils/formatErrors.server";
 import { safeJsonZodParse } from "~/utils/json";
 import { EndpointApi } from "../endpointApi.server";
 import { logger } from "../logger.server";
+import { prepareTasksForCaching, prepareTasksForCachingLegacy } from "~/models/task.server";
+import { MAX_RUN_YIELDED_EXECUTIONS } from "~/consts";
+import { ApiEventLog } from "@trigger.dev/core";
+import { RunJobBody } from "@trigger.dev/core";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type FoundTask = FoundRun["tasks"][number];
+
+// We need to limit the cached tasks to not be too large >3.5MB when serialized
+const TOTAL_CACHED_TASK_BYTE_LIMIT = 3500000;
 
 export type PerformRunExecutionV2Input = {
   id: string;
@@ -151,6 +165,29 @@ export class PerformRunExecutionV2Service {
       return;
     }
 
+    try {
+      if (
+        typeof process.env.BLOCKED_ORGS === "string" &&
+        process.env.BLOCKED_ORGS.includes(run.organizationId)
+      ) {
+        logger.debug("Skipping execution for blocked org", {
+          orgId: run.organizationId,
+        });
+
+        await this.#prismaClient.jobRun.update({
+          where: {
+            id: run.id,
+          },
+          data: {
+            status: "CANCELED",
+            completedAt: new Date(),
+          },
+        });
+
+        return;
+      }
+    } catch (e) {}
+
     const client = new EndpointApi(run.environment.apiKey, run.endpoint.url);
     const event = eventRecordToApiJson(run.event);
 
@@ -205,42 +242,42 @@ export class PerformRunExecutionV2Service {
 
     const sourceContext = RunSourceContextSchema.safeParse(run.event.sourceContext);
 
-    const { response, parser, errorParser, durationInMs } = await client.executeJobRequest({
+    const executionBody = await this.#createExecutionBody(
+      run,
+      [run.tasks, resumedTask].flat().filter(Boolean),
+      startedAt,
+      isRetry,
+      connections.auth,
       event,
-      job: {
-        id: run.version.job.slug,
-        version: run.version.version,
-      },
-      run: {
-        id: run.id,
-        isTest: run.isTest,
-        startedAt,
-        isRetry,
-      },
-      environment: {
-        id: run.environment.id,
-        slug: run.environment.slug,
-        type: run.environment.type,
-      },
-      organization: {
-        id: run.organization.id,
-        slug: run.organization.slug,
-        title: run.organization.title,
-      },
-      account: run.externalAccount
-        ? {
-            id: run.externalAccount.identifier,
-            metadata: run.externalAccount.metadata,
-          }
-        : undefined,
-      connections: connections.auth,
-      source: sourceContext.success ? sourceContext.data : undefined,
-      tasks: prepareTasksForRun([run.tasks, resumedTask].flat().filter(Boolean)),
-    });
+      sourceContext.success ? sourceContext.data : undefined
+    );
+
+    const { response, parser, errorParser, durationInMs } = await client.executeJobRequest(
+      executionBody
+    );
 
     if (!response) {
       return await this.#failRunExecutionWithRetry({
         message: `Connection could not be established to the endpoint (${run.endpoint.url})`,
+      });
+    }
+
+    // Update the endpoint version if it has changed
+    const rawHeaders = Object.fromEntries(response.headers.entries());
+    const headers = EndpointHeadersSchema.safeParse(rawHeaders);
+
+    if (
+      headers.success &&
+      headers.data["trigger-version"] &&
+      headers.data["trigger-version"] !== run.endpoint.version
+    ) {
+      await this.#prismaClient.endpoint.update({
+        where: {
+          id: run.endpoint.id,
+        },
+        data: {
+          version: headers.data["trigger-version"],
+        },
       });
     }
 
@@ -354,11 +391,110 @@ export class PerformRunExecutionV2Service {
         await this.#cancelExecution(run);
         break;
       }
+      case "UNRESOLVED_AUTH_ERROR": {
+        await this.#failRunWithUnresolvedAuthError(run, safeBody.data, durationInMs);
+
+        break;
+      }
+      case "INVALID_PAYLOAD": {
+        await this.#failRunWithInvalidPayloadError(run, safeBody.data, durationInMs);
+
+        break;
+      }
+      case "YIELD_EXECUTION": {
+        await this.#resumeYieldedRun(run, safeBody.data.key, isRetry, durationInMs, executionCount);
+        break;
+      }
       default: {
         const _exhaustiveCheck: never = status;
         throw new Error(`Non-exhaustive match for value: ${status}`);
       }
     }
+  }
+
+  async #createExecutionBody(
+    run: FoundRun,
+    tasks: FoundTask[],
+    startedAt: Date,
+    isRetry: boolean,
+    connections: Record<string, ConnectionAuth>,
+    event: ApiEventLog,
+    source?: RunSourceContext
+  ): Promise<RunJobBody> {
+    if (supportsFeature("lazyLoadedCachedTasks", run.endpoint.version)) {
+      const preparedTasks = prepareTasksForCaching(tasks, TOTAL_CACHED_TASK_BYTE_LIMIT);
+
+      return {
+        event,
+        job: {
+          id: run.version.job.slug,
+          version: run.version.version,
+        },
+        run: {
+          id: run.id,
+          isTest: run.isTest,
+          startedAt,
+          isRetry,
+        },
+        environment: {
+          id: run.environment.id,
+          slug: run.environment.slug,
+          type: run.environment.type,
+        },
+        organization: {
+          id: run.organization.id,
+          slug: run.organization.slug,
+          title: run.organization.title,
+        },
+        account: run.externalAccount
+          ? {
+              id: run.externalAccount.identifier,
+              metadata: run.externalAccount.metadata,
+            }
+          : undefined,
+        connections,
+        source,
+        tasks: preparedTasks.tasks,
+        cachedTaskCursor: preparedTasks.cursor,
+        noopTasksSet: prepareNoOpTasksBloomFilter(tasks),
+        yieldedExecutions: run.yieldedExecutions,
+      };
+    }
+
+    const preparedTasks = prepareTasksForCachingLegacy(tasks, TOTAL_CACHED_TASK_BYTE_LIMIT);
+
+    return {
+      event,
+      job: {
+        id: run.version.job.slug,
+        version: run.version.version,
+      },
+      run: {
+        id: run.id,
+        isTest: run.isTest,
+        startedAt,
+        isRetry,
+      },
+      environment: {
+        id: run.environment.id,
+        slug: run.environment.slug,
+        type: run.environment.type,
+      },
+      organization: {
+        id: run.organization.id,
+        slug: run.organization.slug,
+        title: run.organization.title,
+      },
+      account: run.externalAccount
+        ? {
+            id: run.externalAccount.identifier,
+            metadata: run.externalAccount.metadata,
+          }
+        : undefined,
+      connections,
+      source,
+      tasks: preparedTasks.tasks,
+    };
   }
 
   async #completeRunWithSuccess(run: FoundRun, data: RunJobSuccess, durationInMs: number) {
@@ -394,7 +530,9 @@ export class PerformRunExecutionV2Service {
 
       // If the task has an operation, then the next performRunExecution will occur
       // when that operation has finished
-      if (!data.task.operation) {
+      // Tasks with callbacks enabled will also get processed separately, i.e. when
+      // they time out, or on valid requests to their callbackUrl
+      if (!data.task.operation && !data.task.callbackUrl) {
         await enqueueRunExecutionV2(run, tx, {
           runAt: data.task.delayUntil ?? undefined,
           resumeTaskId: data.task.id,
@@ -429,6 +567,90 @@ export class PerformRunExecutionV2Service {
         "FAILURE",
         durationInMs
       );
+    });
+  }
+
+  async #failRunWithUnresolvedAuthError(
+    execution: FoundRun,
+    data: RunJobUnresolvedAuthError,
+    durationInMs: number
+  ) {
+    return await $transaction(this.#prismaClient, async (tx) => {
+      await this.#failRunExecution(
+        tx,
+        "EXECUTE_JOB",
+        execution,
+        data.issues,
+        "UNRESOLVED_AUTH",
+        durationInMs
+      );
+    });
+  }
+
+  async #failRunWithInvalidPayloadError(
+    execution: FoundRun,
+    data: RunJobInvalidPayloadError,
+    durationInMs: number
+  ) {
+    return await $transaction(this.#prismaClient, async (tx) => {
+      await this.#failRunExecution(
+        tx,
+        "EXECUTE_JOB",
+        execution,
+        data.errors,
+        "INVALID_PAYLOAD",
+        durationInMs
+      );
+    });
+  }
+
+  async #resumeYieldedRun(
+    run: FoundRun,
+    key: string,
+    isRetry: boolean,
+    durationInMs: number,
+    executionCount: number
+  ) {
+    await $transaction(this.#prismaClient, async (tx) => {
+      if (run.yieldedExecutions.length + 1 > MAX_RUN_YIELDED_EXECUTIONS) {
+        return await this.#failRunExecution(
+          tx,
+          "EXECUTE_JOB",
+          run,
+          {
+            message: `Run has yielded too many times, the maximum is ${MAX_RUN_YIELDED_EXECUTIONS}`,
+          },
+          "FAILURE",
+          durationInMs
+        );
+      }
+
+      await tx.jobRun.update({
+        where: {
+          id: run.id,
+        },
+        data: {
+          executionDuration: {
+            increment: durationInMs,
+          },
+          executionCount: {
+            increment: 1,
+          },
+          yieldedExecutions: {
+            push: key,
+          },
+        },
+        select: {
+          yieldedExecutions: true,
+          executionCount: true,
+        },
+      });
+
+      await enqueueRunExecutionV2(run, tx, {
+        isRetry,
+        skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
+        executionCount,
+      });
     });
   }
 
@@ -556,7 +778,7 @@ export class PerformRunExecutionV2Service {
     reason: "EXECUTE_JOB" | "PREPROCESS",
     run: FoundRun,
     output: Record<string, any>,
-    status: "FAILURE" | "ABORTED" | "TIMED_OUT" = "FAILURE",
+    status: "FAILURE" | "ABORTED" | "TIMED_OUT" | "UNRESOLVED_AUTH" | "INVALID_PAYLOAD" = "FAILURE",
     durationInMs: number = 0
   ): Promise<void> {
     await $transaction(prisma, async (tx) => {
@@ -617,69 +839,16 @@ export class PerformRunExecutionV2Service {
   }
 }
 
-function prepareTasksForRun(possibleTasks: FoundTask[]): CachedTask[] {
-  const tasks = possibleTasks.filter((task) => task.status === "COMPLETED");
+function prepareNoOpTasksBloomFilter(possibleTasks: FoundTask[]): string {
+  const tasks = possibleTasks.filter((task) => task.status === "COMPLETED" && task.noop);
 
-  // We need to limit the cached tasks to not be too large >3.5MB when serialized
-  const TOTAL_CACHED_TASK_BYTE_LIMIT = 3500000;
+  const filter = new BloomFilter(BloomFilter.NOOP_TASK_SET_SIZE);
 
-  const cachedTasks = new Map<string, CachedTask>(); // Cache for prepared tasks
-  const cachedTaskSizes = new Map<string, number>(); // Cache for calculated task sizes
-
-  // Helper function to get the cached prepared task, or prepare and cache if not already cached
-  function getCachedTask(task: FoundTask): CachedTask {
-    const taskId = task.id;
-    if (!cachedTasks.has(taskId)) {
-      cachedTasks.set(taskId, prepareTaskForRun(task));
-    }
-    return cachedTasks.get(taskId)!;
+  for (const task of tasks) {
+    filter.add(task.idempotencyKey);
   }
 
-  // Helper function to get the cached task size, or calculate and cache if not already cached
-  function getCachedTaskSize(task: CachedTask): number {
-    const taskId = task.id;
-    if (!cachedTaskSizes.has(taskId)) {
-      cachedTaskSizes.set(taskId, calculateCachedTaskSize(task));
-    }
-    return cachedTaskSizes.get(taskId)!;
-  }
-
-  // Prepare tasks and calculate their sizes
-  const availableTasks = tasks.map((task) => {
-    const cachedTask = getCachedTask(task);
-    return { task: cachedTask, size: getCachedTaskSize(cachedTask) };
-  });
-
-  // Sort tasks in ascending order by size
-  availableTasks.sort((a, b) => a.size - b.size);
-
-  // Select tasks using greedy approach
-  const tasksToRun: CachedTask[] = [];
-  let remainingSize = TOTAL_CACHED_TASK_BYTE_LIMIT;
-
-  for (const { task, size } of availableTasks) {
-    if (size <= remainingSize) {
-      tasksToRun.push(task);
-      remainingSize -= size;
-    }
-  }
-
-  return tasksToRun;
-}
-
-function prepareTaskForRun(task: FoundTask): CachedTask {
-  return {
-    id: task.idempotencyKey, // We should eventually move this back to task.id
-    status: task.status,
-    idempotencyKey: task.idempotencyKey,
-    noop: task.noop,
-    output: task.output as any,
-    parentId: task.parentId,
-  };
-}
-
-function calculateCachedTaskSize(task: CachedTask): number {
-  return JSON.stringify(task).length;
+  return filter.serialize();
 }
 
 async function findRun(prisma: PrismaClientOrTransaction, id: string) {
@@ -713,6 +882,9 @@ async function findRun(prisma: PrismaClientOrTransaction, id: string) {
           noop: true,
           output: true,
           parentId: true,
+        },
+        orderBy: {
+          id: "asc",
         },
       },
       event: true,

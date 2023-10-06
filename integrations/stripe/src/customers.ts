@@ -9,11 +9,7 @@ import {
 import { omit } from "./utils";
 
 export class Customers {
-  runTask: StripeRunTask;
-
-  constructor(runTask: StripeRunTask) {
-    this.runTask = runTask;
-  }
+  constructor(private runTask: StripeRunTask) {}
 
   create(key: IntegrationTaskKey, params: CreateCustomerParams): Promise<CreateCustomerResponse> {
     return this.runTask(

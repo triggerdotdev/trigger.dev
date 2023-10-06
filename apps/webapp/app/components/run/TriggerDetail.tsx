@@ -25,7 +25,7 @@ export function TriggerDetail({
   };
   properties: DisplayProperty[];
 }) {
-  const { id, name, payload, timestamp, deliveredAt } = trigger;
+  const { id, name, payload, context, timestamp, deliveredAt } = trigger;
 
   return (
     <RunPanel selected={false}>
@@ -45,6 +45,14 @@ export function TriggerDetail({
             />
           )}
           <RunPanelIconProperty icon="id" label="Event name" value={name} />
+          <RunPanelIconProperty icon="account" label="Event ID" value={id} />
+          {trigger.externalAccount && (
+            <RunPanelIconProperty
+              icon="account"
+              label="Account ID"
+              value={trigger.externalAccount.identifier}
+            />
+          )}
         </RunPanelIconSection>
         <RunPanelDivider />
         <div className="mt-4 flex flex-col gap-2">
@@ -55,7 +63,9 @@ export function TriggerDetail({
             </div>
           )}
           <Header3>Payload</Header3>
-          <CodeBlock code={JSON.stringify(payload, null, 2)} />
+          <CodeBlock code={payload} />
+          <Header3>Context</Header3>
+          <CodeBlock code={context} />
         </div>
       </RunPanelBody>
     </RunPanel>

@@ -39,20 +39,27 @@ function onError(error: unknown) {
 
 export type ResendIntegrationOptions = {
   id: string;
-  apiKey: string;
+  apiKey?: string;
 };
 
 export class Resend implements TriggerIntegration {
+  /**
+   * @internal
+   */
   private _options: ResendIntegrationOptions;
+  /**
+   * @internal
+   */
   private _client?: ResendClient;
+  /**
+   * @internal
+   */
   private _io?: IO;
+
+  // @internal
   private _connectionKey?: string;
 
-  constructor(private options: ResendIntegrationOptions) {
-    if (Object.keys(options).includes("apiKey") && !options.apiKey) {
-      throw `Can't create Resend integration (${options.id}) as apiKey was undefined`;
-    }
-
+  constructor(options: ResendIntegrationOptions) {
     this._options = options;
   }
 
@@ -61,15 +68,23 @@ export class Resend implements TriggerIntegration {
   }
 
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
+    const apiKey = this._options.apiKey ?? auth?.accessToken;
+
+    if (!apiKey) {
+      throw new Error(
+        `Can't create Resend integration (${this._options.id}) as apiKey was undefined`
+      );
+    }
+
     const resend = new Resend(this._options);
     resend._io = io;
     resend._connectionKey = connectionKey;
-    resend._client = new ResendClient(this._options.apiKey);
+    resend._client = new ResendClient(apiKey);
     return resend;
   }
 
   get id() {
-    return this.options.id;
+    return this._options.id;
   }
 
   get metadata() {
@@ -85,7 +100,7 @@ export class Resend implements TriggerIntegration {
     if (!this._io) throw new Error("No IO");
     if (!this._connectionKey) throw new Error("No connection key");
 
-    return this._io.runTask<TResult>(
+    return this._io.runTask(
       key,
       (task, io) => {
         if (!this._client) throw new Error("No client");

@@ -3,11 +3,7 @@ import { GetFormParams, GetFormResponse, ListFormsParams, TypeformRunTask } from
 import { Typeform } from "@typeform/api-client";
 
 export class Forms {
-  runTask: TypeformRunTask;
-
-  constructor(runTask: TypeformRunTask) {
-    this.runTask = runTask;
-  }
+  constructor(private runTask: TypeformRunTask) {}
 
   list(key: IntegrationTaskKey, params: ListFormsParams): Promise<Typeform.API.Forms.List> {
     return this.runTask(

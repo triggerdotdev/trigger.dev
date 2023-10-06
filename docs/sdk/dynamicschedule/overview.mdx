@@ -1,5 +1,6 @@
 ---
-title: "Overview"
+title: "DynamicSchedule: Overview"
+sidebarTitle: "Overview"
 description: "`DynamicSchedule` allows you to define a scheduled trigger that can be configured dynamically at runtime."
 ---
 
@@ -34,7 +35,7 @@ Use this method to unregister a schedule from the DynamicSchedule, using the id 
 
 ```typescript
 //1. create a DynamicSchedule
-const dynamicSchedule = new DynamicSchedule(client, {
+const dynamicSchedule = client.defineDynamicSchedule({
   id: "dynamicinterval",
 });
 
@@ -76,14 +77,17 @@ client.defineJob({
   }),
   run: async (payload, io, ctx) => {
     //6. Register the DynamicSchedule
-    await io.registerInterval("📆", dynamicSchedule, payload.userId, {
-      seconds: payload.seconds,
+    await dynamicSchedule.register(payload.userId, {
+      type: "interval",
+      options: {
+        seconds: payload.seconds,
+      },
     });
 
     await io.wait("wait", 60);
 
-    //7. Unregister the DynamicSchedule if you want
-    await io.unregisterInterval("❌📆", dynamicSchedule, payload.id);
+    //7. Unregister the DynamicSchedule at some later date
+    await dynamicSchedule.unregister(payload.userId);
   },
 });
 ```

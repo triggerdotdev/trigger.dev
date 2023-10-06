@@ -47,9 +47,13 @@ export type ChatPostMessageArguments = {
 };
 
 export class Slack implements TriggerIntegration {
+  // @internal
   private _options: SlackIntegrationOptions;
+  // @internal
   private _client?: WebClient;
+  // @internal
   private _io?: IO;
+  // @internal
   private _connectionKey?: string;
 
   constructor(private options: SlackIntegrationOptions) {
@@ -88,7 +92,7 @@ export class Slack implements TriggerIntegration {
     if (!this._io) throw new Error("No IO");
     if (!this._connectionKey) throw new Error("No connection key");
 
-    return this._io.runTask<TResult>(
+    return this._io.runTask(
       key,
       (task, io) => {
         if (!this._client) throw new Error("No client");

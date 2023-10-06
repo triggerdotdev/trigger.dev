@@ -59,6 +59,7 @@ export class RegisterScheduleService {
         schedule: payload,
         accountId: payload.accountId,
         dynamicTrigger,
+        organizationId: environment.organizationId,
       });
 
       return registration;

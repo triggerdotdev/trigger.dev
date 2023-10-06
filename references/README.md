@@ -1,0 +1,47 @@
+## Trigger.dev References
+
+Contains code that tests or uses the `@trigger.dev/*` packages in some way, either by using them to test out a framework adapter, an integration, or parts of the main SDK.
+
+All the dependencies to the `@trigger.dev/*` packages will be both referenced in the package.json `dependencies` as `workspace:*`, as well as using a direct path from the tsconfig.json file like so:
+
+```json
+{
+  "extends": "@trigger.dev/tsconfig/node18.json",
+  "include": ["./src/**/*.ts"],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "lib": ["DOM", "DOM.Iterable"],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
+      "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
+      "@trigger.dev/express": ["../../packages/express/src/index"],
+      "@trigger.dev/express/*": ["../../packages/express/src/*"],
+      "@trigger.dev/core": ["../../packages/core/src/index"],
+      "@trigger.dev/core/*": ["../../packages/core/src/*"],
+      "@trigger.dev/integration-kit": ["../../packages/integration-kit/src/index"],
+      "@trigger.dev/integration-kit/*": ["../../packages/integration-kit/src/*"],
+      "@trigger.dev/github": ["../../integrations/github/src/index"],
+      "@trigger.dev/github/*": ["../../integrations/github/src/*"],
+      "@trigger.dev/slack": ["../../integrations/slack/src/index"],
+      "@trigger.dev/slack/*": ["../../integrations/slack/src/*"],
+      "@trigger.dev/openai": ["../../integrations/openai/src/index"],
+      "@trigger.dev/openai/*": ["../../integrations/openai/src/*"],
+      "@trigger.dev/resend": ["../../integrations/resend/src/index"],
+      "@trigger.dev/resend/*": ["../../integrations/resend/src/*"],
+      "@trigger.dev/typeform": ["../../integrations/typeform/src/index"],
+      "@trigger.dev/typeform/*": ["../../integrations/typeform/src/*"],
+      "@trigger.dev/plain": ["../../integrations/plain/src/index"],
+      "@trigger.dev/plain/*": ["../../integrations/plain/src/*"],
+      "@trigger.dev/supabase": ["../../integrations/supabase/src/index"],
+      "@trigger.dev/supabase/*": ["../../integrations/supabase/src/*"],
+      "@trigger.dev/stripe": ["../../integrations/stripe/src/index"],
+      "@trigger.dev/stripe/*": ["../../integrations/stripe/src/*"],
+      "@trigger.dev/sendgrid": ["../../integrations/sendgrid/src/index"],
+      "@trigger.dev/sendgrid/*": ["../../integrations/sendgrid/src/*"],
+      "@trigger.dev/airtable": ["../../integrations/airtable/src/index"],
+      "@trigger.dev/airtable/*": ["../../integrations/airtable/src/*"]
+    }
+  }
+}
+```

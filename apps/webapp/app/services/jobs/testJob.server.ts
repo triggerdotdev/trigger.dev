@@ -13,10 +13,12 @@ export class TestJobService {
     environmentId,
     versionId,
     payload,
+    accountId,
   }: {
     environmentId: string;
     versionId: string;
-    payload: any;
+    payload?: any;
+    accountId?: string;
   }) {
     return await $transaction(
       this.#prismaClient,
@@ -41,10 +43,27 @@ export class TestJobService {
           },
         });
 
+        const externalAccount = accountId
+          ? await tx.externalAccount.upsert({
+              where: {
+                environmentId_identifier: {
+                  environmentId: environment.id,
+                  identifier: accountId,
+                },
+              },
+              create: {
+                environmentId: environment.id,
+                organizationId: environment.organizationId,
+                identifier: accountId,
+              },
+              update: {},
+            })
+          : undefined;
+
         const event = EventSpecificationSchema.parse(version.eventSpecification);
         const eventName = Array.isArray(event.name) ? event.name[0] : event.name;
 
-        const eventLog = await this.#prismaClient.eventRecord.create({
+        const eventLog = await tx.eventRecord.create({
           data: {
             organization: {
               connect: {
@@ -61,6 +80,13 @@ export class TestJobService {
                 id: environment.id,
               },
             },
+            externalAccount: externalAccount
+              ? {
+                  connect: {
+                    id: externalAccount.id,
+                  },
+                }
+              : undefined,
             eventId: `test:${eventName}:${new Date().getTime()}`,
             name: eventName,
             timestamp: new Date(),

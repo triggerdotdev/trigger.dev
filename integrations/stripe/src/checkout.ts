@@ -2,11 +2,7 @@ import { IntegrationTaskKey } from "@trigger.dev/sdk";
 import { CreateCheckoutSessionParams, CreateCheckoutSessionResponse, StripeRunTask } from "./index";
 
 export class Checkout {
-  runTask: StripeRunTask;
-
-  constructor(runTask: StripeRunTask) {
-    this.runTask = runTask;
-  }
+  constructor(private runTask: StripeRunTask) {}
 
   sessions = {
     /**
