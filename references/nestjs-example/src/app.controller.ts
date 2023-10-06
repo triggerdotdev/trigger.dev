@@ -14,7 +14,7 @@ export class AppController {
       trigger: eventTrigger({
         name: 'test.event',
       }),
-      run: async (payload, io, ctx) => {
+      run: async (payload, io) => {
         await io.logger.info('Hello world!', { payload });
 
         return {
@@ -26,6 +26,6 @@ export class AppController {
 
   @Get()
   getHello(): string {
-    return `Running Trigger.dev with client-id ${ this.client.id }`;
+    return `Running Trigger.dev with client-id ${this.client.id}`;
   }
 }
