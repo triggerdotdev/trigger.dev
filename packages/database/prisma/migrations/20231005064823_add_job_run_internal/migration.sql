@@ -7,4 +7,4 @@ ALTER TABLE "JobRun" ADD COLUMN     "internal" BOOLEAN NOT NULL DEFAULT false;
 UPDATE "JobRun"
 SET "internal" = "Job"."internal"
 FROM "Job"
-WHERE "JobRun"."jobId" = "Job"."id";
+WHERE "JobRun"."jobId" = "Job"."id" AND "JobRun"."internal" = TRUE;
