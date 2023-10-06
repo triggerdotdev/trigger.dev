@@ -5,7 +5,7 @@
   "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "type": "module",
+  "type": "commonjs",
   "publishConfig": {
     "access": "public"
   },
