@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Fragment, useState } from "react";
 import simplur from "simplur";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Task } from "~/presenters/RunPresenter.server";
+import { ViewTask } from "~/presenters/RunPresenter.server";
 import { formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
 import {
@@ -22,7 +22,7 @@ import {
 } from "./RunCard";
 import { TaskStatusIcon } from "./TaskStatus";
 
-type TaskCardProps = Task & {
+type TaskCardProps = ViewTask & {
   selectedId?: string;
   selectedTask: (id: string) => void;
   isLast: boolean;
