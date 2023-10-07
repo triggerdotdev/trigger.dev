@@ -15,9 +15,8 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { Handle } from "~/utils/handle";
-import { AppData } from "~/utils/appData";
 
-export function JobsMenu({ matches }: { matches: UIMatch<AppData, Handle>[] }) {
+export function JobsMenu({ matches }: { matches: UIMatch<unknown, Handle>[] }) {
   const [isOpen, setIsOpen] = useState(false);
   const organization = useOrganization(matches);
   const project = useProject(matches);
