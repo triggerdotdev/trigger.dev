@@ -36,7 +36,7 @@ export async function sendEventCommand(path: string, anyOptions: any) {
     return;
   }
 
-  const { apiUrl, envFile, apiKey } = apiDetails;
+  const { apiUrl, apiKey } = apiDetails;
 
   const parsedPayload = safeJSONParse(options.payload);
 
