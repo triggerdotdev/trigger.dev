@@ -1081,6 +1081,9 @@ importers:
         specifier: ^4.8.4
         version: 4.9.5
     devDependencies:
+      dotenv:
+        specifier: ^16.3.1
+        version: 16.3.1
       prisma:
         specifier: 4.16.0
         version: 4.16.0
@@ -12185,7 +12188,7 @@ packages:
   /@types/accepts@1.3.5:
     resolution: {integrity: sha512-jOdnI/3qTpHABjM5cx1Hc0sKsPoYCp+DP/GJRGtDlPd7fiV9oXGGIcjW/ZOxLIvjGz8MA+uMZI9metHlgqbgwQ==}
     dependencies:
-      '@types/node': 20.6.0
+      '@types/node': 18.17.1
     dev: false
 
   /@types/acorn@4.0.6:
@@ -12305,7 +12308,7 @@ packages:
       '@types/connect': 3.4.35
       '@types/express': 4.17.15
       '@types/keygrip': 1.0.2
-      '@types/node': 20.6.0
+      '@types/node': 18.17.1
     dev: false
 
   /@types/d3-array@3.0.8:
@@ -12494,7 +12497,7 @@ packages:
   /@types/hapi__shot@4.1.2:
     resolution: {integrity: sha512-8wWgLVP1TeGqgzZtCdt+F+k15DWQvLG1Yv6ZzPfb3D5WIo5/S+GGKtJBVo2uNEcqabP5Ifc71QnJTDnTmw1axA==}
     dependencies:
-      '@types/node': 20.6.0
+      '@types/node': 18.17.1
     dev: false
 
   /@types/hast@2.3.4:
@@ -12598,7 +12601,7 @@ packages:
   /@types/jsonwebtoken@9.0.1:
     resolution: {integrity: sha512-c5ltxazpWabia/4UzhIoaDcIza4KViOQhdbjRlfcIGVnsE3c3brkz9Z+F/EeJIECOQP7W7US2hNE930cWWkPiw==}
     dependencies:
-      '@types/node': 20.6.0
+      '@types/node': 18.17.1
     dev: false
 
   /@types/keygrip@1.0.2:
@@ -17391,7 +17394,7 @@ packages:
       eslint-plugin-import: 2.27.5(@typescript-eslint/parser@5.59.6)(eslint-import-resolver-typescript@3.5.5)(eslint@8.45.0)
       get-tsconfig: 4.5.0
       globby: 13.1.3
-      is-core-module: 2.13.0
+      is-core-module: 2.11.0
       is-glob: 4.0.3
       synckit: 0.8.5
     transitivePeerDependencies:
@@ -17637,11 +17640,11 @@ packages:
       eslint-import-resolver-node: 0.3.7
       eslint-module-utils: 2.7.4(@typescript-eslint/parser@5.59.6)(eslint-import-resolver-node@0.3.7)(eslint-import-resolver-typescript@3.5.5)(eslint@8.45.0)
       has: 1.0.3
-      is-core-module: 2.13.0
+      is-core-module: 2.11.0
       is-glob: 4.0.3
       minimatch: 3.1.2
       object.values: 1.1.6
-      resolve: 1.22.4
+      resolve: 1.22.2
       semver: 6.3.1
       tsconfig-paths: 3.14.1
     transitivePeerDependencies:
@@ -17669,11 +17672,11 @@ packages:
       eslint-import-resolver-node: 0.3.7
       eslint-module-utils: 2.7.4(@typescript-eslint/parser@5.59.6)(eslint-import-resolver-node@0.3.7)(eslint@8.45.0)
       has: 1.0.3
-      is-core-module: 2.13.0
+      is-core-module: 2.11.0
       is-glob: 4.0.3
       minimatch: 3.1.2
       object.values: 1.1.6
-      resolve: 1.22.4
+      resolve: 1.22.2
       semver: 6.3.1
       tsconfig-paths: 3.14.1
     transitivePeerDependencies:
@@ -17833,8 +17836,8 @@ packages:
       eslint-utils: 2.1.0
       ignore: 5.2.4
       minimatch: 3.1.2
-      resolve: 1.22.4
-      semver: 6.3.1
+      resolve: 1.22.2
+      semver: 6.3.0
     dev: true
 
   /eslint-plugin-node@11.1.0(eslint@8.45.0):
@@ -25208,7 +25211,7 @@ packages:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.0
-      '@types/node': 20.6.0
+      '@types/node': 18.17.1
       long: 5.2.3
     dev: false
 
@@ -29541,7 +29544,7 @@ packages:
     dependencies:
       '@types/node': 20.6.0
       esbuild: 0.16.17
-      postcss: 8.4.27
+      postcss: 8.4.29
       resolve: 1.22.1
       rollup: 3.10.0
     optionalDependencies:
