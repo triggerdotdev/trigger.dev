@@ -9,7 +9,7 @@ export type BreadcrumbItem = (
 ) => ReactNode;
 
 export function Breadcrumb() {
-  const matches: UIMatch<unknown, Handle>[] = useMatches() as UIMatch<unknown, Handle>[];
+  const matches = useMatches() as UIMatch<unknown, Handle>[];
 
   return (
     <div className="hidden items-center md:flex">

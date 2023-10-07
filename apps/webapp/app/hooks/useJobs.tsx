@@ -23,7 +23,7 @@ export function useOptionalJobs(matches?: AppData[]) {
   return routeMatch?.projectJobs;
 }
 
-export function useJobs<T = AppData>(matches?: UIMatch<T, Handle>[]) {
+export function useJobs(matches?: UIMatch<unknown, Handle>[]) {
   const jobs = useOptionalJobs(matches);
   invariant(jobs, "Jobs must be defined");
   return jobs;

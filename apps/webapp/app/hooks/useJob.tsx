@@ -24,7 +24,7 @@ export function useOptionalJob(matches?: AppData[]) {
   return routeMatch.projectJobs.find((j) => j.id === routeMatch.job.id);
 }
 
-export function useJob<T = AppData>(matches?: UIMatch<T, Handle>[]) {
+export function useJob(matches?: UIMatch<unknown, Handle>[]) {
   const job = useOptionalJob(matches);
   invariant(job, "Job must be defined");
   return job;

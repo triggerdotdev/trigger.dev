@@ -18,7 +18,7 @@ export function useOptionalOrganizations(matches?: AppData[]) {
   return data?.organizations;
 }
 
-export function useOrganizations<T = AppData>(matches?: UIMatch<T, Handle>[]) {
+export function useOrganizations(matches?: UIMatch<unknown, Handle>[]) {
   const orgs = useOptionalOrganizations(matches);
   invariant(orgs, "No organizations found in loader.");
   return orgs;
@@ -38,13 +38,13 @@ export function useOptionalOrganization(matches?: AppData[]) {
   return orgs.find((o) => o.id === org.organization.id);
 }
 
-export function useOrganization<T = AppData>(matches?: UIMatch<T, Handle>[]) {
+export function useOrganization(matches?: UIMatch<unknown, Handle>[]) {
   const org = useOptionalOrganization(matches);
   invariant(org, "No organization found in loader.");
   return org;
 }
 
-export function useIsNewOrganizationPage<T = AppData>(matches?: UIMatch<T, Handle>[]): boolean {
+export function useIsNewOrganizationPage(matches?: UIMatch<unknown, Handle>[]): boolean {
   const data = useTypedMatchesData<any>({
     id: "routes/_app.orgs.new",
     matches,

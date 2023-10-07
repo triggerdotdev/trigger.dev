@@ -23,7 +23,7 @@ export function useOptionalRun(matches?: AppData[]) {
   return routeMatch.run;
 }
 
-export function useRun<T = AppData>(matches?: UIMatch<T, Handle>[]) {
+export function useRun(matches?: UIMatch<unknown, Handle>[]) {
   const run = useOptionalRun(matches);
   invariant(run, "Run must be present");
   return run;

@@ -15,7 +15,7 @@ export function useOptionalUser(matches?: AppData[]): User | undefined {
   return routeMatch?.user ?? undefined;
 }
 
-export function useUser<T = AppData>(matches?: UIMatch<T, Handle>[]): User {
+export function useUser(matches?: UIMatch<unknown, Handle>[]): User {
   const maybeUser = useOptionalUser(matches);
   if (!maybeUser) {
     throw new Error(

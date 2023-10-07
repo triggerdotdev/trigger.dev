@@ -17,7 +17,7 @@ export function useOptionalIntegrationClient(matches?: AppData[]) {
   return routeMatch?.client;
 }
 
-export function useIntegrationClient<T = AppData>(matches?: UIMatch<T, Handle>[]) {
+export function useIntegrationClient(matches?: UIMatch<unknown, Handle>[]) {
   const integration = useOptionalIntegrationClient(matches);
   invariant(integration, "Integration must be defined");
   return integration;

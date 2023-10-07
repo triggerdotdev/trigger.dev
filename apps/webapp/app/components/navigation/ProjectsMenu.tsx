@@ -12,10 +12,9 @@ import {
   PopoverMenuItem,
   PopoverSectionHeader,
 } from "../primitives/Popover";
-import { AppData } from "~/utils/appData";
 import { Handle } from "~/utils/handle";
 
-export function ProjectsMenu<T = AppData>({ matches }: { matches: UIMatch<T, Handle>[] }) {
+export function ProjectsMenu({ matches }: { matches: UIMatch<unknown, Handle>[] }) {
   const [isOpen, setIsOpen] = useState(false);
   const organizations = useOrganizations(matches);
   const isNewOrgPage = useIsNewOrganizationPage(matches);

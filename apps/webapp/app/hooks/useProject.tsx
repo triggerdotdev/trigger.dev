@@ -20,7 +20,7 @@ export function useOptionalProject(matches?: AppData) {
   return routeMatch?.project;
 }
 
-export function useProject<T = AppData>(matches?: UIMatch<T, Handle>[]) {
+export function useProject(matches?: UIMatch<unknown, Handle>[]) {
   const project = useOptionalProject(matches);
   invariant(project, "Project must be defined");
   return project;
