@@ -1,7 +1,7 @@
 {
   "name": "@trigger.dev/testing",
   "description": "A collection of useful tools to write tests for Trigger.dev.",
-  "version": "2.1.7",
+  "version": "2.1.9",
   "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -38,7 +38,7 @@
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "vitest": "^0.34.3",
-    "zod": "3.21.4"
+    "zod": "3.22.3"
   },
   "devDependencies": {
     "@trigger.dev/stripe": "workspace:*",

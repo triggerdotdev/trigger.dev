@@ -1,5 +1,23 @@
 # @trigger.dev/astro
 
+## 2.1.9
+
+### Patch Changes
+
+- Updated dependencies [9a187f9e]
+- Updated dependencies [2e9452ab]
+  - @trigger.dev/sdk@2.1.9
+
+## 2.1.8
+
+### Patch Changes
+
+- ab9e4a98: Send client version back to the server via headers
+- Updated dependencies [6a992a19]
+- Updated dependencies [ab9e4a98]
+- Updated dependencies [ab9e4a98]
+  - @trigger.dev/sdk@2.1.8
+
 ## 2.1.7
 
 ### Patch Changes

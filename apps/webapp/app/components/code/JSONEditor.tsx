@@ -1,11 +1,13 @@
 import { json as jsonLang } from "@codemirror/lang-json";
 import type { ViewUpdate } from "@codemirror/view";
+import { CheckIcon, ClipboardIcon } from "@heroicons/react/20/solid";
 import type { ReactCodeMirrorProps, UseCodeMirror } from "@uiw/react-codemirror";
 import { useCodeMirror } from "@uiw/react-codemirror";
-import { useRef, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { cn } from "~/utils/cn";
+import { Button } from "../primitives/Buttons";
 import { getEditorSetup } from "./codeMirrorSetup";
 import { darkTheme } from "./codeMirrorTheme";
-import { cn } from "~/utils/cn";
 
 export interface JSONEditorProps extends Omit<ReactCodeMirrorProps, "onBlur"> {
   defaultValue?: string;
@@ -14,6 +16,8 @@ export interface JSONEditorProps extends Omit<ReactCodeMirrorProps, "onBlur"> {
   onChange?: (value: string) => void;
   onUpdate?: (update: ViewUpdate) => void;
   onBlur?: (code: string) => void;
+  showCopyButton?: boolean;
+  showClearButton?: boolean;
 }
 
 const languages = {
@@ -38,6 +42,8 @@ export function JSONEditor(opts: JSONEditorProps) {
     onBlur,
     basicSetup,
     autoFocus,
+    showCopyButton = true,
+    showClearButton = true,
   } = {
     ...defaultProps,
     ...opts,
@@ -65,7 +71,8 @@ export function JSONEditor(opts: JSONEditorProps) {
     onChange,
     onUpdate,
   };
-  const { setContainer, state } = useCodeMirror(settings);
+  const { setContainer, view } = useCodeMirror(settings);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (editor.current) {
@@ -75,24 +82,71 @@ export function JSONEditor(opts: JSONEditorProps) {
 
   //if the defaultValue changes update the editor
   useEffect(() => {
-    if (state !== undefined) {
-      state.update({
-        changes: { from: 0, to: state.doc.length, insert: defaultValue },
+    if (view !== undefined) {
+      if (view.state.doc.toString() === defaultValue) return;
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: defaultValue },
       });
     }
-  }, [defaultValue, state]);
+  }, [defaultValue, view]);
+
+  const clear = useCallback(() => {
+    if (view === undefined) return;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: undefined },
+    });
+    onChange?.("");
+  }, [view]);
+
+  const copy = useCallback(() => {
+    if (view === undefined) return;
+    navigator.clipboard.writeText(view.state.doc.toString());
+    setCopied(true);
+    setTimeout(() => {
+      setCopied(false);
+    }, 1500);
+  }, [view]);
 
   return (
-    <div
-      className={cn(
-        "overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700",
-        opts.className
-      )}
-      ref={editor}
-      onBlur={() => {
-        if (!onBlur) return;
-        onBlur(editor.current?.textContent ?? "");
-      }}
-    />
+    <div className={cn(opts.className, "relative")}>
+      <div
+        className="h-full w-full"
+        ref={editor}
+        onBlur={() => {
+          if (!onBlur) return;
+          onBlur(editor.current?.textContent ?? "");
+        }}
+      />
+      <div className="absolute right-3 top-3 flex items-center gap-2">
+        {showClearButton && (
+          <Button
+            type="button"
+            variant="secondary/small"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              clear();
+            }}
+          >
+            Clear
+          </Button>
+        )}
+        {showCopyButton && (
+          <Button
+            type="button"
+            variant="secondary/small"
+            LeadingIcon={copied ? CheckIcon : ClipboardIcon}
+            leadingIconClassName={copied ? "text-green-500 group-hover:text-green-500" : undefined}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              copy();
+            }}
+          >
+            Copy
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }

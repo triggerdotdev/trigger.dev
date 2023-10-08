@@ -79,37 +79,6 @@ export function HowToRunYourJob() {
   );
 }
 
-export function HowToRunATest() {
-  return (
-    <>
-      <StepNumber
-        stepNumber="1"
-        title="Select an environment
-"
-      />
-      <StepContentContainer>
-        <Paragraph spacing>Select the environment you’d like the test to run against.</Paragraph>
-        <img src={selectEnvironment} className="mt-2 w-52" />
-      </StepContentContainer>
-      <StepNumber stepNumber="2" title="Write your test payload" />
-      <StepContentContainer>
-        <Paragraph spacing>
-          Write your own payload specific to your Job. Some Triggers also provide example payloads
-          that you can select from. This will populate the code editor below.
-        </Paragraph>
-        <img src={selectExample} className="mt-2 h-40" />
-      </StepContentContainer>
-      <StepNumber stepNumber="3" title="Run your test" />
-      <StepContentContainer>
-        <Paragraph spacing>When you’re happy with the payload, click Run test.</Paragraph>
-      </StepContentContainer>
-      <Callout variant="docs" to="https://trigger.dev/docs/documentation/guides/testing-jobs">
-        Learn more about running tests.
-      </Callout>
-    </>
-  );
-}
-
 export function HowToConnectAnIntegration() {
   return (
     <>

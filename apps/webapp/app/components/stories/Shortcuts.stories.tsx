@@ -24,6 +24,8 @@ const shortcuts: ShortcutDefinition[] = [
   { key: "f", modifiers: ["meta"] },
   { key: "k", modifiers: ["meta"] },
   { key: "del", modifiers: ["ctrl", "alt"] },
+  { key: "enter", modifiers: ["meta"] },
+  { key: "enter", modifiers: ["mod"] },
 ];
 
 function Collection() {
@@ -63,6 +65,9 @@ function Set({ platform }: { platform: "mac" | "windows" }) {
           </Button>
           <Button variant="tertiary/medium" shortcut={shortcut}>
             Tertiary medium
+          </Button>
+          <Button variant="danger/medium" shortcut={shortcut}>
+            Danger medium
           </Button>
           <Button variant="danger/medium" shortcut={shortcut}>
             Danger medium
