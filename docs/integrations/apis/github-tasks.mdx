@@ -1,14 +1,11 @@
 ---
-title: Tasks
+title: GitHub Tasks
+sidebarTitle: Tasks
 ---
 
 Tasks are executed after the job is triggered and are the main building blocks of a job. You can string together as many tasks as you want.
 
 ---
-
-## Using the underlying GitHub client
-
-You can use the underlying client to do anything Octokit supports.
 
 ## All tasks
 
@@ -31,11 +28,11 @@ Adds assignees to an existing issue. [Official GitHub docs](https://docs.github.
 
 ```ts example.ts
 await io.github.addIssueAssignees("add assignee", {
-      owner: "<owner-name>", // the name of the owner of the repository
-      repo: "<repo-name>", // the name of the repository
-      issueNumber: <issue-number>, // the number of the issue
-      assignees: ["<assignee-name>"], // the name(s) of the assignee(s)
-    });
+  owner: "<owner-name>", // the name of the owner of the repository
+  repo: "<repo-name>", // the name of the repository
+  issueNumber: <issue-number>, // the number of the issue
+  assignees: ["<assignee-name>"], // the name(s) of the assignee(s)
+});
 ```
 
 ### `addIssueLabels`
@@ -44,11 +41,11 @@ Adds labels to an existing issue. [Official GitHub docs](https://docs.github.com
 
 ```ts example.ts
 await io.github.addIssueLabels("add label", {
-      owner: "<owner-name>", // the name of the owner of the repository
-      repo: "<repo-name>", // the name of the repository
-      issueNumber: <issue-number>, // the number of the issue
-      labels: ["<label-name>"], // the name(s) of the label(s)
-    });
+  owner: "<owner-name>", // the name of the owner of the repository
+  repo: "<repo-name>", // the name of the repository
+  issueNumber: <issue-number>, // the number of the issue
+  labels: ["<label-name>"], // the name(s) of the label(s)
+});
 ```
 
 ### `createIssueComment`
@@ -57,11 +54,11 @@ Creates a new comment on an existing issue. [Official GitHub docs](https://docs.
 
 ```ts example.ts
 await io.github.createIssueComment("create comment", {
-      owner: "<owner-name>", // the name of the owner of the repository
-      repo: "<repo-name>", // the name of the repository
-      issueNumber: <issue-number>, // the number of the issue
-      body: "<comment-text>", // the contents of the comment
-    });
+  owner: "<owner-name>", // the name of the owner of the repository
+  repo: "<repo-name>", // the name of the repository
+  issueNumber: <issue-number>, // the number of the issue
+  body: "<comment-text>", // the contents of the comment
+});
 ```
 
 ### `getRepo`
@@ -81,12 +78,12 @@ Creates a new comment on an existing issue with a reaction. [Official GitHub doc
 
 ```ts example.ts
 await io.github.createIssueCommentWithReaction("create comment with reaction", {
-      owner: "<owner-name>", // the name of the owner of the repository
-      repo: "<repo-name>", // the name of the repository
-      issueNumber: <issue-number>, // the number of the issue
-      body: "<comment-text>", // the contents of the comment
-      content: "<reaction-type>", // the type of reaction
-    });
+  owner: "<owner-name>", // the name of the owner of the repository
+  repo: "<repo-name>", // the name of the repository
+  issueNumber: <issue-number>, // the number of the issue
+  body: "<comment-text>", // the contents of the comment
+  content: "<reaction-type>", // the type of reaction
+});
 ```
 
 ### `addIssueCommentReaction`
@@ -95,11 +92,11 @@ Adds a reaction to an existing issue comment. [Official GitHub docs](https://doc
 
 ```ts example.ts
 await io.github.addIssueCommentReaction("add reaction", {
-      owner: "<owner-name>", // the name of the owner of the repository
-      repo: "<repo-name>", // the name of the repository
-      commentId: <comment-id>, // the id of the specific comment
-      content: "<reaction-type>", // the type of reaction
-    });
+  owner: "<owner-name>", // the name of the owner of the repository
+  repo: "<repo-name>", // the name of the repository
+  commentId: <comment-id>, // the id of the specific comment
+  content: "<reaction-type>", // the type of reaction
+});
 ```
 
 ### `updateWebhook`
@@ -108,17 +105,15 @@ Updates an existing webhook. [Official GitHub docs](https://docs.github.com/en/r
 
 ```ts example.ts
 await io.github.updateWebhook("update webhook", {
-      owner: "<owner-name>", // the name of the owner of the repository
-      repo: "<repo-name>", // the name of the repository
-      webhookId: <webhook-id>, // the unique id of the webhook
-      config: {
-        url: "<webhook-url>", // the url to which payloads will be delivered
-        contentType: "json", // the media type used to serialize the payloads
-        secret: "<webhook-secret>", // If provided, the secret will be used as the key to generate the HMAC hex digest value for delivery signature headers.
-
-
-      },
-    });
+  owner: "<owner-name>", // the name of the owner of the repository
+  repo: "<repo-name>", // the name of the repository
+  webhookId: <webhook-id>, // the unique id of the webhook
+  config: {
+    url: "<webhook-url>", // the url to which payloads will be delivered
+    contentType: "json", // the media type used to serialize the payloads
+    secret: "<webhook-secret>", // If provided, the secret will be used as the key to generate the HMAC hex digest value for delivery signature headers.
+  },
+});
 ```
 
 ### `createWebhook`
@@ -155,14 +150,14 @@ Updates an existing webhook for an organization. [Official GitHub docs](https://
 
 ```ts
 await io.github.updateOrgWebhook("update org webhook", {
-      org: "<organization-name>", // the name of the organization
-      webhookId: <webhook-id>, // the unique id of the webhook
-      config: {
-        url: "<webhook-url>", // the url to which payloads will be delivered
-        contentType: "json", // the media type used to serialize the payloads
-        secret: "<webhook-secret>", // If provided, the secret will be used as the key to generate the HMAC hex digest value for delivery signature headers.
-      },
-    });
+  org: "<organization-name>", // the name of the organization
+  webhookId: <webhook-id>, // the unique id of the webhook
+  config: {
+    url: "<webhook-url>", // the url to which payloads will be delivered
+    contentType: "json", // the media type used to serialize the payloads
+    secret: "<webhook-secret>", // If provided, the secret will be used as the key to generate the HMAC hex digest value for delivery signature headers.
+  },
+});
 ```
 
 ### `createOrgWebhook`
@@ -227,3 +222,42 @@ client.defineJob({
   },
 });
 ```
+
+## Using the underlying GitHub client
+
+You can access the [Octokit instance](https://github.com/octokit/octokit.js#octokit-api-client) by using the `runTask` method on the integration:
+
+```ts
+const github = new Github({
+  id: "github",
+});
+
+client.defineJob({
+  id: "github-example-1",
+  name: "GitHub Example 1",
+  version: "0.1.0",
+  trigger: eventTrigger({
+    name: "github.example",
+  }),
+  integrations: {
+    github,
+  },
+  run: async (payload, io, ctx) => {
+    const contributors = await io.github.runTask(
+      "get-contributors",
+      async (octokit, task) => {
+        const contributors = await octokit.rest.repos.listContributors({
+          owner: "<owner-name>",
+          repo: "<repo-name>",
+        });
+
+        return contributors;
+      },
+      //this is optional, it will appear on the Run page
+      { name: "List Contributors" }
+    );
+  },
+});
+```
+
+Make sure to pass the `idempotencyKey` to the underlying client to ensure that the API call is only executed once. This is only needed for mutating API calls.
