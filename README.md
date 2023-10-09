@@ -83,3 +83,9 @@ We provide an official trigger.dev docker image you can use to easily self-host 
 ## Development
 
 To setup and develop locally or contribute to the open source project, follow our [development guide](./CONTRIBUTING.md).
+
+## 🙏 to our contributors
+
+<a href="https://github.com/triggerdotdev/trigger.dev/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=triggerdotdev/trigger.dev" />
+</a>
