@@ -125,6 +125,7 @@ Now, you can use the `db` instance to add a trigger to run a job when a row is i
 client.defineJob({
   id: "supabase-trigger",
   name: "Supabase Trigger",
+  version: "1.0.0",
   trigger: db.onInserted({
     table: "todos",
   }),
@@ -140,6 +141,7 @@ You can add additional filters to the trigger by passing a `filter` object:
 client.defineJob({
   id: "supabase-trigger",
   name: "Supabase Trigger",
+  version: "1.0.0",
   trigger: db.onUpdated({
     table: "todos",
     // Only trigger if the todo is marked as completed
@@ -164,6 +166,7 @@ You can also listen for multiple different events using the `on` trigger:
 client.defineJob({
   id: "supabase-trigger",
   name: "Supabase Trigger",
+  version: "1.0.0",
   trigger: db.on({
     table: "todos",
     events: ["INSERT", "UPDATE"] // Trigger on both insert and update events
@@ -206,6 +209,7 @@ const db = supabase.db<Database>("https://<your project id>.supabase.co");
 client.defineJob({
   id: "supabase-trigger",
   name: "Supabase Trigger",
+  version: "1.0.0",
   trigger: db.onUpdated({
     table: "todos",
   }),

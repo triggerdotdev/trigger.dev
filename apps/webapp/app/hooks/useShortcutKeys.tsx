@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useOperatingSystem } from "~/components/primitives/OperatingSystemProvider";
 
-export type Modifier = "alt" | "ctrl" | "meta" | "shift";
+export type Modifier = "alt" | "ctrl" | "meta" | "shift" | "mod";
 
 export type Shortcut = {
   key: string;
   modifiers?: Modifier[];
+  enabledOnInputElements?: boolean;
 };
 
 export type ShortcutDefinition =
@@ -20,19 +20,31 @@ type useShortcutKeysProps = {
   shortcut: ShortcutDefinition;
   action: (event: KeyboardEvent) => void;
   disabled?: boolean;
+  enabledOnInputElements?: boolean;
 };
 
 export function useShortcutKeys({ shortcut, action, disabled = false }: useShortcutKeysProps) {
-  const keys = createKeysFromShortcut(shortcut);
-  useHotkeys(keys, action, { enabled: !disabled });
-}
-
-function createKeysFromShortcut(shortcut: ShortcutDefinition) {
   const { platform } = useOperatingSystem();
   const isMac = platform === "mac";
-  let relevantShortcut = "mac" in shortcut ? (isMac ? shortcut.mac : shortcut.windows) : shortcut;
-  const modifiers = relevantShortcut.modifiers;
-  const character = relevantShortcut.key;
+  const relevantShortcut = "mac" in shortcut ? (isMac ? shortcut.mac : shortcut.windows) : shortcut;
 
-  return modifiers ? modifiers.map((k) => k).join("+") + "+" : "" + character;
+  const keys = createKeysFromShortcut(relevantShortcut);
+  useHotkeys(
+    keys,
+    (event, hotkeysEvent) => {
+      action(event);
+    },
+    {
+      enabled: !disabled,
+      enableOnFormTags: relevantShortcut.enabledOnInputElements,
+      enableOnContentEditable: relevantShortcut.enabledOnInputElements,
+    }
+  );
+}
+
+function createKeysFromShortcut(shortcut: Shortcut) {
+  const modifiers = shortcut.modifiers;
+  const character = shortcut.key;
+
+  return modifiers ? modifiers.map((k) => k).join("+") + "+" + character : character;
 }

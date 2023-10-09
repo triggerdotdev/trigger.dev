@@ -1,5 +1,14 @@
 # create-trigger
 
+## 2.1.9
+
+### Patch Changes
+
+- 9a187f9e: upgrade zod to 3.22.3
+- 914745f6: Removed log when a file is changed
+
+## 2.1.8
+
 ## 2.1.7
 
 ### Patch Changes

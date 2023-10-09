@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/core",
-  "version": "2.1.7",
+  "version": "2.1.9",
   "description": "Core code used across the Trigger.dev SDK and platform",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "ulid": "^2.3.0",
-    "zod": "3.21.4",
+    "zod": "3.22.3",
     "zod-error": "1.5.0"
   },
   "devDependencies": {
