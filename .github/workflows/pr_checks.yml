@@ -1,0 +1,29 @@
+name: 🤖 PR Checks
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+      - ".github/CODEOWNERS"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  type-check:
+    name: "ʦ TypeScript"
+    uses: ./.github/workflows/typecheck.yml
+    secrets: inherit
+
+  unitTests:
+    name: "🧪 Unit Tests"
+    uses: ./.github/workflows/unit-tests.yml
+    secrets: inherit
+
+  e2e:
+    name: "🧪 E2E Tests"
+    uses: ./.github/workflows/e2e.yml
+    secrets: inherit
