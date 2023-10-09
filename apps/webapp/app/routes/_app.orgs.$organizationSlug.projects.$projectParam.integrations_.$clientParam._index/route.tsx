@@ -8,6 +8,7 @@ import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Input } from "~/components/primitives/Input";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { useFilterJobs } from "~/hooks/useFilterJobs";
 import { useIntegrationClient } from "~/hooks/useIntegrationClient";
 import { JobListPresenter } from "~/presenters/JobListPresenter.server";
@@ -52,10 +53,8 @@ export default function Page() {
       {(open) => (
         <div className={cn("grid h-full gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
           <div className="grow">
-            <div className="mb-2 flex items-center justify-between gap-x-2">
-              {jobs.length === 0 ? (
-                <Header2>Jobs using this integration will appear here</Header2>
-              ) : (
+            <div className="mb-2 flex items-center justify-end gap-x-2">
+              {jobs.length !== 0 && (
                 <Input
                   placeholder="Search Jobs"
                   variant="tertiary"
@@ -68,9 +67,9 @@ export default function Page() {
               <HelpTrigger title="How do I use this integration?" />
             </div>
             {jobs.length === 0 ? (
-              <>
-                <JobSkeleton />
-              </>
+              <div className="mt-8 rounded border border-border px-2 py-6 text-center">
+                <Paragraph variant="small">Jobs using this Integration will appear here.</Paragraph>
+              </div>
             ) : (
               <JobsTable
                 jobs={filteredItems}
