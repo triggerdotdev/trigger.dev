@@ -18,7 +18,7 @@ export async function handleTriggerRequest(request: Request, client: TriggerClie
         // where we pass the clone of the incoming request metadata such as
         // headers, method, body.
         const requestBody = await request.text();
-        const requestClone = new Request("https://express.js/api/trigger", {
+        const requestClone = new Request("https://redwood/api/trigger", {
             headers: responseHeaders,
             method: requestMethod,
             body: requestBody,

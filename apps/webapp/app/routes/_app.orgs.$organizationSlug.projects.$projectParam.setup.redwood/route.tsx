@@ -2,16 +2,11 @@ import { ChatBubbleLeftRightIcon, Squares2X2Icon } from "@heroicons/react/20/sol
 import invariant from "tiny-invariant";
 import { Feedback } from "~/components/Feedback";
 import { PageGradient } from "~/components/PageGradient";
+import { RunDevCommand, TriggerDevStep } from "~/components/SetupCommands";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { InlineCode } from "~/components/code/InlineCode";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import {
-  ClientTabs,
-  ClientTabsContent,
-  ClientTabsList,
-  ClientTabsTrigger,
-} from "~/components/primitives/ClientTabs";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { Header1 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
@@ -25,9 +20,7 @@ import { useProject } from "~/hooks/useProject";
 import { Handle } from "~/utils/handle";
 import { projectSetupPath, trimTrailingSlash } from "~/utils/pathBuilder";
 import { Callout } from "~/components/primitives/Callout";
-import { RunDevCommand, TriggerDevStep } from "~/components/SetupCommands";
 import { Badge } from "~/components/primitives/Badge";
-
 export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Redwood" />,
 };
@@ -77,7 +70,7 @@ export default function SetUpRedwood() {
               stepNumber="1"
               title="Follow the steps from the Redwood manual installation guide"
             />
-            <StepContentContainer className="flex flex-col gap-2">
+            <StepContentContainer>
               <Paragraph className="mt-2">Copy your server API Key to your clipboard:</Paragraph>
               <div className="mb-2 flex w-full items-center justify-between">
                 <ClipboardField
@@ -98,7 +91,7 @@ export default function SetUpRedwood() {
               </LinkButton>
               <div className="flex items-start justify-start gap-2"></div>
             </StepContentContainer>
-            <StepNumber stepNumber="2" title="Run your Redwood app" />
+            <StepNumber stepNumber="2" title="Run your redwood app" />
             <StepContentContainer>
               <RunDevCommand />
             </StepContentContainer>
