@@ -7,23 +7,25 @@ on:
     paths-ignore:
       - "**.md"
       - ".github/CODEOWNERS"
+      - ".github/ISSUE_TEMPLATE/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
   id-token: write
 
 jobs:
-  type-check:
-    name: "ʦ TypeScript"
+  typecheck:
     uses: ./.github/workflows/typecheck.yml
     secrets: inherit
 
-  unitTests:
-    name: "🧪 Unit Tests"
+  units:
     uses: ./.github/workflows/unit-tests.yml
     secrets: inherit
 
   e2e:
-    name: "🧪 E2E Tests"
     uses: ./.github/workflows/e2e.yml
     secrets: inherit
