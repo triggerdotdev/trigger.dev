@@ -222,7 +222,7 @@ export class RegisterJobService {
           },
           update: {
             name: example.name,
-            icon: example.icon,
+            icon: example.icon ?? null,
             payload: example.payload,
           },
         });
