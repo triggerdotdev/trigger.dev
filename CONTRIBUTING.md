@@ -52,9 +52,13 @@ branch are tagged into a release monthly.
    Feel free to update `SESSION_SECRET` and `MAGIC_LINK_SECRET` as well using the same method.
 
 6. Start Docker. This starts the required services like Postgres. If this is your first time using Docker, consider going through this [guide](DOCKER_INSTALLATION.md)
+
    ```
    pnpm run docker
    ```
+
+   This will also start and run a local instance of [pgAdmin](https://www.pgadmin.org/) on [localhost:5480](http://localhost:5480), preconfigured with email `admin@example.com` and pwd `admin`. Then use `postgres` as the password to the Trigger.dev server.
+
 7. Migrate the database
    ```
    pnpm run db:migrate
