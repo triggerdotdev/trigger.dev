@@ -59,6 +59,10 @@ program
     "The URI path to the API handler function to use for this project.",
     "/api/trigger"
   )
+  .option(
+    "--tunnel <url>",
+    "The custom tunnel URL to use to connect the local dev server with the trigger.dev server"
+  )
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (path, options) => {
     try {

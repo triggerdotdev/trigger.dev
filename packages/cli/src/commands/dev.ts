@@ -28,6 +28,11 @@ export const DevCommandOptionsSchema = z.object({
   envFile: z.string().optional(),
   handlerPath: z.string(),
   clientId: z.string().optional(),
+  tunnel: z
+    .string()
+    .url()
+    .regex(/^(http|https).+/, "only http/https URLs are accepted")
+    .optional(),
 });
 
 export type DevCommandOptions = z.infer<typeof DevCommandOptionsSchema>;
@@ -90,7 +95,9 @@ export async function devCommand(path: string, anyOptions: any) {
     logger.error(
       `✖ [trigger.dev] Your endpoint couldn't be verified. Make sure your app is running and try again. ${resolvedOptions.handlerPath}`
     );
-    logger.info(`  [trigger.dev] You can use -H to specify a hostname, or -p to specify a port.`);
+    logger.info(
+      `  [trigger.dev] You can use -H to specify a hostname, or -p to specify a port, or --tunnel to specify the tunnel-url pointing to the server.`
+    );
     telemetryClient.dev.failed("no_server_found", resolvedOptions);
     return;
   }
@@ -100,7 +107,7 @@ export async function devCommand(path: string, anyOptions: any) {
   telemetryClient.dev.serverRunning(path, resolvedOptions);
 
   // Setup tunnel
-  const endpointUrl = await resolveEndpointUrl(apiUrl, port, hostname);
+  const endpointUrl = await resolveEndpointUrl(apiUrl, port, hostname, resolvedOptions.tunnel);
   if (!endpointUrl) {
     telemetryClient.dev.failed("failed_to_create_tunnel", resolvedOptions);
     return;
@@ -306,6 +313,7 @@ async function resolveOptions(
       envFile: unresolvedOptions.envFile ?? ".env",
       handlerPath: unresolvedOptions.handlerPath,
       clientId: unresolvedOptions.clientId,
+      tunnel: unresolvedOptions.tunnel,
     };
   }
 
@@ -318,6 +326,7 @@ async function resolveOptions(
     envFile: unresolvedOptions.envFile ?? envName ?? ".env",
     handlerPath: unresolvedOptions.handlerPath,
     clientId: unresolvedOptions.clientId,
+    tunnel: unresolvedOptions.tunnel,
   };
 }
 
@@ -384,6 +393,30 @@ async function verifyEndpoint(
       }
 
       spinner.succeed(`[trigger.dev] Found your trigger endpoint: ${localEndpointHandlerUrl}`);
+
+      if (resolvedOptions.tunnel) {
+        const spinner = ora(
+          `[trigger.dev] Verifying the tunnel URL: ${resolvedOptions.tunnel}`
+        ).start();
+        const response = await fetch(resolvedOptions.tunnel, {
+          method: "POST",
+          headers: {
+            "x-trigger-api-key": apiKey,
+            "x-trigger-action": "PING",
+            "x-trigger-endpoint-id": endpointId,
+          },
+        });
+
+        if (!response.ok || response.status !== 200) {
+          spinner.fail(
+            `[trigger.dev] Verify Tunnel URL - Server responded with ${response.status} (${resolvedOptions.tunnel}).`
+          );
+          continue;
+        } else {
+          spinner.succeed(`[trigger.dev] Tunnel URL verified: ${resolvedOptions.tunnel}`);
+        }
+      }
+
       return { hostname, port, handlerPath: resolvedOptions.handlerPath };
     } catch (err) {
       spinner.fail(`[trigger.dev] No server found (${localEndpointHandlerUrl}).`);
@@ -399,23 +432,33 @@ export function getEndpointId(runtime: JsRuntime, clientId?: string) {
   } else return runtime.getEndpointId();
 }
 
-async function resolveEndpointUrl(apiUrl: string, port: number, hostname: string) {
+async function resolveEndpointUrl(
+  apiUrl: string,
+  port: number,
+  hostname: string,
+  tunnelUrl?: string
+) {
   const apiURL = new URL(apiUrl);
 
-  //if the API is localhost and the hostname is localhost
+  // if the API is localhost and the hostname is localhost
   if (apiURL.hostname === "localhost" && hostname === "localhost") {
     return `http://${hostname}:${port}`;
   }
 
-  // Setup tunnel
-  const tunnelSpinner = ora(`🚇 Creating tunnel`).start();
-  const tunnelUrl = await createTunnel(hostname, port, tunnelSpinner);
-
+  // use tunnel URL if provided
   if (tunnelUrl) {
-    tunnelSpinner.succeed(`🚇 Created tunnel: ${tunnelUrl}`);
+    return tunnelUrl;
   }
 
-  return tunnelUrl;
+  // Setup tunnel
+  const tunnelSpinner = ora(`🚇 Creating tunnel`).start();
+  const createdTunnelUrl = await createTunnel(hostname, port, tunnelSpinner);
+
+  if (createdTunnelUrl) {
+    tunnelSpinner.succeed(`🚇 Created tunnel: ${createdTunnelUrl}`);
+  }
+
+  return createdTunnelUrl;
 }
 
 async function createTunnel(hostname: string, port: number, spinner: Ora) {
@@ -442,7 +485,7 @@ async function createTunnel(hostname: string, port: number, spinner: Ora) {
       error.message.includes("connect ECONNREFUSED 127.0.0.1:4041")
     ) {
       spinner.fail(
-        `Ngrok failed to create a tunnel for port ${port} because ngrok is already running`
+        `Ngrok failed to create a tunnel for port ${port} because ngrok is already running.\n  You may want to use --tunnel flag to use an existing URL that points to the server.`
       );
       return;
     }
