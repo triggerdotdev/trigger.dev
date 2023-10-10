@@ -48,9 +48,7 @@ export class PerformEndpointIndexService {
       },
     });
 
-    logger.debug("Performing endpoint index", {
-      id,
-    });
+    logger.debug("Performing endpoint index", endpointIndex);
 
     // Make a request to the endpoint to fetch a list of jobs
     const client = new EndpointApi(
@@ -94,7 +92,7 @@ export class PerformEndpointIndexService {
       });
       return updateEndpointIndexWithError(this.#prismaClient, id, {
         message: friendlyError.message,
-        raw: bodyResult.error,
+        raw: bodyResult.error.issues,
       });
     }
 
@@ -105,7 +103,7 @@ export class PerformEndpointIndexService {
       });
       return updateEndpointIndexWithError(this.#prismaClient, id, {
         message: friendlyError.message,
-        raw: headerResult.error,
+        raw: headerResult.error.issues,
       });
     }
 
@@ -302,18 +300,18 @@ export class PerformEndpointIndexService {
   }
 }
 
-function updateEndpointIndexWithError(
+async function updateEndpointIndexWithError(
   prismaClient: PrismaClient,
   id: string,
   error: EndpointIndexError
 ) {
-  return prismaClient.endpointIndex.update({
+  return await prismaClient.endpointIndex.update({
     where: {
       id,
     },
     data: {
       status: "FAILURE",
-      data: error,
+      error,
     },
   });
 }

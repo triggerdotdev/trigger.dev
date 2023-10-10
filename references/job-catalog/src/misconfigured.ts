@@ -16,7 +16,7 @@ client.defineJob({
   name: "Disallowed Interval",
   version: "0.0.2",
   trigger: intervalTrigger({
-    seconds: 1,
+    seconds: 10,
   }),
   run: async (payload, io, ctx) => {},
 });

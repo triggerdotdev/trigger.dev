@@ -2,8 +2,17 @@ import type { z } from "zod";
 import { Paragraph } from "./Paragraph";
 import { NamedIcon } from "./NamedIcon";
 import { motion } from "framer-motion";
+import { cn } from "~/utils/cn";
 
-export function FormError({ children, id }: { children: React.ReactNode; id?: string }) {
+export function FormError({
+  children,
+  id,
+  className,
+}: {
+  children: React.ReactNode;
+  id?: string;
+  className?: string;
+}) {
   return (
     <>
       {children && (
@@ -11,7 +20,7 @@ export function FormError({ children, id }: { children: React.ReactNode; id?: st
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3 }}
-          className="flex items-start gap-0.5"
+          className={cn("flex items-start gap-0.5", className)}
         >
           <NamedIcon name="error" className="h-4 w-4 shrink-0 justify-start" />
           <Paragraph id={id} variant="extra-small" className="text-rose-500">

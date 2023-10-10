@@ -9,6 +9,7 @@ import type {
   RuntimeEnvironment,
   RuntimeEnvironmentType,
 } from "@trigger.dev/database";
+import { EndpointIndexError, EndpointIndexErrorSchema } from "@trigger.dev/core";
 
 export type Client = {
   slug: string;
@@ -39,6 +40,7 @@ export type ClientEndpoint =
         source: string;
         updatedAt: Date;
         stats?: IndexEndpointStats;
+        error?: EndpointIndexError;
       };
       environment: {
         id: string;
@@ -87,6 +89,7 @@ export class EnvironmentsPresenter {
                 source: true,
                 updatedAt: true,
                 stats: true,
+                error: true,
               },
               take: 1,
               orderBy: {
@@ -217,7 +220,7 @@ const environmentSortOrder: RuntimeEnvironmentType[] = [
 
 function endpointClient(
   endpoint: Pick<Endpoint, "id" | "slug" | "url" | "indexingHookIdentifier"> & {
-    indexings: Pick<EndpointIndex, "status" | "source" | "updatedAt" | "stats">[];
+    indexings: Pick<EndpointIndex, "status" | "source" | "updatedAt" | "stats" | "error">[];
   },
   environment: Pick<RuntimeEnvironment, "id" | "apiKey" | "type">,
   baseUrl: string
@@ -234,6 +237,9 @@ function endpointClient(
           source: endpoint.indexings[0].source,
           updatedAt: endpoint.indexings[0].updatedAt,
           stats: parseEndpointIndexStats(endpoint.indexings[0].stats),
+          error: endpoint.indexings[0].error
+            ? EndpointIndexErrorSchema.parse(endpoint.indexings[0].error)
+            : undefined,
         }
       : undefined,
     environment: environment,

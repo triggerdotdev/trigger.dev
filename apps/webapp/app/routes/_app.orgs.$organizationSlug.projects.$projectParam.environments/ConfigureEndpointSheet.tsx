@@ -25,6 +25,7 @@ import {
   EndpointIndexStatusLabel,
   endpointIndexStatusTitle,
 } from "~/components/environments/EndpointIndexStatus";
+import { CodeBlock } from "~/components/code/CodeBlock";
 
 type ConfigureEndpointSheetProps = {
   slug: string;
@@ -157,6 +158,9 @@ export function ConfigureEndpointSheet({ slug, endpoint, onClose }: ConfigureEnd
                       {refreshingEndpoint ? "Refreshing" : "Refresh now"}
                     </Button>
                   </Callout>
+                  {endpoint.latestIndex?.error && (
+                    <FormError className="p-2">{endpoint.latestIndex.error.message}</FormError>
+                  )}
                 </refreshEndpointFetcher.Form>
               </div>
               <div className="max-w-full overflow-hidden">
