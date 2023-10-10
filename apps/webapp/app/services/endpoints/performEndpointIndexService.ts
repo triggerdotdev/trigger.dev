@@ -87,11 +87,33 @@ export class PerformEndpointIndexService {
     const bodyResult = parser.safeParse(anyBody);
 
     if (!bodyResult.success) {
-      const friendlyError = fromZodError(bodyResult.error, {
-        prefix: "There's an issue with the format of your Jobs",
+      const issues: string[] = [];
+      bodyResult.error.issues.forEach((issue) => {
+        if (issue.path.at(0) === "jobs") {
+          const jobIndex = issue.path.at(1) as number;
+          const job = (anyBody as any).jobs[jobIndex];
+
+          if (job) {
+            issues.push(
+              `There's an issue with the format of your Job: "${job.id}": ${
+                issue.message
+              } at "${issue.path.slice(2).join(".")}"`
+            );
+          }
+        }
       });
+
+      let friendlyError: string | undefined;
+      if (issues.length > 0) {
+        friendlyError = issues.join("\n");
+      } else {
+        friendlyError = fromZodError(bodyResult.error, {
+          prefix: "There's an issue with the format of your Jobs",
+        }).message;
+      }
+
       return updateEndpointIndexWithError(this.#prismaClient, id, {
-        message: friendlyError.message,
+        message: friendlyError,
         raw: bodyResult.error.issues,
       });
     }
