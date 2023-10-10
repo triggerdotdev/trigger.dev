@@ -48,6 +48,29 @@ const formattedDate = new Intl.DateTimeFormat("en", {
 
 let runtime: JsRuntime;
 
+type TunnelUrl = {
+  type: "tunnel";
+  url: string;
+};
+
+type ResolvedUrl = {
+  type: "resolved";
+  hostname: string;
+  port: number;
+};
+
+type ServerUrl = TunnelUrl | ResolvedUrl;
+
+type TunnelEndpoint = TunnelUrl & {
+  handlerPath: string;
+};
+
+type ResolvedEndpoint = ResolvedUrl & {
+  handlerPath: string;
+};
+
+type ServerEndpoint = TunnelEndpoint | ResolvedEndpoint;
+
 export async function devCommand(path: string, anyOptions: any) {
   telemetryClient.dev.started(path, anyOptions);
 
@@ -96,24 +119,22 @@ export async function devCommand(path: string, anyOptions: any) {
       `✖ [trigger.dev] Your endpoint couldn't be verified. Make sure your app is running and try again. ${resolvedOptions.handlerPath}`
     );
     logger.info(
-      `  [trigger.dev] You can use -H to specify a hostname, or -p to specify a port, or --tunnel to specify the tunnel-url pointing to the server.`
+      `  [trigger.dev] You can use -H to specify a hostname, or -p to specify a port, or -t to specify the tunnel-url pointing to the local dev server.`
     );
     telemetryClient.dev.failed("no_server_found", resolvedOptions);
     return;
   }
 
-  const { hostname, port, handlerPath } = verifiedEndpoint;
-
   telemetryClient.dev.serverRunning(path, resolvedOptions);
 
   // Setup tunnel
-  const endpointUrl = await resolveEndpointUrl(apiUrl, port, hostname, resolvedOptions.tunnel);
+  const endpointUrl = await resolveEndpointUrl(apiUrl, verifiedEndpoint);
   if (!endpointUrl) {
     telemetryClient.dev.failed("failed_to_create_tunnel", resolvedOptions);
     return;
   }
 
-  const endpointHandlerUrl = `${endpointUrl}${handlerPath}`;
+  const endpointHandlerUrl = `${endpointUrl}${verifiedEndpoint.handlerPath}`;
   telemetryClient.dev.tunnelRunning(path, resolvedOptions);
 
   // Watch for changes to files and refresh endpoints
@@ -336,40 +357,15 @@ async function verifyEndpoint(
   apiKey: string,
   framework?: Framework
 ) {
-  //create list of hostnames to try
-  const hostnames = [];
-  if (resolvedOptions.hostname) {
-    hostnames.push(resolvedOptions.hostname);
-  }
-  if (framework) {
-    hostnames.push(...framework.defaultHostnames);
-  } else {
-    hostnames.push("localhost");
-  }
+  const serverUrls: ServerUrl[] = findServerUrls(resolvedOptions, framework);
 
-  //create list of ports to try
-  const ports = [];
-  if (resolvedOptions.port) {
-    ports.push(resolvedOptions.port);
-  }
-  if (framework) {
-    ports.push(...framework.defaultPorts);
-  } else {
-    ports.push(3000);
-  }
-
-  //create list of urls to try
-  const urls: { hostname: string; port: number }[] = [];
-  for (const hostname of hostnames) {
-    for (const port of ports) {
-      urls.push({ hostname, port });
-    }
-  }
-
-  //try each hostname
-  for (const url of urls) {
-    const { hostname, port } = url;
-    const localEndpointHandlerUrl = `http://${hostname}:${port}${resolvedOptions.handlerPath}`;
+  //try each url
+  for (const serverUrl of serverUrls) {
+    const url =
+      serverUrl.type === "tunnel"
+        ? serverUrl.url
+        : `http://${serverUrl.hostname}:${serverUrl.port}`;
+    const localEndpointHandlerUrl = `${url}${resolvedOptions.handlerPath}`;
 
     const spinner = ora(
       `[trigger.dev] Looking for your trigger endpoint: ${localEndpointHandlerUrl}`
@@ -394,30 +390,7 @@ async function verifyEndpoint(
 
       spinner.succeed(`[trigger.dev] Found your trigger endpoint: ${localEndpointHandlerUrl}`);
 
-      if (resolvedOptions.tunnel) {
-        const spinner = ora(
-          `[trigger.dev] Verifying the tunnel URL: ${resolvedOptions.tunnel}`
-        ).start();
-        const response = await fetch(resolvedOptions.tunnel, {
-          method: "POST",
-          headers: {
-            "x-trigger-api-key": apiKey,
-            "x-trigger-action": "PING",
-            "x-trigger-endpoint-id": endpointId,
-          },
-        });
-
-        if (!response.ok || response.status !== 200) {
-          spinner.fail(
-            `[trigger.dev] Verify Tunnel URL - Server responded with ${response.status} (${resolvedOptions.tunnel}).`
-          );
-          continue;
-        } else {
-          spinner.succeed(`[trigger.dev] Tunnel URL verified: ${resolvedOptions.tunnel}`);
-        }
-      }
-
-      return { hostname, port, handlerPath: resolvedOptions.handlerPath };
+      return { ...serverUrl, handlerPath: resolvedOptions.handlerPath };
     } catch (err) {
       spinner.fail(`[trigger.dev] No server found (${localEndpointHandlerUrl}).`);
     }
@@ -432,33 +405,67 @@ export function getEndpointId(runtime: JsRuntime, clientId?: string) {
   } else return runtime.getEndpointId();
 }
 
-async function resolveEndpointUrl(
-  apiUrl: string,
-  port: number,
-  hostname: string,
-  tunnelUrl?: string
-) {
+function findServerUrls(resolvedOptions: ResolvedOptions, framework?: Framework): ServerUrl[] {
+  if (resolvedOptions.tunnel) {
+    logger.info(`  Using provided tunnel URL: ${resolvedOptions.tunnel}`);
+    return [{ type: "tunnel", url: resolvedOptions.tunnel }];
+  }
+
+  //create list of hostnames to try
+  const hostnames = [];
+  if (resolvedOptions.hostname) {
+    hostnames.push(resolvedOptions.hostname);
+  }
+  if (framework) {
+    hostnames.push(...framework.defaultHostnames);
+  } else {
+    hostnames.push("localhost");
+  }
+
+  //create list of ports to try
+  const ports = [];
+  if (resolvedOptions.port) {
+    ports.push(resolvedOptions.port);
+  }
+  if (framework) {
+    ports.push(...framework.defaultPorts);
+  } else {
+    ports.push(3000);
+  }
+
+  //create list of urls to try
+  const urls: ResolvedUrl[] = [];
+  for (const hostname of hostnames) {
+    for (const port of ports) {
+      urls.push({ type: "resolved", hostname, port });
+    }
+  }
+
+  return urls;
+}
+
+async function resolveEndpointUrl(apiUrl: string, endpoint: ServerEndpoint) {
+  // use tunnel URL if provided
+  if (endpoint.type === "tunnel") {
+    return endpoint.url;
+  }
+
   const apiURL = new URL(apiUrl);
 
   // if the API is localhost and the hostname is localhost
-  if (apiURL.hostname === "localhost" && hostname === "localhost") {
-    return `http://${hostname}:${port}`;
-  }
-
-  // use tunnel URL if provided
-  if (tunnelUrl) {
-    return tunnelUrl;
+  if (apiURL.hostname === "localhost" && endpoint.hostname === "localhost") {
+    return `http://${endpoint.hostname}:${endpoint.port}`;
   }
 
   // Setup tunnel
   const tunnelSpinner = ora(`🚇 Creating tunnel`).start();
-  const createdTunnelUrl = await createTunnel(hostname, port, tunnelSpinner);
+  const tunnelUrl = await createTunnel(endpoint.hostname, endpoint.port, tunnelSpinner);
 
-  if (createdTunnelUrl) {
-    tunnelSpinner.succeed(`🚇 Created tunnel: ${createdTunnelUrl}`);
+  if (tunnelUrl) {
+    tunnelSpinner.succeed(`🚇 Created tunnel: ${tunnelUrl}`);
   }
 
-  return createdTunnelUrl;
+  return tunnelUrl;
 }
 
 async function createTunnel(hostname: string, port: number, spinner: Ora) {
@@ -485,7 +492,7 @@ async function createTunnel(hostname: string, port: number, spinner: Ora) {
       error.message.includes("connect ECONNREFUSED 127.0.0.1:4041")
     ) {
       spinner.fail(
-        `Ngrok failed to create a tunnel for port ${port} because ngrok is already running.\n  You may want to use --tunnel flag to use an existing URL that points to the server.`
+        `Ngrok failed to create a tunnel for port ${port} because ngrok is already running.\n  You may want to use -t flag to use an existing URL that points to the local dev server.`
       );
       return;
     }
