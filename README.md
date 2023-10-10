@@ -80,6 +80,10 @@ Visit our docs [here](https://trigger.dev/docs).
 
 We provide an official trigger.dev docker image you can use to easily self-host the platform. We're working on more extensive guides but we currently provide a [Fly.io example repository](https://github.com/triggerdotdev/fly.io) with instructions in the README for deploying and using a self-hosted instance of Trigger.dev on Fly.io.
 
+## License
+
+[trigger.dev](https://github.com/triggerdotdev/trigger.dev) is licensed under  Apache-2.0 license. Please see [License File](https://github.com/triggerdotdev/trigger.dev/blob/main/LICENSE) for more information.
+
 ## Development
 
 To setup and develop locally or contribute to the open source project, follow our [development guide](./CONTRIBUTING.md).
