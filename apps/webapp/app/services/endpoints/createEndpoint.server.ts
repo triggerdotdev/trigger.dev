@@ -90,16 +90,6 @@ export class CreateEndpointService {
           },
         });
 
-        //todo create endpointIndex row, in PENDING state, set INTERNAL as source
-        //create a new worker job, ("performEndpointIndexing")
-        //pass in the endpointIndexId
-        //that Job will call a new Service that is very similar to the existing `IndexEndpointService`
-        //store raw error
-        //store pretty error too using https://www.npmjs.com/package/zod-validation-error this produces a nice error message
-        //safer parsing, update the endpointIndex row to be in a state of "SUCCESS" or "FAILED"
-        //todo create an EndpointIndex API endpoint that will return the status of the endpointIndex row, with errors and stats
-        //todo the dev command should poll. We need to make sure that we're only polling for the last endpointIndex record that was received
-
         // Kick off process to fetch the jobs for this endpoint
         await workerQueue.enqueue(
           "performEndpointIndexing",
