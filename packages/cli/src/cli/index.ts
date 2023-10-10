@@ -60,8 +60,8 @@ program
     "/api/trigger"
   )
   .option(
-    "--tunnel <url>",
-    "The custom tunnel URL to use to connect the local dev server with the trigger.dev server"
+    "-t, --tunnel <url>",
+    "An optional custom tunnel URL. Use only if you already have an open tunnel to your local dev server."
   )
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (path, options) => {
