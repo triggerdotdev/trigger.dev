@@ -43,4 +43,32 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "send-resend-email-from-blank",
+  name: "Send Resend Email From Blank",
+  version: "0.1.0",
+  trigger: eventTrigger({
+    name: "send.email",
+    schema: z.object({
+      to: z.union([z.string(), z.array(z.string())]),
+      subject: z.string(),
+      text: z.string(),
+      from: z.string().optional(),
+    }),
+  }),
+  integrations: {
+    resend,
+  },
+  run: async (payload, io, ctx) => {
+    const response = await io.resend.sendEmail("📧", {
+      to: payload.to,
+      subject: payload.subject,
+      text: payload.text,
+      from: payload.from!,
+    });
+
+    await io.logger.info("Sent email", { response });
+  },
+});
+
 createExpressServer(client);

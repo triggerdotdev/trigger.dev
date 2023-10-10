@@ -280,7 +280,7 @@ export class RunTaskService {
           noop: taskBody.noop,
           delayUntil: taskBody.delayUntil,
           params: taskBody.params ?? undefined,
-          properties: taskBody.properties ?? undefined,
+          properties: this.#filterProperties(taskBody.properties) ?? undefined,
           redact: taskBody.redact ?? undefined,
           operation: taskBody.operation,
           callbackUrl,
@@ -324,5 +324,15 @@ export class RunTaskService {
     });
 
     return task ? taskWithAttemptsToServerTask(task) : undefined;
+  }
+
+  #filterProperties(properties: RunTaskBodyOutput["properties"]): RunTaskBodyOutput["properties"] {
+    if (!properties) return;
+
+    return properties.filter((property) => {
+      if (!property) return false;
+
+      return typeof property.label === "string" && typeof property.text === "string";
+    });
   }
 }

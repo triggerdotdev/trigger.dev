@@ -35,6 +35,7 @@ import { TestJobService } from "~/services/jobs/testJob.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
+import { isValidIcon } from "~/utils/icon";
 import { JobParamsSchema, jobRunDashboardPath, trimTrailingSlash } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
@@ -228,7 +229,7 @@ export default function Page() {
                       }}
                     >
                       <DetailCell
-                        leadingIcon={example.icon ?? CodeBracketIcon}
+                        leadingIcon={isValidIcon(example.icon) ? example.icon : CodeBracketIcon}
                         leadingIconClassName="text-blue-500"
                         label={example.name}
                         trailingIcon={example.id === selectedCodeSampleId ? "check" : "plus"}

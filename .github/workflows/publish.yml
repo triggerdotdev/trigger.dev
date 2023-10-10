@@ -38,125 +38,19 @@ env:
 
 jobs:
   typecheck:
-    name: ʦ TypeScript
-    runs-on: buildjet-4vcpu-ubuntu-2204
-    steps:
-      - name: ⬇️ Checkout repo
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+    uses: ./.github/workflows/typecheck.yml
+    secrets: inherit
 
-      - name: ⎔ Setup pnpm
-        uses: pnpm/action-setup@v2.2.4
-        with:
-          version: 7.18
-
-      - name: ⎔ Setup node
-        uses: buildjet/setup-node@v3
-        with:
-          node-version: 18
-          cache: "pnpm"
-
-      - name: 📥 Download deps
-        run: pnpm install --frozen-lockfile
-
-      - name: 📀 Generate Prisma Client
-        run: pnpm run generate
-
-      - name: 🔎 Type check
-        run: pnpm run typecheck --filter webapp
-
-  unitTests:
-    name: Unit Tests
-    runs-on: buildjet-4vcpu-ubuntu-2204
-    steps:
-      - name: ⬇️ Checkout repo
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: ⎔ Setup pnpm
-        uses: pnpm/action-setup@v2.2.4
-        with:
-          version: 7.18
-
-      - name: ⎔ Setup node
-        uses: buildjet/setup-node@v3
-        with:
-          node-version: 18
-          cache: "pnpm"
-
-      - name: 📥 Download deps
-        run: pnpm install --frozen-lockfile
-
-      - name: Run Unit Tests
-        run: |
-          pnpm run test
+  units:
+    uses: ./.github/workflows/unit-tests.yml
+    secrets: inherit
 
   e2e:
-    name: e2e Tests
-    runs-on: buildjet-4vcpu-ubuntu-2204
-    steps:
-      - name: 🐳 Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: ⬇️ Checkout repo
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: ⎔ Setup pnpm
-        uses: pnpm/action-setup@v2.2.4
-        with:
-          version: 7.18
-
-      - name: ⎔ Setup node
-        uses: buildjet/setup-node@v3
-        with:
-          node-version: 18
-          cache: "pnpm"
-
-      - name: 📥 Download deps
-        run: pnpm install --frozen-lockfile
-
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
-
-      - name: Run Playwright tests
-        run: |
-          # Setup environment variables
-          cp ./.env.example ./.env
-          cp ./references/nextjs-test/.env.example ./references/nextjs-test/.env.local
-
-          # Build packages
-          pnpm run build --filter @references/nextjs-test^...
-          pnpm --filter @trigger.dev/database generate
-
-          # Move trigger-cli bin to correct place
-          pnpm install --frozen-lockfile
-
-          # Execute tests
-          pnpm run docker
-          pnpm run db:migrate
-          pnpm run db:seed
-          pnpm run test:e2e
-
-          # Cleanup
-          pnpm run docker:stop
-
-      - name: Upload Playwright report
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 30
+    uses: ./.github/workflows/e2e.yml
+    secrets: inherit
 
   publish:
-    needs: [typecheck, unitTests, e2e]
+    needs: [typecheck, units, e2e]
     runs-on: buildjet-4vcpu-ubuntu-2204
     outputs:
       version: ${{ steps.get_version.outputs.version }}

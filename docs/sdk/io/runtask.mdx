@@ -128,6 +128,7 @@ The wrappers at `io.integration.runTask()` expose the underlying Integration cli
         The value of the property.
       </ResponseField>
     </Expandable>
+
   </ResponseField>
 
 </Expandable>
@@ -135,7 +136,7 @@ The wrappers at `io.integration.runTask()` expose the underlying Integration cli
 
 <ResponseField name="onError" type="function">
   An optional callback that will be called when the Task fails. You can perform
-  logic in here and optionally return a custom error object. Returning an object with `{ retryAt: Date, error?: Error }` will retry the Task at the specified Date. You can also just return a new `Error` object to throw a new error. Return nothing to rethrow the original error.
+  logic in here and optionally return a custom error object. Returning an object with `{ retryAt: Date, error?: Error }` will retry the Task at the specified Date. You can also just return a new `Error` object to throw a new error. Returning `null` or `undefined` will rethrow the original error. If you want to force retrying to be skipped, return `{ skipRetrying: true }`.
 
   <Expandable title="arguments">
     <ResponseField name="error" type="unknown">

@@ -664,6 +664,7 @@ export const RunTaskBodyInputSchema = RunTaskOptionsSchema.extend({
 export type RunTaskBodyInput = z.infer<typeof RunTaskBodyInputSchema>;
 
 export const RunTaskBodyOutputSchema = RunTaskBodyInputSchema.extend({
+  properties: z.array(DisplayPropertySchema.partial()).optional(),
   params: DeserializedJsonSchema.optional().nullable(),
   callback: z
     .object({
