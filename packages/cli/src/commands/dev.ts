@@ -357,7 +357,7 @@ async function verifyEndpoint(
   apiKey: string,
   framework?: Framework
 ) {
-  const serverUrls: ServerUrl[] = findServerUrls(resolvedOptions, framework);
+  const serverUrls = findServerUrls(resolvedOptions, framework);
 
   //try each url
   for (const serverUrl of serverUrls) {
