@@ -113,7 +113,7 @@ export default function Page() {
                         />
                         <Switch
                           variant="small"
-                          label={<span>Active Jobs</span>}
+                          label="Active Jobs"
                           checked={onlyActiveJobs}
                           onCheckedChange={setOnlyActiveJobs}
                           className={"shrink-0"}
