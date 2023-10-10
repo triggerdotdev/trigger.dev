@@ -1,6 +1,5 @@
 import { ArrowUpIcon } from "@heroicons/react/24/solid";
 import { LoaderArgs } from "@remix-run/server-runtime";
-import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { FrameworkSelector } from "~/components/frameworks/FrameworkSelector";
 import { JobsTable } from "~/components/jobs/JobsTable";
