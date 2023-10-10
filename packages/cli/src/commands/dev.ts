@@ -19,6 +19,7 @@ import { resolvePath } from "../utils/parseNameAndPath";
 import { RequireKeys } from "../utils/requiredKeys";
 import { TriggerApi } from "../utils/triggerApi";
 import { standardWatchIgnoreRegex, standardWatchFilePaths } from "../frameworks/watchConfig";
+import { Throttle } from "../utils/throttle";
 
 const asyncExecFile = util.promisify(childProcess.execFile);
 
@@ -195,12 +196,14 @@ export async function devCommand(path: string, anyOptions: any) {
     ignoreInitial: true,
   });
 
+  const throttle = new Throttle(refresh, throttleTimeMs);
+
   watcher.on("all", (_event, _path) => {
-    throttle(refresh, throttleTimeMs);
+    throttle.call();
   });
 
   //Do initial refresh
-  throttle(refresh, throttleTimeMs);
+  throttle.call();
 }
 
 async function resolveOptions(
@@ -403,6 +406,10 @@ async function upgradeNgrokConfig(spinner: Ora) {
   }
 }
 
+//todo dev command gets the endpointIndex id and polls for the status
+//todo create an EndpointIndex API endpoint that will return the status of the endpointIndex row, with errors and stats
+//todo the dev command should poll. We need to make sure that we're only polling for the last endpointIndex record that was received
+
 async function refreshEndpoint(apiClient: TriggerApi, endpointId: string, endpointUrl: string) {
   try {
     const response = await apiClient.registerEndpoint({
@@ -437,15 +444,6 @@ async function wait(ms: number) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
-}
-
-//throttle function
-let throttleTimeout: NodeJS.Timeout | null = null;
-function throttle(fn: () => any, delay: number) {
-  if (throttleTimeout) {
-    clearTimeout(throttleTimeout);
-  }
-  throttleTimeout = setTimeout(fn, delay);
 }
 
 const maximum_backoff = 30;
