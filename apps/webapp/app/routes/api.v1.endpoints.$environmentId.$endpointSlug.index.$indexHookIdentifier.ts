@@ -115,14 +115,21 @@ export class TriggerEndpointIndexHookService {
 
     const reason = parseReasonFromBody(body);
 
-    // Index the endpoint in 5 seconds from now
-    await workerQueue.enqueue(
-      "indexEndpoint",
-      {
-        id: endpoint.id,
+    const index = await this.#prismaClient.endpointIndex.create({
+      data: {
+        endpointId: endpoint.id,
+        status: "PENDING",
         source: "HOOK",
         reason,
         sourceData: body,
+      },
+    });
+
+    // Index the endpoint in 5 seconds from now
+    await workerQueue.enqueue(
+      "performEndpointIndexing",
+      {
+        id: index.id,
       },
       {
         runAt: new Date(Date.now() + 5000),
