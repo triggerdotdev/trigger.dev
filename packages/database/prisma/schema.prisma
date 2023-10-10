@@ -393,8 +393,8 @@ model EndpointIndex {
   reason     String?
   status     EndpointIndexStatus @default(PENDING)
 
-  data  Json
-  stats Json
+  data  Json?
+  stats Json?
 }
 
 enum EndpointIndexSource {
