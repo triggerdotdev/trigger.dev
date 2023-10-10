@@ -82,10 +82,12 @@ export type ZodWorkerDequeueOptions = {
 };
 
 const CLEANUP_TASK_NAME = "__cleanupOldJobs";
+const REPORTER_TASK_NAME = "__reporter";
 
 export type ZodWorkerCleanupOptions = {
   frequencyExpression: string; // cron expression
   ttl: number;
+  maxCount: number;
   taskOptions?: CronItemOptions;
 };
 
@@ -97,6 +99,7 @@ export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   tasks: ZodTasks<TMessageCatalog>;
   recurringTasks?: ZodRecurringTasks;
   cleanup?: ZodWorkerCleanupOptions;
+  reporter?: (subject: string, message: string) => Promise<void>;
 };
 
 export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
@@ -108,6 +111,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   #recurringTasks?: ZodRecurringTasks;
   #runner?: GraphileRunner;
   #cleanup: ZodWorkerCleanupOptions | undefined;
+  #reporter?: (subject: string, message: string) => Promise<void>;
 
   constructor(options: ZodWorkerOptions<TMessageCatalog>) {
     this.#name = options.name;
@@ -117,6 +121,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     this.#tasks = options.tasks;
     this.#recurringTasks = options.recurringTasks;
     this.#cleanup = options.cleanup;
+    this.#reporter = options.reporter;
   }
 
   get graphileWorkerSchema() {
@@ -356,6 +361,14 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       taskList[CLEANUP_TASK_NAME] = task;
     }
 
+    if (this.#reporter) {
+      const task: Task = (payload, helpers) => {
+        return this.#handleReporter(payload, helpers);
+      };
+
+      taskList[REPORTER_TASK_NAME] = task;
+    }
+
     return taskList;
   }
 
@@ -368,6 +381,14 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
         identifier: CLEANUP_TASK_NAME,
         task: CLEANUP_TASK_NAME,
         options: this.#cleanup.taskOptions,
+      });
+    }
+
+    if (this.#reporter) {
+      cronItems.push({
+        pattern: "50 * * * *", // Every hour at 50 minutes past the hour
+        identifier: REPORTER_TASK_NAME,
+        task: REPORTER_TASK_NAME,
       });
     }
 
@@ -493,8 +514,9 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     });
 
     const rawResults = await this.#prisma.$queryRawUnsafe(
-      `DELETE FROM ${this.graphileWorkerSchema}.jobs WHERE run_at < $1 AND locked_at IS NULL AND max_attempts = attempts RETURNING id`,
-      expirationDate
+      `WITH rows AS (SELECT id FROM ${this.graphileWorkerSchema}.jobs WHERE run_at < $1 AND locked_at IS NULL AND max_attempts = attempts ORDER BY run_at ASC LIMIT $2) DELETE FROM ${this.graphileWorkerSchema}.jobs WHERE id IN (SELECT id FROM rows) RETURNING id`,
+      expirationDate,
+      this.#cleanup.maxCount
     );
 
     const results = Array.isArray(rawResults) ? rawResults : [];
@@ -504,6 +526,65 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       expirationDate,
       payload,
     });
+
+    if (this.#reporter) {
+      await this.#reporter(
+        "Worker Queue Cleanup",
+        `Cleaned up ${results.length} jobs older than ${expirationDate.toISOString()}`
+      );
+    }
+  }
+
+  async #handleReporter(rawPayload: unknown, helpers: JobHelpers): Promise<void> {
+    if (!this.#reporter) {
+      return;
+    }
+
+    logger.debug("Received reporter task", {
+      payload: rawPayload,
+    });
+
+    const parsedPayload = RawCronPayloadSchema.safeParse(rawPayload);
+
+    if (!parsedPayload.success) {
+      throw new Error(
+        `Failed to parse cleanup task payload: ${JSON.stringify(parsedPayload.error)}`
+      );
+    }
+
+    const payload = parsedPayload.data;
+
+    // Subtract an hour from the payload._cron.ts
+    const startAt = new Date(payload._cron.ts.getTime() - 1000 * 60 * 60);
+
+    const schema = z.array(z.object({ count: z.coerce.number() }));
+
+    // Count the number of jobs that have been added since the startAt date and before the payload._cron.ts date
+    const rawAddedResults = await this.#prisma.$queryRawUnsafe(
+      `SELECT COUNT(*) FROM ${this.graphileWorkerSchema}.jobs WHERE created_at > $1 AND created_at < $2`,
+      startAt,
+      payload._cron.ts
+    );
+
+    const addedCountResults = schema.parse(rawAddedResults)[0];
+
+    // Count the total number of jobs in the jobs table
+    const rawTotalResults = await this.#prisma.$queryRawUnsafe(
+      `SELECT COUNT(*) FROM ${this.graphileWorkerSchema}.jobs`
+    );
+
+    const totalCountResults = schema.parse(rawTotalResults)[0];
+
+    logger.debug("Calculated metrics about the jobs table", {
+      rawAddedResults,
+      rawTotalResults,
+      payload,
+    });
+
+    await this.#reporter(
+      "Worker Queue Metrics",
+      `Added ${addedCountResults.count} jobs in the last hour, total jobs: ${totalCountResults.count}`
+    );
   }
 
   #logDebug(message: string, args?: any) {

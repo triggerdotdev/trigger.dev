@@ -40,6 +40,7 @@ const EnvironmentSchema = z.object({
   EXECUTION_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   WORKER_ENABLED: z.string().default("true"),
   EXECUTION_WORKER_ENABLED: z.string().default("true"),
+  WORKER_REPORTER_EMAIL: z.string().email().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

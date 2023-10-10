@@ -1,4 +1,4 @@
-import type { DeliverEmail } from "emails";
+import type { DeliverEmail, SendPlainTextOptions } from "emails";
 import { EmailClient } from "emails";
 import type { SendEmailOptions } from "remix-auth-email-link";
 import { redirect } from "remix-typedjson";
@@ -25,6 +25,10 @@ export async function sendMagicLinkEmail(options: SendEmailOptions<AuthUser>): P
     to: options.emailAddress,
     magicLink: options.magicLink,
   });
+}
+
+export async function sendPlainTextEmail(options: SendPlainTextOptions) {
+  return client.sendPlainText(options);
 }
 
 export async function scheduleWelcomeEmail(user: User) {

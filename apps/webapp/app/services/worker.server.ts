@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
-import { sendEmail } from "./email.server";
+import { sendEmail, sendPlainTextEmail } from "./email.server";
 import { IndexEndpointService } from "./endpoints/indexEndpoint.server";
 import { RecurringEndpointIndexService } from "./endpoints/recurringEndpointIndex.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
@@ -21,6 +21,7 @@ import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequ
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout";
 import { addMissingVersionField } from "@trigger.dev/core";
+import { logger } from "./logger.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -129,10 +130,20 @@ function getWorkerQueue() {
     name: "workerQueue",
     prisma,
     cleanup: {
-      // cleanup once per hour
-      frequencyExpression: "0 * * * *",
-      // delete jobs that have been completed for more than 7 days
-      ttl: 7 * 24 * 60 * 60 * 1000,
+      frequencyExpression: "13,27,43 * * * *",
+      ttl: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxCount: 1000,
+    },
+    reporter: async (subject, message) => {
+      logger.info("workerQueue reporter", { workerMessage: message, subject });
+
+      if (env.WORKER_REPORTER_EMAIL) {
+        await sendPlainTextEmail({
+          to: env.WORKER_REPORTER_EMAIL,
+          subject: `workerQueue Report: ${subject}`,
+          text: message,
+        });
+      }
     },
     runnerOptions: {
       connectionString: env.DATABASE_URL,
