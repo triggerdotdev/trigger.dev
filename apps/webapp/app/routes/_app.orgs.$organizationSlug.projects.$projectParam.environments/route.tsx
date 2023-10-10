@@ -3,11 +3,16 @@ import { LoaderArgs } from "@remix-run/server-runtime";
 import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
+import {
+  EndpointIndexStatusIcon,
+  EndpointIndexStatusLabel,
+} from "~/components/environments/EndpointIndexStatus";
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { HowToUseApiKeysAndEndpoints } from "~/components/helpContent/HelpContentText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
-import { Button, ButtonContent } from "~/components/primitives/Buttons";
+import { Badge } from "~/components/primitives/Badge";
+import { ButtonContent } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
@@ -36,12 +41,9 @@ import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import { ProjectParamSchema, projectEnvironmentsStreamingPath } from "~/utils/pathBuilder";
 import { requestUrl } from "~/utils/requestUrl.server";
-import { EndpointIndexStatus, RuntimeEnvironmentType } from "../../../../../packages/database/src";
+import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
-import { Badge } from "~/components/primitives/Badge";
 import { FirstEndpointSheet } from "./FirstEndpointSheet";
-import { CheckCircleIcon, ClockIcon, XCircleIcon } from "@heroicons/react/20/solid";
-import { Spinner } from "~/components/primitives/Spinner";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -307,46 +309,5 @@ function EndpointRow({
           <TableCellChevron onClick={onClick} />
         </TableRow>
       );
-  }
-}
-
-function EndpointIndexStatusIcon({ status }: { status: EndpointIndexStatus }) {
-  switch (status) {
-    case "PENDING":
-      return <ClockIcon className={cn("h-4 w-4", endpointIndexStatusClassNameColor(status))} />;
-    case "STARTED":
-      return <Spinner className={cn("h-4 w-4", endpointIndexStatusClassNameColor(status))} />;
-    case "SUCCESS":
-      return (
-        <CheckCircleIcon className={cn("h-4 w-4", endpointIndexStatusClassNameColor(status))} />
-      );
-    case "FAILURE":
-      return <XCircleIcon className={cn("h-4 w-4", endpointIndexStatusClassNameColor(status))} />;
-  }
-}
-
-function EndpointIndexStatusLabel({ status }: { status: EndpointIndexStatus }) {
-  switch (status) {
-    case "PENDING":
-      return <span className={endpointIndexStatusClassNameColor(status)}>Pending</span>;
-    case "STARTED":
-      return <span className={endpointIndexStatusClassNameColor(status)}>Started</span>;
-    case "SUCCESS":
-      return <span className={endpointIndexStatusClassNameColor(status)}>Success</span>;
-    case "FAILURE":
-      return <span className={endpointIndexStatusClassNameColor(status)}>Failure</span>;
-  }
-}
-
-export function endpointIndexStatusClassNameColor(status: EndpointIndexStatus): string {
-  switch (status) {
-    case "PENDING":
-      return "text-dimmed";
-    case "STARTED":
-      return "text-blue-500";
-    case "SUCCESS":
-      return "text-green-500";
-    case "FAILURE":
-      return "text-rose-500";
   }
 }
