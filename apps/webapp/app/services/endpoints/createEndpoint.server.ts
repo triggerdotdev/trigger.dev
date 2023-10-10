@@ -102,10 +102,9 @@ export class CreateEndpointService {
 
         // Kick off process to fetch the jobs for this endpoint
         await workerQueue.enqueue(
-          "indexEndpoint",
+          "performEndpointIndexing",
           {
-            id: endpoint.id,
-            source: "INTERNAL",
+            id: endpointIndex.id,
           },
           {
             tx,

@@ -21,6 +21,7 @@ import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequ
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout";
 import { addMissingVersionField } from "@trigger.dev/core";
+import { PerformEndpointIndexService } from "./endpoints/performEndpointIndexService";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -28,6 +29,9 @@ const workerCatalog = {
     source: z.enum(["MANUAL", "API", "INTERNAL", "HOOK"]).optional(),
     sourceData: z.any().optional(),
     reason: z.string().optional(),
+  }),
+  performEndpointIndexing: z.object({
+    id: z.string(),
   }),
   scheduleEmail: DeliverEmailSchema,
   startRun: z.object({ id: z.string() }),
@@ -276,8 +280,15 @@ function getWorkerQueue() {
         maxAttempts: 7,
         handler: async (payload, job) => {
           const service = new IndexEndpointService();
-
           await service.call(payload.id, payload.source, payload.reason, payload.sourceData);
+        },
+      },
+      performEndpointIndexing: {
+        priority: 1, // smaller number = higher priority
+        maxAttempts: 7,
+        handler: async (payload, job) => {
+          const service = new PerformEndpointIndexService();
+          await service.call(payload.id);
         },
       },
       deliverEvent: {

@@ -296,6 +296,13 @@ export const IndexEndpointResponseSchema = z.object({
 
 export type IndexEndpointResponse = z.infer<typeof IndexEndpointResponseSchema>;
 
+export const EndpointIndexErrorSchema = z.object({
+  message: z.string(),
+  raw: z.any().optional(),
+});
+
+export type EndpointIndexError = z.infer<typeof EndpointIndexErrorSchema>;
+
 export const EndpointHeadersSchema = z.object({
   "trigger-version": z.string().optional(),
 });

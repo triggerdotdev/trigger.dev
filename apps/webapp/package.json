@@ -112,7 +112,8 @@
     "tiny-invariant": "^1.2.0",
     "ulid": "^2.3.0",
     "zod": "3.22.3",
-    "zod-error": "1.5.0"
+    "zod-error": "1.5.0",
+    "zod-validation-error": "^1.5.0"
   },
   "devDependencies": {
     "@remix-run/dev": "1.19.2-pre.0",

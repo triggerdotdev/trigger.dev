@@ -197,6 +197,7 @@ importers:
       ulid: ^2.3.0
       zod: 3.22.3
       zod-error: 1.5.0
+      zod-validation-error: ^1.5.0
     dependencies:
       '@codemirror/autocomplete': 6.4.0_czcfkg2f66rxeiodoti7r2gulu
       '@codemirror/commands': 6.1.3
@@ -282,6 +283,7 @@ importers:
       ulid: 2.3.0
       zod: 3.22.3
       zod-error: 1.5.0
+      zod-validation-error: 1.5.0_zod@3.22.3
     devDependencies:
       '@remix-run/dev': 1.19.2-pre.0_36n2i74sizt32vwpdxc4husnkq
       '@remix-run/eslint-config': 1.19.2-pre.0_ol4nhuzbuflsbzk2mijpqykzba
@@ -32579,6 +32581,15 @@ packages:
 
   /zod-error/1.5.0:
     resolution: {integrity: sha512-zzopKZ/skI9iXpqCEPj+iLCKl9b88E43ehcU+sbRoHuwGd9F1IDVGQ70TyO6kmfiRL1g4IXkjsXK+g1gLYl4WQ==}
+    dependencies:
+      zod: 3.22.3
+    dev: false
+
+  /zod-validation-error/1.5.0_zod@3.22.3:
+    resolution: {integrity: sha512-/7eFkAI4qV0tcxMBB/3+d2c1P6jzzZYdYSlBuAklzMuCrJu5bzJfHS0yVAS87dRHVlhftd6RFJDIvv03JgkSbw==}
+    engines: {node: '>=16.0.0'}
+    peerDependencies:
+      zod: ^3.18.0
     dependencies:
       zod: 3.22.3
     dev: false
