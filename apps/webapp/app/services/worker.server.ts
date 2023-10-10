@@ -140,7 +140,7 @@ function getWorkerQueue() {
       if (env.WORKER_REPORTER_EMAIL) {
         await sendPlainTextEmail({
           to: env.WORKER_REPORTER_EMAIL,
-          subject: `workerQueue Report: ${subject}`,
+          subject: `[${env.APP_ENV}] workerQueue Report: ${subject}`,
           text: message,
         });
       }
