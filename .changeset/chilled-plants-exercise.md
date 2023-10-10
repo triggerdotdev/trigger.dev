@@ -1,14 +1,14 @@
 ---
-"@trigger.dev/integration-kit": patch
-"@trigger.dev/eslint-plugin": patch
-"@trigger.dev/sdk": patch
-"@trigger.dev/sveltekit": patch
-"@trigger.dev/express": patch
-"@trigger.dev/nestjs": patch
-"@trigger.dev/nextjs": patch
-"@trigger.dev/astro": patch
-"@trigger.dev/core": patch
-"@trigger.dev/cli": patch
+"@trigger.dev/integration-kit": minor
+"@trigger.dev/eslint-plugin": minor
+"@trigger.dev/sdk": minor
+"@trigger.dev/sveltekit": minor
+"@trigger.dev/express": minor
+"@trigger.dev/nestjs": minor
+"@trigger.dev/nextjs": minor
+"@trigger.dev/astro": minor
+"@trigger.dev/core": minor
+"@trigger.dev/cli": minor
 ---
 
-Node v18 upgrade for all Packages.
+Drop support for Node v16, require Node >= 18. This allows us to use native fetch in our SDK which paves the way for multi-platform support.
