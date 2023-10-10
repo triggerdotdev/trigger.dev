@@ -128,6 +128,12 @@ function getWorkerQueue() {
   return new ZodWorker({
     name: "workerQueue",
     prisma,
+    cleanup: {
+      // cleanup once per hour
+      frequencyExpression: "0 * * * *",
+      // delete jobs that have been completed for more than 7 days
+      ttl: 7 * 24 * 60 * 60 * 1000,
+    },
     runnerOptions: {
       connectionString: env.DATABASE_URL,
       concurrency: env.WORKER_CONCURRENCY,
@@ -229,6 +235,7 @@ function getWorkerQueue() {
       deliverHttpSourceRequest: {
         priority: 1, // smaller number = higher priority
         maxAttempts: 14,
+        queueName: (payload) => `sources:${payload.id}`,
         handler: async (payload, job) => {
           const service = new DeliverHttpSourceRequestService();
 
@@ -255,7 +262,6 @@ function getWorkerQueue() {
       },
       performTaskOperation: {
         priority: 0, // smaller number = higher priority
-        queueName: (payload) => `tasks:${payload.id}`,
         maxAttempts: 3,
         handler: async (payload, job) => {
           const service = new PerformTaskOperationService();
@@ -264,7 +270,6 @@ function getWorkerQueue() {
         },
       },
       scheduleEmail: {
-        queueName: "internal-queue",
         priority: 100,
         maxAttempts: 3,
         handler: async (payload, job) => {
@@ -291,7 +296,6 @@ function getWorkerQueue() {
       },
       refreshOAuthToken: {
         priority: 8, // smaller number = higher priority
-        queueName: "internal-queue",
         maxAttempts: 7,
         handler: async (payload, job) => {
           await integrationAuthRepository.refreshConnection({
