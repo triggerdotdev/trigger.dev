@@ -14,6 +14,10 @@ on:
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "turbo.json"
+    paths-ignore:
+      - "**.md"
+      - ".github/CODEOWNERS"
+      - ".github/ISSUE_TEMPLATE/**"
 
 jobs:
   release:
