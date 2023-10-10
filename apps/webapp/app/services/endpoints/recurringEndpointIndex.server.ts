@@ -17,7 +17,9 @@ export class RecurringEndpointIndexService {
     const endpoints = await this.#prismaClient.endpoint.findMany({
       where: {
         environment: {
-          type: RuntimeEnvironmentType.PRODUCTION,
+          type: {
+            in: [RuntimeEnvironmentType.PRODUCTION, RuntimeEnvironmentType.STAGING],
+          },
         },
         indexings: {
           none: {
