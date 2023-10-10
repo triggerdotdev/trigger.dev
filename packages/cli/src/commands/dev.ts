@@ -20,6 +20,8 @@ import { RequireKeys } from "../utils/requiredKeys";
 import { TriggerApi } from "../utils/triggerApi";
 import { standardWatchIgnoreRegex, standardWatchFilePaths } from "../frameworks/watchConfig";
 import { Throttle } from "../utils/throttle";
+import { wait } from "../utils/wait";
+import { Retry } from "../utils/retry";
 
 const asyncExecFile = util.promisify(childProcess.execFile);
 
@@ -109,81 +111,77 @@ export async function devCommand(path: string, anyOptions: any) {
   telemetryClient.dev.tunnelRunning(path, resolvedOptions);
 
   const connectingSpinner = ora(`[trigger.dev] Registering endpoint ${endpointHandlerUrl}...`);
-
-  //refresh function
   let hasConnected = false;
-  let attemptCount = 0;
-  const refresh = async () => {
-    connectingSpinner.start();
 
-    const refreshedEndpointId = await getEndpointIdFromPackageJson(resolvedPath, resolvedOptions);
+  const refresher = new Retry<{ id: string; updatedAt: Date }, { message: string }>({
+    fn: async (success, failed) => {
+      connectingSpinner.start();
 
-    // Read from env file to get the TRIGGER_API_KEY and TRIGGER_API_URL
-    const apiDetails = await getTriggerApiDetails(resolvedPath, resolvedOptions.envFile);
+      const refreshedEndpointId = await getEndpointIdFromPackageJson(resolvedPath, resolvedOptions);
 
-    if (!apiDetails) {
-      connectingSpinner.fail(`[trigger.dev] Failed to connect: Missing API Key`);
-      logger.info(`Will attempt again on the next file change…`);
-      attemptCount = 0;
-      return;
-    }
+      // Read from env file to get the TRIGGER_API_KEY and TRIGGER_API_URL
+      const apiDetails = await getTriggerApiDetails(resolvedPath, resolvedOptions.envFile);
 
-    const { apiKey, apiUrl } = apiDetails;
-    const apiClient = new TriggerApi(apiKey, apiUrl);
+      if (!apiDetails) {
+        connectingSpinner.fail(`[trigger.dev] Failed to connect: Missing API Key`);
+        logger.info(`Will attempt again on the next file change…`);
+        return;
+      }
 
-    const authorizedKey = await apiClient.whoami(apiKey);
-    if (!authorizedKey) {
-      logger.error(
-        `✖ [trigger.dev] The API key you provided is not authorized. Try visiting your dashboard to get a new API key.`
+      const { apiKey, apiUrl } = apiDetails;
+      const apiClient = new TriggerApi(apiKey, apiUrl);
+
+      const authorizedKey = await apiClient.whoami(apiKey);
+      if (!authorizedKey) {
+        logger.error(
+          `✖ [trigger.dev] The API key you provided is not authorized. Try visiting your dashboard to get a new API key.`
+        );
+
+        telemetryClient.dev.failed("invalid_api_key", resolvedOptions);
+        return;
+      }
+
+      telemetryClient.identify(
+        authorizedKey.organization.id,
+        authorizedKey.project.id,
+        authorizedKey.userId
       );
 
-      telemetryClient.dev.failed("invalid_api_key", resolvedOptions);
-      return;
-    }
+      const result = await refreshEndpoint(
+        apiClient,
+        refreshedEndpointId ?? endpointId,
+        endpointHandlerUrl
+      );
 
-    telemetryClient.identify(
-      authorizedKey.organization.id,
-      authorizedKey.project.id,
-      authorizedKey.userId
-    );
+      if (!result.success) {
+        failed({ message: result.error });
+        return;
+      }
 
-    const result = await refreshEndpoint(
-      apiClient,
-      refreshedEndpointId ?? endpointId,
-      endpointHandlerUrl
-    );
-    if (result.success) {
-      attemptCount = 0;
+      success({
+        id: refreshedEndpointId ?? endpointId,
+        updatedAt: new Date(result.data.updatedAt),
+      });
+    },
+    onSuccess: (result) => {
       connectingSpinner.succeed(
-        `[trigger.dev] 🔄 Refreshed ${refreshedEndpointId ?? endpointId} ${formattedDate.format(
-          new Date(result.data.updatedAt)
-        )}`
+        `[trigger.dev] 🔄 Refreshed ${result.id} ${formattedDate.format(result.updatedAt)}`
       );
 
       if (!hasConnected) {
         hasConnected = true;
         telemetryClient.dev.connected(path, resolvedOptions);
       }
-    } else {
-      attemptCount++;
+    },
+    onFailure: (error) => {
+      connectingSpinner.fail(`Failed to connect: ${error.message}`);
+      logger.info(`Will attempt again on the next file change…`);
 
-      if (attemptCount === 10 || !result.retryable) {
-        connectingSpinner.fail(`Failed to connect: ${result.error}`);
-        logger.info(`Will attempt again on the next file change…`);
-        attemptCount = 0;
-
-        if (!hasConnected) {
-          telemetryClient.dev.failed("failed_to_connect", resolvedOptions);
-        }
-        return;
+      if (!hasConnected) {
+        telemetryClient.dev.failed("failed_to_connect", resolvedOptions);
       }
-
-      const delay = backoff(attemptCount);
-      // console.log(`Attempt: ${attemptCount}`, delay);
-      await wait(delay);
-      refresh();
-    }
-  };
+    },
+  });
 
   // Watch for changes to files and refresh endpoints
   const watchPaths = (framework?.watchFilePaths ?? standardWatchFilePaths).map(
@@ -196,7 +194,7 @@ export async function devCommand(path: string, anyOptions: any) {
     ignoreInitial: true,
   });
 
-  const throttle = new Throttle(refresh, throttleTimeMs);
+  const throttle = new Throttle(refresher.run, throttleTimeMs);
 
   watcher.on("all", (_event, _path) => {
     throttle.call();
@@ -437,17 +435,4 @@ async function refreshEndpoint(apiClient: TriggerApi, endpointId: string, endpoi
       };
     }
   }
-}
-
-//wait function
-async function wait(ms: number) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-const maximum_backoff = 30;
-const initial_backoff = 0.2;
-function backoff(attempt: number) {
-  return Math.min((2 ^ attempt) * initial_backoff, maximum_backoff) * 1000;
 }
