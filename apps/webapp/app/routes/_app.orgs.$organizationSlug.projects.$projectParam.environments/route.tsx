@@ -36,10 +36,12 @@ import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import { ProjectParamSchema, projectEnvironmentsStreamingPath } from "~/utils/pathBuilder";
 import { requestUrl } from "~/utils/requestUrl.server";
-import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
+import { EndpointIndexStatus, RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
 import { Badge } from "~/components/primitives/Badge";
 import { FirstEndpointSheet } from "./FirstEndpointSheet";
+import { CheckCircleIcon, ClockIcon, XCircleIcon } from "@heroicons/react/20/solid";
+import { Spinner } from "~/components/primitives/Spinner";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -180,6 +182,7 @@ export default function Page() {
                               <TableHeaderCell>Environment</TableHeaderCell>
                               <TableHeaderCell>Url</TableHeaderCell>
                               <TableHeaderCell>Last refreshed</TableHeaderCell>
+                              <TableHeaderCell>Last refresh Status</TableHeaderCell>
                               <TableHeaderCell>Jobs</TableHeaderCell>
                               <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                             </TableRow>
@@ -268,7 +271,7 @@ function EndpointRow({
               <EnvironmentLabel environment={{ type }} />
             </div>
           </TableCell>
-          <TableCell onClick={onClick} colSpan={4} alignment="right">
+          <TableCell onClick={onClick} colSpan={5} alignment="right">
             <div className="flex items-center justify-end gap-4">
               <span className="text-amber-500">
                 The {environmentTitle({ type })} environment is not configured
@@ -290,9 +293,60 @@ function EndpointRow({
           <TableCell onClick={onClick}>
             {endpoint.latestIndex ? <DateTime date={endpoint.latestIndex.updatedAt} /> : "–"}
           </TableCell>
-          <TableCell onClick={onClick}>{endpoint.latestIndex?.stats.jobs ?? "–"}</TableCell>
+          <TableCell onClick={onClick}>
+            {endpoint.latestIndex ? (
+              <div className="flex items-center gap-1">
+                <EndpointIndexStatusIcon status={endpoint.latestIndex.status} />
+                <EndpointIndexStatusLabel status={endpoint.latestIndex.status} />
+              </div>
+            ) : (
+              "–"
+            )}
+          </TableCell>
+          <TableCell onClick={onClick}>{endpoint.latestIndex?.stats?.jobs ?? "–"}</TableCell>
           <TableCellChevron onClick={onClick} />
         </TableRow>
       );
+  }
+}
+
+function EndpointIndexStatusIcon({ status }: { status: EndpointIndexStatus }) {
+  switch (status) {
+    case "PENDING":
+      return <ClockIcon className={cn("h-4 w-4", endpointIndexStatusClassNameColor(status))} />;
+    case "STARTED":
+      return <Spinner className={cn("h-4 w-4", endpointIndexStatusClassNameColor(status))} />;
+    case "SUCCESS":
+      return (
+        <CheckCircleIcon className={cn("h-4 w-4", endpointIndexStatusClassNameColor(status))} />
+      );
+    case "FAILURE":
+      return <XCircleIcon className={cn("h-4 w-4", endpointIndexStatusClassNameColor(status))} />;
+  }
+}
+
+function EndpointIndexStatusLabel({ status }: { status: EndpointIndexStatus }) {
+  switch (status) {
+    case "PENDING":
+      return <span className={endpointIndexStatusClassNameColor(status)}>Pending</span>;
+    case "STARTED":
+      return <span className={endpointIndexStatusClassNameColor(status)}>Started</span>;
+    case "SUCCESS":
+      return <span className={endpointIndexStatusClassNameColor(status)}>Success</span>;
+    case "FAILURE":
+      return <span className={endpointIndexStatusClassNameColor(status)}>Failure</span>;
+  }
+}
+
+export function endpointIndexStatusClassNameColor(status: EndpointIndexStatus): string {
+  switch (status) {
+    case "PENDING":
+      return "text-dimmed";
+    case "STARTED":
+      return "text-blue-500";
+    case "SUCCESS":
+      return "text-green-500";
+    case "FAILURE":
+      return "text-rose-500";
   }
 }

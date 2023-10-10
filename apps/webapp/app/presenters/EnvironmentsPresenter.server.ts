@@ -5,6 +5,7 @@ import { User } from "~/models/user.server";
 import type {
   Endpoint,
   EndpointIndex,
+  EndpointIndexStatus,
   RuntimeEnvironment,
   RuntimeEnvironmentType,
 } from "@trigger.dev/database";
@@ -34,9 +35,10 @@ export type ClientEndpoint =
       url: string;
       indexWebhookPath: string;
       latestIndex?: {
+        status: EndpointIndexStatus;
         source: string;
         updatedAt: Date;
-        stats: IndexEndpointStats;
+        stats?: IndexEndpointStats;
       };
       environment: {
         id: string;
@@ -81,6 +83,7 @@ export class EnvironmentsPresenter {
             indexingHookIdentifier: true,
             indexings: {
               select: {
+                status: true,
                 source: true,
                 updatedAt: true,
                 stats: true,
@@ -214,7 +217,7 @@ const environmentSortOrder: RuntimeEnvironmentType[] = [
 
 function endpointClient(
   endpoint: Pick<Endpoint, "id" | "slug" | "url" | "indexingHookIdentifier"> & {
-    indexings: Pick<EndpointIndex, "source" | "updatedAt" | "stats">[];
+    indexings: Pick<EndpointIndex, "status" | "source" | "updatedAt" | "stats">[];
   },
   environment: Pick<RuntimeEnvironment, "id" | "apiKey" | "type">,
   baseUrl: string
@@ -227,6 +230,7 @@ function endpointClient(
     indexWebhookPath: `${baseUrl}/api/v1/endpoints/${environment.id}/${endpoint.slug}/index/${endpoint.indexingHookIdentifier}`,
     latestIndex: endpoint.indexings[0]
       ? {
+          status: endpoint.indexings[0].status,
           source: endpoint.indexings[0].source,
           updatedAt: endpoint.indexings[0].updatedAt,
           stats: parseEndpointIndexStats(endpoint.indexings[0].stats),
