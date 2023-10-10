@@ -395,6 +395,7 @@ model EndpointIndex {
 
   data  Json?
   stats Json?
+  error Json?
 }
 
 enum EndpointIndexSource {
