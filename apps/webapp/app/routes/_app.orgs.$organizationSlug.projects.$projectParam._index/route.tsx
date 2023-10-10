@@ -1,5 +1,6 @@
 import { ArrowUpIcon } from "@heroicons/react/24/solid";
 import { LoaderArgs } from "@remix-run/server-runtime";
+import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { FrameworkSelector } from "~/components/frameworks/FrameworkSelector";
 import { JobsTable } from "~/components/jobs/JobsTable";
@@ -19,6 +20,7 @@ import {
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Switch } from "~/components/primitives/Switch";
 import { TextLink } from "~/components/primitives/TextLink";
 import { useFilterJobs } from "~/hooks/useFilterJobs";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -62,8 +64,11 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const { jobs } = useTypedLoaderData<typeof loader>();
-  const { filterText, setFilterText, filteredItems } = useFilterJobs(jobs);
-  const hasJobs = jobs.length > 0;
+  const { filterText, setFilterText, filteredItems, onlyActiveJobs, setOnlyActiveJobs } =
+    useFilterJobs(jobs);
+  const totalJobs = jobs.length;
+  const hasJobs = totalJobs > 0;
+  const activeJobCount = jobs.filter((j) => j.status === "ACTIVE").length;
 
   return (
     <PageContainer className={hasJobs ? "" : "grid-rows-1"}>
@@ -74,7 +79,8 @@ export default function Page() {
           </PageTitleRow>
           <PageInfoRow>
             <PageInfoGroup>
-              <PageInfoProperty icon={"job"} label={"Active Jobs"} value={jobs.length} />
+              <PageInfoProperty icon={"job"} label={"All Jobs"} value={totalJobs} />
+              <PageInfoProperty icon={"job"} label={"Active Jobs"} value={activeJobCount} />
             </PageInfoGroup>
           </PageInfoRow>
         </PageHeader>
@@ -105,6 +111,13 @@ export default function Page() {
                           value={filterText}
                           onChange={(e) => setFilterText(e.target.value)}
                           autoFocus
+                        />
+                        <Switch
+                          variant="small"
+                          label={<span>Active Jobs</span>}
+                          checked={onlyActiveJobs}
+                          onCheckedChange={setOnlyActiveJobs}
+                          className={"shrink-0"}
                         />
                         <HelpTrigger title="Example Jobs and inspiration" />
                       </div>
