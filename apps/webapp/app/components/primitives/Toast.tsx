@@ -22,7 +22,7 @@ export function Toast() {
     });
   }, [toastMessage]);
 
-  return <Toaster className="" />;
+  return <Toaster />;
 }
 
 export function ToastUI({
