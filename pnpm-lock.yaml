@@ -182,6 +182,7 @@ importers:
       simple-oauth2: ^5.0.0
       simplur: ^3.0.1
       slug: ^6.0.0
+      sonner: ^1.0.3
       storybook: ^7.0.7
       storybook-addon-designs: 7.0.0-beta.2
       storybook-addon-variants: ^0.2.0
@@ -275,6 +276,7 @@ importers:
       simple-oauth2: 5.0.0
       simplur: 3.0.1
       slug: 6.1.0
+      sonner: 1.0.3_biqbaboplfbrettd7655fr4n2y
       tailwind-merge: 1.12.0
       tailwind-scrollbar-hide: 1.1.7
       tailwindcss-animate: 1.0.5_tailwindcss@3.3.2
@@ -28917,6 +28919,16 @@ packages:
     dependencies:
       atomic-sleep: 1.0.0
     dev: true
+
+  /sonner/1.0.3_biqbaboplfbrettd7655fr4n2y:
+    resolution: {integrity: sha512-hBoA2zKuYW3lUnpx4K0vAn8j77YuYiwvP9sLQfieNS2pd5FkT20sMyPTDJnl9S+5T27ZJbwQRPiujwvDBwhZQg==}
+    peerDependencies:
+      react: ^18.0.0
+      react-dom: ^18.0.0
+    dependencies:
+      react: 18.2.0
+      react-dom: 18.2.0_react@18.2.0
+    dev: false
 
   /sorcery/0.11.0:
     resolution: {integrity: sha512-J69LQ22xrQB1cIFJhPfgtLuI6BpWRiWu1Y3vSsIwK/eAScqJxd/+CJlUuHQRdX2C9NGFamq+KqNywGgaThwfHw==}
