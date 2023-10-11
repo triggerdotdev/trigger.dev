@@ -159,7 +159,9 @@ export function ConfigureEndpointSheet({ slug, endpoint, onClose }: ConfigureEnd
                     </Button>
                   </Callout>
                   {endpoint.latestIndex?.error && (
-                    <FormError className="p-2">{endpoint.latestIndex.error.message}</FormError>
+                    <FormError className="p-2">
+                      <pre>{endpoint.latestIndex.error.message}</pre>
+                    </FormError>
                   )}
                 </refreshEndpointFetcher.Form>
               </div>
