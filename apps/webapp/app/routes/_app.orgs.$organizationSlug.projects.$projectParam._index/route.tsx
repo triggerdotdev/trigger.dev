@@ -101,7 +101,7 @@ export default function Page() {
                       </Callout>
                     )}
                     <div className="mb-2 flex flex-col">
-                      <div className="flex w-full">
+                      <div className="flex w-full gap-x-2">
                         <Input
                           placeholder="Search Jobs"
                           variant="tertiary"
