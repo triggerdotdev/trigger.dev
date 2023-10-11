@@ -9,12 +9,10 @@ const triggerContextKey = "$$_TriggerContext"
 
 
 export function setTriggerContext(context: TriggerContext) {
-	console.log('setContext')
 	setContext(triggerContextKey, context);
 }
 
 export function getTriggerContext(): TriggerContext {
-	console.log('getContext')
 	return getContext<TriggerContext>(triggerContextKey);
 }
 
