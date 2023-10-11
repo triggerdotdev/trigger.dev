@@ -152,7 +152,7 @@ function PossibleIntegrationsList({
           onCheckedChange={setOnlyShowIntegrations}
           variant="small"
           label={
-            <span className="inline-flex items-center gap-1">
+            <span className="mt-0.5 inline-flex items-center gap-1">
               <IntegrationIcon /> Trigger.dev Integrations
             </span>
           }
