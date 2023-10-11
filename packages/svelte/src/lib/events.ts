@@ -42,7 +42,7 @@ export function useEventDetails(eventId: string | undefined ): UseEventDetailsRe
 type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>
 type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
 
-const resultStore = writable<PartialBy<GetRun, 'statuses'> | undefined>();
+const resultStore = writable<{data: PartialBy<GetRun, 'statuses'> | undefined, error: Error| undefined} >({data: undefined, error: undefined});
 
 export function useEventRunDetails(
 	eventId: string | undefined,
@@ -60,15 +60,21 @@ export function useEventRunDetails(
 			//we cannot call useRunDetails inside the subscription, because it would be called outside component initialization, we will have to do it inside the svelte component itself
 			
 			// Because of useRunDetails use Context in async function(subscribe) which is detached from the component tree it couses an error.
-			// So we use simple fetch. 
-			const req = await zodfetch(GetRunSchema, url, {
-				method: 'GET',
-				headers: {
-					Authorization: `Bearer ${publicApiKey}`
-				}
-			});
-
-			resultStore.set(req);
+			// So we use simple fetch.
+			try {
+				const req = await zodfetch(GetRunSchema, url, {
+					method: 'GET',
+					headers: {
+						Authorization: `Bearer ${publicApiKey}`
+					}
+				});
+				resultStore.set({data: req, error: undefined});
+			} catch (error) {
+				resultStore.set({data: undefined, error: error as Error});
+			} 
+		}
+		if(event.error){
+			resultStore.set({data: undefined, error: event.error as Error});
 		}
 	});
 

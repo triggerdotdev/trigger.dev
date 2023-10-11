@@ -104,7 +104,13 @@ export function useRunStatuses(
   return resultStatusesStore;
 }
 
-const resultStore = writable<GetRunStatuses | undefined>();
+// const resultStore = writable<{data: GetRunStatuses | undefined, error: Error | null}>({data: undefined, error: null});
+const resultStore = writable<UseRunStatusesResult>({
+  fetchStatus: "loading",
+  error: undefined,
+  statuses: undefined,
+  run: undefined,
+});
 
 export function useEventRunStatuses(
 	eventId: string | undefined,
@@ -120,14 +126,39 @@ export function useEventRunStatuses(
 			
 			// Because of useRunStatuses use Context in async function(subscribe) which is detached from the component tree it couses an error.
 			// So we use simple fetch. 
-      const req = await zodfetch(GetRunStatusesSchema, `${apiUrl}/api/v1/runs/${event.data?.runs[0].id}/statuses`, {
-				method: 'GET',
-				headers: {
-					Authorization: `Bearer ${publicApiKey}`
-				}
-			});
+      try{
+        const req = await zodfetch(GetRunStatusesSchema, `${apiUrl}/api/v1/runs/${event.data?.runs[0].id}/statuses`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${publicApiKey}`
+          }
+        });
 
-			resultStore.set(req);
+
+        resultStore.set( {
+          fetchStatus: "success",
+          error: undefined,
+          run: req.run,
+          statuses: req.statuses,
+        });
+
+
+      } catch (error) {
+        resultStore.set({
+          fetchStatus: "error",
+          error: error as Error,
+          statuses: undefined,
+          run: undefined,
+        });
+			} 
+		}
+		if(event.error){
+			resultStore.set({
+        fetchStatus: "error",
+        error: event.error as Error,
+        statuses: undefined,
+        run: undefined,
+      });
 		}
 	});
 
