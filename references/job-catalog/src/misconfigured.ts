@@ -20,7 +20,7 @@ client.defineJob({
   run: async (payload, io, ctx) => {},
 });
 
-// This job is misconfigured because the interval trigger is less than 60s
+// This job is misconfigured because it has no name
 //@ts-ignore
 client.defineJob({
   id: "bad-cron",
