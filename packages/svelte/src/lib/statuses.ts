@@ -47,7 +47,7 @@ export function useRunStatuses(
 	const { apiUrl, publicApiKey } = getTriggerContext();
 
   const queryResult = createQuery({
-      queryKey: [`triggerdotdev-run-${runId}`],
+      queryKey: [`triggerdotdev-runstatuses-${runId}`],
       queryFn: async () => {
         return await zodfetch(GetRunStatusesSchema, `${apiUrl}/api/v1/runs/${runId}/statuses`, {
           method: "GET",

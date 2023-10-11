@@ -1,5 +1,5 @@
 <script lang="ts"  >
-	import { useRunDetails, useEventDetails, useEventRunDetails, useEventRunStatuses} from '$lib/trigger.js'
+	import { useRunDetails, useEventDetails, useEventRunDetails, useEventRunStatuses, useRunStatuses} from '$lib/trigger.js'
 
 	let status1 : undefined | string = undefined;
 	let status2 : undefined | string = undefined;
@@ -8,20 +8,26 @@
 
 	// Use 2 requests for eventrundetails in the svelte component itself
 	let eventId: undefined | string = undefined;
-	let runsId : undefined | string = undefined;
+	let runId : undefined | string = undefined;
 	const event = useEventDetails('test:test.event:1696688090005');
 	event.subscribe(e => {
 		if(e.data){
 			eventId = e.data.id;
-			runsId = e.data?.runs[0].id;
+			runId = e.data?.runs[0].id;
 		}
 	})
 
-	$: if(eventId){
-		const runs = useRunDetails(runsId);
+	$: if(runId){
+		const runs = useRunDetails(runId);
 		runs.subscribe(r => {
 			status1 = r.data?.status;
-			console.log(r)
+			// console.log(r)
+		})
+
+		const store2 = useRunStatuses(runId);
+
+		store2.subscribe( runs => {
+			console.log(runs?.fetchStatus)
 		})
 	}
 
@@ -31,7 +37,7 @@
 
 	store.subscribe( runs => {
 		status2 = runs?.status;
-		console.log(status2)
+		// console.log(status2)
 	})
 
 
@@ -44,11 +50,17 @@
 		console.log(status3)
 	})
 
+	//Use 1 request for eventrunstatuses
+
+
+	
+
+
 
 
 </script>
 
-<h1>eventId - {runsId}</h1>
+<h1>eventId - {runId}</h1>
 <p>status1 - {status1}</p>
 <p>status2 - {status2}</p>
 

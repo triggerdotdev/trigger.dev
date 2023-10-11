@@ -30,7 +30,7 @@ export function useRunDetails(
 	const url = urlWithSearchParams(`${apiUrl}/api/v1/runs/${runId}`, otherOptions);
 
 	return createQuery({
-		queryKey: [`triggerdotdev-run-${runId}`],
+		queryKey: [`triggerdotdev-rundetails-${runId}`],
 		queryFn: async () => {
 			return await zodfetch(GetRunSchema, url, {
 				method: 'GET',
