@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
-import { sendEmail } from "./email.server";
+import { sendEmail, sendPlainTextEmail } from "./email.server";
 import { IndexEndpointService } from "./endpoints/indexEndpoint.server";
 import { RecurringEndpointIndexService } from "./endpoints/recurringEndpointIndex.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
@@ -21,6 +21,7 @@ import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequ
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout";
 import { addMissingVersionField } from "@trigger.dev/core";
+import { logger } from "./logger.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -128,6 +129,14 @@ function getWorkerQueue() {
   return new ZodWorker({
     name: "workerQueue",
     prisma,
+    cleanup: {
+      frequencyExpression: "13,27,43 * * * *",
+      ttl: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxCount: 1000,
+    },
+    reporter: async (event, properties) => {
+      logger.info("workerQueue report", { event, properties });
+    },
     runnerOptions: {
       connectionString: env.DATABASE_URL,
       concurrency: env.WORKER_CONCURRENCY,
@@ -229,6 +238,7 @@ function getWorkerQueue() {
       deliverHttpSourceRequest: {
         priority: 1, // smaller number = higher priority
         maxAttempts: 14,
+        queueName: (payload) => `sources:${payload.id}`,
         handler: async (payload, job) => {
           const service = new DeliverHttpSourceRequestService();
 
@@ -255,7 +265,6 @@ function getWorkerQueue() {
       },
       performTaskOperation: {
         priority: 0, // smaller number = higher priority
-        queueName: (payload) => `tasks:${payload.id}`,
         maxAttempts: 3,
         handler: async (payload, job) => {
           const service = new PerformTaskOperationService();
@@ -264,7 +273,6 @@ function getWorkerQueue() {
         },
       },
       scheduleEmail: {
-        queueName: "internal-queue",
         priority: 100,
         maxAttempts: 3,
         handler: async (payload, job) => {
@@ -291,7 +299,6 @@ function getWorkerQueue() {
       },
       refreshOAuthToken: {
         priority: 8, // smaller number = higher priority
-        queueName: "internal-queue",
         maxAttempts: 7,
         handler: async (payload, job) => {
           await integrationAuthRepository.refreshConnection({

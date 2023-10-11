@@ -305,7 +305,7 @@ export class RunTaskService {
           {
             id: task.id,
           },
-          { tx, runAt: task.delayUntil ?? undefined }
+          { tx, runAt: task.delayUntil ?? undefined, jobKey: `operation:${task.id}` }
         );
       } else if (task.status === "WAITING" && callbackUrl && taskBody.callback) {
         if (taskBody.callback.timeoutInSeconds > 0) {
