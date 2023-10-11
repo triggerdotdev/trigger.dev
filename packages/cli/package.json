@@ -56,11 +56,13 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@trigger.dev/core": "workspace:*",
     "@types/degit": "^2.8.3",
     "boxen": "^7.1.1",
     "chalk": "^5.2.0",
     "chokidar": "^3.5.3",
     "commander": "^9.4.1",
+    "console-table-printer": "^2.11.2",
     "degit": "^2.8.4",
     "dotenv": "^16.3.1",
     "execa": "^7.0.0",
@@ -74,6 +76,7 @@
     "npm-check-updates": "^16.12.2",
     "openai": "^4.5.0",
     "ora": "^6.1.2",
+    "p-retry": "^6.1.0",
     "path-to-regexp": "^6.2.1",
     "posthog-node": "^3.1.1",
     "proxy-agent": "^6.3.0",

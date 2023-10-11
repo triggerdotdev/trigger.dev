@@ -26,6 +26,7 @@
     "byo-auth": "nodemon --watch src/byo-auth.ts -r tsconfig-paths/register -r dotenv/config src/byo-auth.ts",
     "redacted": "nodemon --watch src/redacted.ts -r tsconfig-paths/register -r dotenv/config src/redacted.ts",
     "replicate": "nodemon --watch src/replicate.ts -r tsconfig-paths/register -r dotenv/config src/replicate.ts",
+    "misconfigured": "nodemon --watch src/misconfigured.ts -r tsconfig-paths/register -r dotenv/config src/misconfigured.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {

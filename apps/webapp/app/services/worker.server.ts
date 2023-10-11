@@ -1,16 +1,18 @@
 import { DeliverEmailSchema } from "@/../../packages/emails/src";
-import { ScheduledPayloadSchema } from "@trigger.dev/core";
+import { ScheduledPayloadSchema, addMissingVersionField } from "@trigger.dev/core";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
-import { sendEmail, sendPlainTextEmail } from "./email.server";
+import { sendEmail } from "./email.server";
 import { IndexEndpointService } from "./endpoints/indexEndpoint.server";
+import { PerformEndpointIndexService } from "./endpoints/performEndpointIndexService";
 import { RecurringEndpointIndexService } from "./endpoints/recurringEndpointIndex.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
 import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
 import { integrationAuthRepository } from "./externalApis/integrationAuthRepository.server";
 import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
+import { logger } from "./logger.server";
 import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated.server";
 import { PerformRunExecutionV1Service } from "./runs/performRunExecutionV1.server";
 import { PerformRunExecutionV2Service } from "./runs/performRunExecutionV2.server";
@@ -20,8 +22,6 @@ import { ActivateSourceService } from "./sources/activateSource.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout";
-import { addMissingVersionField } from "@trigger.dev/core";
-import { logger } from "./logger.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -29,6 +29,9 @@ const workerCatalog = {
     source: z.enum(["MANUAL", "API", "INTERNAL", "HOOK"]).optional(),
     sourceData: z.any().optional(),
     reason: z.string().optional(),
+  }),
+  performEndpointIndexing: z.object({
+    id: z.string(),
   }),
   scheduleEmail: DeliverEmailSchema,
   startRun: z.object({ id: z.string() }),
@@ -284,8 +287,15 @@ function getWorkerQueue() {
         maxAttempts: 7,
         handler: async (payload, job) => {
           const service = new IndexEndpointService();
-
           await service.call(payload.id, payload.source, payload.reason, payload.sourceData);
+        },
+      },
+      performEndpointIndexing: {
+        priority: 1, // smaller number = higher priority
+        maxAttempts: 7,
+        handler: async (payload, job) => {
+          const service = new PerformEndpointIndexService();
+          await service.call(payload.id);
         },
       },
       deliverEvent: {

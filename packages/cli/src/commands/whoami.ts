@@ -42,7 +42,7 @@ export async function whoamiCommand(path: string, anyOptions: any) {
   }
 
   const triggerAPI = new TriggerApi(apiDetails.apiKey, apiDetails.apiUrl);
-  const userData = await triggerAPI.whoami(apiDetails.apiKey);
+  const userData = await triggerAPI.whoami();
 
   loadingSpinner.stop();
 

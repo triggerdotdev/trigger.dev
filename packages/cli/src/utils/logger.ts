@@ -13,4 +13,7 @@ export const logger = {
   success(...args: unknown[]) {
     console.log(chalk.green(...args));
   },
+  table(rows: any) {
+    console.table(rows);
+  },
 };
