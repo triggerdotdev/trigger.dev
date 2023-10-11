@@ -186,6 +186,12 @@ async function refresh(options: RefreshOptions) {
       telemetryClient.dev.connected(options.path, options.resolvedOptions);
     }
 
+    //this is for backwards-compatibility with older servers
+    if (index.id === undefined) {
+      options.spinner.succeed(`[trigger.dev] Refreshed ${formattedDate.format(index.updatedAt)}`);
+      return;
+    }
+
     //wait 750ms before attempting to get the indexing result
     await wait(750);
 
@@ -271,7 +277,7 @@ async function startIndexing({
     throw new Error(result.error);
   }
 
-  return { id: result.data.endpointIndex.id, updatedAt: new Date(result.data.updatedAt) };
+  return { id: result.data.endpointIndex?.id, updatedAt: new Date(result.data.updatedAt) };
 }
 
 async function fetchIndexResult({
