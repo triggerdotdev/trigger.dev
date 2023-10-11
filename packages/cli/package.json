@@ -56,6 +56,7 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@trigger.dev/core": "workspace:*",
     "@types/degit": "^2.8.3",
     "boxen": "^7.1.1",
     "chalk": "^5.2.0",

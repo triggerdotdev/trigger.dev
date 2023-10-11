@@ -12,6 +12,7 @@ import { RegisterSourceServiceV2 } from "../sources/registerSourceV2.server";
 import { EndpointIndexError } from "@trigger.dev/core";
 import { safeBodyFromResponse } from "~/utils/json";
 import { fromZodError } from "zod-validation-error";
+import { IndexEndpointStats } from "@trigger.dev/core";
 
 export class PerformEndpointIndexService {
   #prismaClient: PrismaClient;
@@ -144,7 +145,7 @@ export class PerformEndpointIndexService {
       });
     }
 
-    const indexStats = {
+    const indexStats: IndexEndpointStats = {
       jobs: 0,
       sources: 0,
       dynamicTriggers: 0,
@@ -193,7 +194,9 @@ export class PerformEndpointIndexService {
           const registeredVersion = await this.#registerJobService.call(endpoint, job);
 
           if (registeredVersion) {
-            indexStats.jobs++;
+            if (!job.internal) {
+              indexStats.jobs++;
+            }
           }
         } catch (error) {
           logger.error("Failed to register job", {

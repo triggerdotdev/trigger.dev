@@ -1,5 +1,4 @@
 import { PrismaClient, prisma } from "~/db.server";
-import { IndexEndpointStats, parseEndpointIndexStats } from "~/models/indexEndpoint.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
 import type {
@@ -9,7 +8,12 @@ import type {
   RuntimeEnvironment,
   RuntimeEnvironmentType,
 } from "@trigger.dev/database";
-import { EndpointIndexError, EndpointIndexErrorSchema } from "@trigger.dev/core";
+import {
+  EndpointIndexError,
+  EndpointIndexErrorSchema,
+  IndexEndpointStats,
+  parseEndpointIndexStats,
+} from "@trigger.dev/core";
 
 export type Client = {
   slug: string;

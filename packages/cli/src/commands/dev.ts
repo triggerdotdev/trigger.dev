@@ -90,7 +90,7 @@ export async function devCommand(path: string, anyOptions: any) {
   const verifiedEndpoint = await verifyEndpoint(resolvedOptions, endpointId, apiKey, framework);
   if (!verifiedEndpoint) {
     logger.error(
-      `✖ [trigger.dev] Failed to find a valid Trigger.dev endpoint. Make sure your app is running and try again.`
+      `✖ [trigger.dev] Your endpoint couldn't be verified. Make sure your app is running and try again. ${resolvedOptions.handlerPath}`
     );
     logger.info(`  [trigger.dev] You can use -H to specify a hostname, or -p to specify a port.`);
     telemetryClient.dev.failed("no_server_found", resolvedOptions);
@@ -163,20 +163,59 @@ async function refresh(options: RefreshOptions) {
   options.abortController.abort();
   options.abortController = new AbortController();
 
+  // Read from env file to get the TRIGGER_API_KEY and TRIGGER_API_URL
+  const apiDetails = await getTriggerApiDetails(options.path, options.resolvedOptions.envFile);
+  if (!apiDetails) {
+    options.spinner.fail("[trigger.dev] Failed to connect: Missing API Key");
+    return;
+  }
+
+  const { apiKey, apiUrl } = apiDetails;
+  const apiClient = new TriggerApi(apiKey, apiUrl);
+
   try {
-    const result = await pRetry(() => startRefresh(options), {
+    const index = await pRetry(() => startIndexing({ ...options, apiClient }), {
       retries: 5,
       signal: options.abortController.signal,
+      maxTimeout: 5000,
     });
-    options.spinner.text = `[trigger.dev] 🔄 Refreshing ${formattedDate.format(result.updatedAt)}`;
+    options.spinner.text = `[trigger.dev] 🔄 Refreshing ${formattedDate.format(index.updatedAt)}`;
 
     if (!options.hasConnected) {
       options.hasConnected = true;
       telemetryClient.dev.connected(options.path, options.resolvedOptions);
     }
+
+    //wait 750ms before attempting to get the indexing result
+    await wait(750);
+
+    const indexResult = await pRetry(() => fetchIndexResult({ indexId: index.id, apiClient }), {
+      //this means we're polling, same distance between each attempt
+      factor: 1,
+      retries: 10,
+      signal: options.abortController.signal,
+    });
+
+    if (indexResult.status === "FAILURE") {
+      options.spinner.fail(
+        `[trigger.dev] Refreshing failed ${formattedDate.format(indexResult.updatedAt)}`
+      );
+      logger.error(`  [trigger.dev] ${indexResult.error.message}`);
+      return;
+    }
+
+    options.spinner.succeed(
+      `[trigger.dev] ✅ Refreshed ${formattedDate.format(indexResult.updatedAt)}`
+    );
+
+    const { jobs, sources, dynamicSchedules, dynamicTriggers, disabledJobs } = indexResult.stats;
+    logger.table({ Jobs: jobs, Sources: sources, Schedules: dynamicSchedules });
+
+    logger.info(`  [trigger.dev] ${JSON.stringify(indexResult.stats)}`);
   } catch (e) {
-    logger.error(e);
     if (e instanceof AbortError) {
+      options.spinner.fail(e.message);
+      logger.info(`  [trigger.dev] Will attempt again on the next file change…`);
       return;
     }
 
@@ -187,8 +226,8 @@ async function refresh(options: RefreshOptions) {
       message = "Unknown error";
     }
 
-    options.spinner.fail(`Failed to connect: ${message}`);
-    logger.info(`Will attempt again on the next file change…`);
+    options.spinner.fail(message);
+    logger.info(`  [trigger.dev] Will attempt again on the next file change…`);
 
     if (!options.hasConnected) {
       telemetryClient.dev.failed("failed_to_connect", options.resolvedOptions);
@@ -196,36 +235,24 @@ async function refresh(options: RefreshOptions) {
   }
 }
 
-async function startRefresh({
+async function startIndexing({
   spinner,
   path,
   endpointId,
   endpointHandlerUrl,
   resolvedOptions,
-}: RefreshOptions) {
+  apiClient,
+}: RefreshOptions & { apiClient: TriggerApi }) {
   spinner.start();
 
   const refreshedEndpointId = await getEndpointIdFromPackageJson(path, resolvedOptions);
 
-  // Read from env file to get the TRIGGER_API_KEY and TRIGGER_API_URL
-  const apiDetails = await getTriggerApiDetails(path, resolvedOptions.envFile);
-  if (!apiDetails) {
-    spinner.fail(`[trigger.dev] Failed to connect: Missing API Key`);
-    logger.info(`Will attempt again on the next file change…`);
-    throw new AbortError("Missing API Key");
-  }
-
-  const { apiKey, apiUrl } = apiDetails;
-  const apiClient = new TriggerApi(apiKey, apiUrl);
-
-  const authorizedKey = await apiClient.whoami(apiKey);
+  const authorizedKey = await apiClient.whoami();
   if (!authorizedKey) {
-    logger.error(
-      `✖ [trigger.dev] The API key you provided is not authorized. Try visiting your dashboard to get a new API key.`
-    );
-
     telemetryClient.dev.failed("invalid_api_key", resolvedOptions);
-    throw new AbortError("Invalid API Key");
+    throw new AbortError(
+      "[trigger.dev] The API key you provided is not authorized. Try visiting your dashboard to get a new API key."
+    );
   }
 
   telemetryClient.identify(
@@ -244,7 +271,23 @@ async function startRefresh({
     throw new Error(result.error);
   }
 
-  return { id: result.data.id, updatedAt: new Date(result.data.updatedAt) };
+  return { id: result.data.endpointIndex.id, updatedAt: new Date(result.data.updatedAt) };
+}
+
+async function fetchIndexResult({
+  indexId,
+  apiClient,
+}: {
+  indexId: string;
+  apiClient: TriggerApi;
+}) {
+  const result = await apiClient.getEndpointIndex(indexId);
+
+  if (result.status === "STARTED" || result.status === "PENDING") {
+    throw new Error("Indexing is still in progress");
+  }
+
+  return result;
 }
 
 async function resolveOptions(
@@ -253,7 +296,7 @@ async function resolveOptions(
   unresolvedOptions: DevCommandOptions
 ): Promise<ResolvedOptions> {
   if (!framework) {
-    logger.info("Failed to detect framework, using default values");
+    logger.info("  [trigger.dev] Failed to detect framework, using default values");
     return {
       port: unresolvedOptions.port ?? 3000,
       hostname: unresolvedOptions.hostname ?? "localhost",
@@ -446,10 +489,6 @@ async function upgradeNgrokConfig(spinner: Ora) {
     spinner.fail(`Failed to upgrade ngrok configuration.\n${error}`);
   }
 }
-
-//todo dev command gets the endpointIndex id and polls for the status
-//todo create an EndpointIndex API endpoint that will return the status of the endpointIndex row, with errors and stats
-//todo the dev command should poll. We need to make sure that we're only polling for the last endpointIndex record that was received
 
 async function refreshEndpoint(apiClient: TriggerApi, endpointId: string, endpointUrl: string) {
   try {

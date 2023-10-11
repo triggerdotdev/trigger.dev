@@ -1,5 +1,5 @@
 import { createExpressServer } from "@trigger.dev/express";
-import { TriggerClient, eventTrigger, intervalTrigger } from "@trigger.dev/sdk";
+import { TriggerClient, cronTrigger, eventTrigger, intervalTrigger } from "@trigger.dev/sdk";
 import { z } from "zod";
 
 export const client = new TriggerClient({
@@ -10,13 +10,24 @@ export const client = new TriggerClient({
   ioLogLocalEnabled: true,
 });
 
-// This job is misconfigured because it has an interval trigger with a 1 second interval, minimum is 60 seconds
+// This job is misconfigured because the interval trigger is less than 60s
 client.defineJob({
-  id: "disallowed-interval",
-  name: "Disallowed Interval",
+  id: "bad-interval",
+  name: "Bad Interval",
   version: "0.0.2",
   trigger: intervalTrigger({
-    seconds: 0,
+    seconds: 60,
+  }),
+  run: async (payload, io, ctx) => {},
+});
+
+// This job is misconfigured because the interval trigger is less than 60s
+client.defineJob({
+  id: "bad-cron",
+  name: "Bad CRON expression",
+  version: "0.0.2",
+  trigger: cronTrigger({
+    cron: "",
   }),
   run: async (payload, io, ctx) => {},
 });
