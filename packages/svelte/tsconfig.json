@@ -10,12 +10,16 @@
 		"sourceMap": true,
 		"strict": true,
 		"moduleResolution": "Node",
-		"ignoreDeprecations": "5.0", 
+		"ignoreDeprecations": "5.0",  
+		"preserveValueImports": false, // in compliance with "@trigger.dev/core"
+		"importsNotUsedAsValues": "remove", // in compliance with "@trigger.dev/core"
 		"paths": {
-			"@trigger.dev/core": ["../core/src/index"],
-			"@trigger.dev/core/*": ["../core/src/*"], 
-			"@trigger.dev/sdk": ["../trigger-sdk/src/index"],
-			"@trigger.dev/sdk/*": ["../trigger-sdk/src/*"]
+			"@trigger.dev/core": ["./../core/src/index"],
+			"@trigger.dev/core/*": ["./../core/src/*"], 
+			"@trigger.dev/sdk": ["./../trigger-sdk/src/index"],
+			"@trigger.dev/sdk/*": ["./../trigger-sdk/src/*"],
+			"$lib": ["./src/lib"],
+			"$lib/*": ["./src/lib/*"]
 		}
 	},
 	"exclude": ["node_modules"]

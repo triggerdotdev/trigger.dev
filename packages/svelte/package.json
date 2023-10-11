@@ -16,14 +16,14 @@
 		"format": "prettier --plugin-search-dir . --write ."
 	},
 	"type": "module",
-	"types": "build/index.d.ts",
-	"module": "build/index.js",
+	"types": "dist/trigger.d.ts",
+	"module": "dist/trigger.js",
 	"exports": {
 		".": {
-			"types": "./build/index.d.ts",
-			"import": "./build/index.js",
-			"svelte": "./build/index.js",
-			"default": "./build/index.js"
+			"types": "./dist/trigger.d.ts",
+			"import": "./dist/trigger.js",
+			"svelte": "./dist/trigger.js",
+			"default": "./dist/trigger.js"
 		},
 		"./package.json": "./package.json"
 	},
@@ -47,7 +47,7 @@
 		"prettier": "^2.8.0",
 		"prettier-plugin-svelte": "^2.10.1",
 		"publint": "^0.1.9",
-		"svelte": "^4.0.5",
+		"svelte": "^4.2.1",
 		"svelte-check": "^3.4.3",
 		"tslib": "^2.4.1",
 		"typescript": "^5.0.0",

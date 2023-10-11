@@ -1,4 +1,4 @@
-import { createQuery, type CreateQueryResult } from '@tanstack/svelte-query';
+import { createQuery, type CreateQueryResult  } from '@tanstack/svelte-query';
 import {
 	GetRunSchema,
 	urlWithSearchParams,
@@ -21,7 +21,7 @@ export type UseRunDetailsResult = CreateQueryResult<GetRun>;
 
 export function useRunDetails(
 	runId: string | undefined,
-	options?: RunDetailOptions
+	options?: RunDetailOptions,
 ): UseRunDetailsResult {
 	const { apiUrl, publicApiKey } = getTriggerContext();
 
