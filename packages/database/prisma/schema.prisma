@@ -369,6 +369,8 @@ model Endpoint {
   indexingHookIdentifier String?
   version                String  @default("unknown")
 
+  runChunkExecutionLimit Int @default(60000)
+
   jobVersions           JobVersion[]
   jobRuns               JobRun[]
   httpRequestDeliveries HttpSourceRequestDelivery[]
@@ -731,6 +733,7 @@ model JobRun {
   missingConnections MissingConnection[]
   executions         JobRunExecution[]
   statuses           JobRunStatusRecord[]
+  autoYieldExecution JobRunAutoYieldExecution[]
 }
 
 enum JobRunStatus {
@@ -746,6 +749,20 @@ enum JobRunStatus {
   CANCELED
   UNRESOLVED_AUTH
   INVALID_PAYLOAD
+}
+
+model JobRunAutoYieldExecution {
+  id String @id @default(cuid())
+
+  run   JobRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runId String
+
+  timeRemaining Int
+  timeElapsed   Int
+  limit         Int
+  location      String
+
+  createdAt DateTime @default(now())
 }
 
 model JobRunExecution {

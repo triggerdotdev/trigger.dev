@@ -485,6 +485,7 @@ export const RunJobBodySchema = z.object({
   noopTasksSet: z.string().optional(),
   connections: z.record(ConnectionAuthSchema).optional(),
   yieldedExecutions: z.string().array().optional(),
+  runChunkExecutionLimit: z.number().optional(),
 });
 
 export type RunJobBody = z.infer<typeof RunJobBodySchema>;
@@ -503,6 +504,33 @@ export const RunJobYieldExecutionErrorSchema = z.object({
 });
 
 export type RunJobYieldExecutionError = z.infer<typeof RunJobYieldExecutionErrorSchema>;
+
+export const RunJobAutoYieldExecutionErrorSchema = z.object({
+  status: z.literal("AUTO_YIELD_EXECUTION"),
+  location: z.string(),
+  timeRemaining: z.number(),
+  timeElapsed: z.number(),
+  limit: z.number().optional(),
+});
+
+export type RunJobAutoYieldExecutionError = z.infer<typeof RunJobAutoYieldExecutionErrorSchema>;
+
+export const RunJobAutoYieldWithCompletedTaskExecutionErrorSchema = z.object({
+  status: z.literal("AUTO_YIELD_EXECUTION_WITH_COMPLETED_TASK"),
+  id: z.string(),
+  properties: z.array(DisplayPropertySchema).optional(),
+  output: z.any(),
+  data: z.object({
+    location: z.string(),
+    timeRemaining: z.number(),
+    timeElapsed: z.number(),
+    limit: z.number().optional(),
+  }),
+});
+
+export type RunJobAutoYieldWithCompletedTaskExecutionError = z.infer<
+  typeof RunJobAutoYieldWithCompletedTaskExecutionErrorSchema
+>;
 
 export const RunJobInvalidPayloadErrorSchema = z.object({
   status: z.literal("INVALID_PAYLOAD"),
@@ -549,6 +577,8 @@ export const RunJobSuccessSchema = z.object({
 export type RunJobSuccess = z.infer<typeof RunJobSuccessSchema>;
 
 export const RunJobResponseSchema = z.discriminatedUnion("status", [
+  RunJobAutoYieldExecutionErrorSchema,
+  RunJobAutoYieldWithCompletedTaskExecutionErrorSchema,
   RunJobYieldExecutionErrorSchema,
   RunJobErrorSchema,
   RunJobUnresolvedAuthErrorSchema,

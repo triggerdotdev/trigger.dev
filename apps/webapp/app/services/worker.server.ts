@@ -14,7 +14,6 @@ import { integrationAuthRepository } from "./externalApis/integrationAuthReposit
 import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
 import { logger } from "./logger.server";
 import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated.server";
-import { PerformRunExecutionV1Service } from "./runs/performRunExecutionV1.server";
 import { PerformRunExecutionV2Service } from "./runs/performRunExecutionV2.server";
 import { StartRunService } from "./runs/startRun.server";
 import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.server";
@@ -79,9 +78,6 @@ const workerCatalog = {
 };
 
 const executionWorkerCatalog = {
-  performRunExecution: z.object({
-    id: z.string(),
-  }),
   performRunExecutionV2: z.object({
     id: z.string(),
     reason: z.enum(["EXECUTE_JOB", "PREPROCESS"]),
@@ -334,17 +330,6 @@ function getExecutionWorkerQueue() {
     },
     schema: executionWorkerCatalog,
     tasks: {
-      performRunExecution: {
-        priority: 0, // smaller number = higher priority
-        maxAttempts: 1,
-        handler: async (payload, job) => {
-          // This is a legacy task that we don't use anymore, but needs to be here for backwards compatibility
-          // TODO: remove this once all performRunExecution tasks have been processed
-          const service = new PerformRunExecutionV1Service();
-
-          await service.call(payload.id);
-        },
-      },
       performRunExecutionV2: {
         priority: 0, // smaller number = higher priority
         maxAttempts: 12,

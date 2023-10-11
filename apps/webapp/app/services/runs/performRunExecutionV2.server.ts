@@ -3,6 +3,7 @@ import {
   BloomFilter,
   ConnectionAuth,
   EndpointHeadersSchema,
+  RunJobAutoYieldWithCompletedTaskExecutionError,
   RunJobError,
   RunJobInvalidPayloadError,
   RunJobResumeWithTask,
@@ -27,6 +28,7 @@ import { prepareTasksForCaching, prepareTasksForCachingLegacy } from "~/models/t
 import { MAX_RUN_YIELDED_EXECUTIONS } from "~/consts";
 import { ApiEventLog } from "@trigger.dev/core";
 import { RunJobBody } from "@trigger.dev/core";
+import { CompleteRunTaskService } from "~/routes/api.v1.runs.$runId.tasks.$id.complete";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type FoundTask = FoundRun["tasks"][number];
@@ -405,6 +407,20 @@ export class PerformRunExecutionV2Service {
         await this.#resumeYieldedRun(run, safeBody.data.key, isRetry, durationInMs, executionCount);
         break;
       }
+      case "AUTO_YIELD_EXECUTION": {
+        await this.#resumeAutoYieldedRun(run, safeBody.data, isRetry, durationInMs, executionCount);
+        break;
+      }
+      case "AUTO_YIELD_EXECUTION_WITH_COMPLETED_TASK": {
+        await this.#resumeAutoYieldedRunWithCompletedTask(
+          run,
+          safeBody.data,
+          isRetry,
+          durationInMs,
+          executionCount
+        );
+        break;
+      }
       default: {
         const _exhaustiveCheck: never = status;
         throw new Error(`Non-exhaustive match for value: ${status}`);
@@ -458,6 +474,7 @@ export class PerformRunExecutionV2Service {
         cachedTaskCursor: preparedTasks.cursor,
         noopTasksSet: prepareNoOpTasksBloomFilter(tasks),
         yieldedExecutions: run.yieldedExecutions,
+        runChunkExecutionLimit: run.endpoint.runChunkExecutionLimit,
       };
     }
 
@@ -654,6 +671,99 @@ export class PerformRunExecutionV2Service {
     });
   }
 
+  async #resumeAutoYieldedRun(
+    run: FoundRun,
+    data: { location: string; timeRemaining: number; timeElapsed: number; limit?: number },
+    isRetry: boolean,
+    durationInMs: number,
+    executionCount: number
+  ) {
+    await $transaction(this.#prismaClient, async (tx) => {
+      await tx.jobRun.update({
+        where: {
+          id: run.id,
+        },
+        data: {
+          executionDuration: {
+            increment: durationInMs,
+          },
+          executionCount: {
+            increment: 1,
+          },
+          autoYieldExecution: {
+            create: [
+              {
+                location: data.location,
+                timeRemaining: data.timeRemaining,
+                timeElapsed: data.timeElapsed,
+                limit: data.limit ?? 0,
+              },
+            ],
+          },
+        },
+        select: {
+          executionCount: true,
+        },
+      });
+
+      await enqueueRunExecutionV2(run, tx, {
+        isRetry,
+        skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
+        executionCount,
+      });
+    });
+  }
+
+  async #resumeAutoYieldedRunWithCompletedTask(
+    run: FoundRun,
+    data: RunJobAutoYieldWithCompletedTaskExecutionError,
+    isRetry: boolean,
+    durationInMs: number,
+    executionCount: number
+  ) {
+    await $transaction(this.#prismaClient, async (tx) => {
+      await tx.jobRun.update({
+        where: {
+          id: run.id,
+        },
+        data: {
+          executionDuration: {
+            increment: durationInMs,
+          },
+          executionCount: {
+            increment: 1,
+          },
+          autoYieldExecution: {
+            create: [
+              {
+                location: data.data.location,
+                timeRemaining: data.data.timeRemaining,
+                timeElapsed: data.data.timeElapsed,
+                limit: data.data.limit ?? 0,
+              },
+            ],
+          },
+        },
+        select: {
+          executionCount: true,
+        },
+      });
+
+      const service = new CompleteRunTaskService(tx);
+
+      await service.call(run.environment, run.id, data.id, {
+        properties: data.properties,
+        output: data.output,
+      });
+
+      await enqueueRunExecutionV2(run, tx, {
+        isRetry,
+        skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
+        executionCount,
+      });
+    });
+  }
+
   async #retryRunWithTask(
     run: FoundRun,
     data: RunJobRetryWithTask,
@@ -756,6 +866,11 @@ export class PerformRunExecutionV2Service {
           executionDuration: {
             increment: durationInMs,
           },
+          endpoint: {
+            update: {
+              runChunkExecutionLimit: Math.max(durationInMs / 1000, 10), // Never allow the execution limit to be less than 10 seconds
+            },
+          },
         },
       });
 
@@ -855,7 +970,12 @@ async function findRun(prisma: PrismaClientOrTransaction, id: string) {
   return await prisma.jobRun.findUnique({
     where: { id },
     include: {
-      environment: true,
+      environment: {
+        include: {
+          project: true,
+          organization: true,
+        },
+      },
       endpoint: true,
       organization: true,
       externalAccount: true,

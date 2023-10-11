@@ -23,6 +23,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { webcrypto } from "node:crypto";
 import { ApiClient } from "./apiClient";
 import {
+  AutoYieldExecutionError,
+  AutoYieldWithCompletedTaskExecutionError,
   CanceledWithTaskError,
   ResumeWithTaskError,
   RetryWithTaskError,
@@ -45,6 +47,7 @@ export type IOOptions = {
   apiClient: ApiClient;
   client: TriggerClient;
   context: TriggerContext;
+  timeOrigin: number;
   logger?: Logger;
   logLevel?: LogLevel;
   jobLogger?: Logger;
@@ -54,6 +57,7 @@ export type IOOptions = {
   yieldedExecutions?: Array<string>;
   noopTasksSet?: string;
   serverVersion?: string | null;
+  executionTimeout?: number;
 };
 
 type JsonPrimitive = string | number | boolean | null | undefined | Date | symbol;
@@ -96,6 +100,8 @@ export class IO {
   private _noopTasksBloomFilter: BloomFilter | undefined;
   private _stats: IOStats;
   private _serverVersion: string;
+  private _timeOrigin: number;
+  private _executionTimeout?: number;
 
   get stats() {
     return this._stats;
@@ -109,6 +115,8 @@ export class IO {
     this._cachedTasks = new Map();
     this._jobLogger = options.jobLogger;
     this._jobLogLevel = options.jobLogLevel;
+    this._timeOrigin = options.timeOrigin;
+    this._executionTimeout = options.executionTimeout;
 
     this._stats = {
       initialCachedTasks: 0,
@@ -586,6 +594,8 @@ export class IO {
     options?: RunTaskOptions,
     onError?: RunTaskErrorCallback
   ): Promise<T> {
+    this.#detectAutoYield("start_task", 500);
+
     const parentId = this._taskStorage.getStore()?.taskId;
 
     if (parentId) {
@@ -694,6 +704,8 @@ export class IO {
       throw new Error(task.error ?? task?.output ? JSON.stringify(task.output) : "Task errored");
     }
 
+    this.#detectAutoYield("before_execute_task", 1500);
+
     const executeTask = async () => {
       try {
         const result = await callback(task, this);
@@ -713,6 +725,8 @@ export class IO {
           task,
         });
 
+        this.#detectAutoYield("before_complete_task", 500, task, output);
+
         const completedTask = await this._apiClient.completeTask(this._id, task.id, {
           output: output ?? undefined,
           properties: task.outputProperties ?? undefined,
@@ -723,6 +737,8 @@ export class IO {
         if (completedTask.status === "CANCELED") {
           throw new CanceledWithTaskError(completedTask);
         }
+
+        this.#detectAutoYield("after_complete_task", 500);
 
         return output;
       } catch (error) {
@@ -862,6 +878,39 @@ export class IO {
 
   #addToCachedTasks(task: ServerTask) {
     this._cachedTasks.set(task.idempotencyKey, task);
+  }
+
+  #detectAutoYield(location: string, threshold: number = 1500, task?: ServerTask, output?: any) {
+    const timeRemaining = this.#getRemainingTimeInMillis();
+
+    if (timeRemaining && timeRemaining < threshold) {
+      if (task) {
+        throw new AutoYieldWithCompletedTaskExecutionError(
+          task.id,
+          task.outputProperties ?? [],
+          output,
+          {
+            location,
+            timeRemaining,
+            timeElapsed: this.#getTimeElapsed(),
+          }
+        );
+      } else {
+        throw new AutoYieldExecutionError(location, timeRemaining, this.#getTimeElapsed());
+      }
+    }
+  }
+
+  #getTimeElapsed() {
+    return performance.now() - this._timeOrigin;
+  }
+
+  #getRemainingTimeInMillis() {
+    if (this._executionTimeout) {
+      return this._executionTimeout - (performance.now() - this._timeOrigin);
+    }
+
+    return undefined;
   }
 }
 
