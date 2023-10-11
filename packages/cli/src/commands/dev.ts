@@ -1,3 +1,4 @@
+import boxen from "boxen";
 import chalk from "chalk";
 import childProcess from "child_process";
 import chokidar from "chokidar";
@@ -5,10 +6,12 @@ import fs from "fs/promises";
 import ngrok from "ngrok";
 import { run as ncuRun } from "npm-check-updates";
 import ora, { Ora } from "ora";
+import pRetry, { AbortError } from "p-retry";
 import pathModule from "path";
 import util from "util";
 import { z } from "zod";
 import { Framework, getFramework } from "../frameworks";
+import { standardWatchFilePaths, standardWatchIgnoreRegex } from "../frameworks/watchConfig";
 import { telemetryClient } from "../telemetry/telemetry";
 import { getEnvFilename } from "../utils/env";
 import fetch from "../utils/fetchUseProxy";
@@ -17,12 +20,9 @@ import { getUserPackageManager } from "../utils/getUserPkgManager";
 import { logger } from "../utils/logger";
 import { resolvePath } from "../utils/parseNameAndPath";
 import { RequireKeys } from "../utils/requiredKeys";
-import { TriggerApi } from "../utils/triggerApi";
-import { standardWatchIgnoreRegex, standardWatchFilePaths } from "../frameworks/watchConfig";
 import { Throttle } from "../utils/throttle";
+import { TriggerApi } from "../utils/triggerApi";
 import { wait } from "../utils/wait";
-import pRetry, { AbortError } from "p-retry";
-import { abort } from "process";
 
 const asyncExecFile = util.promisify(childProcess.execFile);
 
@@ -179,7 +179,7 @@ async function refresh(options: RefreshOptions) {
       signal: options.abortController.signal,
       maxTimeout: 5000,
     });
-    options.spinner.text = `[trigger.dev] 🔄 Refreshing ${formattedDate.format(index.updatedAt)}`;
+    options.spinner.text = `[trigger.dev] Refreshing ${formattedDate.format(index.updatedAt)}`;
 
     if (!options.hasConnected) {
       options.hasConnected = true;
@@ -200,18 +200,18 @@ async function refresh(options: RefreshOptions) {
       options.spinner.fail(
         `[trigger.dev] Refreshing failed ${formattedDate.format(indexResult.updatedAt)}`
       );
-      logger.error(`  [trigger.dev] ${indexResult.error.message}`);
+      logger.error(
+        boxen(indexResult.error.message, {
+          padding: 1,
+          borderStyle: "double",
+        })
+      );
       return;
     }
 
     options.spinner.succeed(
-      `[trigger.dev] ✅ Refreshed ${formattedDate.format(indexResult.updatedAt)}`
+      `[trigger.dev] Refreshed ${formattedDate.format(indexResult.updatedAt)}`
     );
-
-    const { jobs, sources, dynamicSchedules, dynamicTriggers, disabledJobs } = indexResult.stats;
-    logger.table({ Jobs: jobs, Sources: sources, Schedules: dynamicSchedules });
-
-    logger.info(`  [trigger.dev] ${JSON.stringify(indexResult.stats)}`);
   } catch (e) {
     if (e instanceof AbortError) {
       options.spinner.fail(e.message);

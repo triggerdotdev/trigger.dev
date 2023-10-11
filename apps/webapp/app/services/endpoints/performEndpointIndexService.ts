@@ -95,18 +95,14 @@ export class PerformEndpointIndexService {
           const job = (anyBody as any).jobs[jobIndex];
 
           if (job) {
-            issues.push(
-              `There's an issue with the format of your Job: "${job.id}": ${
-                issue.message
-              } at "${issue.path.slice(2).join(".")}"`
-            );
+            issues.push(`Job "${job.id}": ${issue.message} at "${issue.path.slice(2).join(".")}".`);
           }
         }
       });
 
       let friendlyError: string | undefined;
       if (issues.length > 0) {
-        friendlyError = issues.join("\n");
+        friendlyError = `Your Jobs have issues:\n${issues.map((issue) => `- ${issue}`).join("\n")}`;
       } else {
         friendlyError = fromZodError(bodyResult.error, {
           prefix: "There's an issue with the format of your Jobs",
