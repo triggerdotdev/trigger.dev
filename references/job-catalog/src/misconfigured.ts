@@ -1,6 +1,5 @@
 import { createExpressServer } from "@trigger.dev/express";
-import { TriggerClient, cronTrigger, eventTrigger, intervalTrigger } from "@trigger.dev/sdk";
-import { z } from "zod";
+import { TriggerClient, intervalTrigger } from "@trigger.dev/sdk";
 
 export const client = new TriggerClient({
   id: "job-catalog",
