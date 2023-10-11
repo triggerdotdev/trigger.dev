@@ -134,16 +134,8 @@ function getWorkerQueue() {
       ttl: 7 * 24 * 60 * 60 * 1000, // 7 days
       maxCount: 1000,
     },
-    reporter: async (subject, message) => {
-      logger.info("workerQueue reporter", { workerMessage: message, subject });
-
-      if (env.WORKER_REPORTER_EMAIL) {
-        await sendPlainTextEmail({
-          to: env.WORKER_REPORTER_EMAIL,
-          subject: `[${env.APP_ENV}] workerQueue Report: ${subject}`,
-          text: message,
-        });
-      }
+    reporter: async (event, properties) => {
+      logger.info("workerQueue report", { event, properties });
     },
     runnerOptions: {
       connectionString: env.DATABASE_URL,

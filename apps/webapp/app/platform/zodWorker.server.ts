@@ -91,6 +91,8 @@ export type ZodWorkerCleanupOptions = {
   taskOptions?: CronItemOptions;
 };
 
+type ZodWorkerReporter = (event: string, properties: Record<string, any>) => Promise<void>;
+
 export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   name: string;
   runnerOptions: RunnerOptions;
@@ -99,7 +101,7 @@ export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   tasks: ZodTasks<TMessageCatalog>;
   recurringTasks?: ZodRecurringTasks;
   cleanup?: ZodWorkerCleanupOptions;
-  reporter?: (subject: string, message: string) => Promise<void>;
+  reporter?: ZodWorkerReporter;
 };
 
 export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
@@ -111,7 +113,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   #recurringTasks?: ZodRecurringTasks;
   #runner?: GraphileRunner;
   #cleanup: ZodWorkerCleanupOptions | undefined;
-  #reporter?: (subject: string, message: string) => Promise<void>;
+  #reporter?: ZodWorkerReporter;
 
   constructor(options: ZodWorkerOptions<TMessageCatalog>) {
     this.#name = options.name;
@@ -528,10 +530,11 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     });
 
     if (this.#reporter) {
-      await this.#reporter(
-        "Worker Queue Cleanup",
-        `Cleaned up ${results.length} jobs older than ${expirationDate.toISOString()}`
-      );
+      await this.#reporter("cleanup_stats", {
+        count: results.length,
+        expirationDate,
+        ts: payload._cron.ts,
+      });
     }
   }
 
@@ -581,10 +584,11 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       payload,
     });
 
-    await this.#reporter(
-      "Worker Queue Metrics",
-      `Added ${addedCountResults.count} jobs in the last hour, total jobs: ${totalCountResults.count}`
-    );
+    await this.#reporter("queue_metrics", {
+      addedCount: addedCountResults.count,
+      totalCount: totalCountResults.count,
+      ts: payload._cron.ts,
+    });
   }
 
   #logDebug(message: string, args?: any) {
