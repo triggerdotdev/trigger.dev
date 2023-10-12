@@ -26,6 +26,8 @@ const emailStrategy = new EmailLinkStrategy(
     form: FormData;
     magicLinkVerify: boolean;
   }) => {
+    logger.info("Magic link user authenticated", { email, magicLinkVerify });
+
     try {
       const { user, isNewUser } = await findOrCreateUser({
         email,
