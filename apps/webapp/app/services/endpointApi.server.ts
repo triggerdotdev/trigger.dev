@@ -310,41 +310,24 @@ export class EndpointApi {
   }
 
   async probe(timeout: number) {
-    try {
-      const startTimeInMs = performance.now();
-      const controller = new AbortController();
+    const startTimeInMs = performance.now();
 
-      const timer = setTimeout(() => {
-        controller.abort();
-      }, timeout);
+    const response = await safeFetch(this.url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-trigger-api-key": this.apiKey,
+        "x-trigger-action": "PROBE_EXECUTION_TIMEOUT",
+      },
+      body: JSON.stringify({
+        timeout,
+      }),
+    });
 
-      const response = await safeFetch(this.url, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-trigger-api-key": this.apiKey,
-          "x-trigger-action": "PROBE_EXECUTION_TIMEOUT",
-        },
-        body: JSON.stringify({}),
-        signal: controller.signal,
-      });
-
-      return {
-        response,
-        durationInMs: Math.floor(performance.now() - startTimeInMs),
-        timedOut: false,
-      };
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        return {
-          response: undefined,
-          durationInMs: timeout,
-          timedOut: true,
-        };
-      }
-
-      throw error;
-    }
+    return {
+      response,
+      durationInMs: Math.floor(performance.now() - startTimeInMs),
+    };
   }
 }
 

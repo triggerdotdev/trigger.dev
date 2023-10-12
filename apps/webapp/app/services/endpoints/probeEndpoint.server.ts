@@ -31,26 +31,23 @@ export class ProbeEndpointService {
 
     const client = new EndpointApi(endpoint.environment.apiKey, endpoint.url);
 
-    const { response, durationInMs, timedOut } = await client.probe(MAX_RUN_CHUNK_EXECUTION_LIMIT);
+    const { response, durationInMs } = await client.probe(MAX_RUN_CHUNK_EXECUTION_LIMIT);
 
-    if (!response && !timedOut) {
+    if (!response) {
       return;
     }
 
     logger.debug(`Probing endpoint complete`, {
       id,
       durationInMs,
-      response: response
-        ? {
-            status: response.status,
-            headers: Object.fromEntries(response.headers.entries()),
-          }
-        : undefined,
-      timedOut,
+      response: {
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+      },
     });
 
     // If the response is a 200, or it was a timeout, we can assume the endpoint is up and update the runChunkExecutionLimit
-    if (response?.status === 200 || detectResponseIsTimeout(response) || timedOut) {
+    if (response.status === 200 || detectResponseIsTimeout(response)) {
       await this.#prismaClient.endpoint.update({
         where: {
           id,

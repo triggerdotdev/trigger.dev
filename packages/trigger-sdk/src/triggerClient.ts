@@ -437,8 +437,9 @@ export class TriggerClient {
         };
       }
       case "PROBE_EXECUTION_TIMEOUT": {
+        const json = await request.json();
         // Keep this request open for max 15 minutes so the server can detect when the function execution limit is exceeded
-        const timeout = 15 * 60 * 1000;
+        const timeout = json?.timeout ?? 15 * 60 * 1000;
 
         await new Promise((resolve) => setTimeout(resolve, timeout));
 
