@@ -19,8 +19,8 @@ export function SideMenu() {
     >
       <div className="flex h-full flex-col justify-between">
         <div className="space-y-8 p-1">
-          <div className="flex flex-col gap-1">
-            <SideMenuItem name="Jobs" icon="job" to="" data-action="jobs" />
+          <div className="flex flex-col gap-y-2">
+            <SideMenuItem name="Jobs" icon="job" count={33} to="" data-action="jobs" />
             <SideMenuItem
               name="Integrations"
               icon="integration"
@@ -82,12 +82,14 @@ function SideMenuItem({
   to,
   forceActive = false,
   hasWarning = false,
+  count,
   target,
 }: {
   icon: IconNames | React.ComponentType<any>;
   name: string;
   to: string;
   hasWarning?: boolean;
+  count?: number;
   forceActive?: boolean;
   target?: string;
 }) {
@@ -95,7 +97,7 @@ function SideMenuItem({
     <SimpleTooltip
       button={
         <NavLinkButton
-          variant="menu-item"
+          variant="side-menu-item"
           fullWidth
           textAlignLeft
           LeadingIcon={icon}
@@ -115,11 +117,18 @@ function SideMenuItem({
           }}
         >
           {name}
-          {hasWarning && <Icon icon="error" className="h-5 w-5" />}
+          <div>
+            {count && <MenuCount count={count} />}
+            {hasWarning && <Icon icon="error" className="h-5 w-5" />}
+          </div>
         </NavLinkButton>
       }
       content={name}
       side="right"
     />
   );
+}
+
+function MenuCount({ count }: { count: number }) {
+  return <div className="rounded-full bg-slate-900 px-2 py-1 text-xxs text-dimmed">{count}</div>;
 }
