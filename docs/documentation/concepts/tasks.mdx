@@ -73,6 +73,10 @@ A Task can have multiple subtasks, and so on. This is useful for breaking down a
 
 The first param of all Tasks is a `key`. This is a unique identifier for the Task inside that Run. It is used for resumability and logging. It is also used to identify the Task in the [Viewing Runs Dashboard](/documentation/guides/viewing-runs).
 
+## Limitations
+
+A single task has an upper-bound on it's execution duration, which must be less than the serverless function execution timeout of your deployed platform. For more information see our [Limits docs](/documentation/concepts/limits#maximum-task-duration)
+
 ## References
 
 <CardGroup cols={2}>

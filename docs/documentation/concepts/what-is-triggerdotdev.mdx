@@ -103,3 +103,19 @@ Below is a simplified architecture diagram of how Trigger.dev works:
 ![Architecture](/images/architecture.png)
 
 As you can see above, we communicate between your code and the Trigger.dev platform. This allows us to send events to your code, and receive tasks from your code.
+
+## Limitations
+
+There are a few limitations that are important to understand.
+
+In the latest version the following are not supported:
+
+### Long-running servers
+
+Currently Trigger.dev is optimized for deployment to serverless functions, but not for long-running servers.
+
+This limitation will be removed in the future by adding an alternative mode so Jobs works well on localhost and long-running servers.
+
+### Compute intensive tasks
+
+Because Trigger.dev is optimized for serverless functions, it is not well suited for compute intensive jobs as each individual task is limited to the [Maximum Run Chunk Execution Duration](/placeholder)

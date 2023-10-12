@@ -58,6 +58,10 @@
     {
       "source": "/documentation/guides/manual",
       "destination": "/documentation/guides/manual/nextjs"
+    },
+    {
+      "source": "/documentation/concepts/limitations",
+      "destination": "/documentation/concepts/limits"
     }
   ],
   "navigation": [
@@ -94,7 +98,7 @@
       "group": "Concepts",
       "pages": [
         "documentation/concepts/what-is-triggerdotdev",
-        "documentation/concepts/limitations",
+        "documentation/concepts/limits",
         "documentation/concepts/projects",
         "documentation/concepts/client-adaptors",
         {
@@ -319,7 +323,10 @@
             "sdk/dynamictrigger/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamictrigger/register", "sdk/dynamictrigger/unregister"]
+              "pages": [
+                "sdk/dynamictrigger/register",
+                "sdk/dynamictrigger/unregister"
+              ]
             }
           ]
         },
@@ -330,7 +337,10 @@
             "sdk/dynamicschedule/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamicschedule/register", "sdk/dynamicschedule/unregister"]
+              "pages": [
+                "sdk/dynamicschedule/register",
+                "sdk/dynamicschedule/unregister"
+              ]
             }
           ]
         },
@@ -351,7 +361,9 @@
     },
     {
       "group": "Overview",
-      "pages": ["examples/introduction"]
+      "pages": [
+        "examples/introduction"
+      ]
     }
   ],
   "footerSocials": {
