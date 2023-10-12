@@ -60,7 +60,10 @@ export default function LoginPage() {
             <a href="https://trigger.dev">
               <LogoIcon className="mb-4 h-16 w-16" />
             </a>
-            <FormTitle divide={false} title="Log in to Trigger.dev" />
+            <FormTitle divide={false} title="Welcome to Trigger.dev" className="mb-2 pb-0" />
+            <Paragraph variant="small" className="mb-4">
+              Create an account or login
+            </Paragraph>
             <Fieldset>
               <div className="flex flex-col gap-y-2">
                 {data.showGithubAuth && (

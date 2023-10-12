@@ -17,7 +17,6 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { authenticator } from "~/services/auth.server";
 import { commitSession, getUserSession } from "~/services/sessionStorage.server";
 import magicLinkIcon from "./login.magic.svg";
-
 import type { LoaderType as RootLoader } from "~/root";
 import { appEnvTitleTag } from "~/utils";
 import { TextLink } from "~/components/primitives/TextLink";
@@ -116,7 +115,10 @@ export default function LoginMagicLinkPage() {
               </>
             ) : (
               <>
-                <FormTitle divide={false} title="Log in to Trigger.dev" />
+                <FormTitle divide={false} title="Welcome to Trigger.dev" className="mb-2 pb-0" />
+                <Paragraph variant="small" className="mb-4 text-center">
+                  Create an account or login using your email
+                </Paragraph>
                 <Fieldset className="flex w-full flex-col items-center gap-y-2">
                   <InputGroup>
                     <Label>Your email address</Label>
@@ -167,6 +169,22 @@ export default function LoginMagicLinkPage() {
                 </LinkButton>
               </>
             )}
+            <div className="mt-8 rounded border border-border px-6 py-4">
+              <Paragraph variant="small" className="mb-2 text-center">
+                Having login issues?
+              </Paragraph>
+              <Paragraph variant="extra-small" className="text-center">
+                Ensure the Magic Link email isn't in your spam folder. If the problem persists,{" "}
+                <TextLink href="mailto:help@trigger.dev" target="_blank">
+                  drop us an email
+                </TextLink>{" "}
+                or let us know on{" "}
+                <TextLink href="https://trigger.dev/discord" target="_blank">
+                  Discord
+                </TextLink>
+                .
+              </Paragraph>
+            </div>
           </div>
         </Form>
       </MainCenteredContainer>
