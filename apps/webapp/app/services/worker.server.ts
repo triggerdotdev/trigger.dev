@@ -21,6 +21,7 @@ import { ActivateSourceService } from "./sources/activateSource.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout";
+import { ProbeEndpointService } from "./endpoints/probeEndpoint.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -73,6 +74,9 @@ const workerCatalog = {
     id: z.string(),
   }),
   connectionCreated: z.object({
+    id: z.string(),
+  }),
+  probeEndpoint: z.object({
     id: z.string(),
   }),
 };
@@ -310,6 +314,15 @@ function getWorkerQueue() {
           await integrationAuthRepository.refreshConnection({
             connectionId: payload.connectionId,
           });
+        },
+      },
+      probeEndpoint: {
+        priority: 10,
+        maxAttempts: 1,
+        handler: async (payload, job) => {
+          const service = new ProbeEndpointService();
+
+          await service.call(payload.id);
         },
       },
     },

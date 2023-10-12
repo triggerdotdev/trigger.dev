@@ -308,6 +308,25 @@ export class EndpointApi {
 
     return validateResponse.data;
   }
+
+  async probe() {
+    const startTimeInMs = performance.now();
+
+    const response = await safeFetch(this.url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-trigger-api-key": this.apiKey,
+        "x-trigger-action": "PROBE_EXECUTION_TIMEOUT",
+      },
+      body: JSON.stringify({}),
+    });
+
+    return {
+      response,
+      durationInMs: Math.floor(performance.now() - startTimeInMs),
+    };
+  }
 }
 
 async function safeFetch(url: string, options: RequestInit) {

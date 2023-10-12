@@ -28,11 +28,13 @@ import { prepareTasksForCaching, prepareTasksForCachingLegacy } from "~/models/t
 import {
   MAX_RUN_CHUNK_EXECUTION_LIMIT,
   MAX_RUN_YIELDED_EXECUTIONS,
+  RESPONSE_TIMEOUT_STATUS_CODES,
   RUN_CHUNK_EXECUTION_BUFFER,
 } from "~/consts";
 import { ApiEventLog } from "@trigger.dev/core";
 import { RunJobBody } from "@trigger.dev/core";
 import { CompleteRunTaskService } from "~/routes/api.v1.runs.$runId.tasks.$id.complete";
+import { detectResponseIsTimeout } from "~/models/endpoint.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type FoundTask = FoundRun["tasks"][number];
@@ -325,8 +327,8 @@ export class PerformRunExecutionV2Service {
           durationInMs
         );
       } else {
-        // If the error is a 504 timeout, we should mark this execution as succeeded (by not throwing an error) and enqueue a new execution
-        if (response.status === 504) {
+        // If the error is a timeout, we should mark this execution as succeeded (by not throwing an error) and enqueue a new execution
+        if (detectResponseIsTimeout(response)) {
           return await this.#resumeRunExecutionAfterTimeout(
             this.#prismaClient,
             run,
