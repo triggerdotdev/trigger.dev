@@ -1,6 +1,6 @@
 import type { ActionArgs, LoaderArgs } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
-import { Form, useTransition } from "@remix-run/react";
+import { Form, useNavigation, useTransition } from "@remix-run/react";
 import { TypedMetaFunction, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { LogoIcon } from "~/components/LogoIcon";
@@ -20,6 +20,7 @@ import magicLinkIcon from "./login.magic.svg";
 import type { LoaderType as RootLoader } from "~/root";
 import { appEnvTitleTag } from "~/utils";
 import { TextLink } from "~/components/primitives/TextLink";
+import { FormError } from "~/components/primitives/FormError";
 
 export const meta: TypedMetaFunction<typeof loader, { root: RootLoader }> = ({ parentsData }) => ({
   title: `Login to Trigger.dev${appEnvTitleTag(parentsData?.root.appEnv)}`,
@@ -31,10 +32,26 @@ export async function loader({ request }: LoaderArgs) {
   });
 
   const session = await getUserSession(request);
+  const error = session.get("auth:error");
 
-  return typedjson({
-    magicLinkSent: session.has("triggerdotdev:magiclink"),
-  });
+  let magicLinkError: string | undefined;
+  if (error) {
+    if ("message" in error) {
+      magicLinkError = error.message;
+    } else {
+      magicLinkError = JSON.stringify(error, null, 2);
+    }
+  }
+
+  return typedjson(
+    {
+      magicLinkSent: session.has("triggerdotdev:magiclink"),
+      magicLinkError,
+    },
+    {
+      headers: { "Set-Cookie": await commitSession(session) },
+    }
+  );
 }
 
 export async function action({ request }: ActionArgs) {
@@ -49,7 +66,7 @@ export async function action({ request }: ActionArgs) {
     .parse(payload);
 
   if (action === "send") {
-    await authenticator.authenticate("email-link", request, {
+    return authenticator.authenticate("email-link", request, {
       successRedirect: "/login/magic",
       failureRedirect: "/login/magic",
     });
@@ -66,13 +83,13 @@ export async function action({ request }: ActionArgs) {
 }
 
 export default function LoginMagicLinkPage() {
-  const { magicLinkSent } = useTypedLoaderData<typeof loader>();
-  const transition = useTransition();
+  const { magicLinkSent, magicLinkError } = useTypedLoaderData<typeof loader>();
+  const navigate = useNavigation();
 
   const isLoading =
-    (transition.state === "loading" || transition.state === "submitting") &&
-    transition.type === "actionSubmission" &&
-    transition.submission.formData.get("action") === "send";
+    (navigate.state === "loading" || navigate.state === "submitting") &&
+    navigate.formAction !== undefined &&
+    navigate.formData?.get("action") === "send";
 
   return (
     <AppContainer showBackgroundGradient={true}>
@@ -152,6 +169,7 @@ export default function LoginMagicLinkPage() {
                     />
                     {isLoading ? "Sending…" : "Send a magic link"}
                   </Button>
+                  {magicLinkError && <FormError>{magicLinkError}</FormError>}
                 </Fieldset>
                 <Paragraph variant="extra-small" className="my-4 text-center">
                   By logging in with your email you agree to our{" "}
