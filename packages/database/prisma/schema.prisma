@@ -369,7 +369,11 @@ model Endpoint {
   indexingHookIdentifier String?
   version                String  @default("unknown")
 
-  runChunkExecutionLimit Int @default(60000)
+  runChunkExecutionLimit      Int @default(60000)
+  startTaskThreshold          Int @default(750)
+  beforeExecuteTaskThreshold  Int @default(1500)
+  beforeCompleteTaskThreshold Int @default(750)
+  afterCompleteTaskThreshold  Int @default(750)
 
   jobVersions           JobVersion[]
   jobRuns               JobRun[]

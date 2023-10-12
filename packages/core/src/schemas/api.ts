@@ -451,6 +451,15 @@ export const RunSourceContextSchema = z.object({
 
 export type RunSourceContext = z.infer<typeof RunSourceContextSchema>;
 
+export const AutoYieldConfigSchema = z.object({
+  startTaskThreshold: z.number(),
+  beforeExecuteTaskThreshold: z.number(),
+  beforeCompleteTaskThreshold: z.number(),
+  afterCompleteTaskThreshold: z.number(),
+});
+
+export type AutoYieldConfig = z.infer<typeof AutoYieldConfigSchema>;
+
 export const RunJobBodySchema = z.object({
   event: ApiEventLogSchema,
   job: z.object({
@@ -486,6 +495,7 @@ export const RunJobBodySchema = z.object({
   connections: z.record(ConnectionAuthSchema).optional(),
   yieldedExecutions: z.string().array().optional(),
   runChunkExecutionLimit: z.number().optional(),
+  autoYieldConfig: AutoYieldConfigSchema.optional(),
 });
 
 export type RunJobBody = z.infer<typeof RunJobBodySchema>;

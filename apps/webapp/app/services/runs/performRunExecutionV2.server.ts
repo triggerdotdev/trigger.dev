@@ -475,6 +475,12 @@ export class PerformRunExecutionV2Service {
         noopTasksSet: prepareNoOpTasksBloomFilter(tasks),
         yieldedExecutions: run.yieldedExecutions,
         runChunkExecutionLimit: run.endpoint.runChunkExecutionLimit,
+        autoYieldConfig: {
+          startTaskThreshold: run.endpoint.startTaskThreshold,
+          beforeExecuteTaskThreshold: run.endpoint.beforeExecuteTaskThreshold,
+          beforeCompleteTaskThreshold: run.endpoint.beforeCompleteTaskThreshold,
+          afterCompleteTaskThreshold: run.endpoint.afterCompleteTaskThreshold,
+        },
       };
     }
 
@@ -858,6 +864,54 @@ export class PerformRunExecutionV2Service {
         return;
       }
 
+      const runWithLatestTask = await tx.jobRun.findUniqueOrThrow({
+        where: {
+          id: run.id,
+        },
+        select: {
+          tasks: {
+            select: {
+              id: true,
+              name: true,
+              status: true,
+              displayKey: true,
+            },
+            take: 1,
+            orderBy: { createdAt: "desc" },
+          },
+          _count: {
+            select: {
+              tasks: true,
+            },
+          },
+        },
+      });
+
+      if (runWithLatestTask._count.tasks === run._count.tasks) {
+        const latestTask = runWithLatestTask.tasks[0];
+
+        const cause =
+          latestTask?.status === "RUNNING"
+            ? `This is likely caused by task "${
+                latestTask.displayKey ?? latestTask.name
+              }" execution exceeding the function timeout`
+            : "This is likely caused by executing code outside of a task that exceeded the function timeout";
+
+        await this.#failRunExecution(
+          tx,
+          "EXECUTE_JOB",
+          run,
+          {
+            message: `Function timeout detected in ${
+              durationInMs / 1000.0
+            }s without any task creation. This is unexpected behavior and could lead to an infinite execution error because the run will never finish. ${cause}`,
+          },
+          "TIMED_OUT",
+          durationInMs
+        );
+        return;
+      }
+
       await tx.jobRun.update({
         where: {
           id: run.id,
@@ -868,7 +922,7 @@ export class PerformRunExecutionV2Service {
           },
           endpoint: {
             update: {
-              runChunkExecutionLimit: Math.max(durationInMs / 1000, 10), // Never allow the execution limit to be less than 10 seconds
+              runChunkExecutionLimit: Math.max(durationInMs, 10000), // Never allow the execution limit to be less than 10 seconds
             },
           },
         },
@@ -908,6 +962,19 @@ export class PerformRunExecutionV2Service {
               output,
               executionDuration: {
                 increment: durationInMs,
+              },
+              tasks: {
+                updateMany: {
+                  where: {
+                    status: {
+                      in: ["WAITING", "RUNNING", "PENDING"],
+                    },
+                  },
+                  data: {
+                    status: status === "TIMED_OUT" ? "CANCELED" : "ERRORED",
+                    completedAt: new Date(),
+                  },
+                },
               },
             },
           });
@@ -1012,6 +1079,11 @@ async function findRun(prisma: PrismaClientOrTransaction, id: string) {
         include: {
           job: true,
           organization: true,
+        },
+      },
+      _count: {
+        select: {
+          tasks: true,
         },
       },
     },
