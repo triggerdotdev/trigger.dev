@@ -20,7 +20,11 @@ export async function findEndpoint(id: string) {
   });
 }
 
-export function detectResponseIsTimeout(response: Response) {
+export function detectResponseIsTimeout(response?: Response) {
+  if (!response) {
+    return false;
+  }
+
   return (
     RESPONSE_TIMEOUT_STATUS_CODES.includes(response.status) ||
     response.headers.get("x-vercel-error") === "FUNCTION_INVOCATION_TIMEOUT"
