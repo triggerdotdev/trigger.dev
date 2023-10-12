@@ -32,7 +32,7 @@ client.defineJob({
 
         await new Promise((resolve) => setTimeout(resolve, random));
 
-        await fetch("https://end7o0d34hsf.x.pipedream.net", {
+        await fetch(payload.url, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
