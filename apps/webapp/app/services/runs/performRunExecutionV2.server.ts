@@ -25,7 +25,11 @@ import { safeJsonZodParse } from "~/utils/json";
 import { EndpointApi } from "../endpointApi.server";
 import { logger } from "../logger.server";
 import { prepareTasksForCaching, prepareTasksForCachingLegacy } from "~/models/task.server";
-import { MAX_RUN_YIELDED_EXECUTIONS } from "~/consts";
+import {
+  MAX_RUN_CHUNK_EXECUTION_LIMIT,
+  MAX_RUN_YIELDED_EXECUTIONS,
+  RUN_CHUNK_EXECUTION_BUFFER,
+} from "~/consts";
 import { ApiEventLog } from "@trigger.dev/core";
 import { RunJobBody } from "@trigger.dev/core";
 import { CompleteRunTaskService } from "~/routes/api.v1.runs.$runId.tasks.$id.complete";
@@ -474,7 +478,7 @@ export class PerformRunExecutionV2Service {
         cachedTaskCursor: preparedTasks.cursor,
         noopTasksSet: prepareNoOpTasksBloomFilter(tasks),
         yieldedExecutions: run.yieldedExecutions,
-        runChunkExecutionLimit: run.endpoint.runChunkExecutionLimit,
+        runChunkExecutionLimit: run.endpoint.runChunkExecutionLimit - RUN_CHUNK_EXECUTION_BUFFER,
         autoYieldConfig: {
           startTaskThreshold: run.endpoint.startTaskThreshold,
           beforeExecuteTaskThreshold: run.endpoint.beforeExecuteTaskThreshold,
@@ -922,7 +926,11 @@ export class PerformRunExecutionV2Service {
           },
           endpoint: {
             update: {
-              runChunkExecutionLimit: Math.max(durationInMs, 10000), // Never allow the execution limit to be less than 10 seconds
+              // Never allow the execution limit to be less than 10 seconds or more than MAX_RUN_CHUNK_EXECUTION_LIMIT
+              runChunkExecutionLimit: Math.min(
+                Math.max(durationInMs, 10000),
+                MAX_RUN_CHUNK_EXECUTION_LIMIT
+              ),
             },
           },
         },

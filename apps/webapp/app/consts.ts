@@ -6,3 +6,5 @@ export const MAX_CONCURRENT_RUNS_LIMIT = 20;
 export const PREPROCESS_RETRY_LIMIT = 2;
 export const EXECUTE_JOB_RETRY_LIMIT = 10;
 export const MAX_RUN_YIELDED_EXECUTIONS = 100;
+export const RUN_CHUNK_EXECUTION_BUFFER = 350;
+export const MAX_RUN_CHUNK_EXECUTION_LIMIT = 60000; // 60 seconds
