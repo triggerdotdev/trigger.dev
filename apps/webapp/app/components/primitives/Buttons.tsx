@@ -103,6 +103,14 @@ const variant = {
     shortcutVariant: undefined,
     shortcut: undefined,
   },
+  "side-menu-item": {
+    textColor: "text-bright",
+    button:
+      "h-[1.625rem] px-[0.475rem] text-xs rounded-sm text-dimmed bg-transparent group-hover:bg-slate-800 transition",
+    icon: "h-4",
+    shortcutVariant: undefined,
+    shortcut: undefined,
+  },
 };
 
 const allVariants = {
@@ -147,7 +155,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
     <div className={cn("flex", fullWidth ? "" : "w-fit text-xxs", btnClassName, className)}>
       <div
         className={cn(
-          textAlignLeft ? "text-left" : "justify-center",
+          textAlignLeft ? "h- text-left" : "justify-center",
           "flex w-full items-center gap-x-0.5"
         )}
       >
