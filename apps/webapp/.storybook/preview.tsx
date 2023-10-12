@@ -23,6 +23,7 @@ const preview: Preview = {
         },
       ],
     },
+    layout: "fullscreen",
   },
   decorators: [
     (Story) => {
