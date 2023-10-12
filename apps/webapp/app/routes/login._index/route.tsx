@@ -67,12 +67,22 @@ export default function LoginPage() {
             <Fieldset>
               <div className="flex flex-col gap-y-2">
                 {data.showGithubAuth && (
-                  <Button type="submit" variant="primary/large" fullWidth>
+                  <Button
+                    type="submit"
+                    variant="primary/large"
+                    fullWidth
+                    data-action="continue with github"
+                  >
                     <NamedIcon name={"github"} className={"mr-1.5 h-4 w-4"} />
                     Continue with GitHub
                   </Button>
                 )}
-                <LinkButton to="/login/magic" variant="secondary/large" fullWidth>
+                <LinkButton
+                  to="/login/magic"
+                  variant="secondary/large"
+                  fullWidth
+                  data-action="continue with email"
+                >
                   <NamedIcon
                     name={"envelope"}
                     className={"mr-1.5 h-4 w-4 text-dimmed transition group-hover:text-bright"}

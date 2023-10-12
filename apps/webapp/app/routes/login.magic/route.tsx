@@ -101,12 +101,17 @@ export default function LoginMagicLinkPage() {
                         variant="tertiary/small"
                         LeadingIcon="arrow-left"
                         leadingIconClassName="text-dimmed group-hover:text-bright transition"
+                        data-action="re-enter email"
                       >
                         Re-enter email
                       </Button>
                     }
                     confirmButton={
-                      <LinkButton to="/login" variant="tertiary/small">
+                      <LinkButton
+                        to="/login"
+                        variant="tertiary/small"
+                        data-action="log in using another option"
+                      >
                         Log in using another option
                       </LinkButton>
                     }
@@ -139,6 +144,7 @@ export default function LoginMagicLinkPage() {
                     variant="primary/medium"
                     disabled={isLoading}
                     fullWidth
+                    data-action="send a magic link"
                   >
                     <NamedIcon
                       name={isLoading ? "spinner-white" : "envelope"}
@@ -164,6 +170,7 @@ export default function LoginMagicLinkPage() {
                   variant={"tertiary/small"}
                   LeadingIcon={"arrow-left"}
                   leadingIconClassName="text-dimmed group-hover:text-bright transition"
+                  data-action="all login options"
                 >
                   All login options
                 </LinkButton>
