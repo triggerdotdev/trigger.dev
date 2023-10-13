@@ -1,5 +1,5 @@
 import mock from "mock-fs";
-import { NextJs, detectPagesOrAppDir, detectUseOfSrcDir } from ".";
+import { NextJs, detectPagesOrAppDir, detectUseOfSrcDir, detectNextVersion } from ".";
 import { getFramework } from "..";
 import { pathExists } from "../../utils/fileSystem";
 import { detectMiddlewareUsage } from "./middleware";
@@ -54,6 +54,35 @@ describe("Next project detection", () => {
 
     const framework = await getFramework("", "npm");
     expect(framework?.id).not.toEqual("nextjs");
+  });
+});
+
+describe("Next version detection", () => {
+  test("detect Nextjs latest version", async () => {
+    mock({
+      "package.json": JSON.stringify({ dependencies: { next: "latest" } }),
+    });
+
+    const nextJsVersion = await detectNextVersion("");
+    expect(nextJsVersion).toEqual("latest");
+  });
+
+  test("detect Nextjs 13.0.0 version", async () => {
+    mock({
+      "package.json": JSON.stringify({ dependencies: { next: "13.0.0" } }),
+    });
+
+    const nextJsVersion = await detectNextVersion("");
+    expect(nextJsVersion).toEqual("13.0.0");
+  });
+
+  test("detect Nextjs version as a dev dependency", async () => {
+    mock({
+      "package.json": JSON.stringify({ devDependencies: { next: "^12.0.0" } }),
+    });
+
+    const nextJsVersion = await detectNextVersion("");
+    expect(nextJsVersion).toEqual("12.0.0");
   });
 });
 
