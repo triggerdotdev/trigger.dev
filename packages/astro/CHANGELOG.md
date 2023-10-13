@@ -1,5 +1,34 @@
 # @trigger.dev/astro
 
+## 2.2.0
+
+### Minor Changes
+
+- 975c5f1d: Drop support for Node v16, require Node >= 18. This allows us to use native fetch in our SDK which paves the way for multi-platform support.
+
+### Patch Changes
+
+- Updated dependencies [975c5f1d]
+  - @trigger.dev/sdk@2.2.0
+
+## 2.1.9
+
+### Patch Changes
+
+- Updated dependencies [9a187f9e]
+- Updated dependencies [2e9452ab]
+  - @trigger.dev/sdk@2.1.9
+
+## 2.1.8
+
+### Patch Changes
+
+- ab9e4a98: Send client version back to the server via headers
+- Updated dependencies [6a992a19]
+- Updated dependencies [ab9e4a98]
+- Updated dependencies [ab9e4a98]
+  - @trigger.dev/sdk@2.1.8
+
 ## 2.1.7
 
 ### Patch Changes

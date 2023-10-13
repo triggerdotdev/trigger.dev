@@ -47,7 +47,7 @@ export function sse({ request, pingInterval = 1000, updateInterval = 348, run }:
             });
           }
         } else {
-          logger.debug("Uknown error sending SSE, aborting", {
+          logger.debug("Unknown error sending SSE, aborting", {
             error,
             args,
           });

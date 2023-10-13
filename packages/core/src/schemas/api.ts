@@ -296,6 +296,53 @@ export const IndexEndpointResponseSchema = z.object({
 
 export type IndexEndpointResponse = z.infer<typeof IndexEndpointResponseSchema>;
 
+export const EndpointIndexErrorSchema = z.object({
+  message: z.string(),
+  raw: z.any().optional(),
+});
+
+export type EndpointIndexError = z.infer<typeof EndpointIndexErrorSchema>;
+
+const IndexEndpointStatsSchema = z.object({
+  jobs: z.number(),
+  sources: z.number(),
+  dynamicTriggers: z.number(),
+  dynamicSchedules: z.number(),
+  disabledJobs: z.number().default(0),
+});
+
+export type IndexEndpointStats = z.infer<typeof IndexEndpointStatsSchema>;
+
+export function parseEndpointIndexStats(stats: unknown): IndexEndpointStats | undefined {
+  if (stats === null || stats === undefined) {
+    return;
+  }
+  return IndexEndpointStatsSchema.parse(stats);
+}
+
+export const GetEndpointIndexResponseSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("PENDING"),
+    updatedAt: z.coerce.date(),
+  }),
+  z.object({
+    status: z.literal("STARTED"),
+    updatedAt: z.coerce.date(),
+  }),
+  z.object({
+    status: z.literal("SUCCESS"),
+    stats: IndexEndpointStatsSchema,
+    updatedAt: z.coerce.date(),
+  }),
+  z.object({
+    status: z.literal("FAILURE"),
+    error: EndpointIndexErrorSchema,
+    updatedAt: z.coerce.date(),
+  }),
+]);
+
+export type GetEndpointIndexResponse = z.infer<typeof GetEndpointIndexResponseSchema>;
+
 export const EndpointHeadersSchema = z.object({
   "trigger-version": z.string().optional(),
 });
@@ -664,6 +711,7 @@ export const RunTaskBodyInputSchema = RunTaskOptionsSchema.extend({
 export type RunTaskBodyInput = z.infer<typeof RunTaskBodyInputSchema>;
 
 export const RunTaskBodyOutputSchema = RunTaskBodyInputSchema.extend({
+  properties: z.array(DisplayPropertySchema.partial()).optional(),
   params: DeserializedJsonSchema.optional().nullable(),
   callback: z
     .object({

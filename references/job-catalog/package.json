@@ -26,6 +26,7 @@
     "byo-auth": "nodemon --watch src/byo-auth.ts -r tsconfig-paths/register -r dotenv/config src/byo-auth.ts",
     "redacted": "nodemon --watch src/redacted.ts -r tsconfig-paths/register -r dotenv/config src/redacted.ts",
     "replicate": "nodemon --watch src/replicate.ts -r tsconfig-paths/register -r dotenv/config src/replicate.ts",
+    "misconfigured": "nodemon --watch src/misconfigured.ts -r tsconfig-paths/register -r dotenv/config src/misconfigured.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {
@@ -33,8 +34,10 @@
     "@trigger.dev/airtable": "workspace:*",
     "@trigger.dev/express": "workspace:*",
     "@trigger.dev/github": "workspace:*",
+    "@trigger.dev/linear": "workspace:*",
     "@trigger.dev/openai": "workspace:*",
     "@trigger.dev/plain": "workspace:*",
+    "@trigger.dev/replicate": "workspace:*",
     "@trigger.dev/resend": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "@trigger.dev/sendgrid": "workspace:*",
@@ -44,9 +47,7 @@
     "@trigger.dev/typeform": "workspace:*",
     "@types/node": "20.4.2",
     "typescript": "5.1.6",
-    "zod": "3.21.4",
-    "@trigger.dev/linear": "workspace:*",
-    "@trigger.dev/replicate": "workspace:*"
+    "zod": "3.22.3"
   },
   "trigger.dev": {
     "endpointId": "job-catalog"

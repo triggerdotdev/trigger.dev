@@ -6,11 +6,24 @@ import { HandleHttpSourceService } from "~/services/sources/handleHttpSource.ser
 export async function action({ request, params }: ActionArgs) {
   logger.info("Handling http source", { url: request.url });
 
-  const { id } = z.object({ id: z.string() }).parse(params);
+  try {
+    const { id } = z.object({ id: z.string() }).parse(params);
+    const service = new HandleHttpSourceService();
+    const result = await service.call(id, request);
 
-  const service = new HandleHttpSourceService();
-
-  return await service.call(id, request);
+    return new Response(undefined, {
+      status: result.status,
+    });
+  } catch (e) {
+    if (e instanceof Error) {
+      logger.error("Error handling http source", { error: e.message });
+    } else {
+      logger.error("Error handling http source", { error: JSON.stringify(e) });
+    }
+    return new Response(undefined, {
+      status: 500,
+    });
+  }
 }
 
 export async function loader({ request, params }: LoaderArgs) {

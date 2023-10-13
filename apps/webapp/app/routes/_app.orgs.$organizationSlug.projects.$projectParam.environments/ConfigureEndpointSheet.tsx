@@ -6,7 +6,7 @@ import { useEventSource } from "remix-utils";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
+import { Callout, CalloutVariant } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
 import { FormError } from "~/components/primitives/FormError";
@@ -18,8 +18,14 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { Sheet, SheetBody, SheetContent, SheetHeader } from "~/components/primitives/Sheet";
 import { ClientEndpoint } from "~/presenters/EnvironmentsPresenter.server";
 import { endpointStreamingPath } from "~/utils/pathBuilder";
-import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
+import { EndpointIndexStatus, RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { bodySchema } from "../resources.environments.$environmentParam.endpoint";
+import {
+  EndpointIndexStatusIcon,
+  EndpointIndexStatusLabel,
+  endpointIndexStatusTitle,
+} from "~/components/environments/EndpointIndexStatus";
+import { CodeBlock } from "~/components/code/CodeBlock";
 
 type ConfigureEndpointSheetProps = {
   slug: string;
@@ -119,15 +125,29 @@ export function ConfigureEndpointSheet({ slug, endpoint, onClose }: ConfigureEnd
                   method="post"
                   action={`/resources/environments/${endpoint.environment.id}/endpoint/${endpoint.id}`}
                 >
-                  <Callout variant="success" className="justiy-between items-center">
-                    <Paragraph variant="small" className="grow text-green-200">
-                      Endpoint configured. Last refreshed:{" "}
-                      {endpoint.latestIndex ? (
-                        <DateTime date={endpoint.latestIndex.updatedAt} />
-                      ) : (
-                        "–"
-                      )}
-                    </Paragraph>
+                  <Callout
+                    variant="info"
+                    icon={
+                      <EndpointIndexStatusIcon status={endpoint.latestIndex?.status ?? "PENDING"} />
+                    }
+                    className="justiy-between items-center"
+                  >
+                    <div className="flex grow items-center gap-2">
+                      <EndpointIndexStatusLabel
+                        status={endpoint.latestIndex?.status ?? "PENDING"}
+                      />
+                      <Paragraph variant="small" className="grow">
+                        Last refreshed:{" "}
+                        {endpoint.latestIndex ? (
+                          <>
+                            <DateTime date={endpoint.latestIndex.updatedAt} />
+                          </>
+                        ) : (
+                          "–"
+                        )}
+                      </Paragraph>
+                    </div>
+
                     <Button
                       variant="primary/small"
                       type="submit"
@@ -138,6 +158,11 @@ export function ConfigureEndpointSheet({ slug, endpoint, onClose }: ConfigureEnd
                       {refreshingEndpoint ? "Refreshing" : "Refresh now"}
                     </Button>
                   </Callout>
+                  {endpoint.latestIndex?.error && (
+                    <FormError className="p-2">
+                      <pre>{endpoint.latestIndex.error.message}</pre>
+                    </FormError>
+                  )}
                 </refreshEndpointFetcher.Form>
               </div>
               <div className="max-w-full overflow-hidden">
@@ -154,4 +179,17 @@ export function ConfigureEndpointSheet({ slug, endpoint, onClose }: ConfigureEnd
       </SheetContent>
     </Sheet>
   );
+}
+
+function calloutVariantFromStatus(status: EndpointIndexStatus): CalloutVariant {
+  switch (status) {
+    case "PENDING":
+      return "pending";
+    case "STARTED":
+      return "pending";
+    case "SUCCESS":
+      return "success";
+    case "FAILURE":
+      return "error";
+  }
 }

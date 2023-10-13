@@ -1,0 +1,32 @@
+name: "ʦ TypeScript"
+on:
+  workflow_call:
+jobs:
+  typecheck:
+    runs-on: buildjet-4vcpu-ubuntu-2204
+
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@v2.2.4
+        with:
+          version: 7.18
+
+      - name: ⎔ Setup node
+        uses: buildjet/setup-node@v3
+        with:
+          node-version: 18
+          cache: "pnpm"
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile
+
+      - name: 📀 Generate Prisma Client
+        run: pnpm run generate
+
+      - name: 🔎 Type check
+        run: pnpm run typecheck --filter webapp

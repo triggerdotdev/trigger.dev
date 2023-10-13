@@ -1,5 +1,15 @@
 # @trigger.dev/integration-kit
 
+## 2.2.0
+
+### Minor Changes
+
+- 975c5f1d: Drop support for Node v16, require Node >= 18. This allows us to use native fetch in our SDK which paves the way for multi-platform support.
+
+## 2.1.9
+
+## 2.1.8
+
 ## 2.1.7
 
 ## 2.1.6

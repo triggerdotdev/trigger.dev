@@ -17,7 +17,9 @@ export class RecurringEndpointIndexService {
     const endpoints = await this.#prismaClient.endpoint.findMany({
       where: {
         environment: {
-          type: RuntimeEnvironmentType.PRODUCTION,
+          type: {
+            in: [RuntimeEnvironmentType.PRODUCTION, RuntimeEnvironmentType.STAGING],
+          },
         },
         indexings: {
           none: {
@@ -32,12 +34,18 @@ export class RecurringEndpointIndexService {
     logger.debug("Found endpoints that haven't been indexed in the last 10 minutes", {
       count: endpoints.length,
     });
-
     // Enqueue each endpoint for indexing
     for (const endpoint of endpoints) {
-      await workerQueue.enqueue("indexEndpoint", {
-        id: endpoint.id,
-        source: "INTERNAL",
+      const index = await this.#prismaClient.endpointIndex.create({
+        data: {
+          endpointId: endpoint.id,
+          status: "PENDING",
+          source: "INTERNAL",
+        },
+      });
+
+      await workerQueue.enqueue("performEndpointIndexing", {
+        id: index.id,
       });
     }
   }

@@ -93,7 +93,7 @@ export const initCommand = async (options: InitCommandOptions) => {
   }
 
   const apiClient = new TriggerApi(apiKey, optionsAfterPrompts.apiUrl);
-  const authorizedKey = await apiClient.whoami(apiKey);
+  const authorizedKey = await apiClient.whoami();
 
   if (!authorizedKey) {
     logger.error(
