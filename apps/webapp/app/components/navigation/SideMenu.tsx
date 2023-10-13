@@ -19,7 +19,7 @@ export function SideMenu() {
     >
       <div className="flex h-full flex-col justify-between">
         <div className="space-y-8 p-1">
-          <div className="flex flex-col gap-y-2">
+          <div className="flex flex-col gap-y-1">
             <SideMenuItem name="Jobs" icon="job" count={33} to="" data-action="jobs" />
             <SideMenuItem
               name="Integrations"
@@ -109,17 +109,18 @@ function SideMenuItem({
               isActive = forceActive;
             }
             return cn(
-              "",
               isActive || isPending
                 ? "bg-slate-800 text-bright group-hover:bg-slate-800"
                 : "text-dimmed group-hover:bg-slate-850 group-hover:text-bright"
             );
           }}
         >
-          {name}
-          <div>
-            {count && <MenuCount count={count} />}
-            {hasWarning && <Icon icon="error" className="h-5 w-5" />}
+          <div className="flex w-full items-center justify-between">
+            {name}
+            <div>
+              {count && <MenuCount count={count} />}
+              {hasWarning && <Icon icon="error" className="h-5 w-5" />}
+            </div>
           </div>
         </NavLinkButton>
       }
