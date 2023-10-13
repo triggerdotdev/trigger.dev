@@ -105,7 +105,7 @@ function PopoverArrowTrigger({
       {...props}
       className={cn(
         "group flex h-6 items-center gap-1 rounded px-2 text-dimmed transition hover:bg-slate-850 hover:text-bright",
-        fullWidth ? "w-full justify-between" : "",
+        fullWidth && "w-full justify-between",
         className
       )}
     >
