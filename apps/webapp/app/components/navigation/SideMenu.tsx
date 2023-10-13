@@ -88,10 +88,27 @@ export function SideMenu() {
 function SideMenuOrgHeader() {
   const [isOpen, setIsOpen] = useState(false);
   return (
-    <div className="sticky top-0 flex items-center justify-between bg-background px-0 py-3">
-      <div className="flex items-center gap-2">
-        <LogoIcon className="h-4 w-4" />
-        <Paragraph variant="extra-small">My Org 1</Paragraph>
+    <div className="sticky top-0 flex items-center justify-between bg-background px-0 py-1">
+      <div className="w-full">
+        <Popover onOpenChange={(open) => setIsOpen(open)}>
+          <PopoverArrowTrigger fullWidth isOpen={isOpen} className="p-1 pl-2">
+            <LogoIcon className="mr-2 h-4 w-4" />
+            My Org 1
+          </PopoverArrowTrigger>
+          <PopoverContent
+            className="min-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+            align="start"
+          >
+            <Fragment>
+              <PopoverSectionHeader title="james@trigger.dev" variant="extra-small" />
+
+              <div className="flex flex-col gap-1 p-1">
+                <PopoverMenuItem to="#" title="View profile" icon="avatar" />
+                <PopoverMenuItem to="#" title="Log out" isSelected={false} icon="logout" />
+              </div>
+            </Fragment>
+          </PopoverContent>
+        </Popover>
       </div>
       <div>
         <Popover onOpenChange={(open) => setIsOpen(open)}>
@@ -106,13 +123,10 @@ function SideMenuOrgHeader() {
               <PopoverSectionHeader title="james@trigger.dev" variant="extra-small" />
 
               <div className="flex flex-col gap-1 p-1">
-                <PopoverMenuItem to="#" title="My Blog" icon="folder" />
-                <PopoverMenuItem to="#" title="New Project" isSelected={false} icon="plus" />
+                <PopoverMenuItem to="#" title="View profile" icon="avatar" />
+                <PopoverMenuItem to="#" title="Log out" isSelected={false} icon="logout" />
               </div>
             </Fragment>
-            <div className="border-t border-slate-800 p-1">
-              <PopoverMenuItem to="#" title="New Organization" isSelected={false} icon="plus" />
-            </div>
           </PopoverContent>
         </Popover>
       </div>
@@ -153,41 +167,35 @@ function SideMenuItem({
   subItem?: boolean;
 }) {
   return (
-    <SimpleTooltip
-      button={
-        <NavLinkButton
-          variant={subItem ? "side-menu-sub-item" : "side-menu-item"}
-          fullWidth
-          textAlignLeft
-          LeadingIcon={icon}
-          leadingIconClassName="text-dimmed"
-          to={to}
-          target={target}
-          className={({ isActive, isPending }) => {
-            if (forceActive !== undefined) {
-              isActive = forceActive;
-            }
-            return cn(
-              "text-bright",
-              subItem ? "text-dimmed" : "",
-              isActive || isPending
-                ? "bg-slate-850 text-bright group-hover:bg-slate-850"
-                : "group-hover:bg-slate-850 group-hover:text-bright"
-            );
-          }}
-        >
-          <div className="flex w-full items-center justify-between">
-            {name}
-            <div className="flex items-center gap-1">
-              {count && <MenuCount count={count} />}
-              {hasWarning && <Icon icon="error" className="h-5 w-5" />}
-            </div>
-          </div>
-        </NavLinkButton>
-      }
-      content={name}
-      side="right"
-    />
+    <NavLinkButton
+      variant={subItem ? "side-menu-sub-item" : "side-menu-item"}
+      fullWidth
+      textAlignLeft
+      LeadingIcon={icon}
+      leadingIconClassName="text-dimmed"
+      to={to}
+      target={target}
+      className={({ isActive, isPending }) => {
+        if (forceActive !== undefined) {
+          isActive = forceActive;
+        }
+        return cn(
+          "text-bright",
+          subItem ? "text-dimmed" : "",
+          isActive || isPending
+            ? "bg-slate-850 text-bright group-hover:bg-slate-850"
+            : "group-hover:bg-slate-850 group-hover:text-bright"
+        );
+      }}
+    >
+      <div className="flex w-full items-center justify-between">
+        {name}
+        <div className="flex items-center gap-1">
+          {count && <MenuCount count={count} />}
+          {hasWarning && <Icon icon="error" className="h-5 w-5" />}
+        </div>
+      </div>
+    </NavLinkButton>
   );
 }
 
