@@ -46,7 +46,7 @@ export function SideMenu() {
           )}
         />
         <div className="h-full overflow-hidden overflow-y-auto pt-4" ref={borderRef}>
-          <div className="mb-8">
+          <div className="mb-8 flex flex-col gap-1 px-1">
             <SideMenuHeader title="My Project 1" />
             <SideMenuItem name="Jobs" icon="job" count={33} to="" data-action="jobs" hasWarning />
             <SideMenuItem name="Runs" icon="integration" to="" data-action="runs" />
