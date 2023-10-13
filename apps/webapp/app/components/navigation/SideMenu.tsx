@@ -1,18 +1,12 @@
 import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { LogoIcon } from "../LogoIcon";
+import { UserAvatar } from "../UserProfilePhoto";
 import { NavLinkButton } from "../primitives/Buttons";
 import { Icon } from "../primitives/Icon";
 import { type IconNames } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
-import {
-  SimpleTooltip,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../primitives/Tooltip";
-import { UserAvatar } from "../UserProfilePhoto";
 import {
   Popover,
   PopoverArrowTrigger,
@@ -21,7 +15,7 @@ import {
   PopoverMenuItem,
   PopoverSectionHeader,
 } from "../primitives/Popover";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 
 export function SideMenu() {
   const borderRef = useRef<HTMLDivElement>(null);
@@ -45,14 +39,14 @@ export function SideMenu() {
       )}
     >
       <div className="flex h-full flex-col justify-between">
-        <div className="overflow-y-auto" ref={borderRef}>
-          <SideMenuOrgHeader
-            className={cn(
-              "border-b px-1 transition",
-              isScrolled ? " border-border" : "border-transparent"
-            )}
-          />
-          <div className="mb-8 mt-4 flex flex-col gap-y-1 px-1">
+        <SideMenuOrgHeader
+          className={cn(
+            "border-b px-1 transition",
+            isScrolled ? " border-border" : "border-transparent"
+          )}
+        />
+        <div className="overflow-hidden overflow-y-auto pt-4" ref={borderRef}>
+          <div>
             <SideMenuHeader title="My Project 1" />
             <SideMenuItem name="Jobs" icon="job" count={33} to="" data-action="jobs" hasWarning />
             <SideMenuItem name="Runs" icon="integration" to="" data-action="runs" />
@@ -113,12 +107,7 @@ function SideMenuOrgHeader({ className }: { className?: string }) {
   const [isOrgMenuOpen, setOrgMenuOpen] = useState(false);
   const [isProfileMenuOpen, setProfileMenuOpen] = useState(false);
   return (
-    <div
-      className={cn(
-        "sticky top-0 flex items-center justify-between bg-background px-0 py-1",
-        className
-      )}
-    >
+    <div className={cn("flex items-center justify-between bg-background px-0 py-1", className)}>
       <Popover onOpenChange={(open) => setOrgMenuOpen(open)}>
         <PopoverArrowTrigger fullWidth isOpen={isOrgMenuOpen} className="h-7 py-1 pl-2 pr-2">
           <LogoIcon className="relative -top-px mr-2 h-4 w-4" />
