@@ -7,6 +7,16 @@ import { type IconNames } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
 import { SimpleTooltip } from "../primitives/Tooltip";
 import { UserAvatar } from "../UserProfilePhoto";
+import {
+  Popover,
+  PopoverArrowTrigger,
+  PopoverContent,
+  PopoverCustomTrigger,
+  PopoverMenuItem,
+  PopoverSectionHeader,
+  PopoverTrigger,
+} from "../primitives/Popover";
+import { Fragment, useState } from "react";
 
 export function SideMenu() {
   return (
@@ -76,14 +86,35 @@ export function SideMenu() {
 }
 
 function SideMenuOrgHeader() {
+  const [isOpen, setIsOpen] = useState(false);
   return (
-    <div className="sticky top-0 flex items-center justify-between bg-background px-2 py-3">
+    <div className="sticky top-0 flex items-center justify-between bg-background px-0 py-3">
       <div className="flex items-center gap-2">
         <LogoIcon className="h-4 w-4" />
         <Paragraph variant="extra-small">My Org 1</Paragraph>
       </div>
       <div>
-        <UserAvatar className="h-5 w-5 text-slate-600" />
+        <Popover onOpenChange={(open) => setIsOpen(open)}>
+          <PopoverCustomTrigger isOpen={isOpen} className="p-1">
+            <UserAvatar className="h-5 w-5 text-slate-600" />
+          </PopoverCustomTrigger>
+          <PopoverContent
+            className="min-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+            align="start"
+          >
+            <Fragment>
+              <PopoverSectionHeader title="james@trigger.dev" variant="extra-small" />
+
+              <div className="flex flex-col gap-1 p-1">
+                <PopoverMenuItem to="#" title="My Blog" icon="folder" />
+                <PopoverMenuItem to="#" title="New Project" isSelected={false} icon="plus" />
+              </div>
+            </Fragment>
+            <div className="border-t border-slate-800 p-1">
+              <PopoverMenuItem to="#" title="New Organization" isSelected={false} icon="plus" />
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
     </div>
   );
