@@ -92,12 +92,6 @@ export class NextJs implements Framework {
         pathAlias
       });
     }
-    logger.info(
-      boxen(
-        "Learn more about configuring duration in your serverless function here: https://vercel.com/docs/functions/serverless-functions/runtimes#max-duration",
-        { padding: 1, margin: 1, borderStyle: "double", borderColor: "magenta" }
-      )
-    );
   }
 
   async postInstall(
@@ -218,6 +212,12 @@ async function createTriggerRoute(options: {
     throw new Error("Failed to create API route file");
   }
   logger.success(`✔ Created API route at ${apiRoutePath}`);
+  logger.info(
+    boxen(
+      "Learn more about configuring duration in your serverless function here: https://vercel.com/docs/functions/serverless-functions/runtimes#max-duration",
+      { padding: 1, margin: 1, borderStyle: "double", borderColor: "magenta" }
+    )
+  );
 
   await createJobsAndTriggerFile(path, endpointSlug, fileExtension, pathAlias, templatesDir);
 }
