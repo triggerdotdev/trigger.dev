@@ -89,8 +89,8 @@ function SideMenuOrgHeader() {
   return (
     <div className="sticky top-0 flex items-center justify-between bg-background px-0 py-1">
       <Popover onOpenChange={(open) => setIsOpen(open)}>
-        <PopoverArrowTrigger fullWidth isOpen={isOpen} className="p-1 pl-2">
-          <LogoIcon className="mr-2 h-4 w-4" />
+        <PopoverArrowTrigger fullWidth isOpen={isOpen} className="h-7 py-1 pl-2 pr-2">
+          <LogoIcon className="relative -top-px mr-2 h-4 w-4" />
           My Org 1
         </PopoverArrowTrigger>
         <PopoverContent
@@ -98,12 +98,24 @@ function SideMenuOrgHeader() {
           align="start"
         >
           <Fragment>
-            <PopoverSectionHeader title="james@trigger.dev" variant="extra-small" />
+            <PopoverSectionHeader title="My Org 1" />
             <div className="flex flex-col gap-1 p-1">
-              <PopoverMenuItem to="#" title="View profile" icon="avatar" />
-              <PopoverMenuItem to="#" title="Log out" isSelected={false} icon="logout" />
+              <PopoverMenuItem to="#" title="My Project 1" isSelected={true} icon="folder" />
+              <PopoverMenuItem to="#" title="My Project 2" icon="folder" />
+              <PopoverMenuItem to="#" title="My Project 3" icon="folder" />
+              <PopoverMenuItem to="#" title="New Project" icon="plus" />
+            </div>
+            <PopoverSectionHeader title="My Org 2" />
+            <div className="flex flex-col gap-1 p-1">
+              <PopoverMenuItem to="#" title="My Project a" icon="folder" />
+              <PopoverMenuItem to="#" title="My Project b" icon="folder" />
+              <PopoverMenuItem to="#" title="My Project c" icon="folder" />
+              <PopoverMenuItem to="#" title="New Project" icon="plus" />
             </div>
           </Fragment>
+          <div className="border-t border-slate-800 p-1">
+            <PopoverMenuItem to="#" title="New Organization" icon="plus" />
+          </div>
         </PopoverContent>
       </Popover>
       <div>
@@ -117,10 +129,9 @@ function SideMenuOrgHeader() {
           >
             <Fragment>
               <PopoverSectionHeader title="james@trigger.dev" variant="extra-small" />
-
               <div className="flex flex-col gap-1 p-1">
                 <PopoverMenuItem to="#" title="View profile" icon="avatar" />
-                <PopoverMenuItem to="#" title="Log out" isSelected={false} icon="logout" />
+                <PopoverMenuItem to="#" title="Log out" icon="logout" />
               </div>
             </Fragment>
           </PopoverContent>
@@ -130,7 +141,7 @@ function SideMenuOrgHeader() {
   );
 }
 
-function SideMenuHeader({ title, menuItems }: { title: string; menuItems?: React.ReactNode }) {
+function SideMenuHeader({ title }: { title: string }) {
   return (
     <div className="group flex items-center justify-between px-1.5">
       <Paragraph variant="extra-extra-small/caps" className="cursor-default text-slate-500">
