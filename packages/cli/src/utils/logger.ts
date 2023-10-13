@@ -1,5 +1,6 @@
 import chalk from "chalk";
 
+export type Logger = typeof logger;
 export const logger = {
   error(...args: unknown[]) {
     console.log(chalk.red(...args));
@@ -12,5 +13,8 @@ export const logger = {
   },
   success(...args: unknown[]) {
     console.log(chalk.green(...args));
+  },
+  table(rows: any) {
+    console.table(rows);
   },
 };

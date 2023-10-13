@@ -66,13 +66,13 @@ export function FrameworkSelector() {
           <FrameworkLink to={projectSetupNuxtPath(organization, project)}>
             <NuxtLogo className="w-32" />
           </FrameworkLink>
-          <FrameworkLink to={projectSetupSvelteKitPath(organization, project)}>
+          <FrameworkLink to={projectSetupSvelteKitPath(organization, project)} supported>
             <SvelteKitLogo className="w-44" />
           </FrameworkLink>
           <FrameworkLink to={projectSetupFastifyPath(organization, project)}>
             <FastifyLogo className="w-36" />
           </FrameworkLink>
-          <FrameworkLink to={projectSetupNestjsPath(organization, project)}>
+          <FrameworkLink to={projectSetupNestjsPath(organization, project)} supported>
             <NestjsLogo className="w-36" />
           </FrameworkLink>
         </div>

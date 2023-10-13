@@ -76,6 +76,7 @@
                 "documentation/quickstarts/express",
                 "documentation/quickstarts/remix",
                 "documentation/quickstarts/redwood",
+                "documentation/quickstarts/nestjs",
                 "documentation/quickstarts/astro",
                 "documentation/quickstarts/nuxt",
                 "documentation/quickstarts/sveltekit",
@@ -142,6 +143,7 @@
           "group": "Manual setup",
           "pages": [
             "documentation/guides/manual/nextjs",
+            "documentation/guides/manual/nestjs",
             "documentation/guides/manual/express",
             "documentation/guides/manual/remix",
             "documentation/guides/manual/redwood",
@@ -247,6 +249,7 @@
         "integrations/apis/linear",
         "integrations/apis/openai",
         "integrations/apis/plain",
+        "integrations/apis/replicate",
         "integrations/apis/resend",
         "integrations/apis/sendgrid",
         "integrations/apis/slack",
@@ -316,10 +319,7 @@
             "sdk/dynamictrigger/constructor",
             {
               "group": "Instance methods",
-              "pages": [
-                "sdk/dynamictrigger/register",
-                "sdk/dynamictrigger/unregister"
-              ]
+              "pages": ["sdk/dynamictrigger/register", "sdk/dynamictrigger/unregister"]
             }
           ]
         },
@@ -330,10 +330,7 @@
             "sdk/dynamicschedule/constructor",
             {
               "group": "Instance methods",
-              "pages": [
-                "sdk/dynamicschedule/register",
-                "sdk/dynamicschedule/unregister"
-              ]
+              "pages": ["sdk/dynamicschedule/register", "sdk/dynamicschedule/unregister"]
             }
           ]
         },
@@ -354,9 +351,7 @@
     },
     {
       "group": "Overview",
-      "pages": [
-        "examples/introduction"
-      ]
+      "pages": ["examples/introduction"]
     }
   ],
   "footerSocials": {

@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/linear",
-  "version": "2.1.7",
+  "version": "2.2.0",
   "description": "Trigger.dev integration for @linear/sdk",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -27,9 +27,9 @@
   },
   "dependencies": {
     "@linear/sdk": "^8.0.0",
-    "@trigger.dev/integration-kit": "workspace:^2.1.7",
-    "@trigger.dev/sdk": "workspace:^2.1.7",
-    "zod": "3.21.4"
+    "@trigger.dev/integration-kit": "workspace:^2.2.0",
+    "@trigger.dev/sdk": "workspace:^2.2.0",
+    "zod": "3.22.3"
   },
   "engines": {
     "node": ">=16.8.0"

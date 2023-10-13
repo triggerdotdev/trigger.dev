@@ -17,10 +17,15 @@ export function darkTheme(): Extension {
     violet = "#c678dd",
     darkBackground = "#21252b",
     highlightBackground = "rgba(71,85,105,0.2)",
-    background = "#0f172a",
+    background = "rgba(11, 16, 24 ,100)",
     tooltipBackground = "#353a42",
     selection = "rgb(71 85 105)",
-    cursor = "#528bff";
+    cursor = "#528bff",
+    scrollbarTrack = "#0E1521",
+    scrollbarTrackActive = "#131B2B",
+    scrollbarThumb = "#293649",
+    scrollbarThumbActive = "#3C4B62",
+    scrollbarBg = "#0E1521";
 
   const jsonHeroEditorTheme = EditorView.theme(
     {
@@ -93,6 +98,45 @@ export function darkTheme(): Extension {
           backgroundColor: highlightBackground,
           color: ivory,
         },
+      },
+      ".cm-scroller": {
+        scrollbarWidth: "thin",
+        scrollbarColor: `${scrollbarThumb} ${scrollbarTrack}`,
+      },
+      ".cm-scroller::-webkit-scrollbar": {
+        display: "block",
+        width: "8px",
+        height: "8px",
+      },
+      ".cm-scroller::-webkit-scrollbar-track": {
+        backgroundColor: scrollbarTrack,
+        borderRadius: "0",
+      },
+      ".cm-scroller::-webkit-scrollbar-track:hover": {
+        backgroundColor: scrollbarTrackActive,
+      },
+      ".cm-scroller::-webkit-scrollbar-track:active": {
+        backgroundColor: scrollbarTrackActive,
+      },
+      ".cm-scroller::-webkit-scrollbar-thumb": {
+        backgroundColor: scrollbarThumb,
+        borderRadius: "0",
+      },
+      ".cm-scroller::-webkit-scrollbar-thumb:hover": {
+        backgroundColor: scrollbarThumbActive,
+      },
+      ".cm-scroller::-webkit-scrollbar-thumb:active": {
+        backgroundColor: scrollbarThumbActive,
+      },
+      ".cm-scroller::-webkit-scrollbar-corner": {
+        backgroundColor: scrollbarBg,
+        borderRadius: "0",
+      },
+      ".cm-scroller::-webkit-scrollbar-corner:hover": {
+        backgroundColor: scrollbarBg,
+      },
+      ".cm-scroller::-webkit-scrollbar-corner:active": {
+        backgroundColor: scrollbarBg,
       },
     },
     { dark: true }
@@ -151,160 +195,6 @@ export function darkTheme(): Extension {
       color: sage,
     },
     { tag: tags.invalid, color: invalid },
-  ]);
-
-  return [jsonHeroEditorTheme, syntaxHighlighting(jsonHeroHighlightStyle)];
-}
-
-export function lightTheme(): Extension[] {
-  const stringColor = "text-[#53a053]",
-    numberColor = "text-[#447bef]",
-    variableColor = "text-[#a42ea2]",
-    booleanColor = "text-[#e2574e]",
-    coral = "text-[#e06c75]",
-    invalid = "text-[#ffffff]",
-    ivory = "text-[#abb2bf]",
-    stone = "text-[#7d8799]",
-    malibu = "text-[#61afef]",
-    whiskey = "text-[#d19a66]",
-    violet = "text-[#c678dd]",
-    darkBackground = "text-[#21252b]",
-    highlightBackground = "text-[#D0D0D0]",
-    background = "text-[#ffffff]",
-    tooltipBackground = "text-[#353a42]",
-    selection = "text-[#D0D0D0]",
-    cursor = "text-[#528bff]";
-
-  const jsonHeroEditorTheme = EditorView.theme(
-    {
-      "&": {
-        color: ivory,
-        backgroundColor: background,
-      },
-
-      ".cm-content": {
-        caretColor: cursor,
-        fontFamily: "monospace",
-        fontSize: "14px",
-      },
-
-      ".cm-cursor, .cm-dropCursor": { borderLeftColor: cursor },
-      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
-        backgroundColor: selection,
-      },
-
-      ".cm-panels": { backgroundColor: darkBackground, color: ivory },
-      ".cm-panels.cm-panels-top": { borderBottom: "2px solid black" },
-      ".cm-panels.cm-panels-bottom": { borderTop: "2px solid black" },
-
-      ".cm-searchMatch": {
-        backgroundColor: "#72a1ff59",
-        outline: "1px solid #457dff",
-      },
-      ".cm-searchMatch.cm-searchMatch-selected": {
-        backgroundColor: "#6199ff2f",
-      },
-
-      ".cm-activeLine": { backgroundColor: highlightBackground },
-      ".cm-selectionMatch": { backgroundColor: "#aafe661a" },
-
-      "&.cm-focused .cm-matchingBracket, &.cm-focused .cm-nonmatchingBracket": {
-        backgroundColor: "#bad0f847",
-        outline: "1px solid #515a6b",
-      },
-
-      ".cm-gutters": {
-        backgroundColor: background,
-        color: stone,
-        border: "none",
-      },
-
-      ".cm-activeLineGutter": {
-        backgroundColor: highlightBackground,
-      },
-
-      ".cm-foldPlaceholder": {
-        backgroundColor: "transparent",
-        border: "none",
-        color: "#ddd",
-      },
-
-      ".cm-tooltip": {
-        border: "none",
-        backgroundColor: tooltipBackground,
-      },
-      ".cm-tooltip .cm-tooltip-arrow:before": {
-        borderTopColor: "transparent",
-        borderBottomColor: "transparent",
-      },
-      ".cm-tooltip .cm-tooltip-arrow:after": {
-        borderTopColor: tooltipBackground,
-        borderBottomColor: tooltipBackground,
-      },
-      ".cm-tooltip-autocomplete": {
-        "& > ul > li[aria-selected]": {
-          backgroundColor: highlightBackground,
-          color: ivory,
-        },
-      },
-    },
-    { dark: false }
-  );
-
-  /// The highlighting style for code in the JSON Hero theme.
-  const jsonHeroHighlightStyle = tagHighlighter([
-    { tag: tags.keyword, class: violet },
-    {
-      tag: [tags.name, tags.deleted, tags.character, tags.propertyName, tags.macroName],
-      class: variableColor,
-    },
-    {
-      tag: [tags.function(tags.variableName), tags.labelName],
-      class: malibu,
-    },
-    {
-      tag: [tags.color, tags.constant(tags.name), tags.standard(tags.name)],
-      class: whiskey,
-    },
-    { tag: [tags.definition(tags.name), tags.separator], class: ivory },
-    {
-      tag: [
-        tags.typeName,
-        tags.className,
-        tags.number,
-        tags.changed,
-        tags.annotation,
-        tags.modifier,
-        tags.self,
-        tags.namespace,
-      ],
-      class: numberColor,
-    },
-    {
-      tag: [
-        tags.operator,
-        tags.operatorKeyword,
-        tags.url,
-        tags.escape,
-        tags.regexp,
-        tags.link,
-        tags.special(tags.string),
-      ],
-      class: stringColor,
-    },
-    { tag: [tags.meta, tags.comment], class: stone },
-
-    { tag: tags.link, class: stone },
-    { tag: tags.heading, class: coral },
-    {
-      tag: [tags.atom, tags.bool, tags.special(tags.variableName)],
-      class: booleanColor,
-    },
-    {
-      tag: [tags.processingInstruction, tags.string, tags.inserted],
-      class: stringColor,
-    },
-    { tag: tags.invalid, class: invalid },
   ]);
 
   return [jsonHeroEditorTheme, syntaxHighlighting(jsonHeroHighlightStyle)];

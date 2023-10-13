@@ -1,5 +1,39 @@
 # @trigger.dev/sdk
 
+## 2.2.0
+
+### Minor Changes
+
+- 975c5f1d: Drop support for Node v16, require Node >= 18. This allows us to use native fetch in our SDK which paves the way for multi-platform support.
+
+### Patch Changes
+
+- Updated dependencies [975c5f1d]
+- Updated dependencies [50e3d9e4]
+- Updated dependencies [59a94c71]
+  - @trigger.dev/core@2.2.0
+
+## 2.1.9
+
+### Patch Changes
+
+- 9a187f9e: upgrade zod to 3.22.3
+- 2e9452ab: allow cancelling jobs from trigger-client
+- Updated dependencies [9a187f9e]
+  - @trigger.dev/core@2.1.9
+
+## 2.1.8
+
+### Patch Changes
+
+- 6a992a19: First release of `@trigger.dev/replicate` integration with remote callback support.
+- ab9e4a98: Send client version back to the server via headers
+- ab9e4a98: Better performance when resuming a run, especially one with a large amount of tasks
+- Updated dependencies [6a992a19]
+- Updated dependencies [ab9e4a98]
+- Updated dependencies [ab9e4a98]
+  - @trigger.dev/core@2.1.8
+
 ## 2.1.7
 
 ### Patch Changes

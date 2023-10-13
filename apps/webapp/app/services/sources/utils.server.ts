@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
 
-export function generateSecret(): string {
-  return crypto.randomBytes(32).toString("hex");
+export function generateSecret(sizeInBytes = 32): string {
+  return crypto.randomBytes(sizeInBytes).toString("hex");
 }

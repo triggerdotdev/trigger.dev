@@ -2,6 +2,7 @@ version: "3"
 
 volumes:
   database-data:
+  pgadmin-data:
 
 networks:
   app_network:
@@ -22,3 +23,21 @@ services:
       - app_network
     ports:
       - 5432:5432
+
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4:7
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_DISABLE_POSTFIX: "true"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+      - ./pgadmin/servers.json:/pgadmin4/servers.json
+    networks:
+      - app_network
+    ports:
+      - 5480:80
+    depends_on:
+      - database

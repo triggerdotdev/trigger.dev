@@ -58,18 +58,23 @@ export class ValidateCreateEndpointService {
             slug: validationResult.endpointId,
             url: endpointUrl,
             indexingHookIdentifier: indexingHookIdentifier(),
+            version: validationResult.triggerVersion,
           },
           update: {
             url: endpointUrl,
+            version: validationResult.triggerVersion,
           },
         });
 
-        // Kick off process to fetch the jobs for this endpoint
+        const index = await tx.endpointIndex.create({
+          data: { endpointId: endpoint.id, status: "PENDING", source: "INTERNAL" },
+        });
+
+        // Kick off process to fetch the jobs for this index
         await workerQueue.enqueue(
-          "indexEndpoint",
+          "performEndpointIndexing",
           {
-            id: endpoint.id,
-            source: "INTERNAL",
+            id: index.id,
           },
           {
             tx,

@@ -1,5 +1,6 @@
 ---
-title: "Overview"
+title: "IO: Overview"
+sidebarTitle: "Overview"
 description: "The second parameter in a Job's `run()` function. It holds Integrations and useful actions you can perform."
 ---
 
@@ -62,6 +63,14 @@ If you want to send an event from outside a run (e.g. just from your backend) yo
 ### [registerTrigger()](/sdk/io/registertrigger)
 
 `io.registerTrigger()` allows you to register a [DynamicTrigger](/sdk/dynamictrigger) with the specified trigger data.
+
+### yield()
+
+`io.yield()` allows you to yield the current run and resume it immediately in a different function execution context. Requires a single argument that defines the yield key which works similar to task keys.
+
+### brb()
+
+`io.brb()` is is alias for `io.yield()`.
 
 {/* ### [unregisterTrigger()](/sdk/io/unregistertrigger) */}
 {/* `io.unregisterTrigger()` allows you to unregister a [DynamicTrigger](/sdk/dynamictrigger) that was previously registered with `io.registerTrigger()`. */}

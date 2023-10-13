@@ -74,18 +74,27 @@ export class CreateEndpointService {
             slug: id,
             url: endpointUrl,
             indexingHookIdentifier: indexingHookIdentifier(),
+            version: pong.triggerVersion,
           },
           update: {
             url: endpointUrl,
+            version: pong.triggerVersion,
+          },
+        });
+
+        const endpointIndex = await tx.endpointIndex.create({
+          data: {
+            endpointId: endpoint.id,
+            status: "PENDING",
+            source: "INTERNAL",
           },
         });
 
         // Kick off process to fetch the jobs for this endpoint
         await workerQueue.enqueue(
-          "indexEndpoint",
+          "performEndpointIndexing",
           {
-            id: endpoint.id,
-            source: "INTERNAL",
+            id: endpointIndex.id,
           },
           {
             tx,
@@ -94,7 +103,7 @@ export class CreateEndpointService {
           }
         );
 
-        return endpoint;
+        return { ...endpoint, endpointIndex };
       });
 
       return result;
