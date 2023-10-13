@@ -21,13 +21,13 @@ export function SideMenu() {
   return (
     <div
       className={cn(
-        "flex h-full flex-col gap-y-8 overflow-hidden border-r border-uiBorder transition"
+        "flex h-full flex-col gap-y-8 overflow-hidden border-r border-uiBorder transition scrollbar-hide"
       )}
     >
       <div className="flex h-full flex-col justify-between">
-        <div className="overflow-y-auto px-1 pb-0">
+        <div className="overflow-y-auto px-1">
           <SideMenuOrgHeader />
-          <div className={cn("mb-8 mt-2 flex flex-col gap-y-1")}>
+          <div className="mb-8 mt-4 flex flex-col gap-y-1">
             <SideMenuHeader title="My Project 1" />
             <SideMenuItem name="Jobs" icon="job" count={33} to="" data-action="jobs" />
             <SideMenuItem name="Runs" icon="integration" to="" data-action="runs" hasWarning />
@@ -94,8 +94,9 @@ function SideMenuOrgHeader() {
           My Org 1
         </PopoverArrowTrigger>
         <PopoverContent
-          className="min-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+          className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
           align="start"
+          style={{ maxHeight: `calc(var(--radix-popover-content-available-height) / 2)` }}
         >
           <Fragment>
             <PopoverSectionHeader title="My Org 1" />
