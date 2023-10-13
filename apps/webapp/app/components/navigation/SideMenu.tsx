@@ -15,9 +15,23 @@ import {
   PopoverMenuItem,
   PopoverSectionHeader,
 } from "../primitives/Popover";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 
 export function SideMenu() {
+  const borderRef = useRef<HTMLDivElement>(null);
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (borderRef.current) {
+        setIsScrolled(borderRef.current.scrollTop > 0);
+      }
+    };
+
+    borderRef.current?.addEventListener("scroll", handleScroll);
+    return () => borderRef.current?.removeEventListener("scroll", handleScroll);
+  }, []);
+
   return (
     <div
       className={cn(
@@ -25,9 +39,14 @@ export function SideMenu() {
       )}
     >
       <div className="flex h-full flex-col justify-between">
-        <div className="overflow-y-auto px-1">
-          <SideMenuOrgHeader />
-          <div className="mb-8 mt-4 flex flex-col gap-y-1">
+        <div className="overflow-y-auto" ref={borderRef}>
+          <SideMenuOrgHeader
+            className={cn(
+              "border-b px-1 transition",
+              isScrolled ? " border-border" : "border-transparent"
+            )}
+          />
+          <div className="mb-8 mt-4 flex flex-col gap-y-1 px-1">
             <SideMenuHeader title="My Project 1" />
             <SideMenuItem name="Jobs" icon="job" count={33} to="" data-action="jobs" />
             <SideMenuItem name="Runs" icon="integration" to="" data-action="runs" hasWarning />
@@ -42,7 +61,7 @@ export function SideMenu() {
             <SideMenuItem name="job-catalog" to="" subItem />
             <SideMenuItem name="API Keys" icon="environment" to="" data-action="api keys" />
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="mb-4 flex flex-col gap-1 px-1">
             <SideMenuHeader title="My Org 1" />
             <SideMenuItem
               name="Integrations"
@@ -84,12 +103,18 @@ export function SideMenu() {
   );
 }
 
-function SideMenuOrgHeader() {
-  const [isOpen, setIsOpen] = useState(false);
+function SideMenuOrgHeader({ className }: { className?: string }) {
+  const [isOrgMenuOpen, setOrgMenuOpen] = useState(false);
+  const [isProfileMenuOpen, setProfileMenuOpen] = useState(false);
   return (
-    <div className="sticky top-0 flex items-center justify-between bg-background px-0 py-1">
-      <Popover onOpenChange={(open) => setIsOpen(open)}>
-        <PopoverArrowTrigger fullWidth isOpen={isOpen} className="h-7 py-1 pl-2 pr-2">
+    <div
+      className={cn(
+        "sticky top-0 flex items-center justify-between bg-background px-0 py-1",
+        className
+      )}
+    >
+      <Popover onOpenChange={(open) => setOrgMenuOpen(open)}>
+        <PopoverArrowTrigger fullWidth isOpen={isOrgMenuOpen} className="h-7 py-1 pl-2 pr-2">
           <LogoIcon className="relative -top-px mr-2 h-4 w-4" />
           My Org 1
         </PopoverArrowTrigger>
@@ -120,8 +145,8 @@ function SideMenuOrgHeader() {
         </PopoverContent>
       </Popover>
       <div>
-        <Popover onOpenChange={(open) => setIsOpen(open)}>
-          <PopoverCustomTrigger isOpen={isOpen} className="p-1">
+        <Popover onOpenChange={(open) => setProfileMenuOpen(open)}>
+          <PopoverCustomTrigger isOpen={isProfileMenuOpen} className="p-1">
             <UserAvatar className="h-5 w-5 text-slate-600" />
           </PopoverCustomTrigger>
           <PopoverContent
