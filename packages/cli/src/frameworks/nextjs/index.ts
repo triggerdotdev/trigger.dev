@@ -62,7 +62,7 @@ export class NextJs implements Framework {
 
     if (nextJsDir === "pages") {
       const apiRoutePath = pathModule.join(routeDir, "pages", "api", `trigger${fileExtension}`);
-      if (nextJsVersion && nextJsVersion < "13.5") {
+      if (nextJsVersion && nextJsVersion !== 'latest' && nextJsVersion < "13.5") {
         await createTriggerRoute({
           path: routeDir,
           apiRoutePath,
@@ -180,7 +180,7 @@ export async function detectNextVersion(path: string) {
     return null;
   }
 
-  const versionNumberPattern = /[\d.]+/;
+  const versionNumberPattern = /[\d.]+|latest/;
   if (packageJsonContent.dependencies?.next !== undefined)
     return packageJsonContent.dependencies?.next?.match(versionNumberPattern)![0];
   if (packageJsonContent.devDependencies?.next !== undefined)
@@ -200,7 +200,6 @@ async function createTriggerRoute(options: {
   const { path, apiRoutePath, template, pathAlias, endpointSlug, fileExtension } = options;
 
   const templatesDir = pathModule.join(templatesPath(), "nextjs");
-  //app/api/trigger/route.js, src/app/api/trigger/route.js, pages/api/trigger.js or src/pages/api/trigger.js
   const apiRouteResult = await createFileFromTemplate({
     templatePath: pathModule.join(templatesDir, template),
     replacements: {
