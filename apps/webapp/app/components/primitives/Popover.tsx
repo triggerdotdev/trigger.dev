@@ -94,22 +94,29 @@ function PopoverCustomTrigger({
 function PopoverArrowTrigger({
   isOpen,
   children,
+  fullWidth = false,
   className,
   ...props
-}: { isOpen?: boolean } & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
+}: { isOpen?: boolean; fullWidth?: boolean } & React.ComponentPropsWithoutRef<
+  typeof PopoverTrigger
+>) {
   return (
     <PopoverTrigger
       {...props}
       className={cn(
         "group flex h-6 items-center gap-1 rounded px-2 text-dimmed transition hover:bg-slate-850 hover:text-bright",
+        fullWidth ? "w-full justify-between" : "",
         className
       )}
     >
-      <Paragraph variant="extra-small" className="transition group-hover:text-bright">
+      <Paragraph variant="extra-small" className="flex transition group-hover:text-bright">
         {children}
       </Paragraph>
       <ChevronDownIcon
-        className={cn("h-3 w-3 transition group-hover:text-bright", isOpen && "-rotate-180")}
+        className={cn(
+          "h-3 w-3 text-slate-600 transition group-hover:text-bright",
+          isOpen && "-rotate-180"
+        )}
       />
     </PopoverTrigger>
   );
