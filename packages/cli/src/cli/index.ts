@@ -14,7 +14,10 @@ import { checkApiKeyIsDevServer } from "../utils/getApiKeyType";
 
 export const program = new Command();
 
-program.name(COMMAND_NAME).description("The Trigger.dev CLI").version("0.0.1");
+program
+  .name(COMMAND_NAME)
+  .description("The Trigger.dev CLI")
+  .version(getVersion(), "-v, --version", "Display the version number");
 
 program
   .command("init")
