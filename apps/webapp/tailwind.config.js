@@ -87,6 +87,14 @@ module.exports = {
             fontWeight: "500",
           },
         ],
+        "2sm": [
+          "0.8125rem",
+          {
+            lineHeight: "0.875rem",
+            letterSpacing: "-0.01em",
+            fontWeight: "500",
+          },
+        ],
       },
       colors: {
         midnight,
