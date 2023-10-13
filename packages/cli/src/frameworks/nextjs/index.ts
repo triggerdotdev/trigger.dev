@@ -10,6 +10,7 @@ import { logger } from "../../utils/logger";
 import { getPathAlias } from "../../utils/pathAlias";
 import { readPackageJson } from "../../utils/readPackageJson";
 import { standardWatchFilePaths } from "../watchConfig";
+import { telemetryClient } from "../../telemetry/telemetry";
 import { detectMiddlewareUsage } from "./middleware";
 
 export class NextJs implements Framework {
@@ -36,6 +37,8 @@ export class NextJs implements Framework {
   possibleEnvFilenames(): string[] {
     return [".env.local", ".env"];
   }
+
+  publicKeyEnvName = "NEXT_PUBLIC_TRIGGER_PUBLIC_API_KEY";
 
   async install(
     path: string,
@@ -65,7 +68,27 @@ export class NextJs implements Framework {
     path: string,
     options: { typescript: boolean; packageManager: PackageManager; endpointSlug: string }
   ): Promise<void> {
-    await detectMiddlewareUsage(path);
+    const result = await detectMiddlewareUsage(path, options.typescript);
+    if (result.hasMiddleware) {
+      switch (result.conflict) {
+        case "possible": {
+          logger.warn(
+            `⚠️ ⚠️ ⚠️  It looks like there might be conflicting Next.js middleware in ${result.middlewarePath} which can cause issues with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware`
+          );
+          telemetryClient.init.warning("middleware_conflict", { projectPath: path });
+          break;
+        }
+        case "likely": {
+          logger.warn(
+            `🚨 It looks like there might be conflicting Next.js middleware in ${result.middlewarePath} which will cause issues with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware`
+          );
+          telemetryClient.init.warning("middleware_conflict", { projectPath: path });
+          break;
+        }
+        default:
+          break;
+      }
+    }
   }
 
   defaultHostnames = ["localhost"];

@@ -19,6 +19,6 @@
     "tsconfig-paths": "^3.14.1",
     "typescript": "^5.2.2",
     "vitest": "^0.34.3",
-    "zod": "3.21.4"
+    "zod": "3.22.3"
   }
 }

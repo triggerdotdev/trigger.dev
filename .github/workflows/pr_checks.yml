@@ -1,0 +1,31 @@
+name: 🤖 PR Checks
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+      - ".github/CODEOWNERS"
+      - ".github/ISSUE_TEMPLATE/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  typecheck:
+    uses: ./.github/workflows/typecheck.yml
+    secrets: inherit
+
+  units:
+    uses: ./.github/workflows/unit-tests.yml
+    secrets: inherit
+
+  e2e:
+    uses: ./.github/workflows/e2e.yml
+    secrets: inherit

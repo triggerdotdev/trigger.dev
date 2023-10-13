@@ -13,6 +13,7 @@ import {
   getEnvFilename,
   setApiKeyEnvironmentVariable,
   setApiUrlEnvironmentVariable,
+  setPublicApiKeyEnvironmentVariable,
 } from "../utils/env";
 import { readJSONFile } from "../utils/fileSystem";
 import { PackageManager, getUserPackageManager } from "../utils/getUserPkgManager";
@@ -21,6 +22,7 @@ import { resolvePath } from "../utils/parseNameAndPath";
 import { readPackageJson } from "../utils/readPackageJson";
 import { renderTitle } from "../utils/renderTitle";
 import { TriggerApi, WhoamiResponse } from "../utils/triggerApi";
+import { getJsRuntime } from "../utils/jsRuntime";
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -36,6 +38,19 @@ export const initCommand = async (options: InitCommandOptions) => {
   telemetryClient.init.started(options);
 
   const resolvedPath = resolvePath(options.projectPath);
+
+  // assuming nodejs by default
+  let runtimeId: string = "nodejs";
+  try {
+    runtimeId = (await getJsRuntime(resolvedPath, logger)).id;
+  } catch {}
+  if (runtimeId !== "nodejs") {
+    logger.error(
+      `We currently only support automatic setup for NodeJS projects. This is a ${runtimeId} project. View our manual installation guides here: https://trigger.dev/docs/documentation/quickstarts/introduction`
+    );
+    telemetryClient.init.failed("not_supported_runtime", options);
+    return;
+  }
 
   await renderTitle(resolvedPath);
 
@@ -80,7 +95,7 @@ export const initCommand = async (options: InitCommandOptions) => {
   }
 
   const apiClient = new TriggerApi(apiKey, optionsAfterPrompts.apiUrl);
-  const authorizedKey = await apiClient.whoami(apiKey);
+  const authorizedKey = await apiClient.whoami();
 
   if (!authorizedKey) {
     logger.error(
@@ -114,6 +129,12 @@ export const initCommand = async (options: InitCommandOptions) => {
   }
   await setApiKeyEnvironmentVariable(resolvedPath, envName, resolvedOptions.apiKey);
   await setApiUrlEnvironmentVariable(resolvedPath, envName, resolvedOptions.apiUrl);
+  await setPublicApiKeyEnvironmentVariable(
+    resolvedPath,
+    envName,
+    framework.publicKeyEnvName,
+    authorizedKey.pkApiKey
+  );
 
   const installOptions = {
     typescript: isTypescriptProject,
@@ -129,18 +150,20 @@ export const initCommand = async (options: InitCommandOptions) => {
 
   await addConfigurationToPackageJson(resolvedPath, resolvedOptions);
 
-  await printNextSteps(resolvedOptions, authorizedKey, packageManager, framework);
+  const projectUrl = `${resolvedOptions.triggerUrl}/orgs/${authorizedKey.organization.slug}/projects/${authorizedKey.project.slug}`;
+  if (framework.printInstallationComplete) {
+    await framework.printInstallationComplete(projectUrl);
+  } else {
+    await printNextSteps(projectUrl, packageManager, framework);
+  }
   telemetryClient.init.completed(resolvedOptions);
 };
 
 async function printNextSteps(
-  options: ResolvedOptions,
-  authorizedKey: WhoamiResponse,
+  projectUrl: string,
   packageManager: PackageManager,
   framework: Framework
 ) {
-  const projectUrl = `${options.triggerUrl}/orgs/${authorizedKey.organization.slug}/projects/${authorizedKey.project.slug}`;
-
   logger.success(`✔ Successfully initialized Trigger.dev!`);
 
   logger.info("Next steps:");

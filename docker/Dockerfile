@@ -32,7 +32,8 @@ ENV NODE_ENV production
 RUN pnpm install --prod --no-frozen-lockfile
 COPY --from=pruner --chown=node:node /triggerdotdev/packages/database/prisma/schema.prisma /triggerdotdev/packages/database/prisma/schema.prisma
 # RUN pnpm add @prisma/client@5.1.1 -w
-RUN pnpx prisma@4.16.0 generate --schema /triggerdotdev/packages/database/prisma/schema.prisma
+ENV NPM_CONFIG_IGNORE_WORKSPACE_ROOT_CHECK true
+RUN pnpx prisma@5.4.1 generate --schema /triggerdotdev/packages/database/prisma/schema.prisma
 
 ## Builder (builds the webapp)
 FROM base AS builder

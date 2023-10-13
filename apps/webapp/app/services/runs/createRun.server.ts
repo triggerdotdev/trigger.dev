@@ -42,31 +42,35 @@ export class CreateRunService {
 
     return await $transaction(this.#prismaClient, async (tx) => {
       // Get the current max number for the given jobId
-      const currentMaxNumber = await tx.jobRun.aggregate({
+      const latestJob = await tx.jobRun.findFirst({
         where: { jobId: job.id },
-        _max: { number: true },
+        orderBy: { id: "desc" },
+        select: {
+          number: true,
+        },
       });
 
       // Increment the number for the new execution
-      const newNumber = (currentMaxNumber._max.number ?? 0) + 1;
+      const newNumber = (latestJob?.number ?? 0) + 1;
 
       // Create the new execution with the incremented number
       const run = await tx.jobRun.create({
         data: {
           number: newNumber,
           preprocess: version.preprocessRuns,
-          job: { connect: { id: job.id } },
-          version: { connect: { id: version.id } },
-          event: { connect: { id: eventId } },
-          environment: { connect: { id: environment.id } },
-          organization: { connect: { id: environment.organizationId } },
-          project: { connect: { id: environment.projectId } },
-          endpoint: { connect: { id: endpoint.id } },
-          queue: { connect: { id: jobQueue.id } },
-          externalAccount: eventRecord.externalAccountId
-            ? { connect: { id: eventRecord.externalAccountId } }
+          jobId: job.id,
+          versionId: version.id,
+          eventId: eventId,
+          environmentId: environment.id,
+          organizationId: environment.organizationId,
+          projectId: environment.projectId,
+          endpointId: endpoint.id,
+          queueId: jobQueue.id,
+          externalAccountId: eventRecord.externalAccountId
+            ? eventRecord.externalAccountId
             : undefined,
           isTest: eventRecord.isTest,
+          internal: job.internal,
         },
       });
 

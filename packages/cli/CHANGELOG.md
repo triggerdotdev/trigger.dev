@@ -1,5 +1,43 @@
 # create-trigger
 
+## 2.2.0
+
+### Minor Changes
+
+- 975c5f1d: Drop support for Node v16, require Node >= 18. This allows us to use native fetch in our SDK which paves the way for multi-platform support.
+
+### Patch Changes
+
+- c070e78d: allow users to update trigger-dev packages to a specific version
+- 50e3d9e4: When indexing user's jobs errors are now stored and displayed
+- be9b5113: allow CLI dev to use injected environment variable
+- b12bc604: remove unused envFile param in sendEvent.ts cmd
+- Updated dependencies [975c5f1d]
+- Updated dependencies [50e3d9e4]
+- Updated dependencies [59a94c71]
+  - @trigger.dev/core@2.2.0
+
+## 2.1.9
+
+### Patch Changes
+
+- 9a187f9e: upgrade zod to 3.22.3
+- 914745f6: Removed log when a file is changed
+
+## 2.1.8
+
+## 2.1.7
+
+### Patch Changes
+
+- 7760e094: Improved CLI init Next.js middleware detection
+
+## 2.1.6
+
+### Patch Changes
+
+- 2397fcb6: Added Express support to the CLI
+
 ## 2.1.5
 
 ### Patch Changes

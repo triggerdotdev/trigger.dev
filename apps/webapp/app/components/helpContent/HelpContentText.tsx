@@ -79,37 +79,6 @@ export function HowToRunYourJob() {
   );
 }
 
-export function HowToRunATest() {
-  return (
-    <>
-      <StepNumber
-        stepNumber="1"
-        title="Select an environment
-"
-      />
-      <StepContentContainer>
-        <Paragraph spacing>Select the environment you’d like the test to run against.</Paragraph>
-        <img src={selectEnvironment} className="mt-2 w-52" />
-      </StepContentContainer>
-      <StepNumber stepNumber="2" title="Write your test payload" />
-      <StepContentContainer>
-        <Paragraph spacing>
-          Write your own payload specific to your Job. Some Triggers also provide example payloads
-          that you can select from. This will populate the code editor below.
-        </Paragraph>
-        <img src={selectExample} className="mt-2 h-40" />
-      </StepContentContainer>
-      <StepNumber stepNumber="3" title="Run your test" />
-      <StepContentContainer>
-        <Paragraph spacing>When you’re happy with the payload, click Run test.</Paragraph>
-      </StepContentContainer>
-      <Callout variant="docs" to="https://trigger.dev/docs/documentation/guides/testing-jobs">
-        Learn more about running tests.
-      </Callout>
-    </>
-  );
-}
-
 export function HowToConnectAnIntegration() {
   return (
     <>
@@ -271,6 +240,21 @@ export function HowToUseApiKeysAndEndpoints() {
           Scheduled Triggers do not trigger Jobs in the DEV Environment. When you’re working locally
           you should use the Test feature to trigger any scheduled Jobs.
         </Callout>
+      </StepContentContainer>
+      <StepNumber
+        stepNumber="→"
+        title={
+          <span className="flex items-center gap-x-2">
+            <span>Staging</span>
+            <EnvironmentLabel environment={{ type: "STAGING" }} />
+          </span>
+        }
+      />
+      <StepContentContainer>
+        <Paragraph spacing>
+          The <InlineCode>STAGING</InlineCode> environment is where your Jobs will run in a staging
+          environment, meant to mirror your production environment.
+        </Paragraph>
       </StepContentContainer>
       <StepNumber
         stepNumber="→"

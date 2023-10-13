@@ -25,6 +25,9 @@ function isRequestError(error: unknown): error is ErrorResponse {
   return typeof error === "object" && error !== null && "statusCode" in error;
 }
 
+// See https://resend.com/docs/api-reference/errors
+const skipRetryingErrors = [422, 401, 403, 404, 405, 422];
+
 function onError(error: unknown) {
   if (!isRequestError(error)) {
     if (error instanceof Error) {
@@ -32,6 +35,12 @@ function onError(error: unknown) {
     }
 
     return new Error("Unknown error");
+  }
+
+  if (skipRetryingErrors.includes(error.statusCode)) {
+    return {
+      skipRetrying: true,
+    };
   }
 
   return new Error(error.message);
@@ -100,7 +109,7 @@ export class Resend implements TriggerIntegration {
     if (!this._io) throw new Error("No IO");
     if (!this._connectionKey) throw new Error("No connection key");
 
-    return this._io.runTask<TResult>(
+    return this._io.runTask(
       key,
       (task, io) => {
         if (!this._client) throw new Error("No client");

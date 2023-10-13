@@ -2,11 +2,11 @@
 
 ## Install and initial setup
 
-`npm install`
+`pnpm install`
 
 ## Running the app
 
-`npm run dev`
+`pnpm run dev --filter docs`
 
 ## View the app locally
 

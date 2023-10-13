@@ -31,7 +31,7 @@ export type PrismaTransactionOptions = {
   /**  Sets the transaction isolation level. By default this is set to the value currently configured in your database. */
   isolationLevel?: Prisma.TransactionIsolationLevel;
 
-  rethrowPrismaErrors?: boolean;
+  swallowPrismaErrors?: boolean;
 };
 
 export async function $transaction<R>(
@@ -55,11 +55,9 @@ export async function $transaction<R>(
         name: error.name,
       });
 
-      if (options?.rethrowPrismaErrors) {
-        throw error;
+      if (options?.swallowPrismaErrors) {
+        return;
       }
-
-      return;
     }
 
     throw error;
@@ -124,6 +122,10 @@ function getClient() {
         emit: "stdout",
         level: "warn",
       },
+      // {
+      //   emit: "stdout",
+      //   level: "query",
+      // },
     ],
   });
 

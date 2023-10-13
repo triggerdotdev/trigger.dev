@@ -1,20 +1,26 @@
 import { PrismaClient, prisma } from "~/db.server";
-import { IndexEndpointStats, parseEndpointIndexStats } from "~/models/indexEndpoint.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
-import {
+import type {
   Endpoint,
   EndpointIndex,
+  EndpointIndexStatus,
   RuntimeEnvironment,
   RuntimeEnvironmentType,
-} from "../../../../packages/database/src";
-import { env } from "~/env.server";
+} from "@trigger.dev/database";
+import {
+  EndpointIndexError,
+  EndpointIndexErrorSchema,
+  IndexEndpointStats,
+  parseEndpointIndexStats,
+} from "@trigger.dev/core";
 
 export type Client = {
   slug: string;
   endpoints: {
     DEVELOPMENT: ClientEndpoint;
     PRODUCTION: ClientEndpoint;
+    STAGING?: ClientEndpoint;
   };
 };
 
@@ -34,9 +40,11 @@ export type ClientEndpoint =
       url: string;
       indexWebhookPath: string;
       latestIndex?: {
+        status: EndpointIndexStatus;
         source: string;
         updatedAt: Date;
-        stats: IndexEndpointStats;
+        stats?: IndexEndpointStats;
+        error?: EndpointIndexError;
       };
       environment: {
         id: string;
@@ -81,9 +89,11 @@ export class EnvironmentsPresenter {
             indexingHookIdentifier: true,
             indexings: {
               select: {
+                status: true,
                 source: true,
                 updatedAt: true,
                 stats: true,
+                error: true,
               },
               take: 1,
               orderBy: {
@@ -133,6 +143,8 @@ export class EnvironmentsPresenter {
         throw new Error("Development environment not found, this should not happen");
       }
 
+      const stagingEnvironment = filtered.find((environment) => environment.type === "STAGING");
+
       const productionEnvironment = filtered.find(
         (environment) => environment.type === "PRODUCTION"
       );
@@ -151,6 +163,9 @@ export class EnvironmentsPresenter {
             state: "unconfigured",
             environment: productionEnvironment,
           },
+          STAGING: stagingEnvironment
+            ? { state: "unconfigured", environment: stagingEnvironment }
+            : undefined,
         },
       };
 
@@ -159,6 +174,16 @@ export class EnvironmentsPresenter {
       );
       if (devEndpoint) {
         client.endpoints.DEVELOPMENT = endpointClient(devEndpoint, developmentEnvironment, baseUrl);
+      }
+
+      if (stagingEnvironment) {
+        const stagingEndpoint = stagingEnvironment.endpoints.find(
+          (endpoint) => endpoint.slug === slug
+        );
+
+        if (stagingEndpoint) {
+          client.endpoints.STAGING = endpointClient(stagingEndpoint, stagingEnvironment, baseUrl);
+        }
       }
 
       const prodEndpoint = productionEnvironment.endpoints.find(
@@ -199,7 +224,7 @@ const environmentSortOrder: RuntimeEnvironmentType[] = [
 
 function endpointClient(
   endpoint: Pick<Endpoint, "id" | "slug" | "url" | "indexingHookIdentifier"> & {
-    indexings: Pick<EndpointIndex, "source" | "updatedAt" | "stats">[];
+    indexings: Pick<EndpointIndex, "status" | "source" | "updatedAt" | "stats" | "error">[];
   },
   environment: Pick<RuntimeEnvironment, "id" | "apiKey" | "type">,
   baseUrl: string
@@ -212,9 +237,13 @@ function endpointClient(
     indexWebhookPath: `${baseUrl}/api/v1/endpoints/${environment.id}/${endpoint.slug}/index/${endpoint.indexingHookIdentifier}`,
     latestIndex: endpoint.indexings[0]
       ? {
+          status: endpoint.indexings[0].status,
           source: endpoint.indexings[0].source,
           updatedAt: endpoint.indexings[0].updatedAt,
           stats: parseEndpointIndexStats(endpoint.indexings[0].stats),
+          error: endpoint.indexings[0].error
+            ? EndpointIndexErrorSchema.parse(endpoint.indexings[0].error)
+            : undefined,
         }
       : undefined,
     environment: environment,

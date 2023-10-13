@@ -4,14 +4,7 @@ import {
   SCHEDULED_EVENT,
   TriggerMetadata,
 } from "@trigger.dev/core";
-import type {
-  Endpoint,
-  Integration,
-  Job,
-  JobIntegration,
-  JobIntegrationPayload,
-  JobVersion,
-} from "@trigger.dev/database";
+import type { Endpoint, Integration, Job, JobIntegration, JobVersion } from "@trigger.dev/database";
 import { DEFAULT_MAX_CONCURRENT_RUNS } from "~/consts";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
@@ -229,7 +222,7 @@ export class RegisterJobService {
           },
           update: {
             name: example.name,
-            icon: example.icon,
+            icon: example.icon ?? null,
             payload: example.payload,
           },
         });
