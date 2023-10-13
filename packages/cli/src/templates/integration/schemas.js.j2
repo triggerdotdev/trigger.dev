@@ -1,0 +1,120 @@
+import { z } from "zod";
+
+export const WebhookResourceTypeSchema = z.union([
+  z.literal("Comment"),
+  z.literal("Issue"),
+]);
+export type WebhookResourceType = z.infer<typeof WebhookResourceTypeSchema>;
+
+export const WebhookActionTypeSchema = z.union([
+  z.literal("create"),
+  z.literal("remove"),
+  z.literal("update"),
+]);
+export type WebhookActionType = z.infer<typeof WebhookActionTypeSchema>;
+
+const IssueLabelDataSchema = z.object({
+  archivedAt: z.coerce.date().optional().nullable(),
+  color: z.string(),
+  createdAt: z.coerce.date(),
+  creatorId: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+  id: z.string(),
+  name: z.string(),
+  organizationId: z.string(),
+  parentId: z.string().optional().nullable(),
+  teamId: z.string().optional().nullable(),
+  updatedAt: z.coerce.date(),
+});
+
+const IssueDataSchema = z.object({
+  archivedAt: z.coerce.date().optional().nullable(),
+  assignee: z.object({ id: z.string(), name: z.string() }).optional().nullable(),
+  assigneeId: z.string().optional().nullable(),
+  id: z.string(),
+  labelIds: z.array(z.string()),
+  labels: z.array(IssueLabelDataSchema.pick({ id: true, color: true, name: true })),
+  number: z.number(),
+  parentId: z.string().optional().nullable(),
+  previousIdentifiers: z.array(z.string()),
+  priority: z.number(),
+  priorityLabel: z.string(),
+  projectId: z.string().optional().nullable(),
+  sortOrder: z.number(),
+  team: z.object({ id: z.string(), key: z.string(), name: z.string() }),
+  teamId: z.string(),
+  title: z.string(),
+  trashed: z.boolean().optional().nullable(),
+  triagedAt: z.coerce.date().optional().nullable(),
+  updatedAt: z.coerce.date(),
+});
+
+const CommentDataSchema = z.object({
+  archivedAt: z.coerce.date().optional().nullable(),
+  body: z.string(),
+  botActorId: z.string().optional().nullable(),
+  createdAt: z.coerce.date(),
+  editedAt: z.string().optional().nullable(),
+  id: z.string(),
+  issue: IssueDataSchema.pick({ id: true, title: true }),
+  issueId: z.string(),
+  parentId: z.string().optional().nullable(),
+  reactionData: z.array(z.object({}).passthrough()),
+  updatedAt: z.coerce.date(),
+  userId: z.string().optional().nullable(),
+});
+
+export const WebhookPayloadBaseSchema = z.object({
+  createdAt: z.coerce.date(),
+  organizationId: z.string().optional().nullable(),
+  url: z.string().url().optional().nullable(),
+  webhookId: z.string(),
+  webhookTimestamp: z.coerce.date(),
+});
+
+const CREATE = z.literal("create");
+const REMOVE = z.literal("remove");
+const UPDATE = z.literal("update");
+
+export const CommentEventBaseSchema = WebhookPayloadBaseSchema.extend({
+  type: z.literal("Comment"),
+  data: CommentDataSchema,
+});
+export const CommentEventSchema = z.discriminatedUnion("action", [
+  CommentEventBaseSchema.extend({
+    action: CREATE,
+  }),
+  CommentEventBaseSchema.extend({
+    action: REMOVE,
+  }),
+  CommentEventBaseSchema.extend({
+    action: UPDATE,
+    updatedFrom: CommentDataSchema.partial(),
+  }),
+]);
+export type CommentEvent = z.infer<typeof CommentEventSchema>;
+
+export const IssueEventBaseSchema = WebhookPayloadBaseSchema.extend({
+  type: z.literal("Issue"),
+  data: IssueDataSchema,
+});
+export const IssueEventSchema = z.discriminatedUnion("action", [
+  IssueEventBaseSchema.extend({
+    action: CREATE,
+  }),
+  IssueEventBaseSchema.extend({
+    action: REMOVE,
+  }),
+  IssueEventBaseSchema.extend({
+    action: UPDATE,
+    updatedFrom: IssueDataSchema.partial(),
+  }),
+]);
+export type IssueEvent = z.infer<typeof IssueEventSchema>;
+
+export const WebhookPayloadSchema = z.union([
+  CommentEventSchema,
+  IssueEventSchema,
+]);
+
+export type WebhookPayload = z.infer<typeof WebhookPayloadSchema>;

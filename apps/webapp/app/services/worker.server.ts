@@ -137,9 +137,6 @@ function getWorkerQueue() {
       ttl: 7 * 24 * 60 * 60 * 1000, // 7 days
       maxCount: 1000,
     },
-    reporter: async (event, properties) => {
-      logger.info("workerQueue report", { event, properties });
-    },
     runnerOptions: {
       connectionString: env.DATABASE_URL,
       concurrency: env.WORKER_CONCURRENCY,
