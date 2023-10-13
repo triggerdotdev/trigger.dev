@@ -118,9 +118,18 @@ const variant = {
   "side-menu-item": {
     textColor: "text-bright",
     button:
-      "h-[1.8rem] px-[0.475rem] text-2sm rounded-sm text-dimmed bg-transparent group-hover:bg-slate-850 transition",
+      "h-[1.8rem] px-[0.4rem] text-2sm rounded-sm text-dimmed bg-transparent group-hover:bg-slate-850 transition",
     icon: "h-4",
-    iconSpacing: "gap-x-1",
+    iconSpacing: "gap-x-1.5",
+    shortcutVariant: undefined,
+    shortcut: undefined,
+  },
+  "side-menu-sub-item": {
+    textColor: "text-dimmed",
+    button:
+      "h-[1.8rem] px-[0.5rem] ml-5 text-2sm rounded-sm text-dimmed bg-transparent group-hover:bg-slate-850 transition",
+    icon: undefined,
+    iconSpacing: undefined,
     shortcutVariant: undefined,
     shortcut: undefined,
   },
@@ -139,7 +148,6 @@ type ButtonContentPropsType = {
   leadingIconClassName?: string;
   fullWidth?: boolean;
   textAlignLeft?: boolean;
-  iconSpacing?: string;
   className?: string;
   shortcut?: ShortcutDefinition;
   variant: keyof typeof variant;
@@ -155,7 +163,6 @@ export function ButtonContent(props: ButtonContentPropsType) {
     shortcut,
     fullWidth,
     textAlignLeft,
-    iconSpacing,
     className,
   } = props;
   const variation = allVariants.variant[props.variant];
