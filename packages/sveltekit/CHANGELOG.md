@@ -1,4 +1,4 @@
-# @trigger.dev/nestjs
+# @trigger.dev/sveltekit
 
 ## 2.2.0
 
@@ -8,14 +8,6 @@
 
 ### Patch Changes
 
+- 0558b2c5: SvelteKit adaptor package
 - Updated dependencies [975c5f1d]
   - @trigger.dev/sdk@2.2.0
-
-## 2.1.9
-
-### Patch Changes
-
-- a847b492: First release of NestJS adaptor
-- Updated dependencies [9a187f9e]
-- Updated dependencies [2e9452ab]
-  - @trigger.dev/sdk@2.1.9
