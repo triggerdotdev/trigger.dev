@@ -3,7 +3,7 @@
 import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { cn } from "~/utils/cn";
-import { Paragraph } from "./Paragraph";
+import { Paragraph, ParagraphVariant } from "./Paragraph";
 import { ChevronDownIcon, EllipsisVerticalIcon } from "@heroicons/react/24/solid";
 import { LinkButton } from "./Buttons";
 
@@ -32,9 +32,15 @@ const PopoverContent = React.forwardRef<
 ));
 PopoverContent.displayName = PopoverPrimitive.Content.displayName;
 
-function PopoverSectionHeader({ title }: { title: string }) {
+function PopoverSectionHeader({
+  title,
+  variant = "extra-extra-small/bright/caps",
+}: {
+  title: string;
+  variant?: ParagraphVariant;
+}) {
   return (
-    <Paragraph variant="extra-extra-small/bright/caps" className="bg-slate-900 px-2.5 py-2">
+    <Paragraph variant={variant} className="bg-slate-900 px-2.5 py-2">
       {title}
     </Paragraph>
   );
@@ -63,6 +69,25 @@ function PopoverMenuItem({
     >
       {title}
     </LinkButton>
+  );
+}
+
+function PopoverCustomTrigger({
+  isOpen,
+  children,
+  className,
+  ...props
+}: { isOpen?: boolean } & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
+  return (
+    <PopoverTrigger
+      {...props}
+      className={cn(
+        "group flex items-center justify-end gap-1 rounded text-dimmed transition hover:bg-slate-850 hover:text-bright",
+        className
+      )}
+    >
+      {children}
+    </PopoverTrigger>
   );
 }
 
@@ -113,7 +138,8 @@ export {
   PopoverTrigger,
   PopoverContent,
   PopoverSectionHeader,
+  PopoverCustomTrigger,
   PopoverArrowTrigger,
-  PopoverMenuItem,
   PopoverVerticalEllipseTrigger,
+  PopoverMenuItem,
 };
