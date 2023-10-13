@@ -18,7 +18,7 @@ export const Selects: Story = {
 
 function SideMenuV2() {
   return (
-    <div className="h-screen w-full bg-midnight-950">
+    <div className="h-screen w-full bg-background">
       <div className="grid h-full grid-cols-[220px_auto]">
         <SideMenu />
         <div className="h-full w-full" />
