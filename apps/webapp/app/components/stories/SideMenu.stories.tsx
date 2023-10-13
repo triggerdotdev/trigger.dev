@@ -3,7 +3,7 @@ import { withDesign } from "storybook-addon-designs";
 import { SideMenu } from "../navigation/SideMenu";
 
 const meta: Meta<typeof SideMenuV2> = {
-  title: "Compound/SideMenu",
+  title: "Components/SideMenu",
   component: SideMenuV2,
   decorators: [withDesign],
 };
