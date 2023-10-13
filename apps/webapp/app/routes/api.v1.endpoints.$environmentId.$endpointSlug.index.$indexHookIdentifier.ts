@@ -1,7 +1,7 @@
 import { ActionArgs, LoaderArgs, json } from "@remix-run/server-runtime";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
-import { PrismaClient, prisma } from "~/db.server";
+import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { workerQueue } from "~/services/worker.server";
 import { safeJsonParse } from "~/utils/json";
@@ -93,43 +93,53 @@ export class TriggerEndpointIndexHookService {
       body,
     });
 
-    const endpoint = await this.#prismaClient.endpoint.findUnique({
-      where: {
-        environmentId_slug: {
-          environmentId,
-          slug: endpointSlug,
+    await $transaction(this.#prismaClient, async (tx) => {
+      const endpoint = await tx.endpoint.findUnique({
+        where: {
+          environmentId_slug: {
+            environmentId,
+            slug: endpointSlug,
+          },
         },
-      },
-      include: {
-        environment: true,
-      },
-    });
+        include: {
+          environment: true,
+        },
+      });
 
-    if (!endpoint) {
-      throw new Error("Endpoint not found");
-    }
-
-    if (endpoint.indexingHookIdentifier !== indexHookIdentifier) {
-      throw new Error("Index hook identifier is invalid");
-    }
-
-    const reason = parseReasonFromBody(body);
-
-    // Index the endpoint in 5 seconds from now
-    await workerQueue.enqueue(
-      "indexEndpoint",
-      {
-        id: endpoint.id,
-        source: "HOOK",
-        reason,
-        sourceData: body,
-      },
-      {
-        runAt: new Date(Date.now() + 5000),
-        maxAttempts:
-          endpoint.environment.type === RuntimeEnvironmentType.DEVELOPMENT ? 1 : undefined,
+      if (!endpoint) {
+        throw new Error("Endpoint not found");
       }
-    );
+
+      if (endpoint.indexingHookIdentifier !== indexHookIdentifier) {
+        throw new Error("Index hook identifier is invalid");
+      }
+
+      const reason = parseReasonFromBody(body);
+
+      const index = await tx.endpointIndex.create({
+        data: {
+          endpointId: endpoint.id,
+          status: "PENDING",
+          source: "HOOK",
+          reason,
+          sourceData: body,
+        },
+      });
+
+      // Index the endpoint in 5 seconds from now
+      await workerQueue.enqueue(
+        "performEndpointIndexing",
+        {
+          id: index.id,
+        },
+        {
+          runAt: new Date(Date.now() + 5000),
+          maxAttempts:
+            endpoint.environment.type === RuntimeEnvironmentType.DEVELOPMENT ? 1 : undefined,
+          tx,
+        }
+      );
+    });
   }
 }
 

@@ -42,6 +42,8 @@ export const DeliverEmailSchema = z
 
 export type DeliverEmail = z.infer<typeof DeliverEmailSchema>;
 
+export type SendPlainTextOptions = { to: string; subject: string; text: string };
+
 export class EmailClient {
   #client?: Resend;
   #imagesBaseUrl: string;
@@ -64,6 +66,20 @@ export class EmailClient {
       subject,
       react: <BasePath basePath={this.#imagesBaseUrl}>{component}</BasePath>,
     });
+  }
+
+  async sendPlainText(options: SendPlainTextOptions) {
+    if (this.#client) {
+      await this.#client.sendEmail({
+        from: this.#from,
+        to: options.to,
+        replyTo: this.#replyTo,
+        subject: options.subject,
+        text: options.text,
+      });
+
+      return;
+    }
   }
 
   #getTemplate(data: DeliverEmail): {

@@ -1,0 +1,77 @@
+import { CommentEvent, IssueEvent, WebhookPayload } from "./schemas";
+import { Get{{ identifier | capitalize }}Payload } from "./types";
+
+export type QueryVariables = {
+  after: string;
+  before: string;
+  first: number;
+  includeArchived: boolean;
+  last: number;
+};
+
+export type Nullable<T> = Partial<{
+  [K in keyof T]: T[K] | null;
+}>;
+
+export const onCommentProperties = (payload: Get{{ identifier | capitalize }}Payload<CommentEvent>) => {
+  return [
+    { label: "Comment ID", text: payload.data.id },
+    { label: "Issue ID", text: payload.data.issueId },
+    { label: "Issue Title", text: payload.data.issue.title, url: payload.url ?? undefined },
+  ];
+};
+
+export const onIssueProperties = (payload: Get{{ identifier | capitalize }}Payload<IssueEvent>) => {
+  return [
+    { label: "Issue ID", text: payload.data.id },
+    {
+      label: "Issue",
+      text: `[${payload.data.team.key}-${payload.data.number}] ${payload.data.title}`,
+      url: payload.url ?? undefined,
+    },
+  ];
+};
+
+export const queryProperties = (query: Nullable<QueryVariables>) => {
+  return [
+    ...(query.after ? [{ label: "After", text: query.after }] : []),
+    ...(query.before ? [{ label: "Before", text: query.before }] : []),
+    ...(query.first ? [{ label: "First", text: String(query.first) }] : []),
+    ...(query.last ? [{ label: "Last", text: String(query.last) }] : []),
+    ...(query.includeArchived
+      ? [{ label: "Include archived", text: String(query.includeArchived) }]
+      : []),
+  ];
+};
+
+export const updatedFromProperties = (payload: WebhookPayload) => {
+  if (payload.action !== "update") return [];
+  return [
+    {
+      label: "Updated Keys",
+      text: Object.keys(payload.updatedFrom)
+        .filter((key) => !["editedAt", "updatedAt"].includes(key))
+        .join(", "),
+    },
+  ];
+};
+
+export const modelProperties = (
+  params: Partial<{
+    model_owner: string;
+    model_name: string;
+    version_id: string;
+    destination: string;
+  }>
+) => {
+  return [
+    ...(params.model_owner ? [{ label: "Model Owner", text: params.model_owner }] : []),
+    ...(params.model_name ? [{ label: "Model Name", text: params.model_name }] : []),
+    ...(params.version_id ? [{ label: "Model Version", text: params.version_id }] : []),
+    ...(params.destination ? [{ label: "Destination Model", text: params.destination }] : []),
+  ];
+};
+
+export const streamingProperty = (params: { stream?: boolean }) => {
+  return [{ label: "Streaming Enabled", text: String(!!params.stream) }];
+};

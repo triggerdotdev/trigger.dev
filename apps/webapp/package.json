@@ -13,7 +13,7 @@
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
     "start": "cross-env NODE_ENV=production node --max-old-space-size=8192 ./build/server.js",
     "start:local": "cross-env node --max-old-space-size=8192 ./build/server.js",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p ./tsconfig.check.json",
     "db:seed": "node prisma/seed.js",
     "db:seed:local": "ts-node prisma/seed.ts",
     "generate:sourcemaps": "remix build --sourcemap",
@@ -106,13 +106,15 @@
     "simple-oauth2": "^5.0.0",
     "simplur": "^3.0.1",
     "slug": "^6.0.0",
+    "sonner": "^1.0.3",
     "tailwind-merge": "^1.12.0",
     "tailwind-scrollbar-hide": "^1.1.7",
     "tailwindcss-animate": "^1.0.5",
     "tiny-invariant": "^1.2.0",
     "ulid": "^2.3.0",
     "zod": "3.22.3",
-    "zod-error": "1.5.0"
+    "zod-error": "1.5.0",
+    "zod-validation-error": "^1.5.0"
   },
   "devDependencies": {
     "@remix-run/dev": "1.19.2-pre.0",

@@ -1,5 +1,7 @@
 import fetch from "./fetchUseProxy";
 import { z } from "zod";
+import core from "@trigger.dev/core";
+const { GetEndpointIndexResponseSchema } = core;
 
 export type CreateEndpointOptions = {
   id: string;
@@ -16,6 +18,9 @@ export type EndpointData = {
   createdAt: string;
   updatedAt: string;
   indexingHookIdentifier: string;
+  endpointIndex: {
+    id: string;
+  };
 };
 
 export type EndpointResponse =
@@ -59,12 +64,12 @@ export class TriggerApi {
     private baseUrl: string
   ) {}
 
-  async whoami(apiKey: string): Promise<WhoamiResponse | undefined> {
+  async whoami(): Promise<WhoamiResponse | undefined> {
     const response = await fetch(`${this.baseUrl}/api/v1/whoami`, {
       method: "GET",
       headers: {
         Accept: "application/json",
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${this.apiKey}`,
       },
     });
 
@@ -153,6 +158,33 @@ export class TriggerApi {
     return {
       ok: true,
       data: data as any as EndpointData,
+    };
+  }
+
+  async getEndpointIndex(indexId: string) {
+    const response = await fetch(`${this.baseUrl}/api/v1/endpointindex/${indexId}`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+    });
+
+    if (response.ok) {
+      const body = await response.json();
+      const parsed = GetEndpointIndexResponseSchema.safeParse(body);
+
+      if (parsed.success) {
+        return parsed.data;
+      }
+    }
+
+    return {
+      status: "FAILURE" as const,
+      error: {
+        message: `Bad response from Trigger.dev (${response.status})`,
+      },
+      updatedAt: new Date(),
     };
   }
 }
