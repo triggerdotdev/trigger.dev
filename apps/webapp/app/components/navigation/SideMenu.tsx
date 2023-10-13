@@ -89,27 +89,24 @@ function SideMenuOrgHeader() {
   const [isOpen, setIsOpen] = useState(false);
   return (
     <div className="sticky top-0 flex items-center justify-between bg-background px-0 py-1">
-      <div className="w-full">
-        <Popover onOpenChange={(open) => setIsOpen(open)}>
-          <PopoverArrowTrigger fullWidth isOpen={isOpen} className="p-1 pl-2">
-            <LogoIcon className="mr-2 h-4 w-4" />
-            My Org 1
-          </PopoverArrowTrigger>
-          <PopoverContent
-            className="min-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
-            align="start"
-          >
-            <Fragment>
-              <PopoverSectionHeader title="james@trigger.dev" variant="extra-small" />
-
-              <div className="flex flex-col gap-1 p-1">
-                <PopoverMenuItem to="#" title="View profile" icon="avatar" />
-                <PopoverMenuItem to="#" title="Log out" isSelected={false} icon="logout" />
-              </div>
-            </Fragment>
-          </PopoverContent>
-        </Popover>
-      </div>
+      <Popover onOpenChange={(open) => setIsOpen(open)}>
+        <PopoverArrowTrigger fullWidth isOpen={isOpen} className="p-1 pl-2">
+          <LogoIcon className="mr-2 h-4 w-4" />
+          My Org 1
+        </PopoverArrowTrigger>
+        <PopoverContent
+          className="min-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+          align="start"
+        >
+          <Fragment>
+            <PopoverSectionHeader title="james@trigger.dev" variant="extra-small" />
+            <div className="flex flex-col gap-1 p-1">
+              <PopoverMenuItem to="#" title="View profile" icon="avatar" />
+              <PopoverMenuItem to="#" title="Log out" isSelected={false} icon="logout" />
+            </div>
+          </Fragment>
+        </PopoverContent>
+      </Popover>
       <div>
         <Popover onOpenChange={(open) => setIsOpen(open)}>
           <PopoverCustomTrigger isOpen={isOpen} className="p-1">
@@ -192,7 +189,13 @@ function SideMenuItem({
         {name}
         <div className="flex items-center gap-1">
           {count && <MenuCount count={count} />}
-          {hasWarning && <Icon icon="error" className="h-5 w-5" />}
+          {hasWarning && (
+            <SimpleTooltip
+              button={<Icon icon="error" className="h-5 w-5" />}
+              content={`There's an error in the ${name} page`}
+              side="right"
+            />
+          )}
         </div>
       </div>
     </NavLinkButton>
