@@ -5,7 +5,13 @@ import { NavLinkButton } from "../primitives/Buttons";
 import { Icon } from "../primitives/Icon";
 import { type IconNames } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
-import { SimpleTooltip } from "../primitives/Tooltip";
+import {
+  SimpleTooltip,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../primitives/Tooltip";
 import { UserAvatar } from "../UserProfilePhoto";
 import {
   Popover,
@@ -48,8 +54,8 @@ export function SideMenu() {
           />
           <div className="mb-8 mt-4 flex flex-col gap-y-1 px-1">
             <SideMenuHeader title="My Project 1" />
-            <SideMenuItem name="Jobs" icon="job" count={33} to="" data-action="jobs" />
-            <SideMenuItem name="Runs" icon="integration" to="" data-action="runs" hasWarning />
+            <SideMenuItem name="Jobs" icon="job" count={33} to="" data-action="jobs" hasWarning />
+            <SideMenuItem name="Runs" icon="integration" to="" data-action="runs" />
             <SideMenuItem name="Events" icon="trigger" to="" data-action="events" />
             <SideMenuItem name="Custom" to="" data-action="custom" subItem />
             <SideMenuItem name="Webhooks" to="" data-action="webhooks" subItem />
@@ -61,7 +67,7 @@ export function SideMenu() {
             <SideMenuItem name="job-catalog" to="" subItem />
             <SideMenuItem name="API Keys" icon="environment" to="" data-action="api keys" />
           </div>
-          <div className="mb-4 flex flex-col gap-1 px-1">
+          <div className="mb-1 flex flex-col gap-1 px-1">
             <SideMenuHeader title="My Org 1" />
             <SideMenuItem
               name="Integrations"
@@ -69,7 +75,7 @@ export function SideMenu() {
               to=""
               count={3}
               data-action="integrations"
-              hasWarning
+              hasWarning="An Integration requires setup"
             />
             <SideMenuItem name="Projects" icon="job" to="" data-action="projects" />
             <SideMenuItem name="Team" icon="trigger" to="" data-action="team" />
@@ -185,7 +191,7 @@ function SideMenuItem({
   name,
   to,
   forceActive = false,
-  hasWarning = false,
+  hasWarning,
   count,
   target,
   subItem = false,
@@ -193,7 +199,7 @@ function SideMenuItem({
   icon?: IconNames | React.ComponentType<any>;
   name: string;
   to: string;
-  hasWarning?: boolean;
+  hasWarning?: string | boolean;
   count?: number;
   forceActive?: boolean;
   target?: string;
@@ -225,12 +231,19 @@ function SideMenuItem({
         {name}
         <div className="flex items-center gap-1">
           {count && <MenuCount count={count} />}
-          {hasWarning && (
-            <SimpleTooltip
-              button={<Icon icon="error" className="h-5 w-5" />}
-              content={`There's an error in the ${name} page`}
-              side="right"
-            />
+          {typeof hasWarning === "string" ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger>
+                  <Icon icon="error" className="h-5 w-5" />
+                </TooltipTrigger>
+                <TooltipContent className="flex items-center gap-1 border border-rose-500 bg-rose-500/20 backdrop-blur-xl">
+                  {hasWarning}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            hasWarning && <Icon icon="error" className="h-5 w-5" />
           )}
         </div>
       </div>
