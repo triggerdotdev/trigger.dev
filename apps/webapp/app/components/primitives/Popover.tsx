@@ -5,7 +5,7 @@ import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { cn } from "~/utils/cn";
 import { Paragraph, ParagraphVariant } from "./Paragraph";
 import { ChevronDownIcon, EllipsisVerticalIcon } from "@heroicons/react/24/solid";
-import { LinkButton } from "./Buttons";
+import { ButtonContentPropsType, LinkButton } from "./Buttons";
 
 const Popover = PopoverPrimitive.Root;
 
@@ -51,16 +51,18 @@ function PopoverMenuItem({
   icon,
   title,
   isSelected,
+  variant = { variant: "menu-item" },
 }: {
   to: string;
   icon: string;
   title: React.ReactNode;
   isSelected?: boolean;
+  variant?: ButtonContentPropsType;
 }) {
   return (
     <LinkButton
       to={to}
-      variant="menu-item"
+      variant={variant.variant}
       LeadingIcon={icon}
       fullWidth
       textAlignLeft

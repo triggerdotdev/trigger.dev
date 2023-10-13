@@ -14,7 +14,6 @@ import {
   PopoverCustomTrigger,
   PopoverMenuItem,
   PopoverSectionHeader,
-  PopoverTrigger,
 } from "../primitives/Popover";
 import { Fragment, useState } from "react";
 

@@ -140,7 +140,7 @@ const allVariants = {
   variant: variant,
 };
 
-type ButtonContentPropsType = {
+export type ButtonContentPropsType = {
   children?: React.ReactNode;
   LeadingIcon?: React.ComponentType<any> | IconNamesOrString;
   TrailingIcon?: React.ComponentType<any> | IconNamesOrString;
