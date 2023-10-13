@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import pathModule from "path";
+import boxen from "boxen";
 import { Framework } from "..";
 import { templatesPath } from "../../paths";
 import { InstallPackage } from "../../utils/addDependencies";
@@ -50,18 +51,53 @@ export class NextJs implements Framework {
     }
 
     const nextJsDir = await detectPagesOrAppDir(path);
+    const nextJsVersion = await detectNextVersion(path);
     const routeDir = pathModule.join(path, usesSrcDir ? "src" : "");
     const pathAlias = await getPathAlias({
       projectPath: path,
       isTypescriptProject: options.typescript,
       extraDirectories: usesSrcDir ? ["src"] : undefined,
     });
+    const fileExtension = options.typescript ? ".ts" : ".js";
 
     if (nextJsDir === "pages") {
-      await createTriggerPageRoute(routeDir, options.endpointSlug, options.typescript, pathAlias);
+      const apiRoutePath = pathModule.join(routeDir, "pages", "api", `trigger${fileExtension}`);
+      if (nextJsVersion && nextJsVersion < "13.5") {
+        await createTriggerRoute({
+          path: routeDir,
+          apiRoutePath,
+          template: "pagesApiRoute.js",
+          fileExtension,
+          endpointSlug: options.endpointSlug,
+          pathAlias
+        });
+      } else {
+        await createTriggerRoute({
+          path: routeDir,
+          apiRoutePath,
+          template: "pagesApiRouteWithConfigObject.js",
+          fileExtension,
+          endpointSlug: options.endpointSlug,
+          pathAlias
+        });
+      }
     } else {
-      await createTriggerAppRoute(routeDir, options.endpointSlug, options.typescript, pathAlias);
+      const apiRoutePath = pathModule.join(routeDir, "app", "api", "trigger", `route${fileExtension}`);
+      await createTriggerRoute({
+        path: routeDir,
+        apiRoutePath,
+        template: "appApiRoute.js",
+        fileExtension,
+        endpointSlug: options.endpointSlug,
+        pathAlias
+      });
     }
+    logger.info(
+      boxen(
+        "Learn more about configuring duration in your serverless function here: https://vercel.com/docs/functions/serverless-functions/runtimes#max-duration",
+        { padding: 1, margin: 1, borderStyle: "double", borderColor: "magenta" }
+      )
+    );
   }
 
   async postInstall(
@@ -144,45 +180,35 @@ export async function detectPagesOrAppDir(path: string): Promise<"pages" | "app"
   return "pages";
 }
 
-async function createTriggerPageRoute(
-  path: string,
-  endpointSlug: string,
-  isTypescriptProject: boolean,
-  pathAlias: string | undefined
-) {
-  const templatesDir = pathModule.join(templatesPath(), "nextjs");
-  const fileExtension = isTypescriptProject ? ".ts" : ".js";
-
-  //pages/api/trigger.js or src/pages/api/trigger.js
-  const apiRoutePath = pathModule.join(path, "pages", "api", `trigger${fileExtension}`);
-  const apiRouteResult = await createFileFromTemplate({
-    templatePath: pathModule.join(templatesDir, "pagesApiRoute.js"),
-    replacements: {
-      routePathPrefix: pathAlias ? pathAlias + "/" : "../../",
-    },
-    outputPath: apiRoutePath,
-  });
-  if (!apiRouteResult.success) {
-    throw new Error("Failed to create API route file");
+export async function detectNextVersion(path: string) {
+  const packageJsonContent = await readPackageJson(path);
+  if (!packageJsonContent) {
+    return null;
   }
-  logger.success(`✔ Created API route at ${apiRoutePath}`);
 
-  await createJobsAndTriggerFile(path, endpointSlug, fileExtension, pathAlias, templatesDir);
+  const versionNumberPattern = /[\d.]+/;
+  if (packageJsonContent.dependencies?.next !== undefined)
+    return packageJsonContent.dependencies?.next?.match(versionNumberPattern)![0];
+  if (packageJsonContent.devDependencies?.next !== undefined)
+    return packageJsonContent.devDependencies?.next?.match(versionNumberPattern)![0];
+
+  return null;
 }
 
-async function createTriggerAppRoute(
+async function createTriggerRoute(options: {
   path: string,
+  apiRoutePath: string,
+  template: string,
+  fileExtension: string,
   endpointSlug: string,
-  isTypescriptProject: boolean,
   pathAlias: string | undefined
-) {
-  const templatesDir = pathModule.join(templatesPath(), "nextjs");
-  const fileExtension = isTypescriptProject ? ".ts" : ".js";
+}) {
+  const { path, apiRoutePath, template, pathAlias, endpointSlug, fileExtension } = options;
 
-  //app/api/trigger/route.js or src/app/api/trigger/route.js
-  const apiRoutePath = pathModule.join(path, "app", "api", "trigger", `route${fileExtension}`);
+  const templatesDir = pathModule.join(templatesPath(), "nextjs");
+  //app/api/trigger/route.js, src/app/api/trigger/route.js, pages/api/trigger.js or src/pages/api/trigger.js
   const apiRouteResult = await createFileFromTemplate({
-    templatePath: pathModule.join(templatesDir, "appApiRoute.js"),
+    templatePath: pathModule.join(templatesDir, template),
     replacements: {
       routePathPrefix: pathAlias ? pathAlias + "/" : "../../",
     },
