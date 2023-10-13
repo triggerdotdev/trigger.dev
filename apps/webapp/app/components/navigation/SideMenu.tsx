@@ -21,36 +21,34 @@ export function SideMenu() {
         <div className="space-y-8 p-1">
           <div className="flex flex-col gap-y-1">
             <SideMenuItem name="Jobs" icon="job" count={33} to="" data-action="jobs" />
-            <SideMenuItem
-              name="Integrations"
-              icon="integration"
-              to=""
-              data-action="integrations"
-              hasWarning
-            />
-            <SideMenuItem name="Triggers" icon="trigger" to="" data-action="triggers" />
-            <SideMenuItem
-              name="Environments & API Keys"
-              icon="environment"
-              to=""
-              data-action="environments & api keys"
-            />
+            <SideMenuItem name="Runs" icon="integration" to="" data-action="runs" hasWarning />
+            <SideMenuItem name="Events" icon="trigger" to="" data-action="events" />
+            <SideMenuItem name="Custom" to="" data-action="custom" subItem />
+            <SideMenuItem name="Webhooks" to="" data-action="webhooks" subItem />
+            <SideMenuItem name="Triggers" icon="trigger" count={4} to="" data-action="triggers" />
+            <SideMenuItem name="Catalog" icon="trigger" count={4} to="" data-action="catalog" />
+            <SideMenuItem name="User Events" to="" subItem />
+            <SideMenuItem name="Billing Events" to="" subItem />
+            <SideMenuItem name="Endpoints" icon="trigger" count={4} to="" data-action="endpoints" />
+            <SideMenuItem name="job-catalog" to="" subItem />
+            <SideMenuItem name="API Keys" icon="environment" to="" data-action="api keys" />
           </div>
           <div className="flex flex-col gap-1">
-            <SideMenuItem name="Jobs" icon="job" to="" data-action="jobs" />
             <SideMenuItem
               name="Integrations"
               icon="integration"
               to=""
+              count={3}
               data-action="integrations"
               hasWarning
             />
-            <SideMenuItem name="Triggers" icon="trigger" to="" data-action="triggers" />
+            <SideMenuItem name="Projects" icon="job" to="" data-action="projects" />
+            <SideMenuItem name="Team" icon="trigger" to="" data-action="team" />
             <SideMenuItem
-              name="Environments & API Keys"
+              name="Usage & Billing"
               icon="environment"
               to=""
-              data-action="environments & api keys"
+              data-action="usage & billing"
             />
           </div>
         </div>
@@ -84,20 +82,22 @@ function SideMenuItem({
   hasWarning = false,
   count,
   target,
+  subItem = false,
 }: {
-  icon: IconNames | React.ComponentType<any>;
+  icon?: IconNames | React.ComponentType<any>;
   name: string;
   to: string;
   hasWarning?: boolean;
   count?: number;
   forceActive?: boolean;
   target?: string;
+  subItem?: boolean;
 }) {
   return (
     <SimpleTooltip
       button={
         <NavLinkButton
-          variant="side-menu-item"
+          variant={subItem ? "side-menu-sub-item" : "side-menu-item"}
           fullWidth
           textAlignLeft
           LeadingIcon={icon}
@@ -109,15 +109,17 @@ function SideMenuItem({
               isActive = forceActive;
             }
             return cn(
+              "text-bright",
+              subItem ? "text-dimmed" : "",
               isActive || isPending
-                ? "bg-slate-800 text-bright group-hover:bg-slate-800"
-                : "text-dimmed group-hover:bg-slate-850 group-hover:text-bright"
+                ? "bg-slate-850 text-bright group-hover:bg-slate-850"
+                : "group-hover:bg-slate-850 group-hover:text-bright"
             );
           }}
         >
           <div className="flex w-full items-center justify-between">
             {name}
-            <div>
+            <div className="flex items-center gap-1">
               {count && <MenuCount count={count} />}
               {hasWarning && <Icon icon="error" className="h-5 w-5" />}
             </div>
