@@ -38,15 +38,15 @@ export function SideMenu() {
         "flex h-full flex-col gap-y-8 overflow-hidden border-r border-uiBorder transition scrollbar-hide"
       )}
     >
-      <div className="flex h-full flex-col justify-between">
+      <div className="flex h-full flex-col">
         <SideMenuOrgHeader
           className={cn(
             "border-b px-1 transition",
             isScrolled ? " border-border" : "border-transparent"
           )}
         />
-        <div className="overflow-hidden overflow-y-auto pt-4" ref={borderRef}>
-          <div>
+        <div className="h-full overflow-hidden overflow-y-auto pt-4" ref={borderRef}>
+          <div className="mb-8">
             <SideMenuHeader title="My Project 1" />
             <SideMenuItem name="Jobs" icon="job" count={33} to="" data-action="jobs" hasWarning />
             <SideMenuItem name="Runs" icon="integration" to="" data-action="runs" />
