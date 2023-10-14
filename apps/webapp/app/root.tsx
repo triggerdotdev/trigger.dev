@@ -17,6 +17,13 @@ import { appEnvTitleTag } from "./utils";
 import { ErrorBoundary as HighlightErrorBoundary } from "@highlight-run/react";
 import { useHighlight } from "./hooks/useHighlight";
 import { ExternalScripts } from "remix-utils";
+import rdtStylesheet from "remix-development-tools/index.css";
+import { withDevTools } from "remix-development-tools";
+
+// export const links: LinksFunction = () => {
+//   return [{ rel: "stylesheet", href: rdtStylesheet }] 
+// } 
+
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
@@ -114,4 +121,4 @@ function App() {
   );
 }
 
-export default App;
+export default process.env.NODE_ENV === "development" ? withDevTools(App) : App;
