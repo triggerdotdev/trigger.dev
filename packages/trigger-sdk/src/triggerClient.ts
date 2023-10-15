@@ -644,6 +644,10 @@ export class TriggerClient {
     return this.#client.cancelEvent(eventId);
   }
 
+  async cancelRunsForEvent(eventId: string) {
+    return this.#client.cancelRunsForEvent(eventId);
+  }
+
   async updateStatus(runId: string, id: string, status: StatusUpdate) {
     return this.#client.updateStatus(runId, id, status);
   }
