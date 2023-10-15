@@ -1,0 +1,47 @@
+---
+
+Title: Enhancing Task Callback Documentation
+Description: This contribution aims to improve the documentation for Task Callbacks in the project's io.runTask() function. The current documentation provides limited information about this crucial feature, and this update intends to make it more comprehensive and informative. It covers when and why to use callback URLs, how to correctly type io.runTask() for the expected output, how the request to the task URL works, and an example use case. This enhancement will help users better understand and leverage Task Callbacks to communicate with external systems, integrate with third-party services, and improve the reliability of their workflows.
+
+---
+
+## Task Callbacks with `io.runTask()`
+
+The `io.runTask()` function in our project allows you to create and run a Task within a Run. A Task is a resumable unit of a Run that can be retried, resumed, and logged. Task Callbacks provide a way to communicate with external systems and notify them about the status and results of a task. In this guide, we will explore how to use Task Callbacks effectively.
+
+### When to Use Callback URLs
+
+Using callback URLs makes sense when you need to notify an external system about the status and results of a task. This can be especially useful in scenarios like integration with third-party services or handling asynchronous operations. Below is an example of how to use `io.runTask()` with a callback URL:
+
+```javascript
+await io.runTask(
+  "use-callback-url",
+  async (task) => {
+    // task.callbackUrl is the URL to call when the task is done
+    // The output of this task will be the body POSTed to this URL
+  },
+  {
+    name: "Use the callbackUrl to notify the caller when the task is done",
+    callback: {
+      enabled: true,
+      timeoutInSeconds: 300, // If task.callbackUrl is not called within 300 seconds, the task will fail
+    },
+  }
+);
+
+
+##Typing io.runTask() for Correct Output
+To ensure that the output type is correct when using io.runTask(), you can define TypeScript types for the output of your task. This helps with type checking and ensures that you handle the task results correctly.
+
+
+##How the Request to the Task URL Works
+When you use a callback URL, the output of the task is sent as a POST request to the specified URL. The entire JSON body of the request becomes the task output. This allows you to customize the data sent to the callback URL to meet the requirements of the external system.
+
+##Understanding the Timeout
+The timeoutInSeconds option within the callback configuration determines the maximum time allowed for the callback URL to be called. If the callback URL is not called within the specified timeout, the task will be considered as failed.
+
+##Example Use Case
+One common example of using callback URLs is integrating with third-party services. For instance, you could use this feature to notify an external payment gateway when a payment processing task is completed. The payment gateway can then take appropriate actions based on the task result.
+
+##Conclusion
+In this guide, we've learned how to effectively use Task Callbacks with io.runTask() to communicate with external systems and improve the robustness of your workflows. This feature is particularly useful in scenarios where you need to notify other services or systems about the status and results of your tasks.
