@@ -115,12 +115,14 @@ export default function LoginPage() {
       </LoginTooltip>
       <LoginTooltip side="top" content="❤️ Loved by developers">
         <div className={cn(layout, border, wider)}>
-          <Header3 className="relative text-2xl font-normal leading-8 text-dimmed before:absolute before:-top-10 before:left-2 before:-z-10 before:text-8xl before:text-indigo-500 before:opacity-20 before:content-['❝']">
-            Trigger.dev is redefining background jobs for modern developers.
-          </Header3>
-          <Paragraph variant="small" className="mt-4 text-slate-600">
-            Paul Copplestone, Supabase
-          </Paragraph>
+          <div>
+            <Header3 className="relative text-2xl font-normal leading-8 text-dimmed before:absolute before:-top-10 before:left-2 before:-z-10 before:text-8xl before:text-indigo-500 before:opacity-20 before:content-['❝']">
+              Trigger.dev is redefining background jobs for modern developers.
+            </Header3>
+            <Paragraph variant="small" className="mt-4 text-slate-600">
+              Paul Copplestone, Supabase
+            </Paragraph>
+          </div>
         </div>
       </LoginTooltip>
       <div className={cn(layout, border)}>
