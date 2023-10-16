@@ -1,22 +1,18 @@
 import boxen from "boxen";
-import chalk from "chalk";
 import childProcess from "child_process";
 import chokidar from "chokidar";
-import fs from "fs/promises";
 import ngrok from "ngrok";
-import { run as ncuRun } from "npm-check-updates";
 import ora, { Ora } from "ora";
 import pRetry, { AbortError } from "p-retry";
-import pathModule from "path";
 import util from "util";
 import { z } from "zod";
-import { Framework, getFramework } from "../frameworks";
+import { Framework } from "../frameworks";
 import { standardWatchFilePaths, standardWatchIgnoreRegex } from "../frameworks/watchConfig";
 import { telemetryClient } from "../telemetry/telemetry";
 import { getEnvFilename } from "../utils/env";
 import fetch from "../utils/fetchUseProxy";
 import { getTriggerApiDetails } from "../utils/getTriggerApiDetails";
-import { getUserPackageManager } from "../utils/getUserPkgManager";
+import { JsRuntime, getJsRuntime } from "../utils/jsRuntime";
 import { logger } from "../utils/logger";
 import { resolvePath } from "../utils/parseNameAndPath";
 import { RequireKeys } from "../utils/requiredKeys";
@@ -45,6 +41,8 @@ const formattedDate = new Intl.DateTimeFormat("en", {
   second: "numeric",
 });
 
+let runtime: JsRuntime;
+
 export async function devCommand(path: string, anyOptions: any) {
   telemetryClient.dev.started(path, anyOptions);
 
@@ -57,12 +55,12 @@ export async function devCommand(path: string, anyOptions: any) {
   const options = result.data;
 
   const resolvedPath = resolvePath(path);
-
+  runtime = await getJsRuntime(resolvedPath, logger);
   //check for outdated packages, don't await this
-  checkForOutdatedPackages(resolvedPath);
+  runtime.checkForOutdatedPackages();
 
   // Read from package.json to get the endpointId
-  const endpointId = await getEndpointIdFromPackageJson(resolvedPath, options);
+  const endpointId = await getEndpointId(runtime, options.clientId);
   if (!endpointId) {
     logger.error(
       "You must run the `init` command first to setup the project – you are missing \n'trigger.dev': { 'endpointId': 'your-client-id' } from your package.json file, or pass in the --client-id option to this command"
@@ -73,8 +71,8 @@ export async function devCommand(path: string, anyOptions: any) {
   logger.success(`✔️ [trigger.dev] Detected TriggerClient id: ${endpointId}`);
 
   //resolve the options using the detected framework (use default if there isn't a matching framework)
-  const packageManager = await getUserPackageManager(resolvedPath);
-  const framework = await getFramework(resolvedPath, packageManager);
+  const packageManager = await runtime.getUserPackageManager();
+  const framework = await runtime.getFramework();
   const resolvedOptions = await resolveOptions(framework, resolvedPath, options);
 
   // Read from .env.local or .env to get the TRIGGER_API_KEY and TRIGGER_API_URL
@@ -250,8 +248,7 @@ async function startIndexing({
   apiClient,
 }: RefreshOptions & { apiClient: TriggerApi }) {
   spinner.start();
-
-  const refreshedEndpointId = await getEndpointIdFromPackageJson(path, resolvedOptions);
+  const refreshedEndpointId = await getEndpointId(runtime, resolvedOptions.clientId);
 
   const authorizedKey = await apiClient.whoami();
   if (!authorizedKey) {
@@ -396,43 +393,10 @@ async function verifyEndpoint(
   return;
 }
 
-export async function checkForOutdatedPackages(path: string) {
-  const updates = (await ncuRun({
-    packageFile: `${path}/package.json`,
-    filter: "/trigger.dev/.+$/",
-    upgrade: false,
-  })) as {
-    [key: string]: string;
-  };
-
-  if (typeof updates === "undefined" || Object.keys(updates).length === 0) {
-    return;
-  }
-
-  const packageFile = await fs.readFile(`${path}/package.json`);
-  const data = JSON.parse(Buffer.from(packageFile).toString("utf8"));
-  const dependencies = data.dependencies;
-  console.log(chalk.bgYellow("Updates available for trigger.dev packages"));
-  console.log(chalk.bgBlue("Run npx @trigger.dev/cli@latest update"));
-
-  for (let dep in updates) {
-    console.log(`${dep}  ${dependencies[dep]}  →  ${updates[dep]}`);
-  }
-}
-
-export async function getEndpointIdFromPackageJson(path: string, options: DevCommandOptions) {
-  if (options.clientId) {
-    return options.clientId;
-  }
-
-  const pkgJsonPath = pathModule.join(path, "package.json");
-  const pkgBuffer = await fs.readFile(pkgJsonPath);
-  const pkgJson = JSON.parse(pkgBuffer.toString());
-
-  const value = pkgJson["trigger.dev"]?.endpointId;
-  if (!value || typeof value !== "string") return;
-
-  return value as string;
+export function getEndpointId(runtime: JsRuntime, clientId?: string) {
+  if (clientId) {
+    return clientId;
+  } else return runtime.getEndpointId();
 }
 
 async function resolveEndpointUrl(apiUrl: string, port: number, hostname: string) {

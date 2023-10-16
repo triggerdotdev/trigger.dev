@@ -535,6 +535,16 @@ importers:
   docs: {}
 
   integrations/airtable:
+    specifiers:
+      '@trigger.dev/integration-kit': workspace:^2.2.0
+      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': 16.x
+      airtable: ^0.12.1
+      rimraf: ^3.0.2
+      tsup: 7.1.x
+      typescript: 4.9.4
+      zod: 3.22.3
     dependencies:
       '@trigger.dev/integration-kit':
         specifier: workspace:^2.1.9
@@ -566,6 +576,20 @@ importers:
         version: 4.9.4
 
   integrations/github:
+    specifiers:
+      '@octokit/request': ^6.2.5
+      '@octokit/request-error': ^4.0.1
+      '@octokit/types': ^9.2.3
+      '@octokit/webhooks': ^10.4.0
+      '@octokit/webhooks-types': ^6.10.0
+      '@trigger.dev/integration-kit': workspace:^2.2.0
+      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': '18'
+      octokit: ^2.0.14
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
+      zod: 3.22.3
     dependencies:
       '@octokit/request':
         specifier: ^6.2.5
@@ -609,6 +633,16 @@ importers:
         version: 6.6.3(postcss@8.4.21)(typescript@4.9.5)
 
   integrations/linear:
+    specifiers:
+      '@linear/sdk': ^8.0.0
+      '@trigger.dev/integration-kit': workspace:^2.2.0
+      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': 16.x
+      rimraf: ^3.0.2
+      tsup: 7.1.x
+      typescript: 4.9.4
+      zod: 3.22.3
     dependencies:
       '@linear/sdk':
         specifier: ^8.0.0
@@ -640,6 +674,14 @@ importers:
         version: 4.9.4
 
   integrations/openai:
+    specifiers:
+      '@trigger.dev/integration-kit': workspace:^2.2.0
+      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': '18'
+      openai: ^4.2.0
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
     dependencies:
       '@trigger.dev/integration-kit':
         specifier: workspace:^2.1.9
@@ -665,6 +707,14 @@ importers:
         version: 6.6.3(postcss@8.4.21)(typescript@4.9.5)
 
   integrations/plain:
+    specifiers:
+      '@team-plain/typescript-sdk': ^2.7.0
+      '@trigger.dev/integration-kit': workspace:^2.2.0
+      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': '18'
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
     dependencies:
       '@team-plain/typescript-sdk':
         specifier: ^2.7.0
@@ -690,6 +740,16 @@ importers:
         version: 6.6.3(postcss@8.4.21)(typescript@4.9.5)
 
   integrations/replicate:
+    specifiers:
+      '@trigger.dev/integration-kit': workspace:^2.2.0
+      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': 16.x
+      replicate: ^0.18.1
+      rimraf: ^3.0.2
+      tsup: 7.1.x
+      typescript: 4.9.4
+      zod: 3.22.3
     dependencies:
       '@trigger.dev/integration-kit':
         specifier: workspace:^2.1.9
@@ -721,6 +781,14 @@ importers:
         version: 4.9.4
 
   integrations/resend:
+    specifiers:
+      '@trigger.dev/integration-kit': workspace:^2.2.0
+      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': '18'
+      resend: ^1.0.0
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
     dependencies:
       '@trigger.dev/integration-kit':
         specifier: workspace:^2.1.9
@@ -746,6 +814,15 @@ importers:
         version: 6.6.3(postcss@8.4.21)(typescript@4.9.5)
 
   integrations/sendgrid:
+    specifiers:
+      '@sendgrid/mail': ^7.7.0
+      '@trigger.dev/integration-kit': workspace:^2.2.0
+      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': 16.x
+      rimraf: ^3.0.2
+      tsup: 7.1.x
+      typescript: 4.9.4
     dependencies:
       '@sendgrid/mail':
         specifier: ^7.7.0
@@ -774,6 +851,14 @@ importers:
         version: 4.9.4
 
   integrations/slack:
+    specifiers:
+      '@slack/web-api': ^6.8.1
+      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': '18'
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
+      zod: 3.22.3
     dependencies:
       '@slack/web-api':
         specifier: ^6.8.1
@@ -799,6 +884,16 @@ importers:
         version: 6.6.3(postcss@8.4.21)(typescript@4.9.5)
 
   integrations/stripe:
+    specifiers:
+      '@trigger.dev/integration-kit': workspace:^2.2.0
+      '@trigger.dev/sdk': workspace:^2.2.0
+      '@types/node': 16.x
+      rimraf: ^3.0.2
+      stripe: ^12.14.0
+      stripe-event-types: ^2.4.0
+      tsup: 7.1.x
+      typescript: 4.9.4
+      zod: 3.22.3
     dependencies:
       '@trigger.dev/integration-kit':
         specifier: workspace:^2.1.9
@@ -830,6 +925,17 @@ importers:
         version: 4.9.4
 
   integrations/supabase:
+    specifiers:
+      '@supabase/supabase-js': ^2.26.0
+      '@trigger.dev/integration-kit': workspace:^2.2.0
+      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': 18.x
+      rimraf: ^3.0.2
+      supabase-management-js: ^0.1.4
+      tsup: 7.1.x
+      typescript: 4.9.4
+      zod: 3.22.3
     dependencies:
       '@supabase/supabase-js':
         specifier: ^2.26.0
@@ -864,6 +970,15 @@ importers:
         version: 4.9.4
 
   integrations/typeform:
+    specifiers:
+      '@trigger.dev/integration-kit': workspace:^2.2.0
+      '@trigger.dev/sdk': workspace:^2.2.0
+      '@typeform/api-client': ^1.8.0
+      '@types/node': 16.x
+      rimraf: ^3.0.2
+      tsup: 7.1.x
+      typescript: 4.9.4
+      zod: 3.22.3
     dependencies:
       '@trigger.dev/integration-kit':
         specifier: workspace:^2.1.9
@@ -1192,6 +1307,17 @@ importers:
         version: 4.1.5
 
   packages/express:
+    specifiers:
+      '@remix-run/web-fetch': ^4.3.5
+      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/debug': ^4.1.7
+      '@types/express': ^4.17.13
+      debug: ^4.3.4
+      express: ^4.18.2
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
+      tsx: ^3.12.1
     dependencies:
       '@remix-run/web-fetch':
         specifier: ^4.3.5
@@ -1254,6 +1380,18 @@ importers:
         version: 4.9.5
 
   packages/nestjs:
+    specifiers:
+      '@nestjs/common': ^10.2.4
+      '@remix-run/web-fetch': ^4.3.5
+      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/debug': ^4.1.7
+      '@types/express': ^4.17.13
+      debug: ^4.3.4
+      fastify: ^4.23.2
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
+      tsx: ^3.12.1
     dependencies:
       '@nestjs/common':
         specifier: ^10.2.4
@@ -1325,6 +1463,21 @@ importers:
         version: 4.9.5
 
   packages/react:
+    specifiers:
+      '@tanstack/react-query': 5.0.0-beta.2
+      '@trigger.dev/core': workspace:^2.2.0
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/debug': ^4.1.7
+      '@types/react': 18.2.17
+      '@types/ws': ^8.5.3
+      debug: ^4.3.4
+      esbuild-plugin-file-path-extensions: ^1.0.0
+      react: ^18.2.0
+      rimraf: ^3.0.2
+      tsup: ^7.1.0
+      tsx: ^3.12.1
+      typescript: ^4.8.4
+      zod: 3.22.3
     dependencies:
       '@tanstack/react-query':
         specifier: 5.0.0-beta.2
@@ -1461,6 +1614,32 @@ importers:
         version: 5.2.2
 
   packages/trigger-sdk:
+    specifiers:
+      '@trigger.dev/core': workspace:^2.2.0
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/debug': ^4.1.7
+      '@types/node': '18'
+      '@types/slug': ^5.0.3
+      '@types/uuid': ^9.0.0
+      '@types/ws': ^8.5.3
+      chalk: ^5.2.0
+      cronstrue: ^2.21.0
+      debug: ^4.3.4
+      encoding: ^0.1.13
+      evt: ^2.4.13
+      get-caller-file: ^2.0.5
+      git-remote-origin-url: ^4.0.0
+      git-repo-info: ^2.1.1
+      rimraf: ^3.0.2
+      slug: ^6.0.0
+      terminal-link: ^3.0.0
+      tsup: ^6.5.0
+      tsx: ^3.12.1
+      typescript: ^4.8.4
+      ulid: ^2.3.0
+      uuid: ^9.0.0
+      ws: ^8.11.0
+      zod: 3.22.3
     dependencies:
       '@trigger.dev/core':
         specifier: workspace:^2.1.9
@@ -15200,7 +15379,15 @@ packages:
       - debug
     dev: false
 
-  /axios@0.26.1:
+  /axios/0.21.4_debug@4.3.2:
+    resolution: {integrity: sha512-ut5vewkiu8jjGBdqpM44XxjuCjq9LAKeHVmoVfHVzy8eHgxxq8SbAVQNovDA8mVi05kP0Ea/n/UzcSHcTJQfNg==}
+    dependencies:
+      follow-redirects: 1.15.2_debug@4.3.2
+    transitivePeerDependencies:
+      - debug
+    dev: false
+
+  /axios/0.26.1:
     resolution: {integrity: sha512-fPwcX4EvnSHuInCMItEhAGnaSEXRBjtzh9fOtsE6E1G6p7vl7edEeZe11QHf18+6+9gR5PbKV/sGKNaD8YaMeA==}
     dependencies:
       follow-redirects: 1.15.2(debug@4.3.2)
@@ -19883,7 +20070,19 @@ packages:
     dependencies:
       debug: 4.3.2
 
-  /for-each@0.3.3:
+  /follow-redirects/1.15.2_debug@4.3.2:
+    resolution: {integrity: sha512-VQLG33o04KaQ8uYi2tVNbdrWp1QWxNNea+nmIB4EVM28v0hmP17z7aG1+wAkNzVq4KeXTq3221ye5qTJP91JwA==}
+    engines: {node: '>=4.0'}
+    peerDependencies:
+      debug: '*'
+    peerDependenciesMeta:
+      debug:
+        optional: true
+    dependencies:
+      debug: 4.3.2
+    dev: false
+
+  /for-each/0.3.3:
     resolution: {integrity: sha512-jqYfLp7mo9vIyQf8ykW2v7A+2N4QjeCeI5+Dz9XraiO1ign81wjiH7Fb9vSOWvQfNtmSa4H2RoQTrrXivdUZmw==}
     dependencies:
       is-callable: 1.2.7

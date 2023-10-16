@@ -516,7 +516,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     });
 
     const rawResults = await this.#prisma.$queryRawUnsafe(
-      `WITH rows AS (SELECT id FROM ${this.graphileWorkerSchema}.jobs WHERE run_at < $1 AND locked_at IS NULL AND max_attempts = attempts ORDER BY run_at ASC LIMIT $2) DELETE FROM ${this.graphileWorkerSchema}.jobs WHERE id IN (SELECT id FROM rows) RETURNING id`,
+      `WITH rows AS (SELECT id FROM ${this.graphileWorkerSchema}.jobs WHERE run_at < $1 AND locked_at IS NULL AND max_attempts = attempts LIMIT $2 FOR UPDATE) DELETE FROM ${this.graphileWorkerSchema}.jobs WHERE id IN (SELECT id FROM rows) RETURNING id`,
       expirationDate,
       this.#cleanup.maxCount
     );
