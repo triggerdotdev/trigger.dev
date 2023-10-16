@@ -25,7 +25,8 @@
   "scripts": {
     "clean": "rimraf dist",
     "build": "npm run clean && npm run build:tsup",
-    "build:tsup": "tsup"
+    "build:tsup": "tsup",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@octokit/request": "^6.2.5",
