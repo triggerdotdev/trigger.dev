@@ -246,7 +246,14 @@
             "integrations/apis/github-tasks"
           ]
         },
-        "integrations/apis/linear",
+        {
+          "group": "Linear",
+          "pages": [
+            "integrations/apis/linear",
+            "integrations/apis/linear-triggers",
+            "integrations/apis/linear-tasks"
+          ]
+        },
         "integrations/apis/openai",
         "integrations/apis/plain",
         "integrations/apis/replicate",
