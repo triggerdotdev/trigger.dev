@@ -16,6 +16,7 @@
     "@octokit/types": "^9.2.3",
     "@octokit/webhooks-types": "^6.10.0",
     "@trigger.dev/tsconfig": "workspace:*",
+    "@trigger.dev/tsup": "workspace:*",
     "@types/node": "18",
     "rimraf": "^3.0.2",
     "tsup": "^6.5.0",
