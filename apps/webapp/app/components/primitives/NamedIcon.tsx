@@ -68,6 +68,7 @@ import { Spinner } from "./Spinner";
 import { SaplingIcon } from "~/assets/icons/SaplingIcon";
 import { TwoTreesIcon } from "~/assets/icons/TwoTreesIcon";
 import { OneTreeIcon } from "~/assets/icons/OneTreeIcon";
+import { tablerIcons } from "~/utils/tablerIcons";
 
 const icons = {
   account: (className: string) => <UserCircleIcon className={cn("text-slate-400", className)} />,
@@ -215,6 +216,12 @@ export function NamedIcon({
     );
   }
 
+  if (tablerIcons.has("tabler-" + name)) {
+    return <TablerIcon name={"tabler-" + name} className={className} />;
+  } else if (name.startsWith("tabler-") && tablerIcons.has(name)) {
+    return <TablerIcon name={name} className={className} />;
+  }
+
   console.log(`Icon ${name} not found`);
 
   if (fallback) {
@@ -245,5 +252,13 @@ export function NamedIconInBox({
     >
       <NamedIcon name={name} fallback={fallback} className={cn("h-6 w-6", iconClassName)} />
     </div>
+  );
+}
+
+export function TablerIcon({ name, className }: { name: string; className?: string }) {
+  return (
+    <svg className={className}>
+      <use xlinkHref={`/icons/tabler-sprite.svg#${name}`} />
+    </svg>
   );
 }
