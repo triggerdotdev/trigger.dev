@@ -367,6 +367,12 @@ importers:
   config-packages/tsconfig:
     specifiers: {}
 
+  config-packages/tsup:
+    specifiers:
+      tsup: 7.1.x
+    devDependencies:
+      tsup: 7.1.0
+
   docs:
     specifiers: {}
 
@@ -679,6 +685,7 @@ importers:
       execa: ^7.0.0
       gradient-string: ^2.0.2
       inquirer: ^9.1.4
+      liquidjs: ^10.9.2
       localtunnel: ^2.0.2
       mock-fs: ^5.2.0
       nanoid: ^4.0.2
@@ -714,6 +721,7 @@ importers:
       execa: 7.0.0
       gradient-string: 2.0.2
       inquirer: 9.1.4
+      liquidjs: 10.9.3
       localtunnel: 2.0.2
       mock-fs: 5.2.0
       nanoid: 4.0.2
@@ -23374,6 +23382,14 @@ packages:
   /lines-and-columns/1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
 
+  /liquidjs/10.9.3:
+    resolution: {integrity: sha512-vG8fLPSBtf0C6FJg0DwzxwWF0sPE+wIRrrGsNoe0DP3Pg4HOPqycGDT14V4UfyskUXsum7DkhUuZQ9tBRjbX+g==}
+    engines: {node: '>=14'}
+    hasBin: true
+    dependencies:
+      commander: 10.0.1
+    dev: false
+
   /listenercount/1.0.1:
     resolution: {integrity: sha512-3mk/Zag0+IJxeDrxSgaDPy4zZ3w05PRZeJNnlWhzFz5OkX49J4krc+A8X2d2M69vGMBEX0uyl8M+W+8gH+kBqQ==}
     dev: false
@@ -30630,6 +30646,41 @@ packages:
       sucrase: 3.32.0
       tree-kill: 1.2.2
       typescript: 4.9.5
+    transitivePeerDependencies:
+      - supports-color
+      - ts-node
+    dev: true
+
+  /tsup/7.1.0:
+    resolution: {integrity: sha512-mazl/GRAk70j8S43/AbSYXGgvRP54oQeX8Un4iZxzATHt0roW0t6HYDVZIXMw0ZQIpvr1nFMniIVnN5186lW7w==}
+    engines: {node: '>=16.14'}
+    hasBin: true
+    peerDependencies:
+      '@swc/core': ^1
+      postcss: ^8.4.12
+      typescript: '>=4.1.0'
+    peerDependenciesMeta:
+      '@swc/core':
+        optional: true
+      postcss:
+        optional: true
+      typescript:
+        optional: true
+    dependencies:
+      bundle-require: 4.0.1_esbuild@0.18.11
+      cac: 6.7.14
+      chokidar: 3.5.3
+      debug: 4.3.4
+      esbuild: 0.18.11
+      execa: 5.1.1
+      globby: 11.1.0
+      joycon: 3.1.1
+      postcss-load-config: 4.0.1
+      resolve-from: 5.0.0
+      rollup: 3.29.1
+      source-map: 0.8.0-beta.0
+      sucrase: 3.32.0
+      tree-kill: 1.2.2
     transitivePeerDependencies:
       - supports-color
       - ts-node
