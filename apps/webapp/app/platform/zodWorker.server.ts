@@ -379,7 +379,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     if (this.#cleanup) {
       cronItems.push({
-        pattern: this.#cleanup.frequencyExpression,
+        match: this.#cleanup.frequencyExpression,
         identifier: CLEANUP_TASK_NAME,
         task: CLEANUP_TASK_NAME,
         options: this.#cleanup.taskOptions,
@@ -388,7 +388,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     if (this.#reporter) {
       cronItems.push({
-        pattern: "50 * * * *", // Every hour at 50 minutes past the hour
+        match: "50 * * * *", // Every hour at 50 minutes past the hour
         identifier: REPORTER_TASK_NAME,
         task: REPORTER_TASK_NAME,
       });
