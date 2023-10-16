@@ -1,16 +1,18 @@
 import { DeliverEmailSchema } from "@/../../packages/emails/src";
-import { ScheduledPayloadSchema } from "@trigger.dev/core";
+import { ScheduledPayloadSchema, addMissingVersionField } from "@trigger.dev/core";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
 import { sendEmail } from "./email.server";
 import { IndexEndpointService } from "./endpoints/indexEndpoint.server";
+import { PerformEndpointIndexService } from "./endpoints/performEndpointIndexService";
 import { RecurringEndpointIndexService } from "./endpoints/recurringEndpointIndex.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
 import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
 import { integrationAuthRepository } from "./externalApis/integrationAuthRepository.server";
 import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
+import { logger } from "./logger.server";
 import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated.server";
 import { PerformRunExecutionV1Service } from "./runs/performRunExecutionV1.server";
 import { PerformRunExecutionV2Service } from "./runs/performRunExecutionV2.server";
@@ -19,7 +21,7 @@ import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.
 import { ActivateSourceService } from "./sources/activateSource.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
-import { addMissingVersionField } from "@trigger.dev/core";
+import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -28,8 +30,14 @@ const workerCatalog = {
     sourceData: z.any().optional(),
     reason: z.string().optional(),
   }),
+  performEndpointIndexing: z.object({
+    id: z.string(),
+  }),
   scheduleEmail: DeliverEmailSchema,
   startRun: z.object({ id: z.string() }),
+  processCallbackTimeout: z.object({
+    id: z.string(),
+  }),
   performTaskOperation: z.object({
     id: z.string(),
   }),
@@ -186,6 +194,11 @@ function getWorkerQueue() {
   return new ZodWorker({
     name: "workerQueue",
     prisma,
+    cleanup: {
+      frequencyExpression: "13,27,43 * * * *",
+      ttl: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxCount: 1000,
+    },
     runnerOptions: {
       connectionString: env.DATABASE_URL,
       concurrency: env.WORKER_CONCURRENCY,
@@ -287,6 +300,7 @@ function getWorkerQueue() {
       deliverHttpSourceRequest: {
         priority: 1, // smaller number = higher priority
         maxAttempts: 14,
+        queueName: (payload) => `sources:${payload.id}`,
         handler: async (payload, job) => {
           const service = new DeliverHttpSourceRequestService();
 
@@ -302,9 +316,17 @@ function getWorkerQueue() {
           await service.call(payload.id);
         },
       },
+      processCallbackTimeout: {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new ProcessCallbackTimeoutService();
+
+          await service.call(payload.id);
+        },
+      },
       performTaskOperation: {
         priority: 0, // smaller number = higher priority
-        queueName: (payload) => `tasks:${payload.id}`,
         maxAttempts: 3,
         handler: async (payload, job) => {
           const service = new PerformTaskOperationService();
@@ -313,7 +335,6 @@ function getWorkerQueue() {
         },
       },
       scheduleEmail: {
-        queueName: "internal-queue",
         priority: 100,
         maxAttempts: 3,
         handler: async (payload, job) => {
@@ -325,8 +346,15 @@ function getWorkerQueue() {
         maxAttempts: 7,
         handler: async (payload, job) => {
           const service = new IndexEndpointService();
-
           await service.call(payload.id, payload.source, payload.reason, payload.sourceData);
+        },
+      },
+      performEndpointIndexing: {
+        priority: 1, // smaller number = higher priority
+        maxAttempts: 7,
+        handler: async (payload, job) => {
+          const service = new PerformEndpointIndexService();
+          await service.call(payload.id);
         },
       },
       deliverEvent: {
@@ -340,7 +368,6 @@ function getWorkerQueue() {
       },
       refreshOAuthToken: {
         priority: 8, // smaller number = higher priority
-        queueName: "internal-queue",
         maxAttempts: 7,
         handler: async (payload, job) => {
           await integrationAuthRepository.refreshConnection({

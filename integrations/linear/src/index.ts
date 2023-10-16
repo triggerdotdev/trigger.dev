@@ -158,7 +158,7 @@ export class Linear implements TriggerIntegration {
     if (!this._io) throw new Error("No IO");
     if (!this._connectionKey) throw new Error("No connection key");
 
-    return this._io.runTask<TResult>(
+    return this._io.runTask(
       key,
       (task, io) => {
         if (!this._client) throw new Error("No client");
@@ -182,7 +182,7 @@ export class Linear implements TriggerIntegration {
   >(
     task: TTask,
     key: IntegrationTaskKey,
-    params: Nullable<QueryVariables> = {}
+    params: Parameters<TTask>[1] = {}
   ): Promise<Awaited<ReturnType<TTask>>["nodes"]> {
     const boundTask = task.bind(this as any);
 
@@ -695,7 +695,7 @@ export class Linear implements TriggerIntegration {
     key: IntegrationTaskKey,
     params: {
       term: string;
-      variables?: L.SearchDocumentsQueryVariables;
+      variables?:  Parameters<LinearClient["searchDocuments"]>[1];
     }
   ): LinearReturnType<DocumentSearchPayload> {
     return this.runTask(
@@ -862,7 +862,7 @@ export class Linear implements TriggerIntegration {
     key: IntegrationTaskKey,
     params: {
       term: string;
-      variables?: L.SearchIssuesQueryVariables;
+      variables?: Parameters<LinearClient["searchIssues"]>[1];
     }
   ): LinearReturnType<IssueSearchPayload> {
     return this.runTask(
@@ -1273,7 +1273,7 @@ export class Linear implements TriggerIntegration {
     key: IntegrationTaskKey,
     params: {
       term: string;
-      variables?: L.SearchProjectsQueryVariables;
+      variables?: Parameters<LinearClient["searchProjects"]>[1];
     }
   ): LinearReturnType<ProjectSearchPayload> {
     return this.runTask(

@@ -13,7 +13,7 @@ import {
   RegisterDynamicSchedulePayloadSchema,
   ScheduleMetadataSchema,
 } from "./schedules";
-import { CachedTaskSchema, TaskSchema } from "./tasks";
+import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
 import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
 import { RunStatusSchema } from "./runs";
 import { JobRunStatusRecordSchema } from "./statuses";
@@ -176,11 +176,13 @@ export type HttpSourceRequestHeaders = z.output<typeof HttpSourceRequestHeadersS
 
 export const PongSuccessResponseSchema = z.object({
   ok: z.literal(true),
+  triggerVersion: z.string().optional(),
 });
 
 export const PongErrorResponseSchema = z.object({
   ok: z.literal(false),
   error: z.string(),
+  triggerVersion: z.string().optional(),
 });
 
 export const PongResponseSchema = z.discriminatedUnion("ok", [
@@ -193,11 +195,13 @@ export type PongResponse = z.infer<typeof PongResponseSchema>;
 export const ValidateSuccessResponseSchema = z.object({
   ok: z.literal(true),
   endpointId: z.string(),
+  triggerVersion: z.string().optional(),
 });
 
 export const ValidateErrorResponseSchema = z.object({
   ok: z.literal(false),
   error: z.string(),
+  triggerVersion: z.string().optional(),
 });
 
 export const ValidateResponseSchema = z.discriminatedUnion("ok", [
@@ -291,6 +295,57 @@ export const IndexEndpointResponseSchema = z.object({
 });
 
 export type IndexEndpointResponse = z.infer<typeof IndexEndpointResponseSchema>;
+
+export const EndpointIndexErrorSchema = z.object({
+  message: z.string(),
+  raw: z.any().optional(),
+});
+
+export type EndpointIndexError = z.infer<typeof EndpointIndexErrorSchema>;
+
+const IndexEndpointStatsSchema = z.object({
+  jobs: z.number(),
+  sources: z.number(),
+  dynamicTriggers: z.number(),
+  dynamicSchedules: z.number(),
+  disabledJobs: z.number().default(0),
+});
+
+export type IndexEndpointStats = z.infer<typeof IndexEndpointStatsSchema>;
+
+export function parseEndpointIndexStats(stats: unknown): IndexEndpointStats | undefined {
+  if (stats === null || stats === undefined) {
+    return;
+  }
+  return IndexEndpointStatsSchema.parse(stats);
+}
+
+export const GetEndpointIndexResponseSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("PENDING"),
+    updatedAt: z.coerce.date(),
+  }),
+  z.object({
+    status: z.literal("STARTED"),
+    updatedAt: z.coerce.date(),
+  }),
+  z.object({
+    status: z.literal("SUCCESS"),
+    stats: IndexEndpointStatsSchema,
+    updatedAt: z.coerce.date(),
+  }),
+  z.object({
+    status: z.literal("FAILURE"),
+    error: EndpointIndexErrorSchema,
+    updatedAt: z.coerce.date(),
+  }),
+]);
+
+export type GetEndpointIndexResponse = z.infer<typeof GetEndpointIndexResponseSchema>;
+
+export const EndpointHeadersSchema = z.object({
+  "trigger-version": z.string().optional(),
+});
 
 export const RawEventSchema = z.object({
   /** The `name` property must exactly match any subscriptions you want to
@@ -394,6 +449,8 @@ export const RunSourceContextSchema = z.object({
   metadata: z.any(),
 });
 
+export type RunSourceContext = z.infer<typeof RunSourceContextSchema>;
+
 export const RunJobBodySchema = z.object({
   event: ApiEventLogSchema,
   job: z.object({
@@ -424,7 +481,10 @@ export const RunJobBodySchema = z.object({
     .optional(),
   source: RunSourceContextSchema.optional(),
   tasks: z.array(CachedTaskSchema).optional(),
+  cachedTaskCursor: z.string().optional(),
+  noopTasksSet: z.string().optional(),
   connections: z.record(ConnectionAuthSchema).optional(),
+  yieldedExecutions: z.string().array().optional(),
 });
 
 export type RunJobBody = z.infer<typeof RunJobBodySchema>;
@@ -436,6 +496,13 @@ export const RunJobErrorSchema = z.object({
 });
 
 export type RunJobError = z.infer<typeof RunJobErrorSchema>;
+
+export const RunJobYieldExecutionErrorSchema = z.object({
+  status: z.literal("YIELD_EXECUTION"),
+  key: z.string(),
+});
+
+export type RunJobYieldExecutionError = z.infer<typeof RunJobYieldExecutionErrorSchema>;
 
 export const RunJobInvalidPayloadErrorSchema = z.object({
   status: z.literal("INVALID_PAYLOAD"),
@@ -482,6 +549,7 @@ export const RunJobSuccessSchema = z.object({
 export type RunJobSuccess = z.infer<typeof RunJobSuccessSchema>;
 
 export const RunJobResponseSchema = z.discriminatedUnion("status", [
+  RunJobYieldExecutionErrorSchema,
   RunJobErrorSchema,
   RunJobUnresolvedAuthErrorSchema,
   RunJobInvalidPayloadErrorSchema,
@@ -608,6 +676,16 @@ export const RunTaskOptionsSchema = z.object({
   params: z.any(),
   /** The style of the log entry. */
   style: StyleSchema.optional(),
+  /** Allows you to expose a `task.callbackUrl` to use in your tasks. Enabling this feature will cause the task to return the data sent to the callbackUrl instead of the usual async callback result. */
+  callback: z
+    .object({
+      /** Causes the task to wait for and return the data of the first request sent to `task.callbackUrl`. */
+      enabled: z.boolean(),
+      /** Time to wait for the first request to `task.callbackUrl`. Default: One hour. */
+      timeoutInSeconds: z.number(),
+    })
+    .partial()
+    .optional(),
   /** Allows you to link the Integration connection in the logs. This is handled automatically in integrations.  */
   connectionKey: z.string().optional(),
   /** An operation you want to perform on the Trigger.dev platform, current only "fetch" is supported. If you wish to `fetch` use [`io.backgroundFetch()`](https://trigger.dev/docs/sdk/io/backgroundfetch) instead. */
@@ -633,10 +711,31 @@ export const RunTaskBodyInputSchema = RunTaskOptionsSchema.extend({
 export type RunTaskBodyInput = z.infer<typeof RunTaskBodyInputSchema>;
 
 export const RunTaskBodyOutputSchema = RunTaskBodyInputSchema.extend({
+  properties: z.array(DisplayPropertySchema.partial()).optional(),
   params: DeserializedJsonSchema.optional().nullable(),
+  callback: z
+    .object({
+      enabled: z.boolean(),
+      timeoutInSeconds: z.number().default(3600),
+    })
+    .optional(),
 });
 
 export type RunTaskBodyOutput = z.infer<typeof RunTaskBodyOutputSchema>;
+
+export const RunTaskResponseWithCachedTasksBodySchema = z.object({
+  task: ServerTaskSchema,
+  cachedTasks: z
+    .object({
+      tasks: z.array(CachedTaskSchema),
+      cursor: z.string().optional(),
+    })
+    .optional(),
+});
+
+export type RunTaskResponseWithCachedTasksBody = z.infer<
+  typeof RunTaskResponseWithCachedTasksBodySchema
+>;
 
 export const CompleteTaskBodyInputSchema = RunTaskBodyInputSchema.pick({
   properties: true,

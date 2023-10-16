@@ -1,14 +1,22 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { TaskStatus } from "@trigger.dev/database";
-import { RunTaskBodyOutput, RunTaskBodyOutputSchema, ServerTask } from "@trigger.dev/core";
+import {
+  API_VERSIONS,
+  RunTaskBodyOutput,
+  RunTaskBodyOutputSchema,
+  RunTaskResponseWithCachedTasksBody,
+  ServerTask,
+} from "@trigger.dev/core";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
-import { taskWithAttemptsToServerTask } from "~/models/task.server";
+import { prepareTasksForCaching, taskWithAttemptsToServerTask } from "~/models/task.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ulid } from "~/services/ulid.server";
 import { workerQueue } from "~/services/worker.server";
+import { generateSecret } from "~/services/sources/utils.server";
+import { env } from "~/env.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -16,6 +24,8 @@ const ParamsSchema = z.object({
 
 const HeadersSchema = z.object({
   "idempotency-key": z.string(),
+  "trigger-version": z.string().optional().nullable(),
+  "x-cached-tasks-cursor": z.string().optional().nullable(),
 });
 
 export async function action({ request, params }: ActionArgs) {
@@ -37,7 +47,11 @@ export async function action({ request, params }: ActionArgs) {
     return json({ error: "Invalid or Missing idempotency key" }, { status: 400 });
   }
 
-  const { "idempotency-key": idempotencyKey } = headers.data;
+  const {
+    "idempotency-key": idempotencyKey,
+    "trigger-version": triggerVersion,
+    "x-cached-tasks-cursor": cachedTasksCursor,
+  } = headers.data;
 
   const { runId } = ParamsSchema.parse(params);
 
@@ -48,6 +62,8 @@ export async function action({ request, params }: ActionArgs) {
     body: anyBody,
     runId,
     idempotencyKey,
+    triggerVersion,
+    cachedTasksCursor,
   });
 
   const body = RunTaskBodyOutputSchema.safeParse(anyBody);
@@ -71,6 +87,26 @@ export async function action({ request, params }: ActionArgs) {
       return json({ error: "Something went wrong" }, { status: 500 });
     }
 
+    if (triggerVersion === API_VERSIONS.LAZY_LOADED_CACHED_TASKS) {
+      const requestMigration = new ChangeRequestLazyLoadedCachedTasks();
+
+      const responseBody = await requestMigration.call(runId, task, cachedTasksCursor);
+
+      logger.debug(
+        "RunTaskService.call() response migrating with ChangeRequestLazyLoadedCachedTasks",
+        {
+          responseBody,
+          cachedTasksCursor,
+        }
+      );
+
+      return json(responseBody, {
+        headers: {
+          "trigger-version": API_VERSIONS.LAZY_LOADED_CACHED_TASKS,
+        },
+      });
+    }
+
     return json(task);
   } catch (error) {
     if (error instanceof Error) {
@@ -78,6 +114,51 @@ export async function action({ request, params }: ActionArgs) {
     }
 
     return json({ error: "Something went wrong" }, { status: 500 });
+  }
+}
+
+class ChangeRequestLazyLoadedCachedTasks {
+  #prismaClient: PrismaClient;
+
+  constructor(prismaClient: PrismaClient = prisma) {
+    this.#prismaClient = prismaClient;
+  }
+
+  public async call(
+    runId: string,
+    task: ServerTask,
+    cursor?: string | null
+  ): Promise<RunTaskResponseWithCachedTasksBody> {
+    if (!cursor) {
+      return {
+        task,
+      };
+    }
+
+    // We need to limit the cached tasks to not be too large >2MB when serialized
+    const TOTAL_CACHED_TASK_BYTE_LIMIT = 2000000;
+
+    const nextTasks = await this.#prismaClient.task.findMany({
+      where: {
+        runId,
+        status: "COMPLETED",
+        noop: false,
+      },
+      take: 250,
+      cursor: {
+        id: cursor,
+      },
+      orderBy: {
+        id: "asc",
+      },
+    });
+
+    const preparedTasks = prepareTasksForCaching(nextTasks, TOTAL_CACHED_TASK_BYTE_LIMIT);
+
+    return {
+      task,
+      cachedTasks: preparedTasks,
+    };
   }
 }
 
@@ -106,10 +187,13 @@ export class RunTaskService {
         },
       });
 
+      const delayUntilInFuture = taskBody.delayUntil && taskBody.delayUntil.getTime() > Date.now();
+      const callbackEnabled = taskBody.callback?.enabled;
+
       if (existingTask) {
         if (existingTask.status === "CANCELED") {
           const existingTaskStatus =
-            (taskBody.delayUntil && taskBody.delayUntil.getTime() > Date.now()) || taskBody.trigger
+            delayUntilInFuture || callbackEnabled || taskBody.trigger
               ? "WAITING"
               : taskBody.noop
               ? "COMPLETED"
@@ -154,16 +238,21 @@ export class RunTaskService {
         status = "CANCELED";
       } else {
         status =
-          (taskBody.delayUntil && taskBody.delayUntil.getTime() > Date.now()) || taskBody.trigger
+          delayUntilInFuture || callbackEnabled || taskBody.trigger
             ? "WAITING"
             : taskBody.noop
             ? "COMPLETED"
             : "RUNNING";
       }
 
+      const taskId = ulid();
+      const callbackUrl = callbackEnabled
+        ? `${env.APP_ORIGIN}/api/v1/runs/${runId}/tasks/${taskId}/callback/${generateSecret(12)}`
+        : undefined;
+
       const task = await tx.task.create({
         data: {
-          id: ulid(),
+          id: taskId,
           idempotencyKey,
           displayKey: taskBody.displayKey,
           runConnection: taskBody.connectionKey
@@ -191,9 +280,10 @@ export class RunTaskService {
           noop: taskBody.noop,
           delayUntil: taskBody.delayUntil,
           params: taskBody.params ?? undefined,
-          properties: taskBody.properties ?? undefined,
+          properties: this.#filterProperties(taskBody.properties) ?? undefined,
           redact: taskBody.redact ?? undefined,
           operation: taskBody.operation,
+          callbackUrl,
           style: taskBody.style ?? { style: "normal" },
           attempts: {
             create: {
@@ -215,13 +305,34 @@ export class RunTaskService {
           {
             id: task.id,
           },
-          { tx, runAt: task.delayUntil ?? undefined }
+          { tx, runAt: task.delayUntil ?? undefined, jobKey: `operation:${task.id}` }
         );
+      } else if (task.status === "WAITING" && callbackUrl && taskBody.callback) {
+        if (taskBody.callback.timeoutInSeconds > 0) {
+          // We need to schedule the callback timeout
+          await workerQueue.enqueue(
+            "processCallbackTimeout",
+            {
+              id: task.id,
+            },
+            { tx, runAt: new Date(Date.now() + taskBody.callback.timeoutInSeconds * 1000) }
+          );
+        }
       }
 
       return task;
     });
 
     return task ? taskWithAttemptsToServerTask(task) : undefined;
+  }
+
+  #filterProperties(properties: RunTaskBodyOutput["properties"]): RunTaskBodyOutput["properties"] {
+    if (!properties) return;
+
+    return properties.filter((property) => {
+      if (!property) return false;
+
+      return typeof property.label === "string" && typeof property.text === "string";
+    });
   }
 }

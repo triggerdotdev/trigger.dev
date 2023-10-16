@@ -1,7 +1,9 @@
 import {
+  API_VERSIONS,
   ApiEventLog,
   DeliverEventResponseSchema,
   DeserializedJson,
+  EndpointHeadersSchema,
   ErrorWithStackSchema,
   HttpSourceRequest,
   HttpSourceResponseSchema,
@@ -89,10 +91,20 @@ export class EndpointApi {
       };
     }
 
+    const headers = EndpointHeadersSchema.safeParse(Object.fromEntries(response.headers.entries()));
+
+    if (headers.success && headers.data["trigger-version"]) {
+      return {
+        ...pongResponse.data,
+        triggerVersion: headers.data["trigger-version"],
+      };
+    }
+
     return pongResponse.data;
   }
 
   async indexEndpoint() {
+    const startTimeInMs = performance.now();
     const response = await safeFetch(this.url, {
       method: "POST",
       headers: {
@@ -102,66 +114,13 @@ export class EndpointApi {
       },
     });
 
-    if (!response) {
-      throw new Error(`Could not connect to endpoint ${this.url}`);
-    }
-
-    if (response.status === 401) {
-      const body = await safeBodyFromResponse(response, ErrorWithStackSchema);
-
-      if (body) {
-        return {
-          ok: false,
-          error: body.message,
-        } as const;
-      }
-
-      return {
-        ok: false,
-        error: `Trigger API key is invalid`,
-      } as const;
-    }
-
-    if (!response.ok) {
-      throw new Error(`Could not connect to endpoint ${this.url}. Status code: ${response.status}`);
-    }
-
-    const anyBody = await response.json();
-
-    const data = IndexEndpointResponseSchema.parse(anyBody);
-
     return {
-      ok: true,
-      data,
-    } as const;
-  }
-
-  async deliverEvent(event: ApiEventLog) {
-    const response = await safeFetch(this.url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-trigger-api-key": this.apiKey,
-        "x-trigger-action": "DELIVER_EVENT",
-      },
-      body: JSON.stringify(event),
-    });
-
-    if (!response) {
-      throw new Error(`Could not connect to endpoint ${this.url}`);
-    }
-
-    if (!response.ok) {
-      throw new Error(`Could not connect to endpoint ${this.url}. Status code: ${response.status}`);
-    }
-
-    const anyBody = await response.json();
-
-    logger.debug("deliverEvent() response from endpoint", {
-      body: anyBody,
-    });
-
-    return DeliverEventResponseSchema.parse(anyBody);
+      response,
+      headerParser: EndpointHeadersSchema,
+      parser: IndexEndpointResponseSchema,
+      errorParser: ErrorWithStackSchema,
+      durationInMs: Math.floor(performance.now() - startTimeInMs),
+    };
   }
 
   async executeJobRequest(options: RunJobBody) {
@@ -338,6 +297,15 @@ export class EndpointApi {
       };
     }
 
+    const headers = EndpointHeadersSchema.safeParse(Object.fromEntries(response.headers.entries()));
+
+    if (headers.success && headers.data["trigger-version"]) {
+      return {
+        ...validateResponse.data,
+        triggerVersion: headers.data["trigger-version"],
+      };
+    }
+
     return validateResponse.data;
   }
 }
@@ -359,6 +327,7 @@ function addStandardRequestOptions(options: RequestInit) {
     headers: {
       ...options.headers,
       "user-agent": "triggerdotdev-server/2.0.0",
+      "x-trigger-version": API_VERSIONS.LAZY_LOADED_CACHED_TASKS,
     },
   };
 }

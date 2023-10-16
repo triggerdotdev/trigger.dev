@@ -8,3 +8,10 @@ export const logger = new Logger(
   ["examples", "output", "connectionString", "payload"],
   sensitiveDataReplacer
 );
+
+export const workerLogger = new Logger(
+  "worker",
+  (process.env.APP_LOG_LEVEL ?? "debug") as LogLevel,
+  ["examples", "output", "connectionString"],
+  sensitiveDataReplacer
+);

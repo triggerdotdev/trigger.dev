@@ -9,7 +9,6 @@
     "resolveJsonModule": true,
     "allowJs": true,
     "checkJs": true,
-
     /* EMIT RULES */
     "outDir": "./dist",
     "noEmit": true, // TSUP takes care of emitting js for us, in a MUCH faster way

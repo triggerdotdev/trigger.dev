@@ -1,4 +1,5 @@
 import { PrismaClient, prisma } from "~/db.server";
+import { logger } from "~/services/logger.server";
 
 export class OrgUsagePresenter {
   #prismaClient: PrismaClient;
@@ -33,6 +34,7 @@ export class OrgUsagePresenter {
         createdAt: {
           gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
         },
+        internal: false,
       },
     });
 
@@ -44,6 +46,7 @@ export class OrgUsagePresenter {
           gte: startOfLastMonth,
           lt: startOfMonth,
         },
+        internal: false,
       },
     });
 
@@ -63,7 +66,7 @@ export class OrgUsagePresenter {
         month: string;
         count: number;
       }[]
-    >`SELECT TO_CHAR("createdAt", 'YYYY-MM') as month, COUNT(*) as count FROM "JobRun" WHERE "organizationId" = ${organization.id} AND "createdAt" >= NOW() - INTERVAL '6 months' GROUP BY month ORDER BY month ASC`;
+    >`SELECT TO_CHAR("createdAt", 'YYYY-MM') as month, COUNT(*) as count FROM "JobRun" WHERE "organizationId" = ${organization.id} AND "createdAt" >= NOW() - INTERVAL '6 months' AND "internal" = FALSE GROUP BY month ORDER BY month ASC`;
 
     const chartData = chartDataRaw.map((obj) => ({
       name: obj.month,
@@ -139,11 +142,13 @@ export class OrgUsagePresenter {
       },
     });
 
+    const chartDataDisplay = fillInMissingMonthlyData(chartData, 6);
+
     return {
       id: organization.id,
       runsCount,
       runsCountLastMonth,
-      chartData: fillInMissingMonthlyData(chartData, 6),
+      chartData: chartDataDisplay,
       totalJobs,
       totalJobsLastMonth,
       totalIntegrations,
@@ -166,7 +171,7 @@ function fillInMissingMonthlyData(
 
   const startMonth = new Date(
     new Date(currentMonth).getFullYear(),
-    new Date(currentMonth).getMonth() - totalNumberOfMonths,
+    new Date(currentMonth).getMonth() - (totalNumberOfMonths - 2),
     1
   )
     .toISOString()
@@ -182,17 +187,36 @@ function fillInMissingMonthlyData(
   return completeData;
 }
 
+// Start month will be like 2023-03 and endMonth will be like 2023-10
+// The result should be an array of months between these two months, including the start and end month
+// So for example, if startMonth is 2023-03 and endMonth is 2023-10, the result should be:
+// ["2023-03", "2023-04", "2023-05", "2023-06", "2023-07", "2023-08", "2023-09", "2023-10"]
 function getMonthsBetween(startMonth: string, endMonth: string): string[] {
-  const startDate = new Date(startMonth);
-  const endDate = new Date(endMonth);
+  // Initialize result array
+  const result: string[] = [];
 
-  const months = [];
-  let currentDate = startDate;
+  // Parse the year and month from startMonth and endMonth
+  let [startYear, startMonthNum] = startMonth.split("-").map(Number);
+  let [endYear, endMonthNum] = endMonth.split("-").map(Number);
 
-  while (currentDate <= endDate) {
-    months.push(currentDate.toISOString().slice(0, 7));
-    currentDate = new Date(currentDate.setMonth(currentDate.getMonth() + 1));
+  // Loop through each month between startMonth and endMonth
+  for (let year = startYear; year <= endYear; year++) {
+    let monthStart = year === startYear ? startMonthNum : 1;
+    let monthEnd = year === endYear ? endMonthNum : 12;
+
+    for (let month = monthStart; month <= monthEnd; month++) {
+      // Format the month into a string and add it to the result array
+      result.push(`${year}-${String(month).padStart(2, "0")}`);
+    }
   }
 
-  return months;
+  return result;
+}
+
+function getLastSecondOfMonth(endMonth: string) {
+  const [year, month] = endMonth.split("-").map(Number);
+  const nextMonthFirstDay = new Date(year, month, 1);
+  nextMonthFirstDay.setDate(0);
+  nextMonthFirstDay.setHours(23, 59, 59);
+  return nextMonthFirstDay;
 }

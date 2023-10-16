@@ -15,7 +15,7 @@ const variations = {
     container: "flex items-center gap-x-1.5 rounded hover:bg-slate-850 pr-1 py-[0.1rem] pl-1.5",
     root: "h-3 w-6",
     thumb: "h-2.5 w-2.5 data-[state=checked]:translate-x-2.5 data-[state=unchecked]:translate-x-0",
-    text: "text-xs text-slate-400 group-hover:text-slate-200 mt-0.5",
+    text: "text-xs text-slate-400 group-hover:text-slate-200 hover:cursor-pointer",
   },
 };
 

@@ -45,6 +45,26 @@ You can have multiple Jobs that subscribe to the same event, they will all trigg
       ```
 
     </ResponseField>
+    <ResponseField name="examples" type="array">
+       Used to provide example payloads that are accepted by the job.
+
+       This will be available in the dashboard and can be used to trigger test runs.
+
+       <Expandable title="example object properties" defaultOpen>
+        <ResponseField name="id" type="string" required>
+          The example's ID.
+        </ResponseField>
+        <ResponseField name="name" type="string" required>
+          The name that's displayed in the dashboard.
+        </ResponseField>
+        <ResponseField name="payload" type="object" required>
+          The payload that's accepted by the job.
+        </ResponseField>
+        <ResponseField name="icon" type="string">
+          The icon to use for this example in the dashboard.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
 
   </Expandable>
 </ResponseField>
@@ -70,6 +90,19 @@ client.defineJob({
     filter: {
       tier: ["pro"],
     },
+    //(optional) example event object
+    examples: [
+      {
+        id: "issue.opened",
+        name: "Issue opened",
+        payload: {
+          userId: "1234",
+          tier: "free",
+        },
+        //optional
+        icon: "github",
+      },
+    ],
   }),
   run: async (payload, io, ctx) => {
     await io.logger.log("New pro user created", { userId: payload.userId });
