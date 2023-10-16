@@ -17,7 +17,7 @@
     "@trigger.dev/tsup": "workspace:*",
     "@types/node": "18",
     "rimraf": "^3.0.2",
-    "tsup": "^6.5.0",
+    "tsup": "7.1.x",
     "typescript": "4.9.4"
   },
   "scripts": {
