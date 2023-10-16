@@ -367,6 +367,12 @@ importers:
   config-packages/tsconfig:
     specifiers: {}
 
+  config-packages/tsup:
+    specifiers:
+      tsup: 7.1.x
+    devDependencies:
+      tsup: 7.1.0
+
   docs:
     specifiers: {}
 
@@ -375,7 +381,8 @@ importers:
       '@trigger.dev/integration-kit': workspace:^2.2.0
       '@trigger.dev/sdk': workspace:^2.2.0
       '@trigger.dev/tsconfig': workspace:*
-      '@types/node': 16.x
+      '@trigger.dev/tsup': workspace:*
+      '@types/node': '18'
       airtable: ^0.12.1
       rimraf: ^3.0.2
       tsup: 7.1.x
@@ -388,7 +395,8 @@ importers:
       zod: 3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
-      '@types/node': 16.18.11
+      '@trigger.dev/tsup': link:../../config-packages/tsup
+      '@types/node': 18.17.1
       rimraf: 3.0.2
       tsup: 7.1.0_typescript@4.9.4
       typescript: 4.9.4
@@ -403,10 +411,12 @@ importers:
       '@trigger.dev/integration-kit': workspace:^2.2.0
       '@trigger.dev/sdk': workspace:^2.2.0
       '@trigger.dev/tsconfig': workspace:*
+      '@trigger.dev/tsup': workspace:*
       '@types/node': '18'
       octokit: ^2.0.14
       rimraf: ^3.0.2
-      tsup: ^6.5.0
+      tsup: 7.1.x
+      typescript: 4.9.4
       zod: 3.22.3
     dependencies:
       '@octokit/request': 6.2.5
@@ -420,9 +430,11 @@ importers:
       '@octokit/types': 9.2.3
       '@octokit/webhooks-types': 6.10.0
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@trigger.dev/tsup': link:../../config-packages/tsup
       '@types/node': 18.14.0
       rimraf: 3.0.2
-      tsup: 6.6.3
+      tsup: 7.1.0_typescript@4.9.4
+      typescript: 4.9.4
 
   integrations/linear:
     specifiers:
@@ -430,7 +442,8 @@ importers:
       '@trigger.dev/integration-kit': workspace:^2.2.0
       '@trigger.dev/sdk': workspace:^2.2.0
       '@trigger.dev/tsconfig': workspace:*
-      '@types/node': 16.x
+      '@trigger.dev/tsup': workspace:*
+      '@types/node': '18'
       rimraf: ^3.0.2
       tsup: 7.1.x
       typescript: 4.9.4
@@ -442,7 +455,8 @@ importers:
       zod: 3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
-      '@types/node': 16.18.11
+      '@trigger.dev/tsup': link:../../config-packages/tsup
+      '@types/node': 18.17.1
       rimraf: 3.0.2
       tsup: 7.1.0_typescript@4.9.4
       typescript: 4.9.4
@@ -452,19 +466,23 @@ importers:
       '@trigger.dev/integration-kit': workspace:^2.2.0
       '@trigger.dev/sdk': workspace:^2.2.0
       '@trigger.dev/tsconfig': workspace:*
+      '@trigger.dev/tsup': workspace:*
       '@types/node': '18'
       openai: ^4.2.0
       rimraf: ^3.0.2
-      tsup: ^6.5.0
+      tsup: 7.1.x
+      typescript: 4.9.4
     dependencies:
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       openai: 4.2.0
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@trigger.dev/tsup': link:../../config-packages/tsup
       '@types/node': 18.15.13
       rimraf: 3.0.2
-      tsup: 6.6.3
+      tsup: 7.1.0_typescript@4.9.4
+      typescript: 4.9.4
 
   integrations/plain:
     specifiers:
@@ -472,25 +490,30 @@ importers:
       '@trigger.dev/integration-kit': workspace:^2.2.0
       '@trigger.dev/sdk': workspace:^2.2.0
       '@trigger.dev/tsconfig': workspace:*
+      '@trigger.dev/tsup': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
-      tsup: ^6.5.0
+      tsup: 7.1.x
+      typescript: 4.9.4
     dependencies:
       '@team-plain/typescript-sdk': 2.7.0
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@trigger.dev/tsup': link:../../config-packages/tsup
       '@types/node': 18.15.13
       rimraf: 3.0.2
-      tsup: 6.6.3
+      tsup: 7.1.0_typescript@4.9.4
+      typescript: 4.9.4
 
   integrations/replicate:
     specifiers:
       '@trigger.dev/integration-kit': workspace:^2.2.0
       '@trigger.dev/sdk': workspace:^2.2.0
       '@trigger.dev/tsconfig': workspace:*
-      '@types/node': 16.x
+      '@trigger.dev/tsup': workspace:*
+      '@types/node': '18'
       replicate: ^0.18.1
       rimraf: ^3.0.2
       tsup: 7.1.x
@@ -503,7 +526,8 @@ importers:
       zod: 3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
-      '@types/node': 16.18.11
+      '@trigger.dev/tsup': link:../../config-packages/tsup
+      '@types/node': 18.17.1
       rimraf: 3.0.2
       tsup: 7.1.0_typescript@4.9.4
       typescript: 4.9.4
@@ -513,19 +537,23 @@ importers:
       '@trigger.dev/integration-kit': workspace:^2.2.0
       '@trigger.dev/sdk': workspace:^2.2.0
       '@trigger.dev/tsconfig': workspace:*
+      '@trigger.dev/tsup': workspace:*
       '@types/node': '18'
       resend: ^1.0.0
       rimraf: ^3.0.2
-      tsup: ^6.5.0
+      tsup: 7.1.x
+      typescript: 4.9.4
     dependencies:
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       resend: 1.0.0
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@trigger.dev/tsup': link:../../config-packages/tsup
       '@types/node': 18.15.13
       rimraf: 3.0.2
-      tsup: 6.6.3
+      tsup: 7.1.0_typescript@4.9.4
+      typescript: 4.9.4
 
   integrations/sendgrid:
     specifiers:
@@ -533,7 +561,8 @@ importers:
       '@trigger.dev/integration-kit': workspace:^2.2.0
       '@trigger.dev/sdk': workspace:^2.2.0
       '@trigger.dev/tsconfig': workspace:*
-      '@types/node': 16.x
+      '@trigger.dev/tsup': workspace:*
+      '@types/node': '18'
       rimraf: ^3.0.2
       tsup: 7.1.x
       typescript: 4.9.4
@@ -543,7 +572,8 @@ importers:
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
-      '@types/node': 16.18.11
+      '@trigger.dev/tsup': link:../../config-packages/tsup
+      '@types/node': 18.17.1
       rimraf: 3.0.2
       tsup: 7.1.0_typescript@4.9.4
       typescript: 4.9.4
@@ -553,9 +583,11 @@ importers:
       '@slack/web-api': ^6.8.1
       '@trigger.dev/sdk': workspace:^2.2.0
       '@trigger.dev/tsconfig': workspace:*
+      '@trigger.dev/tsup': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
-      tsup: ^6.5.0
+      tsup: 7.1.x
+      typescript: 4.9.4
       zod: 3.22.3
     dependencies:
       '@slack/web-api': 6.8.1
@@ -563,15 +595,19 @@ importers:
       zod: 3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@trigger.dev/tsup': link:../../config-packages/tsup
       '@types/node': 18.15.13
       rimraf: 3.0.2
-      tsup: 6.6.3
+      tsup: 7.1.0_typescript@4.9.4
+      typescript: 4.9.4
 
   integrations/stripe:
     specifiers:
       '@trigger.dev/integration-kit': workspace:^2.2.0
       '@trigger.dev/sdk': workspace:^2.2.0
-      '@types/node': 16.x
+      '@trigger.dev/tsconfig': workspace:*
+      '@trigger.dev/tsup': workspace:*
+      '@types/node': '18'
       rimraf: ^3.0.2
       stripe: ^12.14.0
       stripe-event-types: ^2.4.0
@@ -584,7 +620,9 @@ importers:
       stripe: 12.14.0
       zod: 3.22.3
     devDependencies:
-      '@types/node': 16.18.11
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@trigger.dev/tsup': link:../../config-packages/tsup
+      '@types/node': 18.17.1
       rimraf: 3.0.2
       stripe-event-types: 2.4.0_stripe@12.14.0
       tsup: 7.1.0_typescript@4.9.4
@@ -596,7 +634,8 @@ importers:
       '@trigger.dev/integration-kit': workspace:^2.2.0
       '@trigger.dev/sdk': workspace:^2.2.0
       '@trigger.dev/tsconfig': workspace:*
-      '@types/node': 18.x
+      '@trigger.dev/tsup': workspace:*
+      '@types/node': '18'
       rimraf: ^3.0.2
       supabase-management-js: ^0.1.4
       tsup: 7.1.x
@@ -610,7 +649,8 @@ importers:
       zod: 3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
-      '@types/node': 18.15.13
+      '@trigger.dev/tsup': link:../../config-packages/tsup
+      '@types/node': 18.17.1
       rimraf: 3.0.2
       tsup: 7.1.0_typescript@4.9.4
       typescript: 4.9.4
@@ -619,8 +659,10 @@ importers:
     specifiers:
       '@trigger.dev/integration-kit': workspace:^2.2.0
       '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/tsconfig': workspace:*
+      '@trigger.dev/tsup': workspace:*
       '@typeform/api-client': ^1.8.0
-      '@types/node': 16.x
+      '@types/node': '18'
       rimraf: ^3.0.2
       tsup: 7.1.x
       typescript: 4.9.4
@@ -631,7 +673,9 @@ importers:
       '@typeform/api-client': 1.8.0
       zod: 3.22.3
     devDependencies:
-      '@types/node': 16.18.11
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@trigger.dev/tsup': link:../../config-packages/tsup
+      '@types/node': 18.17.1
       rimraf: 3.0.2
       tsup: 7.1.0_typescript@4.9.4
       typescript: 4.9.4
@@ -679,6 +723,7 @@ importers:
       execa: ^7.0.0
       gradient-string: ^2.0.2
       inquirer: ^9.1.4
+      liquidjs: ^10.9.2
       localtunnel: ^2.0.2
       mock-fs: ^5.2.0
       nanoid: ^4.0.2
@@ -714,6 +759,7 @@ importers:
       execa: 7.0.0
       gradient-string: 2.0.2
       inquirer: 9.1.4
+      liquidjs: 10.9.3
       localtunnel: 2.0.2
       mock-fs: 5.2.0
       nanoid: 4.0.2
@@ -7493,7 +7539,7 @@ packages:
     dependencies:
       '@babel/core': 7.21.8
       '@jest/types': 29.6.1
-      '@jridgewell/trace-mapping': 0.3.17
+      '@jridgewell/trace-mapping': 0.3.19
       babel-plugin-istanbul: 6.1.1
       chalk: 4.1.2
       convert-source-map: 2.0.0
@@ -7587,19 +7633,8 @@ packages:
       '@jridgewell/trace-mapping': 0.3.19
     dev: true
 
-  /@jridgewell/sourcemap-codec/1.4.14:
-    resolution: {integrity: sha512-XPSJHWmi394fuUuzDnGz1wiKqWfo1yXecHQMRf2l6hztTO+nPru658AyDngaBe7isIxEkRsPR3FZh+s7iVa4Uw==}
-    dev: true
-
   /@jridgewell/sourcemap-codec/1.4.15:
     resolution: {integrity: sha512-eF2rxCRulEKXHTRiDrDy6erMYWqNw4LPdQ8UQA4huuxaQsVeRPFl2oM8oDGxMFhJUWZf9McpLtJasDDZb/Bpeg==}
-
-  /@jridgewell/trace-mapping/0.3.17:
-    resolution: {integrity: sha512-MCNzAp77qzKca9+W/+I0+sEpaUnZoeasnghNeVc41VZCEKaCH73Vq3BZZ/SzWIgrqE4H4ceI+p+b6C0mHf9T4g==}
-    dependencies:
-      '@jridgewell/resolve-uri': 3.1.0
-      '@jridgewell/sourcemap-codec': 1.4.14
-    dev: true
 
   /@jridgewell/trace-mapping/0.3.19:
     resolution: {integrity: sha512-kf37QtfW+Hwx/buWGMPcR60iF9ziHa6r/CZJIHbmcm4+0qrXiVdxegAH0F6yddEVQ7zdkjcGCgCzUu+BcbhQxw==}
@@ -23374,6 +23409,14 @@ packages:
   /lines-and-columns/1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
 
+  /liquidjs/10.9.3:
+    resolution: {integrity: sha512-vG8fLPSBtf0C6FJg0DwzxwWF0sPE+wIRrrGsNoe0DP3Pg4HOPqycGDT14V4UfyskUXsum7DkhUuZQ9tBRjbX+g==}
+    engines: {node: '>=14'}
+    hasBin: true
+    dependencies:
+      commander: 10.0.1
+    dev: false
+
   /listenercount/1.0.1:
     resolution: {integrity: sha512-3mk/Zag0+IJxeDrxSgaDPy4zZ3w05PRZeJNnlWhzFz5OkX49J4krc+A8X2d2M69vGMBEX0uyl8M+W+8gH+kBqQ==}
     dev: false
@@ -30630,6 +30673,41 @@ packages:
       sucrase: 3.32.0
       tree-kill: 1.2.2
       typescript: 4.9.5
+    transitivePeerDependencies:
+      - supports-color
+      - ts-node
+    dev: true
+
+  /tsup/7.1.0:
+    resolution: {integrity: sha512-mazl/GRAk70j8S43/AbSYXGgvRP54oQeX8Un4iZxzATHt0roW0t6HYDVZIXMw0ZQIpvr1nFMniIVnN5186lW7w==}
+    engines: {node: '>=16.14'}
+    hasBin: true
+    peerDependencies:
+      '@swc/core': ^1
+      postcss: ^8.4.12
+      typescript: '>=4.1.0'
+    peerDependenciesMeta:
+      '@swc/core':
+        optional: true
+      postcss:
+        optional: true
+      typescript:
+        optional: true
+    dependencies:
+      bundle-require: 4.0.1_esbuild@0.18.11
+      cac: 6.7.14
+      chokidar: 3.5.3
+      debug: 4.3.4
+      esbuild: 0.18.11
+      execa: 5.1.1
+      globby: 11.1.0
+      joycon: 3.1.1
+      postcss-load-config: 4.0.1
+      resolve-from: 5.0.0
+      rollup: 3.29.1
+      source-map: 0.8.0-beta.0
+      sucrase: 3.32.0
+      tree-kill: 1.2.2
     transitivePeerDependencies:
       - supports-color
       - ts-node
