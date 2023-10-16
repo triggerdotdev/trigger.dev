@@ -1,0 +1,28 @@
+import { Request } from "{{ sdkPackage }}";
+import { WebhookActionType, WebhookPayload } from "./schemas";
+
+export type Get{{ identifier | capitalize }}Payload<
+  TPayload extends WebhookPayload,
+  TAction extends any = any,
+> = TAction extends WebhookActionType ? Extract<TPayload, { action: TAction }> : TPayload;
+
+type FunctionKeys<T> = {
+  [K in keyof T]: T[K] extends Function ? K : never;
+}[keyof T];
+
+export type Serialized{{ identifier | capitalize }}Output<T> = T extends object
+  ? T extends Array<infer U>
+    ? Array<Serialized{{ identifier | capitalize }}Output<U>>
+    : { [K in keyof T as Exclude<K, FunctionKeys<T> | `_${string}`>]: Serialized{{ identifier | capitalize }}Output<T[K]> }
+  : T;
+
+export type {{ identifier | capitalize }}ReturnType<
+  TPayload extends Omit<Request, "_request">,
+  K extends unknown = unknown,
+> = Promise<
+  Awaited<Serialized{{ identifier | capitalize }}Output<Awaited<K extends keyof TPayload ? TPayload[K] : TPayload>>>
+>;
+
+export type AwaitNested<T extends object, K extends keyof T> = Omit<T, K> & {
+  [key in K]: Awaited<T[K]>;
+};
