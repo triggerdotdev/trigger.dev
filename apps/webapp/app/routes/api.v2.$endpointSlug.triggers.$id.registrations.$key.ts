@@ -10,6 +10,7 @@ import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { IngestSendEvent } from "~/services/events/ingestSendEvent.server";
 import { logger } from "~/services/logger.server";
 import { RegisterTriggerSourceServiceV2 } from "~/services/triggers/registerTriggerSourceV2.server";
+import { nanoid } from "nanoid";
 
 const ParamsSchema = z.object({
   endpointSlug: z.string(),
@@ -77,11 +78,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
       dynamicTriggerId: parsedParams.data.id,
     };
 
+    const eventId = `${registration.id}:${nanoid()}`;
+
     const ingestEventService = new IngestSendEvent();
     await ingestEventService.call(
       authenticatedEnv,
       {
-        id: registration.id,
+        id: eventId,
         name: REGISTER_SOURCE_EVENT_V2,
         source: "trigger.dev",
         payload,
