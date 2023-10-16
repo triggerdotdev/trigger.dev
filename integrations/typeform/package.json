@@ -13,6 +13,7 @@
     "dist/index.js.map"
   ],
   "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "16.x",
     "rimraf": "^3.0.2",
     "tsup": "7.1.x",

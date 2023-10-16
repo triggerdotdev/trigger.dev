@@ -12,7 +12,7 @@
     },
     "declaration": false,
     "declarationMap": false,
-    "baseUrl": ".",
+    "baseUrl": "__ALWAYS_OVERRIDE_THIS__",
     "stripInternal": true
   },
   "exclude": ["node_modules"]
