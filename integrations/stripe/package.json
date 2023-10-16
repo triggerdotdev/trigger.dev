@@ -15,7 +15,7 @@
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
     "@trigger.dev/tsup": "workspace:*",
-    "@types/node": "16.x",
+    "@types/node": "18",
     "rimraf": "^3.0.2",
     "stripe-event-types": "^2.4.0",
     "tsup": "7.1.x",
@@ -34,6 +34,6 @@
     "zod": "3.22.3"
   },
   "engines": {
-    "node": ">=16.8.0"
+    "node": ">=18.0.0"
   }
 }

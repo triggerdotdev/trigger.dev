@@ -15,7 +15,7 @@
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
     "@trigger.dev/tsup": "workspace:*",
-    "@types/node": "16.x",
+    "@types/node": "18",
     "rimraf": "^3.0.2",
     "tsup": "7.1.x",
     "typescript": "4.9.4"
@@ -32,6 +32,6 @@
     "@trigger.dev/integration-kit": "workspace:^2.2.0"
   },
   "engines": {
-    "node": ">=16.8.0"
+    "node": ">=18.0.0"
   }
 }
