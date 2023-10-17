@@ -860,9 +860,10 @@ export class TriggerClient {
         return { status: "ERROR", error: errorWithStack.data };
       }
 
+      const message = typeof error === "string" ? error : JSON.stringify(error);
       return {
         status: "ERROR",
-        error: { message: "Unknown error" },
+        error: { name: "Unknown error", message },
       };
     }
   }
