@@ -76,6 +76,9 @@ const workerCatalog = {
   connectionCreated: z.object({
     id: z.string(),
   }),
+  simulate: z.object({
+    seconds: z.number(),
+  }),
 };
 
 const executionWorkerCatalog = {
@@ -311,6 +314,12 @@ function getWorkerQueue() {
           await integrationAuthRepository.refreshConnection({
             connectionId: payload.connectionId,
           });
+        },
+      },
+      simulate: {
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          await new Promise((resolve) => setTimeout(resolve, payload.seconds * 1000));
         },
       },
     },
