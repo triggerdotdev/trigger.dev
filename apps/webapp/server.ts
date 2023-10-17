@@ -106,9 +106,6 @@ async function reportEcsTask(lifecycle: string) {
     return fetch(`${process.env.ECS_CONTAINER_METADATA_URI_V4}/task`)
       .then((res) => res.json())
       .then((json) => {
-        console.log(`✅ running in AWS ECS: `);
-        console.log(JSON.stringify(json));
-
         return fetch(process.env.REQUEST_BIN_URL!, {
           method: "POST",
           headers: {
