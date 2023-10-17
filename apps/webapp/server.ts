@@ -1,5 +1,3 @@
-console.log(process.env);
-
 import path from "path";
 import express from "express";
 import compression from "compression";
@@ -98,3 +96,41 @@ function purgeRequireCache() {
     }
   }
 }
+
+async function reportEcsTask(lifecycle: string) {
+  if (
+    typeof process.env.ECS_CONTAINER_METADATA_URI_V4 === "string" &&
+    typeof process.env.REQUEST_BIN_URL === "string"
+  ) {
+    return fetch(`${process.env.ECS_CONTAINER_METADATA_URI_V4}/task`)
+      .then((res) => res.json())
+      .then((json) => {
+        console.log(`✅ running in AWS ECS: `);
+        console.log(JSON.stringify(json, null, 2));
+
+        return fetch(process.env.REQUEST_BIN_URL!, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            task: json,
+            lifecycle,
+          }),
+        });
+      });
+  }
+}
+
+reportEcsTask("startup").finally(() => {});
+
+process.on("SIGTERM", () => {
+  reportEcsTask("shutdown_start").finally(() => {});
+
+  // Give it 115 seconds to finish up
+  setTimeout(() => {
+    reportEcsTask("shutdown_start").finally(() => {
+      process.exit(0);
+    });
+  }, 115000);
+});
