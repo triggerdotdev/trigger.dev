@@ -218,12 +218,6 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
       this.#shuttingDown = true;
 
-      this.#logDebug(`Received ${signal}, shutting down zodWorker...`);
-
-      this.stop().finally(() => {
-        this.#logDebug("zodWorker stopped");
-      });
-
       if (this.#shutdownTimeoutInMs) {
         setTimeout(() => {
           this.#logDebug("Shutdown timeout reached, exiting process");
@@ -231,6 +225,12 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
           process.exit(0);
         }, this.#shutdownTimeoutInMs);
       }
+
+      this.#logDebug(`Received ${signal}, shutting down zodWorker...`);
+
+      this.stop().finally(() => {
+        this.#logDebug("zodWorker stopped");
+      });
     };
   }
 
