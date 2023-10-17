@@ -106,7 +106,7 @@ async function reportEcsTask(lifecycle: string) {
       .then((res) => res.json())
       .then((json) => {
         console.log(`✅ running in AWS ECS: `);
-        console.log(JSON.stringify(json, null, 2));
+        console.log(JSON.stringify(json));
 
         return fetch(process.env.REQUEST_BIN_URL!, {
           method: "POST",
@@ -129,7 +129,7 @@ process.on("SIGTERM", () => {
 
   // Give it 115 seconds to finish up
   setTimeout(() => {
-    reportEcsTask("shutdown_start").finally(() => {
+    reportEcsTask("shutdown_stop").finally(() => {
       process.exit(0);
     });
   }, 115000);
