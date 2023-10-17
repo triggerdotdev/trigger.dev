@@ -61,6 +61,8 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
     console.log(`✅ app ready: http://localhost:${port}`);
   });
 
+  server.keepAliveTimeout = 65 * 1000;
+
   // Handle shutdowns gracefully
   createTerminus(server, {
     signals: ["SIGINT", "SIGTERM"],
