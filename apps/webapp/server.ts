@@ -1,3 +1,5 @@
+console.log(process.env);
+
 import path from "path";
 import express from "express";
 import compression from "compression";
@@ -62,23 +64,23 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
   });
 
   // Handle shutdowns gracefully
-  createTerminus(server, {
-    signals: ["SIGINT", "SIGTERM"],
-    timeout: process.env.GRACEFUL_SHUTDOWN_TIMEOUT
-      ? Number(process.env.GRACEFUL_SHUTDOWN_TIMEOUT)
-      : 5000,
-    onSignal: async () => {
-      console.log("[terminus] onSignal: starting cleanup");
-    },
-    onShutdown: async () => {
-      console.log("[terminus] onShutdown: cleanup finished, server is shutting down");
-    },
-    onSendFailureDuringShutdown: async () => {
-      console.log(
-        "[terminus] onSendFailureDuringShutdown: cleanup finished, server is shutting down"
-      );
-    },
-  });
+  // createTerminus(server, {
+  //   signals: ["SIGINT", "SIGTERM"],
+  //   timeout: process.env.GRACEFUL_SHUTDOWN_TIMEOUT
+  //     ? Number(process.env.GRACEFUL_SHUTDOWN_TIMEOUT)
+  //     : 5000,
+  //   onSignal: async () => {
+  //     console.log("[terminus] onSignal: starting cleanup");
+  //   },
+  //   onShutdown: async () => {
+  //     console.log("[terminus] onShutdown: cleanup finished, server is shutting down");
+  //   },
+  //   onSendFailureDuringShutdown: async () => {
+  //     console.log(
+  //       "[terminus] onSendFailureDuringShutdown: cleanup finished, server is shutting down"
+  //     );
+  //   },
+  // });
 } else {
   console.log(`✅ app ready (skipping http server)`);
 }

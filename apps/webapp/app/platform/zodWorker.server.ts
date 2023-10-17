@@ -143,6 +143,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     this.#runner = await graphileRun({
       ...this.#runnerOptions,
+      noHandleSignals: true,
       taskList: this.#createTaskListFromTasks(),
       parsedCronItems,
     });
@@ -197,6 +198,14 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     this.#runner?.events.on("stop", () => {
       this.#logDebug("stop");
+    });
+
+    process.on("SIGTERM", () => {
+      this.#logDebug("Received SIGTERM, shutting down zodWorker...");
+
+      this.stop().finally(() => {
+        this.#logDebug("zodWorker stopped");
+      });
     });
 
     return true;
