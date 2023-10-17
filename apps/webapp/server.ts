@@ -80,6 +80,7 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
     },
   });
 } else {
+  require(BUILD_DIR);
   console.log(`✅ app ready (skipping http server)`);
 }
 
