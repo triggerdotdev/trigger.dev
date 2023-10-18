@@ -100,16 +100,16 @@ export class RunListPresenter {
     let previous: string | undefined;
     switch (direction) {
       case "forward":
+        previous = cursor ? runs.at(0)?.id : undefined;
         if (hasMore) {
           next = runs[PAGE_SIZE - 1]?.id;
         }
-        previous = cursor ? runs.at(1)?.id : undefined;
         break;
       case "backward":
         if (hasMore) {
-          next = runs[PAGE_SIZE - 1]?.id;
+          previous = runs[1]?.id;
         }
-        previous = runs.at(1)?.id;
+        next = runs[PAGE_SIZE - 1]?.id;
         break;
     }
 
