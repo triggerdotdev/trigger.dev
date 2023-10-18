@@ -115,7 +115,7 @@ const variant = {
     shortcutVariant: undefined,
     shortcut: undefined,
   },
-  "side-menu-item": {
+  "small-menu-item": {
     textColor: "text-bright",
     button:
       "h-[1.8rem] px-[0.4rem] text-2sm rounded-sm text-dimmed bg-transparent group-hover:bg-slate-850 transition",
@@ -124,7 +124,7 @@ const variant = {
     shortcutVariant: undefined,
     shortcut: undefined,
   },
-  "side-menu-sub-item": {
+  "small-menu-sub-item": {
     textColor: "text-dimmed",
     button:
       "h-[1.8rem] px-[0.5rem] ml-5 text-2sm rounded-sm text-dimmed bg-transparent group-hover:bg-slate-850 transition",

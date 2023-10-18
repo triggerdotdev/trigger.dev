@@ -22,10 +22,12 @@ const PopoverContent = React.forwardRef<
       sideOffset={sideOffset}
       avoidCollisions={true}
       className={cn(
-        "z-50 w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none animate-in data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        "z-50 min-w-max rounded-md border bg-midnight-850 p-4 text-popover-foreground shadow-md outline-none animate-in data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
         className
       )}
-      style={{ maxHeight: "var(--radix-popover-content-available-height)" }}
+      style={{
+        maxHeight: "var(--radix-popover-content-available-height)",
+      }}
       {...props}
     />
   </PopoverPrimitive.Portal>
@@ -34,13 +36,13 @@ PopoverContent.displayName = PopoverPrimitive.Content.displayName;
 
 function PopoverSectionHeader({
   title,
-  variant = "extra-extra-small/bright/caps",
+  variant = "extra-extra-small/dimmed/caps",
 }: {
   title: string;
   variant?: ParagraphVariant;
 }) {
   return (
-    <Paragraph variant={variant} className="bg-slate-900 px-2.5 py-2">
+    <Paragraph variant={variant} className="bg-slate-900 px-2.5 py-1.5">
       {title}
     </Paragraph>
   );
@@ -51,7 +53,7 @@ function PopoverMenuItem({
   icon,
   title,
   isSelected,
-  variant = { variant: "menu-item" },
+  variant = { variant: "small-menu-item" },
   leadingIconClassName,
 }: {
   to: string;
@@ -70,7 +72,7 @@ function PopoverMenuItem({
       fullWidth
       textAlignLeft
       TrailingIcon={isSelected ? "check" : undefined}
-      className={isSelected ? "bg-slate-750 group-hover:bg-slate-750" : undefined}
+      className={isSelected ? "bg-slate-750 group-hover:bg-slate-800" : undefined}
     >
       {title}
     </LinkButton>

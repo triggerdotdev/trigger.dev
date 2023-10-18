@@ -203,7 +203,7 @@ function SideMenuOrgHeader({ className }: { className?: string }) {
           <UserAvatar className="h-5 w-5 text-slate-600" />
         </PopoverCustomTrigger>
         <PopoverContent
-          className="min-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+          className="min-w-[12rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
           align="start"
         >
           <Fragment>
@@ -231,7 +231,7 @@ function SideMenuHeader({ title, children }: { title: string; children: React.Re
           <EllipsisHorizontalIcon className="h-4 w-4 text-slate-500 transition group-hover:text-bright" />
         </PopoverCustomTrigger>
         <PopoverContent
-          className="min-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+          className="min-w-max overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
           align="start"
         >
           <Fragment>
@@ -266,7 +266,7 @@ function SideMenuItem({
 }) {
   return (
     <NavLinkButton
-      variant={subItem ? "side-menu-sub-item" : "side-menu-item"}
+      variant={subItem ? "small-menu-sub-item" : "small-menu-item"}
       fullWidth
       textAlignLeft
       LeadingIcon={icon}
