@@ -104,17 +104,17 @@ trigger:
   affinity: {}
 
   envVars:
-    - ENCRYPTION_KEY: ""
-    - MAGIC_LINK_SECRET: ""
-    - SESSION_SECRET: ""
-    - LOGIN_ORIGIN: ""
-    - APP_ORIGIN: ""
-    - DIRECT_URL: ""
-    - FROM_EMAIL: ""
-    - REPLY_TO_EMAIL: ""
-    - RESEND_API_KEY: ""
-    - AUTH_GITHUB_CLIENT_ID: ""
-    - AUTH_GITHUB_CLIENT_SECRET: ""
+    ENCRYPTION_KEY: ""
+    MAGIC_LINK_SECRET: ""
+    SESSION_SECRET: ""
+    LOGIN_ORIGIN: ""
+    APP_ORIGIN: ""
+    DIRECT_URL: ""
+    FROM_EMAIL: ""
+    REPLY_TO_EMAIL: ""
+    RESEND_API_KEY: ""
+    AUTH_GITHUB_CLIENT_ID: ""
+    AUTH_GITHUB_CLIENT_SECRET: ""
 
 postgresql:
   enabled: true
