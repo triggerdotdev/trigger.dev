@@ -2,7 +2,7 @@
 Expand the name of the chart.
 */}}
 {{- define "helm-charts.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- default .Chart.Name .Values.trigger.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
@@ -11,10 +11,10 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this 
 If release name contains chart name it will be used as a full name.
 */}}
 {{- define "helm-charts.fullname" -}}
-{{- if .Values.fullnameOverride }}
-{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- if .Values.trigger.fullnameOverride }}
+{{- .Values.trigger.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
-{{- $name := default .Chart.Name .Values.nameOverride }}
+{{- $name := default .Chart.Name .Values.trigger.nameOverride }}
 {{- if contains $name .Release.Name }}
 {{- .Release.Name | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -54,9 +54,9 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 Create the name of the service account to use
 */}}
 {{- define "helm-charts.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
-{{- default (include "helm-charts.fullname" .) .Values.serviceAccount.name }}
+{{- if .Values.trigger.serviceAccount.create }}
+{{- default (include "helm-charts.fullname" .) .Values.trigger.serviceAccount.name }}
 {{- else }}
-{{- default "default" .Values.serviceAccount.name }}
+{{- default "default" .Values.trigger.serviceAccount.name }}
 {{- end }}
 {{- end }}

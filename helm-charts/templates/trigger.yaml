@@ -1,0 +1,98 @@
+{{- $trigger := .Values.trigger -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "helm-charts.fullname" . }}
+  labels:
+    {{- include "helm-charts.labels" . | nindent 4 }}
+spec:
+  {{- if not $trigger.autoscaling.enabled }}
+  replicas: {{ $trigger.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "helm-charts.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with $trigger.podAnnotations }}
+      annotations: 
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "helm-charts.labels" . | nindent 8 }}
+	      {{- with $trigger.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with $trigger.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "helm-charts.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml $trigger.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml $trigger.securityContext | nindent 12 }}
+          image: "{{ $trigger.image.repository }}:{{ $trigger.image.tag | default "latest" }}"
+          imagePullPolicy: {{ $trigger.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3030
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+          envFrom:
+            - secretRef:
+              name: {{ $trigger.kubeSecretRef | default (include "helm-charts.fullname" .) }}
+            {{- if  $trigger.resources }}
+            resources: {{- toYaml $trigger.resources | nindent 12 }}
+            {{- end }}
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "helm-charts.fullname" . }}
+  labels:
+    {{- include "helm-charts.labels" . | nindent 4 }}
+spec:
+  type: {{ $trigger.service.type }}
+  ports:
+    - port: 3030
+      targetPort: 3030 
+      protocol: TCP
+      {{- if eq $trigger.service.type "NodePort" }}
+      nodePort: {{ $trigger.service.nodePort }}
+      {{- end }}
+  selector:
+    {{- include "helm-charts.selectorLabels" . | nindent 4 }}
+          
+---
+
+{{ if not $trigger.kubeSecretRef }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "helm-charts.fullname" . }}
+  annotations:
+    "helm.sh/resource-policy": "keep"
+type: Opaque
+stringData:
+  {{- $requiredVars := dict "MAGIC_LINK_SECRET" (randAlphaNum 32 | lower)
+                            "SESSION_SECRET" (randAlphaNum 32 | lower)
+                            "ENCRYPTION_KEY" (randAlphaNum 32 | lower)
+                            "DIRECT_URL" ("postgresql://user:password@triggerdotdev-database:5432/dbname") }}
+  {{- $secretObj := (lookup "v1" "Secret" .Release.Namespace (include "helm-charts.fullname" .)) | default dict }}
+  {{- $secretData := (get $secretObj "data") | default dict }}
+  {{ range $key, $value := $trigger.envVars }}
+    {{- println $key -}}
+    {{- $default := get $requiredVars $key -}}
+    {{- $current := get $secretData $key | b64dec -}}
+    {{- $v := $value | default ($current | default $default) -}}
+    {{ $key }}: {{ $v | quote }}
+  {{ end -}}
+{{- end }}

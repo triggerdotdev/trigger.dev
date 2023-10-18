@@ -2,13 +2,15 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 trigger:
-  replicaCount: 1
+  replicaCount: 2
 
   image:
-    repository: nginx
+    repository: ghcr.io/triggerdotdev/trigger.dev
     pullPolicy: IfNotPresent
     # Overrides the image tag whose default is the chart appVersion.
-    tag: ""
+    tag: "latest"
+
+  kubeSecretRef: ""
 
   imagePullSecrets: []
   nameOverride: ""
@@ -42,8 +44,8 @@ trigger:
     # runAsUser: 1000
 
   service:
-    type: ClusterIP
-    port: 80
+    type: NodePort
+    nodePort: 30002
 
   ingress:
     enabled: false
@@ -101,11 +103,24 @@ trigger:
 
   affinity: {}
 
+  envVars:
+    - ENCRYPTION_KEY: ""
+    - MAGIC_LINK_SECRET: ""
+    - SESSION_SECRET: ""
+    - LOGIN_ORIGIN: ""
+    - APP_ORIGIN: ""
+    - DIRECT_URL: ""
+    - FROM_EMAIL: ""
+    - REPLY_TO_EMAIL: ""
+    - RESEND_API_KEY: ""
+    - AUTH_GITHUB_CLIENT_ID: ""
+    - AUTH_GITHUB_CLIENT_SECRET: ""
+
 postgresql:
   enabled: true
   global:
     postgresql:
-      postgresqlDatabase: "usersdb"
-      postgresqlPassword: "Hello@123"
-      postgresqlUsername: "userservice-pguser"
+      postgresqlDatabase: "dbname"
+      postgresqlPassword: "password"
+      postgresqlUsername: "user"
       servicePort: "5432"
