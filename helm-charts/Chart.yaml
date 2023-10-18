@@ -1,5 +1,5 @@
 apiVersion: v2
-name: helm-charts
+name: trigger
 description: A Helm chart for a full Trigger application stack
 
 # A chart can be either an 'application' or a 'library' chart.

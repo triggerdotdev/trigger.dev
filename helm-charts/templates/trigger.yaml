@@ -2,39 +2,35 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "helm-charts.fullname" . }}
+  name: {{ include "trigger.name" . }}
+  annotations:
+    updatedAt: {{ now | date "2006-01-01 MST 15:04:05" | quote }}
+    {{- with $trigger.deploymentAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   labels:
-    {{- include "helm-charts.labels" . | nindent 4 }}
+    {{- include "trigger.labels" . | nindent 4 }}
 spec:
-  {{- if not $trigger.autoscaling.enabled }}
   replicas: {{ $trigger.replicaCount }}
-  {{- end }}
   selector:
     matchLabels:
-      {{- include "helm-charts.selectorLabels" . | nindent 6 }}
+      {{- include "trigger.matchLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with $trigger.podAnnotations }}
-      annotations: 
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
       labels:
-        {{- include "helm-charts.labels" . | nindent 8 }}
-	      {{- with $trigger.podLabels }}
+        {{- include "trigger.matchLabels" . | nindent 8 }}
+      annotations:
+        updatedAt: {{ now | date "2006-01-01 MST 15:04:05" | quote }}
+        {{- with $trigger.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- with $trigger.imagePullSecrets }}
-      imagePullSecrets:
+    {{- with $trigger.affinity }}
+      affinity:
         {{- toYaml . | nindent 8 }}
-      {{- end }}
-      serviceAccountName: {{ include "helm-charts.serviceAccountName" . }}
-      securityContext:
-        {{- toYaml $trigger.podSecurityContext | nindent 8 }}
+    {{- end }}
       containers:
-        - name: {{ .Chart.Name }}
-          securityContext:
-            {{- toYaml $trigger.securityContext | nindent 12 }}
+        - name: {{ $trigger.name }}
           image: "{{ $trigger.image.repository }}:{{ $trigger.image.tag | default "latest" }}"
           imagePullPolicy: {{ $trigger.image.pullPolicy }}
           ports:
@@ -47,20 +43,26 @@ spec:
               port: http
           envFrom:
             - secretRef:
-                name: {{ $trigger.kubeSecretRef | default (include "helm-charts.fullname" .) }}
-            {{- if  $trigger.resources }}
-            resources: {{- toYaml $trigger.resources | nindent 12 }}
-            {{- end }}
+                name: {{ $trigger.kubeSecretRef | default (include "trigger.name" .) }}
+          {{- if  $trigger.resources }}
+          resources: {{- toYaml $trigger.resources | nindent 12 }}
+          {{- end }}
 ---
 
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "helm-charts.fullname" . }}
+  name: {{ include "trigger.name" . }}
   labels:
-    {{- include "helm-charts.labels" . | nindent 4 }}
+    {{- include "trigger.labels" . | nindent 4 }}
+  {{- with $trigger.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   type: {{ $trigger.service.type }}
+  selector:
+    {{- include "trigger.matchLabels" . | nindent 8 }}
   ports:
     - port: 3030
       targetPort: 3030 
@@ -68,8 +70,6 @@ spec:
       {{- if eq $trigger.service.type "NodePort" }}
       nodePort: {{ $trigger.service.nodePort }}
       {{- end }}
-  selector:
-    {{- include "helm-charts.selectorLabels" . | nindent 4 }}
           
 ---
 
@@ -77,7 +77,7 @@ spec:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ include "helm-charts.fullname" . }}
+  name: {{ include "trigger.name" . }}
   annotations:
     "helm.sh/resource-policy": "keep"
 type: Opaque
@@ -85,10 +85,10 @@ stringData:
   {{- $requiredVars := dict "MAGIC_LINK_SECRET" (randAlphaNum 32 | lower)
                             "SESSION_SECRET" (randAlphaNum 32 | lower)
                             "ENCRYPTION_KEY" (randAlphaNum 32 | lower)
-                            "DIRECT_URL" ("postgresql://user:password@triggerdotdev-database:5432/dbname") }}
-  {{- $secretObj := (lookup "v1" "Secret" .Release.Namespace (include "helm-charts.fullname" .)) | default dict }}
+                            "DIRECT_URL" (include "trigger.postgresql.connectionString" .) }}
+  {{- $secretObj := (lookup "v1" "Secret" .Release.Namespace (include "trigger.name" .)) | default dict }}
   {{- $secretData := (get $secretObj "data") | default dict }}
-  {{ range $key, $value := $trigger.envVars }}
+  {{ range $key, $value := .Values.envVars }}
     {{- $default := get $requiredVars $key -}}
     {{- $current := get $secretData $key | b64dec -}}
     {{- $v := $value | default ($current | default $default) -}}
