@@ -16,7 +16,7 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
-import { ClipboardDocumentCheckIcon } from "@heroicons/react/24/solid";
+import { ClipboardDocumentCheckIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 
 export function SideMenu() {
   const borderRef = useRef<HTMLDivElement>(null);
@@ -49,29 +49,78 @@ export function SideMenu() {
         <div className="h-full overflow-hidden overflow-y-auto pt-4" ref={borderRef}>
           <div className="mb-8 flex flex-col gap-1 px-1">
             <SideMenuHeader title="My Project 1">
-              <PopoverMenuItem
-                to="#"
-                title="Framework setup"
-                icon={ClipboardDocumentCheckIcon}
-                leadingIconClassName="text-indigo-500"
-              />
+              <PopoverMenuItem to="#" title="Framework setup" icon="plus" />
             </SideMenuHeader>
-            <SideMenuItem name="Jobs" icon="job" count={33} to="" data-action="jobs" hasWarning />
-            <SideMenuItem name="Runs" icon="integration" to="" data-action="runs" />
-            <SideMenuItem name="Events" icon="trigger" to="" data-action="events" />
+            <SideMenuItem
+              name="Jobs"
+              forceActive
+              icon="job"
+              iconColor="text-indigo-500"
+              count={33}
+              to=""
+              data-action="jobs"
+              hasWarning
+            />
+            <SideMenuItem
+              name="Runs"
+              icon="integration"
+              iconColor="text-amber-500"
+              to=""
+              data-action="runs"
+            />
+            <SideMenuItem
+              name="Events"
+              icon="trigger"
+              iconColor="text-lime-500"
+              to=""
+              data-action="events"
+            />
             <SideMenuItem name="Custom" to="" data-action="custom" subItem />
             <SideMenuItem name="Webhooks" to="" data-action="webhooks" subItem />
-            <SideMenuItem name="Triggers" icon="trigger" count={4} to="" data-action="triggers" />
-            <SideMenuItem name="Catalog" icon="trigger" count={4} to="" data-action="catalog" />
+            <SideMenuItem
+              name="Triggers"
+              icon="trigger"
+              iconColor="text-teal-500"
+              count={4}
+              to=""
+              data-action="triggers"
+            />
+            <SideMenuItem
+              name="Catalog"
+              icon="trigger"
+              iconColor="text-yellow-500"
+              count={4}
+              to=""
+              data-action="catalog"
+            />
             <SideMenuItem name="User Events" to="" subItem />
             <SideMenuItem name="Billing Events" to="" subItem />
-            <SideMenuItem name="Endpoints" icon="trigger" count={4} to="" data-action="endpoints" />
+            <SideMenuItem
+              name="Endpoints"
+              icon="trigger"
+              iconColor="text-blue-500"
+              count={4}
+              to=""
+              data-action="endpoints"
+            />
             <SideMenuItem name="job-catalog" to="" subItem />
-            <SideMenuItem name="API Keys" icon="environment" to="" data-action="api keys" />
+            <SideMenuItem
+              name="API Keys"
+              icon="environment"
+              iconColor="text-fuchsia-500"
+              to=""
+              data-action="api keys"
+            />
           </div>
           <div className="mb-1 flex flex-col gap-1 px-1">
             <SideMenuHeader title="My Org 1">
-              <PopoverMenuItem to="#" title="New Project" icon="clipboard" />
+              <PopoverMenuItem to="#" title="New Project" icon="plus" />
+              <PopoverMenuItem
+                to="#"
+                title="Invite team member"
+                icon={UserPlusIcon}
+                leadingIconClassName="text-indigo-500"
+              />
             </SideMenuHeader>
             <SideMenuItem
               name="Integrations"
@@ -196,6 +245,7 @@ function SideMenuHeader({ title, children }: { title: string; children: React.Re
 
 function SideMenuItem({
   icon,
+  iconColor,
   name,
   to,
   forceActive = false,
@@ -205,6 +255,7 @@ function SideMenuItem({
   subItem = false,
 }: {
   icon?: IconNames | React.ComponentType<any>;
+  iconColor?: string;
   name: string;
   to: string;
   hasWarning?: string | boolean;
@@ -219,7 +270,7 @@ function SideMenuItem({
       fullWidth
       textAlignLeft
       LeadingIcon={icon}
-      leadingIconClassName="text-dimmed"
+      leadingIconClassName={forceActive ? iconColor : "text-dimmed"}
       to={to}
       target={target}
       className={({ isActive, isPending }) => {
