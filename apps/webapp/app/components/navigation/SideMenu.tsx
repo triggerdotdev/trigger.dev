@@ -1,4 +1,4 @@
-import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
+import { EllipsisHorizontalIcon, ExclamationCircleIcon } from "@heroicons/react/20/solid";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { LogoIcon } from "../LogoIcon";
@@ -16,6 +16,7 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { ClipboardDocumentCheckIcon } from "@heroicons/react/24/solid";
 
 export function SideMenu() {
   const borderRef = useRef<HTMLDivElement>(null);
@@ -47,7 +48,14 @@ export function SideMenu() {
         />
         <div className="h-full overflow-hidden overflow-y-auto pt-4" ref={borderRef}>
           <div className="mb-8 flex flex-col gap-1 px-1">
-            <SideMenuHeader title="My Project 1" />
+            <SideMenuHeader title="My Project 1">
+              <PopoverMenuItem
+                to="#"
+                title="Framework setup"
+                icon={ClipboardDocumentCheckIcon}
+                leadingIconClassName="text-indigo-500"
+              />
+            </SideMenuHeader>
             <SideMenuItem name="Jobs" icon="job" count={33} to="" data-action="jobs" hasWarning />
             <SideMenuItem name="Runs" icon="integration" to="" data-action="runs" />
             <SideMenuItem name="Events" icon="trigger" to="" data-action="events" />
@@ -62,7 +70,9 @@ export function SideMenu() {
             <SideMenuItem name="API Keys" icon="environment" to="" data-action="api keys" />
           </div>
           <div className="mb-1 flex flex-col gap-1 px-1">
-            <SideMenuHeader title="My Org 1" />
+            <SideMenuHeader title="My Org 1">
+              <PopoverMenuItem to="#" title="New Project" icon="clipboard" />
+            </SideMenuHeader>
             <SideMenuItem
               name="Integrations"
               icon="integration"
@@ -139,38 +149,47 @@ function SideMenuOrgHeader({ className }: { className?: string }) {
           </div>
         </PopoverContent>
       </Popover>
-      <div>
-        <Popover onOpenChange={(open) => setProfileMenuOpen(open)}>
-          <PopoverCustomTrigger isOpen={isProfileMenuOpen} className="p-1">
-            <UserAvatar className="h-5 w-5 text-slate-600" />
-          </PopoverCustomTrigger>
-          <PopoverContent
-            className="min-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
-            align="start"
-          >
-            <Fragment>
-              <PopoverSectionHeader title="james@trigger.dev" variant="extra-small" />
-              <div className="flex flex-col gap-1 p-1">
-                <PopoverMenuItem to="#" title="View profile" icon="avatar" />
-                <PopoverMenuItem to="#" title="Log out" icon="logout" />
-              </div>
-            </Fragment>
-          </PopoverContent>
-        </Popover>
-      </div>
+      <Popover onOpenChange={(open) => setProfileMenuOpen(open)}>
+        <PopoverCustomTrigger isOpen={isProfileMenuOpen} className="p-1">
+          <UserAvatar className="h-5 w-5 text-slate-600" />
+        </PopoverCustomTrigger>
+        <PopoverContent
+          className="min-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+          align="start"
+        >
+          <Fragment>
+            <PopoverSectionHeader title="james@trigger.dev" variant="extra-small" />
+            <div className="flex flex-col gap-1 p-1">
+              <PopoverMenuItem to="#" title="View profile" icon="avatar" />
+              <PopoverMenuItem to="#" title="Log out" icon="logout" />
+            </div>
+          </Fragment>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
 
-function SideMenuHeader({ title }: { title: string }) {
+function SideMenuHeader({ title, children }: { title: string; children: React.ReactNode }) {
+  const [isProjectMenuOpen, setProfileMenuOpen] = useState(false);
   return (
-    <div className="group flex items-center justify-between px-1.5">
+    <div className="group flex items-center justify-between pl-1.5">
       <Paragraph variant="extra-extra-small/caps" className="cursor-default text-slate-500">
         {title}
       </Paragraph>
-      <div>
-        <EllipsisHorizontalIcon className="trasition h-4 w-4 text-slate-500 group-hover:text-bright" />
-      </div>
+      <Popover onOpenChange={(open) => setProfileMenuOpen(open)}>
+        <PopoverCustomTrigger isOpen={isProjectMenuOpen} className="p-1">
+          <EllipsisHorizontalIcon className="h-4 w-4 text-slate-500 transition group-hover:text-bright" />
+        </PopoverCustomTrigger>
+        <PopoverContent
+          className="min-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+          align="start"
+        >
+          <Fragment>
+            <div className="flex flex-col gap-1 p-1">{children}</div>
+          </Fragment>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
@@ -224,7 +243,7 @@ function SideMenuItem({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger>
-                  <Icon icon="error" className="h-5 w-5" />
+                  <Icon icon={ExclamationCircleIcon} className="h-5 w-5 text-rose-500" />
                 </TooltipTrigger>
                 <TooltipContent className="flex items-center gap-1 border border-rose-500 bg-rose-500/20 backdrop-blur-xl">
                   {hasWarning}
@@ -232,7 +251,7 @@ function SideMenuItem({
               </Tooltip>
             </TooltipProvider>
           ) : (
-            hasWarning && <Icon icon="error" className="h-5 w-5" />
+            hasWarning && <Icon icon={ExclamationCircleIcon} className="h-5 w-5 text-rose-500" />
           )}
         </div>
       </div>
