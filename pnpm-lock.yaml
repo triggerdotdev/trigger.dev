@@ -105,7 +105,11 @@ importers:
       '@tailwindcss/typography': ^0.5.9
       '@team-plain/typescript-sdk': ^2.2.0
       '@total-typescript/ts-reset': ^0.4.2
+<<<<<<< Updated upstream
       '@trigger.dev/companyicons': ^1.5.14
+=======
+      '@trigger.dev/companyicons': ^1.5.24
+>>>>>>> Stashed changes
       '@trigger.dev/core': workspace:*
       '@trigger.dev/database': workspace:*
       '@trigger.dev/sdk': workspace:*
@@ -232,7 +236,11 @@ importers:
       '@remix-run/serve': 1.19.2-pre.0
       '@remix-run/server-runtime': 1.19.2-pre.0
       '@team-plain/typescript-sdk': 2.2.0
+<<<<<<< Updated upstream
       '@trigger.dev/companyicons': 1.5.14_biqbaboplfbrettd7655fr4n2y
+=======
+      '@trigger.dev/companyicons': 1.5.24_biqbaboplfbrettd7655fr4n2y
+>>>>>>> Stashed changes
       '@trigger.dev/core': link:../../packages/core
       '@trigger.dev/database': link:../../packages/database
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
@@ -13052,8 +13060,13 @@ packages:
     resolution: {integrity: sha512-vqd7ZUDSrXFVT1n8b2kc3LnklncDQFPvR58yUS1kEP23/nHPAO9l1lMjUfnPrXYYk4Hj54rrLKMW5ipwk7k09A==}
     dev: true
 
+<<<<<<< Updated upstream
   /@trigger.dev/companyicons/1.5.14_biqbaboplfbrettd7655fr4n2y:
     resolution: {integrity: sha512-+qiv5+YxZDdtUvzJdOlACz7BVmV1Zdo0wdvWrzHJX6/LoiGvyEXbcM3ozIMxD71NaCxv5axeDY/Iq92iPSj6Ew==}
+=======
+  /@trigger.dev/companyicons/1.5.24_biqbaboplfbrettd7655fr4n2y:
+    resolution: {integrity: sha512-b/dZDbQwtwloeZf9JXAhgAJd8rco46mKKnkUI9oO6AAveg3vl7AmvDvzMk91U4EDXJUPJH7Hew/pqNp/PRS61A==}
+>>>>>>> Stashed changes
     peerDependencies:
       react: ^18.2.0
       react-dom: 18.2.0

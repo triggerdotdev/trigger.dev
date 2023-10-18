@@ -89,6 +89,10 @@ export const apisList = [
     name: "Google Maps",
   },
   {
+    identifier: "googlesheets",
+    name: "Google Sheets",
+  },
+  {
     identifier: "hubspot",
     name: "HubSpot",
   },
