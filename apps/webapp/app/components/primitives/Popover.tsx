@@ -52,18 +52,21 @@ function PopoverMenuItem({
   title,
   isSelected,
   variant = { variant: "menu-item" },
+  leadingIconClassName,
 }: {
   to: string;
-  icon: string;
+  icon: string | React.ComponentType<any>;
   title: React.ReactNode;
   isSelected?: boolean;
   variant?: ButtonContentPropsType;
+  leadingIconClassName?: string;
 }) {
   return (
     <LinkButton
       to={to}
       variant={variant.variant}
       LeadingIcon={icon}
+      leadingIconClassName={leadingIconClassName}
       fullWidth
       textAlignLeft
       TrailingIcon={isSelected ? "check" : undefined}
