@@ -2,7 +2,7 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 trigger:
-  replicaCount: 2
+  replicaCount: 1
 
   image:
     repository: ghcr.io/triggerdotdev/trigger.dev

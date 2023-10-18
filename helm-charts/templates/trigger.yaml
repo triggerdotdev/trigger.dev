@@ -47,7 +47,7 @@ spec:
               port: http
           envFrom:
             - secretRef:
-              name: {{ $trigger.kubeSecretRef | default (include "helm-charts.fullname" .) }}
+                name: {{ $trigger.kubeSecretRef | default (include "helm-charts.fullname" .) }}
             {{- if  $trigger.resources }}
             resources: {{- toYaml $trigger.resources | nindent 12 }}
             {{- end }}
