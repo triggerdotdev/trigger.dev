@@ -1,4 +1,10 @@
-import { EllipsisHorizontalIcon, ExclamationCircleIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowRightOnRectangleIcon,
+  EllipsisHorizontalIcon,
+  UserCircleIcon,
+} from "@heroicons/react/20/solid";
+import { UserPlusIcon } from "@heroicons/react/24/solid";
+import { IconExclamationCircle, IconRun } from "@tabler/icons-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { LogoIcon } from "../LogoIcon";
@@ -16,7 +22,6 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
-import { ClipboardDocumentCheckIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 
 export function SideMenu() {
   const borderRef = useRef<HTMLDivElement>(null);
@@ -63,7 +68,7 @@ export function SideMenu() {
             />
             <SideMenuItem
               name="Runs"
-              icon="integration"
+              icon={IconRun}
               iconColor="text-amber-500"
               to=""
               data-action="runs"
@@ -209,8 +214,18 @@ function SideMenuOrgHeader({ className }: { className?: string }) {
           <Fragment>
             <PopoverSectionHeader title="james@trigger.dev" variant="extra-small" />
             <div className="flex flex-col gap-1 p-1">
-              <PopoverMenuItem to="#" title="View profile" icon="avatar" />
-              <PopoverMenuItem to="#" title="Log out" icon="logout" />
+              <PopoverMenuItem
+                to="#"
+                title="View profile"
+                icon={UserCircleIcon}
+                leadingIconClassName="text-indigo-500"
+              />
+              <PopoverMenuItem
+                to="#"
+                title="Log out"
+                icon={ArrowRightOnRectangleIcon}
+                leadingIconClassName="text-rose-500"
+              />
             </div>
           </Fragment>
         </PopoverContent>
@@ -294,7 +309,7 @@ function SideMenuItem({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger>
-                  <Icon icon={ExclamationCircleIcon} className="h-5 w-5 text-rose-500" />
+                  <Icon icon={IconExclamationCircle} className="h-5 w-5 text-rose-500" />
                 </TooltipTrigger>
                 <TooltipContent className="flex items-center gap-1 border border-rose-500 bg-rose-500/20 backdrop-blur-xl">
                   {hasWarning}
@@ -302,7 +317,7 @@ function SideMenuItem({
               </Tooltip>
             </TooltipProvider>
           ) : (
-            hasWarning && <Icon icon={ExclamationCircleIcon} className="h-5 w-5 text-rose-500" />
+            hasWarning && <Icon icon={IconExclamationCircle} className="h-5 w-5 text-rose-500" />
           )}
         </div>
       </div>
