@@ -6,7 +6,7 @@ import {
   IntegrationTaskKey,
   Logger,
 } from "@trigger.dev/sdk";
-import AirtableSDK from "airtable";
+import AirtableSDK, { Error as AirtableApiError } from "airtable";
 import { z } from "zod";
 import * as events from "./events";
 import { Airtable, AirtableRunTask } from "./index";
@@ -45,6 +45,31 @@ type WebhookSpecification = {
     fromSources?: WebhookFromSource[];
   };
 };
+
+const AirtableErrorBodySchema = z
+  .union([
+    z.object({
+      error: z.string(),
+    }),
+    z.object({
+      error: z.object({
+        type: z.string(),
+        message: z.string().optional(),
+      }),
+    }),
+  ])
+  .transform((body) => {
+    if (typeof body.error === "string") {
+      return {
+        type: body.error,
+      };
+    } else {
+      return {
+        type: body.error.type,
+        message: body.error.message,
+      };
+    }
+  });
 
 const apiUrl = "https://api.airtable.com/v0/bases";
 
@@ -85,14 +110,7 @@ export class Webhooks {
         });
 
         if (!response.ok) {
-          const errorText = await response
-            .text()
-            .then((t) => t)
-            .catch((e) => "No body");
-
-          throw new Error(
-            `Failed to create webhook: ${response.status} ${response.statusText}\n${errorText}`
-          );
+          await handleWebhookError(response, "WEBHOOK_CREATE")
         }
 
         const webhook = await response.json();
@@ -123,7 +141,7 @@ export class Webhooks {
         });
 
         if (!response.ok) {
-          throw new Error(`Failed to list webhooks: ${response.statusText}`);
+          await handleWebhookError(response, "WEBHOOK_LIST")
         }
 
         const webhook = await response.json();
@@ -153,7 +171,7 @@ export class Webhooks {
         });
 
         if (!response.ok) {
-          throw new Error(`Failed to delete webhook: ${response.statusText}`);
+          await handleWebhookError(response, "WEBHOOK_DELETE")
         }
       },
       {
@@ -457,4 +475,22 @@ async function getPayload(
 
   const webhook = await response.json();
   return ListWebhooksResponseSchema.parse(webhook);
+}
+
+async function handleWebhookError(response: Response, errorType: string) {
+  const rawErrorBody = await response.json();
+
+  const parsedErrorBody = AirtableErrorBodySchema.safeParse(rawErrorBody);
+
+  if (!parsedErrorBody.success) {
+    throw new AirtableApiError(
+      `${errorType}_PARSE_ERROR`,
+      `${response.statusText}:\n${rawErrorBody}`,
+      response.status
+    );
+  }
+
+  const { type, message } = parsedErrorBody.data;
+
+  throw new AirtableApiError(type, message ?? response.statusText, response.status);
 }
