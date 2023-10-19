@@ -613,6 +613,7 @@ model EventDispatcher {
   payloadFilter Json?
   contextFilter Json?
   manual        Boolean  @default(false)
+  batch         Boolean  @default(false)
 
   dispatchableId String
   dispatchable   Json
@@ -685,6 +686,10 @@ model JobRun {
 
   event   EventRecord @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   eventId String
+
+  eventIds String[]
+
+  payload Json?
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
