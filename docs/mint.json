@@ -248,7 +248,13 @@
         },
         "integrations/apis/linear",
         "integrations/apis/openai",
-        "integrations/apis/plain",
+        {
+          "group": "Plain",
+          "pages": [
+            "integrations/apis/plain",
+            "integrations/apis/plainTasks"
+          ]
+        },
         "integrations/apis/replicate",
         "integrations/apis/resend",
         "integrations/apis/sendgrid",
@@ -319,7 +325,10 @@
             "sdk/dynamictrigger/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamictrigger/register", "sdk/dynamictrigger/unregister"]
+              "pages": [
+                "sdk/dynamictrigger/register",
+                "sdk/dynamictrigger/unregister"
+              ]
             }
           ]
         },
@@ -330,7 +339,10 @@
             "sdk/dynamicschedule/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamicschedule/register", "sdk/dynamicschedule/unregister"]
+              "pages": [
+                "sdk/dynamicschedule/register",
+                "sdk/dynamicschedule/unregister"
+              ]
             }
           ]
         },
@@ -351,7 +363,9 @@
     },
     {
       "group": "Overview",
-      "pages": ["examples/introduction"]
+      "pages": [
+        "examples/introduction"
+      ]
     }
   ],
   "footerSocials": {
