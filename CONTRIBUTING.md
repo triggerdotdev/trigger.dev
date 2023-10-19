@@ -196,7 +196,7 @@ pnpm --filter @trigger.dev/database generate
 # Move trigger-cli bin to correct place
 pnpm install --frozen-lockfile
 
-# Install playwrite browsers (ONE TIME ONLY)
+# Install playwright browsers (ONE TIME ONLY)
 npx playwright install
 ```
 
