@@ -104,6 +104,7 @@ export class EndpointApi {
   }
 
   async indexEndpoint() {
+    const startTimeInMs = performance.now();
     const response = await safeFetch(this.url, {
       method: "POST",
       headers: {
@@ -113,40 +114,13 @@ export class EndpointApi {
       },
     });
 
-    if (!response) {
-      throw new Error(`Could not connect to endpoint ${this.url}`);
-    }
-
-    if (response.status === 401) {
-      const body = await safeBodyFromResponse(response, ErrorWithStackSchema);
-
-      if (body) {
-        return {
-          ok: false,
-          error: body.message,
-        } as const;
-      }
-
-      return {
-        ok: false,
-        error: `Trigger API key is invalid`,
-      } as const;
-    }
-
-    if (!response.ok) {
-      throw new Error(`Could not connect to endpoint ${this.url}. Status code: ${response.status}`);
-    }
-
-    const anyBody = await response.json();
-
-    const data = IndexEndpointResponseSchema.parse(anyBody);
-    const headers = EndpointHeadersSchema.parse(Object.fromEntries(response.headers.entries()));
-
     return {
-      ok: true,
-      data,
-      headers,
-    } as const;
+      response,
+      headerParser: EndpointHeadersSchema,
+      parser: IndexEndpointResponseSchema,
+      errorParser: ErrorWithStackSchema,
+      durationInMs: Math.floor(performance.now() - startTimeInMs),
+    };
   }
 
   async executeJobRequest(options: RunJobBody) {

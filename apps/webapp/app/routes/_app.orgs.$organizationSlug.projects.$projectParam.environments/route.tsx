@@ -3,11 +3,16 @@ import { LoaderArgs } from "@remix-run/server-runtime";
 import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
+import {
+  EndpointIndexStatusIcon,
+  EndpointIndexStatusLabel,
+} from "~/components/environments/EndpointIndexStatus";
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { HowToUseApiKeysAndEndpoints } from "~/components/helpContent/HelpContentText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
-import { Button, ButtonContent } from "~/components/primitives/Buttons";
+import { Badge } from "~/components/primitives/Badge";
+import { ButtonContent } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
@@ -38,7 +43,6 @@ import { ProjectParamSchema, projectEnvironmentsStreamingPath } from "~/utils/pa
 import { requestUrl } from "~/utils/requestUrl.server";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
-import { Badge } from "~/components/primitives/Badge";
 import { FirstEndpointSheet } from "./FirstEndpointSheet";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
@@ -180,6 +184,7 @@ export default function Page() {
                               <TableHeaderCell>Environment</TableHeaderCell>
                               <TableHeaderCell>Url</TableHeaderCell>
                               <TableHeaderCell>Last refreshed</TableHeaderCell>
+                              <TableHeaderCell>Last refresh Status</TableHeaderCell>
                               <TableHeaderCell>Jobs</TableHeaderCell>
                               <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                             </TableRow>
@@ -268,7 +273,7 @@ function EndpointRow({
               <EnvironmentLabel environment={{ type }} />
             </div>
           </TableCell>
-          <TableCell onClick={onClick} colSpan={4} alignment="right">
+          <TableCell onClick={onClick} colSpan={5} alignment="right">
             <div className="flex items-center justify-end gap-4">
               <span className="text-amber-500">
                 The {environmentTitle({ type })} environment is not configured
@@ -290,7 +295,17 @@ function EndpointRow({
           <TableCell onClick={onClick}>
             {endpoint.latestIndex ? <DateTime date={endpoint.latestIndex.updatedAt} /> : "–"}
           </TableCell>
-          <TableCell onClick={onClick}>{endpoint.latestIndex?.stats.jobs ?? "–"}</TableCell>
+          <TableCell onClick={onClick}>
+            {endpoint.latestIndex ? (
+              <div className="flex items-center gap-1">
+                <EndpointIndexStatusIcon status={endpoint.latestIndex.status} />
+                <EndpointIndexStatusLabel status={endpoint.latestIndex.status} />
+              </div>
+            ) : (
+              "–"
+            )}
+          </TableCell>
+          <TableCell onClick={onClick}>{endpoint.latestIndex?.stats?.jobs ?? "–"}</TableCell>
           <TableCellChevron onClick={onClick} />
         </TableRow>
       );

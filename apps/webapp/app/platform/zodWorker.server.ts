@@ -91,6 +91,8 @@ export type ZodWorkerCleanupOptions = {
   taskOptions?: CronItemOptions;
 };
 
+type ZodWorkerReporter = (event: string, properties: Record<string, any>) => Promise<void>;
+
 export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   name: string;
   runnerOptions: RunnerOptions;
@@ -99,7 +101,8 @@ export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   tasks: ZodTasks<TMessageCatalog>;
   recurringTasks?: ZodRecurringTasks;
   cleanup?: ZodWorkerCleanupOptions;
-  reporter?: (subject: string, message: string) => Promise<void>;
+  reporter?: ZodWorkerReporter;
+  shutdownTimeoutInMs?: number;
 };
 
 export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
@@ -111,7 +114,9 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   #recurringTasks?: ZodRecurringTasks;
   #runner?: GraphileRunner;
   #cleanup: ZodWorkerCleanupOptions | undefined;
-  #reporter?: (subject: string, message: string) => Promise<void>;
+  #reporter?: ZodWorkerReporter;
+  #shutdownTimeoutInMs?: number;
+  #shuttingDown = false;
 
   constructor(options: ZodWorkerOptions<TMessageCatalog>) {
     this.#name = options.name;
@@ -122,6 +127,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     this.#recurringTasks = options.recurringTasks;
     this.#cleanup = options.cleanup;
     this.#reporter = options.reporter;
+    this.#shutdownTimeoutInMs = options.shutdownTimeoutInMs ?? 60000; // default to 60 seconds
   }
 
   get graphileWorkerSchema() {
@@ -141,6 +147,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     this.#runner = await graphileRun({
       ...this.#runnerOptions,
+      noHandleSignals: true,
       taskList: this.#createTaskListFromTasks(),
       parsedCronItems,
     });
@@ -197,7 +204,34 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       this.#logDebug("stop");
     });
 
+    process.on("SIGTERM", this._handleSignal("SIGTERM").bind(this));
+    process.on("SIGINT", this._handleSignal("SIGINT").bind(this));
+
     return true;
+  }
+
+  private _handleSignal(signal: string) {
+    return () => {
+      if (this.#shuttingDown) {
+        return;
+      }
+
+      this.#shuttingDown = true;
+
+      if (this.#shutdownTimeoutInMs) {
+        setTimeout(() => {
+          this.#logDebug("Shutdown timeout reached, exiting process");
+
+          process.exit(0);
+        }, this.#shutdownTimeoutInMs);
+      }
+
+      this.#logDebug(`Received ${signal}, shutting down zodWorker...`);
+
+      this.stop().finally(() => {
+        this.#logDebug("zodWorker stopped");
+      });
+    };
   }
 
   public async stop() {
@@ -514,7 +548,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     });
 
     const rawResults = await this.#prisma.$queryRawUnsafe(
-      `WITH rows AS (SELECT id FROM ${this.graphileWorkerSchema}.jobs WHERE run_at < $1 AND locked_at IS NULL AND max_attempts = attempts ORDER BY run_at ASC LIMIT $2) DELETE FROM ${this.graphileWorkerSchema}.jobs WHERE id IN (SELECT id FROM rows) RETURNING id`,
+      `WITH rows AS (SELECT id FROM ${this.graphileWorkerSchema}.jobs WHERE run_at < $1 AND locked_at IS NULL AND max_attempts = attempts LIMIT $2 FOR UPDATE) DELETE FROM ${this.graphileWorkerSchema}.jobs WHERE id IN (SELECT id FROM rows) RETURNING id`,
       expirationDate,
       this.#cleanup.maxCount
     );
@@ -528,10 +562,11 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     });
 
     if (this.#reporter) {
-      await this.#reporter(
-        "Worker Queue Cleanup",
-        `Cleaned up ${results.length} jobs older than ${expirationDate.toISOString()}`
-      );
+      await this.#reporter("cleanup_stats", {
+        count: results.length,
+        expirationDate,
+        ts: payload._cron.ts,
+      });
     }
   }
 
@@ -581,10 +616,11 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       payload,
     });
 
-    await this.#reporter(
-      "Worker Queue Metrics",
-      `Added ${addedCountResults.count} jobs in the last hour, total jobs: ${totalCountResults.count}`
-    );
+    await this.#reporter("queue_metrics", {
+      addedCount: addedCountResults.count,
+      totalCount: totalCountResults.count,
+      ts: payload._cron.ts,
+    });
   }
 
   #logDebug(message: string, args?: any) {

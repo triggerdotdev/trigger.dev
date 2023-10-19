@@ -1,11 +1,12 @@
 import { DeliverEmailSchema } from "@/../../packages/emails/src";
-import { ScheduledPayloadSchema } from "@trigger.dev/core";
+import { ScheduledPayloadSchema, addMissingVersionField } from "@trigger.dev/core";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
-import { sendEmail, sendPlainTextEmail } from "./email.server";
+import { sendEmail } from "./email.server";
 import { IndexEndpointService } from "./endpoints/indexEndpoint.server";
+import { PerformEndpointIndexService } from "./endpoints/performEndpointIndexService";
 import { RecurringEndpointIndexService } from "./endpoints/recurringEndpointIndex.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
 import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
@@ -20,8 +21,6 @@ import { ActivateSourceService } from "./sources/activateSource.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout";
-import { addMissingVersionField } from "@trigger.dev/core";
-import { logger } from "./logger.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -29,6 +28,9 @@ const workerCatalog = {
     source: z.enum(["MANUAL", "API", "INTERNAL", "HOOK"]).optional(),
     sourceData: z.any().optional(),
     reason: z.string().optional(),
+  }),
+  performEndpointIndexing: z.object({
+    id: z.string(),
   }),
   scheduleEmail: DeliverEmailSchema,
   startRun: z.object({ id: z.string() }),
@@ -72,6 +74,9 @@ const workerCatalog = {
   }),
   connectionCreated: z.object({
     id: z.string(),
+  }),
+  simulate: z.object({
+    seconds: z.number(),
   }),
 };
 
@@ -134,17 +139,6 @@ function getWorkerQueue() {
       ttl: 7 * 24 * 60 * 60 * 1000, // 7 days
       maxCount: 1000,
     },
-    reporter: async (subject, message) => {
-      logger.info("workerQueue reporter", { workerMessage: message, subject });
-
-      if (env.WORKER_REPORTER_EMAIL) {
-        await sendPlainTextEmail({
-          to: env.WORKER_REPORTER_EMAIL,
-          subject: `[${env.APP_ENV}] workerQueue Report: ${subject}`,
-          text: message,
-        });
-      }
-    },
     runnerOptions: {
       connectionString: env.DATABASE_URL,
       concurrency: env.WORKER_CONCURRENCY,
@@ -153,6 +147,7 @@ function getWorkerQueue() {
       schema: env.WORKER_SCHEMA,
       maxPoolSize: env.WORKER_CONCURRENCY,
     },
+    shutdownTimeoutInMs: env.GRACEFUL_SHUTDOWN_TIMEOUT,
     schema: workerCatalog,
     recurringTasks: {
       // Run this every 5 minutes
@@ -292,8 +287,15 @@ function getWorkerQueue() {
         maxAttempts: 7,
         handler: async (payload, job) => {
           const service = new IndexEndpointService();
-
           await service.call(payload.id, payload.source, payload.reason, payload.sourceData);
+        },
+      },
+      performEndpointIndexing: {
+        priority: 1, // smaller number = higher priority
+        maxAttempts: 7,
+        handler: async (payload, job) => {
+          const service = new PerformEndpointIndexService();
+          await service.call(payload.id);
         },
       },
       deliverEvent: {
@@ -314,6 +316,12 @@ function getWorkerQueue() {
           });
         },
       },
+      simulate: {
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          await new Promise((resolve) => setTimeout(resolve, payload.seconds * 1000));
+        },
+      },
     },
   });
 }
@@ -330,6 +338,7 @@ function getExecutionWorkerQueue() {
       schema: env.WORKER_SCHEMA,
       maxPoolSize: env.EXECUTION_WORKER_CONCURRENCY,
     },
+    shutdownTimeoutInMs: env.GRACEFUL_SHUTDOWN_TIMEOUT,
     schema: executionWorkerCatalog,
     tasks: {
       performRunExecution: {

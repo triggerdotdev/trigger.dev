@@ -1,0 +1,9 @@
+{
+  "name": "@trigger.dev/tsup",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "devDependencies": {
+    "tsup": "7.1.x"
+  }
+}

@@ -391,9 +391,11 @@ model EndpointIndex {
   source     EndpointIndexSource @default(MANUAL)
   sourceData Json?
   reason     String?
+  status     EndpointIndexStatus @default(PENDING)
 
-  data  Json
-  stats Json
+  data  Json?
+  stats Json?
+  error Json?
 }
 
 enum EndpointIndexSource {
@@ -401,6 +403,13 @@ enum EndpointIndexSource {
   API
   INTERNAL
   HOOK
+}
+
+enum EndpointIndexStatus {
+  PENDING
+  STARTED
+  SUCCESS
+  FAILURE
 }
 
 model Job {
@@ -664,8 +673,8 @@ model EventRecord {
 }
 
 model JobRun {
-  id     String @id @default(cuid())
-  number Int
+  id       String  @id @default(cuid())
+  number   Int
   internal Boolean @default(false)
 
   job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -1040,6 +1049,7 @@ model ScheduleSource {
   dispatcherId String
 
   lastEventTimestamp DateTime?
+  nextEventTimestamp DateTime?
 
   workerJobId String?
 
