@@ -651,6 +651,14 @@ export class IO {
         ? response.body.task
         : response.body;
 
+    if (task.forceYield) {
+      this._logger.debug("Forcing yield after run task", {
+        idempotencyKey,
+      });
+
+      this.#forceYield("after_run_task");
+    }
+
     if (response.version === API_VERSIONS.LAZY_LOADED_CACHED_TASKS) {
       this._cachedTasksCursor = response.body.cachedTasks?.cursor;
 
@@ -731,6 +739,14 @@ export class IO {
           output: output ?? undefined,
           properties: task.outputProperties ?? undefined,
         });
+
+        if (completedTask.forceYield) {
+          this._logger.debug("Forcing yield after task completed", {
+            idempotencyKey,
+          });
+
+          this.#forceYield("after_complete_task");
+        }
 
         this._stats.executedTasks++;
 
@@ -898,6 +914,14 @@ export class IO {
       } else {
         throw new AutoYieldExecutionError(location, timeRemaining, this.#getTimeElapsed());
       }
+    }
+  }
+
+  #forceYield(location: string) {
+    const timeRemaining = this.#getRemainingTimeInMillis();
+
+    if (timeRemaining) {
+      throw new AutoYieldExecutionError(location, timeRemaining, this.#getTimeElapsed());
     }
   }
 

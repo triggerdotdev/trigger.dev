@@ -54,4 +54,30 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "auto-yield-2",
+  name: "Auto Yield 2",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "auto.yield.2",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.runTask("long-task-1", async (task) => {
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+
+      return {
+        message: "long-task-1",
+      };
+    });
+
+    await io.runTask("long-task-2", async (task) => {
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+
+      return {
+        message: "long-task-2",
+      };
+    });
+  },
+});
+
 createExpressServer(client);

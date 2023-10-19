@@ -152,6 +152,7 @@ export class CompleteRunTaskService {
         },
         include: {
           attempts: true,
+          run: true,
         },
       });
     });

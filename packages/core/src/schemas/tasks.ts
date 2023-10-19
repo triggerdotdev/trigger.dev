@@ -37,6 +37,7 @@ export const TaskSchema = z.object({
 export const ServerTaskSchema = TaskSchema.extend({
   idempotencyKey: z.string(),
   attempts: z.number(),
+  forceYield: z.boolean().optional().nullable(),
 });
 
 export type ServerTask = z.infer<typeof ServerTaskSchema>;
