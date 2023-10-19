@@ -58,6 +58,9 @@ export type JobOptions<
     io: IOWithIntegrations<TIntegrations>,
     context: TriggerContext
   ) => Promise<any>;
+
+  // @internal
+  __internal?: boolean;
 };
 
 export type JobPayload<TJob> = TJob extends Job<Trigger<EventSpecification<infer TEvent>>, any>
@@ -110,6 +113,10 @@ export class Job<
     return this.options.version;
   }
 
+  get logLevel() {
+    return this.options.logLevel;
+  }
+
   get integrations(): Record<string, IntegrationConfig> {
     return Object.keys(this.options.integrations ?? {}).reduce(
       (acc: Record<string, IntegrationConfig>, key) => {
@@ -125,10 +132,6 @@ export class Job<
       },
       {}
     );
-  }
-
-  get logLevel() {
-    return this.options.logLevel;
   }
 
   toJSON(): JobMetadata {

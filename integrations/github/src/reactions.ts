@@ -15,11 +15,7 @@ export type ReactionContent =
   | "eyes";
 
 export class Reactions {
-  runTask: GitHubRunTask;
-
-  constructor(runTask: GitHubRunTask) {
-    this.runTask = runTask;
-  }
+  constructor(private runTask: GitHubRunTask) {}
 
   createForIssueComment(
     key: IntegrationTaskKey,

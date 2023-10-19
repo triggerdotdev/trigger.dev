@@ -1,0 +1,80 @@
+<Step title="Create a Trigger.dev account">
+
+You can either:
+
+- Use the [Trigger.dev Cloud](https://cloud.trigger.dev).
+- Or [self-host](/documentation/guides/self-hosting) the service.
+
+</Step>
+
+<Step title="Create your first project">
+
+Once you've created an account, follow the steps in the app to:
+
+1. Complete your account details.
+2. Create your first Organization and Project.
+
+</Step>
+
+<Step title="Getting an API key">
+
+1. Go to the "Environments & API Keys" page in your project.
+   ![Go to the Environments & API Keys page ](/images/environments-link.png)
+
+2. Copy the `DEV` **SERVER** API key.
+   ![API Keys](/images/api-keys.png)
+
+</Step>
+
+<Step title="Run the CLI `init` command">
+
+The easiest way to get started it to use the CLI. It will add Trigger.dev to your existing project, setup a route and give you an example file.
+
+In a terminal window run:
+
+<CodeGroup>
+
+```bash npm
+npx @trigger.dev/cli@latest init
+```
+
+```bash pnpm
+pnpm dlx @trigger.dev/cli@latest init
+```
+
+```bash yarn
+yarn dlx @trigger.dev/cli@latest init
+```
+
+</CodeGroup>
+
+It will ask you a couple of questions
+
+1. Are you using the [Trigger.dev Cloud](https://cloud.trigger.dev) or [self-hosting](/documentation/guides/self-hosting)?
+2. Enter your development API key. Enter the key you copied earlier.
+
+</Step>
+
+<Step title="Run your site">
+
+Make sure your site is running locally, we will connect to it to register your Jobs.
+
+<Warning>You must leave this running for the rest of the steps.</Warning>
+
+<CodeGroup>
+
+```bash npm
+npm run dev
+```
+
+```bash pnpm
+pnpm run dev
+```
+
+```bash yarn
+yarn run dev
+```
+
+</CodeGroup>
+
+</Step>

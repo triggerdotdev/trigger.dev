@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sdk",
-  "version": "2.1.2",
+  "version": "2.1.9",
   "description": "trigger.dev Node.JS SDK",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -25,7 +25,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:^2.1.2",
+    "@trigger.dev/core": "workspace:^2.1.9",
     "chalk": "^5.2.0",
     "cronstrue": "^2.21.0",
     "debug": "^4.3.4",
@@ -39,8 +39,7 @@
     "ulid": "^2.3.0",
     "uuid": "^9.0.0",
     "ws": "^8.11.0",
-    "zod": "3.21.4",
-    "zod-error": "1.5.0"
+    "zod": "3.22.3"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",

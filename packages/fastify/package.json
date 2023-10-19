@@ -1,0 +1,41 @@
+{
+  "name": "@trigger.dev/fastify",
+  "version": "0.0.1",
+  "description": "Official Fastify adapter for Trigger.dev",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
+    "rimraf": "^3.0.2",
+    "tsup": "^7.2.0"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup"
+  },
+  "peerDependencies": {
+    "@trigger.dev/sdk": "workspace:^2.1.0"
+  },
+  "engines": {
+    "node": ">=16.8.0"
+  },
+  "dependencies": {
+    "@remix-run/web-fetch": "^4.3.6",
+    "fastify": "^4.22.2"
+  }
+}

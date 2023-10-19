@@ -1,0 +1,26 @@
+The CLI `dev` command allows the Trigger.dev service to send messages to your site. This is required for registering Jobs, triggering them and running tasks. To achieve this it creates a tunnel (using [ngrok](https://ngrok.com/)) so Trigger.dev can send messages to your machine.
+
+You should leave the `dev` command running when you're developing.
+
+In a **new terminal window or tab** run:
+
+<CodeGroup>
+
+```bash npm
+npx @trigger.dev/cli@latest dev
+```
+
+```bash pnpm
+pnpm dlx @trigger.dev/cli@latest dev
+```
+
+```bash yarn
+yarn dlx @trigger.dev/cli@latest dev
+```
+
+</CodeGroup>
+<br />
+<Note>
+  You can optionally pass the port if you're not running on the default port by adding
+  `--port 3001` to the end.
+</Note>

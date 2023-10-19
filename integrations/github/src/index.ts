@@ -68,9 +68,13 @@ export type GitHubReturnType<T extends (params: any) => Promise<{ data: K }>, K 
 >;
 
 export class Github implements TriggerIntegration {
+  // @internal
   private _options: GithubIntegrationOptions;
+  // @internal
   private _client?: Octokit;
+  // @internal
   private _io?: IO;
+  // @internal
   private _connectionKey?: string;
 
   _repoSource: ReturnType<typeof createRepoEventSource>;
@@ -134,7 +138,7 @@ export class Github implements TriggerIntegration {
     if (!this._io) throw new Error("No IO");
     if (!this._connectionKey) throw new Error("No connection key");
 
-    return this._io.runTask<TResult>(
+    return this._io.runTask(
       key,
       (task, io) => {
         if (!this._client) throw new Error("No client");

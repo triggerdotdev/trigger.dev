@@ -120,8 +120,12 @@ export class IntegrationClientPresenter {
         icon: integration.definition.icon,
       },
       authMethod: {
-        type: integration.authMethod?.type ?? "local",
-        name: integration.authMethod?.name ?? "Local Auth",
+        type:
+          integration.authMethod?.type ?? integration.authSource === "RESOLVER" ? "local" : "local",
+        name:
+          integration.authMethod?.name ?? integration.authSource === "RESOLVER"
+            ? "Auth Resolver"
+            : "Local Auth",
       },
       help,
     };

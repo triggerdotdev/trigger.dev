@@ -3,11 +3,7 @@ import { Octokit } from "octokit";
 import { GitHubReturnType, GitHubRunTask, onError } from "./index";
 
 export class Orgs {
-  runTask: GitHubRunTask;
-
-  constructor(runTask: GitHubRunTask) {
-    this.runTask = runTask;
-  }
+  constructor(private runTask: GitHubRunTask) {}
 
   updateWebhook(
     key: IntegrationTaskKey,

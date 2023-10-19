@@ -11,7 +11,8 @@
     },
     "declaration": false,
     "declarationMap": false,
-    "baseUrl": "."
+    "baseUrl": ".",
+    "stripInternal": true
   },
   "exclude": ["node_modules"]
 }

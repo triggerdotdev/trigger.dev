@@ -4,6 +4,7 @@ import { PrismaClient, prisma } from "~/db.server";
 import { Job } from "~/models/job.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
+import { EventExample } from "@trigger.dev/core";
 
 export class TestJobPresenter {
   #prismaClient: PrismaClient;
@@ -39,6 +40,15 @@ export class TestJobPresenter {
                     payload: true,
                   },
                 },
+                integrations: {
+                  select: {
+                    integration: {
+                      select: {
+                        authSource: true,
+                      },
+                    },
+                  },
+                },
               },
             },
             environment: {
@@ -58,14 +68,22 @@ export class TestJobPresenter {
             name: "latest",
           },
         },
-        _count: {
+        runs: {
           select: {
-            runs: {
-              where: {
-                isTest: true,
+            id: true,
+            createdAt: true,
+            number: true,
+            status: true,
+            event: {
+              select: {
+                payload: true,
               },
             },
           },
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 5,
         },
       },
       where: {
@@ -88,6 +106,15 @@ export class TestJobPresenter {
       throw new Error("Job not found");
     }
 
+    //collect together the examples, we don't care about the environments
+    const examples = job.aliases.flatMap((alias) =>
+      alias.version.examples.map((example) => ({
+        ...example,
+        icon: example.icon ?? undefined,
+        payload: example.payload ? JSON.stringify(example.payload, exampleReplacer, 2) : undefined,
+      }))
+    );
+
     return {
       environments: job.aliases.map((alias) => ({
         id: alias.environment.id,
@@ -95,12 +122,18 @@ export class TestJobPresenter {
         slug: alias.environment.slug,
         userId: alias.environment.orgMember?.userId,
         versionId: alias.version.id,
-        examples: alias.version.examples.map((example) => ({
-          ...example,
-          payload: JSON.stringify(example.payload, exampleReplacer, 2),
-        })),
+        hasAuthResolver: alias.version.integrations.some(
+          (i) => i.integration.authSource === "RESOLVER"
+        ),
       })),
-      hasTestRuns: job._count.runs > 0,
+      examples,
+      runs: job.runs.map((r) => ({
+        id: r.id,
+        number: r.number,
+        status: r.status,
+        created: r.createdAt,
+        payload: r.event.payload ? JSON.stringify(r.event.payload, null, 2) : undefined,
+      })),
     };
   }
 }

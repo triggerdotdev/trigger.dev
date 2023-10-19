@@ -2,7 +2,7 @@ import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { $transaction, Prisma, PrismaClient, prisma } from "~/db.server";
 import { enqueueRunExecutionV2 } from "~/models/jobRunExecution.server";
 
-const RESUMABLE_STATUSES = ["FAILURE", "TIMED_OUT", "ABORTED", "CANCELED"];
+const RESUMABLE_STATUSES = ["FAILURE", "TIMED_OUT", "UNRESOLVED_AUTH", "ABORTED", "CANCELED"];
 
 export class ContinueRunService {
   #prismaClient: PrismaClient;

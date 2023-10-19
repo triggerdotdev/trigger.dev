@@ -32,50 +32,30 @@ Create a `.env` file at the root of your project and include your Trigger API ke
 
 ```bash
 TRIGGER_API_KEY=ENTER_YOUR_DEVELOPMENT_API_KEY_HERE
-TRIGGER_API_URL=https://cloud.trigger.dev
+TRIGGER_API_URL=https://api.trigger.dev # this is only necessary if you are self-hosting
 ```
 
 Replace `ENTER_YOUR_DEVELOPMENT_API_KEY_HERE` with the actual API key obtained from the previous step.
 
 ## Configuring the Trigger Client
 
-To set up the Trigger Client for your project, follow these steps:
+Create a file at `<root>/app/trigger.ts`, where `<root>` represents the root directory of your project.
 
-1. **Create Configuration File:**
+Next, add the following code to the file which creates and exports a new `TriggerClient`:
 
-   In your project directory, create a configuration file named `trigger.ts` or `trigger.js`, depending on whether your project uses TypeScript (`.ts`) or JavaScript (`.js`).
+```typescript app/trigger.(ts/js)
+// trigger.ts (for TypeScript) or trigger.js (for JavaScript)
 
-2. **Choose Directory:**
+import { TriggerClient } from "@trigger.dev/sdk";
 
-   Create the configuration file inside the **app** directory of your project.
+export const client = new TriggerClient({
+  id: "my-app",
+  apiKey: process.env.TRIGGER_API_KEY,
+  apiUrl: process.env.TRIGGER_API_URL,
+});
+```
 
-3. **Add Configuration Code:**
-
-   Open the configuration file you created and add the following code:
-
-   ```typescript app/trigger.(ts/js)
-   // trigger.ts (for TypeScript) or trigger.js (for JavaScript)
-
-   import { TriggerClient } from "@trigger.dev/sdk";
-
-   export const client = new TriggerClient({
-     id: "my-app",
-     apiKey: process.env.TRIGGER_API_KEY,
-     apiUrl: process.env.TRIGGER_API_URL,
-   });
-   ```
-
-   Replace **"my-app"** with an appropriate identifier for your project. The **apiKey** and **apiUrl** are obtained from the environment variables you set earlier.
-
-4. **Example Directory Structure :**
-
-   ```
-       project-root/
-       ├── app/
-           ├── routes/
-           ├── trigger.ts
-       ├── other files...
-   ```
+Replace **"my-app"** with an appropriate identifier for your project.
 
 ## Creating the API Route
 

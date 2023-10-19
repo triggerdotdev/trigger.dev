@@ -1,0 +1,29 @@
+{
+  "name": "fastify-example",
+  "version": "0.0.1",
+  "description": "",
+  "main": "src/server.ts",
+  "scripts": {
+    "start": "node ./dist/server.js",
+    "dev": "ts-node ./src/server.ts",
+    "build": "tsc"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@trigger.dev/fastify": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
+    "dotenv": "^16.3.1",
+    "fastify": "^4.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.6.0",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.2.2",
+    "@trigger.dev/cli": "workspace:*"
+  },
+  "trigger.dev": {
+    "endpointId": "fastify-example"
+  }
+}

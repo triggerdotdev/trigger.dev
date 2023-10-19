@@ -1,20 +1,23 @@
 import {
+  API_VERSIONS,
+  BloomFilter,
   CachedTask,
   ConnectionAuth,
   CronOptions,
   ErrorWithStackSchema,
   FetchRequestInit,
   FetchRetryOptions,
+  InitialStatusUpdate,
   IntervalOptions,
   LogLevel,
   Logger,
   RunTaskOptions,
   SendEvent,
   SendEventOptions,
-  SerializableJson,
   SerializableJsonSchema,
   ServerTask,
   UpdateTriggerSourceBodyV2,
+  supportsFeature,
 } from "@trigger.dev/core";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { webcrypto } from "node:crypto";
@@ -23,15 +26,17 @@ import {
   CanceledWithTaskError,
   ResumeWithTaskError,
   RetryWithTaskError,
+  YieldExecutionError,
   isTriggerError,
 } from "./errors";
-import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { calculateRetryAt } from "./retry";
 import { TriggerClient } from "./triggerClient";
 import { DynamicTrigger } from "./triggers/dynamic";
 import { ExternalSource, ExternalSourceParams } from "./triggers/externalSource";
 import { DynamicSchedule } from "./triggers/scheduled";
 import { EventSpecification, TaskLogger, TriggerContext } from "./types";
+import { IntegrationTaskKey } from "./integrations";
+import { TriggerStatus } from "./status";
 
 export type IOTask = ServerTask;
 
@@ -45,6 +50,10 @@ export type IOOptions = {
   jobLogger?: Logger;
   jobLogLevel: LogLevel;
   cachedTasks?: Array<CachedTask>;
+  cachedTasksCursor?: string;
+  yieldedExecutions?: Array<string>;
+  noopTasksSet?: string;
+  serverVersion?: string | null;
 };
 
 type JsonPrimitive = string | number | boolean | null | undefined | Date | symbol;
@@ -56,7 +65,21 @@ export type RunTaskErrorCallback = (
   error: unknown,
   task: IOTask,
   io: IO
-) => { retryAt: Date; error?: Error; jitter?: number } | Error | undefined | void;
+) =>
+  | { retryAt?: Date; error?: Error; jitter?: number; skipRetrying?: boolean }
+  | Error
+  | undefined
+  | void;
+
+export type IOStats = {
+  initialCachedTasks: number;
+  lazyLoadedCachedTasks: number;
+  executedTasks: number;
+  cachedTaskHits: number;
+  cachedTaskMisses: number;
+  noopCachedTaskHits: number;
+  noopCachedTaskMisses: number;
+};
 
 export class IO {
   private _id: string;
@@ -67,7 +90,16 @@ export class IO {
   private _jobLogLevel: LogLevel;
   private _cachedTasks: Map<string, CachedTask>;
   private _taskStorage: AsyncLocalStorage<{ taskId: string }>;
+  private _cachedTasksCursor?: string;
   private _context: TriggerContext;
+  private _yieldedExecutions: Array<string>;
+  private _noopTasksBloomFilter: BloomFilter | undefined;
+  private _stats: IOStats;
+  private _serverVersion: string;
+
+  get stats() {
+    return this._stats;
+  }
 
   constructor(options: IOOptions) {
     this._id = options.id;
@@ -78,14 +110,47 @@ export class IO {
     this._jobLogger = options.jobLogger;
     this._jobLogLevel = options.jobLogLevel;
 
+    this._stats = {
+      initialCachedTasks: 0,
+      lazyLoadedCachedTasks: 0,
+      executedTasks: 0,
+      cachedTaskHits: 0,
+      cachedTaskMisses: 0,
+      noopCachedTaskHits: 0,
+      noopCachedTaskMisses: 0,
+    };
+
     if (options.cachedTasks) {
       options.cachedTasks.forEach((task) => {
         this._cachedTasks.set(task.idempotencyKey, task);
       });
+
+      this._stats.initialCachedTasks = options.cachedTasks.length;
     }
 
     this._taskStorage = new AsyncLocalStorage();
     this._context = options.context;
+    this._yieldedExecutions = options.yieldedExecutions ?? [];
+
+    if (options.noopTasksSet) {
+      this._noopTasksBloomFilter = BloomFilter.deserialize(
+        options.noopTasksSet,
+        BloomFilter.NOOP_TASK_SET_SIZE
+      );
+    }
+
+    this._cachedTasksCursor = options.cachedTasksCursor;
+    this._serverVersion = options.serverVersion ?? "unversioned";
+  }
+
+  /** @internal */
+  get runId() {
+    return this._id;
+  }
+
+  /** @internal */
+  get triggerClient() {
+    return this._triggerClient;
   }
 
   /** Used to send log messages to the [Run log](https://trigger.dev/docs/documentation/guides/viewing-runs). */
@@ -93,44 +158,48 @@ export class IO {
     return new IOLogger(async (level, message, data) => {
       let logLevel: LogLevel = "info";
 
-      switch (level) {
-        case "LOG": {
-          this._jobLogger?.log(message, data);
-          logLevel = "log";
-          break;
-        }
-        case "DEBUG": {
-          this._jobLogger?.debug(message, data);
-          logLevel = "debug";
-          break;
-        }
-        case "INFO": {
-          this._jobLogger?.info(message, data);
-          logLevel = "info";
-          break;
-        }
-        case "WARN": {
-          this._jobLogger?.warn(message, data);
-          logLevel = "warn";
-          break;
-        }
-        case "ERROR": {
-          this._jobLogger?.error(message, data);
-          logLevel = "error";
-          break;
-        }
-      }
-
       if (Logger.satisfiesLogLevel(logLevel, this._jobLogLevel)) {
-        await this.runTask([message, level], async (task) => {}, {
-          name: "log",
-          icon: "log",
-          description: message,
-          params: data,
-          properties: [{ label: "Level", text: level }],
-          style: { style: "minimal", variant: level.toLowerCase() },
-          noop: true,
-        });
+        await this.runTask(
+          [message, level],
+          async (task) => {
+            switch (level) {
+              case "LOG": {
+                this._jobLogger?.log(message, data);
+                logLevel = "log";
+                break;
+              }
+              case "DEBUG": {
+                this._jobLogger?.debug(message, data);
+                logLevel = "debug";
+                break;
+              }
+              case "INFO": {
+                this._jobLogger?.info(message, data);
+                logLevel = "info";
+                break;
+              }
+              case "WARN": {
+                this._jobLogger?.warn(message, data);
+                logLevel = "warn";
+                break;
+              }
+              case "ERROR": {
+                this._jobLogger?.error(message, data);
+                logLevel = "error";
+                break;
+              }
+            }
+          },
+          {
+            name: "log",
+            icon: "log",
+            description: message,
+            params: data,
+            properties: [{ label: "Level", text: level }],
+            style: { style: "minimal", variant: level.toLowerCase() },
+            noop: true,
+          }
+        );
       }
     });
   }
@@ -148,6 +217,48 @@ export class IO {
       delayUntil: new Date(Date.now() + seconds * 1000),
       style: { style: "minimal" },
     });
+  }
+
+  /** `io.createStatus()` allows you to set a status with associated data during the Run. Statuses can be used by your UI using the react package 
+   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param initialStatus The initial status you want this status to have. You can update it during the rub using the returned object.
+   * @returns a TriggerStatus object that you can call `update()` on, to update the status.
+   * @example 
+   * ```ts
+   * client.defineJob(
+  //...
+    run: async (payload, io, ctx) => {
+      const generatingImages = await io.createStatus("generating-images", {
+        label: "Generating Images",
+        state: "loading",
+        data: {
+          progress: 0.1,
+        },
+      });
+
+      //...do stuff
+
+      await generatingImages.update("completed-generation", {
+        label: "Generated images",
+        state: "success",
+        data: {
+          progress: 1.0,
+          urls: ["http://..."]
+        },
+      });
+
+    //...
+  });
+   * ```
+  */
+  async createStatus(
+    key: IntegrationTaskKey,
+    initialStatus: InitialStatusUpdate
+  ): Promise<TriggerStatus> {
+    const id = typeof key === "string" ? key : key.join("-");
+    const status = new TriggerStatus(id, this);
+    await status.update(key, initialStatus);
+    return status;
   }
 
   /** `io.backgroundFetch()` fetches data from a URL that can take longer that the serverless timeout. The actual `fetch` request is performed on the Trigger.dev platform, and the response is sent back to you.
@@ -298,6 +409,7 @@ export class IO {
    * @param id A unique id for the interval. This is used to identify and unregister the interval later.
    * @param options The options for the interval.
    * @returns A promise that has information about the interval.
+   * @deprecated Use `DynamicSchedule.register` instead.
    */
   async registerInterval(
     key: string | any[],
@@ -329,6 +441,7 @@ export class IO {
    * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to unregister a schedule on.
    * @param id A unique id for the interval. This is used to identify and unregister the interval later.
+   * @deprecated Use `DynamicSchedule.unregister` instead.
    */
   async unregisterInterval(key: string | any[], dynamicSchedule: DynamicSchedule, id: string) {
     return await this.runTask(
@@ -351,6 +464,7 @@ export class IO {
    * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to register a new schedule on.
    * @param id A unique id for the schedule. This is used to identify and unregister the schedule later.
    * @param options The options for the CRON schedule.
+   * @deprecated Use `DynamicSchedule.register` instead.
    */
   async registerCron(
     key: string | any[],
@@ -382,6 +496,7 @@ export class IO {
    * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to unregister a schedule on.
    * @param id A unique id for the interval. This is used to identify and unregister the interval later.
+   * @deprecated Use `DynamicSchedule.unregister` instead.
    */
   async unregisterCron(key: string | any[], dynamicSchedule: DynamicSchedule, id: string) {
     return await this.runTask(
@@ -404,6 +519,7 @@ export class IO {
    * @param trigger The [DynamicTrigger](https://trigger.dev/docs/sdk/dynamictrigger) to register.
    * @param id A unique id for the trigger. This is used to identify and unregister the trigger later.
    * @param params The params for the trigger.
+   * @deprecated Use `DynamicTrigger.register` instead.
    */
   async registerTrigger<
     TTrigger extends DynamicTrigger<EventSpecification<any>, ExternalSource<any, any, any>>,
@@ -487,19 +603,59 @@ export class IO {
     if (cachedTask && cachedTask.status === "COMPLETED") {
       this._logger.debug("Using completed cached task", {
         idempotencyKey,
-        cachedTask,
       });
+
+      this._stats.cachedTaskHits++;
 
       return cachedTask.output as T;
     }
 
-    const task = await this._apiClient.runTask(this._id, {
-      idempotencyKey,
-      displayKey: typeof key === "string" ? key : undefined,
-      noop: false,
-      ...(options ?? {}),
-      parentId,
-    });
+    if (options?.noop && this._noopTasksBloomFilter) {
+      if (this._noopTasksBloomFilter.test(idempotencyKey)) {
+        this._logger.debug("task idempotency key exists in noopTasksBloomFilter", {
+          idempotencyKey,
+        });
+
+        this._stats.noopCachedTaskHits++;
+
+        return {} as T;
+      }
+    }
+
+    const response = await this._apiClient.runTask(
+      this._id,
+      {
+        idempotencyKey,
+        displayKey: typeof key === "string" ? key : undefined,
+        noop: false,
+        ...(options ?? {}),
+        parentId,
+      },
+      {
+        cachedTasksCursor: this._cachedTasksCursor,
+      }
+    );
+
+    const task =
+      response.version === API_VERSIONS.LAZY_LOADED_CACHED_TASKS
+        ? response.body.task
+        : response.body;
+
+    if (response.version === API_VERSIONS.LAZY_LOADED_CACHED_TASKS) {
+      this._cachedTasksCursor = response.body.cachedTasks?.cursor;
+
+      for (const cachedTask of response.body.cachedTasks?.tasks ?? []) {
+        if (!this._cachedTasks.has(cachedTask.idempotencyKey)) {
+          this._cachedTasks.set(cachedTask.idempotencyKey, cachedTask);
+
+          this._logger.debug("Injecting lazy loaded task into task cache", {
+            idempotencyKey: cachedTask.idempotencyKey,
+          });
+
+          this._stats.lazyLoadedCachedTasks++;
+        }
+      }
+    }
 
     if (task.status === "CANCELED") {
       this._logger.debug("Task canceled", {
@@ -511,12 +667,20 @@ export class IO {
     }
 
     if (task.status === "COMPLETED") {
-      this._logger.debug("Using task output", {
-        idempotencyKey,
-        task,
-      });
+      if (task.noop) {
+        this._logger.debug("Noop Task completed", {
+          idempotencyKey,
+        });
 
-      this.#addToCachedTasks(task);
+        this._noopTasksBloomFilter?.add(task.idempotencyKey);
+      } else {
+        this._logger.debug("Cache miss", {
+          idempotencyKey,
+        });
+
+        this._stats.cachedTaskMisses++;
+        this.#addToCachedTasks(task);
+      }
 
       return task.output as T;
     }
@@ -530,27 +694,17 @@ export class IO {
       throw new Error(task.error ?? task?.output ? JSON.stringify(task.output) : "Task errored");
     }
 
-    if (task.status === "WAITING") {
-      this._logger.debug("Task waiting", {
-        idempotencyKey,
-        task,
-      });
-
-      throw new ResumeWithTaskError(task);
-    }
-
-    if (task.status === "RUNNING" && typeof task.operation === "string") {
-      this._logger.debug("Task running operation", {
-        idempotencyKey,
-        task,
-      });
-
-      throw new ResumeWithTaskError(task);
-    }
-
     const executeTask = async () => {
       try {
         const result = await callback(task, this);
+
+        if (task.status === "WAITING" && task.callbackUrl) {
+          this._logger.debug("Waiting for remote callback", {
+            idempotencyKey,
+            task,
+          });
+          return {} as T;
+        }
 
         const output = SerializableJsonSchema.parse(result) as T;
 
@@ -564,6 +718,8 @@ export class IO {
           properties: task.outputProperties ?? undefined,
         });
 
+        this._stats.executedTasks++;
+
         if (completedTask.status === "CANCELED") {
           throw new CanceledWithTaskError(completedTask);
         }
@@ -574,6 +730,8 @@ export class IO {
           throw error;
         }
 
+        let skipRetrying = false;
+
         if (onError) {
           try {
             const onErrorResult = onError(error, task, this);
@@ -582,13 +740,17 @@ export class IO {
               if (onErrorResult instanceof Error) {
                 error = onErrorResult;
               } else {
-                const parsedError = ErrorWithStackSchema.safeParse(onErrorResult.error);
+                skipRetrying = !!onErrorResult.skipRetrying;
 
-                throw new RetryWithTaskError(
-                  parsedError.success ? parsedError.data : { message: "Unknown error" },
-                  task,
-                  onErrorResult.retryAt
-                );
+                if (onErrorResult.retryAt && !skipRetrying) {
+                  const parsedError = ErrorWithStackSchema.safeParse(onErrorResult.error);
+
+                  throw new RetryWithTaskError(
+                    parsedError.success ? parsedError.data : { message: "Unknown error" },
+                    task,
+                    onErrorResult.retryAt
+                  );
+                }
               }
             }
           } catch (innerError) {
@@ -602,7 +764,7 @@ export class IO {
 
         const parsedError = ErrorWithStackSchema.safeParse(error);
 
-        if (options?.retry) {
+        if (options?.retry && !skipRetrying) {
           const retryAt = calculateRetryAt(options.retry, task.attempts - 1);
 
           if (retryAt) {
@@ -628,8 +790,54 @@ export class IO {
       }
     };
 
+    if (task.status === "WAITING") {
+      this._logger.debug("Task waiting", {
+        idempotencyKey,
+        task,
+      });
+
+      if (task.callbackUrl) {
+        await this._taskStorage.run({ taskId: task.id }, executeTask);
+      }
+
+      throw new ResumeWithTaskError(task);
+    }
+
+    if (task.status === "RUNNING" && typeof task.operation === "string") {
+      this._logger.debug("Task running operation", {
+        idempotencyKey,
+        task,
+      });
+
+      throw new ResumeWithTaskError(task);
+    }
+
     return this._taskStorage.run({ taskId: task.id }, executeTask);
   }
+
+  /**
+   * `io.yield()` allows you to yield execution of the current run and resume it in a new function execution. Similar to `io.wait()` but does not create a task and resumes execution immediately.
+   */
+  yield(key: string) {
+    if (!supportsFeature("yieldExecution", this._serverVersion)) {
+      console.warn(
+        "[trigger.dev] io.yield() is not support by the version of the Trigger.dev server you are using, you will need to upgrade your self-hosted Trigger.dev instance."
+      );
+
+      return;
+    }
+
+    if (this._yieldedExecutions.includes(key)) {
+      return;
+    }
+
+    throw new YieldExecutionError(key);
+  }
+
+  /**
+   * `io.brb()` is an alias of `io.yield()`
+   */
+  brb = this.yield.bind(this);
 
   /** `io.try()` allows you to run Tasks and catch any errors that are thrown, it's similar to a normal `try/catch` block but works with [io.runTask()](/sdk/io/runtask).
    * A regular `try/catch` block on its own won't work as expected with Tasks. Internally `runTask()` throws some special errors to control flow execution. This is necessary to deal with resumability, serverless timeouts, and retrying Tasks.

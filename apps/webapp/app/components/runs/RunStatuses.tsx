@@ -1,15 +1,14 @@
-import type { JobRunExecution, JobRunStatus } from "@trigger.dev/database";
+import { NoSymbolIcon } from "@heroicons/react/20/solid";
 import {
   CheckCircleIcon,
   ClockIcon,
   ExclamationTriangleIcon,
-  StopIcon,
   WrenchIcon,
   XCircleIcon,
 } from "@heroicons/react/24/solid";
+import type { JobRunStatus } from "@trigger.dev/database";
 import { cn } from "~/utils/cn";
 import { Spinner } from "../primitives/Spinner";
-import { HandRaisedIcon, NoSymbolIcon } from "@heroicons/react/20/solid";
 
 export function hasFinished(status: JobRunStatus): boolean {
   return (
@@ -17,7 +16,9 @@ export function hasFinished(status: JobRunStatus): boolean {
     status === "FAILURE" ||
     status === "ABORTED" ||
     status === "TIMED_OUT" ||
-    status === "CANCELED"
+    status === "CANCELED" ||
+    status === "UNRESOLVED_AUTH" ||
+    status === "INVALID_PAYLOAD"
   );
 }
 
@@ -48,6 +49,9 @@ export function RunStatusIcon({ status, className }: { status: JobRunStatus; cla
       return <XCircleIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "TIMED_OUT":
       return <ExclamationTriangleIcon className={cn(runStatusClassNameColor(status), className)} />;
+    case "UNRESOLVED_AUTH":
+    case "INVALID_PAYLOAD":
+      return <XCircleIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "WAITING_ON_CONNECTIONS":
       return <WrenchIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "ABORTED":
@@ -63,26 +67,26 @@ export type RunBasicStatus = "WAITING" | "PENDING" | "RUNNING" | "COMPLETED" | "
 
 export function runBasicStatus(status: JobRunStatus): RunBasicStatus {
   switch (status) {
-    case "SUCCESS":
-      return "COMPLETED";
+    case "WAITING_ON_CONNECTIONS":
+    case "QUEUED":
+    case "PREPROCESSING":
     case "PENDING":
       return "PENDING";
     case "STARTED":
       return "RUNNING";
-    case "QUEUED":
-      return "PENDING";
     case "FAILURE":
-      return "FAILED";
     case "TIMED_OUT":
-      return "FAILED";
-    case "WAITING_ON_CONNECTIONS":
-      return "PENDING";
-    case "ABORTED":
-      return "FAILED";
-    case "PREPROCESSING":
-      return "PENDING";
+    case "UNRESOLVED_AUTH":
     case "CANCELED":
+    case "ABORTED":
+    case "INVALID_PAYLOAD":
       return "FAILED";
+    case "SUCCESS":
+      return "COMPLETED";
+    default: {
+      const _exhaustiveCheck: never = status;
+      throw new Error(`Non-exhaustive match for value: ${status}`);
+    }
   }
 }
 
@@ -108,6 +112,14 @@ export function runStatusTitle(status: JobRunStatus): string {
       return "Preprocessing";
     case "CANCELED":
       return "Canceled";
+    case "UNRESOLVED_AUTH":
+      return "Unresolved auth";
+    case "INVALID_PAYLOAD":
+      return "Invalid payload";
+    default: {
+      const _exhaustiveCheck: never = status;
+      throw new Error(`Non-exhaustive match for value: ${status}`);
+    }
   }
 }
 
@@ -122,6 +134,8 @@ export function runStatusClassNameColor(status: JobRunStatus): string {
     case "QUEUED":
       return "text-amber-300";
     case "FAILURE":
+    case "UNRESOLVED_AUTH":
+    case "INVALID_PAYLOAD":
       return "text-rose-500";
     case "TIMED_OUT":
       return "text-amber-300";

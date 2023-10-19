@@ -4,6 +4,10 @@ sidebarTitle: "registerTrigger()"
 description: "`io.registerTrigger()` allows you to register a [DynamicTrigger](/sdk/dynamictrigger) with the specified trigger data."
 ---
 
+<Warning>
+  This has been deprecated in favor of [DynamicTrigger.register](/sdk/dynamictrigger/register)
+</Warning>
+
 ## Parameters
 
 <Snippet file="stable-key-param.mdx" />
@@ -30,9 +34,9 @@ A Promise that resolves to an object with the following fields:
 
 ## Example
 
-```typescript
+```ts
 //1. create a DynamicTrigger
-const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
+const dynamicOnIssueOpenedTrigger = client.defineDynamicTrigger({
   id: "github-issue-opened",
   event: events.onIssueOpened,
   source: github.sources.repo,

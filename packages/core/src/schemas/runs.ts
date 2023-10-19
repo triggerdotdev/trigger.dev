@@ -1,5 +1,6 @@
-import { ZodObject, z } from "zod";
+import { z } from "zod";
 import { TaskStatusSchema } from "./tasks";
+import { JobRunStatusRecordSchema } from "./statuses";
 
 export const RunStatusSchema = z.union([
   z.literal("PENDING"),
@@ -12,6 +13,8 @@ export const RunStatusSchema = z.union([
   z.literal("TIMED_OUT"),
   z.literal("ABORTED"),
   z.literal("CANCELED"),
+  z.literal("UNRESOLVED_AUTH"),
+  z.literal("INVALID_PAYLOAD"),
 ]);
 
 export const RunTaskSchema = z.object({
@@ -78,6 +81,8 @@ export const GetRunSchema = RunSchema.extend({
   output: z.any().optional(),
   /** The tasks from the run */
   tasks: z.array(RunTaskWithSubtasksSchema),
+  /** Any status updates that were published from the run */
+  statuses: z.array(JobRunStatusRecordSchema).default([]),
   /** If there are more tasks, you can use this to get them */
   nextCursor: z.string().optional(),
 });
