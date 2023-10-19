@@ -1,0 +1,49 @@
+{
+  "name": "@trigger.dev/nuxtjs",
+  "version": "0.0.1",
+  "description": "Trigger.dev Nuxt.js integration",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/debug": "^4.1.7",
+    "@types/ws": "^8.5.3",
+    "nuxt": "^3.7.1",
+    "rimraf": "^3.0.2",
+    "tsup": "^6.5.0",
+    "tsx": "^3.12.1",
+    "typescript": "^4.8.4"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup",
+    "dev": "tsup --watch"
+  },
+  "peerDependencies": {
+    "@trigger.dev/sdk": "workspace:^2.1.0"
+  },
+  "dependencies": {
+    "@remix-run/web-fetch": "^4.3.5",
+    "debug": "^4.3.4",
+    "h3": "^1.8.1",
+    "nuxt3": "3.7.2-28233838.48fb6e24"
+  },
+  "engines": {
+    "node": ">=16.8.0"
+  }
+}

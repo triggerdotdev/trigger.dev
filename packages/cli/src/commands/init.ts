@@ -12,6 +12,7 @@ import { CLOUD_API_URL, CLOUD_TRIGGER_URL, COMMAND_NAME } from "../consts";
 import { TelemetryClient, telemetryClient } from "../telemetry/telemetry";
 import { addDependencies } from "../utils/addDependencies";
 import { detectNextJsProject } from "../utils/detectNextJsProject";
+import { detectNuxtJsProject } from "../utils/detectNuxtJsProject";
 import { pathExists, readJSONFile } from "../utils/fileSystem";
 import { logger } from "../utils/logger";
 import { resolvePath } from "../utils/parseNameAndPath";
@@ -46,17 +47,20 @@ export const initCommand = async (options: InitCommandOptions) => {
 
   // Detect if are are in a Next.js project
   const isNextJsProject = await detectNextJsProject(resolvedPath);
+  const isNuxtJsProject = await detectNuxtJsProject(resolvedPath);
+  // Add checks for other frameworks here
 
-  if (!isNextJsProject) {
+  if (!isNextJsProject && !isNuxtJsProject) {
     logger.error(
-      "We currently only support automatic setup for Next.js projects (we didn't detect one). View our manual installation guides for all frameworks: https://trigger.dev/docs/documentation/quickstarts/introduction"
+      "We currently only support automatic setup for Next.js and Nuxt.js projects (we didn't detect one). View our manual installation guides for all frameworks: https://trigger.dev/docs/documentation/quickstarts/introduction"
     );
-    telemetryClient.init.failed("not_nextjs_project", options);
+    telemetryClient.init.failed("not_supported_project", options);
     return;
-  } else {
+  } else if (isNextJsProject) {
     logger.success("✅ Detected Next.js project");
+  } else if (isNuxtJsProject) {
+    logger.success("✅ Detected Nuxt.js project");
   }
-
   const hasGitChanges = await detectGitChanges(resolvedPath);
 
   if (hasGitChanges) {
@@ -123,18 +127,32 @@ export const initCommand = async (options: InitCommandOptions) => {
 
   const routeDir = pathModule.join(resolvedPath, usesSrcDir ? "src" : "");
 
-  if (nextJsDir === "pages") {
-    telemetryClient.init.createFiles(resolvedOptions, "pages");
-    await createTriggerPageRoute(
-      resolvedPath,
-      routeDir,
-      resolvedOptions,
-      isTypescriptProject,
-      usesSrcDir
-    );
-  } else {
-    telemetryClient.init.createFiles(resolvedOptions, "app");
-    await createTriggerAppRoute(
+  let framework = "";
+
+  if (isNextJsProject) {
+    framework = "Next.js";
+    if (nextJsDir === "pages") {
+      telemetryClient.init.createFiles(resolvedOptions, "pages");
+      await createTriggerPageRoute(
+        resolvedPath,
+        routeDir,
+        resolvedOptions,
+        isTypescriptProject,
+        usesSrcDir
+      );
+    } else {
+      telemetryClient.init.createFiles(resolvedOptions, "app");
+      await createTriggerAppRoute(
+        resolvedPath,
+        routeDir,
+        resolvedOptions,
+        isTypescriptProject,
+        usesSrcDir
+      );
+    }
+  } else if (isNuxtJsProject) {
+    framework = "Nuxt.js";
+    await createTriggerNuxtRoute(
       resolvedPath,
       routeDir,
       resolvedOptions,
@@ -144,20 +162,23 @@ export const initCommand = async (options: InitCommandOptions) => {
   }
 
   await detectMiddlewareUsage(resolvedPath, usesSrcDir);
-
   await addConfigurationToPackageJson(resolvedPath, resolvedOptions);
 
-  await printNextSteps(resolvedOptions, authorizedKey);
+  await printNextSteps(resolvedOptions, authorizedKey, framework);
   telemetryClient.init.completed(resolvedOptions);
 };
 
-async function printNextSteps(options: ResolvedOptions, authorizedKey: WhoamiResponse) {
+async function printNextSteps(
+  options: ResolvedOptions,
+  authorizedKey: WhoamiResponse,
+  framework: string
+) {
   const projectUrl = `${options.triggerUrl}/orgs/${authorizedKey.organization.slug}/projects/${authorizedKey.project.slug}`;
 
   logger.success(`✅ Successfully initialized Trigger.dev!`);
 
   logger.info("Next steps:");
-  logger.info(`   1. Run your Next.js project locally with 'npm run dev'`);
+  logger.info(`   1. Run your ${framework} project locally with 'npm run dev'`);
   logger.info(
     `   2. In a separate terminal, run 'npx @trigger.dev/cli@latest dev' to watch for changes and automatically register Trigger.dev jobs`
   );
@@ -442,6 +463,108 @@ function getPathAlias(tsconfig: any, usesSrcDir: boolean) {
   }
 
   return;
+}
+
+async function createTriggerNuxtRoute(
+  projectPath: string,
+  path: string,
+  options: ResolvedOptions,
+  isTypescriptProject: boolean,
+  usesSrcDir = false
+) {
+  const extension = isTypescriptProject ? ".ts" : ".js";
+  const triggerFileName = `trigger${extension}`;
+  const routeFileName = `trigger${extension}`;
+
+  const routeContent = `
+  import { client } from "@/trigger";
+  import { createNuxtRoute} from "@trigger.dev/nuxtjs"
+  import { eventTrigger } from "@trigger.dev/sdk";
+  
+  const QUOTES = [
+    "Any fool can write code that a computer can understand. Good programmers write code that humans can understand. - Martin Fowler",
+    "First, solve the problem. Then, write the code. - John Johnson",
+    "Experience is the name everyone gives to their mistakes. - Oscar Wilde",
+    "In order to be irreplaceable, one must always be different - Coco Chanel",
+    "Knowledge is power. - Francis Bacon",
+    "Sometimes it pays to stay in bed on Monday, rather than spending the rest of the week debugging Monday's code. - Dan Salomon",
+    "Perfection is achieved not when there is nothing more to add, but rather when there is nothing more to take away. - Antoine de Saint-Exupery",
+    "Rust is the most loved programming language. - Stack Overflow",
+    "Code is like humor. When you have to explain it, it’s bad. - Cory House",
+    "Fix the cause, not the symptom. - Steve Maguire",
+  ];
+  
+  client.defineJob({
+    id: "hello-world",
+    name: "Hello World",
+    version: "0.0.1",
+    trigger: eventTrigger({
+      name: "starter.hello-world",
+    }),
+    run: async (_payload, io, _ctx) => {
+      await io.logger.info("Hello world!");
+  
+      return {
+        message: "Hello world!",
+      };
+    },
+  });
+  
+  client.defineJob({
+    id: "quote",
+    name: "Random Quote",
+    version: "0.0.1",
+    trigger: eventTrigger({
+      name: "starter.quote",
+    }),
+    run: async (_payload, _io, _ctx) => {
+      return {
+        quote: QUOTES[Math.floor(Math.random() * QUOTES.length)],
+      };
+    },
+  });
+  
+  //this route is used to send and receive data with Trigger.dev
+  const nuxt = createNuxtRoute(client);
+  
+  export default defineEventHandler(nuxt)  
+`;
+
+  const triggerContent = `
+import { TriggerClient } from "@trigger.dev/sdk";
+
+export const client = new TriggerClient({
+  id: "${options.endpointSlug}",
+  apiKey: process.env.TRIGGER_API_KEY,
+  apiUrl: process.env.TRIGGER_API_URL,
+});
+  `;
+
+  const directories = pathModule.join(path, "server", "api");
+  await fs.mkdir(directories, { recursive: true });
+
+  const fileExists = await pathExists(pathModule.join(directories, routeFileName));
+
+  if (fileExists) {
+    logger.info("Skipping creation of server route because it already exists");
+    return;
+  }
+
+  await fs.writeFile(pathModule.join(directories, routeFileName), routeContent);
+
+  logger.success(
+    `✅ Created app route at ${usesSrcDir ? "src/" : ""}server/api/${removeFileExtension(
+      triggerFileName
+    )}/${routeFileName}`
+  );
+
+  const triggerFileExists = await pathExists(pathModule.join(path, triggerFileName));
+
+  if (!triggerFileExists) {
+    await fs.writeFile(pathModule.join(path, triggerFileName), triggerContent);
+
+    logger.success(`✅ Created trigger client at ${usesSrcDir ? "src/" : ""}${triggerFileName}`);
+  }
 }
 
 async function createTriggerAppRoute(

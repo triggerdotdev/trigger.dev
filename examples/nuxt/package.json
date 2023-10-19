@@ -1,0 +1,24 @@
+{
+  "name": "nuxt-app",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": " nuxi dev --dotenv .env.local --host",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@trigger.dev/nextjs": "^2.1.0",
+    "@trigger.dev/nuxtjs": "workspace:*",
+    "@trigger.dev/sdk": "^2.1.0",
+    "zod": "3.21.4"
+  },
+  "devDependencies": {
+    "@nuxt/devtools": "latest",
+    "@trigger.dev/cli": "workspace:*",
+    "nuxt": "^3.7.1"
+  },
+  "trigger.dev": {
+    "endpointId": "nuxt-E9C7"
+  }
+}
