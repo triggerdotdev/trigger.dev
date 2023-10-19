@@ -218,13 +218,15 @@ export function createTrigger<TEventSpecification extends AirtableEvents>(
     dataTypes: WebhookDataType[];
     changeTypes?: WebhookChangeType[];
     fromSources?: WebhookFromSource[];
-  }
+  },
+  batch = true
 ): CreateTriggersResult<TEventSpecification> {
   return new ExternalSourceTrigger({
     event,
     params,
     source,
     options,
+    batch,
   });
 }
 
@@ -262,6 +264,7 @@ export function createWebhookEventSource(
     id: "airtable.webhook",
     schema: z.object({ baseId: z.string(), tableId: z.string().optional() }),
     optionSchema: z.object({
+      changeTypes: z.array(WebhookChangeTypeSchema).optional(),
       dataTypes: z.array(WebhookDataTypeSchema),
       fromSources: z.array(WebhookFromSourceSchema).optional(),
     }),
@@ -289,7 +292,9 @@ export function createWebhookEventSource(
       const specification: WebhookSpecification = {
         filters: {
           dataTypes: options.dataTypes.desired as WebhookDataType[],
-          changeTypes: options.event.desired as WebhookChangeType[],
+          changeTypes: options.changeTypes
+            ? (options.changeTypes.desired as WebhookChangeType[])
+            : ["add", "remove", "update"],
           fromSources: (options.fromSources?.desired ?? [
             "client",
             "anonymousUser",
@@ -424,6 +429,10 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integ
         }))
       : [],
     metadata: response?.cursor ? { cursor: response.cursor } : undefined,
+    options: {
+      batchKey: "airtable-webhooks",
+      deliverAfter: 10,
+    },
   };
 }
 

@@ -12,7 +12,14 @@ import {
 } from "@trigger.dev/sdk";
 import AirtableSDK, { Error as AirtableApiError } from "airtable";
 import { Base } from "./base";
-import { Webhooks, createWebhookEventSource } from "./webhooks";
+import * as events from "./events";
+import {
+  WebhookChangeType,
+  WebhookDataType,
+  Webhooks,
+  createTrigger,
+  createWebhookEventSource,
+} from "./webhooks";
 
 export * from "./types";
 export * from "./base";
@@ -113,18 +120,17 @@ export class Airtable implements TriggerIntegration {
     return new Base(this.runTask.bind(this), baseId);
   }
 
-  //todo these require batch support because they send too many events
-  // onTableChanges(params: {
-  //   baseId: string;
-  //   tableId?: string;
-  //   changeTypes?: WebhookChangeType[];
-  //   dataTypes?: WebhookDataType[];
-  // }) {
-  //   return createTrigger(this.source, events.onTableChanged, params, {
-  //     changeTypes: params.changeTypes,
-  //     dataTypes: ["tableData", "tableFields", "tableMetadata"],
-  //   });
-  // }
+  onTableChanges(params: {
+    baseId: string;
+    tableId?: string;
+    changeTypes?: WebhookChangeType[];
+    dataTypes?: WebhookDataType[];
+  }) {
+    return createTrigger(this.source, events.onTableChanged, params, {
+      changeTypes: params.changeTypes,
+      dataTypes: ["tableData", "tableFields", "tableMetadata"],
+    });
+  }
 
   webhooks() {
     return new Webhooks(this.runTask.bind(this));
