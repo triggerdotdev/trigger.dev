@@ -144,7 +144,7 @@ export class IngestSendEvent {
       },
     });
 
-    await this.enqueueWorkerEvent(tx, eventLog);
+    await this.enqueueWorkerEvent(tx, eventLog, batchKey);
 
     return eventLog;
   }
