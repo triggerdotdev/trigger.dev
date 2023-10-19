@@ -1,4 +1,4 @@
-import { User } from "@trigger.dev/database";
+import { Prisma, User } from "@trigger.dev/database";
 import { replacements } from "@trigger.dev/core";
 import { PrismaClient, prisma } from "~/db.server";
 import { Job } from "~/models/job.server";
@@ -74,6 +74,7 @@ export class TestJobPresenter {
             createdAt: true,
             number: true,
             status: true,
+            payload: true,
             event: {
               select: {
                 payload: true,
@@ -111,7 +112,7 @@ export class TestJobPresenter {
       alias.version.examples.map((example) => ({
         ...example,
         icon: example.icon ?? undefined,
-        payload: example.payload ? JSON.stringify(example.payload, exampleReplacer, 2) : undefined,
+        payload: prettyJsonValue(example.payload, exampleReplacer),
       }))
     );
 
@@ -127,13 +128,16 @@ export class TestJobPresenter {
         ),
       })),
       examples,
-      runs: job.runs.map((r) => ({
-        id: r.id,
-        number: r.number,
-        status: r.status,
-        created: r.createdAt,
-        payload: r.event.payload ? JSON.stringify(r.event.payload, null, 2) : undefined,
-      })),
+      runs: job.runs.map((r) => {
+        const payload = r.payload ?? r.event.payload;
+        return {
+          id: r.id,
+          number: r.number,
+          status: r.status,
+          created: r.createdAt,
+          payload: prettyJsonValue(payload),
+        };
+      }),
     };
   }
 }
@@ -152,4 +156,17 @@ function exampleReplacer(key: string, value: any) {
   });
 
   return value;
+}
+
+function prettyJsonValue(
+  value: Prisma.JsonValue,
+  replacer?: (key: string, value: any) => any,
+  space = 2
+) {
+  if (value === null) {
+    return;
+  }
+
+  const pretty = JSON.stringify(value, replacer, space);
+  return pretty === "{}" ? "{\n  \n}" : pretty;
 }

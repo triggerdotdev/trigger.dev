@@ -28,5 +28,14 @@ export default function Page() {
   const job = useJob();
   const run = useRun();
 
-  return <TriggerDetail trigger={trigger} event={job.event} properties={run.properties} />;
+  const payload = run.payload !== null ? JSON.stringify(run.payload, null, 2) : trigger.payload;
+
+  return (
+    <TriggerDetail
+      trigger={trigger}
+      payload={payload}
+      event={job.event}
+      properties={run.properties}
+    />
+  );
 }

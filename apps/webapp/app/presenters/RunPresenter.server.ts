@@ -78,6 +78,7 @@ export class RunPresenter {
         slug: run.environment.slug,
       },
       event: this.#prepareEventData(run.event),
+      payload: run.payload,
       tasks,
       runConnections: run.runConnections,
       missingConnections: run.missingConnections,
@@ -104,6 +105,7 @@ export class RunPresenter {
   query({ id, userId }: RunOptions) {
     return this.#prismaClient.jobRun.findFirst({
       select: {
+        payload: true,
         id: true,
         number: true,
         status: true,
