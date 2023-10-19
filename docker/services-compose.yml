@@ -1,0 +1,65 @@
+version: "3"
+
+volumes:
+  database-data:
+
+networks:
+  app_network:
+    external: false
+
+services:
+  db:
+    container_name: devdb
+    image: postgres:14
+    restart: always
+    volumes:
+      - database-data:/var/lib/postgresql/data/
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    networks:
+      - app_network
+    ports:
+      - 5432:5432
+  app:
+    build:
+      context: ../
+      dockerfile: ./docker/Dockerfile
+    ports:
+      - 3030:3030
+    depends_on:
+      - db
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/postgres?schema=public
+      DIRECT_URL: postgres://postgres:postgres@db:5432/postgres?schema=public
+      SESSION_SECRET: secret123
+      MAGIC_LINK_SECRET: secret123
+      ENCRYPTION_KEY: secret123
+      REMIX_APP_PORT: 3030
+      PORT: 3030
+      WORKER_ENABLED: "false"
+      EXECUTION_WORKER_ENABLED: "false"
+    networks:
+      - app_network
+  worker:
+    build:
+      context: ../
+      dockerfile: ./docker/Dockerfile
+    depends_on:
+      - db
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/postgres?schema=public
+      DIRECT_URL: postgres://postgres:postgres@db:5432/postgres?schema=public
+      SESSION_SECRET: secret123
+      MAGIC_LINK_SECRET: secret123
+      ENCRYPTION_KEY: secret123
+      REMIX_APP_PORT: 3030
+      PORT: 3030
+      HTTP_SERVER_DISABLED: "true"
+    networks:
+      - app_network
