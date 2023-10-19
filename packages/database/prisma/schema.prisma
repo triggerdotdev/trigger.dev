@@ -1070,6 +1070,7 @@ model ScheduleSource {
   dispatcherId String
 
   lastEventTimestamp DateTime?
+  nextEventTimestamp DateTime?
 
   workerJobId String?
 

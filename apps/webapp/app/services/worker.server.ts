@@ -12,7 +12,6 @@ import { DeliverEventService } from "./events/deliverEvent.server";
 import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
 import { integrationAuthRepository } from "./externalApis/integrationAuthRepository.server";
 import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
-import { logger } from "./logger.server";
 import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated.server";
 import { PerformRunExecutionV2Service } from "./runs/performRunExecutionV2.server";
 import { StartRunService } from "./runs/startRun.server";
@@ -79,6 +78,9 @@ const workerCatalog = {
   probeEndpoint: z.object({
     id: z.string(),
   }),
+  simulate: z.object({
+    seconds: z.number(),
+  }),
 };
 
 const executionWorkerCatalog = {
@@ -137,9 +139,6 @@ function getWorkerQueue() {
       ttl: 7 * 24 * 60 * 60 * 1000, // 7 days
       maxCount: 1000,
     },
-    reporter: async (event, properties) => {
-      logger.info("workerQueue report", { event, properties });
-    },
     runnerOptions: {
       connectionString: env.DATABASE_URL,
       concurrency: env.WORKER_CONCURRENCY,
@@ -148,6 +147,7 @@ function getWorkerQueue() {
       schema: env.WORKER_SCHEMA,
       maxPoolSize: env.WORKER_CONCURRENCY,
     },
+    shutdownTimeoutInMs: env.GRACEFUL_SHUTDOWN_TIMEOUT,
     schema: workerCatalog,
     recurringTasks: {
       // Run this every 5 minutes
@@ -325,6 +325,12 @@ function getWorkerQueue() {
           await service.call(payload.id);
         },
       },
+      simulate: {
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          await new Promise((resolve) => setTimeout(resolve, payload.seconds * 1000));
+        },
+      },
     },
   });
 }
@@ -341,6 +347,7 @@ function getExecutionWorkerQueue() {
       schema: env.WORKER_SCHEMA,
       maxPoolSize: env.EXECUTION_WORKER_CONCURRENCY,
     },
+    shutdownTimeoutInMs: env.GRACEFUL_SHUTDOWN_TIMEOUT,
     schema: executionWorkerCatalog,
     tasks: {
       performRunExecutionV2: {
