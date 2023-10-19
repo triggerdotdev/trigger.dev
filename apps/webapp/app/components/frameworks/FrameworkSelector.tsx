@@ -51,28 +51,28 @@ export function FrameworkSelector() {
           <FrameworkLink to={projectSetupNextjsPath(organization, project)} supported>
             <NextjsLogo className="w-32" />
           </FrameworkLink>
-          <FrameworkLink to={projectSetupExpressPath(organization, project)} supported>
+          <FrameworkLink to={projectSetupExpressPath(organization, project)}>
             <ExpressLogo className="w-36" />
           </FrameworkLink>
-          <FrameworkLink to={projectSetupRemixPath(organization, project)} supported>
+          <FrameworkLink to={projectSetupRemixPath(organization, project)}>
             <RemixLogo className="w-32" />
-          </FrameworkLink>
-          <FrameworkLink to={projectSetupAstroPath(organization, project)} supported>
-            <AstroLogo className="w-32" />
           </FrameworkLink>
           <FrameworkLink to={projectSetupRedwoodPath(organization, project)}>
             <RedwoodLogo className="w-44" />
           </FrameworkLink>
+          <FrameworkLink to={projectSetupAstroPath(organization, project)}>
+            <AstroLogo className="w-32" />
+          </FrameworkLink>
           <FrameworkLink to={projectSetupNuxtPath(organization, project)} supported>
             <NuxtLogo className="w-32" />
           </FrameworkLink>
-          <FrameworkLink to={projectSetupSvelteKitPath(organization, project)} supported>
+          <FrameworkLink to={projectSetupSvelteKitPath(organization, project)}>
             <SvelteKitLogo className="w-44" />
           </FrameworkLink>
           <FrameworkLink to={projectSetupFastifyPath(organization, project)}>
             <FastifyLogo className="w-36" />
           </FrameworkLink>
-          <FrameworkLink to={projectSetupNestjsPath(organization, project)} supported>
+          <FrameworkLink to={projectSetupNestjsPath(organization, project)}>
             <NestjsLogo className="w-36" />
           </FrameworkLink>
         </div>
