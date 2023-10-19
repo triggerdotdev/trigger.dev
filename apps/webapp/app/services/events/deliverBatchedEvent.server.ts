@@ -30,14 +30,53 @@ export class DeliverBatchedEventService {
           },
         });
 
-        for (const eventRecord of eventRecords) {
+        if (!eventRecords.length) {
+          throw new Error("No event records found.");
+        }
+
+        const environmentId = eventRecords[0].environmentId;
+
+        if (!eventRecords.every((event) => event.environmentId === environmentId)) {
+          throw new Error("Cross-environment batched events should not exist.");
+        }
+
+        const unique = (val: unknown, i: number, array: unknown[]) => array.indexOf(val) === i;
+
+        const uniqueEventNames = eventRecords.map((event) => event.name).filter(unique);
+        const uniqueEventSources = eventRecords.map((event) => event.source).filter(unique);
+
+        const nameSourceCombinations: { name: string; source: string }[] = [];
+
+        for (let nameIndex = 0; nameIndex < uniqueEventNames.length; nameIndex++) {
+          for (let sourceIndex = 0; sourceIndex < uniqueEventSources.length; sourceIndex++) {
+            nameSourceCombinations.push({
+              name: uniqueEventNames[nameIndex],
+              source: uniqueEventSources[sourceIndex],
+            });
+          }
+        }
+
+        type InvocableDispatcher = { dispatcherId: string; eventRecordIds: string[] };
+
+        const batchDispatchersToInvoke: InvocableDispatcher[] = [];
+        const nonBatchDispatchersToInvoke: InvocableDispatcher[] = [];
+
+        for (const combination of nameSourceCombinations) {
+          const matchingEvents = eventRecords.filter(
+            (event) => event.name === combination.name && event.source === combination.source
+          );
+
+          if (!matchingEvents.length) {
+            continue;
+          }
+
           const possibleEventDispatchers = await tx.eventDispatcher.findMany({
             where: {
-              environmentId: eventRecord.environmentId,
+              environmentId,
               event: {
-                has: eventRecord.name,
+                has: combination.name,
               },
-              source: eventRecord.source,
+              source: combination.source,
               enabled: true,
               manual: false,
             },
@@ -45,48 +84,84 @@ export class DeliverBatchedEventService {
 
           logger.debug("Found possible event dispatchers", {
             possibleEventDispatchers,
-            eventRecord: eventRecord.id,
+            eventRecords: matchingEvents.map((event) => event.id),
           });
 
-          const matchingEventDispatchers = possibleEventDispatchers.filter((eventDispatcher) =>
-            this.#evaluateEventRule(eventDispatcher, eventRecord)
-          );
+          // filter events that match dispatcher filters
+          for (const eventDispatcher of possibleEventDispatchers) {
+            const filteredEvents = matchingEvents.filter((event) =>
+              this.#evaluateEventRule(eventDispatcher, event)
+            );
 
-          if (matchingEventDispatchers.length === 0) {
-            logger.debug("No matching event dispatchers", {
-              eventRecord: eventRecord.id,
-            });
+            // don't invoke dispatchers without any events
+            if (!filteredEvents.length) {
+              continue;
+            }
 
-            return;
+            const invocableDispatcher = {
+              dispatcherId: eventDispatcher.id,
+              eventRecordIds: filteredEvents.map((event) => event.id),
+            };
+
+            if (eventDispatcher.batch) {
+              batchDispatchersToInvoke.push(invocableDispatcher);
+            } else {
+              nonBatchDispatchersToInvoke.push(invocableDispatcher);
+            }
           }
+        }
 
-          logger.debug("Found matching event dispatchers", {
-            matchingEventDispatchers,
-            eventRecord: eventRecord.id,
+        const eventRecordIds = eventRecords.map((event) => event.id);
+
+        if (!batchDispatchersToInvoke.length && !nonBatchDispatchersToInvoke.length) {
+          logger.debug("No matching event dispatchers", {
+            eventRecords: eventRecordIds,
           });
 
-          await Promise.all(
-            matchingEventDispatchers.map((eventDispatcher) =>
-              workerQueue.enqueue(
+          return;
+        }
+
+        logger.debug("Found matching batch event dispatchers", { batchDispatchersToInvoke });
+
+        await Promise.all(
+          batchDispatchersToInvoke.map((dispatcher) => {
+            return workerQueue.enqueue(
+              "events.invokeDispatcher",
+              {
+                id: dispatcher.dispatcherId,
+                eventRecordIds: dispatcher.eventRecordIds,
+              },
+              { tx }
+            );
+          })
+        );
+
+        logger.debug("Found matching non-batch event dispatchers", { nonBatchDispatchersToInvoke });
+
+        await Promise.all(
+          nonBatchDispatchersToInvoke.map(async (dispatcher) => {
+            // sequentially enqueue single events to preserve order
+            for (const eventRecordId of dispatcher.eventRecordIds) {
+              await workerQueue.enqueue(
                 "events.invokeDispatcher",
                 {
-                  id: eventDispatcher.id,
-                  eventRecordId: eventRecord.id,
+                  id: dispatcher.dispatcherId,
+                  eventRecordIds: [eventRecordId],
                 },
                 { tx }
-              )
-            )
-          );
+              );
+            }
+          })
+        );
 
-          await tx.eventRecord.update({
-            where: {
-              id: eventRecord.id,
-            },
-            data: {
-              deliveredAt: new Date(),
-            },
-          });
-        }
+        await tx.eventRecord.updateMany({
+          where: {
+            id: { in: eventRecordIds },
+          },
+          data: {
+            deliveredAt: new Date(),
+          },
+        });
       },
       { timeout: 10000 }
     );

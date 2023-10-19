@@ -331,6 +331,7 @@ export class RegisterJobService {
               id: jobVersion.id,
             },
             dispatchableId: job.id,
+            batch: !!trigger.batch,
           },
           update: {
             event:
@@ -343,6 +344,7 @@ export class RegisterJobService {
               id: jobVersion.id,
             },
             enabled: true,
+            batch: !!trigger.batch,
           },
         });
 

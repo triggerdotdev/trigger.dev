@@ -26,7 +26,7 @@ export class InvokeDispatcherService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(id: string, eventRecordId: string) {
+  public async call(id: string, eventRecordIds: string[]) {
     const eventDispatcher = await this.#prismaClient.eventDispatcher.findUniqueOrThrow({
       where: {
         id,
@@ -49,15 +49,28 @@ export class InvokeDispatcherService {
       return;
     }
 
-    const eventRecord = await this.#prismaClient.eventRecord.findUniqueOrThrow({
+    const foundEventRecords = await this.#prismaClient.eventRecord.findMany({
       where: {
-        id: eventRecordId,
+        id: { in: eventRecordIds },
       },
     });
 
+    if (!foundEventRecords.length) {
+      throw new Error("No event records found.");
+    }
+
+    if (eventRecordIds.length !== foundEventRecords.length) {
+      logger.warn("Event record counts do not match", {
+        expected: eventRecordIds.length,
+        found: foundEventRecords.length,
+      });
+    }
+
+    const foundEventRecordIds = foundEventRecords.map((event) => event.id);
+
     logger.debug("Invoking event dispatcher", {
       eventDispatcher,
-      eventRecord: eventRecord.id,
+      eventRecords: foundEventRecordIds,
     });
 
     const dispatchable = DispatchableSchema.safeParse(eventDispatcher.dispatchable);
@@ -85,10 +98,11 @@ export class InvokeDispatcherService {
         const createRunService = new CreateRunService(this.#prismaClient);
 
         await createRunService.call({
-          eventId: eventRecord.id,
+          eventIds: foundEventRecordIds,
           job: jobVersion.job,
           version: jobVersion,
           environment: eventDispatcher.environment,
+          isBatched: eventDispatcher.batch,
         });
 
         break;
@@ -135,7 +149,7 @@ export class InvokeDispatcherService {
           const createRunService = new CreateRunService(this.#prismaClient);
 
           await createRunService.call({
-            eventId: eventRecord.id,
+            eventIds: foundEventRecordIds,
             job: job,
             version: latestJobVersion,
             environment: eventDispatcher.environment,

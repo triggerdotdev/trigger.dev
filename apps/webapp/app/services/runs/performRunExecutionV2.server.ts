@@ -77,6 +77,7 @@ export class PerformRunExecutionV2Service {
 
     const { response, parser } = await client.preprocessRunRequest({
       event,
+      payload: run.payload as any,
       job: {
         id: run.version.job.slug,
         version: run.version.version,
@@ -426,6 +427,7 @@ export class PerformRunExecutionV2Service {
 
       return {
         event,
+        payload: run.payload as any,
         job: {
           id: run.version.job.slug,
           version: run.version.version,
@@ -465,6 +467,7 @@ export class PerformRunExecutionV2Service {
 
     return {
       event,
+      payload: run.payload as any,
       job: {
         id: run.version.job.slug,
         version: run.version.version,

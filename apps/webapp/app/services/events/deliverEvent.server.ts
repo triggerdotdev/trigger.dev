@@ -70,7 +70,7 @@ export class DeliverEventService {
               "events.invokeDispatcher",
               {
                 id: eventDispatcher.id,
-                eventRecordId: eventRecord.id,
+                eventRecordIds: [eventRecord.id],
               },
               { tx }
             )

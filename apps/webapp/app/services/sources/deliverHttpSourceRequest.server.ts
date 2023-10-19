@@ -65,7 +65,7 @@ export class DeliverHttpSourceRequestService {
       httpSourceRequest.endpoint.url
     );
 
-    const { response, events, metadata } = await clientApi.deliverHttpSourceRequest({
+    const { response, events, metadata, options } = await clientApi.deliverHttpSourceRequest({
       key: httpSourceRequest.source.key,
       dynamicId: httpSourceRequest.source.dynamicTrigger?.slug,
       secret: secret.secret,
@@ -108,6 +108,9 @@ export class DeliverHttpSourceRequestService {
         httpSourceRequest.environment,
         event,
         {
+          batchKey: options?.batchKey,
+          deliverAt: options?.deliverAt,
+          deliverAfter: options?.deliverAfter,
           accountId: httpSourceRequest.source.externalAccount?.identifier,
         },
         httpSourceRequest.source.dynamicSourceId

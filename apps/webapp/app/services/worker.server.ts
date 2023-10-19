@@ -66,7 +66,7 @@ const workerCatalog = {
   deliverBatchedEvent: z.array(z.object({ id: z.string() })),
   "events.invokeDispatcher": z.object({
     id: z.string(),
-    eventRecordId: z.string(),
+    eventRecordIds: z.array(z.string()),
   }),
   "events.deliverScheduled": z.object({
     id: z.string(),
@@ -243,7 +243,7 @@ function getWorkerQueue() {
         handler: async (payload, job) => {
           const service = new InvokeDispatcherService();
 
-          await service.call(payload.id, payload.eventRecordId);
+          await service.call(payload.id, payload.eventRecordIds);
         },
       },
       "events.deliverScheduled": {
