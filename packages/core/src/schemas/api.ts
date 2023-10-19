@@ -123,6 +123,13 @@ export const TriggerSourceSchema = z.object({
 const HttpSourceResponseMetadataSchema = DeserializedJsonSchema;
 export type HttpSourceResponseMetadata = z.infer<typeof HttpSourceResponseMetadataSchema>;
 
+const HttpSourceResponseOptionsSchema = z.object({
+  batchKey: z.string().optional(),
+  deliverAt: z.coerce.date().optional(),
+  deliverAfter: z.number().int().optional(),
+})
+export type HttpSourceResponseOptions = z.infer<typeof HttpSourceResponseOptionsSchema>;
+
 export const HandleTriggerSourceSchema = z.object({
   key: z.string(),
   secret: z.string(),
@@ -455,6 +462,7 @@ export type RunSourceContext = z.infer<typeof RunSourceContextSchema>;
 
 export const RunJobBodySchema = z.object({
   event: ApiEventLogSchema,
+  payload: DeserializedJsonSchema,
   job: z.object({
     id: z.string(),
     version: z.string(),
@@ -565,6 +573,7 @@ export type RunJobResponse = z.infer<typeof RunJobResponseSchema>;
 
 export const PreprocessRunBodySchema = z.object({
   event: ApiEventLogSchema,
+  payload: DeserializedJsonSchema,
   job: z.object({
     id: z.string(),
     version: z.string(),
@@ -780,6 +789,7 @@ export const HttpSourceResponseSchema = z.object({
   response: NormalizedResponseSchema,
   events: z.array(RawEventSchema),
   metadata: HttpSourceResponseMetadataSchema.optional(),
+  options: HttpSourceResponseOptionsSchema.optional(),
 });
 
 export const RegisterTriggerBodySchemaV1 = z.object({

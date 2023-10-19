@@ -8,6 +8,7 @@ import {
   HandleTriggerSource,
   HttpSourceRequestHeadersSchema,
   HttpSourceResponseMetadata,
+  HttpSourceResponseOptions,
   IndexEndpointResponse,
   InitializeTriggerBodySchema,
   IntegrationConfig,
@@ -108,6 +109,7 @@ export class TriggerClient {
       events: Array<SendEvent>;
       response?: NormalizedResponse;
       metadata?: HttpSourceResponseMetadata;
+      options?: HttpSourceResponseOptions;
     } | void>
   > = {};
   #registeredDynamicTriggers: Record<
@@ -406,7 +408,7 @@ export class TriggerClient {
           metadata: inputMetadata,
         };
 
-        const { response, events, metadata } = await this.#handleHttpSourceRequest(
+        const { response, events, metadata, options } = await this.#handleHttpSourceRequest(
           source,
           sourceRequest
         );
@@ -417,6 +419,7 @@ export class TriggerClient {
             events,
             response,
             metadata,
+            options,
           },
           headers: this.#standardResponseHeaders,
         };
@@ -677,7 +680,7 @@ export class TriggerClient {
   async #preprocessRun(body: PreprocessRunBody, job: Job<Trigger<EventSpecification<any>>, any>) {
     const context = this.#createPreprocessRunContext(body);
 
-    const parsedPayload = job.trigger.event.parsePayload(body.event.payload ?? {});
+    const parsedPayload = job.trigger.event.parsePayload(body.payload ?? body.event.payload ?? {});
 
     const properties = job.trigger.event.runProperties?.(parsedPayload) ?? [];
 
@@ -740,7 +743,7 @@ export class TriggerClient {
     try {
       const output = await runLocalStorage.runWith({ io, ctx: context }, () => {
         return job.options.run(
-          job.trigger.event.parsePayload(body.event.payload ?? {}),
+          job.trigger.event.parsePayload(body.payload ?? body.event.payload ?? {}),
           ioWithConnections,
           context
         );
@@ -867,6 +870,7 @@ export class TriggerClient {
     response: NormalizedResponse;
     events: SendEvent[];
     metadata?: HttpSourceResponseMetadata;
+    options?: HttpSourceResponseOptions;
   }> {
     this.#internalLogger.debug("Handling HTTP source request", {
       source,
@@ -962,6 +966,7 @@ export class TriggerClient {
         },
       },
       metadata: results.metadata,
+      options: results.options,
     };
   }
 

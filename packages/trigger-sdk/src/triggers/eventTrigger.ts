@@ -10,6 +10,7 @@ type EventTriggerOptions<TEventSpecification extends EventSpecification<any>> = 
   name?: string | string[];
   source?: string;
   filter?: EventFilter;
+  batch?: boolean;
 };
 
 export class EventTrigger<TEventSpecification extends EventSpecification<any>>
@@ -25,6 +26,7 @@ export class EventTrigger<TEventSpecification extends EventSpecification<any>>
     return {
       type: "static",
       title: this.#options.name ?? this.#options.event.title,
+      batch: !!this.#options.batch,
       rule: {
         event: this.#options.name ?? this.#options.event.name,
         source: this.#options.source ?? "trigger.dev",
@@ -74,6 +76,8 @@ type TriggerOptions<TEvent> = {
    * ```
    */
   filter?: EventFilter;
+  /** Receive events as an array of payloads. (Will only receive more than one event at a time if events are also sent with batching enabled.) */
+  batch?: boolean;
 
   examples?: EventSpecificationExample[];
 };
@@ -87,6 +91,7 @@ export function eventTrigger<TEvent extends any = any>(
   return new EventTrigger({
     name: options.name,
     filter: options.filter,
+    batch: options.batch,
     event: {
       name: options.name,
       title: "Event",

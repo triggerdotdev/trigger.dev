@@ -3,6 +3,7 @@ import {
   EventFilter,
   HandleTriggerSource,
   HttpSourceResponseMetadata,
+  HttpSourceResponseOptions,
   Logger,
   NormalizedResponse,
   RegisterTriggerSource,
@@ -136,6 +137,7 @@ type HandlerFunction<
   events: SendEvent[];
   response?: NormalizedResponse;
   metadata?: HttpSourceResponseMetadata;
+  options?: HttpSourceResponseOptions;
 } | void>;
 
 type KeyFunction<TParams extends any> = (params: TParams) => string;
@@ -269,6 +271,7 @@ export type ExternalSourceTriggerOptions<
   source: TEventSource;
   params: ExternalSourceParams<TEventSource>;
   options: TriggerOptionRecord<string[], TTriggerOptionDefinitions>;
+  batch?: boolean;
 };
 
 export class ExternalSourceTrigger<
@@ -286,6 +289,7 @@ export class ExternalSourceTrigger<
     return {
       type: "static",
       title: "External Source",
+      batch: !!this.options.batch,
       rule: {
         event: this.event.name,
         payload: deepMergeFilters(
