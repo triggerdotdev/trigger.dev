@@ -82,23 +82,27 @@ client.defineJob({
   }),
   run: async (payload, io, ctx) => {
     // unbatched
-    await io.sendEvent("unbatched",
+    await io.sendEvent(
+      "unbatched",
       { name: "new.message", payload: { message: "Not batching this!" } },
       { deliverAfter: 5 }
     );
 
     // batched
-    await io.sendEvent("batched-1",
-      { name: "new.message", payload: { message: "Hey there!" } },
-      { batchKey: "user123", deliverAfter: 10 }
+    await io.sendEvent(
+      "batched-1",
+      { name: "new.message", payload: { message: "Message 1" } },
+      { batchKey: "amazing-batchkey", deliverAfter: 10 }
     );
-    await io.sendEvent("batched-2",
-      { name: "new.message", payload: { message: "It's me!" } },
-      { batchKey: "user123" } // deliverAfter: 10 - should be preserved
+    await io.sendEvent(
+      "batched-2",
+      { name: "new.message", payload: { message: "Message 2" } },
+      { batchKey: "amazing-batchkey", deliverAfter: 200 } // deliverAfter: 10 - should be preserved
     );
-    await io.sendEvent("batched-3",
-      { name: "new.message", payload: { message: "Where are you?" } },
-      { batchKey: "user123" } // deliverAfter: 10 - should be preserved
+    await io.sendEvent(
+      "batched-3",
+      { name: "new.message", payload: { message: "Message 3" } },
+      { batchKey: "amazing-batchkey", deliverAfter: 300 } // deliverAfter: 10 - should be preserved
     );
   },
 });
