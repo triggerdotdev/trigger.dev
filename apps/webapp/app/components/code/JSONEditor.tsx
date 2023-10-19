@@ -1,5 +1,6 @@
 import { json as jsonLang } from "@codemirror/lang-json";
 import type { ViewUpdate } from "@codemirror/view";
+import type { Text } from "@codemirror/state";
 import { CheckIcon, ClipboardIcon } from "@heroicons/react/20/solid";
 import type { ReactCodeMirrorProps, UseCodeMirror } from "@uiw/react-codemirror";
 import { useCodeMirror } from "@uiw/react-codemirror";
@@ -68,6 +69,7 @@ export function JSONEditor(opts: JSONEditorProps) {
     theme: darkTheme(),
     indentWithTab: false,
     basicSetup,
+    selection: getDefaultSelection(defaultValue),
     onChange,
     onUpdate,
   };
@@ -83,10 +85,16 @@ export function JSONEditor(opts: JSONEditorProps) {
   //if the defaultValue changes update the editor
   useEffect(() => {
     if (view !== undefined) {
-      if (view.state.doc.toString() === defaultValue) return;
-      view.dispatch({
-        changes: { from: 0, to: view.state.doc.length, insert: defaultValue },
-      });
+      if (view.state.doc.toString() !== defaultValue) {
+        view.dispatch({
+          changes: { from: 0, to: view.state.doc.length, insert: defaultValue },
+          selection: getDefaultSelection(defaultValue),
+        });
+      } else {
+        view.dispatch({
+          selection: getDefaultSelection(defaultValue),
+        });
+      }
     }
   }, [defaultValue, view]);
 
@@ -149,4 +157,21 @@ export function JSONEditor(opts: JSONEditorProps) {
       </div>
     </div>
   );
+}
+
+function isMultiline(content: string | Text) {
+  if (typeof content === "string") {
+    return content.includes("\n");
+  } else {
+    return content.lines > 1;
+  }
+}
+
+/** For multiline content, gets end of penultimate line. Otherwise, position `0`. */
+function getDefaultSelection(content: string | Text) {
+  if (!isMultiline(content)) {
+    return { anchor: 0 };
+  } else {
+    return { anchor: content.length > 2 ? content.length - 2 : 0 };
+  }
 }

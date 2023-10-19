@@ -117,7 +117,7 @@ export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Test" />,
 };
 
-const startingJson = "{\n\n}";
+const startingJson = "{\n  \n}";
 
 export default function Page() {
   const { environments, runs, examples } = useTypedLoaderData<typeof loader>();
@@ -202,7 +202,6 @@ export default function Page() {
                   //deselect the example if it's been edited
                   if (selectedCodeSampleId) {
                     if (v !== selectedCodeSample) {
-                      setDefaultJson(v);
                       setSelectedCodeSampleId(undefined);
                     }
                   }
