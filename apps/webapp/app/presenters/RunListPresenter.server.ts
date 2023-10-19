@@ -113,8 +113,11 @@ export class RunListPresenter {
         break;
     }
 
+    const runsToReturn =
+      direction === "backward" && hasMore ? runs.slice(1, PAGE_SIZE + 1) : runs.slice(0, PAGE_SIZE);
+
     return {
-      runs: runs.slice(0, PAGE_SIZE).map((run) => ({
+      runs: runsToReturn.map((run) => ({
         id: run.id,
         number: run.number,
         startedAt: run.startedAt,
