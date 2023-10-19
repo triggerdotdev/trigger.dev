@@ -14,4 +14,6 @@ cp node_modules/@prisma/engines/*.node apps/webapp/prisma/
 pnpm --filter webapp db:seed
 
 cd /triggerdotdev/apps/webapp
-exec dumb-init pnpm run start:local
+# exec dumb-init pnpm run start:local
+NODE_PATH='/triggerdotdev/node_modules/.pnpm/node_modules' exec dumb-init node --max-old-space-size=8192 ./build/server.js
+
