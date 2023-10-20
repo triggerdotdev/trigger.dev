@@ -1,18 +1,6 @@
-import { EventFilterSchema, stringPatternMatchers } from "@trigger.dev/core";
-import { TriggerClient } from "../triggerClient";
+import { RequestFilterSchema } from "@trigger.dev/core";
 import { z } from "zod";
-
-const StringMatchSchema = z.union([
-  /** Match against a string */
-  z.array(z.string()),
-  z.array(z.union(stringPatternMatchers)),
-]);
-
-const RequestFilterSchema = z.object({
-  headers: z.record(StringMatchSchema),
-  query: z.record(StringMatchSchema),
-  body: EventFilterSchema.optional(),
-});
+import { TriggerClient } from "../triggerClient";
 
 const HttpTriggerOptionsSchema = z.object({
   id: z.string(),
@@ -24,7 +12,7 @@ const HttpTriggerOptionsSchema = z.object({
 });
 
 type HttpTriggerOptions = z.infer<typeof HttpTriggerOptionsSchema> & {
-  verify: {
+  verify?: {
     onRequest: (request: Request) => Promise<Response>;
   };
 };
@@ -35,3 +23,12 @@ export class HttpTrigger {
     options: HttpTriggerOptions
   ) {}
 }
+
+const trigger = new HttpTrigger(
+  new TriggerClient({
+    id: "",
+  }),
+  {
+    id: "whatsapp",
+  }
+);
