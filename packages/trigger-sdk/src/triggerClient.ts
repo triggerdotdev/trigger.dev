@@ -47,6 +47,7 @@ import { runLocalStorage } from "./runLocalStorage";
 import { DynamicTrigger, DynamicTriggerOptions } from "./triggers/dynamic";
 import { EventTrigger } from "./triggers/eventTrigger";
 import { ExternalSource } from "./triggers/externalSource";
+import { HttpTriggerOptions, httpTrigger } from "./triggers/httpTrigger";
 import { DynamicIntervalOptions, DynamicSchedule } from "./triggers/scheduled";
 import type {
   EventSpecification,
@@ -54,8 +55,6 @@ import type {
   TriggerContext,
   TriggerPreprocessContext,
 } from "./types";
-import { HttpTrigger } from "./triggers/httpTrigger";
-import { HttpTriggerOptions, httpTrigger } from "./triggers/httpTrigger2";
 
 const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
   name: REGISTER_SOURCE_EVENT_V2,
