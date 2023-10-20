@@ -85,6 +85,9 @@ envVars:
 ## Documentation : https://github.com/bitnami/charts/tree/main/bitnami/postgresql-ha
 ##
 postgresql:
+  ## @param postgresql.enabled Enable Postgresql(&reg;)
+  ##
+  enabled: true
   ## @param postgresql.name Name used to build variables (deprecated)
   ##
   name: "postgresql"
