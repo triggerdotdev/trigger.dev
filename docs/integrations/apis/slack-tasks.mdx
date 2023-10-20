@@ -1,0 +1,26 @@
+---
+title: Slack tasks
+sidebarTitle: Tasks
+---
+
+Tasks are executed after the job is triggered and are the main building blocks of a job. You can string together as many tasks as you want.
+
+---
+
+## All tasks
+
+### `postMessage`
+
+Post a message to a channel. [Official Slack Docs](https://api.slack.com/methods/chat.postMessage)
+
+```ts example.ts
+// Send a Slack message using the io.slack.postMessage function
+const response = await io.slack.postMessage("post message", {
+  // Specify the target channel by providing its ID
+  channel: "C04GWUTDC3W",
+  // Set the text content of the message
+  text: "My first Slack message",
+});
+
+```
+

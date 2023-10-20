@@ -1,8 +1,20 @@
 ---
-title: Slack
+title: Plain overview & authentication
+sidebarTitle: Overview & authentication
 ---
 
-<Snippet file="integration-getting-started.mdx" />
+## Overview
+
+The Slack platform allows you to extend and automate your workspaces to cultivate conversation, inspire action, and synergize services.
+
+
+<Card
+  title="Jobs Showcase - Slack"
+  icon="rocket"
+  href="https://trigger.dev/showcase?tags=&integrations=slack"
+>
+  Check out pre-built Plain jobs in our showcase.
+</Card>
 
 ## Installation
 
@@ -33,32 +45,13 @@ const slack = new Slack({
   id: "slack",
 });
 ```
-
-## Example
-
-```ts
-client.defineJob({
-  id: "slack-test",
-  name: "Slack test",
-  version: "0.0.1",
-  trigger: eventTrigger({
-    name: "slack.test",
-    schema: z.object({}),
-  }),
-  integrations: {
-    slack,
-  },
-  run: async (payload, io, ctx) => {
-    const response = await io.slack.postMessage("post message", {
-      channel: "C04GWUTDC3W",
-      text: "My first Slack message",
-    });
-  },
-});
-```
-
 ## Tasks
 
-| Function Name | Description                 |
-| ------------- | --------------------------- |
-| `postMessage` | Post a message to a channel |
+Once you have set up a Slack client, you can use it to create tasks.
+
+<CardGroup>
+  <Card title="Tasks" icon="sparkles" href="/integrations/apis/slack-tasks">
+    Perform tasks such as posting message to a channel.
+  </Card>
+</CardGroup>
+
