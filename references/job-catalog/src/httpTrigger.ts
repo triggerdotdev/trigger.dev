@@ -12,9 +12,23 @@ export const client = new TriggerClient({
 
 const whatsApp = client.defineHttpTrigger({
   id: "whatsapp",
-  schema: z.object({
-    message: z.string(),
-  }),
+  hostname: "whatsapp.com",
+  // bodySchema: z.object({
+  //   mesaaaasage: z.string(),
+  // }),
+  verify: {
+    requestFilter: {
+      method: ["GET"],
+    },
+    onRequest: async (request, context) => {
+      const searchParams = new URL(request.url).searchParams;
+      if (searchParams.get("verify_token") !== context.secret) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+
+      return new Response(searchParams.get("challenge") ?? "OK", { status: 200 });
+    },
+  },
 });
 
 client.defineJob({
@@ -24,7 +38,7 @@ client.defineJob({
   enabled: true,
   trigger: whatsApp,
   run: async (payload, io, ctx) => {
-    //         ^?
+    //        ^?
   },
 });
 

@@ -7,8 +7,21 @@ const StringMatchSchema = z.union([
   z.array(z.union(stringPatternMatchers)),
 ]);
 
+export const HTTPMethodUnionSchema = z.union([
+  z.literal("GET"),
+  z.literal("POST"),
+  z.literal("PUT"),
+  z.literal("PATCH"),
+  z.literal("DELETE"),
+  z.literal("HEAD"),
+  z.literal("OPTIONS"),
+]);
+
 export const RequestFilterSchema = z.object({
-  headers: z.record(StringMatchSchema),
-  query: z.record(StringMatchSchema),
+  method: z.array(HTTPMethodUnionSchema).optional(),
+  headers: z.record(StringMatchSchema).optional(),
+  query: z.record(StringMatchSchema).optional(),
   body: EventFilterSchema.optional(),
 });
+
+export type RequestFilter = z.infer<typeof RequestFilterSchema>;
