@@ -1,33 +1,24 @@
-import type { DataFunctionArgs, LoaderFunctionArgs, SerializeFrom } from "@remix-run/node";
+import { ArrowRightIcon } from "@heroicons/react/20/solid";
+import { BoltIcon, CloudIcon, CodeBracketIcon, ServerStackIcon } from "@heroicons/react/24/solid";
+import type { LoaderFunctionArgs } from "@remix-run/node";
 import { Form } from "@remix-run/react";
-import { ServerRuntimeMetaArgs, ServerRuntimeMetaDescriptor } from "@remix-run/server-runtime";
 import { getMatchesData, metaV1 } from "@remix-run/v1-meta";
 import {
-  TypedJsonResponse,
   TypedMetaFunction,
   UseDataFunctionReturn,
   redirect,
   typedjson,
   useTypedLoaderData,
 } from "remix-typedjson";
-import { LogoIcon } from "~/components/LogoIcon";
 import { LogoType } from "~/components/LogoType";
-import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
-import { FormTitle } from "~/components/primitives/FormTitle";
 import { Header1, Header3 } from "~/components/primitives/Headers";
 import { Icon } from "~/components/primitives/Icon";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
-import {
-  SimpleTooltip,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "~/components/primitives/Tooltip";
+import { LoginTooltip } from "~/components/primitives/Tooltip";
 import type { LoaderType as RootLoader } from "~/root";
 import { isGithubAuthSupported } from "~/services/auth.server";
 import { commitSession, setRedirectTo } from "~/services/redirectTo.server";
@@ -77,9 +68,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
 const layout =
   "group grid place-items-center p-4 text-center overflow-hidden hover:opacity-100 hover:grayscale-0 transition";
 const gridCell = "hover:bg-midnight-850 rounded-lg transition bg-midnight-850/40";
-const logos =
-  "h-20 w-20 opacity-20 group-hover:opacity-100 transition grayscale group-hover:grayscale-0";
-const tall = "row-span-2";
+const opacity = "opacity-20 group-hover:opacity-100 transition group-hover:scale-105";
+const logos = "h-20 w-20 transition grayscale group-hover:grayscale-0";
 const wide = "col-span-2";
 const wider = "col-span-3 row-span-2";
 const mediumSquare = "col-span-2 row-span-2";
@@ -93,28 +83,38 @@ export default function LoginPage() {
         <LoginForm />
       </div>
       <div className="col-span-7 grid h-full w-full grid-flow-row grid-cols-5 grid-rows-6 gap-4 p-4">
-        <div className={cn(layout, gridCell, mediumSquare)}>1</div>
-        <LoginTooltip
-          side="bottom"
-          content="Use our Supabase Integration in your Job to react to changes in your database."
-        >
+        <div className={cn(layout, gridCell, mediumSquare)}>
+          <ServerStackIcon
+            className={cn(
+              opacity,
+              "h-40 w-40 text-gray-500 grayscale transition group-hover:text-blue-500 group-hover:grayscale-0"
+            )}
+          />
+        </div>
+        <LoginTooltip side="bottom" content={<SlackTooltipContent />}>
           <div className={cn(layout, gridCell)}>
-            <Icon icon="supabase" className={logos} />
+            <Icon icon="slack" className={cn(logos, opacity)} />
           </div>
         </LoginTooltip>
-        <div className={cn(layout, gridCell, mediumSquare)}>4</div>
-        <LoginTooltip
-          side="bottom"
-          content="Trigger payments, emails, subscription upgrades and more with our Stripe Integration."
-        >
+        <LoginTooltip side="left" content={<TriggerTooltipContent />}>
+          <div className={cn(layout, gridCell, mediumSquare)}>
+            <BoltIcon
+              className={cn(
+                opacity,
+                "h-40 w-40 text-gray-500 grayscale transition group-hover:text-yellow-500 group-hover:grayscale-0"
+              )}
+            />
+          </div>
+        </LoginTooltip>
+        <LoginTooltip side="bottom" content={<StripeTooltipContent />} className="max-w-lg">
           <div className={cn("", layout, gridCell)}>
-            <Icon icon="stripe" className={logos} />
+            <Icon icon="stripe" className={cn(logos, opacity)} />
           </div>
         </LoginTooltip>
         <LoginTooltip side="top" content="❤️ Loved by developers">
           <div className={cn(layout, gridCell, wider)}>
             <div className="p-4">
-              <Header3 className="relative text-2xl font-normal leading-8 text-dimmed before:absolute before:-top-10 before:left-2 before:-z-10 before:text-8xl before:text-indigo-500 before:opacity-20 before:content-['❝']">
+              <Header3 className="before:group-transition relative text-2xl font-normal leading-8 text-dimmed before:absolute before:-top-10 before:left-2 before:-z-10 before:text-8xl before:text-indigo-500 before:opacity-20 before:grayscale before:content-['❝'] group-hover:before:grayscale-0">
                 Trigger.dev is redefining background jobs for modern developers.
               </Header3>
               <Paragraph variant="small" className="mt-4 text-slate-600">
@@ -124,38 +124,49 @@ export default function LoginPage() {
           </div>
         </LoginTooltip>
         <div className={cn(layout, gridCell)}>
-          <Icon icon="airtable" className={logos} />
+          <Icon icon="airtable" className={cn(logos, opacity)} />
         </div>
         <div className={cn(layout, gridCell)}>
-          <Icon icon="typeform" className={logos} />
+          <Icon icon="typeform" className={cn(logos, opacity)} />
         </div>
-        <div className={cn(layout, gridCell, mediumSquare)}>8</div>
-        <div className={cn(layout, gridCell, tall)}>9</div>
-        <div className={cn(layout, gridCell, mediumSquare)}>10</div>
-        <div className={cn(layout, gridCell, wide)}>11</div>
+        <div className={cn(layout, gridCell, mediumSquare)}>
+          <Icon
+            icon="webhook"
+            className={cn(
+              opacity,
+              "h-40 w-40 text-gray-500 grayscale transition group-hover:text-green-500 group-hover:grayscale-0"
+            )}
+          />
+        </div>
+        <LoginTooltip
+          side="right"
+          content="Use our Supabase Integration in your Job to react to changes in your database."
+        >
+          <div className={cn(layout, gridCell)}>
+            <Icon icon="supabase" className={cn(logos, opacity)} />
+          </div>
+        </LoginTooltip>
+        <div className={cn(layout, gridCell, mediumSquare)}>
+          <CodeBracketIcon
+            className={cn(
+              opacity,
+              "h-40 w-40 text-gray-500 grayscale transition group-hover:text-rose-500 group-hover:grayscale-0"
+            )}
+          />
+        </div>
+        <div className={cn(layout, gridCell)}>
+          <Icon icon="resend" className={cn(logos, opacity)} />
+        </div>
+        <div className={cn(layout, gridCell, wide)}>
+          <CloudIcon
+            className={cn(
+              opacity,
+              "h-20 w-20 text-gray-500 grayscale transition group-hover:text-cyan-500 group-hover:grayscale-0"
+            )}
+          />
+        </div>
       </div>
     </main>
-  );
-}
-
-function LoginTooltip({
-  children,
-  side,
-  content,
-}: {
-  children: React.ReactNode;
-  side: "top" | "bottom" | "left" | "right";
-  content: string;
-}) {
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>{children}</TooltipTrigger>
-        <TooltipContent className="max-w-xs py-2 text-center" side={side}>
-          {content}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
   );
 }
 
@@ -177,53 +188,113 @@ function LoginForm() {
           method="post"
         >
           <div className="flex flex-col items-center gap-y-6">
-            <div>
-              <Header1 className="pb-4 font-normal lg:text-3xl">Welcome</Header1>
-              <Paragraph variant="small" className="mb-6">
-                Create an account or login
-              </Paragraph>
-              <Fieldset>
-                <div className="flex flex-col gap-y-2">
-                  {data.showGithubAuth && (
-                    <Button
-                      type="submit"
-                      variant="primary/large"
-                      fullWidth
-                      data-action="continue with github"
-                    >
-                      <NamedIcon name={"github"} className={"mr-1.5 h-4 w-4"} />
-                      Continue with GitHub
-                    </Button>
-                  )}
-                  <LinkButton
-                    to="/login/magic"
-                    variant="secondary/large"
+            <Header1 className="pb-4 font-normal lg:text-3xl">Welcome</Header1>
+            <Paragraph variant="small" className="mb-6">
+              Create an account or login
+            </Paragraph>
+            <Fieldset>
+              <div className="flex flex-col gap-y-2">
+                {data.showGithubAuth && (
+                  <Button
+                    type="submit"
+                    variant="primary/extra-large"
                     fullWidth
-                    data-action="continue with email"
+                    data-action="continue with github"
                   >
-                    <NamedIcon
-                      name={"envelope"}
-                      className={"mr-1.5 h-4 w-4 text-dimmed transition group-hover:text-bright"}
-                    />
-                    Continue with Email
-                  </LinkButton>
-                </div>
-                <Paragraph variant="extra-small" className="mt-2 text-center">
-                  By signing up you agree to our{" "}
-                  <TextLink href="https://trigger.dev/legal" target="_blank">
-                    terms
-                  </TextLink>
-                  {" "}and{" "}
-                  <TextLink href="https://trigger.dev/legal/privacy" target="_blank">
-                    privacy
-                  </TextLink>
-                  {" "}policy.
-                </Paragraph>
-              </Fieldset>
-            </div>
+                    <NamedIcon name={"github"} className={"mr-2 h-6 w-6"} />
+                    Continue with GitHub
+                  </Button>
+                )}
+                <LinkButton
+                  to="/login/magic"
+                  variant="secondary/extra-large"
+                  fullWidth
+                  data-action="continue with email"
+                >
+                  <NamedIcon
+                    name={"envelope"}
+                    className={"mr-1.5 h-4 w-4 text-dimmed transition group-hover:text-bright"}
+                  />
+                  Continue with Email
+                </LinkButton>
+              </div>
+              <Paragraph variant="extra-small" className="mt-2 text-center">
+                By signing up you agree to our{" "}
+                <TextLink href="https://trigger.dev/legal" target="_blank">
+                  terms
+                </TextLink>
+                {" "}and{" "}
+                <TextLink href="https://trigger.dev/legal/privacy" target="_blank">
+                  privacy
+                </TextLink>
+                {" "}policy.
+              </Paragraph>
+            </Fieldset>
           </div>
         </Form>
       </div>
     </div>
+  );
+}
+
+function SlackTooltipContent() {
+  return (
+    <>
+      <div className="mb-2 flex items-center gap-x-1.5">
+        <Icon icon="slack" className="h-5 w-5" />
+        <Paragraph variant="base/bright" className="font-semibold">
+          Slack Integration
+        </Paragraph>
+      </div>
+      <Paragraph variant="base">
+        Use our Slack Integration to post messages to your team when your Job is triggered.
+      </Paragraph>
+    </>
+  );
+}
+
+function StripeTooltipContent() {
+  return (
+    <>
+      <div className="mb-2 flex items-center gap-x-1.5">
+        <Icon icon="stripe" className="h-5 w-5" />
+        <Paragraph variant="base/bright" className="font-semibold">
+          Stripe Integration
+        </Paragraph>
+      </div>
+      <div className="mb-2 flex items-center gap-x-1.5">
+        <ArrowRightIcon className="h-5 w-5 text-green-500" />
+        <Paragraph variant="base">Trigger payments</Paragraph>
+      </div>
+      <div className="mb-2 flex items-center gap-x-1.5">
+        <ArrowRightIcon className="h-5 w-5 text-green-500" />
+        <Paragraph variant="base">Trigger emails when payments happen</Paragraph>
+      </div>
+      <div className="mb-2 flex items-center gap-x-1.5">
+        <ArrowRightIcon className="h-5 w-5 text-green-500" />
+        <Paragraph variant="base">Trigger subscription upgrades</Paragraph>
+      </div>
+      <div className="mb-2 flex items-center gap-x-1.5">
+        <ArrowRightIcon className="h-5 w-5 text-green-500" />
+        <Paragraph variant="base">And more…</Paragraph>
+      </div>
+    </>
+  );
+}
+
+function TriggerTooltipContent() {
+  return (
+    <>
+      <div className="mb-2 flex items-center gap-x-1.5">
+        <BoltIcon className="h-5 w-5 text-yellow-500" />
+        <Paragraph variant="base/bright" className="font-semibold">
+          Triggering your Job
+        </Paragraph>
+      </div>
+      <Paragraph variant="base">
+        Trigger your Jobs with a wehook, on a recurring schedule or CRON or with your own custom
+        event.
+      </Paragraph>
+    </>
   );
 }
