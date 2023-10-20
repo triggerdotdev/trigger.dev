@@ -1,0 +1,213 @@
+---
+title: Plain tasks
+sidebarTitle: Tasks
+---
+
+Tasks are executed after the job is triggered and are the main building blocks of a job. You can string together as many tasks as you want.
+
+---
+
+## All tasks
+
+### `getCustomerById`
+
+Gets a customer using their id. [Official Plain Docs](https://plain-typescript-sdk-docs.vercel.app/classes/PlainClient.html#getCustomerById)
+
+```ts example.ts
+const getCustomer = await io.plain.getCustomerById("get-customer", {
+      customerId: customer.id, // The customer's unique identifier, likely an ID.
+    });
+```
+
+### `upsertCustomer`
+
+Creates or updates a customer. [Official Plain Docs](https://plain-typescript-sdk-docs.vercel.app/classes/PlainClient.html#upsertCustomer)
+
+```ts example.ts
+run: async (payload, io, ctx) => {
+  // Inside this function, a new customer record is being upserted (inserted or updated).
+
+  // Using object destructuring to extract the 'customer' object from the result of the asynchronous 'upsertCustomer' function.
+  const { customer } = await io.plain.upsertCustomer("upsert-customer", {
+    // Configuration for upserting a customer record:
+
+    // Unique identifier for the customer record, in this case, based on the email address.
+    identifier: {
+      emailAddress: "rick.astley@gmail.com",
+    },
+
+    // 'onCreate' block defines what to do when a new customer gets created with the given identifier.
+    onCreate: {
+      email: {
+        email: "rick.astley@gmail.com", // Setting the email address.
+        isVerified: true, // Marking the email as verified.
+      },
+      fullName: "Rick Astley", // Setting the full name.
+      externalId: "u_123", // Assigning an external identifier.
+    },
+
+    // 'onUpdate' block defines what to do when a customer with the given identifier already exists.
+    onUpdate: {
+      fullName: {
+        value: "Rick Astley", // Updating the full name.
+      },
+      externalId: {
+        value: "u_123", // Updating the external identifier.
+      },
+    },
+  });
+}
+```
+
+
+### `upsertCustomTimelineEntry`
+
+Creates or updates a timeline entry. [Official Plain Docs](https://plain-typescript-sdk-docs.vercel.app/classes/PlainClient.html#upsertCustomTimelineEntry)
+
+```ts example.ts
+// Declaring a constant 'timelineEntry' and using 'await' to asynchronously execute the 'upsertCustomTimelineEntry' function.
+const timelineEntry = await io.plain.upsertCustomTimelineEntry("upsert-timeline-entry", {
+  // Specifying properties for the timeline entry:
+  customerId: customer.id, // Assigning the 'customer.id' to the 'customerId' property.
+  title: "My timeline entry", // Assigning the title for the timeline entry.
+
+  // Defining an array of 'components' that make up the timeline entry.
+  components: [
+    {
+      // First component: A text component.
+      componentText: {
+        text: `This is a nice title`, // The text to display in this component.
+      },
+    },
+    {
+      // Second component: A divider component.
+      componentDivider: {
+        dividerSpacingSize: ComponentDividerSpacingSize.M, // Configuring the size of the divider.
+      },
+    },
+    {
+      // Third component: Another text component with additional properties.
+      componentText: {
+        textSize: ComponentTextSize.S, // Configuring the text size.
+        textColor: ComponentTextColor.Muted, // Configuring the text color.
+        text: "External id", // The text to display in this component.
+      },
+    },
+    {
+      // Fourth component: A text component that displays the 'externalId' property.
+      componentText: {
+        text: foundCustomer?.externalId ?? "", // Displaying the 'externalId' if available; otherwise, an empty string.
+      },
+    },
+  ],
+});
+
+```
+
+## Using the underlying client
+
+You can also use the underlying client to do anything [@team-plain/typescript-sdk](https://github.com/team-plain/typescript-sdk) supports by using runTask:
+
+```ts example.ts
+import { Plain } from "@trigger.dev/plain";
+
+// Creating a new instance of the 'Plain' class and exporting it as 'plain'.
+export const plain = new Plain({
+  id: "plain", // Unique identifier for this 'Plain' instance.
+  apiKey: process.env.PLAIN_API_KEY!, // API key obtained from an environment variable.
+});
+
+// Defining a job using the 'defineJob' method on the 'client' object.
+client.defineJob({
+  id: "plain-client", // Unique identifier for this job.
+  name: "Plain Client", // Setting a name for the job.
+  version: "0.1.0", // Version number for this job.
+  integrations: { plain }, // Integrating the 'plain' object into this job.
+  trigger: eventTrigger({
+    name: "plain.client", // Setting an event trigger with a name.
+  }),
+  run: async (payload, io, ctx) => {
+    // Inside the 'run' function, a task is being executed asynchronously.
+
+    // Executing a task using the 'io.plain.runTask' method.
+    const result = await io.plain.runTask(
+      "create-issue", // Task name.
+      async (client) =>
+        client.createIssue({
+          customerId: "abcdefghij",
+          issueTypeId: "123456",
+        }),
+      { name: "Create issue" }
+    );
+  },
+});
+
+```
+
+## Example usage
+
+In this example we'll create a task that updates or creates customer information based on an identifier.
+
+```ts example.ts
+import { Job, TriggerClient, eventTrigger } from "@trigger.dev/sdk";
+import {
+  ComponentDividerSpacingSize,
+  ComponentTextColor,
+  ComponentTextSize,
+  Plain,
+} from "@trigger.dev/plain";
+
+// Creating an instance of the TriggerClient with a unique identifier "jobs-showcase."
+const client = new TriggerClient({ id: "jobs-showcase" });
+
+// Creating an instance of the Plain client. It uses an API key from an environment variable.
+export const plain = new Plain({
+  id: "plain",
+  apiKey: process.env.PLAIN_API_KEY!,
+});
+
+// Defining a job for updating customer information.
+client.defineJob({
+  id: "plain-update-customer", // Unique identifier for the job.
+  name: "Plain: update customer", // A specific name for the job.
+  version: "1.0.0", // Version number for the job.
+  integrations: {
+    plain, // Integrating the Plain client into this job.
+  },
+  trigger: eventTrigger({
+    name: "plain.update.customer", // Setting an event trigger with a specific name.
+  }),
+  run: async (payload, io, ctx) => {
+    // Inside the 'run' function, an operation is performed to update customer information.
+
+    // Retrieving the 'customer' object using the 'io.plain.upsertCustomer' method.
+    const { customer } = await io.plain.upsertCustomer("upsert-customer", {
+      identifier: {
+        emailAddress: "rick.astley@gmail.com",
+      },
+      // If the customer isn't found, they will be created with the following details.
+      onCreate: {
+        email: {
+          email: "rick.astley@gmail.com",
+          isVerified: true,
+        },
+        fullName: "Rick Astley",
+        externalId: "u_123",
+      },
+      // If the customer is found, their details will be updated.
+      onUpdate: {
+        fullName: {
+          value: "Rick Astley",
+        },
+        externalId: {
+          value: "u_123",
+        },
+      },
+    });
+  },
+});
+
+// If you're not using Express, you can remove these lines.
+import { createExpressServer } from "@trigger.dev/express";
+createExpressServer(client);
+```

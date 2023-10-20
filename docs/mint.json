@@ -248,7 +248,13 @@
         },
         "integrations/apis/linear",
         "integrations/apis/openai",
-        "integrations/apis/plain",
+        {
+          "group": "Plain",
+          "pages": [
+            "integrations/apis/plain",
+            "integrations/apis/plain-tasks"
+          ]
+        },
         "integrations/apis/replicate",
         "integrations/apis/resend",
         "integrations/apis/sendgrid",
