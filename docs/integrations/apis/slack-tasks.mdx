@@ -17,10 +17,32 @@ Post a message to a channel. [Official Slack Docs](https://api.slack.com/methods
 // Send a Slack message using the io.slack.postMessage function
 const response = await io.slack.postMessage("post message", {
   // Specify the target channel by providing its ID
-  channel: "C04GWUTDC3W",
+  channel: "< your-channel-id >",
   // Set the text content of the message
   text: "My first Slack message",
 });
 
+```
+## Example Usage
+
+```ts
+client.defineJob({
+  id: "slack-test",
+  name: "Slack test",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "slack.test",
+    schema: z.object({}),
+  }),
+  integrations: {
+    slack,
+  },
+  run: async (payload, io, ctx) => {
+    const response = await io.slack.postMessage("post message", {
+      channel: "C04GWUTDC3W",
+      text: "My first Slack message",
+    });
+  },
+});
 ```
 
