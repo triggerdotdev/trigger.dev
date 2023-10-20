@@ -62,6 +62,10 @@
     {
       "source": "/documentation/concepts/limitations",
       "destination": "/documentation/concepts/limits"
+    },
+    {
+      "source": "/documentation/guides/create-a-job",
+      "destination": "/documentation/guides/writing-jobs-step-by-step"
     }
   ],
   "navigation": [
@@ -90,7 +94,7 @@
             "documentation/quickstarts/supabase"
           ]
         },
-        "documentation/guides/create-a-job",
+        "documentation/guides/writing-jobs-step-by-step",
         "documentation/guides/video-walkthrough"
       ]
     },
@@ -299,12 +303,12 @@
           "group": "IO",
           "pages": [
             "sdk/io/overview",
-            "sdk/io/logger",
-            "sdk/io/wait",
-            "sdk/io/sendevent",
             "sdk/io/runtask",
-            "sdk/io/try",
+            "sdk/io/wait",
+            "sdk/io/logger",
+            "sdk/io/sendevent",
             "sdk/io/backgroundfetch",
+            "sdk/io/try",
             "sdk/io/registerinterval",
             "sdk/io/unregisterinterval",
             "sdk/io/registercron",

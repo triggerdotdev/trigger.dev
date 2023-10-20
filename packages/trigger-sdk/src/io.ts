@@ -213,11 +213,11 @@ export class IO {
   }
 
   /** `io.wait()` waits for the specified amount of time before continuing the Job. Delays work even if you're on a serverless platform with timeouts, or if your server goes down. They utilize [resumability](https://trigger.dev/docs/documentation/concepts/resumability) to ensure that the Run can be resumed after the delay.
-   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param seconds The number of seconds to wait. This can be very long, serverless timeouts are not an issue.
    */
-  async wait(key: string | any[], seconds: number) {
-    return await this.runTask(key, async (task) => {}, {
+  async wait(cacheKey: string | any[], seconds: number) {
+    return await this.runTask(cacheKey, async (task) => {}, {
       name: "wait",
       icon: "clock",
       params: { seconds },
@@ -228,7 +228,7 @@ export class IO {
   }
 
   /** `io.createStatus()` allows you to set a status with associated data during the Run. Statuses can be used by your UI using the react package 
-   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param initialStatus The initial status you want this status to have. You can update it during the rub using the returned object.
    * @returns a TriggerStatus object that you can call `update()` on, to update the status.
    * @example 
@@ -260,17 +260,17 @@ export class IO {
    * ```
   */
   async createStatus(
-    key: IntegrationTaskKey,
+    cacheKey: IntegrationTaskKey,
     initialStatus: InitialStatusUpdate
   ): Promise<TriggerStatus> {
-    const id = typeof key === "string" ? key : key.join("-");
+    const id = typeof cacheKey === "string" ? cacheKey : cacheKey.join("-");
     const status = new TriggerStatus(id, this);
-    await status.update(key, initialStatus);
+    await status.update(cacheKey, initialStatus);
     return status;
   }
 
   /** `io.backgroundFetch()` fetches data from a URL that can take longer that the serverless timeout. The actual `fetch` request is performed on the Trigger.dev platform, and the response is sent back to you.
-   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param url The URL to fetch from.
    * @param requestInit The options for the request
    * @param retry The options for retrying the request if it fails
@@ -281,7 +281,7 @@ export class IO {
    * - Wildcards: 2xx, 3xx, 4xx, 5xx
    */
   async backgroundFetch<TResponseData>(
-    key: string | any[],
+    cacheKey: string | any[],
     url: string,
     requestInit?: FetchRequestInit,
     retry?: FetchRetryOptions
@@ -289,7 +289,7 @@ export class IO {
     const urlObject = new URL(url);
 
     return (await this.runTask(
-      key,
+      cacheKey,
       async (task) => {
         return task.output;
       },
@@ -319,13 +319,13 @@ export class IO {
   }
 
   /** `io.sendEvent()` allows you to send an event from inside a Job run. The sent even will trigger any Jobs that are listening for that event (based on the name).
-   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param event The event to send. The event name must match the name of the event that your Jobs are listening for.
    * @param options Options for sending the event.
    */
-  async sendEvent(key: string | any[], event: SendEvent, options?: SendEventOptions) {
+  async sendEvent(cacheKey: string | any[], event: SendEvent, options?: SendEventOptions) {
     return await this.runTask(
-      key,
+      cacheKey,
       async (task) => {
         return await this._triggerClient.sendEvent(event, options);
       },
@@ -343,9 +343,9 @@ export class IO {
     );
   }
 
-  async getEvent(key: string | any[], id: string) {
+  async getEvent(cacheKey: string | any[], id: string) {
     return await this.runTask(
-      key,
+      cacheKey,
       async (task) => {
         return await this._triggerClient.getEvent(id);
       },
@@ -363,13 +363,13 @@ export class IO {
   }
 
   /** `io.cancelEvent()` allows you to cancel an event that was previously sent with `io.sendEvent()`. This will prevent any Jobs from running that are listening for that event if the event was sent with a delay
-   * @param key
+   * @param cacheKey
    * @param eventId
    * @returns
    */
-  async cancelEvent(key: string | any[], eventId: string) {
+  async cancelEvent(cacheKey: string | any[], eventId: string) {
     return await this.runTask(
-      key,
+      cacheKey,
       async (task) => {
         return await this._triggerClient.cancelEvent(eventId);
       },
@@ -388,9 +388,12 @@ export class IO {
     );
   }
 
-  async updateSource(key: string | any[], options: { key: string } & UpdateTriggerSourceBodyV2) {
+  async updateSource(
+    cacheKey: string | any[],
+    options: { key: string } & UpdateTriggerSourceBodyV2
+  ) {
     return this.runTask(
-      key,
+      cacheKey,
       async (task) => {
         return await this._apiClient.updateSource(this._triggerClient.id, options.key, options);
       },
@@ -412,7 +415,7 @@ export class IO {
   }
 
   /** `io.registerInterval()` allows you to register a [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) that will trigger any jobs it's attached to on a regular interval.
-   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to register a new schedule on.
    * @param id A unique id for the interval. This is used to identify and unregister the interval later.
    * @param options The options for the interval.
@@ -420,13 +423,13 @@ export class IO {
    * @deprecated Use `DynamicSchedule.register` instead.
    */
   async registerInterval(
-    key: string | any[],
+    cacheKey: string | any[],
     dynamicSchedule: DynamicSchedule,
     id: string,
     options: IntervalOptions
   ) {
     return await this.runTask(
-      key,
+      cacheKey,
       async (task) => {
         return dynamicSchedule.register(id, {
           type: "interval",
@@ -446,14 +449,14 @@ export class IO {
   }
 
   /** `io.unregisterInterval()` allows you to unregister a [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) that was previously registered with `io.registerInterval()`.
-   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to unregister a schedule on.
    * @param id A unique id for the interval. This is used to identify and unregister the interval later.
    * @deprecated Use `DynamicSchedule.unregister` instead.
    */
-  async unregisterInterval(key: string | any[], dynamicSchedule: DynamicSchedule, id: string) {
+  async unregisterInterval(cacheKey: string | any[], dynamicSchedule: DynamicSchedule, id: string) {
     return await this.runTask(
-      key,
+      cacheKey,
       async (task) => {
         return dynamicSchedule.unregister(id);
       },
@@ -468,20 +471,20 @@ export class IO {
   }
 
   /** `io.registerCron()` allows you to register a [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) that will trigger any jobs it's attached to on a regular CRON schedule.
-   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to register a new schedule on.
    * @param id A unique id for the schedule. This is used to identify and unregister the schedule later.
    * @param options The options for the CRON schedule.
    * @deprecated Use `DynamicSchedule.register` instead.
    */
   async registerCron(
-    key: string | any[],
+    cacheKey: string | any[],
     dynamicSchedule: DynamicSchedule,
     id: string,
     options: CronOptions
   ) {
     return await this.runTask(
-      key,
+      cacheKey,
       async (task) => {
         return dynamicSchedule.register(id, {
           type: "cron",
@@ -501,14 +504,14 @@ export class IO {
   }
 
   /** `io.unregisterCron()` allows you to unregister a [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) that was previously registered with `io.registerCron()`.
-   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to unregister a schedule on.
    * @param id A unique id for the interval. This is used to identify and unregister the interval later.
    * @deprecated Use `DynamicSchedule.unregister` instead.
    */
-  async unregisterCron(key: string | any[], dynamicSchedule: DynamicSchedule, id: string) {
+  async unregisterCron(cacheKey: string | any[], dynamicSchedule: DynamicSchedule, id: string) {
     return await this.runTask(
-      key,
+      cacheKey,
       async (task) => {
         return dynamicSchedule.unregister(id);
       },
@@ -523,7 +526,7 @@ export class IO {
   }
 
   /** `io.registerTrigger()` allows you to register a [DynamicTrigger](https://trigger.dev/docs/sdk/dynamictrigger) with the specified trigger params.
-   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param trigger The [DynamicTrigger](https://trigger.dev/docs/sdk/dynamictrigger) to register.
    * @param id A unique id for the trigger. This is used to identify and unregister the trigger later.
    * @param params The params for the trigger.
@@ -532,13 +535,13 @@ export class IO {
   async registerTrigger<
     TTrigger extends DynamicTrigger<EventSpecification<any>, ExternalSource<any, any, any>>,
   >(
-    key: string | any[],
+    cacheKey: string | any[],
     trigger: TTrigger,
     id: string,
     params: ExternalSourceParams<TTrigger["source"]>
   ): Promise<{ id: string; key: string } | undefined> {
     return await this.runTask(
-      key,
+      cacheKey,
       async (task) => {
         const registration = await this.runTask(
           "register-source",
@@ -566,13 +569,13 @@ export class IO {
     );
   }
 
-  async getAuth(key: string | any[], clientId?: string): Promise<ConnectionAuth | undefined> {
+  async getAuth(cacheKey: string | any[], clientId?: string): Promise<ConnectionAuth | undefined> {
     if (!clientId) {
       return;
     }
 
     return this.runTask(
-      key,
+      cacheKey,
       async (task) => {
         return await this._triggerClient.getAuth(clientId);
       },
@@ -582,14 +585,14 @@ export class IO {
 
   /** `io.runTask()` allows you to run a [Task](https://trigger.dev/docs/documentation/concepts/tasks) from inside a Job run. A Task is a resumable unit of a Run that can be retried, resumed and is logged. [Integrations](https://trigger.dev/docs/integrations) use Tasks internally to perform their actions.
    *
-   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param callback The callback that will be called when the Task is run. The callback receives the Task and the IO as parameters.
    * @param options The options of how you'd like to run and log the Task.
    * @param onError The callback that will be called when the Task fails. The callback receives the error, the Task and the IO as parameters. If you wish to retry then return an object with a `retryAt` property.
    * @returns A Promise that resolves with the returned value of the callback.
    */
   async runTask<T extends Json<T> | void>(
-    key: string | any[],
+    cacheKey: string | any[],
     callback: (task: ServerTask, io: IO) => Promise<T>,
     options?: RunTaskOptions,
     onError?: RunTaskErrorCallback
@@ -601,12 +604,14 @@ export class IO {
     if (parentId) {
       this._logger.debug("Using parent task", {
         parentId,
-        key,
+        cacheKey,
         options,
       });
     }
 
-    const idempotencyKey = await generateIdempotencyKey([this._id, parentId ?? "", key].flat());
+    const idempotencyKey = await generateIdempotencyKey(
+      [this._id, parentId ?? "", cacheKey].flat()
+    );
 
     const cachedTask = this._cachedTasks.get(idempotencyKey);
 
@@ -636,7 +641,7 @@ export class IO {
       this._id,
       {
         idempotencyKey,
-        displayKey: typeof key === "string" ? key : undefined,
+        displayKey: typeof cacheKey === "string" ? cacheKey : undefined,
         noop: false,
         ...(options ?? {}),
         parentId,
@@ -850,7 +855,7 @@ export class IO {
   /**
    * `io.yield()` allows you to yield execution of the current run and resume it in a new function execution. Similar to `io.wait()` but does not create a task and resumes execution immediately.
    */
-  yield(key: string) {
+  yield(cacheKey: string) {
     if (!supportsFeature("yieldExecution", this._serverVersion)) {
       console.warn(
         "[trigger.dev] io.yield() is not support by the version of the Trigger.dev server you are using, you will need to upgrade your self-hosted Trigger.dev instance."
@@ -859,11 +864,11 @@ export class IO {
       return;
     }
 
-    if (this._yieldedExecutions.includes(key)) {
+    if (this._yieldedExecutions.includes(cacheKey)) {
       return;
     }
 
-    throw new YieldExecutionError(key);
+    throw new YieldExecutionError(cacheKey);
   }
 
   /**
