@@ -13,6 +13,7 @@ import type {
 } from "@trigger.dev/core";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
+import { z } from "zod";
 
 export type {
   DisplayProperty,
@@ -83,12 +84,14 @@ export type TriggerPayload<TTrigger> = TTrigger extends Trigger<EventSpecificati
   ? TEvent
   : never;
 
-export type EventSpecificationExample = {
-  id: string;
-  name: string;
-  icon?: string;
-  payload: any;
-};
+export const EventSpecificationExampleSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  icon: z.string().optional(),
+  payload: z.any(),
+});
+
+export type EventSpecificationExample = z.infer<typeof EventSpecificationExampleSchema>;
 
 export interface EventSpecification<TEvent extends any> {
   name: string | string[];
