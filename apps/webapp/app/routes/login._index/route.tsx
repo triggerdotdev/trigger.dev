@@ -65,8 +65,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 }
 
-const layout =
-  "group grid place-items-center p-4 text-center overflow-hidden hover:opacity-100 hover:grayscale-0 transition";
+const layout = "group grid place-items-center p-4 text-center overflow-hidden";
 const gridCell = "hover:bg-midnight-850 rounded-lg transition bg-midnight-850/40";
 const opacity = "opacity-20 group-hover:opacity-100 transition group-hover:scale-105";
 const logos = "h-20 w-20 transition grayscale group-hover:grayscale-0";
@@ -114,10 +113,13 @@ export default function LoginPage() {
         <LoginTooltip side="top" content="❤️ Loved by developers">
           <div className={cn(layout, gridCell, wider)}>
             <div className="p-4">
-              <Header3 className="before:group-transition relative text-2xl font-normal leading-8 text-dimmed before:absolute before:-top-10 before:left-2 before:-z-10 before:text-8xl before:text-indigo-500 before:opacity-20 before:grayscale before:content-['❝'] group-hover:before:grayscale-0">
+              <Header3 className="relative text-2xl font-normal leading-8 text-gray-600 transition before:absolute before:-top-8 before:left-0 before:text-7xl before:text-slate-600 before:opacity-20 before:content-['❝'] group-hover:text-slate-500 group-hover:before:opacity-30">
                 Trigger.dev is redefining background jobs for modern developers.
               </Header3>
-              <Paragraph variant="small" className="mt-4 text-slate-600">
+              <Paragraph
+                variant="small"
+                className="mt-4 text-gray-700 transition group-hover:text-slate-600"
+              >
                 Paul Copplestone, Supabase
               </Paragraph>
             </div>
