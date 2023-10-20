@@ -1,84 +1,106 @@
-import {
-  DisplayPropertiesSchema,
-  EventFilter,
-  EventFilterSchema,
-  RequestFilterSchema,
-} from "@trigger.dev/core";
-import { z } from "zod";
-import { TriggerClient } from "../triggerClient";
-import { EventSpecification, EventSpecificationExampleSchema, Trigger } from "../types";
+import { EventFilter, TriggerMetadata, deepMergeFilters } from "@trigger.dev/core";
 import { Job } from "../job";
+import { TriggerClient } from "../triggerClient";
+import { EventSpecification, EventSpecificationExample, SchemaParser, Trigger } from "../types";
+import { formatSchemaErrors } from "../utils/formatSchemaErrors";
+import { ParsedPayloadSchemaError } from "../errors";
 
-const HttpTriggerOptionsSchema = z.object({
-  id: z.string(),
-  title: z.string().optional(),
-  icon: z.string().optional(),
-  properties: DisplayPropertiesSchema.optional(),
-  verify: z
-    .object({
-      requestFilter: RequestFilterSchema.optional(),
-    })
-    .optional(),
-  payload: z
-    .object({
-      requestFilter: RequestFilterSchema.optional(),
-      schema: z.any().optional(),
-      examples: z.array(EventSpecificationExampleSchema).optional(),
-      filter: EventFilterSchema.optional(),
-    })
-    .optional(),
-});
-
-type HttpTriggerOptions = z.infer<typeof HttpTriggerOptionsSchema> & {
-  verify?: {
-    onRequest: (request: Request) => Promise<Response>;
-  };
+type Options<TEventSpecification extends EventSpecification<any>> = {
+  event: TEventSpecification;
+  name?: string | string[];
+  source?: string;
+  filter?: EventFilter;
 };
 
-export class HttpTrigger<TEventSpecification extends EventSpecification<TEvent>, TEvent = any>
+export class HttpTrigger<TEventSpecification extends EventSpecification<any>>
   implements Trigger<TEventSpecification>
 {
-  constructor(
-    private readonly client: TriggerClient,
-    private readonly options: HttpTriggerOptions
-  ) {}
+  #options: Options<TEventSpecification>;
+
+  constructor(options: Options<TEventSpecification>) {
+    this.#options = options;
+  }
+
+  toJSON(): TriggerMetadata {
+    return {
+      type: "modular",
+      id: "",
+    };
+  }
 
   get event() {
-    return {
-      name: this.options.id,
-      title: this.options.title ?? "http",
-      source: "http",
-      icon: this.options.icon ?? "world-www",
-      properties: this.options.properties,
-      schema: this.options.payload?.schema,
-      examples: this.options.payload?.examples,
-      filter: this.options.payload?.filter,
-      parsePayload: (payload: unknown) => payload as TEvent,
-      runProperties: (payload: TEvent) => [],
-    };
+    return this.#options.event;
   }
 
-  toJSON() {
-    return {
-      type: "modular" as const,
-      id: this.options.id,
-    };
-  }
-
-  attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpecification>, any>): void {
-    throw new Error("Method not implemented.");
-  }
+  attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpecification>, any>): void {}
 
   get preprocessRuns() {
-    return true;
+    return false;
   }
 }
 
-const trigger = new HttpTrigger(
-  new TriggerClient({
-    id: "",
-  }),
-  {
-    id: "whatsapp",
-  }
-);
+/** Configuration options for an EventTrigger */
+export type HttpTriggerOptions<TEvent> = {
+  /** The name of the event you are subscribing to. Must be an exact match (case sensitive). To trigger on multiple possible events, pass in an array of event names */
+  name: string | string[];
+  /** A [Zod](https://trigger.dev/docs/documentation/guides/zod) schema that defines the shape of the event payload.
+   * The default is `z.any()` which is `any`.
+   * */
+  schema?: SchemaParser<TEvent>;
+  /** You can use this to filter events based on the source. */
+  source?: string;
+  /** Used to filter which events trigger the Job
+   * @example
+   * filter:
+   * ```ts
+   * {
+   *    name: ["John", "Jane"],
+   *    age: [18, 21]
+   * }
+   * ```
+   *
+   * This filter would match against an event with the following data:
+   * ```json
+   * {
+   *    "name": "Jane",
+   *    "age": 18,
+   *    "location": "San Francisco"
+   * }
+   * ```
+   */
+  filter?: EventFilter;
+
+  examples?: EventSpecificationExample[];
+};
+
+/** `eventTrigger()` is set as a [Job's trigger](https://trigger.dev/docs/sdk/job) to subscribe to an event a Job from [a sent event](https://trigger.dev/docs/sdk/triggerclient/instancemethods/sendevent)
+ * @param options options for the EventTrigger
+ */
+export function httpTrigger<TEvent extends any = any>(
+  options: HttpTriggerOptions<TEvent>
+): Trigger<EventSpecification<TEvent>> {
+  return new HttpTrigger({
+    name: options.name,
+    filter: options.filter,
+    event: {
+      name: options.name,
+      title: "Event",
+      source: options.source ?? "trigger.dev",
+      icon: "custom-event",
+      examples: options.examples,
+      parsePayload: (rawPayload: any) => {
+        if (options.schema) {
+          const results = options.schema.safeParse(rawPayload);
+
+          if (!results.success) {
+            throw new ParsedPayloadSchemaError(formatSchemaErrors(results.error.issues));
+          }
+
+          return results.data;
+        }
+
+        return rawPayload as any;
+      },
+    },
+  });
+}
