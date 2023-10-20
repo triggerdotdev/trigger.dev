@@ -17,6 +17,14 @@ View our [guide for writing Jobs](/documentation/guides/create-a-job).
 
 View our [deployment guide](/documentation/guides/deployment) to learn how to deploy your Jobs.
 
+### Serverless function timeouts
+
+If you are deploying your Next.js app to Vercel, you may need to configure a larger max function duration. By default, Vercel has a max function duration of 10 seconds. As outlined in our [Limits docs](/documentation/concepts/limits#maximum-task-duration), the max function duration effects the maximum [Task](/documentation/concepts/tasks) duration.
+
+So if you have any tasks that may take longer than 10 seconds to run (or close to 10 seconds), you should increase the max function duration to a higher value (only available to paid Vercel plans).
+
+See the [Vercel docs](https://vercel.com/docs/functions/serverless-functions/runtimes#max-duration) for more information on increasing the `maxDuration` for your Vercel Serverless Functions.
+
 ## Middleware
 
 Next.js Middleware allows you to run code before a request is completed, and if you are using it currently in your Next.js project (or you add it later), you might need to guard against altering requests to the `/api/trigger` endpoint, which needs to be exposed to the Trigger.dev installation (either your self-hosted one or the Trigger.dev Cloud).

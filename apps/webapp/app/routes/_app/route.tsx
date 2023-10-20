@@ -60,7 +60,6 @@ export default function App() {
   return (
     <>
       {impersonationId && <ImpersonationBanner impersonationId={impersonationId} />}
-      <NoMobileOverlay />
       <AppContainer showBackgroundGradient={showBackgroundGradient}>
         <NavBar />
         <Outlet />
@@ -72,7 +71,6 @@ export default function App() {
 export function ErrorBoundary() {
   return (
     <>
-      <NoMobileOverlay />
       <AppContainer showBackgroundGradient={true}>
         <MainCenteredContainer>
           <RouteErrorDisplay />
