@@ -177,12 +177,14 @@ export type HttpSourceRequestHeaders = z.output<typeof HttpSourceRequestHeadersS
 export const PongSuccessResponseSchema = z.object({
   ok: z.literal(true),
   triggerVersion: z.string().optional(),
+  triggerSdkVersion: z.string().optional(),
 });
 
 export const PongErrorResponseSchema = z.object({
   ok: z.literal(false),
   error: z.string(),
   triggerVersion: z.string().optional(),
+  triggerSdkVersion: z.string().optional(),
 });
 
 export const PongResponseSchema = z.discriminatedUnion("ok", [
@@ -345,6 +347,7 @@ export type GetEndpointIndexResponse = z.infer<typeof GetEndpointIndexResponseSc
 
 export const EndpointHeadersSchema = z.object({
   "trigger-version": z.string().optional(),
+  "trigger-sdk-version": z.string().optional(),
 });
 
 export const RawEventSchema = z.object({

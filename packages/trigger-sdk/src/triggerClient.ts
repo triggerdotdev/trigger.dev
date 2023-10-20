@@ -65,6 +65,8 @@ const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
   parsePayload: RegisterSourceEventSchemaV2.parse,
 };
 
+import * as packageJson from "../package.json";
+
 export type TriggerClientOptions = {
   /** The `id` property is used to uniquely identify the client.
    */
@@ -1207,6 +1209,7 @@ export class TriggerClient {
   #standardResponseHeaders(start: number) {
     return {
       "Trigger-Version": API_VERSIONS.LAZY_LOADED_CACHED_TASKS,
+      "Trigger-SDK-Version": packageJson.version,
       "X-Trigger-Request-Timing": `dur=${performance.now() - start / 1000.0}`,
     };
   }

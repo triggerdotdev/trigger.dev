@@ -368,6 +368,7 @@ model Endpoint {
 
   indexingHookIdentifier String?
   version                String  @default("unknown")
+  sdkVersion             String  @default("unknown")
 
   runChunkExecutionLimit      Int @default(60000)
   startTaskThreshold          Int @default(750)

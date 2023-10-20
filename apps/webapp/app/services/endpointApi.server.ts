@@ -97,6 +97,7 @@ export class EndpointApi {
       return {
         ...pongResponse.data,
         triggerVersion: headers.data["trigger-version"],
+        triggerSdkVersion: headers.data["trigger-sdk-version"],
       };
     }
 
