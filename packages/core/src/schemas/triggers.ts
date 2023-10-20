@@ -40,10 +40,16 @@ export const ScheduledTriggerMetadataSchema = z.object({
   schedule: ScheduleMetadataSchema,
 });
 
+export const AssetTriggerMetadataSchema = z.object({
+  type: z.literal("modular"),
+  id: z.string(),
+});
+
 export const TriggerMetadataSchema = z.discriminatedUnion("type", [
   DynamicTriggerMetadataSchema,
   StaticTriggerMetadataSchema,
   ScheduledTriggerMetadataSchema,
+  AssetTriggerMetadataSchema,
 ]);
 
 export type TriggerMetadata = z.infer<typeof TriggerMetadataSchema>;
