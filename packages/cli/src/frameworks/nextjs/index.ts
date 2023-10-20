@@ -182,9 +182,9 @@ export async function detectNextVersion(path: string) {
 
   const versionNumberPattern = /[\d.]+|latest/;
   if (packageJsonContent.dependencies?.next !== undefined)
-    return packageJsonContent.dependencies?.next?.match(versionNumberPattern)![0];
+    return packageJsonContent.dependencies?.next?.match(versionNumberPattern)?.at(0) ?? null;
   if (packageJsonContent.devDependencies?.next !== undefined)
-    return packageJsonContent.devDependencies?.next?.match(versionNumberPattern)![0];
+    return packageJsonContent.devDependencies?.next?.match(versionNumberPattern)?.at(0) ?? null;
 
   return null;
 }
