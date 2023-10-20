@@ -61,4 +61,34 @@ function SimpleTooltip({
   );
 }
 
+export function LoginTooltip({
+  children,
+  side,
+  content,
+  className,
+}: {
+  children: React.ReactNode;
+  side: "top" | "bottom" | "left" | "right";
+  content: React.ReactNode | string;
+  className?: string;
+}) {
+  return (
+    <TooltipProvider delayDuration={2500}>
+      <Tooltip>
+        <TooltipTrigger asChild>{children}</TooltipTrigger>
+        <TooltipContent
+          className={cn(
+            "max-w-xs border-slate-800 bg-slate-900 px-4 py-3 backdrop-blur-md",
+            className
+          )}
+          side={side}
+          sideOffset={14}
+        >
+          {content}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, TooltipArrow, SimpleTooltip };
