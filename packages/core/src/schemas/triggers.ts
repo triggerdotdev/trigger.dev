@@ -42,7 +42,7 @@ export const ScheduledTriggerMetadataSchema = z.object({
 
 export const AssetTriggerMetadataSchema = z.object({
   type: z.literal("modular"),
-  id: z.string(),
+  key: z.string(),
 });
 
 export const TriggerMetadataSchema = z.discriminatedUnion("type", [

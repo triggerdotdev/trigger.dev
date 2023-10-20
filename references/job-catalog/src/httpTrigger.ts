@@ -24,6 +24,7 @@ const whatsApp = client.defineHttpTrigger({
       }),
     }),
   }),
+  //todo, this is confusing because verifying refers to when data is sent and checking the headers
   verify: {
     requestFilter: {
       method: ["GET"],
@@ -39,6 +40,8 @@ const whatsApp = client.defineHttpTrigger({
   },
 });
 
+//todo what about verifying the actual webhooks?!?!
+
 client.defineJob({
   id: "event-example-1",
   name: "Event Example 1",
@@ -46,7 +49,8 @@ client.defineJob({
   enabled: true,
   trigger: whatsApp,
   run: async (payload, io, ctx) => {
-    //        ^?
+    const { message } = payload.body;
+    await io.logger.info(`Received message from ${message.from}`);
   },
 });
 

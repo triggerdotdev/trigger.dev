@@ -22,24 +22,28 @@ type Options<TEventSpecification extends EventSpecification<any>> = {
 export class HttpTrigger<TEventSpecification extends EventSpecification<any>>
   implements Trigger<TEventSpecification>
 {
-  #options: Options<TEventSpecification>;
-
-  constructor(options: Options<TEventSpecification>) {
-    this.#options = options;
-  }
+  constructor(private readonly options: Options<TEventSpecification>) {}
 
   toJSON(): TriggerMetadata {
     return {
       type: "modular",
-      id: "",
+      key: this.#key,
     };
   }
 
-  get event() {
-    return this.#options.event;
+  get #key() {
+    return `http-trigger-${this.options.id}`;
   }
 
-  attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpecification>, any>): void {}
+  get event() {
+    return this.options.event;
+  }
+
+  attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpecification>, any>): void {
+    //todo create the actual modular trigger, and pass that through
+    //the modular trigger is what will be used outside of HttpTriggers as well
+    // triggerClient.attachModularTrigger({ key: this.#key, trigger: this });
+  }
 
   get preprocessRuns() {
     return false;
