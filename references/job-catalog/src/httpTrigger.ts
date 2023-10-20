@@ -11,7 +11,7 @@ export const client = new TriggerClient({
 });
 
 const whatsApp = client.defineHttpTrigger({
-  name: "",
+  id: "whatsapp",
   schema: z.object({
     message: z.string(),
   }),

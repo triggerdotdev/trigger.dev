@@ -6,10 +6,8 @@ import { formatSchemaErrors } from "../utils/formatSchemaErrors";
 import { ParsedPayloadSchemaError } from "../errors";
 
 type Options<TEventSpecification extends EventSpecification<any>> = {
+  id: string;
   event: TEventSpecification;
-  name?: string | string[];
-  source?: string;
-  filter?: EventFilter;
 };
 
 export class HttpTrigger<TEventSpecification extends EventSpecification<any>>
@@ -41,35 +39,10 @@ export class HttpTrigger<TEventSpecification extends EventSpecification<any>>
 
 /** Configuration options for an EventTrigger */
 export type HttpTriggerOptions<TEvent> = {
-  /** The name of the event you are subscribing to. Must be an exact match (case sensitive). To trigger on multiple possible events, pass in an array of event names */
-  name: string | string[];
-  /** A [Zod](https://trigger.dev/docs/documentation/guides/zod) schema that defines the shape of the event payload.
-   * The default is `z.any()` which is `any`.
-   * */
+  id: string;
   schema?: SchemaParser<TEvent>;
-  /** You can use this to filter events based on the source. */
   source?: string;
-  /** Used to filter which events trigger the Job
-   * @example
-   * filter:
-   * ```ts
-   * {
-   *    name: ["John", "Jane"],
-   *    age: [18, 21]
-   * }
-   * ```
-   *
-   * This filter would match against an event with the following data:
-   * ```json
-   * {
-   *    "name": "Jane",
-   *    "age": 18,
-   *    "location": "San Francisco"
-   * }
-   * ```
-   */
   filter?: EventFilter;
-
   examples?: EventSpecificationExample[];
 };
 
@@ -80,10 +53,9 @@ export function httpTrigger<TEvent extends any = any>(
   options: HttpTriggerOptions<TEvent>
 ): Trigger<EventSpecification<TEvent>> {
   return new HttpTrigger({
-    name: options.name,
-    filter: options.filter,
+    id: options.id,
     event: {
-      name: options.name,
+      name: options.id,
       title: "Event",
       source: options.source ?? "trigger.dev",
       icon: "custom-event",
