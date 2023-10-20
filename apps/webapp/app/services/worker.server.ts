@@ -12,7 +12,6 @@ import { DeliverEventService } from "./events/deliverEvent.server";
 import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
 import { integrationAuthRepository } from "./externalApis/integrationAuthRepository.server";
 import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
-import { logger } from "./logger.server";
 import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated.server";
 import { PerformRunExecutionV1Service } from "./runs/performRunExecutionV1.server";
 import { PerformRunExecutionV2Service } from "./runs/performRunExecutionV2.server";
@@ -75,6 +74,9 @@ const workerCatalog = {
   }),
   connectionCreated: z.object({
     id: z.string(),
+  }),
+  simulate: z.object({
+    seconds: z.number(),
   }),
 };
 
@@ -145,6 +147,7 @@ function getWorkerQueue() {
       schema: env.WORKER_SCHEMA,
       maxPoolSize: env.WORKER_CONCURRENCY,
     },
+    shutdownTimeoutInMs: env.GRACEFUL_SHUTDOWN_TIMEOUT,
     schema: workerCatalog,
     recurringTasks: {
       // Run this every 5 minutes
@@ -313,6 +316,12 @@ function getWorkerQueue() {
           });
         },
       },
+      simulate: {
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          await new Promise((resolve) => setTimeout(resolve, payload.seconds * 1000));
+        },
+      },
     },
   });
 }
@@ -329,6 +338,7 @@ function getExecutionWorkerQueue() {
       schema: env.WORKER_SCHEMA,
       maxPoolSize: env.EXECUTION_WORKER_CONCURRENCY,
     },
+    shutdownTimeoutInMs: env.GRACEFUL_SHUTDOWN_TIMEOUT,
     schema: executionWorkerCatalog,
     tasks: {
       performRunExecution: {

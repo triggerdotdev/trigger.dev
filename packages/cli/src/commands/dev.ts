@@ -1,22 +1,18 @@
 import boxen from "boxen";
-import chalk from "chalk";
 import childProcess from "child_process";
 import chokidar from "chokidar";
-import fs from "fs/promises";
 import ngrok from "ngrok";
-import { run as ncuRun } from "npm-check-updates";
 import ora, { Ora } from "ora";
 import pRetry, { AbortError } from "p-retry";
-import pathModule from "path";
 import util from "util";
 import { z } from "zod";
-import { Framework, getFramework } from "../frameworks";
+import { Framework } from "../frameworks";
 import { standardWatchFilePaths, standardWatchIgnoreRegex } from "../frameworks/watchConfig";
 import { telemetryClient } from "../telemetry/telemetry";
 import { getEnvFilename } from "../utils/env";
 import fetch from "../utils/fetchUseProxy";
 import { getTriggerApiDetails } from "../utils/getTriggerApiDetails";
-import { getUserPackageManager } from "../utils/getUserPkgManager";
+import { JsRuntime, getJsRuntime } from "../utils/jsRuntime";
 import { logger } from "../utils/logger";
 import { resolvePath } from "../utils/parseNameAndPath";
 import { RequireKeys } from "../utils/requiredKeys";
@@ -32,6 +28,11 @@ export const DevCommandOptionsSchema = z.object({
   envFile: z.string().optional(),
   handlerPath: z.string(),
   clientId: z.string().optional(),
+  tunnel: z
+    .string()
+    .url()
+    .regex(/^(http|https).+/, "only http/https URLs are accepted")
+    .optional(),
 });
 
 export type DevCommandOptions = z.infer<typeof DevCommandOptionsSchema>;
@@ -45,6 +46,31 @@ const formattedDate = new Intl.DateTimeFormat("en", {
   second: "numeric",
 });
 
+let runtime: JsRuntime;
+
+type TunnelUrl = {
+  type: "tunnel";
+  url: string;
+};
+
+type ResolvedUrl = {
+  type: "resolved";
+  hostname: string;
+  port: number;
+};
+
+type ServerUrl = TunnelUrl | ResolvedUrl;
+
+type TunnelEndpoint = TunnelUrl & {
+  handlerPath: string;
+};
+
+type ResolvedEndpoint = ResolvedUrl & {
+  handlerPath: string;
+};
+
+type ServerEndpoint = TunnelEndpoint | ResolvedEndpoint;
+
 export async function devCommand(path: string, anyOptions: any) {
   telemetryClient.dev.started(path, anyOptions);
 
@@ -57,12 +83,12 @@ export async function devCommand(path: string, anyOptions: any) {
   const options = result.data;
 
   const resolvedPath = resolvePath(path);
-
+  runtime = await getJsRuntime(resolvedPath, logger);
   //check for outdated packages, don't await this
-  checkForOutdatedPackages(resolvedPath);
+  runtime.checkForOutdatedPackages();
 
   // Read from package.json to get the endpointId
-  const endpointId = await getEndpointIdFromPackageJson(resolvedPath, options);
+  const endpointId = await getEndpointId(runtime, options.clientId);
   if (!endpointId) {
     logger.error(
       "You must run the `init` command first to setup the project – you are missing \n'trigger.dev': { 'endpointId': 'your-client-id' } from your package.json file, or pass in the --client-id option to this command"
@@ -73,8 +99,8 @@ export async function devCommand(path: string, anyOptions: any) {
   logger.success(`✔️ [trigger.dev] Detected TriggerClient id: ${endpointId}`);
 
   //resolve the options using the detected framework (use default if there isn't a matching framework)
-  const packageManager = await getUserPackageManager(resolvedPath);
-  const framework = await getFramework(resolvedPath, packageManager);
+  const packageManager = await runtime.getUserPackageManager();
+  const framework = await runtime.getFramework();
   const resolvedOptions = await resolveOptions(framework, resolvedPath, options);
 
   // Read from .env.local or .env to get the TRIGGER_API_KEY and TRIGGER_API_URL
@@ -92,23 +118,23 @@ export async function devCommand(path: string, anyOptions: any) {
     logger.error(
       `✖ [trigger.dev] Your endpoint couldn't be verified. Make sure your app is running and try again. ${resolvedOptions.handlerPath}`
     );
-    logger.info(`  [trigger.dev] You can use -H to specify a hostname, or -p to specify a port.`);
+    logger.info(
+      `  [trigger.dev] You can use -H to specify a hostname, or -p to specify a port, or -t to specify the tunnel-url pointing to the local dev server.`
+    );
     telemetryClient.dev.failed("no_server_found", resolvedOptions);
     return;
   }
 
-  const { hostname, port, handlerPath } = verifiedEndpoint;
-
   telemetryClient.dev.serverRunning(path, resolvedOptions);
 
   // Setup tunnel
-  const endpointUrl = await resolveEndpointUrl(apiUrl, port, hostname);
+  const endpointUrl = await resolveEndpointUrl(apiUrl, verifiedEndpoint);
   if (!endpointUrl) {
     telemetryClient.dev.failed("failed_to_create_tunnel", resolvedOptions);
     return;
   }
 
-  const endpointHandlerUrl = `${endpointUrl}${handlerPath}`;
+  const endpointHandlerUrl = `${endpointUrl}${verifiedEndpoint.handlerPath}`;
   telemetryClient.dev.tunnelRunning(path, resolvedOptions);
 
   // Watch for changes to files and refresh endpoints
@@ -250,8 +276,7 @@ async function startIndexing({
   apiClient,
 }: RefreshOptions & { apiClient: TriggerApi }) {
   spinner.start();
-
-  const refreshedEndpointId = await getEndpointIdFromPackageJson(path, resolvedOptions);
+  const refreshedEndpointId = await getEndpointId(runtime, resolvedOptions.clientId);
 
   const authorizedKey = await apiClient.whoami();
   if (!authorizedKey) {
@@ -309,6 +334,7 @@ async function resolveOptions(
       envFile: unresolvedOptions.envFile ?? ".env",
       handlerPath: unresolvedOptions.handlerPath,
       clientId: unresolvedOptions.clientId,
+      tunnel: unresolvedOptions.tunnel,
     };
   }
 
@@ -321,6 +347,7 @@ async function resolveOptions(
     envFile: unresolvedOptions.envFile ?? envName ?? ".env",
     handlerPath: unresolvedOptions.handlerPath,
     clientId: unresolvedOptions.clientId,
+    tunnel: unresolvedOptions.tunnel,
   };
 }
 
@@ -330,40 +357,15 @@ async function verifyEndpoint(
   apiKey: string,
   framework?: Framework
 ) {
-  //create list of hostnames to try
-  const hostnames = [];
-  if (resolvedOptions.hostname) {
-    hostnames.push(resolvedOptions.hostname);
-  }
-  if (framework) {
-    hostnames.push(...framework.defaultHostnames);
-  } else {
-    hostnames.push("localhost");
-  }
+  const serverUrls = findServerUrls(resolvedOptions, framework);
 
-  //create list of ports to try
-  const ports = [];
-  if (resolvedOptions.port) {
-    ports.push(resolvedOptions.port);
-  }
-  if (framework) {
-    ports.push(...framework.defaultPorts);
-  } else {
-    ports.push(3000);
-  }
-
-  //create list of urls to try
-  const urls: { hostname: string; port: number }[] = [];
-  for (const hostname of hostnames) {
-    for (const port of ports) {
-      urls.push({ hostname, port });
-    }
-  }
-
-  //try each hostname
-  for (const url of urls) {
-    const { hostname, port } = url;
-    const localEndpointHandlerUrl = `http://${hostname}:${port}${resolvedOptions.handlerPath}`;
+  //try each url
+  for (const serverUrl of serverUrls) {
+    const url =
+      serverUrl.type === "tunnel"
+        ? serverUrl.url
+        : `http://${serverUrl.hostname}:${serverUrl.port}`;
+    const localEndpointHandlerUrl = `${url}${resolvedOptions.handlerPath}`;
 
     const spinner = ora(
       `[trigger.dev] Looking for your trigger endpoint: ${localEndpointHandlerUrl}`
@@ -387,7 +389,8 @@ async function verifyEndpoint(
       }
 
       spinner.succeed(`[trigger.dev] Found your trigger endpoint: ${localEndpointHandlerUrl}`);
-      return { hostname, port, handlerPath: resolvedOptions.handlerPath };
+
+      return { ...serverUrl, handlerPath: resolvedOptions.handlerPath };
     } catch (err) {
       spinner.fail(`[trigger.dev] No server found (${localEndpointHandlerUrl}).`);
     }
@@ -396,56 +399,67 @@ async function verifyEndpoint(
   return;
 }
 
-export async function checkForOutdatedPackages(path: string) {
-  const updates = (await ncuRun({
-    packageFile: `${path}/package.json`,
-    filter: "/trigger.dev/.+$/",
-    upgrade: false,
-  })) as {
-    [key: string]: string;
-  };
-
-  if (typeof updates === "undefined" || Object.keys(updates).length === 0) {
-    return;
-  }
-
-  const packageFile = await fs.readFile(`${path}/package.json`);
-  const data = JSON.parse(Buffer.from(packageFile).toString("utf8"));
-  const dependencies = data.dependencies;
-  console.log(chalk.bgYellow("Updates available for trigger.dev packages"));
-  console.log(chalk.bgBlue("Run npx @trigger.dev/cli@latest update"));
-
-  for (let dep in updates) {
-    console.log(`${dep}  ${dependencies[dep]}  →  ${updates[dep]}`);
-  }
+export function getEndpointId(runtime: JsRuntime, clientId?: string) {
+  if (clientId) {
+    return clientId;
+  } else return runtime.getEndpointId();
 }
 
-export async function getEndpointIdFromPackageJson(path: string, options: DevCommandOptions) {
-  if (options.clientId) {
-    return options.clientId;
+function findServerUrls(resolvedOptions: ResolvedOptions, framework?: Framework): ServerUrl[] {
+  if (resolvedOptions.tunnel) {
+    logger.info(`  Using provided tunnel URL: ${resolvedOptions.tunnel}`);
+    return [{ type: "tunnel", url: resolvedOptions.tunnel }];
   }
 
-  const pkgJsonPath = pathModule.join(path, "package.json");
-  const pkgBuffer = await fs.readFile(pkgJsonPath);
-  const pkgJson = JSON.parse(pkgBuffer.toString());
+  //create list of hostnames to try
+  const hostnames = [];
+  if (resolvedOptions.hostname) {
+    hostnames.push(resolvedOptions.hostname);
+  }
+  if (framework) {
+    hostnames.push(...framework.defaultHostnames);
+  } else {
+    hostnames.push("localhost");
+  }
 
-  const value = pkgJson["trigger.dev"]?.endpointId;
-  if (!value || typeof value !== "string") return;
+  //create list of ports to try
+  const ports = [];
+  if (resolvedOptions.port) {
+    ports.push(resolvedOptions.port);
+  }
+  if (framework) {
+    ports.push(...framework.defaultPorts);
+  } else {
+    ports.push(3000);
+  }
 
-  return value as string;
+  //create list of urls to try
+  const urls: ResolvedUrl[] = [];
+  for (const hostname of hostnames) {
+    for (const port of ports) {
+      urls.push({ type: "resolved", hostname, port });
+    }
+  }
+
+  return urls;
 }
 
-async function resolveEndpointUrl(apiUrl: string, port: number, hostname: string) {
+async function resolveEndpointUrl(apiUrl: string, endpoint: ServerEndpoint) {
+  // use tunnel URL if provided
+  if (endpoint.type === "tunnel") {
+    return endpoint.url;
+  }
+
   const apiURL = new URL(apiUrl);
 
-  //if the API is localhost and the hostname is localhost
-  if (apiURL.hostname === "localhost" && hostname === "localhost") {
-    return `http://${hostname}:${port}`;
+  // if the API is localhost and the hostname is localhost
+  if (apiURL.hostname === "localhost" && endpoint.hostname === "localhost") {
+    return `http://${endpoint.hostname}:${endpoint.port}`;
   }
 
   // Setup tunnel
   const tunnelSpinner = ora(`🚇 Creating tunnel`).start();
-  const tunnelUrl = await createTunnel(hostname, port, tunnelSpinner);
+  const tunnelUrl = await createTunnel(endpoint.hostname, endpoint.port, tunnelSpinner);
 
   if (tunnelUrl) {
     tunnelSpinner.succeed(`🚇 Created tunnel: ${tunnelUrl}`);
@@ -478,7 +492,7 @@ async function createTunnel(hostname: string, port: number, spinner: Ora) {
       error.message.includes("connect ECONNREFUSED 127.0.0.1:4041")
     ) {
       spinner.fail(
-        `Ngrok failed to create a tunnel for port ${port} because ngrok is already running`
+        `Ngrok failed to create a tunnel for port ${port} because ngrok is already running.\n  You may want to use -t flag to use an existing URL that points to the local dev server.`
       );
       return;
     }
