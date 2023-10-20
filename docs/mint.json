@@ -255,7 +255,13 @@
           ]
         },
         "integrations/apis/linear",
-        "integrations/apis/openai",
+        {
+          "group": "OpenAI",
+          "pages": [
+            "integrations/apis/openai",
+            "integrations/apis/openai-tasks"
+          ]
+        },
         {
           "group": "Plain",
           "pages": [
