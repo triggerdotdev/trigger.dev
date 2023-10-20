@@ -1,8 +1,9 @@
-import { ArrowRightIcon } from "@heroicons/react/20/solid";
+import { HeartIcon } from "@heroicons/react/20/solid";
 import { BoltIcon, CloudIcon, CodeBracketIcon, ServerStackIcon } from "@heroicons/react/24/solid";
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { Form } from "@remix-run/react";
 import { getMatchesData, metaV1 } from "@remix-run/v1-meta";
+import { useEffect, useState } from "react";
 import {
   TypedMetaFunction,
   UseDataFunctionReturn,
@@ -65,16 +66,49 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 }
 
+interface QuoteType {
+  quote: string;
+  person: string;
+}
+
+const quotes: QuoteType[] = [
+  {
+    quote: "Trigger.dev is redefining background jobs for modern developers.",
+    person: "Paul Copplestone, Supabase",
+  },
+  {
+    quote:
+      "Trigger.dev is a great way to automate email campaigns with Resend, and we've heard nothing but good things from our mutual customers.",
+    person: "Zeno Rocha, Resend",
+  },
+  {
+    quote: "We love Trigger.dev and it’s had a big impact in dev iteration velocity already.",
+    person: "André Neves, ZBD",
+  },
+  {
+    quote:
+      "We’ve been looking for a product like Trigger.dev for a really long time - automation that's simple and developer-focused.",
+    person: "Han Wang, Mintlify",
+  },
+];
+
 const layout = "group grid place-items-center p-4 text-center overflow-hidden";
 const gridCell = "hover:bg-midnight-850 rounded-lg transition bg-midnight-850/40";
-const opacity = "opacity-20 group-hover:opacity-100 transition group-hover:scale-105";
+const opacity = "opacity-10 group-hover:opacity-100 transition group-hover:scale-105";
 const logos = "h-20 w-20 transition grayscale group-hover:grayscale-0";
+const features = "h-32 w-32 text-gray-500 grayscale transition group-hover:grayscale-0";
 const wide = "col-span-2";
 const wider = "col-span-3 row-span-2";
 const mediumSquare = "col-span-2 row-span-2";
 
 export default function LoginPage() {
   const data = useTypedLoaderData<typeof loader>();
+
+  const [randomQuote, setRandomQuote] = useState<QuoteType | null>(null);
+  useEffect(() => {
+    const randomIndex = Math.floor(Math.random() * quotes.length);
+    setRandomQuote(quotes[randomIndex]);
+  }, []);
 
   return (
     <main className="grid h-full w-full grid-cols-12">
@@ -83,12 +117,7 @@ export default function LoginPage() {
       </div>
       <div className="col-span-7 grid h-full w-full grid-flow-row grid-cols-5 grid-rows-6 gap-4 p-4">
         <div className={cn(layout, gridCell, mediumSquare)}>
-          <ServerStackIcon
-            className={cn(
-              opacity,
-              "h-40 w-40 text-gray-500 grayscale transition group-hover:text-blue-500 group-hover:grayscale-0"
-            )}
-          />
+          <ServerStackIcon className={cn(opacity, features, "group-hover:text-blue-500")} />
         </div>
         <LoginTooltip side="bottom" content={<SlackTooltipContent />}>
           <div className={cn(layout, gridCell)}>
@@ -97,75 +126,57 @@ export default function LoginPage() {
         </LoginTooltip>
         <LoginTooltip side="left" content={<TriggerTooltipContent />}>
           <div className={cn(layout, gridCell, mediumSquare)}>
-            <BoltIcon
-              className={cn(
-                opacity,
-                "h-40 w-40 text-gray-500 grayscale transition group-hover:text-yellow-500 group-hover:grayscale-0"
-              )}
-            />
+            <BoltIcon className={cn(opacity, features, "group-hover:text-yellow-500")} />
           </div>
         </LoginTooltip>
-        <LoginTooltip side="bottom" content={<StripeTooltipContent />} className="max-w-lg">
+        <LoginTooltip side="bottom" content={<StripeTooltipContent />} className="max-w-[15rem]">
           <div className={cn("", layout, gridCell)}>
             <Icon icon="stripe" className={cn(logos, opacity)} />
           </div>
         </LoginTooltip>
-        <LoginTooltip side="top" content="❤️ Loved by developers">
+        <LoginTooltip side="top" content={<QuoteTooltipContent />}>
           <div className={cn(layout, gridCell, wider)}>
             <div className="p-4">
               <Header3 className="relative text-2xl font-normal leading-8 text-gray-600 transition before:absolute before:-top-8 before:left-0 before:text-7xl before:text-slate-600 before:opacity-20 before:content-['❝'] group-hover:text-slate-500 group-hover:before:opacity-30">
-                Trigger.dev is redefining background jobs for modern developers.
+                {randomQuote?.quote}
               </Header3>
               <Paragraph
                 variant="small"
                 className="mt-4 text-gray-700 transition group-hover:text-slate-600"
               >
-                Paul Copplestone, Supabase
+                {randomQuote?.person}
               </Paragraph>
             </div>
           </div>
         </LoginTooltip>
-        <div className={cn(layout, gridCell)}>
-          <Icon icon="airtable" className={cn(logos, opacity)} />
-        </div>
-        <div className={cn(layout, gridCell)}>
-          <Icon icon="typeform" className={cn(logos, opacity)} />
-        </div>
+        <LoginTooltip side="left" content={<AirtableTooltipContent />} className="">
+          <div className={cn("", layout, gridCell)}>
+            <Icon icon="airtable" className={cn(logos, opacity)} />
+          </div>
+        </LoginTooltip>
+        <LoginTooltip side="left" content={<TypeformTooltipContent />} className="">
+          <div className={cn("", layout, gridCell)}>
+            <Icon icon="typeform" className={cn(logos, opacity)} />
+          </div>
+        </LoginTooltip>
         <div className={cn(layout, gridCell, mediumSquare)}>
-          <Icon
-            icon="webhook"
-            className={cn(
-              opacity,
-              "h-40 w-40 text-gray-500 grayscale transition group-hover:text-green-500 group-hover:grayscale-0"
-            )}
-          />
+          <Icon icon="webhook" className={cn(opacity, features, "group-hover:text-green-500")} />
         </div>
-        <LoginTooltip
-          side="right"
-          content="Use our Supabase Integration in your Job to react to changes in your database."
-        >
+        <LoginTooltip side="right" content={<SupabaseTooltipContent />}>
           <div className={cn(layout, gridCell)}>
             <Icon icon="supabase" className={cn(logos, opacity)} />
           </div>
         </LoginTooltip>
         <div className={cn(layout, gridCell, mediumSquare)}>
-          <CodeBracketIcon
-            className={cn(
-              opacity,
-              "h-40 w-40 text-gray-500 grayscale transition group-hover:text-rose-500 group-hover:grayscale-0"
-            )}
-          />
+          <CodeBracketIcon className={cn(opacity, features, "group-hover:text-rose-500")} />
         </div>
-        <div className={cn(layout, gridCell)}>
-          <Icon icon="resend" className={cn(logos, opacity)} />
-        </div>
+        <LoginTooltip side="right" content={<ResendTooltipContent />}>
+          <div className={cn(layout, gridCell)}>
+            <Icon icon="resend" className={cn(logos, opacity)} />
+          </div>
+        </LoginTooltip>
         <div className={cn(layout, gridCell, wide)}>
-          <CloudIcon
-            className={cn(
-              opacity,
-              "h-20 w-20 text-gray-500 grayscale transition group-hover:text-cyan-500 group-hover:grayscale-0"
-            )}
-          />
+          <CloudIcon className={cn(opacity, features, "h-20 w-20 group-hover:text-cyan-500")} />
         </div>
       </div>
     </main>
@@ -248,9 +259,7 @@ function SlackTooltipContent() {
           Slack Integration
         </Paragraph>
       </div>
-      <Paragraph variant="base">
-        Use our Slack Integration to post messages to your team when your Job is triggered.
-      </Paragraph>
+      <Paragraph variant="base">Post messages to your team when your Job is triggered.</Paragraph>
     </>
   );
 }
@@ -264,22 +273,71 @@ function StripeTooltipContent() {
           Stripe Integration
         </Paragraph>
       </div>
+      <Paragraph variant="base">Trigger payments, emails, subscription upgrades…</Paragraph>
+    </>
+  );
+}
+
+function SupabaseTooltipContent() {
+  return (
+    <>
       <div className="mb-2 flex items-center gap-x-1.5">
-        <ArrowRightIcon className="h-5 w-5 text-green-500" />
-        <Paragraph variant="base">Trigger payments</Paragraph>
+        <Icon icon="supabase" className="h-5 w-5" />
+        <Paragraph variant="base/bright" className="font-semibold">
+          Supabase Integration
+        </Paragraph>
       </div>
+      <Paragraph variant="base">React to changes in your database.</Paragraph>
+    </>
+  );
+}
+
+function ResendTooltipContent() {
+  return (
+    <>
       <div className="mb-2 flex items-center gap-x-1.5">
-        <ArrowRightIcon className="h-5 w-5 text-green-500" />
-        <Paragraph variant="base">Trigger emails when payments happen</Paragraph>
+        <Icon icon="resend" className="h-5 w-5" />
+        <Paragraph variant="base/bright" className="font-semibold">
+          Resend Integration
+        </Paragraph>
       </div>
+      <Paragraph variant="base">
+        Create a drip campaign, trigger an onboarding sequence and more…
+      </Paragraph>
+    </>
+  );
+}
+
+function AirtableTooltipContent() {
+  return (
+    <>
       <div className="mb-2 flex items-center gap-x-1.5">
-        <ArrowRightIcon className="h-5 w-5 text-green-500" />
-        <Paragraph variant="base">Trigger subscription upgrades</Paragraph>
+        <Icon icon="airtable" className="h-5 w-5" />
+        <Paragraph variant="base/bright" className="font-semibold">
+          Airtable Integration
+        </Paragraph>
       </div>
+      <Paragraph variant="base">
+        Update your Airtable records when you make a Stripe sale, recieve a new Typeform response
+        and more…
+      </Paragraph>
+    </>
+  );
+}
+
+function TypeformTooltipContent() {
+  return (
+    <>
       <div className="mb-2 flex items-center gap-x-1.5">
-        <ArrowRightIcon className="h-5 w-5 text-green-500" />
-        <Paragraph variant="base">And more…</Paragraph>
+        <Icon icon="typeform" className="h-5 w-5" />
+        <Paragraph variant="base/bright" className="font-semibold">
+          Typeform Integration
+        </Paragraph>
       </div>
+      <Paragraph variant="base">
+        When you receive a new Typeform response, trigger a Slack message, send a Stripe invoice and
+        more…
+      </Paragraph>
     </>
   );
 }
@@ -297,6 +355,19 @@ function TriggerTooltipContent() {
         Trigger your Jobs with a wehook, on a recurring schedule or CRON or with your own custom
         event.
       </Paragraph>
+    </>
+  );
+}
+
+function QuoteTooltipContent() {
+  return (
+    <>
+      <div className="flex items-center gap-x-1.5">
+        <HeartIcon className="h-5 w-5 text-rose-500" />
+        <Paragraph variant="base/bright" className="font-semibold">
+          Loved by developers
+        </Paragraph>
+      </div>
     </>
   );
 }
