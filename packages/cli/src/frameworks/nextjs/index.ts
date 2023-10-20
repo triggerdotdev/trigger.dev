@@ -212,10 +212,12 @@ async function createTriggerRoute(options: {
   }
   logger.success(`✔ Created API route at ${apiRoutePath}`);
   logger.info(
-    boxen(
-      "Learn more about configuring duration in your serverless function here: https://vercel.com/docs/functions/serverless-functions/runtimes#max-duration",
-      { padding: 1, margin: 1, borderStyle: "double", borderColor: "magenta" }
-    )
+    boxen(`If you're deploying to Vercel, configure your max duration in ${apiRoutePath}`, {
+      padding: 1,
+      margin: 1,
+      borderStyle: "double",
+      borderColor: "magenta",
+    })
   );
 
   await createJobsAndTriggerFile(path, endpointSlug, fileExtension, pathAlias, templatesDir);
