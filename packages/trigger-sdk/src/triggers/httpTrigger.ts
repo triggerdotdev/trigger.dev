@@ -1,6 +1,8 @@
 import {
   DisplayProperty,
   EventFilter,
+  HttpMethod,
+  Prettify,
   RequestFilter,
   TriggerMetadata,
   deepMergeFilters,
@@ -63,7 +65,13 @@ export type HttpTriggerOptions<TEvent> = {
     requestFilter: RequestFilter;
     onRequest: (request: Request, context: RequestContext) => Promise<Response>;
   };
-  transform?: (request: Request) => Promise<TEvent>;
+};
+
+type HttpRequest<TBody> = {
+  headers: Record<string, string>;
+  method: HttpMethod;
+  searchParams: Record<string, string>;
+  body: TBody;
 };
 
 /** `eventTrigger()` is set as a [Job's trigger](https://trigger.dev/docs/sdk/job) to subscribe to an event a Job from [a sent event](https://trigger.dev/docs/sdk/triggerclient/instancemethods/sendevent)
@@ -71,7 +79,7 @@ export type HttpTriggerOptions<TEvent> = {
  */
 export function httpTrigger<TEvent extends any = any>(
   options: HttpTriggerOptions<TEvent>
-): Trigger<EventSpecification<TEvent>> {
+): Trigger<EventSpecification<Prettify<HttpRequest<TEvent>>>> {
   return new HttpTrigger({
     id: options.id,
     event: {
@@ -83,13 +91,18 @@ export function httpTrigger<TEvent extends any = any>(
       examples: options.examples,
       parsePayload: (rawPayload: any) => {
         if (options.bodySchema) {
-          const results = options.bodySchema.safeParse(rawPayload.body);
+          const result = options.bodySchema.safeParse(rawPayload.body);
 
-          if (!results.success) {
-            throw new ParsedPayloadSchemaError(formatSchemaErrors(results.error.issues));
+          if (!result.success) {
+            throw new ParsedPayloadSchemaError(formatSchemaErrors(result.error.issues));
           }
 
-          return results.data;
+          return {
+            headers: rawPayload.headers,
+            method: rawPayload.method,
+            searchParams: rawPayload.searchParams,
+            body: result.data,
+          };
         }
 
         return rawPayload as any;

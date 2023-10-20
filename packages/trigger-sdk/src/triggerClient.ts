@@ -47,7 +47,6 @@ import { runLocalStorage } from "./runLocalStorage";
 import { DynamicTrigger, DynamicTriggerOptions } from "./triggers/dynamic";
 import { EventTrigger } from "./triggers/eventTrigger";
 import { ExternalSource } from "./triggers/externalSource";
-import { HttpTriggerOptions, RequestData, httpTrigger } from "./triggers/httpTrigger";
 import { DynamicIntervalOptions, DynamicSchedule } from "./triggers/scheduled";
 import type {
   EventSpecification,
@@ -55,6 +54,7 @@ import type {
   TriggerContext,
   TriggerPreprocessContext,
 } from "./types";
+import { HttpTriggerOptions, httpTrigger } from "./triggers/httpTrigger";
 
 const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
   name: REGISTER_SOURCE_EVENT_V2,
@@ -472,7 +472,7 @@ export class TriggerClient {
     return new DynamicTrigger(this, options);
   }
 
-  defineHttpTrigger<TEvent extends RequestData = any>(options: HttpTriggerOptions<TEvent>) {
+  defineHttpTrigger<TEvent extends any = any>(options: HttpTriggerOptions<TEvent>) {
     return httpTrigger<TEvent>(options);
   }
 

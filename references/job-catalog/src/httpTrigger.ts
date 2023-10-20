@@ -13,9 +13,17 @@ export const client = new TriggerClient({
 const whatsApp = client.defineHttpTrigger({
   id: "whatsapp",
   hostname: "whatsapp.com",
-  // bodySchema: z.object({
-  //   mesaaaasage: z.string(),
-  // }),
+  bodySchema: z.object({
+    type: z.literal("message"),
+    message: z.object({
+      from: z.string(),
+      timestamp: z.coerce.date(),
+      context: z.object({
+        id: z.string(),
+        from: z.string(),
+      }),
+    }),
+  }),
   verify: {
     requestFilter: {
       method: ["GET"],

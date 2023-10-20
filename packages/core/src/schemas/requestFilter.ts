@@ -17,6 +17,8 @@ export const HTTPMethodUnionSchema = z.union([
   z.literal("OPTIONS"),
 ]);
 
+export type HttpMethod = z.infer<typeof HTTPMethodUnionSchema>;
+
 export const RequestFilterSchema = z.object({
   method: z.array(HTTPMethodUnionSchema).optional(),
   headers: z.record(StringMatchSchema).optional(),
