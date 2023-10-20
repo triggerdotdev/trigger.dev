@@ -1,5 +1,6 @@
 import { createExpressServer } from "@trigger.dev/express";
-import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
+import { TriggerClient } from "@trigger.dev/sdk";
+import crypto from "crypto";
 import { z } from "zod";
 
 export const client = new TriggerClient({
@@ -24,9 +25,9 @@ const whatsApp = client.defineHttpTrigger({
       }),
     }),
   }),
-  //todo, this is confusing because verifying refers to when data is sent and checking the headers
-  verify: {
-    requestFilter: {
+  //only needed for strange APIs like WhatsApp which don't setup the webhook until you pass the test
+  sendResponse: {
+    ifRequest: {
       method: ["GET"],
     },
     onRequest: async (request, context) => {
@@ -38,9 +39,19 @@ const whatsApp = client.defineHttpTrigger({
       return new Response(searchParams.get("challenge") ?? "OK", { status: 200 });
     },
   },
-});
+  verify: async (request, context) => {
+    //todo turn this into a function
+    const signature = Buffer.from(request.headers.get("X-Signature-SHA256") || "", "utf8");
+    const hmac = crypto.createHmac("sha256", context.secret ?? "");
+    const rawBody = await request.text();
+    const digest = Buffer.from("sha256" + "=" + hmac.update(rawBody).digest("hex"), "utf8");
 
-//todo what about verifying the actual webhooks?!?!
+    const isAllowed =
+      signature.length === digest.length && crypto.timingSafeEqual(digest, signature);
+
+    return isAllowed;
+  },
+});
 
 client.defineJob({
   id: "event-example-1",

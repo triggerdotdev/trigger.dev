@@ -5,14 +5,12 @@ import {
   Prettify,
   RequestFilter,
   TriggerMetadata,
-  deepMergeFilters,
 } from "@trigger.dev/core";
+import { ParsedPayloadSchemaError } from "../errors";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
 import { EventSpecification, EventSpecificationExample, SchemaParser, Trigger } from "../types";
 import { formatSchemaErrors } from "../utils/formatSchemaErrors";
-import { ParsedPayloadSchemaError } from "../errors";
-import { z } from "zod";
 
 type Options<TEventSpecification extends EventSpecification<any>> = {
   id: string;
@@ -65,10 +63,11 @@ export type HttpTriggerOptions<TEvent> = {
   filter?: EventFilter;
   examples?: EventSpecificationExample[];
   properties?: DisplayProperty[];
-  verify?: {
-    requestFilter: RequestFilter;
+  sendResponse?: {
+    ifRequest: RequestFilter;
     onRequest: (request: Request, context: RequestContext) => Promise<Response>;
   };
+  verify: (request: Request, context: RequestContext) => Promise<boolean>;
 };
 
 type HttpRequest<TBody> = {
