@@ -54,6 +54,8 @@ import type {
   TriggerContext,
   TriggerPreprocessContext,
 } from "./types";
+import { HttpTrigger } from "./triggers/httpTrigger";
+import { HttpTriggerOptions, httpTrigger } from "./triggers/httpTrigger2";
 
 const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
   name: REGISTER_SOURCE_EVENT_V2,
@@ -469,6 +471,10 @@ export class TriggerClient {
     options: DynamicTriggerOptions<TEventSpec, TExternalSource>
   ): DynamicTrigger<TEventSpec, TExternalSource> {
     return new DynamicTrigger(this, options);
+  }
+
+  defineHttpTrigger<TEvent extends any = any>(options: HttpTriggerOptions<TEvent>) {
+    return httpTrigger<TEvent>(options);
   }
 
   attach(job: Job<Trigger<any>, any>): void {
