@@ -5,8 +5,11 @@ sidebarTitle: Overview & authentication
 
 ## Overview
 
-The Slack platform allows you to extend and automate your workspaces to cultivate conversation, inspire action, and synergize services.
+Our Slack integration provides a powerful way to streamline communication and workflows within your organization, making it easier to stay informed, collaborate efficiently, and automate routine tasks. 
 
+You can tailor triggers and tasks to your specific needs, ensuring that your team and processes are more productive and responsive.
+
+For examples of some of the things you can do with it, check out our Jobs Showcase:
 
 <Card
   title="Jobs Showcase - Slack"
@@ -37,6 +40,10 @@ yarn add @trigger.dev/slack@latest
 ## Authentication
 
 Slack supports OAuth
+
+## OAuth
+
+To use OAuth you can connect to Slack via the Trigger.dev [web app](https://cloud.trigger.dev). Click 'Integrations' in the side panel of any project, and configure Slack  with the ID you want to use in your job and the required [scopes](https://api.slack.com/legacy/oauth-scopes).
 
 ```ts
 import { Slack } from "@trigger.dev/slack";
