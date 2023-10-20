@@ -73,12 +73,12 @@ export function LoginTooltip({
   className?: string;
 }) {
   return (
-    <TooltipProvider delayDuration={2500}>
+    <TooltipProvider delayDuration={2500} disableHoverableContent>
       <Tooltip>
         <TooltipTrigger asChild>{children}</TooltipTrigger>
         <TooltipContent
           className={cn(
-            "max-w-xs border-slate-800 bg-slate-900 px-4 py-3 backdrop-blur-md",
+            "max-w-xs border-slate-800 bg-slate-900 px-5 py-4 backdrop-blur-md",
             className
           )}
           side={side}
