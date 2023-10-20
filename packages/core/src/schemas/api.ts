@@ -664,7 +664,7 @@ export const RunTaskOptionsSchema = z.object({
   retry: RetryOptionsSchema.optional(),
   /** The icon for the Task, it will appear in the logs.
    *  You can use the name of a company in lowercase, e.g. "github".
-   *  Or any icon name that [Font Awesome](https://fontawesome.com/icons) supports. */
+   *  Or any icon name that [Tabler Icons](https://tabler-icons.io/) supports. */
   icon: z.string().optional(),
   /** The key for the Task that you want to appear in the logs */
   displayKey: z.string().optional(),
