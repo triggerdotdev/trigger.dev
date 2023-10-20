@@ -3,6 +3,7 @@ import {
   BloomFilter,
   ConnectionAuth,
   EndpointHeadersSchema,
+  RunJobAutoYieldWithCompletedTaskExecutionError,
   RunJobError,
   RunJobInvalidPayloadError,
   RunJobResumeWithTask,
@@ -24,9 +25,17 @@ import { safeJsonZodParse } from "~/utils/json";
 import { EndpointApi } from "../endpointApi.server";
 import { logger } from "../logger.server";
 import { prepareTasksForCaching, prepareTasksForCachingLegacy } from "~/models/task.server";
-import { MAX_RUN_YIELDED_EXECUTIONS } from "~/consts";
+import {
+  MAX_RUN_CHUNK_EXECUTION_LIMIT,
+  MAX_RUN_YIELDED_EXECUTIONS,
+  RESPONSE_TIMEOUT_STATUS_CODES,
+  RUN_CHUNK_EXECUTION_BUFFER,
+} from "~/consts";
 import { ApiEventLog } from "@trigger.dev/core";
 import { RunJobBody } from "@trigger.dev/core";
+import { CompleteRunTaskService } from "~/routes/api.v1.runs.$runId.tasks.$id.complete";
+import { detectResponseIsTimeout } from "~/models/endpoint.server";
+import { forceYieldCoordinator } from "./forceYieldCoordinator.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type FoundTask = FoundRun["tasks"][number];
@@ -148,6 +157,7 @@ export class PerformRunExecutionV2Service {
             status: "STARTED",
             startedAt: new Date(),
             properties: safeBody.data.properties,
+            forceYieldImmediately: false,
           },
         });
 
@@ -158,257 +168,291 @@ export class PerformRunExecutionV2Service {
     }
   }
   async #executeJob(run: FoundRun, input: PerformRunExecutionV2Input) {
-    const { isRetry, resumeTaskId } = input;
-
-    if (run.status === "CANCELED") {
-      await this.#cancelExecution(run);
-      return;
-    }
-
     try {
-      if (
-        typeof process.env.BLOCKED_ORGS === "string" &&
-        process.env.BLOCKED_ORGS.includes(run.organizationId)
-      ) {
-        logger.debug("Skipping execution for blocked org", {
-          orgId: run.organizationId,
-        });
+      const { isRetry, resumeTaskId } = input;
 
-        await this.#prismaClient.jobRun.update({
-          where: {
-            id: run.id,
-          },
-          data: {
-            status: "CANCELED",
-            completedAt: new Date(),
-          },
-        });
-
+      if (run.status === "CANCELED") {
+        await this.#cancelExecution(run);
         return;
       }
-    } catch (e) {}
 
-    const client = new EndpointApi(run.environment.apiKey, run.endpoint.url);
-    const event = eventRecordToApiJson(run.event);
+      try {
+        if (
+          typeof process.env.BLOCKED_ORGS === "string" &&
+          process.env.BLOCKED_ORGS.includes(run.organizationId)
+        ) {
+          logger.debug("Skipping execution for blocked org", {
+            orgId: run.organizationId,
+          });
 
-    const startedAt = new Date();
+          await this.#prismaClient.jobRun.update({
+            where: {
+              id: run.id,
+            },
+            data: {
+              status: "CANCELED",
+              completedAt: new Date(),
+            },
+          });
 
-    const { executionCount } = await this.#prismaClient.jobRun.update({
-      where: {
-        id: run.id,
-      },
-      data: {
-        status: run.status === "QUEUED" ? "STARTED" : run.status,
-        startedAt: run.startedAt ?? new Date(),
-        executionCount: {
-          increment: 1,
+          return;
+        }
+      } catch (e) {}
+
+      const client = new EndpointApi(run.environment.apiKey, run.endpoint.url);
+      const event = eventRecordToApiJson(run.event);
+
+      const startedAt = new Date();
+
+      const { executionCount } = await this.#prismaClient.jobRun.update({
+        where: {
+          id: run.id,
         },
-      },
-      select: {
-        executionCount: true,
-      },
-    });
-
-    const connections = await resolveRunConnections(run.runConnections);
-
-    if (!connections.success) {
-      return this.#failRunExecution(this.#prismaClient, "EXECUTE_JOB", run, {
-        message: `Could not resolve all connections for run ${run.id}. This should not happen`,
-      });
-    }
-
-    let resumedTask: Task | undefined;
-
-    if (resumeTaskId) {
-      resumedTask =
-        (await this.#prismaClient.task.findUnique({
-          where: {
-            id: resumeTaskId,
+        data: {
+          status: run.status === "QUEUED" ? "STARTED" : run.status,
+          startedAt: run.startedAt ?? new Date(),
+          executionCount: {
+            increment: 1,
           },
-        })) ?? undefined;
+        },
+        select: {
+          executionCount: true,
+        },
+      });
 
-      if (resumedTask) {
-        resumedTask = await this.#prismaClient.task.update({
+      const connections = await resolveRunConnections(run.runConnections);
+
+      if (!connections.success) {
+        return this.#failRunExecution(this.#prismaClient, "EXECUTE_JOB", run, {
+          message: `Could not resolve all connections for run ${run.id}. This should not happen`,
+        });
+      }
+
+      let resumedTask: Task | undefined;
+
+      if (resumeTaskId) {
+        resumedTask =
+          (await this.#prismaClient.task.findUnique({
+            where: {
+              id: resumeTaskId,
+            },
+          })) ?? undefined;
+
+        if (resumedTask) {
+          resumedTask = await this.#prismaClient.task.update({
+            where: {
+              id: resumeTaskId,
+            },
+            data: {
+              status: resumedTask.noop ? "COMPLETED" : "RUNNING",
+              completedAt: resumedTask.noop ? new Date() : undefined,
+            },
+          });
+        }
+      }
+
+      const sourceContext = RunSourceContextSchema.safeParse(run.event.sourceContext);
+
+      const executionBody = await this.#createExecutionBody(
+        run,
+        [run.tasks, resumedTask].flat().filter(Boolean),
+        startedAt,
+        isRetry,
+        connections.auth,
+        event,
+        sourceContext.success ? sourceContext.data : undefined
+      );
+
+      forceYieldCoordinator.registerRun(run.id);
+
+      const { response, parser, errorParser, durationInMs } = await client.executeJobRequest(
+        executionBody
+      );
+
+      forceYieldCoordinator.deregisterRun(run.id);
+
+      if (!response) {
+        return await this.#failRunExecutionWithRetry({
+          message: `Connection could not be established to the endpoint (${run.endpoint.url})`,
+        });
+      }
+
+      // Update the endpoint version if it has changed
+      const rawHeaders = Object.fromEntries(response.headers.entries());
+      const headers = EndpointHeadersSchema.safeParse(rawHeaders);
+
+      if (
+        headers.success &&
+        headers.data["trigger-version"] &&
+        headers.data["trigger-version"] !== run.endpoint.version
+      ) {
+        await this.#prismaClient.endpoint.update({
           where: {
-            id: resumeTaskId,
+            id: run.endpoint.id,
           },
           data: {
-            status: resumedTask.noop ? "COMPLETED" : "RUNNING",
-            completedAt: resumedTask.noop ? new Date() : undefined,
+            version: headers.data["trigger-version"],
           },
         });
       }
-    }
 
-    const sourceContext = RunSourceContextSchema.safeParse(run.event.sourceContext);
+      const rawBody = await response.text();
 
-    const executionBody = await this.#createExecutionBody(
-      run,
-      [run.tasks, resumedTask].flat().filter(Boolean),
-      startedAt,
-      isRetry,
-      connections.auth,
-      event,
-      sourceContext.success ? sourceContext.data : undefined
-    );
+      if (!response.ok) {
+        logger.debug("Endpoint responded with non-200 status code", {
+          status: response.status,
+          runId: run.id,
+          endpoint: run.endpoint.url,
+        });
 
-    const { response, parser, errorParser, durationInMs } = await client.executeJobRequest(
-      executionBody
-    );
+        const errorBody = safeJsonZodParse(errorParser, rawBody);
 
-    if (!response) {
-      return await this.#failRunExecutionWithRetry({
-        message: `Connection could not be established to the endpoint (${run.endpoint.url})`,
-      });
-    }
+        if (errorBody && errorBody.success) {
+          // Only retry if the error isn't a 4xx
+          if (response.status >= 400 && response.status <= 499) {
+            return await this.#failRunExecution(
+              this.#prismaClient,
+              "EXECUTE_JOB",
+              run,
+              errorBody.data
+            );
+          } else {
+            return await this.#failRunExecutionWithRetry(errorBody.data);
+          }
+        }
 
-    // Update the endpoint version if it has changed
-    const rawHeaders = Object.fromEntries(response.headers.entries());
-    const headers = EndpointHeadersSchema.safeParse(rawHeaders);
-
-    if (
-      headers.success &&
-      headers.data["trigger-version"] &&
-      headers.data["trigger-version"] !== run.endpoint.version
-    ) {
-      await this.#prismaClient.endpoint.update({
-        where: {
-          id: run.endpoint.id,
-        },
-        data: {
-          version: headers.data["trigger-version"],
-        },
-      });
-    }
-
-    const rawBody = await response.text();
-
-    if (!response.ok) {
-      logger.debug("Endpoint responded with non-200 status code", {
-        status: response.status,
-        runId: run.id,
-        endpoint: run.endpoint.url,
-      });
-
-      const errorBody = safeJsonZodParse(errorParser, rawBody);
-
-      if (errorBody && errorBody.success) {
         // Only retry if the error isn't a 4xx
-        if (response.status >= 400 && response.status <= 499) {
+        if (response.status >= 400 && response.status <= 499 && response.status !== 408) {
           return await this.#failRunExecution(
             this.#prismaClient,
             "EXECUTE_JOB",
             run,
-            errorBody.data
+            {
+              message: `Endpoint responded with ${response.status} status code`,
+            },
+            "FAILURE",
+            durationInMs
           );
         } else {
-          return await this.#failRunExecutionWithRetry(errorBody.data);
+          // If the error is a timeout, we should mark this execution as succeeded (by not throwing an error) and enqueue a new execution
+          if (detectResponseIsTimeout(response)) {
+            return await this.#resumeRunExecutionAfterTimeout(
+              this.#prismaClient,
+              run,
+              input,
+              durationInMs,
+              executionCount
+            );
+          } else {
+            return await this.#failRunExecutionWithRetry({
+              message: `Endpoint responded with ${response.status} status code`,
+            });
+          }
         }
       }
 
-      // Only retry if the error isn't a 4xx
-      if (response.status >= 400 && response.status <= 499 && response.status !== 408) {
+      const safeBody = safeJsonZodParse(parser, rawBody);
+
+      if (!safeBody) {
         return await this.#failRunExecution(
           this.#prismaClient,
           "EXECUTE_JOB",
           run,
           {
-            message: `Endpoint responded with ${response.status} status code`,
+            message: "Endpoint responded with invalid JSON",
           },
           "FAILURE",
           durationInMs
         );
-      } else {
-        // If the error is a 504 timeout, we should mark this execution as succeeded (by not throwing an error) and enqueue a new execution
-        if (response.status === 504) {
-          return await this.#resumeRunExecutionAfterTimeout(
-            this.#prismaClient,
+      }
+
+      if (!safeBody.success) {
+        return await this.#failRunExecution(
+          this.#prismaClient,
+          "EXECUTE_JOB",
+          run,
+          {
+            message: generateErrorMessage(safeBody.error.issues),
+          },
+          "FAILURE",
+          durationInMs
+        );
+      }
+
+      const status = safeBody.data.status;
+
+      switch (status) {
+        case "SUCCESS": {
+          await this.#completeRunWithSuccess(run, safeBody.data, durationInMs);
+
+          break;
+        }
+        case "RESUME_WITH_TASK": {
+          await this.#resumeRunWithTask(run, safeBody.data, isRetry, durationInMs, executionCount);
+
+          break;
+        }
+        case "ERROR": {
+          await this.#failRunWithError(run, safeBody.data, durationInMs);
+
+          break;
+        }
+        case "RETRY_WITH_TASK": {
+          await this.#retryRunWithTask(run, safeBody.data, isRetry, durationInMs, executionCount);
+
+          break;
+        }
+        case "CANCELED": {
+          await this.#cancelExecution(run);
+          break;
+        }
+        case "UNRESOLVED_AUTH_ERROR": {
+          await this.#failRunWithUnresolvedAuthError(run, safeBody.data, durationInMs);
+
+          break;
+        }
+        case "INVALID_PAYLOAD": {
+          await this.#failRunWithInvalidPayloadError(run, safeBody.data, durationInMs);
+
+          break;
+        }
+        case "YIELD_EXECUTION": {
+          await this.#resumeYieldedRun(
             run,
-            input,
+            safeBody.data.key,
+            isRetry,
             durationInMs,
             executionCount
           );
-        } else {
-          return await this.#failRunExecutionWithRetry({
-            message: `Endpoint responded with ${response.status} status code`,
-          });
+          break;
+        }
+        case "AUTO_YIELD_EXECUTION": {
+          await this.#resumeAutoYieldedRun(
+            run,
+            safeBody.data,
+            isRetry,
+            durationInMs,
+            executionCount
+          );
+          break;
+        }
+        case "AUTO_YIELD_EXECUTION_WITH_COMPLETED_TASK": {
+          await this.#resumeAutoYieldedRunWithCompletedTask(
+            run,
+            safeBody.data,
+            isRetry,
+            durationInMs,
+            executionCount
+          );
+          break;
+        }
+        default: {
+          const _exhaustiveCheck: never = status;
+          throw new Error(`Non-exhaustive match for value: ${status}`);
         }
       }
-    }
-
-    const safeBody = safeJsonZodParse(parser, rawBody);
-
-    if (!safeBody) {
-      return await this.#failRunExecution(
-        this.#prismaClient,
-        "EXECUTE_JOB",
-        run,
-        {
-          message: "Endpoint responded with invalid JSON",
-        },
-        "FAILURE",
-        durationInMs
-      );
-    }
-
-    if (!safeBody.success) {
-      return await this.#failRunExecution(
-        this.#prismaClient,
-        "EXECUTE_JOB",
-        run,
-        {
-          message: generateErrorMessage(safeBody.error.issues),
-        },
-        "FAILURE",
-        durationInMs
-      );
-    }
-
-    const status = safeBody.data.status;
-
-    switch (status) {
-      case "SUCCESS": {
-        await this.#completeRunWithSuccess(run, safeBody.data, durationInMs);
-
-        break;
-      }
-      case "RESUME_WITH_TASK": {
-        await this.#resumeRunWithTask(run, safeBody.data, isRetry, durationInMs, executionCount);
-
-        break;
-      }
-      case "ERROR": {
-        await this.#failRunWithError(run, safeBody.data, durationInMs);
-
-        break;
-      }
-      case "RETRY_WITH_TASK": {
-        await this.#retryRunWithTask(run, safeBody.data, isRetry, durationInMs, executionCount);
-
-        break;
-      }
-      case "CANCELED": {
-        await this.#cancelExecution(run);
-        break;
-      }
-      case "UNRESOLVED_AUTH_ERROR": {
-        await this.#failRunWithUnresolvedAuthError(run, safeBody.data, durationInMs);
-
-        break;
-      }
-      case "INVALID_PAYLOAD": {
-        await this.#failRunWithInvalidPayloadError(run, safeBody.data, durationInMs);
-
-        break;
-      }
-      case "YIELD_EXECUTION": {
-        await this.#resumeYieldedRun(run, safeBody.data.key, isRetry, durationInMs, executionCount);
-        break;
-      }
-      default: {
-        const _exhaustiveCheck: never = status;
-        throw new Error(`Non-exhaustive match for value: ${status}`);
-      }
+    } finally {
+      forceYieldCoordinator.deregisterRun(run.id);
     }
   }
 
@@ -458,6 +502,13 @@ export class PerformRunExecutionV2Service {
         cachedTaskCursor: preparedTasks.cursor,
         noopTasksSet: prepareNoOpTasksBloomFilter(tasks),
         yieldedExecutions: run.yieldedExecutions,
+        runChunkExecutionLimit: run.endpoint.runChunkExecutionLimit - RUN_CHUNK_EXECUTION_BUFFER,
+        autoYieldConfig: {
+          startTaskThreshold: run.endpoint.startTaskThreshold,
+          beforeExecuteTaskThreshold: run.endpoint.beforeExecuteTaskThreshold,
+          beforeCompleteTaskThreshold: run.endpoint.beforeCompleteTaskThreshold,
+          afterCompleteTaskThreshold: run.endpoint.afterCompleteTaskThreshold,
+        },
       };
     }
 
@@ -639,11 +690,107 @@ export class PerformRunExecutionV2Service {
           yieldedExecutions: {
             push: key,
           },
+          forceYieldImmediately: false,
         },
         select: {
           yieldedExecutions: true,
           executionCount: true,
         },
+      });
+
+      await enqueueRunExecutionV2(run, tx, {
+        isRetry,
+        skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
+        executionCount,
+      });
+    });
+  }
+
+  async #resumeAutoYieldedRun(
+    run: FoundRun,
+    data: { location: string; timeRemaining: number; timeElapsed: number; limit?: number },
+    isRetry: boolean,
+    durationInMs: number,
+    executionCount: number
+  ) {
+    await $transaction(this.#prismaClient, async (tx) => {
+      await tx.jobRun.update({
+        where: {
+          id: run.id,
+        },
+        data: {
+          executionDuration: {
+            increment: durationInMs,
+          },
+          executionCount: {
+            increment: 1,
+          },
+          autoYieldExecution: {
+            create: [
+              {
+                location: data.location,
+                timeRemaining: data.timeRemaining,
+                timeElapsed: data.timeElapsed,
+                limit: data.limit ?? 0,
+              },
+            ],
+          },
+          forceYieldImmediately: false,
+        },
+        select: {
+          executionCount: true,
+        },
+      });
+
+      await enqueueRunExecutionV2(run, tx, {
+        isRetry,
+        skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
+        executionCount,
+      });
+    });
+  }
+
+  async #resumeAutoYieldedRunWithCompletedTask(
+    run: FoundRun,
+    data: RunJobAutoYieldWithCompletedTaskExecutionError,
+    isRetry: boolean,
+    durationInMs: number,
+    executionCount: number
+  ) {
+    await $transaction(this.#prismaClient, async (tx) => {
+      await tx.jobRun.update({
+        where: {
+          id: run.id,
+        },
+        data: {
+          executionDuration: {
+            increment: durationInMs,
+          },
+          executionCount: {
+            increment: 1,
+          },
+          autoYieldExecution: {
+            create: [
+              {
+                location: data.data.location,
+                timeRemaining: data.data.timeRemaining,
+                timeElapsed: data.data.timeElapsed,
+                limit: data.data.limit ?? 0,
+              },
+            ],
+          },
+          forceYieldImmediately: false,
+        },
+        select: {
+          executionCount: true,
+        },
+      });
+
+      const service = new CompleteRunTaskService(tx);
+
+      await service.call(run.environment, run.id, data.id, {
+        properties: data.properties,
+        output: data.output,
       });
 
       await enqueueRunExecutionV2(run, tx, {
@@ -748,6 +895,54 @@ export class PerformRunExecutionV2Service {
         return;
       }
 
+      const runWithLatestTask = await tx.jobRun.findUniqueOrThrow({
+        where: {
+          id: run.id,
+        },
+        select: {
+          tasks: {
+            select: {
+              id: true,
+              name: true,
+              status: true,
+              displayKey: true,
+            },
+            take: 1,
+            orderBy: { createdAt: "desc" },
+          },
+          _count: {
+            select: {
+              tasks: true,
+            },
+          },
+        },
+      });
+
+      if (runWithLatestTask._count.tasks === run._count.tasks) {
+        const latestTask = runWithLatestTask.tasks[0];
+
+        const cause =
+          latestTask?.status === "RUNNING"
+            ? `This is likely caused by task "${
+                latestTask.displayKey ?? latestTask.name
+              }" execution exceeding the function timeout`
+            : "This is likely caused by executing code outside of a task that exceeded the function timeout";
+
+        await this.#failRunExecution(
+          tx,
+          "EXECUTE_JOB",
+          run,
+          {
+            message: `Function timeout detected in ${
+              durationInMs / 1000.0
+            }s without any task creation. This is unexpected behavior and could lead to an infinite execution error because the run will never finish. ${cause}`,
+          },
+          "TIMED_OUT",
+          durationInMs
+        );
+        return;
+      }
+
       await tx.jobRun.update({
         where: {
           id: run.id,
@@ -756,6 +951,16 @@ export class PerformRunExecutionV2Service {
           executionDuration: {
             increment: durationInMs,
           },
+          endpoint: {
+            update: {
+              // Never allow the execution limit to be less than 10 seconds or more than MAX_RUN_CHUNK_EXECUTION_LIMIT
+              runChunkExecutionLimit: Math.min(
+                Math.max(durationInMs, 10000),
+                MAX_RUN_CHUNK_EXECUTION_LIMIT
+              ),
+            },
+          },
+          forceYieldImmediately: false,
         },
       });
 
@@ -794,6 +999,20 @@ export class PerformRunExecutionV2Service {
               executionDuration: {
                 increment: durationInMs,
               },
+              tasks: {
+                updateMany: {
+                  where: {
+                    status: {
+                      in: ["WAITING", "RUNNING", "PENDING"],
+                    },
+                  },
+                  data: {
+                    status: status === "TIMED_OUT" ? "CANCELED" : "ERRORED",
+                    completedAt: new Date(),
+                  },
+                },
+              },
+              forceYieldImmediately: false,
             },
           });
 
@@ -855,7 +1074,12 @@ async function findRun(prisma: PrismaClientOrTransaction, id: string) {
   return await prisma.jobRun.findUnique({
     where: { id },
     include: {
-      environment: true,
+      environment: {
+        include: {
+          project: true,
+          organization: true,
+        },
+      },
       endpoint: true,
       organization: true,
       externalAccount: true,
@@ -892,6 +1116,11 @@ async function findRun(prisma: PrismaClientOrTransaction, id: string) {
         include: {
           job: true,
           organization: true,
+        },
+      },
+      _count: {
+        select: {
+          tasks: true,
         },
       },
     },

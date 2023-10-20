@@ -204,34 +204,32 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       this.#logDebug("stop");
     });
 
-    process.on("SIGTERM", this._handleSignal("SIGTERM").bind(this));
-    process.on("SIGINT", this._handleSignal("SIGINT").bind(this));
+    process.on("SIGTERM", this._handleSignal.bind(this));
+    process.on("SIGINT", this._handleSignal.bind(this));
 
     return true;
   }
 
   private _handleSignal(signal: string) {
-    return () => {
-      if (this.#shuttingDown) {
-        return;
-      }
+    if (this.#shuttingDown) {
+      return;
+    }
 
-      this.#shuttingDown = true;
+    this.#shuttingDown = true;
 
-      if (this.#shutdownTimeoutInMs) {
-        setTimeout(() => {
-          this.#logDebug("Shutdown timeout reached, exiting process");
+    if (this.#shutdownTimeoutInMs) {
+      setTimeout(() => {
+        this.#logDebug("Shutdown timeout reached, exiting process");
 
-          process.exit(0);
-        }, this.#shutdownTimeoutInMs);
-      }
+        process.exit(0);
+      }, this.#shutdownTimeoutInMs);
+    }
 
-      this.#logDebug(`Received ${signal}, shutting down zodWorker...`);
+    this.#logDebug(`Received ${signal}, shutting down zodWorker...`);
 
-      this.stop().finally(() => {
-        this.#logDebug("zodWorker stopped");
-      });
-    };
+    this.stop().finally(() => {
+      this.#logDebug("zodWorker stopped");
+    });
   }
 
   public async stop() {

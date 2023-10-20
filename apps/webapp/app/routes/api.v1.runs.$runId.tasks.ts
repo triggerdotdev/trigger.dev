@@ -184,6 +184,7 @@ export class RunTaskService {
         },
         include: {
           attempts: true,
+          run: true,
         },
       });
 
