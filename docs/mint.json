@@ -58,6 +58,14 @@
     {
       "source": "/documentation/guides/manual",
       "destination": "/documentation/guides/manual/nextjs"
+    },
+    {
+      "source": "/documentation/concepts/limitations",
+      "destination": "/documentation/concepts/limits"
+    },
+    {
+      "source": "/documentation/guides/create-a-job",
+      "destination": "/documentation/guides/writing-jobs-step-by-step"
     }
   ],
   "navigation": [
@@ -86,7 +94,7 @@
             "documentation/quickstarts/supabase"
           ]
         },
-        "documentation/guides/create-a-job",
+        "documentation/guides/writing-jobs-step-by-step",
         "documentation/guides/video-walkthrough"
       ]
     },
@@ -94,7 +102,7 @@
       "group": "Concepts",
       "pages": [
         "documentation/concepts/what-is-triggerdotdev",
-        "documentation/concepts/limitations",
+        "documentation/concepts/limits",
         "documentation/concepts/projects",
         "documentation/concepts/client-adaptors",
         {
@@ -301,12 +309,12 @@
           "group": "IO",
           "pages": [
             "sdk/io/overview",
-            "sdk/io/logger",
-            "sdk/io/wait",
-            "sdk/io/sendevent",
             "sdk/io/runtask",
-            "sdk/io/try",
+            "sdk/io/wait",
+            "sdk/io/logger",
+            "sdk/io/sendevent",
             "sdk/io/backgroundfetch",
+            "sdk/io/try",
             "sdk/io/registerinterval",
             "sdk/io/unregisterinterval",
             "sdk/io/registercron",
@@ -325,7 +333,10 @@
             "sdk/dynamictrigger/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamictrigger/register", "sdk/dynamictrigger/unregister"]
+              "pages": [
+                "sdk/dynamictrigger/register",
+                "sdk/dynamictrigger/unregister"
+              ]
             }
           ]
         },
@@ -336,7 +347,10 @@
             "sdk/dynamicschedule/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamicschedule/register", "sdk/dynamicschedule/unregister"]
+              "pages": [
+                "sdk/dynamicschedule/register",
+                "sdk/dynamicschedule/unregister"
+              ]
             }
           ]
         },
@@ -357,7 +371,9 @@
     },
     {
       "group": "Overview",
-      "pages": ["examples/introduction"]
+      "pages": [
+        "examples/introduction"
+      ]
     }
   ],
   "footerSocials": {

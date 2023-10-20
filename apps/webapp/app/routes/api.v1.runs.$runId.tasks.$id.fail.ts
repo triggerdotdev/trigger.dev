@@ -152,6 +152,7 @@ export class FailRunTaskService {
         },
         include: {
           attempts: true,
+          run: true,
         },
       });
     });
