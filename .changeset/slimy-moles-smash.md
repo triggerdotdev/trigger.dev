@@ -1,5 +1,5 @@
 ---
-"@trigger.dev/core": minor
+"@trigger.dev/core": patch
 ---
 
 Updated icon documentation in runTasks
