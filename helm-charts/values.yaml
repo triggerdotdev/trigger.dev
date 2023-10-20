@@ -233,7 +233,7 @@ ingress:
   ## @skip ingress.frontend
   ##
   trigger:
-    path: /?(.*)
+    path: /
     pathType: Prefix
   ## @param ingress.tls Ingress TLS hosts (matching above hostName)
   ## Replace with your own domain
