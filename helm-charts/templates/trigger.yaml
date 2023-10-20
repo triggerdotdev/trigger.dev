@@ -35,12 +35,12 @@ spec:
           imagePullPolicy: {{ $trigger.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: 3030
+              containerPort: 3000
               protocol: TCP
           readinessProbe:
             httpGet:
               path: /
-              port: http
+              port: 3000
           envFrom:
             - secretRef:
                 name: {{ $trigger.kubeSecretRef | default (include "trigger.name" .) }}
@@ -64,8 +64,8 @@ spec:
   selector:
     {{- include "trigger.matchLabels" . | nindent 8 }}
   ports:
-    - port: 3030
-      targetPort: 3030 
+    - port: 3000
+      targetPort: 3000 
       protocol: TCP
       {{- if eq $trigger.service.type "NodePort" }}
       nodePort: {{ $trigger.service.nodePort }}
@@ -85,7 +85,8 @@ stringData:
   {{- $requiredVars := dict "MAGIC_LINK_SECRET" (randAlphaNum 32 | lower)
                             "SESSION_SECRET" (randAlphaNum 32 | lower)
                             "ENCRYPTION_KEY" (randAlphaNum 32 | lower)
-                            "DIRECT_URL" (include "trigger.postgresql.connectionString" .) }}
+                            "DIRECT_URL" (include "trigger.postgresql.connectionString" .) 
+                            "DATABASE_URL" (include "trigger.postgresql.connectionString" .) }}
   {{- $secretObj := (lookup "v1" "Secret" .Release.Namespace (include "trigger.name" .)) | default dict }}
   {{- $secretData := (get $secretObj "data") | default dict }}
   {{ range $key, $value := .Values.envVars }}

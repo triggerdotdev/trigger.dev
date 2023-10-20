@@ -2,7 +2,7 @@
 Expand the name of the chart.
 */}}
 {{- define "trigger.name" -}}
-{{- default .Chart.Name | trunc 63 | trimSuffix "-" }}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
@@ -40,12 +40,28 @@ component: {{ .Values.trigger.name | quote }}
 {{ include "trigger.common.matchLabels" . }}
 {{- end -}}
 
+{{/*
+Create a fully qualified postgresql name.
+We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+*/}}
+{{- define "trigger.postgresql.hostname" -}}
+{{- if .Values.postgresql.fullnameOverride -}}
+{{- .Values.postgresql.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- $name := default .Chart.Name .Values.nameOverride -}}
+{{- if contains $name .Release.Name -}}
+{{- printf "%s-%s" .Release.Name .Values.postgresql.name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s-%s" .Release.Name $name .Values.postgresql.name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 
 {{/*
-Create the mongodb connection string.
+Create the postgresql connection string.
 */}}
 {{- define "trigger.postgresql.connectionString" -}}
-{{- $host := "triggerdotdev" -}}
+{{- $host := include "trigger.postgresql.hostname" . -}}
 {{- $port := 5432 -}}
 {{- $username := .Values.postgresql.global.postgresql.postgresqlUsername | default "postgres" -}}
 {{- $password := .Values.postgresql.global.postgresql.postgresqlPassword | default "password" -}}
