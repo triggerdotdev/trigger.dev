@@ -1,6 +1,5 @@
 import { createExpressServer } from "@trigger.dev/express";
-import { TriggerClient } from "@trigger.dev/sdk";
-import crypto from "crypto";
+import { TriggerClient, verifyRequestSignature } from "@trigger.dev/sdk";
 import { z } from "zod";
 
 export const client = new TriggerClient({
@@ -40,17 +39,13 @@ const whatsApp = client.defineHttpTrigger({
     },
   },
   verify: async (request, context) => {
-    //todo turn this into a function
-    const signature = Buffer.from(request.headers.get("X-Signature-SHA256") || "", "utf8");
-    const hmac = crypto.createHmac("sha256", context.secret ?? "");
-    const rawBody = await request.text();
-    const digest = Buffer.from("sha256" + "=" + hmac.update(rawBody).digest("hex"), "utf8");
-
-    const isAllowed =
-      signature.length === digest.length && crypto.timingSafeEqual(digest, signature);
-
-    return isAllowed;
+    return verifyRequestSignature({
+      request,
+      secret: context.secret,
+      headerName: "X-Signature-SHA256",
+    });
   },
+  //todo would it be better to just have a "preprocess" function that returns the event?
 });
 
 client.defineJob({

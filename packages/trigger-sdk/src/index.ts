@@ -8,6 +8,7 @@ export * from "./triggers/scheduled";
 export * from "./triggers/notifications";
 export * from "./io";
 export * from "./types";
+export * from "./security";
 
 import { ServerTask } from "@trigger.dev/core";
 import { RedactString } from "./types";
