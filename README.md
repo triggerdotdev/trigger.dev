@@ -20,7 +20,7 @@ All of October we're participating in Hacktoberfest and invite you to join us! W
 
 - Check out our [Hacktoberfest landing page](https://trigger.dev/hacktoberfest) for how to participate and win swag.
 - Contribute to either our [/trigger.dev](https://github.com/triggerdotdev/trigger.dev/labels/%F0%9F%8E%83%20hacktoberfest) or [/jobs-showcase](https://github.com/triggerdotdev/jobs-showcase/labels/%F0%9F%8E%83%20hacktoberfest) repositories and complete issues marked `🎃 Hacktoberfest` to be eligible for swag.
-- Join our [Discord](https://discord.gg/JtBAxBr2m3) and get involved in with the community.
+- Join our [Discord](https://discord.gg/JtBAxBr2m3) and get involved with the community.
 
 _New to Hacktober? Check out the [Hacktoberfest website](https://hacktoberfest.digitalocean.com/) for more information._
 
