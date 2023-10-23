@@ -41,7 +41,7 @@ export class FineTunes {
     return this.runTask(
       key,
       async (client, task) => {
-        return client.fineTunes.create(params);
+        return client.fineTunes.create(params, { idempotencyKey: task.idempotencyKey });
       },
       {
         name: "Create fine tune",
@@ -94,7 +94,7 @@ export class FineTunes {
     return this.runTask(
       key,
       async (client, task) => {
-        return client.fineTunes.cancel(params.fineTuneId);
+        return client.fineTunes.cancel(params.fineTuneId, { idempotencyKey: task.idempotencyKey });
       },
       {
         name: "Cancel fine tune",
@@ -168,7 +168,7 @@ export class FineTunes {
       return this.runTask(
         key,
         async (client, task) => {
-          return client.fineTuning.jobs.create(params);
+          return client.fineTuning.jobs.create(params, { idempotencyKey: task.idempotencyKey });
         },
         {
           name: "Create Fine Tuning Job",
@@ -207,7 +207,7 @@ export class FineTunes {
       return this.runTask(
         key,
         async (client, task) => {
-          return client.fineTuning.jobs.cancel(params.id);
+          return client.fineTuning.jobs.cancel(params.id, { idempotencyKey: task.idempotencyKey });
         },
         {
           name: "Cancel Fine Tuning Job",

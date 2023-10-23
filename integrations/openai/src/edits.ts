@@ -37,7 +37,7 @@ export class Edits {
     return this.runTask(
       key,
       async (client, task) => {
-        const response = await client.edits.create(params);
+        const response = await client.edits.create(params, { idempotencyKey: task.idempotencyKey });
         task.outputProperties = createTaskUsageProperties(response.usage);
         return response;
       },
