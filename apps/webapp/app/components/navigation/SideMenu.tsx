@@ -179,7 +179,7 @@ function SideMenuOrgHeader({ className }: { className?: string }) {
           className="h-7 overflow-hidden py-1 pl-2"
         >
           <LogoIcon className="relative -top-px mr-2 h-4 w-4 min-w-[1rem]" />
-          <span className="truncate">My Org 1asdfasdfasdfasdfasdfasdfasdfasdfasdfasd</span>
+          <span className="truncate">My Org 1</span>
         </PopoverArrowTrigger>
         <PopoverContent
           className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
