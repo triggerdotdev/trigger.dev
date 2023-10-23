@@ -45,7 +45,7 @@ run: async (payload, io, ctx) => {
 
 ### `createChatCompletion`
 
-Generates text completions in a conversational context. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/chat)
+Generates text completions in a conversational context. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/chat/create)
 
 ```ts example.ts
 run: async (payload, io, ctx) => {
@@ -65,7 +65,7 @@ run: async (payload, io, ctx) => {
 
 ### `backgroundCreateChatCompletion`
 
-Generates text completions in a conversational context in the background. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/chat)
+Generates text completions in a conversational context in the background. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/chat/object)
 
 ```ts example.ts
 run: async (payload, io, ctx) => {
@@ -87,7 +87,7 @@ run: async (payload, io, ctx) => {
 
 ### `retrieveModel`
 
-Retrieves a specific model by ID. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/models)
+Retrieves a specific model by ID. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/models/retrieve)
 
 ```ts example.ts
 run: async (payload, io, ctx) => {
@@ -113,7 +113,7 @@ run: async (payload, io, ctx) => {
 
 ### `listModels`
 
-Lists the available models. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/models)
+Lists the available models. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/models/list)
 
 ```ts example.ts
 run: async (payload, io, ctx) => {
@@ -124,7 +124,7 @@ run: async (payload, io, ctx) => {
 
 ### `createEdit`
 
-Edits a given text prompt. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/edits)
+Edits a given text prompt. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/edits/create)
 
 ```ts example.ts
 run: async (payload, io, ctx) => {
@@ -152,7 +152,7 @@ run: async (payload, io, ctx) => {
 
 ### `createImage`
 
-Generates images from textual descriptions. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/images)
+Generates images from textual descriptions. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/images/create)
 
 ```ts example.ts
   run: async (payload, io, ctx) => {
@@ -166,7 +166,7 @@ Generates images from textual descriptions. [Official OpenAI Docs](https://platf
 
 ### `createImageEdit`
 
-Creates an edited or extended image given an original image and a prompt. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/images)
+Creates an edited or extended image given an original image and a prompt. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/images/createEdit)
 
 ```ts example.ts
 run: async (payload, io, ctx) => {
@@ -186,7 +186,7 @@ run: async (payload, io, ctx) => {
 
 ### `createImageVariation`
 
-Creates a variation of a given image. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/images)
+Creates a variation of a given image. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/images/createVariation)
 
 ```ts example.ts
     run: async (payload, io, ctx) => {
@@ -206,7 +206,7 @@ Creates a variation of a given image. [Official OpenAI Docs](https://platform.op
 
 ### `createEmbedding`
 
-Generates embeddings for a given text. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/embeddings/object)
+Generates embeddings for a given text. [Official OpenAI Docs](hhttps://platform.openai.com/docs/api-reference/embeddings/object)
 
 ```ts example.ts
 run: async (payload, io, ctx) => {
@@ -253,7 +253,7 @@ run: async (payload, io, ctx) => {
 
 ### `listFiles`
 
-Lists the uploaded files. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/files/object)
+Lists the uploaded files. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/files/list)
 
 ```ts example.ts
 run: async (payload, io, ctx) => {
@@ -289,7 +289,7 @@ run: async (payload, io, ctx) => {
 
 ### `createFineTune`
 
-Fine-tunes a model on a given task. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning)
+Fine-tunes a model on a given task. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/create)
 
 ```ts example.ts
 run: async (payload, io, ctx) => {
@@ -310,7 +310,7 @@ run: async (payload, io, ctx) => {
 
 ### `listFineTunes`
 
-Lists the available fine-tunes. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning)
+Lists the available fine-tunes. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/list)
 
 ```ts example.ts
 run: async (payload, io, ctx) => {
@@ -324,7 +324,7 @@ run: async (payload, io, ctx) => {
 
 ### `retrieveFineTune`
 
-Retrieves a specific fine-tune by ID. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning)
+Retrieves a specific fine-tune by ID. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/retrieve)
 
 ```ts example.ts
 run: async (payload, io, ctx) => {
@@ -341,7 +341,7 @@ run: async (payload, io, ctx) => {
 
 ### `cancelFineTune`
 
-Cancels a specific fine-tune by ID. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning)
+Cancels a specific fine-tune by ID. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/cancel)
 
 ```ts example.ts
 run: async (payload, io, ctx) => {
@@ -358,7 +358,7 @@ run: async (payload, io, ctx) => {
 
 ### `createFineTuningJob`
 
-Creates a job that fine-tunes a specified model from a given dataset. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning)
+Creates a job that fine-tunes a specified model from a given dataset. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/create)
 
 ```ts example.ts
 run: async (payload, io, ctx) => {
@@ -380,7 +380,7 @@ run: async (payload, io, ctx) => {
 
 ### `retrieveFineTuningJob`
 
-Get info about a fine-tuning job. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning)
+Get info about a fine-tuning job. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/retrieve)
 
 ```ts example.ts
 run: async (payload, io, ctx) => {
@@ -397,7 +397,7 @@ run: async (payload, io, ctx) => {
 
 ### `cancelFineTuningJob`
 
-Cancel a fine-tuning job. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning)
+Cancel a fine-tuning job. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/cancel)
 
 ```ts example.ts
 run: async (payload, io, ctx) => {
@@ -414,7 +414,7 @@ run: async (payload, io, ctx) => {
 
 ### `listFineTuningJobEvents`
 
-List events for a fine-tuning job. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning)
+List events for a fine-tuning job. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/list-events)
 
 ```ts example.ts
 run: async (payload, io, ctx) => {
@@ -431,7 +431,7 @@ run: async (payload, io, ctx) => {
 
 ### `listFineTuningJobs`
 
-List fine tuning jobs. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning)
+List fine tuning jobs. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/list)
 
 ```ts example.ts
 run: async (payload, io, ctx) => {
