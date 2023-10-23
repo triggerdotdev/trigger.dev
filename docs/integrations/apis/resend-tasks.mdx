@@ -14,15 +14,15 @@ Tasks are executed after the job is triggered and are the main building blocks o
 Send an email to a recipient with a text payload. [Official Resend Docs](https://resend.com/docs/api-reference/emails/send-email)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-  // The 'run' function is asynchronous and takes 'payload,' 'io,' and 'ctx' as parameters.
+run: async (io, ctx) => {
+  // The 'run' function is asynchronous and takes 'io' and 'ctx' as parameters.
 
   // Using the 'io.resend.sendEmail' method to send an email using the Resend service.
   await io.resend.sendEmail("send-email", {
-    to: payload.to, // Recipient's email address, obtained from the 'payload' parameter.
-    subject: payload.subject, // Email subject, obtained from the 'payload' parameter.
-    text: payload.text, // Plain text content of the email, obtained from the 'payload' parameter.
-    from: "Trigger.dev <hello@email.trigger.dev>", // Sender's email address and name.
+    to: <recipient-email-address>, // Recipient's email address.
+    subject: <email-subject>, // Email subject.
+    text: <email-body>, // Plain text content of the email.
+    from: "Your-Name <your-email-address>", // Sender's email address and name.
   });
 }
 ```
