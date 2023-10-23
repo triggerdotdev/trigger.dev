@@ -266,7 +266,13 @@
         "integrations/apis/replicate",
         "integrations/apis/resend",
         "integrations/apis/sendgrid",
-        "integrations/apis/slack",
+        {
+          "group": "Slack",
+          "pages": [
+            "integrations/apis/slack",
+            "integrations/apis/slack-tasks"
+          ]
+        },
         "integrations/apis/stripe",
         {
           "group": "Supabase",
