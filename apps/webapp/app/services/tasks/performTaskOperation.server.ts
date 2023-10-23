@@ -35,7 +35,7 @@ export class PerformTaskOperationService {
     }
 
     if (!task.operation) {
-      return await this.#resumeTask(task, null);
+      return await this.#resumeTask(task, null, 0);
     }
 
     logger.debug("PerformTaskOperationService.call", { task });
@@ -53,11 +53,15 @@ export class PerformTaskOperationService {
 
         const { url, requestInit, retry } = fetchOperation.data;
 
+        const startTimeInMs = performance.now();
+
         const response = await fetch(url, {
           method: requestInit?.method ?? "GET",
           headers: normalizeHeaders(requestInit?.headers ?? {}),
           body: requestInit?.body,
         });
+
+        const durationInMs = Math.floor(performance.now() - startTimeInMs);
 
         const jsonBody = await safeJsonFromResponse(response);
 
@@ -91,7 +95,7 @@ export class PerformTaskOperationService {
           }
         }
 
-        return await this.#resumeTask(task, jsonBody);
+        return await this.#resumeTask(task, jsonBody, durationInMs);
       }
       default: {
         await this.#resumeTaskWithError(task, {
@@ -218,7 +222,7 @@ export class PerformTaskOperationService {
     });
   }
 
-  async #resumeTask(task: NonNullable<FoundTask>, output: any) {
+  async #resumeTask(task: NonNullable<FoundTask>, output: any, durationInMs: number) {
     await $transaction(this.#prismaClient, async (tx) => {
       await tx.taskAttempt.updateMany({
         where: {
@@ -236,6 +240,13 @@ export class PerformTaskOperationService {
           status: "COMPLETED",
           completedAt: new Date(),
           output: output ? output : undefined,
+          run: {
+            update: {
+              executionDuration: {
+                increment: durationInMs,
+              },
+            },
+          },
         },
       });
 
