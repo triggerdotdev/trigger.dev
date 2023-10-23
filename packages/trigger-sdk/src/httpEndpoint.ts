@@ -1,15 +1,15 @@
 import {
   DisplayProperty,
   EventFilter,
-  Prettify,
+  HttpEndpointMetadata,
   RequestFilter,
   TriggerMetadata,
 } from "@trigger.dev/core";
-import { EventSpecification, EventSpecificationExample, Trigger } from "./types";
-import { TriggerClient } from "./triggerClient";
-import { Job } from "./job";
 import { z } from "zod";
 import { ParsedPayloadSchemaError } from "./errors";
+import { Job } from "./job";
+import { TriggerClient } from "./triggerClient";
+import { EventSpecification, EventSpecificationExample, Trigger } from "./types";
 import { formatSchemaErrors } from "./utils/formatSchemaErrors";
 
 type HttpEndpointOptions<TEventSpecification extends EventSpecification<any>> = {
@@ -21,8 +21,12 @@ export type RequestOptions = {
   filter?: EventFilter;
 };
 
-class HttpEndpoint<TEventSpecification extends EventSpecification<any>> {
+export class HttpEndpoint<TEventSpecification extends EventSpecification<any>> {
   constructor(private readonly options: HttpEndpointOptions<TEventSpecification>) {}
+
+  get id() {
+    return this.options.id;
+  }
 
   onRequest(options: RequestOptions): HttpTrigger<TEventSpecification> {
     return new HttpTrigger({
@@ -30,6 +34,14 @@ class HttpEndpoint<TEventSpecification extends EventSpecification<any>> {
       event: this.options.event,
       filter: options.filter,
     });
+  }
+
+  toJSON(): HttpEndpointMetadata {
+    return {
+      id: this.options.id,
+      version: "1",
+      event: this.options.event,
+    };
   }
 }
 

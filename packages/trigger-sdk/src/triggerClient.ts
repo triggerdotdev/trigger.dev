@@ -39,6 +39,7 @@ import {
   RetryWithTaskError,
   YieldExecutionError,
 } from "./errors";
+import { EndpointOptions, HttpEndpoint, httpEndpoint } from "./httpEndpoint";
 import { TriggerIntegration } from "./integrations";
 import { IO, IOStats } from "./io";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
@@ -54,8 +55,6 @@ import type {
   TriggerContext,
   TriggerPreprocessContext,
 } from "./types";
-import { HttpTriggerOptions, httpTrigger } from "./triggers/httpTrigger";
-import { EndpointOptions, httpEndpoint } from "./httpEndpoint";
 
 const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
   name: REGISTER_SOURCE_EVENT_V2,
@@ -118,6 +117,7 @@ export class TriggerClient {
   > = {};
   #jobMetadataByDynamicTriggers: Record<string, Array<{ id: string; version: string }>> = {};
   #registeredSchedules: Record<string, Array<{ id: string; version: string }>> = {};
+  #registeredHttpEndpoints: Record<string, HttpEndpoint<EventSpecification<any>>> = {};
   #authResolvers: Record<string, TriggerAuthResolver> = {};
 
   #client: ApiClient;
@@ -251,6 +251,9 @@ export class TriggerClient {
             id,
             jobs,
           })),
+          httpEndpoints: Object.entries(this.#registeredHttpEndpoints).map(([id, endpoint]) =>
+            endpoint.toJSON()
+          ),
         };
 
         // if the x-trigger-job-id header is not set, we return all jobs
@@ -475,14 +478,12 @@ export class TriggerClient {
 
   defineHttpEndpoint(options: EndpointOptions) {
     const endpoint = httpEndpoint(options);
-    //todo have a record<string, HttpEndpoint>
-    //todo it so they're indexed
+    this.#registeredHttpEndpoints[endpoint.id] = endpoint;
     return endpoint;
   }
 
   attach(job: Job<Trigger<any>, any>): void {
     this.#registeredJobs[job.id] = job;
-
     job.trigger.attachToJob(this, job);
   }
 

@@ -287,11 +287,20 @@ export const DynamicTriggerEndpointMetadataSchema = z.object({
 
 export type DynamicTriggerEndpointMetadata = z.infer<typeof DynamicTriggerEndpointMetadataSchema>;
 
+const HttpEndpointMetadataSchema = z.object({
+  id: z.string(),
+  version: z.string(),
+  event: EventSpecificationSchema,
+});
+
+export type HttpEndpointMetadata = z.infer<typeof HttpEndpointMetadataSchema>;
+
 export const IndexEndpointResponseSchema = z.object({
   jobs: z.array(JobMetadataSchema),
   sources: z.array(SourceMetadataSchema),
   dynamicTriggers: z.array(DynamicTriggerEndpointMetadataSchema),
   dynamicSchedules: z.array(RegisterDynamicSchedulePayloadSchema),
+  httpEndpoints: z.array(HttpEndpointMetadataSchema).optional(),
 });
 
 export type IndexEndpointResponse = z.infer<typeof IndexEndpointResponseSchema>;
