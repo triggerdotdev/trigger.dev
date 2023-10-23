@@ -138,7 +138,7 @@ export default function Integrations() {
               );
             })
           ) : (
-            <TableBlankRow colSpan={5}>
+            <TableBlankRow colSpan={100}>
               <Paragraph>No External triggers</Paragraph>
             </TableBlankRow>
           )}
