@@ -28,7 +28,7 @@ export class HttpEndpoint<TEventSpecification extends EventSpecification<any>> {
     return this.options.id;
   }
 
-  onRequest(options: RequestOptions): HttpTrigger<TEventSpecification> {
+  onRequest(options: RequestOptions): HttpTrigger<EventSpecification<Request>> {
     return new HttpTrigger({
       endpointId: this.options.id,
       event: this.options.event,
@@ -58,9 +58,14 @@ class HttpTrigger<TEventSpecification extends EventSpecification<any>>
 
   toJSON(): TriggerMetadata {
     return {
-      type: "httpendpoint",
-      endpointId: this.options.endpointId,
-      filter: this.options.filter,
+      type: "static",
+      title: this.options.endpointId,
+      properties: this.options.event.properties,
+      rule: {
+        event: this.options.endpointId,
+        payload: this.options.filter ?? {},
+        source: this.options.event.source,
+      },
     };
   }
 
@@ -68,9 +73,7 @@ class HttpTrigger<TEventSpecification extends EventSpecification<any>>
     return this.options.event;
   }
 
-  attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpecification>, any>): void {
-    // triggerClient.attachModularTrigger({ key: this.#key, trigger: this });
-  }
+  attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpecification>, any>): void {}
 
   get preprocessRuns() {
     return false;
@@ -80,13 +83,6 @@ class HttpTrigger<TEventSpecification extends EventSpecification<any>>
 type RequestContext = {
   secret: string | undefined;
 };
-
-const HttpEndpointPayloadSchema = z.object({
-  headers: z.record(z.string()),
-  body: z.any(),
-});
-
-type HttpEndpointPayload = z.infer<typeof HttpEndpointPayloadSchema>;
 
 export type EndpointOptions = {
   id: string;
@@ -103,9 +99,14 @@ export type EndpointOptions = {
   verify: (request: Request, context: RequestContext) => Promise<boolean>;
 };
 
-export function httpEndpoint(
-  options: EndpointOptions
-): HttpEndpoint<EventSpecification<HttpEndpointPayload>> {
+const RawHttpEndpointPayloadSchema = z.object({
+  url: z.string(),
+  method: z.string(),
+  headers: z.record(z.string()),
+  rawBody: z.string(),
+});
+
+export function httpEndpoint(options: EndpointOptions): HttpEndpoint<EventSpecification<Request>> {
   return new HttpEndpoint({
     id: options.id,
     event: {
@@ -116,13 +117,17 @@ export function httpEndpoint(
       properties: options.properties,
       examples: options.examples,
       parsePayload: (rawPayload: any) => {
-        const result = HttpEndpointPayloadSchema.safeParse(rawPayload);
+        const result = RawHttpEndpointPayloadSchema.safeParse(rawPayload);
 
         if (!result.success) {
           throw new ParsedPayloadSchemaError(formatSchemaErrors(result.error.issues));
         }
 
-        return result.data;
+        return new Request(new URL(result.data.url), {
+          method: result.data.method,
+          headers: result.data.headers,
+          body: result.data.rawBody,
+        });
       },
     },
   });
