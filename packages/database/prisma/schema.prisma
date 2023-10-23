@@ -637,11 +637,12 @@ enum JobStartPosition {
 }
 
 model EventRecord {
-  id            String   @id @default(cuid())
+  id            String      @id @default(cuid())
   eventId       String
   name          String
-  timestamp     DateTime @default(now())
+  timestamp     DateTime    @default(now())
   payload       Json
+  payloadType   PayloadType @default(JSON)
   context       Json?
   sourceContext Json?
 
@@ -670,6 +671,11 @@ model EventRecord {
   runs   JobRun[]
 
   @@unique([eventId, environmentId])
+}
+
+enum PayloadType {
+  JSON
+  REQUEST
 }
 
 model JobRun {
