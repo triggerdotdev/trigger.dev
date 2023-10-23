@@ -90,7 +90,7 @@ Visit our docs [here](https://trigger.dev/docs).
 
 ## Self-host
 
-We provide an official trigger.dev docker image you can use to easily self-host the platform. We're working on more extensive guides but we currently provide a [Fly.io example repository](https://github.com/triggerdotdev/fly.io) with instructions in the README for deploying and using a self-hosted instance of Trigger.dev on Fly.io.
+We provide an official trigger.dev docker image you can use to easily self-host the platform. We're working on more extensive guides but we currently provide a [Fly.io example repository](https://github.com/triggerdotdev/fly.io) with instructions in the README, for deploying and using a self-hosted instance of Trigger.dev on Fly.io.
 
 ## Development
 
