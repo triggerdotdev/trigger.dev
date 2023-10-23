@@ -1,0 +1,860 @@
+---
+title: Linear Tasks
+sidebarTitle: Tasks
+---
+
+## All tasks
+
+### `attachment`
+
+Gets an attachment. [Official Linear docs](https://developers.linear.app/docs/graphql/attachments).
+
+```ts example.ts
+const attachment = await io.linear.attachment("get-attachment", { 
+  id: "<attachment-id>" // the id of the attachment
+  });
+```
+
+### `attachments`
+
+Gets multiple attachments. [Official Linear docs](https://developers.linear.app/docs/graphql/attachments).
+
+```ts example.ts
+const attachments = await io.linear.attachments("get-attachments", { 
+  ids: ["<attachment-id>"] // the id(s) of the attachment(s)
+  });
+```
+
+### `createAttachment`
+
+Creates an attachment. [Official Linear docs](https://developers.linear.app/docs/graphql/attachments).
+
+```ts example.ts
+const attachment = await io.linear.createAttachment("create-attachment", { 
+  issueId: "<issue-id>", // the id of the issue
+  url: "<url>", // the url of the attachment
+  });
+```
+
+### `deleteAttachment`
+
+Deletes an attachment. [Official Linear docs](https://developers.linear.app/docs/graphql/attachments).
+
+```ts example.ts
+const attachment = await io.linear.deleteAttachment("delete-attachment", { 
+  id: "<attachment-id>" // the id of the attachment
+  });
+```
+
+### `updateAttachment`
+
+Updates an attachment. [Official Linear docs](https://developers.linear.app/docs/graphql/attachments).
+
+```ts example.ts
+const attachment = await io.linear.updateAttachment("update-attachment", { 
+  id: "<attachment-id>", // the id of the attachment
+  url: "<url>", // the url of the attachment
+  });
+```
+
+### `attachmentLinkFront`
+
+Links a Front conversation to an issue. [Official Linear docs](https://linear.app/docs/front#overview).
+
+```ts example.ts
+const attachmentLink = await io.linear.attachmentLinkFront("attachment-link-front", { 
+  issueId: "<issue-id>", // the id of the issue
+  url: "<url>", // the url of the attachment
+  });
+```
+
+### `attachmentLinkIntercom`
+
+Links a Intercom conversation to an issue. [Official Linear docs](https://developers.linear.app/docs/graphql/attachments).
+
+```ts example.ts
+const attachmentLink = await io.linear.attachmentLinkIntercom("attachment-link-intercom", { 
+  issueId: "<issue-id>", // the id of the issue
+  url: "<url>", // the url of the attachment
+  });
+```
+
+### `attachmentLinkJiraIssue`
+
+Links a Jira issue to an issue. [Official Linear docs](https://linear.app/docs/jira#overview).
+
+```ts example.ts
+const attachmentLink = await io.linear.attachmentLinkJiraIssue("attachment-link-jira-issue", { 
+  issueId: "<issue-id>", // the id of the issue
+  url: "<url>", // the url of the attachment
+  });
+```
+
+### `attachmentLinkSlack`
+
+Links a Slack message to an issue. [Official Linear docs](https://linear.app/docs/slack#overview).
+
+```ts example.ts
+const attachmentLink = await io.linear.attachmentLinkSlack("attachment-link-slack", { 
+  issueId: "<issue-id>", // the id of the issue
+  url: "<url>", // the url of the attachment
+  });
+```
+
+### `attachmentLinkURL`
+
+Links any URL to an issue. [Official Linear docs](https://linear.app/docs/creating-issues#url-attachments).
+
+```ts example.ts
+const attachmentLink = await io.linear.attachmentLinkURL("attachment-link-url", { 
+  issueId: "<issue-id>", // the id of the issue
+  url: "<url>", // the url of the attachment
+  });
+```
+
+### `attachmentLinkZendesk`
+
+Links a Zendesk ticket to an issue. [Official Linear docs](https://linear.app/docs/zendesk#overview).
+
+```ts example.ts
+const attachmentLink = await io.linear.attachmentLinkZendesk("attachment-link-zendesk", { 
+  issueId: "<issue-id>", // the id of the issue
+  url: "<url>", // the url of the attachment
+  });
+```
+
+### `comment`
+
+Gets a comment. [Official Linear docs](https://linear.app/docs/comment-on-issues).
+
+```ts example.ts
+const comment = await io.linear.comment("get-comment", { 
+  id: "<comment-id>" // the id of the comment
+  });
+```
+
+### `comments`
+
+Gets multiple comments. [Official Linear docs](https://linear.app/docs/comment-on-issues).
+
+```ts example.ts
+const comments = await io.linear.comments("get-comments", { 
+  ids: ["<comment-id>"], // the id(s) of the comment(s)
+  });
+```
+
+### `createComment`
+
+Creates a comment. [Official Linear docs](https://linear.app/docs/comment-on-issues).
+
+```ts example.ts
+const comment = await io.linear.createComment("create-comment", { 
+  issueId: "<issue-id>", // the id of the issue
+  body: "<body>", // the body of the comment
+  });
+```
+
+### `deleteComment`
+
+Deletes a comment. [Official Linear docs](https://linear.app/docs/comment-on-issues).
+
+```ts example.ts
+const comment = await io.linear.deleteComment("delete-comment", { 
+  id: "<comment-id>" // the id of the comment
+  });
+```
+
+### `updateComment`
+
+Updates a comment. [Official Linear docs](https://linear.app/docs/comment-on-issues).
+
+```ts example.ts
+const comment = await io.linear.updateComment("update-comment", { 
+  id: "<comment-id>", // the id of the comment
+  body: "<body>", // the body of the comment
+  });
+```
+
+### `archiveCycle`
+
+Archives a cycle. [Official Linear docs](https://linear.app/docs/configure-cycles#archiving-cycles).
+
+```ts example.ts
+const cycle = await io.linear.archiveCycle("archive-cycle", { 
+  id: "<cycle-id>" // the id of the cycle
+  });
+```
+
+### `createCycle`
+
+Creates a cycle. [Official Linear docs](https://linear.app/docs/configure-cycles#overview).
+
+```ts example.ts
+const cycle = await io.linear.createCycle("create-cycle", { 
+  name: "<name>", // the name of the cycle
+  teamId: "<team-id>", // the id of the team
+  });
+```
+
+### `updateCycle`
+
+Updates a cycle. [Official Linear docs](https://linear.app/docs/configure-cycles#overview).
+
+```ts example.ts
+const cycle = await io.linear.updateCycle("update-cycle", { 
+  id: "<cycle-id>", // the id of the cycle
+  name: "<name>", // the name of the cycle
+  });
+```
+
+### `document`
+
+Gets a document. [Official Linear docs](https://linear.app/docs/project-documents#overview).
+
+```ts example.ts
+const document = await io.linear.document("get-document", { 
+  id: "<document-id>" // the id of the document
+  });
+```
+
+### `documents`
+
+Gets multiple documents. [Official Linear docs](https://linear.app/docs/project-documents#overview).
+
+```ts example.ts
+const documents = await io.linear.documents("get-documents", { 
+  ids: ["<document-id>"] // the id(s) of the document(s)
+  });
+```
+
+### `createDocument`
+
+Creates a document. [Official Linear docs](https://linear.app/docs/project-documents#overview).
+
+```ts example.ts
+const document = await io.linear.createDocument("create-document", { 
+  issueId: "<issue-id>", // the id of the issue
+  url: "<url>", // the url of the document
+  });
+```
+
+### `searchDocuments`
+
+Searches documents. [Official Linear docs](https://linear.app/docs/project-documents#overview).
+
+```ts example.ts
+const documents = await io.linear.searchDocuments("search-documents", { 
+  query: "<query>", // the query to search for
+  });
+```
+
+### `favorite`
+
+Gets a favorite. [Official Linear docs](https://linear.app/docs/favorites#overview).
+
+```ts example.ts
+const favorite = await io.linear.favorite("get-favorite", { 
+  id: "<favorite-id>" // the id of the favorite
+  });
+```
+
+### `favorites`
+
+Gets multiple favorites. [Official Linear docs](https://linear.app/docs/favorites#overview).
+
+```ts example.ts
+const favorites = await io.linear.favorites("get-favorites", { 
+  ids: ["<favorite-id>"] // the id(s) of the favorite(s)
+  });
+```
+
+### `createFavorite`
+
+Creates a favorite. [Official Linear docs](https://linear.app/docs/favorites#overview).
+
+```ts example.ts
+const favorite = await io.linear.createFavorite("create-favorite", { 
+  issueId: "<issue-id>", // the id of the issue
+  });
+```
+
+### `issue`
+
+Gets an issue. [Official Linear docs](https://linear.app/docs/creating-issues#overview).
+
+```ts example.ts
+const issue = await io.linear.issue("get-issue", { 
+  id: "<issue-id>" // the id of the issue
+  });
+```
+
+### `issues`
+
+Gets multiple issues. [Official Linear docs](https://linear.app/docs/creating-issues#overview).
+
+```ts example.ts
+const issues = await io.linear.issues("get-issues", { 
+  ids: ["<issue-id>"] // the id(s) of the issue(s)
+  });
+```
+
+### `archiveIssue`
+
+Archives an issue. [Official Linear docs](https://linear.app/docs/creating-issues#overview).
+
+```ts example.ts
+const issue = await io.linear.archiveIssue("archive-issue", { 
+  id: "<issue-id>" // the id of the issue
+  });
+```
+
+### `createIssue`
+
+Creates an issue. [Official Linear docs](https://linear.app/docs/creating-issues#overview).
+
+```ts example.ts
+const issue = await io.linear.createIssue("create-issue", { 
+  title: "<title>", // the title of the issue
+  description: "<description>", // the description of the issue
+  teamId: "<team-id>", // the id of the team
+  });
+```
+
+### `deleteIssue`
+
+Deletes an issue. [Official Linear docs](https://linear.app/docs/creating-issues#overview).
+
+```ts example.ts
+const issue = await io.linear.deleteIssue("delete-issue", { 
+  id: "<issue-id>" // the id of the issue
+  });
+```
+
+### `searchIssues`
+
+Searches issues. [Official Linear docs](https://linear.app/docs/creating-issues#overview).
+
+```ts example.ts
+const issues = await io.linear.searchIssues("search-issues", { 
+  query: "<query>", // the query to search for
+  });
+```
+
+### `updateIssue`
+
+Updates an issue. [Official Linear docs](https://linear.app/docs/creating-issues#overview).
+
+```ts example.ts
+const issue = await io.linear.updateIssue("update-issue", { 
+  id: "<issue-id>", // the id of the issue
+  title: "<title>", // the title of the issue
+  description: "<description>", // the description of the issue
+  });
+```
+
+### `issueLabel`
+
+Gets an issue label. [Official Linear docs](https://linear.app/docs/labels#overview).
+
+```ts example.ts
+const issueLabel = await io.linear.issueLabel("get-issue-label", { 
+  id: "<issue-label-id>" // the id of the issue label
+  });
+```
+
+### `issueLabels`
+
+Gets multiple issue labels. [Official Linear docs](https://linear.app/docs/labels#overview).
+
+```ts example.ts
+const issueLabels = await io.linear.issueLabels("get-issue-labels", { 
+  ids: ["<issue-label-id>"] // the id(s) of the issue label(s)
+  });
+```
+
+### `createIssueLabel`
+
+Creates an issue label. [Official Linear docs](https://linear.app/docs/labels#overview).
+
+```ts example.ts
+const issueLabel = await io.linear.createIssueLabel("create-issue-label", { 
+  name: "<name>", // the name of the issue label
+  color: "<color>", // the color of the issue label
+  });
+```
+
+### `deleteIssueLabel`
+
+Deletes an issue label. [Official Linear docs](https://linear.app/docs/labels#overview).
+
+```ts example.ts
+const issueLabel = await io.linear.deleteIssueLabel("delete-issue-label", { 
+  id: "<issue-label-id>" // the id of the issue label
+  });
+```
+
+### `updateIssueLabel`
+
+Updates an issue label. [Official Linear docs](https://linear.app/docs/labels#overview).
+
+```ts example.ts
+const issueLabel = await io.linear.updateIssueLabel("update-issue-label", { 
+  id: "<issue-label-id>", // the id of the issue label
+  name: "<name>", // the name of the issue label
+  color: "<color>", // the color of the issue label
+  });
+```
+
+### `issueRelation`
+
+Gets an issue relation. [Official Linear docs](https://linear.app/docs/issue-relations#overview).
+
+```ts example.ts
+const issueRelation = await io.linear.issueRelation("get-issue-relation", { 
+  id: "<issue-relation-id>" // the id of the issue relation
+  });
+```
+
+### `issueRelations`
+
+Gets multiple issue relations. [Official Linear docs](https://linear.app/docs/issue-relations#overview).
+
+```ts example.ts
+const issueRelations = await io.linear.issueRelations("get-issue-relations", { 
+  ids: ["<issue-relation-id>"] // the id(s) of the issue relation(s)
+  });
+```
+
+### `createIssueRelation`
+
+Creates an issue relation. [Official Linear docs](https://linear.app/docs/issue-relations#overview).
+
+```ts example.ts
+const issueRelation = await io.linear.createIssueRelation("create-issue-relation", { 
+  issueId: "<issue-id>", // the id of the issue
+  relatedIssueId: "<related-issue-id>", // the id of the related issue
+  relation: "<relation>", // the relation of the issue relation
+  });
+```
+
+### `notification`
+
+Gets a notification. [Official Linear docs](https://linear.app/docs/notifications#overview).
+
+```ts example.ts
+const notification = await io.linear.notification("get-notification", { 
+  id: "<notification-id>" // the id of the notification
+  });
+```
+
+### `notifications`
+
+Gets multiple notifications. [Official Linear docs](https://linear.app/docs/notifications#overview).
+
+```ts example.ts
+const notifications = await io.linear.notifications("get-notifications", { 
+  ids: ["<notification-id>"] // the id(s) of the notification(s)
+  });
+```
+
+### `archiveNotification`
+
+Archives a notification. [Official Linear docs](https://linear.app/docs/notifications#overview).
+
+```ts example.ts
+const notification = await io.linear.archiveNotification("archive-notification", { 
+  id: "<notification-id>" // the id of the notification
+  });
+```
+
+### `createNotificationSubscription`
+
+Creates a notification subscription. [Official Linear docs](https://linear.app/docs/notifications#overview).
+
+```ts example.ts
+const notification = await io.linear.createNotificationSubscription("create-notification-subscription", { 
+  teamId: "<team-id>", // the id of the team
+  });
+```
+
+### `organization`
+
+Gets the viewer's organization.
+
+```ts example.ts
+const organization = await io.linear.organization("get-organization");
+```
+
+### `createOrganizationFromOnboarding`
+
+Creates an organization.
+
+```ts example.ts
+const organization = await io.linear.createOrganizationFromOnboarding("create-organization-from-onboarding", { 
+  name: "<name>", // the name of the organization
+  });
+```
+
+### `createOrganizationInvite`
+
+Creates an organization invite.
+
+```ts example.ts
+const organization = await io.linear.createOrganizationInvite("create-organization-invite", { 
+  email: "<email>", // the email of the invite
+  });
+```
+
+### `project`
+
+Gets a project. [Official Linear docs](https://linear.app/docs/project#overview).
+
+```ts example.ts
+const project = await io.linear.project("get-project", { 
+  id: "<project-id>" // the id of the project
+  });
+```
+
+### `projects`
+
+Gets multiple projects. [Official Linear docs](https://linear.app/docs/project#overview).
+
+```ts example.ts
+const projects = await io.linear.projects("get-projects", { 
+  ids: ["<project-id>"] // the id(s) of the project(s)
+  });
+```
+
+### `archiveProject`
+
+Archives a project. [Official Linear docs](https://linear.app/docs/project#overview).
+
+```ts example.ts
+const project = await io.linear.archiveProject("archive-project", { 
+  id: "<project-id>" // the id of the project
+  });
+```
+
+### `createProject`
+
+Creates a project. [Official Linear docs](https://linear.app/docs/project#overview).
+
+```ts example.ts
+const project = await io.linear.createProject("create-project", { 
+  name: "<name>", // the name of the project
+  teamId: "<team-id>", // the id of the team
+  });
+```
+
+### `deleteProject`
+
+Deletes a project. [Official Linear docs](https://linear.app/docs/project#overview).
+
+```ts example.ts
+const project = await io.linear.deleteProject("delete-project", { 
+  id: "<project-id>" // the id of the project
+  });
+```
+
+### `searchProjects`
+
+Searches projects. [Official Linear docs](https://linear.app/docs/project#overview).
+
+```ts example.ts
+const projects = await io.linear.searchProjects("search-projects", { 
+  query: "<query>", // the query to search for
+  });
+```
+
+### `updateProject`
+
+Updates a project. [Official Linear docs](https://linear.app/docs/project#overview).
+
+```ts example.ts
+const project = await io.linear.updateProject("update-project", { 
+  id: "<project-id>", // the id of the project
+  name: "<name>", // the name of the project
+  });
+```
+
+### `projectLink`
+
+Gets a project link. [Official Linear docs](https://linear.app/docs/project#overview).
+
+```ts example.ts
+const projectLink = await io.linear.projectLink("get-project-link", { 
+  id: "<project-link-id>" // the id of the project link
+  });
+```
+
+### `projectLinks` 
+
+Gets multiple project links. [Official Linear docs](https://linear.app/docs/project#overview).
+
+```ts example.ts
+const projectLinks = await io.linear.projectLinks("get-project-links", { 
+  ids: ["<project-link-id>"] // the id(s) of the project link(s)
+  });
+```
+
+### `createProjectLink`
+
+Creates a project link. [Official Linear docs](https://linear.app/docs/project#overview).
+
+```ts example.ts
+const projectLink = await io.linear.createProjectLink("create-project-link", { 
+  issueId: "<issue-id>", // the id of the issue
+  url: "<url>", // the url of the project link
+  });
+```
+
+### `projectUpdate`
+
+Gets a project update. [Official Linear docs](https://linear.app/docs/project#overview).
+
+```ts example.ts
+const projectUpdate = await io.linear.projectUpdate("get-project-update", { 
+  id: "<project-update-id>" // the id of the project update
+  });
+```
+
+### `projectUpdates` 
+
+Gets multiple project updates. [Official Linear docs](https://linear.app/docs/project#overview).
+
+```ts example.ts
+const projectUpdates = await io.linear.projectUpdates("get-project-updates", { 
+  ids: ["<project-update-id>"] // the id(s) of the project update(s)
+  });
+```
+
+### `createProjectUpdate`
+
+Creates a project update. [Official Linear docs](https://linear.app/docs/project#overview).
+
+```ts example.ts
+const projectUpdate = await io.linear.createProjectUpdate("create-project-update", { 
+  projectId: "<project-id>", // the id of the project
+  body: "<body>", // the body of the project update
+  });
+```
+
+### `deleteProjectUpdate`
+
+Deletes a project update. [Official Linear docs](https://linear.app/docs/project#overview).
+
+```ts example.ts
+const projectUpdate = await io.linear.deleteProjectUpdate("delete-project-update", { 
+  id: "<project-update-id>" // the id of the project update
+  });
+```
+
+### `updateProjectUpdate`
+
+Updates a project update. [Official Linear docs](https://linear.app/docs/project#overview).
+
+```ts example.ts
+const projectUpdate = await io.linear.updateProjectUpdate("update-project-update", { 
+  id: "<project-update-id>", // the id of the project update
+  body: "<body>", // the body of the project update
+  });
+```
+
+### `createReaction`
+
+Creates a reaction. [Official Linear docs](https://linear.app/docs/comment-on-issues#overview).
+
+```ts example.ts
+const reaction = await io.linear.createReaction("create-reaction", { 
+  subjectId: "<subject-id>", // the id of the subject
+  emoji: "<emoji>", // the emoji of the reaction
+  });
+```
+
+### `deleteReaction`
+
+Deletes a reaction. [Official Linear docs](https://linear.app/docs/comment-on-issues#overview).
+
+```ts example.ts
+const reaction = await io.linear.deleteReaction("delete-reaction", { 
+  id: "<reaction-id>" // the id of the reaction
+  });
+```
+
+### `archiveRoadmap`
+
+Archives a roadmap. [Official Linear docs](https://linear.app/docs/roadmaps#overview).
+
+```ts example.ts
+const roadmap = await io.linear.archiveRoadmap("archive-roadmap", { 
+  id: "<roadmap-id>" // the id of the roadmap
+  });
+```
+
+### `createRoadmap`
+
+Creates a roadmap. [Official Linear docs](https://linear.app/docs/roadmaps#overview).
+
+```ts example.ts
+
+const roadmap = await io.linear.createRoadmap("create-roadmap", { 
+  name: "<name>", // the name of the roadmap
+  teamId: "<team-id>", // the id of the team
+  });
+```
+
+### `team`
+
+Gets a team. [Official Linear docs](https://linear.app/docs/teams#overview).
+
+```ts example.ts
+const team = await io.linear.team("get-team", { 
+  id: "<team-id>" // the id of the team
+  });
+```
+
+### `teams`
+
+Gets multiple teams. [Official Linear docs](https://linear.app/docs/teams#overview).
+
+```ts example.ts
+const teams = await io.linear.teams("get-teams", { 
+  ids: ["<team-id>"] // the id(s) of the team(s)
+  });
+```
+
+### `createTeam`
+
+Creates a team. [Official Linear docs](https://linear.app/docs/teams#overview).
+
+```ts example.ts
+const team = await io.linear.createTeam("create-team", { 
+  name: "<name>", // the name of the team
+  });
+```
+
+### `teamMembership`
+
+Gets a team membership. [Official Linear docs](https://linear.app/docs/teams#overview).
+
+```ts example.ts
+const teamMembership = await io.linear.teamMembership("get-team-membership", { 
+  id: "<team-membership-id>" // the id of the team membership
+  });
+```
+
+### `teamMemberships`
+
+Gets multiple team memberships. [Official Linear docs](https://linear.app/docs/teams#overview).
+
+```ts example.ts
+const teamMemberships = await io.linear.teamMemberships("get-team-memberships", { 
+  ids: ["<team-membership-id>"] // the id(s) of the team membership(s)
+  });
+```
+
+### `createTeamMembership`
+
+Creates a team membership. [Official Linear docs](https://linear.app/docs/teams#overview).
+  
+```ts example.ts
+const teamMembership = await io.linear.createTeamMembership("create-team-membership", { 
+  teamId: "<team-id>", // the id of the team
+  userId: "<user-id>", // the id of the user
+  });
+```
+
+### `template`
+
+Gets a template. [Official Linear docs](https://linear.app/docs/issue-templates#overview).
+
+```ts example.ts
+const template = await io.linear.template("get-template", { 
+  id: "<template-id>" // the id of the template
+  });
+```
+
+### `templates`
+
+Gets multiple templates. [Official Linear docs](https://linear.app/docs/issue-templates#overview).
+
+```ts example.ts
+const templates = await io.linear.templates("get-templates", { 
+  ids: ["<template-id>"] // the id(s) of the template(s)
+  });
+```
+
+### `createTemplate`
+
+Creates a template. [Official Linear docs](https://linear.app/docs/issue-templates#overview).
+
+```ts example.ts
+const template = await io.linear.createTemplate("create-template", { 
+  name: "<name>", // the name of the template
+  description: "<description>", // the description of the template
+  teamId: "<team-id>", // the id of the team
+  });
+```
+
+### `updateTemplate`
+
+Updates a template. [Official Linear docs](https://linear.app/docs/issue-templates#overview).
+
+```ts example.ts
+const template = await io.linear.updateTemplate("update-template", { 
+  id: "<template-id>", // the id of the template
+  name: "<name>", // the name of the template
+  description: "<description>", // the description of the template
+  });
+```
+
+### `user`
+
+Gets a user. [Official Linear docs](https://linear.app/docs/user-views#overview).
+
+```ts example.ts
+const user = await io.linear.user("get-user", { 
+  id: "<user-id>" // the id of the user
+  });
+```
+
+### `users`
+
+Gets multiple users. [Official Linear docs](https://linear.app/docs/user-views#overview).
+
+```ts example.ts
+const users = await io.linear.users("get-users", { 
+  ids: ["<user-id>"] // the id(s) of the user(s)
+  });
+```
+
+### `createUser`
+
+Creates a user. [Official Linear docs](https://linear.app/docs/user-views#overview).
+
+```ts example.ts
+const user = await io.linear.createUser("create-user", { 
+  email: "<email>", // the email of the user
+  name: "<name>", // the name of the user
+  });
+```
+
+### `updateUser`
+
+Updates a user. [Official Linear docs](https://linear.app/docs/user-views#overview).
+
+```ts example.ts
+const updateUser = await io.linear.updateUser("update-user", { 
+  id: "<user-id>", // the id of the user
+  name: "<name>", // the name of the user
+  });
+```
+
+### `viewer`
+
+Gets the viewer. [Official Linear docs](https://linear.app/docs/user-views#overview).
+
+```ts example.ts
+const viewer = await io.linear.viewer("get-viewer");
+```
+

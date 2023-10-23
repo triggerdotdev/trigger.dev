@@ -254,30 +254,28 @@
             "integrations/apis/github-tasks"
           ]
         },
-        "integrations/apis/linear",
         {
-          "group": "OpenAI",
+          "group": "Linear",
           "pages": [
-            "integrations/apis/openai",
-            "integrations/apis/openai-tasks"
+            "integrations/apis/linear",
+            "integrations/apis/linear-triggers",
+            "integrations/apis/linear-tasks"
           ]
         },
         {
+          "group": "OpenAI",
+          "pages": ["integrations/apis/openai", "integrations/apis/openai-tasks"]
+        },
+        {
           "group": "Plain",
-          "pages": [
-            "integrations/apis/plain",
-            "integrations/apis/plain-tasks"
-          ]
+          "pages": ["integrations/apis/plain", "integrations/apis/plain-tasks"]
         },
         "integrations/apis/replicate",
         "integrations/apis/resend",
         "integrations/apis/sendgrid",
         {
           "group": "Slack",
-          "pages": [
-            "integrations/apis/slack",
-            "integrations/apis/slack-tasks"
-          ]
+          "pages": ["integrations/apis/slack", "integrations/apis/slack-tasks"]
         },
         "integrations/apis/stripe",
         {

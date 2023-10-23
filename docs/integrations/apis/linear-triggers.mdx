@@ -1,0 +1,825 @@
+---
+title: Linear Triggers & Events
+sidebarTitle: Triggers & Events
+---
+
+## All Triggers
+
+### `onAttachment`
+    
+When any action is performed on an attachment. [Official Linear docs](https://developers.linear.app/docs/graphql/attachments).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-attachment",
+  name: "Linear Example Attachment",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when creating an attachment in the job above
+  trigger: linear.onAttachment(),
+  run: async (payload, io, ctx) {
+    await io.linear.createAttachment("create-attachment", {
+      issueId: payload.issueId,
+      url: "https://example.com"
+    });
+  }
+});
+```
+
+### `onAttachmentCreated`
+
+When an attachment is created. [Official Linear docs](https://developers.linear.app/docs/graphql/attachments).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-attachment-created",
+  name: "Linear Example Attachment Created",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when creating an attachment in the job above
+  trigger: linear.onAttachmentCreated(),
+  run: async (payload, io, ctx) {
+    await io.linear.createAttachment("create-attachment", {
+      issueId: payload.issueId,
+      url: "https://example.com"
+    });
+  }
+});
+```
+
+### `onAttachmentRemoved`
+
+When an attachment is removed. [Official Linear docs](https://developers.linear.app/docs/graphql/attachments).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-attachment-removed",
+  name: "Linear Example Attachment Removed",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when removing an attachment in the job above
+  trigger: linear.onAttachmentRemoved(),
+  run: async (payload, io, ctx) {
+    await io.linear.removeAttachment("remove-attachment", {
+      id: payload.id
+    });
+  }
+});
+```
+
+### `onAttachmentUpdated`
+
+When an attachment is updated. [Official Linear docs](https://developers.linear.app/docs/graphql/attachments).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-attachment-updated",
+  name: "Linear Example Attachment Updated",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when updating an attachment in the job above
+  trigger: linear.onAttachmentUpdated(),
+  run: async (payload, io, ctx) {
+    await io.linear.updateAttachment("update-attachment", {
+      id: payload.id,
+      url: "https://example.com"
+    });
+  }
+});
+```
+
+### `onComment`
+
+When any action is performed on an comment. [Official Linear docs](https://linear.app/docs/comment-on-issues).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-comment",
+  name: "Linear Example Comment",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when creating an comment in the job above
+  trigger: linear.onComment(),
+  run: async (payload, io, ctx) {
+    await io.linear.createComment("create-comment", {
+      issueId: payload.issueId,
+      body: "Hello World"
+    });
+  }
+});
+```
+
+### `onCommentCreated`
+
+When an comment is created. [Official Linear docs](https://linear.app/docs/comment-on-issues).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-comment-created",
+  name: "Linear Example Comment Created",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when creating an comment in the job above
+  trigger: linear.onCommentCreated(),
+  run: async (payload, io, ctx) {
+    await io.linear.createComment("create-comment", {
+      issueId: payload.issueId,
+      body: "Hello World"
+    });
+  }
+});
+```
+
+### `onCommentRemoved`
+
+When an comment is removed. [Official Linear docs](https://linear.app/docs/comment-on-issues).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-comment-removed",
+  name: "Linear Example Comment Removed",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when removing an comment in the job above
+  trigger: linear.onCommentRemoved(),
+  run: async (payload, io, ctx) {
+    await io.linear.removeComment("remove-comment", {
+      id: payload.id
+    });
+  }
+});
+```
+
+### `onCommentUpdated`
+
+When an comment is updated. [Official Linear docs](https://linear.app/docs/comment-on-issues).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-comment-updated",
+  name: "Linear Example Comment Updated",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when updating an comment in the job above
+  trigger: linear.onCommentUpdated(),
+  run: async (payload, io, ctx) {
+    await io.linear.updateComment("update-comment", {
+      id: payload.id,
+      body: "Hello World"
+    });
+  }
+});
+```
+
+### `onCycle`
+
+When any action is performed on an cycle. [Official Linear docs](https://linear.app/docs/cycles).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-cycle",
+  name: "Linear Example Cycle",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when performing an action in a an cycle for the job above
+  trigger: linear.onCycle(),
+  run: async (payload, io, ctx) {
+    await io.linear.createCycle("create-cycle", {
+      name: "Hello World"
+    });
+  }
+});
+```
+
+### `onCycleCreated`
+
+When an cycle is created. [Official Linear docs](https://linear.app/docs/cycles).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-cycle-created",
+  name: "Linear Example Cycle Created",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when creating a cycle in the job above
+  trigger: linear.onCycleCreated(),
+  run: async (payload, io, ctx) {
+    await io.linear.createCycle("create-cycle", {
+      name: "Hello World"
+    });
+  }
+});
+```
+
+### `onCycleRemoved`
+
+When an cycle is removed. [Official Linear docs](https://linear.app/docs/cycles).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-cycle-removed",
+  name: "Linear Example Cycle Removed",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when removing a cycle in the job above
+  trigger: linear.onCycleRemoved(),
+  run: async (payload, io, ctx) {
+    await io.linear.removeCycle("remove-cycle", {
+      id: payload.id
+    });
+  }
+});
+```
+
+### `onCycleUpdated`
+
+When an cycle is updated. [Official Linear docs](https://linear.app/docs/cycles).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-cycle-updated",
+  name: "Linear Example Cycle Updated",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when updating a cycle in the job above
+  trigger: linear.onCycleUpdated(),
+  run: async (payload, io, ctx) {
+    await io.linear.updateCycle("update-cycle", {
+      id: payload.id,
+      name: "Hello World"
+    });
+  }
+});
+```
+
+### `onIssue`
+
+When any action is performed on an issue. [Official Linear docs](https://linear.app/docs/creating-issues#overview).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-issue",
+  name: "Linear Example Issue",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when performing an action in a an issue for the job above
+  trigger: linear.onIssue(),
+  run: async (payload, io, ctx) {
+    await io.linear.createIssue("create-issue", {
+      title: "Hello World"
+    });
+  }
+});
+```
+
+### `onIssueCreated`
+
+When an issue is created. [Official Linear docs](https://linear.app/docs/creating-issues#overview).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-issue-created",
+  name: "Linear Example Issue Created",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when creating an issue in the job above
+  trigger: linear.onIssueCreated(),
+  run: async (payload, io, ctx) {
+    await io.linear.createIssue("create-issue", {
+      title: "Hello World"
+    });
+  }
+});
+```
+
+### `onIssueRemoved`
+
+When an issue is removed. [Official Linear docs](https://linear.app/docs/creating-issues#overview).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-issue-removed",
+  name: "Linear Example Issue Removed",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when removing an issue in the job above
+  trigger: linear.onIssueRemoved(),
+  run: async (payload, io, ctx) {
+    await io.linear.removeIssue("remove-issue", {
+      id: payload.id
+    });
+  }
+});
+```
+
+### `onIssueUpdated`
+
+When an issue is updated. [Official Linear docs](https://linear.app/docs/creating-issues#overview).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-issue-updated",
+  name: "Linear Example Issue Updated",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when updating an issue in the job above
+  trigger: linear.onIssueUpdated(),
+  run: async (payload, io, ctx) {
+    await io.linear.updateIssue("update-issue", {
+      id: payload.id,
+      title: "Hello World"
+    });
+  }
+});
+```
+
+### `onIssueLabel`
+
+When any action is performed on an issue label. [Official Linear docs](https://linear.app/docs/labels#overview).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-issue-label",
+  name: "Linear Example Issue Label",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when performing an action in a an issue label for the job above
+  trigger: linear.onIssueLabel(),
+  run: async (payload, io, ctx) {
+    await io.linear.createIssueLabel("create-issue-label", {
+      name: "Hello World"
+    });
+  }
+});
+```
+
+### `onIssueLabelCreated`
+
+When an issue label is created. [Official Linear docs](https://linear.app/docs/labels#overview).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-issue-label-created",
+  name: "Linear Example Issue Label Created",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when creating an issue label in the job above
+  trigger: linear.onIssueLabelCreated(),
+  run: async (payload, io, ctx) {
+    await io.linear.createIssueLabel("create-issue-label", {
+      name: "Hello World",
+      color: "#000000"
+    });
+  }
+});
+```
+
+### `onIssueLabelRemoved`
+
+When an issue label is removed. [Official Linear docs](https://linear.app/docs/labels#overview).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-issue-label-removed",
+  name: "Linear Example Issue Label Removed",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when removing an issue label in the job above
+  trigger: linear.onIssueLabelRemoved(),
+  run: async (payload, io, ctx) {
+    await io.linear.removeIssueLabel("remove-issue-label", {
+      id: payload.id
+    });
+  }
+});
+```
+
+### `onIssueLabelUpdated`
+
+When an issue label is updated. [Official Linear docs](https://linear.app/docs/labels#overview).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-issue-label-updated",
+  name: "Linear Example Issue Label Updated",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when updating an issue label in the job above
+  trigger: linear.onIssueLabelUpdated(),
+  run: async (payload, io, ctx) {
+    await io.linear.updateIssueLabel("update-issue-label", {
+      id: payload.id,
+      name: "Hello World",
+      color: "#000000"
+    });
+  }
+});
+```
+
+### `onIssueSLA`
+
+When any action is performed on an issue SLA. [Official Linear docs](https://linear.app/docs/sla).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-issue-sla",
+  name: "Linear Example Issue SLA",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when performing an action in a an issue SLA for the job above
+  trigger: linear.onIssueSLA(),
+  run: async (payload, io, ctx) {
+    await io.linear.createIssue("create-issue", {
+      issueId: payload.issueId,
+      duration: 1,
+      durationUnit: "day",
+      priority: "high"
+    });
+  }
+});
+```
+
+### `onIssueSLASet`
+
+When an issue SLA is set. [Official Linear docs](https://linear.app/docs/sla).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-issue-sla-set",
+  name: "Linear Example Issue SLA Set",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when setting an issue SLA in the job above
+  trigger: linear.onIssueSLASet(),
+  run: async (payload, io, ctx) {
+    await io.linear.createIssue("create-issue", {
+      issueId: payload.issueId,
+      duration: 1,
+      durationUnit: "day",
+      priority: "high"
+    });
+  }
+});
+```
+
+### `onIssueSLABreached`
+
+When an issue SLA is breached. [Official Linear docs](https://linear.app/docs/sla).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-issue-sla-breached",
+  name: "Linear Example Issue SLA Breached",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when breaching an issue SLA in the job above
+  trigger: linear.onIssueSLABreached(),
+  run: async (payload, io, ctx) {
+    await io.linear.createComment("create-comment", {
+      issueId: payload.issueId,
+      body: "SLA has passed"
+    });
+    });
+  }
+});
+```
+
+### `onIssueSLAHighRisk`
+
+When an issue SLA is high risk. [Official Linear docs](https://linear.app/docs/sla).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-issue-sla-high-risk",
+  name: "Linear Example Issue SLA High Risk",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when an issue SLA is high risk in the job above
+  trigger: linear.onIssueSLAHighRisk(),
+  run: async (payload, io, ctx) {
+    await io.linear.createComment("create-comment", {
+      issueId: payload.issueId,
+      body: "SLA is high risk"
+    });
+  }
+});
+```
+
+### `onProject`
+
+When any action is performed on an project. [Official Linear docs](https://linear.app/docs/projects).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-project",
+  name: "Linear Example Project",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when performing an action in a an project for the job above
+  trigger: linear.onProject(),
+  run: async (payload, io, ctx) {
+    await io.linear.createProject("create-project", {
+      name: "Hello World"
+    });
+  }
+});
+```
+
+### `onProjectCreated`
+
+When an project is created. [Official Linear docs](https://linear.app/docs/projects).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-project-created",
+  name: "Linear Example Project Created",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when creating a project in the job above
+  trigger: linear.onProjectCreated(),
+  run: async (payload, io, ctx) {
+    await io.linear.createProject("create-project", {
+      name: "Hello World"
+    });
+  }
+});
+```
+
+### `onProjectRemoved`
+
+When an project is removed. [Official Linear docs](https://linear.app/docs/projects).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-project-removed",
+  name: "Linear Example Project Removed",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when removing a project in the job above
+  trigger: linear.onProjectRemoved(),
+  run: async (payload, io, ctx) {
+    await io.linear.removeProject("remove-project", {
+      id: payload.id
+    });
+  }
+});
+```
+
+### `onProjectUpdated`
+
+When an project is updated. [Official Linear docs](https://linear.app/docs/projects).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-project-updated",
+  name: "Linear Example Project Updated",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when updating a project in the job above
+  trigger: linear.onProjectUpdated(),
+  run: async (payload, io, ctx) {
+    await io.linear.updateProject("update-project", {
+      id: payload.id,
+      name: "Hello World"
+    });
+  }
+});
+```
+
+### `onProjectUpdate`
+
+When any action is performed on an project update. [Official Linear docs](https://linear.app/docs/project-updates).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-project-update",
+  name: "Linear Example Project Update",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when performing an action in a an project update for the job above
+  trigger: linear.onProjectUpdate(),
+  run: async (payload, io, ctx) {
+    await io.linear.createProjectUpdate("create-project-update", {
+      projectId: payload.projectId,
+      body: "Hello World"
+    });
+  }
+});
+```
+
+### `onProjectUpdateCreated`
+
+When an project update is created. [Official Linear docs](https://linear.app/docs/project-updates).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-project-update-created",
+  name: "Linear Example Project Update Created",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when creating a project update in the job above
+  trigger: linear.onProjectUpdateCreated(),
+  run: async (payload, io, ctx) {
+    await io.linear.createProjectUpdate("create-project-update", {
+      projectId: payload.projectId,
+      body: "Hello World"
+    });
+  }
+});
+```
+
+### `onProjectUpdateRemoved`
+
+When an project update is removed. [Official Linear docs](https://linear.app/docs/project-updates).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-project-update-removed",
+  name: "Linear Example Project Update Removed",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when removing a project update in the job above
+  trigger: linear.onProjectUpdateRemoved(),
+  run: async (payload, io, ctx) {
+    await io.linear.removeProjectUpdate("remove-project-update", {
+      id: payload.id
+    });
+  }
+});
+```
+
+### `onProjectUpdateUpdated`
+
+When an project update is updated. [Official Linear docs](https://linear.app/docs/project-updates).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-project-update-updated",
+  name: "Linear Example Project Update Updated",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when updating a project update in the job above
+  trigger: linear.onProjectUpdateUpdated(),
+  run: async (payload, io, ctx) {
+    await io.linear.updateProjectUpdate("update-project-update", {
+      id: payload.id,
+      body: "Hello World"
+    });
+  }
+});
+```
+
+### `onReaction`
+
+When any action is performed on an reaction. [Official Linear docs](https://linear.app/docs/comment-on-issues).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-reaction",
+  name: "Linear Example Reaction",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when performing an action in a an reaction for the job above
+  trigger: linear.onReaction(),
+  run: async (payload, io, ctx) {
+    await io.linear.createReaction("create-reaction", {
+      issueId: payload.issueId,
+      emoji: "👍"
+    });
+  }
+});
+```
+
+### `onReactionCreated`
+
+When an reaction is created. [Official Linear docs](https://linear.app/docs/comment-on-issues).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-reaction-created",
+  name: "Linear Example Reaction Created",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when creating a reaction in the job above
+  trigger: linear.onReactionCreated(),
+  run: async (payload, io, ctx) {
+    await io.linear.createReaction("create-reaction", {
+      issueId: payload.issueId,
+      emoji: "👍"
+    });
+  }
+});
+```
+
+### `onReactionRemoved`
+
+When an reaction is removed. [Official Linear docs](https://linear.app/docs/comment-on-issues).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-reaction-removed",
+  name: "Linear Example Reaction Removed",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when removing a reaction in the job above
+  trigger: linear.onReactionRemoved(),
+  run: async (payload, io, ctx) {
+    await io.linear.removeReaction("remove-reaction", {
+      id: payload.id
+    });
+  }
+});
+```
+
+### `onReactionUpdated`
+
+When an reaction is updated. [Official Linear docs](https://linear.app/docs/comment-on-issues).
+
+```ts example.ts
+client.defineJob({
+  id: "job-example-reaction-updated",
+  name: "Linear Example Reaction Updated",
+  version: "0.1.0",
+  integrations: {
+    linear,
+  },
+  // this should trigger when updating a reaction in the job above
+  trigger: linear.onReactionUpdated(),
+  run: async (payload, io, ctx) {
+    await io.linear.updateReaction("update-reaction", {
+      id: payload.id,
+      emoji: "👍"
+    });
+  }
+});
+```
