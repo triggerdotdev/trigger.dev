@@ -10,9 +10,10 @@ export const client = new TriggerClient({
   ioLogLocalEnabled: true,
 });
 
+//todo this is a new primitive, it doesn't get register called on it
 const whatsApp = client.defineHttpEndpoint({
   id: "whatsapp",
-  hostname: "whatsapp.com",
+  source: "whatsapp.com",
   //only needed for strange APIs like WhatsApp which don't setup the webhook until you pass the test
   respondWith: {
     filter: {
