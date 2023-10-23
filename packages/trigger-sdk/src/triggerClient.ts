@@ -55,6 +55,7 @@ import type {
   TriggerPreprocessContext,
 } from "./types";
 import { HttpTriggerOptions, httpTrigger } from "./triggers/httpTrigger";
+import { EndpointOptions, httpEndpoint } from "./httpEndpoint";
 
 const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
   name: REGISTER_SOURCE_EVENT_V2,
@@ -472,8 +473,11 @@ export class TriggerClient {
     return new DynamicTrigger(this, options);
   }
 
-  defineHttpTrigger<TEvent extends any = any>(options: HttpTriggerOptions<TEvent>) {
-    return httpTrigger<TEvent>(options);
+  defineHttpEndpoint(options: EndpointOptions) {
+    const endpoint = httpEndpoint(options);
+    //todo have a record<string, HttpEndpoint>
+    //todo it so they're indexed
+    return endpoint;
   }
 
   attach(job: Job<Trigger<any>, any>): void {

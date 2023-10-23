@@ -40,6 +40,12 @@ export const ScheduledTriggerMetadataSchema = z.object({
   schedule: ScheduleMetadataSchema,
 });
 
+export const HttpEndpointTriggerMetadataSchema = z.object({
+  type: z.literal("httpendpoint"),
+  endpointId: z.string(),
+  filter: EventFilterSchema.optional(),
+});
+
 export const AssetTriggerMetadataSchema = z.object({
   type: z.literal("modular"),
   key: z.string(),
@@ -49,6 +55,7 @@ export const TriggerMetadataSchema = z.discriminatedUnion("type", [
   DynamicTriggerMetadataSchema,
   StaticTriggerMetadataSchema,
   ScheduledTriggerMetadataSchema,
+  HttpEndpointTriggerMetadataSchema,
   AssetTriggerMetadataSchema,
 ]);
 

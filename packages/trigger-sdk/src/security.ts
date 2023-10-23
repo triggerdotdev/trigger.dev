@@ -4,12 +4,12 @@ export async function verifyRequestSignature({
   request,
   headerName,
   secret,
-  algorithm = "sha256",
+  algorithm,
 }: {
   request: Request;
   headerName: string;
   secret?: string;
-  algorithm?: "sha256";
+  algorithm: "sha256";
 }): Promise<boolean> {
   const headerValue = request.headers.get(headerName);
   if (!headerValue) {
