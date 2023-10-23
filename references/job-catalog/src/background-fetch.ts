@@ -15,7 +15,7 @@ client.defineJob({
   name: "Test background fetch retry",
   version: "0.0.1",
   trigger: eventTrigger({
-    name: "test.background-fetch",
+    name: "test.background-fetch.retry",
     schema: z.object({
       url: z.string(),
       method: z.string().optional(),
@@ -35,6 +35,21 @@ client.defineJob({
       },
       payload.retry
     );
+  },
+});
+
+client.defineJob({
+  id: "test-background-fetch",
+  name: "Test background fetch",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "test.background-fetch",
+    schema: z.object({
+      url: z.string(),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    return await io.backgroundFetch<any>("fetch", payload.url);
   },
 });
 

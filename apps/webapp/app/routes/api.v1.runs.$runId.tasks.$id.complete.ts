@@ -3,7 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import type { CompleteTaskBodyOutput, ServerTask } from "@trigger.dev/core";
 import { CompleteTaskBodyInputSchema } from "@trigger.dev/core";
 import { z } from "zod";
-import { PrismaClient, prisma } from "~/db.server";
+import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { taskWithAttemptsToServerTask } from "~/models/task.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
@@ -72,9 +72,9 @@ export async function action({ request, params }: ActionArgs) {
 }
 
 export class CompleteRunTaskService {
-  #prismaClient: PrismaClient;
+  #prismaClient: PrismaClientOrTransaction;
 
-  constructor(prismaClient: PrismaClient = prisma) {
+  constructor(prismaClient: PrismaClientOrTransaction = prisma) {
     this.#prismaClient = prismaClient;
   }
 
@@ -86,7 +86,7 @@ export class CompleteRunTaskService {
   ): Promise<ServerTask | undefined> {
     // Using a transaction, we'll first check to see if the task already exists and return if if it does
     // If it doesn't exist, we'll create it and return it
-    const task = await this.#prismaClient.$transaction(async (tx) => {
+    const task = await $transaction(this.#prismaClient, async (tx) => {
       const existingTask = await tx.task.findUnique({
         where: {
           id,
@@ -152,6 +152,7 @@ export class CompleteRunTaskService {
         },
         include: {
           attempts: true,
+          run: true,
         },
       });
     });
