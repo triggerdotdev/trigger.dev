@@ -11,6 +11,7 @@ import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
 import { EventSpecification, EventSpecificationExample, SchemaParser, Trigger } from "../types";
 import { formatSchemaErrors } from "../utils/formatSchemaErrors";
+import { SendEvent } from "@trigger.dev/core";
 
 type Options<TEventSpecification extends EventSpecification<any>> = {
   id: string;
@@ -63,11 +64,13 @@ export type HttpTriggerOptions<TEvent> = {
   filter?: EventFilter;
   examples?: EventSpecificationExample[];
   properties?: DisplayProperty[];
-  sendResponse?: {
-    ifRequest: RequestFilter;
-    onRequest: (request: Request, context: RequestContext) => Promise<Response>;
+  respondWith?: {
+    filter: RequestFilter;
+    handler: (request: Request, context: RequestContext) => Promise<Response>;
   };
   verify: (request: Request, context: RequestContext) => Promise<boolean>;
+  /** Use this if you want to control the events created.  */
+  transform?: (request: Request, context: RequestContext) => Promise<SendEvent[]>;
 };
 
 type HttpRequest<TBody> = {
