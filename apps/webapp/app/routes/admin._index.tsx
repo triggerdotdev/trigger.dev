@@ -30,9 +30,8 @@ export async function action({ request }: ActionArgs) {
   });
 }
 
-const headerClassName =
-  "py-3 px-2 pr-3 text-xs font-semibold leading-tight text-slate-900 text-left";
-const cellClassName = "whitespace-nowrap px-2 py-2 text-xs text-slate-500";
+const headerClassName = "py-3 px-2 pr-3 text-xs font-semibold leading-tight text-bright text-left";
+const cellClassName = "whitespace-nowrap px-2 py-2 text-xs text-bright";
 
 export default function AdminDashboardRoute() {
   const { users } = useTypedLoaderData<typeof loader>();
@@ -46,8 +45,8 @@ export default function AdminDashboardRoute() {
       >
         <h1 className="mb-2 text-2xl">Accounts ({users.length})</h1>
 
-        <table className="w-full divide-y divide-slate-300">
-          <thead className="sticky top-0 bg-white text-left outline outline-2 outline-slate-200">
+        <table className="w-full divide-y divide-border">
+          <thead className="sticky top-0 text-left">
             <tr>
               <th scope="col" className={headerClassName}>
                 Email
@@ -69,10 +68,10 @@ export default function AdminDashboardRoute() {
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 bg-white">
+          <tbody className="divide-y divide-border">
             {users.map((user) => {
               return (
-                <tr key={user.id} className="w-full bg-white px-4 py-2 text-left hover:bg-slate-50">
+                <tr key={user.id} className="w-full px-4 py-2 text-left hover:bg-slate-900">
                   <td className={cellClassName}>{user.email}</td>
                   <td className={cellClassName}>
                     <a
@@ -108,11 +107,6 @@ export default function AdminDashboardRoute() {
           </tbody>
         </table>
       </section>
-
-      {/* Secondary column (hidden on smaller screens) */}
-      <aside className="hidden lg:order-first lg:block lg:flex-shrink-0">
-        <div className="relative flex h-full w-96 flex-col overflow-y-auto border-r border-gray-200 bg-white"></div>
-      </aside>
     </main>
   );
 }

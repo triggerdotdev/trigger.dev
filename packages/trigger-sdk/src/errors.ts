@@ -1,3 +1,4 @@
+import { DisplayProperty } from "@trigger.dev/core";
 import { ErrorWithStack, SchemaError, ServerTask } from "@trigger.dev/core";
 
 export class ResumeWithTaskError {
@@ -20,6 +21,23 @@ export class YieldExecutionError {
   constructor(public key: string) {}
 }
 
+export class AutoYieldExecutionError {
+  constructor(
+    public location: string,
+    public timeRemaining: number,
+    public timeElapsed: number
+  ) {}
+}
+
+export class AutoYieldWithCompletedTaskExecutionError {
+  constructor(
+    public id: string,
+    public properties: DisplayProperty[] | undefined,
+    public output: any,
+    public data: { location: string; timeRemaining: number; timeElapsed: number }
+  ) {}
+}
+
 export class ParsedPayloadSchemaError {
   constructor(public schemaErrors: SchemaError[]) {}
 }
@@ -32,11 +50,19 @@ export class ParsedPayloadSchemaError {
  */
 export function isTriggerError(
   err: unknown
-): err is ResumeWithTaskError | RetryWithTaskError | CanceledWithTaskError {
+): err is
+  | ResumeWithTaskError
+  | RetryWithTaskError
+  | CanceledWithTaskError
+  | YieldExecutionError
+  | AutoYieldExecutionError
+  | AutoYieldWithCompletedTaskExecutionError {
   return (
     err instanceof ResumeWithTaskError ||
     err instanceof RetryWithTaskError ||
     err instanceof CanceledWithTaskError ||
-    err instanceof YieldExecutionError
+    err instanceof YieldExecutionError ||
+    err instanceof AutoYieldExecutionError ||
+    err instanceof AutoYieldWithCompletedTaskExecutionError
   );
 }
