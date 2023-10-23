@@ -33,6 +33,8 @@ import {
 } from "@trigger.dev/core";
 import { ApiClient } from "./apiClient";
 import {
+  AutoYieldExecutionError,
+  AutoYieldWithCompletedTaskExecutionError,
   CanceledWithTaskError,
   ParsedPayloadSchemaError,
   ResumeWithTaskError,
@@ -63,6 +65,8 @@ const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
   icon: "register-source",
   parsePayload: RegisterSourceEventSchemaV2.parse,
 };
+
+import * as packageJson from "../package.json";
 
 export type TriggerClientOptions = {
   /** The `id` property is used to uniquely identify the client.
@@ -134,7 +138,10 @@ export class TriggerClient {
     ]);
   }
 
-  async handleRequest(request: Request): Promise<NormalizedResponse> {
+  async handleRequest(
+    request: Request,
+    timeOrigin: number = performance.now()
+  ): Promise<NormalizedResponse> {
     this.#internalLogger.debug("handling request", {
       url: request.url,
       headers: Object.fromEntries(request.headers.entries()),
@@ -156,7 +163,7 @@ export class TriggerClient {
           body: {
             message: "Unauthorized: client missing apiKey",
           },
-          headers: this.#standardResponseHeaders,
+          headers: this.#standardResponseHeaders(timeOrigin),
         };
       }
       case "missing-header": {
@@ -165,7 +172,7 @@ export class TriggerClient {
           body: {
             message: "Unauthorized: missing x-trigger-api-key header",
           },
-          headers: this.#standardResponseHeaders,
+          headers: this.#standardResponseHeaders(timeOrigin),
         };
       }
       case "unauthorized": {
@@ -174,7 +181,7 @@ export class TriggerClient {
           body: {
             message: `Forbidden: client apiKey mismatch: Make sure you are using the correct API Key for your environment`,
           },
-          headers: this.#standardResponseHeaders,
+          headers: this.#standardResponseHeaders(timeOrigin),
         };
       }
     }
@@ -185,7 +192,7 @@ export class TriggerClient {
         body: {
           message: "Method not allowed (only POST is allowed)",
         },
-        headers: this.#standardResponseHeaders,
+        headers: this.#standardResponseHeaders(timeOrigin),
       };
     }
 
@@ -197,7 +204,7 @@ export class TriggerClient {
         body: {
           message: "Missing x-trigger-action header",
         },
-        headers: this.#standardResponseHeaders,
+        headers: this.#standardResponseHeaders(timeOrigin),
       };
     }
 
@@ -212,7 +219,7 @@ export class TriggerClient {
               ok: false,
               error: "Missing endpoint ID",
             },
-            headers: this.#standardResponseHeaders,
+            headers: this.#standardResponseHeaders(timeOrigin),
           };
         }
 
@@ -223,7 +230,7 @@ export class TriggerClient {
               ok: false,
               error: `Endpoint ID mismatch error. Expected ${this.id}, got ${endpointId}`,
             },
-            headers: this.#standardResponseHeaders,
+            headers: this.#standardResponseHeaders(timeOrigin),
           };
         }
 
@@ -232,7 +239,7 @@ export class TriggerClient {
           body: {
             ok: true,
           },
-          headers: this.#standardResponseHeaders,
+          headers: this.#standardResponseHeaders(timeOrigin),
         };
       }
       case "INDEX_ENDPOINT": {
@@ -260,7 +267,7 @@ export class TriggerClient {
         return {
           status: 200,
           body,
-          headers: this.#standardResponseHeaders,
+          headers: this.#standardResponseHeaders(timeOrigin),
         };
       }
       case "INITIALIZE_TRIGGER": {
@@ -290,7 +297,7 @@ export class TriggerClient {
         return {
           status: 200,
           body: dynamicTrigger.registeredTriggerForParams(body.data.params),
-          headers: this.#standardResponseHeaders,
+          headers: this.#standardResponseHeaders(timeOrigin),
         };
       }
       case "EXECUTE_JOB": {
@@ -317,12 +324,12 @@ export class TriggerClient {
           };
         }
 
-        const results = await this.#executeJob(execution.data, job, triggerVersion);
+        const results = await this.#executeJob(execution.data, job, timeOrigin, triggerVersion);
 
         return {
           status: 200,
           body: results,
-          headers: this.#standardResponseHeaders,
+          headers: this.#standardResponseHeaders(timeOrigin),
         };
       }
       case "PREPROCESS_RUN": {
@@ -357,7 +364,7 @@ export class TriggerClient {
             abort: results.abort,
             properties: results.properties,
           },
-          headers: this.#standardResponseHeaders,
+          headers: this.#standardResponseHeaders(timeOrigin),
         };
       }
       case "DELIVER_HTTP_SOURCE_REQUEST": {
@@ -423,7 +430,7 @@ export class TriggerClient {
             response,
             metadata,
           },
-          headers: this.#standardResponseHeaders,
+          headers: this.#standardResponseHeaders(timeOrigin),
         };
       }
       case "VALIDATE": {
@@ -433,7 +440,22 @@ export class TriggerClient {
             ok: true,
             endpointId: this.id,
           },
-          headers: this.#standardResponseHeaders,
+          headers: this.#standardResponseHeaders(timeOrigin),
+        };
+      }
+      case "PROBE_EXECUTION_TIMEOUT": {
+        const json = await request.json();
+        // Keep this request open for max 15 minutes so the server can detect when the function execution limit is exceeded
+        const timeout = json?.timeout ?? 15 * 60 * 1000;
+
+        await new Promise((resolve) => setTimeout(resolve, timeout));
+
+        return {
+          status: 200,
+          body: {
+            ok: true,
+          },
+          headers: this.#standardResponseHeaders(timeOrigin),
         };
       }
     }
@@ -443,7 +465,7 @@ export class TriggerClient {
       body: {
         message: "Method not allowed",
       },
-      headers: this.#standardResponseHeaders,
+      headers: this.#standardResponseHeaders(timeOrigin),
     };
   }
 
@@ -700,6 +722,7 @@ export class TriggerClient {
   async #executeJob(
     body: RunJobBody,
     job: Job<Trigger<any>, Record<string, TriggerIntegration>>,
+    timeOrigin: number,
     triggerVersion: string | null
   ): Promise<RunJobResponse> {
     this.#internalLogger.debug("executing job", {
@@ -726,6 +749,8 @@ export class TriggerClient {
         ? new Logger(job.id, job.logLevel ?? this.#options.logLevel ?? "info")
         : undefined,
       serverVersion: triggerVersion,
+      timeOrigin,
+      executionTimeout: body.runChunkExecutionLimit,
     });
 
     const resolvedConnections = await this.#resolveConnections(
@@ -764,6 +789,29 @@ export class TriggerClient {
     } catch (error) {
       if (this.#options.verbose) {
         this.#logIOStats(io.stats);
+      }
+
+      if (error instanceof AutoYieldExecutionError) {
+        return {
+          status: "AUTO_YIELD_EXECUTION",
+          location: error.location,
+          timeRemaining: error.timeRemaining,
+          timeElapsed: error.timeElapsed,
+          limit: body.runChunkExecutionLimit,
+        };
+      }
+
+      if (error instanceof AutoYieldWithCompletedTaskExecutionError) {
+        return {
+          status: "AUTO_YIELD_EXECUTION_WITH_COMPLETED_TASK",
+          id: error.id,
+          properties: error.properties,
+          output: error.output,
+          data: {
+            ...error.data,
+            limit: body.runChunkExecutionLimit,
+          },
+        };
       }
 
       if (error instanceof YieldExecutionError) {
@@ -1168,9 +1216,11 @@ export class TriggerClient {
     });
   }
 
-  get #standardResponseHeaders() {
+  #standardResponseHeaders(start: number) {
     return {
       "Trigger-Version": API_VERSIONS.LAZY_LOADED_CACHED_TASKS,
+      "Trigger-SDK-Version": packageJson.version,
+      "X-Trigger-Request-Timing": `dur=${performance.now() - start / 1000.0}`,
     };
   }
 }

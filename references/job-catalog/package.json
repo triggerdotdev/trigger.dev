@@ -27,6 +27,7 @@
     "redacted": "nodemon --watch src/redacted.ts -r tsconfig-paths/register -r dotenv/config src/redacted.ts",
     "replicate": "nodemon --watch src/replicate.ts -r tsconfig-paths/register -r dotenv/config src/replicate.ts",
     "misconfigured": "nodemon --watch src/misconfigured.ts -r tsconfig-paths/register -r dotenv/config src/misconfigured.ts",
+    "auto-yield": "nodemon --watch src/auto-yield.ts -r tsconfig-paths/register -r dotenv/config src/auto-yield.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {

@@ -1,20 +1,26 @@
 import { ActionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { IndexEndpointService } from "~/services/endpoints/indexEndpoint.server";
-import { requireUserId } from "~/services/session.server";
+import { workerQueue } from "~/services/worker.server";
 
 const ParamsSchema = z.object({
   environmentParam: z.string(),
   endpointParam: z.string(),
 });
 
-export async function action({ request, params }: ActionArgs) {
-  const userId = await requireUserId(request);
-  const { environmentParam, endpointParam } = ParamsSchema.parse(params);
+export async function action({ params }: ActionArgs) {
+  const { endpointParam } = ParamsSchema.parse(params);
 
   try {
     const service = new IndexEndpointService();
-    const result = await service.call(endpointParam, "MANUAL");
+    await service.call(endpointParam, "MANUAL");
+
+    // Enqueue the endpoint to be probed in 10 seconds
+    await workerQueue.enqueue(
+      "probeEndpoint",
+      { id: endpointParam },
+      { jobKey: `probe:${endpointParam}`, runAt: new Date(Date.now() + 10000) }
+    );
 
     return json({ success: true });
   } catch (e) {

@@ -22,6 +22,10 @@ Used to send log messages to the [Run log](/documentation/guides/viewing-runs).
 
 ## Instance methods
 
+### [runTask()](/sdk/io/runtask)
+
+`io.runTask()` allows you to run a [Task](/documentation/concepts/tasks) from inside a Job run. A Task is a resumable unit of a Run that can be retried, resumed and is logged. [Integrations](/integrations) use Tasks internally to perform their actions.
+
 ### [wait()](/sdk/io/wait)
 
 Waits for a certain amount of time before continuing the Job. Delays works even if you're on a serverless platform with timeouts, or if your server goes down. They utilize [resumability](/documentation/concepts/resumability) to ensure that the Run can be resumed after the delay.
@@ -32,17 +36,13 @@ Waits for a certain amount of time before continuing the Job. Delays works even 
 
 If you want to send an event from outside a run (e.g. just from your backend) you can use [client.sendEvent()](/sdk/triggerclient/instancemethods/sendevent).
 
-### [runTask()](/sdk/io/runtask)
+### [backgroundFetch()](/sdk/io/backgroundfetch)
 
-`io.runTask()` allows you to run a [Task](/documentation/concepts/tasks) from inside a Job run. A Task is a resumable unit of a Run that can be retried, resumed and is logged. [Integrations](/integrations) use Tasks internally to perform their actions.
+`io.backgroundFetch()` allows you to fetch data from a URL that can take longer that the serverless timeout. The actual `fetch` request is performed on the Trigger.dev platform, and the response is sent back to you. An example use case is fetching data from a slow API, like some AI endpoints.
 
 ### [try()](/sdk/io/try)
 
 `io.try()` allows you to run Tasks and catch any errors that are thrown, it's similar to a normal `try/catch` block but works with [io.runTask()](/sdk/io/runtask).
-
-### [backgroundFetch()](/sdk/io/backgroundfetch)
-
-`io.backgroundFetch()` allows you to fetch data from a URL that can take longer that the serverless timeout. The actual `fetch` request is performed on the Trigger.dev platform, and the response is sent back to you. An example use case is fetching data from a slow API, like some AI endpoints.
 
 ### [registerInterval()](/sdk/io/registerinterval)
 

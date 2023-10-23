@@ -6,6 +6,7 @@ import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { workerQueue } from "../worker.server";
 import { generateSecret } from "./utils.server";
 import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
+import { logger } from "../logger.server";
 
 export class RegisterSourceServiceV2 {
   #prismaClient: PrismaClientOrTransaction;
@@ -211,16 +212,22 @@ export class RegisterSourceServiceV2 {
 
         // Collect the options that are no longer being used so we can remove them
         const newOptions = metadata.options;
-        const orphanedOptions: Record<string, string[]> = {};
-        for (const event of triggerSource.options) {
-          const values = newOptions[event.name];
-          if (values === undefined) {
-            orphanedOptions[event.name] = [event.value];
+        const orphanedOptions: Record<string, Set<string>> = {};
+        for (const option of triggerSource.options) {
+          const newValues = newOptions[option.name];
+
+          // initialize the set
+          if (!orphanedOptions[option.name]) {
+            orphanedOptions[option.name] = new Set();
+          }
+
+          if (newValues === undefined) {
+            orphanedOptions[option.name] = new Set([...orphanedOptions[option.name], option.value]);
             continue;
           }
 
-          if (values!.includes(event.value)) {
-            orphanedOptions[event.name] = [...values, event.value];
+          if (!newValues.includes(option.value)) {
+            orphanedOptions[option.name] = new Set([...orphanedOptions[option.name], option.value]);
           }
         }
 
@@ -250,9 +257,26 @@ export class RegisterSourceServiceV2 {
           });
         }
 
+        // Delete the orphaned options
+        for (const [name, values] of Object.entries(orphanedOptions)) {
+          for (const value of values) {
+            await tx.triggerSourceOption.delete({
+              where: {
+                name_value_sourceId: {
+                  name,
+                  value,
+                  sourceId: triggerSource.id,
+                },
+              },
+            });
+          }
+        }
+
         return {
           id: triggerSource.id,
-          orphanedOptions,
+          orphanedOptions: Object.fromEntries(
+            Object.entries(orphanedOptions).map(([name, values]) => [name, Array.from(values)])
+          ),
         };
       },
       { timeout: 15000 }
@@ -284,8 +308,18 @@ export class RegisterSourceServiceV2 {
     }
 
     const triggerIsActive = triggerSource.active;
-    const triggerHasOrphanedEvents = Object.keys(orphanedOptions).length > 0;
+    const triggerHasOrphanedEvents = Object.values(orphanedOptions).some(
+      (values) => values.length > 0
+    );
     const triggerHasUnregisteredEvents = triggerSource.options.some((option) => !option.registered);
+
+    logger.debug("Deciding whether to activate source", {
+      triggerIsActive,
+      triggerHasOrphanedEvents,
+      triggerHasUnregisteredEvents,
+      orphanedOptions,
+      options: triggerSource.options,
+    });
 
     if (!triggerIsActive || triggerHasOrphanedEvents || triggerHasUnregisteredEvents) {
       // We need to re-activate the source, and there could be orphaned events
