@@ -102,11 +102,14 @@ function PopoverArrowTrigger({
   isOpen,
   children,
   fullWidth = false,
+  overflowHidden = false,
   className,
   ...props
-}: { isOpen?: boolean; fullWidth?: boolean } & React.ComponentPropsWithoutRef<
-  typeof PopoverTrigger
->) {
+}: {
+  isOpen?: boolean;
+  fullWidth?: boolean;
+  overflowHidden?: boolean;
+} & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
   return (
     <PopoverTrigger
       {...props}
@@ -116,12 +119,18 @@ function PopoverArrowTrigger({
         className
       )}
     >
-      <Paragraph variant="extra-small" className="flex transition group-hover:text-bright">
+      <Paragraph
+        variant="extra-small"
+        className={cn(
+          "flex transition group-hover:text-bright",
+          overflowHidden && "overflow-hidden"
+        )}
+      >
         {children}
       </Paragraph>
       <ChevronDownIcon
         className={cn(
-          "h-3 w-3 text-slate-600 transition group-hover:text-bright",
+          "h-3 w-3 min-w-[0.75rem] text-slate-600 transition group-hover:text-bright",
           isOpen && "-rotate-180"
         )}
       />

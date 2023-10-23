@@ -173,9 +173,13 @@ function SideMenuOrgHeader({ className }: { className?: string }) {
   return (
     <div className={cn("flex items-center justify-between bg-background px-0 py-1", className)}>
       <Popover onOpenChange={(open) => setOrgMenuOpen(open)}>
-        <PopoverArrowTrigger fullWidth isOpen={isOrgMenuOpen} className="h-7 py-1 pl-2 pr-2">
-          <LogoIcon className="relative -top-px mr-2 h-4 w-4" />
-          My Org 1
+        <PopoverArrowTrigger
+          isOpen={isOrgMenuOpen}
+          overflowHidden
+          className="h-7 overflow-hidden py-1 pl-2"
+        >
+          <LogoIcon className="relative -top-px mr-2 h-4 w-4 min-w-[1rem]" />
+          <span className="truncate">My Org 1asdfasdfasdfasdfasdfasdfasdfasdfasdfasd</span>
         </PopoverArrowTrigger>
         <PopoverContent
           className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
@@ -238,7 +242,10 @@ function SideMenuHeader({ title, children }: { title: string; children: React.Re
   const [isProjectMenuOpen, setProfileMenuOpen] = useState(false);
   return (
     <div className="group flex items-center justify-between pl-1.5">
-      <Paragraph variant="extra-extra-small/caps" className="cursor-default text-slate-500">
+      <Paragraph
+        variant="extra-extra-small/caps"
+        className="cursor-default truncate text-slate-500"
+      >
         {title}
       </Paragraph>
       <Popover onOpenChange={(open) => setProfileMenuOpen(open)}>
@@ -301,8 +308,8 @@ function SideMenuItem({
         );
       }}
     >
-      <div className="flex w-full items-center justify-between">
-        {name}
+      <div className="flex w-full items-center justify-between overflow-hidden">
+        <span className="truncate">{name}</span>
         <div className="flex items-center gap-1">
           {count && <MenuCount count={count} />}
           {typeof hasWarning === "string" ? (
