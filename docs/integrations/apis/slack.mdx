@@ -5,11 +5,9 @@ sidebarTitle: Overview & authentication
 
 ## Overview
 
-Our Slack integration provides a powerful way to streamline communication and workflows within your organization, making it easier to stay informed, collaborate efficiently, and automate routine tasks. 
+Our Slack integration allows you to connect to the Slack API and post messages to Slack.
 
-You can tailor triggers and tasks to your specific needs, ensuring that your team and processes are more productive and responsive.
-
-For examples of some of the things you can do with it, check out our Jobs Showcase:
+For examples of some of the things you can do with Slack, check out our Jobs Showcase:
 
 <Card
   title="Jobs Showcase - Slack"
@@ -39,11 +37,11 @@ yarn add @trigger.dev/slack@latest
 
 ## Authentication
 
-Slack supports OAuth
+Slack supports OAuth.
 
 ## OAuth
 
-To use OAuth you can connect to Slack via the Trigger.dev [web app](https://cloud.trigger.dev). Click 'Integrations' in the side panel of any project, and configure Slack  with the ID you want to use in your job and the required [scopes](https://api.slack.com/scopes).
+To use OAuth you can connect to Slack via the Trigger.dev [web app](https://cloud.trigger.dev). Click 'Integrations' in the side panel of any project, and configure Slack with the ID you want to use in your job and the required [scopes](https://api.slack.com/scopes).
 
 ```ts
 import { Slack } from "@trigger.dev/slack";
@@ -52,13 +50,13 @@ const slack = new Slack({
   id: "slack",
 });
 ```
+
 ## Tasks
 
 Once you have set up a Slack client, you can use it to create tasks.
 
 <CardGroup>
   <Card title="Tasks" icon="sparkles" href="/integrations/apis/slack-tasks">
-    Perform tasks such as posting message to a channel.
+    Perform tasks such as posting messages to a channel.
   </Card>
 </CardGroup>
-

@@ -15,23 +15,23 @@ Post a message to a channel. [Official Slack Docs](https://api.slack.com/methods
 
 ```ts example.ts
 // Send a Slack message using the io.slack.postMessage function
-const response = await io.slack.postMessage("post message", {
+await io.slack.postMessage("post message", {
   // Specify the target channel by providing its ID
-  channel: "< your-channel-id >",
+  channel: "<your-channel-id>",
   // Set the text content of the message
-  text: "My first Slack message",
+  text: "<your-slack-message>",
 });
-
 ```
+
 ## Example Usage
 
 ```ts
 client.defineJob({
-  id: "slack-test",
-  name: "Slack test",
-  version: "0.0.1",
+  id: "send-slack-message",
+  name: "Send a Slack message",
+  version: "1.0.0",
   trigger: eventTrigger({
-    name: "slack.test",
+    name: "send.slack.message",
     schema: z.object({}),
   }),
   integrations: {
@@ -39,10 +39,50 @@ client.defineJob({
   },
   run: async (payload, io, ctx) => {
     const response = await io.slack.postMessage("post message", {
-      channel: "C04GWUTDC3W",
-      text: "My first Slack message",
+      channel: "<your-channge-id>",
+      text: "<your-slack-message>",
     });
   },
 });
 ```
 
+## How to post rich messages to Slack
+
+Use their [Block kit builder](https://api.slack.com/block-kit), and then use the `blocks` property to send the message.
+
+To see this in action, check out our 'Daily Slack alert for Linear issues' [example job](https://trigger.dev/showcase/jobs/linearIssuesDailySlackAlert).
+
+```ts linearIssuesDailySlackAlert.ts
+...
+await io.slack.postMessage("post message", {
+      channel: process.env.SLACK_CHANNEL_ID!,
+      // Include text for notifications and blocks to get a rich Slack message in the channel
+      text: `You have ${inProgressIssues.nodes.length} 'In Progress' issues in Linear!`,
+      // Create rich Slack messages with the Block Kit builder https://app.slack.com/block-kit-builder/
+      blocks: inProgressIssues.nodes.flatMap((issue) => [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `⏳ *${issue.title}*`,
+          },
+          accessory: {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "View issue",
+              emoji: true,
+            },
+            value: "click_me_123",
+            url: issue.url,
+            action_id: "button-action",
+          },
+        },
+        {
+          type: "divider",
+        },
+      ]),
+    });
+  },
+});
+```
