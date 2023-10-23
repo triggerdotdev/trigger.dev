@@ -11,18 +11,18 @@ Tasks are executed after the job is triggered and are the main building blocks o
 
 ### `sendEmail`
 
-Send an email with a payload text. [Official SendGrid Docs](https://docs.sendgrid.com/for-developers/sending-email)
+Send an email with a body. [Official SendGrid Docs](https://docs.sendgrid.com/for-developers/sending-email)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-  // The 'run' function is asynchronous and takes 'payload,' 'io,' and 'ctx' as parameters.
+run: async (io, ctx) => {
+  // The 'run' function is asynchronous and takes 'io' and 'ctx' as parameters.
 
   // Using the 'io.sendgrid.sendEmail' method to send an email using SendGrid.
   await io.sendgrid.sendEmail({
-    to: payload.to, // Recipient's email address, obtained from the 'payload' parameter.
-    from: "Trigger.dev <hello@email.trigger.dev>", // Sender's email address and name.
-    subject: payload.subject, // Email subject, obtained from the 'payload' parameter.
-    text: payload.text, // Plain text content of the email, obtained from the 'payload' parameter.
+    to: <recipient-email-address>, // Recipient's email address.
+    from: "Your-Name <your-email-address>", // Sender's email address and name.
+    subject: <email-subject>, // Email subject.
+    text: <email-body>, // Plain text content of the email.
   });
 }
 
