@@ -90,7 +90,7 @@ client.defineJob({
     perplexity,
   },
   run: async (payload, io, ctx) => {
-    await io.perplexity.createChatCompletion("chat-completion", {
+    await io.perplexity.chat.completions.create("chat-completion", {
       model: "mistral-7b-instruct",
       messages: [
         {
@@ -100,7 +100,7 @@ client.defineJob({
       ],
     });
 
-    await io.perplexity.backgroundCreateChatCompletion("background-chat-completion", {
+    await io.perplexity.chat.completions.backgroundCreate("background-chat-completion", {
       model: "mistral-7b-instruct",
       messages: [
         {
