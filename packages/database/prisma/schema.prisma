@@ -292,6 +292,9 @@ model RuntimeEnvironment {
 
   type RuntimeEnvironmentType @default(DEVELOPMENT)
 
+  ///A memorable code for the environment
+  // shortcode String?
+
   autoEnableInternalSources Boolean @default(true)
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -318,6 +321,7 @@ model RuntimeEnvironment {
   eventDispatchers  EventDispatcher[]
   scheduleSources   ScheduleSource[]
   ExternalAccount   ExternalAccount[]
+  // @@unique([projectId, shortcode])
 
   @@unique([projectId, slug, orgMemberId])
 }
@@ -340,13 +344,14 @@ model Project {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  environments RuntimeEnvironment[]
-  endpoints    Endpoint[]
-  jobs         Job[]
-  jobVersion   JobVersion[]
-  events       EventRecord[]
-  runs         JobRun[]
-  sources      TriggerSource[]
+  environments  RuntimeEnvironment[]
+  endpoints     Endpoint[]
+  jobs          Job[]
+  jobVersion    JobVersion[]
+  events        EventRecord[]
+  runs          JobRun[]
+  sources       TriggerSource[]
+  httpEndpoints TriggerHttpEndpoint[]
 }
 
 model Endpoint {
@@ -925,6 +930,7 @@ model SecretReference {
   connections    IntegrationConnection[]
   integrations   Integration[]
   triggerSources TriggerSource[]
+  httpEndpoints  TriggerHttpEndpoint[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1097,6 +1103,31 @@ model ScheduleSource {
   externalAccountId String?
 
   @@unique([key, environmentId])
+}
+
+model TriggerHttpEndpoint {
+  id String @id @default(cuid())
+
+  key    String
+  active Boolean @default(false)
+
+  /// If this is set, requests will be tested against the filter and we'll call the user's server immediately
+  immediateResponseFilter Json?
+
+  title      String?
+  icon       String?
+  properties Json?
+
+  secretReference   SecretReference @relation(fields: [secretReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  secretReferenceId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([key, projectId])
 }
 
 model MissingConnection {
