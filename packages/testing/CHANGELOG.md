@@ -1,5 +1,12 @@
 # @trigger.dev/testing
 
+## 2.2.2
+
+### Patch Changes
+
+- @trigger.dev/core@2.2.2
+- @trigger.dev/sdk@2.2.2
+
 ## 2.2.1
 
 ### Patch Changes
