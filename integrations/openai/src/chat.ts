@@ -14,7 +14,9 @@ export class Chat {
       return this.runTask(
         key,
         async (client, task) => {
-          const response = await client.chat.completions.create(params);
+          const response = await client.chat.completions.create(params, {
+            idempotencyKey: task.idempotencyKey,
+          });
           task.outputProperties = createTaskUsageProperties(response.usage);
           return response;
         },
@@ -38,15 +40,23 @@ export class Chat {
       return this.runTask(
         key,
         async (client, task, io) => {
+          let baseURL = client.baseURL ?? "https://api.openai.com/v1";
+          if (baseURL.endsWith("/")) {
+            baseURL = baseURL.slice(0, -1);
+          }
+
+          const chatCompletionsURL = `${baseURL}/chat/completions`;
+
           const response = await io.backgroundFetch<OpenAI.Chat.ChatCompletion>(
             "background",
-            "https://api.openai.com/v1/chat/completions",
+            chatCompletionsURL,
             {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
                 Authorization: redactString`Bearer ${client.apiKey}`,
                 ...(client.organization ? { "OpenAI-Organization": client.organization } : {}),
+                "Idempotency-Key": task.idempotencyKey,
               },
               body: JSON.stringify(params),
             },

@@ -54,11 +54,6 @@ client.defineJob({
       ],
     });
 
-    await io.openai.backgroundCreateCompletion("background-completion", {
-      model: "text-davinci-003",
-      prompt: "Create a good programming joke about Tasks",
-    });
-
     await io.openai.createCompletion("completion", {
       model: "text-davinci-003",
       prompt: "Create a good programming joke about Tasks",
@@ -73,6 +68,46 @@ client.defineJob({
     await io.openai.createEmbedding("embedding", {
       model: "text-embedding-ada-002",
       input: "The food was delicious and the waiter...",
+    });
+  },
+});
+
+const perplexity = new OpenAI({
+  id: "perplexity",
+  apiKey: process.env["PERPLEXITY_API_KEY"]!,
+  baseURL: "https://api.perplexity.ai",
+  icon: "brand-open-source",
+});
+
+client.defineJob({
+  id: "perplexity-tasks",
+  name: "Perplexity Tasks",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "perplexity.tasks",
+  }),
+  integrations: {
+    perplexity,
+  },
+  run: async (payload, io, ctx) => {
+    await io.perplexity.createChatCompletion("chat-completion", {
+      model: "mistral-7b-instruct",
+      messages: [
+        {
+          role: "user",
+          content: "Create a good programming joke about background jobs",
+        },
+      ],
+    });
+
+    await io.perplexity.backgroundCreateChatCompletion("background-chat-completion", {
+      model: "mistral-7b-instruct",
+      messages: [
+        {
+          role: "user",
+          content: "If you were a programming language, what would you be and why?",
+        },
+      ],
     });
   },
 });

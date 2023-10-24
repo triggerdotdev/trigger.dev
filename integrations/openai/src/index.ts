@@ -55,6 +55,7 @@ export class OpenAI implements TriggerIntegration {
     this.native = new OpenAIApi({
       apiKey: options.apiKey,
       organization: options.organization,
+      baseURL: options.baseURL,
     });
   }
 
@@ -77,6 +78,7 @@ export class OpenAI implements TriggerIntegration {
     openai._client = new OpenAIApi({
       apiKey,
       organization: this._options.organization,
+      baseURL: this._options.baseURL ?? "https://api.openai.com/v1",
     });
     return openai;
   }
@@ -104,7 +106,7 @@ export class OpenAI implements TriggerIntegration {
         return callback(this._client, task, io);
       },
       {
-        icon: "openai",
+        icon: this._options.icon ?? "openai",
         retry: retry.standardBackoff,
         ...(options ?? {}),
         connectionKey: this._connectionKey,
