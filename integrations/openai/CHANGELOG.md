@@ -1,5 +1,13 @@
 # @trigger.dev/slack
 
+## 2.2.2
+
+### Patch Changes
+
+- 36a39044: Upgrade to openai-node SDK 4.13.0, add support for request options and defaultQuery/defaultHeaders
+  - @trigger.dev/integration-kit@2.2.2
+  - @trigger.dev/sdk@2.2.2
+
 ## 2.2.1
 
 ### Patch Changes

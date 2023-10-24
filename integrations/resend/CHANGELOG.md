@@ -1,5 +1,12 @@
 # @trigger.dev/resend
 
+## 2.2.2
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@2.2.2
+- @trigger.dev/sdk@2.2.2
+
 ## 2.2.1
 
 ### Patch Changes

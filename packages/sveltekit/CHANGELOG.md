@@ -1,5 +1,11 @@
 # @trigger.dev/sveltekit
 
+## 2.2.2
+
+### Patch Changes
+
+- @trigger.dev/sdk@2.2.2
+
 ## 2.2.1
 
 ### Patch Changes
