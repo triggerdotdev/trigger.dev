@@ -1,8 +1,8 @@
-import { fileFromUrl, truncate } from "@trigger.dev/integration-kit";
+import { fileFromUrl } from "@trigger.dev/integration-kit";
 import { IntegrationTaskKey, Prettify } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 import { OpenAIRunTask } from "./index";
-import { createTaskUsageProperties } from "./taskUtils";
+import { OpenAIRequestOptions } from "./types";
 
 export type CreateImageEditRequest = {
   image: string | File;
@@ -31,7 +31,8 @@ export class Images {
 
   generate(
     key: IntegrationTaskKey,
-    params: Prettify<OpenAI.Images.ImageGenerateParams>
+    params: Prettify<OpenAI.Images.ImageGenerateParams>,
+    options: OpenAIRequestOptions = {}
   ): Promise<OpenAI.Images.ImagesResponse> {
     let properties = [
       {
@@ -64,7 +65,7 @@ export class Images {
     return this.runTask(
       key,
       async (client, task) => {
-        return client.images.generate(params);
+        return client.images.generate(params, { idempotencyKey: task.idempotencyKey, ...options });
       },
       {
         name: "Create image",
@@ -76,7 +77,8 @@ export class Images {
 
   edit(
     key: IntegrationTaskKey,
-    params: CreateImageEditRequest
+    params: CreateImageEditRequest,
+    options: OpenAIRequestOptions = {}
   ): Promise<OpenAI.Images.ImagesResponse> {
     let properties = [];
 
@@ -121,15 +123,18 @@ export class Images {
           typeof params.image === "string" ? await fileFromUrl(params.image) : params.image;
         const mask = typeof params.mask === "string" ? await fileFromUrl(params.mask) : params.mask;
 
-        const response = await client.images.edit({
-          image: file,
-          prompt: params.prompt,
-          mask: mask,
-          n: params.n,
-          size: params.size,
-          response_format: params.response_format,
-          user: params.user,
-        });
+        const response = await client.images.edit(
+          {
+            image: file,
+            prompt: params.prompt,
+            mask: mask,
+            n: params.n,
+            size: params.size,
+            response_format: params.response_format,
+            user: params.user,
+          },
+          { idempotencyKey: task.idempotencyKey, ...options }
+        );
 
         return response;
       },
@@ -143,7 +148,8 @@ export class Images {
 
   createVariation(
     key: IntegrationTaskKey,
-    params: CreateImageVariationRequest
+    params: CreateImageVariationRequest,
+    options: OpenAIRequestOptions = {}
   ): Promise<OpenAI.Images.ImagesResponse> {
     let properties = [];
 
@@ -182,13 +188,16 @@ export class Images {
         const file =
           typeof params.image === "string" ? await fileFromUrl(params.image) : params.image;
 
-        const response = await client.images.createVariation({
-          image: file,
-          n: params.n,
-          size: params.size,
-          response_format: params.response_format,
-          user: params.user,
-        });
+        const response = await client.images.createVariation(
+          {
+            image: file,
+            n: params.n,
+            size: params.size,
+            response_format: params.response_format,
+            user: params.user,
+          },
+          { idempotencyKey: task.idempotencyKey, ...options }
+        );
 
         return response;
       },
