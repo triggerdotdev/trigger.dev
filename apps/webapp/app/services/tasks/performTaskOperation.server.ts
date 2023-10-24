@@ -123,6 +123,8 @@ export class PerformTaskOperationService {
 
     logger.debug("Calculating retry at for strategy", {
       strategy,
+      status: response.status,
+      retry,
     });
 
     switch (strategy.strategy) {
