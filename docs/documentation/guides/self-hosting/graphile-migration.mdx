@@ -1,6 +1,6 @@
 ---
 title: "Graphile migration"
-description: "The `graphile-worker` migration may require some manual input"
+description: "The `graphile-worker` migration may require manual intervention"
 ---
 
 ## See any warnings?
@@ -11,24 +11,22 @@ description: "The `graphile-worker` migration may require some manual input"
 
 A warning like this may have brought you here. If it hasn't, you probably **don't** need this!
 
-## Semi-automatic migration steps
+## Graceful shutdown
 
-<Warning>This SHOULD be a safe process, but it's recommended to always have backups of your database.</Warning>
-
-1. Set `FAIL_LOCKED_JOBS_FOR_MIGRATION=true` as you do with other env vars
-2. Restart your server
-
-The environment variable won't have any effect if the migration was already successful. To remove additional log output, you may want to unset it again afterwards.
-
-## Alternative: Graceful shutdown
-
-The above issue only arises if there are any locked jobs when (automatic) migration is attempted.
+The above issue only arises if there are any locked jobs when automatic `graphile-worker` migration is attempted.
 
 To prevent this, please shut your server down _gracefully_. How you do this will depend on your platform. This may involve:
 
 - Sending SIGTERM via the `kill` command
 - Using `docker stop` or `docker-compose down`
-- Equivalent methods on your managed platform
+- Triggering a deployment on your managed platform of choice
+
+## Environment variables
+
+Two environment variables may be helpful here:
+
+1. `GRACEFUL_SHUTDOWN_TIMEOUT` - gives your workers more time to gracefully shut down
+2. `WORKER_MIGRATION_DELAY` - adds a delay before starting workers and applying migrations (useful for rolling deplyoments)
 
 ## Problems
 

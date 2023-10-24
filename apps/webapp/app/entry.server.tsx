@@ -169,7 +169,6 @@ function logError(error: unknown, request?: Request) {
 
   if (error instanceof Error && error.message === "division by zero") {
     console.log("⚠️  possible graphile-worker migration issue detected");
-    console.log("⚠️  set FAIL_LOCKED_JOBS_FOR_MIGRATION=true if this persists");
     console.log("⚠️  see: https://trigger.dev/docs/documentation/guides/self-hosting/graphile-migration");
   }
 }

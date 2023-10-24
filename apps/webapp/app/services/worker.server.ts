@@ -121,9 +121,7 @@ if (env.NODE_ENV === "production") {
 }
 
 export async function init() {
-  if (env.FAIL_LOCKED_JOBS_FOR_MIGRATION === "true") {
-    await failLockedJobsForMigration();
-  }
+  await addMigrationDelay();
 
   if (env.WORKER_ENABLED === "true") {
     await workerQueue.initialize();
@@ -134,12 +132,8 @@ export async function init() {
   }
 }
 
-/** Helper for graphile-worker v0.14.0 migration */
-async function failLockedJobsForMigration() {
-  console.log("⚠️  failing locked jobs for migration");
-
-  const graphileWorkerSchema = env.WORKER_SCHEMA;
-
+/** Helper for graphile-worker v0.14.0 migration. No-op if already migrated. */
+async function addMigrationDelay() {
   const migrationQueryResult = await prisma.$queryRawUnsafe(`
     SELECT id FROM graphile_worker.migrations
     ORDER BY id DESC LIMIT 1`);
@@ -149,8 +143,7 @@ async function failLockedJobsForMigration() {
   const migrationResults = MigrationQueryResultSchema.parse(migrationQueryResult);
 
   if (!migrationResults.length) {
-    console.log("⚠️  nothing to do, no migrations applied yet");
-    console.log("⚠️  unset FAIL_LOCKED_JOBS_FOR_MIGRATION to hide these messages");
+    // no migrations applied yet
     return;
   }
 
@@ -158,38 +151,13 @@ async function failLockedJobsForMigration() {
 
   // the first v0.14.0 migration has ID 11
   if (latestMigration > 10) {
-    console.log("⚠️  nothing to do, graphile-worker already upgraded");
-    console.log("⚠️  unset FAIL_LOCKED_JOBS_FOR_MIGRATION to hide these messages");
+    // already migrated
     return;
   }
 
-  const errorMessage = "Failing locked jobs for migration";
+  console.log(`⚠️  delaying worker startup for migration: ${env.WORKER_MIGRATION_DELAY}ms`);
 
-  const failJobsResult = await prisma.$queryRawUnsafe<Array<any>>(
-    `WITH j AS (
-        UPDATE ${graphileWorkerSchema}.jobs
-        SET
-          last_error = $1::text,
-          run_at = greatest(now(), run_at) + (exp(least(attempts, 10)) * interval '1 second'),
-          locked_by = null,
-          locked_at = null
-        WHERE locked_at is not null
-          AND locked_at > now() - interval '4 hours'
-        RETURNING *
-      ), queues AS (
-        UPDATE ${graphileWorkerSchema}.job_queues
-        SET
-          locked_by = null,
-          locked_at = null
-        FROM j
-        WHERE job_queues.queue_name = j.queue_name
-      )
-    SELECT * FROM j;`,
-    errorMessage
-  );
-
-  console.log(`⚠️  failed ${failJobsResult.length} locked jobs`);
-  console.log("⚠️  you can now unset FAIL_LOCKED_JOBS_FOR_MIGRATION");
+  await new Promise((resolve) => setTimeout(resolve, env.WORKER_MIGRATION_DELAY));
 }
 
 function getWorkerQueue() {
