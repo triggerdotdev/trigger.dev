@@ -1,21 +1,32 @@
-import { IntegrationTaskKey, Prettify, redactString } from "@trigger.dev/sdk";
+import { IntegrationTaskKey, Prettify } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 import { OpenAIRunTask } from "./index";
-import { createTaskUsageProperties } from "./taskUtils";
+import {
+  backgroundTaskRetries,
+  createBackgroundFetchHeaders,
+  createBackgroundFetchUrl,
+  createTaskUsageProperties,
+} from "./taskUtils";
+import { OpenAIIntegrationOptions, OpenAIRequestOptions } from "./types";
 
 export class Chat {
-  constructor(private runTask: OpenAIRunTask) {}
+  constructor(
+    private runTask: OpenAIRunTask,
+    private options: OpenAIIntegrationOptions
+  ) {}
 
   completions = {
     create: (
       key: IntegrationTaskKey,
-      params: Prettify<OpenAI.Chat.CompletionCreateParamsNonStreaming>
+      params: Prettify<OpenAI.Chat.ChatCompletionCreateParamsNonStreaming>,
+      options: OpenAIRequestOptions = {}
     ): Promise<OpenAI.Chat.ChatCompletion> => {
       return this.runTask(
         key,
         async (client, task) => {
           const response = await client.chat.completions.create(params, {
             idempotencyKey: task.idempotencyKey,
+            ...options,
           });
           task.outputProperties = createTaskUsageProperties(response.usage);
           return response;
@@ -35,49 +46,33 @@ export class Chat {
 
     backgroundCreate: (
       key: IntegrationTaskKey,
-      params: Prettify<OpenAI.Chat.CompletionCreateParamsNonStreaming>
+      params: Prettify<OpenAI.Chat.ChatCompletionCreateParamsNonStreaming>,
+      options: OpenAIRequestOptions = {}
     ): Promise<OpenAI.Chat.ChatCompletion> => {
       return this.runTask(
         key,
         async (client, task, io) => {
-          let baseURL = client.baseURL ?? "https://api.openai.com/v1";
-          if (baseURL.endsWith("/")) {
-            baseURL = baseURL.slice(0, -1);
-          }
-
-          const chatCompletionsURL = `${baseURL}/chat/completions`;
+          const url = createBackgroundFetchUrl(
+            client,
+            "/chat/completions",
+            this.options.defaultQuery,
+            options
+          );
 
           const response = await io.backgroundFetch<OpenAI.Chat.ChatCompletion>(
             "background",
-            chatCompletionsURL,
+            url,
             {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: redactString`Bearer ${client.apiKey}`,
-                ...(client.organization ? { "OpenAI-Organization": client.organization } : {}),
-                "Idempotency-Key": task.idempotencyKey,
-              },
+              method: options.method ?? "POST",
+              headers: createBackgroundFetchHeaders(
+                client,
+                task.idempotencyKey,
+                this.options.defaultHeaders,
+                options
+              ),
               body: JSON.stringify(params),
             },
-            {
-              "500-599": {
-                strategy: "backoff",
-                limit: 5,
-                minTimeoutInMs: 1000,
-                maxTimeoutInMs: 30000,
-                factor: 1.8,
-                randomize: true,
-              },
-              "429": {
-                strategy: "backoff",
-                limit: 10,
-                minTimeoutInMs: 1000,
-                maxTimeoutInMs: 60000,
-                factor: 2,
-                randomize: true,
-              },
-            }
+            backgroundTaskRetries
           );
 
           task.outputProperties = createTaskUsageProperties(response.usage);

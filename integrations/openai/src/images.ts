@@ -1,8 +1,8 @@
-import { fileFromUrl, truncate } from "@trigger.dev/integration-kit";
+import { fileFromUrl } from "@trigger.dev/integration-kit";
 import { IntegrationTaskKey, Prettify } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 import { OpenAIRunTask } from "./index";
-import { createTaskUsageProperties } from "./taskUtils";
+import { OpenAIRequestOptions } from "./types";
 
 export type CreateImageEditRequest = {
   image: string | File;
@@ -31,7 +31,8 @@ export class Images {
 
   generate(
     key: IntegrationTaskKey,
-    params: Prettify<OpenAI.Images.ImageGenerateParams>
+    params: Prettify<OpenAI.Images.ImageGenerateParams>,
+    options: OpenAIRequestOptions = {}
   ): Promise<OpenAI.Images.ImagesResponse> {
     let properties = [
       {
@@ -64,7 +65,7 @@ export class Images {
     return this.runTask(
       key,
       async (client, task) => {
-        return client.images.generate(params, { idempotencyKey: task.idempotencyKey });
+        return client.images.generate(params, { idempotencyKey: task.idempotencyKey, ...options });
       },
       {
         name: "Create image",
@@ -76,7 +77,8 @@ export class Images {
 
   edit(
     key: IntegrationTaskKey,
-    params: CreateImageEditRequest
+    params: CreateImageEditRequest,
+    options: OpenAIRequestOptions = {}
   ): Promise<OpenAI.Images.ImagesResponse> {
     let properties = [];
 
@@ -131,7 +133,7 @@ export class Images {
             response_format: params.response_format,
             user: params.user,
           },
-          { idempotencyKey: task.idempotencyKey }
+          { idempotencyKey: task.idempotencyKey, ...options }
         );
 
         return response;
@@ -146,7 +148,8 @@ export class Images {
 
   createVariation(
     key: IntegrationTaskKey,
-    params: CreateImageVariationRequest
+    params: CreateImageVariationRequest,
+    options: OpenAIRequestOptions = {}
   ): Promise<OpenAI.Images.ImagesResponse> {
     let properties = [];
 
@@ -193,7 +196,7 @@ export class Images {
             response_format: params.response_format,
             user: params.user,
           },
-          { idempotencyKey: task.idempotencyKey }
+          { idempotencyKey: task.idempotencyKey, ...options }
         );
 
         return response;

@@ -457,18 +457,20 @@ importers:
       '@trigger.dev/sdk': workspace:^2.2.1
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
-      openai: ^4.2.0
+      openai: ^4.13.0
       rimraf: ^3.0.2
       tsup: ^6.5.0
+      typescript: ^4.9.4
     dependencies:
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
-      openai: 4.2.0
+      openai: 4.13.0
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 18.15.13
       rimraf: 3.0.2
-      tsup: 6.6.3
+      tsup: 6.6.3_typescript@4.9.5
+      typescript: 4.9.5
 
   integrations/plain:
     specifiers:
@@ -25374,8 +25376,8 @@ packages:
       is-docker: 2.2.1
       is-wsl: 2.2.0
 
-  /openai/4.2.0:
-    resolution: {integrity: sha512-zfvpO2eITIxIjTG8T6Cek7NB2dMvP/LW0TRUJ4P9E8+qbBNKw00DrtfF64b+fAV2+wUYCVyynT6iSycJ//TtbA==}
+  /openai/4.13.0:
+    resolution: {integrity: sha512-EPqHcB0got9cXDZmQae1KytgA4YWtTnUc7tV8hlahZtcO70DMa4kiaXoxnutj9lwmeKQO7ntG+6pmXtrCMejuQ==}
     hasBin: true
     dependencies:
       '@types/node': 18.17.1
@@ -25386,6 +25388,7 @@ packages:
       form-data-encoder: 1.7.2
       formdata-node: 4.4.1
       node-fetch: 2.6.12
+      web-streams-polyfill: 3.2.1
     transitivePeerDependencies:
       - encoding
     dev: false
