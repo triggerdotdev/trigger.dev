@@ -111,7 +111,7 @@ export class PerformEndpointIndexService {
 
       return updateEndpointIndexWithError(this.#prismaClient, id, {
         message: friendlyError,
-        raw: bodyResult.error.issues,
+        raw: fromZodError(bodyResult.error).message,
       });
     }
 
