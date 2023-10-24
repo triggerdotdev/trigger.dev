@@ -245,7 +245,13 @@
     {
       "group": "Integrations",
       "pages": [
-        "integrations/apis/airtable",
+        {
+          "group": "Airtable",
+          "pages": [
+            "integrations/apis/airtable",
+            "integrations/apis/airtable-tasks"
+          ]
+        },
         {
           "group": "GitHub",
           "pages": [
