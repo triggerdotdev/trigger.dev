@@ -1,5 +1,14 @@
 # @trigger.dev/airtable
 
+## 2.2.1
+
+### Patch Changes
+
+- b9eba680: Export Base and Table
+- Updated dependencies [044d38e3]
+  - @trigger.dev/sdk@2.2.1
+  - @trigger.dev/integration-kit@2.2.1
+
 ## 2.2.0
 
 ### Patch Changes

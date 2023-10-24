@@ -1,5 +1,14 @@
 # @trigger.dev/testing
 
+## 2.2.1
+
+### Patch Changes
+
+- Updated dependencies [044d38e3]
+- Updated dependencies [abc9737a]
+  - @trigger.dev/sdk@2.2.1
+  - @trigger.dev/core@2.2.1
+
 ## 2.2.0
 
 ### Patch Changes
