@@ -293,7 +293,7 @@ model RuntimeEnvironment {
   type RuntimeEnvironmentType @default(DEVELOPMENT)
 
   ///A memorable code for the environment
-  // shortcode String?
+  shortcode String
 
   autoEnableInternalSources Boolean @default(true)
 
@@ -321,9 +321,9 @@ model RuntimeEnvironment {
   eventDispatchers  EventDispatcher[]
   scheduleSources   ScheduleSource[]
   ExternalAccount   ExternalAccount[]
-  // @@unique([projectId, shortcode])
 
   @@unique([projectId, slug, orgMemberId])
+  @@unique([projectId, shortcode])
 }
 
 enum RuntimeEnvironmentType {
