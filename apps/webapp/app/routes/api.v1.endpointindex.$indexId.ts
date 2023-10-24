@@ -1,13 +1,8 @@
 import { ActionArgs, json } from "@remix-run/server-runtime";
-import {
-  EndpointIndexErrorSchema,
-  GetEndpointIndexResponse,
-  GetEndpointIndexResponseSchema,
-} from "@trigger.dev/core";
+import { GetEndpointIndexResponse, GetEndpointIndexResponseSchema } from "@trigger.dev/core";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { IndexEndpointService } from "~/services/endpoints/indexEndpoint.server";
 import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({

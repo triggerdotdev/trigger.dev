@@ -17,6 +17,7 @@ import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
 import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
 import { RunStatusSchema } from "./runs";
 import { JobRunStatusRecordSchema } from "./statuses";
+import { RequestFilterSchema } from "./requestFilter";
 
 export const UpdateTriggerSourceBodyV1Schema = z.object({
   registeredEvents: z.array(z.string()),
@@ -292,7 +293,11 @@ export type DynamicTriggerEndpointMetadata = z.infer<typeof DynamicTriggerEndpoi
 const HttpEndpointMetadataSchema = z.object({
   id: z.string(),
   version: z.string(),
+  title: z.string().optional(),
+  icon: z.string().optional(),
+  properties: z.array(DisplayPropertySchema).optional(),
   event: EventSpecificationSchema,
+  immediateResponseFilter: RequestFilterSchema.optional(),
 });
 
 export type HttpEndpointMetadata = z.infer<typeof HttpEndpointMetadataSchema>;
@@ -320,6 +325,7 @@ const IndexEndpointStatsSchema = z.object({
   dynamicTriggers: z.number(),
   dynamicSchedules: z.number(),
   disabledJobs: z.number().default(0),
+  httpEndpoints: z.number().default(0),
 });
 
 export type IndexEndpointStats = z.infer<typeof IndexEndpointStatsSchema>;

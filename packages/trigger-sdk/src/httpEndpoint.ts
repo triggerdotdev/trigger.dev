@@ -15,6 +15,7 @@ import { formatSchemaErrors } from "./utils/formatSchemaErrors";
 type HttpEndpointOptions<TEventSpecification extends EventSpecification<any>> = {
   id: string;
   event: TEventSpecification;
+  immediateResponseFilter?: RequestFilter;
 };
 
 export type RequestOptions = {
@@ -41,6 +42,7 @@ export class HttpEndpoint<TEventSpecification extends EventSpecification<any>> {
       id: this.options.id,
       version: "1",
       event: this.options.event,
+      immediateResponseFilter: this.options.immediateResponseFilter,
     };
   }
 }
@@ -62,6 +64,7 @@ class HttpTrigger<TEventSpecification extends EventSpecification<any>>
       title: this.options.endpointId,
       properties: this.options.event.properties,
       rule: {
+        //should this be prefixed so it doesn't clash with integrations? e.g. `httpendpoint-${this.options.endpointId}`
         event: this.options.endpointId,
         payload: this.options.filter ?? {},
         source: this.options.event.source,
