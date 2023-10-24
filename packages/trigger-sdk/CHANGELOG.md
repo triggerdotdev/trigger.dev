@@ -1,5 +1,14 @@
 # @trigger.dev/sdk
 
+## 2.2.1
+
+### Patch Changes
+
+- 044d38e3: Auto-yield run execution to help prevent duplicate task executions
+- Updated dependencies [044d38e3]
+- Updated dependencies [abc9737a]
+  - @trigger.dev/core@2.2.1
+
 ## 2.2.0
 
 ### Minor Changes
