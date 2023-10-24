@@ -72,6 +72,7 @@ export class PerformTaskOperationService {
           statusCode: response.status,
           headers: Object.fromEntries(response.headers.entries()),
           jsonBody,
+          durationInMs,
         });
 
         if (!response.ok) {
