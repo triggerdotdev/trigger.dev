@@ -36,7 +36,10 @@ export class Files {
           file = params.file;
         }
 
-        return client.files.create({ file, purpose: params.purpose });
+        return client.files.create(
+          { file, purpose: params.purpose },
+          { idempotencyKey: task.idempotencyKey }
+        );
       },
       {
         name: "Create file",
@@ -81,7 +84,10 @@ export class Files {
           params.fileName
         );
 
-        return client.files.create({ file, purpose: "fine-tune" });
+        return client.files.create(
+          { file, purpose: "fine-tune" },
+          { idempotencyKey: task.idempotencyKey }
+        );
       },
       {
         name: "Create fine tune file",

@@ -17,7 +17,9 @@ export class Embeddings {
     return this.runTask(
       key,
       async (client, task) => {
-        const response = await client.embeddings.create(params);
+        const response = await client.embeddings.create(params, {
+          idempotencyKey: task.idempotencyKey,
+        });
         task.outputProperties = createTaskUsageProperties(response.usage);
         return response;
       },

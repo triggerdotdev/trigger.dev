@@ -102,6 +102,7 @@ export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   recurringTasks?: ZodRecurringTasks;
   cleanup?: ZodWorkerCleanupOptions;
   reporter?: ZodWorkerReporter;
+  shutdownTimeoutInMs?: number;
 };
 
 export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
@@ -114,6 +115,8 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   #runner?: GraphileRunner;
   #cleanup: ZodWorkerCleanupOptions | undefined;
   #reporter?: ZodWorkerReporter;
+  #shutdownTimeoutInMs?: number;
+  #shuttingDown = false;
 
   constructor(options: ZodWorkerOptions<TMessageCatalog>) {
     this.#name = options.name;
@@ -124,6 +127,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     this.#recurringTasks = options.recurringTasks;
     this.#cleanup = options.cleanup;
     this.#reporter = options.reporter;
+    this.#shutdownTimeoutInMs = options.shutdownTimeoutInMs ?? 60000; // default to 60 seconds
   }
 
   get graphileWorkerSchema() {
@@ -143,6 +147,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     this.#runner = await graphileRun({
       ...this.#runnerOptions,
+      noHandleSignals: true,
       taskList: this.#createTaskListFromTasks(),
       parsedCronItems,
     });
@@ -199,7 +204,32 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       this.#logDebug("stop");
     });
 
+    process.on("SIGTERM", this._handleSignal.bind(this));
+    process.on("SIGINT", this._handleSignal.bind(this));
+
     return true;
+  }
+
+  private _handleSignal(signal: string) {
+    if (this.#shuttingDown) {
+      return;
+    }
+
+    this.#shuttingDown = true;
+
+    if (this.#shutdownTimeoutInMs) {
+      setTimeout(() => {
+        this.#logDebug("Shutdown timeout reached, exiting process");
+
+        process.exit(0);
+      }, this.#shutdownTimeoutInMs);
+    }
+
+    this.#logDebug(`Received ${signal}, shutting down zodWorker...`);
+
+    this.stop().finally(() => {
+      this.#logDebug("zodWorker stopped");
+    });
   }
 
   public async stop() {

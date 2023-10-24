@@ -58,6 +58,14 @@
     {
       "source": "/documentation/guides/manual",
       "destination": "/documentation/guides/manual/nextjs"
+    },
+    {
+      "source": "/documentation/concepts/limitations",
+      "destination": "/documentation/concepts/limits"
+    },
+    {
+      "source": "/documentation/guides/create-a-job",
+      "destination": "/documentation/guides/writing-jobs-step-by-step"
     }
   ],
   "navigation": [
@@ -86,7 +94,7 @@
             "documentation/quickstarts/supabase"
           ]
         },
-        "documentation/guides/create-a-job",
+        "documentation/guides/writing-jobs-step-by-step",
         "documentation/guides/video-walkthrough"
       ]
     },
@@ -94,7 +102,7 @@
       "group": "Concepts",
       "pages": [
         "documentation/concepts/what-is-triggerdotdev",
-        "documentation/concepts/limitations",
+        "documentation/concepts/limits",
         "documentation/concepts/projects",
         "documentation/concepts/client-adaptors",
         {
@@ -238,7 +246,13 @@
     {
       "group": "Integrations",
       "pages": [
-        "integrations/apis/airtable",
+        {
+          "group": "Airtable",
+          "pages": [
+            "integrations/apis/airtable",
+            "integrations/apis/airtable-tasks"
+          ]
+        },
         {
           "group": "GitHub",
           "pages": [
@@ -248,12 +262,30 @@
           ]
         },
         "integrations/apis/linear",
-        "integrations/apis/openai",
-        "integrations/apis/plain",
+        {
+          "group": "OpenAI",
+          "pages": [
+            "integrations/apis/openai",
+            "integrations/apis/openai-tasks"
+          ]
+        },
+        {
+          "group": "Plain",
+          "pages": [
+            "integrations/apis/plain",
+            "integrations/apis/plain-tasks"
+          ]
+        },
         "integrations/apis/replicate",
         "integrations/apis/resend",
         "integrations/apis/sendgrid",
-        "integrations/apis/slack",
+        {
+          "group": "Slack",
+          "pages": [
+            "integrations/apis/slack",
+            "integrations/apis/slack-tasks"
+          ]
+        },
         "integrations/apis/stripe",
         {
           "group": "Supabase",
@@ -296,12 +328,12 @@
           "group": "IO",
           "pages": [
             "sdk/io/overview",
-            "sdk/io/logger",
-            "sdk/io/wait",
-            "sdk/io/sendevent",
             "sdk/io/runtask",
-            "sdk/io/try",
+            "sdk/io/wait",
+            "sdk/io/logger",
+            "sdk/io/sendevent",
             "sdk/io/backgroundfetch",
+            "sdk/io/try",
             "sdk/io/registerinterval",
             "sdk/io/unregisterinterval",
             "sdk/io/registercron",
@@ -320,7 +352,10 @@
             "sdk/dynamictrigger/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamictrigger/register", "sdk/dynamictrigger/unregister"]
+              "pages": [
+                "sdk/dynamictrigger/register",
+                "sdk/dynamictrigger/unregister"
+              ]
             }
           ]
         },
@@ -331,7 +366,10 @@
             "sdk/dynamicschedule/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamicschedule/register", "sdk/dynamicschedule/unregister"]
+              "pages": [
+                "sdk/dynamicschedule/register",
+                "sdk/dynamicschedule/unregister"
+              ]
             }
           ]
         },
@@ -352,7 +390,9 @@
     },
     {
       "group": "Overview",
-      "pages": ["examples/introduction"]
+      "pages": [
+        "examples/introduction"
+      ]
     }
   ],
   "footerSocials": {

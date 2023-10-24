@@ -1,17 +1,21 @@
 ---
-title: OpenAI
+title: OpenAI overview & authentication
+sidebarTitle: Overview & authentication
 ---
 
-Trigger.dev has a seamless integration with OpenAI, enabling developers to harness the power of AI
-language models in their serverless applications. With Trigger.dev's background tasks, long-running
-OpenAI completions become possible, even within the constraints of serverless timeouts.
+## Overview
 
-<Snippet file="integration-getting-started.mdx" />
+Our OpenAI integration allows you to easily perform AI-powered tasks, such as summarizing text, answering questions, generating images, fine tuning and much more.
 
-## Installation
+<Card
+  title="Jobs Showcase - OpenAI"
+  icon="rocket"
+  href="https://trigger.dev/showcase?tags=&integrations=openai"
+>
+  Check out pre-built OpenAI jobs in our showcase.
+</Card>
 
-To get started with the OpenAI integration on Trigger.dev, you need to install the `@trigger.dev/openai` package.
-You can do this using npm, pnpm, or yarn:
+## Installing the OpenAI packages
 
 <CodeGroup>
 
@@ -43,84 +47,47 @@ const openai = new OpenAI({
 });
 ```
 
-## Usage
+## Tasks
 
-Include the OpenAI integration in your Trigger.dev job:
+Once you have set up a OpenAI client, you can use it to create tasks.
+
+<CardGroup>
+  <Card title="Tasks" icon="sparkles" href="/integrations/apis/openai-tasks">
+    Perform different AI-powered tasks using OpenAI.
+  </Card>
+</CardGroup>
+
+## Usage as Universal Client
+
+You can use our OpenAI integration as a universal client to interact with other OpenAI-compatible APIs, such as [Perplexity.ai](https://docs.perplexity.ai/)
 
 ```ts
-client.defineJob({
-  id: "openai-tasks",
-  name: "OpenAI Tasks",
-  version: "0.0.1",
-  trigger: eventTrigger({
-    name: "openai.tasks",
-    schema: z.object({}),
-  }),
-  integrations: {
-    openai,
-  },
-  run: async (payload, io, ctx) => {
-    // Now you can access the OpenAI tasks through the io object
-    await io.openai.createCompletion("completion", {
-      model: "davinci",
-      prompt: "Once upon a time",
-    });
-  },
+import { OpenAI } from "@trigger.dev/openai";
+
+const perplexity = new OpenAI({
+  id: "perplexity",
+  apiKey: process.env["PERPLEXITY_API_KEY"]!,
+  baseURL: "https://api.perplexity.ai",
+  icon: "brand-open-source",
 });
 ```
 
-## Tasks
-
-Tasks that are marked as "long-running" can last longer than your serverless timeout – they are performed on one of our background workers.
-
-| Function Name                    | Description                                                               | Long-running? |
-| -------------------------------- | ------------------------------------------------------------------------- | ------------- |
-| `createCompletion`               | Generates text completions given a prompt.                                |
-| `backgroundCreateCompletion`     | Generates text completions in the background.                             | ✔            |
-| `createChatCompletion`           | Generates text completions in a conversational context.                   |
-| `backgroundCreateChatCompletion` | Generates text completions in a conversational context in the background. | ✔            |
-| `retrieveModel`                  | Retrieves a specific model by ID.                                         |
-| `listModels`                     | Lists the available models.                                               |
-| `createEdit`                     | Edits a given text prompt.                                                |
-| `createImage`                    | Generates images from textual descriptions.                               |
-| `createImageEdit`                | Creates an edited or extended image given an original image and a prompt  |
-| `createImageVariation`           | Creates a variation of a given image.                                     |
-| `createEmbedding`                | Generates embeddings for a given text.                                    |
-| `createFile`                     | Uploads a file to the OpenAI API.                                         |
-| `listFiles`                      | Lists the uploaded files.                                                 |
-| `createFineTuneFile`             | Uploads a file for fine-tuning a model.                                   |
-| `createFineTune`                 | Fine-tunes a model on a given task.                                       |
-| `listFineTunes`                  | Lists the available fine-tunes.                                           |
-| `retrieveFineTune`               | Retrieves a specific fine-tune by ID.                                     |
-| `cancelFineTune`                 | Cancels a specific fine-tune by ID.                                       |
-| `createFineTuningJob`            | Creates a job that fine-tunes a specified model from a given dataset.     |
-| `retrieveFineTuningJob`          | Get info about a fine-tuning job.                                         |
-| `cancelFineTuningJob`            | Cancel a fine-tuning job                                                  |
-| `listFineTuningJobEvents`        | List events for a fine-tuning job                                         |
-| `listFineTuningJobs`             | List fine tuning jobs                                                     |
-
-## Examples
-
-### Generate a joke
-
-Here's an example of how to use the OpenAI integration in a Trigger.dev job.
-In this example, we'll create a background task to generate a programming joke.
+Since [Perplexity.ai](https://docs.perplexity.ai/) is compatible with OpenAI, you can use the same tasks as with OpenAI.
 
 ```ts
 client.defineJob({
-  id: "openai-tasks",
-  name: "OpenAI Tasks",
+  id: "perplexity-tasks",
+  name: "Perplexity Tasks",
   version: "0.0.1",
   trigger: eventTrigger({
-    name: "openai.tasks",
-    schema: z.object({}),
+    name: "perplexity.tasks",
   }),
   integrations: {
-    openai,
+    perplexity,
   },
   run: async (payload, io, ctx) => {
-    const response = await io.openai.backgroundCreateChatCompletion("background-chat-completion", {
-      model: "gpt-3.5-turbo",
+    await io.perplexity.chat.completions.create("chat-completion", {
+      model: "mistral-7b-instruct",
       messages: [
         {
           role: "user",
@@ -129,190 +96,20 @@ client.defineJob({
       ],
     });
 
-    await io.logger.info("choices", response.choices);
-  },
-});
-```
-
-### Generate Code Snippets
-
-In this example, we'll leverage Trigger.dev's background task to generate code snippets for
-a given programming task:
-
-```ts
-client.defineJob({
-  id: "openai-tasks",
-  name: "OpenAI Tasks",
-  version: "0.0.1",
-  trigger: eventTrigger({
-    name: "openai.tasks",
-    schema: z.object({}),
-  }),
-  integrations: {
-    openai,
-  },
-  run: async (payload, io, ctx) => {
-    const programmingTask = `Create a function that checks if a string is a palindrome.`;
-
-    const response = await io.openai.backgroundCreateCompletion("background-completion", {
-      model: "gpt-3.5-turbo",
-      prompt: `Coding task: ${programmingTask}\n\n`,
-    });
-
-    await io.logger.info("codeSnippet", response.choices[0]?.text);
-  },
-});
-```
-
-### Summarize Text
-
-We'll use Trigger.dev's background task to summarize a lengthy article:
-
-```ts
-client.defineJob({
-  id: "openai-tasks",
-  name: "OpenAI Tasks",
-  version: "0.0.1",
-  trigger: eventTrigger({
-    name: "openai.tasks",
-    schema: z.object({}),
-  }),
-  integrations: {
-    openai,
-  },
-  run: async (payload, io, ctx) => {
-    const articleToSummarize = `Lorem ipsum. olor sit amet, consectetur adipiscing elit. 
-    Sed nec aliquet sapien. Pellentesque vitae nisi id purus luctus tincidunt. 
-    Proin condimentum malesuada turpis, eget tincidunt mauris viverra in.`;
-
-    const response = await io.openai.backgroundCreateCompletion("background-completion", {
-      model: "gpt-3.5-turbo",
-      prompt: `Please summarize the following article:\n\n${articleToSummarize}`,
-    });
-
-    await io.logger.info("summary", response.choices[0]?.text);
-  },
-});
-```
-
-### Draft Email Response
-
-we'll use Trigger.dev's background task to draft an email response based on a given email content:
-
-```ts
-client.defineJob({
-  id: "openai-tasks",
-  name: "OpenAI Tasks",
-  version: "0.0.1",
-  trigger: eventTrigger({
-    name: "openai.tasks",
-    schema: z.object({}),
-  }),
-  integrations: {
-    openai,
-  },
-  run: async (payload, io, ctx) => {
-    const emailContent = `Dear John,
-
-    Thank you for your inquiry. We appreciate your interest in our products.
-    I have reviewed your request, and I'm pleased to inform you that we can
-    accommodate your requirements. Please find the attached proposal for your
-    reference. If you have any further questions, feel free to ask.
-
-    Best regards,
-    Jane Doe`;
-
-    const response = await io.openai.backgroundCreateChatCompletion("background-chat-completion", {
-      model: "gpt-3.5-turbo",
+    // Run this in the background
+    await io.perplexity.chat.completions.backgroundCreate("background-chat-completion", {
+      model: "mistral-7b-instruct",
       messages: [
         {
           role: "user",
-          content: emailContent,
-        },
-        {
-          role: "assistant",
-          content: "Draft a suitable response to the email above.",
+          content: "If you were a programming language, what would you be and why?",
         },
       ],
     });
-
-    await io.logger.info("draftedEmailResponse", response.choices[0]?.text);
   },
 });
 ```
 
-### Chatbot Counseling Session
+And you'll get the same experience in the Run Dashboard when viewing the logs:
 
-This job represents a simulated AI counseling session. Leveraging OpenAI's ability to understand context and generate human-like text, it forms empathetic responses to user inputs. Such a system could be part of a mental wellness app.
-
-```ts
-client.defineJob({
-  id: "openai-chatbot-counseling",
-  name: "Chatbot Counseling Session",
-  version: "0.0.1",
-  trigger: eventTrigger({
-    name: "openai.startCounselingSession",
-    schema: z.object({}),
-  }),
-  integrations: {
-    openai,
-  },
-  run: async (payload, io, ctx) => {
-    const response = await io.openai.backgroundCreateChatCompletion(
-      "background-counseling-chat-completion",
-      {
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "system",
-            content: "You are a helpful and empathetic AI counselor.",
-          },
-          {
-            role: "user",
-            content: "I've been feeling really stressed out lately.",
-          },
-        ],
-      }
-    );
-    await io.logger.info("counseling session", response.choices);
-  },
-});
-```
-
-### AI Roleplay Game Session
-
-This job creates a fantasy AI role-playing game. It could be fun for interactive storytelling or game development contexts.
-
-```ts
-client.defineJob({
-  id: "openai-roleplay-game-session",
-  name: "AI Roleplay Game Session",
-  version: "0.0.1",
-  trigger: eventTrigger({
-    name: "openai.startRoleplayGameSession",
-    schema: z.object({}),
-  }),
-  integrations: {
-    openai,
-  },
-  run: async (payload, io, ctx) => {
-    const response = await io.openai.backgroundCreateChatCompletion(
-      "background-roleplay-game-session-chat-completion",
-      {
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "system",
-            content: "You are an intelligent guide in a fantasy role-playing game.",
-          },
-          {
-            role: "user",
-            content: "I embark on a quest for the enchanted crown. What's the first step?",
-          },
-        ],
-      }
-    );
-    await io.logger.info("roleplay game session", response.choices);
-  },
-});
-```
+![Perplexity.ai logs](/images/perplexity.png)

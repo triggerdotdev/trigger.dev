@@ -64,7 +64,7 @@ export class Images {
     return this.runTask(
       key,
       async (client, task) => {
-        return client.images.generate(params);
+        return client.images.generate(params, { idempotencyKey: task.idempotencyKey });
       },
       {
         name: "Create image",
@@ -121,15 +121,18 @@ export class Images {
           typeof params.image === "string" ? await fileFromUrl(params.image) : params.image;
         const mask = typeof params.mask === "string" ? await fileFromUrl(params.mask) : params.mask;
 
-        const response = await client.images.edit({
-          image: file,
-          prompt: params.prompt,
-          mask: mask,
-          n: params.n,
-          size: params.size,
-          response_format: params.response_format,
-          user: params.user,
-        });
+        const response = await client.images.edit(
+          {
+            image: file,
+            prompt: params.prompt,
+            mask: mask,
+            n: params.n,
+            size: params.size,
+            response_format: params.response_format,
+            user: params.user,
+          },
+          { idempotencyKey: task.idempotencyKey }
+        );
 
         return response;
       },
@@ -182,13 +185,16 @@ export class Images {
         const file =
           typeof params.image === "string" ? await fileFromUrl(params.image) : params.image;
 
-        const response = await client.images.createVariation({
-          image: file,
-          n: params.n,
-          size: params.size,
-          response_format: params.response_format,
-          user: params.user,
-        });
+        const response = await client.images.createVariation(
+          {
+            image: file,
+            n: params.n,
+            size: params.size,
+            response_format: params.response_format,
+            user: params.user,
+          },
+          { idempotencyKey: task.idempotencyKey }
+        );
 
         return response;
       },

@@ -1,7 +1,7 @@
-import type { Task, TaskAttempt } from "@trigger.dev/database";
+import type { JobRun, Task, TaskAttempt } from "@trigger.dev/database";
 import { CachedTask, ServerTask } from "@trigger.dev/core";
 
-export type TaskWithAttempts = Task & { attempts: TaskAttempt[] };
+export type TaskWithAttempts = Task & { attempts: TaskAttempt[]; run: JobRun };
 
 export function taskWithAttemptsToServerTask(task: TaskWithAttempts): ServerTask {
   return {
@@ -24,6 +24,7 @@ export function taskWithAttemptsToServerTask(task: TaskWithAttempts): ServerTask
     idempotencyKey: task.idempotencyKey,
     operation: task.operation,
     callbackUrl: task.callbackUrl,
+    forceYield: task.run.forceYieldImmediately,
   };
 }
 

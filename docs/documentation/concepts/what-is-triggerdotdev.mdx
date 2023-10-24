@@ -10,7 +10,7 @@ It can be used from _any_ Node.js (support versions) or TypeScript backend appli
 ## What we take care of for you:
 
 - We make it possible to run long-running Jobs on serverless platforms that have short timeouts (e.g. 30 seconds).
-- We provide an SDK for building Jobs in your codebase, triggered by various sources such as [events](/triggers/events), [scheduled events](/triggers/scheduled-events), and [webhooks](/triggers/webhooks).
+- We provide an SDK for building Jobs in your codebase, triggered by various sources such as [events](/documentation/concepts/triggers/events), [scheduled events](/documentation/concepts/triggers/scheduled), and [webhooks](/documentation/concepts/triggers/webhooks).
 - We provide an orchestration platform for running Jobs in your codebase.
 - We provide out-of-the-box Integrations with popular services such as [Slack](/integrations/apis/slack), [OpenAI](/integrations/apis/openai), [GitHub](/integrations/apis/github) and [more](/integrations), which vastly simplifies the process interacting with 3rd-party services.
   - We handle OAuth for you
@@ -73,16 +73,16 @@ client.defineJob({
 
 This code lives in a file inside your project repo.
 
-It is listening for the [issueEvent](/integrations/apis/github/triggers) GitHub webhook, and when it receives one, we will take care of calling the `run` function supplied to the `Job` constructor with the webhook payload. This gives you the following advantages over traditional webhooks:
+It is listening for the [issueEvent](/integrations/apis/github-triggers#onissue) GitHub webhook, and when it receives one, we will take care of calling the `run` function supplied to the `Job` constructor with the webhook payload. This gives you the following advantages over traditional webhooks:
 
 - We will automatically register the webhook with GitHub for you, and verify the payload signature.
 - We provide a nicely typed `event` payload to your `run` function, so you don't have to setup webhook payload types.
 - If your server isn't running, we will wait until it's back online before attempting to run the Job.
-- It is very easy to test your Job locally using our [Test Run](/guides/running-tests) feature.
+- It is very easy to test your Job locally using our [Test Run](/documentation/guides/testing-jobs) feature.
 
 As you can see the above Job also makes a call to our Slack [postMessage](/integrations/apis/slack) function, which provides the following advantages over using the raw Slack API:
 
-- We automatically handle the OAuth flow for you, so you don't have to worry about setting up a Slack app and dealing with credentials in your code (see our [Authentication](/concepts/authentication) guide for more details).
+- We automatically handle the OAuth flow for you, so you don't have to worry about setting up a Slack app and dealing with credentials in your code (see our [Authentication](/documentation/concepts/integrations#authentication) guide for more details).
 - We will automatically retry the request if the Slack API returns an error.
 - We provide a nicely typed `response` object from your `postMessage` function, so you don't have to setup Slack API types.
 
@@ -103,3 +103,19 @@ Below is a simplified architecture diagram of how Trigger.dev works:
 ![Architecture](/images/architecture.png)
 
 As you can see above, we communicate between your code and the Trigger.dev platform. This allows us to send events to your code, and receive tasks from your code.
+
+## Limitations
+
+There are a few limitations that are important to understand.
+
+In the latest version the following are not supported:
+
+### Long-running servers
+
+Currently Trigger.dev is optimized for deployment to serverless functions, but not for long-running servers.
+
+This limitation will be removed in the future by adding an alternative mode so Jobs works well on localhost and long-running servers.
+
+### Compute intensive tasks
+
+Because Trigger.dev is optimized for serverless functions, it is not well suited for compute intensive jobs as each individual task is limited to the [Maximum Run Chunk Execution Duration](/placeholder)

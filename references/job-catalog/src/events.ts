@@ -19,11 +19,15 @@ client.defineJob({
     name: "event.example",
   }),
   run: async (payload, io, ctx) => {
-    await io.runTask("task-example-1", async () => {
-      return {
-        message: "Hello World",
-      };
-    });
+    await io.runTask(
+      "task-example-1",
+      async () => {
+        return {
+          message: "Hello World",
+        };
+      },
+      { icon: "360" }
+    );
 
     await io.wait("wait-1", 1);
 
