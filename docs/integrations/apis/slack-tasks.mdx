@@ -23,7 +23,11 @@ await io.slack.postMessage("post message", {
 });
 ```
 
-## Example Usage
+## Using the underlying client
+
+If we don't have the task you need listed above, you can use `io.slack.runTask()` function, which lets you do anything that’s possible with the official Slack Node SDK. More information [here](/documentation/concepts/tasks#using-io-integration-runtask).
+
+Example usage:
 
 ```ts
 client.defineJob({
@@ -32,15 +36,28 @@ client.defineJob({
   version: "1.0.0",
   trigger: eventTrigger({
     name: "send.slack.message",
-    schema: z.object({}),
+    schema: z.object({
+      message: z.string,
+    }),
   }),
   integrations: {
     slack,
   },
   run: async (payload, io, ctx) => {
-    const response = await io.slack.postMessage("post message", {
-      channel: "<your-channge-id>",
-      text: "<your-slack-message>",
+    // Use the Slack integration to create a task using the "post-message" cacheKey
+    const message = await io.slack.postMessage("post-message", {
+      channel: process.env.SLACK_CHANNEL_ID,
+      message: payload.message,
+    });
+
+    // Use the Slack integration's runTask method to add a reaction to the message
+    await io.slack.runTask("add-reaction", async (client) => {
+      // client here is an authenticated instance of the Slack SDK
+      await client.reactions.add({
+        channel: process.env.SLACK_CHANNEL_ID,
+        name: "thumbsup",
+        timestamp: message.ts,
+      });
     });
   },
 });
