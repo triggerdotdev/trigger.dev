@@ -56,6 +56,9 @@ export class OpenAI implements TriggerIntegration {
       apiKey: options.apiKey,
       organization: options.organization,
       baseURL: options.baseURL,
+      defaultHeaders: options.defaultHeaders,
+      defaultQuery: options.defaultQuery,
+      maxRetries: 0,
     });
   }
 
@@ -79,6 +82,9 @@ export class OpenAI implements TriggerIntegration {
       apiKey,
       organization: this._options.organization,
       baseURL: this._options.baseURL ?? "https://api.openai.com/v1",
+      defaultHeaders: this._options.defaultHeaders,
+      defaultQuery: this._options.defaultQuery,
+      maxRetries: 0,
     });
     return openai;
   }
@@ -120,11 +126,11 @@ export class OpenAI implements TriggerIntegration {
   }
 
   get completions() {
-    return new Completions(this.runTask.bind(this));
+    return new Completions(this.runTask.bind(this), this._options);
   }
 
   get chat() {
-    return new Chat(this.runTask.bind(this));
+    return new Chat(this.runTask.bind(this), this._options);
   }
 
   get edits() {

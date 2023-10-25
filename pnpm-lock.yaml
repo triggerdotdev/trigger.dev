@@ -355,7 +355,7 @@ importers:
     devDependencies:
       eslint: 8.31.0
       eslint-config-prettier: 8.6.0_eslint@8.31.0
-      eslint-config-turbo: 1.10.15_eslint@8.31.0
+      eslint-config-turbo: 1.10.16_eslint@8.31.0
       eslint-plugin-react: 7.31.8_eslint@8.31.0
       typescript: 4.9.4
 
@@ -376,8 +376,8 @@ importers:
 
   integrations/airtable:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.0
-      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/integration-kit': workspace:^2.2.2
+      '@trigger.dev/sdk': workspace:^2.2.2
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       airtable: ^0.12.1
@@ -404,8 +404,8 @@ importers:
       '@octokit/types': ^9.2.3
       '@octokit/webhooks': ^10.4.0
       '@octokit/webhooks-types': ^6.10.0
-      '@trigger.dev/integration-kit': workspace:^2.2.0
-      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/integration-kit': workspace:^2.2.2
+      '@trigger.dev/sdk': workspace:^2.2.2
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       octokit: ^2.0.14
@@ -431,8 +431,8 @@ importers:
   integrations/linear:
     specifiers:
       '@linear/sdk': ^8.0.0
-      '@trigger.dev/integration-kit': workspace:^2.2.0
-      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/integration-kit': workspace:^2.2.2
+      '@trigger.dev/sdk': workspace:^2.2.2
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -453,28 +453,30 @@ importers:
 
   integrations/openai:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.0
-      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/integration-kit': workspace:^2.2.2
+      '@trigger.dev/sdk': workspace:^2.2.2
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
-      openai: ^4.2.0
+      openai: ^4.13.0
       rimraf: ^3.0.2
       tsup: ^6.5.0
+      typescript: ^4.9.4
     dependencies:
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
-      openai: 4.2.0
+      openai: 4.13.0
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 18.15.13
       rimraf: 3.0.2
-      tsup: 6.6.3
+      tsup: 6.6.3_typescript@4.9.5
+      typescript: 4.9.5
 
   integrations/plain:
     specifiers:
       '@team-plain/typescript-sdk': ^2.7.0
-      '@trigger.dev/integration-kit': workspace:^2.2.0
-      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/integration-kit': workspace:^2.2.2
+      '@trigger.dev/sdk': workspace:^2.2.2
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
@@ -491,8 +493,8 @@ importers:
 
   integrations/replicate:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.0
-      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/integration-kit': workspace:^2.2.2
+      '@trigger.dev/sdk': workspace:^2.2.2
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       replicate: ^0.18.1
@@ -514,8 +516,8 @@ importers:
 
   integrations/resend:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.0
-      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/integration-kit': workspace:^2.2.2
+      '@trigger.dev/sdk': workspace:^2.2.2
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       resend: ^1.0.0
@@ -534,8 +536,8 @@ importers:
   integrations/sendgrid:
     specifiers:
       '@sendgrid/mail': ^7.7.0
-      '@trigger.dev/integration-kit': workspace:^2.2.0
-      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/integration-kit': workspace:^2.2.2
+      '@trigger.dev/sdk': workspace:^2.2.2
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -555,7 +557,7 @@ importers:
   integrations/slack:
     specifiers:
       '@slack/web-api': ^6.8.1
-      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/sdk': workspace:^2.2.2
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
@@ -573,8 +575,8 @@ importers:
 
   integrations/stripe:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.0
-      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/integration-kit': workspace:^2.2.2
+      '@trigger.dev/sdk': workspace:^2.2.2
       '@types/node': 16.x
       rimraf: ^3.0.2
       stripe: ^12.14.0
@@ -597,8 +599,8 @@ importers:
   integrations/supabase:
     specifiers:
       '@supabase/supabase-js': ^2.26.0
-      '@trigger.dev/integration-kit': workspace:^2.2.0
-      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/integration-kit': workspace:^2.2.2
+      '@trigger.dev/sdk': workspace:^2.2.2
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 18.x
       rimraf: ^3.0.2
@@ -621,8 +623,8 @@ importers:
 
   integrations/typeform:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.0
-      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/integration-kit': workspace:^2.2.2
+      '@trigger.dev/sdk': workspace:^2.2.2
       '@typeform/api-client': ^1.8.0
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -857,7 +859,7 @@ importers:
   packages/express:
     specifiers:
       '@remix-run/web-fetch': ^4.3.5
-      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/sdk': workspace:^2.2.2
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/express': ^4.17.13
@@ -904,7 +906,7 @@ importers:
     specifiers:
       '@nestjs/common': ^10.2.4
       '@remix-run/web-fetch': ^4.3.5
-      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/sdk': workspace:^2.2.2
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/express': ^4.17.13
@@ -953,7 +955,7 @@ importers:
   packages/react:
     specifiers:
       '@tanstack/react-query': 5.0.0-beta.2
-      '@trigger.dev/core': workspace:^2.2.0
+      '@trigger.dev/core': workspace:^2.2.2
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/react': 18.2.17
@@ -1048,7 +1050,7 @@ importers:
 
   packages/trigger-sdk:
     specifiers:
-      '@trigger.dev/core': workspace:^2.2.0
+      '@trigger.dev/core': workspace:^2.2.2
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/node': '18'
@@ -18593,13 +18595,13 @@ packages:
       eslint: 8.45.0
     dev: true
 
-  /eslint-config-turbo/1.10.15_eslint@8.31.0:
-    resolution: {integrity: sha512-76mpx2x818JZE26euen14utYcFDxOahZ9NaWA+6Xa4pY2ezVKVschuOxS96EQz3o3ZRSmcgBOapw/gHbN+EKxQ==}
+  /eslint-config-turbo/1.10.16_eslint@8.31.0:
+    resolution: {integrity: sha512-O3NQI72bQHV7FvSC6lWj66EGx8drJJjuT1kuInn6nbMLOHdMBhSUX/8uhTAlHRQdlxZk2j9HtgFCIzSc93w42g==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
       eslint: 8.31.0
-      eslint-plugin-turbo: 1.10.15_eslint@8.31.0
+      eslint-plugin-turbo: 1.10.16_eslint@8.31.0
     dev: true
 
   /eslint-doc-generator/1.4.3_eslint@8.45.0:
@@ -19302,8 +19304,8 @@ packages:
       - typescript
     dev: true
 
-  /eslint-plugin-turbo/1.10.15_eslint@8.31.0:
-    resolution: {integrity: sha512-Tv4QSKV/U56qGcTqS/UgOvb9HcKFmWOQcVh3HEaj7of94lfaENgfrtK48E2CckQf7amhKs1i+imhCsNCKjkQyA==}
+  /eslint-plugin-turbo/1.10.16_eslint@8.31.0:
+    resolution: {integrity: sha512-ZjrR88MTN64PNGufSEcM0tf+V1xFYVbeiMeuIqr0aiABGomxFLo4DBkQ7WI4WzkZtWQSIA2sP+yxqSboEfL9MQ==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
@@ -25374,8 +25376,8 @@ packages:
       is-docker: 2.2.1
       is-wsl: 2.2.0
 
-  /openai/4.2.0:
-    resolution: {integrity: sha512-zfvpO2eITIxIjTG8T6Cek7NB2dMvP/LW0TRUJ4P9E8+qbBNKw00DrtfF64b+fAV2+wUYCVyynT6iSycJ//TtbA==}
+  /openai/4.13.0:
+    resolution: {integrity: sha512-EPqHcB0got9cXDZmQae1KytgA4YWtTnUc7tV8hlahZtcO70DMa4kiaXoxnutj9lwmeKQO7ntG+6pmXtrCMejuQ==}
     hasBin: true
     dependencies:
       '@types/node': 18.17.1
@@ -25386,6 +25388,7 @@ packages:
       form-data-encoder: 1.7.2
       formdata-node: 4.4.1
       node-fetch: 2.6.12
+      web-streams-polyfill: 3.2.1
     transitivePeerDependencies:
       - encoding
     dev: false

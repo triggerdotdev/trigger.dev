@@ -2,6 +2,7 @@ import { fileFromString } from "@trigger.dev/integration-kit";
 import { IntegrationTaskKey } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 import { OpenAIRunTask } from "./index";
+import { OpenAIRequestOptions } from "./types";
 
 type CreateFileRequest = {
   file: string | File;
@@ -24,7 +25,11 @@ export class Files {
     this.runTask = runTask;
   }
 
-  create(key: IntegrationTaskKey, params: CreateFileRequest): Promise<OpenAI.Files.FileObject> {
+  create(
+    key: IntegrationTaskKey,
+    params: CreateFileRequest,
+    options: OpenAIRequestOptions = {}
+  ): Promise<OpenAI.Files.FileObject> {
     return this.runTask(
       key,
       async (client, task) => {
@@ -38,7 +43,7 @@ export class Files {
 
         return client.files.create(
           { file, purpose: params.purpose },
-          { idempotencyKey: task.idempotencyKey }
+          { idempotencyKey: task.idempotencyKey, ...options }
         );
       },
       {
@@ -58,11 +63,14 @@ export class Files {
     );
   }
 
-  list(key: IntegrationTaskKey): Promise<OpenAI.Files.FileObject[]> {
+  list(
+    key: IntegrationTaskKey,
+    options: OpenAIRequestOptions = {}
+  ): Promise<OpenAI.Files.FileObject[]> {
     return this.runTask(
       key,
       async (client, task) => {
-        const response = await client.files.list();
+        const response = await client.files.list(options);
         return response.data;
       },
       {
@@ -74,7 +82,8 @@ export class Files {
 
   createFineTune(
     key: IntegrationTaskKey,
-    params: CreateFineTuneFileRequest
+    params: CreateFineTuneFileRequest,
+    options: OpenAIRequestOptions = {}
   ): Promise<OpenAI.Files.FileObject> {
     return this.runTask(
       key,
@@ -86,7 +95,7 @@ export class Files {
 
         return client.files.create(
           { file, purpose: "fine-tune" },
-          { idempotencyKey: task.idempotencyKey }
+          { idempotencyKey: task.idempotencyKey, ...options }
         );
       },
       {
