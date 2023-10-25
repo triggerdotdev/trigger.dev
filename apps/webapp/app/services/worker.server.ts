@@ -157,10 +157,13 @@ async function addMigrationDelayAndNotify() {
     return;
   }
 
-  console.log(`⚠️  detected pending graphile migration`);
-  console.log(`⚠️  delaying worker startup by ${env.WORKER_MIGRATION_DELAY}ms`);
+  // add 15s to graceful shutdown timeout, just to be safe
+  const migrationDelayInMs = env.GRACEFUL_SHUTDOWN_TIMEOUT + 15000
 
-  await new Promise((resolve) => setTimeout(resolve, env.WORKER_MIGRATION_DELAY));
+  console.log(`⚠️  detected pending graphile migration`);
+  console.log(`⚠️  delaying worker startup by ${migrationDelayInMs}ms`);
+
+  await new Promise((resolve) => setTimeout(resolve, migrationDelayInMs));
 
   console.log(`⚠️  notifying running workers about incoming migration`);
 

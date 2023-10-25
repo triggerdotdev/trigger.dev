@@ -21,12 +21,9 @@ To prevent this, please shut your server down _gracefully_. How you do this will
 - Using `docker stop` or `docker-compose down`
 - Triggering a deployment on your managed platform of choice
 
-## Environment variables
+### Changing the default timeout
 
-Two environment variables may be helpful here:
-
-1. `GRACEFUL_SHUTDOWN_TIMEOUT` - gives your workers more time to gracefully shut down
-2. `WORKER_MIGRATION_DELAY` - adds a delay before starting workers and applying migrations (useful for rolling deplyoments)
+Set the `GRACEFUL_SHUTDOWN_TIMEOUT` environment variable to change the default of 60 seconds - values are specified in _milliseconds_. This may be required if you have active jobs that need longer to complete.
 
 ## Problems
 
