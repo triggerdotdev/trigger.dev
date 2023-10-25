@@ -133,12 +133,26 @@ export async function init() {
   }
 }
 
+async function graphileSchemaExists() {
+  const schemaCount = await prisma.$executeRaw`
+    SELECT schema_name FROM information_schema.schemata
+    WHERE schema_name = ${env.WORKER_SCHEMA}
+  `;
+
+  return schemaCount === 1;
+}
+
 /** Helper for graphile-worker v0.14.0 migration. No-op if already migrated. */
 async function addMigrationDelayAndNotify() {
-  const migrationQueryResult = await prisma.$queryRaw`
-    SELECT id FROM graphile_worker.migrations
+  if (!(await graphileSchemaExists())) {
+    // no schema yet, likely first start
+    return;
+  }
+
+  const migrationQueryResult = await prisma.$queryRawUnsafe(`
+    SELECT id FROM ${env.WORKER_SCHEMA}.migrations
     ORDER BY id DESC LIMIT 1
-  `;
+  `);
 
   const MigrationQueryResultSchema = z.array(z.object({ id: z.number() }));
 
@@ -158,7 +172,7 @@ async function addMigrationDelayAndNotify() {
   }
 
   // add 15s to graceful shutdown timeout, just to be safe
-  const migrationDelayInMs = env.GRACEFUL_SHUTDOWN_TIMEOUT + 15000
+  const migrationDelayInMs = env.GRACEFUL_SHUTDOWN_TIMEOUT + 15000;
 
   console.log(`⚠️  detected pending graphile migration`);
   console.log(`⚠️  delaying worker startup by ${migrationDelayInMs}ms`);
