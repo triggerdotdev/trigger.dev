@@ -91,7 +91,7 @@ export class HandleHttpEndpointService {
       );
     }
 
-    //todo store the payload in the database?
+    //todo don't store the payload if an immediate response is required?
 
     //test against the filter
     const callClientImmediately = await requestFilterMatches(request, immediateResponseFilter.data);
@@ -99,9 +99,9 @@ export class HandleHttpEndpointService {
       return json({ message: "Should call client immediately" }, { status: 200 });
     }
 
-    //todo or only store the payload if there's no an immediate response?
+    //todo either generate events, or schedule a Job to call the client to generate events
+    //todo store the request? where?
 
-    //todo don't return this
     return new Response(undefined, {
       status: 200,
     });
