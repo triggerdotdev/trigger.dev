@@ -673,6 +673,8 @@ model EventRecord {
   externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   externalAccountId String?
 
+  //todo optional association between EventRecord and httpEndpoint
+
   deliverAt   DateTime  @default(now())
   deliveredAt DateTime?
 
