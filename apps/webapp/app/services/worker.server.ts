@@ -21,6 +21,7 @@ import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequ
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout";
 import { ProbeEndpointService } from "./endpoints/probeEndpoint.server";
+import { PgNotifyService } from "./db/pgNotify.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -121,7 +122,7 @@ if (env.NODE_ENV === "production") {
 }
 
 export async function init() {
-  await addMigrationDelay();
+  await addMigrationDelayAndNotify();
 
   if (env.WORKER_ENABLED === "true") {
     await workerQueue.initialize();
@@ -133,10 +134,11 @@ export async function init() {
 }
 
 /** Helper for graphile-worker v0.14.0 migration. No-op if already migrated. */
-async function addMigrationDelay() {
-  const migrationQueryResult = await prisma.$queryRawUnsafe(`
+async function addMigrationDelayAndNotify() {
+  const migrationQueryResult = await prisma.$queryRaw`
     SELECT id FROM graphile_worker.migrations
-    ORDER BY id DESC LIMIT 1`);
+    ORDER BY id DESC LIMIT 1
+  `;
 
   const MigrationQueryResultSchema = z.array(z.object({ id: z.number() }));
 
@@ -155,9 +157,15 @@ async function addMigrationDelay() {
     return;
   }
 
-  console.log(`⚠️  delaying worker startup for migration: ${env.WORKER_MIGRATION_DELAY}ms`);
+  console.log(`⚠️  detected pending graphile migration`);
+  console.log(`⚠️  delaying worker startup by ${env.WORKER_MIGRATION_DELAY}ms`);
 
   await new Promise((resolve) => setTimeout(resolve, env.WORKER_MIGRATION_DELAY));
+
+  console.log(`⚠️  notifying running workers about incoming migration`);
+
+  const pgNotify = new PgNotifyService();
+  await pgNotify.call("trigger:graphile:migrate", { latestMigration });
 }
 
 function getWorkerQueue() {
