@@ -1,6 +1,9 @@
 import { HttpEndpointMetadata } from "@trigger.dev/core";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
+import { generateSecret } from "../sources/utils.server";
+import { getSecretStore } from "../secrets/secretStore.server";
+import { z } from "zod";
 
 export class RegisterHttpEndpointService {
   #prismaClient: PrismaClientOrTransaction;
@@ -18,51 +21,91 @@ export class RegisterHttpEndpointService {
         ? await findEndpoint(endpointIdOrEndpoint)
         : endpointIdOrEndpoint;
 
-    //what should the scope of secrets be? and the http endpoints?
-    //todo will a user just enter the URL and secret once for all environments?
     const secretKey = `httpendpoint:${endpoint.projectId}:${httpEndpointMetadata.id}`;
 
     //todo association between EventRecord and httpEndpoint
-    //todo wildcards at the end of the URLs, just one triggerHttpEndpoint
-
     return await $transaction(this.#prismaClient, async (tx) => {
-      const existingHttpEndpoint = await tx.triggerHttpEndpoint.findUnique({
-        where: {
-          key_environmentId: {
-            key: httpEndpointMetadata.id,
-            environmentId: endpoint.environmentId,
-          },
-        },
-      });
-
+      //upsert the TriggerHttpEndpoint and TriggerHttpEndpointEnvironment
       const httpEndpoint = await tx.triggerHttpEndpoint.upsert({
         where: {
-          key_environmentId: {
+          key_projectId: {
             key: httpEndpointMetadata.id,
-            environmentId: endpoint.environmentId,
+            projectId: endpoint.projectId,
           },
         },
         create: {
           key: httpEndpointMetadata.id,
-          active: true,
-          immediateResponseFilter: httpEndpointMetadata.immediateResponseFilter,
           title: httpEndpointMetadata.title,
           icon: httpEndpointMetadata.icon,
           properties: httpEndpointMetadata.properties,
           secretReference: {
             connectOrCreate: {
-              key: "TRIGGER_API_KEY",
+              where: {
+                key: secretKey,
+              },
+              create: {
+                key: secretKey,
+                provider: "DATABASE" as const,
+              },
             },
           },
-          environment: {
+          httpEndpointEnvironments: {
+            connectOrCreate: {
+              where: {
+                environmentId_httpEndpointId: {
+                  environmentId: endpoint.environment.id,
+                  //todo this is wrong
+                  httpEndpointId: httpEndpointMetadata.id,
+                },
+              },
+              create: {
+                active: httpEndpointMetadata.enabled,
+                immediateResponseFilter: httpEndpointMetadata.immediateResponseFilter,
+                environmentId: endpoint.environment.id,
+              },
+            },
+          },
+          project: {
             connect: {
-              id: endpoint.environment.id,
+              id: endpoint.projectId,
             },
           },
-          project: { connect: { id: endpoint.projectId } },
         },
-        update: {},
+        update: {
+          title: httpEndpointMetadata.title,
+          icon: httpEndpointMetadata.icon,
+          properties: httpEndpointMetadata.properties,
+          httpEndpointEnvironments: {
+            update: {
+              where: {
+                environmentId_httpEndpointId: {
+                  environmentId: endpoint.environment.id,
+                  //todo this is wrong
+                  httpEndpointId: httpEndpointMetadata.id,
+                },
+              },
+              data: {
+                active: httpEndpointMetadata.enabled,
+                immediateResponseFilter: httpEndpointMetadata.immediateResponseFilter,
+                environmentId: endpoint.environment.id,
+              },
+            },
+          },
+        },
+        include: {
+          secretReference: true,
+        },
       });
+
+      //create/update the secret
+      //we don't upsert because we don't want to change an existing one
+      const secretStore = getSecretStore(httpEndpoint.secretReference.provider);
+      const existingSecret = await secretStore.getSecret(z.string(), secretKey);
+      if (!existingSecret) {
+        await secretStore.setSecret<{ secret: string }>(secretKey, {
+          secret: generateSecret(),
+        });
+      }
     });
   }
 }

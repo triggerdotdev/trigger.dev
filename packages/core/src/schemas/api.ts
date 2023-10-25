@@ -293,6 +293,7 @@ export type DynamicTriggerEndpointMetadata = z.infer<typeof DynamicTriggerEndpoi
 const HttpEndpointMetadataSchema = z.object({
   id: z.string(),
   version: z.string(),
+  enabled: z.boolean(),
   title: z.string().optional(),
   icon: z.string().optional(),
   properties: z.array(DisplayPropertySchema).optional(),

@@ -14,6 +14,7 @@ import { formatSchemaErrors } from "./utils/formatSchemaErrors";
 
 type HttpEndpointOptions<TEventSpecification extends EventSpecification<any>> = {
   id: string;
+  enabled?: boolean;
   event: TEventSpecification;
   immediateResponseFilter?: RequestFilter;
 };
@@ -41,6 +42,7 @@ export class HttpEndpoint<TEventSpecification extends EventSpecification<any>> {
     return {
       id: this.options.id,
       version: "1",
+      enabled: this.options.enabled ?? true,
       event: this.options.event,
       immediateResponseFilter: this.options.immediateResponseFilter,
     };
@@ -64,8 +66,7 @@ class HttpTrigger<TEventSpecification extends EventSpecification<any>>
       title: this.options.endpointId,
       properties: this.options.event.properties,
       rule: {
-        //should this be prefixed so it doesn't clash with integrations? e.g. `httpendpoint-${this.options.endpointId}`
-        event: this.options.endpointId,
+        event: `httpendpoint-${this.options.endpointId}`,
         payload: this.options.filter ?? {},
         source: this.options.event.source,
       },
@@ -89,6 +90,7 @@ type RequestContext = {
 
 export type EndpointOptions = {
   id: string;
+  enabled?: boolean;
   /** The source of the webhook, e.g. whatsapp.com  */
   source: string;
   title?: string;
@@ -112,13 +114,33 @@ const RawHttpEndpointPayloadSchema = z.object({
 export function httpEndpoint(options: EndpointOptions): HttpEndpoint<EventSpecification<Request>> {
   return new HttpEndpoint({
     id: options.id,
+    enabled: options.enabled,
+    immediateResponseFilter: options.respondWith?.filter,
     event: {
       name: options.id,
       title: options.title ?? "HTTP Trigger",
       source: options.source,
-      icon: options.icon ?? "world-www",
+      icon: options.icon ?? "webhook",
       properties: options.properties,
-      examples: options.examples,
+      examples: options.examples
+        ? options.examples
+        : [
+            {
+              id: "basic-request",
+              name: "Basic Request",
+              icon: "http-post",
+              payload: {
+                url: "https://cloud.trigger.dev",
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                rawBody: JSON.stringify({
+                  foo: "bar",
+                }),
+              },
+            },
+          ],
       parsePayload: (rawPayload: any) => {
         const result = RawHttpEndpointPayloadSchema.safeParse(rawPayload);
 
