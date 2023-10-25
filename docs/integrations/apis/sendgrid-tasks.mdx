@@ -14,9 +14,6 @@ Tasks are executed after the job is triggered and are the main building blocks o
 Send an email with a body. [Official SendGrid Docs](https://docs.sendgrid.com/for-developers/sending-email)
 
 ```ts example.ts
-run: async (io, ctx) => {
-  // The 'run' function is asynchronous and takes 'io' and 'ctx' as parameters.
-
   // Using the 'io.sendgrid.sendEmail' method to send an email using SendGrid.
   await io.sendgrid.sendEmail({
     to: <recipient-email-address>, // Recipient's email address.
