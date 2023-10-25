@@ -120,6 +120,7 @@ importers:
       '@types/morgan': ^1.9.3
       '@types/node': ^18.11.15
       '@types/node-fetch': ^2.6.2
+      '@types/pg': 8.6.6
       '@types/prismjs': ^1.26.0
       '@types/qs': ^6.9.7
       '@types/react': 18.2.17
@@ -144,7 +145,7 @@ importers:
       eslint-config-prettier: ^8.5.0
       express: ^4.18.1
       framer-motion: ^10.12.11
-      graphile-worker: ^0.13.0
+      graphile-worker: 0.14.0-rc.0
       highlight.run: ^7.3.4
       humanize-duration: ^3.27.3
       intl-parse-accept-language: ^1.0.0
@@ -234,6 +235,7 @@ importers:
       '@trigger.dev/core': link:../../packages/core
       '@trigger.dev/database': link:../../packages/database
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@types/pg': 8.6.6
       '@uiw/react-codemirror': 4.19.5_th22fcplkuhrqjnlojwclcaim4
       class-variance-authority: 0.5.2_typescript@4.9.4
       clsx: 1.2.1
@@ -244,7 +246,7 @@ importers:
       emails: link:../../packages/emails
       express: 4.18.2
       framer-motion: 10.12.11_biqbaboplfbrettd7655fr4n2y
-      graphile-worker: 0.13.0
+      graphile-worker: 0.14.0-rc.0
       highlight.run: 7.3.4
       humanize-duration: 3.27.3
       intl-parse-accept-language: 1.0.0
@@ -1709,13 +1711,6 @@ packages:
       default-browser-id: 3.0.0
     dev: true
 
-  /@babel/code-frame/7.21.4:
-    resolution: {integrity: sha512-LYvhNKfwWSPpocw8GI7gpK2nq3HSDuEPC/uSYaALSJu9xjsalaaYFOq0Pwt5KmVqwEbZlDu81aLXwBOmD/Fv9g==}
-    engines: {node: '>=6.9.0'}
-    dependencies:
-      '@babel/highlight': 7.22.13
-    dev: true
-
   /@babel/code-frame/7.22.13:
     resolution: {integrity: sha512-XktuhWlJ5g+3TJXc5upd9Ks1HutSArik6jf2eAjYFyIOf4ej3RN+184cZbzDvbPnuTJIUhPKKJE3cIsYTiAT3w==}
     engines: {node: '>=6.9.0'}
@@ -1755,7 +1750,7 @@ packages:
     engines: {node: '>=6.9.0'}
     dependencies:
       '@ampproject/remapping': 2.2.0
-      '@babel/code-frame': 7.21.4
+      '@babel/code-frame': 7.22.13
       '@babel/generator': 7.21.5
       '@babel/helper-compilation-targets': 7.21.5_@babel+core@7.21.8
       '@babel/helper-module-transforms': 7.21.5
@@ -2258,11 +2253,6 @@ packages:
   /@babel/helper-string-parser/7.22.5:
     resolution: {integrity: sha512-mM4COjgZox8U+JcXQwPijIZLElkgEpO5rsERVDJTc2qfCDfERyob6k5WegS14SX18IIjv+XD+GrqNumY5JRCDw==}
     engines: {node: '>=6.9.0'}
-
-  /@babel/helper-validator-identifier/7.19.1:
-    resolution: {integrity: sha512-awrNfaMtnHUr653GgGEs++LlAvW6w+DcPrOliSMXWCKo597CwL5Acf/wWdNkf/tfEQE3mjkeD1YOVZOUV/od1w==}
-    engines: {node: '>=6.9.0'}
-    dev: true
 
   /@babel/helper-validator-identifier/7.22.15:
     resolution: {integrity: sha512-4E/F9IIEi8WR94324mbDUMo074YTheJmd7eZF5vITTeYchqAi6sYXRLHUVsmkdmY4QjfKTcB2jB7dVP3NaBElQ==}
@@ -5179,7 +5169,7 @@ packages:
     engines: {node: '>=6.9.0'}
     dependencies:
       '@babel/helper-string-parser': 7.21.5
-      '@babel/helper-validator-identifier': 7.19.1
+      '@babel/helper-validator-identifier': 7.22.15
       to-fast-properties: 2.0.0
     dev: true
 
@@ -21013,9 +21003,9 @@ packages:
   /graphemer/1.4.0:
     resolution: {integrity: sha512-EtKwoO6kxCL9WO5xipiHTZlSzBm7WLT627TqC/uVRd0HKmq8NXyebnNYxDoBi7wt8eTWrUrKXCOVaFq9x1kgag==}
 
-  /graphile-worker/0.13.0:
-    resolution: {integrity: sha512-8Hl5XV6hkabZRhYzvbUfvjJfPFR5EPxYRVWlzQC2rqYHrjULTLBgBYZna5R9ukbnsbWSvn4vVrzOBIOgIC1jjw==}
-    engines: {node: '>=10.0.0'}
+  /graphile-worker/0.14.0-rc.0:
+    resolution: {integrity: sha512-KV6nP1ljKlo/qROkB4RJS19OdnrM1yzWjDruf0BgLWx6gDTT+FECeHAFC+gxsvShm/rTyDB4OIPwqMMu/oiOqg==}
+    engines: {node: '>=14.0.0'}
     hasBin: true
     dependencies:
       '@graphile/logger': 0.2.0
@@ -21025,8 +21015,8 @@ packages:
       cosmiconfig: 7.1.0
       json5: 2.2.3
       pg: 8.10.0
-      tslib: 2.4.1
-      yargs: 16.2.0
+      tslib: 2.6.2
+      yargs: 17.7.2
     transitivePeerDependencies:
       - pg-native
     dev: false
@@ -32315,6 +32305,7 @@ packages:
       string-width: 4.2.3
       y18n: 5.0.8
       yargs-parser: 20.2.9
+    dev: true
 
   /yargs/17.1.1:
     resolution: {integrity: sha512-c2k48R0PwKIqKhPMWjeiF6y2xY/gPMUlro0sgxqXpbOIohWiLNXWslsootttv7E1e73QPAMQSg5FeySbVcpsPQ==}
