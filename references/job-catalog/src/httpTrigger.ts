@@ -12,6 +12,7 @@ export const client = new TriggerClient({
 const whatsApp = client.defineHttpEndpoint({
   id: "whatsapp",
   source: "whatsapp.com",
+  icon: "whatsapp",
   //only needed for strange APIs like WhatsApp which don't setup the webhook until you pass the test
   respondWith: {
     filter: {
@@ -37,8 +38,8 @@ const whatsApp = client.defineHttpEndpoint({
 });
 
 client.defineJob({
-  id: "event-example-1",
-  name: "Event Example 1",
+  id: "http-whatsapp",
+  name: "HTTP WhatsApp",
   version: "1.0.0",
   enabled: true,
   trigger: whatsApp.onRequest({ filter: { body: { event: ["message"] } } }),
@@ -46,7 +47,7 @@ client.defineJob({
     //         ^?
     const body = await payload.json();
     const { message } = body;
-    await io.logger.info(`Received message from ${message.from}`);
+    await io.logger.info(`Received message from ${message}`);
   },
 });
 
