@@ -116,9 +116,11 @@ export default function LoginPage() {
         <LoginForm />
       </div>
       <div className="col-span-7 grid h-full w-full grid-flow-row grid-cols-5 grid-rows-6 gap-4 p-4">
-        <div className={cn(layout, gridCell, mediumSquare)}>
-          <ServerStackIcon className={cn(opacity, features, "group-hover:text-blue-500")} />
-        </div>
+        <LoginTooltip side="bottom" content={<ServerlessTooltipContent />}>
+          <div className={cn(layout, gridCell, mediumSquare)}>
+            <ServerStackIcon className={cn(opacity, features, "group-hover:text-blue-500")} />
+          </div>
+        </LoginTooltip>
         <LoginTooltip side="bottom" content={<SlackTooltipContent />}>
           <div className={cn(layout, gridCell)}>
             <Icon icon="slack" className={cn(logos, opacity)} />
@@ -149,35 +151,41 @@ export default function LoginPage() {
             </div>
           </div>
         </LoginTooltip>
-        <LoginTooltip side="left" content={<AirtableTooltipContent />} className="">
+        <LoginTooltip side="left" content={<AirtableTooltipContent />}>
           <div className={cn("", layout, gridCell)}>
             <Icon icon="airtable" className={cn(logos, opacity)} />
           </div>
         </LoginTooltip>
-        <LoginTooltip side="left" content={<TypeformTooltipContent />} className="">
+        <LoginTooltip side="left" content={<TypeformTooltipContent />}>
           <div className={cn("", layout, gridCell)}>
             <Icon icon="typeform" className={cn(logos, opacity)} />
           </div>
         </LoginTooltip>
-        <div className={cn(layout, gridCell, mediumSquare)}>
-          <Icon icon="webhook" className={cn(opacity, features, "group-hover:text-green-500")} />
-        </div>
+        <LoginTooltip side="left" content={<ReactHooksTooltipContent />}>
+          <div className={cn(layout, gridCell, mediumSquare)}>
+            <Icon icon="webhook" className={cn(opacity, features, "group-hover:text-green-500")} />
+          </div>
+        </LoginTooltip>
         <LoginTooltip side="right" content={<SupabaseTooltipContent />}>
           <div className={cn(layout, gridCell)}>
             <Icon icon="supabase" className={cn(logos, opacity)} />
           </div>
         </LoginTooltip>
-        <div className={cn(layout, gridCell, mediumSquare)}>
-          <CodeBracketIcon className={cn(opacity, features, "group-hover:text-rose-500")} />
-        </div>
+        <LoginTooltip side="top" content={<InYourCodebaseTooltipContent />}>
+          <div className={cn(layout, gridCell, mediumSquare)}>
+            <CodeBracketIcon className={cn(opacity, features, "group-hover:text-rose-500")} />
+          </div>
+        </LoginTooltip>
         <LoginTooltip side="right" content={<ResendTooltipContent />}>
           <div className={cn(layout, gridCell)}>
             <Icon icon="resend" className={cn(logos, opacity)} />
           </div>
         </LoginTooltip>
-        <div className={cn(layout, gridCell, wide)}>
-          <CloudIcon className={cn(opacity, features, "h-20 w-20 group-hover:text-cyan-500")} />
-        </div>
+        <LoginTooltip side="left" content={<CloudTooltipContent />}>
+          <div className={cn(layout, gridCell, wide)}>
+            <CloudIcon className={cn(opacity, features, "h-20 w-20 group-hover:text-cyan-500")} />
+          </div>
+        </LoginTooltip>
       </div>
     </main>
   );
@@ -186,7 +194,7 @@ export default function LoginPage() {
 function LoginForm() {
   const data = useTypedLoaderData<typeof loader>();
   return (
-    <div className="h-full p-6">
+    <div className="flex h-full flex-col justify-between p-6">
       <div className="flex items-center justify-between">
         <a href="https://trigger.dev">
           <LogoType className="w-36" />
@@ -200,9 +208,9 @@ function LoginForm() {
           action={`/auth/github${data.redirectTo ? `?redirectTo=${data.redirectTo}` : ""}`}
           method="post"
         >
-          <div className="flex flex-col items-center gap-y-6">
-            <Header1 className="pb-4 font-normal lg:text-3xl">Welcome</Header1>
-            <Paragraph variant="small" className="mb-6">
+          <div className="flex flex-col items-center">
+            <Header1 className="pb-4 font-normal lg:text-4xl">Welcome</Header1>
+            <Paragraph variant="base" className="mb-6">
               Create an account or login
             </Paragraph>
             <Fieldset>
@@ -246,6 +254,10 @@ function LoginForm() {
           </div>
         </Form>
       </div>
+      <Paragraph variant="extra-small" className="text-center">
+        Having login issues? <TextLink href="mailto:help@trigger.dev">Email us</TextLink> or{" "}
+        <TextLink href="https://trigger.dev/discord">ask us in Discord</TextLink>
+      </Paragraph>
     </div>
   );
 }
@@ -368,6 +380,68 @@ function QuoteTooltipContent() {
           Loved by developers
         </Paragraph>
       </div>
+    </>
+  );
+}
+
+function InYourCodebaseTooltipContent() {
+  return (
+    <>
+      <div className="mb-2 flex items-center gap-x-1.5">
+        <CodeBracketIcon className="h-5 w-5 text-rose-500" />
+        <Paragraph variant="base/bright" className="font-semibold">
+          In your codebase
+        </Paragraph>
+      </div>
+      <Paragraph variant="base">Create Jobs where they belong: in your codebase.</Paragraph>
+    </>
+  );
+}
+
+function CloudTooltipContent() {
+  return (
+    <>
+      <div className="mb-2 flex items-center gap-x-1.5">
+        <CloudIcon className="h-5 w-5 text-cyan-500" />
+        <Paragraph variant="base/bright" className="font-semibold">
+          Zero infrastructure
+        </Paragraph>
+      </div>
+      <Paragraph variant="base">
+        Use our SDK to write Jobs in your codebase and deploy as you normally do. That's it.
+      </Paragraph>
+    </>
+  );
+}
+
+function ServerlessTooltipContent() {
+  return (
+    <>
+      <div className="mb-2 flex items-center gap-x-1.5">
+        <ServerStackIcon className="h-5 w-5 text-blue-500" />
+        <Paragraph variant="base/bright" className="font-semibold">
+          Full serverless support
+        </Paragraph>
+      </div>
+      <Paragraph variant="base">
+        Run long-running background jobs without worrying about timeouts.
+      </Paragraph>
+    </>
+  );
+}
+
+function ReactHooksTooltipContent() {
+  return (
+    <>
+      <div className="mb-2 flex items-center gap-x-1.5">
+        <Icon icon="webhook" className="h-5 w-5 text-green-500" />
+        <Paragraph variant="base/bright" className="font-semibold">
+          Show Job progress in your UI
+        </Paragraph>
+      </div>
+      <Paragraph variant="base">
+        Use our React hooks to display a real-time status to your users.
+      </Paragraph>
     </>
   );
 }
