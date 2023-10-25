@@ -17,6 +17,9 @@ const whatsApp = client.defineHttpEndpoint({
   respondWith: {
     filter: {
       method: ["GET"],
+      query: {
+        "hub.mode": [{ $startsWith: "sub" }],
+      },
     },
     handler: async (request, context) => {
       const searchParams = new URL(request.url).searchParams;
