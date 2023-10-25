@@ -23,9 +23,7 @@ export class RegisterHttpEndpointService {
 
     const secretKey = `httpendpoint:${endpoint.projectId}:${httpEndpointMetadata.id}`;
 
-    //todo association between EventRecord and httpEndpoint
     return await $transaction(this.#prismaClient, async (tx) => {
-      //upsert the TriggerHttpEndpoint and TriggerHttpEndpointEnvironment
       const httpEndpoint = await tx.triggerHttpEndpoint.upsert({
         where: {
           key_projectId: {
@@ -49,22 +47,6 @@ export class RegisterHttpEndpointService {
               },
             },
           },
-          httpEndpointEnvironments: {
-            connectOrCreate: {
-              where: {
-                environmentId_httpEndpointId: {
-                  environmentId: endpoint.environment.id,
-                  //todo this is wrong
-                  httpEndpointId: httpEndpointMetadata.id,
-                },
-              },
-              create: {
-                active: httpEndpointMetadata.enabled,
-                immediateResponseFilter: httpEndpointMetadata.immediateResponseFilter,
-                environmentId: endpoint.environment.id,
-              },
-            },
-          },
           project: {
             connect: {
               id: endpoint.projectId,
@@ -75,25 +57,30 @@ export class RegisterHttpEndpointService {
           title: httpEndpointMetadata.title,
           icon: httpEndpointMetadata.icon,
           properties: httpEndpointMetadata.properties,
-          httpEndpointEnvironments: {
-            update: {
-              where: {
-                environmentId_httpEndpointId: {
-                  environmentId: endpoint.environment.id,
-                  //todo this is wrong
-                  httpEndpointId: httpEndpointMetadata.id,
-                },
-              },
-              data: {
-                active: httpEndpointMetadata.enabled,
-                immediateResponseFilter: httpEndpointMetadata.immediateResponseFilter,
-                environmentId: endpoint.environment.id,
-              },
-            },
-          },
         },
         include: {
           secretReference: true,
+        },
+      });
+
+      const httpEndpointEnvironment = await tx.triggerHttpEndpointEnvironment.upsert({
+        where: {
+          environmentId_httpEndpointId: {
+            environmentId: endpoint.environment.id,
+            httpEndpointId: httpEndpoint.id,
+          },
+        },
+        create: {
+          active: httpEndpointMetadata.enabled,
+          immediateResponseFilter: httpEndpointMetadata.immediateResponseFilter,
+          environmentId: endpoint.environment.id,
+          httpEndpointId: httpEndpoint.id,
+        },
+        update: {
+          active: httpEndpointMetadata.enabled,
+          immediateResponseFilter: httpEndpointMetadata.immediateResponseFilter,
+          environmentId: endpoint.environment.id,
+          httpEndpointId: httpEndpoint.id,
         },
       });
 
