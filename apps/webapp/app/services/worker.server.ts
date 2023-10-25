@@ -13,7 +13,6 @@ import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
 import { integrationAuthRepository } from "./externalApis/integrationAuthRepository.server";
 import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
 import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated.server";
-import { PerformRunExecutionV1Service } from "./runs/performRunExecutionV1.server";
 import { PerformRunExecutionV2Service } from "./runs/performRunExecutionV2.server";
 import { StartRunService } from "./runs/startRun.server";
 import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.server";
@@ -21,6 +20,7 @@ import { ActivateSourceService } from "./sources/activateSource.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout";
+import { ProbeEndpointService } from "./endpoints/probeEndpoint.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -75,15 +75,15 @@ const workerCatalog = {
   connectionCreated: z.object({
     id: z.string(),
   }),
+  probeEndpoint: z.object({
+    id: z.string(),
+  }),
   simulate: z.object({
     seconds: z.number(),
   }),
 };
 
 const executionWorkerCatalog = {
-  performRunExecution: z.object({
-    id: z.string(),
-  }),
   performRunExecutionV2: z.object({
     id: z.string(),
     reason: z.enum(["EXECUTE_JOB", "PREPROCESS"]),
@@ -316,6 +316,15 @@ function getWorkerQueue() {
           });
         },
       },
+      probeEndpoint: {
+        priority: 10,
+        maxAttempts: 1,
+        handler: async (payload, job) => {
+          const service = new ProbeEndpointService();
+
+          await service.call(payload.id);
+        },
+      },
       simulate: {
         maxAttempts: 5,
         handler: async (payload, job) => {
@@ -341,17 +350,6 @@ function getExecutionWorkerQueue() {
     shutdownTimeoutInMs: env.GRACEFUL_SHUTDOWN_TIMEOUT,
     schema: executionWorkerCatalog,
     tasks: {
-      performRunExecution: {
-        priority: 0, // smaller number = higher priority
-        maxAttempts: 1,
-        handler: async (payload, job) => {
-          // This is a legacy task that we don't use anymore, but needs to be here for backwards compatibility
-          // TODO: remove this once all performRunExecution tasks have been processed
-          const service = new PerformRunExecutionV1Service();
-
-          await service.call(payload.id);
-        },
-      },
       performRunExecutionV2: {
         priority: 0, // smaller number = higher priority
         maxAttempts: 12,

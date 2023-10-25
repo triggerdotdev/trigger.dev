@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/openai",
-  "version": "2.2.0",
+  "version": "2.2.2",
   "description": "The official OpenAI integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,19 +16,21 @@
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "18",
     "rimraf": "^3.0.2",
-    "tsup": "^6.5.0"
+    "tsup": "^6.5.0",
+    "typescript": "^4.9.4"
   },
   "scripts": {
     "clean": "rimraf dist",
     "build": "npm run clean && npm run build:tsup",
-    "build:tsup": "tsup"
+    "build:tsup": "tsup",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "openai": "^4.2.0",
-    "@trigger.dev/sdk": "workspace:^2.2.0",
-    "@trigger.dev/integration-kit": "workspace:^2.2.0"
+    "openai": "^4.13.0",
+    "@trigger.dev/sdk": "workspace:^2.2.2",
+    "@trigger.dev/integration-kit": "workspace:^2.2.2"
   },
   "engines": {
-    "node": ">=16.8.0"
+    "node": ">=18.0.0"
   }
 }

@@ -2,6 +2,7 @@ import { IntegrationTaskKey } from "@trigger.dev/sdk";
 import { Model } from "openai/resources";
 import { OpenAIRunTask } from "./index";
 import OpenAI from "openai";
+import { OpenAIRequestOptions } from "./types";
 
 type DeleteFineTunedModelRequest = {
   fineTunedModelId: string;
@@ -13,11 +14,15 @@ export class Models {
     this.runTask = runTask;
   }
 
-  retrieve(key: IntegrationTaskKey, params: { model: string }): Promise<Model> {
+  retrieve(
+    key: IntegrationTaskKey,
+    params: { model: string },
+    options: OpenAIRequestOptions = {}
+  ): Promise<Model> {
     return this.runTask(
       key,
       async (client) => {
-        return client.models.retrieve(params.model);
+        return client.models.retrieve(params.model, options);
       },
       {
         name: "Retrieve model",
@@ -32,11 +37,11 @@ export class Models {
     );
   }
 
-  list(key: IntegrationTaskKey): Promise<Model[]> {
+  list(key: IntegrationTaskKey, options: OpenAIRequestOptions = {}): Promise<Model[]> {
     return this.runTask(
       key,
       async (client) => {
-        const result = await client.models.list();
+        const result = await client.models.list(options);
         return result.data;
       },
       {
@@ -48,12 +53,13 @@ export class Models {
 
   delete(
     key: IntegrationTaskKey,
-    params: DeleteFineTunedModelRequest
+    params: DeleteFineTunedModelRequest,
+    options: OpenAIRequestOptions = {}
   ): Promise<OpenAI.Models.ModelDeleted> {
     return this.runTask(
       key,
       async (client) => {
-        return client.models.del(params.fineTunedModelId);
+        return client.models.del(params.fineTunedModelId, options);
       },
       {
         name: "Delete fine tune model",

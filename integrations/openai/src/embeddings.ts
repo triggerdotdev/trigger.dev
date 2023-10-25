@@ -2,6 +2,7 @@ import { IntegrationTaskKey } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 import { OpenAIRunTask } from "./index";
 import { createTaskUsageProperties } from "./taskUtils";
+import { OpenAIRequestOptions } from "./types";
 
 export class Embeddings {
   runTask: OpenAIRunTask;
@@ -12,12 +13,16 @@ export class Embeddings {
 
   create(
     key: IntegrationTaskKey,
-    params: OpenAI.EmbeddingCreateParams
+    params: OpenAI.EmbeddingCreateParams,
+    options: OpenAIRequestOptions = {}
   ): Promise<OpenAI.Embeddings.CreateEmbeddingResponse> {
     return this.runTask(
       key,
       async (client, task) => {
-        const response = await client.embeddings.create(params);
+        const response = await client.embeddings.create(params, {
+          idempotencyKey: task.idempotencyKey,
+          ...options,
+        });
         task.outputProperties = createTaskUsageProperties(response.usage);
         return response;
       },
