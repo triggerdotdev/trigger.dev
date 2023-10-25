@@ -14,9 +14,6 @@ Tasks are executed after the job is triggered and are the main building blocks o
 Send an email to a recipient with a text payload. [Official Resend Docs](https://resend.com/docs/api-reference/emails/send-email)
 
 ```ts example.ts
-run: async (io, ctx) => {
-  // The 'run' function is asynchronous and takes 'io' and 'ctx' as parameters.
-
   // Using the 'io.resend.sendEmail' method to send an email using the Resend service.
   await io.resend.sendEmail("send-email", {
     to: <recipient-email-address>, // Recipient's email address.
