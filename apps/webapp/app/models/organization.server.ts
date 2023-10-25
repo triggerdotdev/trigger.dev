@@ -9,6 +9,7 @@ import { customAlphabet } from "nanoid";
 import slug from "slug";
 import { prisma, PrismaClientOrTransaction } from "~/db.server";
 import { createProject } from "./project.server";
+import { generate } from "random-words";
 
 export type { Organization };
 
@@ -135,12 +136,14 @@ export async function createEnvironment(
   const slug = envSlug(type);
   const apiKey = createApiKeyForEnv(type);
   const pkApiKey = createPkApiKeyForEnv(type);
+  const shortcode = createShortcode().join("-");
 
   return await prismaClient.runtimeEnvironment.create({
     data: {
       slug,
       apiKey,
       pkApiKey,
+      shortcode,
       autoEnableInternalSources: type !== "DEVELOPMENT",
       organization: {
         connect: {
@@ -181,4 +184,8 @@ function envSlug(environmentType: RuntimeEnvironment["type"]) {
       return "prev";
     }
   }
+}
+
+function createShortcode() {
+  return generate({ exactly: 2 });
 }

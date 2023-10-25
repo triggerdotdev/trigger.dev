@@ -90,6 +90,7 @@
     "posthog-node": "^3.1.1",
     "prism-react-renderer": "^1.3.5",
     "prismjs": "^1.29.0",
+    "random-words": "^2.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hot-toast": "^2.4.0",
