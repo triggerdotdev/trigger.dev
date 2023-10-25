@@ -4,6 +4,7 @@ import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 import { generateSecret } from "../sources/utils.server";
 import { getSecretStore } from "../secrets/secretStore.server";
 import { z } from "zod";
+import { logger } from "../logger.server";
 
 export class RegisterHttpEndpointService {
   #prismaClient: PrismaClientOrTransaction;
@@ -87,7 +88,12 @@ export class RegisterHttpEndpointService {
       //create/update the secret
       //we don't upsert because we don't want to change an existing one
       const secretStore = getSecretStore(httpEndpoint.secretReference.provider);
-      const existingSecret = await secretStore.getSecret(z.string(), secretKey);
+      const existingSecret = await secretStore.getSecret(
+        z.object({
+          secret: z.string(),
+        }),
+        httpEndpoint.secretReference.key
+      );
       if (!existingSecret) {
         await secretStore.setSecret<{ secret: string }>(secretKey, {
           secret: generateSecret(),
