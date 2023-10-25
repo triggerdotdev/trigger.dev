@@ -6,6 +6,7 @@ export * from "./retry";
 export * from "./replacements";
 export * from "./searchParams";
 export * from "./eventFilterMatches";
+export * from "./requestFilterMatches";
 export * from "./bloom";
 
 export const API_VERSIONS = {

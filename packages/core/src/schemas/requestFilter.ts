@@ -7,6 +7,8 @@ const StringMatchSchema = z.union([
   z.array(z.union(stringPatternMatchers)),
 ]);
 
+export type StringMatch = z.infer<typeof StringMatchSchema>;
+
 export const HTTPMethodUnionSchema = z.union([
   z.literal("GET"),
   z.literal("POST"),
