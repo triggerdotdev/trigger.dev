@@ -137,7 +137,7 @@ export default function LoginPage() {
         <LoginTooltip side="top" content={<QuoteTooltipContent />}>
           <div className={cn(layout, gridCell, wider)}>
             <div className="p-4">
-              <Header3 className="relative text-2xl font-normal leading-8 text-gray-600 transition before:absolute before:-top-8 before:left-0 before:text-7xl before:text-slate-600 before:opacity-20 before:content-['❝'] group-hover:text-slate-500 group-hover:before:opacity-30">
+              <Header3 className="relative text-2xl font-normal leading-8 text-gray-600 transition before:relative before:right-1 before:top-5 before:text-7xl before:text-slate-600 before:opacity-20 before:content-['❝'] group-hover:text-slate-500 group-hover:before:opacity-30">
                 {randomQuote?.quote}
               </Header3>
               <Paragraph
