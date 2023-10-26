@@ -82,6 +82,11 @@ const workerCatalog = {
   simulate: z.object({
     seconds: z.number(),
   }),
+  simulateBatch: z.array(
+    z.object({
+      seconds: z.number(),
+    })
+  ),
 };
 
 const executionWorkerCatalog = {
@@ -332,6 +337,12 @@ function getWorkerQueue() {
         maxAttempts: 5,
         handler: async (payload, job) => {
           await new Promise((resolve) => setTimeout(resolve, payload.seconds * 1000));
+        },
+      },
+      simulateBatch: {
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          await new Promise((resolve) => setTimeout(resolve, payload[0].seconds * 1000));
         },
       },
     },
