@@ -77,4 +77,26 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "no-real-task",
+  name: "No real Task",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "no.real.task",
+    schema: z.object({
+      userId: z.string(),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Hello World", { ctx, payload });
+    await io.wait("Wait 1 sec", 1);
+    //this is a real task
+    // await io.runTask("task-example-1", async () => {
+    //   return {
+    //     message: "Hello World",
+    //   };
+    // });
+  },
+});
+
 createExpressServer(client);
