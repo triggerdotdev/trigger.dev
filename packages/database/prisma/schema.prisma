@@ -1142,6 +1142,8 @@ model TriggerHttpEndpointEnvironment {
 
   skipTriggeringRuns Boolean @default(false)
 
+  source String
+
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
 
