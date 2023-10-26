@@ -382,12 +382,13 @@ model Endpoint {
   beforeCompleteTaskThreshold Int @default(750)
   afterCompleteTaskThreshold  Int @default(750)
 
-  jobVersions           JobVersion[]
-  jobRuns               JobRun[]
-  httpRequestDeliveries HttpSourceRequestDelivery[]
-  dynamictriggers       DynamicTrigger[]
-  sources               TriggerSource[]
-  indexings             EndpointIndex[]
+  jobVersions              JobVersion[]
+  jobRuns                  JobRun[]
+  httpRequestDeliveries    HttpSourceRequestDelivery[]
+  dynamictriggers          DynamicTrigger[]
+  sources                  TriggerSource[]
+  indexings                EndpointIndex[]
+  httpEndpointEnvironments TriggerHttpEndpointEnvironment[]
 
   @@unique([environmentId, slug])
 }
@@ -1139,13 +1140,19 @@ model TriggerHttpEndpointEnvironment {
   /// If this is set, requests will be tested against the filter and we'll call the user's server immediately
   immediateResponseFilter Json?
 
+  skipTriggeringRuns Boolean @default(false)
+
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
+
+  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  endpointId String
 
   httpEndpoint   TriggerHttpEndpoint @relation(fields: [httpEndpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   httpEndpointId String
 
   @@unique([environmentId, httpEndpointId])
+  @@unique([endpointId, httpEndpointId])
 }
 
 model MissingConnection {
