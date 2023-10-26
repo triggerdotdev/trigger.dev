@@ -77,6 +77,7 @@ export class RegisterHttpEndpointService {
           endpointId: endpoint.id,
           httpEndpointId: httpEndpoint.id,
           skipTriggeringRuns: httpEndpointMetadata.skipTriggeringRuns,
+          source: httpEndpointMetadata.source,
         },
         update: {
           active: httpEndpointMetadata.enabled,
@@ -85,6 +86,7 @@ export class RegisterHttpEndpointService {
           endpointId: endpoint.id,
           httpEndpointId: httpEndpoint.id,
           skipTriggeringRuns: httpEndpointMetadata.skipTriggeringRuns,
+          source: httpEndpointMetadata.source,
         },
       });
 

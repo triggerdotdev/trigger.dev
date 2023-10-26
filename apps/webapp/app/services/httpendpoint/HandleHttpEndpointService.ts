@@ -189,6 +189,7 @@ export class HandleHttpEndpointService {
     await ingestService.call(environment, {
       id: `${httpEndpoint.id}.${headerId}`,
       name: `httpendpoint.${httpEndpoint.key}`,
+      source: httpEndpointEnvironment.source,
       payload: event,
     });
 

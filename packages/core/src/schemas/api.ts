@@ -308,6 +308,7 @@ const HttpEndpointMetadataSchema = z.object({
   event: EventSpecificationSchema,
   immediateResponseFilter: RequestFilterSchema.optional(),
   skipTriggeringRuns: z.boolean().optional(),
+  source: z.string(),
 });
 
 export type HttpEndpointMetadata = z.infer<typeof HttpEndpointMetadataSchema>;
