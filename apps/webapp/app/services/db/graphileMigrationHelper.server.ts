@@ -30,6 +30,8 @@ export class GraphileMigrationHelperService {
   }
 
   async #upsertBatchJobFunction() {
+    this.#logDebug("Upserting custom batch job function");
+
     const prismaSchema = new URL(env.DATABASE_URL).searchParams.get("schema") ?? "public";
 
     // Differences to add_job:
@@ -65,7 +67,6 @@ export class GraphileMigrationHelperService {
           queue_name := queue_name,
           run_at := run_at,
           max_attempts := max_attempts,
-          max_payloads := max_payloads,
           priority := priority,
           flags := flags,
           job_key_mode := job_key_mode
@@ -133,6 +134,11 @@ export class GraphileMigrationHelperService {
 
     // add 15s to graceful shutdown timeout, just to be safe
     const migrationDelayInMs = env.GRACEFUL_SHUTDOWN_TIMEOUT + 15000;
+
+    this.#logDebug("Delaying worker startup due to pending migration", {
+      latestMigration,
+      migrationDelayInMs,
+    });
 
     console.log(`⚠️  detected pending graphile migration`);
     console.log(`⚠️  delaying worker startup by ${migrationDelayInMs}ms`);
