@@ -32,14 +32,24 @@ export class GraphileMigrationHelperService {
   async #upsertBatchJobFunction() {
     const prismaSchema = new URL(env.DATABASE_URL).searchParams.get("schema") ?? "public";
 
+    // Differences to add_job:
+    // - job_key is now required
+    // - job_key_mode defaults to 'preserve_run_at'
+    // - max_payloads is new
+    // - payload must be a JSON array
+
     await this.#prismaClient.$executeRawUnsafe(`
       CREATE OR REPLACE FUNCTION ${prismaSchema}.add_batch_job(
+        identifier text,
         job_key text,
-        job_key_new int,
-        task_identifier text,
-        payload json,
-        maximum_payloads int,
-        run_at timestamptz
+        payload json default null::json,
+        queue_name text default null::text,
+        run_at timestamp with time zone default null::timestamp with time zone,
+        max_attempts integer default null::integer,
+        max_payloads integer default null::integer,
+        priority integer default null::integer,
+        flags text[] default null::text[],
+        job_key_mode text default 'preserve_run_at'::text
       ) RETURNS ${env.WORKER_SCHEMA}.jobs AS $$
       DECLARE
         v_job ${env.WORKER_SCHEMA}.jobs;
@@ -49,14 +59,20 @@ export class GraphileMigrationHelperService {
         END IF;
 
         v_job := ${env.WORKER_SCHEMA}.add_job(
-          identifier := task_identifier,
-          payload := payload,
-          run_at := run_at,
+          identifier := identifier,
           job_key := job_key,
-          job_key_mode := 'preserve_run_at'
+          payload := payload,
+          queue_name := queue_name,
+          run_at := run_at,
+          max_attempts := max_attempts,
+          max_payloads := max_payloads,
+          priority := priority,
+          flags := flags,
+          job_key_mode := job_key_mode
         );
         
-        IF json_array_length(v_job.payload) >= maximum_payloads THEN
+        IF max_payloads IS NOT NULL
+        AND json_array_length(v_job.payload) >= max_payloads THEN
           UPDATE jobs SET run_at = NOW() WHERE jobs.id = v_job.id RETURNING * INTO v_job;
           -- lie that this job was just inserted so a worker picks it up ASAP
           PERFORM pg_notify('jobs:insert', '');
