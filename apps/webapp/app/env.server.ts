@@ -11,6 +11,7 @@ const EnvironmentSchema = z.object({
   MAGIC_LINK_SECRET: z.string(),
   ENCRYPTION_KEY: z.string(),
   REMIX_APP_PORT: z.string().optional(),
+  WHITELISTED_EMAILS: z.string().optional(),
   LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
   APP_ORIGIN: z.string().default("http://localhost:3030"),
   APP_ENV: z
