@@ -1,13 +1,12 @@
 import {
   API_VERSIONS,
-  ApiEventLog,
-  DeliverEventResponseSchema,
-  DeserializedJson,
+  ConnectionAuth,
   EndpointHeadersSchema,
   ErrorWithStackSchema,
   HttpSourceRequest,
   HttpSourceResponseSchema,
   IndexEndpointResponseSchema,
+  NormalizedResponseSchema,
   PongResponse,
   PongResponseSchema,
   PreprocessRunBody,
@@ -19,10 +18,9 @@ import {
   ValidateResponse,
   ValidateResponseSchema,
 } from "@trigger.dev/core";
+import { performance } from "node:perf_hooks";
 import { safeBodyFromResponse, safeParseBodyFromResponse } from "~/utils/json";
 import { logger } from "./logger.server";
-import { ConnectionAuth } from "@trigger.dev/core";
-import { performance } from "node:perf_hooks";
 
 export class EndpointApiError extends Error {
   constructor(message: string, stack?: string) {
@@ -241,6 +239,43 @@ export class EndpointApi {
     });
 
     return HttpSourceResponseSchema.parse(anyBody);
+  }
+
+  async deliverHttpEndpointRequestForResponse(options: {
+    key: string;
+    secret: string;
+    request: HttpSourceRequest;
+  }) {
+    const response = await safeFetch(this.url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "x-trigger-api-key": this.apiKey,
+        "x-trigger-action": "DELIVER_HTTP_ENDPOINT_REQUEST_FOR_RESPONSE",
+        "x-ts-key": options.key,
+        "x-ts-secret": options.secret,
+        "x-ts-http-url": options.request.url,
+        "x-ts-http-method": options.request.method,
+        "x-ts-http-headers": JSON.stringify(options.request.headers),
+      },
+      body: options.request.rawBody,
+    });
+
+    if (!response) {
+      throw new Error(`Could not connect to endpoint ${this.url}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(`Could not connect to endpoint ${this.url}. Status code: ${response.status}`);
+    }
+
+    const anyBody = await response.json();
+
+    logger.debug("deliverHttpEndpointRequestForResponse() response from endpoint", {
+      body: anyBody,
+    });
+
+    return { response, parser: NormalizedResponseSchema };
   }
 
   async validate(): Promise<ValidateResponse> {

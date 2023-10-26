@@ -175,6 +175,14 @@ export const HttpSourceRequestHeadersSchema = z.object({
 
 export type HttpSourceRequestHeaders = z.output<typeof HttpSourceRequestHeadersSchema>;
 
+export const HttpEndpointRequestHeadersSchema = z.object({
+  "x-ts-key": z.string(),
+  "x-ts-secret": z.string(),
+  "x-ts-http-url": z.string(),
+  "x-ts-http-method": z.string(),
+  "x-ts-http-headers": z.string().transform((s) => z.record(z.string()).parse(JSON.parse(s))),
+});
+
 export const PongSuccessResponseSchema = z.object({
   ok: z.literal(true),
   triggerVersion: z.string().optional(),
@@ -299,6 +307,7 @@ const HttpEndpointMetadataSchema = z.object({
   properties: z.array(DisplayPropertySchema).optional(),
   event: EventSpecificationSchema,
   immediateResponseFilter: RequestFilterSchema.optional(),
+  skipTriggeringRuns: z.boolean().optional(),
 });
 
 export type HttpEndpointMetadata = z.infer<typeof HttpEndpointMetadataSchema>;

@@ -6,6 +6,7 @@ import {
   GetRunOptionsWithTaskDetails,
   GetRunsOptions,
   HandleTriggerSource,
+  HttpEndpointRequestHeadersSchema,
   HttpSourceRequestHeadersSchema,
   HttpSourceResponseMetadata,
   IndexEndpointResponse,
@@ -429,6 +430,58 @@ export class TriggerClient {
             events,
             response,
             metadata,
+          },
+          headers: this.#standardResponseHeaders(timeOrigin),
+        };
+      }
+      case "DELIVER_HTTP_ENDPOINT_REQUEST_FOR_RESPONSE": {
+        const headers = HttpEndpointRequestHeadersSchema.safeParse(
+          Object.fromEntries(request.headers.entries())
+        );
+
+        if (!headers.success) {
+          return {
+            status: 400,
+            body: {
+              message: "Invalid headers",
+            },
+          };
+        }
+
+        const sourceRequestNeedsBody = headers.data["x-ts-http-method"] !== "GET";
+
+        const sourceRequestInit: RequestInit = {
+          method: headers.data["x-ts-http-method"],
+          headers: headers.data["x-ts-http-headers"],
+          body: sourceRequestNeedsBody ? request.body : undefined,
+        };
+
+        if (sourceRequestNeedsBody) {
+          try {
+            // @ts-ignore
+            sourceRequestInit.duplex = "half";
+          } catch (error) {
+            // ignore
+          }
+        }
+
+        const sourceRequest = new Request(headers.data["x-ts-http-url"], sourceRequestInit);
+
+        const key = headers.data["x-ts-key"];
+        const secret = headers.data["x-ts-secret"];
+
+        const { response } = await this.#handleHttpEndpointRequestForResponse(
+          {
+            key,
+            secret,
+          },
+          sourceRequest
+        );
+
+        return {
+          status: 200,
+          body: {
+            response,
           },
           headers: this.#standardResponseHeaders(timeOrigin),
         };
@@ -1020,6 +1073,74 @@ export class TriggerClient {
         },
       },
       metadata: results.metadata,
+    };
+  }
+
+  async #handleHttpEndpointRequestForResponse(
+    data: {
+      key: string;
+      secret: string;
+    },
+    sourceRequest: Request
+  ): Promise<{
+    response: NormalizedResponse;
+  }> {
+    this.#internalLogger.debug("Handling HTTP Endpoint request for response", {
+      data,
+    });
+
+    const httpEndpoint = this.#registeredHttpEndpoints[data.key];
+
+    if (!httpEndpoint) {
+      this.#internalLogger.debug("No handler registered for HTTP Endpoint", {
+        data,
+      });
+
+      return {
+        response: {
+          status: 200,
+          body: {
+            ok: true,
+          },
+        },
+      };
+    }
+
+    const handledResponse = await httpEndpoint.handleRequest(sourceRequest, {
+      secret: data.secret,
+    });
+
+    if (!handledResponse) {
+      return {
+        response: {
+          status: 200,
+          body: {
+            ok: true,
+          },
+        },
+      };
+    }
+
+    let body: string | undefined;
+    try {
+      body = await handledResponse.text();
+    } catch (error) {
+      this.#internalLogger.error(
+        `Error reading httpEndpoint ${httpEndpoint.id} respondWith.handler Response`,
+        {
+          error,
+        }
+      );
+    }
+
+    return {
+      response: {
+        status: handledResponse.status,
+        headers: handledResponse.headers
+          ? Object.fromEntries(handledResponse.headers.entries())
+          : undefined,
+        body,
+      },
     };
   }
 

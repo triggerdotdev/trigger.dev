@@ -11,12 +11,13 @@ import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
 import { EventSpecification, EventSpecificationExample, Trigger } from "./types";
 import { formatSchemaErrors } from "./utils/formatSchemaErrors";
+import { NormalizedResponse } from "@trigger.dev/core";
 
 type HttpEndpointOptions<TEventSpecification extends EventSpecification<any>> = {
   id: string;
   enabled?: boolean;
   event: TEventSpecification;
-  immediateResponseFilter?: RequestFilter;
+  respondWith?: RespondWith;
 };
 
 export type RequestOptions = {
@@ -38,13 +39,20 @@ export class HttpEndpoint<TEventSpecification extends EventSpecification<any>> {
     });
   }
 
+  // @internal
+  async handleRequest(request: Request, context: RequestContext): Promise<Response | undefined> {
+    if (!this.options.respondWith) return;
+    return this.options.respondWith.handler(request, context);
+  }
+
   toJSON(): HttpEndpointMetadata {
     return {
       id: this.options.id,
       version: "1",
       enabled: this.options.enabled ?? true,
       event: this.options.event,
-      immediateResponseFilter: this.options.immediateResponseFilter,
+      immediateResponseFilter: this.options.respondWith?.filter,
+      skipTriggeringRuns: this.options.respondWith?.skipTriggeringRuns,
     };
   }
 }
@@ -80,12 +88,21 @@ class HttpTrigger<TEventSpecification extends EventSpecification<any>>
   attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpecification>, any>): void {}
 
   get preprocessRuns() {
-    return false;
+    return true;
   }
+
+  //todo we need to verify in preprocessing
+  //look at ExternalSource
 }
 
 type RequestContext = {
-  secret: string | undefined;
+  secret: string;
+};
+
+type RespondWith = {
+  filter?: RequestFilter;
+  skipTriggeringRuns?: boolean;
+  handler: (request: Request, context: RequestContext) => Promise<Response>;
 };
 
 export type EndpointOptions = {
@@ -97,10 +114,7 @@ export type EndpointOptions = {
   icon?: string;
   examples?: EventSpecificationExample[];
   properties?: DisplayProperty[];
-  respondWith?: {
-    filter?: RequestFilter;
-    handler: (request: Request, context: RequestContext) => Promise<Response>;
-  };
+  respondWith?: RespondWith;
   verify: (request: Request, context: RequestContext) => Promise<boolean>;
 };
 
@@ -115,7 +129,7 @@ export function httpEndpoint(options: EndpointOptions): HttpEndpoint<EventSpecif
   return new HttpEndpoint({
     id: options.id,
     enabled: options.enabled,
-    immediateResponseFilter: options.respondWith?.filter,
+    respondWith: options.respondWith,
     event: {
       name: options.id,
       title: options.title ?? "HTTP Trigger",

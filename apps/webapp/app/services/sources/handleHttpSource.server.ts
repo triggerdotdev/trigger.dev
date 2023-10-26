@@ -3,6 +3,7 @@ import { prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
 import { requestUrl } from "~/utils/requestUrl.server";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
+import { createHttpSourceRequest } from "~/utils/createHttpSourceRequest";
 
 export class HandleHttpSourceService {
   #prismaClient: PrismaClient;
@@ -12,8 +13,6 @@ export class HandleHttpSourceService {
   }
 
   public async call(id: string, request: Request) {
-    const url = requestUrl(request);
-
     const triggerSource = await this.#prismaClient.triggerSource.findUnique({
       where: { id },
       include: {
@@ -32,19 +31,20 @@ export class HandleHttpSourceService {
     }
 
     if (!triggerSource.interactive) {
+      const sourceRequest = await createHttpSourceRequest(request);
+
       await this.#prismaClient.$transaction(async (tx) => {
+        const httpSourceRequest = await createHttpSourceRequest(request);
         // Create a request delivery and then enqueue it to be delivered
         const delivery = await tx.httpSourceRequestDelivery.create({
           data: {
             sourceId: triggerSource.id,
             endpointId: triggerSource.endpointId,
             environmentId: triggerSource.environmentId,
-            url: url.href,
-            method: request.method,
-            headers: Object.fromEntries(request.headers),
-            body: ["POST", "PUT", "PATCH"].includes(request.method)
-              ? Buffer.from(await request.arrayBuffer())
-              : undefined,
+            url: sourceRequest.url,
+            method: sourceRequest.method,
+            headers: sourceRequest.headers,
+            body: sourceRequest.rawBody,
           },
         });
 

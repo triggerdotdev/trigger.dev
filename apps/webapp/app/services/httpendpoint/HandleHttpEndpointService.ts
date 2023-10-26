@@ -5,6 +5,10 @@ import { requestUrl } from "~/utils/requestUrl.server";
 import { logger } from "../logger.server";
 import { json } from "@remix-run/server-runtime";
 import { RequestFilterSchema, requestFilterMatches } from "@trigger.dev/core";
+import { EndpointApi } from "../endpointApi.server";
+import { IngestSendEvent } from "../events/ingestSendEvent.server";
+import { getSecretStore } from "../secrets/secretStore.server";
+import { createHttpSourceRequest } from "~/utils/createHttpSourceRequest";
 
 export const HttpEndpointParamsSchema = z.object({
   httpEndpointId: z.string(),
@@ -34,6 +38,10 @@ export class HandleHttpEndpointService {
               where: {
                 shortcode: params.shortcode,
               },
+              include: {
+                organization: true,
+                project: true,
+              },
             },
           },
         },
@@ -50,7 +58,8 @@ export class HandleHttpEndpointService {
       );
     }
 
-    if (!httpEndpoint.project.environments.length) {
+    const environment = httpEndpoint.project.environments.at(0);
+    if (!environment) {
       logger.error("Could not find environment", { shortcode: params.shortcode });
       return json({ error: true, message: "Could not find environment" }, { status: 404 });
     }
@@ -58,17 +67,20 @@ export class HandleHttpEndpointService {
     const httpEndpointEnvironment =
       await this.#prismaClient.triggerHttpEndpointEnvironment.findUnique({
         where: {
-          environmentId_httpEndpointId: {
-            environmentId: httpEndpoint.project.environments[0].id,
+          endpointId_httpEndpointId: {
+            endpointId: environment.id,
             httpEndpointId: httpEndpoint.id,
           },
+        },
+        include: {
+          endpoint: true,
         },
       });
 
     if (!httpEndpointEnvironment) {
       logger.error("Could not find http endpoint environment", {
         httpEndpointId: httpEndpoint.id,
-        environmentId: httpEndpoint.project.environments[0].id,
+        environmentId: environment.id,
       });
       return json(
         { error: true, message: "Could not find http endpoint environment" },
@@ -82,7 +94,7 @@ export class HandleHttpEndpointService {
     if (!immediateResponseFilter.success) {
       logger.error("Could not parse immediate response filter", {
         httpEndpointId: httpEndpoint.id,
-        environmentId: httpEndpoint.project.environments[0].id,
+        environmentId: environment.id,
         errors: immediateResponseFilter.error,
       });
       return json(
@@ -91,19 +103,73 @@ export class HandleHttpEndpointService {
       );
     }
 
-    //todo don't store the payload if an immediate response is required?
-
-    //test against the filter
-    const callClientImmediately = await requestFilterMatches(request, immediateResponseFilter.data);
-    if (callClientImmediately) {
-      return json({ message: "Should call client immediately" }, { status: 200 });
+    //get the secret
+    const secretStore = getSecretStore(httpEndpoint.secretReference.provider);
+    const secretData = await secretStore.getSecret(
+      z.object({ secret: z.string() }),
+      httpEndpoint.secretReference.key
+    );
+    if (!secretData) {
+      logger.error("Could not find secret", {
+        httpEndpointId: httpEndpoint.id,
+        environmentId: environment.id,
+        secretReference: httpEndpoint.secretReference,
+      });
+      return json({ error: true, message: "Could not find secret" }, { status: 404 });
     }
 
-    //todo either generate events, or schedule a Job to call the client to generate events
-    //todo store the request? where?
+    //if an immediate response is required, we fetch it from the user's endpoint
+    const callClientImmediately = await requestFilterMatches(request, immediateResponseFilter.data);
+    let httpResponse: Response | undefined;
+    if (callClientImmediately) {
+      const clonedRequest = request.clone();
+      const client = new EndpointApi(environment.apiKey, httpEndpointEnvironment.endpoint.url);
+      const { response, parser } = await client.deliverHttpEndpointRequestForResponse({
+        key: httpEndpoint.key,
+        secret: secretData.secret,
+        request: await createHttpSourceRequest(clonedRequest),
+      });
 
-    return new Response(undefined, {
-      status: 200,
-    });
+      const parsedResponseResult = parser.safeParse(response);
+      if (!parsedResponseResult.success) {
+        logger.error("Could not parse response from client", {
+          httpEndpointId: httpEndpoint.id,
+          environmentId: environment.id,
+          errors: parsedResponseResult.error,
+        });
+        return json(
+          { error: true, message: "Could not parse response from client" },
+          { status: 500 }
+        );
+      }
+
+      const endpointResponse = parsedResponseResult.data;
+      httpResponse = new Response(endpointResponse.body, {
+        status: endpointResponse.status,
+        headers: endpointResponse.headers,
+      });
+    }
+
+    if (httpEndpointEnvironment.skipTriggeringRuns) {
+      if (!httpResponse) {
+        return json(
+          { error: true, message: "Should only skip triggering runs, if there's a Response" },
+          { status: 400 }
+        );
+      }
+      return httpResponse;
+    }
+
+    // const ingestService = new IngestSendEvent();
+    // const
+
+    // await ingestService.call(environment, event);
+
+    return (
+      httpResponse ??
+      new Response(undefined, {
+        status: 200,
+      })
+    );
   }
 }
