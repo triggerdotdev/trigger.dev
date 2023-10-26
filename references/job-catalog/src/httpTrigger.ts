@@ -22,7 +22,7 @@ const whatsApp = client.defineHttpEndpoint({
         "hub.mode": [{ $startsWith: "sub" }],
       },
     },
-    handler: async (request, context) => {
+    handler: async (request, context, verify) => {
       const searchParams = new URL(request.url).searchParams;
       if (searchParams.get("verify_token") !== context.secret) {
         return new Response("Unauthorized", { status: 401 });
@@ -46,6 +46,7 @@ client.defineJob({
   name: "HTTP WhatsApp",
   version: "1.0.0",
   enabled: true,
+  // trigger: whatsApp.onRequest(),
   trigger: whatsApp.onRequest({ filter: { body: { event: ["message"] } } }),
   run: async (payload, io, ctx) => {
     //         ^?

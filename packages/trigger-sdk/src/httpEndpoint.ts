@@ -18,6 +18,7 @@ type HttpEndpointOptions<TEventSpecification extends EventSpecification<any>> = 
   enabled?: boolean;
   event: TEventSpecification;
   respondWith?: RespondWith;
+  verify: VerifyCallback;
 };
 
 export type RequestOptions = {
@@ -42,7 +43,10 @@ export class HttpEndpoint<TEventSpecification extends EventSpecification<any>> {
   // @internal
   async handleRequest(request: Request, context: RequestContext): Promise<Response | undefined> {
     if (!this.options.respondWith) return;
-    return this.options.respondWith.handler(request, context);
+    return this.options.respondWith.handler(request, context, () => {
+      const clonedRequest = request.clone();
+      return this.options.verify(clonedRequest, context);
+    });
   }
 
   toJSON(): HttpEndpointMetadata {
@@ -74,7 +78,7 @@ class HttpTrigger<TEventSpecification extends EventSpecification<any>>
       title: this.options.endpointId,
       properties: this.options.event.properties,
       rule: {
-        event: `httpendpoint-${this.options.endpointId}`,
+        event: `httpendpoint.${this.options.endpointId}`,
         payload: this.options.filter ?? {},
         source: this.options.event.source,
       },
@@ -87,12 +91,12 @@ class HttpTrigger<TEventSpecification extends EventSpecification<any>>
 
   attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpecification>, any>): void {}
 
+  //todo this needs to return true, and we need to verify in preprocessing
   get preprocessRuns() {
-    return true;
+    return false;
   }
 
-  //todo we need to verify in preprocessing
-  //look at ExternalSource
+  //todo EventRecord needs a payload type, e.g. JSON, REQUEST
 }
 
 type RequestContext = {
@@ -102,8 +106,14 @@ type RequestContext = {
 type RespondWith = {
   filter?: RequestFilter;
   skipTriggeringRuns?: boolean;
-  handler: (request: Request, context: RequestContext) => Promise<Response>;
+  handler: (
+    request: Request,
+    context: RequestContext,
+    verify: () => Promise<boolean>
+  ) => Promise<Response>;
 };
+
+type VerifyCallback = (request: Request, context: RequestContext) => Promise<boolean>;
 
 export type EndpointOptions = {
   id: string;
@@ -115,7 +125,7 @@ export type EndpointOptions = {
   examples?: EventSpecificationExample[];
   properties?: DisplayProperty[];
   respondWith?: RespondWith;
-  verify: (request: Request, context: RequestContext) => Promise<boolean>;
+  verify: VerifyCallback;
 };
 
 const RawHttpEndpointPayloadSchema = z.object({
@@ -130,6 +140,7 @@ export function httpEndpoint(options: EndpointOptions): HttpEndpoint<EventSpecif
     id: options.id,
     enabled: options.enabled,
     respondWith: options.respondWith,
+    verify: options.verify,
     event: {
       name: options.id,
       title: options.title ?? "HTTP Trigger",

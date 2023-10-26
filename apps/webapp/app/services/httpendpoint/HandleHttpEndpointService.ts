@@ -9,6 +9,7 @@ import { EndpointApi } from "../endpointApi.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
 import { getSecretStore } from "../secrets/secretStore.server";
 import { createHttpSourceRequest } from "~/utils/createHttpSourceRequest";
+import { ulid } from "../ulid.server";
 
 export const HttpEndpointParamsSchema = z.object({
   httpEndpointId: z.string(),
@@ -152,6 +153,7 @@ export class HandleHttpEndpointService {
       });
     }
 
+    //if we don't want to trigger runs, return the response
     if (httpEndpointEnvironment.skipTriggeringRuns) {
       if (!httpResponse) {
         return json(
@@ -162,10 +164,33 @@ export class HandleHttpEndpointService {
       return httpResponse;
     }
 
-    // const ingestService = new IngestSendEvent();
-    // const
+    //if the Endpoint responded and it wasn't a 200, then we don't want to trigger any runs
+    if (httpResponse && httpResponse.status !== 200) {
+      return httpResponse;
+    }
 
-    // await ingestService.call(environment, event);
+    const ingestService = new IngestSendEvent();
+    let rawBody: string | undefined;
+    try {
+      rawBody = await request.text();
+    } catch (e) {}
+    const url = requestUrl(request);
+    const event = {
+      headers: Object.fromEntries(request.headers) as Record<string, string>,
+      url: url.href,
+      method: request.method,
+      rawBody,
+    };
+
+    const headerId =
+      request.headers.get("idempotency-key") ?? request.headers.get("x-request-id") ?? ulid();
+
+    //todo add payload type here, default would be JSON
+    await ingestService.call(environment, {
+      id: `${httpEndpoint.id}.${headerId}`,
+      name: `httpendpoint.${httpEndpoint.key}`,
+      payload: event,
+    });
 
     return (
       httpResponse ??
