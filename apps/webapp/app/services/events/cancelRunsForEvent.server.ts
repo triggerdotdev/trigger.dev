@@ -3,7 +3,7 @@ import { AuthenticatedEnvironment } from "../apiAuth.server";
 import { JobRunStatus } from "@trigger.dev/database";
 import { CancelRunService } from "../runs/cancelRun.server";
 import { logger } from "../logger.server";
-import { CancelRunsForEvent } from "@trigger.dev/core/schemas/events";
+import { CancelRunsForEvent } from "@trigger.dev/core";
 
 const CANCELLABLE_JOB_RUN_STATUS: JobRunStatus[] = [
   JobRunStatus.PENDING,
