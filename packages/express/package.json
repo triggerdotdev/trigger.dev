@@ -36,7 +36,6 @@
     "@trigger.dev/sdk": "workspace:^2.2.2"
   },
   "dependencies": {
-    "@remix-run/web-fetch": "^4.3.5",
     "debug": "^4.3.4",
     "express": "^4.18.2"
   },
