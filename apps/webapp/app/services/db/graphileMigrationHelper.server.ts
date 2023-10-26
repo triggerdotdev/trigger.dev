@@ -139,13 +139,13 @@ export class GraphileMigrationHelperService {
     });
 
     console.log(`⚠️  detected pending graphile migration`);
-    console.log(`⚠️  delaying worker startup by ${migrationDelayInMs}ms`);
-
-    await new Promise((resolve) => setTimeout(resolve, migrationDelayInMs));
-
-    console.log(`⚠️  notifying running workers about incoming migration`);
+    console.log(`⚠️  notifying running workers`);
 
     const pgNotify = new PgNotifyService();
     await pgNotify.call("trigger:graphile:migrate", { latestMigration });
+
+    console.log(`⚠️  delaying worker startup by ${migrationDelayInMs}ms`);
+
+    await new Promise((resolve) => setTimeout(resolve, migrationDelayInMs));
   }
 }
