@@ -1,6 +1,7 @@
 import {
   ApiEventLog,
   ApiEventLogSchema,
+  CancelRunsForEventSchema,
   CompleteTaskBodyInput,
   ConnectionAuthSchema,
   FailTaskBodyInput,
@@ -213,6 +214,26 @@ export class ApiClient {
         Authorization: `Bearer ${apiKey}`,
       },
     });
+  }
+
+  async cancelRunsForEvent(eventId: string) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Cancelling runs for event", {
+      eventId,
+    });
+
+    return await zodfetch(
+      CancelRunsForEventSchema,
+      `${this.#apiUrl}/api/v1/events/${eventId}/cancel-runs`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+      }
+    );
   }
 
   async updateStatus(runId: string, id: string, status: StatusUpdate) {
