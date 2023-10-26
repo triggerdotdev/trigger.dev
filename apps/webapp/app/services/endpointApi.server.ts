@@ -269,12 +269,6 @@ export class EndpointApi {
       throw new Error(`Could not connect to endpoint ${this.url}. Status code: ${response.status}`);
     }
 
-    const anyBody = await response.json();
-
-    logger.debug("deliverHttpEndpointRequestForResponse() response from endpoint", {
-      body: anyBody,
-    });
-
     return { response, parser: NormalizedResponseSchema };
   }
 

@@ -67,8 +67,8 @@ export class HandleHttpEndpointService {
     const httpEndpointEnvironment =
       await this.#prismaClient.triggerHttpEndpointEnvironment.findUnique({
         where: {
-          endpointId_httpEndpointId: {
-            endpointId: environment.id,
+          environmentId_httpEndpointId: {
+            environmentId: environment.id,
             httpEndpointId: httpEndpoint.id,
           },
         },
@@ -130,11 +130,13 @@ export class HandleHttpEndpointService {
         request: await createHttpSourceRequest(clonedRequest),
       });
 
-      const parsedResponseResult = parser.safeParse(response);
+      const responseJson = await response.json();
+      const parsedResponseResult = parser.safeParse(responseJson);
       if (!parsedResponseResult.success) {
         logger.error("Could not parse response from client", {
           httpEndpointId: httpEndpoint.id,
           environmentId: environment.id,
+          responseJson,
           errors: parsedResponseResult.error,
         });
         return json(

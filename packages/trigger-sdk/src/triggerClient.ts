@@ -480,9 +480,7 @@ export class TriggerClient {
 
         return {
           status: 200,
-          body: {
-            response,
-          },
+          body: response,
           headers: this.#standardResponseHeaders(timeOrigin),
         };
       }
@@ -1090,7 +1088,6 @@ export class TriggerClient {
     });
 
     const httpEndpoint = this.#registeredHttpEndpoints[data.key];
-
     if (!httpEndpoint) {
       this.#internalLogger.debug("No handler registered for HTTP Endpoint", {
         data,
@@ -1109,8 +1106,10 @@ export class TriggerClient {
     const handledResponse = await httpEndpoint.handleRequest(sourceRequest, {
       secret: data.secret,
     });
-
     if (!handledResponse) {
+      this.#internalLogger.debug("There's no HTTP Endpoint respondWith.handler()", {
+        data,
+      });
       return {
         response: {
           status: 200,
@@ -1133,14 +1132,20 @@ export class TriggerClient {
       );
     }
 
+    const response = {
+      status: handledResponse.status,
+      headers: handledResponse.headers
+        ? Object.fromEntries(handledResponse.headers.entries())
+        : undefined,
+      body,
+    };
+
+    this.#internalLogger.info(`httpEndpoint ${httpEndpoint.id} respondWith.handler response`, {
+      response,
+    });
+
     return {
-      response: {
-        status: handledResponse.status,
-        headers: handledResponse.headers
-          ? Object.fromEntries(handledResponse.headers.entries())
-          : undefined,
-        body,
-      },
+      response,
     };
   }
 

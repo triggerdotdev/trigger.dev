@@ -5,8 +5,9 @@ export const client = new TriggerClient({
   id: "job-catalog",
   apiKey: process.env["TRIGGER_API_KEY"],
   apiUrl: process.env["TRIGGER_API_URL"],
-  verbose: false,
+  verbose: true,
   ioLogLocalEnabled: true,
+  logLevel: "info",
 });
 
 const whatsApp = client.defineHttpEndpoint({
