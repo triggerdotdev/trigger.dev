@@ -1,6 +1,7 @@
 import type { Prisma, User } from "@trigger.dev/database";
 import type { GitHubProfile } from "remix-auth-github";
 import { prisma } from "~/db.server";
+import { env } from "app/env.server";
 export type { User } from "@trigger.dev/database";
 
 type FindOrCreateMagicLink = {
@@ -36,6 +37,33 @@ export async function findOrCreateUser(input: FindOrCreateUser): Promise<LoggedI
 export async function findOrCreateMagicLinkUser(
   input: FindOrCreateMagicLink
 ): Promise<LoggedInUser> {
+  if(env.WHITELISTED_EMAILS){
+    const emailRegx = new RegExp(env.WHITELISTED_EMAILS)
+    if(emailRegx.test(input.email)){
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          email: input.email,
+        },
+      });
+
+      const user = await prisma.user.upsert({
+        where: {
+          email: input.email,
+        },
+        update: { email: input.email },
+        create: { email: input.email, authenticationMethod: "MAGIC_LINK" },
+      });
+
+      return {
+        user,
+        isNewUser: !existingUser,
+      };
+    }
+    else{
+      throw new Error("Email does not match regx");
+    }
+
+  }
   const existingUser = await prisma.user.findFirst({
     where: {
       email: input.email,
