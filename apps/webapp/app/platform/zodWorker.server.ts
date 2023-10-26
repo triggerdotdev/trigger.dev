@@ -172,15 +172,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       // hijack client instance to listen and react to incoming NOTIFY events
       const pgListen = new PgListenService(client, this.#name, logger);
 
-      await pgListen.call("trigger:graphile:migrate", async (payload) => {
-        const parsedPayload = safeJsonParse(payload);
-
-        const MigrationNotificationPayloadSchema = z.object({
-          latestMigration: z.number(),
-        });
-
-        const { latestMigration } = MigrationNotificationPayloadSchema.parse(parsedPayload);
-
+      await pgListen.call("trigger:graphile:migrate", async ({ latestMigration }) => {
         this.#logDebug("Detected incoming migration", { latestMigration });
 
         if (latestMigration > 10) {

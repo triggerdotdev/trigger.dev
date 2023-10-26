@@ -1,6 +1,9 @@
-import { logger } from "~/services/logger.server";
-import { Logger } from "@trigger.dev/core";
 import type { PoolClient } from "pg";
+import { z } from "zod";
+import { Logger } from "@trigger.dev/core";
+import { logger } from "~/services/logger.server";
+import { NotificationCatalog, NotificationChannel, notificationCatalog } from "./types";
+import { safeJsonParse } from "~/utils/json";
 
 export class PgListenService {
   #poolClient: PoolClient;
@@ -13,7 +16,10 @@ export class PgListenService {
     this.#loggerNamespace = loggerNamespace ?? "";
   }
 
-  public async call(channelName: string, callback: (payload: string) => Promise<void>) {
+  public async call<TChannel extends NotificationChannel>(
+    channelName: TChannel,
+    callback: (payload: z.infer<NotificationCatalog[TChannel]>) => Promise<void>
+  ) {
     this.#logDebug("Registering notification handler", { channelName });
 
     const isValidChannel = channelName.match(/^[a-zA-Z0-9:-_]+$/);
@@ -37,7 +43,19 @@ export class PgListenService {
         return;
       }
 
-      await callback(notification.payload);
+      const payload = safeJsonParse(notification.payload);
+
+      const parsedPayload = notificationCatalog[channelName].safeParse(payload);
+
+      if (!parsedPayload.success) {
+        throw new Error(
+          `Failed to parse notification payload: ${channelName} - ${JSON.stringify(
+            parsedPayload.error
+          )}`
+        );
+      }
+
+      await callback(parsedPayload.data);
     });
   }
 

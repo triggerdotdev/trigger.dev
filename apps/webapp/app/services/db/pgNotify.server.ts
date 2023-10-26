@@ -1,6 +1,7 @@
-import { SerializableJson } from "@trigger.dev/core";
+import { z } from "zod";
 import { PrismaClient, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
+import { NotificationCatalog, NotificationChannel } from "./types";
 
 export class PgNotifyService {
   #prismaClient: PrismaClient;
@@ -9,7 +10,10 @@ export class PgNotifyService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(channelName: string, payload: SerializableJson) {
+  public async call<TChannel extends NotificationChannel>(
+    channelName: TChannel,
+    payload: z.infer<NotificationCatalog[TChannel]>
+  ) {
     this.#logDebug("Sending notification", { channelName, notifyPayload: payload });
 
     await this.#prismaClient.$executeRaw`
