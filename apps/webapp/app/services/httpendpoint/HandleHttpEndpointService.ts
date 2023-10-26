@@ -185,12 +185,12 @@ export class HandleHttpEndpointService {
     const headerId =
       request.headers.get("idempotency-key") ?? request.headers.get("x-request-id") ?? ulid();
 
-    //todo add payload type here, default would be JSON
     await ingestService.call(environment, {
       id: `${httpEndpoint.id}.${headerId}`,
       name: `httpendpoint.${httpEndpoint.key}`,
       source: httpEndpointEnvironment.source,
       payload: event,
+      payloadType: "REQUEST",
     });
 
     return (

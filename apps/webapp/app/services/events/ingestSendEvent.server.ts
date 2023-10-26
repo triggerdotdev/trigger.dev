@@ -126,6 +126,7 @@ export class IngestSendEvent {
         name: event.name,
         timestamp: event.timestamp ?? new Date(),
         payload: event.payload ?? {},
+        payloadType: event.payloadType,
         context: event.context ?? {},
         source: event.source ?? "trigger.dev",
         sourceContext,
@@ -154,6 +155,7 @@ export class IngestSendEvent {
       },
       data: {
         payload: reqEvent.payload ?? existingEventLog.payload,
+        payloadType: reqEvent.payloadType,
         context: reqEvent.context ?? existingEventLog.context,
         deliverAt: deliverAt ?? new Date(),
       },

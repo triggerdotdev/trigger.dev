@@ -400,6 +400,9 @@ export const RawEventSchema = z.object({
   /** This is optional, it defaults to "trigger.dev". It can be useful to set
       this as you can filter events using this in the `eventTrigger()`. */
   source: z.string().optional(),
+  /** This is optional, it defaults to "JSON". If your event is actually a request,
+      with a url, headers, method and rawBody you can use "REQUEST" */
+  payloadType: z.union([z.literal("JSON"), z.literal("REQUEST")]).optional(),
 });
 
 export type RawEvent = z.infer<typeof RawEventSchema>;
