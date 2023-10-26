@@ -56,6 +56,7 @@ export type ZodTasks<TConsumerSchema extends MessageCatalogSchema> = {
     jobKey?: string | ((payload: z.infer<TConsumerSchema[K]>) => string | undefined);
     priority?: number;
     maxAttempts?: number;
+    maxPayloads?: number;
     jobKeyMode?: "replace" | "preserve_run_at" | "unsafe_dedupe";
     flags?: string[];
     handler: (payload: z.infer<TConsumerSchema[K]>, job: GraphileJob) => Promise<void>;
@@ -75,9 +76,17 @@ export type ZodRecurringTasks = {
   };
 };
 
-export type ZodWorkerEnqueueOptions = TaskSpec & {
-  tx?: PrismaClientOrTransaction;
+type BatchTaskSpec = TaskSpec & {
+  /** Unique identifier for the job, can be used to update or remove it later if needed. */
+  jobKey: string;
+  /** How many payloads should this batch hold? (Default: _unlimited_) */
+  maxPayloads?: number;
 };
+
+export type ZodWorkerEnqueueOptions = TaskSpec &
+  Pick<BatchTaskSpec, "maxPayloads"> & {
+    tx?: PrismaClientOrTransaction;
+  };
 
 export type ZodWorkerDequeueOptions = {
   tx?: PrismaClientOrTransaction;
@@ -309,6 +318,63 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     return job;
   }
 
+  public async enqueueBatch<
+    K extends keyof TMessageCatalog,
+    TPayload extends z.infer<TMessageCatalog[K]>
+  >(
+    identifier: K,
+    payload: TPayload extends any[] ? TPayload : never,
+    options?: ZodWorkerEnqueueOptions
+  ): Promise<GraphileJob> {
+    const task = this.#tasks[identifier];
+
+    const optionsWithoutTx = removeUndefinedKeys(omit(options ?? {}, ["tx"]));
+
+    // Make sure options passed in to enqueue take precedence over task options
+    const spec = {
+      ...task,
+      ...optionsWithoutTx,
+    };
+
+    if (typeof task.queueName === "function") {
+      spec.queueName = task.queueName(payload);
+    }
+
+    if (typeof task.jobKey === "function") {
+      const jobKey = task.jobKey(payload);
+
+      if (jobKey) {
+        spec.jobKey = jobKey;
+      }
+    }
+
+    if (!spec.jobKey) {
+      throw new Error("Failed to enqueue batch job: 'jobKey' can't be empty or undefined");
+    }
+
+    logger.debug("Enqueuing batch worker task", {
+      identifier,
+      payload,
+      spec,
+    });
+
+    const job = await this.#addBatchJob(
+      identifier as string,
+      payload,
+      spec as BatchTaskSpec,
+      options?.tx ?? this.#prisma
+    );
+
+    logger.debug("Enqueued batch worker task", {
+      identifier,
+      payload,
+      spec,
+      job,
+    });
+
+    return job;
+  }
+
   public async dequeue(
     jobKey: string,
     option?: ZodWorkerDequeueOptions
@@ -354,6 +420,50 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     if (!rows.success) {
       throw new Error(
         `Failed to add job to queue, zod parsing error: ${JSON.stringify(rows.error)}`
+      );
+    }
+
+    const job = rows.data[0];
+
+    return job as GraphileJob;
+  }
+
+  async #addBatchJob(
+    identifier: string,
+    payload: unknown[],
+    spec: BatchTaskSpec,
+    tx: PrismaClientOrTransaction
+  ) {
+    const results = await tx.$queryRawUnsafe(
+      `SELECT * FROM add_batch_job(
+          identifier => $1::text,
+          job_key => $2::text,
+          payload => $3::json,
+          queue_name => $4::text,
+          run_at => $5::timestamptz,
+          max_attempts => $6::int,
+          max_payloads => $7::int,
+          priority => $8::int,
+          flags => $9::text[],
+          job_key_mode => $10::text
+        )`,
+      identifier,
+      spec.jobKey,
+      JSON.stringify(payload),
+      spec.queueName || null,
+      spec.runAt || null,
+      spec.maxAttempts || null,
+      spec.maxPayloads || null,
+      spec.priority || null,
+      spec.flags || null,
+      spec.jobKeyMode || "preserve_run_at"
+    );
+
+    const rows = AddJobResultsSchema.safeParse(results);
+
+    if (!rows.success) {
+      throw new Error(
+        `Failed to add batch job to queue, zod parsing error: ${JSON.stringify(rows.error)}`
       );
     }
 
