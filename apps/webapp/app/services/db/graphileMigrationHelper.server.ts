@@ -32,8 +32,6 @@ export class GraphileMigrationHelperService {
   async #upsertBatchJobFunction() {
     this.#logDebug("Upserting custom batch job function");
 
-    const prismaSchema = new URL(env.DATABASE_URL).searchParams.get("schema") ?? "public";
-
     // Differences to add_job:
     // - job_key is now required
     // - job_key_mode defaults to 'preserve_run_at'
@@ -41,7 +39,7 @@ export class GraphileMigrationHelperService {
     // - payload must be a JSON array
 
     await this.#prismaClient.$executeRawUnsafe(`
-      CREATE OR REPLACE FUNCTION ${prismaSchema}.add_batch_job(
+      CREATE OR REPLACE FUNCTION add_batch_job(
         identifier text,
         job_key text,
         payload json default null::json,
@@ -74,7 +72,7 @@ export class GraphileMigrationHelperService {
         
         IF max_payloads IS NOT NULL
         AND json_array_length(v_job.payload) >= max_payloads THEN
-          UPDATE jobs SET run_at = NOW() WHERE jobs.id = v_job.id RETURNING * INTO v_job;
+          UPDATE ${env.WORKER_SCHEMA}.jobs SET run_at = NOW() WHERE jobs.id = v_job.id RETURNING * INTO v_job;
           -- lie that this job was just inserted so a worker picks it up ASAP
           PERFORM pg_notify('jobs:insert', '');
         END IF;
