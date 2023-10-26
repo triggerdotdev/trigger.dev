@@ -62,8 +62,8 @@ export class CancelRunsForEventService {
       }
 
       return {
-        cancelled_run_ids: cancelledRunIds,
-        failed_to_cancel_run_ids: failedToCancelRunIds,
+        cancelledRunIds: cancelledRunIds,
+        failedToCancelRunIds: failedToCancelRunIds,
       };
     });
   }

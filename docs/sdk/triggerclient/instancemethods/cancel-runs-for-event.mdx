@@ -16,10 +16,10 @@ description: "The `cancelRunsForEvent()` instance method will cancel all the job
 
 <ResponseField type="object">
   <Expandable title="properties" defaultOpen>
-    <ResponseField name="cancelled_run_ids" type="array" required>
+    <ResponseField name="cancelledRunIds" type="array" required>
       List of Job Run IDs that are cancelled.
     </ResponseField>
-    <ResponseField name="failed_to_cancel_run_ids" type="array" required>
+    <ResponseField name="failedToCancelRunIds" type="array" required>
       List of Job Run IDs that have failed to be cancelled.
     </ResponseField>
   </Expandable>
@@ -32,10 +32,11 @@ const event = client.sendEvent({
   name: "test.job",
 });
 
-const res = client.cancelRunsForEvent(event.id);
+// Some time later...
+const res = await client.cancelRunsForEvent(event.id);
 
-console.log(res.cancelled_run_ids);
-console.log(res.failed_to_cancel_run_ids);
+console.log(res.cancelledRunIds);
+console.log(res.failedToCancelRunIds);
 ```
 
 </RequestExample>

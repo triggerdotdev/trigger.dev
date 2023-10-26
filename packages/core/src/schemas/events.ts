@@ -28,8 +28,8 @@ export const GetEventSchema = z.object({
 export type GetEvent = z.infer<typeof GetEventSchema>;
 
 export const CancelRunsForEventSchema = z.object({
-  cancelled_run_ids: z.array(z.string()),
-  failed_to_cancel_run_ids: z.array(z.string()),
+  cancelledRunIds: z.array(z.string()),
+  failedToCancelRunIds: z.array(z.string()),
 });
 
 export type CancelRunsForEvent = z.infer<typeof CancelRunsForEventSchema>;
