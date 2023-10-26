@@ -1,18 +1,14 @@
 /** @type {import('@remix-run/dev').AppConfig} */
 module.exports = {
-  future: {
-    v2_dev: true,
-    v2_routeConvention: true,
-    v2_normalizeFormMethod: true,
-    v2_errorBoundary: true,
-    // v2_meta: true,
+  dev: {
+    port: 8002,
   },
   tailwind: true,
   cacheDirectory: "./node_modules/.cache/remix",
   ignoredRouteFiles: ["**/.*"],
-  devServerPort: 8002,
   serverModuleFormat: "cjs",
   serverDependenciesToBundle: [
+    /^remix-utils.*/,
     "marked",
     "axios",
     "@trigger.dev/core",

@@ -1,6 +1,6 @@
-import { RouteMatch, useMatches } from "@remix-run/react";
+import { UIMatch, useMatches } from "@remix-run/react";
 
-export function useIsProjectChildPage(matches?: RouteMatch[]) {
+export function useIsProjectChildPage(matches?: UIMatch[]) {
   if (!matches) {
     matches = useMatches();
   }

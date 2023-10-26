@@ -1,5 +1,5 @@
 import { Await, useLoaderData } from "@remix-run/react";
-import { LoaderArgs, SerializeFrom, defer } from "@remix-run/server-runtime";
+import { LoaderFunctionArgs, SerializeFrom, defer } from "@remix-run/server-runtime";
 import { Suspense } from "react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TaskDetail } from "~/components/run/TaskDetail";
@@ -7,7 +7,7 @@ import { TaskDetailsPresenter } from "~/presenters/TaskDetailsPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { TaskParamsSchema } from "~/utils/pathBuilder";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { taskParam } = TaskParamsSchema.parse(params);
 

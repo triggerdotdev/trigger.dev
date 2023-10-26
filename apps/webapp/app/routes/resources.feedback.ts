@@ -1,5 +1,5 @@
 import { parse } from "@conform-to/zod";
-import { ActionArgs, json } from "@remix-run/server-runtime";
+import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import {
   ComponentDividerSpacingSize,
   ComponentSpacerSize,
@@ -40,7 +40,7 @@ export const schema = z.object({
   message: z.string().min(1, "Must be at least 1 character"),
 });
 
-export async function action({ request }: ActionArgs) {
+export async function action({ request }: ActionFunctionArgs) {
   const user = await requireUser(request);
 
   const formData = await request.formData();

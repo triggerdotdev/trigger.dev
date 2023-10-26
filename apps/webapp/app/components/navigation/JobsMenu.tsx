@@ -1,4 +1,4 @@
-import { Link, RouteMatch } from "@remix-run/react";
+import { Link, UIMatch } from "@remix-run/react";
 import { useState } from "react";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -15,7 +15,7 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 
-export function JobsMenu({ matches }: { matches: RouteMatch[] }) {
+export function JobsMenu({ matches }: { matches: UIMatch[] }) {
   const [isOpen, setIsOpen] = useState(false);
   const organization = useOrganization(matches);
   const project = useProject(matches);

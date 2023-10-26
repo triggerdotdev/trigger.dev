@@ -28,7 +28,7 @@ import {
 } from "../primitives/Table";
 import { TaskAttemptStatusLabel } from "./TaskAttemptStatus";
 import { TaskStatusIcon } from "./TaskStatus";
-import { ClientOnly } from "remix-utils";
+import { ClientOnly } from "remix-utils/client-only";
 import { Spinner } from "../primitives/Spinner";
 import type { DetailedTask } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam.tasks.$taskParam/route";
 
