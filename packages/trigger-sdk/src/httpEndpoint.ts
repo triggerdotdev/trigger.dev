@@ -32,11 +32,11 @@ export class HttpEndpoint<TEventSpecification extends EventSpecification<any>> {
     return this.options.id;
   }
 
-  onRequest(options: RequestOptions): HttpTrigger<EventSpecification<Request>> {
+  onRequest(options?: RequestOptions): HttpTrigger<EventSpecification<Request>> {
     return new HttpTrigger({
       endpointId: this.options.id,
       event: this.options.event,
-      filter: options.filter,
+      filter: options?.filter,
     });
   }
 
@@ -57,6 +57,7 @@ export class HttpEndpoint<TEventSpecification extends EventSpecification<any>> {
       event: this.options.event,
       immediateResponseFilter: this.options.respondWith?.filter,
       skipTriggeringRuns: this.options.respondWith?.skipTriggeringRuns,
+      source: this.options.event.source,
     };
   }
 }
