@@ -1,6 +1,6 @@
 import type { Preview } from "@storybook/react";
 import "../app/tailwind.css";
-import { unstable_createRemixStub } from "@remix-run/testing";
+import { createRemixStub } from "@remix-run/testing";
 import React from "react";
 import { LocaleContextProvider } from "../app/components/primitives/LocaleProvider";
 import { OperatingSystemContextProvider } from "../app/components/primitives/OperatingSystemProvider";
@@ -27,10 +27,10 @@ const preview: Preview = {
   },
   decorators: [
     (Story) => {
-      const RemixStub = unstable_createRemixStub([
+      const RemixStub = createRemixStub([
         {
           path: "/*",
-          element: <Story />,
+          Component: () => <Story />,
         },
       ]);
 
