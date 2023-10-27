@@ -1,9 +1,9 @@
-import { ActionArgs, json, redirect } from "@remix-run/server-runtime";
+import { ActionFunctionArgs, json, redirect } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { workerQueue } from "~/services/worker.server";
 
-export async function action({ request }: ActionArgs) {
+export async function action({ request }: ActionFunctionArgs) {
   // Next authenticate the request
   const authenticationResult = await authenticateApiRequest(request);
 

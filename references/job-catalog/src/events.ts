@@ -77,4 +77,58 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "cancel-runs-example",
+  name: "Cancel Runs Example",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "cancel.runs.example",
+  }),
+  run: async (payload, io, ctx) => {
+    const event = await io.sendEvent("send-event", {
+      name: "foo.bar",
+      id: payload.id,
+      payload: { payload, ctx },
+    });
+
+    await io.wait("wait-1", 1); // 1 second
+
+    await io.runTask("cancel-runs", async () => {
+      return await client.cancelRunsForEvent(event.id);
+    });
+  },
+});
+
+client.defineJob({
+  id: "foo-bar-example",
+  name: "Foo Bar Example",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "foo.bar",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Hello World", { ctx, payload });
+
+    await io.wait("wait-1", 10); // 10 seconds
+
+    await io.logger.info("Hello World 2", { ctx, payload });
+  },
+});
+
+client.defineJob({
+  id: "foo-bar-example-2",
+  name: "Foo Bar Example 2",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "foo.bar",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Hello World", { ctx, payload });
+
+    await io.wait("wait-1", 10); // 10 seconds
+
+    await io.logger.info("Hello World 2", { ctx, payload });
+  },
+});
+
 createExpressServer(client);

@@ -1,7 +1,12 @@
-import type { ActionArgs, LoaderArgs } from "@remix-run/node";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
-import { Form, useNavigation, useTransition } from "@remix-run/react";
-import { TypedMetaFunction, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { Form, useNavigation } from "@remix-run/react";
+import {
+  TypedMetaFunction,
+  UseDataFunctionReturn,
+  typedjson,
+  useTypedLoaderData,
+} from "remix-typedjson";
 import { z } from "zod";
 import { LogoIcon } from "~/components/LogoIcon";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
@@ -21,12 +26,17 @@ import type { LoaderType as RootLoader } from "~/root";
 import { appEnvTitleTag } from "~/utils";
 import { TextLink } from "~/components/primitives/TextLink";
 import { FormError } from "~/components/primitives/FormError";
+import { getMatchesData, metaV1 } from "@remix-run/v1-meta";
 
-export const meta: TypedMetaFunction<typeof loader, { root: RootLoader }> = ({ parentsData }) => ({
-  title: `Login to Trigger.dev${appEnvTitleTag(parentsData?.root.appEnv)}`,
-});
+export const meta: TypedMetaFunction<typeof loader> = (args) => {
+  const matchesData = getMatchesData(args) as { root: UseDataFunctionReturn<RootLoader> };
 
-export async function loader({ request }: LoaderArgs) {
+  return metaV1(args, {
+    title: `Login to Trigger.dev${appEnvTitleTag(matchesData.root.appEnv)}`,
+  });
+};
+
+export async function loader({ request }: LoaderFunctionArgs) {
   await authenticator.isAuthenticated(request, {
     successRedirect: "/",
   });
@@ -54,7 +64,7 @@ export async function loader({ request }: LoaderArgs) {
   );
 }
 
-export async function action({ request }: ActionArgs) {
+export async function action({ request }: ActionFunctionArgs) {
   const clonedRequest = request.clone();
 
   const payload = Object.fromEntries(await clonedRequest.formData());

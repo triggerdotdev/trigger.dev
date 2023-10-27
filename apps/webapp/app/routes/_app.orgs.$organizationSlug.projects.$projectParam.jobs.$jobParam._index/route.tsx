@@ -1,5 +1,5 @@
 import { useNavigation } from "@remix-run/react";
-import { LoaderArgs } from "@remix-run/server-runtime";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { HowToRunYourJob } from "~/components/helpContent/HelpContentText";
@@ -30,7 +30,7 @@ export const RunListSearchSchema = z.object({
   direction: DirectionSchema.optional(),
 });
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { jobParam, projectParam, organizationSlug } = JobParamsSchema.parse(params);
 

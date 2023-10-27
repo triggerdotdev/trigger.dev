@@ -1,6 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ActionFunction, LoaderArgs, json, redirect } from "@remix-run/node";
+import { ActionFunction, LoaderFunctionArgs, json, redirect } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -18,7 +18,7 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { invitesPath, organizationsPath } from "~/utils/pathBuilder";
 
-export const loader = async ({ request }: LoaderArgs) => {
+export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
 
   //if there are no invites left we should redirect to the orgs page
@@ -94,7 +94,8 @@ export default function Page() {
 
   const [form, { inviteId }] = useForm({
     id: "accept-invite",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },

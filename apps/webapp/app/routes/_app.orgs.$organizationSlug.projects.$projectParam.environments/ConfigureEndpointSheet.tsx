@@ -2,8 +2,12 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { useFetcher, useRevalidator } from "@remix-run/react";
 import { useEffect } from "react";
-import { useEventSource } from "remix-utils";
+import { useEventSource } from "remix-utils/sse/react";
 import { InlineCode } from "~/components/code/InlineCode";
+import {
+  EndpointIndexStatusIcon,
+  EndpointIndexStatusLabel,
+} from "~/components/environments/EndpointIndexStatus";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout, CalloutVariant } from "~/components/primitives/Callout";
@@ -20,12 +24,6 @@ import { ClientEndpoint } from "~/presenters/EnvironmentsPresenter.server";
 import { endpointStreamingPath } from "~/utils/pathBuilder";
 import { EndpointIndexStatus, RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { bodySchema } from "../resources.environments.$environmentParam.endpoint";
-import {
-  EndpointIndexStatusIcon,
-  EndpointIndexStatusLabel,
-  endpointIndexStatusTitle,
-} from "~/components/environments/EndpointIndexStatus";
-import { CodeBlock } from "~/components/code/CodeBlock";
 
 type ConfigureEndpointSheetProps = {
   slug: string;
@@ -39,7 +37,7 @@ export function ConfigureEndpointSheet({ slug, endpoint, onClose }: ConfigureEnd
 
   const [form, { url, clientSlug }] = useForm({
     id: "endpoint-url",
-    lastSubmission: setEndpointUrlFetcher.data,
+    lastSubmission: setEndpointUrlFetcher.data as any,
     onValidate({ formData }) {
       return parse(formData, { schema: bodySchema });
     },

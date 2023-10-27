@@ -1,5 +1,5 @@
-import { Response, json } from "@remix-run/node";
-import type { ActionFunction, LoaderArgs } from "@remix-run/server-runtime";
+import { json } from "@remix-run/node";
+import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Fragment } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
@@ -45,7 +45,7 @@ import { ActivateSourceService } from "~/services/sources/activateSource.server"
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { nanoid } from "nanoid";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const { organizationSlug, projectParam, triggerParam } = TriggerSourceParamSchema.parse(params);
 
@@ -135,7 +135,8 @@ export default function Page() {
 
   const [form, { jobId }] = useForm({
     id: "trigger-registration-retry",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },
