@@ -60,7 +60,7 @@ export async function findOrCreateMagicLinkUser(
       };
     }
     else{
-      throw new Error("Email does not match regx");
+      throw new Error("Email does not match Whitelisted Email");
     }
 
   }
