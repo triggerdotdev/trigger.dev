@@ -278,13 +278,19 @@
         },
         "integrations/apis/replicate",
         {
+          "group": "SendGrid",
+          "pages": [
+            "integrations/apis/sendgrid",
+            "integrations/apis/sendgrid-tasks"
+          ]
+        },
+        {
           "group": "Resend",
           "pages": [
             "integrations/apis/resend",
             "integrations/apis/resend-tasks"
           ]
         },
-        "integrations/apis/sendgrid",
         {
           "group": "Slack",
           "pages": [
