@@ -28,11 +28,18 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
-import { MatchedProject } from "~/hooks/useProject";
-import { MatchedOrganization } from "~/hooks/useOrganizations";
+import { MatchedProject, useOptionalProject } from "~/hooks/useProject";
+import { MatchedOrganization, useOrganizations } from "~/hooks/useOrganizations";
 import {
+  OrgForPath,
+  ProjectForPath,
   accountPath,
+  inviteTeamMemberPath,
+  logoutPath,
+  newOrganizationPath,
+  newProjectPath,
   organizationBillingPath,
+  organizationTeamPath,
   projectEnvironmentsPath,
   projectIntegrationsPath,
   projectPath,
@@ -41,6 +48,9 @@ import {
 } from "~/utils/pathBuilder";
 import { Feedback } from "../Feedback";
 import { useUser } from "~/hooks/useUser";
+import { UIMatch, useMatches } from "@remix-run/react";
+import { Badge } from "../primitives/Badge";
+import simplur from "simplur";
 
 type SideMenuProps = {
   project: MatchedProject;
@@ -63,6 +73,9 @@ export function SideMenu({ project, organization }: SideMenuProps) {
     return () => borderRef.current?.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const matches = useMatches();
+  const currentProject = useOptionalProject(matches);
+
   return (
     <div
       className={cn(
@@ -71,14 +84,16 @@ export function SideMenu({ project, organization }: SideMenuProps) {
     >
       <div className="flex h-full flex-col">
         <SideMenuOrgHeader
+          matches={matches}
           className={cn(
             "border-b px-1 transition",
             isScrolled ? " border-border" : "border-transparent"
           )}
         />
-        <div className="h-full overflow-hidden overflow-y-auto pt-4" ref={borderRef}>
-          <div className="mb-8 flex flex-col gap-1 px-1">
-            <SideMenuHeader title="My Project 1">
+        <div className="h-full overflow-hidden overflow-y-auto pt-2" ref={borderRef}>
+          <div className="mb-6 flex flex-col gap-1 px-1">
+            {/* // TODO: Project name isn't pulling through: */}
+            <SideMenuHeader title={currentProject?.name || "No project found"}>
               <PopoverMenuItem
                 to={projectSetupPath(organization, project)}
                 title="Framework setup"
@@ -95,18 +110,20 @@ export function SideMenu({ project, organization }: SideMenuProps) {
               data-action="jobs"
               hasWarning
             />
+            {/* // TODO Create a new "Runs" page: */}
             <SideMenuItem
               name="Runs"
               icon="runs"
               iconColor="text-lime-500"
-              to=""
+              to="#"
               data-action="runs"
             />
+            {/* // TODO Create a new "Events" page: */}
             <SideMenuItem
               name="Events"
               icon={BookmarkIcon}
               iconColor="text-orange-500"
-              to=""
+              to="#"
               data-action="events"
             />
             <SideMenuItem name="Custom" to="" data-action="custom" subItem />
@@ -124,17 +141,18 @@ export function SideMenu({ project, organization }: SideMenuProps) {
               icon={QueueListIcon}
               iconColor="text-pink-500"
               count={4}
-              to=""
+              to="#"
               data-action="catalog"
             />
             <SideMenuItem name="User Events" to="" subItem />
             <SideMenuItem name="Billing Events" to="" subItem />
+            {/* // TODO I need to create this new "Endpoints" page: */}
             <SideMenuItem
               name="Endpoints"
               icon="endpoint"
               iconColor="text-blue-500"
               count={4}
-              to=""
+              to="#"
               data-action="endpoints"
             />
             <SideMenuItem name="job-catalog" to="" subItem />
@@ -148,9 +166,9 @@ export function SideMenu({ project, organization }: SideMenuProps) {
           </div>
           <div className="mb-1 flex flex-col gap-1 px-1">
             <SideMenuHeader title="My Org 1">
-              <PopoverMenuItem to="#" title="New Project" icon="plus" />
+              <PopoverMenuItem to={newProjectPath(organization)} title="New Project" icon="plus" />
               <PopoverMenuItem
-                to="#"
+                to={inviteTeamMemberPath(organization)}
                 title="Invite team member"
                 icon={UserPlusIcon}
                 leadingIconClassName="text-indigo-500"
@@ -164,8 +182,19 @@ export function SideMenu({ project, organization }: SideMenuProps) {
               data-action="integrations"
               hasWarning={project.hasUnconfiguredIntegrations}
             />
-            <SideMenuItem name="Projects" icon="folder" to="" data-action="projects" />
-            <SideMenuItem name="Team" icon={UserGroupIcon} to="" data-action="team" />
+            {/* // TODO I need to create this new "Projects" page: */}
+            <SideMenuItem
+              name="Projects"
+              icon="folder"
+              to={projectPath(organization, project)}
+              data-action="projects"
+            />
+            <SideMenuItem
+              name="Team"
+              icon={UserGroupIcon}
+              to={organizationTeamPath(organization)}
+              data-action="team"
+            />
             <SideMenuItem
               name="Usage & Billing"
               icon={ChartPieIcon}
@@ -201,9 +230,11 @@ export function SideMenu({ project, organization }: SideMenuProps) {
   );
 }
 
-function SideMenuOrgHeader({ className }: { className?: string }) {
+function SideMenuOrgHeader({ className, matches }: { className?: string; matches: UIMatch[] }) {
   const [isOrgMenuOpen, setOrgMenuOpen] = useState(false);
   const [isProfileMenuOpen, setProfileMenuOpen] = useState(false);
+  // const currentProject = useOptionalProject(matches);
+  // const organizations = useOrganizations(matches);
   // const user = useUser();
   return (
     <div className={cn("flex items-center justify-between bg-background px-0 py-1", className)}>
@@ -214,31 +245,46 @@ function SideMenuOrgHeader({ className }: { className?: string }) {
           className="h-7 w-full justify-between overflow-hidden py-1 pl-2"
         >
           <LogoIcon className="relative -top-px mr-2 h-4 w-4 min-w-[1rem]" />
-          <span className="truncate">My Org 1</span>
+          {/* // TODO currentProject needs loader data */}
+          {/* <span className="truncate">{currentProject?.name ?? "Select a project"}</span> */}
         </PopoverArrowTrigger>
         <PopoverContent
           className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
           align="start"
-          style={{ maxHeight: `calc(var(--radix-popover-content-available-height) / 2)` }}
+          style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10%)` }}
         >
-          <Fragment>
-            <PopoverSectionHeader title="My Org 1" />
-            <div className="flex flex-col gap-1 p-1">
-              <PopoverMenuItem to="#" title="My Project 1" isSelected={true} icon="folder" />
-              <PopoverMenuItem to="#" title="My Project 2" icon="folder" />
-              <PopoverMenuItem to="#" title="My Project 3" icon="folder" />
-              <PopoverMenuItem to="#" title="New Project" icon="plus" />
-            </div>
-            <PopoverSectionHeader title="My Org 2" />
-            <div className="flex flex-col gap-1 p-1">
-              <PopoverMenuItem to="#" title="My Project a" icon="folder" />
-              <PopoverMenuItem to="#" title="My Project b" icon="folder" />
-              <PopoverMenuItem to="#" title="My Project c" icon="folder" />
-              <PopoverMenuItem to="#" title="New Project" icon="plus" />
-            </div>
-          </Fragment>
+          {/* // TODO This loop shows error: "No organizations found in loader" */}
+          {/* {organizations.map((organization) => (
+            <Fragment>
+              <PopoverSectionHeader title={organization.title} />
+              <div className="flex flex-col gap-1 p-1">
+                {organization.projects.map((project) => {
+                  const isSelected = project.id === currentProject?.id;
+                  return (
+                    <PopoverMenuItem
+                      key={project.id}
+                      to={projectPath(organization, project)}
+                      title={
+                        <div className="flex w-full items-center justify-between pl-1 text-bright">
+                          <span className="grow truncate text-left">{project.name}</span>
+                          <Badge className="mr-0.5">{simplur`${project._count.jobs} job[|s]`}</Badge>
+                        </div>
+                      }
+                      isSelected={isSelected}
+                      icon="folder"
+                    />
+                  );
+                })}
+                <PopoverMenuItem
+                  to={newProjectPath(organization)}
+                  title="New Project"
+                  icon="plus"
+                />
+              </div>
+            </Fragment>
+          ))} */}
           <div className="border-t border-slate-800 p-1">
-            <PopoverMenuItem to="#" title="New Organization" icon="plus" />
+            <PopoverMenuItem to={newOrganizationPath()} title="New Organization" icon="plus" />
           </div>
         </PopoverContent>
       </Popover>
@@ -261,7 +307,7 @@ function SideMenuOrgHeader({ className }: { className?: string }) {
                 leadingIconClassName="text-indigo-500"
               />
               <PopoverMenuItem
-                to="#"
+                to={logoutPath()}
                 title="Log out"
                 icon={ArrowRightOnRectangleIcon}
                 leadingIconClassName="text-rose-500"
