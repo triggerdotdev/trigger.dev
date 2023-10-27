@@ -3,13 +3,12 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
-import { ProjectSideMenu, SideMenuContainer } from "~/components/navigation/ProjectSideMenu";
 import { ProjectsMenu } from "~/components/navigation/ProjectsMenu";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { ProjectPresenter } from "~/presenters/ProjectPresenter.server";
-import { telemetry } from "~/services/telemetry.server";
 import { requireUserId } from "~/services/session.server";
+import { telemetry } from "~/services/telemetry.server";
 import { Handle } from "~/utils/handle";
 import { projectPath } from "~/utils/pathBuilder";
 
@@ -64,12 +63,7 @@ export const handle: Handle = {
 export default function Project() {
   return (
     <>
-      <SideMenuContainer>
-        <ProjectSideMenu />
-        <div className="flex-grow">
-          <Outlet />
-        </div>
-      </SideMenuContainer>
+      <Outlet />
     </>
   );
 }

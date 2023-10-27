@@ -14,7 +14,7 @@ import { IconExclamationCircle } from "@tabler/icons-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { LogoIcon } from "../LogoIcon";
-import { UserAvatar } from "../UserProfilePhoto";
+import { UserAvatar, UserProfilePhoto } from "../UserProfilePhoto";
 import { NavLinkButton } from "../primitives/Buttons";
 import { Icon } from "../primitives/Icon";
 import { type IconNames } from "../primitives/NamedIcon";
@@ -30,7 +30,17 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { MatchedProject } from "~/hooks/useProject";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
-import { projectSetupPath } from "~/utils/pathBuilder";
+import {
+  accountPath,
+  organizationBillingPath,
+  projectEnvironmentsPath,
+  projectIntegrationsPath,
+  projectPath,
+  projectSetupPath,
+  projectTriggersPath,
+} from "~/utils/pathBuilder";
+import { Feedback } from "../Feedback";
+import { useUser } from "~/hooks/useUser";
 
 type SideMenuProps = {
   project: MatchedProject;
@@ -81,7 +91,7 @@ export function SideMenu({ project, organization }: SideMenuProps) {
               icon="job"
               iconColor="text-indigo-500"
               count={33}
-              to=""
+              to={projectPath(organization, project)}
               data-action="jobs"
               hasWarning
             />
@@ -105,9 +115,9 @@ export function SideMenu({ project, organization }: SideMenuProps) {
               name="Triggers"
               icon="trigger"
               iconColor="text-teal-500"
-              count={4}
-              to=""
+              to={projectTriggersPath(organization, project)}
               data-action="triggers"
+              hasWarning={project.hasInactiveExternalTriggers}
             />
             <SideMenuItem
               name="Catalog"
@@ -132,8 +142,8 @@ export function SideMenu({ project, organization }: SideMenuProps) {
               name="API Keys"
               icon="environment"
               iconColor="text-yellow-500"
-              to=""
-              data-action="api keys"
+              to={projectEnvironmentsPath(organization, project)}
+              data-action="environments & api keys"
             />
           </div>
           <div className="mb-1 flex flex-col gap-1 px-1">
@@ -149,17 +159,17 @@ export function SideMenu({ project, organization }: SideMenuProps) {
             <SideMenuItem
               name="Integrations"
               icon="integration"
-              to=""
-              count={3}
+              to={projectIntegrationsPath(organization, project)}
+              count={projectIntegrationsPath.length}
               data-action="integrations"
-              hasWarning="An Integration requires setup"
+              hasWarning={project.hasUnconfiguredIntegrations}
             />
             <SideMenuItem name="Projects" icon="folder" to="" data-action="projects" />
             <SideMenuItem name="Team" icon={UserGroupIcon} to="" data-action="team" />
             <SideMenuItem
               name="Usage & Billing"
               icon={ChartPieIcon}
-              to=""
+              to={organizationBillingPath(organization)}
               data-action="usage & billing"
             />
           </div>
@@ -179,7 +189,12 @@ export function SideMenu({ project, organization }: SideMenuProps) {
             data-action="changelog"
             target="_blank"
           />
-          <SideMenuItem name="Help & Feedback" icon="log" to="" data-action="help & feedback" />
+          {/* // TODO this Feedback component is not working in storybook */}
+          {/* <Feedback
+            button={
+              <SideMenuItem name="Help & Feedback" icon="log" to="" data-action="help & feedback" />
+            }
+          /> */}
         </div>
       </div>
     </div>
@@ -189,6 +204,7 @@ export function SideMenu({ project, organization }: SideMenuProps) {
 function SideMenuOrgHeader({ className }: { className?: string }) {
   const [isOrgMenuOpen, setOrgMenuOpen] = useState(false);
   const [isProfileMenuOpen, setProfileMenuOpen] = useState(false);
+  // const user = useUser();
   return (
     <div className={cn("flex items-center justify-between bg-background px-0 py-1", className)}>
       <Popover onOpenChange={(open) => setOrgMenuOpen(open)}>
@@ -235,12 +251,13 @@ function SideMenuOrgHeader({ className }: { className?: string }) {
           align="start"
         >
           <Fragment>
-            <PopoverSectionHeader title="james@trigger.dev" variant="extra-small" />
+            {/* // TODO The email in this header needs to come from the loader which isn't present in storybook */}
+            {/* {user && <PopoverSectionHeader title={user && user?.email} variant="extra-small" />} */}
             <div className="flex flex-col gap-1 p-1">
               <PopoverMenuItem
-                to="#"
+                to={accountPath()}
                 title="View profile"
-                icon={UserCircleIcon}
+                icon={UserProfilePhoto}
                 leadingIconClassName="text-indigo-500"
               />
               <PopoverMenuItem

@@ -10,6 +10,7 @@ import { telemetry } from "~/services/telemetry.server";
 import { commitCurrentOrgSession, setCurrentOrg } from "~/services/currentOrganization.server";
 import { requireUserId } from "~/services/session.server";
 import { organizationPath } from "~/utils/pathBuilder";
+import { ProjectSideMenu, SideMenuContainer } from "~/components/navigation/ProjectSideMenu";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -44,7 +45,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 export default function Organization() {
   return (
     <>
-      <Outlet />
+      <SideMenuContainer>
+        <ProjectSideMenu />
+        <div className="flex-grow">
+          <Outlet />
+        </div>
+      </SideMenuContainer>
     </>
   );
 }
