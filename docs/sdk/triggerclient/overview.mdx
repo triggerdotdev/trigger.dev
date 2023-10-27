@@ -4,7 +4,7 @@ sidebarTitle: "Overview"
 description: "TriggerClient is used to create a client that connects to the Trigger.dev platform"
 ---
 
-A [TriggerClient](/documentation/concepts/client-adaptors) is used to connect to a specific [Project](/documentation/concepts/projects) by using an [API Key](/documentation/concepts/environments-apikeys).
+A [TriggerClient](/documentation/concepts/client-adaptors) is used to connect to a specific [Project](/documentation/concepts/projects) by using an [API Key](/documentation/concepts/environments-endpoints).
 
 ```ts Example
 export const client = new TriggerClient({
@@ -45,6 +45,10 @@ The `getEvent()` method gets the event details for a given eventId.
 #### [cancelEvent()](/sdk/triggerclient/instancemethods/cancel-event)
 
 The `cancelEvent()` method cancels an event that is scheduled to be delivered in the future.
+
+#### [cancelRunsForEvent()](/sdk/triggerclient/instancemethods/cancel-runs-for-event)
+
+The `cancelRunsForEvent()` method cancels the job runs (yet to be executed) that are triggered by a given eventId.
 
 #### [getRuns()](/sdk/triggerclient/instancemethods/getruns)
 

@@ -1,0 +1,42 @@
+---
+title: "TriggerClient: cancelRunsForEvent() Instance Method"
+sidebarTitle: "cancelRunsForEvent()"
+description: "The `cancelRunsForEvent()` instance method will cancel all the job runs (yet to be executed) that are triggered by a given eventId."
+---
+
+## Parameters
+
+<ResponseField name="eventId" type="string" required>
+  The event ID to cancel the job runs for. This is returned when calling either
+  [client.sendEvent()](/sdk/triggerclient/instancemethods/sendevent) or
+  [io.sendEvent()](/sdk/io/sendevent).
+</ResponseField>
+
+## Returns
+
+<ResponseField type="object">
+  <Expandable title="properties" defaultOpen>
+    <ResponseField name="cancelledRunIds" type="array" required>
+      List of Job Run IDs that are cancelled.
+    </ResponseField>
+    <ResponseField name="failedToCancelRunIds" type="array" required>
+      List of Job Run IDs that have failed to be cancelled.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+
+```ts Cancelling Runs for an Event
+const event = client.sendEvent({
+  name: "test.job",
+});
+
+// Some time later...
+const res = await client.cancelRunsForEvent(event.id);
+
+console.log(res.cancelledRunIds);
+console.log(res.failedToCancelRunIds);
+```
+
+</RequestExample>

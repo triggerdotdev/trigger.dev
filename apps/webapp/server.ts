@@ -3,7 +3,6 @@ import express from "express";
 import compression from "compression";
 import morgan from "morgan";
 import { createRequestHandler } from "@remix-run/express";
-import { createTerminus } from "@godaddy/terminus";
 
 const app = express();
 
@@ -61,9 +60,19 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
     console.log(`✅ app ready: http://localhost:${port}`);
   });
 
-  // Handle shutdowns gracefully
-  createTerminus(server, { signals: ["SIGINT", "SIGTERM"], timeout: 5000 });
+  server.keepAliveTimeout = 65 * 1000;
+
+  process.on("SIGTERM", () => {
+    server.close((err) => {
+      if (err) {
+        console.error("Error closing express server:", err);
+      } else {
+        console.log("Express server closed gracefully.");
+      }
+    });
+  });
 } else {
+  require(BUILD_DIR);
   console.log(`✅ app ready (skipping http server)`);
 }
 

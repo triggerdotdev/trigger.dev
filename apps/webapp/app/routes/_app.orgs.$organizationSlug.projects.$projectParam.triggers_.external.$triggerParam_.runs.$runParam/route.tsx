@@ -1,8 +1,8 @@
 import { useRevalidator } from "@remix-run/react";
-import { LoaderArgs } from "@remix-run/server-runtime";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Fragment, useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { useEventSource } from "remix-utils";
+import { useEventSource } from "remix-utils/sse/react";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 import { RunOverview } from "~/components/run/RunOverview";
@@ -23,7 +23,7 @@ import {
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { runParam, triggerParam } = TriggerSourceRunParamsSchema.parse(params);
 

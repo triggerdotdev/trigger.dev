@@ -14,7 +14,10 @@ import { checkApiKeyIsDevServer } from "../utils/getApiKeyType";
 
 export const program = new Command();
 
-program.name(COMMAND_NAME).description("The Trigger.dev CLI").version("0.0.1");
+program
+  .name(COMMAND_NAME)
+  .description("The Trigger.dev CLI")
+  .version(getVersion(), "-v, --version", "Display the version number");
 
 program
   .command("init")
@@ -55,6 +58,10 @@ program
     "-h, --handler-path <handler path>",
     "The URI path to the API handler function to use for this project.",
     "/api/trigger"
+  )
+  .option(
+    "-t, --tunnel <url>",
+    "An optional custom tunnel URL. Use only if you already have an open tunnel to your local dev server."
   )
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (path, options) => {

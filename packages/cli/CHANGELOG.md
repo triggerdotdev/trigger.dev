@@ -1,5 +1,47 @@
 # create-trigger
 
+## 2.2.3
+
+### Patch Changes
+
+- Updated dependencies [6e1b8a11]
+  - @trigger.dev/core@2.2.3
+
+## 2.2.2
+
+### Patch Changes
+
+- @trigger.dev/core@2.2.2
+
+## 2.2.1
+
+### Patch Changes
+
+- 6769d6b4: Detects JSRuntime (Node/Deno at the moment). Adds basic Deno support
+- 9df93d07: Improve create-integration output. Use templates and shared configs.
+- 50e31924: add ability to use custom tunnel in dev command
+- 0adf41c7: Added Next.js `maxDuration` commented out to the api/trigger file using CLI init
+- Updated dependencies [044d38e3]
+- Updated dependencies [abc9737a]
+  - @trigger.dev/core@2.2.1
+
+## 2.2.0
+
+### Minor Changes
+
+- 975c5f1d: Drop support for Node v16, require Node >= 18. This allows us to use native fetch in our SDK which paves the way for multi-platform support.
+
+### Patch Changes
+
+- c070e78d: allow users to update trigger-dev packages to a specific version
+- 50e3d9e4: When indexing user's jobs errors are now stored and displayed
+- be9b5113: allow CLI dev to use injected environment variable
+- b12bc604: remove unused envFile param in sendEvent.ts cmd
+- Updated dependencies [975c5f1d]
+- Updated dependencies [50e3d9e4]
+- Updated dependencies [59a94c71]
+  - @trigger.dev/core@2.2.0
+
 ## 2.1.9
 
 ### Patch Changes

@@ -9,6 +9,7 @@ import { customAlphabet } from "nanoid";
 import slug from "slug";
 import { prisma, PrismaClientOrTransaction } from "~/db.server";
 import { createProject } from "./project.server";
+import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
 
 export type { Organization };
 
@@ -156,29 +157,4 @@ export async function createEnvironment(
       type,
     },
   });
-}
-
-function createApiKeyForEnv(envType: RuntimeEnvironment["type"]) {
-  return `tr_${envSlug(envType)}_${apiKeyId(20)}`;
-}
-
-function createPkApiKeyForEnv(envType: RuntimeEnvironment["type"]) {
-  return `pk_${envSlug(envType)}_${apiKeyId(20)}`;
-}
-
-function envSlug(environmentType: RuntimeEnvironment["type"]) {
-  switch (environmentType) {
-    case "DEVELOPMENT": {
-      return "dev";
-    }
-    case "PRODUCTION": {
-      return "prod";
-    }
-    case "STAGING": {
-      return "stg";
-    }
-    case "PREVIEW": {
-      return "prev";
-    }
-  }
 }

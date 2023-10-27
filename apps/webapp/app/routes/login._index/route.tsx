@@ -1,6 +1,15 @@
-import type { LoaderArgs } from "@remix-run/node";
+import type { DataFunctionArgs, LoaderFunctionArgs, SerializeFrom } from "@remix-run/node";
 import { Form } from "@remix-run/react";
-import { TypedMetaFunction, redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { ServerRuntimeMetaArgs, ServerRuntimeMetaDescriptor } from "@remix-run/server-runtime";
+import { getMatchesData, metaV1 } from "@remix-run/v1-meta";
+import {
+  TypedJsonResponse,
+  TypedMetaFunction,
+  UseDataFunctionReturn,
+  redirect,
+  typedjson,
+  useTypedLoaderData,
+} from "remix-typedjson";
 import { LogoIcon } from "~/components/LogoIcon";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -16,11 +25,19 @@ import { getUserId } from "~/services/session.server";
 import { appEnvTitleTag } from "~/utils";
 import { requestUrl } from "~/utils/requestUrl.server";
 
-export const meta: TypedMetaFunction<typeof loader, { root: RootLoader }> = ({ parentsData }) => ({
-  title: `Login to Trigger.dev${appEnvTitleTag(parentsData?.root.appEnv)}`,
-});
+export const meta: TypedMetaFunction<typeof loader> = (args) => {
+  const matchesData = getMatchesData(args) as { root: UseDataFunctionReturn<RootLoader> };
 
-export async function loader({ request }: LoaderArgs) {
+  return metaV1(args, {
+    title: `Login to Trigger.dev${appEnvTitleTag(matchesData.root.appEnv)}`,
+  });
+};
+
+export type PromiseReturnType<T extends (...arguments_: any) => Promise<any>> = Awaited<
+  ReturnType<T>
+>;
+
+export async function loader({ request }: LoaderFunctionArgs) {
   const userId = await getUserId(request);
   if (userId) return redirect("/");
 
@@ -60,16 +77,29 @@ export default function LoginPage() {
             <a href="https://trigger.dev">
               <LogoIcon className="mb-4 h-16 w-16" />
             </a>
-            <FormTitle divide={false} title="Log in to Trigger.dev" />
+            <FormTitle divide={false} title="Welcome to Trigger.dev" className="mb-2 pb-0" />
+            <Paragraph variant="small" className="mb-4">
+              Create an account or login
+            </Paragraph>
             <Fieldset>
               <div className="flex flex-col gap-y-2">
                 {data.showGithubAuth && (
-                  <Button type="submit" variant="primary/large" fullWidth>
+                  <Button
+                    type="submit"
+                    variant="primary/large"
+                    fullWidth
+                    data-action="continue with github"
+                  >
                     <NamedIcon name={"github"} className={"mr-1.5 h-4 w-4"} />
                     Continue with GitHub
                   </Button>
                 )}
-                <LinkButton to="/login/magic" variant="secondary/large" fullWidth>
+                <LinkButton
+                  to="/login/magic"
+                  variant="secondary/large"
+                  fullWidth
+                  data-action="continue with email"
+                >
                   <NamedIcon
                     name={"envelope"}
                     className={"mr-1.5 h-4 w-4 text-dimmed transition group-hover:text-bright"}

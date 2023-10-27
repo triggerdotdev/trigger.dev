@@ -1,11 +1,12 @@
-import { RouteMatch, useMatches } from "@remix-run/react";
+import { UIMatch, useMatches } from "@remix-run/react";
 import { Fragment, ReactNode } from "react";
 import { BreadcrumbIcon } from "../primitives/BreadcrumbIcon";
+import { Handle } from "~/utils/handle";
 
-export type BreadcrumbItem = (match: RouteMatch, allMatches: RouteMatch[]) => ReactNode;
+export type BreadcrumbItem = (match: UIMatch, allMatches: UIMatch[]) => ReactNode;
 
 export function Breadcrumb() {
-  const matches = useMatches();
+  const matches = useMatches() as UIMatch<unknown, Handle>[];
 
   return (
     <div className="hidden items-center md:flex">

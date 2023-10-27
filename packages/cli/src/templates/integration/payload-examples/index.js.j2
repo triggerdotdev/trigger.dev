@@ -1,0 +1,40 @@
+import { EventSpecificationExample } from "@trigger.dev/sdk";
+
+import CommentCreated from "./CommentCreated.json"
+import CommentRemoved from "./CommentRemoved.json"
+import CommentUpdated from "./CommentUpdated.json"
+import IssueCreated from "./IssueCreated.json"
+import IssueRemoved from "./IssueRemoved.json"
+import IssueUpdated from "./IssueUpdated.json"
+
+export const commentCreated: EventSpecificationExample = {
+  id: "CommentCreated",
+  name: "Comment created",
+  payload: CommentCreated,
+};
+export const commentRemoved: EventSpecificationExample = {
+  id: "CommentRemoved",
+  name: "Comment removed",
+  payload: CommentRemoved,
+};
+export const commentUpdated: EventSpecificationExample = {
+  id: "CommentUpdated",
+  name: "Comment updated",
+  payload: CommentUpdated,
+};
+
+export const issueCreated: EventSpecificationExample = {
+  id: "IssueCreated",
+  name: "Issue created",
+  payload: IssueCreated,
+};
+export const issueRemoved: EventSpecificationExample = {
+  id: "IssueRemoved",
+  name: "Issue removed",
+  payload: IssueRemoved,
+};
+export const issueUpdated: EventSpecificationExample = {
+  id: "IssueUpdated",
+  name: "Issue updated",
+  payload: IssueUpdated,
+};

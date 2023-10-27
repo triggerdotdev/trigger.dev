@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/cli",
-  "version": "2.1.9",
+  "version": "2.2.3",
   "description": "The Trigger.dev CLI",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -68,6 +68,7 @@
     "execa": "^7.0.0",
     "gradient-string": "^2.0.2",
     "inquirer": "^9.1.4",
+    "liquidjs": "^10.9.2",
     "localtunnel": "^2.0.2",
     "mock-fs": "^5.2.0",
     "nanoid": "^4.0.2",

@@ -22,6 +22,7 @@ import { resolvePath } from "../utils/parseNameAndPath";
 import { readPackageJson } from "../utils/readPackageJson";
 import { renderTitle } from "../utils/renderTitle";
 import { TriggerApi, WhoamiResponse } from "../utils/triggerApi";
+import { getJsRuntime } from "../utils/jsRuntime";
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -37,6 +38,19 @@ export const initCommand = async (options: InitCommandOptions) => {
   telemetryClient.init.started(options);
 
   const resolvedPath = resolvePath(options.projectPath);
+
+  // assuming nodejs by default
+  let runtimeId: string = "nodejs";
+  try {
+    runtimeId = (await getJsRuntime(resolvedPath, logger)).id;
+  } catch {}
+  if (runtimeId !== "nodejs") {
+    logger.error(
+      `We currently only support automatic setup for NodeJS projects. This is a ${runtimeId} project. View our manual installation guides here: https://trigger.dev/docs/documentation/quickstarts/introduction`
+    );
+    telemetryClient.init.failed("not_supported_runtime", options);
+    return;
+  }
 
   await renderTitle(resolvedPath);
 
@@ -151,7 +165,7 @@ async function printNextSteps(
   framework: Framework
 ) {
   logger.success(`✔ Successfully initialized Trigger.dev!`);
-
+  logger.warn(`⚠️ Warning: We don't currently support long-running servers! For more details, check out https://github.com/triggerdotdev/trigger.dev/issues/244.`);
   logger.info("Next steps:");
   logger.info(`   1. Run your ${framework.name} project locally with '${packageManager} run dev'`);
   logger.info(

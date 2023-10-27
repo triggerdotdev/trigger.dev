@@ -1,5 +1,31 @@
 # internal-platform
 
+## 2.2.3
+
+### Patch Changes
+
+- 6e1b8a11: implement functionality to cancel job runs triggered by a given eventId.
+
+## 2.2.2
+
+## 2.2.1
+
+### Patch Changes
+
+- 044d38e3: Auto-yield run execution to help prevent duplicate task executions
+- abc9737a: Updated icon documentation in runTasks
+
+## 2.2.0
+
+### Minor Changes
+
+- 975c5f1d: Drop support for Node v16, require Node >= 18. This allows us to use native fetch in our SDK which paves the way for multi-platform support.
+
+### Patch Changes
+
+- 50e3d9e4: When indexing user's jobs errors are now stored and displayed
+- 59a94c71: Allow task property values to be blank, but strip them out before persisting them
+
 ## 2.1.9
 
 ### Patch Changes

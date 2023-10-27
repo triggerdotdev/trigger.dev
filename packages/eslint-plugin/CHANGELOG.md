@@ -1,5 +1,17 @@
 # @trigger.dev/eslint-plugin
 
+## 2.2.3
+
+## 2.2.2
+
+## 2.2.1
+
+## 2.2.0
+
+### Minor Changes
+
+- 975c5f1d: Drop support for Node v16, require Node >= 18. This allows us to use native fetch in our SDK which paves the way for multi-platform support.
+
 ## 2.1.9
 
 ## 2.1.8

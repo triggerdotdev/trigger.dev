@@ -4,9 +4,12 @@ sidebarTitle: "runTask()"
 description: "Creates and runs a Task inside a Run."
 ---
 
-A [Task](/documentation/concepts/tasks) is a resumable unit of a Run that can be retried, resumed and is logged. [Integrations](/integrations) use Tasks internally to perform their actions.
+A [Task](/documentation/concepts/tasks) is a cached unit of work in a Job Run that are logged to the Trigger.dev UI. You can use `io.runTask()` to create and run a Task inside a Run.
 
-The wrappers at `io.integration.runTask()` expose the underlying Integration client as the first callback parameter (see examples on the right). They will have defaults set for options and `onError` handlers, but should otherwise be considered identical to raw `io.runTask()`.
+<Warning>
+  Any interaction with an external service (database or API) should be wrapped in a Task. Failing to
+  do so could result in repeated work when runs are resumed.
+</Warning>
 
 ## Parameters
 
@@ -60,8 +63,7 @@ The wrappers at `io.integration.runTask()` expose the underlying Integration cli
   </ResponseField>
   <ResponseField name="icon" type="string">
     The icon for the Task, it will appear in the logs. You can use the name of a
-    company in lowercase, e.g. "github". Or any icon name that [Font
-    Awesome](https://fontawesome.com/icons) supports.
+    company in lowercase, e.g. "github". Or any icon name that [Tabler Icons](https://tabler-icons.io/) supports.
   </ResponseField>
   <ResponseField name="description" type="string">
     A description of the Task.
@@ -160,32 +162,30 @@ If the remote callback feature `options.callback` is enabled, the Promise will i
 client.defineJob({
   id: "alert-on-new-github-issues",
   name: "Alert on new GitHub issues",
-  version: "0.1.1",
+  version: "1.0.0",
   trigger: github.triggers.repo({
     event: events.onIssueOpened,
     owner: "triggerdotdev",
     repo: "trigger.dev",
   }),
-  integrations: {
-    github,
-  },
   run: async (payload, io, ctx) => {
-    //runTask
-    const response = await io.github.runTask(
-      "create-card",
-      async (client) => {
-        //create a project card using the underlying GitHub Integration client
-        return client.rest.projects.createCard({
-          column_id: 123,
-          note: "test",
+    const record = await io.runTask(
+      "sync-github-issue",
+      async (task) => {
+        return prisma.githubIssues.create({
+          data: {
+            number: payload.issue.number,
+            title: payload.issue.title,
+            body: payload.issue.body,
+            url: payload.issue.html_url,
+            repo: payload.repository.full_name,
+            owner: payload.repository.owner.login,
+          },
         });
       },
       //this is optional
-      { name: "Create card", icon: "github" }
+      { name: "Sync GitHub Issue", icon: "github" }
     );
-
-    //log the url of the created card
-    await io.logger.info(response.data.url);
   },
 });
 ```
@@ -228,14 +228,12 @@ client.defineJob({
   name: "Remote Callback example",
   version: "0.1.1",
   trigger: eventTrigger({ name: "predict" }),
-  integrations: { replicate },
   run: async (payload, io, ctx) => {
-    //runTask
-    const prediction = await io.replicate.runTask(
+    const prediction = await io.runTask(
       "create-and-await-prediction",
-      async (client, task) => {
-        //create a prediction using the underlying Replicate Integration client
-        await client.predictions.create({
+      async (task) => {
+        //create a prediction using a Replicate SDK instance
+        await replicate.predictions.create({
           ...payload,
           webhook: task.callbackUrl ?? "",
           webhook_events_filter: ["completed"],

@@ -1,10 +1,7 @@
-import type { ActionArgs } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { TaskStatus } from "@trigger.dev/database";
 import {
-  RunTaskBodyOutput,
-  RunTaskBodyOutputSchema,
-  ServerTask,
+  JobRunStatusRecordSchema,
   StatusHistory,
   StatusHistorySchema,
   StatusUpdate,
@@ -14,19 +11,15 @@ import {
 } from "@trigger.dev/core";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
-import { taskWithAttemptsToServerTask } from "~/models/task.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { ulid } from "~/services/ulid.server";
-import { workerQueue } from "~/services/worker.server";
-import { JobRunStatusRecordSchema } from "@trigger.dev/core";
 
 const ParamsSchema = z.object({
   runId: z.string(),
   id: z.string(),
 });
 
-export async function action({ request, params }: ActionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   // Ensure this is a POST request
   if (request.method.toUpperCase() !== "PUT") {
     return { status: 405, body: "Method Not Allowed" };

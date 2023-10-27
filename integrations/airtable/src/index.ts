@@ -15,6 +15,7 @@ import { Base } from "./base";
 import { Webhooks, createWebhookEventSource } from "./webhooks";
 
 export * from "./types";
+export * from "./base";
 
 export type AirtableIntegrationOptions = {
   /** An ID for this client  */

@@ -1,4 +1,4 @@
-import { ActionArgs, LoaderArgs, json } from "@remix-run/server-runtime";
+import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
@@ -12,7 +12,7 @@ const ParamsSchema = z.object({
   indexHookIdentifier: z.string(),
 });
 
-export async function loader({ params }: LoaderArgs) {
+export async function loader({ params }: LoaderFunctionArgs) {
   const parsedParams = ParamsSchema.safeParse(params);
 
   if (!parsedParams.success) {
@@ -39,7 +39,7 @@ export async function loader({ params }: LoaderArgs) {
   });
 }
 
-export async function action({ request, params }: ActionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   const parsedParams = ParamsSchema.safeParse(params);
 
   if (!parsedParams.success) {

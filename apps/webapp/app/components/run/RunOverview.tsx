@@ -313,7 +313,8 @@ function RerunPopover({
 
   const [form, { successRedirect }] = useForm({
     id: "rerun",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },
@@ -386,7 +387,8 @@ export function CancelRun({ runId }: { runId: string }) {
 
   const [form, { redirectUrl }] = useForm({
     id: "cancel-run",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema: cancelSchema });
     },
