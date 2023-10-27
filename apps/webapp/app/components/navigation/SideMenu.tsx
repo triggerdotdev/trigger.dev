@@ -22,13 +22,21 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { MatchedProject } from "~/hooks/useProject";
+import { MatchedOrganization } from "~/hooks/useOrganizations";
 
-export function SideMenu() {
+type SideMenuProps = {
+  project: MatchedProject;
+  organization: MatchedOrganization;
+};
+
+export function SideMenu({ project, organization }: SideMenuProps) {
   const borderRef = useRef<HTMLDivElement>(null);
   const [isScrolled, setIsScrolled] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
+      console.log("scroll");
       if (borderRef.current) {
         setIsScrolled(borderRef.current.scrollTop > 0);
       }
@@ -176,7 +184,7 @@ function SideMenuOrgHeader({ className }: { className?: string }) {
         <PopoverArrowTrigger
           isOpen={isOrgMenuOpen}
           overflowHidden
-          className="h-7 overflow-hidden py-1 pl-2"
+          className="h-7 w-full justify-between overflow-hidden py-1 pl-2"
         >
           <LogoIcon className="relative -top-px mr-2 h-4 w-4 min-w-[1rem]" />
           <span className="truncate">My Org 1</span>
