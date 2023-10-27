@@ -3,8 +3,14 @@ import {
   EllipsisHorizontalIcon,
   UserCircleIcon,
 } from "@heroicons/react/20/solid";
-import { UserPlusIcon } from "@heroicons/react/24/solid";
-import { IconExclamationCircle, IconRun } from "@tabler/icons-react";
+import {
+  UserPlusIcon,
+  ChartPieIcon,
+  QueueListIcon,
+  UserGroupIcon,
+  BookmarkIcon,
+} from "@heroicons/react/24/solid";
+import { IconExclamationCircle } from "@tabler/icons-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { LogoIcon } from "../LogoIcon";
@@ -24,6 +30,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { MatchedProject } from "~/hooks/useProject";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
+import { projectSetupPath } from "~/utils/pathBuilder";
 
 type SideMenuProps = {
   project: MatchedProject;
@@ -62,7 +69,11 @@ export function SideMenu({ project, organization }: SideMenuProps) {
         <div className="h-full overflow-hidden overflow-y-auto pt-4" ref={borderRef}>
           <div className="mb-8 flex flex-col gap-1 px-1">
             <SideMenuHeader title="My Project 1">
-              <PopoverMenuItem to="#" title="Framework setup" icon="plus" />
+              <PopoverMenuItem
+                to={projectSetupPath(organization, project)}
+                title="Framework setup"
+                icon="plus"
+              />
             </SideMenuHeader>
             <SideMenuItem
               name="Jobs"
@@ -76,15 +87,15 @@ export function SideMenu({ project, organization }: SideMenuProps) {
             />
             <SideMenuItem
               name="Runs"
-              icon={IconRun}
-              iconColor="text-amber-500"
+              icon="runs"
+              iconColor="text-lime-500"
               to=""
               data-action="runs"
             />
             <SideMenuItem
               name="Events"
-              icon="trigger"
-              iconColor="text-lime-500"
+              icon={BookmarkIcon}
+              iconColor="text-orange-500"
               to=""
               data-action="events"
             />
@@ -100,8 +111,8 @@ export function SideMenu({ project, organization }: SideMenuProps) {
             />
             <SideMenuItem
               name="Catalog"
-              icon="trigger"
-              iconColor="text-yellow-500"
+              icon={QueueListIcon}
+              iconColor="text-pink-500"
               count={4}
               to=""
               data-action="catalog"
@@ -110,7 +121,7 @@ export function SideMenu({ project, organization }: SideMenuProps) {
             <SideMenuItem name="Billing Events" to="" subItem />
             <SideMenuItem
               name="Endpoints"
-              icon="trigger"
+              icon="endpoint"
               iconColor="text-blue-500"
               count={4}
               to=""
@@ -120,7 +131,7 @@ export function SideMenu({ project, organization }: SideMenuProps) {
             <SideMenuItem
               name="API Keys"
               icon="environment"
-              iconColor="text-fuchsia-500"
+              iconColor="text-yellow-500"
               to=""
               data-action="api keys"
             />
@@ -143,11 +154,11 @@ export function SideMenu({ project, organization }: SideMenuProps) {
               data-action="integrations"
               hasWarning="An Integration requires setup"
             />
-            <SideMenuItem name="Projects" icon="job" to="" data-action="projects" />
-            <SideMenuItem name="Team" icon="trigger" to="" data-action="team" />
+            <SideMenuItem name="Projects" icon="folder" to="" data-action="projects" />
+            <SideMenuItem name="Team" icon={UserGroupIcon} to="" data-action="team" />
             <SideMenuItem
               name="Usage & Billing"
-              icon="environment"
+              icon={ChartPieIcon}
               to=""
               data-action="usage & billing"
             />
@@ -155,17 +166,17 @@ export function SideMenu({ project, organization }: SideMenuProps) {
         </div>
         <div className="flex flex-col gap-1 border-t border-border p-1">
           <SideMenuItem
-            name="Changelog"
-            icon="star"
-            to="https://trigger.dev/changelog"
-            data-action="changelog"
-            target="_blank"
-          />
-          <SideMenuItem
             name="Documentation"
             icon="docs"
             to="https://trigger.dev/docs"
             data-action="documentation"
+            target="_blank"
+          />
+          <SideMenuItem
+            name="Changelog"
+            icon="star"
+            to="https://trigger.dev/changelog"
+            data-action="changelog"
             target="_blank"
           />
           <SideMenuItem name="Help & Feedback" icon="log" to="" data-action="help & feedback" />
