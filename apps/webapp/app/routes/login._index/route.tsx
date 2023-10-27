@@ -100,6 +100,7 @@ const features = "h-32 w-32 text-gray-500 grayscale transition group-hover:grays
 const wide = "col-span-2";
 const wider = "col-span-3 row-span-2";
 const mediumSquare = "col-span-2 row-span-2";
+const hidden = "hidden xl:grid";
 
 export default function LoginPage() {
   const data = useTypedLoaderData<typeof loader>();
@@ -112,10 +113,10 @@ export default function LoginPage() {
 
   return (
     <main className="grid h-full w-full grid-cols-12">
-      <div className="border-midnight-750 z-10 col-span-5 border-r bg-midnight-850">
+      <div className="border-midnight-750 z-10 col-span-12 border-r bg-midnight-850 md:col-span-6 lg:col-span-5">
         <LoginForm />
       </div>
-      <div className="col-span-7 grid h-full w-full grid-flow-row grid-cols-5 grid-rows-6 gap-4 p-4">
+      <div className="hidden h-full w-full grid-cols-3 grid-rows-6 gap-4 p-4 md:col-span-6 md:grid lg:col-span-7 xl:grid-cols-5">
         <LoginTooltip side="bottom" content={<ServerlessTooltipContent />}>
           <div className={cn(layout, gridCell, mediumSquare)}>
             <ServerStackIcon className={cn(opacity, features, "group-hover:text-blue-500")} />
@@ -127,7 +128,7 @@ export default function LoginPage() {
           </div>
         </LoginTooltip>
         <LoginTooltip side="left" content={<TriggerTooltipContent />}>
-          <div className={cn(layout, gridCell, mediumSquare)}>
+          <div className={cn(layout, gridCell, mediumSquare, hidden)}>
             <BoltIcon className={cn(opacity, features, "group-hover:text-yellow-500")} />
           </div>
         </LoginTooltip>
@@ -139,7 +140,7 @@ export default function LoginPage() {
         <LoginTooltip side="top" content={<QuoteTooltipContent />}>
           <div className={cn(layout, gridCell, wider)}>
             <div className="p-4">
-              <Header3 className="relative text-2xl font-normal leading-8 text-gray-600 transition before:relative before:right-1 before:top-5 before:text-7xl before:text-slate-600 before:opacity-20 before:content-['❝'] group-hover:text-slate-500 group-hover:before:opacity-30">
+              <Header3 className="relative text-2xl font-normal leading-8 text-gray-600 transition before:relative before:right-1 before:top-5 before:text-6xl before:text-slate-600 before:opacity-20 before:content-['❝'] group-hover:text-slate-500 group-hover:before:opacity-30">
                 {randomQuote?.quote}
               </Header3>
               <Paragraph
@@ -151,24 +152,24 @@ export default function LoginPage() {
             </div>
           </div>
         </LoginTooltip>
-        <LoginTooltip side="left" content={<AirtableTooltipContent />}>
-          <div className={cn("", layout, gridCell)}>
-            <Icon icon="airtable" className={cn(logos, opacity)} />
+        <LoginTooltip side="left" content={<ResendTooltipContent />}>
+          <div className={cn(layout, gridCell, hidden)}>
+            <Icon icon="resend" className={cn(logos, opacity)} />
           </div>
         </LoginTooltip>
         <LoginTooltip side="left" content={<TypeformTooltipContent />}>
-          <div className={cn("", layout, gridCell)}>
+          <div className={cn("", layout, gridCell, hidden)}>
             <Icon icon="typeform" className={cn(logos, opacity)} />
           </div>
         </LoginTooltip>
         <LoginTooltip side="left" content={<ReactHooksTooltipContent />}>
-          <div className={cn(layout, gridCell, mediumSquare)}>
+          <div className={cn(layout, gridCell, mediumSquare, hidden)}>
             <Icon icon="webhook" className={cn(opacity, features, "group-hover:text-green-500")} />
           </div>
         </LoginTooltip>
-        <LoginTooltip side="right" content={<SupabaseTooltipContent />}>
-          <div className={cn(layout, gridCell)}>
-            <Icon icon="supabase" className={cn(logos, opacity)} />
+        <LoginTooltip side="right" content={<AirtableTooltipContent />}>
+          <div className={cn("", layout, gridCell)}>
+            <Icon icon="airtable" className={cn(logos, opacity)} />
           </div>
         </LoginTooltip>
         <LoginTooltip side="top" content={<InYourCodebaseTooltipContent />}>
@@ -176,13 +177,13 @@ export default function LoginPage() {
             <CodeBracketIcon className={cn(opacity, features, "group-hover:text-rose-500")} />
           </div>
         </LoginTooltip>
-        <LoginTooltip side="right" content={<ResendTooltipContent />}>
+        <LoginTooltip side="right" content={<SupabaseTooltipContent />}>
           <div className={cn(layout, gridCell)}>
-            <Icon icon="resend" className={cn(logos, opacity)} />
+            <Icon icon="supabase" className={cn(logos, opacity)} />
           </div>
         </LoginTooltip>
         <LoginTooltip side="left" content={<CloudTooltipContent />}>
-          <div className={cn(layout, gridCell, wide)}>
+          <div className={cn(layout, gridCell, wide, hidden)}>
             <CloudIcon className={cn(opacity, features, "h-20 w-20 group-hover:text-cyan-500")} />
           </div>
         </LoginTooltip>
@@ -209,7 +210,9 @@ function LoginForm() {
           method="post"
         >
           <div className="flex flex-col items-center">
-            <Header1 className="pb-4 font-normal lg:text-4xl">Welcome</Header1>
+            <Header1 className="pb-4 font-normal sm:text-2xl md:text-3xl lg:text-4xl">
+              Welcome
+            </Header1>
             <Paragraph variant="base" className="mb-6">
               Create an account or login
             </Paragraph>
