@@ -70,6 +70,8 @@ import { TwoTreesIcon } from "~/assets/icons/TwoTreesIcon";
 import { OneTreeIcon } from "~/assets/icons/OneTreeIcon";
 import { tablerIcons } from "~/utils/tablerIcons";
 import tablerSpritePath from "./tabler-sprite.svg";
+import { EndpointIcon } from "~/assets/icons/EndpointIcon";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
 
 const icons = {
   account: (className: string) => <UserCircleIcon className={cn("text-slate-400", className)} />,
@@ -183,6 +185,8 @@ const icons = {
     <ScheduleIcon className={cn("text-sky-500", className)} />
   ),
   webhook: (className: string) => <WebhookIcon className={cn("text-pink-500", className)} />,
+  endpoint: (className: string) => <EndpointIcon className={cn("text-blue-500", className)} />,
+  runs: (className: string) => <RunsIcon className={cn("text-lime-500", className)} />,
 };
 
 export type IconNames = keyof typeof icons;
