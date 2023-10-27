@@ -84,4 +84,15 @@ export class VercelClient {
       throw new Error(`failed to delete webhook: ${res.statusText}`);
     }
   }
+
+  async updateWebhook(
+    webhookId: string,
+    teamId: string,
+    events: string[],
+    url: string,
+    projectIds?: string[]
+  ): Promise<WebhookRegistrationData> {
+    await this.deleteWebhook(webhookId);
+    return await this.createWebhook(teamId, events, url, projectIds);
+  }
 }
