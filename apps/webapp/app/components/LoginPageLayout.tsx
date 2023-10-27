@@ -5,15 +5,15 @@ import {
   HeartIcon,
   ServerStackIcon,
 } from "@heroicons/react/24/solid";
-import { LoginTooltip } from "./primitives/Tooltip";
-import { Icon } from "./primitives/Icon";
-import { Header3 } from "./primitives/Headers";
-import { Paragraph } from "./primitives/Paragraph";
-import { cn } from "~/utils/cn";
 import { useEffect, useState } from "react";
-import { LinkButton } from "./primitives/Buttons";
+import { cn } from "~/utils/cn";
 import { LogoType } from "./LogoType";
+import { LinkButton } from "./primitives/Buttons";
+import { Header3 } from "./primitives/Headers";
+import { Icon } from "./primitives/Icon";
+import { Paragraph } from "./primitives/Paragraph";
 import { TextLink } from "./primitives/TextLink";
+import { LoginTooltip } from "./primitives/Tooltip";
 
 interface QuoteType {
   quote: string;
@@ -41,7 +41,7 @@ const quotes: QuoteType[] = [
   },
 ];
 
-const layout = "group grid place-items-center p-4 text-center overflow-hidden";
+const layout = "group grid place-items-center text-center overflow-hidden";
 const gridCell = "hover:bg-midnight-850 rounded-lg transition bg-midnight-850/40";
 const opacity = "opacity-10 group-hover:opacity-100 transition group-hover:scale-105";
 const logos = "h-20 w-20 transition grayscale group-hover:grayscale-0";
@@ -61,8 +61,8 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
   return (
     <main className="grid h-full w-full grid-cols-12">
       <div className="border-midnight-750 z-10 col-span-12 border-r bg-midnight-850 md:col-span-6 lg:col-span-5">
-        <div className="flex h-full flex-col justify-between p-6">
-          <div className="flex items-center justify-between">
+        <div className="flex h-full flex-col items-center justify-between p-6">
+          <div className="flex w-full items-center justify-between">
             <a href="https://trigger.dev">
               <LogoType className="w-36" />
             </a>
@@ -74,7 +74,7 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
               Documentation
             </LinkButton>
           </div>
-          <div className="flex h-full items-center justify-center">{children}</div>
+          <div className="flex h-full max-w-sm items-center justify-center">{children}</div>
           <Paragraph variant="extra-small" className="text-center">
             Having login issues? <TextLink href="mailto:help@trigger.dev">Email us</TextLink> or{" "}
             <TextLink href="https://trigger.dev/discord">ask us in Discord</TextLink>
@@ -104,7 +104,7 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
         </LoginTooltip>
         <LoginTooltip side="top" content={<QuoteTooltipContent />}>
           <div className={cn(layout, gridCell, wider)}>
-            <div className="p-4">
+            <div className="px-4">
               <Header3 className="relative text-2xl font-normal leading-8 text-gray-600 transition before:relative before:right-1 before:top-5 before:text-6xl before:text-slate-600 before:opacity-20 before:content-['❝'] group-hover:text-slate-500 group-hover:before:opacity-30">
                 {randomQuote?.quote}
               </Header3>
