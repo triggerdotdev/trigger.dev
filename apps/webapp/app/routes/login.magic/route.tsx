@@ -175,16 +175,16 @@ export default function LoginMagicLinkPage() {
                 </Button>
                 {magicLinkError && <FormError>{magicLinkError}</FormError>}
               </Fieldset>
-              <Paragraph variant="extra-small" className="my-4 text-center">
-                By logging in with your email you agree to our{" "}
+              <Paragraph variant="extra-small" className="mb-4 mt-6 text-center">
+                By signing up you agree to our{" "}
                 <TextLink href="https://trigger.dev/legal" target="_blank">
                   terms
-                </TextLink>{" "}
-                and{" "}
+                </TextLink>
+                {" "}and{" "}
                 <TextLink href="https://trigger.dev/legal/privacy" target="_blank">
                   privacy
-                </TextLink>{" "}
-                policy.
+                </TextLink>
+                {" "}policy.
               </Paragraph>
 
               <LinkButton
