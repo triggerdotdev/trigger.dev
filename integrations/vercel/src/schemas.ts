@@ -4,28 +4,44 @@ import { WebhookEventTypeSchema } from "./types";
 const WebhookEventBaseSchema = z.object({
   id: z.string(),
   createdAt: z.number(),
-  eventRegion: z.string().optional(),
+  region: z.string().optional(),
 });
 
 const DeploymentPayloadBaseSchema = z.object({
-  deploymentId: z.string(),
-  deploymentUrl: z.string(),
-  deploymentUrlOnDashboard: z.string(),
-  projectId: z.string(),
-  projectName: z.string(),
-  projectUrlOnDashboard: z.string(),
-  userId: z.array(z.any()),
-  teamId: z.array(z.any()).optional(),
-  environment: z.enum(["production", "staging"]),
-  planType: z.string(),
-  supportedRegions: z.array(z.any()),
-  metadata: z.record(z.any()),
+  name: z.string(),
+  plan: z.string(),
+  url: z.string(),
+  type: z.string(),
+  target: z.union([z.literal("production"), z.literal("staging"), z.null()]),
+  regions: z.array(z.string()),
+  user: z.object({
+    id: z.string(),
+  }),
+  team: z
+    .object({
+      id: z.string().optional(),
+    })
+    .optional(),
+  project: z.object({
+    id: z.string(),
+  }),
+  deployment: z.object({
+    id: z.string(),
+    name: z.string(),
+    url: z.string(),
+    inspectorUrl: z.string(),
+    meta: z.record(z.any()),
+  }),
+  links: z.object({
+    deployment: z.string(),
+    project: z.string(),
+  }),
 });
 
 const DeploymentCreatedEventSchema = WebhookEventBaseSchema.extend({
   type: z.literal(WebhookEventTypeSchema.enum["deployment.created"]),
   payload: DeploymentPayloadBaseSchema.extend({
-    alias: z.array(z.any()),
+    alias: z.array(z.string()),
   }),
 });
 

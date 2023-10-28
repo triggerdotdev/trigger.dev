@@ -9,18 +9,18 @@ export const deploymentProperties = (event: DeploymentEvent) => {
   return [
     {
       label: "Project Name",
-      text: event.payload.projectName,
-      url: event.payload.projectUrlOnDashboard,
+      text: event.payload.deployment.name,
+      url: event.payload.links.project,
     },
     {
       label: "Deployment ID",
-      text: event.payload.deploymentId,
-      url: event.payload.deploymentUrlOnDashboard,
+      text: event.payload.deployment.id,
+      url: event.payload.links.deployment,
     },
     {
       label: "Deployment URL",
       text: "View Application",
-      url: event.payload.deploymentUrl,
+      url: event.payload.deployment.url,
     },
   ];
 };
