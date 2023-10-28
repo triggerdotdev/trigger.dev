@@ -6,6 +6,9 @@ export function sha1(data: Buffer, secret: string): string {
 }
 
 export const deploymentProperties = (event: DeploymentEvent) => {
+  const applicationUrl = event.payload.deployment.url.startsWith("https://")
+    ? event.payload.deployment.url
+    : `https://${event.payload.deployment.url}`;
   return [
     {
       label: "Project Name",
@@ -18,9 +21,9 @@ export const deploymentProperties = (event: DeploymentEvent) => {
       url: event.payload.links.deployment,
     },
     {
-      label: "Deployment URL",
+      label: "Application URL",
       text: "View Application",
-      url: event.payload.deployment.url,
+      url: applicationUrl,
     },
   ];
 };

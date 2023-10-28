@@ -7,7 +7,7 @@ import { WebhookEventTypeSchema } from "./types";
 export const onDeploymentCreated: EventSpecification<DeploymentCreatedEvent> = {
   name: WebhookEventTypeSchema.enum["deployment.created"],
   title: "On Deployment Created",
-  source: "vercel.com",
+  source: "vercel.app",
   icon: "vercel",
   examples: [deploymentCreated],
   parsePayload: (payload) => payload as DeploymentCreatedEvent,
@@ -17,7 +17,7 @@ export const onDeploymentCreated: EventSpecification<DeploymentCreatedEvent> = {
 export const onDeploymentSucceeded: EventSpecification<DeploymentSucceededEvent> = {
   name: WebhookEventTypeSchema.enum["deployment.succeeded"],
   title: "On Deployment Succeeded",
-  source: "vercel.com",
+  source: "vercel.app",
   icon: "vercel",
   examples: [deploymentSucceeded],
   parsePayload: (payload) => payload as DeploymentSucceededEvent,
