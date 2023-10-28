@@ -5,6 +5,8 @@ import DeploymentSucceeded from "./DeploymentSucceeded.json";
 import DeploymentReady from "./DeploymentReady.json";
 import DeploymentCanceled from "./DeploymentCanceled.json";
 import DeploymentError from "./DeploymentError.json";
+import ProjectCreated from "./ProjectCreated.json";
+import ProjectRemoved from "./ProjectRemoved.json";
 
 export const deploymentCreated: EventSpecificationExample = {
   id: "deployment.created",
@@ -34,4 +36,16 @@ export const deploymentError: EventSpecificationExample = {
   id: "deployment.error",
   name: "Deployment Error",
   payload: DeploymentError,
+};
+
+export const projectCreated: EventSpecificationExample = {
+  id: "project.created",
+  name: "Project Created",
+  payload: ProjectCreated,
+};
+
+export const projectRemoved: EventSpecificationExample = {
+  id: "project.removed",
+  name: "Project Removed",
+  payload: ProjectRemoved,
 };

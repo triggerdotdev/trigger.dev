@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { DeploymentEventPayload } from "./schemas";
+import { DeploymentEventPayload, ProjectEventPayload } from "./schemas";
 
 export function sha1(data: Buffer, secret: string): string {
   return crypto.createHmac("sha1", secret).update(data).digest("hex");
@@ -24,6 +24,19 @@ export const deploymentProperties = (payload: DeploymentEventPayload) => {
       label: "Application URL",
       text: "View Application",
       url: applicationUrl,
+    },
+  ];
+};
+
+export const projectProperties = (payload: ProjectEventPayload) => {
+  return [
+    {
+      label: "Project ID",
+      text: payload.project.id,
+    },
+    {
+      label: "Project Name",
+      text: payload.project.name,
     },
   ];
 };

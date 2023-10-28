@@ -6,6 +6,8 @@ export const WebhookEventTypeSchema = z.enum([
   "deployment.ready",
   "deployment.canceled",
   "deployment.error",
+  "project.created",
+  "project.removed",
 ]);
 
 export type WebhookEventType = z.infer<typeof WebhookEventTypeSchema>;

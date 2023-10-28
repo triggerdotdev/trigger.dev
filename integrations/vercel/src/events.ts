@@ -5,6 +5,8 @@ import {
   DeploymentErrorEventPayload,
   DeploymentReadyEventPayload,
   DeploymentSucceededEventPayload,
+  ProjectCreatedEventPayload,
+  ProjectRemovedEventPayload,
 } from "./schemas";
 import {
   deploymentCanceled,
@@ -12,8 +14,10 @@ import {
   deploymentError,
   deploymentReady,
   deploymentSucceeded,
+  projectCreated,
+  projectRemoved,
 } from "./payload-examples";
-import { deploymentProperties } from "./utils";
+import { deploymentProperties, projectProperties } from "./utils";
 import { WebhookEventTypeSchema } from "./types";
 
 export const onDeploymentCreated: EventSpecification<DeploymentCreatedEventPayload> = {
@@ -64,4 +68,24 @@ export const onDeploymentError: EventSpecification<DeploymentErrorEventPayload> 
   examples: [deploymentError],
   parsePayload: (payload) => payload as DeploymentErrorEventPayload,
   runProperties: (event) => deploymentProperties(event),
+};
+
+export const onProjectCreated: EventSpecification<ProjectCreatedEventPayload> = {
+  name: WebhookEventTypeSchema.enum["project.created"],
+  title: "On Project Created",
+  source: "vercel.app",
+  icon: "vercel",
+  examples: [projectCreated],
+  parsePayload: (payload) => payload as ProjectCreatedEventPayload,
+  runProperties: (event) => projectProperties(event),
+};
+
+export const onProjectRemoved: EventSpecification<ProjectRemovedEventPayload> = {
+  name: WebhookEventTypeSchema.enum["project.removed"],
+  title: "On Project Removed",
+  source: "vercel.app",
+  icon: "vercel",
+  examples: [projectRemoved],
+  parsePayload: (payload) => payload as ProjectRemovedEventPayload,
+  runProperties: (event) => projectProperties(event),
 };

@@ -1,43 +1,38 @@
 {
-  "id": "ZqayS9s1AVuTRjB83vVSA2me",
-  "payload": {
-    "user": { "id": "ZqayS9s1AVuTRjB83vVSA5nd" },
-    "team": { "id": "team_kTDbLdHFZ0x7HU66LRgZCfpd" },
-    "deployment": {
-      "id": "dpl_12yAAMp54JKe1XxonMYqW4oWtK5K",
-      "meta": {
-        "githubCommitAuthorName": "Rick Astley",
-        "githubCommitMessage": "Update index.html",
-        "githubCommitOrg": "rickastley",
-        "githubCommitRef": "test-webhook",
-        "githubCommitRepo": "accordion-component",
-        "githubCommitSha": "d298272f30b0ece055912eb50739ce5106c3d716",
-        "githubDeployment": "1",
-        "githubOrg": "rickastley",
-        "githubRepo": "accordion-component",
-        "githubRepoOwnerType": "User",
-        "githubCommitRepoId": "690068910",
-        "githubRepoId": "690068920",
-        "githubRepoVisibility": "public",
-        "githubCommitAuthorLogin": "rickastley",
-        "branchAlias": "accordion-component-git-test-webhook-rick-team.vercel.app"
-      },
-      "name": "accordion-component",
-      "url": "accordion-component-bkzjdsyk8-rick-team.vercel.app",
-      "inspectorUrl": "https://vercel.com/rick-team/accordion-component/12yAAMp54JKe1XxonMYqW4oWtK5K"
-    },
-    "links": {
-      "deployment": "https://vercel.com/rick-team/accordion-component/12yAAMp54JKe1XxonMYqW4oWtK5K",
-      "project": "https://vercel.com/rick-team/accordion-component"
+  "user": { "id": "ZqayS9s1AVuTRjB83vVSA5nd" },
+  "team": { "id": "team_kTDbLdHFZ0x7HU66LRgZCfpd" },
+  "deployment": {
+    "id": "dpl_12yAAMp54JKe1XxonMYqW4oWtK5K",
+    "meta": {
+      "githubCommitAuthorName": "Rick Astley",
+      "githubCommitMessage": "Update index.html",
+      "githubCommitOrg": "rickastley",
+      "githubCommitRef": "test-webhook",
+      "githubCommitRepo": "accordion-component",
+      "githubCommitSha": "d298272f30b0ece055912eb50739ce5106c3d716",
+      "githubDeployment": "1",
+      "githubOrg": "rickastley",
+      "githubRepo": "accordion-component",
+      "githubRepoOwnerType": "User",
+      "githubCommitRepoId": "690068910",
+      "githubRepoId": "690068920",
+      "githubRepoVisibility": "public",
+      "githubCommitAuthorLogin": "rickastley",
+      "branchAlias": "accordion-component-git-test-webhook-rick-team.vercel.app"
     },
     "name": "accordion-component",
-    "plan": "hobby",
-    "project": { "id": "prj_vt57HZEY7iilPaJv71LcOVLcEiOp" },
-    "regions": ["iad1"],
-    "target": null,
-    "type": "LAMBDAS",
-    "url": "accordion-component-bkzjdsyk8-rick-team.vercel.app"
+    "url": "accordion-component-bkzjdsyk8-rick-team.vercel.app",
+    "inspectorUrl": "https://vercel.com/rick-team/accordion-component/12yAAMp54JKe1XxonMYqW4oWtK5K"
   },
-  "createdAt": 1698397688644,
-  "type": "deployment.error"
+  "links": {
+    "deployment": "https://vercel.com/rick-team/accordion-component/12yAAMp54JKe1XxonMYqW4oWtK5K",
+    "project": "https://vercel.com/rick-team/accordion-component"
+  },
+  "name": "accordion-component",
+  "plan": "hobby",
+  "project": { "id": "prj_vt57HZEY7iilPaJv71LcOVLcEiOp" },
+  "regions": ["iad1"],
+  "target": null,
+  "type": "LAMBDAS",
+  "url": "accordion-component-bkzjdsyk8-rick-team.vercel.app"
 }

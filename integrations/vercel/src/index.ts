@@ -123,6 +123,15 @@ export class Vercel implements TriggerIntegration {
     return createTrigger(this.source, events.onDeploymentError, params);
   }
 
+  // TODO: fix params
+  onProjectCreated(params: TriggerParams) {
+    return createTrigger(this.source, events.onProjectCreated, params);
+  }
+
+  onProjectRemoved(params: TriggerParams) {
+    return createTrigger(this.source, events.onProjectRemoved, params);
+  }
+
   // private, just here to keep webhook logic in a separate file
   get #webhooks() {
     return new Webhooks(this.runTask.bind(this));
