@@ -77,13 +77,15 @@ export const WebhookEventSchema = z.union([DeploymentEventSchema, DeploymentEven
 
 export type WebhookEvent = z.infer<typeof WebhookEventSchema>;
 
-type DeploymentCreatedEvent = z.infer<typeof DeploymentCreatedEventSchema>;
+type WebhookEventPayload<TWebhookEvent extends { payload: any }> = TWebhookEvent["payload"];
 
-export type DeploymentCreatedEventPayload = DeploymentCreatedEvent["payload"];
+export type DeploymentCreatedEventPayload = WebhookEventPayload<
+  z.infer<typeof DeploymentCreatedEventSchema>
+>;
 
-type DeploymentSucceededEvent = z.infer<typeof DeploymentCreatedEventSchema>;
-
-export type DeploymentSucceededEventPayload = DeploymentSucceededEvent["payload"];
+export type DeploymentSucceededEventPayload = WebhookEventPayload<
+  z.infer<typeof DeploymentSucceededEventSchema>
+>;
 
 export type DeploymentEventPayload =
   | DeploymentCreatedEventPayload
