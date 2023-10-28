@@ -2,7 +2,11 @@ import type { Prisma, User } from "@trigger.dev/database";
 import type { GitHubProfile } from "remix-auth-github";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { authenticator } from "~/services/auth.server";
+import { addEmailLinkStrategy } from "~/services/emailAuth.server";
 export type { User } from "@trigger.dev/database";
+
+addEmailLinkStrategy(authenticator);
 
 type FindOrCreateMagicLink = {
   authenticationMethod: "MAGIC_LINK";
@@ -23,16 +27,11 @@ type LoggedInUser = {
   isNewUser: boolean;
 };
 
+class EmailWhitelistError extends Error {}
+
 export async function findOrCreateUser(input: FindOrCreateUser): Promise<LoggedInUser> {
-  if (env.WHITELISTED_EMAILS) {
-    // Create a regular expression from the whitelist pattern
-    const emailWhitelistRegex = new RegExp(env.WHITELISTED_EMAILS);
-    
-    // Check if the user's email matches the whitelist pattern
-    if (!emailWhitelistRegex.test(input.email)) {
-      // If the email is not in the whitelist, throw an error
-      throw new Error('Email address is not allowed.');
-    }
+  if (!isEmailWhitelisted(input.email, env.WHITELISTED_EMAILS)) {
+    throw new EmailWhitelistError("Access to this instance is restricted.");
   }
   switch (input.authenticationMethod) {
     case "GITHUB": {
@@ -188,4 +187,12 @@ export async function grantUserCloudAccess({ id, inviteCode }: { id: string; inv
       },
     },
   });
+}
+
+function isEmailWhitelisted(email: string, whitelist: string | undefined) {
+  if (whitelist) {
+    const regex = new RegExp(whitelist);
+    return regex.test(email);
+  }
+  return true; // No whitelist means all emails are allowed
 }
