@@ -13,19 +13,41 @@ const WebhookRegistrationDataSchema = z.object({
 
 export type WebhookRegistrationData = z.infer<typeof WebhookRegistrationDataSchema>;
 
-const WebhookListDataSchema = WebhookRegistrationDataSchema.omit({ secret: true });
+const WebhookListDataSchema = z.array(WebhookRegistrationDataSchema.omit({ secret: true }));
 
 export type WebhookListData = z.infer<typeof WebhookListDataSchema>;
 
 export class VercelClient {
-  constructor(private apiToken: string) {}
+  constructor(private apiKey: string) {}
 
-  async createWebhook(
-    teamId: string,
-    events: string[],
-    url: string,
-    projectIds?: string[]
-  ): Promise<WebhookRegistrationData> {
+  async listWebhooks({ teamId }: { teamId: string }): Promise<WebhookListData> {
+    const res = await fetch(`https://api.vercel.com/v1/webhooks?teamId=${teamId}`, {
+      method: "get",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error(`failed to list webhooks: ${res.statusText}`);
+    }
+
+    const webhooks = await res.json();
+
+    return WebhookListDataSchema.parse(webhooks);
+  }
+
+  async createWebhook({
+    teamId,
+    events,
+    url,
+    projectIds,
+  }: {
+    teamId: string;
+    events: string[];
+    url: string;
+    projectIds?: string[];
+  }): Promise<WebhookRegistrationData> {
     const body = {
       events,
       url,
@@ -35,7 +57,7 @@ export class VercelClient {
     const res = await fetch(`https://api.vercel.com/v1/webhooks?teamId=${teamId}`, {
       method: "post",
       headers: {
-        Authorization: `Bearer ${this.apiToken}`,
+        Authorization: `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
@@ -50,33 +72,11 @@ export class VercelClient {
     return WebhookRegistrationDataSchema.parse(webhook);
   }
 
-  async listWebhooks(teamId: string): Promise<WebhookListData> {
-    const res = await fetch(`https://api.vercel.com/v1/webhooks?teamId=${teamId}`, {
-      method: "get",
-      headers: {
-        Authorization: `Bearer ${this.apiToken}`,
-      },
-    });
-
-    if (!res.ok) {
-      const errorText = await res
-        .text()
-        .then((t) => t)
-        .catch((e) => "No body");
-
-      throw new Error(`failed to list webhooks: ${res.statusText}`);
-    }
-
-    const webhooks = await res.json();
-
-    return WebhookListDataSchema.parse(webhooks);
-  }
-
-  async deleteWebhook(webhookId: string): Promise<void> {
+  async deleteWebhook({ webhookId }: { webhookId: string }): Promise<void> {
     const res = await fetch(`https://api.vercel.com/v1/webhooks/${webhookId}`, {
       method: "delete",
       headers: {
-        Authorization: `Bearer ${this.apiToken}`,
+        Authorization: `Bearer ${this.apiKey}`,
       },
     });
 
@@ -85,14 +85,20 @@ export class VercelClient {
     }
   }
 
-  async updateWebhook(
-    webhookId: string,
-    teamId: string,
-    events: string[],
-    url: string,
-    projectIds?: string[]
-  ): Promise<WebhookRegistrationData> {
-    await this.deleteWebhook(webhookId);
-    return await this.createWebhook(teamId, events, url, projectIds);
+  async updateWebhook({
+    webhookId,
+    teamId,
+    events,
+    url,
+    projectIds,
+  }: {
+    webhookId: string;
+    teamId: string;
+    events: string[];
+    url: string;
+    projectIds?: string[];
+  }): Promise<WebhookRegistrationData> {
+    await this.deleteWebhook({ webhookId });
+    return await this.createWebhook({ teamId, events, url, projectIds });
   }
 }

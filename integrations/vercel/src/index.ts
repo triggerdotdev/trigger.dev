@@ -8,12 +8,10 @@ import {
   Json,
   retry,
   ConnectionAuth,
-  Prettify,
 } from "@trigger.dev/sdk";
-import VercelClient from "vercel";
+import { VercelClient } from "./client";
 
 import * as events from "./events";
-import { VercelReturnType, SerializedVercelOutput } from "./types";
 import { TriggerParams, Webhooks, createTrigger, createWebhookEventSource } from "./webhooks";
 
 export type VercelIntegrationOptions = {
@@ -25,13 +23,13 @@ export type VercelRunTask = InstanceType<typeof Vercel>["runTask"];
 
 export class Vercel implements TriggerIntegration {
   private _options: VercelIntegrationOptions;
-  private _client?: any;
+  private _client?: VercelClient;
   private _io?: IO;
   private _connectionKey?: string;
 
   constructor(private options: VercelIntegrationOptions) {
     if (Object.keys(options).includes("apiKey") && !options.apiKey) {
-      throw `Can't create Vercel integration (${options.id}) as apiKey was undefined`;
+      throw `Cannot create Vercel integration (${options.id}) as apiKey was undefined`;
     }
 
     this._options = options;
@@ -62,18 +60,17 @@ export class Vercel implements TriggerIntegration {
   }
 
   createClient(auth?: ConnectionAuth) {
+    // TODO: implement oauth
     // oauth
-    if (auth) {
-      return new VercelClient({
-        auth: auth.accessToken,
-      });
-    }
+    // if (auth) {
+    //   return new VercelClient({
+    //     auth: auth.accessToken,
+    //   });
+    // }
 
     // apiKey auth
     if (this._options.apiKey) {
-      return new VercelClient({
-        apiKey: this._options.apiKey,
-      });
+      return new VercelClient(this._options.apiKey);
     }
 
     throw new Error("No auth");
@@ -100,137 +97,26 @@ export class Vercel implements TriggerIntegration {
         ...(options ?? {}),
         connectionKey: this._connectionKey,
       },
-      errorCallback ?? onError
+      errorCallback
     );
-  }
-
-  // top-level task
-
-  request<T = any>(
-    key: IntegrationTaskKey,
-    params: {
-      route: string | URL;
-      options: Parameters<VercelClient["request"]>[1];
-    }
-  ): VercelReturnType<T> {
-    return this.runTask(
-      key,
-      async (client) => {
-        const response = await client.request(params.route, params.options);
-
-        return response.json();
-      },
-      {
-        name: "Send Request",
-        params,
-        properties: [
-          { label: "Route", text: params.route.toString() },
-          ...(params.options.method ? [{ label: "Method", text: params.options.method }] : []),
-        ],
-        callback: { enabled: true },
-      }
-    );
-  }
-
-  // nested tasks
-
-  get models() {
-    return new Models(this.runTask.bind(this));
   }
 
   // events
-
-  onComment(params: TriggerParams = {}) {
-    return createTrigger(this.source, events.onComment, params);
+  onDeploymentCreated(params: TriggerParams) {
+    return createTrigger(this.source, events.onDeploymentCreated, params);
   }
 
-  onCommentCreated(params: TriggerParams = {}) {
-    return createTrigger(this.source, events.onCommentCreated, params);
+  onDeploymentSucceeded(params: TriggerParams) {
+    return createTrigger(this.source, events.onDeploymentSucceeded, params);
   }
-
-  onCommentRemoved(params: TriggerParams = {}) {
-    return createTrigger(this.source, events.onCommentRemoved, params);
-  }
-
-  onCommentUpdated(params: TriggerParams = {}) {
-    return createTrigger(this.source, events.onCommentUpdated, params);
-  }
-
-  // triggers (webhooks)
 
   // private, just here to keep webhook logic in a separate file
   get #webhooks() {
     return new Webhooks(this.runTask.bind(this));
   }
 
-  webhook = this.#webhooks.webhook;
-  webhooks = this.#webhooks.webhooks;
-
-  createWebhook = this.#webhooks.createWebhook;
-  deleteWebhook = this.#webhooks.deleteWebhook;
-  updateWebhook = this.#webhooks.updateWebhook;
+  listWebhooks = this.#webhooks.list;
+  createWebhook = this.#webhooks.create;
+  deleteWebhook = this.#webhooks.delete;
+  updateWebhook = this.#webhooks.update;
 }
-
-class VercelApiError extends Error {
-  constructor(
-    message: string,
-    readonly request: Request,
-    readonly response: Response
-  ) {
-    super(message);
-    this.name = "VercelApiError";
-  }
-}
-
-function isVercelApiError(error: unknown): error is VercelApiError {
-  if (typeof error !== "object" || error === null) {
-    return false;
-  }
-
-  const apiError = error as VercelApiError;
-
-  return (
-    apiError.name === "VercelApiError" &&
-    apiError.request instanceof Request &&
-    apiError.response instanceof Response
-  );
-}
-
-function shouldRetry(method: string, status: number) {
-  return status === 429 || (method === "GET" && status >= 500);
-}
-
-export function onError(error: unknown): ReturnType<RunTaskErrorCallback> {
-  if (!isVercelApiError(error)) {
-    return;
-  }
-
-  if (!shouldRetry(error.request.method, error.response.status)) {
-    return {
-      skipRetrying: true,
-    };
-  }
-
-  const rateLimitRemaining = error.response.headers.get("ratelimit-remaining");
-  const rateLimitReset = error.response.headers.get("ratelimit-reset");
-
-  if (rateLimitRemaining === "0" && rateLimitReset) {
-    const resetDate = new Date(Number(rateLimitReset) * 1000);
-
-    if (!Number.isNaN(resetDate.getTime())) {
-      return {
-        retryAt: resetDate,
-        error,
-      };
-    }
-  }
-}
-
-export const serializeVercelOutput = <T>(obj: T): Prettify<SerializedVercelOutput<T>> => {
-  return JSON.parse(JSON.stringify(obj), (key, value) => {
-    if (typeof value === "function" || key.startsWith("_")) {
-      return undefined;
-    }
-    return value;
-  });
-};

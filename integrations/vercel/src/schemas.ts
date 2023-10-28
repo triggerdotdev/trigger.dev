@@ -1,14 +1,5 @@
 import { z } from "zod";
-
-const WebhookEventTypeSchema = z.enum([
-  "deployment.created",
-  "deployment.succeeded",
-  "deployment.ready",
-  "deployment.canceled",
-  "deployment.error",
-]);
-
-export type WebhookEventType = z.infer<typeof WebhookEventTypeSchema>;
+import { WebhookEventTypeSchema } from "./types";
 
 const WebhookEventBaseSchema = z.object({
   id: z.string(),
@@ -44,6 +35,8 @@ const DeploymentSucceededEventSchema = WebhookEventBaseSchema.extend({
   type: z.literal(WebhookEventTypeSchema.enum["deployment.succeeded"]),
   payload: DeploymentPayloadBaseSchema,
 });
+
+export type DeploymentSucceededEvent = z.infer<typeof DeploymentCreatedEventSchema>;
 
 const DeploymentReadyEventSchema = WebhookEventBaseSchema.extend({
   type: z.literal(WebhookEventTypeSchema.enum["deployment.ready"]),
