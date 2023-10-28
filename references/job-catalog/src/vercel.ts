@@ -11,13 +11,13 @@ export const client = new TriggerClient({
 });
 
 const vercel = new Vercel({
-  id: "vercel",
+  id: "vercel-2",
   apiKey: process.env["VERCEL_API_KEY"]!,
 });
 
 client.defineJob({
-  id: "vercel-deployment-created",
-  name: "Vercel Deployment Created",
+  id: "vercel-deployment-created-proj",
+  name: "Vercel Deployment Created (Project)",
   version: "0.1.0",
   trigger: vercel.onDeploymentCreated({
     teamId: "team_kTDbLdHFZ0x7HU66LRgZCfqg",
@@ -30,14 +30,40 @@ client.defineJob({
 });
 
 client.defineJob({
-  id: "vercel-deployment-created-team-scope",
-  name: "Vercel Deployment Created Team Scope",
+  id: "vercel-deployment-created-team",
+  name: "Vercel Deployment Created (Team)",
   version: "0.1.0",
   trigger: vercel.onDeploymentCreated({
     teamId: "team_kTDbLdHFZ0x7HU66LRgZCfqg",
   }),
   run: async (payload, io, ctx) => {
     io.logger.info("deployment created event received");
+    io.logger.info(JSON.stringify(payload));
+  },
+});
+
+client.defineJob({
+  id: "vercel-deployment-succeeded",
+  name: "Vercel Deployment Succeeded",
+  version: "0.1.0",
+  trigger: vercel.onDeploymentSucceeded({
+    teamId: "team_kTDbLdHFZ0x7HU66LRgZCfqg",
+  }),
+  run: async (payload, io, ctx) => {
+    io.logger.info("deployment succeeded event received");
+    io.logger.info(JSON.stringify(payload));
+  },
+});
+
+client.defineJob({
+  id: "vercel-deployment-canceled",
+  name: "Vercel Deployment Canceled",
+  version: "0.1.0",
+  trigger: vercel.onDeploymentCanceled({
+    teamId: "team_kTDbLdHFZ0x7HU66LRgZCfqg",
+  }),
+  run: async (payload, io, ctx) => {
+    io.logger.info("deployment canceled event received");
     io.logger.info(JSON.stringify(payload));
   },
 });
