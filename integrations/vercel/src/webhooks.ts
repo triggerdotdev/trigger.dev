@@ -1,4 +1,5 @@
 import {
+  EventFilter,
   ExternalSource,
   ExternalSourceTrigger,
   HandlerEvent,
@@ -8,7 +9,7 @@ import {
 import { z } from "zod";
 import * as events from "./events";
 import { Vercel, VercelRunTask } from "./index";
-import { WebhookPayloadSchema } from "./schemas";
+import { WebhookEventSchema } from "./schemas";
 import { WebhookListData, WebhookRegistrationData } from "./client";
 import { sha1 } from "./utils";
 
@@ -138,6 +139,7 @@ export function createWebhookEventSource(
     version: "0.1.0",
     integration,
     key: (params) => `${params.teamId}/${params.projectIds ? params.projectIds.join(".") : "all"}`,
+    filter: (params) => filterFunction(params),
     handler: webhookHandler,
     register: async (event, io, ctx) => {
       const { params, source: httpSource, options } = event;
@@ -219,17 +221,31 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integ
   }
 
   const body = JSON.parse(rawBody);
-  const webhookPayload = WebhookPayloadSchema.parse(body);
+  const webhookEvent = WebhookEventSchema.parse(body);
 
   return {
     events: [
       {
-        id: webhookPayload.id,
-        name: webhookPayload.type,
+        id: webhookEvent.id,
+        name: webhookEvent.type,
         source: "vercel.app",
-        payload: webhookPayload,
+        payload: webhookEvent.payload,
         context: {},
       },
     ],
   };
+}
+
+function filterFunction(params: TriggerParams): EventFilter {
+  const filterObj: EventFilter = {
+    team: {
+      id: [params.teamId],
+    },
+  };
+  if (params.projectIds) {
+    filterObj["project"] = {
+      id: params.projectIds,
+    };
+  }
+  return filterObj;
 }

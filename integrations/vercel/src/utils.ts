@@ -1,24 +1,24 @@
 import crypto from "crypto";
-import { DeploymentEvent } from "./schemas";
+import { DeploymentEventPayload } from "./schemas";
 
 export function sha1(data: Buffer, secret: string): string {
   return crypto.createHmac("sha1", secret).update(data).digest("hex");
 }
 
-export const deploymentProperties = (event: DeploymentEvent) => {
-  const applicationUrl = event.payload.deployment.url.startsWith("https://")
-    ? event.payload.deployment.url
-    : `https://${event.payload.deployment.url}`;
+export const deploymentProperties = (payload: DeploymentEventPayload) => {
+  const applicationUrl = payload.deployment.url.startsWith("https://")
+    ? payload.deployment.url
+    : `https://${payload.deployment.url}`;
   return [
     {
       label: "Project Name",
-      text: event.payload.deployment.name,
-      url: event.payload.links.project,
+      text: payload.deployment.name,
+      url: payload.links.project,
     },
     {
       label: "Deployment ID",
-      text: event.payload.deployment.id,
-      url: event.payload.links.deployment,
+      text: payload.deployment.id,
+      url: payload.links.deployment,
     },
     {
       label: "Application URL",

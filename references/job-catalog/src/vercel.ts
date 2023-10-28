@@ -21,6 +21,20 @@ client.defineJob({
   version: "0.1.0",
   trigger: vercel.onDeploymentCreated({
     teamId: "team_kTDbLdHFZ0x7HU66LRgZCfqg",
+    projectIds: ["prj_vt57HZEY7iilPaJv71LcOVLcEiMu"],
+  }),
+  run: async (payload, io, ctx) => {
+    io.logger.info("deployment created event received");
+    io.logger.info(JSON.stringify(payload));
+  },
+});
+
+client.defineJob({
+  id: "vercel-deployment-created-team-scope",
+  name: "Vercel Deployment Created Team Scope",
+  version: "0.1.0",
+  trigger: vercel.onDeploymentCreated({
+    teamId: "team_kTDbLdHFZ0x7HU66LRgZCfqg",
   }),
   run: async (payload, io, ctx) => {
     io.logger.info("deployment created event received");

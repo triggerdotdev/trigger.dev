@@ -45,14 +45,10 @@ const DeploymentCreatedEventSchema = WebhookEventBaseSchema.extend({
   }),
 });
 
-export type DeploymentCreatedEvent = z.infer<typeof DeploymentCreatedEventSchema>;
-
 const DeploymentSucceededEventSchema = WebhookEventBaseSchema.extend({
   type: z.literal(WebhookEventTypeSchema.enum["deployment.succeeded"]),
   payload: DeploymentPayloadBaseSchema,
 });
-
-export type DeploymentSucceededEvent = z.infer<typeof DeploymentCreatedEventSchema>;
 
 const DeploymentReadyEventSchema = WebhookEventBaseSchema.extend({
   type: z.literal(WebhookEventTypeSchema.enum["deployment.ready"]),
@@ -77,8 +73,18 @@ const DeploymentEventSchema = z.discriminatedUnion("type", [
   DeploymentFailedEventSchema,
 ]);
 
-export type DeploymentEvent = z.infer<typeof DeploymentEventSchema>;
+export const WebhookEventSchema = z.union([DeploymentEventSchema, DeploymentEventSchema]);
 
-export const WebhookPayloadSchema = z.union([DeploymentEventSchema, DeploymentEventSchema]);
+export type WebhookEvent = z.infer<typeof WebhookEventSchema>;
 
-export type WebhookPayload = z.infer<typeof WebhookPayloadSchema>;
+type DeploymentCreatedEvent = z.infer<typeof DeploymentCreatedEventSchema>;
+
+export type DeploymentCreatedEventPayload = DeploymentCreatedEvent["payload"];
+
+type DeploymentSucceededEvent = z.infer<typeof DeploymentCreatedEventSchema>;
+
+export type DeploymentSucceededEventPayload = DeploymentSucceededEvent["payload"];
+
+export type DeploymentEventPayload =
+  | DeploymentCreatedEventPayload
+  | DeploymentSucceededEventPayload;
