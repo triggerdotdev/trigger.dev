@@ -12,7 +12,8 @@ import {
 import { VercelClient } from "./client";
 
 import * as events from "./events";
-import { TriggerParams, Webhooks, createTrigger, createWebhookEventSource } from "./webhooks";
+import { Webhooks } from "./webhooks";
+import { TriggerParams, createTrigger, createWebhookEventSource } from "./sources";
 
 export type VercelIntegrationOptions = {
   id: string;
