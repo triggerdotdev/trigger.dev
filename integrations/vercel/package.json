@@ -27,12 +27,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "vercel": "^32.5.0",
     "@trigger.dev/sdk": "workspace:^2.2.0",
     "@trigger.dev/integration-kit": "workspace:^2.2.0",
     "zod": "3.21.4"
   },
   "engines": {
-    "node": ">=16.8.0"
+    "node": ">=18"
   }
 }
