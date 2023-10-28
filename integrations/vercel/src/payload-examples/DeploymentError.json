@@ -1,5 +1,5 @@
 {
-  "id": "82nS5bZDY6JqnyQQ9SEge",
+  "id": "ZqayS9s1AVuTRjB83vVSA2me",
   "payload": {
     "user": { "id": "ZqayS9s1AVuTRjB83vVSA5nd" },
     "team": { "id": "team_kTDbLdHFZ0x7HU66LRgZCfpd" },
@@ -38,6 +38,6 @@
     "type": "LAMBDAS",
     "url": "accordion-component-bkzjdsyk8-rick-team.vercel.app"
   },
-  "createdAt": 1698397685674,
-  "type": "deployment.ready"
+  "createdAt": 1698397688644,
+  "type": "deployment.error"
 }

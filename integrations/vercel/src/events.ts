@@ -2,12 +2,14 @@ import { EventSpecification } from "@trigger.dev/sdk";
 import {
   DeploymentCanceledEventPayload,
   DeploymentCreatedEventPayload,
+  DeploymentErrorEventPayload,
   DeploymentReadyEventPayload,
   DeploymentSucceededEventPayload,
 } from "./schemas";
 import {
   deploymentCanceled,
   deploymentCreated,
+  deploymentError,
   deploymentReady,
   deploymentSucceeded,
 } from "./payload-examples";
@@ -51,5 +53,15 @@ export const onDeploymentCanceled: EventSpecification<DeploymentCanceledEventPay
   icon: "vercel",
   examples: [deploymentCanceled],
   parsePayload: (payload) => payload as DeploymentCanceledEventPayload,
+  runProperties: (event) => deploymentProperties(event),
+};
+
+export const onDeploymentError: EventSpecification<DeploymentErrorEventPayload> = {
+  name: WebhookEventTypeSchema.enum["deployment.error"],
+  title: "On Deployment Error",
+  source: "vercel.app",
+  icon: "vercel",
+  examples: [deploymentError],
+  parsePayload: (payload) => payload as DeploymentErrorEventPayload,
   runProperties: (event) => deploymentProperties(event),
 };

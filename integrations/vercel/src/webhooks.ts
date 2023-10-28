@@ -174,6 +174,7 @@ export function createWebhookEventSource(
 
         return {
           data: HttpSourceDataSchema.parse(updatedWebhook),
+          secret: updatedWebhook.secret,
           options: registeredOptions,
         };
       }

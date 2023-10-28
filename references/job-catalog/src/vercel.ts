@@ -68,4 +68,17 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "vercel-deployment-error",
+  name: "Vercel Deployment Error",
+  version: "0.1.0",
+  trigger: vercel.onDeploymentError({
+    teamId: "team_kTDbLdHFZ0x7HU66LRgZCfqg",
+  }),
+  run: async (payload, io, ctx) => {
+    io.logger.info("deployment error event received");
+    io.logger.info(JSON.stringify(payload));
+  },
+});
+
 createExpressServer(client);

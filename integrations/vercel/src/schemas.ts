@@ -95,8 +95,13 @@ export type DeploymentCanceledEventPayload = WebhookEventPayload<
   z.infer<typeof DeploymentCanceledEventSchema>
 >;
 
+export type DeploymentErrorEventPayload = WebhookEventPayload<
+  z.infer<typeof DeploymentCanceledEventSchema>
+>;
+
 export type DeploymentEventPayload =
   | DeploymentCreatedEventPayload
   | DeploymentSucceededEventPayload
   | DeploymentReadyEventPayload
-  | DeploymentCanceledEventPayload;
+  | DeploymentCanceledEventPayload
+  | DeploymentErrorEventPayload;
