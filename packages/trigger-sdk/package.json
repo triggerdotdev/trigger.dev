@@ -27,6 +27,7 @@
   "dependencies": {
     "@trigger.dev/core": "workspace:^2.2.0",
     "chalk": "^5.2.0",
+    "colorette": "^2.0.20",
     "cronstrue": "^2.21.0",
     "debug": "^4.3.4",
     "evt": "^2.4.13",
