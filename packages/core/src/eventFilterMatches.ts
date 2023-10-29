@@ -5,7 +5,7 @@ import { EventFilter } from "./schemas/eventFilter";
 // If the values of the array are objects, then we are doing content filtering
 // An example would be [{ $endsWith: ".png" }, { $startsWith: "images/" } ]
 export function eventFilterMatches(payload: any, filter: EventFilter): boolean {
-  if (payload === undefined || payload == null) {
+  if (payload === undefined || payload === null) {
     if (Object.entries(filter).length === 0) {
       return true;
     } else {
