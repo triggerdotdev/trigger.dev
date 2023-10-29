@@ -54,11 +54,6 @@ const DeploymentSucceededEventSchema = WebhookEventBaseSchema.extend({
   payload: DeploymentPayloadBaseSchema,
 });
 
-const DeploymentReadyEventSchema = WebhookEventBaseSchema.extend({
-  type: z.literal(WebhookEventTypeSchema.enum["deployment.ready"]),
-  payload: DeploymentPayloadBaseSchema,
-});
-
 const DeploymentCanceledEventSchema = WebhookEventBaseSchema.extend({
   type: z.literal(WebhookEventTypeSchema.enum["deployment.canceled"]),
   payload: DeploymentPayloadBaseSchema,
@@ -72,7 +67,6 @@ const DeploymentErrorEventSchema = WebhookEventBaseSchema.extend({
 const DeploymentEventSchema = z.discriminatedUnion("type", [
   DeploymentCreatedEventSchema,
   DeploymentSucceededEventSchema,
-  DeploymentReadyEventSchema,
   DeploymentCanceledEventSchema,
   DeploymentErrorEventSchema,
 ]);
@@ -83,10 +77,6 @@ export type DeploymentCreatedEventPayload = WebhookEventPayload<
 
 export type DeploymentSucceededEventPayload = WebhookEventPayload<
   z.infer<typeof DeploymentSucceededEventSchema>
->;
-
-export type DeploymentReadyEventPayload = WebhookEventPayload<
-  z.infer<typeof DeploymentReadyEventSchema>
 >;
 
 export type DeploymentCanceledEventPayload = WebhookEventPayload<
@@ -100,7 +90,6 @@ export type DeploymentErrorEventPayload = WebhookEventPayload<
 export type DeploymentEventPayload =
   | DeploymentCreatedEventPayload
   | DeploymentSucceededEventPayload
-  | DeploymentReadyEventPayload
   | DeploymentCanceledEventPayload
   | DeploymentErrorEventPayload;
 

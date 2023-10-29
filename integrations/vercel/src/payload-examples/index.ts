@@ -2,7 +2,6 @@ import { EventSpecificationExample } from "@trigger.dev/sdk";
 
 import DeploymentCreated from "./DeploymentCreated.json";
 import DeploymentSucceeded from "./DeploymentSucceeded.json";
-import DeploymentReady from "./DeploymentReady.json";
 import DeploymentCanceled from "./DeploymentCanceled.json";
 import DeploymentError from "./DeploymentError.json";
 import ProjectCreated from "./ProjectCreated.json";
@@ -18,12 +17,6 @@ export const deploymentSucceeded: EventSpecificationExample = {
   id: "deployment.succeeded",
   name: "Deployment Succeeded",
   payload: DeploymentSucceeded,
-};
-
-export const deploymentReady: EventSpecificationExample = {
-  id: "deployment.ready",
-  name: "Deployment Ready",
-  payload: DeploymentReady,
 };
 
 export const deploymentCanceled: EventSpecificationExample = {

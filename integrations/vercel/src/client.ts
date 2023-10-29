@@ -101,42 +101,4 @@ export class VercelClient {
     await this.deleteWebhook({ webhookId });
     return await this.createWebhook({ teamId, events, url, projectIds });
   }
-
-  async createCheck({
-    teamId,
-    deploymentId,
-    name,
-    blocking,
-    reRequestable,
-  }: {
-    teamId: string;
-    deploymentId: string;
-    name: string;
-    blocking: boolean;
-    reRequestable?: boolean;
-  }) {
-    const body = {
-      name,
-      blocking,
-      rerequestable: reRequestable,
-    };
-
-    const res = await fetch(
-      `https://api.vercel.com/v1/deployments/${deploymentId}/checks?teamId=${teamId}`,
-      {
-        method: "post",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      }
-    );
-
-    if (!res.ok) {
-      throw new Error(`failed to create check: ${res.statusText}`);
-    }
-
-    return await res.json();
-  }
 }

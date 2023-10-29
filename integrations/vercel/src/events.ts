@@ -3,7 +3,6 @@ import {
   DeploymentCanceledEventPayload,
   DeploymentCreatedEventPayload,
   DeploymentErrorEventPayload,
-  DeploymentReadyEventPayload,
   DeploymentSucceededEventPayload,
   ProjectCreatedEventPayload,
   ProjectRemovedEventPayload,
@@ -12,7 +11,6 @@ import {
   deploymentCanceled,
   deploymentCreated,
   deploymentError,
-  deploymentReady,
   deploymentSucceeded,
   projectCreated,
   projectRemoved,
@@ -37,16 +35,6 @@ export const onDeploymentSucceeded: EventSpecification<DeploymentSucceededEventP
   icon: "vercel",
   examples: [deploymentSucceeded],
   parsePayload: (payload) => payload as DeploymentSucceededEventPayload,
-  runProperties: (event) => deploymentProperties(event),
-};
-
-export const onDeploymentReady: EventSpecification<DeploymentReadyEventPayload> = {
-  name: WebhookEventTypeSchema.enum["deployment.ready"],
-  title: "On Deployment Ready",
-  source: "vercel.app",
-  icon: "vercel",
-  examples: [deploymentReady],
-  parsePayload: (payload) => payload as DeploymentReadyEventPayload,
   runProperties: (event) => deploymentProperties(event),
 };
 

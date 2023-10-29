@@ -6,28 +6,36 @@ import {
   Logger,
 } from "@trigger.dev/sdk";
 import { z } from "zod";
-import * as events from "./events";
 import { Vercel } from "./index";
 import { WebhookEventSchema } from "./schemas";
 import { sha1 } from "./utils";
+import {
+  CreateDeploymentTriggerResult,
+  CreateProjectTriggerResult,
+  DeploymentEvents,
+  DeploymentTriggerParams,
+  ProjectEvents,
+  ProjectTriggerParams,
+} from "./types";
 
-type VercelEvents = (typeof events)[keyof typeof events];
-
-export type TriggerParams = {
-  teamId: string;
-  projectIds?: string[];
-};
-
-type CreateTriggersResult<TEventSpecification extends VercelEvents> = ExternalSourceTrigger<
-  TEventSpecification,
-  ReturnType<typeof createWebhookEventSource>
->;
-
-export function createTrigger<TEventSpecification extends VercelEvents>(
-  source: ReturnType<typeof createWebhookEventSource>,
+export function createDeploymentTrigger<TEventSpecification extends DeploymentEvents>(
+  source: ReturnType<typeof createDeploymentEventSource>,
   event: TEventSpecification,
-  params: TriggerParams
-): CreateTriggersResult<TEventSpecification> {
+  params: DeploymentTriggerParams
+): CreateDeploymentTriggerResult<TEventSpecification> {
+  return new ExternalSourceTrigger({
+    event,
+    params,
+    source,
+    options: {},
+  });
+}
+
+export function createProjectTrigger<TEventSpecification extends ProjectEvents>(
+  source: ReturnType<typeof createProjectEventSource>,
+  event: TEventSpecification,
+  params: ProjectTriggerParams
+): CreateProjectTriggerResult<TEventSpecification> {
   return new ExternalSourceTrigger({
     event,
     params,
@@ -41,9 +49,9 @@ const HttpSourceDataSchema = z.object({
   secret: z.string(),
 });
 
-export function createWebhookEventSource(
+export function createDeploymentEventSource(
   integration: Vercel
-): ExternalSource<Vercel, TriggerParams, "HTTP", {}> {
+): ExternalSource<Vercel, DeploymentTriggerParams, "HTTP", {}> {
   return new ExternalSource("HTTP", {
     id: "vercel.webhook",
     schema: z.object({
@@ -52,8 +60,8 @@ export function createWebhookEventSource(
     }),
     version: "0.1.0",
     integration,
-    key: (params) => `${params.teamId}/${params.projectIds ? params.projectIds.join(".") : "all"}`,
-    filter: (params) => filterFunction(params),
+    key: (params) => `${params.teamId}.${params.projectIds ? params.projectIds.join(".") : "all"}`,
+    filter: (params) => deploymentFilterFunction(params),
     handler: webhookHandler,
     register: async (event, io, ctx) => {
       const { params, source: httpSource, options } = event;
@@ -109,6 +117,75 @@ export function createWebhookEventSource(
   });
 }
 
+export function createProjectEventSource(
+  integration: Vercel
+): ExternalSource<Vercel, ProjectTriggerParams, "HTTP", {}> {
+  return new ExternalSource("HTTP", {
+    id: "vercel.webhook",
+    schema: z.object({
+      teamId: z.string(),
+    }),
+    version: "0.1.0",
+    integration,
+    key: (params) => `${params.teamId}.all"}`,
+    filter: (params) => ({
+      team: {
+        id: [params.teamId],
+      },
+    }),
+    handler: webhookHandler,
+    register: async (event, io, ctx) => {
+      const { params, source: httpSource, options } = event;
+
+      if (httpSource.active) {
+        const hasMissingOptions = Object.values(options).some(
+          (option) => option.missing.length > 0
+        );
+        if (!hasMissingOptions) return;
+      }
+
+      // set of events to register
+      const allEvents = Array.from(new Set([...options.event.desired, ...options.event.missing]));
+      const registeredOptions = {
+        event: allEvents,
+      };
+
+      // check for existing hooks that match url
+      const listResponse = await io.integration.listWebhooks("list-webhooks", {
+        teamId: params.teamId,
+      });
+      const existingWebhook = listResponse.find((w) => w.url === httpSource.url);
+
+      if (existingWebhook) {
+        const updatedWebhook = await io.integration.updateWebhook("update-webhook", {
+          webhookId: existingWebhook.id,
+          teamId: params.teamId,
+          events: allEvents,
+          url: httpSource.url,
+        });
+
+        return {
+          data: HttpSourceDataSchema.parse(updatedWebhook),
+          secret: updatedWebhook.secret,
+          options: registeredOptions,
+        };
+      }
+
+      const createdWebhook = await io.integration.createWebhook("create-webhook", {
+        teamId: params.teamId,
+        events: allEvents,
+        url: httpSource.url,
+      });
+
+      return {
+        data: HttpSourceDataSchema.parse(createdWebhook),
+        secret: createdWebhook.secret,
+        options: registeredOptions,
+      };
+    },
+  });
+}
+
 async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integration: Vercel) {
   logger.debug("[@trigger.dev/vercel] Handling webhook payload");
 
@@ -151,7 +228,7 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger, integ
   };
 }
 
-function filterFunction(params: TriggerParams): EventFilter {
+function deploymentFilterFunction(params: DeploymentTriggerParams): EventFilter {
   const filterObj: EventFilter = {
     team: {
       id: [params.teamId],

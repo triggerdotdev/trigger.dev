@@ -13,12 +13,17 @@ import { VercelClient } from "./client";
 
 import * as events from "./events";
 import { Webhooks } from "./webhooks";
-import { TriggerParams, createTrigger, createWebhookEventSource } from "./sources";
-import { Checks } from "./checks";
+import {
+  createDeploymentEventSource,
+  createDeploymentTrigger,
+  createProjectEventSource,
+  createProjectTrigger,
+} from "./sources";
+import { DeploymentTriggerParams, ProjectTriggerParams } from "./types";
 
 export type VercelIntegrationOptions = {
   id: string;
-  apiKey?: string;
+  apiKey: string;
 };
 
 export type VercelRunTask = InstanceType<typeof Vercel>["runTask"];
@@ -30,7 +35,7 @@ export class Vercel implements TriggerIntegration {
   private _connectionKey?: string;
 
   constructor(private options: VercelIntegrationOptions) {
-    if (Object.keys(options).includes("apiKey") && !options.apiKey) {
+    if (!options.apiKey) {
       throw `Cannot create Vercel integration (${options.id}) as apiKey was undefined`;
     }
 
@@ -38,7 +43,7 @@ export class Vercel implements TriggerIntegration {
   }
 
   get authSource() {
-    return this._options.apiKey ? "LOCAL" : "HOSTED";
+    return "LOCAL" as const;
   }
 
   get id() {
@@ -49,8 +54,11 @@ export class Vercel implements TriggerIntegration {
     return { id: "vercel", name: "Vercel" };
   }
 
-  get source() {
-    return createWebhookEventSource(this);
+  get sources() {
+    return {
+      deployment: createDeploymentEventSource(this),
+      project: createProjectEventSource(this),
+    };
   }
 
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
@@ -62,17 +70,12 @@ export class Vercel implements TriggerIntegration {
   }
 
   createClient(auth?: ConnectionAuth) {
-    // oauth
-    if (auth) {
-      return new VercelClient(auth.accessToken);
+    const token = this._options.apiKey ?? auth?.accessToken;
+    if (!token) {
+      throw `Cannot create Vercel integration (${this._options.id}) as apiKey was undefined`;
     }
 
-    // apiKey auth
-    if (this._options.apiKey) {
-      return new VercelClient(this._options.apiKey);
-    }
-
-    throw new Error("No auth");
+    return new VercelClient(token);
   }
 
   runTask<T, TResult extends Json<T> | void>(
@@ -101,33 +104,28 @@ export class Vercel implements TriggerIntegration {
   }
 
   // events
-  onDeploymentCreated(params: TriggerParams) {
-    return createTrigger(this.source, events.onDeploymentCreated, params);
+  onDeploymentCreated(params: DeploymentTriggerParams) {
+    return createDeploymentTrigger(this.sources.deployment, events.onDeploymentCreated, params);
   }
 
-  onDeploymentSucceeded(params: TriggerParams) {
-    return createTrigger(this.source, events.onDeploymentSucceeded, params);
+  onDeploymentSucceeded(params: DeploymentTriggerParams) {
+    return createDeploymentTrigger(this.sources.deployment, events.onDeploymentSucceeded, params);
   }
 
-  onDeploymentReady(params: TriggerParams) {
-    return createTrigger(this.source, events.onDeploymentReady, params);
+  onDeploymentCanceled(params: DeploymentTriggerParams) {
+    return createDeploymentTrigger(this.sources.deployment, events.onDeploymentCanceled, params);
   }
 
-  onDeploymentCanceled(params: TriggerParams) {
-    return createTrigger(this.source, events.onDeploymentCanceled, params);
+  onDeploymentError(params: DeploymentTriggerParams) {
+    return createDeploymentTrigger(this.sources.deployment, events.onDeploymentError, params);
   }
 
-  onDeploymentError(params: TriggerParams) {
-    return createTrigger(this.source, events.onDeploymentError, params);
+  onProjectCreated(params: ProjectTriggerParams) {
+    return createProjectTrigger(this.sources.project, events.onProjectCreated, params);
   }
 
-  // TODO: fix params
-  onProjectCreated(params: TriggerParams) {
-    return createTrigger(this.source, events.onProjectCreated, params);
-  }
-
-  onProjectRemoved(params: TriggerParams) {
-    return createTrigger(this.source, events.onProjectRemoved, params);
+  onProjectRemoved(params: ProjectTriggerParams) {
+    return createProjectTrigger(this.sources.project, events.onProjectRemoved, params);
   }
 
   // private, just here to keep webhook logic in a separate file
@@ -135,17 +133,9 @@ export class Vercel implements TriggerIntegration {
     return new Webhooks(this.runTask.bind(this));
   }
 
-  // private, just here to keep 'check' logic in a separate file
-  get #checks() {
-    return new Checks(this.runTask.bind(this));
-  }
-
   // webhooks
   listWebhooks = this.#webhooks.list;
   createWebhook = this.#webhooks.create;
   deleteWebhook = this.#webhooks.delete;
   updateWebhook = this.#webhooks.update;
-
-  // checks
-  createCheck = this.#checks.create;
 }
