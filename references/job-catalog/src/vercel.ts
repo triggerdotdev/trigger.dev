@@ -65,6 +65,8 @@ client.defineJob({
   },
 });
 
+// Has to be triggered manually by simulating a build error.
+// e.g. source code compilation failure.
 client.defineJob({
   id: "vercel-deployment-error",
   name: "Vercel Deployment Error",
