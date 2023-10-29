@@ -1,0 +1,1203 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<url>
+	<loc>https://trigger.dev/</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>1.0</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>1.0</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/blog</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>1.0</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>1.0</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/pricing</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>1.0</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/hacktoberfest</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>1.0</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/quickstarts/nextjs</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/quickstarts/express</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/quickstarts/astro</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/quickstarts/remix</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/quickstarts/nestjs</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/quickstarts/sveltekit</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/quickstarts/introduction</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/concepts/triggers/introduction</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/concepts/integrations</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/self-hosting</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/examples/introduction</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/legal/privacy</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/legal</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>1.0</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/oss-friends</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>1.0</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/projects/auto-changelog</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/projects/openai-text-summarizer</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/linearIssuesDailySlackAlert</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/stripeNewSubscriptionUpdateAirtable</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/resendDripCampaign</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/supabaseStripeUpdateDatabase</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/summarizeGitHubCommits</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/projects/supabase-onboarding-emails</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/weeklyUserActivitySummary</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/typeformToAirtable</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/openAITellMeAJoke</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/syncStripeWithAirtable</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/githubIssueReminder</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/projects/resend-email-form</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/scheduledIntervalBasic</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/githubNewStarToSlack</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/linearCreateIssueOnPR</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/openAIGenerateImage</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/cronScheduledBasic</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/resendSendReactEmail</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/sendGridSendBasicEmail</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/linearNewIssueReply</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/stripeOnSubscriptionCreated</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/githubNewIssueOpened</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/plainUpdateCustomer</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/slackPostMessage</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/resendSendBasicEmail</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase/jobs/delayExampleJoke</loc>
+	<lastmod>2023-10-29T17:28:36+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/blog/17-javascript-repositories-to-become-the-best-developer-in-the-world</loc>
+	<lastmod>2023-10-29T17:28:39+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/blog/turn-your-face-into-a-super-hero</loc>
+	<lastmod>2023-10-29T17:28:39+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/blog/schedule-your-posts-with-nextjs</loc>
+	<lastmod>2023-10-29T17:28:39+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/blog/platform-update-sept-2023</loc>
+	<lastmod>2023-10-29T17:28:39+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/blog/achieve-nextjs-mastery-build-a-sales-page-with-stripe-and-airtable</loc>
+	<lastmod>2023-10-29T17:28:39+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/blog/generator-unlocked-create-memes-with-chatgpt-and-nextjs</loc>
+	<lastmod>2023-10-29T17:28:39+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/blog/3m-dollar-seed-round</loc>
+	<lastmod>2023-10-29T17:28:39+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/blog/introducing-supabase-integration</loc>
+	<lastmod>2023-10-29T17:28:39+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/blog/deep-dive-how-trigger-makes-background-jobs-easy</loc>
+	<lastmod>2023-10-29T17:28:39+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/blog/announcing-trigger-v2-the-self-hostable-background-jobs-framework-for-nextjs</loc>
+	<lastmod>2023-10-29T17:28:39+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/introduction</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/nextjs-14-support</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/auto-yielding-executions</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/openai-universal-sdk</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/package-server-update-oct-18-2023</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/improved-job-indexing</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/test-improvements</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/package-server-update-oct-04-2023</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/replicate-integration</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/hacktoberfest-2023</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/staging-environment</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/redacted</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/multiple-frameworks-support</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/react-status-hooks</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/bring-your-own-auth</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/showcase</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/usage-dashboard</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/linear-integration</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/support-generic-interfaces</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/initial-airtable-integration</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/improved-create-integration-docs</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/added-testing-package</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/fix-for-deep-types-causing-zod-errors</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/astro</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/react-v2-0-11</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/cli-v2-0-11</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/openai-v2-0-11</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/cancel-delayed-events</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/disable-and-delete-jobs</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/fixed-runs-with-large-task-outputs</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/increased-performance</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/changelog/triggerdotdev-v2</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.8</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/openai</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/deployment-automatic</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/replicate</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/io/runtask</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/react-hooks-statuses</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/using-integrations-byo-auth</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/linear</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase?tags=&amp;integrations=airtable</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>1.0</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/airtable</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/create</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/create-triggers</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/jobs/managing</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/introduction</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/introduction</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/writing-jobs-step-by-step</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/video-walkthrough</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/concepts/what-is-triggerdotdev</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/concepts/limits</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/concepts/projects</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/concepts/client-adaptors</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/concepts/resumability</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/concepts/delays</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/concepts/connect</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/concepts/environments-endpoints</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/cli</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/running-jobs</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/event-filter</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/zod</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/contributing</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/get-help</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/faq</loc>
+	<lastmod>2023-10-29T17:28:40+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/quickstarts/redwood</loc>
+	<lastmod>2023-10-29T17:28:42+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/quickstarts/nuxt</loc>
+	<lastmod>2023-10-29T17:28:42+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/quickstarts/fastify</loc>
+	<lastmod>2023-10-29T17:28:42+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/quickstarts/supabase</loc>
+	<lastmod>2023-10-29T17:28:42+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/platforms/nextjs</loc>
+	<lastmod>2023-10-29T17:28:42+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/react-hooks</loc>
+	<lastmod>2023-10-29T17:28:42+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/concepts/triggers/webhooks</loc>
+	<lastmod>2023-10-29T17:28:45+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/concepts/triggers/events</loc>
+	<lastmod>2023-10-29T17:28:45+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/concepts/triggers/scheduled</loc>
+	<lastmod>2023-10-29T17:28:45+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/concepts/triggers/dynamic</loc>
+	<lastmod>2023-10-29T17:28:45+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/concepts/tasks</loc>
+	<lastmod>2023-10-29T17:28:45+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/using-integrations</loc>
+	<lastmod>2023-10-29T17:28:45+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/self-hosting/flyio</loc>
+	<lastmod>2023-10-29T17:28:46+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/self-hosting/render</loc>
+	<lastmod>2023-10-29T17:28:46+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/self-hosting/kubernetes</loc>
+	<lastmod>2023-10-29T17:28:46+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/self-hosting/supabase</loc>
+	<lastmod>2023-10-29T17:28:46+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/tunneling-platform</loc>
+	<lastmod>2023-10-29T17:28:46+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/slack</loc>
+	<lastmod>2023-10-29T17:28:46+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/resend</loc>
+	<lastmod>2023-10-29T17:28:46+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/github</loc>
+	<lastmod>2023-10-29T17:28:46+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/supabase/introduction</loc>
+	<lastmod>2023-10-29T17:28:47+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/stripe</loc>
+	<lastmod>2023-10-29T17:28:48+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/sendgrid</loc>
+	<lastmod>2023-10-29T17:28:51+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/typeform</loc>
+	<lastmod>2023-10-29T17:28:51+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/plain</loc>
+	<lastmod>2023-10-29T17:28:56+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/supabase/client</loc>
+	<lastmod>2023-10-29T17:28:57+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/testing-jobs</loc>
+	<lastmod>2023-10-29T17:28:57+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/supabase</loc>
+	<lastmod>2023-10-29T17:29:00+01:00</lastmod>
+	<priority>1.0</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/deployment</loc>
+	<lastmod>2023-10-29T17:29:00+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/supabase/management</loc>
+	<lastmod>2023-10-29T17:29:02+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/concepts/jobs</loc>
+	<lastmod>2023-10-29T17:29:02+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/openai-tasks</loc>
+	<lastmod>2023-10-29T17:29:06+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase?tags=&amp;integrations=openai</loc>
+	<lastmod>2023-10-29T17:29:06+01:00</lastmod>
+	<priority>1.0</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/job</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/io/overview</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/io/wait</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/io/logger</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/io/sendevent</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/io/backgroundfetch</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/io/try</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/io/registerinterval</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/io/unregisterinterval</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/io/registercron</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/io/unregistercron</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/io/registertrigger</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/context</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/eventtrigger</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/crontrigger</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/intervaltrigger</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/connection-auth</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/istriggererror</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/redactstring</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/react/introduction</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/react/triggerprovider</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/react/useeventdetails</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/react/useeventrundetails</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/react/userundetails</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/plain-tasks</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/deployment-setup</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/deployment-manual</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/react-hooks-automatic</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/triggerclient/instancemethods/getruns</loc>
+	<lastmod>2023-10-29T17:29:07+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/github-tasks</loc>
+	<lastmod>2023-10-29T17:29:08+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/using-integrations-apikeys</loc>
+	<lastmod>2023-10-29T17:29:08+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/using-integrations-oauth</loc>
+	<lastmod>2023-10-29T17:29:08+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/airtable-tasks</loc>
+	<lastmod>2023-10-29T17:29:08+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/create-publishing</loc>
+	<lastmod>2023-10-29T17:29:08+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/create-setup</loc>
+	<lastmod>2023-10-29T17:29:08+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/create-anatomy</loc>
+	<lastmod>2023-10-29T17:29:08+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/create-oauth</loc>
+	<lastmod>2023-10-29T17:29:08+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/create-client</loc>
+	<lastmod>2023-10-29T17:29:08+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/create-tasks</loc>
+	<lastmod>2023-10-29T17:29:08+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/create-testing</loc>
+	<lastmod>2023-10-29T17:29:08+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/managing-jobs</loc>
+	<lastmod>2023-10-29T17:29:09+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/triggerclient/instancemethods/sendevent</loc>
+	<lastmod>2023-10-29T17:29:09+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/triggerclient/overview</loc>
+	<lastmod>2023-10-29T17:29:09+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/viewing-runs</loc>
+	<lastmod>2023-10-29T17:29:09+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/github-triggers</loc>
+	<lastmod>2023-10-29T17:29:09+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/manual/nestjs</loc>
+	<lastmod>2023-10-29T17:29:10+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/platforms/astro</loc>
+	<lastmod>2023-10-29T17:29:10+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/platforms/remix</loc>
+	<lastmod>2023-10-29T17:29:10+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/platforms/sveltekit</loc>
+	<lastmod>2023-10-29T17:29:10+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/concepts/runs</loc>
+	<lastmod>2023-10-29T17:29:10+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/manual/fastify</loc>
+	<lastmod>2023-10-29T17:29:10+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/platforms/fastify</loc>
+	<lastmod>2023-10-29T17:29:11+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/manual/nextjs</loc>
+	<lastmod>2023-10-29T17:29:11+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/changelog</loc>
+	<lastmod>2023-10-29T17:29:11+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/platforms/express</loc>
+	<lastmod>2023-10-29T17:29:13+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/platforms/redwood</loc>
+	<lastmod>2023-10-29T17:29:13+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/platforms/nuxt</loc>
+	<lastmod>2023-10-29T17:29:13+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/rerunning</loc>
+	<lastmod>2023-10-29T17:29:14+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/integrations/apis/slack-tasks</loc>
+	<lastmod>2023-10-29T17:29:15+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase?tags=&amp;integrations=slack</loc>
+	<lastmod>2023-10-29T17:29:15+01:00</lastmod>
+	<priority>1.0</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase?tags=&amp;integrations=github</loc>
+	<lastmod>2023-10-29T17:29:16+01:00</lastmod>
+	<priority>1.0</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/showcase?tags=&amp;integrations=plain</loc>
+	<lastmod>2023-10-29T17:29:16+01:00</lastmod>
+	<priority>1.0</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/triggerclient/instancemethods/define-auth-resolver</loc>
+	<lastmod>2023-10-29T17:29:18+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/dynamicschedule/unregister</loc>
+	<lastmod>2023-10-29T17:29:19+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/dynamicschedule/register</loc>
+	<lastmod>2023-10-29T17:29:19+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/dynamictrigger/register</loc>
+	<lastmod>2023-10-29T17:29:20+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/dynamictrigger/overview</loc>
+	<lastmod>2023-10-29T17:29:20+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/triggerclient/instancemethods/getrun</loc>
+	<lastmod>2023-10-29T17:29:21+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/triggerclient/constructor</loc>
+	<lastmod>2023-10-29T17:29:23+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/triggerclient/instancemethods/getevent</loc>
+	<lastmod>2023-10-29T17:29:23+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/triggerclient/instancemethods/cancel-event</loc>
+	<lastmod>2023-10-29T17:29:23+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/triggerclient/instancemethods/cancel-runs-for-event</loc>
+	<lastmod>2023-10-29T17:29:23+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/triggerclient/instancemethods/define-job</loc>
+	<lastmod>2023-10-29T17:29:23+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/triggerclient/instancemethods/define-dynamic-trigger</loc>
+	<lastmod>2023-10-29T17:29:23+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/triggerclient/instancemethods/define-dynamic-schedule</loc>
+	<lastmod>2023-10-29T17:29:23+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/dynamicschedule/overview</loc>
+	<lastmod>2023-10-29T17:29:25+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/dynamicschedule/constructor</loc>
+	<lastmod>2023-10-29T17:29:26+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/dynamictrigger/unregister</loc>
+	<lastmod>2023-10-29T17:29:26+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/manual/express</loc>
+	<lastmod>2023-10-29T17:29:27+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/manual/remix</loc>
+	<lastmod>2023-10-29T17:29:27+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/manual/redwood</loc>
+	<lastmod>2023-10-29T17:29:27+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/manual/astro</loc>
+	<lastmod>2023-10-29T17:29:27+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/manual/nuxt</loc>
+	<lastmod>2023-10-29T17:29:27+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/guides/manual/sveltekit</loc>
+	<lastmod>2023-10-29T17:29:27+01:00</lastmod>
+	<priority>0.2</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/documentation/roadmap</loc>
+	<lastmod>2023-10-29T17:29:28+01:00</lastmod>
+	<priority>0.6</priority>
+</url>
+<url>
+	<loc>https://trigger.dev/docs/sdk/dynamictrigger/constructor</loc>
+	<lastmod>2023-10-29T17:29:32+01:00</lastmod>
+	<priority>0.4</priority>
+</url>
+</urlset>
