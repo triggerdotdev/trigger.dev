@@ -485,6 +485,13 @@ export const RunJobBodySchema = z.object({
     title: z.string(),
     slug: z.string(),
   }),
+  project: z
+    .object({
+      id: z.string(),
+      name: z.string(),
+      slug: z.string(),
+    })
+    .optional(),
   account: z
     .object({
       id: z.string(),
@@ -896,3 +903,29 @@ export const GetRunStatusesSchema = z.object({
   statuses: z.array(JobRunStatusRecordSchema),
 });
 export type GetRunStatuses = z.infer<typeof GetRunStatusesSchema>;
+
+export const InvokeJobResponseSchema = z.object({
+  id: z.string(),
+});
+
+export const InvokeJobRequestBodySchema = z.object({
+  payload: z.any(),
+  context: z.any().optional(),
+  options: z
+    .object({
+      accountId: z.string().optional(),
+      callbackUrl: z.string().optional(),
+    })
+    .optional(),
+});
+
+export type InvokeJobRequestBody = z.infer<typeof InvokeJobRequestBodySchema>;
+
+export const InvokeOptionsSchema = z.object({
+  accountId: z.string().optional(),
+  idempotencyKey: z.string().optional(),
+  context: z.any().optional(),
+  callbackUrl: z.string().optional(),
+});
+
+export type InvokeOptions = z.infer<typeof InvokeOptionsSchema>;

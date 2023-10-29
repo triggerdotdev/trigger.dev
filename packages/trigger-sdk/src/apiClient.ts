@@ -30,6 +30,9 @@ import {
   urlWithSearchParams,
   RunTaskResponseWithCachedTasksBodySchema,
   API_VERSIONS,
+  InvokeJobResponseSchema,
+  InvokeOptions,
+  InvokeJobRequestBody,
 } from "@trigger.dev/core";
 
 import { z } from "zod";
@@ -474,6 +477,33 @@ export class ApiClient {
         },
       }
     );
+  }
+
+  async invokeJob(jobId: string, payload: any, options: InvokeOptions = {}) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Invoking Job", {
+      jobId,
+    });
+
+    const body: InvokeJobRequestBody = {
+      payload,
+      context: options.context ?? {},
+      options: {
+        accountId: options.accountId,
+        callbackUrl: options.callbackUrl,
+      },
+    };
+
+    return await zodfetch(InvokeJobResponseSchema, `${this.#apiUrl}/api/v1/jobs/${jobId}/invoke`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        ...(options.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {}),
+      },
+      body: JSON.stringify(body),
+    });
   }
 
   async #apiKey() {

@@ -673,8 +673,9 @@ model EventRecord {
   updatedAt   DateTime  @updatedAt
   cancelledAt DateTime?
 
-  isTest Boolean  @default(false)
-  runs   JobRun[]
+  isTest   Boolean  @default(false)
+  internal Boolean  @default(false)
+  runs     JobRun[]
 
   @@unique([eventId, environmentId])
 }
@@ -741,6 +742,7 @@ model JobRun {
   executions         JobRunExecution[]
   statuses           JobRunStatusRecord[]
   autoYieldExecution JobRunAutoYieldExecution[]
+  subscriptions      JobRunSubscription[]
 }
 
 enum JobRunStatus {
@@ -770,6 +772,38 @@ model JobRunAutoYieldExecution {
   location      String
 
   createdAt DateTime @default(now())
+}
+
+model JobRunSubscription {
+  id String @id @default(cuid())
+
+  run   JobRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runId String
+
+  recipient       String
+  recipientMethod JobRunSubscriptionRecipientMethod @default(WEBHOOK)
+
+  event  JobRunSubscriptionEvents
+  status JobRunSubscriptionStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deliveredAt DateTime?
+}
+
+enum JobRunSubscriptionRecipientMethod {
+  WEBHOOK
+}
+
+enum JobRunSubscriptionStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum JobRunSubscriptionEvents {
+  SUCCESS
+  FAILURE
 }
 
 model JobRunExecution {

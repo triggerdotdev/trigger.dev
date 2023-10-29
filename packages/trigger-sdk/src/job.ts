@@ -1,12 +1,28 @@
-import { IntegrationConfig, JobMetadata, LogLevel, QueueOptions } from "@trigger.dev/core";
+import {
+  IntegrationConfig,
+  InvokeOptions,
+  JobMetadata,
+  LogLevel,
+  QueueOptions,
+  RunNotification,
+} from "@trigger.dev/core";
 import { IOWithIntegrations, TriggerIntegration } from "./integrations";
 import { TriggerClient } from "./triggerClient";
-import type { EventSpecification, Trigger, TriggerContext, TriggerEventType } from "./types";
+import type {
+  EventSpecification,
+  Trigger,
+  TriggerContext,
+  TriggerEventType,
+  TriggerInvokeType,
+} from "./types";
 import { slugifyId } from "./utils";
+import { runLocalStorage } from "./runLocalStorage";
+import { Prettify } from "@trigger.dev/core";
 
 export type JobOptions<
   TTrigger extends Trigger<EventSpecification<any>>,
   TIntegrations extends Record<string, TriggerIntegration> = {},
+  TOutput extends any = any,
 > = {
   /** The `id` property is used to uniquely identify the Job. Only change this if you want to create a new Job. */
   id: string;
@@ -57,7 +73,7 @@ export type JobOptions<
     payload: TriggerEventType<TTrigger>,
     io: IOWithIntegrations<TIntegrations>,
     context: TriggerContext
-  ) => Promise<any>;
+  ) => Promise<TOutput>;
 
   // @internal
   __internal?: boolean;
@@ -75,8 +91,9 @@ export type JobIO<TJob> = TJob extends Job<any, infer TIntegrations>
 export class Job<
   TTrigger extends Trigger<EventSpecification<any>>,
   TIntegrations extends Record<string, TriggerIntegration> = {},
+  TOutput extends any = any,
 > {
-  readonly options: JobOptions<TTrigger, TIntegrations>;
+  readonly options: JobOptions<TTrigger, TIntegrations, TOutput>;
 
   client: TriggerClient;
 
@@ -84,7 +101,7 @@ export class Job<
     /** An instance of [TriggerClient](/sdk/triggerclient) that is used to send events
   to the Trigger API. */
     client: TriggerClient,
-    options: JobOptions<TTrigger, TIntegrations>
+    options: JobOptions<TTrigger, TIntegrations, TOutput>
   ) {
     this.client = client;
     this.options = options;
@@ -150,6 +167,137 @@ export class Job<
       preprocessRuns: this.trigger.preprocessRuns,
       internal,
     };
+  }
+
+  async invoke(
+    cacheKey: string,
+    payload: TriggerInvokeType<TTrigger>,
+    options?: InvokeOptions
+  ): Promise<{ id: string }>;
+  async invoke(
+    payload: TriggerInvokeType<TTrigger>,
+    options?: InvokeOptions
+  ): Promise<{ id: string }>;
+  async invoke(
+    param1: string | TriggerInvokeType<TTrigger>,
+    param2: TriggerInvokeType<TTrigger> | InvokeOptions | undefined = undefined,
+    param3: InvokeOptions | undefined = undefined
+  ): Promise<{ id: string }> {
+    const runStore = runLocalStorage.getStore();
+
+    if (typeof param1 === "string") {
+      if (!runStore) {
+        throw new Error(
+          "Cannot invoke a job from outside of a run when passing a cacheKey. Make sure you are running the job from within a run or use the invoke method without the cacheKey."
+        );
+      }
+
+      const options = param3 ?? {};
+
+      return await runStore.io.runTask(
+        param1,
+        async (task) => {
+          const result = await this.client.invokeJob(this.id, param2, {
+            idempotencyKey: task.idempotencyKey,
+            ...options,
+          });
+
+          task.outputProperties = [
+            {
+              label: "Run",
+              text: result.id,
+              url: `/orgs/${runStore.ctx.organization.slug}/projects/${runStore.ctx.project.slug}/jobs/${this.id}/runs/${result.id}/trigger`,
+            },
+          ];
+
+          return result;
+        },
+        {
+          name: `Manually Invoke '${this.name}'`,
+          params: param2,
+          properties: [
+            {
+              label: "Job",
+              text: this.id,
+              url: `/orgs/${runStore.ctx.organization.slug}/projects/${runStore.ctx.project.slug}/jobs/${this.id}`,
+            },
+            {
+              label: "Env",
+              text: runStore.ctx.environment.slug,
+            },
+          ],
+        }
+      );
+    }
+
+    if (runStore) {
+      throw new Error("Cannot invoke a job from within a run without a cacheKey.");
+    }
+
+    return await this.client.invokeJob(this.id, param1, param3);
+  }
+
+  async invokeAndWaitForCompletion(
+    cacheKey: string | string[],
+    payload: TriggerInvokeType<TTrigger>,
+    timeoutInSeconds: number = 60 * 60, // 1 hour
+    options: Prettify<Pick<InvokeOptions, "accountId" | "context">> = {}
+  ): Promise<RunNotification<TOutput>> {
+    const runStore = runLocalStorage.getStore();
+
+    if (!runStore) {
+      throw new Error(
+        "Cannot invoke a job from outside of a run using invokeAndWaitForCompletion. Make sure you are running the job from within a run or use the invoke method instead."
+      );
+    }
+
+    const { io, ctx } = runStore;
+
+    return (await io.runTask(
+      cacheKey,
+      async (task) => {
+        const parsedPayload = this.trigger.event.parseInvokePayload
+          ? this.trigger.event.parseInvokePayload(payload)
+            ? payload
+            : undefined
+          : payload;
+
+        const result = await this.client.invokeJob(this.id, parsedPayload, {
+          idempotencyKey: task.idempotencyKey,
+          callbackUrl: task.callbackUrl ?? undefined,
+          ...options,
+        });
+
+        task.outputProperties = [
+          {
+            label: "Run",
+            text: result.id,
+            url: `/orgs/${ctx.organization.slug}/projects/${ctx.project.slug}/jobs/${this.id}/runs/${result.id}/trigger`,
+          },
+        ];
+
+        return {}; // we don't want to return anything here, we just want to wait for the callback
+      },
+      {
+        name: `Manually Invoke '${this.name}' and wait for completion`,
+        params: payload,
+        properties: [
+          {
+            label: "Job",
+            text: this.id,
+            url: `/orgs/${ctx.organization.slug}/projects/${ctx.project.slug}/jobs/${this.id}`,
+          },
+          {
+            label: "Env",
+            text: ctx.environment.slug,
+          },
+        ],
+        callback: {
+          enabled: true,
+          timeoutInSeconds,
+        },
+      }
+    )) as RunNotification<TOutput>;
   }
 
   // Make sure the id is valid (must only contain alphanumeric characters and dashes)

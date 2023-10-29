@@ -35,6 +35,10 @@ export const StaticTriggerMetadataSchema = z.object({
   rule: EventRuleSchema,
 });
 
+export const InvokeTriggerMetadataSchema = z.object({
+  type: z.literal("invoke"),
+});
+
 export const ScheduledTriggerMetadataSchema = z.object({
   type: z.literal("scheduled"),
   schedule: ScheduleMetadataSchema,
@@ -44,6 +48,7 @@ export const TriggerMetadataSchema = z.discriminatedUnion("type", [
   DynamicTriggerMetadataSchema,
   StaticTriggerMetadataSchema,
   ScheduledTriggerMetadataSchema,
+  InvokeTriggerMetadataSchema,
 ]);
 
 export type TriggerMetadata = z.infer<typeof TriggerMetadataSchema>;

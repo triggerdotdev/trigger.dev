@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { TaskStatusSchema } from "./tasks";
-import { JobRunStatusRecordSchema } from "./statuses";
+import { JobRunStatusRecord, JobRunStatusRecordSchema } from "./statuses";
+import { Prettify } from "../types";
+import { RuntimeEnvironmentType } from "./api";
 
 export const RunStatusSchema = z.union([
   z.literal("PENDING"),
@@ -87,7 +89,7 @@ export const GetRunSchema = RunSchema.extend({
   nextCursor: z.string().optional(),
 });
 
-export type GetRun = z.infer<typeof GetRunSchema>;
+export type GetRun = Prettify<z.infer<typeof GetRunSchema>>;
 
 const GetRunsOptionsSchema = z.object({
   /** You can use this to get more tasks, if there are more than are returned in a single batch @default undefined */
@@ -104,3 +106,48 @@ export const GetRunsSchema = z.object({
   /** If there are more runs, you can use this to get them */
   nextCursor: z.string().optional(),
 });
+
+type RunNotificationCommon = {
+  /** The Run id */
+  id: string;
+  /** The Run status */
+  statuses: JobRunStatusRecord[];
+  /** When the run started */
+  startedAt: Date;
+  /** When the run was last updated */
+  updatedAt: Date;
+  /** When the run was completed */
+  completedAt: Date;
+
+  executionDurationInMs: number;
+  executionCount: number;
+
+  /** Job metadata */
+  job: { id: string; version: string };
+  /** Environment metadata */
+  environment: { slug: string; id: string; type: RuntimeEnvironmentType };
+  /** Organization metadata */
+  organization: { slug: string; id: string; title: string };
+  /** Project metadata */
+  project: { slug: string; id: string; name: string };
+  /** Account metadata */
+  account?: { id: string; metadata?: any };
+};
+
+export type SuccessfulRunNotification<TOutput> = RunNotificationCommon & {
+  ok: true;
+  /** The Run status */
+  status: "SUCCESS";
+  /** The output of the run */
+  output: TOutput;
+};
+
+export type FailedRunNotification = RunNotificationCommon & {
+  ok: false;
+  /** The Run status */
+  status: "FAILURE" | "TIMED_OUT" | "ABORTED" | "CANCELED" | "UNRESOLVED_AUTH" | "INVALID_PAYLOAD";
+  /** The error of the run */
+  error: any;
+};
+
+export type RunNotification<TOutput> = SuccessfulRunNotification<TOutput> | FailedRunNotification;

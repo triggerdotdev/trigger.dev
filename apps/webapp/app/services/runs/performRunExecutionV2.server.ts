@@ -34,6 +34,7 @@ import { safeJsonZodParse } from "~/utils/json";
 import { EndpointApi } from "../endpointApi.server";
 import { logger } from "../logger.server";
 import { forceYieldCoordinator } from "./forceYieldCoordinator.server";
+import { workerQueue } from "../worker.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type FoundTask = FoundRun["tasks"][number];
@@ -488,6 +489,11 @@ export class PerformRunExecutionV2Service {
           slug: run.organization.slug,
           title: run.organization.title,
         },
+        project: {
+          id: run.project.id,
+          slug: run.project.slug,
+          name: run.project.name,
+        },
         account: run.externalAccount
           ? {
               id: run.externalAccount.identifier,
@@ -534,6 +540,11 @@ export class PerformRunExecutionV2Service {
         slug: run.organization.slug,
         title: run.organization.title,
       },
+      project: {
+        id: run.project.id,
+        slug: run.project.slug,
+        name: run.project.name,
+      },
       account: run.externalAccount
         ? {
             id: run.externalAccount.identifier,
@@ -547,16 +558,26 @@ export class PerformRunExecutionV2Service {
   }
 
   async #completeRunWithSuccess(run: FoundRun, data: RunJobSuccess, durationInMs: number) {
-    await this.#prismaClient.jobRun.update({
-      where: { id: run.id },
-      data: {
-        completedAt: new Date(),
-        status: "SUCCESS",
-        output: data.output ?? undefined,
-        executionDuration: {
-          increment: durationInMs,
+    await $transaction(this.#prismaClient, async (tx) => {
+      await tx.jobRun.update({
+        where: { id: run.id },
+        data: {
+          completedAt: new Date(),
+          status: "SUCCESS",
+          output: data.output ?? undefined,
+          executionDuration: {
+            increment: durationInMs,
+          },
         },
-      },
+      });
+
+      await workerQueue.enqueue(
+        "deliverRunSubscriptions",
+        {
+          id: run.id,
+        },
+        { tx }
+      );
     });
   }
 
@@ -576,6 +597,17 @@ export class PerformRunExecutionV2Service {
           },
         },
       });
+
+      if (data.task.outputProperties) {
+        await tx.task.update({
+          where: {
+            id: data.task.id,
+          },
+          data: {
+            outputProperties: data.task.outputProperties,
+          },
+        });
+      }
 
       // If the task has an operation, then the next performRunExecution will occur
       // when that operation has finished
@@ -1014,6 +1046,14 @@ export class PerformRunExecutionV2Service {
             },
           });
 
+          await workerQueue.enqueue(
+            "deliverRunSubscriptions",
+            {
+              id: run.id,
+            },
+            { tx }
+          );
+
           break;
         }
         case "PREPROCESS": {
@@ -1080,6 +1120,7 @@ async function findRun(prisma: PrismaClientOrTransaction, id: string) {
       },
       endpoint: true,
       organization: true,
+      project: true,
       externalAccount: true,
       runConnections: {
         include: {

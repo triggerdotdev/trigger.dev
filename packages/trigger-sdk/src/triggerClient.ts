@@ -11,6 +11,7 @@ import {
   IndexEndpointResponse,
   InitializeTriggerBodySchema,
   IntegrationConfig,
+  InvokeOptions,
   JobMetadata,
   LogLevel,
   Logger,
@@ -467,8 +468,9 @@ export class TriggerClient {
   defineJob<
     TTrigger extends Trigger<EventSpecification<any>>,
     TIntegrations extends Record<string, TriggerIntegration> = {},
-  >(options: JobOptions<TTrigger, TIntegrations>) {
-    return new Job<TTrigger, TIntegrations>(this, options);
+    TOutput extends any = any,
+  >(options: JobOptions<TTrigger, TIntegrations, TOutput>) {
+    return new Job<TTrigger, TIntegrations, TOutput>(this, options);
   }
 
   defineAuthResolver(
@@ -685,6 +687,10 @@ export class TriggerClient {
     return this.#client.getRunStatuses(runId);
   }
 
+  async invokeJob(jobId: string, payload: any, options?: InvokeOptions) {
+    return this.#client.invokeJob(jobId, payload, options);
+  }
+
   authorized(
     apiKey?: string | null
   ): "authorized" | "unauthorized" | "missing-client" | "missing-header" {
@@ -874,7 +880,7 @@ export class TriggerClient {
   }
 
   #createRunContext(execution: RunJobBody): TriggerContext {
-    const { event, organization, environment, job, run, source } = execution;
+    const { event, organization, project, environment, job, run, source } = execution;
 
     return {
       event: {
@@ -884,6 +890,7 @@ export class TriggerClient {
         timestamp: event.timestamp,
       },
       organization,
+      project: project ?? { id: "unknown", name: "unknown", slug: "unknown" }, // backwards compat with old servers
       environment,
       job,
       run,

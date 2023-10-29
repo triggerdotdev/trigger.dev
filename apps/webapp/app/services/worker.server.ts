@@ -21,7 +21,8 @@ import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequ
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout";
 import { ProbeEndpointService } from "./endpoints/probeEndpoint.server";
-import { PgNotifyService } from "./db/pgNotify.server";
+import { DeliverRunSubscriptionService } from "./runs/deliverRunSubscription.server";
+import { DeliverRunSubscriptionsService } from "./runs/deliverRunSubscriptions.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -81,6 +82,12 @@ const workerCatalog = {
   }),
   simulate: z.object({
     seconds: z.number(),
+  }),
+  deliverRunSubscriptions: z.object({
+    id: z.string(),
+  }),
+  deliverRunSubscription: z.object({
+    id: z.string(),
   }),
 };
 
@@ -334,6 +341,24 @@ function getWorkerQueue() {
         maxAttempts: 5,
         handler: async (payload, job) => {
           await new Promise((resolve) => setTimeout(resolve, payload.seconds * 1000));
+        },
+      },
+      deliverRunSubscriptions: {
+        priority: 1, // smaller number = higher priority
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new DeliverRunSubscriptionsService();
+
+          await service.call(payload.id);
+        },
+      },
+      deliverRunSubscription: {
+        priority: 1, // smaller number = higher priority
+        maxAttempts: 13,
+        handler: async (payload, job) => {
+          const service = new DeliverRunSubscriptionService();
+
+          await service.call(payload.id);
         },
       },
     },
