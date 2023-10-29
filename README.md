@@ -16,7 +16,7 @@
 
 # ✨🎃 Get involved with Hacktoberfest 2023! 🎃✨
 
-All of October we're participating in Hacktoberfest and invite you to join us! We have a bunch of issues labeled `🎃 Hacktoberfest` that are ready for you to work on which will count towards Hacktoberfest. We are also running our own game, earn 💎 points to win swag!
+Throughout October, we're actively participating in Hacktoberfest, and we invite you to join us! We have numerous issues labeled 🎃 Hacktoberfest, ready for you to work on, which will count toward your Hacktoberfest contributions. We're also running our own game where you can earn 💎 points to win swag!
 
 - Check out our [Hacktoberfest landing page](https://trigger.dev/hacktoberfest) for how to participate and win swag.
 - Contribute to either our [/trigger.dev](https://github.com/triggerdotdev/trigger.dev/labels/%F0%9F%8E%83%20hacktoberfest), [/api-reference](https://github.com/triggerdotdev/api-reference/issues?q=is%3Aopen+is%3Aissue+label%3A%F0%9F%8E%83hacktoberfest) or [/jobs-showcase](https://github.com/triggerdotdev/jobs-showcase/labels/%F0%9F%8E%83%20hacktoberfest) repositories and complete issues marked `🎃 Hacktoberfest` to be eligible for swag.
@@ -28,11 +28,11 @@ _New to Hacktober? Check out the [Hacktoberfest website](https://hacktoberfest.d
 
 # About Trigger.dev
 
-Create long-running jobs directly in your codebase with features like API integrations, webhooks, scheduling and delays.
+Create long-running jobs directly in your codebase with features such as API integrations, webhooks, scheduling, and delays.
 
 ## Long running Jobs on serverless
 
-Reliably run jobs and don’t worry about function timeouts, we handle those for you.
+Reliably run jobs without worrying about function timeouts; we handle those for you.
 
 - Auto-resume after a function timeout
 - Auto-resume after a server outage
@@ -40,7 +40,7 @@ Reliably run jobs and don’t worry about function timeouts, we handle those for
 
 ## In your codebase
 
-Create Jobs where they belong: in your codebase. Version control, localhost, test, review, and deploy like you're already used to.
+Create jobs where they belong: in your codebase. Version control, localhost, test, review, and deploy, just as you're used to.
 
 ## Secure by design
 
@@ -48,7 +48,7 @@ We only receive Triggers and the data you choose to send to us. You can even com
 
 ## Don't worry about deployment
 
-Just use our SDK to write Jobs in your codebase. There's nothing extra to deploy and no CI to configure, your Jobs just connect to our cloud. Or you can always self-host.
+Simply use our SDK to write jobs in your codebase. There's nothing extra to deploy, and no CI to configure; your jobs seamlessly connect to our cloud. Alternatively, you can choose to self-host.
 
 ## Full visibility of every job run
 
@@ -58,7 +58,7 @@ View every Task in every Run so you can tell exactly what happened.
 
 ## Built-in integrations
 
-Easily integrate with hundreds of third-party APIs – including your own. Use API keys (which never leave your server) or let us handle OAuth for you. Install our integration packages and easily subscribe to webhooks and perform common tasks, or you can easily use your existing favorite Node.JS SDKs and get resumability and idempotency through our `runTask` function.
+Easily integrate with hundreds of third-party APIs, including your own. Use API keys (which never leave your server) or let us handle OAuth for you. Install our integration packages and effortlessly subscribe to webhooks, and perform common tasks. Alternatively, you can use your existing favorite Node.js SDKs and benefit from resumability and idempotency through our runTask function.
 
 ## Our progress
 
