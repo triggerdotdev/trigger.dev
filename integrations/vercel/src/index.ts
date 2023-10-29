@@ -14,6 +14,7 @@ import { VercelClient } from "./client";
 import * as events from "./events";
 import { Webhooks } from "./webhooks";
 import { TriggerParams, createTrigger, createWebhookEventSource } from "./sources";
+import { Checks } from "./checks";
 
 export type VercelIntegrationOptions = {
   id: string;
@@ -61,13 +62,10 @@ export class Vercel implements TriggerIntegration {
   }
 
   createClient(auth?: ConnectionAuth) {
-    // TODO: implement oauth
     // oauth
-    // if (auth) {
-    //   return new VercelClient({
-    //     auth: auth.accessToken,
-    //   });
-    // }
+    if (auth) {
+      return new VercelClient(auth.accessToken);
+    }
 
     // apiKey auth
     if (this._options.apiKey) {
@@ -137,8 +135,17 @@ export class Vercel implements TriggerIntegration {
     return new Webhooks(this.runTask.bind(this));
   }
 
+  // private, just here to keep 'check' logic in a separate file
+  get #checks() {
+    return new Checks(this.runTask.bind(this));
+  }
+
+  // webhooks
   listWebhooks = this.#webhooks.list;
   createWebhook = this.#webhooks.create;
   deleteWebhook = this.#webhooks.delete;
   updateWebhook = this.#webhooks.update;
+
+  // checks
+  createCheck = this.#checks.create;
 }

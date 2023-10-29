@@ -6,7 +6,7 @@ import { prisma } from "../app/db.server";
 import { createEnvironment } from "~/models/organization.server";
 
 async function seedIntegrationAuthMethods() {
-  for (const [_, integration] of Object.entries(integrationCatalog.getIntegrations())) {
+  for (const [k, integration] of Object.entries(integrationCatalog.getIntegrations())) {
     await prisma.integrationDefinition.upsert({
       where: {
         id: integration.identifier,

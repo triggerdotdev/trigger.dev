@@ -10,6 +10,7 @@ import { slack } from "./integrations/slack";
 import { stripe } from "./integrations/stripe";
 import { supabase, supabaseManagement } from "./integrations/supabase";
 import { typeform } from "./integrations/typeform";
+import { vercel } from "./integrations/vercel";
 import type { Integration } from "./types";
 
 export class IntegrationCatalog {
@@ -46,4 +47,5 @@ export const integrationCatalog = new IntegrationCatalog({
   supabase,
   sendgrid,
   typeform,
+  vercel,
 });
