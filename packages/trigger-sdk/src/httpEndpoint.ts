@@ -2,6 +2,7 @@ import {
   DisplayProperty,
   EventFilter,
   HttpEndpointMetadata,
+  RequestWithRawBodySchema,
   RequestFilter,
   TriggerMetadata,
 } from "@trigger.dev/core";
@@ -129,13 +130,6 @@ export type EndpointOptions = {
   verify: VerifyCallback;
 };
 
-const RawHttpEndpointPayloadSchema = z.object({
-  url: z.string(),
-  method: z.string(),
-  headers: z.record(z.string()),
-  rawBody: z.string(),
-});
-
 export function httpEndpoint(options: EndpointOptions): HttpEndpoint<EventSpecification<Request>> {
   return new HttpEndpoint({
     id: options.id,
@@ -168,7 +162,7 @@ export function httpEndpoint(options: EndpointOptions): HttpEndpoint<EventSpecif
             },
           ],
       parsePayload: (rawPayload: any) => {
-        const result = RawHttpEndpointPayloadSchema.safeParse(rawPayload);
+        const result = RequestWithRawBodySchema.safeParse(rawPayload);
 
         if (!result.success) {
           throw new ParsedPayloadSchemaError(formatSchemaErrors(result.error.issues));

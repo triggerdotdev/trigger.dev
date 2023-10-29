@@ -14,3 +14,4 @@ export * from "./events";
 export * from "./runs";
 export * from "./addMissingVersionField";
 export * from "./statuses";
+export * from "./request";

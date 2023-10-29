@@ -46,10 +46,12 @@ client.defineJob({
   name: "HTTP WhatsApp",
   version: "1.0.0",
   enabled: true,
-  trigger: whatsApp.onRequest({ filter: { body: { event: ["message"] } } }),
-  run: async (payload, io, ctx) => {
+  // trigger: whatsApp.onRequest(),
+  //todo filtering not working
+  trigger: whatsApp.onRequest({ filter: { body: { event: ["maessage"] } } }),
+  run: async (request, io, ctx) => {
     //         ^?
-    const body = await payload.json();
+    const body = await request.json();
     const { message } = body;
     await io.logger.info(`Received message from ${message}`);
   },

@@ -1,6 +1,7 @@
+import { fromZodError } from "zod-validation-error";
 import type { EventDispatcher, EventRecord } from "@trigger.dev/database";
 import type { EventFilter } from "@trigger.dev/core";
-import { EventFilterSchema, eventFilterMatches } from "@trigger.dev/core";
+import { EventFilterSchema, RequestWithRawBodySchema, eventFilterMatches } from "@trigger.dev/core";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { workerQueue } from "../worker.server";
@@ -47,8 +48,8 @@ export class DeliverEventService {
           eventRecord: eventRecord.id,
         });
 
-        const matchingEventDispatchers = possibleEventDispatchers.filter((eventDispatcher) =>
-          this.#evaluateEventRule(eventDispatcher, eventRecord)
+        const matchingEventDispatchers = possibleEventDispatchers.filter(
+          async (eventDispatcher) => await this.#evaluateEventRule(eventDispatcher, eventRecord)
         );
 
         if (matchingEventDispatchers.length === 0) {
@@ -90,7 +91,10 @@ export class DeliverEventService {
     );
   }
 
-  #evaluateEventRule(dispatcher: EventDispatcher, eventRecord: EventRecord): boolean {
+  async #evaluateEventRule(
+    dispatcher: EventDispatcher,
+    eventRecord: EventRecord
+  ): Promise<boolean> {
     if (!dispatcher.payloadFilter && !dispatcher.contextFilter) {
       return true;
     }
@@ -109,7 +113,7 @@ export class DeliverEventService {
 
     const eventMatcher = new EventMatcher(eventRecord);
 
-    return eventMatcher.matches({
+    return await eventMatcher.matches({
       payload: payloadFilter.data,
       context: contextFilter.data,
     });
@@ -123,7 +127,40 @@ export class EventMatcher {
     this.event = event;
   }
 
-  public matches(filter: EventFilter) {
-    return eventFilterMatches(this.event, filter);
+  public async matches(filter: EventFilter) {
+    switch (this.event.payloadType) {
+      case "REQUEST": {
+        const result = RequestWithRawBodySchema.safeParse(this.event.payload);
+
+        if (!result.success) {
+          logger.error("Invalid payload, not a valid Raw REQUEST", {
+            payload: this.event.payload,
+            error: fromZodError(result.error).message,
+          });
+          return false;
+        }
+
+        switch (result.data.headers["content-type"]) {
+          case "application/json": {
+            const body = JSON.parse(result.data.rawBody);
+            return eventFilterMatches(
+              {
+                url: result.data.url,
+                method: result.data.method,
+                headers: result.data.headers,
+                body,
+              },
+              filter
+            );
+          }
+          default: {
+            return eventFilterMatches(result.data, filter);
+          }
+        }
+      }
+      default: {
+        return eventFilterMatches(this.event, filter);
+      }
+    }
   }
 }
