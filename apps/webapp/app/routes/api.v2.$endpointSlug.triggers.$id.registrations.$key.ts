@@ -18,6 +18,10 @@ const ParamsSchema = z.object({
   key: z.string(),
 });
 
+const HeadersSchema = z.object({
+  "idempotency-key": z.string().optional(),
+});
+
 export async function action({ request, params }: ActionFunctionArgs) {
   logger.info("Registering trigger", { url: request.url });
 
@@ -78,7 +82,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
       dynamicTriggerId: parsedParams.data.id,
     };
 
-    const eventId = `${registration.id}:${nanoid()}`;
+    const headers = HeadersSchema.safeParse(Object.fromEntries(request.headers));
+
+    const eventId =
+      headers.success && headers.data["idempotency-key"]
+        ? headers.data["idempotency-key"]
+        : `${registration.id}:${nanoid()}`;
 
     const ingestEventService = new IngestSendEvent();
     await ingestEventService.call(
