@@ -468,12 +468,10 @@ export class TriggerClient {
         const sourceRequest = new Request(headers.data["x-ts-http-url"], sourceRequestInit);
 
         const key = headers.data["x-ts-key"];
-        const secret = headers.data["x-ts-secret"];
 
         const { response } = await this.#handleHttpEndpointRequestForResponse(
           {
             key,
-            secret,
           },
           sourceRequest
         );
@@ -824,12 +822,15 @@ export class TriggerClient {
     );
 
     try {
+      const parsedPayload = job.trigger.event.parsePayload(body.event.payload ?? {});
+
+      const verified = await job.trigger.verifyPayload(parsedPayload);
+      if (!verified) {
+        return { status: "ERROR", error: { message: "Payload verification failed" } };
+      }
+
       const output = await runLocalStorage.runWith({ io, ctx: context }, () => {
-        return job.options.run(
-          job.trigger.event.parsePayload(body.event.payload ?? {}),
-          ioWithConnections,
-          context
-        );
+        return job.options.run(parsedPayload, ioWithConnections, context);
       });
 
       if (this.#options.verbose) {
@@ -1077,7 +1078,6 @@ export class TriggerClient {
   async #handleHttpEndpointRequestForResponse(
     data: {
       key: string;
-      secret: string;
     },
     sourceRequest: Request
   ): Promise<{
@@ -1103,9 +1103,8 @@ export class TriggerClient {
       };
     }
 
-    const handledResponse = await httpEndpoint.handleRequest(sourceRequest, {
-      secret: data.secret,
-    });
+    const handledResponse = await httpEndpoint.handleRequest(sourceRequest);
+
     if (!handledResponse) {
       this.#internalLogger.debug("There's no HTTP Endpoint respondWith.handler()", {
         data,

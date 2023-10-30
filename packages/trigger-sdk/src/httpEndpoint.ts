@@ -2,17 +2,15 @@ import {
   DisplayProperty,
   EventFilter,
   HttpEndpointMetadata,
-  RequestWithRawBodySchema,
   RequestFilter,
+  RequestWithRawBodySchema,
   TriggerMetadata,
 } from "@trigger.dev/core";
-import { z } from "zod";
 import { ParsedPayloadSchemaError } from "./errors";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
 import { EventSpecification, EventSpecificationExample, Trigger } from "./types";
 import { formatSchemaErrors } from "./utils/formatSchemaErrors";
-import { NormalizedResponse } from "@trigger.dev/core";
 
 type HttpEndpointOptions<TEventSpecification extends EventSpecification<any>> = {
   id: string;
@@ -42,11 +40,11 @@ export class HttpEndpoint<TEventSpecification extends EventSpecification<any>> {
   }
 
   // @internal
-  async handleRequest(request: Request, context: RequestContext): Promise<Response | undefined> {
+  async handleRequest(request: Request): Promise<Response | undefined> {
     if (!this.options.respondWith) return;
-    return this.options.respondWith.handler(request, context, () => {
+    return this.options.respondWith.handler(request, () => {
       const clonedRequest = request.clone();
-      return this.options.verify(clonedRequest, context);
+      return this.options.verify(clonedRequest);
     });
   }
 
@@ -93,12 +91,14 @@ class HttpTrigger<TEventSpecification extends EventSpecification<any>>
 
   attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpecification>, any>): void {}
 
-  //todo this needs to return true, and we need to verify in preprocessing
   get preprocessRuns() {
     return false;
   }
 
-  //todo EventRecord needs a payload type, e.g. JSON, REQUEST
+  async verifyPayload(payload: ReturnType<TEventSpecification["parsePayload"]>) {
+    //todo
+    return true;
+  }
 }
 
 type RequestContext = {
@@ -108,14 +108,10 @@ type RequestContext = {
 type RespondWith = {
   filter?: RequestFilter;
   skipTriggeringRuns?: boolean;
-  handler: (
-    request: Request,
-    context: RequestContext,
-    verify: () => Promise<boolean>
-  ) => Promise<Response>;
+  handler: (request: Request, verify: () => Promise<boolean>) => Promise<Response>;
 };
 
-type VerifyCallback = (request: Request, context: RequestContext) => Promise<boolean>;
+type VerifyCallback = (request: Request) => Promise<boolean>;
 
 export type EndpointOptions = {
   id: string;

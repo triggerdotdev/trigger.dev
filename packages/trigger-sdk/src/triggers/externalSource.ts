@@ -312,6 +312,10 @@ export class ExternalSourceTrigger<
   get preprocessRuns() {
     return true;
   }
+
+  async verifyPayload(payload: ReturnType<TEventSpecification["parsePayload"]>) {
+    return true;
+  }
 }
 
 export function omit<T extends Record<string, unknown>, K extends keyof T>(

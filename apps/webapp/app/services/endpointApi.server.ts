@@ -253,7 +253,6 @@ export class EndpointApi {
         "x-trigger-api-key": this.apiKey,
         "x-trigger-action": "DELIVER_HTTP_ENDPOINT_REQUEST_FOR_RESPONSE",
         "x-ts-key": options.key,
-        "x-ts-secret": options.secret,
         "x-ts-http-url": options.request.url,
         "x-ts-http-method": options.request.method,
         "x-ts-http-headers": JSON.stringify(options.request.headers),

@@ -78,6 +78,8 @@ export interface Trigger<TEventSpec extends EventSpecification<any>> {
   attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpec>, any>): void;
 
   preprocessRuns: boolean;
+
+  verifyPayload: (payload: ReturnType<TEventSpec["parsePayload"]>) => Promise<boolean>;
 }
 
 export type TriggerPayload<TTrigger> = TTrigger extends Trigger<EventSpecification<infer TEvent>>

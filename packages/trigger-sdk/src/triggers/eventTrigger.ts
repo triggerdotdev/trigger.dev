@@ -42,6 +42,10 @@ export class EventTrigger<TEventSpecification extends EventSpecification<any>>
   get preprocessRuns() {
     return false;
   }
+
+  async verifyPayload(payload: ReturnType<TEventSpecification["parsePayload"]>) {
+    return true;
+  }
 }
 
 /** Configuration options for an EventTrigger */

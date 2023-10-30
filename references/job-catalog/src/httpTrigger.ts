@@ -16,25 +16,26 @@ const whatsApp = client.defineHttpEndpoint({
   icon: "whatsapp",
   //only needed for strange APIs like WhatsApp which don't setup the webhook until you pass the test
   respondWith: {
+    //don't trigger runs if they match this filter
+    skipTriggeringRuns: true,
     filter: {
       method: ["GET"],
       query: {
         "hub.mode": [{ $startsWith: "sub" }],
       },
     },
-    handler: async (request, context, verify) => {
+    handler: async (request, verify) => {
       const searchParams = new URL(request.url).searchParams;
-      if (searchParams.get("verify_token") !== context.secret) {
+      if (searchParams.get("verify_token") !== process.env.WHATSAPP_SECRET) {
         return new Response("Unauthorized", { status: 401 });
       }
-
       return new Response(searchParams.get("challenge") ?? "OK", { status: 200 });
     },
   },
-  verify: async (request, context) => {
+  verify: async (request) => {
     return verifyRequestSignature({
       request,
-      secret: context.secret,
+      secret: process.env.WHATSAPP_SECRET,
       headerName: "X-Signature-SHA256",
       algorithm: "sha256",
     });

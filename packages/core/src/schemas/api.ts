@@ -177,7 +177,6 @@ export type HttpSourceRequestHeaders = z.output<typeof HttpSourceRequestHeadersS
 
 export const HttpEndpointRequestHeadersSchema = z.object({
   "x-ts-key": z.string(),
-  "x-ts-secret": z.string(),
   "x-ts-http-url": z.string(),
   "x-ts-http-method": z.string(),
   "x-ts-http-headers": z.string().transform((s) => z.record(z.string()).parse(JSON.parse(s))),
