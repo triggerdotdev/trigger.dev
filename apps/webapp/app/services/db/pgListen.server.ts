@@ -16,7 +16,7 @@ export class PgListenService {
     this.#loggerNamespace = loggerNamespace ?? "";
   }
 
-  public async call<TChannel extends NotificationChannel>(
+  public async on<TChannel extends NotificationChannel>(
     channelName: TChannel,
     callback: (payload: z.infer<NotificationCatalog[TChannel]>) => Promise<void>
   ) {
