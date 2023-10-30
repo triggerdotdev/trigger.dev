@@ -5,6 +5,7 @@ import { EventFilterSchema, RequestWithRawBodySchema, eventFilterMatches } from 
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { workerQueue } from "../worker.server";
+import { asyncFilter } from "~/utils/asyncFIlter";
 
 export class DeliverEventService {
   #prismaClient: PrismaClientOrTransaction;
@@ -48,8 +49,12 @@ export class DeliverEventService {
           eventRecord: eventRecord.id,
         });
 
-        const matchingEventDispatchers = possibleEventDispatchers.filter(
-          async (eventDispatcher) => await this.#evaluateEventRule(eventDispatcher, eventRecord)
+        const matchingEventDispatchers = await asyncFilter(
+          possibleEventDispatchers,
+          async (eventDispatcher) => {
+            const matched = await this.#evaluateEventRule(eventDispatcher, eventRecord);
+            return matched;
+          }
         );
 
         if (matchingEventDispatchers.length === 0) {
@@ -145,10 +150,13 @@ export class EventMatcher {
             const body = JSON.parse(result.data.rawBody);
             return eventFilterMatches(
               {
-                url: result.data.url,
-                method: result.data.method,
-                headers: result.data.headers,
-                body,
+                context: this.event.context,
+                payload: {
+                  url: result.data.url,
+                  method: result.data.method,
+                  headers: result.data.headers,
+                  body,
+                },
               },
               filter
             );

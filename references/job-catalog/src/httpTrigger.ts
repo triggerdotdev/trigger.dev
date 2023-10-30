@@ -48,7 +48,7 @@ client.defineJob({
   enabled: true,
   // trigger: whatsApp.onRequest(),
   //todo filtering not working
-  trigger: whatsApp.onRequest({ filter: { body: { event: ["maessage"] } } }),
+  trigger: whatsApp.onRequest({ filter: { body: { event: ["message"] } } }),
   run: async (request, io, ctx) => {
     //         ^?
     const body = await request.json();

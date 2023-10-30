@@ -106,11 +106,19 @@ export class HandleHttpEndpointService {
 
     //get the secret
     const secretStore = getSecretStore(httpEndpoint.secretReference.provider);
-    const secretData = await secretStore.getSecret(
-      z.object({ secret: z.string() }),
-      httpEndpoint.secretReference.key
-    );
-    if (!secretData) {
+    let secret: string | undefined;
+    try {
+      const secretData = await secretStore.getSecretOrThrow(
+        z.object({ secret: z.string() }),
+        httpEndpoint.secretReference.key
+      );
+      secret = secretData.secret;
+    } catch (e) {
+      let error = e instanceof Error ? e.message : JSON.stringify(e);
+      logger.error("Getting secret threw", { error });
+      return json({ error: true, message: "Could not retrieve secret" }, { status: 404 });
+    }
+    if (!secret) {
       logger.error("Could not find secret", {
         httpEndpointId: httpEndpoint.id,
         environmentId: environment.id,
@@ -123,12 +131,18 @@ export class HandleHttpEndpointService {
     const callClientImmediately = await requestFilterMatches(request, immediateResponseFilter.data);
     let httpResponse: Response | undefined;
     if (callClientImmediately) {
+      logger.info("Calling client immediately", {
+        httpEndpointId: httpEndpoint.id,
+        environmentId: environment.id,
+        immediateResponseFilter: immediateResponseFilter.data,
+      });
       const clonedRequest = request.clone();
       const client = new EndpointApi(environment.apiKey, httpEndpointEnvironment.endpoint.url);
+      const httpRequest = await createHttpSourceRequest(clonedRequest);
       const { response, parser } = await client.deliverHttpEndpointRequestForResponse({
         key: httpEndpoint.key,
-        secret: secretData.secret,
-        request: await createHttpSourceRequest(clonedRequest),
+        secret: secret,
+        request: httpRequest,
       });
 
       const responseJson = await response.json();
@@ -185,6 +199,7 @@ export class HandleHttpEndpointService {
     const headerId =
       request.headers.get("idempotency-key") ?? request.headers.get("x-request-id") ?? ulid();
 
+    //todo how to get secret to the client so they can verify?
     await ingestService.call(environment, {
       id: `${httpEndpoint.id}.${headerId}`,
       name: `httpendpoint.${httpEndpoint.key}`,

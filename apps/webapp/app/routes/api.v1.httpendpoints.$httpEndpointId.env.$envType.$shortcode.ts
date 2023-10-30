@@ -20,9 +20,9 @@ export async function action({ request, params }: ActionArgs) {
     return response;
   } catch (e) {
     if (e instanceof Error) {
-      logger.error("Error handling http source", { error: e.message });
+      logger.error("Error handling http endpoint", { error: e.message });
     } else {
-      logger.error("Error handling http source", { error: JSON.stringify(e) });
+      logger.error("Error handling http endpoint", { error: JSON.stringify(e) });
     }
     return new Response(undefined, {
       status: 500,
@@ -45,9 +45,9 @@ export async function loader({ request, params }: LoaderArgs) {
     return response;
   } catch (e) {
     if (e instanceof Error) {
-      logger.error("Error handling http source", { error: e.message });
+      logger.error("Error handling http endpoint", { error: e.message });
     } else {
-      logger.error("Error handling http source", { error: JSON.stringify(e) });
+      logger.error("Error handling http endpoint", { error: JSON.stringify(e) });
     }
     return new Response(undefined, {
       status: 500,
