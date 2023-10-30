@@ -8,6 +8,7 @@ import { PrismaClient, prisma } from "~/db.server";
 import { isRunCompleted, runBasicStatus } from "~/models/jobRun.server";
 import { mergeProperties } from "~/utils/mergeProperties.server";
 import { taskListToTree } from "~/utils/taskListToTree";
+import { getUsername } from "~/utils/username";
 
 type RunOptions = {
   id: string;
@@ -79,6 +80,8 @@ export class RunPresenter {
       environment: {
         type: run.environment.type,
         slug: run.environment.slug,
+        userId: run.environment.orgMember?.user.id,
+        userName: getUsername(run.environment.orgMember?.user),
       },
       event: this.#prepareEventData(run.event),
       tasks,
@@ -130,6 +133,17 @@ export class RunPresenter {
           select: {
             type: true,
             slug: true,
+            orgMember: {
+              select: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    displayName: true,
+                  },
+                },
+              },
+            },
           },
         },
         event: {

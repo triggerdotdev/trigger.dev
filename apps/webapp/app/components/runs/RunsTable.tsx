@@ -1,6 +1,6 @@
 import { StopIcon } from "@heroicons/react/24/outline";
 import { CheckIcon } from "@heroicons/react/24/solid";
-import { JobRunStatus, RuntimeEnvironmentType } from "@trigger.dev/database";
+import { JobRunStatus, RuntimeEnvironmentType, User } from "@trigger.dev/database";
 import { formatDuration, formatDurationMilliseconds } from "~/utils";
 import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 import { DateTime } from "../primitives/DateTime";
@@ -23,6 +23,8 @@ type RunTableItem = {
   number: number | null;
   environment: {
     type: RuntimeEnvironmentType;
+    userId?: string;
+    userName?: string;
   };
   job: { title: string; slug: string };
   status: JobRunStatus;
@@ -41,6 +43,7 @@ type RunsTableProps = {
   runs: RunTableItem[];
   isLoading?: boolean;
   runsParentPath: string;
+  currentUser: User;
 };
 
 export function RunsTable({
@@ -50,6 +53,7 @@ export function RunsTable({
   isLoading = false,
   showJob = false,
   runsParentPath,
+  currentUser,
 }: RunsTableProps) {
   return (
     <Table>
@@ -84,6 +88,8 @@ export function RunsTable({
             const path = showJob
               ? `${runsParentPath}/jobs/${run.job.slug}/runs/${run.id}/trigger`
               : `${runsParentPath}/${run.id}/trigger`;
+            const usernameForEnv =
+              currentUser.id !== run.environment.userId ? run.environment.userName : undefined;
             return (
               <TableRow key={run.id}>
                 <TableCell to={path}>
@@ -91,7 +97,7 @@ export function RunsTable({
                 </TableCell>
                 {showJob && <TableCell to={path}>{run.job.slug}</TableCell>}
                 <TableCell to={path}>
-                  <EnvironmentLabel environment={run.environment} />
+                  <EnvironmentLabel environment={run.environment} userName={usernameForEnv} />
                 </TableCell>
                 <TableCell to={path}>
                   <RunStatus status={run.status} />

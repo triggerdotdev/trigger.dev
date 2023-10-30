@@ -5,9 +5,11 @@ type Environment = Pick<RuntimeEnvironment, "type">;
 
 export function EnvironmentLabel({
   environment,
+  userName,
   className,
 }: {
   environment: Environment;
+  userName?: string;
   className?: string;
 }) {
   return (
@@ -18,19 +20,19 @@ export function EnvironmentLabel({
         className
       )}
     >
-      {environmentTitle(environment)}
+      {environmentTitle(environment, userName)}
     </span>
   );
 }
 
-export function environmentTitle(environment: Environment) {
+export function environmentTitle(environment: Environment, username?: string) {
   switch (environment.type) {
     case "PRODUCTION":
       return "Prod";
     case "STAGING":
       return "Staging";
     case "DEVELOPMENT":
-      return "Dev";
+      return username ? `Dev: ${username}` : "Dev";
     case "PREVIEW":
       return "Preview";
   }

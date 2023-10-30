@@ -10,6 +10,7 @@ import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
+import { useUser } from "~/hooks/useUser";
 import { RunPresenter } from "~/presenters/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
@@ -97,6 +98,7 @@ export default function Page() {
   const { run, trigger } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
+  const user = useUser();
 
   const revalidator = useRevalidator();
   const events = useEventSource(
@@ -124,6 +126,7 @@ export default function Page() {
           id: trigger.id,
         }),
       }}
+      currentUser={user}
     />
   );
 }
