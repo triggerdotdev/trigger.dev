@@ -117,14 +117,14 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </LoginTooltip>
+        <LoginTooltip side="left" content={<OpenaiTooltipContent />}>
+          <div className={cn("", layout, gridCell, hidden)}>
+            <Icon icon="openai" className={cn(logos, opacity)} />
+          </div>
+        </LoginTooltip>
         <LoginTooltip side="left" content={<ResendTooltipContent />}>
           <div className={cn(layout, gridCell, hidden)}>
             <Icon icon="resend" className={cn(logos, opacity)} />
-          </div>
-        </LoginTooltip>
-        <LoginTooltip side="left" content={<TypeformTooltipContent />}>
-          <div className={cn("", layout, gridCell, hidden)}>
-            <Icon icon="typeform" className={cn(logos, opacity)} />
           </div>
         </LoginTooltip>
         <LoginTooltip side="left" content={<ReactHooksTooltipContent />}>
@@ -232,19 +232,16 @@ function AirtableTooltipContent() {
   );
 }
 
-function TypeformTooltipContent() {
+function OpenaiTooltipContent() {
   return (
     <>
       <div className="mb-2 flex items-center gap-x-1.5">
-        <Icon icon="typeform" className="h-5 w-5" />
+        <Icon icon="openai" className="h-5 w-5" />
         <Paragraph variant="base/bright" className="font-semibold">
-          Typeform Integration
+          OpenAI Integration
         </Paragraph>
       </div>
-      <Paragraph variant="base">
-        When you receive a new Typeform response, trigger a Slack message, send a Stripe invoice and
-        more…
-      </Paragraph>
+      <Paragraph variant="base">Generate text, images, code and more with OpenAI's API.</Paragraph>
     </>
   );
 }
