@@ -36,7 +36,7 @@ export function RunPanel({
           ? "border-slate-850"
           : "border-slate-900",
         onClick && "cursor-pointer",
-        onClick && !selected && "hover:border-green-500/30",
+        onClick && !selected && "hover:border-slate-500/30",
         className
       )}
       onClick={() => onClick && onClick()}
