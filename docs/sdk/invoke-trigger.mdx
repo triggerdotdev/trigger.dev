@@ -1,0 +1,84 @@
+---
+title: "invokeTrigger()"
+description: "Use `invokeTrigger()` to allow a Job to be manually triggered using `Job.invoke()`"
+---
+
+Setting `invokeTrigger()` on a job allows you to manually trigger the job using `Job.invoke()`, either from your backend or from inside another job. See our [Invoke Trigger guide](/documentation/guides/invoke) for more info.
+
+## Parameters
+
+<ResponseField name="options" type="object" required>
+  <Expandable title="options" defaultOpen>
+    <ResponseField name="schema" type="object">
+      A [Zod](/documentation/guides/zod) schema that defines the shape of the
+      job payload. The default is `z.any()` which is `any`. This will be used to correctly type the `Job.invoke()` method.
+    </ResponseField>
+    <ResponseField name="examples" type="array">
+       Used to provide example payloads that are accepted by the job.
+
+       This will be available in the dashboard and can be used to trigger test runs.
+
+       <Expandable title="example object properties" defaultOpen>
+        <ResponseField name="id" type="string" required>
+          The example's ID.
+        </ResponseField>
+        <ResponseField name="name" type="string" required>
+          The name that's displayed in the dashboard.
+        </ResponseField>
+        <ResponseField name="payload" type="object" required>
+          The payload that's accepted by the job.
+        </ResponseField>
+        <ResponseField name="icon" type="string">
+          The icon to use for this example in the dashboard.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+
+```typescript invokeTrigger.ts
+//this Job subscribes to an event called new.user
+export const exampleJob = client.defineJob({
+  id: "example-job",
+  name: "Example job",
+  version: "1.0.1",
+  trigger: invokeTrigger({
+    //the expected payload shape
+    schema: z.object({
+      userId: z.string(),
+      tier: z.union([z.literal("free"), z.literal("pro")]),
+    }),
+    //(optional) example payload object
+    examples: [
+      {
+        id: "issue.opened",
+        name: "Issue opened",
+        payload: {
+          userId: "1234",
+          tier: "free",
+        },
+        //optional
+        icon: "github",
+      },
+    ],
+  }),
+  run: async (payload, io, ctx) => {
+    // do something with the payload
+  },
+});
+```
+
+```typescript usage.ts
+import { exampleJob } from "./invokeTrigger";
+
+//invoke the job with the payload
+await exampleJob.invoke({
+  userId: "1234",
+  tier: "free",
+});
+```
+
+</RequestExample>

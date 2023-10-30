@@ -99,4 +99,30 @@ client.defineJob({
   },
 });
 
+export const exampleJob = client.defineJob({
+  id: "example-job",
+  name: "Example job",
+  version: "1.0.1",
+  trigger: invokeTrigger({
+    //the expected payload shape
+    schema: z.object({
+      userId: z.string(),
+      tier: z.enum(["free", "pro"]),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    // payload is typed as { userId: string, tier: "free" | "pro" }
+  },
+});
+
+client.defineJob({
+  id: "example-job2",
+  name: "Example job 2",
+  version: "1.0.1",
+  trigger: invokeTrigger(),
+  run: async (payload, io, ctx) => {
+    const jobRun = await exampleJob.invoke("⚡", { userId: "123", tier: "free" });
+  },
+});
+
 createExpressServer(client);
