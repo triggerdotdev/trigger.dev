@@ -644,6 +644,29 @@ importers:
       tsup: 7.1.0_typescript@4.9.4
       typescript: 4.9.4
 
+  integrations/vercel:
+    specifiers:
+      '@trigger.dev/integration-kit': workspace:^2.2.0
+      '@trigger.dev/sdk': workspace:^2.2.0
+      '@trigger.dev/tsconfig': workspace:*
+      '@trigger.dev/tsup': workspace:*
+      '@types/node': 16.x
+      rimraf: ^3.0.2
+      tsup: 7.1.x
+      typescript: 4.9.4
+      zod: 3.21.4
+    dependencies:
+      '@trigger.dev/integration-kit': link:../../packages/integration-kit
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      zod: 3.21.4
+    devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@trigger.dev/tsup': link:../../config-packages/tsup
+      '@types/node': 16.18.11
+      rimraf: 3.0.2
+      tsup: 7.1.0_typescript@4.9.4
+      typescript: 4.9.4
+
   packages/astro:
     specifiers:
       '@trigger.dev/tsconfig': workspace:*
@@ -1188,6 +1211,7 @@ importers:
       '@trigger.dev/supabase': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@trigger.dev/typeform': workspace:*
+      '@trigger.dev/vercel': workspace:*
       '@types/node': 20.4.2
       concurrently: ^8.2.0
       dotenv: ^16.3.1
@@ -1212,6 +1236,7 @@ importers:
       '@trigger.dev/stripe': link:../../integrations/stripe
       '@trigger.dev/supabase': link:../../integrations/supabase
       '@trigger.dev/typeform': link:../../integrations/typeform
+      '@trigger.dev/vercel': link:../../integrations/vercel
       '@types/node': 20.4.2
       typescript: 5.1.6
       zod: 3.22.3

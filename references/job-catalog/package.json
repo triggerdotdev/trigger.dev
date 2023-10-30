@@ -28,6 +28,7 @@
     "replicate": "nodemon --watch src/replicate.ts -r tsconfig-paths/register -r dotenv/config src/replicate.ts",
     "misconfigured": "nodemon --watch src/misconfigured.ts -r tsconfig-paths/register -r dotenv/config src/misconfigured.ts",
     "auto-yield": "nodemon --watch src/auto-yield.ts -r tsconfig-paths/register -r dotenv/config src/auto-yield.ts",
+    "vercel": "nodemon --watch src/vercel.ts -r tsconfig-paths/register -r dotenv/config src/vercel.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {
@@ -48,7 +49,8 @@
     "@trigger.dev/typeform": "workspace:*",
     "@types/node": "20.4.2",
     "typescript": "5.1.6",
-    "zod": "3.22.3"
+    "zod": "3.22.3",
+    "@trigger.dev/vercel": "workspace:*"
   },
   "trigger.dev": {
     "endpointId": "job-catalog"

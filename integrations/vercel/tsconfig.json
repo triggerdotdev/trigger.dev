@@ -1,0 +1,4 @@
+{
+  "extends": "@trigger.dev/tsconfig/integration.json",
+  "include": ["./src/**/*.ts", "tsup.config.ts"]
+}
