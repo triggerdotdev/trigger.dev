@@ -1,5 +1,5 @@
 import { ArrowUpIcon } from "@heroicons/react/24/solid";
-import { LoaderArgs } from "@remix-run/server-runtime";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { FrameworkSelector } from "~/components/frameworks/FrameworkSelector";
 import { JobsTable } from "~/components/jobs/JobsTable";
@@ -34,7 +34,7 @@ import {
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam } = ProjectParamSchema.parse(params);
 

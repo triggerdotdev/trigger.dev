@@ -1,4 +1,4 @@
-import type { ActionArgs } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { generateErrorMessage } from "zod-error";
@@ -11,7 +11,7 @@ const BodySchema = z.object({
   id: z.string(),
 });
 
-export async function action({ request }: ActionArgs) {
+export async function action({ request }: ActionFunctionArgs) {
   logger.info("action", { url: request.url });
 
   // Ensure this is a POST request

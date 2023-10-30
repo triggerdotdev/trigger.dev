@@ -818,8 +818,9 @@ export class IO {
             error: parsedError.data,
           });
         } else {
+          const message = typeof error === "string" ? error : JSON.stringify(error);
           await this._apiClient.failTask(this._id, task.id, {
-            error: { message: JSON.stringify(error), name: "Unknown Error" },
+            error: { name: "Unknown error", message },
           });
         }
 

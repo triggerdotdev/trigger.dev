@@ -1,4 +1,4 @@
-import { eventStream } from "remix-utils";
+import { eventStream } from "remix-utils/sse/server";
 import { logger } from "~/services/logger.server";
 
 type SseProps = {

@@ -1,4 +1,4 @@
-import type { ActionArgs } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { SendEventBodySchema } from "@trigger.dev/core";
 import { generateErrorMessage } from "zod-error";
@@ -6,7 +6,7 @@ import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { IngestSendEvent } from "~/services/events/ingestSendEvent.server";
 import { eventRecordToApiJson } from "~/api.server";
 
-export async function action({ request }: ActionArgs) {
+export async function action({ request }: ActionFunctionArgs) {
   // Ensure this is a POST request
   if (request.method.toUpperCase() !== "POST") {
     return { status: 405, body: "Method Not Allowed" };

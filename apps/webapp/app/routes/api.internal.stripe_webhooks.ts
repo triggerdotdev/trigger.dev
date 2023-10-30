@@ -1,4 +1,4 @@
-import { ActionArgs } from "@remix-run/server-runtime";
+import { ActionFunctionArgs } from "@remix-run/server-runtime";
 
 /*
   To use this route, use the stripe CLI to forward events to this route:
@@ -9,7 +9,7 @@ import { ActionArgs } from "@remix-run/server-runtime";
 
   stripe trigger price.created
 */
-export async function action({ request }: ActionArgs) {
+export async function action({ request }: ActionFunctionArgs) {
   const body: any = await request.json();
 
   const response = await fetch("https://jsonhero.io/api/create.json", {

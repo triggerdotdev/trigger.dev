@@ -113,7 +113,8 @@ export default function Page() {
 
   const [form, { name, email, marketingEmails }] = useForm({
     id: "account",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema: createSchema() });
     },

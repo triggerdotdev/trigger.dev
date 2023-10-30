@@ -1,4 +1,4 @@
-import { cors } from "remix-utils";
+import { cors } from "remix-utils/cors";
 
 type CorsMethod = "GET" | "HEAD" | "PUT" | "PATCH" | "POST" | "DELETE";
 

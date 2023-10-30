@@ -1,9 +1,9 @@
-import { LoaderArgs } from "@remix-run/server-runtime";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { EnvironmentsStreamPresenter } from "~/presenters/EnvironmentsStreamPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { ProjectParamSchema } from "~/utils/pathBuilder";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam } = ProjectParamSchema.parse(params);
 
