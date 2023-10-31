@@ -1,5 +1,3 @@
-import { Buffer } from "node:buffer";
-
 export class BloomFilter {
   private size: number;
   private bitArray: Uint8Array;
@@ -20,12 +18,16 @@ export class BloomFilter {
   }
 
   // Serialize to a Base64 string
-  serialize(): string {
+  async serialize(): Promise<string> {
+    const { Buffer } = await import("node:buffer");
+
     return Buffer.from(this.bitArray).toString("base64");
   }
 
   // Deserialize from a Base64 string
-  static deserialize(str: string, size: number): BloomFilter {
+  static async deserialize(str: string, size: number): Promise<BloomFilter> {
+    const { Buffer } = await import("node:buffer");
+
     const filter = new BloomFilter(size);
     filter.bitArray = Uint8Array.from(Buffer.from(str, "base64"));
     return filter;

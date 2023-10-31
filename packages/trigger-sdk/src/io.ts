@@ -31,14 +31,14 @@ import {
   YieldExecutionError,
   isTriggerError,
 } from "./errors";
+import { IntegrationTaskKey } from "./integrations";
 import { calculateRetryAt } from "./retry";
+import { TriggerStatus } from "./status";
 import { TriggerClient } from "./triggerClient";
 import { DynamicTrigger } from "./triggers/dynamic";
 import { ExternalSource, ExternalSourceParams } from "./triggers/externalSource";
 import { DynamicSchedule } from "./triggers/scheduled";
 import { EventSpecification, TaskLogger, TriggerContext } from "./types";
-import { IntegrationTaskKey } from "./integrations";
-import { TriggerStatus } from "./status";
 
 export type IOTask = ServerTask;
 
@@ -97,7 +97,8 @@ export class IO {
   private _cachedTasksCursor?: string;
   private _context: TriggerContext;
   private _yieldedExecutions: Array<string>;
-  private _noopTasksBloomFilter: BloomFilter | undefined;
+  private _noopTasksRawData: string | undefined;
+  private __noopTasksBloomFilter: BloomFilter | undefined;
   private _stats: IOStats;
   private _serverVersion: string;
   private _timeOrigin: number;
@@ -141,10 +142,7 @@ export class IO {
     this._yieldedExecutions = options.yieldedExecutions ?? [];
 
     if (options.noopTasksSet) {
-      this._noopTasksBloomFilter = BloomFilter.deserialize(
-        options.noopTasksSet,
-        BloomFilter.NOOP_TASK_SET_SIZE
-      );
+      this._noopTasksRawData = options.noopTasksSet;
     }
 
     this._cachedTasksCursor = options.cachedTasksCursor;
@@ -625,8 +623,10 @@ export class IO {
       return cachedTask.output as T;
     }
 
-    if (options?.noop && this._noopTasksBloomFilter) {
-      if (this._noopTasksBloomFilter.test(idempotencyKey)) {
+    if (options?.noop && this._noopTasksRawData) {
+      const exists = await this.#testNoopTaskBloomFilter(idempotencyKey);
+
+      if (exists) {
         this._logger.debug("task idempotency key exists in noopTasksBloomFilter", {
           idempotencyKey,
         });
@@ -695,7 +695,7 @@ export class IO {
           idempotencyKey,
         });
 
-        this._noopTasksBloomFilter?.add(task.idempotencyKey);
+        await this.#addNoopTaskBloomFilter(task.idempotencyKey);
       } else {
         this._logger.debug("Cache miss", {
           idempotencyKey,
@@ -941,6 +941,36 @@ export class IO {
     }
 
     return undefined;
+  }
+
+  async #testNoopTaskBloomFilter(key: string) {
+    if (!this.__noopTasksBloomFilter && this._noopTasksRawData) {
+      this.__noopTasksBloomFilter = await BloomFilter.deserialize(
+        this._noopTasksRawData,
+        BloomFilter.NOOP_TASK_SET_SIZE
+      );
+    }
+
+    if (!this.__noopTasksBloomFilter) {
+      return false;
+    }
+
+    return this.__noopTasksBloomFilter.test(key);
+  }
+
+  async #addNoopTaskBloomFilter(key: string) {
+    if (!this.__noopTasksBloomFilter && this._noopTasksRawData) {
+      this.__noopTasksBloomFilter = await BloomFilter.deserialize(
+        this._noopTasksRawData,
+        BloomFilter.NOOP_TASK_SET_SIZE
+      );
+    }
+
+    if (!this.__noopTasksBloomFilter) {
+      return;
+    }
+
+    return this.__noopTasksBloomFilter.add(key);
   }
 }
 

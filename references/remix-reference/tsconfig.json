@@ -19,7 +19,9 @@
       "@trigger.dev/core": ["../../packages/core/src/index"],
       "@trigger.dev/core/*": ["../../packages/core/src/*"],
       "@trigger.dev/remix": ["../../packages/remix/src/index"],
-      "@trigger.dev/remix/*": ["../../packages/remix/src/*"]
+      "@trigger.dev/remix/*": ["../../packages/remix/src/*"],
+      "@trigger.dev/react": ["../../packages/react/src/index"],
+      "@trigger.dev/react/*": ["../../packages/react/src/*"]
     },
 
     // Remix takes care of building everything in `remix build`.

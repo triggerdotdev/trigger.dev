@@ -1,5 +1,5 @@
 import { cssBundleHref } from "@remix-run/css-bundle";
-import type { LinksFunction } from "@remix-run/node";
+import type { LinksFunction, LoaderArgs } from "@remix-run/node";
 import {
   Links,
   LiveReload,
@@ -7,13 +7,23 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLoaderData,
 } from "@remix-run/react";
+import { TriggerProvider } from "@trigger.dev/react";
 
 export const links: LinksFunction = () => [
   ...(cssBundleHref ? [{ rel: "stylesheet", href: cssBundleHref }] : []),
 ];
 
+export async function loader({}: LoaderArgs) {
+  return {
+    triggerApiKey: process.env.PUBLIC_TRIGGER_API_KEY!,
+  };
+}
+
 export default function App() {
+  const loaderData = useLoaderData<typeof loader>();
+
   return (
     <html lang="en">
       <head>
@@ -23,7 +33,10 @@ export default function App() {
         <Links />
       </head>
       <body>
-        <Outlet />
+        <TriggerProvider publicApiKey={loaderData.triggerApiKey}>
+          <Outlet />
+        </TriggerProvider>
+
         <ScrollRestoration />
         <Scripts />
         <LiveReload />

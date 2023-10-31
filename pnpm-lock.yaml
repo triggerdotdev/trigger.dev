@@ -1432,6 +1432,8 @@ importers:
       '@remix-run/node': ^1.19.3
       '@remix-run/react': ^1.19.3
       '@remix-run/serve': ^1.19.3
+      '@trigger.dev/cli': workspace:*
+      '@trigger.dev/react': workspace:*
       '@trigger.dev/remix': workspace:*
       '@trigger.dev/sdk': workspace:*
       '@types/react': ^18.0.35
@@ -1446,6 +1448,7 @@ importers:
       '@remix-run/node': 1.19.3
       '@remix-run/react': 1.19.3_biqbaboplfbrettd7655fr4n2y
       '@remix-run/serve': 1.19.3
+      '@trigger.dev/react': link:../../packages/react
       '@trigger.dev/remix': link:../../packages/remix
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       isbot: 3.6.13
@@ -1454,6 +1457,7 @@ importers:
     devDependencies:
       '@remix-run/dev': 1.19.3_@remix-run+serve@1.19.3
       '@remix-run/eslint-config': 1.19.3_iyrjzpeh7xaqnslyy6ezqi7i5u
+      '@trigger.dev/cli': link:../../packages/cli
       '@types/react': 18.2.17
       '@types/react-dom': 18.2.7
       eslint: 8.45.0
