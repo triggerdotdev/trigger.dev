@@ -30,6 +30,8 @@ const preview: Preview = {
       const RemixStub = createRemixStub([
         {
           path: "/*",
+          action: () => ({ redirect: "/" }),
+          loader: () => ({ redirect: "/" }),
           Component: Story,
         },
       ]);
