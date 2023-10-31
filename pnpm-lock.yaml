@@ -661,6 +661,8 @@ importers:
     specifiers:
       '@trigger.dev/integration-kit': workspace:^2.2.3
       '@trigger.dev/sdk': workspace:^2.2.3
+      '@trigger.dev/tsconfig': workspace:*
+      '@trigger.dev/tsup': workspace:*
       '@typeform/api-client': ^1.8.0
       '@types/node': '18'
       rimraf: ^3.0.2
