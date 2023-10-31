@@ -12,6 +12,7 @@ module.exports = {
     "marked",
     "axios",
     "@trigger.dev/core",
+    "@trigger.dev/core-backend",
     "@trigger.dev/sdk",
     "emails",
     "highlight.run",
@@ -19,6 +20,7 @@ module.exports = {
   watchPaths: async () => {
     return [
       "../../packages/core/src/**/*",
+      "../../packages/core-backend/src/**/*",
       "../../packages/trigger-sdk/src/**/*",
       "../../packages/emails/src/**/*",
     ];

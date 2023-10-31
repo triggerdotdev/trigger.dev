@@ -63,6 +63,7 @@
     "@team-plain/typescript-sdk": "^2.2.0",
     "@trigger.dev/companyicons": "^1.5.14",
     "@trigger.dev/core": "workspace:*",
+    "@trigger.dev/core-backend": "workspace:*",
     "@trigger.dev/database": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "@types/pg": "8.6.6",
