@@ -35,9 +35,6 @@ export function getOrganizations({ userId }: { userId: User["id"] }) {
     where: { members: { some: { userId } } },
     orderBy: { createdAt: "desc" },
     include: {
-      environments: {
-        orderBy: { slug: "asc" },
-      },
       projects: {
         orderBy: { name: "asc" },
         include: {
