@@ -165,17 +165,17 @@ export class HandleHttpEndpointService {
         status: endpointResponse.status,
         headers: endpointResponse.headers,
       });
-    }
 
-    //if we don't want to trigger runs, return the response
-    if (httpEndpointEnvironment.skipTriggeringRuns) {
-      if (!httpResponse) {
-        return json(
-          { error: true, message: "Should only skip triggering runs, if there's a Response" },
-          { status: 400 }
-        );
+      //if we don't want to trigger runs, return the response
+      if (httpEndpointEnvironment.skipTriggeringRuns) {
+        if (!httpResponse) {
+          return json(
+            { error: true, message: "Should only skip triggering runs, if there's a Response" },
+            { status: 400 }
+          );
+        }
+        return httpResponse;
       }
-      return httpResponse;
     }
 
     //if the Endpoint responded and it wasn't a 200, then we don't want to trigger any runs
