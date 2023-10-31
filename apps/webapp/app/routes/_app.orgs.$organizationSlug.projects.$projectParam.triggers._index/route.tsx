@@ -43,7 +43,6 @@ export const handle: Handle = {
   breadcrumb: (match) => (
     <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="External Triggers" />
   ),
-  expandSidebar: true,
 };
 
 export default function Integrations() {

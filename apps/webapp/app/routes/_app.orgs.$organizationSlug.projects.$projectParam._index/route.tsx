@@ -56,7 +56,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Jobs" />,
-  expandSidebar: true,
 };
 
 export default function Page() {

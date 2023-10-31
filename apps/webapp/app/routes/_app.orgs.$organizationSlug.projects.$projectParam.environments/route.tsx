@@ -75,7 +75,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Environments" />,
-  expandSidebar: true,
 };
 
 export default function Page() {
