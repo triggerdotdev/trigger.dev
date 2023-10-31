@@ -1,38 +1,18 @@
+import { ArrowRightOnRectangleIcon, EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
 import {
-  ArrowRightOnRectangleIcon,
-  EllipsisHorizontalIcon,
-  UserCircleIcon,
-} from "@heroicons/react/20/solid";
-import {
-  UserPlusIcon,
+  BookmarkIcon,
   ChartPieIcon,
   QueueListIcon,
   UserGroupIcon,
-  BookmarkIcon,
+  UserPlusIcon,
 } from "@heroicons/react/24/solid";
+import { UIMatch, useMatches } from "@remix-run/react";
 import { IconExclamationCircle } from "@tabler/icons-react";
 import { Fragment, useEffect, useRef, useState } from "react";
-import { cn } from "~/utils/cn";
-import { LogoIcon } from "../LogoIcon";
-import { UserAvatar, UserProfilePhoto } from "../UserProfilePhoto";
-import { NavLinkButton } from "../primitives/Buttons";
-import { Icon } from "../primitives/Icon";
-import { type IconNames } from "../primitives/NamedIcon";
-import { Paragraph } from "../primitives/Paragraph";
-import {
-  Popover,
-  PopoverArrowTrigger,
-  PopoverContent,
-  PopoverCustomTrigger,
-  PopoverMenuItem,
-  PopoverSectionHeader,
-} from "../primitives/Popover";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { MatchedOrganization } from "~/hooks/useOrganizations";
 import { MatchedProject, useOptionalProject } from "~/hooks/useProject";
-import { MatchedOrganization, useOrganizations } from "~/hooks/useOrganizations";
+import { cn } from "~/utils/cn";
 import {
-  OrgForPath,
-  ProjectForPath,
   accountPath,
   inviteTeamMemberPath,
   logoutPath,
@@ -46,11 +26,20 @@ import {
   projectSetupPath,
   projectTriggersPath,
 } from "~/utils/pathBuilder";
-import { Feedback } from "../Feedback";
-import { useUser } from "~/hooks/useUser";
-import { UIMatch, useMatches } from "@remix-run/react";
-import { Badge } from "../primitives/Badge";
-import simplur from "simplur";
+import { LogoIcon } from "../LogoIcon";
+import { UserAvatar, UserProfilePhoto } from "../UserProfilePhoto";
+import { NavLinkButton } from "../primitives/Buttons";
+import { Icon } from "../primitives/Icon";
+import { type IconNames } from "../primitives/NamedIcon";
+import { Paragraph } from "../primitives/Paragraph";
+import {
+  Popover,
+  PopoverArrowTrigger,
+  PopoverContent,
+  PopoverCustomTrigger,
+  PopoverMenuItem,
+} from "../primitives/Popover";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 
 type SideMenuProps = {
   project: MatchedProject;
@@ -59,22 +48,23 @@ type SideMenuProps = {
 
 export function SideMenu({ project, organization }: SideMenuProps) {
   const borderRef = useRef<HTMLDivElement>(null);
-  const [isScrolled, setIsScrolled] = useState(false);
+  const [showHeaderDivider, setShowHeaderDivider] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
-      console.log("scroll");
       if (borderRef.current) {
-        setIsScrolled(borderRef.current.scrollTop > 0);
+        const shouldShowHeaderDivider = borderRef.current.scrollTop > 1;
+        if (showHeaderDivider !== shouldShowHeaderDivider) {
+          setShowHeaderDivider(shouldShowHeaderDivider);
+        }
       }
     };
 
     borderRef.current?.addEventListener("scroll", handleScroll);
     return () => borderRef.current?.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [showHeaderDivider]);
 
   const matches = useMatches();
-  const currentProject = useOptionalProject(matches);
 
   return (
     <div
@@ -87,13 +77,13 @@ export function SideMenu({ project, organization }: SideMenuProps) {
           matches={matches}
           className={cn(
             "border-b px-1 transition",
-            isScrolled ? " border-border" : "border-transparent"
+            showHeaderDivider ? " border-border" : "border-transparent"
           )}
         />
         <div className="h-full overflow-hidden overflow-y-auto pt-2" ref={borderRef}>
           <div className="mb-6 flex flex-col gap-1 px-1">
             {/* // TODO: Project name isn't pulling through: */}
-            <SideMenuHeader title={currentProject?.name || "No project found"}>
+            <SideMenuHeader title={project.name || "No project found"}>
               <PopoverMenuItem
                 to={projectSetupPath(organization, project)}
                 title="Framework setup"
