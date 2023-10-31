@@ -8,9 +8,9 @@ import { Handle } from "~/utils/handle";
 import {
   accountPath,
   organizationBillingPath,
+  organizationIntegrationsPath,
   organizationTeamPath,
   projectEnvironmentsPath,
-  projectIntegrationsPath,
   projectPath,
   projectSetupPath,
   projectTriggersPath,
@@ -75,9 +75,9 @@ export function ProjectSideMenu() {
         <SideMenuItem
           name="Integrations"
           icon="integration"
-          to={projectIntegrationsPath(organization, project)}
+          to={organizationIntegrationsPath(organization)}
           isCollapsed={isCollapsed}
-          hasWarning={project.hasUnconfiguredIntegrations}
+          hasWarning={organization.hasUnconfiguredIntegrations}
           data-action="integrations"
         />
         <SideMenuItem

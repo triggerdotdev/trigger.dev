@@ -135,7 +135,6 @@ export class ProjectPresenter {
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
       hasInactiveExternalTriggers: project._count.sources > 0,
-      hasUnconfiguredIntegrations: project.organization._count.integrations > 0,
       environments: project.environments.map((environment) => ({
         id: environment.id,
         slug: environment.slug,

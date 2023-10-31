@@ -30,7 +30,6 @@ function SideMenuV2() {
             createdAt: new Date("2023-06-26T14:22:16.922Z"),
             updatedAt: new Date("2023-06-26T14:22:16.922Z"),
             hasInactiveExternalTriggers: false,
-            hasUnconfiguredIntegrations: true,
             environments: [
               {
                 id: "cljcy6z500006uoi3tn6x60rm",
@@ -55,6 +54,7 @@ function SideMenuV2() {
             maximumExecutionTimePerRunInMs: 900000,
             createdAt: new Date("2023-06-26T14:22:16.889Z"),
             updatedAt: new Date("2023-06-26T14:22:16.889Z"),
+            hasUnconfiguredIntegrations: true,
             projects: [
               {
                 id: "cljflk1hj01evuo3dnm5hfng2",
@@ -79,9 +79,7 @@ function SideMenuV2() {
                 },
               },
             ],
-            _count: {
-              members: 2,
-            },
+            memberCount: 2,
           }}
           organizations={[
             {
@@ -115,9 +113,8 @@ function SideMenuV2() {
                   },
                 },
               ],
-              _count: {
-                members: 2,
-              },
+              memberCount: 2,
+              hasUnconfiguredIntegrations: false,
             },
             {
               id: "cljcy6z3t0002uoi31immqkox",
@@ -139,9 +136,8 @@ function SideMenuV2() {
                   },
                 },
               ],
-              _count: {
-                members: 1,
-              },
+              memberCount: 1,
+              hasUnconfiguredIntegrations: false,
             },
           ]}
         />

@@ -27,7 +27,7 @@ export function OrganizationGridItem({ organization }: { organization: MatchedOr
             <div className="flex-1">
               <Header2 className="">{organization.title}</Header2>
               <Paragraph variant="extra-small">
-                {simplur`${organization._count.members} team member[|s]`}
+                {simplur`${organization.memberCount} team member[|s]`}
               </Paragraph>
             </div>
           </div>

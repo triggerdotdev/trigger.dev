@@ -26,7 +26,7 @@ import {
   integrationClientConnectionsPath,
   integrationClientPath,
   integrationClientScopesPath,
-  projectIntegrationsPath,
+  organizationIntegrationsPath,
 } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -86,7 +86,7 @@ export default function Integrations() {
           <PageTitle
             title={client.title}
             backButton={{
-              to: projectIntegrationsPath(organization, project),
+              to: organizationIntegrationsPath(organization),
               text: "Integrations",
             }}
           />

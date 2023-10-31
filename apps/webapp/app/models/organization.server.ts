@@ -30,8 +30,8 @@ export function getOrganizationFromSlug({
   });
 }
 
-export function getOrganizations({ userId }: { userId: User["id"] }) {
-  return prisma.organization.findMany({
+export async function getOrganizations({ userId }: { userId: User["id"] }) {
+  const organizations = await prisma.organization.findMany({
     where: { members: { some: { userId } } },
     orderBy: { createdAt: "desc" },
     include: {
@@ -53,9 +53,23 @@ export function getOrganizations({ userId }: { userId: User["id"] }) {
       _count: {
         select: {
           members: true,
+          integrations: {
+            where: {
+              setupStatus: "MISSING_FIELDS",
+            },
+          },
         },
       },
     },
+  });
+
+  return organizations.map((org) => {
+    const { _count, ...rest } = org;
+    return {
+      ...rest,
+      hasUnconfiguredIntegrations: org._count.integrations > 0,
+      memberCount: org._count.members,
+    };
   });
 }
 

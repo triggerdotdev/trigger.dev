@@ -159,8 +159,8 @@ export function projectJobsPath(organization: OrgForPath, project: ProjectForPat
   return projectPath(organization, project);
 }
 
-export function projectIntegrationsPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${projectPath(organization, project)}/integrations`;
+export function organizationIntegrationsPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/integrations`;
 }
 
 export function projectTriggersPath(organization: OrgForPath, project: ProjectForPath) {
@@ -200,7 +200,7 @@ export function integrationClientPath(
   project: ProjectForPath,
   client: IntegrationForPath
 ) {
-  return `${projectIntegrationsPath(organization, project)}/${clientParam(client)}`;
+  return `${organizationIntegrationsPath(organization)}/${clientParam(client)}`;
 }
 
 export function integrationClientConnectionsPath(

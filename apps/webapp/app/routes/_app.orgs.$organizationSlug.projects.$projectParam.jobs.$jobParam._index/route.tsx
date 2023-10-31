@@ -11,7 +11,7 @@ import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import {
   JobParamsSchema,
-  projectIntegrationsPath,
+  organizationIntegrationsPath,
   jobRunsParentPath,
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
@@ -68,11 +68,7 @@ export default function Page() {
   return (
     <>
       {job.hasIntegrationsRequiringAction && (
-        <Callout
-          variant="error"
-          to={projectIntegrationsPath(organization, project)}
-          className="mb-2"
-        >
+        <Callout variant="error" to={organizationIntegrationsPath(organization)} className="mb-2">
           {simplur`This Job has ${
             job.integrations.filter((j) => j.setupStatus === "MISSING_FIELDS").length
           } Integration[|s] that [has|have] not been configured.`}

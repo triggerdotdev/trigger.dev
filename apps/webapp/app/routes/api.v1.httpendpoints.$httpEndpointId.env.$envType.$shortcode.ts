@@ -1,11 +1,11 @@
-import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
   HandleHttpEndpointService,
   HttpEndpointParamsSchema,
 } from "~/services/httpendpoint/HandleHttpEndpointService";
 import { logger } from "~/services/logger.server";
 
-export async function action({ request, params }: ActionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   logger.info("Handling httpendpoint (action)", { url: request.url, method: request.method });
 
   try {
@@ -30,7 +30,7 @@ export async function action({ request, params }: ActionArgs) {
   }
 }
 
-export async function loader({ request, params }: LoaderArgs) {
+export async function loader({ request, params }: LoaderFunctionArgs) {
   logger.info("Handling httpendpoint (loader)", { url: request.url, method: request.method });
 
   try {

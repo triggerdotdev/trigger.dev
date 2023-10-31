@@ -30,7 +30,7 @@ import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import {
   ProjectParamSchema,
-  projectIntegrationsPath,
+  organizationIntegrationsPath,
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
@@ -94,7 +94,7 @@ export default function Page() {
                     {jobs.some((j) => j.hasIntegrationsRequiringAction) && (
                       <Callout
                         variant="error"
-                        to={projectIntegrationsPath(organization, project)}
+                        to={organizationIntegrationsPath(organization)}
                         className="mb-2"
                       >
                         Some of your Jobs have Integrations that have not been configured.

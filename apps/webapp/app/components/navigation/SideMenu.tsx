@@ -1,11 +1,5 @@
 import { ArrowRightOnRectangleIcon, EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
-import {
-  BookmarkIcon,
-  ChartPieIcon,
-  QueueListIcon,
-  UserGroupIcon,
-  UserPlusIcon,
-} from "@heroicons/react/24/solid";
+import { ChartPieIcon, UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 import { IconExclamationCircle } from "@tabler/icons-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
@@ -20,9 +14,10 @@ import {
   newOrganizationPath,
   newProjectPath,
   organizationBillingPath,
+  organizationIntegrationsPath,
+  organizationPath,
   organizationTeamPath,
   projectEnvironmentsPath,
-  projectIntegrationsPath,
   projectPath,
   projectSetupPath,
   projectTriggersPath,
@@ -103,26 +98,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               count={33}
               to={projectPath(organization, project)}
               data-action="jobs"
-              hasWarning
             />
-            {/* // TODO Create a new "Runs" page: */}
-            <SideMenuItem
-              name="Runs"
-              icon="runs"
-              iconColor="text-lime-500"
-              to="#"
-              data-action="runs"
-            />
-            {/* // TODO Create a new "Events" page: */}
-            <SideMenuItem
-              name="Events"
-              icon={BookmarkIcon}
-              iconColor="text-orange-500"
-              to="#"
-              data-action="events"
-            />
-            <SideMenuItem name="Custom" to="" data-action="custom" subItem />
-            <SideMenuItem name="Webhooks" to="" data-action="webhooks" subItem />
             <SideMenuItem
               name="Triggers"
               icon="trigger"
@@ -132,23 +108,12 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               hasWarning={project.hasInactiveExternalTriggers}
             />
             <SideMenuItem
-              name="Catalog"
-              icon={QueueListIcon}
-              iconColor="text-pink-500"
-              count={4}
-              to="#"
-              data-action="catalog"
-            />
-            <SideMenuItem name="User Events" to="" subItem />
-            <SideMenuItem name="Billing Events" to="" subItem />
-            {/* // TODO I need to create this new "Endpoints" page: */}
-            <SideMenuItem
-              name="Endpoints"
+              name="Clients"
               icon="endpoint"
               iconColor="text-blue-500"
               count={4}
               to="#"
-              data-action="endpoints"
+              data-action="clients"
             />
             <SideMenuItem name="job-catalog" to="" subItem />
             <SideMenuItem
@@ -172,16 +137,14 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             <SideMenuItem
               name="Integrations"
               icon="integration"
-              to={projectIntegrationsPath(organization, project)}
-              count={projectIntegrationsPath.length}
+              to={organizationIntegrationsPath(organization)}
               data-action="integrations"
-              hasWarning={project.hasUnconfiguredIntegrations}
+              hasWarning={organization.hasUnconfiguredIntegrations}
             />
-            {/* // TODO I need to create this new "Projects" page: */}
             <SideMenuItem
               name="Projects"
               icon="folder"
-              to={projectPath(organization, project)}
+              to={organizationPath(organization)}
               data-action="projects"
             />
             <SideMenuItem
@@ -340,9 +303,7 @@ function SideMenuHeader({ title, children }: { title: string; children: React.Re
           className="min-w-max overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
           align="start"
         >
-          <Fragment>
-            <div className="flex flex-col gap-1 p-1">{children}</div>
-          </Fragment>
+          <div className="flex flex-col gap-1 p-1">{children}</div>
         </PopoverContent>
       </Popover>
     </div>
