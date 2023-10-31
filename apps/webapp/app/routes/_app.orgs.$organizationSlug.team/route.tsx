@@ -32,6 +32,8 @@ import { requireUserId } from "~/services/session.server";
 import { inviteTeamMemberPath, organizationTeamPath, resendInvitePath } from "~/utils/pathBuilder";
 import { DateTime } from "~/components/primitives/DateTime";
 import { PageHeader, PageTitleRow, PageTitle } from "~/components/primitives/PageHeader";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
+import { Handle } from "~/utils/handle";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -92,6 +94,10 @@ export const action: ActionFunction = async ({ request, params }) => {
 
 type Member = UseDataFunctionReturn<typeof loader>["members"][number];
 type Invite = UseDataFunctionReturn<typeof loader>["invites"][number];
+
+export const handle: Handle = {
+  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Team" />,
+};
 
 export default function Page() {
   const user = useUser();

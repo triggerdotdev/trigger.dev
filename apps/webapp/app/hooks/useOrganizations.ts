@@ -7,6 +7,7 @@ import { UIMatch } from "@remix-run/react";
 import { useTypedMatchesData } from "./useTypedMatchData";
 
 export type MatchedOrganization = UseDataFunctionReturn<typeof orgLoader>["organizations"][number];
+export const organizationMatchId = "routes/_app.orgs.$organizationSlug";
 
 export function useOptionalOrganizations(matches?: UIMatch[]) {
   const data = useTypedMatchesData<typeof orgLoader>({

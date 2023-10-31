@@ -8,6 +8,7 @@ import simplur from "simplur";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -17,12 +18,16 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { env } from "~/env.server";
-import { useOrganization } from "~/hooks/useOrganizations";
+import { organizationMatchId, useOrganization } from "~/hooks/useOrganizations";
+import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { inviteMembers } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { scheduleEmail } from "~/services/email.server";
 import { requireUserId } from "~/services/session.server";
+import { Handle } from "~/utils/handle";
 import { acceptInvitePath, organizationTeamPath } from "~/utils/pathBuilder";
+import { loader } from "../_app.orgs.$organizationSlug/route";
+import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 
 const schema = z.object({
   emails: z.preprocess((i) => {
@@ -83,6 +88,20 @@ export const action: ActionFunction = async ({ request, params }) => {
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }
+};
+
+export const handle: Handle = {
+  breadcrumb: (match, matches) => {
+    const orgMatch = matches.find((m) => m.id === organizationMatchId);
+    const data = useTypedMatchData<typeof loader>(orgMatch);
+    return (
+      <Fragment>
+        {data && <BreadcrumbLink to={organizationTeamPath(data?.organization)} title="Team" />}
+        <BreadcrumbIcon />
+        <BreadcrumbLink to={match.pathname} title="Invite" />
+      </Fragment>
+    );
+  },
 };
 
 export default function Page() {

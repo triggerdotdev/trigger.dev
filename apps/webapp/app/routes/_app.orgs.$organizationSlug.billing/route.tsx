@@ -29,6 +29,8 @@ import {
   PageTitle,
   PageButtons,
 } from "~/components/primitives/PageHeader";
+import { Handle } from "~/utils/handle";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -56,6 +58,10 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
   }
 
   return null;
+};
+
+export const handle: Handle = {
+  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Usage & Billing" />,
 };
 
 export default function Page() {
