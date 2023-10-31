@@ -6,11 +6,12 @@ import {
   UserGroupIcon,
   UserPlusIcon,
 } from "@heroicons/react/24/solid";
-import { UIMatch, useMatches } from "@remix-run/react";
 import { IconExclamationCircle } from "@tabler/icons-react";
 import { Fragment, useEffect, useRef, useState } from "react";
+import simplur from "simplur";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
-import { MatchedProject, useOptionalProject } from "~/hooks/useProject";
+import { MatchedProject } from "~/hooks/useProject";
+import { User } from "~/models/user.server";
 import { cn } from "~/utils/cn";
 import {
   accountPath,
@@ -28,6 +29,7 @@ import {
 } from "~/utils/pathBuilder";
 import { LogoIcon } from "../LogoIcon";
 import { UserAvatar, UserProfilePhoto } from "../UserProfilePhoto";
+import { Badge } from "../primitives/Badge";
 import { NavLinkButton } from "../primitives/Buttons";
 import { Icon } from "../primitives/Icon";
 import { type IconNames } from "../primitives/NamedIcon";
@@ -38,15 +40,18 @@ import {
   PopoverContent,
   PopoverCustomTrigger,
   PopoverMenuItem,
+  PopoverSectionHeader,
 } from "../primitives/Popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 
 type SideMenuProps = {
+  user: Pick<User, "email">;
   project: MatchedProject;
   organization: MatchedOrganization;
+  organizations: MatchedOrganization[];
 };
 
-export function SideMenu({ project, organization }: SideMenuProps) {
+export function SideMenu({ user, project, organization, organizations }: SideMenuProps) {
   const borderRef = useRef<HTMLDivElement>(null);
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);
 
@@ -64,8 +69,6 @@ export function SideMenu({ project, organization }: SideMenuProps) {
     return () => borderRef.current?.removeEventListener("scroll", handleScroll);
   }, [showHeaderDivider]);
 
-  const matches = useMatches();
-
   return (
     <div
       className={cn(
@@ -74,15 +77,17 @@ export function SideMenu({ project, organization }: SideMenuProps) {
     >
       <div className="flex h-full flex-col">
         <SideMenuOrgHeader
-          matches={matches}
           className={cn(
             "border-b px-1 transition",
             showHeaderDivider ? " border-border" : "border-transparent"
           )}
+          organization={organization}
+          organizations={organizations}
+          project={project}
+          user={user}
         />
         <div className="h-full overflow-hidden overflow-y-auto pt-2" ref={borderRef}>
           <div className="mb-6 flex flex-col gap-1 px-1">
-            {/* // TODO: Project name isn't pulling through: */}
             <SideMenuHeader title={project.name || "No project found"}>
               <PopoverMenuItem
                 to={projectSetupPath(organization, project)}
@@ -220,12 +225,22 @@ export function SideMenu({ project, organization }: SideMenuProps) {
   );
 }
 
-function SideMenuOrgHeader({ className, matches }: { className?: string; matches: UIMatch[] }) {
+function SideMenuOrgHeader({
+  className,
+  project,
+  organization,
+  organizations,
+  user,
+}: {
+  className?: string;
+  project: MatchedProject;
+  organization: MatchedOrganization;
+  organizations: MatchedOrganization[];
+  user: Pick<User, "email">;
+}) {
   const [isOrgMenuOpen, setOrgMenuOpen] = useState(false);
   const [isProfileMenuOpen, setProfileMenuOpen] = useState(false);
-  // const currentProject = useOptionalProject(matches);
-  // const organizations = useOrganizations(matches);
-  // const user = useUser();
+
   return (
     <div className={cn("flex items-center justify-between bg-background px-0 py-1", className)}>
       <Popover onOpenChange={(open) => setOrgMenuOpen(open)}>
@@ -235,29 +250,27 @@ function SideMenuOrgHeader({ className, matches }: { className?: string; matches
           className="h-7 w-full justify-between overflow-hidden py-1 pl-2"
         >
           <LogoIcon className="relative -top-px mr-2 h-4 w-4 min-w-[1rem]" />
-          {/* // TODO currentProject needs loader data */}
-          {/* <span className="truncate">{currentProject?.name ?? "Select a project"}</span> */}
+          <span className="truncate">{organization.title ?? "Select an organization"}</span>
         </PopoverArrowTrigger>
         <PopoverContent
           className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
           align="start"
           style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10%)` }}
         >
-          {/* // TODO This loop shows error: "No organizations found in loader" */}
-          {/* {organizations.map((organization) => (
-            <Fragment>
+          {organizations.map((organization) => (
+            <Fragment key={organization.id}>
               <PopoverSectionHeader title={organization.title} />
               <div className="flex flex-col gap-1 p-1">
-                {organization.projects.map((project) => {
-                  const isSelected = project.id === currentProject?.id;
+                {organization.projects.map((p) => {
+                  const isSelected = p.id === project.id;
                   return (
                     <PopoverMenuItem
-                      key={project.id}
-                      to={projectPath(organization, project)}
+                      key={p.id}
+                      to={projectPath(organization, p)}
                       title={
                         <div className="flex w-full items-center justify-between pl-1 text-bright">
-                          <span className="grow truncate text-left">{project.name}</span>
-                          <Badge className="mr-0.5">{simplur`${project._count.jobs} job[|s]`}</Badge>
+                          <span className="grow truncate text-left">{p.name}</span>
+                          <Badge className="mr-0.5">{simplur`${p._count.jobs} job[|s]`}</Badge>
                         </div>
                       }
                       isSelected={isSelected}
@@ -272,7 +285,7 @@ function SideMenuOrgHeader({ className, matches }: { className?: string; matches
                 />
               </div>
             </Fragment>
-          ))} */}
+          ))}
           <div className="border-t border-slate-800 p-1">
             <PopoverMenuItem to={newOrganizationPath()} title="New Organization" icon="plus" />
           </div>
@@ -287,8 +300,7 @@ function SideMenuOrgHeader({ className, matches }: { className?: string; matches
           align="start"
         >
           <Fragment>
-            {/* // TODO The email in this header needs to come from the loader which isn't present in storybook */}
-            {/* {user && <PopoverSectionHeader title={user && user?.email} variant="extra-small" />} */}
+            <PopoverSectionHeader title={user.email} variant="extra-small" />
             <div className="flex flex-col gap-1 p-1">
               <PopoverMenuItem
                 to={accountPath()}
