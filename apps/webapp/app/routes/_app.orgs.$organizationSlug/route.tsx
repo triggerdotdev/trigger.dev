@@ -7,8 +7,9 @@ import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { SideMenuContainer } from "~/components/navigation/ProjectSideMenu";
 import { SideMenu } from "~/components/navigation/SideMenu";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { useOptionalProject, useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
-import { getOrganizations } from "~/models/organization.server";
+import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
 import {
   commitCurrentProjectSession,
   getCurrentProjectId,
@@ -23,7 +24,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { organizationSlug } = params;
   invariant(organizationSlug, "organizationSlug not found");
 
-  const organizations = await getOrganizations({ userId });
+  const orgsPresenter = new OrganizationsPresenter();
+  const organizations = await orgsPresenter.call({ userId });
+
   const organization = organizations.find((o) => o.slug === organizationSlug);
   if (!organization) {
     throw new Response("Not Found", { status: 404 });
@@ -64,12 +67,15 @@ export default function Organization() {
   const { organization, project, organizations } = useTypedLoaderData<typeof loader>();
   const user = useUser();
 
+  //the side menu won't change projects when using the switcher unless we use the hook (on project pages)
+  const currentProject = useOptionalProject() ?? project;
+
   return (
     <>
       <SideMenuContainer>
         <SideMenu
           user={user}
-          project={project}
+          project={currentProject}
           organization={organization}
           organizations={organizations}
         />

@@ -42,7 +42,10 @@ import { PopoverClose } from "@radix-ui/react-popover";
 import { useNavigation } from "@remix-run/react";
 
 type SideMenuUser = Pick<User, "email">;
-type SideMenuProject = Pick<MatchedProject, "id" | "name" | "slug" | "hasInactiveExternalTriggers">;
+type SideMenuProject = Pick<
+  MatchedProject,
+  "id" | "name" | "slug" | "hasInactiveExternalTriggers" | "jobCount"
+>;
 
 type SideMenuProps = {
   user: SideMenuUser;
@@ -54,7 +57,6 @@ type SideMenuProps = {
 export function SideMenu({ user, project, organization, organizations }: SideMenuProps) {
   const borderRef = useRef<HTMLDivElement>(null);
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);
-  // project = useProject();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -101,7 +103,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               forceActive
               icon="job"
               iconColor="text-indigo-500"
-              count={33}
+              count={project.jobCount}
               to={projectPath(organization, project)}
               data-action="jobs"
             />
@@ -368,7 +370,7 @@ function SideMenuItem({
       <div className="flex w-full items-center justify-between overflow-hidden">
         <span className="truncate">{name}</span>
         <div className="flex items-center gap-1">
-          {count && <MenuCount count={count} />}
+          {count !== undefined && <MenuCount count={count} />}
           {typeof hasWarning === "string" ? (
             <TooltipProvider>
               <Tooltip>
