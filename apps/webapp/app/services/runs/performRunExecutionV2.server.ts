@@ -500,7 +500,7 @@ export class PerformRunExecutionV2Service {
         source,
         tasks: preparedTasks.tasks,
         cachedTaskCursor: preparedTasks.cursor,
-        noopTasksSet: await prepareNoOpTasksBloomFilter(tasks),
+        noopTasksSet: prepareNoOpTasksBloomFilter(tasks),
         yieldedExecutions: run.yieldedExecutions,
         runChunkExecutionLimit: run.endpoint.runChunkExecutionLimit - RUN_CHUNK_EXECUTION_BUFFER,
         autoYieldConfig: {
@@ -1058,7 +1058,7 @@ export class PerformRunExecutionV2Service {
   }
 }
 
-async function prepareNoOpTasksBloomFilter(possibleTasks: FoundTask[]): Promise<string> {
+function prepareNoOpTasksBloomFilter(possibleTasks: FoundTask[]): string {
   const tasks = possibleTasks.filter((task) => task.status === "COMPLETED" && task.noop);
 
   const filter = new BloomFilter(BloomFilter.NOOP_TASK_SET_SIZE);
