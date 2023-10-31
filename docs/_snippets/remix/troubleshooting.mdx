@@ -22,3 +22,25 @@ export default {
   serverDependenciesToBundle: ["@trigger.dev/react"],
 };
 ```
+
+### `[ERROR] Node builtin "buffer"`
+
+When running the Remix app, you may see an error like this:
+
+```
+✘ [ERROR] Node builtin "buffer" (imported by "node_modules/@trigger.dev/core/dist/index.js") must be polyfilled for the browser.
+You can enable this polyfill in your Remix config, e.g. `browserNodeBuiltinsPolyfill: { modules: { buffer: true } }`
+[plugin browser-node-builtins-polyfill-plugin]
+```
+
+To fix this, edit your `remix.config.js` file and add the `browserNodeBuiltinsPolyfill` config:
+
+```js
+export default {
+  browserNodeBuiltinsPolyfill: {
+    modules: {
+      buffer: "empty",
+    },
+  },
+};
+```
