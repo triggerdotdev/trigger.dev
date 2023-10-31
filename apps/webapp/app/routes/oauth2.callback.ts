@@ -1,4 +1,4 @@
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import z from "zod";
 import { prisma } from "~/db.server";
@@ -17,7 +17,7 @@ const ParamsSchema = z
   })
   .passthrough();
 
-export async function loader({ request }: LoaderArgs) {
+export async function loader({ request }: LoaderFunctionArgs) {
   if (request.method.toUpperCase() !== "GET") {
     return { status: 405, body: "Method Not Allowed" };
   }

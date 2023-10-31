@@ -1,4 +1,4 @@
-import { LoaderArgs } from "@remix-run/server-runtime";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { connectionType } from "~/components/integrations/connectionType";
 import { BreadcrumbLink } from "~/components/navigation/NavBar";
@@ -18,7 +18,7 @@ import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
 import { IntegrationClientParamSchema, trimTrailingSlash } from "~/utils/pathBuilder";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam, clientParam } =
     IntegrationClientParamSchema.parse(params);

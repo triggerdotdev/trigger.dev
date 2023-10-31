@@ -682,8 +682,13 @@ export class TriggerClient {
     this.#registeredSchedules[key] = jobs;
   }
 
-  async registerTrigger(id: string, key: string, options: RegisterTriggerBodyV2) {
-    return this.#client.registerTrigger(this.id, id, key, options);
+  async registerTrigger(
+    id: string,
+    key: string,
+    options: RegisterTriggerBodyV2,
+    idempotencyKey?: string
+  ) {
+    return this.#client.registerTrigger(this.id, id, key, options, idempotencyKey);
   }
 
   async getAuth(id: string) {
@@ -701,6 +706,10 @@ export class TriggerClient {
 
   async cancelEvent(eventId: string) {
     return this.#client.cancelEvent(eventId);
+  }
+
+  async cancelRunsForEvent(eventId: string) {
+    return this.#client.cancelRunsForEvent(eventId);
   }
 
   async updateStatus(runId: string, id: string, status: StatusUpdate) {
@@ -923,9 +932,10 @@ export class TriggerClient {
         return { status: "ERROR", error: errorWithStack.data };
       }
 
+      const message = typeof error === "string" ? error : JSON.stringify(error);
       return {
         status: "ERROR",
-        error: { message: "Unknown error" },
+        error: { name: "Unknown error", message },
       };
     }
   }

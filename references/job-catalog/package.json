@@ -29,6 +29,7 @@
     "misconfigured": "nodemon --watch src/misconfigured.ts -r tsconfig-paths/register -r dotenv/config src/misconfigured.ts",
     "auto-yield": "nodemon --watch src/auto-yield.ts -r tsconfig-paths/register -r dotenv/config src/auto-yield.ts",
     "httptrigger": "nodemon --watch src/httpTrigger.ts -r tsconfig-paths/register -r dotenv/config src/httpTrigger.ts",
+    "cli-example": "nodemon --watch src/cli-example.ts -r tsconfig-paths/register -r dotenv/config src/cli-example.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {

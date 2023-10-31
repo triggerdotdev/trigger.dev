@@ -1,5 +1,5 @@
-import { ActionArgs, json } from "@remix-run/server-runtime";
 import { GetEndpointIndexResponse, GetEndpointIndexResponseSchema } from "@trigger.dev/core";
+import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
@@ -9,7 +9,7 @@ const ParamsSchema = z.object({
   indexId: z.string(),
 });
 
-export async function loader({ request, params }: ActionArgs) {
+export async function loader({ request, params }: ActionFunctionArgs) {
   if (request.method.toUpperCase() !== "GET") {
     return { status: 405, body: "Method Not Allowed" };
   }

@@ -112,7 +112,7 @@ This guide assumes that your project is already setup and you have a Job running
 
         ```tsx app/root.tsx
         //return the public key env var from the loader so it's available in the browser
-        export const loader = async ({ request }: LoaderArgs) => {
+        export const loader = async ({ request }: LoaderFunctionArgs) => {
           //...other code
 
           const triggerPublicApiKey = env.TRIGGER_PUBLIC_API_KEY!;

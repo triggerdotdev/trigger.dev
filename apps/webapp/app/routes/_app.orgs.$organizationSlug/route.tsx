@@ -1,6 +1,6 @@
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import { Outlet } from "@remix-run/react";
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
@@ -10,8 +10,9 @@ import { telemetry } from "~/services/telemetry.server";
 import { commitCurrentOrgSession, setCurrentOrg } from "~/services/currentOrganization.server";
 import { requireUserId } from "~/services/session.server";
 import { organizationPath } from "~/utils/pathBuilder";
+import { ProjectSideMenu, SideMenuContainer } from "~/components/navigation/ProjectSideMenu";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug } = params;
   invariant(organizationSlug, "organizationSlug not found");
@@ -44,7 +45,12 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 export default function Organization() {
   return (
     <>
-      <Outlet />
+      <SideMenuContainer>
+        <ProjectSideMenu />
+        <div className="flex-grow">
+          <Outlet />
+        </div>
+      </SideMenuContainer>
     </>
   );
 }

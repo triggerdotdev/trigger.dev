@@ -1,8 +1,8 @@
 import { useRevalidator } from "@remix-run/react";
-import { LoaderArgs } from "@remix-run/server-runtime";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { useEventSource } from "remix-utils";
+import { useEventSource } from "remix-utils/sse/react";
 import {
   EndpointIndexStatusIcon,
   EndpointIndexStatusLabel,
@@ -44,8 +44,9 @@ import { requestUrl } from "~/utils/requestUrl.server";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
 import { FirstEndpointSheet } from "./FirstEndpointSheet";
+import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam } = ProjectParamSchema.parse(params);
 
@@ -148,11 +149,17 @@ export default function Page() {
                   </Paragraph>
                   <div className="mt-4 flex flex-col gap-6">
                     {environments.map((environment) => (
-                      <div key={environment.id}>
-                        <Header3 className="flex items-center gap-1">
-                          <EnvironmentLabel environment={environment} /> Environment
-                        </Header3>
-                        <div className="mt-2 inline-flex flex-col gap-3">
+                      <div key={environment.id} className="w-[400px]">
+                        <div className="flex justify-between">
+                          <Header3 className="flex items-center gap-1">
+                            <EnvironmentLabel environment={environment} /> Environment
+                          </Header3>
+                          <RegenerateApiKeyModal
+                            id={environment.id}
+                            title={environmentTitle(environment)}
+                          />
+                        </div>
+                        <div className="mt-3 inline-flex w-full flex-col gap-3">
                           <ClipboardField
                             className="w-full max-w-none"
                             secure
