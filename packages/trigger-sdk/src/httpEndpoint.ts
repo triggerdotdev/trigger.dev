@@ -36,6 +36,7 @@ export class HttpEndpoint<TEventSpecification extends EventSpecification<any>> {
       endpointId: this.options.id,
       event: this.options.event,
       filter: options?.filter,
+      verify: this.options.verify,
     });
   }
 
@@ -65,6 +66,7 @@ type TriggerOptions<TEventSpecification extends EventSpecification<any>> = {
   endpointId: string;
   event: TEventSpecification;
   filter?: EventFilter;
+  verify: VerifyCallback;
 };
 
 class HttpTrigger<TEventSpecification extends EventSpecification<any>>
@@ -96,8 +98,7 @@ class HttpTrigger<TEventSpecification extends EventSpecification<any>>
   }
 
   async verifyPayload(payload: ReturnType<TEventSpecification["parsePayload"]>) {
-    //todo
-    return true;
+    return this.options.verify(payload);
   }
 }
 
