@@ -35,7 +35,7 @@ const whatsApp = client.defineHttpEndpoint({
   verify: async (request) => {
     return verifyRequestSignature({
       request,
-      secret: process.env.WHATSAPP_SECRET,
+      secret: process.env.WHATSAPP_SECRET!,
       headerName: "X-Signature-SHA256",
       algorithm: "sha256",
     });
@@ -47,11 +47,8 @@ client.defineJob({
   name: "HTTP WhatsApp",
   version: "1.0.0",
   enabled: true,
-  // trigger: whatsApp.onRequest(),
-  //todo filtering not working
   trigger: whatsApp.onRequest({ filter: { body: { event: ["message"] } } }),
   run: async (request, io, ctx) => {
-    //         ^?
     const body = await request.json();
     const { message } = body;
     await io.logger.info(`Received message from ${message}`);

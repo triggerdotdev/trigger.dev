@@ -44,7 +44,7 @@ export class EventTrigger<TEventSpecification extends EventSpecification<any>>
   }
 
   async verifyPayload(payload: ReturnType<TEventSpecification["parsePayload"]>) {
-    return true;
+    return { success: true as const };
   }
 }
 

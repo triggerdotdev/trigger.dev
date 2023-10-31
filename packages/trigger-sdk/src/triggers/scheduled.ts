@@ -57,7 +57,7 @@ export class IntervalTrigger implements Trigger<ScheduledEventSpecification> {
   }
 
   async verifyPayload(payload: ReturnType<ScheduledEventSpecification["parsePayload"]>) {
-    return true;
+    return { success: true as const };
   }
 
   toJSON(): TriggerMetadata {
@@ -118,7 +118,7 @@ export class CronTrigger implements Trigger<ScheduledEventSpecification> {
   }
 
   async verifyPayload(payload: ReturnType<ScheduledEventSpecification["parsePayload"]>) {
-    return true;
+    return { success: true as const };
   }
 
   toJSON(): TriggerMetadata {
@@ -237,7 +237,7 @@ export class DynamicSchedule implements Trigger<ScheduledEventSpecification> {
   }
 
   async verifyPayload(payload: ReturnType<ScheduledEventSpecification["parsePayload"]>) {
-    return true;
+    return { success: true as const };
   }
 
   toJSON(): TriggerMetadata {

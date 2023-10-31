@@ -314,7 +314,7 @@ export class ExternalSourceTrigger<
   }
 
   async verifyPayload(payload: ReturnType<TEventSpecification["parsePayload"]>) {
-    return true;
+    return { success: true as const };
   }
 }
 

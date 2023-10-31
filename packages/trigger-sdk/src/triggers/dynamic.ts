@@ -163,6 +163,6 @@ export class DynamicTrigger<
   }
 
   async verifyPayload(payload: ReturnType<TEventSpec["parsePayload"]>) {
-    return true;
+    return { success: true as const };
   }
 }

@@ -9,7 +9,7 @@ import {
 import { ParsedPayloadSchemaError } from "./errors";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
-import { EventSpecification, EventSpecificationExample, Trigger } from "./types";
+import { EventSpecification, EventSpecificationExample, Trigger, VerifyResult } from "./types";
 import { formatSchemaErrors } from "./utils/formatSchemaErrors";
 
 type HttpEndpointOptions<TEventSpecification extends EventSpecification<any>> = {
@@ -109,10 +109,10 @@ type RequestContext = {
 type RespondWith = {
   filter?: RequestFilter;
   skipTriggeringRuns?: boolean;
-  handler: (request: Request, verify: () => Promise<boolean>) => Promise<Response>;
+  handler: (request: Request, verify: () => Promise<VerifyResult>) => Promise<Response>;
 };
 
-type VerifyCallback = (request: Request) => Promise<boolean>;
+type VerifyCallback = (request: Request) => Promise<VerifyResult>;
 
 export type EndpointOptions = {
   id: string;

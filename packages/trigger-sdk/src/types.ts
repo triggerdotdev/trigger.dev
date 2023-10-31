@@ -70,6 +70,15 @@ export type TriggerEventType<TTrigger extends Trigger<any>> = TTrigger extends T
   ? ReturnType<TEventSpec["parsePayload"]>
   : never;
 
+export type VerifyResult =
+  | {
+      success: true;
+    }
+  | {
+      success: false;
+      reason: string;
+    };
+
 export interface Trigger<TEventSpec extends EventSpecification<any>> {
   event: TEventSpec;
   toJSON(): TriggerMetadata;
@@ -79,7 +88,7 @@ export interface Trigger<TEventSpec extends EventSpecification<any>> {
 
   preprocessRuns: boolean;
 
-  verifyPayload: (payload: ReturnType<TEventSpec["parsePayload"]>) => Promise<boolean>;
+  verifyPayload: (payload: ReturnType<TEventSpec["parsePayload"]>) => Promise<VerifyResult>;
 }
 
 export type TriggerPayload<TTrigger> = TTrigger extends Trigger<EventSpecification<infer TEvent>>

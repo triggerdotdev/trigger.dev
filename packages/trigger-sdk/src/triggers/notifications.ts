@@ -60,7 +60,7 @@ export class MissingConnectionNotification
   async verifyPayload(
     payload: ReturnType<MissingConnectionNotificationSpecification["parsePayload"]>
   ) {
-    return true;
+    return { success: true as const };
   }
 
   toJSON(): TriggerMetadata {
@@ -116,7 +116,7 @@ export class MissingConnectionResolvedNotification
   async verifyPayload(
     payload: ReturnType<MissingConnectionResolvedNotificationSpecification["parsePayload"]>
   ) {
-    return true;
+    return { success: true as const };
   }
 
   toJSON(): TriggerMetadata {
