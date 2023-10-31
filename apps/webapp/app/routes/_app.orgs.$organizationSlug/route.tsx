@@ -36,7 +36,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   if (!projectId) {
     const project = organization.projects.sort((a, b) => b.jobCount - a.jobCount)[0];
     projectId = project.id;
-    await setCurrentProjectId(projectId, request);
+    session = await setCurrentProjectId(projectId, request);
   }
 
   const project = organization.projects.find((p) => p.id === projectId);
@@ -85,11 +85,3 @@ export function ErrorBoundary() {
   const org = useOrganization();
   return <RouteErrorDisplay button={{ title: org.title, to: organizationPath(org) }} />;
 }
-
-export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
-  if (options.formAction === "/resources/environment") {
-    return false;
-  }
-
-  return true;
-};

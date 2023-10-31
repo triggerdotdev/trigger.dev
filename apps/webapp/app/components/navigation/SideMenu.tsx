@@ -4,7 +4,7 @@ import { IconExclamationCircle } from "@tabler/icons-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
-import { MatchedProject } from "~/hooks/useProject";
+import { MatchedProject, useProject } from "~/hooks/useProject";
 import { User } from "~/models/user.server";
 import { cn } from "~/utils/cn";
 import {
@@ -38,6 +38,8 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { PopoverClose } from "@radix-ui/react-popover";
+import { useNavigation } from "@remix-run/react";
 
 type SideMenuUser = Pick<User, "email">;
 type SideMenuProject = Pick<MatchedProject, "id" | "name" | "slug" | "hasInactiveExternalTriggers">;
@@ -52,6 +54,7 @@ type SideMenuProps = {
 export function SideMenu({ user, project, organization, organizations }: SideMenuProps) {
   const borderRef = useRef<HTMLDivElement>(null);
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);
+  // project = useProject();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -206,10 +209,16 @@ function SideMenuOrgHeader({
 }) {
   const [isOrgMenuOpen, setOrgMenuOpen] = useState(false);
   const [isProfileMenuOpen, setProfileMenuOpen] = useState(false);
+  const navigation = useNavigation();
+
+  useEffect(() => {
+    setOrgMenuOpen(false);
+    setProfileMenuOpen(false);
+  }, [navigation.location?.pathname]);
 
   return (
     <div className={cn("flex items-center justify-between bg-background px-0 py-1", className)}>
-      <Popover onOpenChange={(open) => setOrgMenuOpen(open)}>
+      <Popover onOpenChange={(open) => setOrgMenuOpen(open)} open={isOrgMenuOpen}>
         <PopoverArrowTrigger
           isOpen={isOrgMenuOpen}
           overflowHidden

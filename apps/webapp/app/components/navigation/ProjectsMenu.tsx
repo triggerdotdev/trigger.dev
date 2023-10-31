@@ -47,7 +47,7 @@ export function ProjectsMenu({ matches }: { matches: UIMatch[] }) {
                       title={
                         <div className="flex w-full items-center justify-between pl-1 text-bright">
                           <span className="grow truncate text-left">{project.name}</span>
-                          <Badge className="mr-0.5">{simplur`${project._count.jobs} job[|s]`}</Badge>
+                          <Badge className="mr-0.5">{simplur`${project.jobCount} job[|s]`}</Badge>
                         </div>
                       }
                       isSelected={isSelected}

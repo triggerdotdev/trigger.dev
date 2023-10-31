@@ -82,8 +82,6 @@ class Telemetry {
         properties: {
           name: organization.title,
           slug: organization.slug,
-          createdAt: organization.createdAt,
-          updatedAt: organization.updatedAt,
         },
       });
     },

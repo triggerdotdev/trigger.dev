@@ -7,6 +7,7 @@ import { ProjectsMenu } from "~/components/navigation/ProjectsMenu";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { ProjectPresenter } from "~/presenters/ProjectPresenter.server";
+import { commitCurrentProjectSession, setCurrentProjectId } from "~/services/currentProject.server";
 import { requireUserId } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
 import { Handle } from "~/utils/handle";
@@ -34,9 +35,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     telemetry.project.identify({ project });
 
-    return typedjson({
-      project,
-    });
+    const session = await setCurrentProjectId(project.id, request);
+
+    return typedjson(
+      {
+        project,
+      },
+      {
+        headers: { "Set-Cookie": await commitCurrentProjectSession(session) },
+      }
+    );
   } catch (error) {
     if (error instanceof Response) {
       throw error;

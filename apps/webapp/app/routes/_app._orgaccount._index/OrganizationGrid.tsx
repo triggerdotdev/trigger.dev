@@ -52,7 +52,7 @@ export function OrganizationGridItem({ organization }: { organization: MatchedOr
               >
                 <span className="flex grow items-center justify-between pl-1">
                   <span className="grow text-left">{project.name}</span>
-                  <Badge>{simplur`${project._count.jobs} job[|s]`}</Badge>
+                  <Badge>{simplur`${project.jobCount} job[|s]`}</Badge>
                 </span>
               </LinkButton>
             ))}

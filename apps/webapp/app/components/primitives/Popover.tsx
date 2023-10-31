@@ -8,7 +8,6 @@ import { ChevronDownIcon, EllipsisVerticalIcon } from "@heroicons/react/24/solid
 import { ButtonContentPropsType, LinkButton } from "./Buttons";
 
 const Popover = PopoverPrimitive.Root;
-
 const PopoverTrigger = PopoverPrimitive.Trigger;
 
 const PopoverContent = React.forwardRef<

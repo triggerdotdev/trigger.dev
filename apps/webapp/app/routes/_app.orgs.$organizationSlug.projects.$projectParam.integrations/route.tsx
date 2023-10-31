@@ -38,7 +38,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { useOrganization } from "~/hooks/useOrganizations";
+import { MatchedOrganization, useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useTextFilter } from "~/hooks/useTextFilter";
 import { Organization } from "~/models/organization.server";
@@ -242,7 +242,7 @@ function ConnectedIntegrationsList({
   project,
 }: {
   clients: Client[];
-  organization: Organization;
+  organization: MatchedOrganization;
   project: Project;
 }) {
   const { filterText, setFilterText, filteredItems } = useTextFilter<Client>({
