@@ -824,12 +824,14 @@ export class TriggerClient {
     try {
       const parsedPayload = job.trigger.event.parsePayload(body.event.payload ?? {});
 
-      const verified = await job.trigger.verifyPayload(parsedPayload);
-      if (!verified.success) {
-        return {
-          status: "ERROR",
-          error: { message: `Payload verification failed: ${verified.reason}` },
-        };
+      if (!context.run.isTest) {
+        const verified = await job.trigger.verifyPayload(parsedPayload);
+        if (!verified.success) {
+          return {
+            status: "ERROR",
+            error: { message: `Payload verification failed: ${verified.reason}` },
+          };
+        }
       }
 
       const output = await runLocalStorage.runWith({ io, ctx: context }, () => {
