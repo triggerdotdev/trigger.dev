@@ -13,23 +13,23 @@ export function EndpointIcon({ className }: { className?: string }) {
       <path
         d="M3.32398 20.676L7.11974 16.8803"
         stroke="currentColor"
-        stroke-width="2.16549"
-        stroke-linecap="round"
-        stroke-linejoin="round"
+        strokeWidth="2.16549"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
       <path
         d="M15.2535 3.32398L11.4578 7.11974"
         stroke="currentColor"
-        stroke-width="2.16549"
-        stroke-linecap="round"
-        stroke-linejoin="round"
+        strokeWidth="2.16549"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
       <path
         d="M20.676 8.74649L16.8803 12.5423"
         stroke="currentColor"
-        stroke-width="2.16549"
-        stroke-linecap="round"
-        stroke-linejoin="round"
+        strokeWidth="2.16549"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
