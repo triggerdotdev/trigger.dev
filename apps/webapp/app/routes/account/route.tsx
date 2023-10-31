@@ -19,6 +19,7 @@ import { Checkbox } from "~/components/primitives/Checkbox";
 import { updateUser } from "~/models/user.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { prisma } from "~/db.server";
+import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 
 function createSchema(
   constraints: {
@@ -121,53 +122,57 @@ export default function Page() {
   });
 
   return (
-    <Form method="post" {...form.props} className="max-w-md">
-      <InputGroup className="mb-4">
-        <Label htmlFor={name.id}>Profile picture</Label>
-        <UserProfilePhoto className="h-24 w-24" />
-      </InputGroup>
-      <Fieldset>
-        <InputGroup>
-          <Label htmlFor={name.id}>Full name</Label>
-          <Input
-            {...conform.input(name, { type: "text" })}
-            placeholder="Your full name"
-            defaultValue={user?.name ?? ""}
-            icon="account"
-          />
-          <Hint>Your teammates will see this</Hint>
-          <FormError id={name.errorId}>{name.error}</FormError>
-        </InputGroup>
-        <InputGroup>
-          <Label htmlFor={email.id}>Email address</Label>
-          <Input
-            {...conform.input(email, { type: "text" })}
-            placeholder="Your email"
-            defaultValue={user?.email ?? ""}
-            icon="envelope"
-          />
-          <FormError id={email.errorId}>{email.error}</FormError>
-        </InputGroup>
-        <InputGroup>
-          <Label>Notifications</Label>
-          <Checkbox
-            id="marketingEmails"
-            {...conform.input(marketingEmails, { type: "checkbox" })}
-            label="Receive product updates"
-            variant="simple/small"
-            defaultChecked={user.marketingEmails}
-          />
-          <FormError id={marketingEmails.errorId}>{marketingEmails.error}</FormError>
-        </InputGroup>
+    <AppContainer showBackgroundGradient={true}>
+      <MainCenteredContainer>
+        <Form method="post" {...form.props} className="max-w-md">
+          <InputGroup className="mb-4">
+            <Label htmlFor={name.id}>Profile picture</Label>
+            <UserProfilePhoto className="h-24 w-24" />
+          </InputGroup>
+          <Fieldset>
+            <InputGroup>
+              <Label htmlFor={name.id}>Full name</Label>
+              <Input
+                {...conform.input(name, { type: "text" })}
+                placeholder="Your full name"
+                defaultValue={user?.name ?? ""}
+                icon="account"
+              />
+              <Hint>Your teammates will see this</Hint>
+              <FormError id={name.errorId}>{name.error}</FormError>
+            </InputGroup>
+            <InputGroup>
+              <Label htmlFor={email.id}>Email address</Label>
+              <Input
+                {...conform.input(email, { type: "text" })}
+                placeholder="Your email"
+                defaultValue={user?.email ?? ""}
+                icon="envelope"
+              />
+              <FormError id={email.errorId}>{email.error}</FormError>
+            </InputGroup>
+            <InputGroup>
+              <Label>Notifications</Label>
+              <Checkbox
+                id="marketingEmails"
+                {...conform.input(marketingEmails, { type: "checkbox" })}
+                label="Receive product updates"
+                variant="simple/small"
+                defaultChecked={user.marketingEmails}
+              />
+              <FormError id={marketingEmails.errorId}>{marketingEmails.error}</FormError>
+            </InputGroup>
 
-        <FormButtons
-          confirmButton={
-            <Button type="submit" variant={"primary/small"}>
-              Update
-            </Button>
-          }
-        />
-      </Fieldset>
-    </Form>
+            <FormButtons
+              confirmButton={
+                <Button type="submit" variant={"primary/small"}>
+                  Update
+                </Button>
+              }
+            />
+          </Fieldset>
+        </Form>
+      </MainCenteredContainer>
+    </AppContainer>
   );
 }
