@@ -11,7 +11,7 @@ export function AppContainer({
 }) {
   return (
     <BackgroundGradient showBackgroundGradient={showBackgroundGradient}>
-      <div className={cn("grid h-full w-full grid-rows-[2.75rem_auto]")}>{children}</div>
+      <div className={cn("grid h-full w-full grid-rows-1")}>{children}</div>
     </BackgroundGradient>
   );
 }

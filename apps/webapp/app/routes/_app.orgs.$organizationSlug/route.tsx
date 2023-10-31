@@ -1,52 +1,78 @@
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import { Outlet } from "@remix-run/react";
-import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { typedjson } from "remix-typedjson";
+import type { LoaderFunctionArgs, Session } from "@remix-run/server-runtime";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
+import { SideMenuContainer } from "~/components/navigation/ProjectSideMenu";
+import { SideMenu } from "~/components/navigation/SideMenu";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { getOrganizationFromSlug } from "~/models/organization.server";
-import { telemetry } from "~/services/telemetry.server";
-import { commitCurrentOrgSession, setCurrentOrg } from "~/services/currentOrganization.server";
+import { useUser } from "~/hooks/useUser";
+import { getOrganizations } from "~/models/organization.server";
+import {
+  commitCurrentProjectSession,
+  getCurrentProjectId,
+  setCurrentProjectId,
+} from "~/services/currentProject.server";
 import { requireUserId } from "~/services/session.server";
+import { telemetry } from "~/services/telemetry.server";
 import { organizationPath } from "~/utils/pathBuilder";
-import { ProjectSideMenu, SideMenuContainer } from "~/components/navigation/ProjectSideMenu";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug } = params;
   invariant(organizationSlug, "organizationSlug not found");
 
-  const organization = await getOrganizationFromSlug({
-    userId,
-    slug: organizationSlug,
-  });
-
-  if (organization === null) {
+  const organizations = await getOrganizations({ userId });
+  const organization = organizations.find((o) => o.slug === organizationSlug);
+  if (!organization) {
     throw new Response("Not Found", { status: 404 });
   }
 
   telemetry.organization.identify({ organization });
 
-  const session = await setCurrentOrg(organization.slug, request);
+  let projectId = await getCurrentProjectId(request);
+  let session: Session | undefined;
+  if (!projectId) {
+    const project = organization.projects.sort((a, b) => b.jobCount - a.jobCount)[0];
+    projectId = project.id;
+    await setCurrentProjectId(projectId, request);
+  }
+
+  const project = organization.projects.find((p) => p.id === projectId);
+  if (!project) {
+    throw new Response("Not Found", { status: 404 });
+  }
 
   return typedjson(
     {
+      organizations,
       organization,
+      project,
     },
     {
-      headers: {
-        "Set-Cookie": await commitCurrentOrgSession(session),
-      },
+      headers: session
+        ? {
+            "Set-Cookie": await commitCurrentProjectSession(session),
+          }
+        : undefined,
     }
   );
 };
 
 export default function Organization() {
+  const { organization, project, organizations } = useTypedLoaderData<typeof loader>();
+  const user = useUser();
+
   return (
     <>
       <SideMenuContainer>
-        <ProjectSideMenu />
+        <SideMenu
+          user={user}
+          project={project}
+          organization={organization}
+          organizations={organizations}
+        />
         <div className="flex-grow">
           <Outlet />
         </div>

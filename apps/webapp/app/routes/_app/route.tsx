@@ -3,11 +3,9 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { ImpersonationBanner } from "~/components/ImpersonationBanner";
-import { NoMobileOverlay } from "~/components/NoMobileOverlay";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { NavBar } from "~/components/navigation/NavBar";
-import { useIsProjectChildPage } from "~/hooks/useIsProjectChildPage";
-import { getOrganizations } from "~/models/organization.server";
+import { useIsOrgChildPage } from "~/hooks/useIsOrgChildPage";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { clearRedirectTo, commitSession } from "~/services/redirectTo.server";
 import { requireUser } from "~/services/session.server";
@@ -15,7 +13,6 @@ import { confirmBasicDetailsPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
-  const organizations = await getOrganizations({ userId: user.id });
   const impersonationId = await getImpersonationId(request);
 
   //you have to confirm basic details before you can do anything
@@ -25,7 +22,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return typedjson(
     {
-      organizations,
       impersonationId,
     },
     {
@@ -53,15 +49,13 @@ export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
 
 export default function App() {
   const { impersonationId } = useTypedLoaderData<typeof loader>();
-  const isProjectChildPage = useIsProjectChildPage();
-
-  const showBackgroundGradient = !isProjectChildPage;
+  const isOrgChildPage = useIsOrgChildPage();
+  const showBackgroundGradient = !isOrgChildPage;
 
   return (
     <>
       {impersonationId && <ImpersonationBanner impersonationId={impersonationId} />}
       <AppContainer showBackgroundGradient={showBackgroundGradient}>
-        <NavBar />
         <Outlet />
       </AppContainer>
     </>

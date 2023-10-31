@@ -28,7 +28,7 @@ export default function Page() {
                     <NamedIcon name="folder" className="h-10 w-10 flex-none" />
                     <div className="flex flex-col">
                       <Header3>{project.name}</Header3>
-                      <Paragraph variant="small">{simplur`${project._count.jobs} job[|s]`}</Paragraph>
+                      <Paragraph variant="small">{simplur`${project.jobCount} job[|s]`}</Paragraph>
                     </div>
                   </Link>
                 </li>

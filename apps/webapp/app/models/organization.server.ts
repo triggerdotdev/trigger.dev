@@ -16,20 +16,6 @@ export type { Organization };
 
 const nanoid = customAlphabet("1234567890abcdef", 4);
 
-export function getOrganizationFromSlug({
-  userId,
-  slug,
-}: Pick<Organization, "slug"> & {
-  userId: User["id"];
-}) {
-  return prisma.organization.findFirst({
-    include: {
-      environments: true,
-    },
-    where: { slug, members: { some: { userId } } },
-  });
-}
-
 export async function getOrganizations({ userId }: { userId: User["id"] }) {
   const organizations = await prisma.organization.findMany({
     where: { members: { some: { userId } } },
@@ -44,6 +30,11 @@ export async function getOrganizations({ userId }: { userId: User["id"] }) {
                 where: {
                   internal: false,
                   deletedAt: null,
+                },
+              },
+              sources: {
+                where: {
+                  active: false,
                 },
               },
             },
@@ -64,9 +55,17 @@ export async function getOrganizations({ userId }: { userId: User["id"] }) {
   });
 
   return organizations.map((org) => {
-    const { _count, ...rest } = org;
     return {
-      ...rest,
+      id: org.id,
+      slug: org.slug,
+      title: org.title,
+      projects: org.projects.map((project) => ({
+        id: project.id,
+        slug: project.slug,
+        name: project.name,
+        jobCount: project._count.jobs,
+        hasInactiveExternalTriggers: project._count.sources > 0,
+      })),
       hasUnconfiguredIntegrations: org._count.integrations > 0,
       memberCount: org._count.members,
     };

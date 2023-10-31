@@ -39,9 +39,12 @@ import {
 } from "../primitives/Popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 
+type SideMenuUser = Pick<User, "email">;
+type SideMenuProject = Pick<MatchedProject, "id" | "name" | "slug" | "hasInactiveExternalTriggers">;
+
 type SideMenuProps = {
-  user: Pick<User, "email">;
-  project: MatchedProject;
+  user: SideMenuUser;
+  project: SideMenuProject;
   organization: MatchedOrganization;
   organizations: MatchedOrganization[];
 };
@@ -196,10 +199,10 @@ function SideMenuOrgHeader({
   user,
 }: {
   className?: string;
-  project: MatchedProject;
+  project: SideMenuProject;
   organization: MatchedOrganization;
   organizations: MatchedOrganization[];
-  user: Pick<User, "email">;
+  user: SideMenuUser;
 }) {
   const [isOrgMenuOpen, setOrgMenuOpen] = useState(false);
   const [isProfileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -233,7 +236,7 @@ function SideMenuOrgHeader({
                       title={
                         <div className="flex w-full items-center justify-between pl-1 text-bright">
                           <span className="grow truncate text-left">{p.name}</span>
-                          <Badge className="mr-0.5">{simplur`${p._count.jobs} job[|s]`}</Badge>
+                          <Badge className="mr-0.5">{simplur`${p.jobCount} job[|s]`}</Badge>
                         </div>
                       }
                       isSelected={isSelected}
