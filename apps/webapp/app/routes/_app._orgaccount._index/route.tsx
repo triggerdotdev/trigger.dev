@@ -1,4 +1,4 @@
-import { LoaderArgs, json } from "@remix-run/server-runtime";
+import { LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { redirect } from "remix-typedjson";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { useOptionalOrganizations } from "~/hooks/useOrganizations";
@@ -11,7 +11,7 @@ import { Link } from "@remix-run/react";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 
-export const loader = async ({ request }: LoaderArgs) => {
+export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
 
   //if there are invites then we should redirect to the invites page

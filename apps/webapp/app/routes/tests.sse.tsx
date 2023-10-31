@@ -1,9 +1,9 @@
 import { useLoaderData } from "@remix-run/react";
-import { LoaderArgs } from "@remix-run/server-runtime";
-import { useEventSource } from "remix-utils";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { useEventSource } from "remix-utils/sse/react";
 import { z } from "zod";
 
-export async function loader({ request }: LoaderArgs) {
+export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const params = Object.fromEntries(url.searchParams.entries());
 

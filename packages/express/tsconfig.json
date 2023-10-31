@@ -5,7 +5,8 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "declaration": false,
-    "declarationMap": false
+    "declarationMap": false,
+    "lib": ["DOM"]
   },
   "exclude": ["node_modules"]
 }

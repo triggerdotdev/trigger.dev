@@ -1,10 +1,10 @@
-import { LoaderArgs } from "@remix-run/server-runtime";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { TriggerDetail } from "~/components/run/TriggerDetail";
 import { TriggerDetailsPresenter } from "~/presenters/TriggerDetailsPresenter.server";
 import { TriggerSourceRunParamsSchema } from "~/utils/pathBuilder";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { runParam } = TriggerSourceRunParamsSchema.parse(params);
 
   const presenter = new TriggerDetailsPresenter();

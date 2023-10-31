@@ -159,6 +159,16 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
         <div className="grid h-full grid-cols-2 gap-2">
           <div className="flex flex-col gap-6 overflow-y-auto py-4 pl-4 pr-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
             <div>
+              {(run.tasks.length === 0 || run.tasks.every((t) => t.noop)) && (
+                <Callout
+                  variant={"warning"}
+                  to="https://trigger.dev/docs/documentation/concepts/tasks"
+                  className="mb-4"
+                >
+                  This Run completed but it did not use any Tasks – this can cause unpredictable
+                  results. Read the docs to view the solution.
+                </Callout>
+              )}
               <Header2 className="mb-2">Trigger</Header2>
               <RunPanel
                 selected={selectedId === "trigger"}
@@ -313,7 +323,8 @@ function RerunPopover({
 
   const [form, { successRedirect }] = useForm({
     id: "rerun",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },
@@ -386,7 +397,8 @@ export function CancelRun({ runId }: { runId: string }) {
 
   const [form, { redirectUrl }] = useForm({
     id: "cancel-run",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema: cancelSchema });
     },

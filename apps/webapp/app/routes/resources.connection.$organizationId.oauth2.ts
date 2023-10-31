@@ -1,6 +1,6 @@
 import { conform } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ActionArgs, json } from "@remix-run/server-runtime";
+import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { redirect, typedjson } from "remix-typedjson";
 import z from "zod";
 import { prisma } from "~/db.server";
@@ -102,7 +102,7 @@ const ParamsSchema = z.object({
   organizationId: z.string(),
 });
 
-export async function action({ request, params }: ActionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   const userId = await requireUserId(request);
 
   if (request.method.toUpperCase() !== "POST") {

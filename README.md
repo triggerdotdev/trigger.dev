@@ -19,8 +19,8 @@
 All of October we're participating in Hacktoberfest and invite you to join us! We have a bunch of issues labeled `🎃 Hacktoberfest` that are ready for you to work on which will count towards Hacktoberfest. We are also running our own game, earn 💎 points to win swag!
 
 - Check out our [Hacktoberfest landing page](https://trigger.dev/hacktoberfest) for how to participate and win swag.
-- Contribute to either our [/trigger.dev](https://github.com/triggerdotdev/trigger.dev/labels/%F0%9F%8E%83%20hacktoberfest) or [/jobs-showcase](https://github.com/triggerdotdev/jobs-showcase/labels/%F0%9F%8E%83%20hacktoberfest) repositories and complete issues marked `🎃 Hacktoberfest` to be eligible for swag.
-- Join our [Discord](https://discord.gg/JtBAxBr2m3) and get involved in with the community.
+- Contribute to either our [/trigger.dev](https://github.com/triggerdotdev/trigger.dev/labels/%F0%9F%8E%83%20hacktoberfest), [/api-reference](https://github.com/triggerdotdev/api-reference/issues?q=is%3Aopen+is%3Aissue+label%3A%F0%9F%8E%83hacktoberfest) or [/jobs-showcase](https://github.com/triggerdotdev/jobs-showcase/labels/%F0%9F%8E%83%20hacktoberfest) repositories and complete issues marked `🎃 Hacktoberfest` to be eligible for swag.
+- Join our [Discord](https://discord.gg/JtBAxBr2m3) and get involved with the community.
 
 _New to Hacktober? Check out the [Hacktoberfest website](https://hacktoberfest.digitalocean.com/) for more information._
 
@@ -96,7 +96,7 @@ We provide an official trigger.dev docker image you can use to easily self-host 
 
 To setup and develop locally or contribute to the open source project, follow our [development guide](./CONTRIBUTING.md).
 
-## 🙏 to our contributors
+## Meet the Amazing People Behind This Project 🚀
 
 <a href="https://github.com/triggerdotdev/trigger.dev/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=triggerdotdev/trigger.dev" />

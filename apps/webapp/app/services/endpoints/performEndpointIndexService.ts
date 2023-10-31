@@ -111,7 +111,7 @@ export class PerformEndpointIndexService {
 
       return updateEndpointIndexWithError(this.#prismaClient, id, {
         message: friendlyError,
-        raw: bodyResult.error.issues,
+        raw: fromZodError(bodyResult.error).message,
       });
     }
 
@@ -127,16 +127,21 @@ export class PerformEndpointIndexService {
     }
 
     const { jobs, sources, dynamicTriggers, dynamicSchedules } = bodyResult.data;
-    const { "trigger-version": triggerVersion } = headerResult.data;
+    const { "trigger-version": triggerVersion, "trigger-sdk-version": triggerSdkVersion } =
+      headerResult.data;
     const { endpoint } = endpointIndex;
 
-    if (triggerVersion && triggerVersion !== endpoint.version) {
+    if (
+      (triggerVersion && triggerVersion !== endpoint.version) ||
+      (triggerSdkVersion && triggerSdkVersion !== endpoint.sdkVersion)
+    ) {
       await this.#prismaClient.endpoint.update({
         where: {
           id: endpoint.id,
         },
         data: {
           version: triggerVersion,
+          sdkVersion: triggerSdkVersion,
         },
       });
     }

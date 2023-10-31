@@ -2,7 +2,7 @@ import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { UserPlusIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData } from "@remix-run/react";
-import { ActionFunction, LoaderArgs, json } from "@remix-run/server-runtime";
+import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useState } from "react";
 import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
@@ -33,7 +33,7 @@ import { inviteTeamMemberPath, organizationTeamPath, resendInvitePath } from "~/
 import { OrgAdminHeader } from "../_app.orgs.$organizationSlug._index/OrgAdminHeader";
 import { DateTime } from "~/components/primitives/DateTime";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug } = params;
   invariant(organizationSlug, "organizationSlug not found");
@@ -235,7 +235,8 @@ function LeaveTeamModal({
 
   const [form, { memberId }] = useForm({
     id: "remove-member",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },

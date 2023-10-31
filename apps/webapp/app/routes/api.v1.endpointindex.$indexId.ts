@@ -1,4 +1,4 @@
-import { ActionArgs, json } from "@remix-run/server-runtime";
+import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import {
   EndpointIndexErrorSchema,
   GetEndpointIndexResponse,
@@ -14,7 +14,7 @@ const ParamsSchema = z.object({
   indexId: z.string(),
 });
 
-export async function loader({ request, params }: ActionArgs) {
+export async function loader({ request, params }: ActionFunctionArgs) {
   if (request.method.toUpperCase() !== "GET") {
     return { status: 405, body: "Method Not Allowed" };
   }

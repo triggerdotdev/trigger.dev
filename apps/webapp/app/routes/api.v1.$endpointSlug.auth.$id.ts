@@ -1,4 +1,4 @@
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
@@ -11,7 +11,7 @@ const ParamsSchema = z.object({
   id: z.string(),
 });
 
-export async function loader({ request, params }: LoaderArgs) {
+export async function loader({ request, params }: LoaderFunctionArgs) {
   logger.info("Fetching auth", { url: request.url });
 
   const parsedParams = ParamsSchema.safeParse(params);

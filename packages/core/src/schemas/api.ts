@@ -177,12 +177,14 @@ export type HttpSourceRequestHeaders = z.output<typeof HttpSourceRequestHeadersS
 export const PongSuccessResponseSchema = z.object({
   ok: z.literal(true),
   triggerVersion: z.string().optional(),
+  triggerSdkVersion: z.string().optional(),
 });
 
 export const PongErrorResponseSchema = z.object({
   ok: z.literal(false),
   error: z.string(),
   triggerVersion: z.string().optional(),
+  triggerSdkVersion: z.string().optional(),
 });
 
 export const PongResponseSchema = z.discriminatedUnion("ok", [
@@ -345,6 +347,7 @@ export type GetEndpointIndexResponse = z.infer<typeof GetEndpointIndexResponseSc
 
 export const EndpointHeadersSchema = z.object({
   "trigger-version": z.string().optional(),
+  "trigger-sdk-version": z.string().optional(),
 });
 
 export const RawEventSchema = z.object({
@@ -451,6 +454,15 @@ export const RunSourceContextSchema = z.object({
 
 export type RunSourceContext = z.infer<typeof RunSourceContextSchema>;
 
+export const AutoYieldConfigSchema = z.object({
+  startTaskThreshold: z.number(),
+  beforeExecuteTaskThreshold: z.number(),
+  beforeCompleteTaskThreshold: z.number(),
+  afterCompleteTaskThreshold: z.number(),
+});
+
+export type AutoYieldConfig = z.infer<typeof AutoYieldConfigSchema>;
+
 export const RunJobBodySchema = z.object({
   event: ApiEventLogSchema,
   job: z.object({
@@ -485,6 +497,8 @@ export const RunJobBodySchema = z.object({
   noopTasksSet: z.string().optional(),
   connections: z.record(ConnectionAuthSchema).optional(),
   yieldedExecutions: z.string().array().optional(),
+  runChunkExecutionLimit: z.number().optional(),
+  autoYieldConfig: AutoYieldConfigSchema.optional(),
 });
 
 export type RunJobBody = z.infer<typeof RunJobBodySchema>;
@@ -503,6 +517,33 @@ export const RunJobYieldExecutionErrorSchema = z.object({
 });
 
 export type RunJobYieldExecutionError = z.infer<typeof RunJobYieldExecutionErrorSchema>;
+
+export const RunJobAutoYieldExecutionErrorSchema = z.object({
+  status: z.literal("AUTO_YIELD_EXECUTION"),
+  location: z.string(),
+  timeRemaining: z.number(),
+  timeElapsed: z.number(),
+  limit: z.number().optional(),
+});
+
+export type RunJobAutoYieldExecutionError = z.infer<typeof RunJobAutoYieldExecutionErrorSchema>;
+
+export const RunJobAutoYieldWithCompletedTaskExecutionErrorSchema = z.object({
+  status: z.literal("AUTO_YIELD_EXECUTION_WITH_COMPLETED_TASK"),
+  id: z.string(),
+  properties: z.array(DisplayPropertySchema).optional(),
+  output: z.any(),
+  data: z.object({
+    location: z.string(),
+    timeRemaining: z.number(),
+    timeElapsed: z.number(),
+    limit: z.number().optional(),
+  }),
+});
+
+export type RunJobAutoYieldWithCompletedTaskExecutionError = z.infer<
+  typeof RunJobAutoYieldWithCompletedTaskExecutionErrorSchema
+>;
 
 export const RunJobInvalidPayloadErrorSchema = z.object({
   status: z.literal("INVALID_PAYLOAD"),
@@ -549,6 +590,8 @@ export const RunJobSuccessSchema = z.object({
 export type RunJobSuccess = z.infer<typeof RunJobSuccessSchema>;
 
 export const RunJobResponseSchema = z.discriminatedUnion("status", [
+  RunJobAutoYieldExecutionErrorSchema,
+  RunJobAutoYieldWithCompletedTaskExecutionErrorSchema,
   RunJobYieldExecutionErrorSchema,
   RunJobErrorSchema,
   RunJobUnresolvedAuthErrorSchema,
@@ -664,7 +707,7 @@ export const RunTaskOptionsSchema = z.object({
   retry: RetryOptionsSchema.optional(),
   /** The icon for the Task, it will appear in the logs.
    *  You can use the name of a company in lowercase, e.g. "github".
-   *  Or any icon name that [Font Awesome](https://fontawesome.com/icons) supports. */
+   *  Or any icon name that [Tabler Icons](https://tabler-icons.io/) supports. */
   icon: z.string().optional(),
   /** The key for the Task that you want to appear in the logs */
   displayKey: z.string().optional(),

@@ -15,6 +15,8 @@ import omit from "lodash.omit";
 import { z } from "zod";
 import { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { workerLogger as logger } from "~/services/logger.server";
+import { PgListenService } from "~/services/db/pgListen.server";
+import { safeJsonParse } from "~/utils/json";
 
 export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
@@ -102,6 +104,7 @@ export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   recurringTasks?: ZodRecurringTasks;
   cleanup?: ZodWorkerCleanupOptions;
   reporter?: ZodWorkerReporter;
+  shutdownTimeoutInMs?: number;
 };
 
 export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
@@ -114,6 +117,8 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   #runner?: GraphileRunner;
   #cleanup: ZodWorkerCleanupOptions | undefined;
   #reporter?: ZodWorkerReporter;
+  #shutdownTimeoutInMs?: number;
+  #shuttingDown = false;
 
   constructor(options: ZodWorkerOptions<TMessageCatalog>) {
     this.#name = options.name;
@@ -124,6 +129,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     this.#recurringTasks = options.recurringTasks;
     this.#cleanup = options.cleanup;
     this.#reporter = options.reporter;
+    this.#shutdownTimeoutInMs = options.shutdownTimeoutInMs ?? 60000; // default to 60 seconds
   }
 
   get graphileWorkerSchema() {
@@ -143,6 +149,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     this.#runner = await graphileRun({
       ...this.#runnerOptions,
+      noHandleSignals: true,
       taskList: this.#createTaskListFromTasks(),
       parsedCronItems,
     });
@@ -159,8 +166,23 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       this.#logDebug("pool:create", { attempts });
     });
 
-    this.#runner?.events.on("pool:listen:success", ({ workerPool, client }) => {
+    this.#runner?.events.on("pool:listen:success", async ({ workerPool, client }) => {
       this.#logDebug("pool:listen:success");
+
+      // hijack client instance to listen and react to incoming NOTIFY events
+      const pgListen = new PgListenService(client, this.#name, logger);
+
+      await pgListen.on("trigger:graphile:migrate", async ({ latestMigration }) => {
+        this.#logDebug("Detected incoming migration", { latestMigration });
+
+        if (latestMigration > 10) {
+          // already migrated past v0.14 - nothing to do
+          return;
+        }
+
+        // simulate SIGTERM to trigger graceful shutdown
+        this._handleSignal("SIGTERM");
+      });
     });
 
     this.#runner?.events.on("pool:listen:error", ({ error }) => {
@@ -199,7 +221,32 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       this.#logDebug("stop");
     });
 
+    process.on("SIGTERM", this._handleSignal.bind(this));
+    process.on("SIGINT", this._handleSignal.bind(this));
+
     return true;
+  }
+
+  private _handleSignal(signal: string) {
+    if (this.#shuttingDown) {
+      return;
+    }
+
+    this.#shuttingDown = true;
+
+    if (this.#shutdownTimeoutInMs) {
+      setTimeout(() => {
+        this.#logDebug("Shutdown timeout reached, exiting process");
+
+        process.exit(0);
+      }, this.#shutdownTimeoutInMs);
+    }
+
+    this.#logDebug(`Received ${signal}, shutting down zodWorker...`);
+
+    this.stop().finally(() => {
+      this.#logDebug("zodWorker stopped");
+    });
   }
 
   public async stop() {

@@ -1,4 +1,4 @@
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { GetEvent } from "@trigger.dev/core";
 import { z } from "zod";
@@ -10,7 +10,7 @@ const ParamsSchema = z.object({
   eventId: z.string(),
 });
 
-export async function loader({ request, params }: LoaderArgs) {
+export async function loader({ request, params }: LoaderFunctionArgs) {
   if (request.method.toUpperCase() === "OPTIONS") {
     return apiCors(request, json({}));
   }
