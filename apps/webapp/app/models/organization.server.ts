@@ -15,10 +15,6 @@ import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.ser
 export type { Organization };
 
 const nanoid = customAlphabet("1234567890abcdef", 4);
-const apiKeyId = customAlphabet(
-  "1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
-  12
-);
 
 export function getOrganizationFromSlug({
   userId,
@@ -160,31 +156,6 @@ export async function createEnvironment(
       type,
     },
   });
-}
-
-function createApiKeyForEnv(envType: RuntimeEnvironment["type"]) {
-  return `tr_${envSlug(envType)}_${apiKeyId(20)}`;
-}
-
-function createPkApiKeyForEnv(envType: RuntimeEnvironment["type"]) {
-  return `pk_${envSlug(envType)}_${apiKeyId(20)}`;
-}
-
-function envSlug(environmentType: RuntimeEnvironment["type"]) {
-  switch (environmentType) {
-    case "DEVELOPMENT": {
-      return "dev";
-    }
-    case "PRODUCTION": {
-      return "prod";
-    }
-    case "STAGING": {
-      return "stg";
-    }
-    case "PREVIEW": {
-      return "prev";
-    }
-  }
 }
 
 function createShortcode() {
