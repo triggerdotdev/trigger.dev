@@ -31,14 +31,12 @@ import {
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
-  const { organizationSlug, clientParam, projectParam } =
-    IntegrationClientParamSchema.parse(params);
+  const { organizationSlug, clientParam } = IntegrationClientParamSchema.parse(params);
 
   const presenter = new IntegrationClientPresenter();
   const client = await presenter.call({
     userId: user.id,
     organizationSlug,
-    projectSlug: projectParam,
     clientSlug: clientParam,
   });
 
@@ -59,23 +57,22 @@ export const handle: Handle = {
 export default function Integrations() {
   const { client } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
-  const project = useProject();
 
   let tabs = [
     {
       label: "Jobs",
-      to: integrationClientPath(organization, project, client),
+      to: integrationClientPath(organization, client),
     },
   ];
 
   if (client.authMethod.type !== "local") {
     tabs.push({
       label: "Connections",
-      to: integrationClientConnectionsPath(organization, project, client),
+      to: integrationClientConnectionsPath(organization, client),
     });
     tabs.push({
       label: "Scopes",
-      to: integrationClientScopesPath(organization, project, client),
+      to: integrationClientScopesPath(organization, client),
     });
   }
 

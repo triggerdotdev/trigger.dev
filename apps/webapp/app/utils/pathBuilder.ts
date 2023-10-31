@@ -31,7 +31,7 @@ export const TaskParamsSchema = RunParamsSchema.extend({
   taskParam: z.string(),
 });
 
-export const IntegrationClientParamSchema = ProjectParamSchema.extend({
+export const IntegrationClientParamSchema = OrganizationParamsSchema.extend({
   clientParam: z.string(),
 });
 
@@ -195,28 +195,19 @@ function projectParam(project: ProjectForPath) {
 }
 
 // Integration
-export function integrationClientPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  client: IntegrationForPath
-) {
+export function integrationClientPath(organization: OrgForPath, client: IntegrationForPath) {
   return `${organizationIntegrationsPath(organization)}/${clientParam(client)}`;
 }
 
 export function integrationClientConnectionsPath(
   organization: OrgForPath,
-  project: ProjectForPath,
   client: IntegrationForPath
 ) {
-  return `${integrationClientPath(organization, project, client)}/connections`;
+  return `${integrationClientPath(organization, client)}/connections`;
 }
 
-export function integrationClientScopesPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  client: IntegrationForPath
-) {
-  return `${integrationClientPath(organization, project, client)}/scopes`;
+export function integrationClientScopesPath(organization: OrgForPath, client: IntegrationForPath) {
+  return `${integrationClientPath(organization, client)}/scopes`;
 }
 
 function clientParam(integration: IntegrationForPath) {

@@ -23,7 +23,7 @@ export class JobListPresenter {
     integrationSlug,
   }: {
     userId: User["id"];
-    projectSlug: Project["slug"];
+    projectSlug?: Project["slug"];
     organizationSlug?: Organization["slug"];
     integrationSlug?: string;
   }) {
@@ -95,9 +95,12 @@ export class JobListPresenter {
         internal: false,
         deletedAt: null,
         organization: orgWhere,
-        project: {
-          slug: projectSlug,
-        },
+        project: projectSlug
+          ? {
+              slug: projectSlug,
+            }
+          : undefined,
+        organizationId: organizationSlug,
         integrations: integrationsWhere,
       },
       orderBy: [{ title: "asc" }],

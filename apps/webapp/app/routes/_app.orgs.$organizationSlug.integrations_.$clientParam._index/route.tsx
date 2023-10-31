@@ -23,14 +23,12 @@ import {
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, clientParam } =
-    IntegrationClientParamSchema.parse(params);
+  const { organizationSlug, clientParam } = IntegrationClientParamSchema.parse(params);
 
   const jobsPresenter = new JobListPresenter();
 
   const jobs = await jobsPresenter.call({
     userId,
-    projectSlug: projectParam,
     organizationSlug,
     integrationSlug: clientParam,
   });

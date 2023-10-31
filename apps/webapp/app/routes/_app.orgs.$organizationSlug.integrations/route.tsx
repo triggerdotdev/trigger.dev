@@ -1,9 +1,9 @@
 import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { IntegrationIcon } from "~/assets/icons/IntegrationIcon";
 import { Feedback } from "~/components/Feedback";
-import { LogoIcon } from "~/components/LogoIcon";
 import { HowToConnectAnIntegration } from "~/components/helpContent/HelpContentText";
 import { ConnectToIntegrationSheet } from "~/components/integrations/ConnectToIntegrationSheet";
 import { IntegrationWithMissingFieldSheet } from "~/components/integrations/IntegrationWithMissingFieldSheet";
@@ -17,7 +17,7 @@ import { DetailCell } from "~/components/primitives/DetailCell";
 import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Input } from "~/components/primitives/Input";
-import { NamedIcon, NamedIconInBox } from "~/components/primitives/NamedIcon";
+import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
   PageButtons,
   PageDescription,
@@ -25,7 +25,6 @@ import {
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
-import { Paragraph } from "~/components/primitives/Paragraph";
 import { Switch } from "~/components/primitives/Switch";
 import {
   Table,
@@ -41,7 +40,6 @@ import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { MatchedOrganization, useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useTextFilter } from "~/hooks/useTextFilter";
-import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
 import {
   Client,
@@ -51,6 +49,7 @@ import {
 import { requireUser } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
 import {
+  OrganizationParamsSchema,
   ProjectParamSchema,
   docsCreateIntegration,
   integrationClientPath,
@@ -58,13 +57,12 @@ import {
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
-  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
+  const { organizationSlug } = OrganizationParamsSchema.parse(params);
 
   const presenter = new IntegrationsPresenter();
   const data = await presenter.call({
     userId: user.id,
     organizationSlug,
-    projectSlug: projectParam,
   });
 
   return typedjson(data);
@@ -79,7 +77,6 @@ export default function Integrations() {
   const { clients, clientMissingFields, options, callbackUrl } =
     useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
-  const project = useProject();
 
   return (
     <PageContainer>
@@ -113,11 +110,7 @@ export default function Integrations() {
                 options={options}
               />
             )}
-            <ConnectedIntegrationsList
-              clients={clients}
-              organization={organization}
-              project={project}
-            />
+            <ConnectedIntegrationsList clients={clients} organization={organization} />
           </div>
         </div>
       </PageBody>
@@ -239,11 +232,9 @@ function PossibleIntegrationsList({
 function ConnectedIntegrationsList({
   clients,
   organization,
-  project,
 }: {
   clients: Client[];
   organization: MatchedOrganization;
-  project: Project;
 }) {
   const { filterText, setFilterText, filteredItems } = useTextFilter<Client>({
     items: clients,
@@ -318,7 +309,7 @@ function ConnectedIntegrationsList({
               ) : (
                 <>
                   {filteredItems.map((client) => {
-                    const path = integrationClientPath(organization, project, client);
+                    const path = integrationClientPath(organization, client);
                     return (
                       <TableRow key={client.id}>
                         <TableCell to={path}>{client.title}</TableCell>
@@ -495,8 +486,4 @@ function AddIntegrationConnection({
       trailingIconClassName="text-slate-700 group-hover:text-bright"
     />
   );
-}
-
-export function IntegrationIcon() {
-  return <LogoIcon className="h-3.5 w-3.5 flex-none pb-0.5" />;
 }

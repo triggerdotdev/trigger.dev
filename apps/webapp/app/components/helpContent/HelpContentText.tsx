@@ -4,7 +4,6 @@ import { StepNumber } from "~/components/primitives/StepNumber";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { IntegrationIcon } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.integrations/route";
 import { jobTestPath } from "~/utils/pathBuilder";
 import { CodeBlock } from "../code/CodeBlock";
 import { InlineCode } from "../code/InlineCode";
@@ -21,6 +20,7 @@ import selectEnvironment from "./select-environment.png";
 import selectExample from "./select-example.png";
 import { StepContentContainer } from "../StepContentContainer";
 import { TriggerDevCommand } from "../SetupCommands";
+import { IntegrationIcon } from "~/assets/icons/IntegrationIcon";
 
 export function HowToRunYourJob() {
   const organization = useOrganization();
