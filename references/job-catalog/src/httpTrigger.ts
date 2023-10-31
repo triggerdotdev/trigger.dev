@@ -50,8 +50,8 @@ client.defineJob({
   trigger: whatsApp.onRequest({ filter: { body: { event: ["message"] } } }),
   run: async (request, io, ctx) => {
     const body = await request.json();
-    const { message } = body;
-    await io.logger.info(`Received message from ${message}`);
+    const { event } = body;
+    await io.logger.info(`Received event: ${event}`);
   },
 });
 
