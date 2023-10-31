@@ -56,7 +56,8 @@ export default function NewOrganizationPage() {
 
   const [form, { orgName, projectName }] = useForm({
     id: "create-organization",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },

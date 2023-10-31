@@ -140,7 +140,8 @@ export class DynamicTrigger<
         return this.#client.registerTrigger(
           this.id,
           key,
-          this.registeredTriggerForParams(params, options)
+          this.registeredTriggerForParams(params, options),
+          task.idempotencyKey
         );
       },
       {

@@ -223,7 +223,9 @@ export function NamedIcon({
     return <TablerIcon name={name} className={className} />;
   }
 
-  console.log(`Icon ${name} not found`);
+  if (name === "supabase-management") {
+    return <NamedIcon name="supabase" className={className} />;
+  }
 
   if (fallback) {
     return fallback;

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useEventSource } from "remix-utils";
+import { useEventSource } from "remix-utils/sse/react";
 import { projectPath, projectStreamingPath } from "~/utils/pathBuilder";
 import { useProject } from "./useProject";
 import { useOrganization } from "./useOrganizations";

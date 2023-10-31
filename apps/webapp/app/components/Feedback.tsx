@@ -36,7 +36,8 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
 
   const [form, { path, feedbackType, message }] = useForm({
     id: "accept-invite",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },

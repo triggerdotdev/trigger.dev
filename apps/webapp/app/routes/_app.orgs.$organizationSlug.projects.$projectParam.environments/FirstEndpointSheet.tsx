@@ -40,7 +40,8 @@ export function FirstEndpointSheet({ projectId, environments }: FirstEndpointShe
   const setEndpointUrlFetcher = useFetcher();
   const [form, { url, environmentId }] = useForm({
     id: "new-endpoint-url",
-    lastSubmission: setEndpointUrlFetcher.data,
+    // TODO: type this
+    lastSubmission: setEndpointUrlFetcher.data as any,
     onValidate({ formData }) {
       return parse(formData, { schema: bodySchema });
     },

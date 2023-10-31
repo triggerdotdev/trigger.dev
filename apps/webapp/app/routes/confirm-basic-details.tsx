@@ -127,7 +127,8 @@ export default function Page() {
 
   const [form, { name, email, confirmEmail }] = useForm({
     id: "confirm-basic-details",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema: createSchema() });
     },

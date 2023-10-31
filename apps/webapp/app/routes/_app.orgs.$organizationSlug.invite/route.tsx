@@ -91,7 +91,8 @@ export default function Page() {
 
   const [form, { emails }] = useForm({
     id: "invite-members",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },

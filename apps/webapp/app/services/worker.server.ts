@@ -21,6 +21,7 @@ import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequ
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout";
 import { ProbeEndpointService } from "./endpoints/probeEndpoint.server";
+import { PgNotifyService } from "./db/pgNotify.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -121,6 +122,10 @@ if (env.NODE_ENV === "production") {
 }
 
 export async function init() {
+  // const pgNotify = new PgNotifyService();
+  // await pgNotify.call("trigger:graphile:migrate", { latestMigration: 10 });
+  // await new Promise((resolve) => setTimeout(resolve, 10000))
+
   if (env.WORKER_ENABLED === "true") {
     await workerQueue.initialize();
   }

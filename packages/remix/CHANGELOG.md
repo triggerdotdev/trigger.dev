@@ -1,5 +1,26 @@
 # @trigger.dev/remix
 
+## 2.2.3
+
+### Patch Changes
+
+- Updated dependencies [6e1b8a11]
+- Updated dependencies [c4533c36]
+  - @trigger.dev/sdk@2.2.3
+
+## 2.2.2
+
+### Patch Changes
+
+- @trigger.dev/sdk@2.2.2
+
+## 2.2.1
+
+### Patch Changes
+
+- Updated dependencies [044d38e3]
+  - @trigger.dev/sdk@2.2.1
+
 ## 2.2.0
 
 ### Patch Changes

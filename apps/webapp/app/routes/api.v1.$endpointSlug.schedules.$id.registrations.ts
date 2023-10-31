@@ -1,4 +1,4 @@
-import type { ActionArgs } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { RegisterScheduleBodySchema, RegisterScheduleResponseBodySchema } from "@trigger.dev/core";
 import { z } from "zod";
@@ -11,7 +11,7 @@ const ParamsSchema = z.object({
   id: z.string(),
 });
 
-export async function action({ request, params }: ActionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   logger.info("Initializing schedule", { url: request.url });
 
   // Ensure this is a POST request

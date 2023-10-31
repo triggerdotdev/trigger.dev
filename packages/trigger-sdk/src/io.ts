@@ -1,6 +1,5 @@
 import {
   API_VERSIONS,
-  BloomFilter,
   CachedTask,
   ConnectionAuth,
   CronOptions,
@@ -19,6 +18,7 @@ import {
   UpdateTriggerSourceBodyV2,
   supportsFeature,
 } from "@trigger.dev/core";
+import { BloomFilter } from "@trigger.dev/core-backend";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { webcrypto } from "node:crypto";
 import { ApiClient } from "./apiClient";
@@ -818,8 +818,9 @@ export class IO {
             error: parsedError.data,
           });
         } else {
+          const message = typeof error === "string" ? error : JSON.stringify(error);
           await this._apiClient.failTask(this._id, task.id, {
-            error: { message: JSON.stringify(error), name: "Unknown Error" },
+            error: { name: "Unknown error", message },
           });
         }
 

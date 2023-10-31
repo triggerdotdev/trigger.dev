@@ -45,7 +45,8 @@ export function UpdateOAuthForm({
   const { isManagedCloud } = useFeatures();
 
   const [form, { title, scopes, hasCustomClient, customClientId, customClientSecret }] = useForm({
-    lastSubmission: fetcher.data,
+    // TODO: type this
+    lastSubmission: fetcher.data as any,
     onValidate({ formData }) {
       return parse(formData, {
         schema,

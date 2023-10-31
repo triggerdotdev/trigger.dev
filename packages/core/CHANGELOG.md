@@ -1,5 +1,20 @@
 # internal-platform
 
+## 2.2.3
+
+### Patch Changes
+
+- 6e1b8a11: implement functionality to cancel job runs triggered by a given eventId.
+
+## 2.2.2
+
+## 2.2.1
+
+### Patch Changes
+
+- 044d38e3: Auto-yield run execution to help prevent duplicate task executions
+- abc9737a: Updated icon documentation in runTasks
+
 ## 2.2.0
 
 ### Minor Changes

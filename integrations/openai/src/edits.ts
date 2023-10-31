@@ -3,6 +3,7 @@ import { IntegrationTaskKey, Prettify } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 import { OpenAIRunTask } from "./index";
 import { createTaskUsageProperties } from "./taskUtils";
+import { OpenAIRequestOptions } from "./types";
 
 export class Edits {
   runTask: OpenAIRunTask;
@@ -14,7 +15,11 @@ export class Edits {
   /**
    * @deprecated The Edits API is deprecated; please use Chat Completions instead.
    */
-  create(key: IntegrationTaskKey, params: Prettify<OpenAI.EditCreateParams>): Promise<OpenAI.Edit> {
+  create(
+    key: IntegrationTaskKey,
+    params: Prettify<OpenAI.EditCreateParams>,
+    options: OpenAIRequestOptions = {}
+  ): Promise<OpenAI.Edit> {
     let properties = [
       {
         label: "Model",
@@ -37,7 +42,10 @@ export class Edits {
     return this.runTask(
       key,
       async (client, task) => {
-        const response = await client.edits.create(params);
+        const response = await client.edits.create(params, {
+          idempotencyKey: task.idempotencyKey,
+          ...options,
+        });
         task.outputProperties = createTaskUsageProperties(response.usage);
         return response;
       },
