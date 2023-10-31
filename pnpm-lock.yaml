@@ -122,6 +122,7 @@ importers:
       '@types/morgan': ^1.9.3
       '@types/node': ^18.11.15
       '@types/node-fetch': ^2.6.2
+      '@types/pg': 8.6.6
       '@types/prismjs': ^1.26.0
       '@types/qs': ^6.9.7
       '@types/react': 18.2.17
@@ -238,6 +239,7 @@ importers:
       '@trigger.dev/core': link:../../packages/core
       '@trigger.dev/database': link:../../packages/database
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@types/pg': 8.6.6
       '@uiw/react-codemirror': 4.19.5_th22fcplkuhrqjnlojwclcaim4
       class-variance-authority: 0.5.2_typescript@5.2.2
       clsx: 1.2.1

@@ -30,7 +30,7 @@ const preview: Preview = {
       const RemixStub = createRemixStub([
         {
           path: "/*",
-          Component: () => <Story />,
+          Component: Story,
         },
       ]);
 

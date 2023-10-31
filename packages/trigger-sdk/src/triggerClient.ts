@@ -623,8 +623,13 @@ export class TriggerClient {
     this.#registeredSchedules[key] = jobs;
   }
 
-  async registerTrigger(id: string, key: string, options: RegisterTriggerBodyV2) {
-    return this.#client.registerTrigger(this.id, id, key, options);
+  async registerTrigger(
+    id: string,
+    key: string,
+    options: RegisterTriggerBodyV2,
+    idempotencyKey?: string
+  ) {
+    return this.#client.registerTrigger(this.id, id, key, options, idempotencyKey);
   }
 
   async getAuth(id: string) {

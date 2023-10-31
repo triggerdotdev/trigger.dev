@@ -289,7 +289,8 @@ export class ApiClient {
     client: string,
     id: string,
     key: string,
-    payload: RegisterTriggerBodyV2
+    payload: RegisterTriggerBodyV2,
+    idempotencyKey?: string
   ): Promise<RegisterSourceEventV2> {
     const apiKey = await this.#apiKey();
 
@@ -298,15 +299,21 @@ export class ApiClient {
       payload,
     });
 
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    };
+
+    if (idempotencyKey) {
+      headers["Idempotency-Key"] = idempotencyKey;
+    }
+
     const response = await zodfetch(
       RegisterSourceEventSchemaV2,
       `${this.#apiUrl}/api/v2/${client}/triggers/${id}/registrations/${key}`,
       {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers: headers,
         body: JSON.stringify(payload),
       }
     );
