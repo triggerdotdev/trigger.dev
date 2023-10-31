@@ -465,14 +465,14 @@ export class TriggerClient {
     };
   }
 
-  async defineJob<
+  defineJob<
     TTrigger extends Trigger<EventSpecification<any>>,
     TIntegrations extends Record<string, TriggerIntegration> = {},
   >(options: JobOptions<TTrigger, TIntegrations>) {
     const existingRegisteredJob = this.#registeredJobs[options.id];
     if (existingRegisteredJob) {
       console.warn(
-        yellow(`Warning: The Job "${existingRegisteredJob.id}" you're attempting to define has already been defined. Please assign a different ID to the job.`)
+        yellow(`[@trigger.dev/sdk] Warning: The Job "${existingRegisteredJob.id}" you're attempting to define has already been defined. Please assign a different ID to the job.`)
       );
     }
 
