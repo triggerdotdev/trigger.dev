@@ -121,11 +121,11 @@ export class IntegrationClientPresenter {
       },
       authMethod: {
         type:
-          integration.authMethod?.type ?? integration.authSource === "RESOLVER" ? "local" : "local",
+          integration.authMethod?.type ??
+          (integration.authSource === "RESOLVER" ? "local" : "local"),
         name:
-          integration.authMethod?.name ?? integration.authSource === "RESOLVER"
-            ? "Auth Resolver"
-            : "Local Auth",
+          integration.authMethod?.name ??
+          (integration.authSource === "RESOLVER" ? "Auth Resolver" : "Local Auth"),
       },
       help,
     };
