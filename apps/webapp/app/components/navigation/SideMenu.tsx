@@ -1,10 +1,11 @@
 import { ArrowRightOnRectangleIcon, EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
 import { ChartPieIcon, UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
+import { useNavigation } from "@remix-run/react";
 import { IconExclamationCircle } from "@tabler/icons-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
-import { MatchedProject, useProject } from "~/hooks/useProject";
+import { MatchedProject } from "~/hooks/useProject";
 import { User } from "~/models/user.server";
 import { cn } from "~/utils/cn";
 import {
@@ -25,7 +26,7 @@ import {
 import { LogoIcon } from "../LogoIcon";
 import { UserAvatar, UserProfilePhoto } from "../UserProfilePhoto";
 import { Badge } from "../primitives/Badge";
-import { NavLinkButton } from "../primitives/Buttons";
+import { Button, NavLinkButton } from "../primitives/Buttons";
 import { Icon } from "../primitives/Icon";
 import { type IconNames } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
@@ -38,8 +39,7 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
-import { PopoverClose } from "@radix-ui/react-popover";
-import { useNavigation } from "@remix-run/react";
+import { Feedback } from "../Feedback";
 
 type SideMenuUser = Pick<User, "email">;
 type SideMenuProject = Pick<
@@ -188,12 +188,20 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             data-action="changelog"
             target="_blank"
           />
-          {/* // TODO this Feedback component is not working in storybook */}
-          {/* <Feedback
+
+          <Feedback
             button={
-              <SideMenuItem name="Help & Feedback" icon="log" to="" data-action="help & feedback" />
+              <Button
+                variant="small-menu-item"
+                LeadingIcon="log"
+                data-action="help & feedback"
+                fullWidth
+                textAlignLeft
+              >
+                Help & Feedback
+              </Button>
             }
-          /> */}
+          />
         </div>
       </div>
     </div>
