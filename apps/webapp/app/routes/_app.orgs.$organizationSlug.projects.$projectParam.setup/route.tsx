@@ -1,5 +1,5 @@
 import { Outlet } from "@remix-run/react";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Handle } from "~/utils/handle";
 import { trimTrailingSlash } from "~/utils/pathBuilder";
 

@@ -54,6 +54,10 @@ type SideMenuProps = {
   organizations: MatchedOrganization[];
 };
 
+export function SideMenuContainer({ children }: { children: React.ReactNode }) {
+  return <div className="grid h-full grid-cols-[14rem_auto]">{children}</div>;
+}
+
 export function SideMenu({ user, project, organization, organizations }: SideMenuProps) {
   const borderRef = useRef<HTMLDivElement>(null);
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);

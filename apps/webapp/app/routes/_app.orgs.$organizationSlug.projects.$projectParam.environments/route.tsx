@@ -10,7 +10,7 @@ import {
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { HowToUseApiKeysAndEndpoints } from "~/components/helpContent/HelpContentText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Badge } from "~/components/primitives/Badge";
 import { ButtonContent } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";

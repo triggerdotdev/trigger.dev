@@ -6,7 +6,7 @@ import { PageGradient } from "~/components/PageGradient";
 import { InitCommand, RunDevCommand, TriggerDevStep } from "~/components/SetupCommands";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { InlineCode } from "~/components/code/InlineCode";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import {
   ClientTabs,

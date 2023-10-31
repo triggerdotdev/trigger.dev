@@ -4,7 +4,6 @@ import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { ImpersonationBanner } from "~/components/ImpersonationBanner";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
-import { NavBar } from "~/components/navigation/NavBar";
 import { useIsOrgChildPage } from "~/hooks/useIsOrgChildPage";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { clearRedirectTo, commitSession } from "~/services/redirectTo.server";

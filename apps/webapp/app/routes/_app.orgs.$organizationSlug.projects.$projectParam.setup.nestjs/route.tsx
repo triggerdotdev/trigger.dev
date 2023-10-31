@@ -5,7 +5,7 @@ import { PageGradient } from "~/components/PageGradient";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { InlineCode } from "~/components/code/InlineCode";
 import { InstallPackages } from "~/components/code/InstallPackages";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";

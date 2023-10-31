@@ -3,7 +3,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { HowToUseThisIntegration } from "~/components/helpContent/HelpContentText";
 import { JobSkeleton } from "~/components/jobs/JobSkeleton";
 import { JobsTable } from "~/components/jobs/JobsTable";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";

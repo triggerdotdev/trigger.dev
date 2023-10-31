@@ -4,7 +4,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { FrameworkSelector } from "~/components/frameworks/FrameworkSelector";
 import { JobsTable } from "~/components/jobs/JobsTable";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";

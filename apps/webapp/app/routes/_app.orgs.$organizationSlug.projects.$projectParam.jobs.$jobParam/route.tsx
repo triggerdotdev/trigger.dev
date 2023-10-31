@@ -4,8 +4,7 @@ import { Fragment } from "react";
 import { typedjson } from "remix-typedjson";
 import { JobStatusBadge } from "~/components/jobs/JobStatusBadge";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { JobsMenu } from "~/components/navigation/JobsMenu";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
@@ -24,6 +23,7 @@ import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { projectMatchId, useProject } from "~/hooks/useProject";
 import { useOptionalRun } from "~/hooks/useRun";
+import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { findJobByParams } from "~/models/job.server";
 import { JobListPresenter } from "~/presenters/JobListPresenter.server";
 import { requireUserId } from "~/services/session.server";
@@ -70,13 +70,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: (_match, matches) => {
+  breadcrumb: (match, matches) => {
     const projectMatch = matches.find((m) => m.id === projectMatchId);
+    const data = useTypedMatchData<typeof loader>(match);
     return (
       <Fragment>
         <BreadcrumbLink to={trimTrailingSlash(projectMatch?.pathname ?? "")} title="Jobs" />
         <BreadcrumbIcon />
-        <JobsMenu matches={matches} />
+        <BreadcrumbLink
+          to={trimTrailingSlash(match?.pathname ?? "")}
+          title={data?.job.title ?? "Job"}
+        />
       </Fragment>
     );
   },

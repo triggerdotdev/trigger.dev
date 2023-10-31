@@ -4,7 +4,7 @@ import { Fragment } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 import { Callout, variantClasses } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";

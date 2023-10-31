@@ -27,6 +27,7 @@ function SideMenuV2() {
             slug: "my-side-project-_NPp",
             name: "My side project",
             hasInactiveExternalTriggers: false,
+            jobCount: 24,
           }}
           organization={{
             id: "cljcy6z3t0002uoi31immqkox",

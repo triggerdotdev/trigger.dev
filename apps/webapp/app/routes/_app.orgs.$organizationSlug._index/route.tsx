@@ -4,17 +4,35 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
+import {
+  PageHeader,
+  PageTitleRow,
+  PageTitle,
+  PageButtons,
+} from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { newProjectPath, projectPath } from "~/utils/pathBuilder";
-import { OrgAdminHeader } from "./OrgAdminHeader";
 
 export default function Page() {
   const organization = useOrganization();
 
   return (
     <PageContainer>
-      <OrgAdminHeader />
+      <PageHeader>
+        <PageTitleRow>
+          <PageTitle title={`${organization.title} projects`} />
+          <PageButtons>
+            <LinkButton
+              to={newProjectPath(organization)}
+              variant="primary/small"
+              shortcut={{ key: "n" }}
+            >
+              Create a new project
+            </LinkButton>
+          </PageButtons>
+        </PageTitleRow>
+      </PageHeader>
       <PageBody>
         <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {organization.projects.length > 0 ? (

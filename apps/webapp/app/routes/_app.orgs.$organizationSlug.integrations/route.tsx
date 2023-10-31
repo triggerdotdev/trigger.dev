@@ -9,7 +9,7 @@ import { ConnectToIntegrationSheet } from "~/components/integrations/ConnectToIn
 import { IntegrationWithMissingFieldSheet } from "~/components/integrations/IntegrationWithMissingFieldSheet";
 import { NoIntegrationSheet } from "~/components/integrations/NoIntegrationSheet";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";

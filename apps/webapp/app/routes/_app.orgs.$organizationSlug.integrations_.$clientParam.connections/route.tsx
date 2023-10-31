@@ -1,7 +1,7 @@
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { connectionType } from "~/components/integrations/connectionType";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {

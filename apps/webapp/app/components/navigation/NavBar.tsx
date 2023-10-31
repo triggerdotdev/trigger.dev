@@ -37,11 +37,3 @@ export function NavBar() {
     </div>
   );
 }
-
-export function BreadcrumbLink({ title, to }: { title: string; to: string }) {
-  return (
-    <LinkButton to={to} variant="tertiary/small">
-      {title}
-    </LinkButton>
-  );
-}

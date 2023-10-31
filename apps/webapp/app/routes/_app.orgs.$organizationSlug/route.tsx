@@ -4,10 +4,12 @@ import type { LoaderFunctionArgs, Session } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
-import { SideMenuContainer } from "~/components/navigation/ProjectSideMenu";
-import { SideMenu } from "~/components/navigation/SideMenu";
+import { Breadcrumb } from "~/components/navigation/Breadcrumb";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
+import { SideMenu, SideMenuContainer } from "~/components/navigation/SideMenu";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject, useProject } from "~/hooks/useProject";
+import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { useUser } from "~/hooks/useUser";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
 import {
@@ -17,6 +19,7 @@ import {
 } from "~/services/currentProject.server";
 import { requireUserId } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
+import { Handle } from "~/utils/handle";
 import { organizationPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -63,6 +66,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   );
 };
 
+export const handle: Handle = {
+  breadcrumb: (match) => {
+    const data = useTypedMatchData<typeof loader>(match);
+    return (
+      <BreadcrumbLink to={match.pathname} title={data?.organization.title ?? "Organization"} />
+    );
+  },
+};
+
 export default function Organization() {
   const { organization, project, organizations } = useTypedLoaderData<typeof loader>();
   const user = useUser();
@@ -79,7 +91,8 @@ export default function Organization() {
           organization={organization}
           organizations={organizations}
         />
-        <div className="flex-grow">
+        <div className="grid h-full grid-rows-[2.75rem_auto]">
+          <Breadcrumb />
           <Outlet />
         </div>
       </SideMenuContainer>

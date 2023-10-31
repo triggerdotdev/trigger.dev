@@ -30,8 +30,8 @@ import { getTeamMembersAndInvites, removeTeamMember } from "~/models/member.serv
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUserId } from "~/services/session.server";
 import { inviteTeamMemberPath, organizationTeamPath, resendInvitePath } from "~/utils/pathBuilder";
-import { OrgAdminHeader } from "../_app.orgs.$organizationSlug._index/OrgAdminHeader";
 import { DateTime } from "~/components/primitives/DateTime";
+import { PageHeader, PageTitleRow, PageTitle } from "~/components/primitives/PageHeader";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -100,7 +100,11 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <OrgAdminHeader />
+      <PageHeader>
+        <PageTitleRow>
+          <PageTitle title="Team" />
+        </PageTitleRow>
+      </PageHeader>
       <PageBody>
         <Header2>Members</Header2>
         <ul className="flex w-full max-w-md flex-col divide-y divide-uiBorder border-b border-uiBorder">

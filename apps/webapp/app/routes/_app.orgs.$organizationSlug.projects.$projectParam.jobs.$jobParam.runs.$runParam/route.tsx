@@ -3,7 +3,7 @@ import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Fragment, useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils/sse/react";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 import { RunOverview } from "~/components/run/RunOverview";
 import { jobMatchId, useJob } from "~/hooks/useJob";

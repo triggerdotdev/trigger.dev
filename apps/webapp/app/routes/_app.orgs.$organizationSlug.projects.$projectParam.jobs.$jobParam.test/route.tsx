@@ -9,7 +9,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";

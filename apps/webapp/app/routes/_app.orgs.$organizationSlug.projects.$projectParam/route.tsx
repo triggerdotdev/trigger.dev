@@ -3,9 +3,10 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
-import { ProjectsMenu } from "~/components/navigation/ProjectsMenu";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { ProjectPresenter } from "~/presenters/ProjectPresenter.server";
 import { commitCurrentProjectSession, setCurrentProjectId } from "~/services/currentProject.server";
 import { requireUserId } from "~/services/session.server";
@@ -59,7 +60,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: (_match, matches) => <ProjectsMenu matches={matches} />,
+  breadcrumb: (match) => {
+    const data = useTypedMatchData<typeof loader>(match);
+    return <BreadcrumbLink to={match.pathname} title={data?.project.name ?? "Project"} />;
+  },
   scripts: (match) => [
     {
       src: "https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js",

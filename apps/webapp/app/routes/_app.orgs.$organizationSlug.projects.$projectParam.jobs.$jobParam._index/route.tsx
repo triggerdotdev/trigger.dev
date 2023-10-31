@@ -21,7 +21,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useJob } from "~/hooks/useJob";
 import simplur from "simplur";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 
 export const DirectionSchema = z.union([z.literal("forward"), z.literal("backward")]);
 
