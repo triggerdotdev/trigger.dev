@@ -100,7 +100,6 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             </SideMenuHeader>
             <SideMenuItem
               name="Jobs"
-              forceActive
               icon="job"
               iconColor="text-indigo-500"
               count={project.jobCount}
@@ -328,7 +327,6 @@ function SideMenuItem({
   iconColor,
   name,
   to,
-  forceActive = false,
   hasWarning,
   count,
   target,
@@ -340,7 +338,6 @@ function SideMenuItem({
   to: string;
   hasWarning?: string | boolean;
   count?: number;
-  forceActive?: boolean;
   target?: string;
   subItem?: boolean;
 }) {
@@ -350,19 +347,18 @@ function SideMenuItem({
       fullWidth
       textAlignLeft
       LeadingIcon={icon}
-      leadingIconClassName={forceActive ? iconColor : "text-dimmed"}
+      // todo get this working
+      // leadingIconClassName={forceActive ? iconColor : "text-dimmed"}
+      leadingIconClassName={"text-dimmed"}
       to={to}
       target={target}
       className={({ isActive, isPending }) => {
-        if (forceActive !== undefined) {
-          isActive = forceActive;
-        }
+        console.log(name, { isActive, isPending });
+
         return cn(
-          "text-bright",
+          "text-bright group-hover:bg-slate-850",
           subItem ? "text-dimmed" : "",
-          isActive || isPending
-            ? "bg-slate-850 text-bright group-hover:bg-slate-850"
-            : "group-hover:bg-slate-850 group-hover:text-bright"
+          isActive || isPending ? "bg-slate-850 text-bright" : "group-hover:text-bright"
         );
       }}
     >
