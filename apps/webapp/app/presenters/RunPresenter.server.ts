@@ -156,6 +156,7 @@ export class RunPresenter {
             completedAt: true,
             style: true,
             parentId: true,
+            noop: true,
             runConnection: {
               select: {
                 integration: {

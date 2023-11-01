@@ -1,5 +1,15 @@
 # @trigger.dev/airtable
 
+## 2.2.4
+
+### Patch Changes
+
+- 9c5a7cf0: Extend the Airtable field set to accept formula errors and special values
+- Updated dependencies [c1710ae7]
+- Updated dependencies [9c4be40a]
+  - @trigger.dev/sdk@2.2.4
+  - @trigger.dev/integration-kit@2.2.4
+
 ## 2.2.3
 
 ### Patch Changes

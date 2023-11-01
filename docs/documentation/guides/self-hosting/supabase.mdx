@@ -29,6 +29,14 @@ ENCRYPTION_KEY=1189c93e399856a2a9a1454496171b2e
 ...
 ```
 
+3. Set `NODE_ENV` to production:
+
+```sh .env (excerpt)
+...
+NODE_ENV=production
+...
+```
+
 ## Create a Supabase DB
 
 <Tip>Alternative: [Self-host Supabase](https://supabase.com/docs/guides/self-hosting/docker)</Tip>
@@ -84,7 +92,7 @@ ENCRYPTION_KEY=1189c93e399856a2a9a1454496171b2e
 DATABASE_URL=postgresql://postgres:<PASSWORD>@db.<ID>.supabase.co:5432/postgres?schema=triggerdotdev
 DIRECT_URL=${DATABASE_URL}
 
-NODE_ENV=development
+NODE_ENV=production
 RUNTIME_PLATFORM=docker-compose
 ```
 

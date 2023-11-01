@@ -15,6 +15,8 @@ import omit from "lodash.omit";
 import { z } from "zod";
 import { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { workerLogger as logger } from "~/services/logger.server";
+import { PgListenService } from "~/services/db/pgListen.server";
+import { safeJsonParse } from "~/utils/json";
 
 export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
@@ -164,8 +166,23 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       this.#logDebug("pool:create", { attempts });
     });
 
-    this.#runner?.events.on("pool:listen:success", ({ workerPool, client }) => {
+    this.#runner?.events.on("pool:listen:success", async ({ workerPool, client }) => {
       this.#logDebug("pool:listen:success");
+
+      // hijack client instance to listen and react to incoming NOTIFY events
+      const pgListen = new PgListenService(client, this.#name, logger);
+
+      await pgListen.on("trigger:graphile:migrate", async ({ latestMigration }) => {
+        this.#logDebug("Detected incoming migration", { latestMigration });
+
+        if (latestMigration > 10) {
+          // already migrated past v0.14 - nothing to do
+          return;
+        }
+
+        // simulate SIGTERM to trigger graceful shutdown
+        this._handleSignal("SIGTERM");
+      });
     });
 
     this.#runner?.events.on("pool:listen:error", ({ error }) => {

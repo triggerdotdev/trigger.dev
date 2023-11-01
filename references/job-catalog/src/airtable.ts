@@ -1,7 +1,7 @@
 import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
 import { createExpressServer } from "@trigger.dev/express";
 import { z } from "zod";
-import { Airtable, Collaborator } from "@trigger.dev/airtable";
+import { Airtable, Collaborator, Formula } from "@trigger.dev/airtable";
 
 export const client = new TriggerClient({
   id: "job-catalog",
@@ -74,6 +74,55 @@ client.defineJob({
       "delete records",
       updatedRecords.map((record) => record.id)
     );
+  },
+});
+
+type Formulas = {
+  ValueOne?: number;
+  ValueTwo?: number;
+  Division: Formula; // ValueOne / ValueTwo
+};
+
+client.defineJob({
+  id: "airtable-formulas",
+  name: "Airtable Formulas",
+  version: "0.1.0",
+  trigger: eventTrigger({
+    name: "airtable.formulas",
+    schema: z.object({
+      baseId: z.string(),
+      tableName: z.string(),
+    }),
+  }),
+  integrations: {
+    airtable,
+  },
+  run: async (payload, io, ctx) => {
+    const table = io.airtable.base(payload.baseId).table<Formulas>(payload.tableName);
+
+    const records = await table.getRecords("muliple records", {
+      fields: ["ValueOne", "ValueTwo", "Division"],
+    });
+
+    const divisionField = records[0].fields.Division;
+
+    if (typeof divisionField !== "object") {
+      return records;
+    }
+
+    if ("specialValue" in divisionField) {
+      await io.logger.log(
+        `Special value: ${divisionField.specialValue}${
+          divisionField.specialValue === "Infinity" ? " - did you divide by zero?" : ""
+        }`
+      );
+    } else if ("error" in divisionField) {
+      await io.logger.error(`Error: ${divisionField.error}`);
+    } else {
+      await io.logger.warn("Unknown formula value!");
+    }
+
+    return divisionField;
   },
 });
 
