@@ -14,7 +14,7 @@ Tasks are executed after the job is triggered and are the main building blocks o
 Send an email to a recipient with a text payload. [Official Resend Docs](https://resend.com/docs/api-reference/emails/send-email)
 
 ```ts example.ts
-  // Using the 'io.resend.sendEmail' method to send an email using the Resend service.
+  // Using the 'io.resend.sendEmail' method to send an email using Resend.
   await io.resend.sendEmail("send-email", {
     to: <recipient-email-address>, // Recipient's email address.
     subject: <email-subject>, // Email subject.
@@ -43,9 +43,6 @@ import { Button } from "@react-email/button";
 import { Section } from "@react-email/section";
 import { Preview } from "@react-email/preview";
 import { Container } from "@react-email/container";
-
-// Creating an instance of the TriggerClient with a unique identifier "jobs-showcase."
-const client = new TriggerClient({ id: "jobs-showcase" });
 
 // Creating an instance of the Resend client with an API key obtained from an environment variable.
 const resend = new Resend({
@@ -111,10 +108,12 @@ client.defineJob({
   id: "resend-send-react-email", // Unique identifier for the job.
   name: "Resend: send react email", // A specific name for the job.
   version: "1.0.0", // Version number for the job.
-  trigger: eventTrigger({ //triggering an event to send email
+  trigger: eventTrigger({
+    //triggering an event to send email
     name: "send.email",
-    schema: z.object({ //initiating the Zod schema
-      to: z.string(),  //Storing EmailTo as a string in the Zod Object
+    schema: z.object({
+      //initiating the Zod schema
+      to: z.string(), //Storing EmailTo as a string in the Zod Object
       subject: z.string(), //Storing Subject as a string in the Zod Object
       text: z.string(), //Storing EmailBodyText as a string in the Zod Object
       name: z.string(), //Storing Name as a string in the Zod Object
@@ -136,8 +135,4 @@ client.defineJob({
     });
   },
 });
-
-// If you're not using Express, you can remove these lines.
-import { createExpressServer } from "@trigger.dev/express";
-createExpressServer(client);
 ```
