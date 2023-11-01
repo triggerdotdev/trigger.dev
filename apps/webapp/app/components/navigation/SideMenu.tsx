@@ -1,8 +1,8 @@
 import { ArrowRightOnRectangleIcon, EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
 import { ChartPieIcon, UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
-import { useNavigation } from "@remix-run/react";
+import { useLocation, useMatches, useNavigation } from "@remix-run/react";
 import { IconExclamationCircle } from "@tabler/icons-react";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { AnchorHTMLAttributes, Fragment, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
 import { MatchedProject } from "~/hooks/useProject";
@@ -27,7 +27,7 @@ import { Feedback } from "../Feedback";
 import { LogoIcon } from "../LogoIcon";
 import { UserAvatar, UserProfilePhoto } from "../UserProfilePhoto";
 import { Badge } from "../primitives/Badge";
-import { Button, NavLinkButton } from "../primitives/Buttons";
+import { Button, LinkButton, NavLinkButton } from "../primitives/Buttons";
 import { Icon } from "../primitives/Icon";
 import { type IconNames } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
@@ -40,6 +40,7 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { usePathName } from "~/hooks/usePathName";
 
 type SideMenuUser = Pick<User, "email">;
 type SideMenuProject = Pick<
@@ -152,12 +153,14 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               name="Team"
               icon={UserGroupIcon}
               to={organizationTeamPath(organization)}
+              iconColor="text-indigo-500"
               data-action="team"
             />
             <SideMenuItem
               name="Usage & Billing"
               icon={ChartPieIcon}
               to={organizationBillingPath(organization)}
+              iconColor="text-sky-500"
               data-action="usage & billing"
             />
           </div>
@@ -341,29 +344,26 @@ function SideMenuItem({
   to: string;
   hasWarning?: string | boolean;
   count?: number;
-  target?: string;
+  target?: AnchorHTMLAttributes<HTMLAnchorElement>["target"];
   subItem?: boolean;
 }) {
+  const pathName = usePathName();
+  const isActive = pathName === to;
+
   return (
-    <NavLinkButton
+    <LinkButton
       variant={subItem ? "small-menu-sub-item" : "small-menu-item"}
       fullWidth
       textAlignLeft
       LeadingIcon={icon}
-      // todo get this working
-      // leadingIconClassName={forceActive ? iconColor : "text-dimmed"}
-      leadingIconClassName={"text-dimmed"}
+      leadingIconClassName={isActive ? iconColor : "text-dimmed"}
       to={to}
       target={target}
-      className={({ isActive, isPending }) => {
-        console.log(name, { isActive, isPending });
-
-        return cn(
-          "text-bright group-hover:bg-slate-850",
-          subItem ? "text-dimmed" : "",
-          isActive || isPending ? "bg-slate-850 text-bright" : "group-hover:text-bright"
-        );
-      }}
+      className={cn(
+        "text-bright group-hover:bg-slate-850",
+        subItem ? "text-dimmed" : "",
+        isActive ? "bg-slate-850 text-bright" : "group-hover:text-bright"
+      )}
     >
       <div className="flex w-full items-center justify-between overflow-hidden">
         <span className="truncate">{name}</span>
@@ -385,7 +385,7 @@ function SideMenuItem({
           )}
         </div>
       </div>
-    </NavLinkButton>
+    </LinkButton>
   );
 }
 
