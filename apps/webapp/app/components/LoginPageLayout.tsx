@@ -2,6 +2,7 @@ import {
   BoltIcon,
   CloudIcon,
   CodeBracketIcon,
+  CodeBracketSquareIcon,
   HeartIcon,
   ServerStackIcon,
 } from "@heroicons/react/24/solid";
@@ -84,7 +85,7 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
       <div className="hidden h-full w-full grid-cols-3 grid-rows-6 gap-4 p-4 md:col-span-6 md:grid lg:col-span-7 xl:grid-cols-5">
         <LoginTooltip side="bottom" content={<ServerlessTooltipContent />}>
           <div className={cn(layout, gridCell, mediumSquare)}>
-            <ServerStackIcon className={cn(opacity, features, "group-hover:text-blue-500")} />
+            <ServerStackIcon className={cn(opacity, features, "group-hover:text-green-500")} />
           </div>
         </LoginTooltip>
         <LoginTooltip side="bottom" content={<SlackTooltipContent />}>
@@ -122,14 +123,14 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
             <Icon icon="openai" className={cn(logos, opacity)} />
           </div>
         </LoginTooltip>
-        <LoginTooltip side="left" content={<ResendTooltipContent />}>
+        <LoginTooltip side="left" content={<SendgridTooltipContent />}>
           <div className={cn(layout, gridCell, hidden)}>
-            <Icon icon="resend" className={cn(logos, opacity)} />
+            <Icon icon="sendgrid" className={cn(logos, opacity)} />
           </div>
         </LoginTooltip>
         <LoginTooltip side="left" content={<ReactHooksTooltipContent />}>
           <div className={cn(layout, gridCell, mediumSquare, hidden)}>
-            <Icon icon="webhook" className={cn(opacity, features, "group-hover:text-green-500")} />
+            <Icon icon="react" className={cn(opacity, features, "group-hover:text-green-500")} />
           </div>
         </LoginTooltip>
         <LoginTooltip side="right" content={<AirtableTooltipContent />}>
@@ -139,7 +140,7 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
         </LoginTooltip>
         <LoginTooltip side="top" content={<InYourCodebaseTooltipContent />}>
           <div className={cn(layout, gridCell, mediumSquare)}>
-            <CodeBracketIcon className={cn(opacity, features, "group-hover:text-rose-500")} />
+            <CodeBracketSquareIcon className={cn(opacity, features, "group-hover:text-rose-500")} />
           </div>
         </LoginTooltip>
         <LoginTooltip side="right" content={<SupabaseTooltipContent />}>
@@ -149,7 +150,7 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
         </LoginTooltip>
         <LoginTooltip side="left" content={<CloudTooltipContent />}>
           <div className={cn(layout, gridCell, wide, hidden)}>
-            <CloudIcon className={cn(opacity, features, "h-20 w-20 group-hover:text-cyan-500")} />
+            <CloudIcon className={cn(opacity, features, "h-20 w-20 group-hover:text-blue-600")} />
           </div>
         </LoginTooltip>
       </div>
@@ -199,13 +200,13 @@ function SupabaseTooltipContent() {
   );
 }
 
-function ResendTooltipContent() {
+function SendgridTooltipContent() {
   return (
     <>
       <div className="mb-2 flex items-center gap-x-1.5">
-        <Icon icon="resend" className="h-5 w-5" />
+        <Icon icon="sendgrid" className="h-5 w-5" />
         <Paragraph variant="base/bright" className="font-semibold">
-          Resend Integration
+          SendGrid Integration
         </Paragraph>
       </div>
       <Paragraph variant="base">
@@ -280,12 +281,14 @@ function InYourCodebaseTooltipContent() {
   return (
     <>
       <div className="mb-2 flex items-center gap-x-1.5">
-        <CodeBracketIcon className="h-5 w-5 text-rose-500" />
+        <CodeBracketSquareIcon className="h-5 w-5 text-rose-500" />
         <Paragraph variant="base/bright" className="font-semibold">
           In your codebase
         </Paragraph>
       </div>
-      <Paragraph variant="base">Create Jobs where they belong: in your codebase.</Paragraph>
+      <Paragraph variant="base">
+        Create background jobs where they belong: in your codebase.
+      </Paragraph>
     </>
   );
 }
@@ -294,13 +297,13 @@ function CloudTooltipContent() {
   return (
     <>
       <div className="mb-2 flex items-center gap-x-1.5">
-        <CloudIcon className="h-5 w-5 text-cyan-500" />
+        <CloudIcon className="h-5 w-5 text-blue-600" />
         <Paragraph variant="base/bright" className="font-semibold">
           Zero infrastructure
         </Paragraph>
       </div>
       <Paragraph variant="base">
-        Use our SDK to write Jobs in your codebase and deploy as you normally do. That's it.
+        Use our SDK to write Jobs in your codebase and deploy as you normally do.
       </Paragraph>
     </>
   );
@@ -310,7 +313,7 @@ function ServerlessTooltipContent() {
   return (
     <>
       <div className="mb-2 flex items-center gap-x-1.5">
-        <ServerStackIcon className="h-5 w-5 text-blue-500" />
+        <ServerStackIcon className="h-5 w-5 text-green-500" />
         <Paragraph variant="base/bright" className="font-semibold">
           Full serverless support
         </Paragraph>
@@ -326,7 +329,7 @@ function ReactHooksTooltipContent() {
   return (
     <>
       <div className="mb-2 flex items-center gap-x-1.5">
-        <Icon icon="webhook" className="h-5 w-5 text-green-500" />
+        <Icon icon="react" className="h-5 w-5" />
         <Paragraph variant="base/bright" className="font-semibold">
           Show Job progress in your UI
         </Paragraph>
