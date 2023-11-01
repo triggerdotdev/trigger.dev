@@ -15,9 +15,8 @@ Gets multiple records for a table. You can filter. [Official Airtable Docs](http
 
 ```ts example.ts
 // Gets multiple records from the table.
-// Here we only get the Status fields (columns)
 await table.getRecords("multiple records", {
-  fields: ["Status"],
+  fields: ["Status"], // Here we only get the Status fields (columns)
 });
 ```
 
@@ -39,7 +38,6 @@ Create one or more records in a table. [Official Airtable Docs](https://airtable
 await table.createRecords("create records", [
   {
     // Define the new record to be created
-    // with field values for "Launch goals" and "Status."
     fields: {
       "Launch goals": "Created from Trigger.dev",
       Status: "In progress",
@@ -80,16 +78,22 @@ await table.deleteRecords(
 );
 ```
 
-### `runTask`
-
-Do anything that’s possible with the official Airtable Node SDK.
-
 ## Example Usage
 
-You can optionally add the types for your Table – this gives you nice type inference and errors when writing your code.
+In this demo we will use the Airtable to get records from a table, create a new record, update it and then delete it.
 
 ```ts
-// This is the type definition for my Table
+// Importing necessary modules and packages.
+import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
+import { Airtable } from "@trigger.dev/airtable";
+import { z } from "zod";
+
+// Creating an instance of the Airtable client with personal access token obtained from an environment variable.
+const airtable = new Airtable({
+  id: "airtable",
+  apiKey: process.env.AIRTABLE_PERSONAL_ACCESS_TOKEN!,
+});
+
 type LaunchGoalsAndOkRs = {
   "Launch goals"?: string;
   DRI?: Collaborator;
