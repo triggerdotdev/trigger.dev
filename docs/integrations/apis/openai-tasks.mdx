@@ -11,17 +11,15 @@ Tasks are executed after the job is triggered and are the main building blocks o
 
 ### `createCompletion`
 
-Generates text completions as per given prompt. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/chat)
+Generates text completions as per given prompt. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/chat/object)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-    // This code demonstrates using OpenAI's text completion with the "davinci" model.
-    // It generates text based on the given prompt.
-    await io.openai.createCompletion("completion", {
-      model: "davinci",
-      prompt: "Once upon a time",
-    });
-},
+// This code demonstrates using OpenAI's text completion with the "davinci" model.
+// It generates text based on the given prompt.
+await io.openai.createCompletion("completion", {
+  model: "davinci",
+  prompt: "Once upon a time",
+});
 ```
 
 ### `backgroundCreateCompletion`
@@ -29,18 +27,16 @@ run: async (payload, io, ctx) => {
 Generates text completions in the background. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/chat)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-    // This code showcases background text completion using the "gpt-3.5-turbo" model.
-    // It generates text based on the provided programming task and logs the result.
-    const programmingTask = `Create a function that checks if a string is a palindrome.`;
+// This code showcases background text completion using the "gpt-3.5-turbo" model.
+// It generates text based on the provided programming task and logs the result.
+const programmingTask = `Create a function that checks if a string is a palindrome.`;
 
-    const response = await io.openai.backgroundCreateCompletion("background-completion", {
-      model: "gpt-3.5-turbo",
-      prompt: `Coding task: ${programmingTask}\n\n`,
-    });
+const response = await io.openai.backgroundCreateCompletion("background-completion", {
+  model: "gpt-3.5-turbo",
+  prompt: `Coding task: ${programmingTask}\n\n`,
+});
 
-    await io.logger.info("codeSnippet", response.choices[0]?.text);
-},
+await io.logger.info("codeSnippet", response.choices[0]?.text);
 ```
 
 ### `createChatCompletion`
@@ -48,19 +44,17 @@ run: async (payload, io, ctx) => {
 Generates text completions in a conversational context. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/chat/create)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-    // This code demonstrates chat completion with the "gpt-3.5-turbo" model.
-    // It simulates a conversation by providing messages and receiving a chat response.
-    await io.openai.createChatCompletion("chat-completion", {
-      model: "gpt-3.5-turbo",
-      messages: [
-        {
-          role: "user",
-          content: "Create a good programming joke about background jobs",
-        },
-      ],
-    });
-},
+// This code demonstrates chat completion with the "gpt-3.5-turbo" model.
+// It simulates a conversation by providing messages and receiving a chat response.
+await io.openai.createChatCompletion("chat-completion", {
+  model: "gpt-3.5-turbo", // Replace with the desired model
+  messages: [
+    {
+      role: "user",
+      content: "Create a good programming joke about background jobs",
+    },
+  ],
+});
 ```
 
 ### `backgroundCreateChatCompletion`
@@ -68,21 +62,19 @@ run: async (payload, io, ctx) => {
 Generates text completions in a conversational context in the background. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/chat/object)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-    // This code showcases background chat completion using the "gpt-3.5-turbo" model.
-    // It simulates a conversation with a user message and logs the response choices.
-    const response = await io.openai.backgroundCreateChatCompletion("background-chat-completion", {
-      model: "gpt-3.5-turbo",
-      messages: [
-        {
-          role: "user",
-          content: "Create a good programming joke about background jobs",
-        },
-      ],
-    });
+// This code showcases background chat completion using the "gpt-3.5-turbo" model.
+// It simulates a conversation with a user message and logs the response choices.
+const response = await io.openai.backgroundCreateChatCompletion("background-chat-completion", {
+  model: "gpt-3.5-turbo",
+  messages: [
+    {
+      role: "user",
+      content: "Create a good programming joke about background jobs",
+    },
+  ],
+});
 
-    await io.logger.info("choices", response.choices);
-},
+await io.logger.info("choices", response.choices);
 ```
 
 ### `retrieveModel`
@@ -90,25 +82,23 @@ run: async (payload, io, ctx) => {
 Retrieves a specific model by ID. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/models/retrieve)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-    // In this code snippet, we retrieve detailed information about a specific OpenAI model.
+// In this code snippet, we retrieve detailed information about a specific OpenAI model.
 
-    // Specify the ID of the model you want to retrieve. Replace 'your_model_id' with the actual model ID.
-    const modelIdToRetrieve = "your_model_id";
+// Specify the ID of the model you want to retrieve. Replace 'your_model_id' with the actual model ID.
+const modelIdToRetrieve = "your_model_id";
 
-    try {
-        // Retrieve the model information using the OpenAI API
-        const retrievedModel = await io.openai.retrieveModel("get-model", {
-            model: modelIdToRetrieve,
-        });
+try {
+  // Retrieve the model information using the OpenAI API
+  const retrievedModel = await io.openai.retrieveModel("get-model", {
+    model: modelIdToRetrieve,
+  });
 
-        // Log the detailed model information
-        await io.logger.info("retrievedModel", retrievedModel);
-    } catch (error) {
-        // Handle errors, such as if the model with the provided ID does not exist.
-        await io.logger.error("Error retrieving model:", error.message);
-    }
-},
+  // Log the detailed model information
+  await io.logger.info("retrievedModel", retrievedModel);
+} catch (error) {
+  // Handle errors, such as if the model with the provided ID does not exist.
+  await io.logger.error("Error retrieving model:", error.message);
+}
 ```
 
 ### `listModels`
@@ -116,7 +106,7 @@ run: async (payload, io, ctx) => {
 Lists the available models. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/models/list)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
+
     // This code lists available models without retrieving detailed information.
     const models = await io.openai.listModels("list-models");
 },
@@ -127,27 +117,25 @@ run: async (payload, io, ctx) => {
 Edits a given text prompt. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/edits/create)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-    // This code snippet demonstrates using the OpenAI API to create an edit task.
+// This code snippet demonstrates using the OpenAI API to create an edit task.
 
-    // Specify the task parameters:
-    const editTaskParams = {
-        model: "text-davinci-edit-001", // Replace with the desired model
-        input: "Thsi is ridddled with erors", // Replace with the input text
-        instruction: "Fix the spelling errors", // Replace with the editing instruction
-    };
+// Specify the task parameters:
+const editTaskParams = {
+  model: "text-davinci-edit-001", // Replace with the desired model
+  input: "Thsi is ridddled with erors", // Replace with the input text
+  instruction: "Fix the spelling errors", // Replace with the editing instruction
+};
 
-    try {
-        // Create an edit task using the OpenAI API
-        const editResponse = await io.openai.createEdit("edit", editTaskParams);
+try {
+  // Create an edit task using the OpenAI API
+  const editResponse = await io.openai.createEdit("edit", editTaskParams);
 
-        // Log the response
-        await io.logger.info("editResponse", editResponse);
-    } catch (error) {
-        // Handle any potential errors that may occur during the API request.
-        await io.logger.error("Error creating edit task:", error.message);
-    }
-},
+  // Log the response
+  await io.logger.info("editResponse", editResponse);
+} catch (error) {
+  // Handle any potential errors that may occur during the API request.
+  await io.logger.error("Error creating edit task:", error.message);
+}
 ```
 
 ### `createImage`
@@ -155,13 +143,12 @@ run: async (payload, io, ctx) => {
 Generates images from textual descriptions. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/images/create)
 
 ```ts example.ts
-  run: async (payload, io, ctx) => {
-    const imageResults = await io.openai.createImage("image", {
-      prompt: "A hedgehog wearing a party hat",
-      n: 2,
-      size: "256x256",
-      response_format: "url",
-    });
+const imageResults = await io.openai.createImage("image", {
+  prompt: "A hedgehog wearing a party hat",
+  n: 2,
+  size: "256x256",
+  response_format: "url",
+});
 ```
 
 ### `createImageEdit`
@@ -169,19 +156,17 @@ Generates images from textual descriptions. [Official OpenAI Docs](https://platf
 Creates an edited or extended image given an original image and a prompt. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/images/createEdit)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-  // Specify the parameters for the image edit
-  const imageEditParams = {
-    style: "data:image/png;base64,base64_encoded_style_image",
-    content: "data:image/png;base64,base64_encoded_content_image",
-  };
+// Specify the parameters for the image edit
+const imageEditParams = {
+  style: "data:image/png;base64,base64_encoded_style_image",
+  content: "data:image/png;base64,base64_encoded_content_image",
+};
 
-  // Create the image edit using the OpenAI API
-  const imageEditResponse = await io.openai.createImageEdit(imageEditParams);
+// Create the image edit using the OpenAI API
+const imageEditResponse = await io.openai.createImageEdit(imageEditParams);
 
-  // Log the response
-  await io.logger.info("imageEditResponse", imageEditResponse);
-},
+// Log the response
+await io.logger.info("imageEditResponse", imageEditResponse);
 ```
 
 ### `createImageVariation`
@@ -189,19 +174,17 @@ run: async (payload, io, ctx) => {
 Creates a variation of a given image. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/images/createVariation)
 
 ```ts example.ts
-    run: async (payload, io, ctx) => {
-        // Specify the parameters for creating an image variation
-        const imageVariationParams = {
-        image: "data:image/png;base64,base64_encoded_image",
-        variation: "brightness(1.2) contrast(0.8) rotate(45deg)",
-        };
+// Specify the parameters for creating an image variation
+const imageVariationParams = {
+  image: "data:image/png;base64,base64_encoded_image",
+  variation: "brightness(1.2) contrast(0.8) rotate(45deg)",
+};
 
-        // Create the image variation using the OpenAI API
-        const imageVariationResponse = await io.openai.createImageVariation(imageVariationParams);
+// Create the image variation using the OpenAI API
+const imageVariationResponse = await io.openai.createImageVariation(imageVariationParams);
 
-        // Log the response
-        await io.logger.info("imageVariationResponse", imageVariationResponse);
-    },
+// Log the response
+await io.logger.info("imageVariationResponse", imageVariationResponse);
 ```
 
 ### `createEmbedding`
@@ -209,26 +192,24 @@ Creates a variation of a given image. [Official OpenAI Docs](https://platform.op
 Generates embeddings for a given text. [Official OpenAI Docs](hhttps://platform.openai.com/docs/api-reference/embeddings/object)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-    // This code snippet demonstrates using the OpenAI API to create a text embedding.
+// This code snippet demonstrates using the OpenAI API to create a text embedding.
 
-    // Specify the task parameters:
-    const embeddingTaskParams = {
-        model: "text-embedding-ada-002", // Replace with the desired model
-        input: "The food was delicious and the waiter...", // Replace with the input text
-    };
+// Specify the task parameters:
+const embeddingTaskParams = {
+  model: "text-embedding-ada-002", // Replace with the desired model
+  input: "The food was delicious and the waiter...", // Replace with the input text
+};
 
-    try {
-        // Create a text embedding using the OpenAI API
-        const embeddingResponse = await io.openai.createEmbedding("embedding", embeddingTaskParams);
+try {
+  // Create a text embedding using the OpenAI API
+  const embeddingResponse = await io.openai.createEmbedding("embedding", embeddingTaskParams);
 
-        // Log the response
-        await io.logger.info("embeddingResponse", embeddingResponse);
-    } catch (error) {
-        // Handle any potential errors that may occur during the API request.
-        await io.logger.error("Error creating text embedding:", error.message);
-    }
-},
+  // Log the response
+  await io.logger.info("embeddingResponse", embeddingResponse);
+} catch (error) {
+  // Handle any potential errors that may occur during the API request.
+  await io.logger.error("Error creating text embedding:", error.message);
+}
 ```
 
 ### `createFile`
@@ -236,19 +217,17 @@ run: async (payload, io, ctx) => {
 Uploads a file to the OpenAI API. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/files/object)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-  // Specify the parameters for creating a file
-  const fileParams = {
-    name: "example.txt",
-    content: "This is the content of the file.",
-  };
+// Specify the parameters for creating a file
+const fileParams = {
+  name: "example.txt",
+  content: "This is the content of the file.",
+};
 
-  // Create the file using the OpenAI API
-  const fileResponse = await io.openai.createFile(fileParams);
+// Create the file using the OpenAI API
+const fileResponse = await io.openai.createFile(fileParams);
 
-  // Log the response
-  await io.logger.info("fileResponse", fileResponse);
-},
+// Log the response
+await io.logger.info("fileResponse", fileResponse);
 ```
 
 ### `listFiles`
@@ -256,13 +235,11 @@ run: async (payload, io, ctx) => {
 Lists the uploaded files. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/files/list)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-  // List the files available in your OpenAI account
-  const fileListResponse = await io.openai.listFiles();
+// List the files available in your OpenAI account
+const fileListResponse = await io.openai.listFiles();
 
-  // Log the list of files
-  await io.logger.info("fileListResponse", fileListResponse);
-},
+// Log the list of files
+await io.logger.info("fileListResponse", fileListResponse);
 ```
 
 ### `createFineTuneFile`
@@ -270,21 +247,19 @@ run: async (payload, io, ctx) => {
 Uploads a file for fine-tuning a model. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-  // Specify the parameters for creating a fine-tune file
-  const fineTuneFileParams = {
-    model: "text-davinci-002",
-    prompt: "Translate English to French: 'Hello, world.'",
-    language: "en",
-    description: "Fine-tune file for translation task",
-  };
+// Specify the parameters for creating a fine-tune file
+const fineTuneFileParams = {
+  model: "text-davinci-002",
+  prompt: "Translate English to French: 'Hello, world.'",
+  language: "en",
+  description: "Fine-tune file for translation task",
+};
 
-  // Create the fine-tune file using the OpenAI API
-  const fineTuneFileResponse = await io.openai.createFineTuneFile(fineTuneFileParams);
+// Create the fine-tune file using the OpenAI API
+const fineTuneFileResponse = await io.openai.createFineTuneFile(fineTuneFileParams);
 
-  // Log the response
-  await io.logger.info("fineTuneFileResponse", fineTuneFileResponse);
-},
+// Log the response
+await io.logger.info("fineTuneFileResponse", fineTuneFileResponse);
 ```
 
 ### `createFineTune`
@@ -292,20 +267,18 @@ run: async (payload, io, ctx) => {
 Fine-tunes a model on a given task. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/create)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-  // Specify the parameters for creating a fine-tune task
-  const fineTuneParams = {
-    model: "text-davinci-002",
-    dataset: "your_dataset_id",
-    description: "Fine-tune task for custom dataset",
-  };
+// Specify the parameters for creating a fine-tune task
+const fineTuneParams = {
+  model: "text-davinci-002",
+  dataset: "your_dataset_id",
+  description: "Fine-tune task for custom dataset",
+};
 
-  // Create the fine-tune task using the OpenAI API
-  const fineTuneResponse = await io.openai.createFineTune(fineTuneParams);
+// Create the fine-tune task using the OpenAI API
+const fineTuneResponse = await io.openai.createFineTune(fineTuneParams);
 
-  // Log the response
-  await io.logger.info("fineTuneResponse", fineTuneResponse);
-},
+// Log the response
+await io.logger.info("fineTuneResponse", fineTuneResponse);
 ```
 
 ### `listFineTunes`
@@ -313,13 +286,11 @@ run: async (payload, io, ctx) => {
 Lists the available fine-tunes. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/list)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-  // List the fine-tunes available in your OpenAI account
-  const fineTunesListResponse = await io.openai.listFineTunes();
+// List the fine-tunes available in your OpenAI account
+const fineTunesListResponse = await io.openai.listFineTunes();
 
-  // Log the list of fine-tunes
-  await io.logger.info("fineTunesListResponse", fineTunesListResponse);
-},
+// Log the list of fine-tunes
+await io.logger.info("fineTunesListResponse", fineTunesListResponse);
 ```
 
 ### `retrieveFineTune`
@@ -327,16 +298,14 @@ run: async (payload, io, ctx) => {
 Retrieves a specific fine-tune by ID. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/retrieve)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-  // Specify the ID of the fine-tune you want to retrieve
-  const fineTuneId = "your_fine_tune_id"; // Replace with the actual fine-tune ID
+// Specify the ID of the fine-tune you want to retrieve
+const fineTuneId = "your_fine_tune_id"; // Replace with the actual fine-tune ID
 
-  // Retrieve the fine-tune using the OpenAI API
-  const retrievedFineTune = await io.openai.retrieveFineTune(fineTuneId);
+// Retrieve the fine-tune using the OpenAI API
+const retrievedFineTune = await io.openai.retrieveFineTune(fineTuneId);
 
-  // Log the retrieved fine-tune
-  await io.logger.info("retrievedFineTune", retrievedFineTune);
-},
+// Log the retrieved fine-tune
+await io.logger.info("retrievedFineTune", retrievedFineTune);
 ```
 
 ### `cancelFineTune`
@@ -344,16 +313,14 @@ run: async (payload, io, ctx) => {
 Cancels a specific fine-tune by ID. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/cancel)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-  // Specify the ID of the fine-tune you want to cancel
-  const fineTuneIdToCancel = "your_fine_tune_id"; // Replace with the actual fine-tune ID
+// Specify the ID of the fine-tune you want to cancel
+const fineTuneIdToCancel = "your_fine_tune_id"; // Replace with the actual fine-tune ID
 
-  // Cancel the specified fine-tune using the OpenAI API
-  const cancellationResponse = await io.openai.cancelFineTune(fineTuneIdToCancel);
+// Cancel the specified fine-tune using the OpenAI API
+const cancellationResponse = await io.openai.cancelFineTune(fineTuneIdToCancel);
 
-  // Log the cancellation response
-  await io.logger.info("cancellationResponse", cancellationResponse);
-},
+// Log the cancellation response
+await io.logger.info("cancellationResponse", cancellationResponse);
 ```
 
 ### `createFineTuningJob`
@@ -361,21 +328,19 @@ run: async (payload, io, ctx) => {
 Creates a job that fine-tunes a specified model from a given dataset. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/create)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-  // Specify the parameters for creating a fine-tuning job
-  const fineTuningJobParams = {
-    fineTuneId: "your_fine_tune_id", // Replace with the actual fine-tune ID
-    datasetId: "your_dataset_id", // Replace with the ID of your dataset
-    model: "text-davinci-002", // Replace with the model for fine-tuning
-    n_examples: 100, // Replace with the number of examples
-  };
+// Specify the parameters for creating a fine-tuning job
+const fineTuningJobParams = {
+  fineTuneId: "your_fine_tune_id", // Replace with the actual fine-tune ID
+  datasetId: "your_dataset_id", // Replace with the ID of your dataset
+  model: "text-davinci-002", // Replace with the model for fine-tuning
+  n_examples: 100, // Replace with the number of examples
+};
 
-  // Create the fine-tuning job using the OpenAI API
-  const fineTuningJobResponse = await io.openai.createFineTuningJob(fineTuningJobParams);
+// Create the fine-tuning job using the OpenAI API
+const fineTuningJobResponse = await io.openai.createFineTuningJob(fineTuningJobParams);
 
-  // Log the response
-  await io.logger.info("fineTuningJobResponse", fineTuningJobResponse);
-},
+// Log the response
+await io.logger.info("fineTuningJobResponse", fineTuningJobResponse);
 ```
 
 ### `retrieveFineTuningJob`
@@ -383,16 +348,14 @@ run: async (payload, io, ctx) => {
 Get info about a fine-tuning job. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/retrieve)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-  // Specify the ID of the fine-tuning job you want to retrieve
-  const fineTuningJobId = "your_fine_tuning_job_id"; // Replace with the actual job ID
+// Specify the ID of the fine-tuning job you want to retrieve
+const fineTuningJobId = "your_fine_tuning_job_id"; // Replace with the actual job ID
 
-  // Retrieve the fine-tuning job using the OpenAI API
-  const retrievedJob = await io.openai.retrieveFineTuningJob(fineTuningJobId);
+// Retrieve the fine-tuning job using the OpenAI API
+const retrievedJob = await io.openai.retrieveFineTuningJob(fineTuningJobId);
 
-  // Log the retrieved job
-  await io.logger.info("retrievedJob", retrievedJob);
-},
+// Log the retrieved job
+await io.logger.info("retrievedJob", retrievedJob);
 ```
 
 ### `cancelFineTuningJob`
@@ -400,16 +363,14 @@ run: async (payload, io, ctx) => {
 Cancel a fine-tuning job. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/cancel)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-  // Specify the ID of the fine-tuning job you want to cancel
-  const fineTuningJobIdToCancel = "your_fine_tuning_job_id"; // Replace with the actual job ID
+// Specify the ID of the fine-tuning job you want to cancel
+const fineTuningJobIdToCancel = "your_fine_tuning_job_id"; // Replace with the actual job ID
 
-  // Cancel the specified fine-tuning job using the OpenAI API
-  const cancellationResponse = await io.openai.cancelFineTuningJob(fineTuningJobIdToCancel);
+// Cancel the specified fine-tuning job using the OpenAI API
+const cancellationResponse = await io.openai.cancelFineTuningJob(fineTuningJobIdToCancel);
 
-  // Log the cancellation response
-  await io.logger.info("cancellationResponse", cancellationResponse);
-},
+// Log the cancellation response
+await io.logger.info("cancellationResponse", cancellationResponse);
 ```
 
 ### `listFineTuningJobEvents`
@@ -417,16 +378,14 @@ run: async (payload, io, ctx) => {
 List events for a fine-tuning job. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/list-events)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-  // Specify the ID of the fine-tuning job for which you want to list events
-  const fineTuningJobId = "your_fine_tuning_job_id"; // Replace with the actual job ID
+// Specify the ID of the fine-tuning job for which you want to list events
+const fineTuningJobId = "your_fine_tuning_job_id"; // Replace with the actual job ID
 
-  // List events for the specified fine-tuning job using the OpenAI API
-  const eventsListResponse = await io.openai.listFineTuningJobEvents(fineTuningJobId);
+// List events for the specified fine-tuning job using the OpenAI API
+const eventsListResponse = await io.openai.listFineTuningJobEvents(fineTuningJobId);
 
-  // Log the list of events
-  await io.logger.info("eventsListResponse", eventsListResponse);
-},
+// Log the list of events
+await io.logger.info("eventsListResponse", eventsListResponse);
 ```
 
 ### `listFineTuningJobs`
@@ -434,18 +393,16 @@ run: async (payload, io, ctx) => {
 List fine tuning jobs. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/list)
 
 ```ts example.ts
-run: async (payload, io, ctx) => {
-  // List the fine-tuning jobs available in your OpenAI account
-  const jobsListResponse = await io.openai.listFineTuningJobs();
+// List the fine-tuning jobs available in your OpenAI account
+const jobsListResponse = await io.openai.listFineTuningJobs();
 
-  // Log the list of fine-tuning jobs
-  await io.logger.info("jobsListResponse", jobsListResponse);
-},
+// Log the list of fine-tuning jobs
+await io.logger.info("jobsListResponse", jobsListResponse);
 ```
 
 ## Example usage
 
-In this example we'll create a task that generates a random joke using OpenAI GPT 3.5 .
+In this job we'll create a task that generates a random joke using OpenAI GPT 3.5 .
 
 ```ts example.ts
 import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
@@ -475,7 +432,7 @@ client.defineJob({
   integrations: {
     openai, // Use the OpenAI integration for this job
   },
-  run: async (payload, io, ctx) => {
+
     // Retrieve information about the GPT-3.5 Turbo model
     await io.openai.retrieveModel("get-model", {
       model: "gpt-3.5-turbo",

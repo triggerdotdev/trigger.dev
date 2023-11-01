@@ -5,7 +5,7 @@ sidebarTitle: Overview & authentication
 
 ## Overview
 
-Our OpenAI integration allows you to easily perform AI-powered tasks, such as summarizing text, answering questions, generating images, fine tuning and much more.
+Our OpenAI integration allows you to easily perform AI-powered tasks, such as summarizing text, answering questions, generating images, fine-tuning and much more.
 
 <Card
   title="Jobs Showcase - OpenAI"
@@ -16,6 +16,8 @@ Our OpenAI integration allows you to easily perform AI-powered tasks, such as su
 </Card>
 
 ## Installing the OpenAI packages
+
+To get started with our OpenAI integration, you need to install the `@trigger.dev/openai` packages. You can do this using `npm`, `pnpm`, or `yarn`:
 
 <CodeGroup>
 
@@ -35,8 +37,7 @@ yarn add @trigger.dev/openai@latest
 
 ## Authentication
 
-To use the OpenAI API with Trigger.dev, you'll need an API Key from OpenAI.
-If you don't have one yet, you can obtain it from the [OpenAI dashboard](https://platform.openai.com/account/api-keys).
+OpenAI supports API keys. Official documentation [here](https://platform.openai.com/account/api-keys).
 
 ```ts
 import { OpenAI } from "@trigger.dev/openai";
@@ -51,11 +52,11 @@ const openai = new OpenAI({
 
 Once you have set up a OpenAI client, you can use it to create tasks.
 
-<CardGroup>
-  <Card title="Tasks" icon="sparkles" href="/integrations/apis/openai-tasks">
-    Perform different AI-powered tasks using OpenAI.
-  </Card>
-</CardGroup>
+{" "}
+
+<Card title="Tasks" icon="sparkles" href="/integrations/apis/openai-tasks">
+  Perform different AI-powered tasks using OpenAI.
+</Card>
 
 ## Usage as Universal Client
 
