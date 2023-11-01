@@ -36,9 +36,6 @@ import { Slack } from "@trigger.dev/slack";
 import { weeklySummaryDb } from "./mocks/db";
 import { weeklySummaryEmail } from "./mocks/emails";
 
-// Creating an instance of the TriggerClient with a unique identifier "jobs-showcase."
-const client = new TriggerClient({ id: "jobs-showcase" });
-
 // Creating instances of SendGrid and Slack clients.
 const sendgrid = new SendGrid({
   id: "sendgrid",
@@ -89,8 +86,4 @@ client.defineJob({
     });
   },
 });
-
-// If you're not using Express, you can remove these lines.
-import { createExpressServer } from "@trigger.dev/express";
-createExpressServer(client);
 ```

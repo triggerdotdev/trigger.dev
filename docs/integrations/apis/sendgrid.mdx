@@ -35,7 +35,7 @@ yarn add @trigger.dev/sendgrid@latest
 
 ## Authentication
 
-SendGrid integration supports API Keys. To authenticate, you'll need to create an instance of the SendGrid class and provide your API key. You can find the official SendGrid documentation to configure an API key [here](https://docs.sendgrid.com/ui/account-and-settings/api-keys).
+SendGrid supports API Keys. Official documentation [here](https://docs.sendgrid.com/ui/account-and-settings/api-keys).
 
 ```ts
 import { SendGrid } from "@trigger.dev/sendgrid";
@@ -50,8 +50,8 @@ const sendgrid = new SendGrid({
 
 Once you have set up a SendGrid client, you can use it to create tasks.
 
-<CardGroup>
-  <Card title="Tasks" icon="sparkles" href="/integrations/apis/sendgrid-tasks">
-    Perform tasks such as sending emails to clients on certain trigger events.
-  </Card>
-</CardGroup>
+{" "}
+
+<Card title="Tasks" icon="sparkles" href="/integrations/apis/sendgrid-tasks">
+  Send emails with SendGrid.
+</Card>
