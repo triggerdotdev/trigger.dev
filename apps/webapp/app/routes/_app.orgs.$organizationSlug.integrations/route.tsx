@@ -136,94 +136,96 @@ function PossibleIntegrationsList({
   });
 
   return (
-    <div className="overflow-y-auto py-4 pl-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
-      <div className="flex items-center justify-between">
-        <Header2 className="mb-2">Connect an API</Header2>
-        <Switch
-          checked={onlyShowIntegrations}
-          onCheckedChange={setOnlyShowIntegrations}
-          variant="small"
-          label={
-            <span className="mt-0.5 inline-flex items-center gap-1">
-              <IntegrationIcon /> Trigger.dev Integrations
-            </span>
-          }
+    <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+      <div className="py-4 pl-4">
+        <div className="flex items-center justify-between">
+          <Header2 className="mb-2">Connect an API</Header2>
+          <Switch
+            checked={onlyShowIntegrations}
+            onCheckedChange={setOnlyShowIntegrations}
+            variant="small"
+            label={
+              <span className="mt-0.5 inline-flex items-center gap-1">
+                <IntegrationIcon /> Trigger.dev Integrations
+              </span>
+            }
+          />
+        </div>
+        <Input
+          placeholder="Search APIs"
+          className="mb-2"
+          variant="medium"
+          icon="search"
+          fullWidth={true}
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
         />
-      </div>
-      <Input
-        placeholder="Search APIs"
-        className="mb-2"
-        variant="medium"
-        icon="search"
-        fullWidth={true}
-        value={filterText}
-        onChange={(e) => setFilterText(e.target.value)}
-      />
-      <div className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 sm:grid-cols-[repeat(auto-fill,_minmax(14rem,_auto))]">
-        {filteredItems.map((option) => {
-          switch (option.type) {
-            case "integration":
-              return (
-                <ConnectToIntegrationSheet
-                  key={option.identifier}
-                  integration={option}
-                  organizationId={organizationId}
-                  callbackUrl={callbackUrl}
-                  icon={option.icon}
-                  button={
-                    <AddIntegrationConnection
-                      identifier={option.identifier}
-                      name={option.name}
-                      icon={option.icon}
-                      isIntegration
-                    />
-                  }
-                />
-              );
-            case "api":
-              return (
-                <NoIntegrationSheet
-                  key={option.identifier}
-                  api={option}
-                  requested={option.voted}
-                  button={
-                    <AddIntegrationConnection
-                      identifier={option.identifier}
-                      name={option.name}
-                      isIntegration={false}
-                    />
-                  }
-                />
-              );
+        <div className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 sm:grid-cols-[repeat(auto-fill,_minmax(14rem,_auto))]">
+          {filteredItems.map((option) => {
+            switch (option.type) {
+              case "integration":
+                return (
+                  <ConnectToIntegrationSheet
+                    key={option.identifier}
+                    integration={option}
+                    organizationId={organizationId}
+                    callbackUrl={callbackUrl}
+                    icon={option.icon}
+                    button={
+                      <AddIntegrationConnection
+                        identifier={option.identifier}
+                        name={option.name}
+                        icon={option.icon}
+                        isIntegration
+                      />
+                    }
+                  />
+                );
+              case "api":
+                return (
+                  <NoIntegrationSheet
+                    key={option.identifier}
+                    api={option}
+                    requested={option.voted}
+                    button={
+                      <AddIntegrationConnection
+                        identifier={option.identifier}
+                        name={option.name}
+                        isIntegration={false}
+                      />
+                    }
+                  />
+                );
+            }
+          })}
+        </div>
+        <Header2 className="mb-2 mt-6">Missing an API?</Header2>
+        <Feedback
+          button={
+            <button className="w-full">
+              <DetailCell
+                leadingIcon="plus"
+                leadingIconClassName="text-dimmed"
+                label="Request an API and we'll add it to the list as an Integration"
+                trailingIcon="chevron-right"
+                trailingIconClassName="text-slate-700 group-hover:text-bright"
+              />
+            </button>
           }
-        })}
-      </div>
-      <Header2 className="mb-2 mt-6">Missing an API?</Header2>
-      <Feedback
-        button={
-          <button className="w-full">
-            <DetailCell
-              leadingIcon="plus"
-              leadingIconClassName="text-dimmed"
-              label="Request an API and we'll add it to the list as an Integration"
-              trailingIcon="chevron-right"
-              trailingIconClassName="text-slate-700 group-hover:text-bright"
-            />
-          </button>
-        }
-        defaultValue="integration"
-      />
+          defaultValue="integration"
+        />
 
-      <Header2 className="mb-2 mt-6">Create an Integration</Header2>
-      <a href="https://docs.trigger.dev/integrations/create" target="_blank">
-        <DetailCell
-          leadingIcon="integration"
-          leadingIconClassName="text-dimmed"
-          label="Learn how to create your own API Integrations"
-          trailingIcon="external-link"
-          trailingIconClassName="text-slate-700 group-hover:text-bright"
-        />
-      </a>
+        <Header2 className="mb-2 mt-6">Create an Integration</Header2>
+        <a href="https://docs.trigger.dev/integrations/create" target="_blank">
+          <DetailCell
+            leadingIcon="integration"
+            leadingIconClassName="text-dimmed"
+            label="Learn how to create your own API Integrations"
+            trailingIcon="external-link"
+            trailingIconClassName="text-slate-700 group-hover:text-bright"
+          />
+        </a>
+      </div>
     </div>
   );
 }

@@ -60,14 +60,14 @@ export default function Organization() {
 
   return (
     <>
-      <div className="grid grid-cols-[14rem_auto]">
+      <div className="grid grid-cols-[14rem_1fr] overflow-hidden">
         <SideMenu
           user={user}
           project={project!}
           organization={organization}
           organizations={organizations}
         />
-        <div className="grid grid-rows-[2.25rem_auto] ">
+        <div className="grid grid-rows-[2.25rem_1fr] overflow-hidden">
           <Breadcrumb />
           <Outlet />
         </div>

@@ -11,7 +11,7 @@ export function AppContainer({
 }) {
   return (
     <BackgroundGradient showBackgroundGradient={showBackgroundGradient}>
-      <div className={cn("grid h-full w-full grid-rows-1")}>{children}</div>
+      <div className={cn("grid h-full w-full grid-rows-1 overflow-hidden")}>{children}</div>
     </BackgroundGradient>
   );
 }
@@ -47,7 +47,11 @@ export function PageContainer({
   children: React.ReactNode;
   className?: string;
 }) {
-  return <div className={cn("grid h-full grid-rows-[auto_1fr]", className)}>{children}</div>;
+  return (
+    <div className={cn("grid h-full grid-rows-[auto_1fr] overflow-hidden", className)}>
+      {children}
+    </div>
+  );
 }
 
 export function PageBody({
@@ -58,7 +62,15 @@ export function PageBody({
   scrollable?: boolean;
 }) {
   return (
-    <div className={cn(scrollable ? "overflow-y-auto p-4 " : "overflow-hidden")}>{children}</div>
+    <div
+      className={cn(
+        scrollable
+          ? "overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+          : "overflow-hidden"
+      )}
+    >
+      {children}
+    </div>
   );
 }
 
