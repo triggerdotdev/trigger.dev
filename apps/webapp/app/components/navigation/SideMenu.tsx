@@ -1,4 +1,8 @@
-import { ArrowRightOnRectangleIcon, EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
+import {
+  AcademicCapIcon,
+  ArrowRightOnRectangleIcon,
+  EllipsisHorizontalIcon,
+} from "@heroicons/react/20/solid";
 import { ChartPieIcon, UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 import { useLocation, useMatches, useNavigation } from "@remix-run/react";
 import { IconExclamationCircle } from "@tabler/icons-react";
@@ -41,8 +45,9 @@ import {
 } from "../primitives/Popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { usePathName } from "~/hooks/usePathName";
+import { ImpersonationBanner } from "../ImpersonationBanner";
 
-type SideMenuUser = Pick<User, "email">;
+type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
   MatchedProject,
   "id" | "name" | "slug" | "hasInactiveExternalTriggers" | "jobCount"
@@ -275,7 +280,12 @@ function UserMenu({ user }: { user: SideMenuUser }) {
   return (
     <Popover onOpenChange={(open) => setProfileMenuOpen(open)}>
       <PopoverCustomTrigger isOpen={isProfileMenuOpen} className="p-1">
-        <UserAvatar className="h-5 w-5 text-slate-600" />
+        <UserAvatar
+          className={cn(
+            "h-5 w-5 text-slate-600",
+            user.isImpersonating && "rounded-full border border-yellow-500"
+          )}
+        />
       </PopoverCustomTrigger>
       <PopoverContent
         className="min-w-[12rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
@@ -284,6 +294,15 @@ function UserMenu({ user }: { user: SideMenuUser }) {
         <Fragment>
           <PopoverSectionHeader title={user.email} variant="extra-small" />
           <div className="flex flex-col gap-1 p-1">
+            {user.isImpersonating && <ImpersonationBanner />}
+            {user.admin && (
+              <PopoverMenuItem
+                to={"/admin"}
+                title="Admin"
+                icon={AcademicCapIcon}
+                leadingIconClassName="text-yellow-500"
+              />
+            )}
             <PopoverMenuItem
               to={accountPath()}
               title="View profile"

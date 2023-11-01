@@ -14,7 +14,7 @@ export class SelectBestProjectPresenter {
     const projectId = await getCurrentProjectId(request);
     if (projectId) {
       const project = await this.#prismaClient.project.findUnique({
-        where: { id: projectId },
+        where: { id: projectId, organization: { members: { some: { userId } } } },
         include: { organization: true },
       });
       if (project) {
