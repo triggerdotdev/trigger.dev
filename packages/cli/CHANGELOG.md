@@ -1,5 +1,13 @@
 # create-trigger
 
+## 2.2.4
+
+### Patch Changes
+
+- 0876b875: Added new example job which uses Tasks
+- Updated dependencies [c1710ae7]
+  - @trigger.dev/core@2.2.4
+
 ## 2.2.3
 
 ### Patch Changes

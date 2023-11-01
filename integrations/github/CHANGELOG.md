@@ -1,5 +1,14 @@
 # @trigger.dev/github
 
+## 2.2.4
+
+### Patch Changes
+
+- Updated dependencies [c1710ae7]
+- Updated dependencies [9c4be40a]
+  - @trigger.dev/sdk@2.2.4
+  - @trigger.dev/integration-kit@2.2.4
+
 ## 2.2.3
 
 ### Patch Changes
