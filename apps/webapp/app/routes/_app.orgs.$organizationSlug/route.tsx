@@ -1,13 +1,15 @@
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import { Outlet } from "@remix-run/react";
 import type { LoaderFunctionArgs, Session } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
+import { z } from "zod";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { Breadcrumb } from "~/components/navigation/Breadcrumb";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { SideMenu, SideMenuContainer } from "~/components/navigation/SideMenu";
-import { useOrganization } from "~/hooks/useOrganizations";
+import { prisma } from "~/db.server";
+import { useOptionalOrganization, useOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject, useProject } from "~/hooks/useProject";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { useUser } from "~/hooks/useUser";
@@ -22,9 +24,15 @@ import { telemetry } from "~/services/telemetry.server";
 import { Handle } from "~/utils/handle";
 import { organizationPath } from "~/utils/pathBuilder";
 
+const ParamsSchema = z.object({
+  organizationSlug: z.string(),
+  projectParam: z.string().optional(),
+});
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug } = params;
+  const { organizationSlug, projectParam } = ParamsSchema.parse(params);
+  console.log("$orgslug page", { params, url: request.url });
   invariant(organizationSlug, "organizationSlug not found");
 
   const orgsPresenter = new OrganizationsPresenter();
@@ -37,33 +45,21 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   telemetry.organization.identify({ organization });
 
-  let projectId = await getCurrentProjectId(request);
-  let session: Session | undefined;
-  if (!projectId) {
-    const project = organization.projects.sort((a, b) => b.jobCount - a.jobCount)[0];
-    projectId = project.id;
-    session = await setCurrentProjectId(projectId, request);
+  let projectId: string | undefined;
+  if (projectParam) {
+    const project = organization.projects.find((p) => p.slug === projectParam);
+    projectId = project?.id;
+  } else {
+    projectId = await getCurrentProjectId(request);
   }
 
-  const project = organization.projects.find((p) => p.id === projectId);
-  if (!project) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const currentProject = organization.projects.find((p) => p.id === projectId);
 
-  return typedjson(
-    {
-      organizations,
-      organization,
-      project,
-    },
-    {
-      headers: session
-        ? {
-            "Set-Cookie": await commitCurrentProjectSession(session),
-          }
-        : undefined,
-    }
-  );
+  return typedjson({
+    organizations,
+    organization,
+    currentProject,
+  });
 };
 
 export const handle: Handle = {
@@ -76,18 +72,18 @@ export const handle: Handle = {
 };
 
 export default function Organization() {
-  const { organization, project, organizations } = useTypedLoaderData<typeof loader>();
+  const { organization, currentProject, organizations } = useTypedLoaderData<typeof loader>();
   const user = useUser();
 
   //the side menu won't change projects when using the switcher unless we use the hook (on project pages)
-  const currentProject = useOptionalProject() ?? project;
+  const project = useOptionalProject() ?? currentProject;
 
   return (
     <>
       <SideMenuContainer>
         <SideMenu
           user={user}
-          project={currentProject}
+          project={project!}
           organization={organization}
           organizations={organizations}
         />
@@ -101,6 +97,10 @@ export default function Organization() {
 }
 
 export function ErrorBoundary() {
-  const org = useOrganization();
-  return <RouteErrorDisplay button={{ title: org.title, to: organizationPath(org) }} />;
+  const org = useOptionalOrganization();
+  return org ? (
+    <RouteErrorDisplay button={{ title: org.title, to: organizationPath(org) }} />
+  ) : (
+    <RouteErrorDisplay button={{ title: "Home", to: "/" }} />
+  );
 }

@@ -1,7 +1,7 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import type { ActionFunction } from "@remix-run/node";
-import { json } from "@remix-run/node";
+import { json, redirect } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
@@ -16,6 +16,7 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { createOrganization } from "~/models/organization.server";
+import { commitCurrentProjectSession, setCurrentProjectId } from "~/services/currentProject.server";
 import { requireUserId } from "~/services/session.server";
 import { projectPath } from "~/utils/pathBuilder";
 
@@ -41,11 +42,14 @@ export const action: ActionFunction = async ({ request }) => {
       projectName: submission.value.projectName,
     });
 
-    return redirectWithSuccessMessage(
-      projectPath(organization, organization.projects[0]),
-      request,
-      `${submission.value.orgName} created`
-    );
+    const project = organization.projects[0];
+    const session = await setCurrentProjectId(project.id, request);
+
+    return redirect(projectPath(organization, project), {
+      headers: {
+        "Set-Cookie": await commitCurrentProjectSession(session),
+      },
+    });
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }
