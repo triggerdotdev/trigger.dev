@@ -48,6 +48,10 @@ export const TriggerSourceRunTaskParamsSchema = TriggerSourceRunParamsSchema.ext
   taskParam: z.string(),
 });
 
+export const HttpEndpointParamSchema = ProjectParamSchema.extend({
+  httpEndpointParam: z.string(),
+});
+
 export function trimTrailingSlash(path: string) {
   return path.replace(/\/$/, "");
 }

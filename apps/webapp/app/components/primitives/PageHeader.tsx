@@ -6,6 +6,7 @@ import { Paragraph } from "./Paragraph";
 import { cn } from "~/utils/cn";
 import { NamedIcon } from "./NamedIcon";
 import { Tabs, TabsProps } from "./Tabs";
+import { Icon, RenderIcon } from "./Icon";
 
 type WithChildren = {
   children: React.ReactNode;
@@ -24,6 +25,7 @@ export function PageTitleRow({ children }: WithChildren) {
 }
 
 type PageTitleProps = {
+  icon?: RenderIcon;
   title: string;
   backButton?: {
     to: string;
@@ -31,7 +33,7 @@ type PageTitleProps = {
   };
 };
 
-export function PageTitle({ title, backButton }: PageTitleProps) {
+export function PageTitle({ icon, title, backButton }: PageTitleProps) {
   return (
     <div className="flex items-center gap-2">
       {backButton && (
@@ -48,7 +50,9 @@ export function PageTitle({ title, backButton }: PageTitleProps) {
           <BreadcrumbIcon className="h-6" />
         </div>
       )}
-      <Header1>{title}</Header1>
+      <Header1 className="flex items-center gap-1">
+        {icon && <Icon icon={icon} className="h-5 w-5" />} {title}
+      </Header1>
     </div>
   );
 }

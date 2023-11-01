@@ -47,7 +47,7 @@ client.defineJob({
   name: "HTTP WhatsApp",
   version: "1.0.0",
   enabled: true,
-  trigger: whatsApp.onRequest({ filter: { body: { event: ["message"] } } }),
+  trigger: whatsApp.onRequest(),
   run: async (request, io, ctx) => {
     const body = await request.json();
     const { event } = body;

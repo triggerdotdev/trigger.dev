@@ -1,4 +1,4 @@
-import { PrismaClient } from "@trigger.dev/database";
+import { PrismaClient, TriggerHttpEndpoint } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requestUrl } from "~/utils/requestUrl.server";
@@ -10,6 +10,7 @@ import { IngestSendEvent } from "../events/ingestSendEvent.server";
 import { getSecretStore } from "../secrets/secretStore.server";
 import { createHttpSourceRequest } from "~/utils/createHttpSourceRequest";
 import { ulid } from "../ulid.server";
+import { env } from "~/env.server";
 
 export const HttpEndpointParamsSchema = z.object({
   httpEndpointId: z.string(),
@@ -215,4 +216,19 @@ export class HandleHttpEndpointService {
       })
     );
   }
+}
+
+type GetHttpEndpointUrlParams = {
+  httpEndpointId: string;
+  environment: {
+    slug: string;
+    shortcode: string;
+  };
+};
+
+export function httpEndpointUrl({
+  httpEndpointId,
+  environment: { slug, shortcode },
+}: GetHttpEndpointUrlParams) {
+  return `${env.APP_ORIGIN}/api/v1/httpendpoints/${httpEndpointId}/env/${slug}/${shortcode}`;
 }

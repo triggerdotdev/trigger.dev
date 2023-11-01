@@ -28,6 +28,11 @@ export class HttpEndpointsPresenter {
             environment: {
               select: {
                 type: true,
+                orgMember: {
+                  select: {
+                    userId: true,
+                  },
+                },
               },
             },
           },
@@ -47,6 +52,13 @@ export class HttpEndpointsPresenter {
       },
     });
 
-    return httpEndpoints;
+    return httpEndpoints.map((httpEndpoint) => ({
+      ...httpEndpoint,
+      httpEndpointEnvironments: httpEndpoint.httpEndpointEnvironments.filter(
+        (httpEndpointEnvironment) =>
+          httpEndpointEnvironment.environment.orgMember === null ||
+          httpEndpointEnvironment.environment.orgMember.userId === userId
+      ),
+    }));
   }
 }
