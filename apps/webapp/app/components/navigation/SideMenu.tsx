@@ -127,7 +127,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             />
           </div>
           <div className="mb-1 flex flex-col gap-1 px-1">
-            <SideMenuHeader title="My Org 1">
+            <SideMenuHeader title={organization.title}>
               <PopoverMenuItem to={newProjectPath(organization)} title="New Project" icon="plus" />
               <PopoverMenuItem
                 to={inviteTeamMemberPath(organization)}
