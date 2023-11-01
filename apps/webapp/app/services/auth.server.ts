@@ -11,7 +11,7 @@ const authenticator = new Authenticator<AuthUser>(sessionStorage);
 
 const isGithubAuthSupported =
   typeof env.AUTH_GITHUB_CLIENT_ID === "string" &&
-  typeof env.AUTH_GITHUB_CLIENT_SECRET === "string";
+  typeof env.AUTH_GITHUB_CLIENT_SECRET === "string" && !env.WHITELISTED_EMAILS;
 
 if (env.AUTH_GITHUB_CLIENT_ID && env.AUTH_GITHUB_CLIENT_SECRET) {
   addGitHubStrategy(authenticator, env.AUTH_GITHUB_CLIENT_ID, env.AUTH_GITHUB_CLIENT_SECRET);

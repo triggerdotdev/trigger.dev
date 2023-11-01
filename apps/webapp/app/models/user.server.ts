@@ -2,6 +2,7 @@ import type { Prisma, User } from "@trigger.dev/database";
 import type { GitHubProfile } from "remix-auth-github";
 import { prisma } from "~/db.server";
 export type { User } from "@trigger.dev/database";
+import { env } from "app/env.server";
 
 type FindOrCreateMagicLink = {
   authenticationMethod: "MAGIC_LINK";
@@ -36,24 +37,29 @@ export async function findOrCreateUser(input: FindOrCreateUser): Promise<LoggedI
 export async function findOrCreateMagicLinkUser(
   input: FindOrCreateMagicLink
 ): Promise<LoggedInUser> {
-  const existingUser = await prisma.user.findFirst({
-    where: {
-      email: input.email,
-    },
-  });
-
-  const user = await prisma.user.upsert({
-    where: {
-      email: input.email,
-    },
-    update: { email: input.email },
-    create: { email: input.email, authenticationMethod: "MAGIC_LINK" },
-  });
-
-  return {
-    user,
-    isNewUser: !existingUser,
-  };
+  if (!env.WHITELISTED_EMAILS || new RegExp(env.WHITELISTED_EMAILS).test(input.email)) {
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        email: input.email,
+      },
+    });
+  
+    const user = await prisma.user.upsert({
+      where: {
+        email: input.email,
+      },
+      update: { email: input.email },
+      create: { email: input.email, authenticationMethod: "MAGIC_LINK" },
+    });
+  
+    return {
+      user,
+      isNewUser: !existingUser,
+    };
+  } else {
+    throw new Error("Email does not match Whitelisted Email");
+  }
+  
 }
 
 export async function findOrCreateGithubUser({
