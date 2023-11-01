@@ -26,34 +26,19 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { organizationSlug, projectParam } = ParamsSchema.parse(params);
 
   const orgsPresenter = new OrganizationsPresenter();
-  const organizations = await orgsPresenter.call({ userId });
-
-  const organization = organizations.find((o) => o.slug === organizationSlug);
-  if (!organization) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const { organizations, organization, project } = await orgsPresenter.call({
+    userId,
+    request,
+    organizationSlug,
+    projectSlug: projectParam,
+  });
 
   telemetry.organization.identify({ organization });
-
-  let projectId: string | undefined;
-  if (projectParam) {
-    const project = organization.projects.find((p) => p.slug === projectParam);
-
-    if (!project) {
-      throw new Response("Not Found", { status: 404 });
-    }
-
-    projectId = project.id;
-  } else {
-    projectId = await getCurrentProjectId(request);
-  }
-
-  const currentProject = organization.projects.find((p) => p.id === projectId);
 
   return typedjson({
     organizations,
     organization,
-    currentProject,
+    currentProject: project,
   });
 };
 

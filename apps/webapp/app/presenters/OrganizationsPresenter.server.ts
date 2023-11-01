@@ -1,5 +1,8 @@
-import { PrismaClient, User } from "@trigger.dev/database";
+import { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
+import { getCurrentProjectId } from "~/services/currentProject.server";
+
+type Org = Awaited<ReturnType<OrganizationsPresenter["getOrganizations"]>>[number];
 
 export class OrganizationsPresenter {
   #prismaClient: PrismaClient;
@@ -8,8 +11,31 @@ export class OrganizationsPresenter {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({ userId }: { userId: User["id"] }) {
-    const organizations = await this.#prismaClient.organization.findMany({
+  public async call({
+    userId,
+    organizationSlug,
+    request,
+    projectSlug,
+  }: {
+    userId: string;
+    organizationSlug: string;
+    request: Request;
+    projectSlug?: string;
+  }) {
+    const organizations = await this.getOrganizations(userId);
+
+    const organization = organizations.find((o) => o.slug === organizationSlug);
+    if (!organization) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    const project = await this.getProject(organization, projectSlug, request);
+
+    return { organizations, organization, project };
+  }
+
+  async getOrganizations(userId: string) {
+    const orgs = await this.#prismaClient.organization.findMany({
       where: { members: { some: { userId } } },
       orderBy: { createdAt: "desc" },
       include: {
@@ -46,7 +72,7 @@ export class OrganizationsPresenter {
       },
     });
 
-    return organizations.map((org) => {
+    return orgs.map((org) => {
       return {
         id: org.id,
         slug: org.slug,
@@ -62,5 +88,28 @@ export class OrganizationsPresenter {
         memberCount: org._count.members,
       };
     });
+  }
+
+  async getProject(organization: Org, projectSlug: string | undefined, request: Request) {
+    let projectId: string | undefined;
+    if (projectSlug) {
+      const project = organization.projects.find((p) => p.slug === projectSlug);
+
+      if (!project) {
+        throw new Response("Not Found", { status: 404 });
+      }
+
+      projectId = project.id;
+    } else {
+      projectId = await getCurrentProjectId(request);
+    }
+
+    const currentProject = organization.projects.find((p) => p.id === projectId);
+
+    if (!currentProject) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    return currentProject;
   }
 }
