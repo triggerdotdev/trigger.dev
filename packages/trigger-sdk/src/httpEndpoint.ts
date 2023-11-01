@@ -52,6 +52,7 @@ export class HttpEndpoint<TEventSpecification extends EventSpecification<any>> {
   toJSON(): HttpEndpointMetadata {
     return {
       id: this.options.id,
+      icon: this.options.event.icon,
       version: "1",
       enabled: this.options.enabled ?? true,
       event: this.options.event,

@@ -1,4 +1,4 @@
-import type { Integration, TriggerSource } from "@trigger.dev/database";
+import type { Integration, TriggerHttpEndpoint, TriggerSource } from "@trigger.dev/database";
 import { z } from "zod";
 import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
@@ -10,6 +10,7 @@ export type JobForPath = Pick<Job, "slug">;
 export type RunForPath = Pick<Job, "id">;
 export type IntegrationForPath = Pick<Integration, "slug">;
 export type TriggerForPath = Pick<TriggerSource, "id">;
+export type HttpEndpointForPath = Pick<TriggerHttpEndpoint, "key">;
 
 export const OrganizationParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -165,6 +166,17 @@ export function organizationIntegrationsPath(organization: OrgForPath) {
 
 export function projectTriggersPath(organization: OrgForPath, project: ProjectForPath) {
   return `${projectPath(organization, project)}/triggers`;
+}
+
+export function projectHttpEndpointsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/httpendpoints`;
+}
+export function projectHttpEndpointPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  httpEndpoint: HttpEndpointForPath
+) {
+  return `${projectHttpEndpointsPath(organization, project)}/${httpEndpoint.key}`;
 }
 
 export function projectEnvironmentsPath(organization: OrgForPath, project: ProjectForPath) {

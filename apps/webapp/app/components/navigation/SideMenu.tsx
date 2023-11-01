@@ -23,6 +23,7 @@ import {
   organizationPath,
   organizationTeamPath,
   projectEnvironmentsPath,
+  projectHttpEndpointsPath,
   projectPath,
   projectSetupPath,
   projectTriggersPath,
@@ -122,6 +123,13 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               to={projectTriggersPath(organization, project)}
               data-action="triggers"
               hasWarning={project.hasInactiveExternalTriggers}
+            />
+            <SideMenuItem
+              name="HTTP endpoints"
+              icon="webhook"
+              iconColor="text-lime-500"
+              to={projectHttpEndpointsPath(organization, project)}
+              data-action="httpendpoints"
             />
             <SideMenuItem
               name="Environments & API Keys"
