@@ -23,6 +23,7 @@ import {
   projectSetupPath,
   projectTriggersPath,
 } from "~/utils/pathBuilder";
+import { Feedback } from "../Feedback";
 import { LogoIcon } from "../LogoIcon";
 import { UserAvatar, UserProfilePhoto } from "../UserProfilePhoto";
 import { Badge } from "../primitives/Badge";
@@ -39,7 +40,6 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
-import { Feedback } from "../Feedback";
 
 type SideMenuUser = Pick<User, "email">;
 type SideMenuProject = Pick<
@@ -79,16 +79,19 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
       )}
     >
       <div className="flex h-full flex-col">
-        <SideMenuOrgHeader
+        <div
           className={cn(
-            "border-b px-1 transition",
+            "flex items-center justify-between border-b bg-background px-1 py-1 transition",
             showHeaderDivider ? " border-border" : "border-transparent"
           )}
-          organization={organization}
-          organizations={organizations}
-          project={project}
-          user={user}
-        />
+        >
+          <ProjectSelector
+            organization={organization}
+            organizations={organizations}
+            project={project}
+          />
+          <UserMenu user={user} />
+        </div>
         <div className="h-full overflow-hidden overflow-y-auto pt-2" ref={borderRef}>
           <div className="mb-6 flex flex-col gap-1 px-1">
             <SideMenuHeader title={project.name || "No project found"}>
@@ -194,106 +197,106 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
   );
 }
 
-function SideMenuOrgHeader({
-  className,
+function ProjectSelector({
   project,
   organization,
   organizations,
-  user,
 }: {
-  className?: string;
   project: SideMenuProject;
   organization: MatchedOrganization;
   organizations: MatchedOrganization[];
-  user: SideMenuUser;
 }) {
   const [isOrgMenuOpen, setOrgMenuOpen] = useState(false);
-  const [isProfileMenuOpen, setProfileMenuOpen] = useState(false);
   const navigation = useNavigation();
 
   useEffect(() => {
     setOrgMenuOpen(false);
+  }, [navigation.location?.pathname]);
+
+  return (
+    <Popover onOpenChange={(open) => setOrgMenuOpen(open)} open={isOrgMenuOpen}>
+      <PopoverArrowTrigger
+        isOpen={isOrgMenuOpen}
+        overflowHidden
+        className="h-7 w-full justify-between overflow-hidden py-1 pl-2"
+      >
+        <LogoIcon className="relative -top-px mr-2 h-4 w-4 min-w-[1rem]" />
+        <span className="truncate">{organization.title ?? "Select an organization"}</span>
+      </PopoverArrowTrigger>
+      <PopoverContent
+        className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+        align="start"
+        style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10%)` }}
+      >
+        {organizations.map((organization) => (
+          <Fragment key={organization.id}>
+            <PopoverSectionHeader title={organization.title} />
+            <div className="flex flex-col gap-1 p-1">
+              {organization.projects.map((p) => {
+                const isSelected = p.id === project.id;
+                return (
+                  <PopoverMenuItem
+                    key={p.id}
+                    to={projectPath(organization, p)}
+                    title={
+                      <div className="flex w-full items-center justify-between pl-1 text-bright">
+                        <span className="grow truncate text-left">{p.name}</span>
+                        <Badge className="mr-0.5">{simplur`${p.jobCount} job[|s]`}</Badge>
+                      </div>
+                    }
+                    isSelected={isSelected}
+                    icon="folder"
+                  />
+                );
+              })}
+              <PopoverMenuItem to={newProjectPath(organization)} title="New Project" icon="plus" />
+            </div>
+          </Fragment>
+        ))}
+        <div className="border-t border-slate-800 p-1">
+          <PopoverMenuItem to={newOrganizationPath()} title="New Organization" icon="plus" />
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function UserMenu({ user }: { user: SideMenuUser }) {
+  const [isProfileMenuOpen, setProfileMenuOpen] = useState(false);
+  const navigation = useNavigation();
+
+  useEffect(() => {
     setProfileMenuOpen(false);
   }, [navigation.location?.pathname]);
 
   return (
-    <div className={cn("flex items-center justify-between bg-background px-0 py-1", className)}>
-      <Popover onOpenChange={(open) => setOrgMenuOpen(open)} open={isOrgMenuOpen}>
-        <PopoverArrowTrigger
-          isOpen={isOrgMenuOpen}
-          overflowHidden
-          className="h-7 w-full justify-between overflow-hidden py-1 pl-2"
-        >
-          <LogoIcon className="relative -top-px mr-2 h-4 w-4 min-w-[1rem]" />
-          <span className="truncate">{organization.title ?? "Select an organization"}</span>
-        </PopoverArrowTrigger>
-        <PopoverContent
-          className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
-          align="start"
-          style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10%)` }}
-        >
-          {organizations.map((organization) => (
-            <Fragment key={organization.id}>
-              <PopoverSectionHeader title={organization.title} />
-              <div className="flex flex-col gap-1 p-1">
-                {organization.projects.map((p) => {
-                  const isSelected = p.id === project.id;
-                  return (
-                    <PopoverMenuItem
-                      key={p.id}
-                      to={projectPath(organization, p)}
-                      title={
-                        <div className="flex w-full items-center justify-between pl-1 text-bright">
-                          <span className="grow truncate text-left">{p.name}</span>
-                          <Badge className="mr-0.5">{simplur`${p.jobCount} job[|s]`}</Badge>
-                        </div>
-                      }
-                      isSelected={isSelected}
-                      icon="folder"
-                    />
-                  );
-                })}
-                <PopoverMenuItem
-                  to={newProjectPath(organization)}
-                  title="New Project"
-                  icon="plus"
-                />
-              </div>
-            </Fragment>
-          ))}
-          <div className="border-t border-slate-800 p-1">
-            <PopoverMenuItem to={newOrganizationPath()} title="New Organization" icon="plus" />
+    <Popover onOpenChange={(open) => setProfileMenuOpen(open)}>
+      <PopoverCustomTrigger isOpen={isProfileMenuOpen} className="p-1">
+        <UserAvatar className="h-5 w-5 text-slate-600" />
+      </PopoverCustomTrigger>
+      <PopoverContent
+        className="min-w-[12rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+        align="start"
+      >
+        <Fragment>
+          <PopoverSectionHeader title={user.email} variant="extra-small" />
+          <div className="flex flex-col gap-1 p-1">
+            <PopoverMenuItem
+              to={accountPath()}
+              title="View profile"
+              icon={UserProfilePhoto}
+              leadingIconClassName="text-indigo-500"
+            />
+            <PopoverMenuItem
+              to={logoutPath()}
+              title="Log out"
+              icon={ArrowRightOnRectangleIcon}
+              leadingIconClassName="text-rose-500"
+            />
           </div>
-        </PopoverContent>
-      </Popover>
-      <Popover onOpenChange={(open) => setProfileMenuOpen(open)}>
-        <PopoverCustomTrigger isOpen={isProfileMenuOpen} className="p-1">
-          <UserAvatar className="h-5 w-5 text-slate-600" />
-        </PopoverCustomTrigger>
-        <PopoverContent
-          className="min-w-[12rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
-          align="start"
-        >
-          <Fragment>
-            <PopoverSectionHeader title={user.email} variant="extra-small" />
-            <div className="flex flex-col gap-1 p-1">
-              <PopoverMenuItem
-                to={accountPath()}
-                title="View profile"
-                icon={UserProfilePhoto}
-                leadingIconClassName="text-indigo-500"
-              />
-              <PopoverMenuItem
-                to={logoutPath()}
-                title="Log out"
-                icon={ArrowRightOnRectangleIcon}
-                leadingIconClassName="text-rose-500"
-              />
-            </div>
-          </Fragment>
-        </PopoverContent>
-      </Popover>
-    </div>
+        </Fragment>
+      </PopoverContent>
+    </Popover>
   );
 }
 
