@@ -1,3 +1,4 @@
+import { InboxArrowDownIcon } from "@heroicons/react/24/solid";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
@@ -14,7 +15,6 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
-import { FormTitle } from "~/components/primitives/FormTitle";
 import { Header1 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -105,8 +105,11 @@ export default function LoginMagicLinkPage() {
         <div className="flex flex-col items-center justify-center">
           {magicLinkSent ? (
             <>
-              <FormTitle divide={false} title="We've sent you a magic link!" />
+              <Header1 className="pb-6 text-center text-xl font-normal leading-7 md:text-xl lg:text-2xl">
+                We've sent you a magic link!
+              </Header1>
               <Fieldset className="flex w-full flex-col items-center gap-y-2">
+                <InboxArrowDownIcon className="mb-4 h-12 w-12 text-primary" />
                 <Paragraph className="mb-6 text-center">
                   We sent you an email which contains a magic link that will log you in to your
                   account.
