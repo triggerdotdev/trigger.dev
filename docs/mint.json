@@ -334,6 +334,7 @@
             "sdk/io/logger",
             "sdk/io/sendevent",
             "sdk/io/backgroundfetch",
+            "sdk/io/random",
             "sdk/io/try",
             "sdk/io/registerinterval",
             "sdk/io/unregisterinterval",

@@ -212,6 +212,90 @@ export class IO {
     });
   }
 
+  /** `io.random()` is identical to `Math.random()` when called without options but ensures your random numbers are not regenerated on resume or retry. It will return a pseudo-random floating-point number between optional `min` (default: 0, inclusive) and `max` (default: 1, exclusive). Can optionally `round` to the nearest integer.
+   * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param min Sets the lower bound (inclusive). Can't be higher than `max`.
+   * @param max Sets the upper bound (exclusive). Can't be lower than `min`.
+   * @param round Controls rounding to the nearest integer. Any `max` integer will become inclusive when enabled. Rounding with floating-point bounds may cause unexpected skew and boundary inclusivity.
+   */
+  async random(
+    cacheKey: string | any[],
+    {
+      min = 0,
+      max = 1,
+      round = false,
+    }: {
+      min?: number;
+      max?: number;
+      round?: boolean;
+    } = {}
+  ) {
+    return await this.runTask(
+      cacheKey,
+      async (task) => {
+        if (min > max) {
+          throw new Error(
+            `Lower bound can't be higher than upper bound - min: ${min}, max: ${max}`
+          );
+        }
+
+        if (min === max) {
+          await this.logger.warn(
+            `Lower and upper bounds are identical. The return value is not random and will always be: ${min}`
+          );
+        }
+
+        const withinBounds = (max - min) * Math.random() + min;
+
+        if (!round) {
+          return withinBounds;
+        }
+
+        if (!Number.isInteger(min) || !Number.isInteger(max)) {
+          await this.logger.warn(
+            "Rounding enabled with floating-point bounds. This may cause unexpected skew and boundary inclusivity."
+          );
+        }
+
+        const rounded = Math.round(withinBounds);
+
+        return rounded;
+      },
+      {
+        name: "random",
+        icon: "dice-5-filled",
+        params: { min, max, round },
+        properties: [
+          ...(min === 0
+            ? []
+            : [
+                {
+                  label: "min",
+                  text: String(min),
+                },
+              ]),
+          ...(max === 1
+            ? []
+            : [
+                {
+                  label: "max",
+                  text: String(max),
+                },
+              ]),
+          ...(round === false
+            ? []
+            : [
+                {
+                  label: "round",
+                  text: String(round),
+                },
+              ]),
+        ],
+        style: { style: "minimal" },
+      }
+    );
+  }
+
   /** `io.wait()` waits for the specified amount of time before continuing the Job. Delays work even if you're on a serverless platform with timeouts, or if your server goes down. They utilize [resumability](https://trigger.dev/docs/documentation/concepts/resumability) to ensure that the Run can be resumed after the delay.
    * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param seconds The number of seconds to wait. This can be very long, serverless timeouts are not an issue.
@@ -877,7 +961,7 @@ export class IO {
    */
   brb = this.yield.bind(this);
 
-  /** `io.try()` allows you to run Tasks and catch any errors that are thrown, it's similar to a normal `try/catch` block but works with [io.runTask()](/sdk/io/runtask).
+  /** `io.try()` allows you to run Tasks and catch any errors that are thrown, it's similar to a normal `try/catch` block but works with [io.runTask()](https://trigger.dev/docs/sdk/io/runtask).
    * A regular `try/catch` block on its own won't work as expected with Tasks. Internally `runTask()` throws some special errors to control flow execution. This is necessary to deal with resumability, serverless timeouts, and retrying Tasks.
    * @param tryCallback The code you wish to run
    * @param catchCallback Thhis will be called if the Task fails. The callback receives the error
