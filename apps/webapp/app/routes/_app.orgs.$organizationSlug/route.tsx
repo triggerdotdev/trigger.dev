@@ -1,24 +1,16 @@
-import type { ShouldRevalidateFunction } from "@remix-run/react";
 import { Outlet } from "@remix-run/react";
-import type { LoaderFunctionArgs, Session } from "@remix-run/server-runtime";
-import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
-import invariant from "tiny-invariant";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
-import { Breadcrumb } from "~/components/navigation/Breadcrumb";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
+import { Breadcrumb, BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { SideMenu, SideMenuContainer } from "~/components/navigation/SideMenu";
-import { prisma } from "~/db.server";
-import { useOptionalOrganization, useOrganization } from "~/hooks/useOrganizations";
-import { useOptionalProject, useProject } from "~/hooks/useProject";
+import { useOptionalOrganization } from "~/hooks/useOrganizations";
+import { useOptionalProject } from "~/hooks/useProject";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { useUser } from "~/hooks/useUser";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
-import {
-  commitCurrentProjectSession,
-  getCurrentProjectId,
-  setCurrentProjectId,
-} from "~/services/currentProject.server";
+import { getCurrentProjectId } from "~/services/currentProject.server";
 import { requireUserId } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
 import { Handle } from "~/utils/handle";
@@ -32,8 +24,6 @@ const ParamsSchema = z.object({
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam } = ParamsSchema.parse(params);
-  console.log("$orgslug page", { params, url: request.url });
-  invariant(organizationSlug, "organizationSlug not found");
 
   const orgsPresenter = new OrganizationsPresenter();
   const organizations = await orgsPresenter.call({ userId });
@@ -48,7 +38,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   let projectId: string | undefined;
   if (projectParam) {
     const project = organization.projects.find((p) => p.slug === projectParam);
-    projectId = project?.id;
+
+    if (!project) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    projectId = project.id;
   } else {
     projectId = await getCurrentProjectId(request);
   }
