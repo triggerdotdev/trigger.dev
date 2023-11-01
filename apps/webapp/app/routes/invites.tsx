@@ -106,7 +106,6 @@ export default function Page() {
             LeadingIcon="envelope"
             className="mb-0 text-sky-500"
             title={simplur`You have ${invites.length} new invitation[|s]`}
-            // description={simplur`You've been invited to join ${invites.length} team[|s].`}
           />
           {invites.map((invite) => (
             <Form key={invite.id} method="post" {...form.props}>
