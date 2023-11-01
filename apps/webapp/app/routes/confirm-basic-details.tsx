@@ -22,7 +22,7 @@ import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
 import { requireUserId } from "~/services/session.server";
-import { organizationsPath } from "~/utils/pathBuilder";
+import { rootPath } from "~/utils/pathBuilder";
 
 function createSchema(
   constraints: {
@@ -101,11 +101,7 @@ export const action: ActionFunction = async ({ request }) => {
       email: submission.value.email,
     });
 
-    return redirectWithSuccessMessage(
-      organizationsPath(),
-      request,
-      "Your details have been updated."
-    );
+    return redirectWithSuccessMessage(rootPath(), request, "Your details have been updated.");
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }

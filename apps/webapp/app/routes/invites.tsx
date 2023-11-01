@@ -16,7 +16,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { acceptInvite, declineInvite, getUsersInvites } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser, requireUserId } from "~/services/session.server";
-import { invitesPath, organizationsPath } from "~/utils/pathBuilder";
+import { invitesPath, rootPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -24,7 +24,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   //if there are no invites left we should redirect to the orgs page
   const invites = await getUsersInvites({ email: user.email });
   if (invites.length === 0) {
-    throw redirect(organizationsPath());
+    throw redirect(rootPath());
   }
 
   return typedjson({ invites });
@@ -52,11 +52,7 @@ export const action: ActionFunction = async ({ request }) => {
       });
 
       if (remainingInvites.length === 0) {
-        return redirectWithSuccessMessage(
-          organizationsPath(),
-          request,
-          `You joined ${organization.title}`
-        );
+        return redirectWithSuccessMessage(rootPath(), request, `You joined ${organization.title}`);
       } else {
         return redirectWithSuccessMessage(
           invitesPath(),
@@ -71,7 +67,7 @@ export const action: ActionFunction = async ({ request }) => {
       });
       if (remainingInvites.length === 0) {
         return redirectWithSuccessMessage(
-          organizationsPath(),
+          rootPath(),
           request,
           `You declined the invite for ${organization.title}`
         );

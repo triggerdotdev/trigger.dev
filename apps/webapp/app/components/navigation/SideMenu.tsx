@@ -54,10 +54,6 @@ type SideMenuProps = {
   organizations: MatchedOrganization[];
 };
 
-export function SideMenuContainer({ children }: { children: React.ReactNode }) {
-  return <div className="grid h-full grid-cols-[14rem_auto]">{children}</div>;
-}
-
 export function SideMenu({ user, project, organization, organizations }: SideMenuProps) {
   const borderRef = useRef<HTMLDivElement>(null);
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);
@@ -79,7 +75,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
   return (
     <div
       className={cn(
-        "flex h-full flex-col gap-y-8 overflow-hidden border-r border-uiBorder transition scrollbar-hide"
+        "flex h-full flex-col gap-y-8 overflow-hidden border-r border-uiBorder transition"
       )}
     >
       <div className="flex h-full flex-col">
@@ -120,16 +116,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               hasWarning={project.hasInactiveExternalTriggers}
             />
             <SideMenuItem
-              name="Clients"
-              icon="endpoint"
-              iconColor="text-blue-500"
-              count={4}
-              to="#"
-              data-action="clients"
-            />
-            <SideMenuItem name="job-catalog" to="" subItem />
-            <SideMenuItem
-              name="API Keys"
+              name="Environments & API Keys"
               icon="environment"
               iconColor="text-yellow-500"
               to={projectEnvironmentsPath(organization, project)}

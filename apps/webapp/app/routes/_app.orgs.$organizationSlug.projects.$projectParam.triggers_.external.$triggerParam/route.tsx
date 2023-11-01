@@ -27,7 +27,7 @@ import { requireUser, requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
 import {
   TriggerSourceParamSchema,
-  organizationsPath,
+  rootPath,
   projectTriggersPath,
   externalTriggerPath,
   externalTriggerRunsParentPath,

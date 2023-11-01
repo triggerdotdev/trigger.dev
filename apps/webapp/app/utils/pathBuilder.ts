@@ -57,7 +57,7 @@ export function parentPath(path: string) {
   return trimmedTrailingSlash.substring(0, lastSlashIndex);
 }
 
-export function organizationsPath() {
+export function rootPath() {
   return `/`;
 }
 

@@ -1,5 +1,5 @@
 import { Form, useActionData } from "@remix-run/react";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -12,7 +12,7 @@ import { z } from "zod";
 import { ActionFunction, json, redirect } from "@remix-run/server-runtime";
 import { requireUserId } from "~/services/session.server";
 import { parse } from "@conform-to/zod";
-import { accountPath } from "~/utils/pathBuilder";
+import { accountPath, rootPath } from "~/utils/pathBuilder";
 import { conform, useForm } from "@conform-to/react";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import { Checkbox } from "~/components/primitives/Checkbox";
@@ -20,6 +20,7 @@ import { updateUser } from "~/models/user.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { prisma } from "~/db.server";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
+import { FormTitle } from "~/components/primitives/FormTitle";
 
 function createSchema(
   constraints: {
@@ -124,6 +125,7 @@ export default function Page() {
   return (
     <AppContainer showBackgroundGradient={true}>
       <MainCenteredContainer>
+        <FormTitle LeadingIcon="user" title="Profile" />
         <Form method="post" {...form.props} className="max-w-md">
           <InputGroup className="mb-4">
             <Label htmlFor={name.id}>Profile picture</Label>
@@ -168,6 +170,11 @@ export default function Page() {
                 <Button type="submit" variant={"primary/small"}>
                   Update
                 </Button>
+              }
+              cancelButton={
+                <LinkButton to={rootPath()} variant={"secondary/small"}>
+                  Cancel
+                </LinkButton>
               }
             />
           </Fieldset>

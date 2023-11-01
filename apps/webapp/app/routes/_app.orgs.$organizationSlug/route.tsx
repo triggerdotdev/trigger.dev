@@ -4,7 +4,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { Breadcrumb, BreadcrumbLink } from "~/components/navigation/Breadcrumb";
-import { SideMenu, SideMenuContainer } from "~/components/navigation/SideMenu";
+import { SideMenu } from "~/components/navigation/SideMenu";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
@@ -75,18 +75,18 @@ export default function Organization() {
 
   return (
     <>
-      <SideMenuContainer>
+      <div className="grid grid-cols-[14rem_auto]">
         <SideMenu
           user={user}
           project={project!}
           organization={organization}
           organizations={organizations}
         />
-        <div className="grid h-full grid-rows-[2.75rem_auto]">
+        <div className="grid grid-rows-[2.25rem_auto] ">
           <Breadcrumb />
           <Outlet />
         </div>
-      </SideMenuContainer>
+      </div>
     </>
   );
 }
