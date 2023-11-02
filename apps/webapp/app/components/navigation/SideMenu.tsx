@@ -1,14 +1,16 @@
 import {
   AcademicCapIcon,
   ArrowRightOnRectangleIcon,
+  ChartBarIcon,
   EllipsisHorizontalIcon,
 } from "@heroicons/react/20/solid";
-import { ChartPieIcon, UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
-import { useLocation, useMatches, useNavigation } from "@remix-run/react";
+import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
+import { useNavigation } from "@remix-run/react";
 import { IconExclamationCircle } from "@tabler/icons-react";
 import { AnchorHTMLAttributes, Fragment, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
+import { usePathName } from "~/hooks/usePathName";
 import { MatchedProject } from "~/hooks/useProject";
 import { User } from "~/models/user.server";
 import { cn } from "~/utils/cn";
@@ -29,10 +31,11 @@ import {
   projectTriggersPath,
 } from "~/utils/pathBuilder";
 import { Feedback } from "../Feedback";
+import { ImpersonationBanner } from "../ImpersonationBanner";
 import { LogoIcon } from "../LogoIcon";
 import { UserAvatar, UserProfilePhoto } from "../UserProfilePhoto";
 import { Badge } from "../primitives/Badge";
-import { Button, LinkButton, NavLinkButton } from "../primitives/Buttons";
+import { Button, LinkButton } from "../primitives/Buttons";
 import { Icon } from "../primitives/Icon";
 import { type IconNames } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
@@ -45,8 +48,6 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
-import { usePathName } from "~/hooks/usePathName";
-import { ImpersonationBanner } from "../ImpersonationBanner";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -122,7 +123,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             <SideMenuItem
               name="Triggers"
               icon="trigger"
-              iconColor="text-teal-500"
+              iconColor="text-amber-500"
               to={projectTriggersPath(organization, project)}
               data-action="triggers"
               hasWarning={project.hasInactiveExternalTriggers}
@@ -130,14 +131,14 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             <SideMenuItem
               name="HTTP endpoints"
               icon="http-endpoint"
-              iconColor="text-lime-500"
+              iconColor="text-green-500"
               to={projectHttpEndpointsPath(organization, project)}
               data-action="httpendpoints"
             />
             <SideMenuItem
               name="Environments & API Keys"
               icon="environment"
-              iconColor="text-yellow-500"
+              iconColor="text-rose-500"
               to={projectEnvironmentsPath(organization, project)}
               data-action="environments & api keys"
             />
@@ -169,14 +170,14 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               name="Team"
               icon={UserGroupIcon}
               to={organizationTeamPath(organization)}
-              iconColor="text-indigo-500"
+              iconColor="text-sky-500"
               data-action="team"
             />
             <SideMenuItem
               name="Usage & Billing"
-              icon={ChartPieIcon}
+              icon={ChartBarIcon}
               to={organizationBillingPath(organization)}
-              iconColor="text-sky-500"
+              iconColor="text-pink-500"
               data-action="usage & billing"
             />
           </div>
