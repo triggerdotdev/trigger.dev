@@ -153,6 +153,7 @@ module.exports = {
         devEnv: colors.pink,
         liveEnv: colors.green,
         "ui-border": slate[800],
+        "ui-border-dimmed": slate[900],
       },
       borderRadius: {
         lg: radius,

@@ -31,7 +31,7 @@ export default function Page() {
           <PageButtons>
             <LinkButton
               to={newProjectPath(organization)}
-              variant="primary/small"
+              variant="secondary/small"
               shortcut={{ key: "n" }}
             >
               Create a new project
@@ -46,13 +46,13 @@ export default function Page() {
               return (
                 <li key={project.id}>
                   <Link
-                    className="flex gap-4 rounded-md border border-slate-850 bg-slate-900 bg-gradient-to-b from-indigo-900/60 to-slate-900 to-70% p-4"
+                    className="flex gap-4 rounded-md border border-ui-border-dimmed p-4 transition hover:bg-slate-900 "
                     to={projectPath(organization, project)}
                   >
                     <NamedIcon name="folder" className="h-10 w-10 flex-none" />
                     <div className="flex flex-col">
                       <Header3>{project.name}</Header3>
-                      <Paragraph variant="small">{simplur`${project.jobCount} job[|s]`}</Paragraph>
+                      <Paragraph variant="small">{simplur`${project.jobCount} Job[|s]`}</Paragraph>
                     </div>
                   </Link>
                 </li>
