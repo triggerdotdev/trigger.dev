@@ -99,7 +99,10 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
           />
           <UserMenu user={user} />
         </div>
-        <div className="h-full overflow-hidden overflow-y-auto pt-2" ref={borderRef}>
+        <div
+          className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+          ref={borderRef}
+        >
           <div className="mb-6 flex flex-col gap-1 px-1">
             <SideMenuHeader title={project.name || "No project found"}>
               <PopoverMenuItem
