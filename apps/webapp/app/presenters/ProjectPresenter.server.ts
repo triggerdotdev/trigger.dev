@@ -97,6 +97,7 @@ export class ProjectPresenter {
                 deletedAt: null,
               },
             },
+            httpEndpoints: true,
           },
         },
         organization: {
@@ -142,6 +143,7 @@ export class ProjectPresenter {
       updatedAt: project.updatedAt,
       hasInactiveExternalTriggers: project._count.sources > 0,
       jobCount: project._count.jobs,
+      httpEndpointCount: project._count.httpEndpoints,
       environments: project.environments.map((environment) => ({
         id: environment.id,
         slug: environment.slug,

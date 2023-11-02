@@ -1,6 +1,7 @@
 import { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { getCurrentProjectId } from "~/services/currentProject.server";
+import { ProjectPresenter } from "./ProjectPresenter.server";
 
 type Org = Awaited<ReturnType<OrganizationsPresenter["getOrganizations"]>>[number];
 
@@ -29,7 +30,7 @@ export class OrganizationsPresenter {
       throw new Response("Not Found", { status: 404 });
     }
 
-    const project = await this.getProject(organization, projectSlug, request);
+    const project = await this.getProject(organization, projectSlug, request, userId);
 
     return { organizations, organization, project };
   }
@@ -55,6 +56,7 @@ export class OrganizationsPresenter {
                     active: false,
                   },
                 },
+                httpEndpoints: true,
               },
             },
           },
@@ -82,7 +84,6 @@ export class OrganizationsPresenter {
           slug: project.slug,
           name: project.name,
           jobCount: project._count.jobs,
-          hasInactiveExternalTriggers: project._count.sources > 0,
         })),
         hasUnconfiguredIntegrations: org._count.integrations > 0,
         memberCount: org._count.members,
@@ -90,26 +91,27 @@ export class OrganizationsPresenter {
     });
   }
 
-  async getProject(organization: Org, projectSlug: string | undefined, request: Request) {
-    let projectId: string | undefined;
-    if (projectSlug) {
-      const project = organization.projects.find((p) => p.slug === projectSlug);
+  async getProject(
+    organization: Org,
+    projectSlug: string | undefined,
+    request: Request,
+    userId: string
+  ) {
+    const projectPresenter = new ProjectPresenter();
 
-      if (!project) {
+    if (!projectSlug) {
+      const projectId = await getCurrentProjectId(request);
+      const orgProject = organization.projects.find((p) => p.id === projectId);
+      if (!orgProject) {
         throw new Response("Not Found", { status: 404 });
       }
-
-      projectId = project.id;
-    } else {
-      projectId = await getCurrentProjectId(request);
+      projectSlug = orgProject.slug;
     }
 
-    const currentProject = organization.projects.find((p) => p.id === projectId);
-
-    if (!currentProject) {
+    const project = await projectPresenter.call({ userId, slug: projectSlug });
+    if (!project) {
       throw new Response("Not Found", { status: 404 });
     }
-
-    return currentProject;
+    return project;
   }
 }

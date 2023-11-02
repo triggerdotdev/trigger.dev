@@ -68,7 +68,7 @@ export default function Organization() {
       <div className="grid grid-cols-[14rem_1fr] overflow-hidden">
         <SideMenu
           user={{ ...user, isImpersonating }}
-          project={project!}
+          project={project}
           organization={organization}
           organizations={organizations}
         />

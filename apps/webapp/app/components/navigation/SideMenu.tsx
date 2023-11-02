@@ -52,7 +52,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../pri
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
   MatchedProject,
-  "id" | "name" | "slug" | "hasInactiveExternalTriggers" | "jobCount"
+  "id" | "name" | "slug" | "hasInactiveExternalTriggers" | "jobCount" | "httpEndpointCount"
 >;
 
 type SideMenuProps = {
@@ -132,6 +132,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               name="HTTP endpoints"
               icon="http-endpoint"
               iconColor="text-green-500"
+              count={project.httpEndpointCount}
               to={projectHttpEndpointsPath(organization, project)}
               data-action="httpendpoints"
             />
