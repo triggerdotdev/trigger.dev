@@ -163,10 +163,6 @@ export default function Job() {
             { label: "Runs", to: jobPath(organization, project, job) },
             { label: "Test", to: jobTestPath(organization, project, job) },
             {
-              label: "Trigger",
-              to: jobTriggerPath(organization, project, job),
-            },
-            {
               label: "Settings",
               to: jobSettingsPath(organization, project, job),
             },
