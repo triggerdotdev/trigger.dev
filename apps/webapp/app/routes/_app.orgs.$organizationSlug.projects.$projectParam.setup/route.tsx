@@ -5,7 +5,7 @@ import { trimTrailingSlash } from "~/utils/pathBuilder";
 
 export const handle: Handle = {
   breadcrumb: (match) => (
-    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Onboarding" />
+    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Framework setup" />
   ),
 };
 
