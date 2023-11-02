@@ -126,7 +126,7 @@ export default function Page() {
         <FormTitle
           LeadingIcon="invite-member"
           title="Invite team members"
-          description={`Invite a new team member to ${organization.title}.`}
+          description={`Invite new team members to ${organization.title}.`}
         />
         <Form method="post" {...form.props}>
           <Fieldset>
