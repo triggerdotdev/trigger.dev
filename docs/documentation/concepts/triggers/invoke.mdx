@@ -4,6 +4,8 @@ sidebarTitle: "Manual Invoke"
 description: "Invoke Jobs manually using the invoke Trigger"
 ---
 
+<Warning>This feature is in beta and not yet available to use on the Trigger.dev Cloud.</Warning>
+
 Sometimes it makes sense to be able to invoke a Job manually, without having to specify an event, especially for cases where you want to get notified when the invoked Job Run is complete.
 
 To specify that a job is manually invokable, you can use the `invokeTrigger()` function when defining a job:
@@ -290,3 +292,91 @@ client.defineJob({
 </Note>
 
 The return value of `invokeAndWaitForCompletion` is a [RunNotification](/sdk/run-notification) object.
+
+### Batch invoke and wait for completion
+
+You can also batch invoke jobs and wait for them all to complete before continuing execution of the current job:
+
+```ts
+import { exampleJob } from "./exampleJob";
+
+client.defineJob({
+  id: "example-job2",
+  name: "Example job 2",
+  version: "1.0.1",
+  trigger: intervalTrigger({
+    seconds: 60,
+  }),
+  run: async (payload, io, ctx) => {
+    const runs = await exampleJob.batchInvokeAndWaitForCompletion("⚡", [
+      {
+        payload: {
+          userId: "123",
+          tier: "free",
+        },
+        timeoutInSeconds: 86_400, // 24 hours
+      },
+      {
+        payload: {
+          userId: "abc",
+          tier: "paid",
+        },
+        timeoutInSeconds: 86_400, // 24 hours
+      },
+    ]);
+
+    // runs is an array of RunNotification objects
+  },
+});
+```
+
+You can batch up to 25 invocations at once, and we will run them in parallel and wait for all of them to complete before continuing execution of the current job.
+
+You can in an optional `options` object to each invocation, if you want to pass `context` and `accountId` to each invocation:
+
+```ts
+import { exampleJob } from "./exampleJob";
+
+client.defineJob({
+  id: "example-job2",
+  name: "Example job 2",
+  version: "1.0.1",
+  trigger: intervalTrigger({
+    seconds: 60,
+  }),
+  run: async (payload, io, ctx) => {
+    const runs = await exampleJob.batchInvokeAndWaitForCompletion("⚡", [
+      {
+        payload: {
+          userId: "123",
+          tier: "free",
+        },
+        timeoutInSeconds: 86_400, // 24 hours
+        options: {
+          context: {
+            traceId: "trace_123",
+            correlationId: "def456",
+          },
+          accountId: "abc123",
+        },
+      },
+      {
+        payload: {
+          userId: "abc",
+          tier: "paid",
+        },
+        timeoutInSeconds: 86_400, // 24 hours
+        options: {
+          context: {
+            traceId: "trace_abc",
+            correlationId: "defabc",
+          },
+          accountId: "abc123",
+        },
+      },
+    ]);
+
+    // runs is an array of RunNotification objects
+  },
+});
+```
