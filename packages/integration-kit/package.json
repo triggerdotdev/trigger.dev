@@ -34,7 +34,8 @@
     "typecheck": "tsup --dts-resolve --no-dts"
   },
   "dependencies": {
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "@trigger.dev/core": "workspace:*"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -6,6 +6,7 @@ import {
   ErrorWithStackSchema,
   FetchRequestInit,
   FetchRetryOptions,
+  FetchTimeoutOptions,
   InitialStatusUpdate,
   IntervalOptions,
   LogLevel,
@@ -302,7 +303,8 @@ export class IO {
     cacheKey: string | any[],
     url: string,
     requestInit?: FetchRequestInit,
-    retry?: FetchRetryOptions
+    retry?: FetchRetryOptions,
+    timeout?: FetchTimeoutOptions
   ): Promise<TResponseData> {
     const urlObject = new URL(url);
 
@@ -313,7 +315,7 @@ export class IO {
       },
       {
         name: `fetch ${urlObject.hostname}${urlObject.pathname}`,
-        params: { url, requestInit, retry },
+        params: { url, requestInit, retry, timeout },
         operation: "fetch",
         icon: "background",
         noop: false,
@@ -331,7 +333,11 @@ export class IO {
             label: "background",
             text: "true",
           },
+          ...(timeout ? [{ label: "timeout", text: `${timeout.durationInMs}ms` }] : []),
         ],
+        retry: {
+          limit: 0,
+        },
       }
     )) as TResponseData;
   }

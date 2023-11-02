@@ -4,6 +4,7 @@ import {
   FetchRetryOptions,
   FetchRetryStrategy,
   RedactString,
+  RetryOptions,
   calculateRetryAt,
 } from "@trigger.dev/core";
 import { type Task } from "@trigger.dev/database";
@@ -38,8 +39,6 @@ export class PerformTaskOperationService {
       return await this.#resumeTask(task, null, 0);
     }
 
-    logger.debug("PerformTaskOperationService.call", { task });
-
     switch (task.operation) {
       case "fetch": {
         const fetchOperation = FetchOperationSchema.safeParse(task.params);
@@ -51,59 +50,100 @@ export class PerformTaskOperationService {
           );
         }
 
-        const { url, requestInit, retry } = fetchOperation.data;
+        const { url, requestInit, retry, timeout } = fetchOperation.data;
 
         const startTimeInMs = performance.now();
 
         const abortController = new AbortController();
 
-        setTimeout(() => {
+        // calculate the actual timeout. If timeoutInMs is undefined, we use the default of 120s
+        // Also make sure the timeout is at least 1s, but not bigger than 120s
+        const actualTimeoutInMs = Math.min(Math.max(timeout?.durationInMs ?? 120000, 1000), 120000);
+
+        const timeoutId = setTimeout(() => {
           abortController.abort();
-        }, 1000);
+        }, actualTimeoutInMs);
 
-        const response = await fetch(url, {
-          method: requestInit?.method ?? "GET",
-          headers: normalizeHeaders(requestInit?.headers ?? {}),
-          body: requestInit?.body,
-          signal: abortController.signal,
-        });
+        try {
+          logger.debug("PerformTaskOperationService.call fetch request", {
+            task,
+            actualTimeoutInMs,
+            url,
+            retry,
+          });
 
-        const durationInMs = Math.floor(performance.now() - startTimeInMs);
+          const response = await fetch(url, {
+            method: requestInit?.method ?? "GET",
+            headers: normalizeHeaders(requestInit?.headers ?? {}),
+            body: requestInit?.body,
+            signal: abortController.signal,
+          });
 
-        const jsonBody = await safeJsonFromResponse(response);
+          clearTimeout(timeoutId);
 
-        logger.debug("PerformTaskOperationService.call.fetch", {
-          url,
-          requestInit,
-          retry,
-          statusCode: response.status,
-          headers: Object.fromEntries(response.headers.entries()),
-          jsonBody,
-          durationInMs,
-        });
+          const durationInMs = Math.floor(performance.now() - startTimeInMs);
 
-        if (!response.ok) {
-          const retryAt = this.#calculateRetryForResponse(task, retry, response);
+          const jsonBody = await safeJsonFromResponse(response);
 
-          if (retryAt) {
-            return await this.#retryTaskWithError(
-              task,
-              `Fetch failed with status ${response.status}`,
-              retryAt
-            );
+          logger.debug("PerformTaskOperationService.call fetch response", {
+            url,
+            requestInit,
+            retry,
+            statusCode: response.status,
+            headers: Object.fromEntries(response.headers.entries()),
+            jsonBody,
+            durationInMs,
+          });
+
+          if (!response.ok) {
+            const retryAt = this.#calculateRetryForResponse(task, retry, response);
+
+            if (retryAt) {
+              return await this.#retryTaskWithError(
+                task,
+                `Fetch failed with status ${response.status}`,
+                retryAt
+              );
+            }
+
+            // See if there is a json body
+            if (jsonBody) {
+              return await this.#resumeTaskWithError(task, jsonBody);
+            } else {
+              return await this.#resumeTaskWithError(task, {
+                message: `Fetch failed with status ${response.status}`,
+              });
+            }
           }
 
-          // See if there is a json body
-          if (jsonBody) {
-            return await this.#resumeTaskWithError(task, jsonBody);
-          } else {
+          return await this.#resumeTask(task, jsonBody, durationInMs);
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            const durationInMs = Math.floor(performance.now() - startTimeInMs);
+
+            logger.debug("PerformTaskOperationService.call fetch timed out", {
+              url,
+              durationInMs,
+              error,
+            });
+
+            const retryAt = this.#calculateRetryForTimeout(task, timeout?.retry);
+
+            if (retryAt) {
+              return await this.#retryTaskWithError(
+                task,
+                `Fetch timed out after ${actualTimeoutInMs.toFixed(0)}ms`,
+                retryAt
+              );
+            }
+
             return await this.#resumeTaskWithError(task, {
-              message: `Fetch failed with status ${response.status}`,
+              message: `Fetch timed out after ${actualTimeoutInMs.toFixed(0)}ms`,
             });
           }
-        }
 
-        return await this.#resumeTask(task, jsonBody, durationInMs);
+          throw error;
+        }
       }
       default: {
         await this.#resumeTaskWithError(task, {
@@ -147,6 +187,17 @@ export class PerformTaskOperationService {
         }
       }
     }
+  }
+
+  #calculateRetryForTimeout(
+    task: NonNullable<FoundTask>,
+    retry: RetryOptions | undefined
+  ): Date | undefined {
+    if (!retry) {
+      return;
+    }
+
+    return calculateRetryAt(retry, task.attempts.length - 1);
   }
 
   #getRetryStrategyForStatusCode(

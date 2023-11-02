@@ -324,6 +324,13 @@ export class TriggerClient {
 
         const results = await this.#executeJob(execution.data, job, timeOrigin, triggerVersion);
 
+        this.#internalLogger.debug("executed job", {
+          results,
+          job: job.id,
+          version: job.version,
+          triggerVersion,
+        });
+
         return {
           status: 200,
           body: results,

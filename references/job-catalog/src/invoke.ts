@@ -137,15 +137,24 @@ const openaiJob = client.defineJob({
     openai,
   },
   run: async (payload, io, ctx) => {
-    return await io.openai.chat.completions.backgroundCreate("background-chat-completion", {
-      model: payload.model,
-      messages: [
-        {
-          role: "user",
-          content: payload.prompt,
+    return await io.openai.chat.completions.backgroundCreate(
+      "background-chat-completion",
+      {
+        model: payload.model,
+        messages: [
+          {
+            role: "user",
+            content: payload.prompt,
+          },
+        ],
+      },
+      {},
+      {
+        timeout: {
+          durationInMs: 15000,
         },
-      ],
-    });
+      }
+    );
   },
 });
 
