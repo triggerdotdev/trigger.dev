@@ -116,7 +116,7 @@ const variant = {
     shortcut: undefined,
   },
   "small-menu-item": {
-    textColor: "text-bright",
+    textColor: "text-bright px-0",
     button:
       "h-[1.8rem] px-[0.4rem] text-2sm rounded-sm text-dimmed bg-transparent group-hover:bg-slate-850 transition",
     icon: "h-4",
