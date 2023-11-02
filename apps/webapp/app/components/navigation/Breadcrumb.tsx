@@ -10,7 +10,7 @@ export function Breadcrumb() {
   const matches = useMatches() as UIMatch<unknown, Handle>[];
 
   return (
-    <div className="hidden items-center border-b border-uiBorder px-1 md:flex">
+    <div className="flex items-center border-b border-uiBorder px-1">
       {matches
         .filter((b) => b.handle && b.handle.breadcrumb)
         .map((match, index) => {
