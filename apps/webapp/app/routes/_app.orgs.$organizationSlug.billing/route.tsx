@@ -172,7 +172,7 @@ export default function Page() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="w-1/2 overflow-y-auto rounded border border-border px-3 py-6">
+          <div className="w-1/2 overflow-y-auto rounded border border-border px-3 py-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
             <div className="mb-2 flex items-baseline justify-between border-b border-border px-3 pb-4">
               <Header2 className="">Jobs</Header2>
               <Header2 className="">Runs</Header2>
