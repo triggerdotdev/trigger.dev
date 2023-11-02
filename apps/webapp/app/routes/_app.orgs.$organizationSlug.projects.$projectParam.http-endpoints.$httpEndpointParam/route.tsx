@@ -171,7 +171,7 @@ export default function Page() {
                 {unconfiguredEnvironments.length > 0 && (
                   <>
                     <Header1 spacing>Not deployed</Header1>
-                    <Paragraph spacing>
+                    <Paragraph spacing variant="small">
                       You need to deploy your code for the following environments to receive
                       webhooks –{" "}
                       <TextLink to={docsPath("documentation/guides/deployment")}>
