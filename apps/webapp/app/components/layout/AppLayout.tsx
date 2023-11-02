@@ -80,8 +80,8 @@ export function PageBodyPadding({ children }: { children: React.ReactNode }) {
 
 export function MainCenteredContainer({ children }: { children: React.ReactNode }) {
   return (
-    <div className="h-full w-full">
-      <div className="mx-auto mt-[30vh] max-w-xs">{children}</div>
+    <div className="h-full w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+      <div className="mx-auto mt-[25vh] max-w-xs overflow-y-auto">{children}</div>
     </div>
   );
 }
