@@ -145,7 +145,7 @@ export default function LoginMagicLinkPage() {
               <Header1 className="pb-4 font-normal sm:text-2xl md:text-3xl lg:text-4xl">
                 Welcome
               </Header1>
-              <Paragraph variant="base" className="mb-6">
+              <Paragraph variant="base" className="mb-6 text-center">
                 Create an account or login using email
               </Paragraph>
               <Fieldset className="flex w-full flex-col items-center gap-y-2">
