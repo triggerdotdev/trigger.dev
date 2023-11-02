@@ -126,7 +126,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             />
             <SideMenuItem
               name="HTTP endpoints"
-              icon="webhook"
+              icon="http-endpoint"
               iconColor="text-lime-500"
               to={projectHttpEndpointsPath(organization, project)}
               data-action="httpendpoints"

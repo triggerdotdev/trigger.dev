@@ -59,19 +59,19 @@ import {
 import { CompanyIcon, hasIcon } from "@trigger.dev/companyicons";
 import { ActivityIcon, HourglassIcon } from "lucide-react";
 import { DynamicTriggerIcon } from "~/assets/icons/DynamicTriggerIcon";
+import { EndpointIcon } from "~/assets/icons/EndpointIcon";
 import { ErrorIcon } from "~/assets/icons/ErrorIcon";
+import { OneTreeIcon } from "~/assets/icons/OneTreeIcon";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { SaplingIcon } from "~/assets/icons/SaplingIcon";
 import { ScheduleIcon } from "~/assets/icons/ScheduleIcon";
+import { TwoTreesIcon } from "~/assets/icons/TwoTreesIcon";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { cn } from "~/utils/cn";
+import { tablerIcons } from "~/utils/tablerIcons";
 import { LogoIcon } from "../LogoIcon";
 import { Spinner } from "./Spinner";
-import { SaplingIcon } from "~/assets/icons/SaplingIcon";
-import { TwoTreesIcon } from "~/assets/icons/TwoTreesIcon";
-import { OneTreeIcon } from "~/assets/icons/OneTreeIcon";
-import { tablerIcons } from "~/utils/tablerIcons";
 import tablerSpritePath from "./tabler-sprite.svg";
-import { EndpointIcon } from "~/assets/icons/EndpointIcon";
-import { RunsIcon } from "~/assets/icons/RunsIcon";
 
 const icons = {
   account: (className: string) => <UserCircleIcon className={cn("text-slate-400", className)} />,
@@ -186,6 +186,9 @@ const icons = {
   ),
   webhook: (className: string) => <WebhookIcon className={cn("text-pink-500", className)} />,
   endpoint: (className: string) => <EndpointIcon className={cn("text-blue-500", className)} />,
+  "http-endpoint": (className: string) => (
+    <GlobeAltIcon className={cn("text-blue-500", className)} />
+  ),
   runs: (className: string) => <RunsIcon className={cn("text-lime-500", className)} />,
 };
 
