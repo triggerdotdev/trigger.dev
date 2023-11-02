@@ -26,6 +26,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { TextLink } from "~/components/primitives/TextLink";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
@@ -172,7 +173,11 @@ export default function Page() {
                     <Header1 spacing>Not deployed</Header1>
                     <Paragraph spacing>
                       You need to deploy your code for the following environments to receive
-                      webhooks
+                      webhooks –{" "}
+                      <TextLink to={docsPath("documentation/guides/deployment")}>
+                        read our deployment guide
+                      </TextLink>
+                      .
                     </Paragraph>
                     <div className="mb-8">
                       <Table fullWidth>
