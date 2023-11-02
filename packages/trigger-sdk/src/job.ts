@@ -300,6 +300,66 @@ export class Job<
     )) as RunNotification<TOutput>;
   }
 
+  async batchInvokeAndWaitForCompletion(
+    cacheKey: string | string[],
+    batch: Array<{
+      payload: TriggerInvokeType<TTrigger>;
+      timeoutInSeconds?: number;
+      options?: Prettify<Pick<InvokeOptions, "accountId" | "context">>;
+    }>
+  ): Promise<Array<RunNotification<TOutput>>> {
+    const runStore = runLocalStorage.getStore();
+
+    if (!runStore) {
+      throw new Error(
+        "Cannot invoke a job from outside of a run using batchInvokeAndWaitForCompletion."
+      );
+    }
+
+    // If there are no items in the batch, return an empty array
+    if (batch.length === 0) {
+      return [];
+    }
+
+    // If there are too many items in the batch, throw an error
+    if (batch.length > 25) {
+      throw new Error(
+        `Cannot batch invoke more than 25 items. You tried to batch invoke ${batch.length} items.`
+      );
+    }
+
+    const { io, ctx } = runStore;
+
+    const results = await io.parallel(
+      cacheKey,
+      batch,
+      async (item, index) => {
+        return (await this.invokeAndWaitForCompletion(
+          String(index),
+          item.payload,
+          item.timeoutInSeconds ?? 60 * 60,
+          item.options
+        )) as RunNotification<{}>;
+      },
+      {
+        name: `Batch Invoke '${this.name}'`,
+        properties: [
+          {
+            label: "Job",
+            text: this.id,
+            url: `/orgs/${ctx.organization.slug}/projects/${ctx.project.slug}/jobs/${this.id}`,
+          },
+          {
+            label: "Env",
+            text: ctx.environment.slug,
+          },
+        ],
+      }
+    );
+
+    return results as Array<RunNotification<TOutput>>;
+  }
+
   // Make sure the id is valid (must only contain alphanumeric characters and dashes)
   // Make sure the version is valid (must be a valid semver version)
   #validate() {

@@ -25,6 +25,7 @@ export function taskWithAttemptsToServerTask(task: TaskWithAttempts): ServerTask
     operation: task.operation,
     callbackUrl: task.callbackUrl,
     forceYield: task.run.forceYieldImmediately,
+    childExecutionMode: task.childExecutionMode,
   };
 }
 

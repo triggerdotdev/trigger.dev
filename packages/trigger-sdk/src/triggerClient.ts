@@ -25,6 +25,7 @@ import {
   RegisterTriggerBodyV2,
   RunJobBody,
   RunJobBodySchema,
+  RunJobErrorResponse,
   RunJobResponse,
   ScheduleMetadata,
   SendEvent,
@@ -38,6 +39,7 @@ import {
   AutoYieldWithCompletedTaskExecutionError,
   CanceledWithTaskError,
   ParsedPayloadSchemaError,
+  ResumeWithParallelTaskError,
   ResumeWithTaskError,
   RetryWithTaskError,
   YieldExecutionError,
@@ -796,87 +798,102 @@ export class TriggerClient {
         this.#logIOStats(io.stats);
       }
 
-      if (error instanceof AutoYieldExecutionError) {
+      if (error instanceof ResumeWithParallelTaskError) {
         return {
-          status: "AUTO_YIELD_EXECUTION",
-          location: error.location,
-          timeRemaining: error.timeRemaining,
-          timeElapsed: error.timeElapsed,
-          limit: body.runChunkExecutionLimit,
-        };
-      }
-
-      if (error instanceof AutoYieldWithCompletedTaskExecutionError) {
-        return {
-          status: "AUTO_YIELD_EXECUTION_WITH_COMPLETED_TASK",
-          id: error.id,
-          properties: error.properties,
-          output: error.output,
-          data: {
-            ...error.data,
-            limit: body.runChunkExecutionLimit,
-          },
-        };
-      }
-
-      if (error instanceof YieldExecutionError) {
-        return { status: "YIELD_EXECUTION", key: error.key };
-      }
-
-      if (error instanceof ParsedPayloadSchemaError) {
-        return { status: "INVALID_PAYLOAD", errors: error.schemaErrors };
-      }
-
-      if (error instanceof ResumeWithTaskError) {
-        return { status: "RESUME_WITH_TASK", task: error.task };
-      }
-
-      if (error instanceof RetryWithTaskError) {
-        return {
-          status: "RETRY_WITH_TASK",
+          status: "RESUME_WITH_PARALLEL_TASK",
           task: error.task,
-          error: error.cause,
-          retryAt: error.retryAt,
+          childErrors: error.childErrors.map((childError) => {
+            return this.#convertErrorToExecutionResponse(childError, body);
+          }),
         };
       }
 
-      if (error instanceof CanceledWithTaskError) {
-        return {
-          status: "CANCELED",
-          task: error.task,
-        };
-      }
+      return this.#convertErrorToExecutionResponse(error, body);
+    }
+  }
 
-      if (error instanceof RetryWithTaskError) {
-        const errorWithStack = ErrorWithStackSchema.safeParse(error.cause);
-
-        if (errorWithStack.success) {
-          return {
-            status: "ERROR",
-            error: errorWithStack.data,
-            task: error.task,
-          };
-        }
-
-        return {
-          status: "ERROR",
-          error: { message: "Unknown error" },
-          task: error.task,
-        };
-      }
-
-      const errorWithStack = ErrorWithStackSchema.safeParse(error);
-
-      if (errorWithStack.success) {
-        return { status: "ERROR", error: errorWithStack.data };
-      }
-
-      const message = typeof error === "string" ? error : JSON.stringify(error);
+  #convertErrorToExecutionResponse(error: any, body: RunJobBody): RunJobErrorResponse {
+    if (error instanceof AutoYieldExecutionError) {
       return {
-        status: "ERROR",
-        error: { name: "Unknown error", message },
+        status: "AUTO_YIELD_EXECUTION",
+        location: error.location,
+        timeRemaining: error.timeRemaining,
+        timeElapsed: error.timeElapsed,
+        limit: body.runChunkExecutionLimit,
       };
     }
+
+    if (error instanceof AutoYieldWithCompletedTaskExecutionError) {
+      return {
+        status: "AUTO_YIELD_EXECUTION_WITH_COMPLETED_TASK",
+        id: error.id,
+        properties: error.properties,
+        output: error.output,
+        data: {
+          ...error.data,
+          limit: body.runChunkExecutionLimit,
+        },
+      };
+    }
+
+    if (error instanceof YieldExecutionError) {
+      return { status: "YIELD_EXECUTION", key: error.key };
+    }
+
+    if (error instanceof ParsedPayloadSchemaError) {
+      return { status: "INVALID_PAYLOAD", errors: error.schemaErrors };
+    }
+
+    if (error instanceof ResumeWithTaskError) {
+      return { status: "RESUME_WITH_TASK", task: error.task };
+    }
+
+    if (error instanceof RetryWithTaskError) {
+      return {
+        status: "RETRY_WITH_TASK",
+        task: error.task,
+        error: error.cause,
+        retryAt: error.retryAt,
+      };
+    }
+
+    if (error instanceof CanceledWithTaskError) {
+      return {
+        status: "CANCELED",
+        task: error.task,
+      };
+    }
+
+    if (error instanceof RetryWithTaskError) {
+      const errorWithStack = ErrorWithStackSchema.safeParse(error.cause);
+
+      if (errorWithStack.success) {
+        return {
+          status: "ERROR",
+          error: errorWithStack.data,
+          task: error.task,
+        };
+      }
+
+      return {
+        status: "ERROR",
+        error: { message: "Unknown error" },
+        task: error.task,
+      };
+    }
+
+    const errorWithStack = ErrorWithStackSchema.safeParse(error);
+
+    if (errorWithStack.success) {
+      return { status: "ERROR", error: errorWithStack.data };
+    }
+
+    const message = typeof error === "string" ? error : JSON.stringify(error);
+
+    return {
+      status: "ERROR",
+      error: { name: "Unknown error", message },
+    };
   }
 
   #createRunContext(execution: RunJobBody): TriggerContext {

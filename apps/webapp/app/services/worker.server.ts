@@ -13,16 +13,17 @@ import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
 import { integrationAuthRepository } from "./externalApis/integrationAuthRepository.server";
 import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
 import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated.server";
-import { PerformRunExecutionV2Service } from "./runs/performRunExecutionV2.server";
+import { PerformRunExecutionV3Service } from "./runs/performRunExecutionV3.server";
 import { StartRunService } from "./runs/startRun.server";
 import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.server";
 import { ActivateSourceService } from "./sources/activateSource.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
-import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout";
+import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout.server";
 import { ProbeEndpointService } from "./endpoints/probeEndpoint.server";
 import { DeliverRunSubscriptionService } from "./runs/deliverRunSubscription.server";
 import { DeliverRunSubscriptionsService } from "./runs/deliverRunSubscriptions.server";
+import { ResumeTaskService } from "./tasks/resumeTask.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -89,6 +90,9 @@ const workerCatalog = {
   deliverRunSubscription: z.object({
     id: z.string(),
   }),
+  resumeTask: z.object({
+    id: z.string(),
+  }),
 };
 
 const executionWorkerCatalog = {
@@ -97,6 +101,10 @@ const executionWorkerCatalog = {
     reason: z.enum(["EXECUTE_JOB", "PREPROCESS"]),
     resumeTaskId: z.string().optional(),
     isRetry: z.boolean(),
+  }),
+  performRunExecutionV3: z.object({
+    id: z.string(),
+    reason: z.enum(["EXECUTE_JOB", "PREPROCESS"]),
   }),
 };
 
@@ -361,6 +369,15 @@ function getWorkerQueue() {
           await service.call(payload.id);
         },
       },
+      resumeTask: {
+        priority: 0,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new ResumeTaskService();
+
+          return await service.call(payload.id);
+        },
+      },
     },
   });
 }
@@ -384,13 +401,26 @@ function getExecutionWorkerQueue() {
         priority: 0, // smaller number = higher priority
         maxAttempts: 12,
         handler: async (payload, job) => {
-          const service = new PerformRunExecutionV2Service();
+          const service = new PerformRunExecutionV3Service();
 
           await service.call({
             id: payload.id,
             reason: payload.reason,
             resumeTaskId: payload.resumeTaskId,
             isRetry: payload.isRetry,
+          });
+        },
+      },
+      performRunExecutionV3: {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 12,
+        handler: async (payload, job) => {
+          const service = new PerformRunExecutionV3Service();
+
+          await service.call({
+            id: payload.id,
+            reason: payload.reason,
+            isRetry: false,
           });
         },
       },

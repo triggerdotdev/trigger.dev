@@ -13,7 +13,6 @@ import {
   RunTaskOptions,
   SendEvent,
   SendEventOptions,
-  SerializableJsonSchema,
   ServerTask,
   UpdateTriggerSourceBodyV2,
   supportsFeature,
@@ -26,19 +25,21 @@ import {
   AutoYieldExecutionError,
   AutoYieldWithCompletedTaskExecutionError,
   CanceledWithTaskError,
+  ResumeWithParallelTaskError,
   ResumeWithTaskError,
   RetryWithTaskError,
+  TriggerInternalError,
   YieldExecutionError,
   isTriggerError,
 } from "./errors";
+import { IntegrationTaskKey } from "./integrations";
 import { calculateRetryAt } from "./retry";
+import { TriggerStatus } from "./status";
 import { TriggerClient } from "./triggerClient";
 import { DynamicTrigger } from "./triggers/dynamic";
 import { ExternalSource, ExternalSourceParams } from "./triggers/externalSource";
 import { DynamicSchedule } from "./triggers/scheduled";
 import { EventSpecification, TaskLogger, TriggerContext } from "./types";
-import { IntegrationTaskKey } from "./integrations";
-import { TriggerStatus } from "./status";
 
 export type IOTask = ServerTask;
 
@@ -85,6 +86,21 @@ export type IOStats = {
   noopCachedTaskMisses: number;
 };
 
+export interface OutputSerializer {
+  serialize(value: any): string;
+  deserialize<T>(value: string): T;
+}
+
+export class JSONOutputSerializer implements OutputSerializer {
+  serialize(value: any): string {
+    return JSON.stringify(value);
+  }
+
+  deserialize(value?: string): any {
+    return value ? JSON.parse(value) : undefined;
+  }
+}
+
 export class IO {
   private _id: string;
   private _apiClient: ApiClient;
@@ -102,6 +118,8 @@ export class IO {
   private _serverVersion: string;
   private _timeOrigin: number;
   private _executionTimeout?: number;
+  private _outputSerializer: OutputSerializer = new JSONOutputSerializer();
+  private _visitedCacheKeys: Set<string> = new Set();
 
   get stats() {
     return this._stats;
@@ -583,6 +601,53 @@ export class IO {
     );
   }
 
+  async parallel<T extends Json<T> | void, TItem>(
+    cacheKey: string | any[],
+    items: Array<TItem>,
+    callback: (item: TItem, index: number) => Promise<T>,
+    options?: Pick<RunTaskOptions, "name" | "properties">
+  ): Promise<Array<T>> {
+    const results = await this.runTask(
+      cacheKey,
+      async (task) => {
+        const outcomes = await Promise.allSettled(
+          items.map((item, index) => spaceOut(() => callback(item, index), index, 15))
+        );
+
+        // If all the outcomes are fulfilled, return the values
+        if (outcomes.every((outcome) => outcome.status === "fulfilled")) {
+          return outcomes.map(
+            (outcome) => (outcome as PromiseFulfilledResult<T>).value
+          ) as Array<{}>;
+        }
+
+        // If they any of the errors are non internal errors, throw the first one
+        const nonInternalErrors = outcomes
+          .filter((outcome) => outcome.status === "rejected" && !isTriggerError(outcome.reason))
+          .map((outcome) => outcome as PromiseRejectedResult);
+
+        if (nonInternalErrors.length > 0) {
+          throw nonInternalErrors[0].reason;
+        }
+
+        // gather all the internal errors
+        const internalErrors = outcomes
+          .filter((outcome) => outcome.status === "rejected" && isTriggerError(outcome.reason))
+          .map((outcome) => outcome as PromiseRejectedResult)
+          .map((outcome) => outcome.reason as TriggerInternalError);
+
+        throw new ResumeWithParallelTaskError(task, internalErrors);
+      },
+      {
+        name: "parallel",
+        parallel: true,
+        ...(options ?? {}),
+      }
+    );
+
+    return results as unknown as Array<T>;
+  }
+
   /** `io.runTask()` allows you to run a [Task](https://trigger.dev/docs/documentation/concepts/tasks) from inside a Job run. A Task is a resumable unit of a Run that can be retried, resumed and is logged. [Integrations](https://trigger.dev/docs/integrations) use Tasks internally to perform their actions.
    *
    * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
@@ -612,6 +677,22 @@ export class IO {
     const idempotencyKey = await generateIdempotencyKey(
       [this._id, parentId ?? "", cacheKey].flat()
     );
+
+    if (this._visitedCacheKeys.has(idempotencyKey)) {
+      if (typeof cacheKey === "string") {
+        throw new Error(
+          `Task with cacheKey "${cacheKey}" has already been executed in this run. Each task must have a unique cacheKey.`
+        );
+      } else {
+        throw new Error(
+          `Task with cacheKey "${cacheKey.join(
+            "-"
+          )}" has already been executed in this run. Each task must have a unique cacheKey.`
+        );
+      }
+    }
+
+    this._visitedCacheKeys.add(idempotencyKey);
 
     const cachedTask = this._cachedTasks.get(idempotencyKey);
 
@@ -731,7 +812,7 @@ export class IO {
           return {} as T;
         }
 
-        const output = SerializableJsonSchema.parse(result) as T;
+        const output = this._outputSerializer.serialize(result);
 
         this._logger.debug("Completing using output", {
           idempotencyKey,
@@ -741,7 +822,7 @@ export class IO {
         this.#detectAutoYield("before_complete_task", 500, task, output);
 
         const completedTask = await this._apiClient.completeTask(this._id, task.id, {
-          output: output ?? undefined,
+          output,
           properties: task.outputProperties ?? undefined,
         });
 
@@ -761,7 +842,7 @@ export class IO {
 
         this.#detectAutoYield("after_complete_task", 500);
 
-        return output;
+        return this._outputSerializer.deserialize<T>(output);
       } catch (error) {
         if (isTriggerError(error)) {
           throw error;
@@ -902,7 +983,7 @@ export class IO {
     this._cachedTasks.set(task.idempotencyKey, task);
   }
 
-  #detectAutoYield(location: string, threshold: number = 1500, task?: ServerTask, output?: any) {
+  #detectAutoYield(location: string, threshold: number = 1500, task?: ServerTask, output?: string) {
     const timeRemaining = this.#getRemainingTimeInMillis();
 
     if (timeRemaining && timeRemaining < threshold) {
@@ -910,12 +991,12 @@ export class IO {
         throw new AutoYieldWithCompletedTaskExecutionError(
           task.id,
           task.outputProperties ?? [],
-          output,
           {
             location,
             timeRemaining,
             timeElapsed: this.#getTimeElapsed(),
-          }
+          },
+          output
         );
       } else {
         throw new AutoYieldExecutionError(location, timeRemaining, this.#getTimeElapsed());
@@ -1018,4 +1099,11 @@ export class IOLogger implements TaskLogger {
   error(message: string, properties?: Record<string, any>): Promise<void> {
     return this.callback("ERROR", message, properties);
   }
+}
+
+// Space out the execution of the callback by a delay of index * delay
+async function spaceOut<T>(callback: () => Promise<T>, index: number, delay: number): Promise<T> {
+  await new Promise((resolve) => setTimeout(resolve, index * delay));
+
+  return await callback();
 }

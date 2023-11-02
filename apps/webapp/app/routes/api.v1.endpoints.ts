@@ -60,7 +60,7 @@ export async function action({ request }: ActionFunctionArgs) {
     return json(endpoint);
   } catch (error) {
     if (error instanceof Error) {
-      logger.error("Error creating endpoint", {
+      logger.debug("Error creating endpoint", {
         url: request.url,
         error: error.message,
       });

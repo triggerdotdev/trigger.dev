@@ -6,13 +6,13 @@ import {
   RedactString,
   calculateRetryAt,
 } from "@trigger.dev/core";
-import { RuntimeEnvironmentType, type Task } from "@trigger.dev/database";
+import { type Task } from "@trigger.dev/database";
 import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
-import { enqueueRunExecutionV2 } from "~/models/jobRunExecution.server";
 import { formatUnknownError } from "~/utils/formatErrors.server";
 import { safeJsonFromResponse } from "~/utils/json";
 import { logger } from "../logger.server";
 import { workerQueue } from "../worker.server";
+import { ResumeTaskService } from "./resumeTask.server";
 
 type FoundTask = Awaited<ReturnType<typeof findTask>>;
 
@@ -55,10 +55,17 @@ export class PerformTaskOperationService {
 
         const startTimeInMs = performance.now();
 
+        const abortController = new AbortController();
+
+        setTimeout(() => {
+          abortController.abort();
+        }, 1000);
+
         const response = await fetch(url, {
           method: requestInit?.method ?? "GET",
           headers: normalizeHeaders(requestInit?.headers ?? {}),
           body: requestInit?.body,
+          signal: abortController.signal,
         });
 
         const durationInMs = Math.floor(performance.now() - startTimeInMs);
@@ -258,9 +265,7 @@ export class PerformTaskOperationService {
   }
 
   async #resumeRunExecution(task: NonNullable<FoundTask>, prisma: PrismaClientOrTransaction) {
-    await enqueueRunExecutionV2(task.run, prisma, {
-      skipRetrying: task.run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
-    });
+    await ResumeTaskService.enqueue(task.id, undefined, prisma);
   }
 }
 

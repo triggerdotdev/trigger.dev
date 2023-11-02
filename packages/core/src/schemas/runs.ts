@@ -132,6 +132,8 @@ type RunNotificationCommon = {
   project: { slug: string; id: string; name: string };
   /** Account metadata */
   account?: { id: string; metadata?: any };
+  /** Invocation metadata */
+  invocation: { id: string; context: any; timestamp: Date };
 };
 
 export type SuccessfulRunNotification<TOutput> = RunNotificationCommon & {

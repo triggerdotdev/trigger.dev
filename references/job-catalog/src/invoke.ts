@@ -1,4 +1,5 @@
 import { createExpressServer } from "@trigger.dev/express";
+import { OpenAI } from "@trigger.dev/openai";
 import { TriggerClient, invokeTrigger } from "@trigger.dev/sdk";
 import { z } from "zod";
 
@@ -6,7 +7,7 @@ export const client = new TriggerClient({
   id: "job-catalog",
   apiKey: process.env["TRIGGER_API_KEY"],
   apiUrl: process.env["TRIGGER_API_URL"],
-  verbose: false,
+  verbose: true,
   ioLogLocalEnabled: true,
 });
 
@@ -19,6 +20,7 @@ const invocableJob = client.defineJob({
     schema: z.object({
       message: z.string(),
       forceError: z.boolean().default(false),
+      delay: z.number().default(5),
     }),
   }),
   run: async (payload, io, ctx) => {
@@ -37,10 +39,12 @@ const invocableJob = client.defineJob({
       await new Promise((resolve) => setTimeout(resolve, 1000));
     });
 
-    await io.wait("wait-1", 60);
+    await io.wait("wait-1", payload.delay);
 
     await io.runTask("task-2", async () => {
       await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      return [{ hello: "there", ts: new Date() }];
     });
 
     await generatingMemes.update("middle-generation", {
@@ -60,9 +64,11 @@ const invocableJob = client.defineJob({
       throw new Error("Forced error");
     }
 
-    return {
-      foo: payload.message,
-    };
+    const response = await io.runTask("fetch-json", async () =>
+      fetch("https://jsonhero.io/j/PjHo1o5MVeH4.json").then((r) => r.json())
+    );
+
+    return response;
   },
 });
 
@@ -89,6 +95,7 @@ client.defineJob({
 
     const result = await invocableJob.invokeAndWaitForCompletion("invoke-and-wait", {
       message: "Hello World 3",
+      forceError: true,
     });
 
     if (result.ok) {
@@ -96,6 +103,134 @@ client.defineJob({
     } else {
       await io.logger.error("Invoking job failed!", { result });
     }
+  },
+});
+
+const simpleInvokableJob = client.defineJob({
+  id: "simple-invoke-example-1",
+  name: "Simple Invoke Example 1",
+  version: "1.0.0",
+  enabled: true,
+  trigger: invokeTrigger(),
+  run: async (payload, io, ctx) => {
+    return payload;
+  },
+});
+
+const openai = new OpenAI({
+  id: "openai",
+  apiKey: process.env["OPENAI_API_KEY"]!,
+});
+
+const openaiJob = client.defineJob({
+  id: "openai-job",
+  name: "OpenAI Job",
+  version: "1.0.0",
+  enabled: true,
+  trigger: invokeTrigger({
+    schema: z.object({
+      model: z.string().default("gpt-3.5-turbo"),
+      prompt: z.string(),
+    }),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    return await io.openai.chat.completions.backgroundCreate("background-chat-completion", {
+      model: payload.model,
+      messages: [
+        {
+          role: "user",
+          content: payload.prompt,
+        },
+      ],
+    });
+  },
+});
+
+const prompts = [
+  { model: "gpt-3.5-turbo", prompt: "Advantages of quantum computing over classical computing" },
+  {
+    model: "gpt-3.5-turbo",
+    prompt: "The ethical implications of advanced artificial intelligence",
+  },
+  {
+    model: "gpt-3.5-turbo",
+    prompt: "Design a thought experiment highlighting the paradoxes in quantum mechanics",
+  },
+  {
+    model: "gpt-3.5-turbo",
+    prompt: "Explain the Fermi Paradox, its potential solutions, and implications for humanity",
+  },
+  { model: "gpt-3.5-turbo", prompt: "Analyze Shakespeare's use of iambic pentameter in his plays" },
+  { model: "gpt-3.5-turbo", prompt: "Can you provide a comprehensive overview of string theory?" },
+  { model: "gpt-3.5-turbo", prompt: "Create a detailed plan for a Mars colonization mission" },
+  {
+    model: "gpt-3.5-turbo",
+    prompt: "Provide a thorough comparison of capitalism, socialism, and communism",
+  },
+  { model: "gpt-3.5-turbo", prompt: "Discuss the environmental implications of Bitcoin mining" },
+  {
+    model: "gpt-3.5-turbo",
+    prompt: "Formulate a detailed theory on the origin of languages and their evolution",
+  },
+];
+
+client.defineJob({
+  id: "batch-invoke-ai-example",
+  name: "Batch Invoke OpenAI Example",
+  version: "1.0.0",
+  trigger: invokeTrigger(),
+  run: async (payload, io, ctx) => {
+    await openaiJob.batchInvokeAndWaitForCompletion(
+      "batch-invoke-and-wait",
+      prompts.map((prompt) => ({
+        payload: prompt,
+      }))
+    );
+  },
+});
+
+client.defineJob({
+  id: "batch-invoke-example",
+  name: "Batch Invoke Example",
+  version: "1.0.0",
+  trigger: invokeTrigger(),
+  run: async (payload, io, ctx) => {
+    await invocableJob.batchInvokeAndWaitForCompletion(
+      "batch-invoke-and-wait",
+      Array.from({ length: 2 }).map((_, i) => ({
+        payload: {
+          message: `Hello World ${i}`,
+          delay: i % 2 === 0 ? 7 : 20,
+        },
+      }))
+    );
+
+    await simpleInvokableJob.batchInvokeAndWaitForCompletion(
+      "batch-invoke-and-wait-simple",
+      Array.from({ length: 25 }).map((_, i) => ({
+        payload: {
+          message: `Hello World ${i}`,
+        },
+        options: {
+          context: {
+            i,
+          },
+          accountId: "FB1C6C79-6C82-45B6-A8AA-207ADA9EE838",
+        },
+      }))
+    );
+
+    await simpleInvokableJob.batchInvokeAndWaitForCompletion(
+      "batch-invoke-and-wait-2",
+      Array.from({ length: 2 }).map((_, i) => ({
+        payload: {
+          message: `Hello World ${i}`,
+        },
+      }))
+    );
   },
 });
 

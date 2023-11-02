@@ -525,27 +525,29 @@ export const RunJobYieldExecutionErrorSchema = z.object({
 
 export type RunJobYieldExecutionError = z.infer<typeof RunJobYieldExecutionErrorSchema>;
 
-export const RunJobAutoYieldExecutionErrorSchema = z.object({
-  status: z.literal("AUTO_YIELD_EXECUTION"),
+export const AutoYieldMetadataSchema = z.object({
   location: z.string(),
   timeRemaining: z.number(),
   timeElapsed: z.number(),
   limit: z.number().optional(),
 });
 
-export type RunJobAutoYieldExecutionError = z.infer<typeof RunJobAutoYieldExecutionErrorSchema>;
+export type AutoYieldMetadata = z.infer<typeof AutoYieldMetadataSchema>;
+
+export const RunJobAutoYieldExecutionErrorSchema = AutoYieldMetadataSchema.extend({
+  status: z.literal("AUTO_YIELD_EXECUTION"),
+});
+
+export type RunJobAutoYieldExecutionError = Prettify<
+  z.infer<typeof RunJobAutoYieldExecutionErrorSchema>
+>;
 
 export const RunJobAutoYieldWithCompletedTaskExecutionErrorSchema = z.object({
   status: z.literal("AUTO_YIELD_EXECUTION_WITH_COMPLETED_TASK"),
   id: z.string(),
   properties: z.array(DisplayPropertySchema).optional(),
-  output: z.any(),
-  data: z.object({
-    location: z.string(),
-    timeRemaining: z.number(),
-    timeElapsed: z.number(),
-    limit: z.number().optional(),
-  }),
+  output: z.string().optional(),
+  data: AutoYieldMetadataSchema,
 });
 
 export type RunJobAutoYieldWithCompletedTaskExecutionError = z.infer<
@@ -596,6 +598,28 @@ export const RunJobSuccessSchema = z.object({
 
 export type RunJobSuccess = z.infer<typeof RunJobSuccessSchema>;
 
+export const RunJobErrorResponseSchema = z.union([
+  RunJobAutoYieldExecutionErrorSchema,
+  RunJobAutoYieldWithCompletedTaskExecutionErrorSchema,
+  RunJobYieldExecutionErrorSchema,
+  RunJobErrorSchema,
+  RunJobUnresolvedAuthErrorSchema,
+  RunJobInvalidPayloadErrorSchema,
+  RunJobResumeWithTaskSchema,
+  RunJobRetryWithTaskSchema,
+  RunJobCanceledWithTaskSchema,
+]);
+
+export type RunJobErrorResponse = z.infer<typeof RunJobErrorResponseSchema>;
+
+export const RunJobResumeWithParallelTaskSchema = z.object({
+  status: z.literal("RESUME_WITH_PARALLEL_TASK"),
+  task: TaskSchema,
+  childErrors: z.array(RunJobErrorResponseSchema),
+});
+
+export type RunJobResumeWithParallelTask = z.infer<typeof RunJobResumeWithParallelTaskSchema>;
+
 export const RunJobResponseSchema = z.discriminatedUnion("status", [
   RunJobAutoYieldExecutionErrorSchema,
   RunJobAutoYieldWithCompletedTaskExecutionErrorSchema,
@@ -604,6 +628,7 @@ export const RunJobResponseSchema = z.discriminatedUnion("status", [
   RunJobUnresolvedAuthErrorSchema,
   RunJobInvalidPayloadErrorSchema,
   RunJobResumeWithTaskSchema,
+  RunJobResumeWithParallelTaskSchema,
   RunJobRetryWithTaskSchema,
   RunJobCanceledWithTaskSchema,
   RunJobSuccessSchema,
@@ -744,6 +769,7 @@ export const RunTaskOptionsSchema = z.object({
   noop: z.boolean().default(false),
   redact: RedactSchema.optional(),
   trigger: TriggerMetadataSchema.optional(),
+  parallel: z.boolean().optional(),
 });
 
 export type RunTaskOptions = z.input<typeof RunTaskOptionsSchema>;
@@ -799,6 +825,16 @@ export const CompleteTaskBodyInputSchema = RunTaskBodyInputSchema.pick({
 
 export type CompleteTaskBodyInput = Prettify<z.input<typeof CompleteTaskBodyInputSchema>>;
 export type CompleteTaskBodyOutput = z.infer<typeof CompleteTaskBodyInputSchema>;
+
+export const CompleteTaskBodyV2InputSchema = RunTaskBodyInputSchema.pick({
+  properties: true,
+  description: true,
+  params: true,
+}).extend({
+  output: z.string().optional(),
+});
+
+export type CompleteTaskBodyV2Input = Prettify<z.input<typeof CompleteTaskBodyV2InputSchema>>;
 
 export const FailTaskBodyInputSchema = z.object({
   error: ErrorWithStackSchema,

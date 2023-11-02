@@ -33,6 +33,7 @@ import {
   InvokeJobResponseSchema,
   InvokeOptions,
   InvokeJobRequestBody,
+  CompleteTaskBodyV2Input,
 } from "@trigger.dev/core";
 
 import { z } from "zod";
@@ -142,7 +143,7 @@ export class ApiClient {
     );
   }
 
-  async completeTask(runId: string, id: string, task: CompleteTaskBodyInput) {
+  async completeTask(runId: string, id: string, task: CompleteTaskBodyV2Input) {
     const apiKey = await this.#apiKey();
 
     this.#logger.debug("Complete Task", {
@@ -157,6 +158,7 @@ export class ApiClient {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
+          "Trigger-Version": API_VERSIONS.SERIALIZED_TASK_OUTPUT,
         },
         body: JSON.stringify(task),
       }
@@ -603,7 +605,8 @@ async function zodfetchWithVersions<
   options?: {
     errorMessage?: string;
     optional?: TOptional;
-  }
+  },
+  retryCount = 0
 ): Promise<
   TOptional extends true
     ? VersionedResponseBody<TVersionedResponseBodyMap, TUnversionedResponseBodySchema> | undefined
@@ -624,6 +627,22 @@ async function zodfetchWithVersions<
     const body = await response.json();
 
     throw new Error(body.error);
+  }
+
+  if (response.status >= 500 && retryCount < 6) {
+    // retry with exponential backoff and jitter
+    const delay = exponentialBackoff(retryCount + 1, 2, 50, 1150, 50);
+
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    return zodfetchWithVersions(
+      versionedSchemaMap,
+      unversionedSchema,
+      url,
+      requestInit,
+      options,
+      retryCount + 1
+    );
   }
 
   if (response.status !== 200) {
@@ -662,7 +681,8 @@ async function zodfetch<TResponseSchema extends z.ZodTypeAny, TOptional extends 
   options?: {
     errorMessage?: string;
     optional?: TOptional;
-  }
+  },
+  retryCount = 0
 ): Promise<
   TOptional extends true ? z.infer<TResponseSchema> | undefined : z.infer<TResponseSchema>
 > {
@@ -683,6 +703,15 @@ async function zodfetch<TResponseSchema extends z.ZodTypeAny, TOptional extends 
     throw new Error(body.error);
   }
 
+  if (response.status >= 500 && retryCount < 6) {
+    // retry with exponential backoff and jitter
+    const delay = exponentialBackoff(retryCount + 1, 2, 50, 1150, 50);
+
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    return zodfetch(schema, url, requestInit, options, retryCount + 1);
+  }
+
   if (response.status !== 200) {
     throw new Error(
       options?.errorMessage ?? `Failed to fetch ${url}, got status code ${response.status}`
@@ -692,4 +721,21 @@ async function zodfetch<TResponseSchema extends z.ZodTypeAny, TOptional extends 
   const jsonBody = await response.json();
 
   return schema.parse(jsonBody);
+}
+
+function exponentialBackoff(
+  retryCount: number,
+  exponential: number,
+  minDelay: number,
+  maxDelay: number,
+  jitter: number
+): number {
+  // Calculate the delay using the exponential backoff formula
+  const delay = Math.min(Math.pow(exponential, retryCount) * minDelay, maxDelay);
+
+  // Calculate the jitter
+  const jitterValue = Math.random() * jitter;
+
+  // Return the calculated delay with jitter
+  return delay + jitterValue;
 }

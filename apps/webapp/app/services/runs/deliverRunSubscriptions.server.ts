@@ -23,10 +23,6 @@ export class DeliverRunSubscriptionsService {
     const subscriptions = await this.#findSubscriptions(run);
 
     for (const subscription of subscriptions) {
-      if (subscription.event !== "SUCCESS") {
-        continue;
-      }
-
       await workerQueue.enqueue("deliverRunSubscription", {
         id: subscription.id,
       });

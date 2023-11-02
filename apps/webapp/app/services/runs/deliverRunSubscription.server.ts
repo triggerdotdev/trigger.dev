@@ -106,6 +106,7 @@ export class DeliverRunSubscriptionService {
             environment: true,
             organization: true,
             project: true,
+            event: true,
           },
         },
       },
@@ -113,7 +114,7 @@ export class DeliverRunSubscriptionService {
   }
 
   #getPayload(run: FoundRun): RunNotification<any> {
-    const { id, job, version, statuses, environment, organization, project } = run;
+    const { id, job, version, statuses, environment, organization, project, event } = run;
 
     const payload = {
       id,
@@ -149,6 +150,11 @@ export class DeliverRunSubscriptionService {
         slug: project.slug,
         id: project.id,
         name: project.name,
+      },
+      invocation: {
+        id: event.id,
+        context: event.context,
+        timestamp: event.timestamp,
       },
       ...(run.status === "SUCCESS" ? { output: run.output } : { error: run.output }),
     };
