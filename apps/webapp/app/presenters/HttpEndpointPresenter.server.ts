@@ -43,6 +43,8 @@ export class HttpEndpointPresenter {
             immediateResponseFilter: true,
             skipTriggeringRuns: true,
             source: true,
+            active: true,
+            updatedAt: true,
             environment: {
               select: {
                 type: true,
@@ -121,11 +123,17 @@ export class HttpEndpointPresenter {
     return {
       httpEndpoint: {
         ...httpEndpoint,
-        httpEndpointEnvironments: httpEndpoint.httpEndpointEnvironments.filter(
-          (httpEndpointEnvironment) =>
-            httpEndpointEnvironment.environment.orgMember === null ||
-            httpEndpointEnvironment.environment.orgMember.userId === userId
-        ),
+
+        httpEndpointEnvironments: httpEndpoint.httpEndpointEnvironments
+          .filter(
+            (httpEndpointEnvironment) =>
+              httpEndpointEnvironment.environment.orgMember === null ||
+              httpEndpointEnvironment.environment.orgMember.userId === userId
+          )
+          .map((endpointEnv) => ({
+            ...endpointEnv,
+            immediateResponseFilter: !endpointEnv.immediateResponseFilter,
+          })),
       },
       environments: sortEnvironments(relevantEnvironments),
       secret,

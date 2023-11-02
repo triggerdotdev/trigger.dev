@@ -1,4 +1,4 @@
-import { KeyIcon } from "@heroicons/react/20/solid";
+import { CheckIcon, KeyIcon, StopIcon } from "@heroicons/react/20/solid";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { InlineCode } from "~/components/code/InlineCode";
@@ -149,47 +149,58 @@ export default function Page() {
           </Paragraph>
         </div>
 
-        {/* <Table fullWidth>
+        <Table fullWidth>
           <TableHeader>
             <TableRow>
-              <TableHeaderCell>ID</TableHeaderCell>
-              <TableHeaderCell>Title</TableHeaderCell>
-              <TableHeaderCell>Updated</TableHeaderCell>
-              <TableHeaderCell alignment="right">Environments</TableHeaderCell>
-              <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
+              <TableHeaderCell>Environment</TableHeaderCell>
+              <TableHeaderCell>Source</TableHeaderCell>
+              <TableHeaderCell>URL</TableHeaderCell>
+              <TableHeaderCell>Secret</TableHeaderCell>
+              <TableHeaderCell>Respond to request?</TableHeaderCell>
+              <TableHeaderCell alignment="right">Updated</TableHeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {httpEndpoints.map((httpEndpoint) => {
-              const path = projectHttpEndpointPath(organization, project, httpEndpoint);
+            {httpEndpoint.httpEndpointEnvironments.map((httpEnvironment) => {
+              const environment = environments.find(
+                (e) => e.type === httpEnvironment.environment.type
+              );
               return (
-                <TableRow key={httpEndpoint.id}>
-                  <TableCell to={path}>
-                    <div className="flex items-center gap-1">
-                      <Icon icon={httpEndpoint.icon ?? "webhook"} className="h-4 w-4" />
-                      {httpEndpoint.key}
-                    </div>
+                <TableRow key={httpEnvironment.id}>
+                  <TableCell>
+                    <EnvironmentLabel environment={httpEnvironment.environment} />
                   </TableCell>
-                  <TableCell to={path}>{httpEndpoint.title ?? "No title"}</TableCell>
-                  <TableCell to={path}>
-                    <DateTime date={httpEndpoint.updatedAt} />
+                  <TableCell>{httpEnvironment.source}</TableCell>
+                  <TableCell>
+                    <ClipboardField
+                      fullWidth={false}
+                      value={environment?.webhookUrl ?? ""}
+                      variant="tertiary/small"
+                    />
                   </TableCell>
-                  <TableCell alignment="right" to={path}>
-                    <div className="flex items-center justify-end gap-1">
-                      {httpEndpoint.httpEndpointEnvironments.map((environment) => (
-                        <EnvironmentLabel
-                          key={environment.id}
-                          environment={environment.environment}
-                        />
-                      ))}
-                    </div>
+                  <TableCell>
+                    <ClipboardField
+                      fullWidth={false}
+                      value={secret}
+                      secure
+                      variant={"tertiary/small"}
+                    />
                   </TableCell>
-                  <TableCellChevron to={path} isSticky />
+                  <TableCell>
+                    {httpEnvironment.immediateResponseFilter ? (
+                      <CheckIcon className="h-4 w-4 text-slate-400" />
+                    ) : (
+                      <StopIcon className="h-4 w-4 text-slate-850" />
+                    )}
+                  </TableCell>
+                  <TableCell alignment="right">
+                    <DateTime date={httpEnvironment.updatedAt} />
+                  </TableCell>
                 </TableRow>
               );
             })}
           </TableBody>
-        </Table> */}
+        </Table>
       </PageBody>
     </PageContainer>
   );
