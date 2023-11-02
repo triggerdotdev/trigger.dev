@@ -9,14 +9,12 @@ import { IntegrationClientParamSchema, trimTrailingSlash } from "~/utils/pathBui
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, clientParam } =
-    IntegrationClientParamSchema.parse(params);
+  const { organizationSlug, clientParam } = IntegrationClientParamSchema.parse(params);
 
   const presenter = new IntegrationClientScopesPresenter();
   const { scopes } = await presenter.call({
     userId: userId,
     organizationSlug,
-    projectSlug: projectParam,
     clientSlug: clientParam,
   });
 

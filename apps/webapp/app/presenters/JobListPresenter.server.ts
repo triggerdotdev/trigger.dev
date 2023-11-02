@@ -10,6 +10,8 @@ import { User } from "~/models/user.server";
 import { z } from "zod";
 import { projectPath } from "~/utils/pathBuilder";
 
+export type ProjectJob = Awaited<ReturnType<JobListPresenter["call"]>>[0];
+
 export class JobListPresenter {
   #prismaClient: PrismaClient;
 
