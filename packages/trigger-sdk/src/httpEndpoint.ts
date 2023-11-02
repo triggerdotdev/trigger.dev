@@ -11,6 +11,7 @@ import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
 import { EventSpecification, EventSpecificationExample, Trigger, VerifyResult } from "./types";
 import { formatSchemaErrors } from "./utils/formatSchemaErrors";
+import { slugifyId } from "./utils";
 
 type HttpEndpointOptions<TEventSpecification extends EventSpecification<any>> = {
   id: string;
@@ -33,7 +34,7 @@ export class HttpEndpoint<TEventSpecification extends EventSpecification<any>> {
 
   onRequest(options?: RequestOptions): HttpTrigger<EventSpecification<Request>> {
     return new HttpTrigger({
-      endpointId: this.options.id,
+      endpointId: this.id,
       event: this.options.event,
       filter: options?.filter,
       verify: this.options.verify,
@@ -51,7 +52,7 @@ export class HttpEndpoint<TEventSpecification extends EventSpecification<any>> {
 
   toJSON(): HttpEndpointMetadata {
     return {
-      id: this.options.id,
+      id: this.id,
       icon: this.options.event.icon,
       version: "1",
       enabled: this.options.enabled ?? true,
@@ -129,13 +130,15 @@ export type EndpointOptions = {
 };
 
 export function httpEndpoint(options: EndpointOptions): HttpEndpoint<EventSpecification<Request>> {
+  const id = slugifyId(options.id);
+
   return new HttpEndpoint({
-    id: options.id,
+    id,
     enabled: options.enabled,
     respondWith: options.respondWith,
     verify: options.verify,
     event: {
-      name: options.id,
+      name: id,
       title: options.title ?? "HTTP Trigger",
       source: options.source,
       icon: options.icon ?? "webhook",
