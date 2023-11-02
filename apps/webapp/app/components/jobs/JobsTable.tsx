@@ -160,7 +160,7 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
 
                   <Dialog>
                     <DialogTrigger asChild>
-                      <Button variant="menu-item" LeadingIcon="trash-can">
+                      <Button variant="small-menu-item" LeadingIcon="trash-can" className="text-xs">
                         Delete Job
                       </Button>
                     </DialogTrigger>
