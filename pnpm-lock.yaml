@@ -134,6 +134,7 @@ importers:
       '@typescript-eslint/eslint-plugin': ^5.59.6
       '@typescript-eslint/parser': ^5.59.6
       '@uiw/react-codemirror': ^4.19.5
+      '@whatwg-node/fetch': ^0.9.14
       autoprefixer: ^10.4.13
       class-variance-authority: ^0.5.2
       clsx: ^1.2.1
@@ -145,7 +146,6 @@ importers:
       esbuild: ^0.15.10
       eslint: ^8.24.0
       eslint-config-prettier: ^8.5.0
-      execa: ^8.0.1
       express: ^4.18.1
       framer-motion: ^10.12.11
       graphile-worker: ^0.13.0
@@ -242,6 +242,7 @@ importers:
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       '@types/pg': 8.6.6
       '@uiw/react-codemirror': 4.19.5_th22fcplkuhrqjnlojwclcaim4
+      '@whatwg-node/fetch': 0.9.14
       class-variance-authority: 0.5.2_typescript@5.2.2
       clsx: 1.2.1
       compression: 1.7.4
@@ -249,7 +250,6 @@ importers:
       cross-env: 7.0.3
       cuid: 2.1.8
       emails: link:../../packages/emails
-      execa: 8.0.1
       express: 4.18.2
       framer-motion: 10.12.11_biqbaboplfbrettd7655fr4n2y
       graphile-worker: 0.13.0
@@ -909,6 +909,7 @@ importers:
 
   packages/integration-kit:
     specifiers:
+      '@trigger.dev/core': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       '@types/uuid': ^9.0.0
@@ -918,6 +919,7 @@ importers:
       typescript: ^4.8.4
       uuid: ^9.0.0
     dependencies:
+      '@trigger.dev/core': link:../core
       uuid: 9.0.0
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
@@ -14899,6 +14901,30 @@ packages:
       '@xtuc/long': 4.2.2
     dev: true
 
+  /@whatwg-node/events/0.1.1:
+    resolution: {integrity: sha512-AyQEn5hIPV7Ze+xFoXVU3QTHXVbWPrzaOkxtENMPMuNL6VVHrp4hHfDt9nrQpjO7BgvuM95dMtkycX5M/DZR3w==}
+    engines: {node: '>=16.0.0'}
+    dev: false
+
+  /@whatwg-node/fetch/0.9.14:
+    resolution: {integrity: sha512-wurZC82zzZwXRDSW0OS9l141DynaJQh7Yt0FD1xZ8niX7/Et/7RoiLiltbVU1fSF1RR9z6ndEaTUQBAmddTm1w==}
+    engines: {node: '>=16.0.0'}
+    dependencies:
+      '@whatwg-node/node-fetch': 0.5.0
+      urlpattern-polyfill: 9.0.0
+    dev: false
+
+  /@whatwg-node/node-fetch/0.5.0:
+    resolution: {integrity: sha512-q76lDAafvHNGWedNAVHrz/EyYTS8qwRLcwne8SJQdRN5P3HydxU6XROFvJfTML6KZXQX2FDdGY4/SnaNyd7M0Q==}
+    engines: {node: '>=16.0.0'}
+    dependencies:
+      '@whatwg-node/events': 0.1.1
+      busboy: 1.6.0
+      fast-querystring: 1.1.2
+      fast-url-parser: 1.1.3
+      tslib: 2.6.2
+    dev: false
+
   /@xmldom/xmldom/0.8.6:
     resolution: {integrity: sha512-uRjjusqpoqfmRkTaNuLJ2VohVr67Q5YwDATW3VU7PfzTj6IRaihGrYI7zckGZjxQPBIp63nfvJbM+Yu5ICh0Bg==}
     engines: {node: '>=10.0.0'}
@@ -20101,7 +20127,6 @@ packages:
 
   /fast-decode-uri-component/1.0.1:
     resolution: {integrity: sha512-WKgKWg5eUxvRZGwW8FvfbaH7AXSh2cL+3j5fMGzUMCxWBJ3dV3a7Wz8y2f/uQ0e3B6WmodD3oS54jTQ9HVTIIg==}
-    dev: true
 
   /fast-deep-equal/3.1.3:
     resolution: {integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==}
@@ -20205,7 +20230,6 @@ packages:
     resolution: {integrity: sha512-g6KuKWmFXc0fID8WWH0jit4g0AGBoJhCkJMb1RmbsSEUNvQ+ZC8D6CUZ+GtF8nMzSPXnhiePyyqqipzNNEnHjg==}
     dependencies:
       fast-decode-uri-component: 1.0.1
-    dev: true
 
   /fast-redact/3.3.0:
     resolution: {integrity: sha512-6T5V1QK1u4oF+ATxs1lWUmlEk6P2T9HqJG3e2DnHOdVgZy2rFJBoEnrIedcTXlkAHU/zKC+7KETJ+KGGKwxgMQ==}
@@ -20222,6 +20246,12 @@ packages:
   /fast-uri/2.2.0:
     resolution: {integrity: sha512-cIusKBIt/R/oI6z/1nyfe2FvGKVTohVRfvkOhvx0nCEW+xf5NoCXjAHcWp93uOUBchzYcsvPlrapAdX1uW+YGg==}
     dev: true
+
+  /fast-url-parser/1.1.3:
+    resolution: {integrity: sha512-5jOCVXADYNuRkKFzNJ0dCCewsZiYo0dz8QNYljkOpFC6r2U4OBmKtvm/Tsuh4w1YYdDqDb31a8TVhBJ2OJKdqQ==}
+    dependencies:
+      punycode: 1.4.1
+    dev: false
 
   /fastest-stable-stringify/2.0.2:
     resolution: {integrity: sha512-bijHueCGd0LqqNK9b5oCMHc0MluJAx0cwqASgbWMvkO01lCYgIhacVRLcaDz3QnyYIRNJRDwMb41VuT6pHJ91Q==}
@@ -31468,6 +31498,10 @@ packages:
     dependencies:
       punycode: 1.4.1
       qs: 6.11.0
+    dev: false
+
+  /urlpattern-polyfill/9.0.0:
+    resolution: {integrity: sha512-WHN8KDQblxd32odxeIgo83rdVDE2bvdkb86it7bMhYZwWKJz0+O0RK/eZiHYnM+zgt/U7hAHOlCQGfjjvSkw2g==}
     dev: false
 
   /use-callback-ref/1.3.0_e74vmjybjy5dsfplslbsgtbvvi:

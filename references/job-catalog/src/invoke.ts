@@ -151,7 +151,7 @@ const openaiJob = client.defineJob({
       {},
       {
         timeout: {
-          durationInMs: 15000,
+          durationInMs: 3000,
         },
       }
     );

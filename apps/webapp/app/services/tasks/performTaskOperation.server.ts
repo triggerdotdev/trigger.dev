@@ -14,6 +14,7 @@ import { safeJsonFromResponse } from "~/utils/json";
 import { logger } from "../logger.server";
 import { workerQueue } from "../worker.server";
 import { ResumeTaskService } from "./resumeTask.server";
+import { fetch } from "@whatwg-node/fetch";
 
 type FoundTask = Awaited<ReturnType<typeof findTask>>;
 
