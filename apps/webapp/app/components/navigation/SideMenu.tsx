@@ -260,9 +260,9 @@ function ProjectSelector({
                     key={p.id}
                     to={projectPath(organization, p)}
                     title={
-                      <div className="flex w-full items-center justify-between pl-1 text-bright">
+                      <div className="flex w-full items-center justify-between text-bright">
                         <span className="grow truncate text-left">{p.name}</span>
-                        <Badge className="mr-0.5">{simplur`${p.jobCount} job[|s]`}</Badge>
+                        <MenuCount count={p.jobCount} />
                       </div>
                     }
                     isSelected={isSelected}
@@ -421,6 +421,6 @@ function SideMenuItem({
   );
 }
 
-function MenuCount({ count }: { count: number }) {
+function MenuCount({ count }: { count: number | string }) {
   return <div className="rounded-full bg-slate-900 px-2 py-1 text-xxs text-dimmed">{count}</div>;
 }
