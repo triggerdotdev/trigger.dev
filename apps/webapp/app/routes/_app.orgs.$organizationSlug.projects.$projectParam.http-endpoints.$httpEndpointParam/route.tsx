@@ -1,20 +1,17 @@
-import { CheckIcon, KeyIcon, StopIcon } from "@heroicons/react/20/solid";
+import { CheckIcon } from "@heroicons/react/20/solid";
+import { StopIcon } from "@heroicons/react/24/outline";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { HowToUseApiKeysAndEndpoints } from "~/components/helpContent/HelpContentText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
-import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
-import { Icon } from "~/components/primitives/Icon";
+import { Header1, Header3 } from "~/components/primitives/Headers";
 import {
   PageButtons,
-  PageDescription,
   PageHeader,
   PageTitle,
   PageTitleRow,
@@ -24,7 +21,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableCellChevron,
   TableHeader,
   TableHeaderCell,
   TableRow,
@@ -35,14 +31,8 @@ import { useProject } from "~/hooks/useProject";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { HttpEndpointPresenter } from "~/presenters/HttpEndpointPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
-import {
-  HttpEndpointParamSchema,
-  docsPath,
-  projectHttpEndpointPath,
-  projectHttpEndpointsPath,
-} from "~/utils/pathBuilder";
+import { HttpEndpointParamSchema, docsPath, projectHttpEndpointsPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -149,6 +139,7 @@ export default function Page() {
           </Paragraph>
         </div>
 
+        <Header1 spacing>Environments</Header1>
         <Table fullWidth>
           <TableHeader>
             <TableRow>
@@ -173,6 +164,7 @@ export default function Page() {
                   <TableCell>{httpEnvironment.source}</TableCell>
                   <TableCell>
                     <ClipboardField
+                      className="max-w-[30rem]"
                       fullWidth={false}
                       value={environment?.webhookUrl ?? ""}
                       variant="tertiary/small"
@@ -180,6 +172,7 @@ export default function Page() {
                   </TableCell>
                   <TableCell>
                     <ClipboardField
+                      className="max-w-[10rem]"
                       fullWidth={false}
                       value={secret}
                       secure

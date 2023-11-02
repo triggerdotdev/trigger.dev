@@ -173,7 +173,7 @@ export function projectTriggersPath(organization: OrgForPath, project: ProjectFo
 }
 
 export function projectHttpEndpointsPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${projectPath(organization, project)}/httpendpoints`;
+  return `${projectPath(organization, project)}/http-endpoints`;
 }
 export function projectHttpEndpointPath(
   organization: OrgForPath,
