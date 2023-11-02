@@ -200,13 +200,14 @@ export class HandleHttpEndpointService {
     const headerId =
       request.headers.get("idempotency-key") ?? request.headers.get("x-request-id") ?? ulid();
 
-    //todo how to get secret to the client so they can verify?
     await ingestService.call(environment, {
       id: `${httpEndpoint.id}.${headerId}`,
       name: `httpendpoint.${httpEndpoint.key}`,
       source: httpEndpointEnvironment.source,
       payload: event,
       payloadType: "REQUEST",
+      //todo pass in httpEndpointEnvironment
+      //todo pass in httpEndpoint
     });
 
     return (
