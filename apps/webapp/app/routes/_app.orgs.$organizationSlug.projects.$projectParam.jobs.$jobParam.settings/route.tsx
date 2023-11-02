@@ -51,15 +51,14 @@ export default function Page() {
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
-                  <DialogHeader>
-                    <DeleteJobDialogContent
-                      title={job.title}
-                      slug={job.slug}
-                      environments={job.environments}
-                      id={job.id}
-                      redirectTo={projectJobsPath(organization, project)}
-                    />
-                  </DialogHeader>
+                  <DialogHeader>Delete Job</DialogHeader>
+                  <DeleteJobDialogContent
+                    title={job.title}
+                    slug={job.slug}
+                    environments={job.environments}
+                    id={job.id}
+                    redirectTo={projectJobsPath(organization, project)}
+                  />
                 </DialogContent>
               </Dialog>
             </div>

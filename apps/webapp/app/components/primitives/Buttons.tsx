@@ -82,7 +82,7 @@ const variant = {
   "primary/large": {
     textColor: "text-bright group-hover:text-white transition group-disabled:text-dimmed/80",
     button:
-      "h-10 px-2 text-sm font-medium bg-indigo-600 group-hover:bg-indigo-500/90 disabled:opacity-50",
+      "h-10 px-2 text-sm font-medium bg-indigo-600 group-hover:bg-indigo-500/90 group-disabled:opacity-50",
     icon: "h-5",
     iconSpacing: "gap-x-0.5",
     shortcutVariant: undefined,

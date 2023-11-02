@@ -1,13 +1,14 @@
+import { ArrowPathIcon } from "@heroicons/react/20/solid";
+import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
+import { useFetcher } from "@remix-run/react";
+import { useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
+import { generateTwoRandomWords } from "~/utils/randomWords";
 import { Button } from "../primitives/Buttons";
-import { Dialog, DialogContent, DialogTrigger } from "~/components/primitives/Dialog";
-import { Header1, Header2 } from "../primitives/Headers";
+import { Header1 } from "../primitives/Headers";
 import { Input } from "../primitives/Input";
-import { NamedIcon } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
 import { Spinner } from "../primitives/Spinner";
-import { useState } from "react";
-import { useFetcher } from "@remix-run/react";
-import { generateTwoRandomWords } from "~/utils/randomWords";
 
 type ModalProps = {
   id: string;
@@ -25,11 +26,16 @@ export function RegenerateApiKeyModal({ id, title }: ModalProps) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="tertiary/small" leadingIconClassName="text-dimmed" LeadingIcon="key">
+        <Button
+          variant="tertiary/small"
+          leadingIconClassName="text-dimmed"
+          LeadingIcon={ArrowPathIcon}
+        >
           Regenerate
         </Button>
       </DialogTrigger>
       <DialogContent>
+        <DialogHeader>{`Regenerate ${title} Environment Key`}</DialogHeader>
         <RegenerateApiKeyModalContent
           id={id}
           title={title}
@@ -41,7 +47,7 @@ export function RegenerateApiKeyModal({ id, title }: ModalProps) {
   );
 }
 
-const RegenerateApiKeyModalContent = ({ id, title, randomWord, closeModal }: ModalContentProps) => {
+const RegenerateApiKeyModalContent = ({ id, randomWord, title, closeModal }: ModalContentProps) => {
   const [confirmationText, setConfirmationText] = useState("");
   const fetcher = useFetcher();
   const isSubmitting = fetcher.state === "submitting";
@@ -52,55 +58,47 @@ const RegenerateApiKeyModalContent = ({ id, title, randomWord, closeModal }: Mod
   }
 
   return (
-    <div className="flex w-full flex-col items-center gap-y-6">
-      <div className="flex justify-center">
-        <Header1>{title} Environment</Header1>
+    <div className="flex w-full flex-col items-center gap-y-5 pb-4">
+      <div className="mt-3 flex gap-x-3 rounded-md border border-ui-border py-4 pl-3 pr-5">
+        <ExclamationTriangleIcon className="relative top-1 h-6 w-6 min-w-[2rem] text-amber-500" />
+        <Paragraph>
+          Regenerating the keys for this environment will temporarily break any live Jobs in the
+          <span className="text-bright"> {title} Environment</span> until the new API keys are set
+          in the relevant environment variables.
+        </Paragraph>
       </div>
-      <Header2 className="rounded border border-rose-500 bg-rose-500/10 px-3.5 py-2 text-center text-bright">
-        Are you sure you want to regenerate the keys <br />
-        for this environment?
-      </Header2>
-      <Paragraph variant="small" className="px-6 text-center">
-        <>
-          This will temporarily break any live jobs in the
-          <span className="strong text-bright"> {title} Environment</span> until the new API keys
-          are set in the relevant environment variables.
-        </>
-      </Paragraph>
       <fetcher.Form
         method="post"
         action={`/resources/environments/${id}/regenerate-api-key`}
         className="mt-2 flex w-full flex-col items-center gap-2"
       >
-        <Paragraph variant="small" className="font-medium">
-          To confirm, please enter the text:{" "}
-          <span className="font-bold text-bright">{randomWord}</span>
-        </Paragraph>
-        <Input
-          type="text"
-          placeholder="Confirmation Text"
-          fullWidth={false}
-          value={confirmationText}
-          onChange={(e) => setConfirmationText(e.target.value)}
-        />
-        <Button
-          variant="primary/large"
-          fullWidth
-          className="mt-4"
-          disabled={confirmationText !== randomWord}
-        >
-          {isSubmitting ? (
-            <Spinner color="white" />
-          ) : (
-            <>
-              <NamedIcon
-                name="key"
-                className="mr-1.5 h-4 w-4 text-bright transition group-hover:text-bright"
-              />
-              Regenerate API Keys
-            </>
-          )}
-        </Button>
+        <div className="mb-4 flex items-center gap-x-2">
+          <Paragraph variant="small/bright">Enter this text below to confirm:</Paragraph>
+          <Paragraph
+            variant="small"
+            className="select-all rounded-md border border-ui-border bg-slate-900 px-2 py-1 font-mono text-bright"
+          >
+            {randomWord}
+          </Paragraph>
+        </div>
+        <div className="flex items-center">
+          <Input
+            type="text"
+            placeholder="Confirmation text"
+            fullWidth
+            value={confirmationText}
+            onChange={(e) => setConfirmationText(e.target.value)}
+            className="rounded-r-none"
+            variant="large"
+          />
+          <Button
+            variant="primary/large"
+            disabled={confirmationText !== randomWord}
+            className="rounded-l-none"
+          >
+            {isSubmitting ? <Spinner color="white" /> : <>Regenerate</>}
+          </Button>
+        </div>
       </fetcher.Form>
     </div>
   );
