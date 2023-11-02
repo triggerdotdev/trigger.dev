@@ -132,7 +132,7 @@ export class HttpEndpointPresenter {
           )
           .map((endpointEnv) => ({
             ...endpointEnv,
-            immediateResponseFilter: !endpointEnv.immediateResponseFilter,
+            immediateResponseFilter: endpointEnv.immediateResponseFilter != null,
           })),
       },
       environments: sortEnvironments(relevantEnvironments),
