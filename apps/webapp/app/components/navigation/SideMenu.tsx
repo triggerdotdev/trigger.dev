@@ -246,7 +246,7 @@ function ProjectSelector({
       <PopoverContent
         className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
         align="start"
-        style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10%)` }}
+        style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
         {organizations.map((organization) => (
           <Fragment key={organization.id}>
