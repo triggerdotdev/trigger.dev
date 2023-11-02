@@ -94,14 +94,16 @@ export class HttpEndpointPresenter {
       },
     });
 
-    const relevantEnvironments = environments
-      .filter(
-        (environment) => environment.orgMember === null || environment.orgMember.userId === userId
-      )
-      .map((environment) => ({
-        ...environment,
-        webhookUrl: httpEndpointUrl({ httpEndpointId: httpEndpoint.id, environment }),
-      }));
+    const relevantEnvironments = sortEnvironments(
+      environments
+        .filter(
+          (environment) => environment.orgMember === null || environment.orgMember.userId === userId
+        )
+        .map((environment) => ({
+          ...environment,
+          webhookUrl: httpEndpointUrl({ httpEndpointId: httpEndpoint.id, environment }),
+        }))
+    );
 
     //get the secret
     const secretStore = getSecretStore(httpEndpoint.secretReference.provider);
@@ -120,27 +122,32 @@ export class HttpEndpointPresenter {
       throw new Error("Could not find secret");
     }
 
+    const httpEndpointEnvironments = httpEndpoint.httpEndpointEnvironments
+      .filter(
+        (httpEndpointEnvironment) =>
+          httpEndpointEnvironment.environment.orgMember === null ||
+          httpEndpointEnvironment.environment.orgMember.userId === userId
+      )
+      .map((endpointEnv) => ({
+        ...endpointEnv,
+        immediateResponseFilter: endpointEnv.immediateResponseFilter != null,
+        environment: {
+          type: endpointEnv.environment.type,
+        },
+        webhookUrl: relevantEnvironments.find((e) => e.type === endpointEnv.environment.type)
+          ?.webhookUrl,
+      }));
+
     return {
       httpEndpoint: {
         ...httpEndpoint,
 
-        httpEndpointEnvironments: httpEndpoint.httpEndpointEnvironments
-          .filter(
-            (httpEndpointEnvironment) =>
-              httpEndpointEnvironment.environment.orgMember === null ||
-              httpEndpointEnvironment.environment.orgMember.userId === userId
-          )
-          .map((endpointEnv) => ({
-            ...endpointEnv,
-            immediateResponseFilter: endpointEnv.immediateResponseFilter != null,
-            environment: {
-              type: endpointEnv.environment.type,
-            },
-            webhookUrl: relevantEnvironments.find((e) => e.type === endpointEnv.environment.type)
-              ?.webhookUrl,
-          })),
+        httpEndpointEnvironments,
       },
-      environments: sortEnvironments(relevantEnvironments),
+      environments: relevantEnvironments,
+      unconfiguredEnvironments: relevantEnvironments.filter(
+        (e) => httpEndpointEnvironments.find((h) => h.environment.type === e.type) === undefined
+      ),
       secret,
     };
   }

@@ -2,19 +2,15 @@ import { CheckIcon } from "@heroicons/react/20/solid";
 import { StopIcon } from "@heroicons/react/24/outline";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import {
-  HowToConnectHttpEndpoint,
-  HowToUseApiKeysAndEndpoints,
-} from "~/components/helpContent/HelpContentText";
+import { HowToConnectHttpEndpoint } from "~/components/helpContent/HelpContentText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Header1, Header3 } from "~/components/primitives/Headers";
-import { Help, HelpTrigger, HelpContent } from "~/components/primitives/Help";
+import { Header1 } from "~/components/primitives/Headers";
+import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import {
   PageButtons,
   PageHeader,
@@ -30,7 +26,6 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { TextLink } from "~/components/primitives/TextLink";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
@@ -76,7 +71,7 @@ export const handle: Handle = {
 };
 
 export default function Page() {
-  const { httpEndpoint, environments, secret } = useTypedLoaderData<typeof loader>();
+  const { httpEndpoint, unconfiguredEnvironments, secret } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
 
@@ -109,62 +104,126 @@ export default function Page() {
             <div className={cn("grid h-full gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
               <div>
                 <div className="mb-2 flex items-center justify-between gap-x-2">
-                  <Header1 spacing>HTTP Endpoint config</Header1>
+                  <Header1 spacing>
+                    {httpEndpoint.httpEndpointEnvironments.length > 0
+                      ? "Ready to receive data"
+                      : "Not deployed"}
+                  </Header1>
                   <HelpTrigger title="How do I connect my HTTP Endpoint?" />
                 </div>
-                <div className="mb-8">
-                  <Table fullWidth>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHeaderCell>Environment</TableHeaderCell>
-                        <TableHeaderCell>Source</TableHeaderCell>
-                        <TableHeaderCell>Endpoint URL</TableHeaderCell>
-                        <TableHeaderCell>Secret</TableHeaderCell>
-                        <TableHeaderCell>Respond to request?</TableHeaderCell>
-                        <TableHeaderCell alignment="right">Updated</TableHeaderCell>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {httpEndpoint.httpEndpointEnvironments.map((httpEnvironment) => {
-                        return (
-                          <TableRow key={httpEnvironment.id}>
-                            <TableCell>
-                              <EnvironmentLabel environment={httpEnvironment.environment} />
-                            </TableCell>
-                            <TableCell>{httpEnvironment.source}</TableCell>
-                            <TableCell>
-                              <ClipboardField
-                                className="max-w-[30rem]"
-                                fullWidth={false}
-                                value={httpEnvironment?.webhookUrl ?? ""}
-                                variant="tertiary/small"
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <ClipboardField
-                                className="max-w-[10rem]"
-                                fullWidth={false}
-                                value={secret}
-                                secure
-                                variant={"tertiary/small"}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              {httpEnvironment.immediateResponseFilter ? (
-                                <CheckIcon className="h-4 w-4 text-slate-400" />
-                              ) : (
-                                <StopIcon className="h-4 w-4 text-slate-850" />
-                              )}
-                            </TableCell>
-                            <TableCell alignment="right">
-                              <DateTime date={httpEnvironment.updatedAt} />
-                            </TableCell>
+                {httpEndpoint.httpEndpointEnvironments.length > 0 && (
+                  <div className="mb-8">
+                    <Table fullWidth>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHeaderCell>Environment</TableHeaderCell>
+                          <TableHeaderCell>Endpoint URL</TableHeaderCell>
+                          <TableHeaderCell>Secret</TableHeaderCell>
+                          <TableHeaderCell>Source</TableHeaderCell>
+                          <TableHeaderCell>Respond to request?</TableHeaderCell>
+                          <TableHeaderCell alignment="right">Updated</TableHeaderCell>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {httpEndpoint.httpEndpointEnvironments.map((httpEnvironment) => {
+                          return (
+                            <TableRow key={httpEnvironment.id}>
+                              <TableCell>
+                                <EnvironmentLabel environment={httpEnvironment.environment} />
+                              </TableCell>
+                              <TableCell>
+                                <ClipboardField
+                                  className="max-w-[30rem]"
+                                  fullWidth={false}
+                                  value={httpEnvironment?.webhookUrl ?? ""}
+                                  variant="tertiary/small"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <ClipboardField
+                                  className="max-w-[10rem]"
+                                  fullWidth={false}
+                                  value={secret}
+                                  secure
+                                  variant={"tertiary/small"}
+                                />
+                              </TableCell>
+                              <TableCell>{httpEnvironment.source}</TableCell>
+                              <TableCell>
+                                {httpEnvironment.immediateResponseFilter ? (
+                                  <CheckIcon className="h-4 w-4 text-slate-400" />
+                                ) : (
+                                  <StopIcon className="h-4 w-4 text-slate-850" />
+                                )}
+                              </TableCell>
+                              <TableCell alignment="right">
+                                <DateTime date={httpEnvironment.updatedAt} />
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+
+                {unconfiguredEnvironments.length > 0 && (
+                  <>
+                    <Header1 spacing>Not deployed</Header1>
+                    <Paragraph spacing>
+                      You need to deploy your code for the following environments to receive
+                      webhooks
+                    </Paragraph>
+                    <div className="mb-8">
+                      <Table fullWidth>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHeaderCell>Environment</TableHeaderCell>
+                            <TableHeaderCell>Endpoint URL</TableHeaderCell>
+                            <TableHeaderCell>Secret</TableHeaderCell>
+                            <TableHeaderCell>Source</TableHeaderCell>
+                            <TableHeaderCell>Respond to request?</TableHeaderCell>
+                            <TableHeaderCell alignment="right">Updated</TableHeaderCell>
                           </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
+                        </TableHeader>
+                        <TableBody>
+                          {unconfiguredEnvironments.map((environment) => {
+                            return (
+                              <TableRow key={environment.id}>
+                                <TableCell>
+                                  <EnvironmentLabel
+                                    environment={environment}
+                                    className="opacity-50"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <ClipboardField
+                                    className="max-w-[30rem]"
+                                    fullWidth={false}
+                                    value={environment?.webhookUrl ?? ""}
+                                    variant="tertiary/small"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <ClipboardField
+                                    className="max-w-[10rem]"
+                                    fullWidth={false}
+                                    value={secret}
+                                    secure
+                                    variant={"tertiary/small"}
+                                  />
+                                </TableCell>
+                                <TableCell>–</TableCell>
+                                <TableCell>–</TableCell>
+                                <TableCell alignment="right">–</TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </>
+                )}
               </div>
               <HelpContent title="How to connect my HTTP Endpoint">
                 <HowToConnectHttpEndpoint />
