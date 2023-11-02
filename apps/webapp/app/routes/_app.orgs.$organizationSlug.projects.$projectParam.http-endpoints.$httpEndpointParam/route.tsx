@@ -181,9 +181,6 @@ export default function Page() {
                             <TableHeaderCell>Environment</TableHeaderCell>
                             <TableHeaderCell>Endpoint URL</TableHeaderCell>
                             <TableHeaderCell>Secret</TableHeaderCell>
-                            <TableHeaderCell>Source</TableHeaderCell>
-                            <TableHeaderCell>Respond to request?</TableHeaderCell>
-                            <TableHeaderCell alignment="right">Updated</TableHeaderCell>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -213,9 +210,6 @@ export default function Page() {
                                     variant={"tertiary/small"}
                                   />
                                 </TableCell>
-                                <TableCell>–</TableCell>
-                                <TableCell>–</TableCell>
-                                <TableCell alignment="right">–</TableCell>
                               </TableRow>
                             );
                           })}
