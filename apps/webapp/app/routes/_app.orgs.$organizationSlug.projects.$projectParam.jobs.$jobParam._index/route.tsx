@@ -1,27 +1,24 @@
 import { useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import simplur from "simplur";
 import { z } from "zod";
 import { HowToRunYourJob } from "~/components/helpContent/HelpContentText";
+import { Callout } from "~/components/primitives/Callout";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { RunsTable } from "~/components/runs/RunsTable";
+import { useJob } from "~/hooks/useJob";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 import { RunListPresenter } from "~/presenters/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { Handle } from "~/utils/handle";
 import {
   JobParamsSchema,
-  organizationIntegrationsPath,
   jobRunsParentPath,
-  trimTrailingSlash,
+  organizationIntegrationsPath,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "./ListPagination";
-import { Callout } from "~/components/primitives/Callout";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
-import { useJob } from "~/hooks/useJob";
-import simplur from "simplur";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 
 export const DirectionSchema = z.union([z.literal("forward"), z.literal("backward")]);
 
@@ -51,10 +48,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson({
     list,
   });
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Runs" />,
 };
 
 export default function Page() {

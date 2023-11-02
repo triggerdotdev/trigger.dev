@@ -74,14 +74,10 @@ export const handle: Handle = {
     const projectMatch = matches.find((m) => m.id === projectMatchId);
     const data = useTypedMatchData<typeof loader>(match);
     return (
-      <Fragment>
-        <BreadcrumbLink to={trimTrailingSlash(projectMatch?.pathname ?? "")} title="Jobs" />
-        <BreadcrumbIcon />
-        <BreadcrumbLink
-          to={trimTrailingSlash(match?.pathname ?? "")}
-          title={data?.job.title ?? "Job"}
-        />
-      </Fragment>
+      <BreadcrumbLink
+        to={trimTrailingSlash(match?.pathname ?? "")}
+        title={data?.job.title ?? "Job"}
+      />
     );
   },
 };

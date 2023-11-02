@@ -50,8 +50,6 @@ export const handle: Handle = {
 
     return (
       <Fragment>
-        <BreadcrumbLink to={trimTrailingSlash(jobMatch?.pathname ?? "")} title="Runs" />
-        <BreadcrumbIcon />
         {runData && runData.run && (
           <BreadcrumbLink to={match.pathname} title={`Run #${runData.run.number}`} />
         )}

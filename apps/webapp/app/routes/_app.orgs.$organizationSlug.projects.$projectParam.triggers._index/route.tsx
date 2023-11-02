@@ -39,12 +39,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson(data);
 };
 
-export const handle: Handle = {
-  breadcrumb: (match) => (
-    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="External Triggers" />
-  ),
-};
-
 export default function Integrations() {
   const { triggers } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
