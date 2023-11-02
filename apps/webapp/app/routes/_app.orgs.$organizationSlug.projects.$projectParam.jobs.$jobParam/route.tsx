@@ -6,7 +6,7 @@ import { JobStatusBadge } from "~/components/jobs/JobStatusBadge";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
   PageButtons,
@@ -51,7 +51,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       projectSlug: projectParam,
       organizationSlug,
     }),
-    jobsPresenter.call({ userId, projectSlug: projectParam }),
+    jobsPresenter.call({ userId, organizationSlug, projectSlug: projectParam }),
   ]);
 
   if (job === null) {
@@ -60,9 +60,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       statusText: `There is no Job ${jobParam} in this Project.`,
     });
   }
-
-  //todo identify job
-  // analytics.job.identify({ job });
 
   return typedjson({
     job,
@@ -112,7 +109,12 @@ export default function Job() {
         </PageTitleRow>
         <PageInfoRow>
           <PageInfoGroup>
-            <PageInfoProperty icon={job.event.icon} label={"Trigger"} value={job.event.title} />
+            <PageInfoProperty
+              icon={job.event.icon}
+              label={"Trigger"}
+              value={job.event.title}
+              to={job.event.link ?? undefined}
+            />
             {job.dynamic && <PageInfoProperty icon="dynamic" value={"Dynamic"} />}
             <PageInfoProperty icon="id" label={"ID"} value={job.slug} />
             {job.properties &&

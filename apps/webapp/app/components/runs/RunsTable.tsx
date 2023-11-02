@@ -129,7 +129,7 @@ export function RunsTable({
 function NoRuns({ title }: { title: string }) {
   return (
     <div className="flex items-center justify-center">
-      <Callout variant="warning" className="w-auto">
+      <Callout variant="info" className="w-auto">
         {title}
       </Callout>
     </div>

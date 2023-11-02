@@ -457,7 +457,9 @@ model JobVersion {
   version            String
   eventSpecification Json
 
-  properties Json?
+  properties  Json?
+  triggerLink String?
+  triggerHelp Json?
 
   job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   jobId String

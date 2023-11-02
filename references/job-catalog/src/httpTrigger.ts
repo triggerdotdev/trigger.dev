@@ -45,7 +45,7 @@ const whatsApp = client.defineHttpEndpoint({
 client.defineJob({
   id: "http-whatsapp",
   name: "HTTP WhatsApp",
-  version: "1.0.0",
+  version: "1.1.0",
   enabled: true,
   trigger: whatsApp.onRequest(),
   run: async (request, io, ctx) => {

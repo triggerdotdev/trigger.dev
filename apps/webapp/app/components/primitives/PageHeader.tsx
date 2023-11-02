@@ -7,6 +7,8 @@ import { cn } from "~/utils/cn";
 import { NamedIcon } from "./NamedIcon";
 import { Tabs, TabsProps } from "./Tabs";
 import { Icon, RenderIcon } from "./Icon";
+import { Button, LinkButton } from "./Buttons";
+import { ArrowUpRightIcon } from "@heroicons/react/20/solid";
 
 type WithChildren = {
   children: React.ReactNode;
@@ -90,6 +92,28 @@ export function PageInfoGroup({
 }
 
 export function PageInfoProperty({
+  icon,
+  label,
+  value,
+  to,
+}: {
+  icon?: string | React.ReactNode;
+  label?: string;
+  value: React.ReactNode;
+  to?: string;
+}) {
+  if (to === undefined) {
+    return <PageInfoPropertyContent icon={icon} label={label} value={value} />;
+  }
+
+  return (
+    <LinkButton variant="tertiary/small" to={to} TrailingIcon={ArrowUpRightIcon}>
+      <PageInfoPropertyContent icon={icon} label={label} value={value} />
+    </LinkButton>
+  );
+}
+
+function PageInfoPropertyContent({
   icon,
   label,
   value,

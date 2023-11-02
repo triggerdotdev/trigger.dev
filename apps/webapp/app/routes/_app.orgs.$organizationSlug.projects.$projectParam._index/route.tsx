@@ -30,11 +30,11 @@ import { ProjectParamSchema, organizationIntegrationsPath } from "~/utils/pathBu
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { projectParam } = ProjectParamSchema.parse(params);
+  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
 
   try {
     const presenter = new JobListPresenter();
-    const jobs = await presenter.call({ userId, projectSlug: projectParam });
+    const jobs = await presenter.call({ userId, organizationSlug, projectSlug: projectParam });
 
     return typedjson({
       jobs,
