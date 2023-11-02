@@ -7,6 +7,7 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
   PageButtons,
@@ -26,6 +27,7 @@ import { useOptionalRun } from "~/hooks/useRun";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { findJobByParams } from "~/models/job.server";
 import { JobListPresenter } from "~/presenters/JobListPresenter.server";
+import { JobPresenter } from "~/presenters/JobPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { titleCase } from "~/utils";
 import { Handle } from "~/utils/handle";
@@ -42,19 +44,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { jobParam, projectParam, organizationSlug } = JobParamsSchema.parse(params);
 
-  const jobsPresenter = new JobListPresenter();
+  const presenter = new JobPresenter();
+  const job = await presenter.call({
+    userId,
+    jobSlug: jobParam,
+    organizationSlug,
+    projectSlug: projectParam,
+  });
 
-  const [job, projectJobs] = await Promise.all([
-    findJobByParams({
-      userId,
-      slug: jobParam,
-      projectSlug: projectParam,
-      organizationSlug,
-    }),
-    jobsPresenter.call({ userId, organizationSlug, projectSlug: projectParam }),
-  ]);
-
-  if (job === null) {
+  if (!job) {
     throw new Response("Not Found", {
       status: 404,
       statusText: `There is no Job ${jobParam} in this Project.`,
@@ -63,13 +61,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return typedjson({
     job,
-    projectJobs,
   });
 };
 
 export const handle: Handle = {
-  breadcrumb: (match, matches) => {
-    const projectMatch = matches.find((m) => m.id === projectMatchId);
+  breadcrumb: (match) => {
     const data = useTypedMatchData<typeof loader>(match);
     return (
       <BreadcrumbLink
@@ -150,6 +146,13 @@ export default function Job() {
             </Paragraph>
           </PageInfoGroup>
         </PageInfoRow>
+
+        {job.noRunsHelp && (
+          <Callout variant="info" to={job.noRunsHelp.link} className="mt-2">
+            {job.noRunsHelp.text}
+          </Callout>
+        )}
+
         <PageTabs
           tabs={[
             { label: "Runs", to: jobPath(organization, project, job) },

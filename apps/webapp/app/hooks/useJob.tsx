@@ -9,17 +9,18 @@ export type MatchedJob = UseDataFunctionReturn<typeof loader>["job"];
 
 export const jobMatchId =
   "routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam";
+
 export function useOptionalJob(matches?: UIMatch[]) {
   const routeMatch = useTypedMatchesData<typeof loader>({
     id: jobMatchId,
     matches,
   });
 
-  if (!routeMatch || !routeMatch.job) {
+  if (!routeMatch) {
     return undefined;
   }
 
-  return routeMatch.projectJobs.find((j) => j.id === routeMatch.job.id);
+  return routeMatch.job;
 }
 
 export function useJob(matches?: UIMatch[]) {

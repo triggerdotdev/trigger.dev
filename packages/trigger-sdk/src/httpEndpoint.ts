@@ -89,7 +89,7 @@ class HttpTrigger<TEventSpecification extends EventSpecification<any>>
       link: `http-endpoints/${this.options.endpointId}`,
       help: {
         noRuns: {
-          text: "To start triggering Runs click here to setup your HTTP Endpoint with the external API service you want to receive webhooks from.",
+          text: "To start triggering runs click here to setup your HTTP Endpoint with the external API service you want to receive webhooks from.",
           link: `http-endpoints/${this.options.endpointId}`,
         },
       },
