@@ -200,15 +200,19 @@ export class HandleHttpEndpointService {
     const headerId =
       request.headers.get("idempotency-key") ?? request.headers.get("x-request-id") ?? ulid();
 
-    await ingestService.call(environment, {
-      id: `${httpEndpoint.id}.${headerId}`,
-      name: `httpendpoint.${httpEndpoint.key}`,
-      source: httpEndpointEnvironment.source,
-      payload: event,
-      payloadType: "REQUEST",
-      //todo pass in httpEndpointEnvironment
-      //todo pass in httpEndpoint
-    });
+    await ingestService.call(
+      environment,
+      {
+        id: `${httpEndpoint.id}.${headerId}`,
+        name: `httpendpoint.${httpEndpoint.key}`,
+        source: httpEndpointEnvironment.source,
+        payload: event,
+        payloadType: "REQUEST",
+      },
+      undefined,
+      undefined,
+      { httpEndpointId: httpEndpoint.id, httpEndpointEnvironmentId: httpEndpointEnvironment.id }
+    );
 
     return (
       httpResponse ??

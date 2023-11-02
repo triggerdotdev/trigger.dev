@@ -674,8 +674,11 @@ model EventRecord {
   externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   externalAccountId String?
 
-  //todo optional association between EventRecord and httpEndpointEnvironment
-  //todo optional association between EventRecord and httpEndpoint
+  httpEndpoint   TriggerHttpEndpoint? @relation(fields: [httpEndpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  httpEndpointId String?
+
+  httpEndpointEnvironment   TriggerHttpEndpointEnvironment? @relation(fields: [httpEndpointEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  httpEndpointEnvironmentId String?
 
   deliverAt   DateTime  @default(now())
   deliveredAt DateTime?
@@ -1130,6 +1133,8 @@ model TriggerHttpEndpoint {
 
   httpEndpointEnvironments TriggerHttpEndpointEnvironment[]
 
+  eventRecords EventRecord[]
+
   @@unique([key, projectId])
 }
 
@@ -1153,6 +1158,8 @@ model TriggerHttpEndpointEnvironment {
 
   httpEndpoint   TriggerHttpEndpoint @relation(fields: [httpEndpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   httpEndpointId String
+
+  eventRecords EventRecord[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
