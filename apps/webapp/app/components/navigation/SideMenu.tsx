@@ -83,7 +83,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
   return (
     <div
       className={cn(
-        "flex h-full flex-col gap-y-8 overflow-hidden border-r border-uiBorder transition"
+        "flex h-full flex-col gap-y-8 overflow-hidden border-r border-ui-border transition"
       )}
     >
       <div className="flex h-full flex-col">

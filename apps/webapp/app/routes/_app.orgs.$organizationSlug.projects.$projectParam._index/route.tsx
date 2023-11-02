@@ -189,7 +189,7 @@ function ExampleJobs() {
           <a
             href={example.codeLink}
             key={example.title}
-            className="flex w-full items-center rounded border-b border-uiBorder py-2 transition hover:border-transparent hover:bg-slate-800"
+            className="flex w-full items-center rounded border-b border-ui-border py-2 transition hover:border-transparent hover:bg-slate-800"
           >
             {example.icon}
             <Paragraph variant="small">

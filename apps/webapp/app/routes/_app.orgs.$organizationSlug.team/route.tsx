@@ -113,7 +113,7 @@ export default function Page() {
       </PageHeader>
       <PageBody>
         <Header2>Members</Header2>
-        <ul className="flex w-full max-w-md flex-col divide-y divide-uiBorder border-b border-uiBorder">
+        <ul className="flex w-full max-w-md flex-col divide-y divide-ui-border border-b border-ui-border">
           {members.map((member) => (
             <li key={member.user.id} className="flex items-center gap-x-4 py-4">
               <UserAvatar
