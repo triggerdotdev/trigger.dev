@@ -27,6 +27,7 @@ import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { findJobByParams } from "~/models/job.server";
 import { JobListPresenter } from "~/presenters/JobListPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { titleCase } from "~/utils";
 import { Handle } from "~/utils/handle";
 import {
   JobParamsSchema,
@@ -138,14 +139,7 @@ export default function Job() {
             <PageInfoProperty
               icon="pulse"
               label={"STATUS"}
-              value={
-                <JobStatusBadge
-                  enabled={job.status === "ACTIVE"}
-                  hasIntegrationsRequiringAction={job.hasIntegrationsRequiringAction}
-                  hasRuns={job.lastRun !== undefined}
-                  badgeSize="small"
-                />
-              }
+              value={titleCase(job.status.toLowerCase())}
             />
           </PageInfoGroup>
           <PageInfoGroup alignment="right">
