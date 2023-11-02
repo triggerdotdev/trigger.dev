@@ -133,6 +133,11 @@ export class HttpEndpointPresenter {
           .map((endpointEnv) => ({
             ...endpointEnv,
             immediateResponseFilter: endpointEnv.immediateResponseFilter != null,
+            environment: {
+              type: endpointEnv.environment.type,
+            },
+            webhookUrl: relevantEnvironments.find((e) => e.type === endpointEnv.environment.type)
+              ?.webhookUrl,
           })),
       },
       environments: sortEnvironments(relevantEnvironments),

@@ -1,7 +1,7 @@
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { HowToUseApiKeysAndEndpoints } from "~/components/helpContent/HelpContentText";
+import { WhatAreHttpEndpoints } from "~/components/helpContent/HelpContentText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -70,7 +70,7 @@ export default function Page() {
             <div className={cn("grid h-full gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
               <div>
                 <div className="mb-2 flex items-center justify-end gap-x-2">
-                  <HelpTrigger title="How do I use HTTP Endpoints?" />
+                  <HelpTrigger title="What are HTTP Endpoints?" />
                 </div>
                 <div className="mb-8">
                   <Table fullWidth>
@@ -116,8 +116,8 @@ export default function Page() {
                   </Table>
                 </div>
               </div>
-              <HelpContent title="How to use HTTP Endpoints">
-                <HowToUseApiKeysAndEndpoints />
+              <HelpContent title="What are HTTP Endpoints">
+                <WhatAreHttpEndpoints />
               </HelpContent>
             </div>
           )}
