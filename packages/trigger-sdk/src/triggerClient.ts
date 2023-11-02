@@ -38,6 +38,7 @@ import {
   AutoYieldExecutionError,
   AutoYieldWithCompletedTaskExecutionError,
   CanceledWithTaskError,
+  ErrorWithTask,
   ParsedPayloadSchemaError,
   ResumeWithParallelTaskError,
   ResumeWithTaskError,
@@ -868,6 +869,24 @@ export class TriggerClient {
       return {
         status: "CANCELED",
         task: error.task,
+      };
+    }
+
+    if (error instanceof ErrorWithTask) {
+      const errorWithStack = ErrorWithStackSchema.safeParse(error.cause.output);
+
+      if (errorWithStack.success) {
+        return {
+          status: "ERROR",
+          error: errorWithStack.data,
+          task: error.cause,
+        };
+      }
+
+      return {
+        status: "ERROR",
+        error: { message: JSON.stringify(error.cause.output) },
+        task: error.cause,
       };
     }
 

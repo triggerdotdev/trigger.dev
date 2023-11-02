@@ -26,6 +26,7 @@ import {
   AutoYieldExecutionError,
   AutoYieldWithCompletedTaskExecutionError,
   CanceledWithTaskError,
+  ErrorWithTask,
   ResumeWithParallelTaskError,
   ResumeWithTaskError,
   RetryWithTaskError,
@@ -801,7 +802,10 @@ export class IO {
         task,
       });
 
-      throw new Error(task.error ?? task?.output ? JSON.stringify(task.output) : "Task errored");
+      throw new ErrorWithTask(
+        task,
+        task.error ?? task?.output ? JSON.stringify(task.output) : "Task errored"
+      );
     }
 
     this.#detectAutoYield("before_execute_task", 1500);
@@ -884,6 +888,13 @@ export class IO {
 
             error = innerError;
           }
+        }
+
+        if (error instanceof ErrorWithTask) {
+          // This means a subtask errored, so we need to update the parent task and not retry it
+          await this._apiClient.failTask(this._id, task.id, {
+            error: error.cause.output as any,
+          });
         }
 
         const parsedError = ErrorWithStackSchema.safeParse(error);

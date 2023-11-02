@@ -75,3 +75,13 @@ export function isTriggerError(err: unknown): err is TriggerInternalError {
     err instanceof ResumeWithParallelTaskError
   );
 }
+
+// This error isn't an internal error but it can be used by the user to figure out which task caused the error
+export class ErrorWithTask extends Error {
+  constructor(
+    public cause: ServerTask,
+    message: string
+  ) {
+    super(message);
+  }
+}
