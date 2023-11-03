@@ -163,13 +163,13 @@ export default function Page() {
                             className="w-full max-w-none"
                             secure
                             value={environment.apiKey}
-                            variant={"primary/medium"}
+                            variant={"secondary/medium"}
                             icon={<Badge variant="outline">Server</Badge>}
                           />
                           <ClipboardField
                             className="w-full max-w-none"
                             value={environment.pkApiKey}
-                            variant={"primary/medium"}
+                            variant={"secondary/medium"}
                             icon={<Badge variant="outline">Public</Badge>}
                           />
                         </div>
@@ -233,12 +233,9 @@ export default function Page() {
                       </div>
                     ))
                   ) : (
-                    <>
-                      <Paragraph>Add your first endpoint</Paragraph>
-                      <Paragraph>
-                        <FirstEndpointSheet projectId={project.id} environments={environments} />
-                      </Paragraph>
-                    </>
+                    <Paragraph>
+                      <FirstEndpointSheet projectId={project.id} environments={environments} />
+                    </Paragraph>
                   )}
                 </div>
                 {selectedEndpoint && selectedEndpoint.endpoint && (
@@ -284,7 +281,7 @@ function EndpointRow({
               <span className="text-amber-500">
                 The {environmentTitle({ type })} environment is not configured
               </span>
-              <ButtonContent variant="primary/small">Configure</ButtonContent>
+              <ButtonContent variant="secondary/small">Configure</ButtonContent>
             </div>
           </TableCell>
         </TableRow>
