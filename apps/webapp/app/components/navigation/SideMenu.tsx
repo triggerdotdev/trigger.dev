@@ -400,7 +400,7 @@ function SideMenuItem({
       <div className="flex w-full items-center justify-between overflow-hidden">
         <span className="truncate">{name}</span>
         <div className="flex items-center gap-1">
-          {count !== undefined && <MenuCount count={count} />}
+          {count !== undefined && count > 0 && <MenuCount count={count} />}
           {typeof hasWarning === "string" ? (
             <TooltipProvider>
               <Tooltip>
