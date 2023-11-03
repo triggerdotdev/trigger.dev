@@ -14,8 +14,10 @@ import {
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Table,
+  TableBlankRow,
   TableBody,
   TableCell,
   TableCellChevron,
@@ -84,39 +86,45 @@ export default function Page() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {httpEndpoints.map((httpEndpoint) => {
-                        const path = projectHttpEndpointPath(organization, project, httpEndpoint);
-                        return (
-                          <TableRow key={httpEndpoint.id}>
-                            <TableCell to={path}>
-                              <div className="flex items-center gap-1">
-                                <Icon icon={httpEndpoint.icon ?? "webhook"} className="h-4 w-4" />
-                                {httpEndpoint.key}
-                              </div>
-                            </TableCell>
-                            <TableCell to={path}>{httpEndpoint.title ?? "–"}</TableCell>
-                            <TableCell to={path}>
-                              <DateTime date={httpEndpoint.updatedAt} />
-                            </TableCell>
-                            <TableCell alignment="right" to={path}>
-                              <div className="flex items-center justify-end gap-1">
-                                {httpEndpoint.httpEndpointEnvironments.map((environment) => (
-                                  <EnvironmentLabel
-                                    key={environment.id}
-                                    environment={environment.environment}
-                                  />
-                                ))}
-                              </div>
-                            </TableCell>
-                            <TableCellChevron to={path} isSticky />
-                          </TableRow>
-                        );
-                      })}
+                      {httpEndpoints.length > 0 ? (
+                        httpEndpoints.map((httpEndpoint) => {
+                          const path = projectHttpEndpointPath(organization, project, httpEndpoint);
+                          return (
+                            <TableRow key={httpEndpoint.id}>
+                              <TableCell to={path}>
+                                <div className="flex items-center gap-1">
+                                  <Icon icon={httpEndpoint.icon ?? "webhook"} className="h-4 w-4" />
+                                  {httpEndpoint.key}
+                                </div>
+                              </TableCell>
+                              <TableCell to={path}>{httpEndpoint.title ?? "–"}</TableCell>
+                              <TableCell to={path}>
+                                <DateTime date={httpEndpoint.updatedAt} />
+                              </TableCell>
+                              <TableCell alignment="right" to={path}>
+                                <div className="flex items-center justify-end gap-1">
+                                  {httpEndpoint.httpEndpointEnvironments.map((environment) => (
+                                    <EnvironmentLabel
+                                      key={environment.id}
+                                      environment={environment.environment}
+                                    />
+                                  ))}
+                                </div>
+                              </TableCell>
+                              <TableCellChevron to={path} isSticky />
+                            </TableRow>
+                          );
+                        })
+                      ) : (
+                        <TableBlankRow colSpan={100}>
+                          <Paragraph>No HTTP Endpoints</Paragraph>
+                        </TableBlankRow>
+                      )}
                     </TableBody>
                   </Table>
                 </div>
               </div>
-              <HelpContent title="What are HTTP Endpoints">
+              <HelpContent title="How to use HTTP Endpoints">
                 <WhatAreHttpEndpoints />
               </HelpContent>
             </div>
