@@ -34,6 +34,7 @@
   },
   "dependencies": {
     "@clerk/backend": "^0.29.1",
+    "stripe": "^12.14.0",
     "@trigger.dev/airtable": "workspace:*",
     "@trigger.dev/express": "workspace:*",
     "@trigger.dev/github": "workspace:*",

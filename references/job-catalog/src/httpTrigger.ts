@@ -1,5 +1,7 @@
+import crypto from "crypto";
 import { createExpressServer } from "@trigger.dev/express";
 import { TriggerClient, verifyRequestSignature } from "@trigger.dev/sdk";
+import Stripe from "stripe";
 
 export const client = new TriggerClient({
   id: "job-catalog",
@@ -10,6 +12,7 @@ export const client = new TriggerClient({
   logLevel: "info",
 });
 
+//WhatsApp
 const whatsApp = client.defineHttpEndpoint({
   id: "whatsapp",
   source: "whatsapp.com",
@@ -56,6 +59,7 @@ client.defineJob({
   },
 });
 
+//Cal.com
 const caldotcom = client.defineHttpEndpoint({
   id: "cal.com",
   source: "cal.com",
@@ -83,5 +87,53 @@ client.defineJob({
     await io.logger.info(`Body`, body);
   },
 });
+
+//todo Stripe
+const stripe = client.defineHttpEndpoint({
+  id: "stripe.com",
+  source: "stripe.com",
+  icon: "stripe",
+  verify: async (request) => {
+    const rawBody = await request.text();
+    const signature = request.headers.get("stripe-signature");
+    if (!signature) {
+      return { success: false };
+    }
+
+    //we don't need an API Key because we're just using it to verify the signature
+    const stripeClient = new Stripe("", { apiVersion: "2022-11-15" });
+
+    try {
+      //note that Stripe provide the secret, so this won't come from the Trigger.dev dashboard
+      const event = stripeClient.webhooks.constructEvent(
+        rawBody,
+        signature,
+        process.env.STRIPE_SECRET!
+      );
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        reason: error instanceof Error ? error.message : JSON.stringify(error),
+      };
+    }
+  },
+});
+
+client.defineJob({
+  id: "http-stripe",
+  name: "HTTP Stripe",
+  version: "1.0.0",
+  enabled: true,
+  trigger: stripe.onRequest({ filter: { body: { type: ["charge.succeeded"] } } }),
+  run: async (request, io, ctx) => {
+    const body = await request.json();
+    await io.logger.info(`Body`, body);
+  },
+});
+
+//todo GitHub
+//todo Loops
 
 createExpressServer(client);
