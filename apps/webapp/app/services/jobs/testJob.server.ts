@@ -94,6 +94,7 @@ export class TestJobService {
             context: {},
             source: event.source ?? "trigger.dev",
             isTest: true,
+            internal: true,
           },
         });
 

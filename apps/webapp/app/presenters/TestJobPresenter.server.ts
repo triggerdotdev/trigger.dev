@@ -66,6 +66,18 @@ export class TestJobPresenter {
           },
           where: {
             name: "latest",
+            environment: {
+              OR: [
+                {
+                  orgMember: null,
+                },
+                {
+                  orgMember: {
+                    userId,
+                  },
+                },
+              ],
+            },
           },
         },
         runs: {

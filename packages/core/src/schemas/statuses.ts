@@ -29,3 +29,5 @@ export const JobRunStatusRecordSchema = InitalStatusUpdateSchema.extend({
   key: z.string(),
   history: StatusHistorySchema,
 });
+
+export type JobRunStatusRecord = z.infer<typeof JobRunStatusRecordSchema>;

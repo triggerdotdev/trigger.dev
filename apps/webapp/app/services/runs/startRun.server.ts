@@ -6,7 +6,7 @@ import {
 } from "@trigger.dev/database";
 import type { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
-import { enqueueRunExecutionV2 } from "~/models/jobRunExecution.server";
+import { enqueueRunExecutionV3 } from "~/models/jobRunExecution.server";
 import { workerQueue } from "../worker.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
@@ -88,7 +88,7 @@ export class StartRunService {
 
     const updatedRun = await updateRun();
 
-    await enqueueRunExecutionV2(updatedRun, this.#prismaClient, {
+    await enqueueRunExecutionV3(updatedRun, this.#prismaClient, {
       skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
     });
   }

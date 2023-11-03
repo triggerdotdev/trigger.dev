@@ -5,32 +5,9 @@ description: "Job is used to create and configure a Job"
 
 A [Job](/documentation/concepts/jobs) is used to define the [Trigger](/documentation/concepts/triggers), metadata, and what happens when it runs.
 
-You can define a job in one of two ways, using the `new Job` constructor or by using the `TriggerClient.defineJob` instance method.
+You can define a job by using the `TriggerClient.defineJob` instance method:
 
 <RequestExample>
-
-```ts constructor
-new Job(client, {
-  id: "slack-kpi-summary",
-  name: "Slack kpi summary",
-  version: "0.1.1",
-  integrations: {
-    slack,
-  },
-  trigger: cronTrigger({
-    cron: "0 9 * * *", // 9am every day (UTC)
-  }),
-  run: async (payload, io, ctx) => {
-    const { revenue } = await db.getKpiSummary(payload.ts);
-    const response = await io.slack.postMessage("Slack 📝", {
-      text: `Yesterday's revenue was $${revenue}`,
-      channel: "C04GWUTDC3W",
-    });
-
-    return response;
-  },
-});
-```
 
 ```ts client.defineJob
 client.defineJob({

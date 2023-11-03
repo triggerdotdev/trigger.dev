@@ -2,6 +2,7 @@ import { cn } from "~/utils/cn";
 import { Paragraph } from "./Paragraph";
 import { ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
 import { SimpleTooltip } from "./Tooltip";
+import { Link } from "@remix-run/react";
 
 const variations = {
   primary: {
@@ -45,22 +46,48 @@ export function LabelValueStack({
       <Paragraph variant={variation.label}>{label}</Paragraph>
       <>
         {href ? (
-          <SimpleTooltip
-            side="bottom"
-            button={
-              <Paragraph variant={variation.value}>
-                <a href={href} className="underline underline-offset-2" target="_blank">
-                  {value}
-                  <ArrowTopRightOnSquareIcon className="ml-1 inline-block h-4 w-4 text-dimmed" />
-                </a>
-              </Paragraph>
-            }
-            content={href}
-          />
+          <ValueButton value={value} href={href} variant={variant} />
         ) : (
           <Paragraph variant={variation.value}>{value}</Paragraph>
         )}
       </>
     </div>
+  );
+}
+
+type ValueButtonStackProps = {
+  value: React.ReactNode;
+  href: string;
+  variant?: keyof typeof variations;
+};
+
+function ValueButton({ value, href, variant = "secondary" }: ValueButtonStackProps) {
+  const variation = variations[variant];
+
+  const isExternalUrl = href.startsWith("http");
+
+  if (!isExternalUrl) {
+    return (
+      <Paragraph variant={variation.value}>
+        <Link to={href} reloadDocument className="underline underline-offset-2">
+          {value}
+        </Link>
+      </Paragraph>
+    );
+  }
+
+  return (
+    <SimpleTooltip
+      side="bottom"
+      button={
+        <Paragraph variant={variation.value}>
+          <a href={href} className="underline underline-offset-2" target="_blank">
+            {value}
+            <ArrowTopRightOnSquareIcon className="ml-1 inline-block h-4 w-4 text-dimmed" />
+          </a>
+        </Paragraph>
+      }
+      content={href}
+    />
   );
 }

@@ -1,0 +1,21 @@
+```typescript Random example
+client.defineJob({
+  id: "random-job",
+  name: "Random Job",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "example.event",
+  }),
+  run: async (payload, io, ctx) => {
+    // generate random numbers
+    const small = await io.random("random-small");    
+    const large = await io.random("random-large", {
+      min: 10,
+      max: 200,
+      round: true
+    });
+
+    await io.logger.info(`${small} is smaller than ${large}`);
+  },
+});
+```

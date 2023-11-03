@@ -8,6 +8,7 @@ import {
   createTaskUsageProperties,
 } from "./taskUtils";
 import { OpenAIIntegrationOptions, OpenAIRequestOptions } from "./types";
+import { FetchRetryOptions, FetchTimeoutOptions } from "@trigger.dev/integration-kit";
 
 export class Completions {
   constructor(
@@ -46,7 +47,8 @@ export class Completions {
   backgroundCreate(
     key: IntegrationTaskKey,
     params: Prettify<OpenAI.CompletionCreateParamsNonStreaming>,
-    options: OpenAIRequestOptions = {}
+    options: OpenAIRequestOptions = {},
+    fetchOptions: { retries?: FetchRetryOptions; timeout?: FetchTimeoutOptions } = {}
   ): Promise<OpenAI.Completion> {
     return this.runTask(
       key,
@@ -71,7 +73,8 @@ export class Completions {
             ),
             body: JSON.stringify(params),
           },
-          backgroundTaskRetries
+          fetchOptions.retries ?? backgroundTaskRetries,
+          fetchOptions.timeout
         );
 
         task.outputProperties = createTaskUsageProperties(response.usage);
@@ -87,6 +90,9 @@ export class Completions {
             text: params.model,
           },
         ],
+        retry: {
+          limit: 0,
+        },
       }
     );
   }
