@@ -157,12 +157,6 @@ export class EventMatcher {
             filter
           );
 
-          logger.info(`${isMatch ? "Matched" : "Did not match"} Request event filter`, {
-            context: this.event.context,
-            requestPayload,
-            filter: JSON.stringify(filter),
-          });
-
           return isMatch;
         }
 
