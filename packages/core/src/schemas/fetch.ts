@@ -52,10 +52,18 @@ export const FetchRetryOptionsSchema = z.record(FetchRetryStrategySchema);
   */
 export type FetchRetryOptions = z.infer<typeof FetchRetryOptionsSchema>;
 
+export const FetchTimeoutOptionsSchema = z.object({
+  durationInMs: z.number(),
+  retry: RetryOptionsSchema.optional(),
+});
+
+export type FetchTimeoutOptions = z.infer<typeof FetchTimeoutOptionsSchema>;
+
 export const FetchOperationSchema = z.object({
   url: z.string(),
   requestInit: FetchRequestInitSchema.optional(),
   retry: z.record(FetchRetryStrategySchema).optional(),
+  timeout: FetchTimeoutOptionsSchema.optional(),
 });
 
 export type FetchOperation = z.infer<typeof FetchOperationSchema>;

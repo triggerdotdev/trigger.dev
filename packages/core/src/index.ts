@@ -9,6 +9,7 @@ export * from "./eventFilterMatches";
 
 export const API_VERSIONS = {
   LAZY_LOADED_CACHED_TASKS: "2023-09-29",
+  SERIALIZED_TASK_OUTPUT: "2023-11-01",
 } as const;
 
 export const PLATFORM_FEATURES = {

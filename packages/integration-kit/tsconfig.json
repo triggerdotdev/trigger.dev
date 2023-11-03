@@ -4,7 +4,10 @@
   "compilerOptions": {
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "paths": {},
+    "paths": {
+      "@trigger.dev/core/*": ["../core/src/*"],
+      "@trigger.dev/core": ["../core/src/index"]
+    },
     "lib": ["DOM", "DOM.Iterable"],
     "declaration": false,
     "declarationMap": false

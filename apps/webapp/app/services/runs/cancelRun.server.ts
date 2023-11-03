@@ -1,6 +1,6 @@
 import { PrismaClient, prisma } from "~/db.server";
 import { executionWorker } from "../worker.server";
-import { dequeueRunExecutionV2 } from "~/models/jobRunExecution.server";
+import { dequeueRunExecutionV3 } from "~/models/jobRunExecution.server";
 
 export class CancelRunService {
   #prismaClient: PrismaClient;
@@ -39,7 +39,7 @@ export class CancelRunService {
           },
         });
 
-        await dequeueRunExecutionV2(run, tx);
+        await dequeueRunExecutionV3(run, tx);
       });
     } catch (error) {
       throw error;

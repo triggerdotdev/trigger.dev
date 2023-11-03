@@ -30,6 +30,7 @@
     "auto-yield": "nodemon --watch src/auto-yield.ts -r tsconfig-paths/register -r dotenv/config src/auto-yield.ts",
     "cli-example": "nodemon --watch src/cli-example.ts -r tsconfig-paths/register -r dotenv/config src/cli-example.ts",
     "random": "nodemon --watch src/random.ts -r tsconfig-paths/register -r dotenv/config src/random.ts",
+    "invoke": "nodemon --watch src/invoke.ts -r tsconfig-paths/register -r dotenv/config src/invoke.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {
