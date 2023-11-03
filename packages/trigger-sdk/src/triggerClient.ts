@@ -838,7 +838,7 @@ export class TriggerClient {
         if (!verified.success) {
           return {
             status: "ERROR",
-            error: { message: `Payload verification failed: ${verified.reason}` },
+            error: { message: `Payload verification failed. ${verified.reason}` },
           };
         }
       }
