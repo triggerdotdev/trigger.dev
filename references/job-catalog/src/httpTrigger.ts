@@ -156,6 +156,4 @@ client.defineJob({
   },
 });
 
-//todo Loops
-
 createExpressServer(client);
