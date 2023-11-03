@@ -218,7 +218,7 @@ export class JobPresenter {
   }
 
   #getNoRunsHelp(data: Prisma.JsonValue, projectPath: string) {
-    const triggerHelp = TriggerHelpSchema.optional().parse(data);
+    const triggerHelp = TriggerHelpSchema.nullish().parse(data);
     if (!triggerHelp) {
       return undefined;
     }
