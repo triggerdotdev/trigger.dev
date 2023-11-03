@@ -4,6 +4,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { Breadcrumb, BreadcrumbLink } from "~/components/navigation/Breadcrumb";
+import { PageNavigationIndicator } from "~/components/navigation/PageNavigationIndicator";
 import { SideMenu } from "~/components/navigation/SideMenu";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
@@ -73,7 +74,10 @@ export default function Organization() {
           organizations={organizations}
         />
         <div className="grid grid-rows-[2.25rem_1fr] overflow-hidden">
-          <Breadcrumb />
+          <div className="flex w-full items-center justify-between border-b border-ui-border pr-2">
+            <Breadcrumb />
+            <PageNavigationIndicator />
+          </div>
           <Outlet />
         </div>
       </div>
