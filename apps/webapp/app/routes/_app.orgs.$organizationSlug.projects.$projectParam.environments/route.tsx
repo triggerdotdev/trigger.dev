@@ -12,12 +12,13 @@ import { HowToUseApiKeysAndEndpoints } from "~/components/helpContent/HelpConten
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Badge } from "~/components/primitives/Badge";
-import { ButtonContent } from "~/components/primitives/Buttons";
+import { ButtonContent, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import {
+  PageButtons,
   PageDescription,
   PageHeader,
   PageTitle,
@@ -39,7 +40,11 @@ import { ClientEndpoint, EnvironmentsPresenter } from "~/presenters/Environments
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
-import { ProjectParamSchema, projectEnvironmentsStreamingPath } from "~/utils/pathBuilder";
+import {
+  ProjectParamSchema,
+  docsPath,
+  projectEnvironmentsStreamingPath,
+} from "~/utils/pathBuilder";
 import { requestUrl } from "~/utils/requestUrl.server";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
@@ -127,6 +132,15 @@ export default function Page() {
       <PageHeader>
         <PageTitleRow>
           <PageTitle title="Environments & API Keys" />
+          <PageButtons>
+            <LinkButton
+              LeadingIcon={"docs"}
+              to={docsPath("/documentation/concepts/environments-endpoints#environments")}
+              variant="secondary/small"
+            >
+              Environments documentation
+            </LinkButton>
+          </PageButtons>
         </PageTitleRow>
         <PageDescription>API Keys and endpoints for your environments.</PageDescription>
       </PageHeader>

@@ -39,7 +39,7 @@ export default function Page() {
               to={docsPath("documentation/concepts/triggers")}
               variant="secondary/small"
             >
-              Triggers Documentation
+              Triggers documentation
             </LinkButton>
           </PageButtons>
         </PageTitleRow>

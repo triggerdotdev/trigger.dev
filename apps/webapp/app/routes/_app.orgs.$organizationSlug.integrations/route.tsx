@@ -52,6 +52,7 @@ import {
   OrganizationParamsSchema,
   ProjectParamSchema,
   docsCreateIntegration,
+  docsPath,
   integrationClientPath,
 } from "~/utils/pathBuilder";
 
@@ -83,8 +84,12 @@ export default function Integrations() {
         <PageTitleRow>
           <PageTitle title="Integrations" />
           <PageButtons>
-            <LinkButton to={docsCreateIntegration()} variant="secondary/small" LeadingIcon="docs">
-              Create your own Integration
+            <LinkButton
+              to={docsPath("/integrations/introduction")}
+              variant="secondary/small"
+              LeadingIcon="docs"
+            >
+              Integrations documentation
             </LinkButton>
           </PageButtons>
         </PageTitleRow>

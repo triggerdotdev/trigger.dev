@@ -273,7 +273,7 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
 
           {/* Detail view */}
           <div className="overflow-y-auto py-4 pr-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
-            <Header2 className="mb-2">Detail</Header2>
+            <Header2 className="mb-2">Details</Header2>
             {selectedId ? <Outlet /> : <Callout variant="info">Select a task or trigger</Callout>}
           </div>
         </div>
