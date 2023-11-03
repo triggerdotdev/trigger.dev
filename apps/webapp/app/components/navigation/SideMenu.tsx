@@ -8,7 +8,6 @@ import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 import { useNavigation } from "@remix-run/react";
 import { IconExclamationCircle } from "@tabler/icons-react";
 import { AnchorHTMLAttributes, Fragment, useEffect, useRef, useState } from "react";
-import simplur from "simplur";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
 import { MatchedProject } from "~/hooks/useProject";
@@ -34,7 +33,6 @@ import { Feedback } from "../Feedback";
 import { ImpersonationBanner } from "../ImpersonationBanner";
 import { LogoIcon } from "../LogoIcon";
 import { UserAvatar, UserProfilePhoto } from "../UserProfilePhoto";
-import { Badge } from "../primitives/Badge";
 import { Button, LinkButton } from "../primitives/Buttons";
 import { Icon } from "../primitives/Icon";
 import { type IconNames } from "../primitives/NamedIcon";
@@ -48,6 +46,7 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { useFeatures } from "~/hooks/useFeatures";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -65,6 +64,7 @@ type SideMenuProps = {
 export function SideMenu({ user, project, organization, organizations }: SideMenuProps) {
   const borderRef = useRef<HTMLDivElement>(null);
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);
+  const { isManagedCloud } = useFeatures();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -175,7 +175,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               data-action="team"
             />
             <SideMenuItem
-              name="Usage & Billing"
+              name={isManagedCloud ? "Usage & Billing" : "Usage"}
               icon={ChartBarIcon}
               to={organizationBillingPath(organization)}
               iconColor="text-pink-500"
