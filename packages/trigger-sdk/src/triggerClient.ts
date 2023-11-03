@@ -33,6 +33,7 @@ import {
   SourceMetadataV2,
   StatusUpdate,
 } from "@trigger.dev/core";
+import { yellow } from "colorette";
 import { ApiClient } from "./apiClient";
 import {
   AutoYieldExecutionError,
@@ -480,6 +481,15 @@ export class TriggerClient {
     TIntegrations extends Record<string, TriggerIntegration> = {},
     TOutput extends any = any,
   >(options: JobOptions<TTrigger, TIntegrations, TOutput>) {
+    
+    const existingRegisteredJob = this.#registeredJobs[options.id];
+    
+    if (existingRegisteredJob) {
+      console.warn(
+        yellow(`[@trigger.dev/sdk] Warning: The Job "${existingRegisteredJob.id}" you're attempting to define has already been defined. Please assign a different ID to the job.`)
+      );
+    }
+    
     return new Job<TTrigger, TIntegrations, TOutput>(this, options);
   }
 
