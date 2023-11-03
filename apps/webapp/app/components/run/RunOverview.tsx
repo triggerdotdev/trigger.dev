@@ -1,6 +1,7 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { BoltIcon, ForwardIcon } from "@heroicons/react/24/solid";
+import { PlayIcon } from "@heroicons/react/20/solid";
+import { BoltIcon } from "@heroicons/react/24/solid";
 import {
   Form,
   Outlet,
@@ -262,7 +263,9 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
                       <CodeBlock language="json" code={run.output} maxLines={10} />
                     ) : (
                       run.output === null && (
-                        <Paragraph variant="small">This Run returned nothing.</Paragraph>
+                        <Paragraph variant="small" className="mt-4">
+                          This Run returned nothing.
+                        </Paragraph>
                       )
                     )}
                   </RunPanelBody>
@@ -338,50 +341,52 @@ function RerunPopover({
           Rerun Job
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="flex w-80 flex-col gap-2 p-4" align="end">
+      <PopoverContent className="flex min-w-[20rem] max-w-[20rem] flex-col gap-2 p-0" align="end">
         <Form method="post" action={`/resources/runs/${runId}/rerun`} {...form.props}>
           <input {...conform.input(successRedirect, { type: "hidden" })} defaultValue={runsPath} />
           {environmentType === "PRODUCTION" && (
-            <Callout variant="warning" className="mb-2">
-              This will rerun this Job in your Production environment.
-            </Callout>
+            <div className="px-4 pt-4">
+              <Callout variant="warning">
+                This will rerun this Job in your Production environment.
+              </Callout>
+            </div>
           )}
 
-          <div className="flex flex-col items-start gap-4 divide-y divide-slate-600">
-            <div>
+          <div className="flex flex-col items-start divide-y divide-slate-800">
+            <div className="p-4">
+              <Paragraph variant="small" className="mb-3">
+                Start a brand new Job run with the same Trigger data as this one. This will re-do
+                every Task.
+              </Paragraph>
               <Button
-                variant="primary/small"
+                variant="secondary/medium"
                 type="submit"
                 name={conform.INTENT}
                 value="start"
                 fullWidth
-                LeadingIcon={BoltIcon}
+                className="text-bright"
               >
+                <BoltIcon className="mr-1 h-3.5 w-3.5 text-bright" />
                 Run again
               </Button>
-
-              <Paragraph variant="extra-small" className="mt-2">
-                Start a brand new job run with the same Trigger data as this one. This will re-do
-                every task.
-              </Paragraph>
             </div>
             {status === "FAILED" && (
-              <div className="pt-4">
+              <div className="p-4">
+                <Paragraph variant="small" className="mb-3">
+                  Continue running this Job run from where it left off. This will skip any Task that
+                  has already been completed.
+                </Paragraph>
                 <Button
-                  variant="primary/small"
+                  variant="secondary/medium"
                   type="submit"
                   name={conform.INTENT}
                   value="continue"
                   fullWidth
-                  LeadingIcon={ForwardIcon}
+                  className="text-bright"
                 >
-                  Retry job run
+                  <PlayIcon className="mr-1 h-3.5 w-3.5 text-bright" />
+                  Retry Job run
                 </Button>
-
-                <Paragraph variant="extra-small" className="mt-2">
-                  Continue running this job run from where it left off. This will skip any task that
-                  has already been completed.
-                </Paragraph>
               </div>
             )}
           </div>

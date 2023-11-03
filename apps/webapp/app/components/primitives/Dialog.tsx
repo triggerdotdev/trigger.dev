@@ -5,7 +5,6 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cn } from "~/utils/cn";
 import { XMarkIcon } from "@heroicons/react/24/solid";
 import { ShortcutKey } from "./ShortcutKey";
-import { Paragraph } from "./Paragraph";
 
 const Dialog = DialogPrimitive.Root;
 
