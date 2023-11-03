@@ -27,6 +27,7 @@ second_part text[] := ARRAY[
   'squirrel', 'tiger', 'urchin', 'vulture', 'wombat',
   'xerus', 'yellowtail', 'zebrafish'
 ];
+
 BEGIN
   -- Add the shortcode column to RuntimeEnvironment
   ALTER TABLE "RuntimeEnvironment"
@@ -36,7 +37,8 @@ BEGIN
   UPDATE "RuntimeEnvironment"
   SET "shortcode" = (
     first_part[floor(random()*(array_length(first_part,1) - 1 + 1) + 1)] || '-' || 
-    second_part[floor(random()*(array_length(second_part,1) - 1 + 1) + 1)]
+    second_part[floor(random()*(array_length(second_part,1) - 1 + 1) + 1)]  || '-' || 
+    SUBSTRING(MD5(RANDOM()::text), 1, 6)
   );
 
   -- Add uniqueness constraint
