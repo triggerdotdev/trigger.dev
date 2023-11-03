@@ -106,8 +106,9 @@ class HttpTrigger<TEventSpecification extends EventSpecification<any>>
     return false;
   }
 
-  async verifyPayload(payload: ReturnType<TEventSpecification["parsePayload"]>) {
-    return this.options.verify(payload);
+  async verifyPayload(payload: Request) {
+    const clonedRequest = payload.clone();
+    return this.options.verify(clonedRequest);
   }
 }
 
