@@ -1,9 +1,10 @@
 import { HttpEndpointMetadata } from "@trigger.dev/core";
 import { z } from "zod";
-import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { $transaction, Prisma, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 import { getSecretStore } from "../secrets/secretStore.server";
 import { generateSecret } from "../sources/utils.server";
+import { logger } from "../logger.server";
 
 export class RegisterHttpEndpointService {
   #prismaClient: PrismaClientOrTransaction;
@@ -81,7 +82,9 @@ export class RegisterHttpEndpointService {
         },
         update: {
           active: httpEndpointMetadata.enabled,
-          immediateResponseFilter: httpEndpointMetadata.immediateResponseFilter,
+          immediateResponseFilter: httpEndpointMetadata.immediateResponseFilter
+            ? httpEndpointMetadata.immediateResponseFilter
+            : Prisma.DbNull,
           environmentId: endpoint.environment.id,
           endpointId: endpoint.id,
           httpEndpointId: httpEndpoint.id,
