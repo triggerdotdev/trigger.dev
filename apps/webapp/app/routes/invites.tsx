@@ -6,7 +6,6 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import simplur from "simplur";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
-import { NavBar } from "~/components/navigation/NavBar";
 import { Button } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormTitle } from "~/components/primitives/FormTitle";
@@ -99,7 +98,6 @@ export default function Page() {
 
   return (
     <AppContainer showBackgroundGradient={true}>
-      <NavBar />
       <MainCenteredContainer>
         <div>
           <FormTitle
