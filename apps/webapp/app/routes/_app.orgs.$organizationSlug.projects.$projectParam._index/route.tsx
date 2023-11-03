@@ -67,8 +67,8 @@ export default function Page() {
           </PageTitleRow>
           <PageInfoRow>
             <PageInfoGroup>
-              <PageInfoProperty icon={"job"} label={"All Jobs"} value={totalJobs} />
-              <PageInfoProperty icon={"job"} label={"Active Jobs"} value={activeJobCount} />
+              <PageInfoProperty icon={"job"} label={"Total"} value={totalJobs} />
+              <PageInfoProperty icon={"job"} label={"Active"} value={activeJobCount} />
             </PageInfoGroup>
           </PageInfoRow>
         </PageHeader>

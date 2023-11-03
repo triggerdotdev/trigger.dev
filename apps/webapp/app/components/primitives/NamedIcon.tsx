@@ -129,7 +129,9 @@ const icons = {
   "invite-member": (className: string) => (
     <UserPlusIcon className={cn("text-indigo-500", className)} />
   ),
-  job: (className: string) => <WrenchScrewdriverIcon className={cn("text-teal-500", className)} />,
+  job: (className: string) => (
+    <WrenchScrewdriverIcon className={cn("text-indigo-500", className)} />
+  ),
   key: (className: string) => <KeyIcon className={cn("text-amber-400", className)} />,
   lightbulb: (className: string) => <LightBulbIcon className={cn("text-amber-400", className)} />,
   "clipboard-checked": (className: string) => (
