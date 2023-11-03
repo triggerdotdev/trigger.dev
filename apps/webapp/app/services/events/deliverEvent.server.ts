@@ -49,12 +49,8 @@ export class DeliverEventService {
           eventRecord: eventRecord.id,
         });
 
-        const matchingEventDispatchers = await asyncFilter(
-          possibleEventDispatchers,
-          async (eventDispatcher) => {
-            const matched = await this.#evaluateEventRule(eventDispatcher, eventRecord);
-            return matched;
-          }
+        const matchingEventDispatchers = possibleEventDispatchers.filter((eventDispatcher) =>
+          this.#evaluateEventRule(eventDispatcher, eventRecord)
         );
 
         if (matchingEventDispatchers.length === 0) {
@@ -118,7 +114,7 @@ export class DeliverEventService {
 
     const eventMatcher = new EventMatcher(eventRecord);
 
-    return await eventMatcher.matches({
+    return eventMatcher.matches({
       payload: payloadFilter.data,
       context: contextFilter.data,
     });
@@ -132,7 +128,7 @@ export class EventMatcher {
     this.event = event;
   }
 
-  public async matches(filter: EventFilter) {
+  public matches(filter: EventFilter) {
     switch (this.event.payloadType) {
       case "REQUEST": {
         const result = RequestWithRawBodySchema.safeParse(this.event.payload);
@@ -145,26 +141,33 @@ export class EventMatcher {
           return false;
         }
 
-        switch (result.data.headers["content-type"]) {
-          case "application/json": {
-            const body = JSON.parse(result.data.rawBody);
-            return eventFilterMatches(
-              {
-                context: this.event.context,
-                payload: {
-                  url: result.data.url,
-                  method: result.data.method,
-                  headers: result.data.headers,
-                  body,
-                },
-              },
-              filter
-            );
-          }
-          default: {
-            return eventFilterMatches(result.data, filter);
-          }
+        const contentType = result.data.headers["content-type"];
+
+        if (contentType?.includes("application/json")) {
+          const body = JSON.parse(result.data.rawBody);
+          const requestPayload = {
+            url: result.data.url,
+            method: result.data.method,
+            headers: result.data.headers,
+            body,
+          };
+
+          logger.info("Matching Request event filter", {
+            context: this.event.context,
+            requestPayload,
+            filter,
+          });
+
+          return eventFilterMatches(
+            {
+              context: this.event.context,
+              payload: requestPayload,
+            },
+            filter
+          );
         }
+
+        return eventFilterMatches(result.data, filter);
       }
       default: {
         return eventFilterMatches(this.event, filter);
