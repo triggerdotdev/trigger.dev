@@ -56,4 +56,32 @@ client.defineJob({
   },
 });
 
+const caldotcom = client.defineHttpEndpoint({
+  id: "cal.com",
+  source: "cal.com",
+  icon: "caldotcom",
+  verify: async (request) => {
+    const text = await request.text();
+    const bodyDigest = crypto
+      .createHmac("sha256", process.env.CALDOTCOM_SECRET!)
+      .update(text)
+      .digest("hex");
+    const signature = request.headers.get("X-Cal-Signature-256")?.replace("sha256=", "") ?? "";
+
+    return { success: signature === bodyDigest };
+  },
+});
+
+client.defineJob({
+  id: "http-caldotcom",
+  name: "HTTP Cal.com",
+  version: "1.0.0",
+  enabled: true,
+  trigger: caldotcom.onRequest(),
+  run: async (request, io, ctx) => {
+    const body = await request.json();
+    await io.logger.info(`Body`, body);
+  },
+});
+
 createExpressServer(client);
