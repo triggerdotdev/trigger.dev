@@ -300,7 +300,7 @@ export function WhatAreHttpEndpoints() {
     <>
       <Paragraph spacing>
         HTTP Endpoints allow you to trigger your Jobs from any webhooks. They require a bit more
-        work than using <TextLink to={docsPath("integrations/introduction")}>integrations</TextLink>{" "}
+        work than using <TextLink to={docsPath("integrations/introduction")}>Integrations</TextLink>{" "}
         but allows you to connect to any API.
       </Paragraph>
       <Header2 spacing>Getting started</Header2>
