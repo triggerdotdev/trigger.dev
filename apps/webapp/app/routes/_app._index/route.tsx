@@ -14,7 +14,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return redirect(projectPath(organization, project));
   } catch (e) {
     //this should only happen if the user has no projects
-    console.error(e);
-    redirect(newOrganizationPath());
+    return redirect(newOrganizationPath());
   }
 };
