@@ -30,7 +30,7 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
   const project = useProject();
 
   return (
-    <Table>
+    <Table containerClassName="mb-4">
       <TableHeader>
         <TableRow>
           <TableHeaderCell>Job</TableHeaderCell>
