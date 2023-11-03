@@ -92,10 +92,7 @@ export class DeliverEventService {
     );
   }
 
-  async #evaluateEventRule(
-    dispatcher: EventDispatcher,
-    eventRecord: EventRecord
-  ): Promise<boolean> {
+  #evaluateEventRule(dispatcher: EventDispatcher, eventRecord: EventRecord): boolean {
     if (!dispatcher.payloadFilter && !dispatcher.contextFilter) {
       return true;
     }
@@ -152,19 +149,21 @@ export class EventMatcher {
             body,
           };
 
-          logger.info("Matching Request event filter", {
-            context: this.event.context,
-            requestPayload,
-            filter,
-          });
-
-          return eventFilterMatches(
+          const isMatch = eventFilterMatches(
             {
               context: this.event.context,
               payload: requestPayload,
             },
             filter
           );
+
+          logger.info(`${isMatch ? "Matched" : "Did not match"} Request event filter`, {
+            context: this.event.context,
+            requestPayload,
+            filter: JSON.stringify(filter),
+          });
+
+          return isMatch;
         }
 
         return eventFilterMatches(result.data, filter);
