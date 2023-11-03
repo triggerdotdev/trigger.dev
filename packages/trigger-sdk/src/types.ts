@@ -76,7 +76,7 @@ export type VerifyResult =
     }
   | {
       success: false;
-      reason: string;
+      reason?: string;
     };
 
 export interface Trigger<TEventSpec extends EventSpecification<any>> {
