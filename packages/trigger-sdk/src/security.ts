@@ -39,7 +39,8 @@ export function verifyHmacSha256(headerValue: string, secret: string, body: stri
   const hmac = crypto.createHmac("sha256", secret ?? "");
   const digest = Buffer.from("sha256" + "=" + hmac.update(body).digest("hex"), "utf8");
 
-  const isAllowed = signature.length === digest.length && crypto.timingSafeEqual(digest, buffer);
+  const lengthEqual = signature.length === digest.length;
+  const isAllowed = lengthEqual && crypto.timingSafeEqual(digest, buffer);
 
   return isAllowed;
 }
