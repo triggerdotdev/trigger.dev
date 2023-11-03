@@ -22,7 +22,7 @@ type HttpEndpointOptions<TEventSpecification extends EventSpecification<any>> = 
 };
 
 export type RequestOptions = {
-  filter?: EventFilter;
+  filter?: RequestFilter;
 };
 
 export class HttpEndpoint<TEventSpecification extends EventSpecification<any>> {
