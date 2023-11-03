@@ -26,19 +26,21 @@ const whatsApp = client.defineHttpEndpoint({
     },
     handler: async (request, verify) => {
       const searchParams = new URL(request.url).searchParams;
-      if (searchParams.get("verify_token") !== process.env.WHATSAPP_SECRET) {
+      if (searchParams.get("hub.verify_token") !== process.env.WHATSAPP_WEBHOOK_SECRET) {
         return new Response("Unauthorized", { status: 401 });
       }
-      return new Response(searchParams.get("challenge") ?? "OK", { status: 200 });
+      return new Response(searchParams.get("hub.challenge") ?? "OK", { status: 200 });
     },
   },
   verify: async (request) => {
-    return verifyRequestSignature({
-      request,
-      secret: process.env.WHATSAPP_SECRET!,
-      headerName: "X-Signature-SHA256",
-      algorithm: "sha256",
-    });
+    const text = await request.text();
+    const bodyDigest = crypto
+      .createHmac("sha256", process.env.WHATSAPP_APP_SECRET!)
+      .update(text)
+      .digest("hex");
+    const signature = request.headers.get("x-hub-signature-256")?.replace("sha256=", "") ?? "";
+
+    return { success: signature === bodyDigest };
   },
 });
 
@@ -50,8 +52,7 @@ client.defineJob({
   trigger: whatsApp.onRequest(),
   run: async (request, io, ctx) => {
     const body = await request.json();
-    const { event } = body;
-    await io.logger.info(`Received event: ${event}`);
+    await io.logger.info(`Body`, body);
   },
 });
 
