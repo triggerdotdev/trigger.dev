@@ -1,7 +1,6 @@
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
-import { enqueueRunExecutionV2 } from "~/models/jobRunExecution.server";
 import { logger } from "../logger.server";
+import { ResumeTaskService } from "./resumeTask.server";
 
 type FoundTask = Awaited<ReturnType<typeof findTask>>;
 
@@ -37,7 +36,7 @@ export class ProcessCallbackTimeoutService {
         },
         data: {
           status: "ERRORED",
-          error
+          error,
         },
       });
 
@@ -55,9 +54,7 @@ export class ProcessCallbackTimeoutService {
   }
 
   async #resumeRunExecution(task: NonNullable<FoundTask>, prisma: PrismaClientOrTransaction) {
-    await enqueueRunExecutionV2(task.run, prisma, {
-      skipRetrying: task.run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
-    });
+    await ResumeTaskService.enqueue(task.id, undefined, prisma);
   }
 }
 

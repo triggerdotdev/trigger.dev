@@ -98,6 +98,44 @@ An individual retrying strategy can be one of two types:
 
 </ResponseField>
 
+<ResponseField name="timeout options" type="object">
+  Allows you to set timeouts for the request, as well as specific retry strategies for timeouts.
+
+{" "}
+
+<Expandable title="options" defaultOpen>
+  <ResponseField name="durationInMs" type="number" required>
+    The amount of time to wait before timing out the request. The minimum value is 1s and max is 2min
+  </ResponseField>
+  <ResponseField name="retry" type="RetryOptions">
+    
+    <Expandable title="options">
+
+{" "}
+
+<ResponseField name="limit" type="number">
+  The maximum number of times to retry the request.
+</ResponseField>
+<ResponseField name="minTimeoutInMs" type="number">
+  The minimum amount of time to wait before retrying the request.
+</ResponseField>
+<ResponseField name="maxTimeoutInMs" type="number">
+  The maximum amount of time to wait before retrying the request.
+</ResponseField>
+<ResponseField name="factor" type="number">
+  The exponential factor to use when calculating the next retry time.
+</ResponseField>
+<ResponseField name="randomize" type="boolean">
+  Whether to randomize the retry time.
+</ResponseField>
+
+    </Expandable>
+
+  </ResponseField>
+</Expandable>
+
+</ResponseField>
+
 </ResponseField>
 
 ## Returns
@@ -106,7 +144,7 @@ A `Promise` that resolves after the specified amount of time.
 
 <RequestExample>
 
-```typescript backgroundFetch example
+```typescript retrying
 client.defineJob({
   id: "background-fetch-job",
   name: "Background fetch Job",
@@ -128,8 +166,52 @@ client.defineJob({
       },
       {
         "429": {
+          strategy: "headers",
+          limitHeader: "x-ratelimit-limit",
+          remainingHeader: "x-ratelimit-remaining",
+          resetHeader: "x-ratelimit-reset",
+        },
+        "5xx": {
           strategy: "backoff",
-          limit: 10,
+          limit: 5,
+          minTimeoutInMs: 1000,
+          maxTimeoutInMs: 30000,
+          factor: 1.8,
+          randomize: true,
+        },
+      }
+    );
+
+    return response;
+  },
+});
+```
+
+```typescript timeouts
+client.defineJob({
+  id: "background-fetch-job",
+  name: "Background fetch Job",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "example.event",
+  }),
+  run: async (payload, io, ctx) => {
+    const response = io.backgroundFetch<CreateChatCompetionResponseData>(
+      "fetch-some-data",
+      "https://example.com/api/endpoint",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: redactString`Bearer ${auth.apiKey}`,
+        },
+        body: JSON.stringify({ foo: "bar" }),
+      },
+      {},
+      {
+        durationInMs: 10000, // 10 seconds
+        retry: {
+          limit: 6,
           minTimeoutInMs: 1000,
           maxTimeoutInMs: 60000,
           factor: 2,

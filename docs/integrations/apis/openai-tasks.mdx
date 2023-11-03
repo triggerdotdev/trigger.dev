@@ -43,6 +43,57 @@ run: async (payload, io, ctx) => {
 },
 ```
 
+You can also pass an optional third parameter to `backgroundCreateCompletion` to specify OpenAI request options:
+
+```ts requestOptions.ts
+run: async (payload, io, ctx) => {
+    // This code showcases background text completion using the "gpt-3.5-turbo" model.
+    // It generates text based on the provided programming task and logs the result.
+    const programmingTask = `Create a function that checks if a string is a palindrome.`;
+
+    const response = await io.openai.backgroundCreateCompletion("background-completion", {
+      model: "gpt-3.5-turbo",
+      prompt: `Coding task: ${programmingTask}\n\n`,
+    }, {
+      headers: {
+        "User-Agent": "my-user-agent"
+      }
+    });
+
+    await io.logger.info("codeSnippet", response.choices[0]?.text);
+},
+```
+
+This task is implemented using [io.backgroundFetch()](/sdk/io/backgroundfetch) and so you can also pass a 4th parameter customizing the retry and timeout options:
+
+```ts fetchOptions.ts
+run: async (payload, io, ctx) => {
+    // This code showcases background text completion using the "gpt-3.5-turbo" model.
+    // It generates text based on the provided programming task and logs the result.
+    const programmingTask = `Create a function that checks if a string is a palindrome.`;
+
+    const response = await io.openai.backgroundCreateCompletion("background-completion", {
+      model: "gpt-3.5-turbo",
+      prompt: `Coding task: ${programmingTask}\n\n`,
+    }, {
+      headers: {
+        "User-Agent": "my-user-agent"
+      }
+    }, {
+      timeout: {
+        durationInMs: 10000,
+        retry: {
+          limit: 3,
+          minTimeoutInMs: 1000,
+          factor: 2,
+        }
+      }
+    });
+
+    await io.logger.info("codeSnippet", response.choices[0]?.text);
+},
+```
+
 ### `createChatCompletion`
 
 Generates text completions in a conversational context. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/chat/create)
@@ -79,6 +130,87 @@ run: async (payload, io, ctx) => {
           content: "Create a good programming joke about background jobs",
         },
       ],
+    });
+
+    await io.logger.info("choices", response.choices);
+},
+```
+
+You can also use the more "fluent" pattern used by the OpenAI SDK:
+
+```ts fluent.ts
+run: async (payload, io, ctx) => {
+    // This code showcases background chat completion using the "gpt-3.5-turbo" model.
+    // It simulates a conversation with a user message and logs the response choices.
+    const response = await io.openai.chat.completions.backgroundCreate("background-chat-completion", {
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "user",
+          content: "Create a good programming joke about background jobs",
+        },
+      ],
+    });
+
+    await io.logger.info("choices", response.choices);
+},
+```
+
+Additionally, you can pass an optional third parameter to specify OpenAI request options:
+
+```ts requestOptions.ts
+run: async (payload, io, ctx) => {
+    // This code showcases background text completion using the "gpt-3.5-turbo" model.
+    // It generates text based on the provided programming task and logs the result.
+    const programmingTask = `Create a function that checks if a string is a palindrome.`;
+
+    const response = await io.openai.chat.completions.backgroundCreate("background-completion", {
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "user",
+          content: "Create a good programming joke about background jobs",
+        },
+      ],
+    }, {
+      headers: {
+        "User-Agent": "my-user-agent"
+      }
+    });
+
+    await io.logger.info("choices", response.choices);
+},
+```
+
+This task is implemented using [io.backgroundFetch()](/sdk/io/backgroundfetch) and so you can also pass a 4th parameter customizing the retry and timeout options:
+
+```ts fetchOptions.ts
+run: async (payload, io, ctx) => {
+    // This code showcases background text completion using the "gpt-3.5-turbo" model.
+    // It generates text based on the provided programming task and logs the result.
+    const programmingTask = `Create a function that checks if a string is a palindrome.`;
+
+    const response = await io.openai.chat.completions.backgroundCreate("background-completion", {
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "user",
+          content: "Create a good programming joke about background jobs",
+        },
+      ],
+    }, {
+      headers: {
+        "User-Agent": "my-user-agent"
+      }
+    }, {
+      timeout: {
+        durationInMs: 10000,
+        retry: {
+          limit: 3,
+          minTimeoutInMs: 1000,
+          factor: 2,
+        }
+      }
     });
 
     await io.logger.info("choices", response.choices);
