@@ -122,7 +122,15 @@ const openai = new OpenAI({
   apiKey: process.env["OPENAI_API_KEY"]!,
 });
 
-const openaiJob = client.defineJob({
+const perplexity = new OpenAI({
+  id: "perplexity",
+  apiKey: process.env["PERPLEXITY_API_KEY"]!,
+  baseURL: "https://api.perplexity.ai",
+  icon: "brand-open-source",
+});
+
+// This job performs a chat completion using either OpenAI or Perplexity, depending on the model passed in
+const completionJob = client.defineJob({
   id: "openai-job",
   name: "OpenAI Job",
   version: "1.0.0",
@@ -135,55 +143,64 @@ const openaiJob = client.defineJob({
   }),
   integrations: {
     openai,
+    perplexity,
   },
   run: async (payload, io, ctx) => {
-    return await io.openai.chat.completions.backgroundCreate(
-      "background-chat-completion",
-      {
-        model: payload.model,
-        messages: [
-          {
-            role: "user",
-            content: payload.prompt,
-          },
-        ],
-      },
-      {},
-      {
-        timeout: {
-          durationInMs: 3000,
+    if (payload.model === "gpt-3.5-turbo") {
+      return await io.openai.chat.completions.backgroundCreate(
+        "background-chat-completion",
+        {
+          model: payload.model,
+          messages: [
+            {
+              role: "user",
+              content: payload.prompt,
+            },
+          ],
         },
-      }
-    );
+        {},
+        {
+          // Set a timeout of 30 seconds, and retry it up to 3 times
+          timeout: {
+            durationInMs: 30000,
+            retry: {
+              limit: 3,
+              minTimeoutInMs: 1000,
+              factor: 2,
+            },
+          },
+        }
+      );
+    } else {
+      return await io.perplexity.completions.backgroundCreate(
+        "background-completion",
+        {
+          model: payload.model,
+          prompt: payload.prompt,
+        },
+        {},
+        {
+          // Set a timeout of 30 seconds, and retry it up to 3 times
+          timeout: {
+            durationInMs: 30000,
+            retry: {
+              limit: 3,
+              minTimeoutInMs: 1000,
+              factor: 2,
+            },
+          },
+        }
+      );
+    }
   },
 });
 
 const prompts = [
-  { model: "gpt-3.5-turbo", prompt: "Advantages of quantum computing over classical computing" },
-  {
-    model: "gpt-3.5-turbo",
-    prompt: "The ethical implications of advanced artificial intelligence",
-  },
-  {
-    model: "gpt-3.5-turbo",
-    prompt: "Design a thought experiment highlighting the paradoxes in quantum mechanics",
-  },
-  {
-    model: "gpt-3.5-turbo",
-    prompt: "Explain the Fermi Paradox, its potential solutions, and implications for humanity",
-  },
-  { model: "gpt-3.5-turbo", prompt: "Analyze Shakespeare's use of iambic pentameter in his plays" },
-  { model: "gpt-3.5-turbo", prompt: "Can you provide a comprehensive overview of string theory?" },
-  { model: "gpt-3.5-turbo", prompt: "Create a detailed plan for a Mars colonization mission" },
-  {
-    model: "gpt-3.5-turbo",
-    prompt: "Provide a thorough comparison of capitalism, socialism, and communism",
-  },
-  { model: "gpt-3.5-turbo", prompt: "Discuss the environmental implications of Bitcoin mining" },
-  {
-    model: "gpt-3.5-turbo",
-    prompt: "Formulate a detailed theory on the origin of languages and their evolution",
-  },
+  "Advantages of quantum computing over classical computing",
+  "The ethical implications of advanced artificial intelligence",
+  "Design a thought experiment highlighting the paradoxes in quantum mechanics",
+  "Explain the Fermi Paradox, its potential solutions, and implications for humanity",
+  "Analyze Shakespeare's use of iambic pentameter in his plays",
 ];
 
 client.defineJob({
@@ -192,12 +209,36 @@ client.defineJob({
   version: "1.0.0",
   trigger: invokeTrigger(),
   run: async (payload, io, ctx) => {
-    await openaiJob.batchInvokeAndWaitForCompletion(
+    // This will invoke the completionJob in parallel for each prompt, first trying OpenAI
+    const runs = await completionJob.batchInvokeAndWaitForCompletion(
       "batch-invoke-and-wait",
       prompts.map((prompt) => ({
-        payload: prompt,
+        payload: {
+          model: "gpt-3.5-turbo",
+          prompt,
+        },
       }))
     );
+
+    // Runs are returned in the same order as the prompts
+    const failedRuns = runs.map((run, i) => ({ run, prompt: prompts[i] })).filter((r) => !r.run.ok);
+
+    // Run the failed runs with Perplexity by specifying the "mistral-7b-instruct" model
+    const retriedRuns = await completionJob.batchInvokeAndWaitForCompletion(
+      "batch-invoke-and-wait",
+      failedRuns.map((failedRun) => ({
+        payload: {
+          model: "mistral-7b-instruct",
+          prompt: failedRun.prompt,
+        },
+      }))
+    );
+
+    const failedPerplexityRuns = retriedRuns
+      .map((run, i) => ({ run, prompt: failedRuns[i].prompt }))
+      .filter((r) => !r.run.ok);
+
+    // And so on and so forth
   },
 });
 

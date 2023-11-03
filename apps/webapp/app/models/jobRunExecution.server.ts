@@ -37,7 +37,11 @@ export async function enqueueRunExecutionV3(
 }
 
 export async function dequeueRunExecutionV3(run: JobRun, tx: PrismaClientOrTransaction) {
-  return await executionWorker.dequeue(`job_run:${run.id}`, {
+  await executionWorker.dequeue(`job_run:EXECUTE_JOB:${run.id}`, {
+    tx,
+  });
+
+  await executionWorker.dequeue(`job_run:PREPROCESS:${run.id}`, {
     tx,
   });
 }
