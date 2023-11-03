@@ -34,13 +34,8 @@ export async function verifyRequestSignature({
 }
 
 export function verifyHmacSha256(headerValue: string, secret: string, body: string): boolean {
-  const signature = headerValue.replace("sha256=", "");
-  const buffer = Buffer.from(signature, "utf8");
-  const hmac = crypto.createHmac("sha256", secret ?? "");
-  const digest = Buffer.from("sha256" + "=" + hmac.update(body).digest("hex"), "utf8");
+  const bodyDigest = crypto.createHmac("sha256", secret).update(body).digest("hex");
+  const signature = headerValue?.replace("sha256=", "") ?? "";
 
-  const lengthEqual = signature.length === digest.length;
-  const isAllowed = lengthEqual && crypto.timingSafeEqual(digest, buffer);
-
-  return isAllowed;
+  return signature === bodyDigest;
 }

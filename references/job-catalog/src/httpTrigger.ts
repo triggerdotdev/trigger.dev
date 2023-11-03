@@ -36,14 +36,12 @@ const whatsApp = client.defineHttpEndpoint({
     },
   },
   verify: async (request) => {
-    const text = await request.text();
-    const bodyDigest = crypto
-      .createHmac("sha256", process.env.WHATSAPP_APP_SECRET!)
-      .update(text)
-      .digest("hex");
-    const signature = request.headers.get("x-hub-signature-256")?.replace("sha256=", "") ?? "";
-
-    return { success: signature === bodyDigest };
+    return await verifyRequestSignature({
+      request,
+      headerName: "x-hub-signature-256",
+      secret: process.env.WHATSAPP_APP_SECRET!,
+      algorithm: "sha256",
+    });
   },
 });
 
@@ -65,14 +63,12 @@ const caldotcom = client.defineHttpEndpoint({
   source: "cal.com",
   icon: "caldotcom",
   verify: async (request) => {
-    const text = await request.text();
-    const bodyDigest = crypto
-      .createHmac("sha256", process.env.CALDOTCOM_SECRET!)
-      .update(text)
-      .digest("hex");
-    const signature = request.headers.get("X-Cal-Signature-256")?.replace("sha256=", "") ?? "";
-
-    return { success: signature === bodyDigest };
+    return await verifyRequestSignature({
+      request,
+      headerName: "X-Cal-Signature-256",
+      secret: process.env.CALDOTCOM_SECRET!,
+      algorithm: "sha256",
+    });
   },
 });
 
@@ -139,14 +135,12 @@ const github = client.defineHttpEndpoint({
   source: "github.com",
   icon: "github",
   verify: async (request) => {
-    const text = await request.text();
-    const bodyDigest = crypto
-      .createHmac("sha256", process.env.GITHUB_SECRET!)
-      .update(text)
-      .digest("hex");
-    const signature = request.headers.get("x-hub-signature-256")?.replace("sha256=", "") ?? "";
-
-    return { success: signature === bodyDigest };
+    return await verifyRequestSignature({
+      request,
+      headerName: "x-hub-signature-256",
+      secret: process.env.GITHUB_SECRET!,
+      algorithm: "sha256",
+    });
   },
 });
 
