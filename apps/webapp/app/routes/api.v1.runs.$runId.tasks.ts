@@ -286,6 +286,7 @@ export class RunTaskService {
           operation: taskBody.operation,
           callbackUrl,
           style: taskBody.style ?? { style: "normal" },
+          childExecutionMode: taskBody.parallel ? "PARALLEL" : "SEQUENTIAL",
           attempts: {
             create: {
               number: 1,
@@ -316,7 +317,11 @@ export class RunTaskService {
             {
               id: task.id,
             },
-            { tx, runAt: new Date(Date.now() + taskBody.callback.timeoutInSeconds * 1000) }
+            {
+              tx,
+              runAt: new Date(Date.now() + taskBody.callback.timeoutInSeconds * 1000),
+              jobKey: `process-callback:${task.id}`,
+            }
           );
         }
       }

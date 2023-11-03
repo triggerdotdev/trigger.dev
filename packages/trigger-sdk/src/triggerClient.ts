@@ -12,6 +12,7 @@ import {
   IndexEndpointResponse,
   InitializeTriggerBodySchema,
   IntegrationConfig,
+  InvokeOptions,
   JobMetadata,
   LogLevel,
   Logger,
@@ -25,6 +26,7 @@ import {
   RegisterTriggerBodyV2,
   RunJobBody,
   RunJobBodySchema,
+  RunJobErrorResponse,
   RunJobResponse,
   ScheduleMetadata,
   SendEvent,
@@ -32,12 +34,15 @@ import {
   SourceMetadataV2,
   StatusUpdate,
 } from "@trigger.dev/core";
+import { yellow } from "colorette";
 import { ApiClient } from "./apiClient";
 import {
   AutoYieldExecutionError,
   AutoYieldWithCompletedTaskExecutionError,
   CanceledWithTaskError,
+  ErrorWithTask,
   ParsedPayloadSchemaError,
+  ResumeWithParallelTaskError,
   ResumeWithTaskError,
   RetryWithTaskError,
   YieldExecutionError,
@@ -327,6 +332,13 @@ export class TriggerClient {
 
         const results = await this.#executeJob(execution.data, job, timeOrigin, triggerVersion);
 
+        this.#internalLogger.debug("executed job", {
+          results,
+          job: job.id,
+          version: job.version,
+          triggerVersion,
+        });
+
         return {
           status: 200,
           body: results,
@@ -521,8 +533,18 @@ export class TriggerClient {
   defineJob<
     TTrigger extends Trigger<EventSpecification<any>>,
     TIntegrations extends Record<string, TriggerIntegration> = {},
-  >(options: JobOptions<TTrigger, TIntegrations>) {
-    return new Job<TTrigger, TIntegrations>(this, options);
+    TOutput extends any = any,
+  >(options: JobOptions<TTrigger, TIntegrations, TOutput>) {
+    
+    const existingRegisteredJob = this.#registeredJobs[options.id];
+    
+    if (existingRegisteredJob) {
+      console.warn(
+        yellow(`[@trigger.dev/sdk] Warning: The Job "${existingRegisteredJob.id}" you're attempting to define has already been defined. Please assign a different ID to the job.`)
+      );
+    }
+    
+    return new Job<TTrigger, TIntegrations, TOutput>(this, options);
   }
 
   defineAuthResolver(
@@ -744,6 +766,10 @@ export class TriggerClient {
     return this.#client.getRunStatuses(runId);
   }
 
+  async invokeJob(jobId: string, payload: any, options?: InvokeOptions) {
+    return this.#client.invokeJob(jobId, payload, options);
+  }
+
   authorized(
     apiKey?: string | null
   ): "authorized" | "unauthorized" | "missing-client" | "missing-header" {
@@ -857,91 +883,124 @@ export class TriggerClient {
         this.#logIOStats(io.stats);
       }
 
-      if (error instanceof AutoYieldExecutionError) {
+      if (error instanceof ResumeWithParallelTaskError) {
         return {
-          status: "AUTO_YIELD_EXECUTION",
-          location: error.location,
-          timeRemaining: error.timeRemaining,
-          timeElapsed: error.timeElapsed,
-          limit: body.runChunkExecutionLimit,
-        };
-      }
-
-      if (error instanceof AutoYieldWithCompletedTaskExecutionError) {
-        return {
-          status: "AUTO_YIELD_EXECUTION_WITH_COMPLETED_TASK",
-          id: error.id,
-          properties: error.properties,
-          output: error.output,
-          data: {
-            ...error.data,
-            limit: body.runChunkExecutionLimit,
-          },
-        };
-      }
-
-      if (error instanceof YieldExecutionError) {
-        return { status: "YIELD_EXECUTION", key: error.key };
-      }
-
-      if (error instanceof ParsedPayloadSchemaError) {
-        return { status: "INVALID_PAYLOAD", errors: error.schemaErrors };
-      }
-
-      if (error instanceof ResumeWithTaskError) {
-        return { status: "RESUME_WITH_TASK", task: error.task };
-      }
-
-      if (error instanceof RetryWithTaskError) {
-        return {
-          status: "RETRY_WITH_TASK",
+          status: "RESUME_WITH_PARALLEL_TASK",
           task: error.task,
-          error: error.cause,
-          retryAt: error.retryAt,
+          childErrors: error.childErrors.map((childError) => {
+            return this.#convertErrorToExecutionResponse(childError, body);
+          }),
         };
       }
 
-      if (error instanceof CanceledWithTaskError) {
-        return {
-          status: "CANCELED",
-          task: error.task,
-        };
-      }
-
-      if (error instanceof RetryWithTaskError) {
-        const errorWithStack = ErrorWithStackSchema.safeParse(error.cause);
-
-        if (errorWithStack.success) {
-          return {
-            status: "ERROR",
-            error: errorWithStack.data,
-            task: error.task,
-          };
-        }
-
-        return {
-          status: "ERROR",
-          error: { message: "Unknown error" },
-          task: error.task,
-        };
-      }
-
-      const errorWithStack = ErrorWithStackSchema.safeParse(error);
-
-      if (errorWithStack.success) {
-        return { status: "ERROR", error: errorWithStack.data };
-      }
-
-      const message = typeof error === "string" ? error : JSON.stringify(error);
-      return {
-        status: "ERROR",
-        error: { name: "Unknown error", message },
-      };
+      return this.#convertErrorToExecutionResponse(error, body);
     }
   }
 
+  #convertErrorToExecutionResponse(error: any, body: RunJobBody): RunJobErrorResponse {
+    if (error instanceof AutoYieldExecutionError) {
+      return {
+        status: "AUTO_YIELD_EXECUTION",
+        location: error.location,
+        timeRemaining: error.timeRemaining,
+        timeElapsed: error.timeElapsed,
+        limit: body.runChunkExecutionLimit,
+      };
+    }
+
+    if (error instanceof AutoYieldWithCompletedTaskExecutionError) {
+      return {
+        status: "AUTO_YIELD_EXECUTION_WITH_COMPLETED_TASK",
+        id: error.id,
+        properties: error.properties,
+        output: error.output,
+        data: {
+          ...error.data,
+          limit: body.runChunkExecutionLimit,
+        },
+      };
+    }
+
+    if (error instanceof YieldExecutionError) {
+      return { status: "YIELD_EXECUTION", key: error.key };
+    }
+
+    if (error instanceof ParsedPayloadSchemaError) {
+      return { status: "INVALID_PAYLOAD", errors: error.schemaErrors };
+    }
+
+    if (error instanceof ResumeWithTaskError) {
+      return { status: "RESUME_WITH_TASK", task: error.task };
+    }
+
+    if (error instanceof RetryWithTaskError) {
+      return {
+        status: "RETRY_WITH_TASK",
+        task: error.task,
+        error: error.cause,
+        retryAt: error.retryAt,
+      };
+    }
+
+    if (error instanceof CanceledWithTaskError) {
+      return {
+        status: "CANCELED",
+        task: error.task,
+      };
+    }
+
+    if (error instanceof ErrorWithTask) {
+      const errorWithStack = ErrorWithStackSchema.safeParse(error.cause.output);
+
+      if (errorWithStack.success) {
+        return {
+          status: "ERROR",
+          error: errorWithStack.data,
+          task: error.cause,
+        };
+      }
+
+      return {
+        status: "ERROR",
+        error: { message: JSON.stringify(error.cause.output) },
+        task: error.cause,
+      };
+    }
+
+    if (error instanceof RetryWithTaskError) {
+      const errorWithStack = ErrorWithStackSchema.safeParse(error.cause);
+
+      if (errorWithStack.success) {
+        return {
+          status: "ERROR",
+          error: errorWithStack.data,
+          task: error.task,
+        };
+      }
+
+      return {
+        status: "ERROR",
+        error: { message: "Unknown error" },
+        task: error.task,
+      };
+    }
+
+    const errorWithStack = ErrorWithStackSchema.safeParse(error);
+
+    if (errorWithStack.success) {
+      return { status: "ERROR", error: errorWithStack.data };
+    }
+
+    const message = typeof error === "string" ? error : JSON.stringify(error);
+
+    return {
+      status: "ERROR",
+      error: { name: "Unknown error", message },
+    };
+  }
+
   #createRunContext(execution: RunJobBody): TriggerContext {
-    const { event, organization, environment, job, run, source } = execution;
+    const { event, organization, project, environment, job, run, source } = execution;
 
     return {
       event: {
@@ -951,6 +1010,7 @@ export class TriggerClient {
         timestamp: event.timestamp,
       },
       organization,
+      project: project ?? { id: "unknown", name: "unknown", slug: "unknown" }, // backwards compat with old servers
       environment,
       job,
       run,

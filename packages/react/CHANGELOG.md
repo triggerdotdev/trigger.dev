@@ -1,5 +1,12 @@
 # @trigger.dev/react
 
+## 2.2.4
+
+### Patch Changes
+
+- Updated dependencies [c1710ae7]
+  - @trigger.dev/core@2.2.4
+
 ## 2.2.3
 
 ### Patch Changes

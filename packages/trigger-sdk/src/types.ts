@@ -33,6 +33,8 @@ export interface TriggerContext {
   environment: { slug: string; id: string; type: RuntimeEnvironmentType };
   /** Organization metadata */
   organization: { slug: string; id: string; title: string };
+  /** Project metadata */
+  project: { slug: string; id: string; name: string };
   /** Run metadata */
   run: { id: string; isTest: boolean; startedAt: Date; isRetry: boolean };
   /** Event metadata */
@@ -70,6 +72,14 @@ export type TriggerEventType<TTrigger extends Trigger<any>> = TTrigger extends T
   ? ReturnType<TEventSpec["parsePayload"]>
   : never;
 
+export type TriggerInvokeType<TTrigger extends Trigger<any>> = TTrigger extends Trigger<
+  infer TEventSpec
+>
+  ? TEventSpec["parseInvokePayload"] extends (payload: unknown) => infer TInvoke
+    ? TInvoke
+    : any
+  : never;
+
 export type VerifyResult =
   | {
       success: true;
@@ -104,7 +114,7 @@ export const EventSpecificationExampleSchema = z.object({
 
 export type EventSpecificationExample = z.infer<typeof EventSpecificationExampleSchema>;
 
-export interface EventSpecification<TEvent extends any> {
+export interface EventSpecification<TEvent extends any, TInvoke extends any = TEvent> {
   name: string | string[];
   title: string;
   source: string;
@@ -114,6 +124,7 @@ export interface EventSpecification<TEvent extends any> {
   examples?: Array<EventSpecificationExample>;
   filter?: EventFilter;
   parsePayload: (payload: unknown) => TEvent;
+  parseInvokePayload?: (payload: unknown) => TInvoke;
   runProperties?: (payload: TEvent) => DisplayProperty[];
 }
 

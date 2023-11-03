@@ -1,11 +1,13 @@
 import {
-  API_VERSIONS,
-  BloomFilter,
+  ApiEventLog,
+  AutoYieldMetadata,
   ConnectionAuth,
   EndpointHeadersSchema,
   RunJobAutoYieldWithCompletedTaskExecutionError,
+  RunJobBody,
   RunJobError,
   RunJobInvalidPayloadError,
+  RunJobResumeWithParallelTask,
   RunJobResumeWithTask,
   RunJobRetryWithTask,
   RunJobSuccess,
@@ -14,28 +16,28 @@ import {
   RunSourceContextSchema,
   supportsFeature,
 } from "@trigger.dev/core";
+import { BloomFilter } from "@trigger.dev/core-backend";
 import { RuntimeEnvironmentType, type Task } from "@trigger.dev/database";
 import { generateErrorMessage } from "zod-error";
 import { eventRecordToApiJson } from "~/api.server";
+import {
+  MAX_RUN_CHUNK_EXECUTION_LIMIT,
+  MAX_RUN_YIELDED_EXECUTIONS,
+  RUN_CHUNK_EXECUTION_BUFFER,
+} from "~/consts";
 import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
-import { enqueueRunExecutionV2 } from "~/models/jobRunExecution.server";
+import { detectResponseIsTimeout } from "~/models/endpoint.server";
+import { enqueueRunExecutionV3 } from "~/models/jobRunExecution.server";
 import { resolveRunConnections } from "~/models/runConnection.server";
+import { prepareTasksForCaching, prepareTasksForCachingLegacy } from "~/models/task.server";
+import { CompleteRunTaskService } from "~/routes/api.v1.runs.$runId.tasks.$id.complete";
 import { formatError } from "~/utils/formatErrors.server";
 import { safeJsonZodParse } from "~/utils/json";
 import { EndpointApi } from "../endpointApi.server";
 import { logger } from "../logger.server";
-import { prepareTasksForCaching, prepareTasksForCachingLegacy } from "~/models/task.server";
-import {
-  MAX_RUN_CHUNK_EXECUTION_LIMIT,
-  MAX_RUN_YIELDED_EXECUTIONS,
-  RESPONSE_TIMEOUT_STATUS_CODES,
-  RUN_CHUNK_EXECUTION_BUFFER,
-} from "~/consts";
-import { ApiEventLog } from "@trigger.dev/core";
-import { RunJobBody } from "@trigger.dev/core";
-import { CompleteRunTaskService } from "~/routes/api.v1.runs.$runId.tasks.$id.complete";
-import { detectResponseIsTimeout } from "~/models/endpoint.server";
 import { forceYieldCoordinator } from "./forceYieldCoordinator.server";
+import { workerQueue } from "../worker.server";
+import { ResumeTaskService } from "../tasks/resumeTask.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type FoundTask = FoundRun["tasks"][number];
@@ -43,21 +45,29 @@ type FoundTask = FoundRun["tasks"][number];
 // We need to limit the cached tasks to not be too large >3.5MB when serialized
 const TOTAL_CACHED_TASK_BYTE_LIMIT = 3500000;
 
-export type PerformRunExecutionV2Input = {
+export type PerformRunExecutionV3Input = {
   id: string;
   reason: "PREPROCESS" | "EXECUTE_JOB";
+
+  /**
+   * @deprecated This is no longer used
+   */
   isRetry: boolean;
+
+  /**
+   * @deprecated Resuming tasks now goes through ResumeTaskService, this is included here for backwards compatibility
+   */
   resumeTaskId?: string;
 };
 
-export class PerformRunExecutionV2Service {
+export class PerformRunExecutionV3Service {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(input: PerformRunExecutionV2Input) {
+  public async call(input: PerformRunExecutionV3Input) {
     const run = await findRun(this.#prismaClient, input.id);
 
     if (!run) {
@@ -161,13 +171,13 @@ export class PerformRunExecutionV2Service {
           },
         });
 
-        await enqueueRunExecutionV2(run, tx, {
+        await enqueueRunExecutionV3(run, tx, {
           skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
         });
       });
     }
   }
-  async #executeJob(run: FoundRun, input: PerformRunExecutionV2Input) {
+  async #executeJob(run: FoundRun, input: PerformRunExecutionV3Input) {
     try {
       const { isRetry, resumeTaskId } = input;
 
@@ -381,6 +391,11 @@ export class PerformRunExecutionV2Service {
 
       const status = safeBody.data.status;
 
+      logger.debug("Endpoint responded with status", {
+        status,
+        data: safeBody.data,
+      });
+
       switch (status) {
         case "SUCCESS": {
           await this.#completeRunWithSuccess(run, safeBody.data, durationInMs);
@@ -388,7 +403,7 @@ export class PerformRunExecutionV2Service {
           break;
         }
         case "RESUME_WITH_TASK": {
-          await this.#resumeRunWithTask(run, safeBody.data, isRetry, durationInMs, executionCount);
+          await this.#resumeRunWithTask(run, safeBody.data, durationInMs);
 
           break;
         }
@@ -398,7 +413,7 @@ export class PerformRunExecutionV2Service {
           break;
         }
         case "RETRY_WITH_TASK": {
-          await this.#retryRunWithTask(run, safeBody.data, isRetry, durationInMs, executionCount);
+          await this.#retryRunWithTask(run, safeBody.data, durationInMs);
 
           break;
         }
@@ -417,33 +432,20 @@ export class PerformRunExecutionV2Service {
           break;
         }
         case "YIELD_EXECUTION": {
-          await this.#resumeYieldedRun(
-            run,
-            safeBody.data.key,
-            isRetry,
-            durationInMs,
-            executionCount
-          );
+          await this.#resumeYieldedRun(run, safeBody.data.key, durationInMs);
           break;
         }
         case "AUTO_YIELD_EXECUTION": {
-          await this.#resumeAutoYieldedRun(
-            run,
-            safeBody.data,
-            isRetry,
-            durationInMs,
-            executionCount
-          );
+          await this.#resumeAutoYieldedRun(run, safeBody.data, durationInMs);
           break;
         }
         case "AUTO_YIELD_EXECUTION_WITH_COMPLETED_TASK": {
-          await this.#resumeAutoYieldedRunWithCompletedTask(
-            run,
-            safeBody.data,
-            isRetry,
-            durationInMs,
-            executionCount
-          );
+          await this.#resumeAutoYieldedRunWithCompletedTask(run, safeBody.data, durationInMs);
+          break;
+        }
+        case "RESUME_WITH_PARALLEL_TASK": {
+          await this.#resumeParallelRunWithTask(run, safeBody.data, durationInMs);
+
           break;
         }
         default: {
@@ -489,6 +491,11 @@ export class PerformRunExecutionV2Service {
           id: run.organization.id,
           slug: run.organization.slug,
           title: run.organization.title,
+        },
+        project: {
+          id: run.project.id,
+          slug: run.project.slug,
+          name: run.project.name,
         },
         account: run.externalAccount
           ? {
@@ -536,6 +543,11 @@ export class PerformRunExecutionV2Service {
         slug: run.organization.slug,
         title: run.organization.title,
       },
+      project: {
+        id: run.project.id,
+        slug: run.project.slug,
+        name: run.project.name,
+      },
       account: run.externalAccount
         ? {
             id: run.externalAccount.identifier,
@@ -549,25 +561,34 @@ export class PerformRunExecutionV2Service {
   }
 
   async #completeRunWithSuccess(run: FoundRun, data: RunJobSuccess, durationInMs: number) {
-    await this.#prismaClient.jobRun.update({
-      where: { id: run.id },
-      data: {
-        completedAt: new Date(),
-        status: "SUCCESS",
-        output: data.output ?? undefined,
-        executionDuration: {
-          increment: durationInMs,
+    await $transaction(this.#prismaClient, async (tx) => {
+      await tx.jobRun.update({
+        where: { id: run.id },
+        data: {
+          completedAt: new Date(),
+          status: "SUCCESS",
+          output: data.output ?? undefined,
+          executionDuration: {
+            increment: durationInMs,
+          },
         },
-      },
+      });
+
+      await workerQueue.enqueue(
+        "deliverRunSubscriptions",
+        {
+          id: run.id,
+        },
+        { tx }
+      );
     });
   }
 
   async #resumeRunWithTask(
     run: FoundRun,
     data: RunJobResumeWithTask,
-    isRetry: boolean,
     durationInMs: number,
-    executionCount: number
+    executionCount: number = 1
   ) {
     return await $transaction(this.#prismaClient, async (tx) => {
       await tx.jobRun.update({
@@ -576,23 +597,124 @@ export class PerformRunExecutionV2Service {
           executionDuration: {
             increment: durationInMs,
           },
+          executionCount: {
+            increment: executionCount,
+          },
         },
       });
+
+      if (data.task.outputProperties) {
+        await tx.task.update({
+          where: {
+            id: data.task.id,
+          },
+          data: {
+            outputProperties: data.task.outputProperties,
+          },
+        });
+      }
 
       // If the task has an operation, then the next performRunExecution will occur
       // when that operation has finished
       // Tasks with callbacks enabled will also get processed separately, i.e. when
       // they time out, or on valid requests to their callbackUrl
       if (!data.task.operation && !data.task.callbackUrl) {
-        await enqueueRunExecutionV2(run, tx, {
-          runAt: data.task.delayUntil ?? undefined,
-          resumeTaskId: data.task.id,
-          isRetry,
-          skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
-          executionCount,
-        });
+        await ResumeTaskService.enqueue(data.task.id, data.task.delayUntil ?? undefined, tx);
       }
     });
+  }
+
+  async #resumeParallelRunWithTask(
+    run: FoundRun,
+    data: RunJobResumeWithParallelTask,
+    durationInMs: number
+  ) {
+    await this.#prismaClient.jobRun.update({
+      where: { id: run.id },
+      data: {
+        executionDuration: {
+          increment: durationInMs,
+        },
+        executionCount: {
+          increment: 1,
+        },
+        forceYieldImmediately: false,
+      },
+    });
+
+    if (data.task.outputProperties) {
+      await this.#prismaClient.task.update({
+        where: {
+          id: data.task.id,
+        },
+        data: {
+          outputProperties: data.task.outputProperties,
+        },
+      });
+    }
+
+    for (const childError of data.childErrors) {
+      switch (childError.status) {
+        case "AUTO_YIELD_EXECUTION": {
+          await this.#resumeAutoYieldedRun(run, childError, 0, 0);
+
+          break;
+        }
+        case "AUTO_YIELD_EXECUTION_WITH_COMPLETED_TASK": {
+          await this.#resumeAutoYieldedRunWithCompletedTask(run, childError, 0, 0);
+
+          break;
+        }
+        case "CANCELED": {
+          break;
+        }
+        case "ERROR": {
+          return await this.#failRunExecution(
+            this.#prismaClient,
+            "EXECUTE_JOB",
+            run,
+            childError.error ?? undefined,
+            "FAILURE",
+            durationInMs
+          );
+        }
+        case "INVALID_PAYLOAD": {
+          return await this.#failRunExecution(
+            this.#prismaClient,
+            "EXECUTE_JOB",
+            run,
+            childError.errors,
+            "INVALID_PAYLOAD",
+            durationInMs
+          );
+        }
+        case "RESUME_WITH_TASK": {
+          await this.#resumeRunWithTask(run, childError, 0, 0);
+
+          break;
+        }
+        case "RETRY_WITH_TASK": {
+          await this.#retryRunWithTask(run, childError, 0, 0);
+
+          break;
+        }
+        case "UNRESOLVED_AUTH_ERROR": {
+          return await this.#failRunExecution(
+            this.#prismaClient,
+            "EXECUTE_JOB",
+            run,
+            childError.issues,
+            "UNRESOLVED_AUTH",
+            durationInMs
+          );
+        }
+        case "YIELD_EXECUTION": {
+          await this.#resumeYieldedRun(run, childError.key, 0, 0);
+
+          break;
+        }
+      }
+    }
   }
 
   async #failRunWithError(execution: FoundRun, data: RunJobError, durationInMs: number) {
@@ -658,9 +780,8 @@ export class PerformRunExecutionV2Service {
   async #resumeYieldedRun(
     run: FoundRun,
     key: string,
-    isRetry: boolean,
     durationInMs: number,
-    executionCount: number
+    executionCount: number = 1
   ) {
     await $transaction(this.#prismaClient, async (tx) => {
       if (run.yieldedExecutions.length + 1 > MAX_RUN_YIELDED_EXECUTIONS) {
@@ -685,7 +806,7 @@ export class PerformRunExecutionV2Service {
             increment: durationInMs,
           },
           executionCount: {
-            increment: 1,
+            increment: executionCount,
           },
           yieldedExecutions: {
             push: key,
@@ -698,20 +819,17 @@ export class PerformRunExecutionV2Service {
         },
       });
 
-      await enqueueRunExecutionV2(run, tx, {
-        isRetry,
+      await enqueueRunExecutionV3(run, tx, {
         skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
-        executionCount,
       });
     });
   }
 
   async #resumeAutoYieldedRun(
     run: FoundRun,
-    data: { location: string; timeRemaining: number; timeElapsed: number; limit?: number },
-    isRetry: boolean,
+    data: AutoYieldMetadata,
     durationInMs: number,
-    executionCount: number
+    executionCount: number = 1
   ) {
     await $transaction(this.#prismaClient, async (tx) => {
       await tx.jobRun.update({
@@ -723,7 +841,7 @@ export class PerformRunExecutionV2Service {
             increment: durationInMs,
           },
           executionCount: {
-            increment: 1,
+            increment: executionCount,
           },
           autoYieldExecution: {
             create: [
@@ -742,10 +860,8 @@ export class PerformRunExecutionV2Service {
         },
       });
 
-      await enqueueRunExecutionV2(run, tx, {
-        isRetry,
+      await enqueueRunExecutionV3(run, tx, {
         skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
-        executionCount,
       });
     });
   }
@@ -753,9 +869,8 @@ export class PerformRunExecutionV2Service {
   async #resumeAutoYieldedRunWithCompletedTask(
     run: FoundRun,
     data: RunJobAutoYieldWithCompletedTaskExecutionError,
-    isRetry: boolean,
     durationInMs: number,
-    executionCount: number
+    executionCount: number = 1
   ) {
     await $transaction(this.#prismaClient, async (tx) => {
       await tx.jobRun.update({
@@ -767,7 +882,7 @@ export class PerformRunExecutionV2Service {
             increment: durationInMs,
           },
           executionCount: {
-            increment: 1,
+            increment: executionCount,
           },
           autoYieldExecution: {
             create: [
@@ -790,13 +905,11 @@ export class PerformRunExecutionV2Service {
 
       await service.call(run.environment, run.id, data.id, {
         properties: data.properties,
-        output: data.output,
+        output: data.output ? (JSON.parse(data.output) as any) : undefined,
       });
 
-      await enqueueRunExecutionV2(run, tx, {
-        isRetry,
+      await enqueueRunExecutionV3(run, tx, {
         skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
-        executionCount,
       });
     });
   }
@@ -804,9 +917,8 @@ export class PerformRunExecutionV2Service {
   async #retryRunWithTask(
     run: FoundRun,
     data: RunJobRetryWithTask,
-    isRetry: boolean,
     durationInMs: number,
-    executionCount: number
+    executionCount: number = 1
   ) {
     return await $transaction(this.#prismaClient, async (tx) => {
       // We need to check for an existing task attempt
@@ -853,25 +965,22 @@ export class PerformRunExecutionV2Service {
               executionDuration: {
                 increment: durationInMs,
               },
+              executionCount: {
+                increment: executionCount,
+              },
             },
           },
         },
       });
 
-      await enqueueRunExecutionV2(run, tx, {
-        runAt: data.retryAt,
-        resumeTaskId: data.task.id,
-        isRetry,
-        skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
-        executionCount,
-      });
+      await ResumeTaskService.enqueue(data.task.id, data.retryAt, tx);
     });
   }
 
   async #resumeRunExecutionAfterTimeout(
     prisma: PrismaClientOrTransaction,
     run: FoundRun,
-    input: PerformRunExecutionV2Input,
+    input: PerformRunExecutionV3Input,
     durationInMs: number,
     executionCount: number
   ) {
@@ -965,11 +1074,8 @@ export class PerformRunExecutionV2Service {
       });
 
       // The run has timed out, so we need to enqueue a new execution
-      await enqueueRunExecutionV2(run, tx, {
-        resumeTaskId: input.resumeTaskId,
-        isRetry: input.isRetry,
+      await enqueueRunExecutionV3(run, tx, {
         skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
-        executionCount,
       });
     });
   }
@@ -1016,6 +1122,14 @@ export class PerformRunExecutionV2Service {
             },
           });
 
+          await workerQueue.enqueue(
+            "deliverRunSubscriptions",
+            {
+              id: run.id,
+            },
+            { tx }
+          );
+
           break;
         }
         case "PREPROCESS": {
@@ -1043,7 +1157,7 @@ export class PerformRunExecutionV2Service {
             },
           });
 
-          await enqueueRunExecutionV2(run, tx, {
+          await enqueueRunExecutionV3(run, tx, {
             skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
           });
 
@@ -1082,6 +1196,7 @@ async function findRun(prisma: PrismaClientOrTransaction, id: string) {
       },
       endpoint: true,
       organization: true,
+      project: true,
       externalAccount: true,
       runConnections: {
         include: {

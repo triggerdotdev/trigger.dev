@@ -1,5 +1,15 @@
 # @trigger.dev/sdk
 
+## 2.2.4
+
+### Patch Changes
+
+- c1710ae7: Creates a new package @trigger.dev/core-backend that includes code shared between @trigger.dev/sdk and the Trigger.dev server
+- 9c4be40a: use idempotency-key as event-id for dynamic-trigger registrations
+- Updated dependencies [c1710ae7]
+  - @trigger.dev/core-backend@2.2.4
+  - @trigger.dev/core@2.2.4
+
 ## 2.2.3
 
 ### Patch Changes

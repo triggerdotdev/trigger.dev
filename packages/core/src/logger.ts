@@ -43,36 +43,37 @@ export class Logger {
   log(message: string, ...args: Array<Record<string, unknown> | undefined>) {
     if (this.#level < 0) return;
 
-    this.#structuredLog(console.log, message, ...args);
+    this.#structuredLog(console.log, message, "log", ...args);
   }
 
   error(message: string, ...args: Array<Record<string, unknown> | undefined>) {
     if (this.#level < 1) return;
 
-    this.#structuredLog(console.error, message, ...args);
+    this.#structuredLog(console.error, message, "error", ...args);
   }
 
   warn(message: string, ...args: Array<Record<string, unknown> | undefined>) {
     if (this.#level < 2) return;
 
-    this.#structuredLog(console.warn, message, ...args);
+    this.#structuredLog(console.warn, message, "warn", ...args);
   }
 
   info(message: string, ...args: Array<Record<string, unknown> | undefined>) {
     if (this.#level < 3) return;
 
-    this.#structuredLog(console.info, message, ...args);
+    this.#structuredLog(console.info, message, "info", ...args);
   }
 
   debug(message: string, ...args: Array<Record<string, unknown> | undefined>) {
     if (this.#level < 4) return;
 
-    this.#structuredLog(console.debug, message, ...args);
+    this.#structuredLog(console.debug, message, "debug", ...args);
   }
 
   #structuredLog(
     loggerFunction: (message: string, ...args: any[]) => void,
     message: string,
+    level: string,
     ...args: Array<Record<string, unknown> | undefined>
   ) {
     const structuredLog = {
@@ -80,6 +81,7 @@ export class Logger {
       timestamp: new Date(),
       name: this.#name,
       message,
+      level,
     };
 
     loggerFunction(JSON.stringify(structuredLog, createReplacer(this.#jsonReplacer)));

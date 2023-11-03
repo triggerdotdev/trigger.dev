@@ -51,7 +51,7 @@ app.all(
       }
 );
 
-const port = process.env.REMIX_APP_PORT || 3000;
+const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
 
 if (process.env.HTTP_SERVER_DISABLED !== "true") {
   const server = app.listen(port, () => {

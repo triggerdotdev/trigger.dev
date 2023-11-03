@@ -14,9 +14,8 @@ import { run as graphileRun, parseCronItems } from "graphile-worker";
 import omit from "lodash.omit";
 import { z } from "zod";
 import { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
-import { workerLogger as logger } from "~/services/logger.server";
 import { PgListenService } from "~/services/db/pgListen.server";
-import { safeJsonParse } from "~/utils/json";
+import { workerLogger as logger } from "~/services/logger.server";
 
 export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;

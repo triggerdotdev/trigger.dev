@@ -117,9 +117,10 @@
           "group": "Triggers",
           "pages": [
             "documentation/concepts/triggers/introduction",
-            "documentation/concepts/triggers/webhooks",
+            "documentation/concepts/triggers/invoke",
             "documentation/concepts/triggers/events",
             "documentation/concepts/triggers/scheduled",
+            "documentation/concepts/triggers/webhooks",
             "documentation/concepts/triggers/dynamic"
           ]
         },
@@ -334,6 +335,7 @@
             "sdk/io/logger",
             "sdk/io/sendevent",
             "sdk/io/backgroundfetch",
+            "sdk/io/random",
             "sdk/io/try",
             "sdk/io/registerinterval",
             "sdk/io/unregisterinterval",
@@ -343,6 +345,8 @@
           ]
         },
         "sdk/context",
+        "sdk/run-notification",
+        "sdk/invoke-trigger",
         "sdk/eventtrigger",
         "sdk/crontrigger",
         "sdk/intervaltrigger",
