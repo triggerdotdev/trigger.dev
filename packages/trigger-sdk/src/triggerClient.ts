@@ -535,15 +535,16 @@ export class TriggerClient {
     TIntegrations extends Record<string, TriggerIntegration> = {},
     TOutput extends any = any,
   >(options: JobOptions<TTrigger, TIntegrations, TOutput>) {
-    
     const existingRegisteredJob = this.#registeredJobs[options.id];
-    
+
     if (existingRegisteredJob) {
       console.warn(
-        yellow(`[@trigger.dev/sdk] Warning: The Job "${existingRegisteredJob.id}" you're attempting to define has already been defined. Please assign a different ID to the job.`)
+        yellow(
+          `[@trigger.dev/sdk] Warning: The Job "${existingRegisteredJob.id}" you're attempting to define has already been defined. Please assign a different ID to the job.`
+        )
       );
     }
-    
+
     return new Job<TTrigger, TIntegrations, TOutput>(this, options);
   }
 
@@ -569,6 +570,12 @@ export class TriggerClient {
     return new DynamicTrigger(this, options);
   }
 
+  /**
+   * An [HTTP endpoint](https://trigger.dev/docs/documentation/concepts/http-endpoints) allows you to create a [HTTP Trigger](https://trigger.dev/docs/documentation/concepts/triggers/http), which means you can trigger your Jobs from any webhooks.
+   * @param options The Endpoint options
+   * @returns An HTTP Endpoint, that can be used to create an HTTP Trigger.
+   * @link https://trigger.dev/docs/documentation/concepts/http-endpoints
+   */
   defineHttpEndpoint(options: EndpointOptions) {
     const endpoint = httpEndpoint(options);
     this.#registeredHttpEndpoints[endpoint.id] = endpoint;

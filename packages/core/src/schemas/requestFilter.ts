@@ -21,10 +21,39 @@ export const HTTPMethodUnionSchema = z.union([
 
 export type HttpMethod = z.infer<typeof HTTPMethodUnionSchema>;
 
+/** Only Requests that match this filter will cause the `handler` function to run.
+ * For example, you can use this to only respond to `GET` Requests. */
 export const RequestFilterSchema = z.object({
+  /** An array of HTTP methods to match.
+   * For example, `["GET", "POST"]` will match both `GET` and `POST` Requests. */
   method: z.array(HTTPMethodUnionSchema).optional(),
+  /** An object of header key/values to match. 
+   * This uses the [EventFilter matching syntax](https://trigger.dev/docs/documentation/guides/event-filter).
+
+    @example
+  ```ts
+  filter: {
+    header: {
+      "content-type": ["application/json"],
+    },
+  },
+  ``` */
   headers: z.record(StringMatchSchema).optional(),
+  /** An object of query parameters to match. 
+   * This uses the [EventFilter matching syntax](https://trigger.dev/docs/documentation/guides/event-filter).
+
+  @example
+  ```ts
+  filter: {
+    query: {
+      "hub.mode": [{ $startsWith: "sub" }],
+    },
+  },
+  ``` */
   query: z.record(StringMatchSchema).optional(),
+  /** An object of key/values to match.
+   * This uses the [EventFilter matching syntax](https://trigger.dev/docs/documentation/guides/event-filter).
+   */
   body: EventFilterSchema.optional(),
 });
 

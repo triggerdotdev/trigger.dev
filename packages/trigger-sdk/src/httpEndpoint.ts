@@ -112,28 +112,42 @@ class HttpTrigger<TEventSpecification extends EventSpecification<any>>
   }
 }
 
-type RequestContext = {
-  secret: string;
-};
-
 type RespondWith = {
+  /** Only Requests that match this filter will cause the `handler` function to run.
+   * For example, you can use this to only respond to `GET` Requests. */
   filter?: RequestFilter;
+  /** If you set this to `true`, the Request that comes in won't go on to Trigger any Runs.
+   * This is useful if you want to Respond to the Request, but don't want to Trigger any Runs. */
   skipTriggeringRuns?: boolean;
+  /** This is a function that's called when a Request comes in.
+   * It's passed the Request object, and expects you to return a Response object. */
   handler: (request: Request, verify: () => Promise<VerifyResult>) => Promise<Response>;
 };
 
 type VerifyCallback = (request: Request) => Promise<VerifyResult>;
 
 export type EndpointOptions = {
+  /** Used to uniquely identify the HTTP Endpoint inside your Project. */
   id: string;
   enabled?: boolean;
-  /** The source of the webhook, e.g. whatsapp.com  */
+  /** Usually you would use the domain name of the service, e.g. `cal.com`. */
   source: string;
+  /** An optional title, displayed in the dashboard. */
   title?: string;
+  /** An optional icon name that's displayed in the dashboard.
+   * Lots of company names are supported, e.g. `github`, `twilio`.
+   * You can also reference the name of any [Tabler icon](https://tabler-icons.io/), e.g. `brand-google-maps`, `brand-twitch`. */
   icon?: string;
+  /** Used to provide example payloads that are accepted by the job.
+   * This will be available in the dashboard and can be used to trigger test runs. */
   examples?: EventSpecificationExample[];
+  /** Properties that are displayed in the dashboard. */
   properties?: DisplayProperty[];
+  /** This optional object allows you to immediately Respond to a Request. This is useful for some APIs where they do a `GET` Request when the webhook is first setup and expect a specific Response.
+
+      Only use this if you really need to Respond to the Request that comes in. Most of the time you don't. */
   respondWith?: RespondWith;
+  /** This is compulsory, and is used to verify that the received webhook is authentic. */
   verify: VerifyCallback;
 };
 
