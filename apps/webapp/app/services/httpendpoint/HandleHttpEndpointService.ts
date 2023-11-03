@@ -90,7 +90,7 @@ export class HandleHttpEndpointService {
       );
     }
 
-    const immediateResponseFilter = RequestFilterSchema.safeParse(
+    const immediateResponseFilter = RequestFilterSchema.nullable().safeParse(
       httpEndpointEnvironment.immediateResponseFilter
     );
     if (!immediateResponseFilter.success) {
@@ -129,7 +129,9 @@ export class HandleHttpEndpointService {
     }
 
     //if an immediate response is required, we fetch it from the user's endpoint
-    const callClientImmediately = await requestFilterMatches(request, immediateResponseFilter.data);
+    const callClientImmediately = immediateResponseFilter.data
+      ? await requestFilterMatches(request, immediateResponseFilter.data)
+      : false;
     let httpResponse: Response | undefined;
     if (callClientImmediately) {
       logger.info("Calling client immediately", {
