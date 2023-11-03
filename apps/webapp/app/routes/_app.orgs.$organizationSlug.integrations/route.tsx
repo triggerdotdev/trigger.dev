@@ -275,19 +275,20 @@ function ConnectedIntegrationsList({
       </HelpContent>
       <div className="mb-2 flex items-center justify-between">
         <Header2 className="m-0">Your connected Integrations</Header2>
-        <HelpTrigger title="How do I connect an Integration?" />
       </div>
       {clients.length > 0 && (
         <div>
-          <Input
-            placeholder="Search connected Integrations"
-            className="mb-2"
-            variant="medium"
-            icon="search"
-            fullWidth={true}
-            value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
-          />
+          <div className="mb-2 flex items-center gap-2">
+            <Input
+              placeholder="Search connected Integrations"
+              variant="tertiary"
+              icon="search"
+              fullWidth={true}
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+            />
+            <HelpTrigger title="How do I connect an Integration?" />
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
