@@ -94,7 +94,7 @@ export default function Page() {
               to={docsPath("documentation/concepts/triggers/http-endpoints")}
               variant="secondary/small"
             >
-              HTTP Endpoints documentation
+              HTTP endpoints documentation
             </LinkButton>
           </PageButtons>
         </PageTitleRow>

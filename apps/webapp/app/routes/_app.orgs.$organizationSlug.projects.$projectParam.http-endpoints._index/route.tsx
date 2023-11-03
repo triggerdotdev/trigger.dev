@@ -58,7 +58,7 @@ export default function Page() {
               to={docsPath("documentation/concepts/triggers/http-endpoints")}
               variant="secondary/small"
             >
-              HTTP Endpoints documentation
+              HTTP endpoints documentation
             </LinkButton>
           </PageButtons>
         </PageTitleRow>
@@ -72,7 +72,7 @@ export default function Page() {
             <div className={cn("grid h-full gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
               <div>
                 <div className="mb-2 flex items-center justify-end gap-x-2">
-                  <HelpTrigger title="What are HTTP Endpoints?" />
+                  <HelpTrigger title="What are HTTP endpoints?" />
                 </div>
                 <div className="mb-8">
                   <Table fullWidth>
@@ -117,14 +117,14 @@ export default function Page() {
                         })
                       ) : (
                         <TableBlankRow colSpan={100}>
-                          <Paragraph>No HTTP Endpoints</Paragraph>
+                          <Paragraph>No HTTP endpoints</Paragraph>
                         </TableBlankRow>
                       )}
                     </TableBody>
                   </Table>
                 </div>
               </div>
-              <HelpContent title="How to use HTTP Endpoints">
+              <HelpContent title="How to use HTTP endpoints">
                 <WhatAreHttpEndpoints />
               </HelpContent>
             </div>

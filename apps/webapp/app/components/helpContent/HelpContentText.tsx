@@ -299,18 +299,18 @@ export function WhatAreHttpEndpoints() {
   return (
     <>
       <Paragraph spacing>
-        HTTP Endpoints allow you to trigger your Jobs from any webhooks. They require a bit more
+        HTTP endpoints allow you to trigger your Jobs from any webhooks. They require a bit more
         work than using <TextLink to={docsPath("integrations/introduction")}>Integrations</TextLink>{" "}
         but allows you to connect to any API.
       </Paragraph>
       <Header2 spacing>Getting started</Header2>
       <Paragraph spacing>
-        You need to define the HTTP Endpoint in your code. To do this you use{" "}
-        <InlineCode>client.defineHttpEndpoint()</InlineCode>. This will create an HTTP Endpoint.
+        You need to define the HTTP endpoint in your code. To do this you use{" "}
+        <InlineCode>client.defineHttpEndpoint()</InlineCode>. This will create an HTTP endpoint.
       </Paragraph>
       <Paragraph spacing>
         Then you can create a Trigger from this by calling <InlineCode>.onRequest()</InlineCode> on
-        the created HTTP Endpoint.
+        the created HTTP endpoint.
       </Paragraph>
       <Callout variant="docs" to={docsPath("documentation/concepts/triggers/http-endpoints")}>
         Read the HTTP endpoints guide to learn more.
