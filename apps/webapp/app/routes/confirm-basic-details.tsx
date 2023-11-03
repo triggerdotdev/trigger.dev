@@ -134,7 +134,6 @@ export default function Page() {
 
   return (
     <AppContainer showBackgroundGradient={true}>
-      <NavBar />
       <MainCenteredContainer>
         <div>
           <Form method="post" {...form.props}>
