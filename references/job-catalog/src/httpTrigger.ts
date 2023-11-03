@@ -88,7 +88,7 @@ client.defineJob({
   },
 });
 
-//todo Stripe
+//Stripe
 const stripe = client.defineHttpEndpoint({
   id: "stripe.com",
   source: "stripe.com",
@@ -133,7 +133,35 @@ client.defineJob({
   },
 });
 
-//todo GitHub
+//GitHub
+const github = client.defineHttpEndpoint({
+  id: "github.com",
+  source: "github.com",
+  icon: "github",
+  verify: async (request) => {
+    const text = await request.text();
+    const bodyDigest = crypto
+      .createHmac("sha256", process.env.GITHUB_SECRET!)
+      .update(text)
+      .digest("hex");
+    const signature = request.headers.get("x-hub-signature-256")?.replace("sha256=", "") ?? "";
+
+    return { success: signature === bodyDigest };
+  },
+});
+
+client.defineJob({
+  id: "http-github",
+  name: "HTTP GitHub",
+  version: "1.0.0",
+  enabled: true,
+  trigger: github.onRequest({ filter: { body: { action: ["labeled"] } } }),
+  run: async (request, io, ctx) => {
+    const body = await request.json();
+    await io.logger.info(`Body`, body);
+  },
+});
+
 //todo Loops
 
 createExpressServer(client);
