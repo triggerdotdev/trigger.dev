@@ -90,6 +90,9 @@ export class Completions {
             text: params.model,
           },
         ],
+        retry: {
+          limit: 0,
+        },
       }
     );
   }
