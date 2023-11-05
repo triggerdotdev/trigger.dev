@@ -93,7 +93,7 @@ export class RegisterHttpEndpointService {
         },
       });
 
-      //create/update the secret
+      //create the secret
       //we don't upsert because we don't want to change an existing one
       const secretStore = getSecretStore(httpEndpoint.secretReference.provider);
       const existingSecret = await secretStore.getSecret(
