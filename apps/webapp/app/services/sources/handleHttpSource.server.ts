@@ -34,7 +34,6 @@ export class HandleHttpSourceService {
       const sourceRequest = await createHttpSourceRequest(request);
 
       await this.#prismaClient.$transaction(async (tx) => {
-        const httpSourceRequest = await createHttpSourceRequest(request);
         // Create a request delivery and then enqueue it to be delivered
         const delivery = await tx.httpSourceRequestDelivery.create({
           data: {
