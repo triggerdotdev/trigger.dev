@@ -301,7 +301,7 @@ export function WhatAreHttpEndpoints() {
       <Paragraph spacing>
         HTTP endpoints allow you to trigger your Jobs from any webhooks. They require a bit more
         work than using <TextLink to={docsPath("integrations/introduction")}>Integrations</TextLink>{" "}
-        but allows you to connect to any API.
+        but allow you to connect to any API.
       </Paragraph>
       <Header2 spacing>Getting started</Header2>
       <Paragraph spacing>
@@ -315,6 +315,41 @@ export function WhatAreHttpEndpoints() {
       <Callout variant="docs" to={docsPath("documentation/concepts/triggers/http-endpoints")}>
         Read the HTTP endpoints guide to learn more.
       </Callout>
+      <Header2 spacing className="mt-4">
+        An example: cal.com
+      </Header2>
+      <CodeBlock
+        code={`//create an HTTP endpoint
+const caldotcom = client.defineHttpEndpoint({
+  id: "cal.com",
+  source: "cal.com",
+  icon: "caldotcom",
+  verify: async (request) => {
+    //this helper function makes verifying most webhooks easy
+    return await verifyRequestSignature({
+      request,
+      headerName: "X-Cal-Signature-256",
+      secret: process.env.CALDOTCOM_SECRET!,
+      algorithm: "sha256",
+    });
+  },
+});
+
+client.defineJob({
+  id: "http-caldotcom",
+  name: "HTTP Cal.com",
+  version: "1.0.0",
+  enabled: true,
+  //create a Trigger from the HTTP endpoint above. The filter is optional.
+  trigger: caldotcom.onRequest({ filter: { body: { triggerEvent: ["BOOKING_CANCELLED"] } } }),
+  run: async (request, io, ctx) => {
+    //note that when using HTTP endpoints, the first parameter is the request
+    //you need to get the body, usually it will be json so you do:
+    const body = await request.json();
+    await io.logger.info("Body", body);
+  },
+});`}
+      />
     </>
   );
 }
@@ -367,9 +402,8 @@ export function HowToConnectHttpEndpoint() {
       <StepNumber stepNumber="1" title="Ensure you're using the HTTP Endpoint in your code" />
       <StepContentContainer>
         <Paragraph spacing>
-          In your code, you should be using the <InlineCode>.onRequest()</InlineCode> function in a
-          Job Trigger. This makes that Job use data from the HTTP Endpoint. You can filter so only
-          data that matches your criteria triggers the Job.
+          In your code, you should use the <InlineCode>.onRequest()</InlineCode> function in a Job
+          Trigger. You can filter so only data that matches your criteria triggers the Job.
         </Paragraph>
       </StepContentContainer>
       <StepNumber stepNumber="2" title="Make sure your code is deployed (for Staging and Prod)" />
