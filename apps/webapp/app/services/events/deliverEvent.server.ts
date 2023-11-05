@@ -5,7 +5,6 @@ import { EventFilterSchema, RequestWithRawBodySchema, eventFilterMatches } from 
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { workerQueue } from "../worker.server";
-import { asyncFilter } from "~/utils/asyncFIlter";
 
 export class DeliverEventService {
   #prismaClient: PrismaClientOrTransaction;
