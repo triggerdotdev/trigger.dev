@@ -147,7 +147,20 @@ export type EndpointOptions = {
 
       Only use this if you really need to Respond to the Request that comes in. Most of the time you don't. */
   respondWith?: RespondWith;
-  /** This is compulsory, and is used to verify that the received webhook is authentic. */
+  /** This is compulsory, and is used to verify that the received webhook is authentic.
+   * It's a function that expects you to return a result object like:
+    
+  In 90% of cases, you'll want to use the `verifyRequestSignature` helper function we provide.
+
+    @example
+    ```ts
+    //if it's valid
+    return { success: true }
+    //if it's invalid, reason is optional
+    return { success: false, reason: "No header" }
+    ```
+
+   */
   verify: VerifyCallback;
 };
 

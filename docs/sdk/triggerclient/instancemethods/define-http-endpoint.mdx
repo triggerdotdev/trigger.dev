@@ -3,7 +3,7 @@ title: "defineHttpEndpoint()"
 description: "Defines an HTTP Endpoint"
 ---
 
-An [HTTP endpoint](/documentation/concepts/http-endpoints) allows you to create a [HTTP Trigger](/documentation/concepts/triggers/http), which means you can trigger your Jobs from any webhooks.
+An [HTTP endpoint](/documentation/concepts/http-endpoints) allows you to create an [HTTP Trigger](/documentation/concepts/triggers/http), which means you can trigger your Jobs from any webhooks.
 
 <RequestExample>
 
@@ -122,4 +122,7 @@ const caldotcom = client.defineHttpEndpoint({
 
 ## Returns
 
-<ResponseField name="DynamicTrigger instance" type="DynamicTrigger" />
+<ResponseField name="HttpEndpoint" type="HttpEndpoint">
+  The HTTP Endpoint that was created. You should assign this to a variable, as you'll need it to
+  create an [HTTP Trigger](/sdk/http-trigger).
+</ResponseField>
