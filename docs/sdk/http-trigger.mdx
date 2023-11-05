@@ -1,28 +1,14 @@
 ---
-title: "HttpEndpoint"
-description: "`HttpEndpoint` allows you to create and HttpTrigger, which means you can trigger your Jobs from any webhooks"
+title: "HttpTrigger"
+description: "`HttpTrigger` allows you to trigger your Jobs from any webhooks."
 ---
 
-There are two steps to using an `HttpEndpoint`:
+There are two required steps to create an `HttpTrigger`:
 
 1. Use [client.defineHttpEndpoint()](/sdk/triggerclient/instancemethods/define-http-endpoint) to create an `HttpEndpoint`.
-2. Use onRequest() to create an `HttpTrigger`. This method is shown below.
+2. Use [onRequest()](/sdk/http-endpoint#onrequest) to create an `HttpTrigger`.
 
-## Creating an HttpEndpoint
-
-Use [client.defineHttpEndpoint()](/sdk/triggerclient/instancemethods/define-http-endpoint) to create an `HttpEndpoint`.
-
-## Methods
-
-### onRequest()
-
-You don't need to provide any options to `onRequest()`. But you can provide a filter – if an incoming request matches the filter then the Job will run.
-
-<ResponseField name="options" type="object">
-  <Expandable title="options" defaultOpen>
-    <Snippet file="request-filter.mdx" />
-  </Expandable>
-</ResponseField>
+You can see a complete example on this page.
 
 <RequestExample>
 
