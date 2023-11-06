@@ -367,7 +367,8 @@
         },
         "sdk/connection-auth",
         "sdk/istriggererror",
-        "sdk/redactstring"
+        "sdk/redactstring",
+        "sdk/verify-request-signature"
       ]
     },
     {
