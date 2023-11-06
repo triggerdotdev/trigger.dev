@@ -237,5 +237,5 @@ export function httpEndpointUrl({
   httpEndpointId,
   environment: { slug, shortcode },
 }: GetHttpEndpointUrlParams) {
-  return `${env.APP_ORIGIN}/api/v1/httpendpoints/${httpEndpointId}/env/${slug}/${shortcode}`;
+  return `${env.APP_ORIGIN}/api/v1/http-endpoints/${httpEndpointId}/env/${slug}/${shortcode}`;
 }
