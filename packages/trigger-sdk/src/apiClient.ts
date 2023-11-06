@@ -612,7 +612,7 @@ async function zodfetchWithVersions<
     ? VersionedResponseBody<TVersionedResponseBodyMap, TUnversionedResponseBodySchema> | undefined
     : VersionedResponseBody<TVersionedResponseBodyMap, TUnversionedResponseBodySchema>
 > {
-  const response = await fetch(url, requestInit);
+  const response = await fetch(url, { ...requestInit, cache: "no-cache" });
 
   if (
     (!requestInit || requestInit.method === "GET") &&
@@ -686,7 +686,7 @@ async function zodfetch<TResponseSchema extends z.ZodTypeAny, TOptional extends 
 ): Promise<
   TOptional extends true ? z.infer<TResponseSchema> | undefined : z.infer<TResponseSchema>
 > {
-  const response = await fetch(url, requestInit);
+  const response = await fetch(url, { ...requestInit, cache: "no-cache" });
 
   if (
     (!requestInit || requestInit.method === "GET") &&
