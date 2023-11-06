@@ -91,7 +91,7 @@ export default function Page() {
           <PageButtons>
             <LinkButton
               LeadingIcon={"docs"}
-              to={docsPath("documentation/concepts/triggers/http-endpoints")}
+              to={docsPath("documentation/concepts/http-endpoints")}
               variant="secondary/small"
             >
               HTTP endpoints documentation
