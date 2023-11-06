@@ -331,6 +331,65 @@ export class IO {
     });
   }
 
+  /** `io.waitForRequest()` allows you to pause the execution of a run until the url provided in the callback is POSTed to.
+   *  This is useful for integrating with external services that require a callback URL to be provided, or if you want to be able to wait until an action is performed somewhere else in your system.
+   *  @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   *  @param callback A callback function that will provide the unique URL to POST to.
+   *  @param options Options for the callback.
+   *  @param options.timeoutInSeconds How long to wait for the request to be POSTed to the callback URL before timing out. Defaults to 1hr.
+   *  @returns The POSTed request JSON body.
+   *  @example
+   * ```ts
+    const result = await io.waitForRequest<{ message: string }>(
+      "wait-for-request",
+      async (url, task) => {
+        // Save the URL somewhere so you can POST to it later
+        // Or send it to an external service that will POST to it
+      },
+      { timeoutInSeconds: 60 } // wait 60 seconds
+    );
+    * ```
+   */
+  async waitForRequest<T extends Json<T> | unknown = unknown>(
+    cacheKey: string | any[],
+    callback: (url: string) => Promise<unknown>,
+    options?: { timeoutInSeconds?: number }
+  ): Promise<T> {
+    const timeoutInSeconds = options?.timeoutInSeconds ?? 60 * 60;
+
+    return (await this.runTask(
+      cacheKey,
+      async (task, io) => {
+        if (!task.callbackUrl) {
+          throw new Error("No callbackUrl found on task");
+        }
+
+        task.outputProperties = [
+          {
+            label: "Callback URL",
+            text: task.callbackUrl,
+          },
+        ];
+
+        return callback(task.callbackUrl) as Promise<{}>;
+      },
+      {
+        name: "Wait for Request",
+        icon: "clock",
+        callback: {
+          enabled: true,
+          timeoutInSeconds: options?.timeoutInSeconds,
+        },
+        properties: [
+          {
+            label: "Timeout",
+            text: `${timeoutInSeconds}s`,
+          },
+        ],
+      }
+    )) as T;
+  }
+
   /** `io.createStatus()` allows you to set a status with associated data during the Run. Statuses can be used by your UI using the react package 
    * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param initialStatus The initial status you want this status to have. You can update it during the rub using the returned object.
