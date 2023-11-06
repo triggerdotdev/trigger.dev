@@ -23,12 +23,15 @@ const preview: Preview = {
         },
       ],
     },
+    layout: "fullscreen",
   },
   decorators: [
     (Story) => {
       const RemixStub = createRemixStub([
         {
           path: "/*",
+          action: () => ({ redirect: "/" }),
+          loader: () => ({ redirect: "/" }),
           Component: Story,
         },
       ]);

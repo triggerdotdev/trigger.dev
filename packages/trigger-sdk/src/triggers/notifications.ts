@@ -57,6 +57,12 @@ export class MissingConnectionNotification
     return false;
   }
 
+  async verifyPayload(
+    payload: ReturnType<MissingConnectionNotificationSpecification["parsePayload"]>
+  ) {
+    return { success: true as const };
+  }
+
   toJSON(): TriggerMetadata {
     return {
       type: "static",
@@ -105,6 +111,12 @@ export class MissingConnectionResolvedNotification
 
   get preprocessRuns() {
     return false;
+  }
+
+  async verifyPayload(
+    payload: ReturnType<MissingConnectionResolvedNotificationSpecification["parsePayload"]>
+  ) {
+    return { success: true as const };
   }
 
   toJSON(): TriggerMetadata {

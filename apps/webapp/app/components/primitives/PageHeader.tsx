@@ -6,6 +6,9 @@ import { Paragraph } from "./Paragraph";
 import { cn } from "~/utils/cn";
 import { NamedIcon } from "./NamedIcon";
 import { Tabs, TabsProps } from "./Tabs";
+import { Icon, RenderIcon } from "./Icon";
+import { Button, LinkButton } from "./Buttons";
+import { ArrowUpRightIcon } from "@heroicons/react/20/solid";
 
 type WithChildren = {
   children: React.ReactNode;
@@ -13,7 +16,7 @@ type WithChildren = {
 
 export function PageHeader({ children, hideBorder }: WithChildren & { hideBorder?: boolean }) {
   return (
-    <div className={cn("mx-4 pt-4", hideBorder ? "" : "border-b border-uiBorder pb-4")}>
+    <div className={cn("mx-4 pt-4", hideBorder ? "" : "border-b border-ui-border pb-4")}>
       {children}
     </div>
   );
@@ -24,6 +27,7 @@ export function PageTitleRow({ children }: WithChildren) {
 }
 
 type PageTitleProps = {
+  icon?: RenderIcon;
   title: string;
   backButton?: {
     to: string;
@@ -31,7 +35,7 @@ type PageTitleProps = {
   };
 };
 
-export function PageTitle({ title, backButton }: PageTitleProps) {
+export function PageTitle({ icon, title, backButton }: PageTitleProps) {
   return (
     <div className="flex items-center gap-2">
       {backButton && (
@@ -48,7 +52,9 @@ export function PageTitle({ title, backButton }: PageTitleProps) {
           <BreadcrumbIcon className="h-6" />
         </div>
       )}
-      <Header1>{title}</Header1>
+      <Header1 className="flex items-center gap-1">
+        {icon && <Icon icon={icon} className="h-5 w-5" />} {title}
+      </Header1>
     </div>
   );
 }
@@ -86,6 +92,28 @@ export function PageInfoGroup({
 }
 
 export function PageInfoProperty({
+  icon,
+  label,
+  value,
+  to,
+}: {
+  icon?: string | React.ReactNode;
+  label?: string;
+  value: React.ReactNode;
+  to?: string;
+}) {
+  if (to === undefined) {
+    return <PageInfoPropertyContent icon={icon} label={label} value={value} />;
+  }
+
+  return (
+    <LinkButton variant="tertiary/small" to={to} TrailingIcon={ArrowUpRightIcon}>
+      <PageInfoPropertyContent icon={icon} label={label} value={value} />
+    </LinkButton>
+  );
+}
+
+function PageInfoPropertyContent({
   icon,
   label,
   value,

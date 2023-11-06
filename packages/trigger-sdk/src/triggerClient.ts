@@ -6,6 +6,7 @@ import {
   GetRunOptionsWithTaskDetails,
   GetRunsOptions,
   HandleTriggerSource,
+  HttpEndpointRequestHeadersSchema,
   HttpSourceRequestHeadersSchema,
   HttpSourceResponseMetadata,
   IndexEndpointResponse,
@@ -46,6 +47,7 @@ import {
   RetryWithTaskError,
   YieldExecutionError,
 } from "./errors";
+import { EndpointOptions, HttpEndpoint, httpEndpoint } from "./httpEndpoint";
 import { TriggerIntegration } from "./integrations";
 import { IO, IOStats } from "./io";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
@@ -125,6 +127,7 @@ export class TriggerClient {
   > = {};
   #jobMetadataByDynamicTriggers: Record<string, Array<{ id: string; version: string }>> = {};
   #registeredSchedules: Record<string, Array<{ id: string; version: string }>> = {};
+  #registeredHttpEndpoints: Record<string, HttpEndpoint<EventSpecification<any>>> = {};
   #authResolvers: Record<string, TriggerAuthResolver> = {};
 
   #client: ApiClient;
@@ -261,6 +264,9 @@ export class TriggerClient {
             id,
             jobs,
           })),
+          httpEndpoints: Object.entries(this.#registeredHttpEndpoints).map(([id, endpoint]) =>
+            endpoint.toJSON()
+          ),
         };
 
         // if the x-trigger-job-id header is not set, we return all jobs
@@ -440,6 +446,54 @@ export class TriggerClient {
           headers: this.#standardResponseHeaders(timeOrigin),
         };
       }
+      case "DELIVER_HTTP_ENDPOINT_REQUEST_FOR_RESPONSE": {
+        const headers = HttpEndpointRequestHeadersSchema.safeParse(
+          Object.fromEntries(request.headers.entries())
+        );
+
+        if (!headers.success) {
+          return {
+            status: 400,
+            body: {
+              message: "Invalid headers",
+            },
+          };
+        }
+
+        const sourceRequestNeedsBody = headers.data["x-ts-http-method"] !== "GET";
+
+        const sourceRequestInit: RequestInit = {
+          method: headers.data["x-ts-http-method"],
+          headers: headers.data["x-ts-http-headers"],
+          body: sourceRequestNeedsBody ? request.body : undefined,
+        };
+
+        if (sourceRequestNeedsBody) {
+          try {
+            // @ts-ignore
+            sourceRequestInit.duplex = "half";
+          } catch (error) {
+            // ignore
+          }
+        }
+
+        const sourceRequest = new Request(headers.data["x-ts-http-url"], sourceRequestInit);
+
+        const key = headers.data["x-ts-key"];
+
+        const { response } = await this.#handleHttpEndpointRequestForResponse(
+          {
+            key,
+          },
+          sourceRequest
+        );
+
+        return {
+          status: 200,
+          body: response,
+          headers: this.#standardResponseHeaders(timeOrigin),
+        };
+      }
       case "VALIDATE": {
         return {
           status: 200,
@@ -481,15 +535,16 @@ export class TriggerClient {
     TIntegrations extends Record<string, TriggerIntegration> = {},
     TOutput extends any = any,
   >(options: JobOptions<TTrigger, TIntegrations, TOutput>) {
-    
     const existingRegisteredJob = this.#registeredJobs[options.id];
-    
+
     if (existingRegisteredJob) {
       console.warn(
-        yellow(`[@trigger.dev/sdk] Warning: The Job "${existingRegisteredJob.id}" you're attempting to define has already been defined. Please assign a different ID to the job.`)
+        yellow(
+          `[@trigger.dev/sdk] Warning: The Job "${existingRegisteredJob.id}" you're attempting to define has already been defined. Please assign a different ID to the job.`
+        )
       );
     }
-    
+
     return new Job<TTrigger, TIntegrations, TOutput>(this, options);
   }
 
@@ -515,9 +570,29 @@ export class TriggerClient {
     return new DynamicTrigger(this, options);
   }
 
+  /**
+   * An [HTTP endpoint](https://trigger.dev/docs/documentation/concepts/http-endpoints) allows you to create a [HTTP Trigger](https://trigger.dev/docs/documentation/concepts/triggers/http), which means you can trigger your Jobs from any webhooks.
+   * @param options The Endpoint options
+   * @returns An HTTP Endpoint, that can be used to create an HTTP Trigger.
+   * @link https://trigger.dev/docs/documentation/concepts/http-endpoints
+   */
+  defineHttpEndpoint(options: EndpointOptions) {
+    const existingHttpEndpoint = this.#registeredHttpEndpoints[options.id];
+    if (existingHttpEndpoint) {
+      console.warn(
+        yellow(
+          `[@trigger.dev/sdk] Warning: The HttpEndpoint "${existingHttpEndpoint.id}" you're attempting to define has already been defined. Please assign a different ID to the HttpEndpoint.`
+        )
+      );
+    }
+
+    const endpoint = httpEndpoint(options);
+    this.#registeredHttpEndpoints[endpoint.id] = endpoint;
+    return endpoint;
+  }
+
   attach(job: Job<Trigger<any>, any>): void {
     this.#registeredJobs[job.id] = job;
-
     job.trigger.attachToJob(this, job);
   }
 
@@ -798,12 +873,20 @@ export class TriggerClient {
     );
 
     try {
+      const parsedPayload = job.trigger.event.parsePayload(body.event.payload ?? {});
+
+      if (!context.run.isTest) {
+        const verified = await job.trigger.verifyPayload(parsedPayload);
+        if (!verified.success) {
+          return {
+            status: "ERROR",
+            error: { message: `Payload verification failed. ${verified.reason}` },
+          };
+        }
+      }
+
       const output = await runLocalStorage.runWith({ io, ctx: context }, () => {
-        return job.options.run(
-          job.trigger.event.parsePayload(body.event.payload ?? {}),
-          ioWithConnections,
-          context
-        );
+        return job.options.run(parsedPayload, ioWithConnections, context);
       });
 
       if (this.#options.verbose) {
@@ -1080,6 +1163,79 @@ export class TriggerClient {
         },
       },
       metadata: results.metadata,
+    };
+  }
+
+  async #handleHttpEndpointRequestForResponse(
+    data: {
+      key: string;
+    },
+    sourceRequest: Request
+  ): Promise<{
+    response: NormalizedResponse;
+  }> {
+    this.#internalLogger.debug("Handling HTTP Endpoint request for response", {
+      data,
+    });
+
+    const httpEndpoint = this.#registeredHttpEndpoints[data.key];
+    if (!httpEndpoint) {
+      this.#internalLogger.debug("No handler registered for HTTP Endpoint", {
+        data,
+      });
+
+      return {
+        response: {
+          status: 200,
+          body: {
+            ok: true,
+          },
+        },
+      };
+    }
+
+    const handledResponse = await httpEndpoint.handleRequest(sourceRequest);
+
+    if (!handledResponse) {
+      this.#internalLogger.debug("There's no HTTP Endpoint respondWith.handler()", {
+        data,
+      });
+      return {
+        response: {
+          status: 200,
+          body: {
+            ok: true,
+          },
+        },
+      };
+    }
+
+    let body: string | undefined;
+    try {
+      body = await handledResponse.text();
+    } catch (error) {
+      this.#internalLogger.error(
+        `Error reading httpEndpoint ${httpEndpoint.id} respondWith.handler Response`,
+        {
+          error,
+        }
+      );
+    }
+
+    const response = {
+      status: handledResponse.status,
+      headers: handledResponse.headers
+        ? Object.fromEntries(handledResponse.headers.entries())
+        : undefined,
+      body,
+    };
+
+    this.#internalLogger.info(`httpEndpoint ${httpEndpoint.id} respondWith.handler response`, {
+      response,
+    });
+
+    return {
+      response,
     };
   }
 

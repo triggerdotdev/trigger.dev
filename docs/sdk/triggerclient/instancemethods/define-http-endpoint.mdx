@@ -1,0 +1,128 @@
+---
+title: "defineHttpEndpoint()"
+description: "Defines an HTTP Endpoint"
+---
+
+An [HTTP endpoint](/documentation/concepts/http-endpoints) allows you to create an [HTTP Trigger](/documentation/concepts/triggers/http), which means you can trigger your Jobs from any webhooks.
+
+<RequestExample>
+
+```ts example
+const caldotcom = client.defineHttpEndpoint({
+  //this should be unique inside your project
+  id: "cal.com",
+  //usually you'd use the domain name of the service
+  source: "cal.com",
+  //the icon is optional, it displays in the dashboard
+  icon: "caldotcom",
+  //this function is called when a webhook is received
+  verify: async (request) => {
+    //this is a useful helper function that can verify sha256 signatures
+    //each API has a different header name
+    return await verifyRequestSignature({
+      request,
+      //you can find the header name in the API's documentation
+      headerName: "X-Cal-Signature-256",
+      //you can find the secret in the Trigger.dev dashboard, on the HTTP endpoint page
+      secret: process.env.CALDOTCOM_SECRET!,
+      algorithm: "sha256",
+    });
+  },
+});
+```
+
+</RequestExample>
+
+## Parameters
+
+<ResponseField name="options" type="HTTPEndpointOptions" required>
+  The options for the HTTP endpoint.
+  <Expandable title="options" defaultOpen>
+    <ResponseField name="id" type="string" required>
+      Used to uniquely identify the HTTP Endpoint inside your Project.
+    </ResponseField>
+    <ResponseField name="source" type="string" required>
+      Usually you would use the domain name of the service, e.g. `cal.com`.
+    </ResponseField>
+    <ResponseField name="icon" type="string">
+      An optional icon name that's displayed in the dashboard. Lots of company names are supported, e.g. `github`, `twilio`. You can also reference the name of any [Tabler icon](https://tabler-icons.io/), e.g. `brand-google-maps`, `brand-twitch`.
+    </ResponseField>
+    <ResponseField name="title" type="string">
+      An optional title, displayed in the dashboard.
+    </ResponseField>
+    <ResponseField name="examples" type="array">
+       Used to provide example payloads that are accepted by the job.
+
+       This will be available in the dashboard and can be used to trigger test runs.
+
+       <Expandable title="example object properties">
+        <ResponseField name="id" type="string" required>
+          The example's ID.
+        </ResponseField>
+        <ResponseField name="name" type="string" required>
+          The name that's displayed in the dashboard.
+        </ResponseField>
+        <ResponseField name="payload" type="object" required>
+          The payload that's accepted by the job.
+        </ResponseField>
+        <ResponseField name="icon" type="string">
+          The icon to use for this example in the dashboard.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="properties" type="array">
+      Properties that are displayed in the logs.
+
+      Each property has the following fields:
+
+      <Expandable title="property fields">
+        <ResponseField name="label" type="string" required>
+          The label for the property.
+        </ResponseField>
+        <ResponseField name="text" type="string" required>
+          The value of the property.
+        </ResponseField>
+        <ResponseField name="url" type="string">
+          The URL to link to when the property is clicked.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="verify" type="function" required>
+      This is compulsory, and is used to verify that the received webhook is authentic. It's a function that expects you to return a result object like:
+
+      ```ts
+      //if it's valid
+      return { success: true }
+      //if it's invalid, reason is optional
+      return { success: false, reason: "No header" }
+      ```
+
+      In 90% of cases, you'll want to use the `verifyRequestSignature` helper function we provide.
+
+    </ResponseField>
+    <ResponseField name="respondWith" type="object">
+      This optional object allows you to immediately Respond to a Request. This is useful for some APIs where they do a `GET` Request when the webhook is first setup and expect a specific Response.
+
+      Only use this if you really need to Respond to the Request that comes in. Most of the time you don't.
+
+      <Expandable title="options">
+        <ResponseField name="skipTriggeringRuns" type="boolean" default={false}>
+          If you set this to `true`, the Request that comes in won't go on to Trigger any Runs. This is useful if you want to Respond to the Request, but don't want to Trigger any Runs.
+        </ResponseField>
+        <Snippet file="request-filter.mdx" />
+        <ResponseField name="handler" type="function" required>
+          This is a function that's called when a Request comes in. It's passed the Request object, and expects you to return a Response object.
+        </ResponseField>
+      </Expandable>
+
+    </ResponseField>
+
+  </Expandable>
+</ResponseField>
+
+## Returns
+
+<ResponseField name="HttpEndpoint" type="HttpEndpoint">
+  The HTTP Endpoint that was created. You should assign this to a variable, as you'll need it to
+  create an [HTTP Trigger](/sdk/http-trigger).
+</ResponseField>

@@ -1,6 +1,6 @@
 import { RedwoodLogo } from "~/assets/logos/RedwoodLogo";
 import { FrameworkComingSoon } from "~/components/frameworks/FrameworkComingSoon";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Handle } from "~/utils/handle";
 import { trimTrailingSlash } from "~/utils/pathBuilder";
 

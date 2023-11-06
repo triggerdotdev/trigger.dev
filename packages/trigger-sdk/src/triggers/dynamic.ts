@@ -162,4 +162,8 @@ export class DynamicTrigger<
   get preprocessRuns() {
     return true;
   }
+
+  async verifyPayload(payload: ReturnType<TEventSpec["parsePayload"]>) {
+    return { success: true as const };
+  }
 }

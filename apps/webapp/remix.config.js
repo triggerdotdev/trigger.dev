@@ -16,6 +16,7 @@ module.exports = {
     "@trigger.dev/sdk",
     "emails",
     "highlight.run",
+    "random-words",
   ],
   watchPaths: async () => {
     return [

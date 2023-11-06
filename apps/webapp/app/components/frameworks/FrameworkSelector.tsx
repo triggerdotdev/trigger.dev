@@ -24,7 +24,6 @@ import {
   projectSetupSvelteKitPath,
 } from "~/utils/pathBuilder";
 import { Feedback } from "../Feedback";
-import { PageGradient } from "../PageGradient";
 import { Button } from "../primitives/Buttons";
 import { Header1 } from "../primitives/Headers";
 
@@ -33,51 +32,49 @@ export function FrameworkSelector() {
   const project = useProject();
 
   return (
-    <PageGradient>
-      <div className="mx-auto max-w-3xl">
-        <div className="flex items-center justify-between">
-          <Header1 spacing>Choose a framework to get started…</Header1>
-          <Feedback
-            button={
-              <Button variant="tertiary/small" LeadingIcon={ChatBubbleLeftRightIcon}>
-                Request a framework
-              </Button>
-            }
-            defaultValue="feature"
-          />
-        </div>
-
-        <div className="grid grid-cols-3 place-items-center gap-2">
-          <FrameworkLink to={projectSetupNextjsPath(organization, project)} supported>
-            <NextjsLogo className="w-32" />
-          </FrameworkLink>
-          <FrameworkLink to={projectSetupExpressPath(organization, project)} supported>
-            <ExpressLogo className="w-36" />
-          </FrameworkLink>
-          <FrameworkLink to={projectSetupRemixPath(organization, project)} supported>
-            <RemixLogo className="w-32" />
-          </FrameworkLink>
-          <FrameworkLink to={projectSetupAstroPath(organization, project)} supported>
-            <AstroLogo className="w-32" />
-          </FrameworkLink>
-          <FrameworkLink to={projectSetupRedwoodPath(organization, project)}>
-            <RedwoodLogo className="w-44" />
-          </FrameworkLink>
-          <FrameworkLink to={projectSetupNuxtPath(organization, project)}>
-            <NuxtLogo className="w-32" />
-          </FrameworkLink>
-          <FrameworkLink to={projectSetupSvelteKitPath(organization, project)} supported>
-            <SvelteKitLogo className="w-44" />
-          </FrameworkLink>
-          <FrameworkLink to={projectSetupFastifyPath(organization, project)}>
-            <FastifyLogo className="w-36" />
-          </FrameworkLink>
-          <FrameworkLink to={projectSetupNestjsPath(organization, project)} supported>
-            <NestjsLogo className="w-36" />
-          </FrameworkLink>
-        </div>
+    <div className="mx-auto max-w-3xl pt-28">
+      <div className="flex items-center justify-between">
+        <Header1 spacing>Choose a framework to get started…</Header1>
+        <Feedback
+          button={
+            <Button variant="tertiary/small" LeadingIcon={ChatBubbleLeftRightIcon}>
+              Request a framework
+            </Button>
+          }
+          defaultValue="feature"
+        />
       </div>
-    </PageGradient>
+
+      <div className="grid grid-cols-3 place-items-center gap-2">
+        <FrameworkLink to={projectSetupNextjsPath(organization, project)} supported>
+          <NextjsLogo className="w-32" />
+        </FrameworkLink>
+        <FrameworkLink to={projectSetupExpressPath(organization, project)} supported>
+          <ExpressLogo className="w-36" />
+        </FrameworkLink>
+        <FrameworkLink to={projectSetupRemixPath(organization, project)} supported>
+          <RemixLogo className="w-32" />
+        </FrameworkLink>
+        <FrameworkLink to={projectSetupAstroPath(organization, project)} supported>
+          <AstroLogo className="w-32" />
+        </FrameworkLink>
+        <FrameworkLink to={projectSetupSvelteKitPath(organization, project)} supported>
+          <SvelteKitLogo className="w-44" />
+        </FrameworkLink>
+        <FrameworkLink to={projectSetupNestjsPath(organization, project)} supported>
+          <NestjsLogo className="w-36" />
+        </FrameworkLink>
+        <FrameworkLink to={projectSetupFastifyPath(organization, project)}>
+          <FastifyLogo className="w-36" />
+        </FrameworkLink>
+        <FrameworkLink to={projectSetupNuxtPath(organization, project)}>
+          <NuxtLogo className="w-32" />
+        </FrameworkLink>
+        <FrameworkLink to={projectSetupRedwoodPath(organization, project)}>
+          <RedwoodLogo className="w-44" />
+        </FrameworkLink>
+      </div>
+    </div>
   );
 }
 

@@ -9,6 +9,7 @@ export * from "./triggers/notifications";
 export * from "./triggers/invokeTrigger";
 export * from "./io";
 export * from "./types";
+export * from "./security";
 
 import { ServerTask } from "@trigger.dev/core";
 import { RedactString } from "./types";

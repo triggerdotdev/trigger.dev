@@ -29,7 +29,6 @@ import {
   SelectValue,
 } from "~/components/primitives/Select";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { useRef, useState } from "react";
 
 type FirstEndpointSheetProps = {
   projectId: string;
@@ -52,16 +51,16 @@ export function FirstEndpointSheet({ projectId, environments }: FirstEndpointShe
   return (
     <Sheet>
       <SheetTrigger>
-        <ButtonContent variant={"primary/medium"}>Add your first endpoint</ButtonContent>
+        <Button variant="secondary/medium">Add your first endpoint</Button>
       </SheetTrigger>
       <SheetContent size="lg">
         <SheetHeader>
           <div>
             <Header1>Add your first endpoint</Header1>
             <Paragraph variant="small">
-              We recommend you use{" "}
-              <TextLink href={docsPath("documentation/guides/cli")}>the CLI</TextLink> when working
-              in development.
+              We recommend you{" "}
+              <TextLink href={docsPath("documentation/guides/cli")}>use the CLI</TextLink> when
+              working in development.
             </Paragraph>
           </div>
         </SheetHeader>

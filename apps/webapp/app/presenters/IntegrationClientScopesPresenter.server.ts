@@ -15,12 +15,10 @@ export class IntegrationClientScopesPresenter {
   public async call({
     userId,
     organizationSlug,
-    projectSlug,
     clientSlug,
   }: {
     userId: User["id"];
     organizationSlug: Organization["slug"];
-    projectSlug: Project["slug"];
     clientSlug: string;
   }) {
     const integration = await this.#prismaClient.integration.findFirst({

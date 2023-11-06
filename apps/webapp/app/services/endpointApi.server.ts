@@ -6,6 +6,7 @@ import {
   HttpSourceRequest,
   HttpSourceResponseSchema,
   IndexEndpointResponseSchema,
+  NormalizedResponseSchema,
   PongResponse,
   PongResponseSchema,
   PreprocessRunBody,
@@ -238,6 +239,36 @@ export class EndpointApi {
     });
 
     return HttpSourceResponseSchema.parse(anyBody);
+  }
+
+  async deliverHttpEndpointRequestForResponse(options: {
+    key: string;
+    secret: string;
+    request: HttpSourceRequest;
+  }) {
+    const response = await safeFetch(this.url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "x-trigger-api-key": this.apiKey,
+        "x-trigger-action": "DELIVER_HTTP_ENDPOINT_REQUEST_FOR_RESPONSE",
+        "x-ts-key": options.key,
+        "x-ts-http-url": options.request.url,
+        "x-ts-http-method": options.request.method,
+        "x-ts-http-headers": JSON.stringify(options.request.headers),
+      },
+      body: options.request.rawBody,
+    });
+
+    if (!response) {
+      throw new Error(`Could not connect to endpoint ${this.url}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(`Could not connect to endpoint ${this.url}. Status code: ${response.status}`);
+    }
+
+    return { response, parser: NormalizedResponseSchema };
   }
 
   async validate(): Promise<ValidateResponse> {

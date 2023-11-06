@@ -25,11 +25,9 @@ export class IntegrationsPresenter {
 
   public async call({
     userId,
-    projectSlug,
     organizationSlug,
   }: {
     userId: User["id"];
-    projectSlug: Project["slug"];
     organizationSlug: Organization["slug"];
   }) {
     const clients = await this.#prismaClient.integration.findMany({
@@ -67,8 +65,8 @@ export class IntegrationsPresenter {
             jobIntegrations: {
               where: {
                 job: {
-                  project: {
-                    slug: projectSlug,
+                  organization: {
+                    slug: organizationSlug,
                   },
                   internal: false,
                   deletedAt: null,

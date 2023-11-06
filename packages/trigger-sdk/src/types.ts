@@ -13,6 +13,7 @@ import type {
 } from "@trigger.dev/core";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
+import { z } from "zod";
 
 export type {
   DisplayProperty,
@@ -79,6 +80,15 @@ export type TriggerInvokeType<TTrigger extends Trigger<any>> = TTrigger extends 
     : any
   : never;
 
+export type VerifyResult =
+  | {
+      success: true;
+    }
+  | {
+      success: false;
+      reason?: string;
+    };
+
 export interface Trigger<TEventSpec extends EventSpecification<any>> {
   event: TEventSpec;
   toJSON(): TriggerMetadata;
@@ -87,18 +97,22 @@ export interface Trigger<TEventSpec extends EventSpecification<any>> {
   attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpec>, any>): void;
 
   preprocessRuns: boolean;
+
+  verifyPayload: (payload: ReturnType<TEventSpec["parsePayload"]>) => Promise<VerifyResult>;
 }
 
 export type TriggerPayload<TTrigger> = TTrigger extends Trigger<EventSpecification<infer TEvent>>
   ? TEvent
   : never;
 
-export type EventSpecificationExample = {
-  id: string;
-  name: string;
-  icon?: string;
-  payload: any;
-};
+export const EventSpecificationExampleSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  icon: z.string().optional(),
+  payload: z.any(),
+});
+
+export type EventSpecificationExample = z.infer<typeof EventSpecificationExampleSchema>;
 
 export interface EventSpecification<TEvent extends any, TInvoke extends any = TEvent> {
   name: string | string[];

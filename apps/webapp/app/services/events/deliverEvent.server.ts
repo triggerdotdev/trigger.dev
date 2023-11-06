@@ -1,6 +1,7 @@
+import { fromZodError } from "zod-validation-error";
 import type { EventDispatcher, EventRecord } from "@trigger.dev/database";
 import type { EventFilter } from "@trigger.dev/core";
-import { EventFilterSchema, eventFilterMatches } from "@trigger.dev/core";
+import { EventFilterSchema, RequestWithRawBodySchema, eventFilterMatches } from "@trigger.dev/core";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { workerQueue } from "../worker.server";
@@ -124,6 +125,45 @@ export class EventMatcher {
   }
 
   public matches(filter: EventFilter) {
-    return eventFilterMatches(this.event, filter);
+    switch (this.event.payloadType) {
+      case "REQUEST": {
+        const result = RequestWithRawBodySchema.safeParse(this.event.payload);
+
+        if (!result.success) {
+          logger.error("Invalid payload, not a valid Raw REQUEST", {
+            payload: this.event.payload,
+            error: fromZodError(result.error).message,
+          });
+          return false;
+        }
+
+        const contentType = result.data.headers["content-type"];
+
+        if (contentType?.includes("application/json")) {
+          const body = JSON.parse(result.data.rawBody);
+          const requestPayload = {
+            url: result.data.url,
+            method: result.data.method,
+            headers: result.data.headers,
+            body,
+          };
+
+          const isMatch = eventFilterMatches(
+            {
+              context: this.event.context,
+              payload: requestPayload,
+            },
+            filter
+          );
+
+          return isMatch;
+        }
+
+        return eventFilterMatches(result.data, filter);
+      }
+      default: {
+        return eventFilterMatches(this.event, filter);
+      }
+    }
   }
 }

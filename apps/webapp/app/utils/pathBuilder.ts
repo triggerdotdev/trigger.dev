@@ -1,4 +1,4 @@
-import type { Integration, TriggerSource } from "@trigger.dev/database";
+import type { Integration, TriggerHttpEndpoint, TriggerSource } from "@trigger.dev/database";
 import { z } from "zod";
 import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
@@ -10,6 +10,7 @@ export type JobForPath = Pick<Job, "slug">;
 export type RunForPath = Pick<Job, "id">;
 export type IntegrationForPath = Pick<Integration, "slug">;
 export type TriggerForPath = Pick<TriggerSource, "id">;
+export type HttpEndpointForPath = Pick<TriggerHttpEndpoint, "key">;
 
 export const OrganizationParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -31,7 +32,7 @@ export const TaskParamsSchema = RunParamsSchema.extend({
   taskParam: z.string(),
 });
 
-export const IntegrationClientParamSchema = ProjectParamSchema.extend({
+export const IntegrationClientParamSchema = OrganizationParamsSchema.extend({
   clientParam: z.string(),
 });
 
@@ -47,6 +48,10 @@ export const TriggerSourceRunTaskParamsSchema = TriggerSourceRunParamsSchema.ext
   taskParam: z.string(),
 });
 
+export const HttpEndpointParamSchema = ProjectParamSchema.extend({
+  httpEndpointParam: z.string(),
+});
+
 export function trimTrailingSlash(path: string) {
   return path.replace(/\/$/, "");
 }
@@ -57,7 +62,7 @@ export function parentPath(path: string) {
   return trimmedTrailingSlash.substring(0, lastSlashIndex);
 }
 
-export function organizationsPath() {
+export function rootPath() {
   return `/`;
 }
 
@@ -159,12 +164,23 @@ export function projectJobsPath(organization: OrgForPath, project: ProjectForPat
   return projectPath(organization, project);
 }
 
-export function projectIntegrationsPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${projectPath(organization, project)}/integrations`;
+export function organizationIntegrationsPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/integrations`;
 }
 
 export function projectTriggersPath(organization: OrgForPath, project: ProjectForPath) {
   return `${projectPath(organization, project)}/triggers`;
+}
+
+export function projectHttpEndpointsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/http-endpoints`;
+}
+export function projectHttpEndpointPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  httpEndpoint: HttpEndpointForPath
+) {
+  return `${projectHttpEndpointsPath(organization, project)}/${httpEndpoint.key}`;
 }
 
 export function projectEnvironmentsPath(organization: OrgForPath, project: ProjectForPath) {
@@ -195,28 +211,19 @@ function projectParam(project: ProjectForPath) {
 }
 
 // Integration
-export function integrationClientPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  client: IntegrationForPath
-) {
-  return `${projectIntegrationsPath(organization, project)}/${clientParam(client)}`;
+export function integrationClientPath(organization: OrgForPath, client: IntegrationForPath) {
+  return `${organizationIntegrationsPath(organization)}/${clientParam(client)}`;
 }
 
 export function integrationClientConnectionsPath(
   organization: OrgForPath,
-  project: ProjectForPath,
   client: IntegrationForPath
 ) {
-  return `${integrationClientPath(organization, project, client)}/connections`;
+  return `${integrationClientPath(organization, client)}/connections`;
 }
 
-export function integrationClientScopesPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  client: IntegrationForPath
-) {
-  return `${integrationClientPath(organization, project, client)}/scopes`;
+export function integrationClientScopesPath(organization: OrgForPath, client: IntegrationForPath) {
+  return `${integrationClientPath(organization, client)}/scopes`;
 }
 
 function clientParam(integration: IntegrationForPath) {

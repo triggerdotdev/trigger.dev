@@ -7,99 +7,129 @@ import { ShortcutKey } from "./ShortcutKey";
 
 const variant = {
   "primary/small": {
-    textColor: "text-bright group-hover:text-white transition group-disabled:text-bright/80",
+    textColor: "text-bright group-hover:text-white transition group-disabled:text-bright/80 px-1",
     button:
       "h-6 px-[5px] text-xs bg-indigo-600 group-hover:bg-indigo-500/90 group-disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
+    iconSpacing: "gap-x-0.5",
     shortcutVariant: "small" as const,
     shortcut:
       "ml-1 -mr-0.5 border-bright/40 text-bright group-hover:border-bright/60 justify-self-center",
   },
   "secondary/small": {
-    textColor: "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80",
+    textColor: "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80 px-1",
     button:
       "h-6 px-[5px] text-xs bg-slate-800 group-hover:bg-slate-700/70 disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
+    iconSpacing: "gap-x-0.5",
     shortcutVariant: "small" as const,
     shortcut:
       "ml-1 -mr-0.5 border-dimmed/40 text-dimmed group-hover:text-bright/80 group-hover:border-dimmed/60",
   },
   "tertiary/small": {
-    textColor: "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80",
+    textColor: "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80 px-1",
     button:
       "h-6 px-[5px] text-xs bg-transparent group-hover:bg-slate-850 disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
+    iconSpacing: "gap-x-0.5",
     shortcutVariant: "small" as const,
     shortcut:
       "ml-1 -mr-0.5 border-dimmed/40 text-dimmed group-hover:text-bright/80 group-hover:border-dimmed/60",
   },
   "danger/small": {
-    textColor: "text-bright group-hover:text-white transition group-disabled:text-bright/80",
+    textColor: "text-bright group-hover:text-white transition group-disabled:text-bright/80 px-1",
     button:
       "h-6 px-[5px] text-xs bg-rose-600 group-hover:bg-rose-500 disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
+    iconSpacing: "gap-x-0.5",
     shortcutVariant: "small" as const,
     shortcut: "ml-1 -mr-0.5 border-bright/40 text-bright group-hover:border-bright/60",
   },
   "primary/medium": {
-    textColor: "text-bright group-hover:text-white transition group-disabled:text-bright/80",
+    textColor: "text-bright group-hover:text-white transition group-disabled:text-bright/80 px-1",
     button: "h-8 px-2 text-sm bg-indigo-600 group-hover:bg-indigo-500/90 disabled:opacity-50",
     icon: "h-4",
+    iconSpacing: "gap-x-0.5",
     shortcutVariant: "medium" as const,
     shortcut: "ml-1.5 -mr-0.5 border-bright/40 text-bright group-hover:border-bright/60",
   },
   "secondary/medium": {
-    textColor: "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80",
+    textColor: "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80 px-1",
     button: "h-8 px-2 text-sm bg-slate-800 group-hover:bg-slate-700/70 disabled:opacity-50",
     icon: "h-4",
+    iconSpacing: "gap-x-0.5",
     shortcutVariant: "medium" as const,
     shortcut:
       "ml-1.5 -mr-0.5 border-dimmed/40 text-dimmed group-hover:border-dimmed group-hover:text-bright",
   },
   "tertiary/medium": {
-    textColor: "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80",
+    textColor: "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80 px-1",
     button: "h-8 px-2 text-sm bg-transparent group-hover:bg-slate-850 disabled:opacity-50",
     icon: "h-4",
+    iconSpacing: "gap-x-0.5",
     shortcutVariant: "medium" as const,
     shortcut:
       "ml-1.5 -mr-0.5 border-bright/40 text-dimmed group-hover:border-bright/60 group-hover:text-bright",
   },
   "danger/medium": {
-    textColor: "text-bright group-hover:text-white transition group-disabled:text-bright/80",
+    textColor: "text-bright group-hover:text-white transition group-disabled:text-bright/80 px-1",
     button: "h-8 px-2 text-sm bg-rose-600 group-hover:bg-rose-500 disabled:opacity-50",
     icon: "h-4",
+    iconSpacing: "gap-x-0.5",
     shortcutVariant: "medium" as const,
     shortcut: "ml-1.5 -mr-0.5 border-bright/40 text-bright group-hover:border-bright/60",
   },
   "primary/large": {
-    textColor: "text-bright group-hover:text-white transition group-disabled:text-dimmed/80",
+    textColor: "text-bright group-hover:text-white transition group-disabled:text-dimmed/80 px-1",
     button:
-      "h-10 px-2 text-sm font-medium bg-indigo-600 group-hover:bg-indigo-500/90 disabled:opacity-50",
+      "h-10 px-2 text-sm font-medium bg-indigo-600 group-hover:bg-indigo-500/90 group-disabled:opacity-50",
     icon: "h-5",
+    iconSpacing: "gap-x-0.5",
     shortcutVariant: undefined,
     shortcut: undefined,
   },
   "secondary/large": {
-    textColor: "text-dimmed",
+    textColor: "text-dimmed px-1",
     button:
       "h-10 px-2 text-sm text-dimmed group-hover:text-bright transition font-medium bg-slate-800 group-hover:bg-slate-700/70 disabled:opacity-50",
     icon: "h-5",
+    iconSpacing: "gap-x-0.5",
     shortcutVariant: undefined,
     shortcut: undefined,
   },
   "danger/large": {
-    textColor: "text-bright group-hover:text-white transition group-disabled:text-bright/50",
+    textColor: "text-bright group-hover:text-white transition group-disabled:text-bright/50 px-1",
     button:
       "h-10 px-2 text-md bg-rose-600 group-hover:bg-rose-500 group-disabled:opacity-50 group-disabled:group-hover:bg-rose-600",
     icon: "h-5",
+    iconSpacing: "gap-x-0.5",
     shortcutVariant: "medium" as const,
     shortcut: "ml-1.5 -mr-0.5 border-bright/40 text-bright group-hover:border-bright/60",
   },
   "menu-item": {
-    textColor: "text-bright",
+    textColor: "text-bright px-1",
     button:
       "h-9 px-[0.475rem] text-sm rounded-sm bg-transparent group-hover:bg-slate-800 transition",
     icon: "h-5",
+    iconSpacing: "gap-x-0.5",
+    shortcutVariant: undefined,
+    shortcut: undefined,
+  },
+  "small-menu-item": {
+    textColor: "text-bright",
+    button:
+      "h-[1.8rem] px-[0.4rem] text-2sm rounded-sm text-dimmed bg-transparent group-hover:bg-slate-850 transition",
+    icon: "h-4",
+    iconSpacing: "gap-x-1.5",
+    shortcutVariant: undefined,
+    shortcut: undefined,
+  },
+  "small-menu-sub-item": {
+    textColor: "text-dimmed",
+    button:
+      "h-[1.8rem] px-[0.5rem] ml-5 text-2sm rounded-sm text-dimmed bg-transparent group-hover:bg-slate-850 transition",
+    icon: undefined,
+    iconSpacing: undefined,
     shortcutVariant: undefined,
     shortcut: undefined,
   },
@@ -110,7 +140,7 @@ const allVariants = {
   variant: variant,
 };
 
-type ButtonContentPropsType = {
+export type ButtonContentPropsType = {
   children?: React.ReactNode;
   LeadingIcon?: React.ComponentType<any> | IconNamesOrString;
   TrailingIcon?: React.ComponentType<any> | IconNamesOrString;
@@ -140,6 +170,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
   // Based on the size prop, we'll use the corresponding variant classnames
   const btnClassName = cn(allVariants.$all, variation.button);
   const iconClassName = variation.icon;
+  const iconSpacingClassName = variation.iconSpacing;
   const shortcutClassName = variation.shortcut;
   const textColorClassName = variation.textColor;
 
@@ -148,7 +179,8 @@ export function ButtonContent(props: ButtonContentPropsType) {
       <div
         className={cn(
           textAlignLeft ? "text-left" : "justify-center",
-          "flex w-full items-center gap-x-0.5"
+          "flex w-full items-center",
+          iconSpacingClassName
         )}
       >
         {LeadingIcon &&
@@ -170,7 +202,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
 
         {text &&
           (typeof text === "string" ? (
-            <span className={cn("mx-auto grow self-center truncate px-1", textColorClassName)}>
+            <span className={cn("mx-auto grow self-center truncate", textColorClassName)}>
               {text}
             </span>
           ) : (

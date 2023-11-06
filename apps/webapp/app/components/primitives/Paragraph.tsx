@@ -51,12 +51,17 @@ const paragraphVariants = {
     text: "font-sans text-xxs font-normal text-bright",
     spacing: "mb-1",
   },
+
   "extra-extra-small/caps": {
     text: "font-sans text-xxs uppercase tracking-wider font-normal text-dimmed",
     spacing: "mb-1",
   },
   "extra-extra-small/bright/caps": {
     text: "font-sans text-xxs uppercase tracking-wider font-normal text-bright",
+    spacing: "mb-1",
+  },
+  "extra-extra-small/dimmed/caps": {
+    text: "font-sans text-xxs uppercase tracking-wider font-normal text-dimmed",
     spacing: "mb-1",
   },
 };

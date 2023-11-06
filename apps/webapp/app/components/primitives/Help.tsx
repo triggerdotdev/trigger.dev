@@ -88,12 +88,7 @@ export function HelpContent({
             )}
           </div>
 
-          <div
-            className="grow rounded border border-slate-850 bg-midnight-850 bg-contain bg-left-top bg-no-repeat p-6"
-            style={{
-              backgroundImage: `url(${gradientPath})`,
-            }}
-          >
+          <div className="grow rounded border border-slate-850 bg-midnight-850/80 bg-contain bg-left-top bg-no-repeat p-6">
             {children}
           </div>
         </div>

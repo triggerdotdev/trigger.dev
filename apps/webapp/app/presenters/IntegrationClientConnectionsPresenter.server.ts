@@ -1,7 +1,6 @@
 import { User } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { Organization } from "~/models/organization.server";
-import { Project } from "~/models/project.server";
 import { ConnectionMetadataSchema } from "~/services/externalApis/types";
 
 export class IntegrationClientConnectionsPresenter {
@@ -14,12 +13,10 @@ export class IntegrationClientConnectionsPresenter {
   public async call({
     userId,
     organizationSlug,
-    projectSlug,
     clientSlug,
   }: {
     userId: User["id"];
     organizationSlug: Organization["slug"];
-    projectSlug: Project["slug"];
     clientSlug: string;
   }) {
     const connections = await this.#prismaClient.integrationConnection.findMany({

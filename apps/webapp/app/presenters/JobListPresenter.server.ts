@@ -8,6 +8,9 @@ import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
 import { z } from "zod";
+import { projectPath } from "~/utils/pathBuilder";
+
+export type ProjectJob = Awaited<ReturnType<JobListPresenter["call"]>>[0];
 
 export class JobListPresenter {
   #prismaClient: PrismaClient;
@@ -23,8 +26,8 @@ export class JobListPresenter {
     integrationSlug,
   }: {
     userId: User["id"];
-    projectSlug: Project["slug"];
-    organizationSlug?: Organization["slug"];
+    projectSlug?: Project["slug"];
+    organizationSlug: Organization["slug"];
     integrationSlug?: string;
   }) {
     const orgWhere: Prisma.JobWhereInput["organization"] = organizationSlug
@@ -68,6 +71,8 @@ export class JobListPresenter {
                     },
                   },
                 },
+                triggerLink: true,
+                triggerHelp: true,
               },
             },
             environment: {
@@ -90,14 +95,21 @@ export class JobListPresenter {
             type: true,
           },
         },
+        project: {
+          select: {
+            slug: true,
+          },
+        },
       },
       where: {
         internal: false,
         deletedAt: null,
         organization: orgWhere,
-        project: {
-          slug: projectSlug,
-        },
+        project: projectSlug
+          ? {
+              slug: projectSlug,
+            }
+          : undefined,
         integrations: integrationsWhere,
       },
       orderBy: [{ title: "asc" }],
@@ -182,6 +194,11 @@ export class JobListPresenter {
             title: eventSpecification.title,
             icon: eventSpecification.icon,
             source: eventSpecification.source,
+            link: projectSlug
+              ? `${projectPath({ slug: organizationSlug }, { slug: projectSlug })}/${
+                  alias.version.triggerLink
+                }`
+              : undefined,
           },
           integrations,
           hasIntegrationsRequiringAction: integrations.some(

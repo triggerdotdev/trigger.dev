@@ -30,8 +30,10 @@ import { getTeamMembersAndInvites, removeTeamMember } from "~/models/member.serv
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUserId } from "~/services/session.server";
 import { inviteTeamMemberPath, organizationTeamPath, resendInvitePath } from "~/utils/pathBuilder";
-import { OrgAdminHeader } from "../_app.orgs.$organizationSlug._index/OrgAdminHeader";
 import { DateTime } from "~/components/primitives/DateTime";
+import { PageHeader, PageTitleRow, PageTitle } from "~/components/primitives/PageHeader";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
+import { Handle } from "~/utils/handle";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -93,6 +95,10 @@ export const action: ActionFunction = async ({ request, params }) => {
 type Member = UseDataFunctionReturn<typeof loader>["members"][number];
 type Invite = UseDataFunctionReturn<typeof loader>["invites"][number];
 
+export const handle: Handle = {
+  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Team" />,
+};
+
 export default function Page() {
   const user = useUser();
   const { members, invites } = useTypedLoaderData<typeof loader>();
@@ -100,10 +106,14 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <OrgAdminHeader />
+      <PageHeader>
+        <PageTitleRow>
+          <PageTitle title="Team" />
+        </PageTitleRow>
+      </PageHeader>
       <PageBody>
         <Header2>Members</Header2>
-        <ul className="flex w-full max-w-md flex-col divide-y divide-uiBorder border-b border-uiBorder">
+        <ul className="flex w-full max-w-md flex-col divide-y divide-ui-border border-b border-ui-border">
           {members.map((member) => (
             <li key={member.user.id} className="flex items-center gap-x-4 py-4">
               <UserAvatar

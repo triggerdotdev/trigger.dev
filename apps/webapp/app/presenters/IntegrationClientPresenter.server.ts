@@ -17,12 +17,10 @@ export class IntegrationClientPresenter {
   public async call({
     userId,
     organizationSlug,
-    projectSlug,
     clientSlug,
   }: {
     userId: User["id"];
     organizationSlug: Organization["slug"];
-    projectSlug: Project["slug"];
     clientSlug: string;
   }) {
     const integration = await this.#prismaClient.integration.findFirst({
@@ -59,8 +57,8 @@ export class IntegrationClientPresenter {
             jobIntegrations: {
               where: {
                 job: {
-                  project: {
-                    slug: projectSlug,
+                  organization: {
+                    slug: organizationSlug,
                   },
                   internal: false,
                   deletedAt: null,

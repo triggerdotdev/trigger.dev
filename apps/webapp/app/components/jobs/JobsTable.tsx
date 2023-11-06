@@ -1,7 +1,7 @@
-import { ProjectJob } from "~/hooks/useJobs";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { JobRunStatus } from "~/models/job.server";
+import { ProjectJob } from "~/presenters/JobListPresenter.server";
 import { jobPath, jobTestPath } from "~/utils/pathBuilder";
 import { Button } from "../primitives/Buttons";
 import { DateTime } from "../primitives/DateTime";
@@ -30,7 +30,7 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
   const project = useProject();
 
   return (
-    <Table>
+    <Table containerClassName="mb-4">
       <TableHeader>
         <TableRow>
           <TableHeaderCell>Job</TableHeaderCell>
@@ -160,19 +160,18 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
 
                   <Dialog>
                     <DialogTrigger asChild>
-                      <Button variant="menu-item" LeadingIcon="trash-can">
+                      <Button variant="small-menu-item" LeadingIcon="trash-can" className="text-xs">
                         Delete Job
                       </Button>
                     </DialogTrigger>
                     <DialogContent>
-                      <DialogHeader>
-                        <DeleteJobDialogContent
-                          id={job.id}
-                          title={job.title}
-                          slug={job.slug}
-                          environments={job.environments}
-                        />
-                      </DialogHeader>
+                      <DialogHeader>Delete Job</DialogHeader>
+                      <DeleteJobDialogContent
+                        id={job.id}
+                        title={job.title}
+                        slug={job.slug}
+                        environments={job.environments}
+                      />
                     </DialogContent>
                   </Dialog>
                 </TableCellMenu>

@@ -2,6 +2,7 @@ import { Job } from "@trigger.dev/database";
 import { TriggerClient } from "@trigger.dev/sdk";
 import { PostHog } from "posthog-node";
 import { env } from "~/env.server";
+import { MatchedOrganization } from "~/hooks/useOrganizations";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import type { User } from "~/models/user.server";
@@ -74,7 +75,7 @@ class Telemetry {
   };
 
   organization = {
-    identify: ({ organization }: { organization: Organization }) => {
+    identify: ({ organization }: { organization: MatchedOrganization }) => {
       if (this.#posthogClient === undefined) return;
       this.#posthogClient.groupIdentify({
         groupType: "organization",
@@ -82,8 +83,6 @@ class Telemetry {
         properties: {
           name: organization.title,
           slug: organization.slug,
-          createdAt: organization.createdAt,
-          updatedAt: organization.updatedAt,
         },
       });
     },

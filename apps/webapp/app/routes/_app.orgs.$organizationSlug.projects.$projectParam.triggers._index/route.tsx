@@ -2,7 +2,6 @@ import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { LabelValueStack } from "~/components/primitives/LabelValueStack";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -22,8 +21,7 @@ import { useProject } from "~/hooks/useProject";
 import { TriggersPresenter } from "~/presenters/TriggersPresenter.server";
 import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { Handle } from "~/utils/handle";
-import { ProjectParamSchema, externalTriggerPath, trimTrailingSlash } from "~/utils/pathBuilder";
+import { ProjectParamSchema, externalTriggerPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -37,13 +35,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 
   return typedjson(data);
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => (
-    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="External Triggers" />
-  ),
-  expandSidebar: true,
 };
 
 export default function Integrations() {

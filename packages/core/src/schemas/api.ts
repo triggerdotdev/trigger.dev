@@ -17,6 +17,7 @@ import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
 import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
 import { RunStatusSchema } from "./runs";
 import { JobRunStatusRecordSchema } from "./statuses";
+import { RequestFilterSchema } from "./requestFilter";
 
 export const UpdateTriggerSourceBodyV1Schema = z.object({
   registeredEvents: z.array(z.string()),
@@ -174,6 +175,13 @@ export const HttpSourceRequestHeadersSchema = z.object({
 
 export type HttpSourceRequestHeaders = z.output<typeof HttpSourceRequestHeadersSchema>;
 
+export const HttpEndpointRequestHeadersSchema = z.object({
+  "x-ts-key": z.string(),
+  "x-ts-http-url": z.string(),
+  "x-ts-http-method": z.string(),
+  "x-ts-http-headers": z.string().transform((s) => z.record(z.string()).parse(JSON.parse(s))),
+});
+
 export const PongSuccessResponseSchema = z.object({
   ok: z.literal(true),
   triggerVersion: z.string().optional(),
@@ -289,11 +297,27 @@ export const DynamicTriggerEndpointMetadataSchema = z.object({
 
 export type DynamicTriggerEndpointMetadata = z.infer<typeof DynamicTriggerEndpointMetadataSchema>;
 
+const HttpEndpointMetadataSchema = z.object({
+  id: z.string(),
+  version: z.string(),
+  enabled: z.boolean(),
+  title: z.string().optional(),
+  icon: z.string().optional(),
+  properties: z.array(DisplayPropertySchema).optional(),
+  event: EventSpecificationSchema,
+  immediateResponseFilter: RequestFilterSchema.optional(),
+  skipTriggeringRuns: z.boolean().optional(),
+  source: z.string(),
+});
+
+export type HttpEndpointMetadata = z.infer<typeof HttpEndpointMetadataSchema>;
+
 export const IndexEndpointResponseSchema = z.object({
   jobs: z.array(JobMetadataSchema),
   sources: z.array(SourceMetadataSchema),
   dynamicTriggers: z.array(DynamicTriggerEndpointMetadataSchema),
   dynamicSchedules: z.array(RegisterDynamicSchedulePayloadSchema),
+  httpEndpoints: z.array(HttpEndpointMetadataSchema).optional(),
 });
 
 export type IndexEndpointResponse = z.infer<typeof IndexEndpointResponseSchema>;
@@ -311,6 +335,7 @@ const IndexEndpointStatsSchema = z.object({
   dynamicTriggers: z.number(),
   dynamicSchedules: z.number(),
   disabledJobs: z.number().default(0),
+  httpEndpoints: z.number().default(0),
 });
 
 export type IndexEndpointStats = z.infer<typeof IndexEndpointStatsSchema>;
@@ -374,6 +399,9 @@ export const RawEventSchema = z.object({
   /** This is optional, it defaults to "trigger.dev". It can be useful to set
       this as you can filter events using this in the `eventTrigger()`. */
   source: z.string().optional(),
+  /** This is optional, it defaults to "JSON". If your event is actually a request,
+      with a url, headers, method and rawBody you can use "REQUEST" */
+  payloadType: z.union([z.literal("JSON"), z.literal("REQUEST")]).optional(),
 });
 
 export type RawEvent = z.infer<typeof RawEventSchema>;
