@@ -1,4 +1,4 @@
-import { HttpSourceRequest } from "@trigger.dev/core";
+import { HttpSourceRequest } from "~/services/endpointApi.server";
 import { requestUrl } from "./requestUrl.server";
 
 export async function createHttpSourceRequest(request: Request): Promise<HttpSourceRequest> {
