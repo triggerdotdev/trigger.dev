@@ -204,7 +204,9 @@ export class JobPresenter {
         title: eventSpecification.title,
         icon: eventSpecification.icon,
         source: eventSpecification.source,
-        link: `${projectRootPath}/${alias.version.triggerLink}`,
+        link: alias.version.triggerLink
+          ? `${projectRootPath}/${alias.version.triggerLink}`
+          : undefined,
       },
       noRunsHelp: hasRealRuns
         ? undefined
