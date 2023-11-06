@@ -43,7 +43,7 @@ client.defineJob({
     name: "cancel.event.example",
   }),
   run: async (payload, io, ctx) => {
-    await io.sendEvent(
+    const event = await io.sendEvent(
       "send-event",
       { name: "Cancellable Event", id: payload.id, payload: { payload, ctx } },
       {
@@ -51,13 +51,13 @@ client.defineJob({
       }
     );
 
-    await io.getEvent("get-event", payload.id);
+    await io.getEvent("get-event", event.id);
 
     await io.wait("wait-1", 60); // 1 minute
 
-    await io.cancelEvent("cancel-event", payload.id);
+    await io.cancelEvent("cancel-event", event.id);
 
-    await io.getEvent("get-event-2", payload.id);
+    await io.getEvent("get-event-2", event.id);
   },
 });
 
@@ -96,7 +96,7 @@ client.defineJob({
     //     message: "Hello World",
     //   };
     // });
-  }
+  },
 });
 
 client.defineJob({
