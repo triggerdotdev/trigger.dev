@@ -165,14 +165,13 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
                       </Button>
                     </DialogTrigger>
                     <DialogContent>
-                      <DialogHeader>
-                        <DeleteJobDialogContent
-                          id={job.id}
-                          title={job.title}
-                          slug={job.slug}
-                          environments={job.environments}
-                        />
-                      </DialogHeader>
+                      <DialogHeader>Delete Job</DialogHeader>
+                      <DeleteJobDialogContent
+                        id={job.id}
+                        title={job.title}
+                        slug={job.slug}
+                        environments={job.environments}
+                      />
                     </DialogContent>
                   </Dialog>
                 </TableCellMenu>
