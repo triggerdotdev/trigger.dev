@@ -2,7 +2,13 @@ import { TriggerMetadata } from "@trigger.dev/core";
 import { ParsedPayloadSchemaError } from "../errors";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
-import { EventSpecification, EventSpecificationExample, SchemaParser, Trigger } from "../types";
+import {
+  EventSpecification,
+  EventSpecificationExample,
+  SchemaParser,
+  Trigger,
+  VerifyResult,
+} from "../types";
 import { formatSchemaErrors } from "../utils/formatSchemaErrors";
 import { TypeOf, ZodType, z } from "zod";
 
@@ -73,6 +79,10 @@ export class InvokeTrigger<TSchema extends ZodType = z.ZodTypeAny>
 
   get preprocessRuns() {
     return false;
+  }
+
+  async verifyPayload() {
+    return { success: true as const };
   }
 }
 
