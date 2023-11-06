@@ -67,7 +67,7 @@ client.defineJob({
     resend,
   },
   run: async (payload, io, ctx) => {
-    await io.resend.sendEmail("send-email", {
+    await io.resend.emails.send("send-email", {
       to: payload.to,
       subject: payload.subject,
       text: payload.text,
@@ -79,6 +79,10 @@ client.defineJob({
 
 ## Tasks
 
-| Function Name | Description   |
-| ------------- | ------------- |
-| `sendEmail`   | Send an email |
+| Function Name   | Description                      |
+| --------------- | -------------------------------- |
+| `emails.send`   | Send an email                    |
+| `emails.create` | Create an email                  |
+| `emails.get`    | Get an email                     |
+| `batch.send`    | Send a batch of emails at once   |
+| `batch.create`  | Create a batch of emails at once |

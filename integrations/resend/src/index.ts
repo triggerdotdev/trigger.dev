@@ -1,5 +1,4 @@
 import {
-  retry,
   type ConnectionAuth,
   type IO,
   type IOTask,
@@ -10,10 +9,8 @@ import {
   type TriggerIntegration,
 } from "@trigger.dev/sdk";
 import { Resend as ResendClient } from "resend";
-
-type ResendType = InstanceType<typeof ResendClient>;
-type SendEmailData = Parameters<ResendType["sendEmail"]>[0];
-type SendEmailResponse = Awaited<ReturnType<ResendType["sendEmail"]>>;
+import { Emails } from "./emails";
+import { Batch } from "./batch";
 
 type ErrorResponse = {
   statusCode: number;
@@ -50,6 +47,8 @@ export type ResendIntegrationOptions = {
   id: string;
   apiKey?: string;
 };
+
+export type ResendRunTask = InstanceType<typeof Resend>["runTask"];
 
 export class Resend implements TriggerIntegration {
   /**
@@ -120,33 +119,42 @@ export class Resend implements TriggerIntegration {
     );
   }
 
-  sendEmail(key: IntegrationTaskKey, params: SendEmailData): Promise<SendEmailResponse> {
-    return this.runTask(
-      key,
-      async (client) => {
-        const response = await client.sendEmail(params);
-        if ("statusCode" in response) {
-          throw response;
-        }
-        return response;
-      },
-      {
-        name: "Send Email",
-        params,
-        properties: [
-          {
-            label: "From",
-            text: params.from,
-          },
-          {
-            label: "To",
-            text: Array.isArray(params.to) ? params.to.join(", ") : params.to,
-          },
-          ...(params.subject ? [{ label: "Subject", text: params.subject }] : []),
-        ],
-        retry: retry.standardBackoff,
-      },
-      onError
-    );
+  /**
+   * Access the Resend Emails API
+   * @example
+   * ```ts
+   * const response = await io.resend.emails.send("📧", {
+   *  to: payload.to,
+   *  subject: payload.subject,
+   *  text: payload.text,
+   *  from: "hello@trigger.dev"
+   * });
+   * ```
+   */
+  get emails() {
+    return new Emails(this.runTask.bind(this));
+  }
+
+  /**
+   * Access the Resend Batch Emails API
+   * @example
+   * ```ts
+   * const response = await io.resend.batch.send("📧", [{
+   *  to: payload.to,
+   *  subject: payload.subject,
+   *  text: payload.text,
+   *  from: "hello@trigger.dev"
+   * }]);
+   * ```
+   */
+  get batch() {
+    return new Batch(this.runTask.bind(this));
+  }
+
+  /**
+   * @deprecated Please use resend.emails.send instead
+   */
+  async sendEmail(...args: Parameters<typeof this.emails.send>) {
+    return this.emails.send(...args);
   }
 }
