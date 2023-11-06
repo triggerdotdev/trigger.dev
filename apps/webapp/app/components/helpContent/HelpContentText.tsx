@@ -312,7 +312,7 @@ export function WhatAreHttpEndpoints() {
         Then you can create a Trigger from this by calling <InlineCode>.onRequest()</InlineCode> on
         the created HTTP endpoint.
       </Paragraph>
-      <Callout variant="docs" to={docsPath("documentation/concepts/triggers/http-endpoints")}>
+      <Callout variant="docs" to={docsPath("documentation/concepts/http-endpoints")}>
         Read the HTTP endpoints guide to learn more.
       </Callout>
       <Header2 spacing className="mt-4">
@@ -425,7 +425,7 @@ export function HowToConnectHttpEndpoint() {
         </Paragraph>
       </StepContentContainer>
 
-      <Callout variant="docs" to={docsPath("documentation/concepts/triggers/http-endpoints")}>
+      <Callout variant="docs" to={docsPath("documentation/concepts/http-endpoints")}>
         Read the HTTP endpoints guide to learn more.
       </Callout>
     </>
