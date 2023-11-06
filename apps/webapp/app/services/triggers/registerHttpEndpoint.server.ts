@@ -95,7 +95,9 @@ export class RegisterHttpEndpointService {
 
       //create the secret
       //we don't upsert because we don't want to change an existing one
-      const secretStore = getSecretStore(httpEndpoint.secretReference.provider);
+      const secretStore = getSecretStore(httpEndpoint.secretReference.provider, {
+        prismaClient: tx,
+      });
       const existingSecret = await secretStore.getSecret(
         z.object({
           secret: z.string(),
