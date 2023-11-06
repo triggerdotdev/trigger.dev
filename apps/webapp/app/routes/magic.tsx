@@ -7,6 +7,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   await authenticator.authenticate("email-link", request, {
     successRedirect: redirectTo ?? "/",
-    failureRedirect: "/login",
+    failureRedirect: "/login/magic",
   });
 }

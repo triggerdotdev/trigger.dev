@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { SecretStoreOptionsSchema } from "./services/secrets/secretStore.server";
+import { isValidRegex } from "./utils/regex";
 
 const EnvironmentSchema = z.object({
   NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -10,6 +11,7 @@ const EnvironmentSchema = z.object({
   SESSION_SECRET: z.string(),
   MAGIC_LINK_SECRET: z.string(),
   ENCRYPTION_KEY: z.string(),
+  WHITELISTED_EMAILS: z.string().refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.").optional(),
   REMIX_APP_PORT: z.string().optional(),
   LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
   APP_ORIGIN: z.string().default("http://localhost:3030"),
