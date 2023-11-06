@@ -53,7 +53,8 @@ export function PageTitle({ icon, title, backButton }: PageTitleProps) {
         </div>
       )}
       <Header1 className="flex items-center gap-1">
-        {icon && <Icon icon={icon} className="h-5 w-5" />} {title}
+        {icon && <Icon icon={icon} className="h-5 w-5" />}
+        {title}
       </Header1>
     </div>
   );
