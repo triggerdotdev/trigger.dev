@@ -137,15 +137,6 @@ export type HandleTriggerSource = z.infer<typeof HandleTriggerSourceSchema>;
 
 export type TriggerSource = z.infer<typeof TriggerSourceSchema>;
 
-export const HttpSourceRequestSchema = z.object({
-  url: z.string().url(),
-  method: z.string(),
-  headers: z.record(z.string()),
-  rawBody: z.instanceof(Buffer).optional().nullable(),
-});
-
-export type HttpSourceRequest = z.infer<typeof HttpSourceRequestSchema>;
-
 export const HttpSourceRequestHeadersSchema = z.object({
   "x-ts-key": z.string(),
   "x-ts-dynamic-id": z.string().optional(),

@@ -119,28 +119,6 @@ function safeJsonClone(obj: unknown) {
   }
 }
 
-function formattedDateTime() {
-  const date = new Date();
-
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
-  const seconds = date.getSeconds();
-  const milliseconds = date.getMilliseconds();
-
-  // Make sure the time is always 2 digits
-  const formattedHours = hours < 10 ? `0${hours}` : hours;
-  const formattedMinutes = minutes < 10 ? `0${minutes}` : minutes;
-  const formattedSeconds = seconds < 10 ? `0${seconds}` : seconds;
-  const formattedMilliseconds =
-    milliseconds < 10
-      ? `00${milliseconds}`
-      : milliseconds < 100
-      ? `0${milliseconds}`
-      : milliseconds;
-
-  return `${formattedHours}:${formattedMinutes}:${formattedSeconds}.${formattedMilliseconds}`;
-}
-
 // If args is has a single item that is an object, return that object
 function structureArgs(args: Array<Record<string, unknown>>, filteredKeys: string[] = []) {
   if (args.length === 0) {
@@ -187,7 +165,7 @@ function prettyPrintBytes(value: unknown): string {
     return "skipped size";
   }
 
-  const sizeInBytes = Buffer.byteLength(JSON.stringify(value), "utf8");
+  const sizeInBytes = getSizeInBytes(value);
 
   if (sizeInBytes < 1024) {
     return `${sizeInBytes} bytes`;
@@ -202,4 +180,16 @@ function prettyPrintBytes(value: unknown): string {
   }
 
   return `${(sizeInBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function getSizeInBytes(value: unknown) {
+  const jsonString = JSON.stringify(value);
+
+  if (typeof window === "undefined") {
+    // Node.js environment
+    return Buffer.byteLength(jsonString, "utf8");
+  } else {
+    // Browser environment
+    return new TextEncoder().encode(jsonString).length;
+  }
 }

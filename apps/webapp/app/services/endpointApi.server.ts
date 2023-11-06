@@ -3,7 +3,6 @@ import {
   ConnectionAuth,
   EndpointHeadersSchema,
   ErrorWithStackSchema,
-  HttpSourceRequest,
   HttpSourceResponseSchema,
   IndexEndpointResponseSchema,
   NormalizedResponseSchema,
@@ -21,6 +20,16 @@ import {
 import { performance } from "node:perf_hooks";
 import { safeBodyFromResponse, safeParseBodyFromResponse } from "~/utils/json";
 import { logger } from "./logger.server";
+import { z } from "zod";
+
+const HttpSourceRequestSchema = z.object({
+  url: z.string().url(),
+  method: z.string(),
+  headers: z.record(z.string()),
+  rawBody: z.instanceof(Buffer).optional().nullable(),
+});
+
+export type HttpSourceRequest = z.infer<typeof HttpSourceRequestSchema>;
 
 export class EndpointApiError extends Error {
   constructor(message: string, stack?: string) {
