@@ -84,6 +84,18 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "http-caldotcom-cancellations",
+  name: "HTTP Cal.com cancellations",
+  version: "1.0.0",
+  enabled: true,
+  trigger: caldotcom.onRequest({ filter: { body: { triggerEvent: ["BOOKING_CANCELLED"] } } }),
+  run: async (request, io, ctx) => {
+    const body = await request.json();
+    await io.logger.info(`Body`, body);
+  },
+});
+
 //Stripe
 const stripe = client.defineHttpEndpoint({
   id: "stripe.com",
