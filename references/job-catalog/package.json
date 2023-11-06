@@ -12,7 +12,6 @@
     "events": "nodemon --watch src/events.ts -r tsconfig-paths/register -r dotenv/config src/events.ts",
     "schedules": "nodemon --watch src/schedules.ts -r tsconfig-paths/register -r dotenv/config src/schedules.ts",
     "stressTest": "nodemon --watch src/stressTest.ts -r tsconfig-paths/register -r dotenv/config src/stressTest.ts",
-    "delays": "nodemon --watch src/delays.ts -r tsconfig-paths/register -r dotenv/config src/delays.ts",
     "airtable": "nodemon --watch src/airtable.ts -r tsconfig-paths/register -r dotenv/config src/airtable.ts",
     "resend": "nodemon --watch src/resend.ts -r tsconfig-paths/register -r dotenv/config src/resend.ts",
     "github": "nodemon --watch src/github.ts -r tsconfig-paths/register -r dotenv/config src/github.ts",
@@ -30,8 +29,8 @@
     "auto-yield": "nodemon --watch src/auto-yield.ts -r tsconfig-paths/register -r dotenv/config src/auto-yield.ts",
     "httptrigger": "nodemon --watch src/httpTrigger.ts -r tsconfig-paths/register -r dotenv/config src/httpTrigger.ts",
     "cli-example": "nodemon --watch src/cli-example.ts -r tsconfig-paths/register -r dotenv/config src/cli-example.ts",
-    "random": "nodemon --watch src/random.ts -r tsconfig-paths/register -r dotenv/config src/random.ts",
     "invoke": "nodemon --watch src/invoke.ts -r tsconfig-paths/register -r dotenv/config src/invoke.ts",
+    "built-ins": "nodemon --watch src/built-ins.ts -r tsconfig-paths/register -r dotenv/config src/built-ins.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {

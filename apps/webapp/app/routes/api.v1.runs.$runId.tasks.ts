@@ -248,7 +248,7 @@ export class RunTaskService {
 
       const taskId = ulid();
       const callbackUrl = callbackEnabled
-        ? `${env.APP_ORIGIN}/api/v1/runs/${runId}/tasks/${taskId}/callback/${generateSecret(12)}`
+        ? `${env.APP_ORIGIN}/api/v1/tasks/${taskId}/callback/${generateSecret(12)}`
         : undefined;
 
       const task = await tx.task.create({

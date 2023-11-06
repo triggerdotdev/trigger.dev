@@ -1,5 +1,5 @@
 import { createExpressServer } from "@trigger.dev/express";
-import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
+import { TriggerClient, eventTrigger, invokeTrigger } from "@trigger.dev/sdk";
 
 export const client = new TriggerClient({
   id: "job-catalog",
@@ -45,6 +45,58 @@ client.defineJob({
 
     // invalid ranges will fail
     await io.random("random-error", { min: 10, max: 5 });
+  },
+});
+
+client.defineJob({
+  id: "delays-example-1",
+  name: "Delays Example 1",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "delays.example",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.wait("wait-1", 60);
+  },
+});
+
+client.defineJob({
+  id: "delays-example-2",
+  name: "Delays Example 2 - Long Delay",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "delays.example.long",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.wait("wait-1", 60 * 30);
+  },
+});
+
+client.defineJob({
+  id: "wait-for-request-example",
+  name: "Wait for Request Example",
+  version: "1.0.0",
+  trigger: invokeTrigger(),
+  run: async (payload, io, ctx) => {
+    const result = await io.waitForRequest<{ message: string }>(
+      "wait-for-request",
+      async (url) => {
+        console.log("Waiting for request", url);
+      },
+      {
+        timeoutInSeconds: 60,
+      }
+    );
+
+    const result2 = await io.waitForRequest(
+      "wait-for-request-2",
+      async (url) => {
+        console.log("Waiting for request 2", url);
+      },
+      {
+        timeoutInSeconds: 10,
+      }
+    );
   },
 });
 
