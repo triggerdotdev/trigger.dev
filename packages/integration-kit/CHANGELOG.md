@@ -1,5 +1,14 @@
 # @trigger.dev/integration-kit
 
+## 2.2.5
+
+### Patch Changes
+
+- 620b8383: Allow customizing OpenAI background retries and timeouts
+- Updated dependencies [620b8383]
+- Updated dependencies [578d2e54]
+  - @trigger.dev/core@2.2.5
+
 ## 2.2.4
 
 ## 2.2.3

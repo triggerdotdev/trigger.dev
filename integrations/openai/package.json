@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/openai",
-  "version": "2.2.4",
+  "version": "2.2.5",
   "description": "The official OpenAI integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -27,8 +27,8 @@
   },
   "dependencies": {
     "openai": "^4.13.0",
-    "@trigger.dev/sdk": "workspace:^2.2.4",
-    "@trigger.dev/integration-kit": "workspace:^2.2.4"
+    "@trigger.dev/sdk": "workspace:^2.2.5",
+    "@trigger.dev/integration-kit": "workspace:^2.2.5"
   },
   "engines": {
     "node": ">=18.0.0"
