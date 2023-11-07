@@ -31,7 +31,7 @@ export default function Page() {
           <PageButtons>
             <LinkButton
               to={newProjectPath(organization)}
-              variant="secondary/small"
+              variant="primary/small"
               shortcut={{ key: "n" }}
             >
               Create a new project

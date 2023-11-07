@@ -166,10 +166,6 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               icon="folder"
               to={organizationPath(organization)}
               data-action="projects"
-              secondaryAction={{
-                icon: "plus",
-                to: newProjectPath(organization),
-              }}
             />
             <SideMenuItem
               name="Team"
@@ -378,7 +374,6 @@ function SideMenuItem({
   count,
   target,
   subItem = false,
-  secondaryAction,
 }: {
   icon?: IconNames | React.ComponentType<any>;
   iconColor?: string;
@@ -388,10 +383,6 @@ function SideMenuItem({
   count?: number;
   target?: AnchorHTMLAttributes<HTMLAnchorElement>["target"];
   subItem?: boolean;
-  secondaryAction?: {
-    icon: IconNames | React.ComponentType<any>;
-    to: string;
-  };
 }) {
   const pathName = usePathName();
   const isActive = pathName === to;
@@ -408,7 +399,6 @@ function SideMenuItem({
       className={cn(
         "text-bright group-hover:bg-slate-850",
         subItem ? "text-dimmed" : "",
-        secondaryAction && "pr-1",
         isActive ? "bg-slate-850 text-bright" : "group-hover:text-bright"
       )}
     >
@@ -416,15 +406,6 @@ function SideMenuItem({
         <span className="truncate">{name}</span>
         <div className="flex items-center gap-1">
           {count !== undefined && count > 0 && <MenuCount count={count} />}
-          {secondaryAction && (
-            <LinkButton
-              variant="tertiary/small"
-              LeadingIcon={secondaryAction.icon}
-              leadingIconClassName="group-hover:text-bright text-dimmed transition"
-              className="mt-0.5 h-5 px-[3px] group-hover:bg-background hover:!bg-slate-750"
-              to={secondaryAction.to}
-            />
-          )}
           {typeof hasWarning === "string" ? (
             <TooltipProvider>
               <Tooltip>
