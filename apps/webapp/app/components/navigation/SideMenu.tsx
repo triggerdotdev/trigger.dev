@@ -336,7 +336,13 @@ function UserMenu({ user }: { user: SideMenuUser }) {
 }
 
 function SideMenuHeader({ title, children }: { title: string; children: React.ReactNode }) {
-  const [isProjectMenuOpen, setProfileMenuOpen] = useState(false);
+  const [isHeaderMenuOpen, setHeaderMenuOpen] = useState(false);
+  const navigation = useNavigation();
+
+  useEffect(() => {
+    setHeaderMenuOpen(false);
+  }, [navigation.location?.pathname]);
+
   return (
     <div className="group flex items-center justify-between pl-1.5">
       <Paragraph
@@ -345,8 +351,8 @@ function SideMenuHeader({ title, children }: { title: string; children: React.Re
       >
         {title}
       </Paragraph>
-      <Popover onOpenChange={(open) => setProfileMenuOpen(open)}>
-        <PopoverCustomTrigger isOpen={isProjectMenuOpen} className="p-1">
+      <Popover onOpenChange={(open) => setHeaderMenuOpen(open)} open={isHeaderMenuOpen}>
+        <PopoverCustomTrigger className="p-1">
           <EllipsisHorizontalIcon className="h-4 w-4 text-slate-500 transition group-hover:text-bright" />
         </PopoverCustomTrigger>
         <PopoverContent
