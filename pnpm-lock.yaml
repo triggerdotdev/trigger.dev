@@ -386,8 +386,8 @@ importers:
 
   integrations/airtable:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.4
-      '@trigger.dev/sdk': workspace:^2.2.4
+      '@trigger.dev/integration-kit': workspace:^2.2.5
+      '@trigger.dev/sdk': workspace:^2.2.5
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       airtable: ^0.12.1
@@ -414,8 +414,8 @@ importers:
       '@octokit/types': ^9.2.3
       '@octokit/webhooks': ^10.4.0
       '@octokit/webhooks-types': ^6.10.0
-      '@trigger.dev/integration-kit': workspace:^2.2.4
-      '@trigger.dev/sdk': workspace:^2.2.4
+      '@trigger.dev/integration-kit': workspace:^2.2.5
+      '@trigger.dev/sdk': workspace:^2.2.5
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       octokit: ^2.0.14
@@ -441,8 +441,8 @@ importers:
   integrations/linear:
     specifiers:
       '@linear/sdk': ^8.0.0
-      '@trigger.dev/integration-kit': workspace:^2.2.4
-      '@trigger.dev/sdk': workspace:^2.2.4
+      '@trigger.dev/integration-kit': workspace:^2.2.5
+      '@trigger.dev/sdk': workspace:^2.2.5
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -463,8 +463,8 @@ importers:
 
   integrations/openai:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.4
-      '@trigger.dev/sdk': workspace:^2.2.4
+      '@trigger.dev/integration-kit': workspace:^2.2.5
+      '@trigger.dev/sdk': workspace:^2.2.5
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       openai: ^4.13.0
@@ -485,8 +485,8 @@ importers:
   integrations/plain:
     specifiers:
       '@team-plain/typescript-sdk': ^2.7.0
-      '@trigger.dev/integration-kit': workspace:^2.2.4
-      '@trigger.dev/sdk': workspace:^2.2.4
+      '@trigger.dev/integration-kit': workspace:^2.2.5
+      '@trigger.dev/sdk': workspace:^2.2.5
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
@@ -503,8 +503,8 @@ importers:
 
   integrations/replicate:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.4
-      '@trigger.dev/sdk': workspace:^2.2.4
+      '@trigger.dev/integration-kit': workspace:^2.2.5
+      '@trigger.dev/sdk': workspace:^2.2.5
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       replicate: ^0.18.1
@@ -526,8 +526,8 @@ importers:
 
   integrations/resend:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.4
-      '@trigger.dev/sdk': workspace:^2.2.4
+      '@trigger.dev/integration-kit': workspace:^2.2.5
+      '@trigger.dev/sdk': workspace:^2.2.5
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       resend: ^2.0.0
@@ -546,8 +546,8 @@ importers:
   integrations/sendgrid:
     specifiers:
       '@sendgrid/mail': ^7.7.0
-      '@trigger.dev/integration-kit': workspace:^2.2.4
-      '@trigger.dev/sdk': workspace:^2.2.4
+      '@trigger.dev/integration-kit': workspace:^2.2.5
+      '@trigger.dev/sdk': workspace:^2.2.5
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -567,7 +567,7 @@ importers:
   integrations/slack:
     specifiers:
       '@slack/web-api': ^6.8.1
-      '@trigger.dev/sdk': workspace:^2.2.4
+      '@trigger.dev/sdk': workspace:^2.2.5
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
@@ -585,8 +585,8 @@ importers:
 
   integrations/stripe:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.4
-      '@trigger.dev/sdk': workspace:^2.2.4
+      '@trigger.dev/integration-kit': workspace:^2.2.5
+      '@trigger.dev/sdk': workspace:^2.2.5
       '@types/node': 16.x
       rimraf: ^3.0.2
       stripe: ^12.14.0
@@ -609,8 +609,8 @@ importers:
   integrations/supabase:
     specifiers:
       '@supabase/supabase-js': ^2.26.0
-      '@trigger.dev/integration-kit': workspace:^2.2.4
-      '@trigger.dev/sdk': workspace:^2.2.4
+      '@trigger.dev/integration-kit': workspace:^2.2.5
+      '@trigger.dev/sdk': workspace:^2.2.5
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 18.x
       rimraf: ^3.0.2
@@ -633,8 +633,8 @@ importers:
 
   integrations/typeform:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.4
-      '@trigger.dev/sdk': workspace:^2.2.4
+      '@trigger.dev/integration-kit': workspace:^2.2.5
+      '@trigger.dev/sdk': workspace:^2.2.5
       '@typeform/api-client': ^1.8.0
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -888,7 +888,7 @@ importers:
 
   packages/express:
     specifiers:
-      '@trigger.dev/sdk': workspace:^2.2.4
+      '@trigger.dev/sdk': workspace:^2.2.5
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/express': ^4.17.13
@@ -936,7 +936,7 @@ importers:
     specifiers:
       '@nestjs/common': ^10.2.4
       '@remix-run/web-fetch': ^4.3.5
-      '@trigger.dev/sdk': workspace:^2.2.4
+      '@trigger.dev/sdk': workspace:^2.2.5
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/express': ^4.17.13
@@ -989,7 +989,7 @@ importers:
   packages/react:
     specifiers:
       '@tanstack/react-query': 5.0.0-beta.2
-      '@trigger.dev/core': workspace:^2.2.4
+      '@trigger.dev/core': workspace:^2.2.5
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/react': 18.2.17
@@ -1084,8 +1084,8 @@ importers:
 
   packages/trigger-sdk:
     specifiers:
-      '@trigger.dev/core': workspace:^2.2.4
-      '@trigger.dev/core-backend': workspace:^2.2.4
+      '@trigger.dev/core': workspace:^2.2.5
+      '@trigger.dev/core-backend': workspace:^2.2.5
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/node': '18'
@@ -14234,7 +14234,6 @@ packages:
       typescript: 5.1.6
     transitivePeerDependencies:
       - supports-color
-    dev: false
 
   /@typescript-eslint/parser/5.59.6_mhvizudgavq6jzvqzwcqcv4nnm:
     resolution: {integrity: sha512-7pCa6al03Pv1yf/dUg/s1pXz/yGMUBAw5EeWqNTFiSueKvRNonze3hma3lhdsOrQcaOXhbk5gKu2Fludiho9VA==}
@@ -14254,6 +14253,7 @@ packages:
       typescript: 4.9.5
     transitivePeerDependencies:
       - supports-color
+    dev: true
 
   /@typescript-eslint/parser/5.59.6_ox3na7ge7wjdarbyztnclevxam:
     resolution: {integrity: sha512-7pCa6al03Pv1yf/dUg/s1pXz/yGMUBAw5EeWqNTFiSueKvRNonze3hma3lhdsOrQcaOXhbk5gKu2Fludiho9VA==}
@@ -14439,6 +14439,7 @@ packages:
       typescript: 4.9.5
     transitivePeerDependencies:
       - supports-color
+    dev: true
 
   /@typescript-eslint/typescript-estree/5.59.6_typescript@5.0.4:
     resolution: {integrity: sha512-vW6JP3lMAs/Tq4KjdI/RiHaaJSO7IUsbkz17it/Rl9Q+WkQ77EOuOnlbaU8kKfVIOJxMhnRiBG+olE7f3M16DA==}
@@ -14480,7 +14481,6 @@ packages:
       typescript: 5.1.6
     transitivePeerDependencies:
       - supports-color
-    dev: false
 
   /@typescript-eslint/typescript-estree/5.59.6_typescript@5.2.2:
     resolution: {integrity: sha512-vW6JP3lMAs/Tq4KjdI/RiHaaJSO7IUsbkz17it/Rl9Q+WkQ77EOuOnlbaU8kKfVIOJxMhnRiBG+olE7f3M16DA==}
@@ -15699,7 +15699,7 @@ packages:
   /axios/0.26.1:
     resolution: {integrity: sha512-fPwcX4EvnSHuInCMItEhAGnaSEXRBjtzh9fOtsE6E1G6p7vl7edEeZe11QHf18+6+9gR5PbKV/sGKNaD8YaMeA==}
     dependencies:
-      follow-redirects: 1.15.2_debug@4.3.2
+      follow-redirects: 1.15.2
     transitivePeerDependencies:
       - debug
     dev: false
@@ -15707,7 +15707,7 @@ packages:
   /axios/0.27.2:
     resolution: {integrity: sha512-t+yRIyySRTp/wua5xEr+z1q60QmLq8ABsS5O9Me1AsE5dfKqgnCFzwiCZZ/cGNd1lq4/7akDWMxdhVlucjmnOQ==}
     dependencies:
-      follow-redirects: 1.15.2_debug@4.3.2
+      follow-redirects: 1.15.2
       form-data: 4.0.0
     transitivePeerDependencies:
       - debug
@@ -15715,7 +15715,7 @@ packages:
   /axios/1.4.0:
     resolution: {integrity: sha512-S4XCWMEmzvo64T9GfvQDOXgYRDJ/wsSZc7Jvdgx5u1sd0JwsuPLqb3SYmusag+edF6ziyMensPVqLTSc1PiSEA==}
     dependencies:
-      follow-redirects: 1.15.2_debug@4.3.2
+      follow-redirects: 1.15.2
       form-data: 4.0.0
       proxy-from-env: 1.1.0
     transitivePeerDependencies:
@@ -17515,6 +17515,7 @@ packages:
         optional: true
     dependencies:
       ms: 2.1.2
+    dev: false
 
   /debug/4.3.4:
     resolution: {integrity: sha512-PRWFHuSU3eDtQJPvnNY7Jcket1j0t5OuOsFzPPzsekD52Zl8qUfFIPEiswXqIvHWGVHOgX+7G/vCNNhehwxfkQ==}
@@ -19003,7 +19004,7 @@ packages:
       eslint-import-resolver-webpack:
         optional: true
     dependencies:
-      '@typescript-eslint/parser': 5.59.6_mhvizudgavq6jzvqzwcqcv4nnm
+      '@typescript-eslint/parser': 5.59.6_ko3fmmbeyij36muomfgt2u76xu
       debug: 3.2.7
       eslint: 8.45.0
       eslint-import-resolver-node: 0.3.7
@@ -19032,7 +19033,7 @@ packages:
       eslint-import-resolver-webpack:
         optional: true
     dependencies:
-      '@typescript-eslint/parser': 5.59.6_eslint@8.42.0
+      '@typescript-eslint/parser': 5.59.6_binxsscxvozjxebftqdoazsxm4
       debug: 3.2.7
       eslint: 8.42.0
       eslint-import-resolver-node: 0.3.7
@@ -19117,7 +19118,7 @@ packages:
       '@typescript-eslint/parser':
         optional: true
     dependencies:
-      '@typescript-eslint/parser': 5.59.6_eslint@8.42.0
+      '@typescript-eslint/parser': 5.59.6_binxsscxvozjxebftqdoazsxm4
       array-includes: 3.1.6
       array.prototype.flat: 1.3.1
       array.prototype.flatmap: 1.3.1
@@ -19150,7 +19151,7 @@ packages:
       '@typescript-eslint/parser':
         optional: true
     dependencies:
-      '@typescript-eslint/parser': 5.59.6_mhvizudgavq6jzvqzwcqcv4nnm
+      '@typescript-eslint/parser': 5.59.6_ko3fmmbeyij36muomfgt2u76xu
       array-includes: 3.1.6
       array.prototype.flat: 1.3.1
       array.prototype.flatmap: 1.3.1
@@ -20503,7 +20504,6 @@ packages:
     peerDependenciesMeta:
       debug:
         optional: true
-    dev: false
 
   /follow-redirects/1.15.2_debug@4.3.2:
     resolution: {integrity: sha512-VQLG33o04KaQ8uYi2tVNbdrWp1QWxNNea+nmIB4EVM28v0hmP17z7aG1+wAkNzVq4KeXTq3221ye5qTJP91JwA==}
@@ -20515,6 +20515,7 @@ packages:
         optional: true
     dependencies:
       debug: 4.3.2
+    dev: false
 
   /for-each/0.3.3:
     resolution: {integrity: sha512-jqYfLp7mo9vIyQf8ykW2v7A+2N4QjeCeI5+Dz9XraiO1ign81wjiH7Fb9vSOWvQfNtmSa4H2RoQTrrXivdUZmw==}
@@ -30950,6 +30951,7 @@ packages:
     dependencies:
       tslib: 1.14.1
       typescript: 4.9.5
+    dev: true
 
   /tsutils/3.21.0_typescript@5.0.4:
     resolution: {integrity: sha512-mHKK3iUXL+3UF6xL5k0PEhKRUBKPBCv/+RkEOpjRWxxx27KKRBmmA60A9pgOUvMi8GKhRMPEmjBRPzs2W7O1OA==}
@@ -30969,7 +30971,6 @@ packages:
     dependencies:
       tslib: 1.14.1
       typescript: 5.1.6
-    dev: false
 
   /tsutils/3.21.0_typescript@5.2.2:
     resolution: {integrity: sha512-mHKK3iUXL+3UF6xL5k0PEhKRUBKPBCv/+RkEOpjRWxxx27KKRBmmA60A9pgOUvMi8GKhRMPEmjBRPzs2W7O1OA==}
