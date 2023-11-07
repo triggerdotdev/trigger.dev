@@ -138,6 +138,7 @@ export default function Page() {
                     {...conform.input(email, { type: "email" })}
                     placeholder={index === 0 ? "Enter an email address" : "Add another email"}
                     icon="envelope"
+                    autoFocus={index === 0}
                     onChange={(e) => {
                       fieldValues.current[index] = e.target.value;
                       if (
