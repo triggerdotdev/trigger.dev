@@ -207,6 +207,7 @@ export class JobListPresenter {
           lastRun,
           properties,
           environments,
+          projectSlug: job.project.slug,
         };
       })
       .filter(Boolean);

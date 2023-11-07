@@ -16,7 +16,6 @@ import {
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { IntegrationClientPresenter } from "~/presenters/IntegrationClientPresenter.server";
 import { requireUser } from "~/services/session.server";

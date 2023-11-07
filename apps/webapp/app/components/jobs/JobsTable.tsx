@@ -27,7 +27,6 @@ import { JobStatusBadge } from "./JobStatusBadge";
 
 export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResultsText: string }) {
   const organization = useOrganization();
-  const project = useProject();
 
   return (
     <Table containerClassName="mb-4">
@@ -45,7 +44,7 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
       <TableBody>
         {jobs.length > 0 ? (
           jobs.map((job) => {
-            const path = jobPath(organization, project, job);
+            const path = jobPath(organization, { slug: job.projectSlug }, job);
             return (
               <TableRow key={job.id} className="group">
                 <TableCell to={path}>
@@ -153,7 +152,7 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
                 <TableCellMenu isSticky>
                   <PopoverMenuItem to={path} title="View Job" icon="eye" />
                   <PopoverMenuItem
-                    to={jobTestPath(organization, project, job)}
+                    to={jobTestPath(organization, { slug: job.projectSlug }, job)}
                     title="Test Job"
                     icon="beaker"
                   />
