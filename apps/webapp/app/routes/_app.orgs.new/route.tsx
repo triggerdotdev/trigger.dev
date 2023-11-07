@@ -80,6 +80,7 @@ export default function NewOrganizationPage() {
     onValidate({ formData }) {
       return parse(formData, { schema });
     },
+    shouldRevalidate: "onSubmit",
   });
 
   return (

@@ -129,6 +129,7 @@ export default function Page() {
     onValidate({ formData }) {
       return parse(formData, { schema: createSchema() });
     },
+    shouldRevalidate: "onSubmit",
   });
 
   const shouldShowConfirm = user.email !== enteredEmail || user.email === "";
