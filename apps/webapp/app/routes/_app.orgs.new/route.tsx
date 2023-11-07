@@ -27,6 +27,7 @@ import { projectPath, rootPath } from "~/utils/pathBuilder";
 const schema = z.object({
   orgName: z.string().min(3).max(50),
   projectName: z.string().min(3).max(50),
+  companySize: z.string().optional(),
 });
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -54,6 +55,7 @@ export const action: ActionFunction = async ({ request }) => {
       title: submission.value.orgName,
       userId,
       projectName: submission.value.projectName,
+      // companySize: submission.value.companySize,
     });
 
     const project = organization.projects[0];
@@ -110,7 +112,7 @@ export default function NewOrganizationPage() {
           </InputGroup>
           <InputGroup>
             <Label htmlFor={projectName.id}>Number of employees</Label>
-            <RadioGroup className="flex items-center justify-between gap-2">
+            <RadioGroup name="companySize" className="flex items-center justify-between gap-2">
               <RadioGroupItem
                 id="employees-1-5"
                 label="1-5"
