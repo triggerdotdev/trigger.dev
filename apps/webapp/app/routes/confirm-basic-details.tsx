@@ -136,7 +136,7 @@ export default function Page() {
 
   return (
     <AppContainer showBackgroundGradient={true}>
-      <MainCenteredContainer>
+      <MainCenteredContainer className="max-w-[22rem]">
         <Form method="post" {...form.props}>
           <FormTitle
             title="Welcome to Trigger.dev"
@@ -170,9 +170,9 @@ export default function Page() {
                 defaultValue={user.name ?? ""}
                 placeholder="Your full name"
                 icon="user"
-                autoFocus={Boolean(name.initialError)}
+                autoFocus
               />
-              <Hint>Your team will see this name and we'll use it if we contact you.</Hint>
+              <Hint>Your team will see this name and we'll use it if we need to contact you.</Hint>
               <FormError id={name.errorId}>{name.error}</FormError>
             </InputGroup>
             <InputGroup>
@@ -185,7 +185,6 @@ export default function Page() {
                 }}
                 placeholder="Your email address"
                 icon="envelope"
-                autoFocus={Boolean(email.initialError)}
                 spellCheck={false}
               />
               {!shouldShowConfirm && (
