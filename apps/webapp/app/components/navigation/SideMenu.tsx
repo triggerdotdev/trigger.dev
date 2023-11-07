@@ -408,6 +408,7 @@ function SideMenuItem({
       className={cn(
         "text-bright group-hover:bg-slate-850",
         subItem ? "text-dimmed" : "",
+        secondaryAction && "pr-1",
         isActive ? "bg-slate-850 text-bright" : "group-hover:text-bright"
       )}
     >
@@ -419,8 +420,8 @@ function SideMenuItem({
             <LinkButton
               variant="tertiary/small"
               LeadingIcon={secondaryAction.icon}
-              leadingIconClassName="group-hover:text-bright text-bright"
-              className="h-5 px-[3px] text-dimmed group-hover:bg-background hover:!bg-slate-750 hover:text-bright"
+              leadingIconClassName="group-hover:text-bright text-dimmed transition"
+              className="mt-0.5 h-5 px-[3px] group-hover:bg-background hover:!bg-slate-750"
               to={secondaryAction.to}
             />
           )}
