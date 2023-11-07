@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { RedactStringSchema, RetryOptionsSchema } from "./api";
+import { EventFilterSchema } from "./eventFilter";
 
 export const FetchRetryHeadersStrategySchema = z.object({
   /** The `headers` strategy retries the request using info from the response headers. */
@@ -10,6 +11,18 @@ export const FetchRetryHeadersStrategySchema = z.object({
   remainingHeader: z.string(),
   /** The header to use to determine the time when the number of remaining retries will be reset. */
   resetHeader: z.string(),
+  /** The event filter to use to determine if the request should be retried. */
+  bodyFilter: EventFilterSchema.optional(),
+
+  /** The format of the `resetHeader` value. */
+  resetFormat: z
+    .enum([
+      "unix_timestamp",
+      "unix_timestamp_in_ms",
+      "iso_8601",
+      "iso_8601_duration_openai_variant",
+    ])
+    .default("unix_timestamp"),
 });
 
 export type FetchRetryHeadersStrategy = z.infer<typeof FetchRetryHeadersStrategySchema>;
@@ -18,6 +31,8 @@ export type FetchRetryHeadersStrategy = z.infer<typeof FetchRetryHeadersStrategy
 export const FetchRetryBackoffStrategySchema = RetryOptionsSchema.extend({
   /** The `backoff` strategy retries the request with an exponential backoff. */
   strategy: z.literal("backoff"),
+  /** The event filter to use to determine if the request should be retried. */
+  bodyFilter: EventFilterSchema.optional(),
 });
 
 /** The `backoff` strategy retries the request with an exponential backoff. */

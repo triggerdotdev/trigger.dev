@@ -103,6 +103,11 @@ export class JSONOutputSerializer implements OutputSerializer {
   }
 }
 
+export type BackgroundFetchResponse<T> = {
+  data: T;
+  headers: Record<string, string>;
+};
+
 export class IO {
   private _id: string;
   private _apiClient: ApiClient;
@@ -447,19 +452,23 @@ export class IO {
     cacheKey: string | any[],
     url: string,
     requestInit?: FetchRequestInit,
-    retry?: FetchRetryOptions,
-    timeout?: FetchTimeoutOptions
+    options?: {
+      retry?: FetchRetryOptions;
+      timeout?: FetchTimeoutOptions;
+    }
   ): Promise<TResponseData> {
     const urlObject = new URL(url);
 
     return (await this.runTask(
       cacheKey,
       async (task) => {
+        console.log("task context", task.context);
+
         return task.output;
       },
       {
         name: `fetch ${urlObject.hostname}${urlObject.pathname}`,
-        params: { url, requestInit, retry, timeout },
+        params: { url, requestInit, retry: options?.retry, timeout: options?.timeout },
         operation: "fetch",
         icon: "background",
         noop: false,
@@ -477,13 +486,73 @@ export class IO {
             label: "background",
             text: "true",
           },
-          ...(timeout ? [{ label: "timeout", text: `${timeout.durationInMs}ms` }] : []),
+          ...(options?.timeout
+            ? [{ label: "timeout", text: `${options.timeout.durationInMs}ms` }]
+            : []),
         ],
         retry: {
           limit: 0,
         },
       }
     )) as TResponseData;
+  }
+
+  /** `io.backgroundFetchResponse()` fetches data from a URL that can take longer that the serverless timeout. The actual `fetch` request is performed on the Trigger.dev platform, and the response is sent back to you.
+   * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param url The URL to fetch from.
+   * @param requestInit The options for the request
+   * @param retry The options for retrying the request if it fails
+   * An object where the key is a status code pattern and the value is a retrying strategy.
+   * Supported patterns are:
+   * - Specific status codes: 429
+   * - Ranges: 500-599
+   * - Wildcards: 2xx, 3xx, 4xx, 5xx
+   */
+  async backgroundFetchResponse<TResponseData>(
+    cacheKey: string | any[],
+    url: string,
+    requestInit?: FetchRequestInit,
+    options?: {
+      retry?: FetchRetryOptions;
+      timeout?: FetchTimeoutOptions;
+    }
+  ): Promise<BackgroundFetchResponse<TResponseData>> {
+    const urlObject = new URL(url);
+
+    return (await this.runTask(
+      cacheKey,
+      async (task) => {
+        return task.output;
+      },
+      {
+        name: `fetch response ${urlObject.hostname}${urlObject.pathname}`,
+        params: { url, requestInit, retry: options?.retry, timeout: options?.timeout },
+        operation: "fetch-response",
+        icon: "background",
+        noop: false,
+        properties: [
+          {
+            label: "url",
+            text: url,
+            url,
+          },
+          {
+            label: "method",
+            text: requestInit?.method ?? "GET",
+          },
+          {
+            label: "background",
+            text: "true",
+          },
+          ...(options?.timeout
+            ? [{ label: "timeout", text: `${options.timeout.durationInMs}ms` }]
+            : []),
+        ],
+        retry: {
+          limit: 0,
+        },
+      }
+    )) as BackgroundFetchResponse<TResponseData>;
   }
 
   /** `io.sendEvent()` allows you to send an event from inside a Job run. The sent even will trigger any Jobs that are listening for that event (based on the name).

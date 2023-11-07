@@ -3,11 +3,12 @@ import { IntegrationTaskKey } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 import { OpenAIRunTask } from "./index";
 import { OpenAIRequestOptions } from "./types";
+import { handleOpenAIError } from "./taskUtils";
 
 type CreateFileRequest = {
   file: string | File;
   fileName?: string;
-  purpose: string;
+  purpose: "fine-tune" | "assistants";
 };
 
 type CreateFineTuneFileRequest = {
@@ -59,7 +60,8 @@ export class Files {
             text: typeof params.file === "string" ? "string" : "File",
           },
         ],
-      }
+      },
+      handleOpenAIError
     );
   }
 
@@ -76,7 +78,8 @@ export class Files {
       {
         name: "List files",
         properties: [],
-      }
+      },
+      handleOpenAIError
     );
   }
 
@@ -107,7 +110,8 @@ export class Files {
             text: params.examples.length.toString(),
           },
         ],
-      }
+      },
+      handleOpenAIError
     );
   }
 }

@@ -1,5 +1,5 @@
 import { createExpressServer } from "@trigger.dev/express";
-import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
+import { TriggerClient, eventTrigger, invokeTrigger } from "@trigger.dev/sdk";
 import { OpenAI } from "@trigger.dev/openai";
 
 export const client = new TriggerClient({
@@ -74,6 +74,115 @@ client.defineJob({
     await io.openai.createEmbedding("embedding", {
       model: "text-embedding-ada-002",
       input: "The food was delicious and the waiter...",
+    });
+  },
+});
+
+client.defineJob({
+  id: "openai-gpt-4-turbo",
+  name: "OpenAI GPT 4 Turbo",
+  version: "0.0.1",
+  trigger: invokeTrigger(),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    await io.openai.chat.completions.create("background-chat-completion", {
+      model: "gpt-4-1106-preview",
+      messages: [
+        {
+          role: "user",
+          content:
+            "Create a good programming joke about background jobs, including something about Trigger.dev",
+        },
+      ],
+    });
+  },
+});
+
+client.defineJob({
+  id: "openai-dalle-3",
+  name: "OpenAI Dalle 3",
+  version: "0.0.1",
+  trigger: invokeTrigger(),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    await io.openai.images.create("dalle-3", {
+      model: "dall-e-3",
+      prompt:
+        "I would like to generate an image of an american boy riding a bycicle in a suburban neighborhood, into the sunset.",
+    });
+
+    await io.openai.images.backgroundCreate("dalle-3-background", {
+      model: "dall-e-3",
+      prompt:
+        "Create a comic strip featuring miles morales and spiderpunk fighting off the sinister six",
+    });
+  },
+});
+
+client.defineJob({
+  id: "openai-background-completion",
+  name: "OpenAI Background Completion",
+  version: "0.0.1",
+  trigger: invokeTrigger(),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    await io.openai.chat.completions.backgroundCreate("completion 1", {
+      model: "gpt-4",
+      messages: [
+        {
+          role: "user",
+          content: "What is the difference between green threads and native threads in Python?",
+        },
+      ],
+    });
+  },
+});
+
+client.defineJob({
+  id: "openai-rate-limit-handling",
+  name: "OpenAI GPT Rate Limits",
+  version: "0.0.1",
+  trigger: invokeTrigger(),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    await io.openai.chat.completions.backgroundCreate("completion 1", {
+      model: "gpt-4-1106-preview",
+      messages: [
+        {
+          role: "user",
+          content:
+            'I want you to act as a debater. I will provide you with some topics related to current events and your task is to research both sides of the debates, present valid arguments for each side, refute opposing points of view, and draw persuasive conclusions based on evidence. Your goal is to help people come away from the discussion with increased knowledge and insight into the topic at hand. My first request is "I want an opinion piece about Deno."',
+        },
+      ],
+    });
+
+    await io.openai.chat.completions.backgroundCreate("completion 2", {
+      model: "gpt-4-1106-preview",
+      messages: [
+        {
+          role: "user",
+          content:
+            'I want you to act as a movie critic. You will develop an engaging and creative movie review. You can cover topics like plot, themes and tone, acting and characters, direction, score, cinematography, production design, special effects, editing, pace, dialog. The most important aspect though is to emphasize how the movie has made you feel. What has really resonated with you. You can also be critical about the movie. Please avoid spoilers. My first request is "I need to write a movie review for the movie Interstellar"',
+        },
+      ],
+    });
+
+    await io.openai.chat.completions.backgroundCreate("completion 3", {
+      model: "gpt-4-1106-preview",
+      messages: [
+        {
+          role: "user",
+          content: ` want you to act as a motivational speaker. Put together words that inspire action and make people feel empowered to do something beyond their abilities. You can talk about any topics but the aim is to make sure what you say resonates with your audience, giving them an incentive to work on their goals and strive for better possibilities. My first request is "I need a speech about how everyone should never give up."`,
+        },
+      ],
     });
   },
 });

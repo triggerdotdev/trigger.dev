@@ -883,6 +883,7 @@ model Task {
   outputProperties Json?
   params           Json?
   output           Json?
+  context          Json?
   error            String?
   redact           Json?
   style            Json?

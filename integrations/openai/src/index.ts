@@ -113,7 +113,7 @@ export class OpenAI implements TriggerIntegration {
       },
       {
         icon: this._options.icon ?? "openai",
-        retry: retry.standardBackoff,
+        retry: retry.exponentialBackoff,
         ...(options ?? {}),
         connectionKey: this._connectionKey,
       },
@@ -138,7 +138,7 @@ export class OpenAI implements TriggerIntegration {
   }
 
   get images() {
-    return new Images(this.runTask.bind(this));
+    return new Images(this.runTask.bind(this), this._options);
   }
 
   get embeddings() {
@@ -177,10 +177,35 @@ export class OpenAI implements TriggerIntegration {
   }
 
   createEdit = this.edits.create;
-  generateImage = this.images.generate;
-  createImage = this.images.generate;
-  createImageEdit = this.images.edit;
-  createImageVariation = this.images.createVariation;
+
+  /**
+   * @deprecated Please use openai.images.generate instead
+   */
+  async generateImage(...args: Parameters<typeof this.images.generate>) {
+    return this.images.generate(...args);
+  }
+
+  /**
+   * @deprecated Please use openai.images.create instead
+   */
+  async createImage(...args: Parameters<typeof this.images.generate>) {
+    return this.images.generate(...args);
+  }
+
+  /**
+   * @deprecated Please use openai.images.edit instead
+   */
+  async createImageEdit(...args: Parameters<typeof this.images.edit>) {
+    return this.images.edit(...args);
+  }
+
+  /**
+   * @deprecated Please use openai.images.createVariation instead
+   */
+  async createImageVariation(...args: Parameters<typeof this.images.createVariation>) {
+    return this.images.createVariation(...args);
+  }
+
   createEmbedding = this.embeddings.create;
   createFile = this.files.create;
   listFiles = this.files.list;

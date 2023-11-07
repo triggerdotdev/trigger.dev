@@ -5,7 +5,9 @@ import {
   FetchRetryStrategy,
   RedactString,
   RetryOptions,
+  calculateResetAt,
   calculateRetryAt,
+  eventFilterMatches,
 } from "@trigger.dev/core";
 import { type Task } from "@trigger.dev/database";
 import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
@@ -37,11 +39,12 @@ export class PerformTaskOperationService {
     }
 
     if (!task.operation) {
-      return await this.#resumeTask(task, null, 0);
+      return await this.#resumeTask(task, null, null, "fetch", 0);
     }
 
     switch (task.operation) {
-      case "fetch": {
+      case "fetch":
+      case "fetch-response": {
         const fetchOperation = FetchOperationSchema.safeParse(task.params);
 
         if (!fetchOperation.success) {
@@ -97,7 +100,7 @@ export class PerformTaskOperationService {
           });
 
           if (!response.ok) {
-            const retryAt = this.#calculateRetryForResponse(task, retry, response);
+            const retryAt = this.#calculateRetryForResponse(task, retry, response, jsonBody);
 
             if (retryAt) {
               return await this.#retryTaskWithError(
@@ -117,7 +120,13 @@ export class PerformTaskOperationService {
             }
           }
 
-          return await this.#resumeTask(task, jsonBody, durationInMs);
+          return await this.#resumeTask(
+            task,
+            jsonBody,
+            Object.fromEntries(response.headers.entries()),
+            task.operation,
+            durationInMs
+          );
         } catch (error) {
           if (error instanceof Error && error.name === "AbortError") {
             const durationInMs = Math.floor(performance.now() - startTimeInMs);
@@ -157,13 +166,14 @@ export class PerformTaskOperationService {
   #calculateRetryForResponse(
     task: NonNullable<FoundTask>,
     retry: FetchRetryOptions | undefined,
-    response: Response
+    response: Response,
+    body: any
   ): Date | undefined {
     if (!retry) {
       return;
     }
 
-    const strategy = this.#getRetryStrategyForStatusCode(response.status, retry);
+    const strategy = this.#getRetryStrategyForResponse(response, body, retry);
 
     if (!strategy) {
       return;
@@ -180,11 +190,10 @@ export class PerformTaskOperationService {
         return calculateRetryAt(strategy, task.attempts.length - 1);
       }
       case "headers": {
-        const remaining = response.headers.get(strategy.remainingHeader);
         const resetAt = response.headers.get(strategy.resetHeader);
 
-        if (typeof remaining === "string" && typeof resetAt === "string" && remaining === "0") {
-          return new Date(Number(resetAt) * 1000 + addJitterInMs());
+        if (typeof resetAt === "string") {
+          return calculateResetAt(resetAt, strategy.resetFormat);
         }
       }
     }
@@ -201,8 +210,9 @@ export class PerformTaskOperationService {
     return calculateRetryAt(retry, task.attempts.length - 1);
   }
 
-  #getRetryStrategyForStatusCode(
-    statusCode: number,
+  #getRetryStrategyForResponse(
+    response: Response,
+    body: any,
     retry: FetchRetryOptions
   ): FetchRetryStrategy | undefined {
     const statusCodes = Object.keys(retry);
@@ -211,7 +221,19 @@ export class PerformTaskOperationService {
       const statusRange = statusCodes[i];
       const strategy = retry[statusRange];
 
-      if (isStatusCodeInRange(statusCode, statusRange)) {
+      if (isStatusCodeInRange(response.status, statusRange)) {
+        if (strategy.bodyFilter) {
+          if (!body) {
+            continue;
+          }
+
+          if (eventFilterMatches(body, strategy.bodyFilter)) {
+            return strategy;
+          } else {
+            continue;
+          }
+        }
+
         return strategy;
       }
     }
@@ -284,7 +306,13 @@ export class PerformTaskOperationService {
     });
   }
 
-  async #resumeTask(task: NonNullable<FoundTask>, output: any, durationInMs: number) {
+  async #resumeTask(
+    task: NonNullable<FoundTask>,
+    output: any,
+    context: any,
+    operation: "fetch" | "fetch-response",
+    durationInMs: number
+  ) {
     await $transaction(this.#prismaClient, async (tx) => {
       await tx.taskAttempt.updateMany({
         where: {
@@ -296,12 +324,21 @@ export class PerformTaskOperationService {
         },
       });
 
+      const taskOutput =
+        operation === "fetch"
+          ? output
+          : {
+              data: output,
+              headers: context,
+            };
+
       await tx.task.update({
         where: { id: task.id },
         data: {
           status: "COMPLETED",
           completedAt: new Date(),
-          output: output ? output : undefined,
+          output: taskOutput,
+          context: context ? context : undefined,
           run: {
             update: {
               executionDuration: {
