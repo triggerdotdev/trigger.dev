@@ -2,9 +2,7 @@ import { User } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { Organization } from "~/models/organization.server";
-import { Project } from "~/models/project.server";
-import { integrationCatalog } from "~/services/externalApis/integrationCatalog.server";
-import { Help, HelpSchema, OAuthClientSchema } from "~/services/externalApis/types";
+import { HelpSchema, OAuthClientSchema } from "~/services/externalApis/types";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 
 export class IntegrationClientPresenter {
@@ -119,11 +117,11 @@ export class IntegrationClientPresenter {
       },
       authMethod: {
         type:
-          integration.authMethod?.type ?? integration.authSource === "RESOLVER" ? "local" : "local",
+          integration.authMethod?.type ??
+          (integration.authSource === "RESOLVER" ? "resolver" : "local"),
         name:
-          integration.authMethod?.name ?? integration.authSource === "RESOLVER"
-            ? "Auth Resolver"
-            : "Local Auth",
+          integration.authMethod?.name ??
+          (integration.authSource === "RESOLVER" ? "Auth Resolver" : "Local Auth"),
       },
       help,
     };
