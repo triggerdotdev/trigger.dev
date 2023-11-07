@@ -1,5 +1,12 @@
 # internal-platform
 
+## 2.2.5
+
+### Patch Changes
+
+- 620b8383: Added invokeTrigger(), which allows jobs to be manually invoked
+- 578d2e54: Fixed Buffer reference error
+
 ## 2.2.4
 
 ### Patch Changes
