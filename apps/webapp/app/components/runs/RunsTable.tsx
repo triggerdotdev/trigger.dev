@@ -1,14 +1,10 @@
 import { StopIcon } from "@heroicons/react/24/outline";
 import { CheckIcon } from "@heroicons/react/24/solid";
-import { useJob } from "~/hooks/useJob";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
-import { RunList } from "~/presenters/RunListPresenter.server";
+import { JobRunStatus, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { formatDuration } from "~/utils";
-import { JobForPath, OrgForPath, ProjectForPath, jobRunDashboardPath } from "~/utils/pathBuilder";
 import { EnvironmentLabel } from "../environments/EnvironmentLabel";
-import { Callout } from "../primitives/Callout";
 import { DateTime } from "../primitives/DateTime";
+import { Paragraph } from "../primitives/Paragraph";
 import { Spinner } from "../primitives/Spinner";
 import {
   Table,
@@ -21,7 +17,6 @@ import {
   TableRow,
 } from "../primitives/Table";
 import { RunStatus } from "./RunStatuses";
-import { JobRunStatus, RuntimeEnvironmentType } from "@trigger.dev/database";
 
 type RunTableItem = {
   id: string;
@@ -129,9 +124,7 @@ export function RunsTable({
 function NoRuns({ title }: { title: string }) {
   return (
     <div className="flex items-center justify-center">
-      <Callout variant="info" className="w-auto">
-        {title}
-      </Callout>
+      <Paragraph className="w-auto">{title}</Paragraph>
     </div>
   );
 }
