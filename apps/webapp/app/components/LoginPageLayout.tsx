@@ -61,7 +61,7 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <main className="grid h-full grid-cols-12">
-      <div className="border-midnight-750 z-10 col-span-12 border-r bg-midnight-850 md:col-span-6 lg:col-span-5">
+      <div className="border-midnight-750 z-10 col-span-12 border-r bg-midnight-850 md:col-span-6">
         <div className="flex h-full flex-col items-center justify-between p-6">
           <div className="flex w-full items-center justify-between">
             <a href="https://trigger.dev">
@@ -82,7 +82,7 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
           </Paragraph>
         </div>
       </div>
-      <div className="hidden grid-cols-3 grid-rows-6 gap-4 p-4 md:col-span-6 md:grid lg:col-span-7 xl:grid-cols-5">
+      <div className="hidden grid-cols-3 grid-rows-6 gap-4 p-4 md:col-span-6 md:grid xl:grid-cols-5">
         <LoginTooltip side="bottom" content={<ServerlessTooltipContent />}>
           <div className={cn(layout, gridCell, mediumSquare)}>
             <ServerStackIcon className={cn(opacity, features, "group-hover:text-green-500")} />
@@ -226,7 +226,7 @@ function AirtableTooltipContent() {
         </Paragraph>
       </div>
       <Paragraph variant="base">
-        Update your Airtable records when you make a Stripe sale, recieve a new Typeform response
+        Update your Airtable records when you make a Stripe sale, receive a new Typeform response
         and more…
       </Paragraph>
     </>
@@ -257,8 +257,7 @@ function TriggerTooltipContent() {
         </Paragraph>
       </div>
       <Paragraph variant="base">
-        Trigger your Jobs with a wehook, on a recurring schedule or CRON or with your own custom
-        event.
+        Trigger your Jobs with a webhook, on a recurring schedule, or from your own custom events.
       </Paragraph>
     </>
   );
