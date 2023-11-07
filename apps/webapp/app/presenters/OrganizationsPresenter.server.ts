@@ -2,6 +2,7 @@ import { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { getCurrentProjectId } from "~/services/currentProject.server";
 import { ProjectPresenter } from "./ProjectPresenter.server";
+import { logger } from "~/services/logger.server";
 
 type Org = Awaited<ReturnType<OrganizationsPresenter["getOrganizations"]>>[number];
 
@@ -27,6 +28,12 @@ export class OrganizationsPresenter {
 
     const organization = organizations.find((o) => o.slug === organizationSlug);
     if (!organization) {
+      logger.info("Not Found: organization", {
+        organizationSlug,
+        projectSlug,
+        request,
+        organization,
+      });
       throw new Response("Not Found", { status: 404 });
     }
 
@@ -103,6 +110,11 @@ export class OrganizationsPresenter {
       const projectId = await getCurrentProjectId(request);
       const orgProject = organization.projects.find((p) => p.id === projectId);
       if (!orgProject) {
+        logger.info("Not Found: proj 1", {
+          projectId,
+          organization,
+          projectSlug: projectSlug ?? null,
+        });
         throw new Response("Not Found", { status: 404 });
       }
       projectSlug = orgProject.slug;
@@ -110,6 +122,7 @@ export class OrganizationsPresenter {
 
     const project = await projectPresenter.call({ userId, slug: projectSlug });
     if (!project) {
+      logger.info("Not Found: proj 2", { projectSlug, organization, project });
       throw new Response("Not Found", { status: 404 });
     }
     return project;

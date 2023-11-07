@@ -166,6 +166,10 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               icon="folder"
               to={organizationPath(organization)}
               data-action="projects"
+              secondaryAction={{
+                icon: "plus",
+                to: newProjectPath(organization),
+              }}
             />
             <SideMenuItem
               name="Team"
@@ -270,7 +274,6 @@ function ProjectSelector({
                   />
                 );
               })}
-              <PopoverMenuItem to={newProjectPath(organization)} title="New Project" icon="plus" />
             </div>
           </Fragment>
         ))}
@@ -375,6 +378,7 @@ function SideMenuItem({
   count,
   target,
   subItem = false,
+  secondaryAction,
 }: {
   icon?: IconNames | React.ComponentType<any>;
   iconColor?: string;
@@ -384,6 +388,10 @@ function SideMenuItem({
   count?: number;
   target?: AnchorHTMLAttributes<HTMLAnchorElement>["target"];
   subItem?: boolean;
+  secondaryAction?: {
+    icon: IconNames | React.ComponentType<any>;
+    to: string;
+  };
 }) {
   const pathName = usePathName();
   const isActive = pathName === to;
@@ -407,6 +415,15 @@ function SideMenuItem({
         <span className="truncate">{name}</span>
         <div className="flex items-center gap-1">
           {count !== undefined && count > 0 && <MenuCount count={count} />}
+          {secondaryAction && (
+            <LinkButton
+              variant="tertiary/small"
+              LeadingIcon={secondaryAction.icon}
+              leadingIconClassName="group-hover:text-bright text-bright"
+              className="h-5 px-[3px] text-dimmed group-hover:bg-background hover:!bg-slate-750 hover:text-bright"
+              to={secondaryAction.to}
+            />
+          )}
           {typeof hasWarning === "string" ? (
             <TooltipProvider>
               <Tooltip>
