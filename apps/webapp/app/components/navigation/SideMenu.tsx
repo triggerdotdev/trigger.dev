@@ -293,7 +293,7 @@ function UserMenu({ user }: { user: SideMenuUser }) {
   return (
     <Popover onOpenChange={(open) => setProfileMenuOpen(open)}>
       <PopoverCustomTrigger isOpen={isProfileMenuOpen} className="p-1">
-        <UserAvatar
+        <UserProfilePhoto
           className={cn(
             "h-5 w-5 text-slate-600",
             user.isImpersonating && "rounded-full border border-yellow-500"
