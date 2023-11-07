@@ -19,6 +19,13 @@ export async function verifyRequestSignature({
       supported. */
   algorithm: "sha256";
 }): Promise<VerifyResult> {
+  if (!secret) {
+    return {
+      success: false,
+      reason: "Missing secret – you've probably not set an environment variable.",
+    };
+  }
+
   const headerValue = request.headers.get(headerName);
   if (!headerValue) {
     return { success: false, reason: "Missing header" };
