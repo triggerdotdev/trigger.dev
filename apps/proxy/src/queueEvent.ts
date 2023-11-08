@@ -28,6 +28,7 @@ export async function queueEvent(request: Request, env: Env): Promise<Response> 
 
     // The AWS SDK tries to use crypto from off of the window,
     // so we need to trick it into finding it where it expects it
+    globalThis.global = globalThis;
     //@ts-ignore
     global.window = {};
     //@ts-ignore
