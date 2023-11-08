@@ -19,6 +19,7 @@ import { FineTunes } from "./fineTunes";
 import { Images } from "./images";
 import { Models } from "./models";
 import { OpenAIIntegrationOptions } from "./types";
+import { Beta } from "./beta";
 
 export type OpenAIRunTask = InstanceType<typeof OpenAI>["runTask"];
 
@@ -103,7 +104,10 @@ export class OpenAI implements TriggerIntegration {
     options?: RunTaskOptions,
     errorCallback?: RunTaskErrorCallback
   ): Promise<TResult> {
-    if (!this._io) throw new Error("No IO");
+    if (!this._io)
+      throw new Error(
+        "Issue with running task: IO not found. It's possible that you forgot to prefix openai with io. inside a run"
+      );
     if (!this._connectionKey) throw new Error("No connection key");
     return this._io.runTask(
       key,
@@ -129,6 +133,10 @@ export class OpenAI implements TriggerIntegration {
     return new Completions(this.runTask.bind(this), this._options);
   }
 
+  get beta() {
+    return new Beta(this.runTask.bind(this), this._options);
+  }
+
   get chat() {
     return new Chat(this.runTask.bind(this), this._options);
   }
@@ -146,7 +154,7 @@ export class OpenAI implements TriggerIntegration {
   }
 
   get files() {
-    return new Files(this.runTask.bind(this));
+    return new Files(this.runTask.bind(this), this._options);
   }
 
   get fineTunes() {

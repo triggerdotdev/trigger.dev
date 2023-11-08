@@ -1,5 +1,5 @@
 import { createExpressServer } from "@trigger.dev/express";
-import { TriggerClient, eventTrigger, invokeTrigger } from "@trigger.dev/sdk";
+import { TriggerClient, eventTrigger, invokeTrigger, redactString } from "@trigger.dev/sdk";
 
 export const client = new TriggerClient({
   id: "job-catalog",
@@ -97,6 +97,48 @@ client.defineJob({
         timeoutInSeconds: 10,
       }
     );
+  },
+});
+
+const pollingRunJob = client.defineJob({
+  id: "polling-run",
+  name: "Background Poll Run",
+  version: "1.0.0",
+  trigger: invokeTrigger(),
+  run: async (payload, io, ctx) => {
+    await io.wait("wait", 30);
+
+    return {
+      foo: "bar",
+    };
+  },
+});
+
+client.defineJob({
+  id: "background-poll",
+  name: "Background Poll Example",
+  version: "1.0.0",
+  trigger: invokeTrigger(),
+  run: async (payload, io, ctx) => {
+    const run = await pollingRunJob.invoke("invoke");
+    // TODO invoke a run and then use the run ID to poll for the result
+    const result = await io.backgroundPoll<{ message: string }>("poll", {
+      url: `http://localhost:3030/api/v1/runs/${run.id}`,
+      requestInit: {
+        headers: {
+          Accept: "application/json",
+          Authorization: redactString`Bearer ${process.env["TRIGGER_API_KEY"]!}`,
+        },
+      },
+      interval: 10,
+      timeout: 300,
+      responseFilter: {
+        status: [200],
+        body: {
+          status: ["SUCCESS"],
+        },
+      },
+    });
   },
 });
 

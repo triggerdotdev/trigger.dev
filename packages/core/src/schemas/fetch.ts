@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { RedactStringSchema, RetryOptionsSchema } from "./api";
 import { EventFilterSchema } from "./eventFilter";
+import { ResponseFilterSchema } from "./requestFilter";
+import { Prettify } from "../types";
 
 export const FetchRetryHeadersStrategySchema = z.object({
   /** The `headers` strategy retries the request using info from the response headers. */
@@ -82,3 +84,14 @@ export const FetchOperationSchema = z.object({
 });
 
 export type FetchOperation = z.infer<typeof FetchOperationSchema>;
+
+export const FetchPollOperationSchema = z.object({
+  url: z.string(),
+  interval: z.number().int().positive().min(10).max(600).default(10), // defaults to 10 seconds
+  timeout: z.number().int().positive().min(30).max(3600).default(600), // defaults to 10 minutes
+  responseFilter: ResponseFilterSchema,
+  requestInit: FetchRequestInitSchema.optional(),
+  requestTimeout: FetchTimeoutOptionsSchema.optional(),
+});
+
+export type FetchPollOperation = Prettify<z.infer<typeof FetchPollOperationSchema>>;

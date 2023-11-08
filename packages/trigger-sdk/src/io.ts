@@ -4,6 +4,7 @@ import {
   ConnectionAuth,
   CronOptions,
   ErrorWithStackSchema,
+  FetchPollOperation,
   FetchRequestInit,
   FetchRetryOptions,
   FetchTimeoutOptions,
@@ -104,6 +105,7 @@ export class JSONOutputSerializer implements OutputSerializer {
 }
 
 export type BackgroundFetchResponse<T> = {
+  status: number;
   data: T;
   headers: Record<string, string>;
 };
@@ -489,6 +491,77 @@ export class IO {
           ...(options?.timeout
             ? [{ label: "timeout", text: `${options.timeout.durationInMs}ms` }]
             : []),
+        ],
+        retry: {
+          limit: 0,
+        },
+      }
+    )) as TResponseData;
+  }
+
+  /** `io.backgroundPoll()` will fetch data from a URL on an interval. The actual `fetch` requests are performed on the Trigger.dev server, so you don't have to worry about serverless function timeouts.
+   * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param params The options for the background poll
+   * @param params.url The URL to fetch from.
+   * @param params.requestInit The options for the request, like headers and method
+   * @param params.responseFilter An [EventFilter](https://trigger.dev/docs/documentation/guides/event-filter) that allows you to specify when to stop polling.
+   * @param params.interval The interval in seconds to poll the URL in seconds. Defaults to 10 seconds which is the minimum.
+   * @param params.timeout The timeout in seconds for each request in seconds. Defaults to 10 minutes. Minimum is 60 seconds and max is 1 hour
+   * @param params.requestTimeout An optional object that allows you to timeout individual fetch requests
+   * @param params.requestTimeout An optional object that allows you to timeout individual fetch requests
+   * @param params.requestTimeout.durationInMs The duration in milliseconds to timeout the request
+   * 
+   * @example
+   * ```ts
+   * const result = await io.backgroundPoll<{ id: string; status: string; }>("poll", {
+      url: `http://localhost:3030/api/v1/runs/${run.id}`,
+      requestInit: {
+        headers: {
+          Accept: "application/json",
+          Authorization: redactString`Bearer ${process.env["TRIGGER_API_KEY"]!}`,
+        },
+      },
+      interval: 10,
+      timeout: 600,
+      responseFilter: {
+        status: [200],
+        body: {
+          status: ["SUCCESS"],
+        },
+      },
+    });
+    * ```
+   */
+  async backgroundPoll<TResponseData>(
+    cacheKey: string | any[],
+    params: FetchPollOperation
+  ): Promise<TResponseData> {
+    const urlObject = new URL(params.url);
+
+    return (await this.runTask(
+      cacheKey,
+      async (task) => {
+        return task.output;
+      },
+      {
+        name: `poll ${urlObject.hostname}${urlObject.pathname}`,
+        params,
+        operation: "fetch-poll",
+        icon: "clock-bolt",
+        noop: false,
+        properties: [
+          {
+            label: "url",
+            text: params.url,
+          },
+          {
+            label: "interval",
+            text: `${params.interval}s`,
+          },
+          {
+            label: "timeout",
+            text: `${params.timeout}s`,
+          },
         ],
         retry: {
           limit: 0,

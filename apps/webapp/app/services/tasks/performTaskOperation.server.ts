@@ -1,5 +1,6 @@
 import {
   FetchOperationSchema,
+  FetchPollOperationSchema,
   FetchRequestInit,
   FetchRetryOptions,
   FetchRetryStrategy,
@@ -8,15 +9,18 @@ import {
   calculateResetAt,
   calculateRetryAt,
   eventFilterMatches,
+  responseFilterMatches,
 } from "@trigger.dev/core";
 import { type Task } from "@trigger.dev/database";
 import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { formatUnknownError } from "~/utils/formatErrors.server";
 import { safeJsonFromResponse } from "~/utils/json";
 import { logger } from "../logger.server";
-import { workerQueue } from "../worker.server";
+import { taskOperationWorker, workerQueue } from "../worker.server";
 import { ResumeTaskService } from "./resumeTask.server";
 import { fetch } from "@whatwg-node/fetch";
+import { fromZodError } from "zod-validation-error";
+import { ulid } from "../ulid.server";
 
 type FoundTask = Awaited<ReturnType<typeof findTask>>;
 
@@ -34,15 +38,164 @@ export class PerformTaskOperationService {
       return;
     }
 
+    if (task.status === "CANCELED") {
+      return;
+    }
+
     if (task.status === "COMPLETED" || task.status === "ERRORED") {
       return await this.#resumeRunExecution(task, this.#prismaClient);
     }
 
     if (!task.operation) {
-      return await this.#resumeTask(task, null, null, "fetch", 0);
+      return await this.#resumeTask(task, null, null, 200, "fetch", 0);
     }
 
     switch (task.operation) {
+      case "fetch-poll": {
+        const pollOperation = FetchPollOperationSchema.safeParse(task.params);
+
+        if (!pollOperation.success) {
+          return await this.#resumeTaskWithError(
+            task,
+            fromZodError(pollOperation.error, {
+              prefix: "Invalid fetch poll params",
+            }).message
+          );
+        }
+
+        const { url, requestInit, timeout, interval, responseFilter, requestTimeout } =
+          pollOperation.data;
+
+        // check if we need to fail the task because it's timed out
+        const startedAt = task.startedAt;
+
+        if (!startedAt) {
+          return await this.#resumeTaskWithError(task, {
+            message: "Task has not been started",
+          });
+        }
+
+        if (Date.now() - startedAt.getTime() > timeout * 1000) {
+          return await this.#resumeTaskWithError(task, {
+            message: `Task timed out after ${timeout} seconds`,
+          });
+        }
+
+        const startTimeInMs = performance.now();
+
+        const abortController = new AbortController();
+
+        // calculate the actual timeout. If timeoutInMs is undefined, we use the default of 5s
+        // Also make sure the timeout is at least 1s, but not bigger than 5s
+        const actualTimeoutInMs = Math.min(
+          Math.max(requestTimeout?.durationInMs ?? 5000, 1000),
+          5000
+        );
+
+        const timeoutId = setTimeout(() => {
+          abortController.abort();
+        }, actualTimeoutInMs);
+
+        try {
+          logger.debug("PerformTaskOperationService.call poll request", {
+            task,
+            actualTimeoutInMs,
+            url,
+            responseFilter,
+          });
+
+          const startedAt = new Date();
+
+          const method = requestInit?.method ?? "GET";
+
+          const response = await fetch(url, {
+            method,
+            headers: normalizeHeaders(requestInit?.headers ?? {}),
+            body: requestInit?.body,
+            signal: abortController.signal,
+          });
+
+          clearTimeout(timeoutId);
+
+          const durationInMs = Math.floor(performance.now() - startTimeInMs);
+
+          const headers = Object.fromEntries(response.headers.entries());
+
+          logger.debug("PerformTaskOperationService.call poll response", {
+            url,
+            requestInit,
+            statusCode: response.status,
+            headers: Object.fromEntries(response.headers.entries()),
+            durationInMs,
+          });
+
+          const matchResult = await responseFilterMatches(response, responseFilter);
+
+          await this.#prismaClient.task.create({
+            data: {
+              id: ulid(),
+              idempotencyKey: ulid(),
+              runId: task.runId,
+              parentId: task.id,
+              name: "poll attempt",
+              icon: "activity",
+              status: "COMPLETED",
+              noop: true,
+              style: { style: "minimal", variant: "info" },
+              description: `${method} ${url} ${response.status}`,
+              params: {
+                status: response.status,
+                headers,
+                body: matchResult.body as any,
+              },
+              startedAt,
+              completedAt: new Date(),
+            },
+          });
+
+          if (matchResult.match) {
+            logger.debug("PerformTaskOperationService.call poll response matched", {
+              url,
+              matchResult,
+            });
+
+            return await this.#resumeTask(
+              task,
+              matchResult.body,
+              Object.fromEntries(response.headers.entries()),
+              response.status,
+              "fetch",
+              durationInMs
+            );
+          } else {
+            const retryAt = new Date(Date.now() + interval * 1000);
+
+            return await this.#retryTask(task, retryAt);
+          }
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            const durationInMs = Math.floor(performance.now() - startTimeInMs);
+
+            logger.debug("PerformTaskOperationService.call poll timed out", {
+              url,
+              durationInMs,
+              error,
+            });
+
+            const retryAt = this.#calculateRetryForTimeout(task, requestTimeout?.retry);
+
+            if (retryAt) {
+              return await this.#retryTask(task, retryAt);
+            }
+
+            return await this.#resumeTaskWithError(task, {
+              message: `Fetch timed out after ${actualTimeoutInMs.toFixed(0)}ms`,
+            });
+          }
+
+          throw error;
+        }
+      }
       case "fetch":
       case "fetch-response": {
         const fetchOperation = FetchOperationSchema.safeParse(task.params);
@@ -124,6 +277,7 @@ export class PerformTaskOperationService {
             task,
             jsonBody,
             Object.fromEntries(response.headers.entries()),
+            response.status,
             task.operation,
             durationInMs
           );
@@ -270,14 +424,24 @@ export class PerformTaskOperationService {
         },
       });
 
-      await workerQueue.enqueue(
+      await taskOperationWorker.enqueue(
         "performTaskOperation",
         {
           id: task.id,
         },
-        { tx, runAt: retryAt }
+        { tx, runAt: retryAt, jobKey: `operation:${task.id}` }
       );
     });
+  }
+
+  async #retryTask(task: Task, retryAt: Date) {
+    await taskOperationWorker.enqueue(
+      "performTaskOperation",
+      {
+        id: task.id,
+      },
+      { runAt: retryAt, jobKey: `operation:${task.id}` }
+    );
   }
 
   async #resumeTaskWithError(task: NonNullable<FoundTask>, output: any) {
@@ -310,6 +474,7 @@ export class PerformTaskOperationService {
     task: NonNullable<FoundTask>,
     output: any,
     context: any,
+    status: number,
     operation: "fetch" | "fetch-response",
     durationInMs: number
   ) {
@@ -330,6 +495,7 @@ export class PerformTaskOperationService {
           : {
               data: output,
               headers: context,
+              status,
             };
 
       await tx.task.update({

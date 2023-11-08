@@ -117,8 +117,6 @@ function createTaskRateLimitProperties(headers: Headers | undefined) {
 }
 
 export function handleOpenAIError(error: unknown) {
-  console.log("OpenAI error", JSON.stringify(error));
-
   if (error instanceof APIError) {
     const isErrorRetryable = () => {
       if (typeof error.status !== "number") {

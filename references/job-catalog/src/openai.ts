@@ -1,6 +1,9 @@
 import { createExpressServer } from "@trigger.dev/express";
 import { TriggerClient, eventTrigger, invokeTrigger } from "@trigger.dev/sdk";
 import { OpenAI } from "@trigger.dev/openai";
+import fs from "node:fs";
+import fsPromises from "node:fs/promises";
+import { z } from "zod";
 
 export const client = new TriggerClient({
   id: "job-catalog",
@@ -175,15 +178,170 @@ client.defineJob({
       ],
     });
 
-    await io.openai.chat.completions.backgroundCreate("completion 3", {
-      model: "gpt-4-1106-preview",
-      messages: [
-        {
-          role: "user",
-          content: ` want you to act as a motivational speaker. Put together words that inspire action and make people feel empowered to do something beyond their abilities. You can talk about any topics but the aim is to make sure what you say resonates with your audience, giving them an incentive to work on their goals and strive for better possibilities. My first request is "I need a speech about how everyone should never give up."`,
-        },
-      ],
+    await io.openai.chat.completions.backgroundCreate(
+      "completion 3",
+      {
+        model: "gpt-4-1106-preview",
+        messages: [
+          {
+            role: "user",
+            content: ` want you to act as a motivational speaker. Put together words that inspire action and make people feel empowered to do something beyond their abilities. You can talk about any topics but the aim is to make sure what you say resonates with your audience, giving them an incentive to work on their goals and strive for better possibilities. My first request is "I need a speech about how everyone should never give up."`,
+          },
+        ],
+      },
+      {},
+      { timeout: { durationInMs: 30000, retry: { limit: 1 } } }
+    );
+  },
+});
+
+client.defineJob({
+  id: "openai-create-assistant",
+  name: "OpenAI GPT Create Assistant",
+  version: "0.0.1",
+  trigger: invokeTrigger({
+    schema: z.object({
+      model: z.string().default("gpt-4-1106-preview"),
+    }),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    const file = await io.openai.files.createAndWaitForProcessing("upload-file", {
+      purpose: "assistants",
+      file: fs.createReadStream("./fixtures/mydata.csv"),
     });
+
+    const assistant = await io.openai.beta.assistants.create("create-assistant", {
+      name: "Data visualizer",
+      description:
+        "You are great at creating beautiful data visualizations. You analyze data present in .csv files, understand trends, and come up with data visualizations relevant to those trends. You also share a brief text summary of the trends observed.",
+      model: payload.model,
+      tools: [{ type: "code_interpreter" }],
+      file_ids: [file.id],
+    });
+
+    // Really we would want to save the assistant id somewhere
+
+    return { assistant, file };
+  },
+});
+
+client.defineJob({
+  id: "openai-use-assistant",
+  name: "OpenAI GPT Use Assistant",
+  version: "0.0.1",
+  trigger: invokeTrigger({
+    schema: z.object({
+      id: z.string(),
+      fileId: z.string(),
+    }),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    const run = await io.openai.beta.threads.createAndRunUntilCompletion("create-thread", {
+      assistant_id: payload.id,
+      thread: {
+        messages: [
+          {
+            role: "user",
+            content: "Create 3 data visualizations based on the trends in this file.",
+            file_ids: [payload.fileId],
+          },
+        ],
+      },
+    });
+
+    if (run.status !== "completed") {
+      throw new Error(`Run finished with status ${run.status}: ${JSON.stringify(run.last_error)}`);
+    }
+
+    const messages = await io.openai.beta.threads.messages.list("list-messages", run.thread_id);
+
+    const reversedMessages = [...messages].reverse();
+
+    await io.runTask(
+      "log-messages",
+      async (task) => {
+        for (const message of reversedMessages) {
+          switch (message.role) {
+            case "user": {
+              for (const content of message.content) {
+                switch (content.type) {
+                  case "text": {
+                    await io.logger.info(`Assistant: ${content.text.value}`);
+
+                    break;
+                  }
+                  case "image_file": {
+                    const file = await io.openai.files.retrieve(
+                      ["file", content.image_file.file_id],
+                      content.image_file.file_id
+                    );
+
+                    const fileContent = await io.openai.native.files.retrieveContent(
+                      content.image_file.file_id
+                    );
+
+                    const filePath = `tmp/${file.filename}`;
+
+                    // Use fsPromises to write the file to disk at tmp/file.fileName
+                    await fsPromises.writeFile(filePath, fileContent);
+
+                    await io.logger.info(
+                      `Assistant: retrieved file ${content.image_file.file_id} at ${filePath}`
+                    );
+                  }
+                }
+              }
+
+              break;
+            }
+            case "assistant": {
+              for (const content of message.content) {
+                switch (content.type) {
+                  case "text": {
+                    await io.logger.info(`Assistant: ${content.text.value}`);
+
+                    break;
+                  }
+                  case "image_file": {
+                    const file = await io.openai.files.retrieve(
+                      ["file", content.image_file.file_id],
+                      content.image_file.file_id
+                    );
+
+                    const fileContent = await io.openai.native.files.retrieveContent(
+                      content.image_file.file_id
+                    );
+
+                    const filePath = `tmp/${file.filename}`;
+
+                    // Use fsPromises to write the file to disk at tmp/file.fileName
+                    await fsPromises.writeFile(filePath, fileContent);
+
+                    await io.logger.info(
+                      `Assistant: retrieved file ${content.image_file.file_id} at ${filePath}`
+                    );
+                  }
+                }
+              }
+
+              break;
+            }
+          }
+        }
+      },
+      {
+        name: "Log messages",
+        icon: "openai",
+      }
+    );
+
+    return run;
   },
 });
 
