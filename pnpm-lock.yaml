@@ -792,10 +792,12 @@ importers:
       tsup: ^7.1.0
       typescript: ^4.9.4
       ulid: ^2.3.0
+      ulidx: ^2.2.1
       zod: 3.22.3
       zod-error: 1.5.0
     dependencies:
       ulid: 2.3.0
+      ulidx: 2.2.1
       zod: 3.22.3
       zod-error: 1.5.0
     devDependencies:
