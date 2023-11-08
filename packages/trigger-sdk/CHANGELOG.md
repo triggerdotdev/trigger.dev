@@ -1,5 +1,20 @@
 # @trigger.dev/sdk
 
+## 2.2.5
+
+### Patch Changes
+
+- 7e57f1f3: [TRI-1449] Display warning message when duplicate job IDs are detected
+- cf8f9946: Add `io.random()` which wraps `Math.random()` in a Task with helpful options.
+- a74716a1: Added waitForRequest built-in tasks
+- 620b8383: Added invokeTrigger(), which allows jobs to be manually invoked
+- 4a0f030e: Adding no-cache to our client fetch to fix Next.js POST caching
+- f4275e50: verifyRequestSignature – added an error if the passed in secret is undefined or empty
+- Updated dependencies [620b8383]
+- Updated dependencies [578d2e54]
+  - @trigger.dev/core@2.2.5
+  - @trigger.dev/core-backend@2.2.5
+
 ## 2.2.4
 
 ### Patch Changes

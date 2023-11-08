@@ -1,5 +1,21 @@
 # @trigger.dev/slack
 
+## 2.2.5
+
+### Patch Changes
+
+- 02e453c3: Fix a ReferenceError when using backgroundCreateChatCompletion
+- 620b8383: Allow customizing OpenAI background retries and timeouts
+- Updated dependencies [7e57f1f3]
+- Updated dependencies [cf8f9946]
+- Updated dependencies [a74716a1]
+- Updated dependencies [620b8383]
+- Updated dependencies [620b8383]
+- Updated dependencies [4a0f030e]
+- Updated dependencies [f4275e50]
+  - @trigger.dev/sdk@2.2.5
+  - @trigger.dev/integration-kit@2.2.5
+
 ## 2.2.4
 
 ### Patch Changes
