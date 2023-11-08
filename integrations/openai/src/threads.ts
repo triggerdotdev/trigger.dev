@@ -132,7 +132,7 @@ export class Threads {
    */
   async create(
     key: IntegrationTaskKey,
-    params: Prettify<OpenAI.Beta.ThreadCreateParams>,
+    params: Prettify<OpenAI.Beta.ThreadCreateParams> = {},
     options: OpenAIRequestOptions = {}
   ): Promise<OpenAI.Beta.Thread> {
     return this.runTask(

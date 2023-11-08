@@ -158,14 +158,41 @@ export class OpenAI implements TriggerIntegration {
   }
 
   get fineTunes() {
+    return this.fineTuning;
+  }
+
+  get fineTuning() {
     return new FineTunes(this.runTask.bind(this));
   }
 
+  /**
+   * @deprecated Please use openai.models.retrieve instead
+   */
   retrieveModel = this.models.retrieve;
+
+  /**
+   * @deprecated Please use openai.models.list instead
+   */
   listModels = this.models.list;
+
+  /**
+   * @deprecated Please use openai.models.delete instead
+   */
   deleteModel = this.models.delete;
+
+  /**
+   * @deprecated Please use openai.models.delete instead
+   */
   deleteFineTune = this.models.delete;
+
+  /**
+   * @deprecated Please use openai.completions.create instead
+   */
   createCompletion = this.completions.create;
+
+  /**
+   * @deprecated Please use openai.chat.completions.create instead
+   */
   createChatCompletion = this.chat.completions.create;
 
   /**
@@ -184,6 +211,9 @@ export class OpenAI implements TriggerIntegration {
     return this.chat.completions.backgroundCreate(...args);
   }
 
+  /**
+   * @deprecated Please use openai.edits.create instead
+   */
   createEdit = this.edits.create;
 
   /**
@@ -214,14 +244,49 @@ export class OpenAI implements TriggerIntegration {
     return this.images.createVariation(...args);
   }
 
+  /**
+   * @deprecated Please use openai.embeddings.create instead
+   */
   createEmbedding = this.embeddings.create;
+
+  /**
+   * @deprecated Please use openai.files.create instead
+   */
   createFile = this.files.create;
+
+  /**
+   * @deprecated Please use openai.files.list instead
+   */
   listFiles = this.files.list;
+
+  /**
+   * @deprecated Please use openai.files.create instead
+   */
   createFineTuneFile = this.files.createFineTune;
+
+  /**
+   * @deprecated Please use openai.fineTuning.create instead
+   */
   createFineTune = this.fineTunes.create;
+
+  /**
+   * @deprecated Please use openai.fineTuning.list instead
+   */
   listFineTunes = this.fineTunes.list;
+
+  /**
+   * @deprecated Please use openai.fineTuning.retrieve instead
+   */
   retrieveFineTune = this.fineTunes.retrieve;
+
+  /**
+   * @deprecated Please use openai.fineTuning.cancel instead
+   */
   cancelFineTune = this.fineTunes.cancel;
+
+  /**
+   * @deprecated Please use openai.fineTuning.listEvents instead
+   */
   listFineTuneEvents = this.fineTunes.listEvents;
 
   /**
@@ -231,10 +296,28 @@ export class OpenAI implements TriggerIntegration {
    * of the fine-tuned models once complete.
    *
    * [Learn more about fine-tuning](https://platform.openai.com/docs/guides/fine-tuning)
+   *
+   * @deprecated Please use openai.fineTuning.jobs.create instead
    */
   createFineTuningJob = this.fineTunes.jobs.create;
+
+  /**
+   * @deprecated Please use openai.fineTuning.jobs.retrieve instead
+   */
   retrieveFineTuningJob = this.fineTunes.jobs.retrieve;
+
+  /**
+   * @deprecated Please use openai.fineTuning.jobs.cancel instead
+   */
   cancelFineTuningJob = this.fineTunes.jobs.cancel;
+
+  /**
+   * @deprecated Please use openai.fineTuning.jobs.listEvents instead
+   */
   listFineTuningJobEvents = this.fineTunes.jobs.listEvents;
+
+  /**
+   * @deprecated Please use openai.fineTuning.jobs.list instead
+   */
   listFineTuningJobs = this.fineTunes.jobs.list;
 }

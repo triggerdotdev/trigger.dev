@@ -216,12 +216,14 @@ export class Files {
 
   list(
     key: IntegrationTaskKey,
+    query?: OpenAI.Files.FileListParams,
     options: OpenAIRequestOptions = {}
   ): Promise<OpenAI.Files.FileObject[]> {
     return this.runTask(
       key,
       async (client, task) => {
-        const response = await client.files.list(options);
+        const response = await client.files.list(query, options);
+
         return response.data;
       },
       {

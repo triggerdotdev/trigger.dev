@@ -251,7 +251,10 @@
       "pages": [
         {
           "group": "Airtable",
-          "pages": ["integrations/apis/airtable", "integrations/apis/airtable-tasks"]
+          "pages": [
+            "integrations/apis/airtable",
+            "integrations/apis/airtable-tasks"
+          ]
         },
         {
           "group": "GitHub",
@@ -264,18 +267,33 @@
         "integrations/apis/linear",
         {
           "group": "OpenAI",
-          "pages": ["integrations/apis/openai", "integrations/apis/openai-tasks"]
+          "pages": [
+            "integrations/apis/openai",
+            "integrations/apis/openai/chat",
+            "integrations/apis/openai/assistants",
+            "integrations/apis/openai/files",
+            "integrations/apis/openai/images",
+            "integrations/apis/openai/fine-tunes",
+            "integrations/apis/openai/models",
+            "integrations/apis/openai/completions"
+          ]
         },
         {
           "group": "Plain",
-          "pages": ["integrations/apis/plain", "integrations/apis/plain-tasks"]
+          "pages": [
+            "integrations/apis/plain",
+            "integrations/apis/plain-tasks"
+          ]
         },
         "integrations/apis/replicate",
         "integrations/apis/resend",
         "integrations/apis/sendgrid",
         {
           "group": "Slack",
-          "pages": ["integrations/apis/slack", "integrations/apis/slack-tasks"]
+          "pages": [
+            "integrations/apis/slack",
+            "integrations/apis/slack-tasks"
+          ]
         },
         "integrations/apis/stripe",
         {
@@ -350,7 +368,10 @@
             "sdk/dynamictrigger/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamictrigger/register", "sdk/dynamictrigger/unregister"]
+              "pages": [
+                "sdk/dynamictrigger/register",
+                "sdk/dynamictrigger/unregister"
+              ]
             }
           ]
         },
@@ -361,7 +382,10 @@
             "sdk/dynamicschedule/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamicschedule/register", "sdk/dynamicschedule/unregister"]
+              "pages": [
+                "sdk/dynamicschedule/register",
+                "sdk/dynamicschedule/unregister"
+              ]
             }
           ]
         },
@@ -383,7 +407,9 @@
     },
     {
       "group": "Overview",
-      "pages": ["examples/introduction"]
+      "pages": [
+        "examples/introduction"
+      ]
     }
   ],
   "footerSocials": {

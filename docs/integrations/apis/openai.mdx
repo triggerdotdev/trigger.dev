@@ -49,11 +49,71 @@ const openai = new OpenAI({
 
 ## Tasks
 
-Once you have set up a OpenAI client, you can use it to create tasks.
+Once you have set up a OpenAI client, you can add it to your job and start using the provided tasks:
+
+```ts
+client.defineJob({
+  id: "openai-job",
+  name: "OpenAI Job",
+  version: "1.0.0",
+  trigger: invokeTrigger(),
+  integrations: {
+    openai, // Add the OpenAI client as an integration
+  },
+  run: async (payload, io, ctx) => {
+    // Now you can access it through the io object
+    const completion = await io.openai.chat.completions.create("completion", {
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "user",
+          content: "Create a good programming joke about background jobs",
+        },
+      ],
+    });
+  },
+});
+```
+
+As you can see above, we've replicated the API of the [OpenAI TypeScript SDK](https://github.com/openai/openai-node), with a crucial difference of adding the [Task Cache Key](https://trigger.dev/docs/documentation/concepts/tasks#task-cache-keys) as the first parameter.
+
+We've also added a few convenience methods to make it easier to work with the OpenAI API, especially in a serverless environment. For example, you can run a Chat Completion task in the background with [backgroundCreate()](/integrations/apis/openai/chat#completions-backgroundcreate):
+
+```ts
+const completion = await io.openai.chat.completions.backgroundCreate("completion", {
+  model: "gpt-3.5-turbo",
+  messages: [
+    {
+      role: "user",
+      content: "Create a good programming joke about background jobs",
+    },
+  ],
+});
+```
+
+See our full task reference below:
 
 <CardGroup>
-  <Card title="Tasks" icon="sparkles" href="/integrations/apis/openai-tasks">
-    Perform different AI-powered tasks using OpenAI.
+  <Card title="Chat Completions" icon="sparkles" href="/integrations/apis/openai/chat">
+    Given a list of messages comprising a conversation, the model will return a response
+  </Card>
+  <Card title="Assistants (Beta)" icon="arrows-spin" href="/integrations/apis/openai/assistants">
+    Build assistants that can call models and use tools to perform tasks
+  </Card>
+  <Card title="Files" icon="file" href="/integrations/apis/openai/files">
+    Upload files to use with assistants and fine-tuning
+  </Card>
+  <Card title="Images" icon="image" href="/integrations/apis/openai/images">
+    Given a prompt and/or an input image, the model will generate a new image
+  </Card>
+  <Card title="Fine Tuning Jobs" icon="vial" href="/integrations/apis/openai/fine-tunes">
+    Manage fine-tuning jobs to tailor a model to your specific training data
+  </Card>
+  <Card title="Models" icon="server" href="/integrations/apis/openai/models">
+    List and describe the various models available in the API
+  </Card>
+  <Card title="Completions (Legacy)" icon="scroll" href="/integrations/apis/openai/completions">
+    Given a prompt, the model will return one or more predicted completions.
   </Card>
 </CardGroup>
 

@@ -11,23 +11,26 @@ import {
   createTaskOutputProperties,
   handleOpenAIError,
 } from "./taskUtils";
+import { Uploadable } from "openai/uploads";
 
 export type CreateImageEditRequest = {
-  image: string | File;
+  image: string | File | Uploadable;
   prompt: string;
-  mask?: string | File;
+  mask?: string | File | Uploadable;
   n?: number;
   size?: "256x256" | "512x512" | "1024x1024";
   response_format?: "url" | "b64_json";
   user?: string;
+  model?: (string & {}) | "dall-e-2" | null;
 };
 
 export type CreateImageVariationRequest = {
-  image: string | File;
+  image: string | File | Uploadable;
   n?: number;
   size?: "256x256" | "512x512" | "1024x1024";
   response_format?: "url" | "b64_json";
   user?: string;
+  model?: (string & {}) | "dall-e-2" | null;
 };
 
 export class Images {
@@ -167,6 +170,13 @@ export class Images {
       text: params.prompt,
     });
 
+    if (typeof params.model === "string") {
+      properties.push({
+        label: "model",
+        text: params.model,
+      });
+    }
+
     if (params.n) {
       properties.push({
         label: "Number of images",
@@ -213,6 +223,7 @@ export class Images {
               size: params.size,
               response_format: params.response_format,
               user: params.user,
+              model: params.model,
             },
             { idempotencyKey: task.idempotencyKey, ...options }
           )
@@ -237,6 +248,13 @@ export class Images {
     options: OpenAIRequestOptions = {}
   ): Promise<OpenAI.Images.ImagesResponse> {
     let properties = [];
+
+    if (typeof params.model === "string") {
+      properties.push({
+        label: "model",
+        text: params.model,
+      });
+    }
 
     if (params.n) {
       properties.push({
@@ -281,6 +299,7 @@ export class Images {
               size: params.size,
               response_format: params.response_format,
               user: params.user,
+              model: params.model,
             },
             { idempotencyKey: task.idempotencyKey, ...options }
           )
