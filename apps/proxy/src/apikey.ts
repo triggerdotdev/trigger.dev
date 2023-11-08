@@ -11,10 +11,10 @@ export function getApiKeyFromRequest(request: Request) {
   }
 
   const apiKey = authorization.data.replace(/^Bearer /, "");
-  const type = isPublicApiKey(apiKey) ? ("PUBLIC" as const) : ("PRIVATE" as const);
+  const type = isPrivateApiKey(apiKey) ? ("PRIVATE" as const) : ("PUBLIC" as const);
   return { apiKey, type };
 }
 
-function isPublicApiKey(key: string) {
-  return key.startsWith("pk_");
+function isPrivateApiKey(key: string) {
+  return key.startsWith("tr_");
 }
