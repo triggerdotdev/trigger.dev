@@ -1,0 +1,137 @@
+---
+title: "io.backgroundPoll()"
+sidebarTitle: "backgroundPoll()"
+description: "`io.backgroundPoll()` allows you to fetch data from a URL on an interval."
+---
+
+## Parameters
+
+<Snippet file="stable-key-param.mdx" />
+
+<ResponseField name="url" type="string" required>
+  The url to fetch.
+</ResponseField>
+
+<ResponseField name="interval" type="number" required>
+  The interval in seconds to wait between requests. Minimum interval is 10 seconds and maximum is 5
+  minutes.
+</ResponseField>
+
+<ResponseField name="timeout" type="number" required>
+  The timeout in seconds before aborting the polling. Minimum timeout is 30 seconds and maximum is 1
+  hour.
+</ResponseField>
+
+<ResponseField name="requestInit" type="RequestInit">
+  Options for the fetch request
+
+<Expandable title="options" defaultOpen>
+  <ResponseField name="method" type="string">
+    The HTTP method to use for the request.
+  </ResponseField>
+  <ResponseField name="headers" type="object">
+    Any headers to send with the request. Note that you can use [redactString](sdk/redactString) to
+    prevent sensitive information from being stored (e.g. in the logs), like API keys and tokens.
+  </ResponseField>
+  <ResponseField name="body" type="string | ArrayBuffer">
+    The body of the request.
+  </ResponseField>
+</Expandable>
+
+</ResponseField>
+
+<ResponseField name="responseFilter" type="ResponseFilter">
+  Allows you to filter the response to determine when to stop polling.
+
+<Expandable title="options" defaultOpen>
+  <ResponseField name="status" type="string[]">
+    An array of status codes to match against. 
+  </ResponseField>
+  <ResponseField name="headers" type="EventFilter">
+    An object of header key/values to match. This uses the [EventFilter matching syntax](/documentation/guides/event-filter)
+
+```ts example.ts
+filter: {
+  header: {
+    "content-type": [{ $startsWith: "application/json" }],
+  },
+},
+```
+
+  </ResponseField>
+  <ResponseField name="body" type="EventFilter">
+    An [EventFilter](/documentation/guides/event-filter) object to match against the response body. This will only be applied if the response body is JSON.
+  </ResponseField>
+</Expandable>
+
+</ResponseField>
+
+<ResponseField name="requestTimeout" type="object">
+  An optional object to specify a timeout for each individual request.
+
+<Expandable title="options" defaultOpen>
+  <ResponseField name="durationInMs" type="number" required>
+    The timeout in milliseconds before aborting the request.
+  </ResponseField>
+  
+  <ResponseField name="retry" type="RetryOptions">
+    
+    <Expandable title="options">
+
+{" "}
+
+<ResponseField name="limit" type="number">
+  The maximum number of times to retry the request.
+</ResponseField>
+<ResponseField name="minTimeoutInMs" type="number">
+  The minimum amount of time to wait before retrying the request.
+</ResponseField>
+<ResponseField name="maxTimeoutInMs" type="number">
+  The maximum amount of time to wait before retrying the request.
+</ResponseField>
+<ResponseField name="factor" type="number">
+  The exponential factor to use when calculating the next retry time.
+</ResponseField>
+<ResponseField name="randomize" type="boolean">
+  Whether to randomize the retry time.
+</ResponseField>
+
+    </Expandable>
+
+  </ResponseField>
+</Expandable>
+
+</ResponseField>
+
+## Returns
+
+A `Promise` that resolves with the JSON response body of the matching background fetch request. You can specify the type of the response body as a generic parameter.
+
+<RequestExample>
+
+```ts polling
+client.defineJob({
+  id: "background-poll-job",
+  name: "Background Poll Job",
+  version: "0.0.1",
+  trigger: invokeTrigger({
+    schema: z.object({ url: z.string().url() }),
+  }),
+  run: async (payload, io, ctx) => {
+    const result = await io.backgroundPoll<{ foo: string }>("poll", {
+      url: payload.url,
+      interval: 10, // every 10 seconds
+      timeout: 300, // stop polling after 5 minutes
+      responseFilter: {
+        // stop polling once this filter matches
+        status: [200],
+        body: {
+          status: ["SUCCESS"],
+        },
+      },
+    });
+  },
+});
+```
+
+</RequestExample>
