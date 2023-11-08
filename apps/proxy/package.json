@@ -12,6 +12,7 @@
     "wrangler": "^3.0.0"
   },
   "dependencies": {
+    "@aws-sdk/client-sqs": "^3.445.0",
     "@trigger.dev/core": "workspace:*",
     "ulidx": "^2.2.1",
     "zod": "3.22.3",
