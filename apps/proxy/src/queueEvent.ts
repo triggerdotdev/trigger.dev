@@ -42,12 +42,14 @@ export async function queueEvent(request: Request, env: Env): Promise<Response> 
       },
     });
 
+    const timestamp = body.data.event.timestamp ?? new Date();
+
     //add the event to the queue
     const send = new SendMessageCommand({
       // use wrangler secrets to provide this global variable
       QueueUrl: env.AWS_SQS_QUEUE_URL,
       MessageBody: JSON.stringify({
-        event: body.data.event,
+        event: { ...body.data.event, timestamp },
         options: body.data.options,
         apiKey: apiKeyResult.apiKey,
       }),
@@ -62,7 +64,7 @@ export async function queueEvent(request: Request, env: Env): Promise<Response> 
       name: body.data.event.name,
       payload: body.data.event.payload,
       context: body.data.event.context,
-      timestamp: body.data.event.timestamp ?? new Date(),
+      timestamp,
       deliverAt: calculateDeliverAt(body.data.options),
     };
 
