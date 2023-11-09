@@ -1,6 +1,9 @@
 {
   "$schema": "https://mintlify.com/schema.json",
   "name": "Trigger.dev",
+  "openapi": [
+    "/openapi.yml"
+  ],
   "logo": {
     "dark": "/logo/dark.png",
     "light": "/logo/light.png",
@@ -397,6 +400,12 @@
         "sdk/istriggererror",
         "sdk/redactstring",
         "sdk/verify-request-signature"
+      ]
+    },
+    {
+      "group": "HTTP Reference",
+      "pages": [
+        "sdk/api-reference/events/create-an-event"
       ]
     },
     {
