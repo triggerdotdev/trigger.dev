@@ -16,6 +16,8 @@ import {
   OperatingSystemPlatform,
 } from "./components/primitives/OperatingSystemProvider";
 import { env } from "./env.server";
+import { getSharedSqsEventConsumer } from "./services/events/sqsEventConsumer";
+import { singleton } from "./utils/singleton";
 
 const ABORT_DELAY = 30000;
 
@@ -190,3 +192,5 @@ function logError(error: unknown, request?: Request) {
   }
   console.error(error);
 }
+
+const sqsEventConsumer = singleton("sqsEventConsumer", getSharedSqsEventConsumer);

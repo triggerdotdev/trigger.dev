@@ -4,10 +4,10 @@ export interface Env {
   /** The hostname needs to be changed to allow requests to pass to the Trigger.dev platform */
   REWRITE_HOSTNAME: string;
   REWRITE_PORT?: string;
-  AWS_ACCESS_KEY_ID: string;
-  AWS_SECRET_ACCESS_KEY: string;
+  AWS_SQS_ACCESS_KEY_ID: string;
+  AWS_SQS_SECRET_ACCESS_KEY: string;
   AWS_SQS_QUEUE_URL: string;
-  AWS_REGION: string;
+  AWS_SQS_REGION: string;
 }
 
 export default {
@@ -18,7 +18,7 @@ export default {
     console.log("url", url.toString());
 
     if (url.pathname === "/api/v1/events" && request.method === "POST") {
-      if (env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY && env.AWS_SQS_QUEUE_URL) {
+      if (env.AWS_SQS_ACCESS_KEY_ID && env.AWS_SQS_SECRET_ACCESS_KEY && env.AWS_SQS_QUEUE_URL) {
         return queueEvent(request, env);
       } else {
         console.log("/api/v1/events. Missing AWS credentials", request);
@@ -26,7 +26,6 @@ export default {
     }
 
     //the same request but with the hostname (and port) changed
-    const rewriteUrl = new URL(request.url);
     const newUrl = new URL(request.url);
     newUrl.hostname = env.REWRITE_HOSTNAME;
     newUrl.port = env.REWRITE_PORT || newUrl.port;
