@@ -21,7 +21,7 @@ export default {
       if (env.AWS_SQS_ACCESS_KEY_ID && env.AWS_SQS_SECRET_ACCESS_KEY && env.AWS_SQS_QUEUE_URL) {
         return queueEvent(request, env);
       } else {
-        console.log("/api/v1/events. Missing AWS credentials", request);
+        console.log("/api/v1/events. Missing AWS credentials. Passing through to the origin.");
       }
     }
 
@@ -36,7 +36,7 @@ export default {
       body: request.body,
     };
 
-    console.log("newUrl", newUrl.toString());
+    console.log("rewritten url", newUrl.toString());
     return fetch(newUrl.toString(), requestInit);
   },
 };
