@@ -1,4 +1,4 @@
-import { queueEvent } from "./queueEvent";
+import { queueEvent } from "./events/queueEvent";
 
 export interface Env {
   /** The hostname needs to be changed to allow requests to pass to the Trigger.dev platform */

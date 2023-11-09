@@ -1,18 +1,22 @@
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { ApiEventLog, SendEventBodySchema, SendEventOptions } from "@trigger.dev/core";
 import { generateErrorMessage } from "zod-error";
-import { getApiKeyFromRequest } from "./apikey";
-import { Env } from ".";
+import { getApiKeyFromRequest } from "../apikey";
+import { Env } from "..";
+import { calculateDeliverAt } from "./utils";
+import { json } from "../json";
 
 /** Adds the event to an AWS SQS queue, so it can be consumed from the main Trigger.dev API */
 export async function queueEvent(request: Request, env: Env): Promise<Response> {
   //check there's a private API key
   const apiKeyResult = getApiKeyFromRequest(request);
   if (!apiKeyResult || apiKeyResult.type !== "PRIVATE") {
-    return new Response(JSON.stringify({ error: "Invalid or Missing API key" }), {
-      status: 401,
-      headers: { "content-type": "application/json" },
-    });
+    return json(
+      { error: "Invalid or Missing API key" },
+      {
+        status: 401,
+      }
+    );
   }
 
   //parse the request body
@@ -20,10 +24,12 @@ export async function queueEvent(request: Request, env: Env): Promise<Response> 
     const anyBody = await request.json();
     const body = SendEventBodySchema.safeParse(anyBody);
     if (!body.success) {
-      return new Response(JSON.stringify({ message: generateErrorMessage(body.error.issues) }), {
-        status: 422,
-        headers: { "content-type": "application/json" },
-      });
+      return json(
+        { message: generateErrorMessage(body.error.issues) },
+        {
+          status: 422,
+        }
+      );
     }
 
     // The AWS SDK tries to use crypto from off of the window,
@@ -64,35 +70,19 @@ export async function queueEvent(request: Request, env: Env): Promise<Response> 
       deliverAt: calculateDeliverAt(body.data.options),
     };
 
-    return new Response(JSON.stringify(event), {
+    return json(event, {
       status: 200,
-      headers: { "content-type": "application/json" },
     });
   } catch (e) {
-    return new Response(
-      JSON.stringify({
+    return json(
+      {
         message: `Failed to parse event body: ${
           e instanceof Error ? e.message : JSON.stringify(e)
         }`,
-      }),
+      },
       {
         status: 422,
-        headers: { "content-type": "application/json" },
       }
     );
   }
-}
-
-function calculateDeliverAt(options?: SendEventOptions) {
-  // If deliverAt is a string and a valid date, convert it to a Date object
-  if (options?.deliverAt) {
-    return options?.deliverAt;
-  }
-
-  // deliverAfter is the number of seconds to wait before delivering the event
-  if (options?.deliverAfter) {
-    return new Date(Date.now() + options.deliverAfter * 1000);
-  }
-
-  return undefined;
 }
