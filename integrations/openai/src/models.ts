@@ -3,6 +3,7 @@ import { Model } from "openai/resources";
 import { OpenAIRunTask } from "./index";
 import OpenAI from "openai";
 import { OpenAIRequestOptions } from "./types";
+import { handleOpenAIError } from "./taskUtils";
 
 type DeleteFineTunedModelRequest = {
   fineTunedModelId: string;
@@ -33,7 +34,8 @@ export class Models {
             text: params.model,
           },
         ],
-      }
+      },
+      handleOpenAIError
     );
   }
 
@@ -47,7 +49,8 @@ export class Models {
       {
         name: "List models",
         properties: [],
-      }
+      },
+      handleOpenAIError
     );
   }
 
@@ -70,7 +73,8 @@ export class Models {
             text: params.fineTunedModelId,
           },
         ],
-      }
+      },
+      handleOpenAIError
     );
   }
 }

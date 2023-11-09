@@ -11,7 +11,10 @@ const EnvironmentSchema = z.object({
   SESSION_SECRET: z.string(),
   MAGIC_LINK_SECRET: z.string(),
   ENCRYPTION_KEY: z.string(),
-  WHITELISTED_EMAILS: z.string().refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.").optional(),
+  WHITELISTED_EMAILS: z
+    .string()
+    .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
+    .optional(),
   REMIX_APP_PORT: z.string().optional(),
   LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
   APP_ORIGIN: z.string().default("http://localhost:3030"),
@@ -42,6 +45,9 @@ const EnvironmentSchema = z.object({
   EXECUTION_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   WORKER_ENABLED: z.string().default("true"),
   EXECUTION_WORKER_ENABLED: z.string().default("true"),
+  TASK_OPERATION_WORKER_ENABLED: z.string().default("true"),
+  TASK_OPERATION_WORKER_CONCURRENCY: z.coerce.number().int().default(10),
+  TASK_OPERATION_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   GRACEFUL_SHUTDOWN_TIMEOUT: z.coerce.number().int().default(60000),
 });
 

@@ -104,6 +104,7 @@ model ExternalAccount {
   schedules          ScheduleSource[]
   triggerSources     TriggerSource[]
   missingConnections MissingConnection[]
+  EventDispatcher    EventDispatcher[]
 
   @@unique([environmentId, identifier])
 }
@@ -644,6 +645,9 @@ model EventDispatcher {
   registrations   DynamicTriggerRegistration[]
   scheduleSources ScheduleSource[]
 
+  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  externalAccountId String?
+
   @@unique([dispatchableId, environmentId])
 }
 
@@ -883,6 +887,7 @@ model Task {
   outputProperties Json?
   params           Json?
   output           Json?
+  context          Json?
   error            String?
   redact           Json?
   style            Json?

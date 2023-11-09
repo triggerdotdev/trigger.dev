@@ -16,6 +16,7 @@ export function taskWithAttemptsToServerTask(task: TaskWithAttempts): ServerTask
     description: task.description,
     params: task.params as any,
     output: task.output as any,
+    context: task.context as any,
     properties: task.properties as any,
     style: task.style as any,
     error: task.error,

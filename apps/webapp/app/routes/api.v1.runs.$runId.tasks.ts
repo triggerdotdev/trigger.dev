@@ -1,6 +1,5 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { TaskStatus } from "@trigger.dev/database";
 import {
   API_VERSIONS,
   RunTaskBodyOutput,
@@ -8,15 +7,16 @@ import {
   RunTaskResponseWithCachedTasksBody,
   ServerTask,
 } from "@trigger.dev/core";
+import { TaskStatus } from "@trigger.dev/database";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { prepareTasksForCaching, taskWithAttemptsToServerTask } from "~/models/task.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { ulid } from "~/services/ulid.server";
-import { workerQueue } from "~/services/worker.server";
 import { generateSecret } from "~/services/sources/utils.server";
-import { env } from "~/env.server";
+import { ulid } from "~/services/ulid.server";
+import { taskOperationWorker, workerQueue } from "~/services/worker.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -302,7 +302,7 @@ export class RunTaskService {
 
       if (task.status === "RUNNING" && typeof taskBody.operation === "string") {
         // We need to schedule the operation
-        await workerQueue.enqueue(
+        await taskOperationWorker.enqueue(
           "performTaskOperation",
           {
             id: task.id,

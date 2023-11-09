@@ -2,6 +2,7 @@ import {
   API_VERSIONS,
   ConnectionAuth,
   DeserializedJson,
+  EphemeralEventDispatcherRequestBody,
   ErrorWithStackSchema,
   GetRunOptionsWithTaskDetails,
   GetRunsOptions,
@@ -793,6 +794,10 @@ export class TriggerClient {
 
   async invokeJob(jobId: string, payload: any, options?: InvokeOptions) {
     return this.#client.invokeJob(jobId, payload, options);
+  }
+
+  async createEphemeralEventDispatcher(payload: EphemeralEventDispatcherRequestBody) {
+    return this.#client.createEphemeralEventDispatcher(payload);
   }
 
   authorized(
