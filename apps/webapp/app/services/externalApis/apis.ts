@@ -21,16 +21,32 @@ export const apisList = [
     name: "Appsmith",
   },
   {
+    identifier: "appwrite",
+    name: "Appwrite",
+  },
+  {
     identifier: "asana",
     name: "Asana",
+  },
+  {
+    identifier: "atlassian",
+    name: "Atlassian",
   },
   {
     identifier: "aws",
     name: "AWS",
   },
   {
+    identifier: "brex",
+    name: "Brex",
+  },
+  {
     identifier: "caldotcom",
     name: "Cal.com",
+  },
+  {
+    identifier: "clerk",
+    name: "Clerk",
   },
   {
     identifier: "clickup",
@@ -41,8 +57,20 @@ export const apisList = [
     name: "Coda",
   },
   {
+    identifier: "crowddotdev",
+    name: "Crowd.dev",
+  },
+  {
+    identifier: "deepl",
+    name: "DeepL",
+  },
+  {
     identifier: "discord",
     name: "Discord",
+  },
+  {
+    identifier: "documenso",
+    name: "Documenso",
   },
   {
     identifier: "dropbox",
@@ -51,6 +79,10 @@ export const apisList = [
   {
     identifier: "facebook",
     name: "Facebook",
+  },
+  {
+    identifier: "fastify",
+    name: "Fastify",
   },
   {
     identifier: "flickr",
@@ -67,6 +99,10 @@ export const apisList = [
   {
     identifier: "gmail",
     name: "Gmail",
+  },
+  {
+    identifier: "google",
+    name: "Google",
   },
   {
     identifier: "googlecalendar",
@@ -89,16 +125,36 @@ export const apisList = [
     name: "Google Maps",
   },
   {
+    identifier: "googlesheets",
+    name: "Google Sheets",
+  },
+  {
     identifier: "hubspot",
     name: "HubSpot",
+  },
+  {
+    identifier: "huggingface",
+    name: "Hugging Face",
+  },
+  {
+    identifier: "infisical",
+    name: "Infisical",
   },
   {
     identifier: "instagram",
     name: "Instagram",
   },
   {
-    identifier: "infisical",
-    name: "Infisical",
+    identifier: "instabug",
+    name: "Instabug",
+  },
+  {
+    identifier: "keep",
+    name: "Keep",
+  },
+  {
+    identifier: "lemonsqueezy",
+    name: "Lemon Squeezy",
   },
   {
     identifier: "linkedin",
@@ -113,6 +169,10 @@ export const apisList = [
     name: "Loops",
   },
   {
+    identifier: "lotus",
+    name: "Lotus",
+  },
+  {
     identifier: "mailchimp",
     name: "Mailchimp",
   },
@@ -125,6 +185,10 @@ export const apisList = [
     name: "Microsoft Azure",
   },
   {
+    identifier: "monday",
+    name: "Monday",
+  },
+  {
     identifier: "mux",
     name: "Mux",
   },
@@ -133,8 +197,16 @@ export const apisList = [
     name: "Notion",
   },
   {
+    identifier: "novu",
+    name: "Novu",
+  },
+  {
     identifier: "openai",
     name: "OpenAI",
+  },
+  {
+    identifier: "pagerduty",
+    name: "PagerDuty",
   },
   {
     identifier: "plain",
@@ -143,6 +215,10 @@ export const apisList = [
   {
     identifier: "posthog",
     name: "Posthog",
+  },
+  {
+    identifier: "raycast",
+    name: "Raycast",
   },
   {
     identifier: "reddit",
@@ -177,6 +253,10 @@ export const apisList = [
     name: "Slack",
   },
   {
+    identifier: "snyk",
+    name: "Snyk",
+  },
+  {
     identifier: "spotify",
     name: "Spotify",
   },
@@ -197,9 +277,14 @@ export const apisList = [
     name: "Svix",
   },
   {
+    identifier: "todoist",
+    name: "Todoist",
+  },
+  {
     identifier: "trello",
     name: "Trello",
   },
+
   {
     identifier: "twilio",
     name: "Twilio",
@@ -212,12 +297,21 @@ export const apisList = [
     identifier: "typeform",
     name: "Typeform",
   },
+
   {
     identifier: "whatsapp",
     name: "WhatsApp",
   },
   {
+    identifier: "x",
+    name: "X",
+  },
+  {
     identifier: "youtube",
     name: "YouTube",
+  },
+  {
+    identifier: "zbd",
+    name: "ZBD",
   },
 ];
