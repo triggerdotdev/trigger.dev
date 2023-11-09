@@ -14,7 +14,6 @@ import { run as graphileRun, parseCronItems } from "graphile-worker";
 import omit from "lodash.omit";
 import { z } from "zod";
 import { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
-import { PgListenService } from "~/services/db/pgListen.server";
 import { workerLogger as logger } from "~/services/logger.server";
 
 export interface MessageCatalogSchema {
@@ -167,21 +166,6 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     this.#runner?.events.on("pool:listen:success", async ({ workerPool, client }) => {
       this.#logDebug("pool:listen:success");
-
-      // hijack client instance to listen and react to incoming NOTIFY events
-      const pgListen = new PgListenService(client, this.#name, logger);
-
-      await pgListen.on("trigger:graphile:migrate", async ({ latestMigration }) => {
-        this.#logDebug("Detected incoming migration", { latestMigration });
-
-        if (latestMigration > 10) {
-          // already migrated past v0.14 - nothing to do
-          return;
-        }
-
-        // simulate SIGTERM to trigger graceful shutdown
-        this._handleSignal("SIGTERM");
-      });
     });
 
     this.#runner?.events.on("pool:listen:error", ({ error }) => {
