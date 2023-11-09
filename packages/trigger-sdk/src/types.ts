@@ -143,3 +143,25 @@ export type SchemaParserResult<T> =
 export type SchemaParser<T extends unknown = unknown> = {
   safeParse: (a: unknown) => SchemaParserResult<T>;
 };
+
+export type WaitForEventResult<TEvent> = {
+  id: string;
+  name: string;
+  source: string;
+  payload: TEvent;
+  timestamp: Date;
+  context?: any;
+  accountId?: string;
+};
+
+export function waitForEventSchema(schema: z.ZodTypeAny) {
+  return z.object({
+    id: z.string(),
+    name: z.string(),
+    source: z.string(),
+    payload: schema,
+    timestamp: z.coerce.date(),
+    context: z.any().optional(),
+    accountId: z.string().optional(),
+  });
+}

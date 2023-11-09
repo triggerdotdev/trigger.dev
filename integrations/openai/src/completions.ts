@@ -5,7 +5,8 @@ import {
   backgroundTaskRetries,
   createBackgroundFetchHeaders,
   createBackgroundFetchUrl,
-  createTaskUsageProperties,
+  createTaskOutputProperties,
+  handleOpenAIError,
 } from "./taskUtils";
 import { OpenAIIntegrationOptions, OpenAIRequestOptions } from "./types";
 import { FetchRetryOptions, FetchTimeoutOptions } from "@trigger.dev/integration-kit";
@@ -24,12 +25,16 @@ export class Completions {
     return this.runTask(
       key,
       async (client, task) => {
-        const response = await client.completions.create(params, {
-          idempotencyKey: task.idempotencyKey,
-          ...options,
-        });
-        task.outputProperties = createTaskUsageProperties(response.usage);
-        return response;
+        const { data, response } = await client.completions
+          .create(params, {
+            idempotencyKey: task.idempotencyKey,
+            ...options,
+          })
+          .withResponse();
+
+        task.outputProperties = createTaskOutputProperties(data.usage, response.headers);
+
+        return data;
       },
       {
         name: "Completion",
@@ -40,7 +45,8 @@ export class Completions {
             text: params.model,
           },
         ],
-      }
+      },
+      handleOpenAIError
     );
   }
 
@@ -60,7 +66,7 @@ export class Completions {
           options
         );
 
-        const response = await io.backgroundFetch<OpenAI.Completion>(
+        const response = await io.backgroundFetchResponse<OpenAI.Completion>(
           "background",
           url,
           {
@@ -73,13 +79,18 @@ export class Completions {
             ),
             body: JSON.stringify(params),
           },
-          fetchOptions.retries ?? backgroundTaskRetries,
-          fetchOptions.timeout
+          {
+            retry: fetchOptions?.retries ?? backgroundTaskRetries,
+            timeout: fetchOptions?.timeout,
+          }
         );
 
-        task.outputProperties = createTaskUsageProperties(response.usage);
+        task.outputProperties = createTaskOutputProperties(
+          response.data.usage,
+          new Headers(response.headers)
+        );
 
-        return response;
+        return response.data;
       },
       {
         name: "Background Completion",

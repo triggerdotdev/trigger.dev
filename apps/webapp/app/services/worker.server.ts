@@ -24,6 +24,8 @@ import { ProbeEndpointService } from "./endpoints/probeEndpoint.server";
 import { DeliverRunSubscriptionService } from "./runs/deliverRunSubscription.server";
 import { DeliverRunSubscriptionsService } from "./runs/deliverRunSubscriptions.server";
 import { ResumeTaskService } from "./tasks/resumeTask.server";
+import { ExpireDispatcherService } from "./dispatchers/expireDispatcher.server";
+import { InvokeEphemeralDispatcherService } from "./dispatchers/invokeEphemeralEventDispatcher.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -38,9 +40,6 @@ const workerCatalog = {
   scheduleEmail: DeliverEmailSchema,
   startRun: z.object({ id: z.string() }),
   processCallbackTimeout: z.object({
-    id: z.string(),
-  }),
-  performTaskOperation: z.object({
     id: z.string(),
   }),
   deliverHttpSourceRequest: z.object({ id: z.string() }),
@@ -93,6 +92,9 @@ const workerCatalog = {
   resumeTask: z.object({
     id: z.string(),
   }),
+  expireDispatcher: z.object({
+    id: z.string(),
+  }),
 };
 
 const executionWorkerCatalog = {
@@ -108,12 +110,24 @@ const executionWorkerCatalog = {
   }),
 };
 
+const taskOperationWorkerCatalog = {
+  performTaskOperation: z.object({
+    id: z.string(),
+  }),
+  invokeEphemeralDispatcher: z.object({
+    id: z.string(),
+    eventRecordId: z.string(),
+  }),
+};
+
 let workerQueue: ZodWorker<typeof workerCatalog>;
 let executionWorker: ZodWorker<typeof executionWorkerCatalog>;
+let taskOperationWorker: ZodWorker<typeof taskOperationWorkerCatalog>;
 
 declare global {
   var __worker__: ZodWorker<typeof workerCatalog>;
   var __executionWorker__: ZodWorker<typeof executionWorkerCatalog>;
+  var __taskOperationWorker__: ZodWorker<typeof taskOperationWorkerCatalog>;
 }
 
 // this is needed because in development we don't want to restart
@@ -123,6 +137,7 @@ declare global {
 if (env.NODE_ENV === "production") {
   workerQueue = getWorkerQueue();
   executionWorker = getExecutionWorkerQueue();
+  taskOperationWorker = getTaskOperationWorkerQueue();
 } else {
   if (!global.__worker__) {
     global.__worker__ = getWorkerQueue();
@@ -134,6 +149,12 @@ if (env.NODE_ENV === "production") {
   }
 
   executionWorker = global.__executionWorker__;
+
+  if (!global.__taskOperationWorker__) {
+    global.__taskOperationWorker__ = getTaskOperationWorkerQueue();
+  }
+
+  taskOperationWorker = global.__taskOperationWorker__;
 }
 
 export async function init() {
@@ -147,6 +168,10 @@ export async function init() {
 
   if (env.EXECUTION_WORKER_ENABLED === "true") {
     await executionWorker.initialize();
+  }
+
+  if (env.TASK_OPERATION_WORKER_ENABLED === "true") {
+    await taskOperationWorker.initialize();
   }
 }
 
@@ -286,15 +311,6 @@ function getWorkerQueue() {
           await service.call(payload.id);
         },
       },
-      performTaskOperation: {
-        priority: 0, // smaller number = higher priority
-        maxAttempts: 3,
-        handler: async (payload, job) => {
-          const service = new PerformTaskOperationService();
-
-          await service.call(payload.id);
-        },
-      },
       scheduleEmail: {
         priority: 100,
         maxAttempts: 3,
@@ -378,6 +394,15 @@ function getWorkerQueue() {
           return await service.call(payload.id);
         },
       },
+      expireDispatcher: {
+        priority: 10,
+        maxAttempts: 3,
+        handler: async (payload) => {
+          const service = new ExpireDispatcherService();
+
+          return await service.call(payload.id);
+        },
+      },
     },
   });
 }
@@ -428,4 +453,41 @@ function getExecutionWorkerQueue() {
   });
 }
 
-export { executionWorker, workerQueue };
+function getTaskOperationWorkerQueue() {
+  return new ZodWorker({
+    name: "taskOperationWorker",
+    prisma,
+    runnerOptions: {
+      connectionString: env.DATABASE_URL,
+      concurrency: env.TASK_OPERATION_WORKER_CONCURRENCY,
+      pollInterval: env.TASK_OPERATION_WORKER_POLL_INTERVAL,
+      noPreparedStatements: env.DATABASE_URL !== env.DIRECT_URL,
+      schema: env.WORKER_SCHEMA,
+      maxPoolSize: env.TASK_OPERATION_WORKER_CONCURRENCY,
+    },
+    shutdownTimeoutInMs: env.GRACEFUL_SHUTDOWN_TIMEOUT,
+    schema: taskOperationWorkerCatalog,
+    tasks: {
+      performTaskOperation: {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new PerformTaskOperationService();
+
+          await service.call(payload.id);
+        },
+      },
+      invokeEphemeralDispatcher: {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 10,
+        handler: async (payload, job) => {
+          const service = new InvokeEphemeralDispatcherService();
+
+          await service.call(payload.id, payload.eventRecordId);
+        },
+      },
+    },
+  });
+}
+
+export { executionWorker, workerQueue, taskOperationWorker };

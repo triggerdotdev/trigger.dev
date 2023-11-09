@@ -2,6 +2,7 @@ import {
   API_VERSIONS,
   ConnectionAuth,
   DeserializedJson,
+  EphemeralEventDispatcherRequestBody,
   ErrorWithStackSchema,
   GetRunOptionsWithTaskDetails,
   GetRunsOptions,
@@ -742,6 +743,15 @@ export class TriggerClient {
     return this.#client.sendEvent(event, options);
   }
 
+  /** You can call this function from anywhere in your backend to send multiple events. The other way to send multiple events is by using [`io.sendEvents()`](https://trigger.dev/docs/sdk/io/sendevents) from inside a `run()` function.
+   * @param events The events to send.
+   * @param options Options for sending the events.
+   * @returns A promise that resolves to an array of event details
+   */
+  async sendEvents(events: SendEvent[], options?: SendEventOptions) {
+    return this.#client.sendEvents(events, options);
+  }
+
   async cancelEvent(eventId: string) {
     return this.#client.cancelEvent(eventId);
   }
@@ -784,6 +794,10 @@ export class TriggerClient {
 
   async invokeJob(jobId: string, payload: any, options?: InvokeOptions) {
     return this.#client.invokeJob(jobId, payload, options);
+  }
+
+  async createEphemeralEventDispatcher(payload: EphemeralEventDispatcherRequestBody) {
+    return this.#client.createEphemeralEventDispatcher(payload);
   }
 
   authorized(

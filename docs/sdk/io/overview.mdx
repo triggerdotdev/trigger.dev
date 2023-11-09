@@ -26,19 +26,37 @@ Used to send log messages to the [Run log](/documentation/guides/viewing-runs).
 
 `io.runTask()` allows you to run a [Task](/documentation/concepts/tasks) from inside a Job run. A Task is a resumable unit of a Run that can be retried, resumed and is logged. [Integrations](/integrations) use Tasks internally to perform their actions.
 
-### [wait()](/sdk/io/wait)
-
-Waits for a certain amount of time before continuing the Job. Delays works even if you're on a serverless platform with timeouts, or if your server goes down. They utilize [resumability](/documentation/concepts/resumability) to ensure that the Run can be resumed after the delay.
-
 ### [sendEvent()](/sdk/io/sendevent)
 
 `io.sendEvent()` allows you to send an event from inside a Job run. The sent even will trigger any Jobs that are listening for that event (based on the name).
 
 If you want to send an event from outside a run (e.g. just from your backend) you can use [client.sendEvent()](/sdk/triggerclient/instancemethods/sendevent).
 
+### [wait()](/sdk/io/wait)
+
+Waits for a certain amount of time before continuing the Job. Delays works even if you're on a serverless platform with timeouts, or if your server goes down. They utilize [resumability](/documentation/concepts/resumability) to ensure that the Run can be resumed after the delay.
+
+### [waitForEvent()](/sdk/io/wait-for-event)
+
+`io.waitForEvent()` allows you to pause the execution of a run until an event is received, and receive the event data.
+
+### [waitForRequest()](/sdk/io/wait-for-request)
+
+`io.waitForRequest()` allows you to pause the execution of a run until the provided URL is requested, and receive the request data.
+
+### [sendEvents()](/sdk/io/sendevents)
+
+`io.sendEvents()` allows you to send multiple events from inside a Job run. The sent events will trigger any Jobs that are listening for those events (based on the name).
+
+If you want to send multiple events from outside a run (e.g. just from your backend) you can use [client.sendEvents()](/sdk/triggerclient/instancemethods/sendevents).
+
 ### [backgroundFetch()](/sdk/io/backgroundfetch)
 
 `io.backgroundFetch()` allows you to fetch data from a URL that can take longer that the serverless timeout. The actual `fetch` request is performed on the Trigger.dev platform, and the response is sent back to you. An example use case is fetching data from a slow API, like some AI endpoints.
+
+### [backgroundPoll()](/sdk/io/background-poll)
+
+`io.backgroundPoll()` allows you to fetch data from a URL on an interval, in the background.
 
 ### [random()](/sdk/io/random)
 

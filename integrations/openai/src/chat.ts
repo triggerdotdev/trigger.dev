@@ -5,7 +5,8 @@ import {
   backgroundTaskRetries,
   createBackgroundFetchHeaders,
   createBackgroundFetchUrl,
-  createTaskUsageProperties,
+  createTaskOutputProperties,
+  handleOpenAIError,
 } from "./taskUtils";
 import { OpenAIIntegrationOptions, OpenAIRequestOptions } from "./types";
 import { FetchRetryOptions, FetchTimeoutOptions } from "@trigger.dev/integration-kit";
@@ -25,12 +26,16 @@ export class Chat {
       return this.runTask(
         key,
         async (client, task) => {
-          const response = await client.chat.completions.create(params, {
-            idempotencyKey: task.idempotencyKey,
-            ...options,
-          });
-          task.outputProperties = createTaskUsageProperties(response.usage);
-          return response;
+          const { data, response } = await client.chat.completions
+            .create(params, {
+              idempotencyKey: task.idempotencyKey,
+              ...options,
+            })
+            .withResponse();
+
+          task.outputProperties = createTaskOutputProperties(data.usage, response.headers);
+
+          return data;
         },
         {
           name: "Chat Completion",
@@ -41,7 +46,8 @@ export class Chat {
               text: params.model,
             },
           ],
-        }
+        },
+        handleOpenAIError
       );
     },
 
@@ -61,7 +67,7 @@ export class Chat {
             options
           );
 
-          const response = await io.backgroundFetch<OpenAI.Chat.ChatCompletion>(
+          const response = await io.backgroundFetchResponse<OpenAI.Chat.ChatCompletion>(
             "background",
             url,
             {
@@ -74,13 +80,18 @@ export class Chat {
               ),
               body: JSON.stringify(params),
             },
-            fetchOptions.retries ?? backgroundTaskRetries,
-            fetchOptions.timeout
+            {
+              retry: fetchOptions?.retries ?? backgroundTaskRetries,
+              timeout: fetchOptions?.timeout,
+            }
           );
 
-          task.outputProperties = createTaskUsageProperties(response.usage);
+          task.outputProperties = createTaskOutputProperties(
+            response.data.usage,
+            new Headers(response.headers)
+          );
 
-          return response;
+          return response.data;
         },
         {
           name: "Background Chat Completion",

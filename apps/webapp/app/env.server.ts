@@ -45,6 +45,9 @@ const EnvironmentSchema = z.object({
   EXECUTION_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   WORKER_ENABLED: z.string().default("true"),
   EXECUTION_WORKER_ENABLED: z.string().default("true"),
+  TASK_OPERATION_WORKER_ENABLED: z.string().default("true"),
+  TASK_OPERATION_WORKER_CONCURRENCY: z.coerce.number().int().default(10),
+  TASK_OPERATION_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   GRACEFUL_SHUTDOWN_TIMEOUT: z.coerce.number().int().default(60000),
   /** Optional. Only used if you use the apps/proxy */
   AWS_SQS_REGION: z.string().optional(),

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { Prettify } from "../types";
 import { addMissingVersionField } from "./addMissingVersionField";
 import { ErrorWithStackSchema, SchemaErrorSchema } from "./errors";
-import { EventRuleSchema } from "./eventFilter";
+import { EventFilterSchema, EventRuleSchema } from "./eventFilter";
 import { ConnectionAuthSchema, IntegrationConfigSchema } from "./integrations";
 import { DeserializedJsonSchema, SerializableJsonSchema } from "./json";
 import { DisplayPropertySchema, StyleSchema } from "./properties";
@@ -448,6 +448,11 @@ export const SendEventBodySchema = z.object({
   options: SendEventOptionsSchema.optional(),
 });
 
+export const SendBulkEventsBodySchema = z.object({
+  events: RawEventSchema.array(),
+  options: SendEventOptionsSchema.optional(),
+});
+
 export type SendEventBody = z.infer<typeof SendEventBodySchema>;
 export type SendEventOptions = z.infer<typeof SendEventOptionsSchema>;
 
@@ -782,8 +787,8 @@ export const RunTaskOptionsSchema = z.object({
     .optional(),
   /** Allows you to link the Integration connection in the logs. This is handled automatically in integrations.  */
   connectionKey: z.string().optional(),
-  /** An operation you want to perform on the Trigger.dev platform, current only "fetch" is supported. If you wish to `fetch` use [`io.backgroundFetch()`](https://trigger.dev/docs/sdk/io/backgroundfetch) instead. */
-  operation: z.enum(["fetch"]).optional(),
+  /** An operation you want to perform on the Trigger.dev platform, current only "fetch", "fetch-response", and "fetch-poll" is supported. If you wish to `fetch` use [`io.backgroundFetch()`](https://trigger.dev/docs/sdk/io/backgroundfetch) instead. */
+  operation: z.enum(["fetch", "fetch-response", "fetch-poll"]).optional(),
   /** A No Operation means that the code won't be executed. This is used internally to implement features like [io.wait()](https://trigger.dev/docs/sdk/io/wait).  */
   noop: z.boolean().default(false),
   redact: RedactSchema.optional(),
@@ -984,3 +989,31 @@ export const InvokeOptionsSchema = z.object({
 });
 
 export type InvokeOptions = z.infer<typeof InvokeOptionsSchema>;
+
+export const EphemeralEventDispatcherRequestBodySchema = z.object({
+  url: z.string(),
+  name: z.string().or(z.array(z.string())),
+  source: z.string().optional(),
+  filter: EventFilterSchema.optional(),
+  contextFilter: EventFilterSchema.optional(),
+  accountId: z.string().optional(),
+  timeoutInSeconds: z
+    .number()
+    .int()
+    .positive()
+    .min(10)
+    .max(60 * 60 * 24 * 365)
+    .default(3600),
+});
+
+export type EphemeralEventDispatcherRequestBody = z.infer<
+  typeof EphemeralEventDispatcherRequestBodySchema
+>;
+
+export const EphemeralEventDispatcherResponseBodySchema = z.object({
+  id: z.string(),
+});
+
+export type EphemeralEventDispatcherResponseBody = z.infer<
+  typeof EphemeralEventDispatcherResponseBodySchema
+>;

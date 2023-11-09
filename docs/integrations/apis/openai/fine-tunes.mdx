@@ -1,0 +1,59 @@
+---
+title: Fine Tuning Tasks
+sidebarTitle: Fine Tunes
+---
+
+Manage fine-tuning jobs to tailor a model to your specific training data. See the related guide [Fine Tuning models](https://platform.openai.com/docs/guides/fine-tuning) and view the [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning).
+
+### `jobs.create()`
+
+Creates a job that fine-tunes a specified model from a given dataset.
+
+Response includes details of the enqueued job including job status and the name of the fine-tuned models once complete.
+
+You must first upload a dataset to the API before creating a fine-tuning job. See our [OpenAI File Tasks](/integrations/apis/openai/files#createandwaitforprocessing) for more information.
+
+```ts example.ts
+const file = await io.openai.files.create("upload-file", {
+  purpose: "fine-tune",
+  file: fs.createReadStream("./mydata.jsonl"),
+});
+
+const fineTuning = await io.openai.fineTuning.jobs.create("fine-tuning", {
+  training_file: file.id,
+  model: "gpt-3.5-turbo",
+  suffix: "my-model",
+});
+```
+
+### `jobs.list()`
+
+List your organization's fine-tuning jobs. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/list)
+
+```ts example.ts
+const fts = await io.openai.fineTuning.jobs.list("list");
+```
+
+### `jobs.retrieve()`
+
+Get info about a fine-tuning job. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/retrieve)
+
+```ts example.ts
+const fineTuning = await io.openai.fineTuning.jobs.retrieve("fine-tuning", "ft_1234");
+```
+
+### `jobs.cancel()`
+
+Immediately cancel a fine-tune job. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/cancel)
+
+```ts example.ts
+const fineTuning = await io.openai.fineTuning.jobs.cancel("fine-tuning", "ft_1234");
+```
+
+### `jobs.listEvents()`
+
+Get status updates for a fine-tuning job. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/fine-tuning/list-events)
+
+```ts example.ts
+const events = await io.openai.fineTuning.jobs.listEvents("fine-tuning", { id: "ft_1234" });
+```
