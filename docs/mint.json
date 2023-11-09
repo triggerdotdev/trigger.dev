@@ -302,6 +302,7 @@
               "group": "Instance methods",
               "pages": [
                 "sdk/triggerclient/instancemethods/sendevent",
+                "sdk/triggerclient/instancemethods/sendevents",
                 "sdk/triggerclient/instancemethods/getevent",
                 "sdk/triggerclient/instancemethods/cancel-event",
                 "sdk/triggerclient/instancemethods/cancel-runs-for-event",
@@ -325,6 +326,7 @@
             "sdk/io/wait",
             "sdk/io/logger",
             "sdk/io/sendevent",
+            "sdk/io/sendevents",
             "sdk/io/backgroundfetch",
             "sdk/io/random",
             "sdk/io/try",

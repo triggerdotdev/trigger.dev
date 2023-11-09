@@ -1,12 +1,14 @@
 ---
 title: "io.sendEvent()"
 sidebarTitle: "sendEvent()"
-description: "`io.sendEvent()` allows you to send an event from inside a Job run. The sent even will trigger any Jobs that are listening for that event (based on the name)."
+description: "`io.sendEvent()` allows you to send an event from inside a Job run. The sent event will trigger any Jobs that are listening for that event (based on the name)."
 ---
 
 If you want to send an event from outside a run (e.g. just from your backend) you should use [client.sendEvent()](/sdk/triggerclient/instancemethods/sendevent) instead.
 
 Use [eventTrigger()](/sdk/eventtrigger) on a Job to listen for events.
+
+For multiple events, use [io.sendEvents()](/sdk/io/sendevents) instead.
 
 ## Parameters
 
