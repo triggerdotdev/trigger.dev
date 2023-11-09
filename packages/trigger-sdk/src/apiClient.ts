@@ -205,6 +205,23 @@ export class ApiClient {
     });
   }
 
+  async sendEvents(events: SendEvent[], options: SendEventOptions = {}) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Sending multiple events", {
+      events,
+    });
+
+    return await zodfetch(ApiEventLogSchema.array(), `${this.#apiUrl}/api/v1/events/bulk`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ events, options }),
+    });
+  }
+
   async cancelEvent(eventId: string) {
     const apiKey = await this.#apiKey();
 
