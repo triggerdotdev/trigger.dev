@@ -169,19 +169,19 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       this.#logDebug("pool:listen:success");
 
       // hijack client instance to listen and react to incoming NOTIFY events
-      const pgListen = new PgListenService(client, this.#name, logger);
+      // const pgListen = new PgListenService(client, this.#name, logger);
 
-      await pgListen.on("trigger:graphile:migrate", async ({ latestMigration }) => {
-        this.#logDebug("Detected incoming migration", { latestMigration });
+      // await pgListen.on("trigger:graphile:migrate", async ({ latestMigration }) => {
+      //   this.#logDebug("Detected incoming migration", { latestMigration });
 
-        if (latestMigration > 10) {
-          // already migrated past v0.14 - nothing to do
-          return;
-        }
+      //   if (latestMigration > 10) {
+      //     // already migrated past v0.14 - nothing to do
+      //     return;
+      //   }
 
-        // simulate SIGTERM to trigger graceful shutdown
-        this._handleSignal("SIGTERM");
-      });
+      //   // simulate SIGTERM to trigger graceful shutdown
+      //   this._handleSignal("SIGTERM");
+      // });
     });
 
     this.#runner?.events.on("pool:listen:error", ({ error }) => {
