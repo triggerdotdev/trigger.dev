@@ -38,6 +38,12 @@ Sending an event triggers any Jobs that are listening for that event (based on t
 
 You can call this function from anywhere in your code to send an event. The other way to send an event is by using [io.sendEvent()](/sdk/io) from inside a `run()` function.
 
+#### [sendEvents()](/sdk/triggerclient/instancemethods/sendevents)
+
+Sending multiple events triggers any Jobs that are listening for those events (based on the name). Use [eventTrigger()](/sdk/eventtrigger) on a Job to listen for events.
+
+You can call this function from anywhere in your code to send multiple events. The other way to send multiple events is by using [io.sendEvents()](/sdk/io) from inside a `run()` function.
+
 #### [getEvent()](/sdk/triggerclient/instancemethods/getevent)
 
 The `getEvent()` method gets the event details for a given eventId.

@@ -702,7 +702,7 @@ export class IO {
     )) as BackgroundFetchResponse<TResponseData>;
   }
 
-  /** `io.sendEvent()` allows you to send an event from inside a Job run. The sent even will trigger any Jobs that are listening for that event (based on the name).
+  /** `io.sendEvent()` allows you to send an event from inside a Job run. The sent event will trigger any Jobs that are listening for that event (based on the name).
    * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param event The event to send. The event name must match the name of the event that your Jobs are listening for.
    * @param options Options for sending the event.
@@ -722,6 +722,32 @@ export class IO {
             text: event.name,
           },
           ...(event?.id ? [{ label: "ID", text: event.id }] : []),
+          ...sendEventOptionsProperties(options),
+        ],
+      }
+    );
+  }
+
+  /** `io.sendEvents()` allows you to send multiple events from inside a Job run. The sent events will trigger any Jobs that are listening for those events (based on the name).
+   * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param event The events to send. The event names must match the names of the events that your Jobs are listening for.
+   * @param options Options for sending the events.
+   */
+  async sendEvents(cacheKey: string | any[], events: SendEvent[], options?: SendEventOptions) {
+    return await this.runTask(
+      cacheKey,
+      async (task) => {
+        return await this._triggerClient.sendEvents(events, options);
+      },
+      {
+        name: "sendEvents",
+        params: { events, options },
+        properties: [
+          {
+            label: "Total Events",
+            text: String(events.length),
+          },
+          ...sendEventOptionsProperties(options),
         ],
       }
     );
@@ -1488,4 +1514,14 @@ async function spaceOut<T>(callback: () => Promise<T>, index: number, delay: num
   await new Promise((resolve) => setTimeout(resolve, index * delay));
 
   return await callback();
+}
+
+function sendEventOptionsProperties(options?: SendEventOptions) {
+  return [
+    ...(options?.accountId ? [{ label: "Account ID", text: options.accountId }] : []),
+    ...(options?.deliverAfter
+      ? [{ label: "Deliver After", text: `${options.deliverAfter}s` }]
+      : []),
+    ...(options?.deliverAt ? [{ label: "Deliver At", text: options.deliverAt.toISOString() }] : []),
+  ];
 }

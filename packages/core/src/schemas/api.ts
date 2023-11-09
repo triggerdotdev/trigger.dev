@@ -448,6 +448,11 @@ export const SendEventBodySchema = z.object({
   options: SendEventOptionsSchema.optional(),
 });
 
+export const SendBulkEventsBodySchema = z.object({
+  events: RawEventSchema.array(),
+  options: SendEventOptionsSchema.optional(),
+});
+
 export type SendEventBody = z.infer<typeof SendEventBodySchema>;
 export type SendEventOptions = z.infer<typeof SendEventOptionsSchema>;
 
