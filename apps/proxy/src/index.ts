@@ -1,4 +1,5 @@
 import { queueEvent } from "./events/queueEvent";
+import { queueEvents } from "./events/queueEvents";
 
 export interface Env {
   /** The hostname needs to be changed to allow requests to pass to the Trigger.dev platform */
@@ -30,7 +31,7 @@ export default {
       }
       case "/api/v1/events/bulk": {
         if (request.method === "POST") {
-          return queueEvent(request, env);
+          return queueEvents(request, env);
         }
         break;
       }
