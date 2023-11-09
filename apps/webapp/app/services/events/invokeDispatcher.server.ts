@@ -3,21 +3,8 @@ import type { PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { CreateRunService } from "~/services/runs/createRun.server";
-
-const JobVersionDispatchableSchema = z.object({
-  type: z.literal("JOB_VERSION"),
-  id: z.string(),
-});
-
-const DynamicTriggerDispatchableSchema = z.object({
-  type: z.literal("DYNAMIC_TRIGGER"),
-  id: z.string(),
-});
-
-const DispatchableSchema = z.discriminatedUnion("type", [
-  JobVersionDispatchableSchema,
-  DynamicTriggerDispatchableSchema,
-]);
+import { InvokeEphemeralDispatcherService } from "../dispatchers/invokeEphemeralEventDispatcher.server";
+import { DispatchableSchema } from "~/models/eventDispatcher.server";
 
 export class InvokeDispatcherService {
   #prismaClient: PrismaClientOrTransaction;
@@ -141,6 +128,11 @@ export class InvokeDispatcherService {
             environment: eventDispatcher.environment,
           });
         }
+
+        break;
+      }
+      case "EPHEMERAL": {
+        await InvokeEphemeralDispatcherService.enqueue(eventDispatcher.id, eventRecord.id);
 
         break;
       }

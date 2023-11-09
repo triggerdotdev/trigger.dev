@@ -34,6 +34,8 @@ import {
   InvokeOptions,
   InvokeJobRequestBody,
   CompleteTaskBodyV2Input,
+  EphemeralEventDispatcherRequestBody,
+  EphemeralEventDispatcherResponseBodySchema,
 } from "@trigger.dev/core";
 
 import { z } from "zod";
@@ -506,6 +508,29 @@ export class ApiClient {
       },
       body: JSON.stringify(body),
     });
+  }
+
+  async createEphemeralEventDispatcher(payload: EphemeralEventDispatcherRequestBody) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Creating ephemeral event dispatcher", {
+      payload,
+    });
+
+    const response = await zodfetch(
+      EphemeralEventDispatcherResponseBodySchema,
+      `${this.#apiUrl}/api/v1/event-dispatchers/ephemeral`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+
+    return response;
   }
 
   async #apiKey() {

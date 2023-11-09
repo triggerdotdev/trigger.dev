@@ -24,6 +24,8 @@ import { ProbeEndpointService } from "./endpoints/probeEndpoint.server";
 import { DeliverRunSubscriptionService } from "./runs/deliverRunSubscription.server";
 import { DeliverRunSubscriptionsService } from "./runs/deliverRunSubscriptions.server";
 import { ResumeTaskService } from "./tasks/resumeTask.server";
+import { ExpireDispatcherService } from "./dispatchers/expireDispatcher.server";
+import { InvokeEphemeralDispatcherService } from "./dispatchers/invokeEphemeralEventDispatcher.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -90,6 +92,9 @@ const workerCatalog = {
   resumeTask: z.object({
     id: z.string(),
   }),
+  expireDispatcher: z.object({
+    id: z.string(),
+  }),
 };
 
 const executionWorkerCatalog = {
@@ -108,6 +113,10 @@ const executionWorkerCatalog = {
 const taskOperationWorkerCatalog = {
   performTaskOperation: z.object({
     id: z.string(),
+  }),
+  invokeEphemeralDispatcher: z.object({
+    id: z.string(),
+    eventRecordId: z.string(),
   }),
 };
 
@@ -385,6 +394,15 @@ function getWorkerQueue() {
           return await service.call(payload.id);
         },
       },
+      expireDispatcher: {
+        priority: 10,
+        maxAttempts: 3,
+        handler: async (payload) => {
+          const service = new ExpireDispatcherService();
+
+          return await service.call(payload.id);
+        },
+      },
     },
   });
 }
@@ -457,6 +475,15 @@ function getTaskOperationWorkerQueue() {
           const service = new PerformTaskOperationService();
 
           await service.call(payload.id);
+        },
+      },
+      invokeEphemeralDispatcher: {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 10,
+        handler: async (payload, job) => {
+          const service = new InvokeEphemeralDispatcherService();
+
+          await service.call(payload.id, payload.eventRecordId);
         },
       },
     },

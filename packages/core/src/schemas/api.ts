@@ -3,7 +3,7 @@ import { z } from "zod";
 import { Prettify } from "../types";
 import { addMissingVersionField } from "./addMissingVersionField";
 import { ErrorWithStackSchema, SchemaErrorSchema } from "./errors";
-import { EventRuleSchema } from "./eventFilter";
+import { EventFilterSchema, EventRuleSchema } from "./eventFilter";
 import { ConnectionAuthSchema, IntegrationConfigSchema } from "./integrations";
 import { DeserializedJsonSchema, SerializableJsonSchema } from "./json";
 import { DisplayPropertySchema, StyleSchema } from "./properties";
@@ -984,3 +984,31 @@ export const InvokeOptionsSchema = z.object({
 });
 
 export type InvokeOptions = z.infer<typeof InvokeOptionsSchema>;
+
+export const EphemeralEventDispatcherRequestBodySchema = z.object({
+  url: z.string(),
+  name: z.string().or(z.array(z.string())),
+  source: z.string().optional(),
+  filter: EventFilterSchema.optional(),
+  contextFilter: EventFilterSchema.optional(),
+  accountId: z.string().optional(),
+  timeoutInSeconds: z
+    .number()
+    .int()
+    .positive()
+    .min(10)
+    .max(60 * 60 * 24 * 365)
+    .default(3600),
+});
+
+export type EphemeralEventDispatcherRequestBody = z.infer<
+  typeof EphemeralEventDispatcherRequestBodySchema
+>;
+
+export const EphemeralEventDispatcherResponseBodySchema = z.object({
+  id: z.string(),
+});
+
+export type EphemeralEventDispatcherResponseBody = z.infer<
+  typeof EphemeralEventDispatcherResponseBodySchema
+>;

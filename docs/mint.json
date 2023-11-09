@@ -95,6 +95,7 @@
           ]
         },
         "documentation/guides/writing-jobs-step-by-step",
+        "documentation/guides/task-library",
         "documentation/guides/video-walkthrough"
       ]
     },
@@ -340,12 +341,14 @@
           "pages": [
             "sdk/io/overview",
             "sdk/io/runtask",
-            "sdk/io/wait",
-            "sdk/io/logger",
             "sdk/io/sendevent",
+            "sdk/io/wait",
+            "sdk/io/wait-for-event",
+            "sdk/io/wait-for-request",
             "sdk/io/backgroundfetch",
             "sdk/io/background-poll",
             "sdk/io/random",
+            "sdk/io/logger",
             "sdk/io/try",
             "sdk/io/registerinterval",
             "sdk/io/unregisterinterval",

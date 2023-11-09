@@ -4,6 +4,7 @@ import {
   ConnectionAuth,
   CronOptions,
   ErrorWithStackSchema,
+  EventFilter,
   FetchPollOperation,
   FetchRequestInit,
   FetchRetryOptions,
@@ -42,7 +43,14 @@ import { TriggerClient } from "./triggerClient";
 import { DynamicTrigger } from "./triggers/dynamic";
 import { ExternalSource, ExternalSourceParams } from "./triggers/externalSource";
 import { DynamicSchedule } from "./triggers/scheduled";
-import { EventSpecification, TaskLogger, TriggerContext } from "./types";
+import {
+  EventSpecification,
+  TaskLogger,
+  TriggerContext,
+  WaitForEventResult,
+  waitForEventSchema,
+} from "./types";
+import { z } from "zod";
 
 export type IOTask = ServerTask;
 
@@ -336,6 +344,72 @@ export class IO {
       delayUntil: new Date(Date.now() + seconds * 1000),
       style: { style: "minimal" },
     });
+  }
+
+  async waitForEvent<T extends z.ZodTypeAny = z.ZodTypeAny>(
+    cacheKey: string | any[],
+    event: {
+      name: string;
+      schema?: T;
+      filter?: EventFilter;
+      source?: string;
+      contextFilter?: EventFilter;
+      accountId?: string;
+    },
+    options?: { timeoutInSeconds?: number }
+  ): Promise<WaitForEventResult<z.output<T>>> {
+    const timeoutInSeconds = options?.timeoutInSeconds ?? 60 * 60;
+
+    return (await this.runTask(
+      cacheKey,
+      async (task, io) => {
+        if (!task.callbackUrl) {
+          throw new Error("No callbackUrl found on task");
+        }
+
+        await this.triggerClient.createEphemeralEventDispatcher({
+          url: task.callbackUrl,
+          name: event.name,
+          filter: event.filter,
+          contextFilter: event.contextFilter,
+          source: event.source,
+          accountId: event.accountId,
+          timeoutInSeconds,
+        });
+
+        return {} as Promise<{}>;
+      },
+      {
+        name: "Wait for Event",
+        icon: "custom-event",
+        params: {
+          name: event.name,
+          source: event.source,
+          filter: event.filter,
+          contextFilter: event.contextFilter,
+          accountId: event.accountId,
+        },
+        callback: {
+          enabled: true,
+          timeoutInSeconds,
+        },
+        properties: [
+          {
+            label: "Event",
+            text: event.name,
+          },
+          {
+            label: "Timeout",
+            text: `${timeoutInSeconds}s`,
+          },
+          ...(event.source ? [{ label: "Source", text: event.source }] : []),
+          ...(event.accountId ? [{ label: "Account ID", text: event.accountId }] : []),
+        ],
+        parseOutput: (output) => {
+          return waitForEventSchema(event.schema ?? z.any()).parse(output);
+        },
+      }
+    )) as WaitForEventResult<z.output<T>>;
   }
 
   /** `io.waitForRequest()` allows you to pause the execution of a run until the url provided in the callback is POSTed to.
@@ -951,7 +1025,7 @@ export class IO {
   async runTask<T extends Json<T> | void>(
     cacheKey: string | any[],
     callback: (task: ServerTask, io: IO) => Promise<T>,
-    options?: RunTaskOptions,
+    options?: RunTaskOptions & { parseOutput?: (output: unknown) => T },
     onError?: RunTaskErrorCallback
   ): Promise<T> {
     this.#detectAutoYield("start_task", 500);
@@ -995,7 +1069,9 @@ export class IO {
 
       this._stats.cachedTaskHits++;
 
-      return cachedTask.output as T;
+      return options?.parseOutput
+        ? options.parseOutput(cachedTask.output)
+        : (cachedTask.output as T);
     }
 
     if (options?.noop && this._noopTasksBloomFilter) {
@@ -1010,13 +1086,15 @@ export class IO {
       }
     }
 
+    const runOptions = { ...(options ?? {}), parseOutput: undefined };
+
     const response = await this._apiClient.runTask(
       this._id,
       {
         idempotencyKey,
         displayKey: typeof cacheKey === "string" ? cacheKey : undefined,
         noop: false,
-        ...(options ?? {}),
+        ...(runOptions ?? {}),
         parentId,
       },
       {
@@ -1078,7 +1156,7 @@ export class IO {
         this.#addToCachedTasks(task);
       }
 
-      return task.output as T;
+      return options?.parseOutput ? options.parseOutput(task.output) : (task.output as T);
     }
 
     if (task.status === "ERRORED") {
@@ -1137,7 +1215,9 @@ export class IO {
 
         this.#detectAutoYield("after_complete_task", 500);
 
-        return this._outputSerializer.deserialize<T>(output);
+        const deserializedOutput = this._outputSerializer.deserialize<T>(output);
+
+        return options?.parseOutput ? options.parseOutput(deserializedOutput) : deserializedOutput;
       } catch (error) {
         if (isTriggerError(error)) {
           throw error;

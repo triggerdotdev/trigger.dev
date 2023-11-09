@@ -96,6 +96,13 @@ export class DeliverEventService {
       return true;
     }
 
+    if (
+      dispatcher.externalAccountId &&
+      dispatcher.externalAccountId !== eventRecord.externalAccountId
+    ) {
+      return false;
+    }
+
     const payloadFilter = EventFilterSchema.safeParse(dispatcher.payloadFilter ?? {});
 
     const contextFilter = EventFilterSchema.safeParse(dispatcher.contextFilter ?? {});

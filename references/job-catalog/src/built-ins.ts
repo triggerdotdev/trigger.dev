@@ -1,5 +1,6 @@
 import { createExpressServer } from "@trigger.dev/express";
 import { TriggerClient, eventTrigger, invokeTrigger, redactString } from "@trigger.dev/sdk";
+import { z } from "zod";
 
 export const client = new TriggerClient({
   id: "job-catalog",
@@ -100,6 +101,43 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "screenshot-one-example",
+  name: "Screenshot One Example",
+  version: "1.0.0",
+  trigger: invokeTrigger({
+    schema: z.object({
+      url: z.string().url().default("https://trigger.dev"),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    const result = await io.waitForRequest(
+      "screenshot-one",
+      async (url) => {
+        await fetch(`https://api.screenshotone.com/take`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            access_key: process.env["SCREENSHOT_ONE_API_KEY"]!,
+            url: payload.url,
+            store: "true",
+            storage_path: "my-screeshots",
+            response_type: "json",
+            async: "true",
+            webhook_url: url, // this is the URL that will be called when the screenshot is ready
+            storage_return_location: "true",
+          }),
+        });
+      },
+      {
+        timeoutInSeconds: 300,
+      }
+    );
+  },
+});
+
 const pollingRunJob = client.defineJob({
   id: "polling-run",
   name: "Background Poll Run",
@@ -138,6 +176,70 @@ client.defineJob({
           status: ["SUCCESS"],
         },
       },
+    });
+  },
+});
+
+const sendWaitForEventJob = client.defineJob({
+  id: "send-wait-for-event",
+  name: "Send Wait for Event Example",
+  version: "1.0.0",
+  trigger: invokeTrigger(),
+  run: async (payload, io, ctx) => {
+    await io.wait("wait", 1);
+
+    await io.sendEvent("send-event", {
+      name: "wait.for.event",
+      payload: {
+        jobId: "wait-for-event",
+        foo: "bar",
+        ts: new Date(),
+      },
+      context: ctx,
+    });
+
+    await io.sendEvent("send-event-1", {
+      name: "wait.for.event",
+      payload,
+      context: ctx,
+    });
+  },
+});
+
+client.defineJob({
+  id: "wait-for-event",
+  name: "Wait for Event Example",
+  version: "1.0.0",
+  trigger: invokeTrigger(),
+  run: async (payload, io, ctx) => {
+    await sendWaitForEventJob.invoke("invoke", {
+      jobId: "send-wait-for-event",
+      foo: "bar",
+      ts: new Date(),
+    });
+
+    const event = await io.waitForEvent(
+      "wait",
+      {
+        name: "wait.for.event",
+        schema: z.object({
+          jobId: z.string(),
+          foo: z.string(),
+          ts: z.coerce.date(),
+        }),
+        filter: {
+          jobId: ["send-wait-for-event"], // only wait for events from this job
+        },
+      },
+      {
+        timeoutInSeconds: 60,
+      }
+    );
+
+    await io.logger.info("Event received", {
+      event,
+      tsType: typeof event.payload.ts,
+      timestampType: typeof event.timestamp,
     });
   },
 });
