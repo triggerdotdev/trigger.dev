@@ -100,4 +100,59 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "send-event-example",
+  name: "Send Event Example",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "send.event",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.sendEvent("send-event", {
+      name: "test.event",
+    });
+  },
+});
+
+client.defineJob({
+  id: "send-events-example",
+  name: "Send Multiple Events Example",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "send.events",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.sendEvents(
+      "send-events",
+      [
+        {
+          name: "test.event",
+          payload: {
+            count: 1,
+          },
+        },
+        {
+          name: "test.event",
+          payload: {
+            count: 2,
+          },
+        },
+      ],
+      {
+        deliverAfter: 10,
+      }
+    );
+  },
+});
+
+client.defineJob({
+  id: "receive-test-events",
+  name: "Receive Test Events",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "test.event",
+  }),
+  run: async (payload, io, ctx) => {},
+});
+
 createExpressServer(client);

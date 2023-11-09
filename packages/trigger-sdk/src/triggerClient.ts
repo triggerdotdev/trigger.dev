@@ -742,6 +742,15 @@ export class TriggerClient {
     return this.#client.sendEvent(event, options);
   }
 
+  /** You can call this function from anywhere in your backend to send multiple events. The other way to send multiple events is by using [`io.sendEvents()`](https://trigger.dev/docs/sdk/io/sendevents) from inside a `run()` function.
+   * @param events The events to send.
+   * @param options Options for sending the events.
+   * @returns A promise that resolves to an array of event details
+   */
+  async sendEvents(events: SendEvent[], options?: SendEventOptions) {
+    return this.#client.sendEvents(events, options);
+  }
+
   async cancelEvent(eventId: string) {
     return this.#client.cancelEvent(eventId);
   }

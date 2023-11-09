@@ -32,9 +32,15 @@ Waits for a certain amount of time before continuing the Job. Delays works even 
 
 ### [sendEvent()](/sdk/io/sendevent)
 
-`io.sendEvent()` allows you to send an event from inside a Job run. The sent even will trigger any Jobs that are listening for that event (based on the name).
+`io.sendEvent()` allows you to send an event from inside a Job run. The sent event will trigger any Jobs that are listening for that event (based on the name).
 
 If you want to send an event from outside a run (e.g. just from your backend) you can use [client.sendEvent()](/sdk/triggerclient/instancemethods/sendevent).
+
+### [sendEvents()](/sdk/io/sendevents)
+
+`io.sendEvents()` allows you to send multiple events from inside a Job run. The sent events will trigger any Jobs that are listening for those events (based on the name).
+
+If you want to send multiple events from outside a run (e.g. just from your backend) you can use [client.sendEvents()](/sdk/triggerclient/instancemethods/sendevents).
 
 ### [backgroundFetch()](/sdk/io/backgroundfetch)
 
