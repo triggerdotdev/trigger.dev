@@ -108,6 +108,8 @@ export class SqsEventConsumer {
 
     const authenticatedEnv = authenticationResult.environment;
 
+    logger.info("sqs_event", { event: body.data.event, options: body.data.options });
+
     const event = await this.#ingestEventService.call(
       authenticatedEnv,
       body.data.event,
