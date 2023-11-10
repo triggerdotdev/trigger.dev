@@ -1,6 +1,9 @@
-import { WebhookMetadata } from "@trigger.dev/core";
+import { REGISTER_WEBHOOK, WebhookMetadata } from "@trigger.dev/core";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
+import { IngestSendEvent } from "../events/ingestSendEvent.server";
+import { Webhook } from "@trigger.dev/database";
+import { ulid } from "../ulid.server";
 
 export class RegisterWebhookService {
   #prismaClient: PrismaClientOrTransaction;
@@ -18,6 +21,16 @@ export class RegisterWebhookService {
         ? await findEndpoint(endpointIdOrEndpoint)
         : endpointIdOrEndpoint;
 
+    const webhook = await this.#upsertWebhook(endpoint, webhookMetadata);
+
+    if (!webhook) {
+      return;
+    }
+
+    return await this.#activateWebhook(endpoint, webhook);
+  }
+
+  async #upsertWebhook(endpoint: ExtendedEndpoint, webhookMetadata: WebhookMetadata) {
     return await $transaction(this.#prismaClient, async (tx) => {
       const webhook = await tx.webhook.upsert({
         where: {
@@ -59,9 +72,22 @@ export class RegisterWebhookService {
         },
       });
 
-      // TODO: enqueue webhook activation
-
       return webhook;
+    });
+  }
+
+  async #activateWebhook(endpoint: ExtendedEndpoint, webhook: Webhook) {
+    const ingestService = new IngestSendEvent();
+
+    await ingestService.call(endpoint.environment, {
+      id: ulid(),
+      name: `${REGISTER_WEBHOOK}.${webhook.key}`,
+      payload: {
+        config: {
+          current: webhook.config ?? {},
+          desired: webhook.desiredConfig ?? {}
+        },
+      },
     });
   }
 }

@@ -72,6 +72,15 @@ export const RegisterWebhookSourceSchema = z.object({
 
 export type RegisterWebhookSource = z.infer<typeof RegisterWebhookSourceSchema>;
 
+export const RegisterWebhookPayloadSchema = z.object({
+  config: z.object({
+    current: z.any(),
+    desired: z.any(),
+  }),
+});
+
+export type RegisterWebhookPayload = z.infer<typeof RegisterWebhookPayloadSchema>;
+
 export const REGISTER_SOURCE_EVENT_V1 = "dev.trigger.source.register";
 export const REGISTER_SOURCE_EVENT_V2 = "dev.trigger.source.register.v2";
 

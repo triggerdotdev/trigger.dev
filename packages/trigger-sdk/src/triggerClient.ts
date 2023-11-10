@@ -27,6 +27,8 @@ import {
   RegisterSourceEventSchemaV2,
   RegisterSourceEventV2,
   RegisterTriggerBodyV2,
+  RegisterWebhookPayload,
+  RegisterWebhookPayloadSchema,
   RequestWithRawBodySchema,
   RunJobBody,
   RunJobBodySchema,
@@ -91,12 +93,12 @@ const deliverWebhookEvent = (key: string): EventSpecification<Request> => ({
   parsePayload: parseRequestPayload,
 });
 
-const registerWebhookEvent = (key: string): EventSpecification<Request> => ({
+const registerWebhookEvent = (key: string): EventSpecification<RegisterWebhookPayload> => ({
   name: `${REGISTER_WEBHOOK}.${key}`,
   title: "Register Webhook",
   source: "internal",
   icon: "webhook",
-  parsePayload: parseRequestPayload,
+  parsePayload: RegisterWebhookPayloadSchema.parse,
 });
 
 const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
@@ -110,6 +112,7 @@ const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
 import * as packageJson from "../package.json";
 import { formatSchemaErrors } from "./utils/formatSchemaErrors";
 import { Webhook } from "./triggers/webhook";
+import { z } from "zod";
 
 export type TriggerClientOptions = {
   /** The `id` property is used to uniquely identify the client.
@@ -832,8 +835,8 @@ export class TriggerClient {
       integrations: {
         integration: options.source.integration,
       },
-      run: async (event, io, ctx) => {
-        console.log("webhook.register", await event.json());
+      run: async (registerPayload, io, ctx) => {
+        console.log("webhook.register", registerPayload);
       },
       __internal: true,
     });
