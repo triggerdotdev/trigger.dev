@@ -181,6 +181,7 @@ model Integration {
   connections        IntegrationConnection[]
   jobIntegrations    JobIntegration[]
   sources            TriggerSource[]
+  webhooks           Webhook[]
   missingConnections MissingConnection[]
   RunConnection      RunConnection[]
 
@@ -354,6 +355,7 @@ model Project {
   runs          JobRun[]
   sources       TriggerSource[]
   httpEndpoints TriggerHttpEndpoint[]
+  webhooks      Webhook[]
 }
 
 model Endpoint {
@@ -1084,6 +1086,47 @@ model TriggerSourceOption {
   @@unique([name, value, sourceId])
 }
 
+model Webhook {
+  id String @id @default(cuid())
+
+  key    String
+  params Json?
+
+  // object hash these to compare
+  config        Json?
+  desiredConfig Json?
+
+  // should go in KV instead
+  // channelData Json?
+
+  version String @default("1")
+
+  // should go in KV instead
+  // metadata Json?
+
+  httpEndpoint   TriggerHttpEndpoint @relation(fields: [httpEndpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  httpEndpointId String @unique
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  integrationId String
+
+  // registrationJob   JobVersion? @relation(fields: [registrationJobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  // registrationJobId String?
+
+  // handlerJob   JobVersion? @relation(fields: [handlerJobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  // handlerJobId String?
+
+  active      Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([key, projectId])
+}
+
 model DynamicTriggerRegistration {
   id String @id @default(cuid())
 
@@ -1168,6 +1211,8 @@ model TriggerHttpEndpoint {
   title      String?
   icon       String?
   properties Json?
+
+  webhook Webhook?
 
   secretReference   SecretReference @relation(fields: [secretReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   secretReferenceId String

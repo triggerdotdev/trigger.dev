@@ -34,6 +34,7 @@ export class HandleHttpEndpointService {
       },
       include: {
         secretReference: true,
+        webhook: true,
         project: {
           include: {
             environments: {
@@ -187,10 +188,12 @@ export class HandleHttpEndpointService {
     }
 
     const ingestService = new IngestSendEvent();
+
     let rawBody: string | undefined;
     try {
       rawBody = await request.text();
     } catch (e) {}
+
     const url = requestUrl(request);
     const event = {
       headers: Object.fromEntries(request.headers) as Record<string, string>,
@@ -206,7 +209,9 @@ export class HandleHttpEndpointService {
       environment,
       {
         id: `${httpEndpoint.id}.${headerId}`,
-        name: `httpendpoint.${httpEndpoint.key}`,
+        name: httpEndpoint.webhook
+          ? `webhook.${httpEndpoint.webhook.key}`
+          : `httpendpoint.${httpEndpoint.key}`,
         source: httpEndpointEnvironment.source,
         payload: event,
         payloadType: "REQUEST",
