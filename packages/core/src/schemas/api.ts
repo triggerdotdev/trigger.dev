@@ -56,6 +56,8 @@ export const RegisterSourceChannelBodySchema = z.discriminatedUnion("type", [
   RegisterSQSTriggerSourceBodySchema,
 ]);
 
+export const DELIVER_WEBHOOK_REQUEST = "dev.trigger.webhook.deliver";
+
 export const REGISTER_SOURCE_EVENT_V1 = "dev.trigger.source.register";
 export const REGISTER_SOURCE_EVENT_V2 = "dev.trigger.source.register.v2";
 

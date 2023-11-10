@@ -4,7 +4,11 @@ import { prisma } from "~/db.server";
 import { requestUrl } from "~/utils/requestUrl.server";
 import { logger } from "../logger.server";
 import { json } from "@remix-run/server-runtime";
-import { RequestFilterSchema, requestFilterMatches } from "@trigger.dev/core";
+import {
+  DELIVER_WEBHOOK_REQUEST,
+  RequestFilterSchema,
+  requestFilterMatches,
+} from "@trigger.dev/core";
 import { EndpointApi } from "../endpointApi.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
 import { getSecretStore } from "../secrets/secretStore.server";
@@ -210,7 +214,7 @@ export class HandleHttpEndpointService {
       {
         id: `${httpEndpoint.id}.${headerId}`,
         name: httpEndpoint.webhook
-          ? `webhook.${httpEndpoint.webhook.key}`
+          ? `${DELIVER_WEBHOOK_REQUEST}.${httpEndpoint.webhook.key}`
           : `httpendpoint.${httpEndpoint.key}`,
         source: httpEndpointEnvironment.source,
         payload: event,

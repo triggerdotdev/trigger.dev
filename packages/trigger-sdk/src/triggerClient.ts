@@ -1,6 +1,7 @@
 import {
   API_VERSIONS,
   ConnectionAuth,
+  DELIVER_WEBHOOK_REQUEST,
   DeserializedJson,
   EphemeralEventDispatcherRequestBody,
   ErrorWithStackSchema,
@@ -25,6 +26,7 @@ import {
   RegisterSourceEventSchemaV2,
   RegisterSourceEventV2,
   RegisterTriggerBodyV2,
+  RequestWithRawBodySchema,
   RunJobBody,
   RunJobBodySchema,
   RunJobErrorResponse,
@@ -65,6 +67,26 @@ import type {
   TriggerPreprocessContext,
 } from "./types";
 
+const deliverWebhookEvent = (key: string): EventSpecification<Request> => ({
+  name: `${DELIVER_WEBHOOK_REQUEST}.${key}`,
+  title: "Deliver Webhook",
+  source: "internal",
+  icon: "webhook",
+  parsePayload: (rawPayload: any) => {
+    const result = RequestWithRawBodySchema.safeParse(rawPayload);
+
+    if (!result.success) {
+      throw new ParsedPayloadSchemaError(formatSchemaErrors(result.error.issues));
+    }
+
+    return new Request(new URL(result.data.url), {
+      method: result.data.method,
+      headers: result.data.headers,
+      body: result.data.rawBody,
+    });
+  },
+});
+
 const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
   name: REGISTER_SOURCE_EVENT_V2,
   title: "Register Source",
@@ -74,6 +96,7 @@ const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
 };
 
 import * as packageJson from "../package.json";
+import { formatSchemaErrors } from "./utils/formatSchemaErrors";
 
 export type TriggerClientOptions = {
   /** The `id` property is used to uniquely identify the client.
@@ -705,6 +728,22 @@ export class TriggerClient {
       },
       __internal: true,
     });
+
+    new Job(this, {
+      id: options.key,
+      name: options.key,
+      version: options.source.version,
+      trigger: new EventTrigger({
+        event: deliverWebhookEvent(options.key),
+      }),
+      integrations: {
+        integration: options.source.integration,
+      },
+      run: async (event, io, ctx) => {
+        console.log("ReceivedPayload", await event.json());
+      },
+      __internal: true,
+    });
   }
 
   attachDynamicSchedule(key: string): void {
@@ -719,6 +758,57 @@ export class TriggerClient {
     jobs.push({ id: job.id, version: job.version });
 
     this.#registeredSchedules[key] = jobs;
+  }
+
+  attachWebhook(options: {
+    key: string;
+    source: ExternalSource<any, any>;
+    event: EventSpecification<any>;
+    params: any;
+    options?: Record<string, string[]>;
+  }): void {
+    this.#registeredHttpSourceHandlers[options.key] = async (s, r) => {
+      return await options.source.handle(s, r, this.#internalLogger);
+    };
+
+    let registeredSource = this.#registeredSources[options.key];
+
+    if (!registeredSource) {
+      registeredSource = {
+        version: "2",
+        channel: options.source.channel,
+        key: options.key,
+        params: options.params,
+        options: {},
+        integration: {
+          id: options.source.integration.id,
+          metadata: options.source.integration.metadata,
+          authSource: options.source.integration.authSource,
+        },
+        registerSourceJob: {
+          id: options.key,
+          version: options.source.version,
+        },
+      };
+    }
+
+    this.#registeredSources[options.key] = registeredSource;
+
+    new Job(this, {
+      id: options.key,
+      name: options.key,
+      version: options.source.version,
+      trigger: new EventTrigger({
+        event: deliverWebhookEvent(options.key),
+      }),
+      integrations: {
+        integration: options.source.integration,
+      },
+      run: async (event, io, ctx) => {
+        console.log("ReceivedPayload", await event.json());
+      },
+      __internal: true,
+    });
   }
 
   async registerTrigger(
