@@ -1,4 +1,5 @@
 import { eventStream } from "remix-utils/sse/server";
+import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 
 type SseProps = {
@@ -17,6 +18,10 @@ type Event = {
 };
 
 export function sse({ request, pingInterval = 1000, updateInterval = 348, run }: SseProps) {
+  if (env.DISABLE_SSE === "1" || env.DISABLE_SSE === "true") {
+    return new Response("SSE disabled", { status: 200 });
+  }
+
   let pinger: NodeJS.Timer | undefined = undefined;
   let updater: NodeJS.Timer | undefined = undefined;
 
