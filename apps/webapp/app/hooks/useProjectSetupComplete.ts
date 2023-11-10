@@ -1,9 +1,9 @@
 import { useEffect } from "react";
-import { useEventSource } from "remix-utils/sse/react";
 import { projectPath, projectStreamingPath } from "~/utils/pathBuilder";
 import { useProject } from "./useProject";
 import { useOrganization } from "./useOrganizations";
 import { useNavigate } from "@remix-run/react";
+import { useEventSource } from "./useEventSource";
 
 export function useProjectSetupComplete() {
   const project = useProject();

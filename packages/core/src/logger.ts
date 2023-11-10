@@ -27,7 +27,7 @@ export class Logger {
     this.#name = name;
     this.#level = logLevels.indexOf((process.env.TRIGGER_LOG_LEVEL ?? level) as LogLevel);
     this.#filteredKeys = filteredKeys;
-    this.#jsonReplacer = jsonReplacer;
+    this.#jsonReplacer = createReplacer(jsonReplacer);
   }
 
   // Return a new Logger instance with the same name and a new log level
@@ -84,7 +84,7 @@ export class Logger {
       level,
     };
 
-    loggerFunction(JSON.stringify(structuredLog, createReplacer(this.#jsonReplacer)));
+    loggerFunction(JSON.stringify(structuredLog, this.#jsonReplacer));
   }
 }
 
@@ -115,12 +115,16 @@ function safeJsonClone(obj: unknown) {
   try {
     return JSON.parse(JSON.stringify(obj, bigIntReplacer));
   } catch (e) {
-    return obj;
+    return;
   }
 }
 
 // If args is has a single item that is an object, return that object
 function structureArgs(args: Array<Record<string, unknown>>, filteredKeys: string[] = []) {
+  if (!args) {
+    return;
+  }
+
   if (args.length === 0) {
     return;
   }

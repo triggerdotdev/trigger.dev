@@ -1,6 +1,6 @@
 import { useLoaderData } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { useEventSource } from "remix-utils/sse/react";
+import { useEventSource } from "~/hooks/useEventSource";
 import { z } from "zod";
 
 export async function loader({ request }: LoaderFunctionArgs) {

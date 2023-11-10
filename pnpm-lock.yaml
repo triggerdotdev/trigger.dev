@@ -199,7 +199,7 @@ importers:
       react-use: ^17.4.0
       recharts: ^2.8.0
       remix-auth: ^3.6.0
-      remix-auth-email-link: ^2.1.0
+      remix-auth-email-link: 2.0.2
       remix-auth-github: ^1.6.0
       remix-typedjson: 0.3.1
       remix-utils: ^7.1.0
@@ -301,7 +301,7 @@ importers:
       react-use: 17.4.0_biqbaboplfbrettd7655fr4n2y
       recharts: 2.8.0_v2m5e27vhdewzwhryxwfaorcca
       remix-auth: 3.6.0_ybjp5xbtg4zthziheradfmei64
-      remix-auth-email-link: 2.1.0_esw6v6dv7ru6ju3hn3i62b7n2m
+      remix-auth-email-link: 2.0.2_esw6v6dv7ru6ju3hn3i62b7n2m
       remix-auth-github: 1.6.0_esw6v6dv7ru6ju3hn3i62b7n2m
       remix-typedjson: 0.3.1_7t5z2pmrpxrx2dh2jpp55scw5q
       remix-utils: 7.1.0_nb5lmxjinjv74o775xrkc35gga
@@ -411,8 +411,8 @@ importers:
 
   integrations/airtable:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.5
-      '@trigger.dev/sdk': workspace:^2.2.5
+      '@trigger.dev/integration-kit': workspace:^2.2.6
+      '@trigger.dev/sdk': workspace:^2.2.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       airtable: ^0.12.1
@@ -439,8 +439,8 @@ importers:
       '@octokit/types': ^9.2.3
       '@octokit/webhooks': ^10.4.0
       '@octokit/webhooks-types': ^6.10.0
-      '@trigger.dev/integration-kit': workspace:^2.2.5
-      '@trigger.dev/sdk': workspace:^2.2.5
+      '@trigger.dev/integration-kit': workspace:^2.2.6
+      '@trigger.dev/sdk': workspace:^2.2.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       octokit: ^2.0.14
@@ -466,8 +466,8 @@ importers:
   integrations/linear:
     specifiers:
       '@linear/sdk': ^8.0.0
-      '@trigger.dev/integration-kit': workspace:^2.2.5
-      '@trigger.dev/sdk': workspace:^2.2.5
+      '@trigger.dev/integration-kit': workspace:^2.2.6
+      '@trigger.dev/sdk': workspace:^2.2.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -488,8 +488,8 @@ importers:
 
   integrations/openai:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.5
-      '@trigger.dev/sdk': workspace:^2.2.5
+      '@trigger.dev/integration-kit': workspace:^2.2.6
+      '@trigger.dev/sdk': workspace:^2.2.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/jest': ^29.5.3
       '@types/node': '18'
@@ -516,8 +516,8 @@ importers:
   integrations/plain:
     specifiers:
       '@team-plain/typescript-sdk': ^2.7.0
-      '@trigger.dev/integration-kit': workspace:^2.2.5
-      '@trigger.dev/sdk': workspace:^2.2.5
+      '@trigger.dev/integration-kit': workspace:^2.2.6
+      '@trigger.dev/sdk': workspace:^2.2.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
@@ -534,8 +534,8 @@ importers:
 
   integrations/replicate:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.5
-      '@trigger.dev/sdk': workspace:^2.2.5
+      '@trigger.dev/integration-kit': workspace:^2.2.6
+      '@trigger.dev/sdk': workspace:^2.2.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       replicate: ^0.18.1
@@ -557,8 +557,8 @@ importers:
 
   integrations/resend:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.5
-      '@trigger.dev/sdk': workspace:^2.2.5
+      '@trigger.dev/integration-kit': workspace:^2.2.6
+      '@trigger.dev/sdk': workspace:^2.2.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       resend: ^2.0.0
@@ -577,8 +577,8 @@ importers:
   integrations/sendgrid:
     specifiers:
       '@sendgrid/mail': ^7.7.0
-      '@trigger.dev/integration-kit': workspace:^2.2.5
-      '@trigger.dev/sdk': workspace:^2.2.5
+      '@trigger.dev/integration-kit': workspace:^2.2.6
+      '@trigger.dev/sdk': workspace:^2.2.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -598,7 +598,7 @@ importers:
   integrations/slack:
     specifiers:
       '@slack/web-api': ^6.8.1
-      '@trigger.dev/sdk': workspace:^2.2.5
+      '@trigger.dev/sdk': workspace:^2.2.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
@@ -616,8 +616,8 @@ importers:
 
   integrations/stripe:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.5
-      '@trigger.dev/sdk': workspace:^2.2.5
+      '@trigger.dev/integration-kit': workspace:^2.2.6
+      '@trigger.dev/sdk': workspace:^2.2.6
       '@types/node': 16.x
       rimraf: ^3.0.2
       stripe: ^12.14.0
@@ -640,8 +640,8 @@ importers:
   integrations/supabase:
     specifiers:
       '@supabase/supabase-js': ^2.26.0
-      '@trigger.dev/integration-kit': workspace:^2.2.5
-      '@trigger.dev/sdk': workspace:^2.2.5
+      '@trigger.dev/integration-kit': workspace:^2.2.6
+      '@trigger.dev/sdk': workspace:^2.2.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 18.x
       rimraf: ^3.0.2
@@ -664,8 +664,8 @@ importers:
 
   integrations/typeform:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.5
-      '@trigger.dev/sdk': workspace:^2.2.5
+      '@trigger.dev/integration-kit': workspace:^2.2.6
+      '@trigger.dev/sdk': workspace:^2.2.6
       '@typeform/api-client': ^1.8.0
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -919,7 +919,7 @@ importers:
 
   packages/express:
     specifiers:
-      '@trigger.dev/sdk': workspace:^2.2.5
+      '@trigger.dev/sdk': workspace:^2.2.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/express': ^4.17.13
@@ -967,7 +967,7 @@ importers:
     specifiers:
       '@nestjs/common': ^10.2.4
       '@remix-run/web-fetch': ^4.3.5
-      '@trigger.dev/sdk': workspace:^2.2.5
+      '@trigger.dev/sdk': workspace:^2.2.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/express': ^4.17.13
@@ -1020,7 +1020,7 @@ importers:
   packages/react:
     specifiers:
       '@tanstack/react-query': 5.0.0-beta.2
-      '@trigger.dev/core': workspace:^2.2.5
+      '@trigger.dev/core': workspace:^2.2.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/react': 18.2.17
@@ -1115,8 +1115,8 @@ importers:
 
   packages/trigger-sdk:
     specifiers:
-      '@trigger.dev/core': workspace:^2.2.5
-      '@trigger.dev/core-backend': workspace:^2.2.5
+      '@trigger.dev/core': workspace:^2.2.6
+      '@trigger.dev/core-backend': workspace:^2.2.6
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/node': '18'
@@ -29420,16 +29420,15 @@ packages:
       retext-smartypants: 5.2.0
       unist-util-visit: 4.1.2
 
-  /remix-auth-email-link/2.1.0_esw6v6dv7ru6ju3hn3i62b7n2m:
-    resolution: {integrity: sha512-1Hp4QDqN17tEEfiRd/6g1XDw6o6y+lyeeseDc0EGrR4vZcR7HLPR8ImfEtxplYpXlFSpOO7mzl6GgJprynjgcg==}
+  /remix-auth-email-link/2.0.2_esw6v6dv7ru6ju3hn3i62b7n2m:
+    resolution: {integrity: sha512-Lze9c50fsqBpixXQKe37wI2Dm4rlYYkNA6Eskxk8erQ7tbyN8xiFXOgo7Y3Al0SSjzkezw8au3uc2vCLJ8A5mQ==}
     peerDependencies:
-      '@remix-run/server-runtime': ^2.0.1
-      remix-auth: ^3.6.0
+      '@remix-run/server-runtime': ^1.1.1
+      remix-auth: ^3.2.1
     dependencies:
       '@remix-run/server-runtime': 2.1.0_typescript@5.2.2
       crypto-js: 4.1.1
       remix-auth: 3.6.0_ybjp5xbtg4zthziheradfmei64
-      yarn: 1.22.19
     dev: false
 
   /remix-auth-github/1.6.0_esw6v6dv7ru6ju3hn3i62b7n2m:
@@ -31855,7 +31854,7 @@ packages:
     dependencies:
       bs-logger: 0.2.6
       fast-json-stable-stringify: 2.1.0
-      jest: 29.6.2_@types+node@18.15.13
+      jest: 29.6.2_@types+node@16.18.11
       jest-util: 29.6.2
       json5: 2.2.3
       lodash.memoize: 4.1.2
@@ -34237,13 +34236,6 @@ packages:
       string-width: 4.2.3
       y18n: 5.0.8
       yargs-parser: 21.1.1
-
-  /yarn/1.22.19:
-    resolution: {integrity: sha512-/0V5q0WbslqnwP91tirOvldvYISzaqhClxzyUKXYxs07yUILIs5jx/k6CFe8bvKSkds5w+eiOqta39Wk3WxdcQ==}
-    engines: {node: '>=4.0.0'}
-    hasBin: true
-    requiresBuild: true
-    dev: false
 
   /yauzl/2.10.0:
     resolution: {integrity: sha512-p4a9I6X6nu6IhoGmBqAcbJy1mlC4j27vEPZX9F4L4/vZT3Lyq1VkFHw/V/PUcB9Buo+DG3iHkT0x3Qya58zc3g==}

@@ -58,6 +58,7 @@ const EnvironmentSchema = z.object({
   /** Optional. Only used if you use the apps/proxy */
   AWS_SQS_QUEUE_URL: z.string().optional(),
   AWS_SQS_BATCH_SIZE: z.coerce.number().int().optional().default(10),
+  DISABLE_SSE: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

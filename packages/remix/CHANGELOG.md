@@ -1,5 +1,15 @@
 # @trigger.dev/remix
 
+## 2.2.6
+
+### Patch Changes
+
+- Updated dependencies [cb1825bf]
+- Updated dependencies [cb1825bf]
+- Updated dependencies [d0217344]
+- Updated dependencies [cb1825bf]
+  - @trigger.dev/sdk@2.2.6
+
 ## 2.2.5
 
 ### Patch Changes

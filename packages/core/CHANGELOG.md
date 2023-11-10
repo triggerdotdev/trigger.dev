@@ -1,5 +1,13 @@
 # internal-platform
 
+## 2.2.6
+
+### Patch Changes
+
+- cb1825bf: OpenAI support for 4.16.0
+- cb1825bf: Add support for background polling and use that in OpenAI integration to power assistants
+- d0217344: Add `io.sendEvents()`
+
 ## 2.2.5
 
 ### Patch Changes
