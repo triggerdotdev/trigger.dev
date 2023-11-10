@@ -1,5 +1,19 @@
 # @trigger.dev/sdk
 
+## 2.2.6
+
+### Patch Changes
+
+- cb1825bf: OpenAI support for 4.16.0
+- cb1825bf: Add support for background polling and use that in OpenAI integration to power assistants
+- d0217344: Add `io.sendEvents()`
+- cb1825bf: Adding support for waitForEvent
+- Updated dependencies [cb1825bf]
+- Updated dependencies [cb1825bf]
+- Updated dependencies [d0217344]
+  - @trigger.dev/core@2.2.6
+  - @trigger.dev/core-backend@2.2.6
+
 ## 2.2.5
 
 ### Patch Changes
