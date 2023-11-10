@@ -290,6 +290,7 @@ export class TriggerClient {
         const body: IndexEndpointResponse = {
           jobs: this.#buildJobsIndex(),
           sources: Object.values(this.#registeredSources),
+          webhooks: Object.values(this.#registeredWebhooks),
           dynamicTriggers: Object.values(this.#registeredDynamicTriggers).map((trigger) => ({
             id: trigger.id,
             jobs: this.#jobMetadataByDynamicTriggers[trigger.id] ?? [],

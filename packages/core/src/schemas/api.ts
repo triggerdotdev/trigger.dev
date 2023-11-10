@@ -335,6 +335,7 @@ export type HttpEndpointMetadata = z.infer<typeof HttpEndpointMetadataSchema>;
 export const IndexEndpointResponseSchema = z.object({
   jobs: z.array(JobMetadataSchema),
   sources: z.array(SourceMetadataSchema),
+  webhooks: z.array(WebhookMetadataSchema),
   dynamicTriggers: z.array(DynamicTriggerEndpointMetadataSchema),
   dynamicSchedules: z.array(RegisterDynamicSchedulePayloadSchema),
   httpEndpoints: z.array(HttpEndpointMetadataSchema).optional(),
@@ -352,6 +353,7 @@ export type EndpointIndexError = z.infer<typeof EndpointIndexErrorSchema>;
 const IndexEndpointStatsSchema = z.object({
   jobs: z.number(),
   sources: z.number(),
+  webhooks: z.number(),
   dynamicTriggers: z.number(),
   dynamicSchedules: z.number(),
   disabledJobs: z.number().default(0),
