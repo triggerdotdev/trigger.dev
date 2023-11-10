@@ -353,6 +353,7 @@ export class PerformEndpointIndexService {
         data: {
           jobs,
           sources,
+          webhooks,
           dynamicTriggers,
           dynamicSchedules,
           httpEndpoints,
