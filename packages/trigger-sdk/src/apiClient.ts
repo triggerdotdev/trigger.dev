@@ -36,6 +36,7 @@ import {
   CompleteTaskBodyV2Input,
   EphemeralEventDispatcherRequestBody,
   EphemeralEventDispatcherResponseBodySchema,
+  UpdateWebhookBody,
 } from "@trigger.dev/core";
 
 import { z } from "zod";
@@ -303,6 +304,32 @@ export class ApiClient {
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify(source),
+      }
+    );
+
+    return response;
+  }
+
+  async updateWebhook(
+    key: string,
+    webhook: UpdateWebhookBody
+  ): Promise<TriggerSource> {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("activating webhook", {
+      webhook,
+    });
+
+    const response = await zodfetch(
+      TriggerSourceSchema,
+      `${this.#apiUrl}/api/v1/webhooks/${key}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(webhook),
       }
     );
 

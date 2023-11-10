@@ -18,6 +18,7 @@ import {
   SendEventOptions,
   ServerTask,
   UpdateTriggerSourceBodyV2,
+  UpdateWebhookBody,
   supportsFeature,
 } from "@trigger.dev/core";
 import { BloomFilter } from "@trigger.dev/core-backend";
@@ -820,6 +821,29 @@ export class IO {
         redact: {
           paths: ["secret"],
         },
+      }
+    );
+  }
+
+  async updateWebhook(
+    cacheKey: string | any[],
+    options: { key: string } & UpdateWebhookBody
+  ) {
+    return this.runTask(
+      cacheKey,
+      async (task) => {
+        return await this._apiClient.updateWebhook(options.key, options);
+      },
+      {
+        name: "Update Webhook",
+        description: "Update Webhook",
+        properties: [
+          {
+            label: "key",
+            text: options.key,
+          },
+        ],
+        params: options,
       }
     );
   }

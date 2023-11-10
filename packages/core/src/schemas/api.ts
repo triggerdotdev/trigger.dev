@@ -37,6 +37,11 @@ export const UpdateTriggerSourceBodyV2Schema = z.object({
 });
 export type UpdateTriggerSourceBodyV2 = z.infer<typeof UpdateTriggerSourceBodyV2Schema>;
 
+export const UpdateWebhookBodySchema = z.object({
+  active: z.boolean(),
+});
+export type UpdateWebhookBody = z.infer<typeof UpdateWebhookBodySchema>;
+
 export const RegisterHTTPTriggerSourceBodySchema = z.object({
   type: z.literal("HTTP"),
   url: z.string().url(),
