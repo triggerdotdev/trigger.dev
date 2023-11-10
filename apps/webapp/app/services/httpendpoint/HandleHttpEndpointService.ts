@@ -216,7 +216,7 @@ export class HandleHttpEndpointService {
         name: httpEndpoint.webhook
           ? `${DELIVER_WEBHOOK_REQUEST}.${httpEndpoint.webhook.key}`
           : `httpendpoint.${httpEndpoint.key}`,
-        source: httpEndpointEnvironment.source,
+        source: httpEndpoint.webhook ? undefined : httpEndpointEnvironment.source,
         payload: event,
         payloadType: "REQUEST",
       },

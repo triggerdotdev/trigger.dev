@@ -730,8 +730,8 @@ export class TriggerClient {
     });
 
     new Job(this, {
-      id: options.key,
-      name: options.key,
+      id: `webhook.deliver.${options.key}`,
+      name: `webhook.deliver.${options.key}`,
       version: options.source.version,
       trigger: new EventTrigger({
         event: deliverWebhookEvent(options.key),
