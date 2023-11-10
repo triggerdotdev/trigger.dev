@@ -1,7 +1,7 @@
 import { PrismaClient, prisma } from "~/db.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
-import { sse } from "~/utils/sse";
+import { sse } from "~/utils/sse.server";
 
 type EnvironmentSignalsMap = {
   [x: string]: {

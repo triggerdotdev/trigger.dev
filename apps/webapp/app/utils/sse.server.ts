@@ -1,4 +1,5 @@
 import { eventStream } from "remix-utils/sse/server";
+import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 
 type SseProps = {
@@ -17,20 +18,11 @@ type Event = {
 };
 
 export function sse({ request, pingInterval = 1000, updateInterval = 348, run }: SseProps) {
-  let pinger: NodeJS.Timer | undefined = undefined;
-  let updater: NodeJS.Timer | undefined = undefined;
+  if (env.DISABLE_SSE === "1" || env.DISABLE_SSE === "true") {
+    return new Response("SSE disabled", { status: 200 });
+  }
 
-  const abort = () => {
-    if (pinger) {
-      clearInterval(pinger);
-    }
-
-    if (updater) {
-      clearInterval(updater);
-    }
-  };
-
-  return eventStream(request.signal, (send) => {
+  return eventStream(request.signal, (send, close) => {
     const safeSend = (args: { event?: string; data: string }) => {
       try {
         send(args);
@@ -53,18 +45,34 @@ export function sse({ request, pingInterval = 1000, updateInterval = 348, run }:
           });
         }
 
-        abort();
+        close();
       }
     };
 
-    pinger = setInterval(() => {
+    const pinger = setInterval(() => {
+      if (request.signal.aborted) {
+        return close();
+      }
+
       safeSend({ event: "ping", data: new Date().toISOString() });
     }, pingInterval);
 
-    updater = setInterval(async () => {
-      run(safeSend, abort);
+    const updater = setInterval(() => {
+      if (request.signal.aborted) {
+        return close();
+      }
+
+      run(safeSend, close);
     }, updateInterval);
 
-    return abort;
+    const timeout = setTimeout(() => {
+      close();
+    }, 60 * 1000); // 1 minute
+
+    return () => {
+      clearInterval(updater);
+      clearInterval(pinger);
+      clearTimeout(timeout);
+    };
   });
 }

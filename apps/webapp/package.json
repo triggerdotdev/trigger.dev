@@ -102,7 +102,7 @@
     "react-use": "^17.4.0",
     "recharts": "^2.8.0",
     "remix-auth": "^3.6.0",
-    "remix-auth-email-link": "^2.1.0",
+    "remix-auth-email-link": "2.0.2",
     "remix-auth-github": "^1.6.0",
     "remix-typedjson": "0.3.1",
     "remix-utils": "^7.1.0",

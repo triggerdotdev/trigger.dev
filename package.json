@@ -22,6 +22,7 @@
     "docker": "docker-compose -p triggerdotdev-docker -f docker/docker-compose.yml up -d",
     "docker:stop": "docker-compose -p triggerdotdev-docker -f docker/docker-compose.yml stop",
     "dev:docker": "docker-compose -p triggerdotdev-dev-docker -f docker/dev-compose.yml up -d",
+    "dev:docker:build": "docker-compose -p triggerdotdev-dev-docker -f docker/dev-compose.yml up -d --build",
     "dev:docker:stop": "docker-compose -p triggerdotdev-dev-docker -f docker/dev-compose.yml stop",
     "test": "turbo run test",
     "test:dev": "turbo run test:dev",

@@ -49,6 +49,7 @@ const EnvironmentSchema = z.object({
   TASK_OPERATION_WORKER_CONCURRENCY: z.coerce.number().int().default(10),
   TASK_OPERATION_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   GRACEFUL_SHUTDOWN_TIMEOUT: z.coerce.number().int().default(60000),
+  DISABLE_SSE: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
