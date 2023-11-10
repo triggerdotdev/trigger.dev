@@ -2,7 +2,7 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { useFetcher, useRevalidator } from "@remix-run/react";
 import { useEffect } from "react";
-import { useEventSource } from "remix-utils/sse/react";
+import { useEventSource } from "~/hooks/useEventSource";
 import { InlineCode } from "~/components/code/InlineCode";
 import {
   EndpointIndexStatusIcon,

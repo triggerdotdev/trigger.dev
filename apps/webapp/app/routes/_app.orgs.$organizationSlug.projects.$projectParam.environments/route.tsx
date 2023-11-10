@@ -2,7 +2,7 @@ import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { useEventSource } from "remix-utils/sse/react";
+import { useEventSource } from "~/hooks/useEventSource";
 import {
   EndpointIndexStatusIcon,
   EndpointIndexStatusLabel,
