@@ -51,7 +51,7 @@ export function FirstEndpointSheet({ projectId, environments }: FirstEndpointShe
   return (
     <Sheet>
       <SheetTrigger>
-        <Button variant="secondary/medium">Add your first endpoint</Button>
+        <ButtonContent variant="secondary/medium">Add your first endpoint</ButtonContent>
       </SheetTrigger>
       <SheetContent size="lg">
         <SheetHeader>
