@@ -746,22 +746,6 @@ export class TriggerClient {
       },
       __internal: true,
     });
-
-    new Job(this, {
-      id: `webhook.deliver.${options.key}`,
-      name: `webhook.deliver.${options.key}`,
-      version: options.source.version,
-      trigger: new EventTrigger({
-        event: deliverWebhookEvent(options.key),
-      }),
-      integrations: {
-        integration: options.source.integration,
-      },
-      run: async (event, io, ctx) => {
-        console.log("ReceivedPayload", await event.json());
-      },
-      __internal: true,
-    });
   }
 
   attachDynamicSchedule(key: string): void {
