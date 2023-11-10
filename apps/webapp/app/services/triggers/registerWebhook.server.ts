@@ -32,7 +32,10 @@ export class RegisterWebhookService {
           desiredConfig: webhookMetadata.config,
           httpEndpoint: {
             connect: {
-              id: webhookMetadata.httpEndpoint.id,
+              key_projectId: {
+                key: webhookMetadata.httpEndpoint.id,
+                projectId: endpoint.projectId,
+              },
             },
           },
           project: {
@@ -42,7 +45,10 @@ export class RegisterWebhookService {
           },
           integration: {
             connect: {
-              id: webhookMetadata.integration.id,
+              organizationId_slug: {
+                organizationId: endpoint.organizationId,
+                slug: webhookMetadata.integration.id,
+              },
             },
           },
         },
@@ -52,6 +58,8 @@ export class RegisterWebhookService {
           desiredConfig: webhookMetadata.config,
         },
       });
+
+      // TODO: enqueue webhook activation
 
       return webhook;
     });
