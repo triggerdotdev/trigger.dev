@@ -1,5 +1,14 @@
 # @trigger.dev/react
 
+## 2.2.6
+
+### Patch Changes
+
+- Updated dependencies [cb1825bf]
+- Updated dependencies [cb1825bf]
+- Updated dependencies [d0217344]
+  - @trigger.dev/core@2.2.6
+
 ## 2.2.5
 
 ### Patch Changes
