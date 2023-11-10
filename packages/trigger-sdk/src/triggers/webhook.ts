@@ -95,7 +95,7 @@ type WebhookOptions<
   properties?: (params: TParams) => DisplayProperty[];
 };
 
-export class Webhook<
+export class TriggerWebhook<
   TIntegration extends TriggerIntegration,
   TParams extends any,
   TConfig extends Record<string, string[]> = any,
@@ -168,7 +168,7 @@ export class Webhook<
   }
 }
 
-export type WebhookParams<TWebhook extends Webhook<any, any, any>> = TWebhook extends Webhook<
+export type WebhookParams<TWebhook extends TriggerWebhook<any, any, any>> = TWebhook extends TriggerWebhook<
   any,
   infer TParams,
   any
@@ -178,7 +178,7 @@ export type WebhookParams<TWebhook extends Webhook<any, any, any>> = TWebhook ex
 
 export type WebhookTriggerOptions<
   TEventSpecification extends EventSpecification<any>,
-  TEventSource extends Webhook<any, any, any>,
+  TEventSource extends TriggerWebhook<any, any, any>,
   TConfig extends Record<string, string[]> = any,
 > = {
   event: TEventSpecification;
@@ -189,7 +189,7 @@ export type WebhookTriggerOptions<
 
 export class WebhookTrigger<
   TEventSpecification extends EventSpecification<any>,
-  TEventSource extends Webhook<any, any, any>,
+  TEventSource extends TriggerWebhook<any, any, any>,
 > implements Trigger<TEventSpecification>
 {
   constructor(private options: WebhookTriggerOptions<TEventSpecification, TEventSource>) {}

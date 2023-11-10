@@ -111,7 +111,7 @@ const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
 
 import * as packageJson from "../package.json";
 import { formatSchemaErrors } from "./utils/formatSchemaErrors";
-import { Webhook } from "./triggers/webhook";
+import { TriggerWebhook } from "./triggers/webhook";
 import { z } from "zod";
 
 export type TriggerClientOptions = {
@@ -780,7 +780,7 @@ export class TriggerClient {
 
   attachWebhook(options: {
     key: string;
-    source: Webhook<any, any>;
+    source: TriggerWebhook<any, any>;
     event: EventSpecification<any>;
     params: any;
     config: any;
