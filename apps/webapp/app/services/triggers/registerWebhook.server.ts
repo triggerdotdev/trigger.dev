@@ -2,8 +2,22 @@ import { REGISTER_WEBHOOK, WebhookMetadata } from "@trigger.dev/core";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
-import { Webhook } from "@trigger.dev/database";
+import { Prisma } from "@trigger.dev/database";
 import { ulid } from "../ulid.server";
+import { getSecretStore } from "../secrets/secretStore.server";
+import { z } from "zod";
+import { httpEndpointUrl } from "../httpendpoint/HandleHttpEndpointService";
+import { logger } from "../logger.server";
+
+type ExtendedWebhook = Prisma.WebhookGetPayload<{
+  include: {
+    httpEndpoint: {
+      include: {
+        secretReference: true;
+      };
+    };
+  };
+}>;
 
 export class RegisterWebhookService {
   #prismaClient: PrismaClientOrTransaction;
@@ -70,22 +84,44 @@ export class RegisterWebhookService {
           params: webhookMetadata.params,
           desiredConfig: webhookMetadata.config,
         },
+        include: {
+          httpEndpoint: {
+            include: {
+              secretReference: true,
+            },
+          },
+        },
       });
 
       return webhook;
     });
   }
 
-  async #activateWebhook(endpoint: ExtendedEndpoint, webhook: Webhook) {
+  async #activateWebhook(endpoint: ExtendedEndpoint, webhook: ExtendedWebhook) {
+    const { httpEndpoint } = webhook;
+
+    const secretStore = getSecretStore(httpEndpoint.secretReference.provider);
+
+    const secretData = await secretStore.getSecretOrThrow(
+      z.object({ secret: z.string() }),
+      httpEndpoint.secretReference.key
+    );
+
     const ingestService = new IngestSendEvent();
 
     await ingestService.call(endpoint.environment, {
       id: ulid(),
       name: `${REGISTER_WEBHOOK}.${webhook.key}`,
       payload: {
+        active: webhook.active,
+        url: httpEndpointUrl({
+          httpEndpointId: httpEndpoint.id,
+          environment: endpoint.environment,
+        }),
+        secret: secretData.secret,
         config: {
           current: webhook.config ?? {},
-          desired: webhook.desiredConfig ?? {}
+          desired: webhook.desiredConfig ?? {},
         },
       },
     });
