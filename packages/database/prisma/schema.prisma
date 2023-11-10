@@ -1099,8 +1099,6 @@ model Webhook {
   // should go in KV instead
   // channelData Json?
 
-  version String @default("1")
-
   // should go in KV instead
   // metadata Json?
 

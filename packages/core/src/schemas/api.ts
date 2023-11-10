@@ -56,7 +56,21 @@ export const RegisterSourceChannelBodySchema = z.discriminatedUnion("type", [
   RegisterSQSTriggerSourceBodySchema,
 ]);
 
+export const REGISTER_WEBHOOK = "dev.trigger.webhook.register";
 export const DELIVER_WEBHOOK_REQUEST = "dev.trigger.webhook.deliver";
+
+export const RegisterWebhookSourceSchema = z.object({
+  key: z.string(),
+  params: z.any(),
+  config: z.any(),
+  active: z.boolean(),
+  secret: z.string(),
+  url: z.string(),
+  data: DeserializedJsonSchema.optional(),
+  clientId: z.string().optional(),
+});
+
+export type RegisterWebhookSource = z.infer<typeof RegisterWebhookSourceSchema>;
 
 export const REGISTER_SOURCE_EVENT_V1 = "dev.trigger.source.register";
 export const REGISTER_SOURCE_EVENT_V2 = "dev.trigger.source.register.v2";
@@ -276,6 +290,19 @@ const SourceMetadataSchema = z.preprocess(
 );
 
 type SourceMetadata = Prettify<z.infer<typeof SourceMetadataSchema>>;
+
+export const WebhookMetadataSchema = z.object({
+  key: z.string(),
+  params: z.any(),
+  config: z.record(z.array(z.string())),
+  integration: IntegrationConfigSchema,
+  httpEndpoint: z
+    .object({
+      id: z.string(),
+    })
+});
+
+export type WebhookMetadata = z.infer<typeof WebhookMetadataSchema>;
 
 export const DynamicTriggerEndpointMetadataSchema = z.object({
   id: z.string(),
