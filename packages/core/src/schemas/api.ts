@@ -80,8 +80,8 @@ export type RegisterWebhookSource = z.infer<typeof RegisterWebhookSourceSchema>;
 export const RegisterWebhookPayloadSchema = z.object({
   active: z.boolean(),
   config: z.object({
-    current: z.any(),
-    desired: z.any(),
+    current: z.record(z.string().array()),
+    desired: z.record(z.string().array()),
   }),
   // from HTTP Endpoint
   url: z.string(),

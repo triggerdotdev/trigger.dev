@@ -5,6 +5,7 @@ import {
   HttpSourceResponseMetadata,
   Logger,
   NormalizedResponse,
+  RegisterWebhookPayload,
   RegisterWebhookSource,
   SendEvent,
   TriggerMetadata,
@@ -14,11 +15,37 @@ import { IOWithIntegrations, TriggerIntegration } from "../integrations";
 import { IO } from "../io";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
-import type { EventSpecification, SchemaParser, Trigger, TriggerContext } from "../types";
+import type {
+  ConfigDiff,
+  EventSpecification,
+  SchemaParser,
+  Trigger,
+  TriggerContext,
+} from "../types";
 import { slugifyId } from "../utils";
 import { SerializableJson } from "@trigger.dev/core";
 import { ConnectionAuth } from "@trigger.dev/core";
 import { Prettify } from "@trigger.dev/core";
+
+type WebhookCRUDFunction<TIntegration extends TriggerIntegration> = (options: {
+  io: IOWithIntegrations<{ integration: TIntegration }>;
+  ctx: RegisterWebhookPayload & {
+    config: {
+      diff: ConfigDiff;
+    };
+  };
+}) => Promise<any>;
+
+interface WebhookCRUD<TIntegration extends TriggerIntegration> {
+  create: WebhookCRUDFunction<TIntegration>;
+  read: WebhookCRUDFunction<TIntegration>;
+  update?: WebhookCRUDFunction<TIntegration>;
+  delete: WebhookCRUDFunction<TIntegration>;
+}
+
+export type WebhookConfig<TConfigKeys extends string> = {
+  [K in TConfigKeys]: string[];
+};
 
 type RegisterFunctionEvent<TParams extends any, TConfig extends Record<string, string[]> = any> = {
   source: {
@@ -88,6 +115,7 @@ type WebhookOptions<
     config?: SchemaParser<TConfig>;
   };
   integration: TIntegration;
+  crud: WebhookCRUD<TIntegration>;
   register: RegisterFunction<TIntegration, TParams, TConfig>;
   filter?: FilterFunction<TParams, TConfig>;
   handler: HandlerFunction<TParams, TIntegration>;
@@ -95,7 +123,7 @@ type WebhookOptions<
   properties?: (params: TParams) => DisplayProperty[];
 };
 
-export class TriggerWebhook<
+export class WebhookSource<
   TIntegration extends TriggerIntegration,
   TParams extends any,
   TConfig extends Record<string, string[]> = any,
@@ -119,6 +147,10 @@ export class TriggerWebhook<
 
   properties(params: TParams): DisplayProperty[] {
     return this.options.properties?.(params) ?? [];
+  }
+
+  get crud() {
+    return this.options.crud;
   }
 
   async register(
@@ -168,17 +200,12 @@ export class TriggerWebhook<
   }
 }
 
-export type WebhookParams<TWebhook extends TriggerWebhook<any, any, any>> = TWebhook extends TriggerWebhook<
-  any,
-  infer TParams,
-  any
->
-  ? TParams
-  : never;
+export type WebhookParams<TWebhook extends WebhookSource<any, any, any>> =
+  TWebhook extends WebhookSource<any, infer TParams, any> ? TParams : never;
 
 export type WebhookTriggerOptions<
   TEventSpecification extends EventSpecification<any>,
-  TEventSource extends TriggerWebhook<any, any, any>,
+  TEventSource extends WebhookSource<any, any, any>,
   TConfig extends Record<string, string[]> = any,
 > = {
   event: TEventSpecification;
@@ -189,7 +216,7 @@ export type WebhookTriggerOptions<
 
 export class WebhookTrigger<
   TEventSpecification extends EventSpecification<any>,
-  TEventSource extends TriggerWebhook<any, any, any>,
+  TEventSource extends WebhookSource<any, any, any>,
 > implements Trigger<TEventSpecification>
 {
   constructor(private options: WebhookTriggerOptions<TEventSpecification, TEventSource>) {}

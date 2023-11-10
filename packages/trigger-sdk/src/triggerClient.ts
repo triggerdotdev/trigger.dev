@@ -1,3 +1,4 @@
+import { diff, isEqual } from "ohash";
 import {
   API_VERSIONS,
   ConnectionAuth,
@@ -111,7 +112,7 @@ const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
 
 import * as packageJson from "../package.json";
 import { formatSchemaErrors } from "./utils/formatSchemaErrors";
-import { TriggerWebhook } from "./triggers/webhook";
+import { WebhookSource } from "./triggers/webhook";
 import { z } from "zod";
 
 export type TriggerClientOptions = {
@@ -764,7 +765,7 @@ export class TriggerClient {
 
   attachWebhook(options: {
     key: string;
-    source: TriggerWebhook<any, any>;
+    source: WebhookSource<any, any>;
     event: EventSpecification<any>;
     params: any;
     config: any;
@@ -820,7 +821,78 @@ export class TriggerClient {
         integration: options.source.integration,
       },
       run: async (registerPayload, io, ctx) => {
-        console.log("webhook.register", registerPayload);
+        await io.try(
+          async () => {
+            console.log("webhook.register", registerPayload);
+
+            const { config, ...payloadWithoutConfig } = registerPayload;
+
+            if (!registerPayload.active) {
+              console.log("Not active, run create");
+
+              await options.source.crud.create({
+                io,
+                ctx: {
+                  ...payloadWithoutConfig,
+                  config: {
+                    ...config,
+                    diff: [],
+                  },
+                },
+              });
+
+              return;
+            }
+
+            const shouldUpdate = !isEqual(config.current, config.desired);
+
+            if (shouldUpdate) {
+              console.log("Should update, run update");
+
+              const crudOptions = {
+                io,
+                ctx: {
+                  ...payloadWithoutConfig,
+                  config: {
+                    ...config,
+                    diff: diff(config.current, config.desired),
+                  },
+                },
+              };
+
+              if (options.source.crud.update) {
+                await options.source.crud.update(crudOptions);
+              } else {
+                await options.source.crud.delete(crudOptions);
+                await options.source.crud.create(crudOptions);
+              }
+
+              return await io.updateWebhook("update-webhook-success", {
+                key: options.key,
+                active: true,
+              });
+            }
+
+            console.log("Active and should not update, nothing to do!");
+
+            // throw new Error("fail on purpose");
+
+            return await io.updateWebhook("update-webhook-success", {
+              key: options.key,
+              active: true,
+            });
+          },
+          async (error) => {
+            console.log("Error while registering webhook", error);
+
+            await io.updateWebhook("update-webhook-error", {
+              key: options.key,
+              active: false,
+            });
+
+            throw error;
+          }
+        );
       },
       __internal: true,
     });

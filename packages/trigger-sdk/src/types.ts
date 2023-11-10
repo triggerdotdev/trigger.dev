@@ -14,6 +14,9 @@ import type {
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
 import { z } from "zod";
+import { diff } from "ohash";
+
+export type ConfigDiff = ReturnType<typeof diff>;
 
 export type {
   DisplayProperty,
