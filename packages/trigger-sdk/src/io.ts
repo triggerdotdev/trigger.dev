@@ -1408,6 +1408,76 @@ export class IO {
     }
   }
 
+  get store() {
+    return {
+      get: async (cacheKey: string | any[], key: string) => {
+        return await this.runTask(
+          cacheKey,
+          async (task) => {
+            return await this._apiClient.store.get(key);
+          },
+          {
+            name: "Key-Value Store Get",
+            icon: "database-export",
+            params: { key },
+            properties: [
+              {
+                label: "key",
+                text: key,
+              },
+            ],
+            style: { style: "minimal" },
+          }
+        );
+      },
+      set: async (cacheKey: string | any[], key: string, value: any) => {
+        return await this.runTask(
+          cacheKey,
+          async (task) => {
+            return await this._apiClient.store.set(key, value);
+          },
+          {
+            name: "Key-Value Store Set",
+            icon: "database-plus",
+            params: { key, value },
+            properties: [
+              {
+                label: "key",
+                text: key,
+              },
+              {
+                label: "value",
+                text: value,
+              },
+            ],
+            style: { style: "minimal" },
+          }
+        );
+      },
+      delete: async (cacheKey: string | any[], key: string) => {
+        return await this.runTask(
+          cacheKey,
+          async (task) => {
+            // FIXME: returning false from a task does not work as expected
+            return await this._apiClient.store.delete(key);
+          },
+          {
+            name: "Key-Value Store Delete",
+            icon: "database-minus",
+            params: { key },
+            properties: [
+              {
+                label: "key",
+                text: key,
+              },
+            ],
+            style: { style: "minimal" },
+          }
+        );
+      },
+    };
+  }
+
   #addToCachedTasks(task: ServerTask) {
     this._cachedTasks.set(task.idempotencyKey, task);
   }

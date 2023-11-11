@@ -13,6 +13,7 @@ import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { logger } from "../logger.server";
 import { RegisterScheduleSourceService } from "../schedules/registerScheduleSource.server";
+import { assertExhaustive } from "~/utils";
 
 export class RegisterJobService {
   #prismaClient: PrismaClient;
@@ -637,8 +638,4 @@ export class RegisterJobService {
       },
     });
   }
-}
-
-function assertExhaustive(x: never): never {
-  throw new Error("Unexpected object: " + x);
 }

@@ -205,7 +205,7 @@ const sendWaitForEventJob = client.defineJob({
     });
   },
 });
-  
+
 client.defineJob({
   id: "send-event-example",
   name: "Send Event Example",
@@ -297,6 +297,24 @@ client.defineJob({
     name: "test.event",
   }),
   run: async (payload, io, ctx) => {},
+});
+
+client.defineJob({
+  id: "store-example",
+  name: "Key-Value Store Example",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "store.example",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.store.set("set", "some-key", "some-value");
+
+    await io.store.get("get", "some-key");
+
+    await io.store.delete("delete", "some-key");
+
+    await io.store.delete("delete-again", "some-key");
+  },
 });
 
 createExpressServer(client);

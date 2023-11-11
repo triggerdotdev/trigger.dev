@@ -37,6 +37,8 @@ import {
   EphemeralEventDispatcherRequestBody,
   EphemeralEventDispatcherResponseBodySchema,
   UpdateWebhookBody,
+  KeyValueStoreResponseBodySchema,
+  KeyValueStoreResponseBody,
 } from "@trigger.dev/core";
 
 import { z } from "zod";
@@ -564,6 +566,68 @@ export class ApiClient {
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify(payload),
+      }
+    );
+
+    return response;
+  }
+
+  get store() {
+    return {
+      get: async (key: string) => {
+        const result = await this.#queryKeyValueStore("GET", { key });
+
+        if (result.action !== "GET") {
+          throw new Error("Unexpected key-value store response.");
+        }
+
+        return result.value;
+      },
+      set: async (key: string, value: any) => {
+        const result = await this.#queryKeyValueStore("SET", { key, value });
+
+        if (result.action !== "SET") {
+          throw new Error("Unexpected key-value store response.");
+        }
+
+        return result.value;
+      },
+      delete: async (key: string) => {
+        const result = await this.#queryKeyValueStore("DELETE", { key });
+
+        if (result.action !== "DELETE") {
+          throw new Error("Unexpected key-value store response.");
+        }
+
+        return result.deleted;
+      },
+    };
+  }
+
+  async #queryKeyValueStore(
+    action: "GET" | "SET" | "DELETE",
+    data?: {
+      key: string;
+      value?: any;
+    }
+  ): Promise<KeyValueStoreResponseBody> {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("accessing key-value store", {
+      action,
+      data,
+    });
+
+    const response = await zodfetch(
+      KeyValueStoreResponseBodySchema,
+      `${this.#apiUrl}/api/v1/store/${action}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(data),
       }
     );
 

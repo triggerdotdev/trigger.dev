@@ -174,3 +174,7 @@ export function appEnvTitleTag(appEnv?: "test" | "production" | "development" | 
       return " (staging)";
   }
 }
+
+export function assertExhaustive(x: never): never {
+  throw new Error("Unexpected object: " + x);
+}
