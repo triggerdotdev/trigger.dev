@@ -233,8 +233,7 @@ export class WebhookTrigger<
         event: this.event.name,
         payload: deepMergeFilters(
           this.options.source.filter(this.options.params, this.options.config),
-          this.event.filter ?? {},
-          this.options.params.filter ?? {}
+          this.event.filter ?? {}
         ),
         source: this.event.source,
       },
