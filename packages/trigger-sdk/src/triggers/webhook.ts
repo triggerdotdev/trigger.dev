@@ -2,13 +2,10 @@ import {
   DisplayProperty,
   EventFilter,
   HandleTriggerSource,
-  HttpSourceResponseMetadata,
-  Logger,
-  NormalizedResponse,
   RegisterWebhookPayload,
   RegisterWebhookSource,
-  SendEvent,
   TriggerMetadata,
+  WebhookContextMetadataSchema,
   deepMergeFilters,
 } from "@trigger.dev/core";
 import { IOWithIntegrations, TriggerIntegration } from "../integrations";
@@ -25,7 +22,6 @@ import type {
 } from "../types";
 import { slugifyId } from "../utils";
 import { SerializableJson } from "@trigger.dev/core";
-import { ConnectionAuth } from "@trigger.dev/core";
 import { Prettify } from "@trigger.dev/core";
 import { VerifyCallback } from "../httpEndpoint";
 
@@ -83,21 +79,26 @@ type RegisterFunction<
   ctx: TriggerContext
 ) => Promise<RegisterFunctionOutput<TConfig> | undefined>;
 
-export type HandlerEvent<TParams extends any = any> = {
+export type WebhookHandlerEvent<TParams extends any = any> = {
   rawEvent: Request;
   source: Prettify<Omit<HandleTriggerSource, "params"> & { params: TParams }>;
 };
 
-type HandlerFunction<TParams extends any, TTriggerIntegration extends TriggerIntegration> = (
-  event: HandlerEvent<TParams>,
-  logger: Logger,
-  integration: TTriggerIntegration,
-  auth?: ConnectionAuth
-) => Promise<{
-  events: SendEvent[];
-  response?: NormalizedResponse;
-  metadata?: HttpSourceResponseMetadata;
-} | void>;
+type WebhookHandlerContext<TParams extends any, TConfig extends Record<string, string[]>> = {
+  params: TParams;
+  config: TConfig;
+  secret: string;
+};
+
+type HandlerFunction<
+  TParams extends any,
+  TConfig extends Record<string, string[]>,
+  TIntegration extends TriggerIntegration,
+> = (options: {
+  request: Request;
+  io: IOWithIntegrations<{ integration: TIntegration }>;
+  ctx: WebhookHandlerContext<TParams, TConfig>;
+}) => Promise<any>;
 
 type KeyFunction<TParams extends any> = (params: TParams) => string;
 type FilterFunction<TParams extends any, TConfig extends Record<string, string[]> = any> = (
@@ -112,18 +113,19 @@ type WebhookOptions<
 > = {
   id: string;
   version: string;
+  integration: TIntegration;
   schemas: {
     params: SchemaParser<TParams>;
     config?: SchemaParser<TConfig>;
+    payload?: SchemaParser<TConfig>;
   };
-  integration: TIntegration;
-  crud: WebhookCRUD<TIntegration>;
-  register: RegisterFunction<TIntegration, TParams, TConfig>;
-  filter?: FilterFunction<TParams, TConfig>;
-  handler: HandlerFunction<TParams, TIntegration>;
   key: KeyFunction<TParams>;
-  properties?: (params: TParams) => DisplayProperty[];
+  crud: WebhookCRUD<TIntegration>;
+  filter?: FilterFunction<TParams, TConfig>;
+  register: RegisterFunction<TIntegration, TParams, TConfig>;
   verify?: VerifyCallback;
+  handler: HandlerFunction<TParams, TConfig, TIntegration>;
+  properties?: (params: TParams) => DisplayProperty[];
 };
 
 export class WebhookSource<
@@ -133,15 +135,26 @@ export class WebhookSource<
 > {
   constructor(private options: WebhookOptions<TIntegration, TParams, TConfig>) {}
 
-  async handle(source: HandleTriggerSource, rawEvent: Request, logger: Logger) {
-    return this.options.handler(
-      {
-        source: { ...source, params: source.params as TParams },
-        rawEvent,
+  async handle(
+    request: Request,
+    io: IOWithIntegrations<{ integration: TIntegration }>,
+    ctx: TriggerContext
+  ) {
+    if (!ctx.source) {
+      throw new Error("Source context should be defined.");
+    }
+
+    const sourceMetadata = WebhookContextMetadataSchema.parse(ctx.source.metadata);
+
+    return this.options.handler({
+      request,
+      io,
+      ctx: {
+        params: sourceMetadata.params,
+        config: sourceMetadata.config as TConfig,
+        secret: sourceMetadata.secret,
       },
-      logger,
-      this.options.integration
-    );
+    });
   }
 
   filter(params: TParams, config?: TConfig): EventFilter {

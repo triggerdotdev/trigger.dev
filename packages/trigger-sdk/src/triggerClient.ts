@@ -772,10 +772,6 @@ export class TriggerClient {
   }): void {
     const { source } = options;
 
-    this.#registeredHttpSourceHandlers[options.key] = async (s, r) => {
-      return await source.handle(s, r, this.#internalLogger);
-    };
-
     let registeredWebhook = this.#registeredWebhooks[options.key];
 
     if (!registeredWebhook) {
@@ -808,7 +804,9 @@ export class TriggerClient {
         integration: source.integration,
       },
       run: async (request, io, ctx) => {
-        console.log("webhook.deliver", await request.json());
+        console.log("[webhook.deliver]");
+
+        return source.handle(request, io, ctx);
       },
       __internal: true,
     });
@@ -826,7 +824,7 @@ export class TriggerClient {
       run: async (registerPayload, io, ctx) => {
         await io.try(
           async () => {
-            console.log("webhook.register", registerPayload);
+            console.log("[webhook.register]", registerPayload);
 
             const { config, ...payloadWithoutConfig } = registerPayload;
 

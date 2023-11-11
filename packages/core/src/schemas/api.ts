@@ -314,13 +314,20 @@ export const WebhookMetadataSchema = z.object({
   params: z.any(),
   config: z.record(z.array(z.string())),
   integration: IntegrationConfigSchema,
-  httpEndpoint: z
-    .object({
-      id: z.string(),
-    })
+  httpEndpoint: z.object({
+    id: z.string(),
+  }),
 });
 
 export type WebhookMetadata = z.infer<typeof WebhookMetadataSchema>;
+
+export const WebhookContextMetadataSchema = z.object({
+  params: z.any(),
+  config: z.record(z.string().array()),
+  secret: z.string(),
+});
+
+export type WebhookContextMetadata = z.infer<typeof WebhookContextMetadataSchema>;
 
 export const DynamicTriggerEndpointMetadataSchema = z.object({
   id: z.string(),

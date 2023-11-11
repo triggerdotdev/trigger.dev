@@ -7,6 +7,8 @@ import { json } from "@remix-run/server-runtime";
 import {
   DELIVER_WEBHOOK_REQUEST,
   RequestFilterSchema,
+  WebhookContextMetadata,
+  WebhookContextMetadataSchema,
   requestFilterMatches,
 } from "@trigger.dev/core";
 import { EndpointApi } from "../endpointApi.server";
@@ -113,6 +115,7 @@ export class HandleHttpEndpointService {
     //get the secret
     const secretStore = getSecretStore(httpEndpoint.secretReference.provider);
     let secret: string | undefined;
+
     try {
       const secretData = await secretStore.getSecretOrThrow(
         z.object({ secret: z.string() }),
@@ -124,6 +127,7 @@ export class HandleHttpEndpointService {
       logger.error("Getting secret threw", { error });
       return json({ error: true, message: "Could not retrieve secret" }, { status: 404 });
     }
+
     if (!secret) {
       logger.error("Could not find secret", {
         httpEndpointId: httpEndpoint.id,
@@ -209,6 +213,16 @@ export class HandleHttpEndpointService {
     const headerId =
       request.headers.get("idempotency-key") ?? request.headers.get("x-request-id") ?? ulid();
 
+    let webhookContextMetadata: WebhookContextMetadata | undefined;
+
+    if (httpEndpoint.webhook) {
+      const rawContext = {
+        secret,
+        config: httpEndpoint.webhook.config,
+      };
+      webhookContextMetadata = WebhookContextMetadataSchema.parse(rawContext);
+    }
+
     await ingestService.call(
       environment,
       {
@@ -221,7 +235,12 @@ export class HandleHttpEndpointService {
         payloadType: "REQUEST",
       },
       undefined,
-      undefined,
+      httpEndpoint.webhook
+        ? {
+            id: "webhook",
+            metadata: webhookContextMetadata,
+          }
+        : undefined,
       { httpEndpointId: httpEndpoint.id, httpEndpointEnvironmentId: httpEndpointEnvironment.id }
     );
 
