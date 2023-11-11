@@ -241,6 +241,19 @@ export class WebhookTrigger<
     };
   }
 
+  filter(eventFilter: EventFilter) {
+    const { event, ...optionsWithoutEvent } = this.options;
+    const { filter, ...eventWithoutFilter } = event;
+
+    return new WebhookTrigger({
+      ...optionsWithoutEvent,
+      event: {
+        ...eventWithoutFilter,
+        filter: deepMergeFilters(filter ?? {}, eventFilter),
+      },
+    });
+  }
+
   attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpecification>, any>) {
     const key = slugifyId(this.options.source.key(this.options.params));
 
