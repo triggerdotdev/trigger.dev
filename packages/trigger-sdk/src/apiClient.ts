@@ -310,28 +310,21 @@ export class ApiClient {
     return response;
   }
 
-  async updateWebhook(
-    key: string,
-    webhook: UpdateWebhookBody
-  ): Promise<TriggerSource> {
+  async updateWebhook(key: string, webhookData: UpdateWebhookBody): Promise<TriggerSource> {
     const apiKey = await this.#apiKey();
 
     this.#logger.debug("activating webhook", {
-      webhook,
+      webhookData,
     });
 
-    const response = await zodfetch(
-      TriggerSourceSchema,
-      `${this.#apiUrl}/api/v1/webhooks/${key}`,
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(webhook),
-      }
-    );
+    const response = await zodfetch(TriggerSourceSchema, `${this.#apiUrl}/api/v1/webhooks/${key}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(webhookData),
+    });
 
     return response;
   }

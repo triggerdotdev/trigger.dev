@@ -825,10 +825,7 @@ export class IO {
     );
   }
 
-  async updateWebhook(
-    cacheKey: string | any[],
-    options: { key: string } & UpdateWebhookBody
-  ) {
+  async updateWebhook(cacheKey: string | any[], options: { key: string } & UpdateWebhookBody) {
     return this.runTask(
       cacheKey,
       async (task) => {
