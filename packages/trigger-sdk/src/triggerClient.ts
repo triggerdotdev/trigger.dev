@@ -802,6 +802,7 @@ export class TriggerClient {
       version: source.version,
       trigger: new EventTrigger({
         event: deliverWebhookEvent(options.key),
+        verify: source.verify.bind(source),
       }),
       integrations: {
         integration: source.integration,

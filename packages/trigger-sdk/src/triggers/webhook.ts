@@ -21,11 +21,13 @@ import type {
   SchemaParser,
   Trigger,
   TriggerContext,
+  VerifyResult,
 } from "../types";
 import { slugifyId } from "../utils";
 import { SerializableJson } from "@trigger.dev/core";
 import { ConnectionAuth } from "@trigger.dev/core";
 import { Prettify } from "@trigger.dev/core";
+import { VerifyCallback } from "../httpEndpoint";
 
 type WebhookCRUDFunction<TIntegration extends TriggerIntegration> = (options: {
   io: IOWithIntegrations<{ integration: TIntegration }>;
@@ -121,6 +123,7 @@ type WebhookOptions<
   handler: HandlerFunction<TParams, TIntegration>;
   key: KeyFunction<TParams>;
   properties?: (params: TParams) => DisplayProperty[];
+  verify?: VerifyCallback;
 };
 
 export class WebhookSource<
@@ -169,6 +172,14 @@ export class WebhookSource<
     );
 
     return updates;
+  }
+
+  async verify(request: Request): Promise<VerifyResult> {
+    if (this.options.verify) {
+      return this.options.verify(request);
+    }
+
+    return { success: true as const };
   }
 
   key(params: TParams): string {

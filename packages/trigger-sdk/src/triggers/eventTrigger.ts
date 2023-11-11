@@ -1,15 +1,23 @@
 import { EventFilter, TriggerMetadata, deepMergeFilters } from "@trigger.dev/core";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
-import { EventSpecification, EventSpecificationExample, SchemaParser, Trigger } from "../types";
+import {
+  EventSpecification,
+  EventSpecificationExample,
+  EventTypeFromSpecification,
+  SchemaParser,
+  Trigger,
+} from "../types";
 import { formatSchemaErrors } from "../utils/formatSchemaErrors";
 import { ParsedPayloadSchemaError } from "../errors";
+import { VerifyCallback } from "../httpEndpoint";
 
 type EventTriggerOptions<TEventSpecification extends EventSpecification<any>> = {
   event: TEventSpecification;
   name?: string | string[];
   source?: string;
   filter?: EventFilter;
+  verify?: EventTypeFromSpecification<TEventSpecification> extends Request ? VerifyCallback : never;
 };
 
 export class EventTrigger<TEventSpecification extends EventSpecification<any>>
@@ -44,6 +52,13 @@ export class EventTrigger<TEventSpecification extends EventSpecification<any>>
   }
 
   async verifyPayload(payload: ReturnType<TEventSpecification["parsePayload"]>) {
+    if (this.#options.verify) {
+      if ((payload as any) instanceof Request) {
+        const clonedRequest = (payload as Request).clone();
+        return this.#options.verify(clonedRequest);
+      }
+    }
+
     return { success: true as const };
   }
 }
