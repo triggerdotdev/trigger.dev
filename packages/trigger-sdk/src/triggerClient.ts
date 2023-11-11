@@ -842,7 +842,11 @@ export class TriggerClient {
                 },
               });
 
-              return;
+              return await io.updateWebhook("update-webhook-success", {
+                key: options.key,
+                active: true,
+                config: config.desired,
+              });
             }
 
             const shouldUpdate = !isEqual(config.current, config.desired);
@@ -871,6 +875,7 @@ export class TriggerClient {
               return await io.updateWebhook("update-webhook-success", {
                 key: options.key,
                 active: true,
+                config: config.desired,
               });
             }
 
@@ -881,6 +886,7 @@ export class TriggerClient {
             return await io.updateWebhook("update-webhook-success", {
               key: options.key,
               active: true,
+              config: config.desired,
             });
           },
           async (error) => {

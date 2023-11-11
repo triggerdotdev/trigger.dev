@@ -19,17 +19,17 @@ export class UpdateWebhookService {
     payload: UpdateWebhookBody;
     key: string;
   }): Promise<TriggerSource> {
-
     const webhook = await this.#prismaClient.webhook.update({
       where: {
         key_projectId: {
           key,
-          projectId: environment.projectId
-        }
+          projectId: environment.projectId,
+        },
       },
       data: {
-        active: payload.active
-      }
+        active: payload.active,
+        config: payload.active ? payload.config : undefined,
+      },
     });
 
     return {
