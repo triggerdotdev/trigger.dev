@@ -770,8 +770,10 @@ export class TriggerClient {
     params: any;
     config: any;
   }): void {
+    const { source } = options;
+
     this.#registeredHttpSourceHandlers[options.key] = async (s, r) => {
-      return await options.source.handle(s, r, this.#internalLogger);
+      return await source.handle(s, r, this.#internalLogger);
     };
 
     let registeredWebhook = this.#registeredWebhooks[options.key];
@@ -782,9 +784,9 @@ export class TriggerClient {
         params: options.params,
         config: options.config,
         integration: {
-          id: options.source.integration.id,
-          metadata: options.source.integration.metadata,
-          authSource: options.source.integration.authSource,
+          id: source.integration.id,
+          metadata: source.integration.metadata,
+          authSource: source.integration.authSource,
         },
         httpEndpoint: {
           id: options.key,
@@ -797,15 +799,15 @@ export class TriggerClient {
     new Job(this, {
       id: `webhook.deliver.${options.key}`,
       name: `webhook.deliver.${options.key}`,
-      version: options.source.version,
+      version: source.version,
       trigger: new EventTrigger({
         event: deliverWebhookEvent(options.key),
       }),
       integrations: {
-        integration: options.source.integration,
+        integration: source.integration,
       },
-      run: async (event, io, ctx) => {
-        console.log("webhook.deliver", await event.json());
+      run: async (request, io, ctx) => {
+        console.log("webhook.deliver", await request.json());
       },
       __internal: true,
     });
@@ -813,12 +815,12 @@ export class TriggerClient {
     new Job(this, {
       id: `webhook.register.${options.key}`,
       name: `webhook.register.${options.key}`,
-      version: options.source.version,
+      version: source.version,
       trigger: new EventTrigger({
         event: registerWebhookEvent(options.key),
       }),
       integrations: {
-        integration: options.source.integration,
+        integration: source.integration,
       },
       run: async (registerPayload, io, ctx) => {
         await io.try(
@@ -830,7 +832,7 @@ export class TriggerClient {
             if (!registerPayload.active) {
               console.log("Not active, run create");
 
-              await options.source.crud.create({
+              await source.crud.create({
                 io,
                 ctx: {
                   ...payloadWithoutConfig,
@@ -860,11 +862,11 @@ export class TriggerClient {
                 },
               };
 
-              if (options.source.crud.update) {
-                await options.source.crud.update(crudOptions);
+              if (source.crud.update) {
+                await source.crud.update(crudOptions);
               } else {
-                await options.source.crud.delete(crudOptions);
-                await options.source.crud.create(crudOptions);
+                await source.crud.delete(crudOptions);
+                await source.crud.create(crudOptions);
               }
 
               return await io.updateWebhook("update-webhook-success", {
