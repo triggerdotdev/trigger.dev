@@ -1,4 +1,4 @@
-import type { Integration, TriggerHttpEndpoint, TriggerSource } from "@trigger.dev/database";
+import type { Integration, TriggerHttpEndpoint, TriggerSource, Webhook } from "@trigger.dev/database";
 import { z } from "zod";
 import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
@@ -10,6 +10,7 @@ export type JobForPath = Pick<Job, "slug">;
 export type RunForPath = Pick<Job, "id">;
 export type IntegrationForPath = Pick<Integration, "slug">;
 export type TriggerForPath = Pick<TriggerSource, "id">;
+export type WebhookForPath = Pick<Webhook, "id">;
 export type HttpEndpointForPath = Pick<TriggerHttpEndpoint, "key">;
 
 export const OrganizationParamsSchema = z.object({
@@ -271,6 +272,48 @@ export function externalTriggerRunStreamingPath(
 
 function triggerSourceParam(trigger: TriggerForPath) {
   return trigger.id;
+}
+
+export function projectWebhookTriggersPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectTriggersPath(organization, project)}/webhooks`;
+}
+
+export function webhookTriggerPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath
+) {
+  return `${projectTriggersPath(organization, project)}/webhooks/${webhookSourceParam(webhook)}`;
+}
+
+export function webhookTriggerRunsParentPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath
+) {
+  return `${webhookTriggerPath(organization, project, webhook)}/runs`;
+}
+
+export function webhookTriggerRunPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath,
+  run: RunForPath
+) {
+  return `${webhookTriggerRunsParentPath(organization, project, webhook)}/${run.id}`;
+}
+
+export function webhookTriggerRunStreamingPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath,
+  run: RunForPath
+) {
+  return `${webhookTriggerRunPath(organization, project, webhook, run)}/stream`;
+}
+
+function webhookSourceParam(webhook: WebhookForPath) {
+  return webhook.id;
 }
 
 // Job

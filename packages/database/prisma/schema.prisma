@@ -325,6 +325,7 @@ model RuntimeEnvironment {
   ExternalAccount          ExternalAccount[]
   httpEndpointEnvironments TriggerHttpEndpointEnvironment[]
   keyValueItems            KeyValueItem[]
+  webhooks                 Webhook[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -1093,21 +1094,17 @@ model Webhook {
   key    String
   params Json?
 
-  // object hash these to compare
   config        Json?
   desiredConfig Json?
-
-  // should go in KV instead
-  // channelData Json?
-
-  // should go in KV instead
-  // metadata Json?
 
   httpEndpoint   TriggerHttpEndpoint @relation(fields: [httpEndpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   httpEndpointId String @unique
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
 
   integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   integrationId String

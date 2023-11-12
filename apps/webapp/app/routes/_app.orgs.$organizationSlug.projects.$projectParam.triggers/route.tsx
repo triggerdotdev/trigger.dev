@@ -17,6 +17,7 @@ import {
   docsPath,
   projectScheduledTriggersPath,
   projectTriggersPath,
+  projectWebhookTriggersPath,
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
@@ -53,6 +54,10 @@ export default function Page() {
             {
               label: "Scheduled Triggers",
               to: projectScheduledTriggersPath(organization, project),
+            },
+            {
+              label: "Webhook Triggers",
+              to: projectWebhookTriggersPath(organization, project),
             },
           ]}
         />

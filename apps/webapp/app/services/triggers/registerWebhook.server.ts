@@ -7,7 +7,6 @@ import { ulid } from "../ulid.server";
 import { getSecretStore } from "../secrets/secretStore.server";
 import { z } from "zod";
 import { httpEndpointUrl } from "../httpendpoint/HandleHttpEndpointService";
-import { logger } from "../logger.server";
 
 type ExtendedWebhook = Prisma.WebhookGetPayload<{
   include: {
@@ -63,6 +62,11 @@ export class RegisterWebhookService {
                 key: webhookMetadata.httpEndpoint.id,
                 projectId: endpoint.projectId,
               },
+            },
+          },
+          environment: {
+            connect: {
+              id: endpoint.environmentId,
             },
           },
           project: {
