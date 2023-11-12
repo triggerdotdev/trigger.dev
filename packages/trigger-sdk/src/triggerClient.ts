@@ -1034,6 +1034,7 @@ export class TriggerClient {
 
     const io = new IO({
       id: body.run.id,
+      jobId: job.id,
       cachedTasks: body.tasks,
       cachedTasksCursor: body.cachedTaskCursor,
       yieldedExecutions: body.yieldedExecutions ?? [],

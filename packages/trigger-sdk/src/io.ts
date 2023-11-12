@@ -52,11 +52,13 @@ import {
   waitForEventSchema,
 } from "./types";
 import { z } from "zod";
+import { IOKeyValueStore } from "./store/ioKeyValueStore";
 
 export type IOTask = ServerTask;
 
 export type IOOptions = {
   id: string;
+  jobId: string;
   apiClient: ApiClient;
   client: TriggerClient;
   context: TriggerContext;
@@ -121,6 +123,7 @@ export type BackgroundFetchResponse<T> = {
 
 export class IO {
   private _id: string;
+  private _jobId: string;
   private _apiClient: ApiClient;
   private _triggerClient: TriggerClient;
   private _logger: Logger;
@@ -139,12 +142,17 @@ export class IO {
   private _outputSerializer: OutputSerializer = new JSONOutputSerializer();
   private _visitedCacheKeys: Set<string> = new Set();
 
+  private _envStore: IOKeyValueStore;
+  private _jobStore: IOKeyValueStore;
+  private _runStore: IOKeyValueStore;
+
   get stats() {
     return this._stats;
   }
 
   constructor(options: IOOptions) {
     this._id = options.id;
+    this._jobId = options.jobId;
     this._apiClient = options.apiClient;
     this._triggerClient = options.client;
     this._logger = options.logger ?? new Logger("trigger.dev", options.logLevel);
@@ -153,6 +161,10 @@ export class IO {
     this._jobLogLevel = options.jobLogLevel;
     this._timeOrigin = options.timeOrigin;
     this._executionTimeout = options.executionTimeout;
+
+    this._envStore = new IOKeyValueStore(this, options.apiClient);
+    this._jobStore = new IOKeyValueStore(this, options.apiClient, "job", options.jobId);
+    this._runStore = new IOKeyValueStore(this, options.apiClient, "run", options.id);
 
     this._stats = {
       initialCachedTasks: 0,
@@ -1410,71 +1422,9 @@ export class IO {
 
   get store() {
     return {
-      get: async (cacheKey: string | any[], key: string) => {
-        return await this.runTask(
-          cacheKey,
-          async (task) => {
-            return await this._apiClient.store.get(key);
-          },
-          {
-            name: "Key-Value Store Get",
-            icon: "database-export",
-            params: { key },
-            properties: [
-              {
-                label: "key",
-                text: key,
-              },
-            ],
-            style: { style: "minimal" },
-          }
-        );
-      },
-      set: async (cacheKey: string | any[], key: string, value: any) => {
-        return await this.runTask(
-          cacheKey,
-          async (task) => {
-            return await this._apiClient.store.set(key, value);
-          },
-          {
-            name: "Key-Value Store Set",
-            icon: "database-plus",
-            params: { key, value },
-            properties: [
-              {
-                label: "key",
-                text: key,
-              },
-              {
-                label: "value",
-                text: value,
-              },
-            ],
-            style: { style: "minimal" },
-          }
-        );
-      },
-      delete: async (cacheKey: string | any[], key: string) => {
-        return await this.runTask(
-          cacheKey,
-          async (task) => {
-            // FIXME: returning false from a task does not work as expected
-            return await this._apiClient.store.delete(key);
-          },
-          {
-            name: "Key-Value Store Delete",
-            icon: "database-minus",
-            params: { key },
-            properties: [
-              {
-                label: "key",
-                text: key,
-              },
-            ],
-            style: { style: "minimal" },
-          }
-        );
-      },
+      env: this._envStore,
+      job: this._jobStore,
+      run: this._runStore,
     };
   }
 

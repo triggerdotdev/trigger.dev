@@ -307,13 +307,23 @@ client.defineJob({
     name: "store.example",
   }),
   run: async (payload, io, ctx) => {
-    await io.store.set("set", "some-key", "some-value");
+    // job store
+    await io.store.job.set("job-set", "some-key", "some-value");
+    await io.store.job.get("job-get", "some-key");
+    await io.store.job.delete("job-delete", "some-key");
+    await io.store.job.delete("job-delete-again", "some-key");
 
-    await io.store.get("get", "some-key");
+    // run store
+    await io.store.run.set("run-set", "some-key", "some-value");
+    await io.store.run.get("run-get", "some-key");
+    await io.store.run.delete("run-delete", "some-key");
+    await io.store.run.delete("run-delete-again", "some-key");
 
-    await io.store.delete("delete", "some-key");
-
-    await io.store.delete("delete-again", "some-key");
+    // env store
+    await io.store.env.set("env-set", "some-key", "some-value");
+    await io.store.env.get("env-get", "some-key");
+    await io.store.env.delete("env-delete", "some-key");
+    await io.store.env.delete("env-delete-again", "some-key");
   },
 });
 

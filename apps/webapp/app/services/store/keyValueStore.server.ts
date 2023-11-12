@@ -1,12 +1,7 @@
 import { Prisma, RuntimeEnvironment } from "@trigger.dev/database";
+import type { AsyncMap } from "@trigger.dev/core";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-
-interface AsyncMap {
-  get: (key: string) => Promise<any>;
-  set: (key: string, value: any) => Promise<any>;
-  delete: (key: string) => Promise<boolean>;
-}
 
 export class KeyValueStore implements AsyncMap {
   #prismaClient: PrismaClient;
@@ -18,9 +13,9 @@ export class KeyValueStore implements AsyncMap {
   async get(key: string) {
     const keyValueItem = await this.#prismaClient.keyValueItem.findUnique({
       where: {
-        projectId_key: {
+        environmentId_key: {
           key,
-          projectId: this.environment.projectId,
+          environmentId: this.environment.id,
         },
       },
     });
@@ -37,14 +32,14 @@ export class KeyValueStore implements AsyncMap {
 
     const keyValueItem = await this.#prismaClient.keyValueItem.upsert({
       where: {
-        projectId_key: {
+        environmentId_key: {
           key,
-          projectId: this.environment.projectId,
+          environmentId: this.environment.id,
         },
       },
       create: {
         key,
-        projectId: this.environment.projectId,
+        environmentId: this.environment.id,
         value: jsonValue,
       },
       update: {
@@ -59,9 +54,9 @@ export class KeyValueStore implements AsyncMap {
     try {
       await this.#prismaClient.keyValueItem.delete({
         where: {
-          projectId_key: {
+          environmentId_key: {
             key,
-            projectId: this.environment.projectId,
+            environmentId: this.environment.id,
           },
         },
       });

@@ -1080,3 +1080,42 @@ export const EphemeralEventDispatcherResponseBodySchema = z.object({
 export type EphemeralEventDispatcherResponseBody = z.infer<
   typeof EphemeralEventDispatcherResponseBodySchema
 >;
+
+export const KeyValueStoreRequestBodySchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("GET"),
+    key: z.string(),
+  }),
+  z.object({
+    action: z.literal("SET"),
+    key: z.string(),
+    // FIXME: check this is not undefined
+    value: z.any(),
+  }),
+  z.object({
+    action: z.literal("DELETE"),
+    key: z.string(),
+  }),
+]);
+
+export type KeyValueStoreRequestBody = z.infer<typeof KeyValueStoreRequestBodySchema>;
+
+export const KeyValueStoreResponseBodySchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("GET"),
+    key: z.string(),
+    value: z.any(),
+  }),
+  z.object({
+    action: z.literal("SET"),
+    key: z.string(),
+    value: z.any(),
+  }),
+  z.object({
+    action: z.literal("DELETE"),
+    key: z.string(),
+    deleted: z.boolean(),
+  }),
+]);
+
+export type KeyValueStoreResponseBody = z.infer<typeof KeyValueStoreResponseBodySchema>;

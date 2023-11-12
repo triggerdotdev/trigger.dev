@@ -2,7 +2,6 @@ import {
   ApiEventLog,
   ApiEventLogSchema,
   CancelRunsForEventSchema,
-  CompleteTaskBodyInput,
   ConnectionAuthSchema,
   FailTaskBodyInput,
   GetEventSchema,
@@ -42,6 +41,7 @@ import {
 } from "@trigger.dev/core";
 
 import { z } from "zod";
+import { KeyValueStoreClient } from "./store/keyValueStoreClient";
 
 export type ApiClientOptions = {
   apiKey?: string;
@@ -76,12 +76,15 @@ export class ApiClient {
   #apiUrl: string;
   #options: ApiClientOptions;
   #logger: Logger;
+  #storeClient: KeyValueStoreClient;
 
   constructor(options: ApiClientOptions) {
     this.#options = options;
 
     this.#apiUrl = this.#options.apiUrl ?? process.env.TRIGGER_API_URL ?? "https://api.trigger.dev";
     this.#logger = new Logger("trigger.dev", this.#options.logLevel);
+
+    this.#storeClient = new KeyValueStoreClient(this.#queryKeyValueStore.bind(this));
   }
 
   async registerEndpoint(options: { url: string; name: string }): Promise<EndpointRecord> {
@@ -573,35 +576,7 @@ export class ApiClient {
   }
 
   get store() {
-    return {
-      get: async (key: string) => {
-        const result = await this.#queryKeyValueStore("GET", { key });
-
-        if (result.action !== "GET") {
-          throw new Error("Unexpected key-value store response.");
-        }
-
-        return result.value;
-      },
-      set: async (key: string, value: any) => {
-        const result = await this.#queryKeyValueStore("SET", { key, value });
-
-        if (result.action !== "SET") {
-          throw new Error("Unexpected key-value store response.");
-        }
-
-        return result.value;
-      },
-      delete: async (key: string) => {
-        const result = await this.#queryKeyValueStore("DELETE", { key });
-
-        if (result.action !== "DELETE") {
-          throw new Error("Unexpected key-value store response.");
-        }
-
-        return result.deleted;
-      },
-    };
+    return this.#storeClient;
   }
 
   async #queryKeyValueStore(
