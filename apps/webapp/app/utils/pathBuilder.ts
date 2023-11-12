@@ -1,4 +1,9 @@
-import type { Integration, TriggerHttpEndpoint, TriggerSource, Webhook } from "@trigger.dev/database";
+import type {
+  Integration,
+  TriggerHttpEndpoint,
+  TriggerSource,
+  Webhook,
+} from "@trigger.dev/database";
 import { z } from "zod";
 import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
@@ -310,6 +315,40 @@ export function webhookTriggerRunStreamingPath(
   run: RunForPath
 ) {
   return `${webhookTriggerRunPath(organization, project, webhook, run)}/stream`;
+}
+
+export function webhookDeliveryPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath
+) {
+  return `${webhookTriggerPath(organization, project, webhook)}/delivery`;
+}
+
+export function webhookTriggerDeliveryRunsParentPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath
+) {
+  return `${webhookTriggerRunsParentPath(organization, project, webhook)}/delivery`;
+}
+
+export function webhookTriggerDeliveryRunPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath,
+  run: RunForPath
+) {
+  return `${webhookTriggerDeliveryRunsParentPath(organization, project, webhook)}/${run.id}`;
+}
+
+export function webhookTriggerDeliveryRunStreamingPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath,
+  run: RunForPath
+) {
+  return `${webhookTriggerDeliveryRunPath(organization, project, webhook, run)}/stream`;
 }
 
 function webhookSourceParam(webhook: WebhookForPath) {

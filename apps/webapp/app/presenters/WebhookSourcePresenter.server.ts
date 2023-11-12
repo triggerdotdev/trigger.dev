@@ -18,6 +18,7 @@ export class WebhookSourcePresenter {
     webhookId,
     direction = "forward",
     cursor,
+    getDeliveryRuns = false
   }: {
     userId: User["id"];
     projectSlug: Project["slug"];
@@ -25,6 +26,7 @@ export class WebhookSourcePresenter {
     webhookId: Webhook["id"];
     direction?: Direction;
     cursor?: string;
+    getDeliveryRuns?: boolean
   }) {
     const webhook = await this.#prismaClient.webhook.findUnique({
       select: {
@@ -64,11 +66,11 @@ export class WebhookSourcePresenter {
     }
 
     const runListPresenter = new RunListPresenter(this.#prismaClient);
-    const registerJobSlug = getRegisterJobSlug(webhook.key);
+    const jobSlug = getDeliveryRuns ? getDeliveryJobSlug(webhook.key) : getRegistrationJobSlug(webhook.key);
 
     const runList = await runListPresenter.call({
       userId,
-      jobSlug: registerJobSlug,
+      jobSlug,
       organizationSlug,
       projectSlug,
       direction,
@@ -84,11 +86,12 @@ export class WebhookSourcePresenter {
         createdAt: webhook.createdAt,
         updatedAt: webhook.updatedAt,
         params: webhook.params,
-        registerJobSlug,
         runList,
       },
     };
   }
 }
 
-const getRegisterJobSlug = (key: string) => `webhook.register.${key}`;
+const getRegistrationJobSlug = (key: string) => `webhook.register.${key}`;
+
+const getDeliveryJobSlug = (key: string) => `webhook.deliver.${key}`;
