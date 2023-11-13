@@ -1,12 +1,12 @@
 import { useFetcher } from "@remix-run/react";
 import { LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useEffect } from "react";
-import { useQuery } from "react-query";
 import invariant from "tiny-invariant";
 import { CodeBlock } from "~/components/code/CodeBlock";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import { Spinner } from "~/components/primitives/Spinner";
 import { ApiExample } from "~/services/externalApis/apis.server";
 import { requireUser } from "~/services/session.server";
-
 export async function loader({ request }: LoaderFunctionArgs) {
   await requireUser(request);
   const url = new URL(request.url);
@@ -32,7 +32,13 @@ export function CodeExample({ example }: { example: ApiExample }) {
     customerFetcher.load(`/resources/codeexample?url=${encodeURIComponent(example.codeUrl)}`);
   }, [example.codeUrl]);
 
-  if (customerFetcher.state === "loading") return "Loading...";
+  if (customerFetcher.state === "loading")
+    return (
+      <div className="flex h-96 w-full items-center justify-center gap-2 rounded-md border border-slate-800 font-mono">
+        <Spinner />
+        <Paragraph>Loading example code</Paragraph>
+      </div>
+    );
   const hideCodeRegex = /(\n)?\/\/ hide-code[\s\S]*?\/\/ end-hide-code(\n)*/gm;
   const code = customerFetcher.data?.code;
   const cleanedCode = code?.replace(hideCodeRegex, "\n");
