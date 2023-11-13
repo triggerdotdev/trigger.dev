@@ -113,7 +113,7 @@ export default function Integrations() {
             />
           </PageInfoGroup>
         </PageInfoRow>
-        <PageTabs tabs={tabs} />
+        <PageTabs layoutId="integrations" tabs={tabs} />
       </PageHeader>
 
       <PageBody scrollable={true}>

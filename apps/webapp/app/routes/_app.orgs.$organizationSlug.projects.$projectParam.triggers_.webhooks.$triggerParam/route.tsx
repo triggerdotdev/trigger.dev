@@ -90,6 +90,7 @@ export default function Page() {
           </PageInfoGroup>
         </PageInfoRow>
         <PageTabs
+          layoutId="webhook-trigger"
           tabs={[
             {
               label: "Registration Runs",

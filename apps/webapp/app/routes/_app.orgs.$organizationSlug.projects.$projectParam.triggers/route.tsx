@@ -46,6 +46,7 @@ export default function Page() {
         </PageTitleRow>
         <PageDescription>A Trigger is what starts a Job Run.</PageDescription>
         <PageTabs
+          layoutId="triggers"
           tabs={[
             {
               label: "External Triggers",
