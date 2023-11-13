@@ -31,24 +31,6 @@ export function NoIntegrationSheet({
             <NamedIconInBox name={api.identifier} className="h-9 w-9" />
             <Header1>{api.name}</Header1>
           </div>
-          {requested ? (
-            <div className="flex items-center gap-1">
-              <CheckIcon className="h-4 w-4 text-green-500" />
-              <Paragraph variant="small">
-                We'll let you know when the Integration is available.
-              </Paragraph>
-            </div>
-          ) : (
-            <fetcher.Form method="post" action={`/resources/apivote/${api.identifier}`}>
-              <Button
-                variant="primary/small"
-                disabled={isLoading}
-                LeadingIcon={isLoading ? "spinner-white" : undefined}
-              >
-                {isLoading ? "Saving…" : `I want an Integration for ${api.name}`}
-              </Button>
-            </fetcher.Form>
-          )}
         </SheetHeader>
         <SheetBody>
           <CustomHelp api={api} />
