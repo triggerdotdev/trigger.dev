@@ -5,6 +5,7 @@ import { Header1, Header2 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
 import { cn } from "~/utils/cn";
 import { useState } from "react";
+import { TextLink } from "../primitives/TextLink";
 
 export function CustomHelp({ api }: { api: Api }) {
   const [selectedExample, setSelectedExample] = useState(api.examples?.[0]);
@@ -16,14 +17,22 @@ export function CustomHelp({ api }: { api: Api }) {
   return (
     <div className="mt-4">
       <Header1 className="mb-2">You can use any API with requests or an SDK</Header1>
-      <Header2 className="mb-2">How to use an SDK</Header2>
       <Paragraph spacing>
-        You can call SDK methods from inside the run function, but you should wrap them in a Task to
-        make sure they're resumable.
+        You can use Trigger.dev with any existing Node SDK or even just using fetch. Using{" "}
+        <TextLink href="https://trigger.dev/docs/sdk/io/runtask" className="font-mono">
+          io.runTask
+        </TextLink>{" "}
+        makes your {api.name} background job resumable and appear in our dashboard.
       </Paragraph>
-      <Paragraph spacing>Here's an example with the official GitHub SDK</Paragraph>
+
       {api.examples && api.examples.length > 0 && (
         <>
+          <Header2 className="mb-2">Example code</Header2>
+          <Paragraph spacing>
+            This is how you can use {api.name} with Trigger.dev. This code can be copied and
+            modified to suit your use-case.
+          </Paragraph>
+
           <div className=" flex w-full flex-row gap-4 overflow-x-scroll	scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700 sm:h-full  lg:w-[22rem] lg:flex-col">
             {api.examples?.map((example, index) => (
               <button
