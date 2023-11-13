@@ -123,6 +123,7 @@ export class RegisterWebhookService {
           environment: endpoint.environment,
         }),
         secret: secretData.secret,
+        params: webhook.params,
         config: {
           current: webhook.config ?? {},
           desired: webhook.desiredConfig ?? {},

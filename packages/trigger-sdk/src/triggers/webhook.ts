@@ -23,11 +23,22 @@ import type {
 import { slugifyId } from "../utils";
 import { SerializableJson } from "@trigger.dev/core";
 import { Prettify } from "@trigger.dev/core";
-import { VerifyCallback } from "../httpEndpoint";
+
+type WebhookCRUDContext = {
+  active: boolean;
+  params?: any;
+  config: {
+    current: Record<string, string[]>;
+    desired: Record<string, string[]>;
+  };
+  url: string;
+  secret: string;
+};
 
 type WebhookCRUDFunction<TIntegration extends TriggerIntegration> = (options: {
   io: IOWithIntegrations<{ integration: TIntegration }>;
-  ctx: RegisterWebhookPayload & {
+  // TODO: doesn't like RegisterWebhookPayload type for some reason
+  ctx: WebhookCRUDContext & {
     config: {
       diff: ConfigDiff;
     };
@@ -39,7 +50,7 @@ interface WebhookCRUD<TIntegration extends TriggerIntegration> {
   read: WebhookCRUDFunction<TIntegration>;
   update?: WebhookCRUDFunction<TIntegration>;
   delete: WebhookCRUDFunction<TIntegration>;
-}
+};
 
 export type WebhookConfig<TConfigKeys extends string> = {
   [K in TConfigKeys]: string[];
@@ -97,7 +108,7 @@ type HandlerFunction<
 > = (options: {
   request: Request;
   io: IOWithIntegrations<{ integration: TIntegration }>;
-  ctx: WebhookHandlerContext<TParams, TConfig>;
+  ctx: TriggerContext & WebhookHandlerContext<TParams, TConfig>;
 }) => Promise<any>;
 
 type KeyFunction<TParams extends any> = (params: TParams) => string;
@@ -122,8 +133,12 @@ type WebhookOptions<
   key: KeyFunction<TParams>;
   crud: WebhookCRUD<TIntegration>;
   filter?: FilterFunction<TParams, TConfig>;
-  register: RegisterFunction<TIntegration, TParams, TConfig>;
-  verify?: VerifyCallback;
+  register?: RegisterFunction<TIntegration, TParams, TConfig>;
+  verify?: (options: {
+    request: Request;
+    io: IOWithIntegrations<{ integration: TIntegration }>;
+    ctx: TriggerContext & { webhook: { secret: string } };
+  }) => Promise<VerifyResult>;
   handler: HandlerFunction<TParams, TConfig, TIntegration>;
   properties?: (params: TParams) => DisplayProperty[];
 };
@@ -138,7 +153,7 @@ export class WebhookSource<
   async handle(
     request: Request,
     io: IOWithIntegrations<{ integration: TIntegration }>,
-    ctx: TriggerContext
+    ctx: TriggerContext & { webhook: { secret: string } }
   ) {
     if (!ctx.source) {
       throw new Error("Source context should be defined.");
@@ -146,15 +161,13 @@ export class WebhookSource<
 
     const sourceMetadata = WebhookContextMetadataSchema.parse(ctx.source.metadata);
 
-    return this.options.handler({
-      request,
-      io,
-      ctx: {
-        params: sourceMetadata.params,
-        config: sourceMetadata.config as TConfig,
-        secret: sourceMetadata.secret,
-      },
-    });
+    const handlerContext = {
+      params: sourceMetadata.params,
+      config: sourceMetadata.config as TConfig,
+      secret: sourceMetadata.secret,
+    };
+
+    return this.options.handler({ request, io, ctx: { ...ctx, ...handlerContext } });
   }
 
   filter(params: TParams, config?: TConfig): EventFilter {
@@ -175,6 +188,10 @@ export class WebhookSource<
     io: IO,
     ctx: TriggerContext
   ) {
+    if (!this.options.register) {
+      return;
+    }
+
     const updates = await this.options.register(
       {
         ...registerEvent,
@@ -187,9 +204,14 @@ export class WebhookSource<
     return updates;
   }
 
-  async verify(request: Request): Promise<VerifyResult> {
+  async verify(
+    request: Request,
+    io: IOWithIntegrations<{ integration: TIntegration }>,
+    ctx: TriggerContext & { webhook: { secret: string } }
+  ): Promise<VerifyResult> {
     if (this.options.verify) {
-      return this.options.verify(request);
+      const clonedRequest = request.clone();
+      return this.options.verify({ request: clonedRequest, io, ctx });
     }
 
     return { success: true as const };
@@ -284,6 +306,7 @@ export class WebhookTrigger<
     triggerClient.defineHttpEndpoint({
       id: key,
       source: "trigger.dev",
+      icon: this.event.icon,
       verify: async () => ({ success: true }),
     });
 

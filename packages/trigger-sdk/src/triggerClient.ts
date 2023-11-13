@@ -40,6 +40,7 @@ import {
   SendEventOptions,
   SourceMetadataV2,
   StatusUpdate,
+  WebhookContextMetadataSchema,
   WebhookMetadata,
 } from "@trigger.dev/core";
 import { yellow } from "colorette";
@@ -798,7 +799,7 @@ export class TriggerClient {
       version: source.version,
       trigger: new EventTrigger({
         event: deliverWebhookEvent(options.key),
-        verify: source.verify.bind(source),
+        // verify: source.verify.bind(source),
       }),
       integrations: {
         integration: source.integration,
@@ -806,7 +807,22 @@ export class TriggerClient {
       run: async (request, io, ctx) => {
         console.log("[webhook.deliver]");
 
-        return source.handle(request, io, ctx);
+        const webhookContextMetadata = WebhookContextMetadataSchema.parse(ctx.source?.metadata);
+
+        const webhookContext = {
+          ...ctx,
+          webhook: {
+            secret: webhookContextMetadata.secret,
+          },
+        };
+
+        const verifyResult = await source.verify(request, io, webhookContext);
+
+        if (!verifyResult.success) {
+          throw new Error(verifyResult.reason);
+        }
+
+        return await source.handle(request, io, webhookContext);
       },
       __internal: true,
     });
@@ -822,11 +838,14 @@ export class TriggerClient {
         integration: source.integration,
       },
       run: async (registerPayload, io, ctx) => {
-        await io.try(
+        return await io.try(
           async () => {
-            console.log("[webhook.register]", registerPayload);
+            console.log("[webhook.register]");
 
             const { config, ...payloadWithoutConfig } = registerPayload;
+
+            // TODO: may want to use read operation to ensure the webhook actually exists
+            // await source.crud.read(crudOptions)
 
             if (!registerPayload.active) {
               console.log("Not active, run create");
@@ -849,25 +868,27 @@ export class TriggerClient {
               });
             }
 
+            const crudOptions = {
+              io,
+              ctx: {
+                ...payloadWithoutConfig,
+                config: {
+                  ...config,
+                  diff: diff(config.current, config.desired),
+                },
+              },
+            };
+
             const shouldUpdate = !isEqual(config.current, config.desired);
 
             if (shouldUpdate) {
               console.log("Should update, run update");
 
-              const crudOptions = {
-                io,
-                ctx: {
-                  ...payloadWithoutConfig,
-                  config: {
-                    ...config,
-                    diff: diff(config.current, config.desired),
-                  },
-                },
-              };
-
               if (source.crud.update) {
                 await source.crud.update(crudOptions);
               } else {
+                console.log("No update function, running delete and create instead");
+
                 await source.crud.delete(crudOptions);
                 await source.crud.create(crudOptions);
               }

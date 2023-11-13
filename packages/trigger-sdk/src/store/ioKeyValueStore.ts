@@ -25,7 +25,7 @@ export class IOKeyValueStore {
     return parts.join(":");
   }
 
-  #properties(key: string, value?: string) {
+  #properties(key: string, value?: any) {
     return [
       {
         label: "namespace",
@@ -35,7 +35,7 @@ export class IOKeyValueStore {
         label: "key",
         text: key,
       },
-      ...(value !== undefined
+      ...(typeof value === "string"
         ? [
             {
               label: "value",

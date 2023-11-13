@@ -844,8 +844,8 @@ export class IO {
         return await this._apiClient.updateWebhook(options.key, options);
       },
       {
-        name: "Update Webhook",
-        description: "Update Webhook",
+        name: "Update Webhook Source",
+        description: "Update Webhook Source",
         properties: [
           {
             label: "key",
