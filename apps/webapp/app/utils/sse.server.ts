@@ -22,6 +22,16 @@ export function sse({ request, pingInterval = 1000, updateInterval = 348, run }:
     return new Response("SSE disabled", { status: 200 });
   }
 
+  let pinger: NodeJS.Timer | undefined = undefined;
+  let updater: NodeJS.Timer | undefined = undefined;
+  let timeout: NodeJS.Timeout | undefined = undefined;
+
+  const abort = () => {
+    clearInterval(pinger);
+    clearInterval(updater);
+    clearTimeout(timeout);
+  };
+
   return eventStream(request.signal, (send, close) => {
     const safeSend = (args: { event?: string; data: string }) => {
       try {
@@ -49,30 +59,26 @@ export function sse({ request, pingInterval = 1000, updateInterval = 348, run }:
       }
     };
 
-    const pinger = setInterval(() => {
+    pinger = setInterval(() => {
       if (request.signal.aborted) {
-        return close();
+        return abort();
       }
 
       safeSend({ event: "ping", data: new Date().toISOString() });
     }, pingInterval);
 
-    const updater = setInterval(() => {
+    updater = setInterval(() => {
       if (request.signal.aborted) {
-        return close();
+        return abort();
       }
 
-      run(safeSend, close);
+      run(safeSend, abort);
     }, updateInterval);
 
-    const timeout = setTimeout(() => {
-      close();
+    timeout = setTimeout(() => {
+      close(); // close the connection after 1 minute of inactivity, which will refresh the connection (that's why we aren't using abort)
     }, 60 * 1000); // 1 minute
 
-    return () => {
-      clearInterval(updater);
-      clearInterval(pinger);
-      clearTimeout(timeout);
-    };
+    return abort;
   });
 }

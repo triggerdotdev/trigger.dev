@@ -15,7 +15,7 @@ export function taskWithAttemptsToServerTask(task: TaskWithAttempts): ServerTask
     status: task.status,
     description: task.description,
     params: task.params as any,
-    output: task.output as any,
+    output: task.outputIsUndefined ? undefined : (task.output as any),
     context: task.context as any,
     properties: task.properties as any,
     style: task.style as any,
@@ -32,7 +32,7 @@ export function taskWithAttemptsToServerTask(task: TaskWithAttempts): ServerTask
 
 export type TaskForCaching = Pick<
   Task,
-  "id" | "status" | "idempotencyKey" | "noop" | "output" | "parentId"
+  "id" | "status" | "idempotencyKey" | "noop" | "output" | "parentId" | "outputIsUndefined"
 >;
 
 export function prepareTasksForCaching(
@@ -105,7 +105,7 @@ function prepareTaskForCaching(task: TaskForCaching): CachedTask {
     status: task.status,
     idempotencyKey: task.idempotencyKey,
     noop: task.noop,
-    output: task.output as any,
+    output: task.outputIsUndefined ? undefined : (task.output as any),
     parentId: task.parentId,
   };
 }

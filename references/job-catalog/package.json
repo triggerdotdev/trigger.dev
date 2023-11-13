@@ -31,6 +31,7 @@
     "cli-example": "nodemon --watch src/cli-example.ts -r tsconfig-paths/register -r dotenv/config src/cli-example.ts",
     "invoke": "nodemon --watch src/invoke.ts -r tsconfig-paths/register -r dotenv/config src/invoke.ts",
     "built-ins": "nodemon --watch src/built-ins.ts -r tsconfig-paths/register -r dotenv/config src/built-ins.ts",
+    "edge-cases": "nodemon --watch src/edge-cases.ts -r tsconfig-paths/register -r dotenv/config src/edge-cases.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {

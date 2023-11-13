@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 type EventSourceOptions = {
   init?: EventSourceInit;
   event?: string;
+  disabled?: boolean;
 };
 
 /**
@@ -13,11 +14,15 @@ type EventSourceOptions = {
  */
 export function useEventSource(
   url: string | URL,
-  { event = "message", init }: EventSourceOptions = {}
+  { event = "message", init, disabled }: EventSourceOptions = {}
 ) {
   const [data, setData] = useState<string | null>(null);
 
   useEffect(() => {
+    if (disabled) {
+      return;
+    }
+
     const eventSource = new EventSource(url, init);
     eventSource.addEventListener(event ?? "message", handler);
 
@@ -32,7 +37,7 @@ export function useEventSource(
       eventSource.removeEventListener(event ?? "message", handler);
       eventSource.close();
     };
-  }, [url, event, init]);
+  }, [url, event, init, disabled]);
 
   return data;
 }
