@@ -816,13 +816,17 @@ export class TriggerClient {
           },
         };
 
-        const verifyResult = await source.verify(request, io, webhookContext);
+        const verifyResult = await io.runTask("verify", async () => {
+          return await source.verify(request, io, webhookContext);
+        });
 
         if (!verifyResult.success) {
           throw new Error(verifyResult.reason);
         }
 
-        return await source.handle(request, io, webhookContext);
+        return await io.runTask("handle", async () => {
+          return await source.handle(request, io, webhookContext);
+        });
       },
       __internal: true,
     });
