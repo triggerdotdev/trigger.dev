@@ -7,6 +7,7 @@ import { ulid } from "../ulid.server";
 import { getSecretStore } from "../secrets/secretStore.server";
 import { z } from "zod";
 import { httpEndpointUrl } from "../httpendpoint/HandleHttpEndpointService";
+import { isEqual } from "ohash";
 
 type ExtendedWebhook = Prisma.WebhookGetPayload<{
   include: {
@@ -37,6 +38,10 @@ export class RegisterWebhookService {
     const webhook = await this.#upsertWebhook(endpoint, webhookMetadata);
 
     if (!webhook) {
+      return;
+    }
+
+    if (webhook.active && isEqual(webhook.config, webhook.desiredConfig)) {
       return;
     }
 

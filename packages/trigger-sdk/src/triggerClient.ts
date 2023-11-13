@@ -1,4 +1,4 @@
-import { diff, isEqual } from "ohash";
+import { diff } from "ohash";
 import {
   API_VERSIONS,
   ConnectionAuth,
@@ -879,30 +879,16 @@ export class TriggerClient {
               },
             };
 
-            const shouldUpdate = !isEqual(config.current, config.desired);
+            console.log("Should update, run update");
 
-            if (shouldUpdate) {
-              console.log("Should update, run update");
+            if (source.crud.update) {
+              await source.crud.update(crudOptions);
+            } else {
+              console.log("No update function, running delete and create instead");
 
-              if (source.crud.update) {
-                await source.crud.update(crudOptions);
-              } else {
-                console.log("No update function, running delete and create instead");
-
-                await source.crud.delete(crudOptions);
-                await source.crud.create(crudOptions);
-              }
-
-              return await io.updateWebhook("update-webhook-success", {
-                key: options.key,
-                active: true,
-                config: config.desired,
-              });
+              await source.crud.delete(crudOptions);
+              await source.crud.create(crudOptions);
             }
-
-            console.log("Active and should not update, nothing to do!");
-
-            // throw new Error("fail on purpose");
 
             return await io.updateWebhook("update-webhook-success", {
               key: options.key,
