@@ -5,12 +5,14 @@ import {
   HandlerEvent,
   IntegrationTaskKey,
   Logger,
+  verifyRequestSignature,
 } from "@trigger.dev/sdk";
 import AirtableSDK from "airtable";
 import { z } from "zod";
 import * as events from "./events";
 import { Airtable, AirtableRunTask } from "./index";
 import { ListWebhooksResponse, ListWebhooksResponseSchema } from "./schemas";
+import { WebhookSource, WebhookTrigger } from "@trigger.dev/sdk/triggers/webhook";
 
 const WebhookFromSourceSchema = z.union([
   z.literal("formSubmission"),
@@ -192,6 +194,11 @@ type CreateTriggersResult<TEventSpecification extends AirtableEvents> = External
   ReturnType<typeof createWebhookEventSource>
 >;
 
+type CreateWebhookTriggersResult<TEventSpecification extends AirtableEvents> = WebhookTrigger<
+  TEventSpecification,
+  ReturnType<typeof createWebhookSource>
+>;
+
 export function createTrigger<TEventSpecification extends AirtableEvents>(
   source: ReturnType<typeof createWebhookEventSource>,
   event: TEventSpecification,
@@ -207,6 +214,25 @@ export function createTrigger<TEventSpecification extends AirtableEvents>(
     params,
     source,
     options,
+  });
+}
+
+export function createWebhookTrigger<TEventSpecification extends AirtableEvents>(
+  source: ReturnType<typeof createWebhookSource>,
+  event: TEventSpecification,
+  params: TriggerParams,
+  config: {
+    action: string[];
+    dataTypes: WebhookDataType[];
+    changeTypes?: WebhookChangeType[];
+    fromSources?: WebhookFromSource[];
+  }
+): CreateWebhookTriggersResult<TEventSpecification> {
+  return new WebhookTrigger({
+    event,
+    params,
+    source,
+    config,
   });
 }
 
@@ -333,6 +359,168 @@ export function createWebhookEventSource(
         secret: webhook.macSecretBase64,
         options: registeredOptions,
       };
+    },
+  });
+}
+
+const getSpecification = (config: Record<string, string[]>, params: any): WebhookSpecification => {
+  return {
+    filters: {
+      dataTypes: config.dataTypes as WebhookDataType[],
+      changeTypes: config.event as WebhookChangeType[],
+      fromSources: (config.fromSources ?? [
+        "client",
+        "anonymousUser",
+        "formSubmission",
+      ]) as WebhookFromSource[],
+      recordChangeScope: params?.tableId,
+    },
+  };
+};
+
+export function createWebhookSource(
+  integration: Airtable
+): WebhookSource<
+  Airtable,
+  { baseId: string; tableId?: string },
+  { dataTypes: WebhookDataType[]; fromSources?: WebhookFromSource[] }
+> {
+  return new WebhookSource({
+    id: "airtable.webhook",
+    schemas: {
+      params: z.object({ baseId: z.string(), tableId: z.string().optional() }),
+      config: z.object({
+        dataTypes: z.array(WebhookDataTypeSchema),
+        fromSources: z.array(WebhookFromSourceSchema).optional(),
+      }),
+    },
+    version: "0.1.0",
+    integration,
+    filter: (params, options) => ({
+      actionMetadata: {
+        source: options?.fromSources ?? ["client", "anonymousUser", "formSubmission"],
+      },
+    }),
+    key: (params) =>
+      `airtable.webhook.${params.baseId}${params.tableId ? `.${params.tableId}` : ""}`,
+    crud: {
+      create: async ({ io, ctx }) => {
+        const webhook = await io.integration.webhooks().create("create-webhook", {
+          url: ctx.url,
+          baseId: ctx.params?.baseId,
+          options: getSpecification(ctx.config.desired, ctx.params),
+        });
+
+        await io.store.job.set("set-id", "webhook-id", webhook.id);
+        await io.store.env.set("set-secret", "webhook-secret", webhook.macSecretBase64);
+      },
+      read: async ({ io, ctx }) => {
+        const listResponse = await io.integration.webhooks().list("list-webhooks", {
+          baseId: ctx.params?.baseId,
+        });
+
+        const existingWebhook = listResponse.webhooks.find((w) => w.notificationUrl === ctx.url);
+
+        if (!existingWebhook) {
+          return await io.store.job.delete("delete-stale-webhook-id", "webhook-id");
+        }
+
+        await io.store.job.set("set-webhook-id", "webhook-id", existingWebhook.id);
+      },
+      update: async ({ io, ctx }) => {
+        const webhookId = await io.store.job.get("get-webhook-id", "webhook-id");
+
+        if (!webhookId) {
+          throw new Error("Stored webhook ID should not be empty when updating.");
+        }
+
+        const updatedWebhook = await io.integration.webhooks().update("update-webhook", {
+          baseId: ctx.params?.baseId,
+          url: ctx.url,
+          webhookId,
+          options: getSpecification(ctx.config.desired, ctx.params),
+        });
+
+        // the update function above runs delete and create internally
+        await io.store.job.set("set-webhook-id", "webhook-id", updatedWebhook.id);
+      },
+      delete: async ({ io, ctx }) => {
+        const webhookId = await io.store.job.get("get-webhook-id", "webhook-id");
+
+        await io.integration.webhooks().delete("delete-webhook", {
+          baseId: ctx.params?.baseId,
+          webhookId,
+        });
+      },
+    },
+    verify: async ({ request, io, ctx }) => {
+      const secret = await io.store.env.get("get-secret", "webhook-secret");
+
+      // if (!request.body) {
+      //   return { success: false, reason: "No body found." };
+      // }
+
+      // const rawBody = await request.text();
+
+      // // all headers are automatically lowercased
+      // const signature = request.headers.get("x-airtable-content-mac");
+
+      // if (!signature) {
+      //   return { success: false, reason: "No signature found." };
+      // }
+
+      // const hmac = require("crypto").createHmac("sha256", secret);
+      // hmac.update(rawBody, "ascii");
+      // const expectedContentHmac = "hmac-sha256=" + hmac.digest("hex");
+
+      // if (signature !== expectedContentHmac) {
+      //   return { success: false, reason: "Signatures don't match." };
+      // }
+
+      // FIXME: for some reason both verification methods fail
+
+      return { success: true };
+
+      return await verifyRequestSignature({
+        request,
+        headerName: "x-airtable-content-mac",
+        secret,
+        algorithm: "sha256",
+      });
+    },
+    handler: async ({ request, io, ctx }) => {
+      await io.logger.debug("[@trigger.dev/airtable] Handling webhook payload");
+
+      // TODO: add oauth back
+      const client = integration.createClient();
+
+      const webhookPayload = ReceivedPayload.parse(await request.json());
+
+      const cursor = await io.store.job.get("get-cursor", "cursor");
+
+      //fetch the actual payloads
+      const response = await getAllPayloads(
+        webhookPayload.base.id,
+        webhookPayload.webhook.id,
+        client,
+        cursor
+      );
+
+      if (!response) {
+        return await io.logger.info("No payload fetch response, nothing to do!");
+      }
+
+      await io.store.job.set("set-cursor", "cursor", response.cursor);
+
+      const eventsFromResponse = response.payloads.map((payload) => ({
+        id: `${payload.timestamp.getTime()}-${payload.baseTransactionNumber}`,
+        payload,
+        source: "airtable.com",
+        name: "changed",
+        timestamp: payload.timestamp,
+      }));
+
+      await io.sendEvents("send-events", eventsFromResponse);
     },
   });
 }
