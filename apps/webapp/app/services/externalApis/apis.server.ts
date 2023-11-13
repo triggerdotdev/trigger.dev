@@ -59,6 +59,20 @@ export const apisList = [
   {
     identifier: "caldotcom",
     name: "Cal.com",
+    examples: [
+      {
+        title: "Send a Slack message when meetings are booked or cancelled.",
+        slug: "cal-slack-meeting-alert",
+        version: "1.0.0",
+        codeUrl: "https://github.com/triggerdotdev/api-reference/raw/main/src/cal-http-endpoint.ts",
+      },
+      {
+        title: "Find all Cal.com bookings for a user.",
+        slug: "cal-find-bookings",
+        version: "1.0.0",
+        codeUrl: "https://github.com/triggerdotdev/api-reference/raw/main/src/cal.ts",
+      },
+    ],
   },
   {
     identifier: "clerk",
