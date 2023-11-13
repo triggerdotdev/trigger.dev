@@ -5,8 +5,6 @@ import { Header1, Header2 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
 
 export function CustomHelp({ api }: { api: Api }) {
-  //Todo new function called 'examples', which you pass through the api object, in here you use the queryclient
-
   return (
     <div className="mt-4">
       <Header1 className="mb-2">You can use any API with requests or an SDK</Header1>

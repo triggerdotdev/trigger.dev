@@ -33,6 +33,9 @@ export function CodeExample({ example }: { example: ApiExample }) {
   }, [example.codeUrl]);
 
   if (customerFetcher.state === "loading") return "Loading...";
+  const hideCodeRegex = /(\n)?\/\/ hide-code[\s\S]*?\/\/ end-hide-code(\n)*/gm;
+  const code = customerFetcher.data?.code;
+  const cleanedCode = code?.replace(hideCodeRegex, "\n");
 
-  return customerFetcher.data && <CodeBlock code={customerFetcher.data?.code} className="mb-4" />;
+  return customerFetcher.data && <CodeBlock code={cleanedCode ?? ""} className="mb-4" />;
 }
