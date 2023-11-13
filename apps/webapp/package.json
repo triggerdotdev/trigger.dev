@@ -29,6 +29,7 @@
     "/public/build"
   ],
   "dependencies": {
+    "@aws-sdk/client-sqs": "^3.445.0",
     "@codemirror/autocomplete": "^6.3.1",
     "@codemirror/commands": "^6.1.2",
     "@codemirror/lang-javascript": "^6.1.1",
@@ -111,6 +112,7 @@
     "simplur": "^3.0.1",
     "slug": "^6.0.0",
     "sonner": "^1.0.3",
+    "sqs-consumer": "^7.4.0",
     "tailwind-merge": "^1.12.0",
     "tailwind-scrollbar-hide": "^1.1.7",
     "tailwindcss-animate": "^1.0.5",
