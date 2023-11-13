@@ -7,7 +7,7 @@ import {
   Logger,
   verifyRequestSignature,
 } from "@trigger.dev/sdk";
-import AirtableSDK from "airtable";
+import AirtableSDK, { Error as AirtableApiError } from "airtable";
 import { z } from "zod";
 import * as events from "./events";
 import { Airtable, AirtableRunTask } from "./index";
@@ -27,17 +27,21 @@ const WebhookFromSourceSchema = z.union([
 ]);
 
 type WebhookFromSource = z.infer<typeof WebhookFromSourceSchema>;
+
 const WebhookDataTypeSchema = z.union([
   z.literal("tableData"),
   z.literal("tableFields"),
   z.literal("tableMetadata"),
 ]);
+
 export type WebhookDataType = z.infer<typeof WebhookDataTypeSchema>;
+
 const WebhookChangeTypeSchema = z.union([
   z.literal("add"),
   z.literal("remove"),
   z.literal("update"),
 ]);
+
 export type WebhookChangeType = z.infer<typeof WebhookChangeTypeSchema>;
 type WebhookSpecification = {
   filters: {
@@ -47,6 +51,31 @@ type WebhookSpecification = {
     fromSources?: WebhookFromSource[];
   };
 };
+
+const AirtableErrorBodySchema = z
+  .union([
+    z.object({
+      error: z.string(),
+    }),
+    z.object({
+      error: z.object({
+        type: z.string(),
+        message: z.string().optional(),
+      }),
+    }),
+  ])
+  .transform((body) => {
+    if (typeof body.error === "string") {
+      return {
+        type: body.error,
+      };
+    } else {
+      return {
+        type: body.error.type,
+        message: body.error.message,
+      };
+    }
+  });
 
 const apiUrl = "https://api.airtable.com/v0/bases";
 
@@ -87,14 +116,7 @@ export class Webhooks {
         });
 
         if (!response.ok) {
-          const errorText = await response
-            .text()
-            .then((t) => t)
-            .catch((e) => "No body");
-
-          throw new Error(
-            `Failed to create webhook: ${response.status} ${response.statusText}\n${errorText}`
-          );
+          await handleWebhookError(response, "WEBHOOK_CREATE");
         }
 
         const webhook = await response.json();
@@ -125,7 +147,7 @@ export class Webhooks {
         });
 
         if (!response.ok) {
-          throw new Error(`Failed to list webhooks: ${response.statusText}`);
+          await handleWebhookError(response, "WEBHOOK_LIST");
         }
 
         const webhook = await response.json();
@@ -155,7 +177,7 @@ export class Webhooks {
         });
 
         if (!response.ok) {
-          throw new Error(`Failed to delete webhook: ${response.statusText}`);
+          await handleWebhookError(response, "WEBHOOK_DELETE");
         }
       },
       {
@@ -222,7 +244,6 @@ export function createWebhookTrigger<TEventSpecification extends AirtableEvents>
   event: TEventSpecification,
   params: TriggerParams,
   config: {
-    action: string[];
     dataTypes: WebhookDataType[];
     changeTypes?: WebhookChangeType[];
     fromSources?: WebhookFromSource[];
@@ -270,6 +291,7 @@ export function createWebhookEventSource(
     id: "airtable.webhook",
     schema: z.object({ baseId: z.string(), tableId: z.string().optional() }),
     optionSchema: z.object({
+      changeTypes: z.array(WebhookChangeTypeSchema).optional(),
       dataTypes: z.array(WebhookDataTypeSchema),
       fromSources: z.array(WebhookFromSourceSchema).optional(),
     }),
@@ -297,7 +319,9 @@ export function createWebhookEventSource(
       const specification: WebhookSpecification = {
         filters: {
           dataTypes: options.dataTypes.desired as WebhookDataType[],
-          changeTypes: options.event.desired as WebhookChangeType[],
+          changeTypes: options.changeTypes
+            ? (options.changeTypes.desired as WebhookChangeType[])
+            : ["add", "remove", "update"],
           fromSources: (options.fromSources?.desired ?? [
             "client",
             "anonymousUser",
@@ -367,7 +391,9 @@ const getSpecification = (config: Record<string, string[]>, params: any): Webhoo
   return {
     filters: {
       dataTypes: config.dataTypes as WebhookDataType[],
-      changeTypes: config.event as WebhookChangeType[],
+      changeTypes: config.changeTypes
+        ? (config.changeTypes as WebhookChangeType[])
+        : ["add", "remove", "update"],
       fromSources: (config.fromSources ?? [
         "client",
         "anonymousUser",
@@ -426,23 +452,6 @@ export function createWebhookSource(
         }
 
         await io.store.job.set("set-webhook-id", "webhook-id", existingWebhook.id);
-      },
-      update: async ({ io, ctx }) => {
-        const webhookId = await io.store.job.get("get-webhook-id", "webhook-id");
-
-        if (!webhookId) {
-          throw new Error("Stored webhook ID should not be empty when updating.");
-        }
-
-        const updatedWebhook = await io.integration.webhooks().update("update-webhook", {
-          baseId: ctx.params?.baseId,
-          url: ctx.url,
-          webhookId,
-          options: getSpecification(ctx.config.desired, ctx.params),
-        });
-
-        // the update function above runs delete and create internally
-        await io.store.job.set("set-webhook-id", "webhook-id", updatedWebhook.id);
       },
       delete: async ({ io, ctx }) => {
         const webhookId = await io.store.job.get("get-webhook-id", "webhook-id");
@@ -645,4 +654,22 @@ async function getPayload(
 
   const webhook = await response.json();
   return ListWebhooksResponseSchema.parse(webhook);
+}
+
+async function handleWebhookError(response: Response, errorType: string) {
+  const rawErrorBody = await response.json();
+
+  const parsedErrorBody = AirtableErrorBodySchema.safeParse(rawErrorBody);
+
+  if (!parsedErrorBody.success) {
+    throw new AirtableApiError(
+      `${errorType}_PARSE_ERROR`,
+      `${response.statusText}:\n${rawErrorBody}`,
+      response.status
+    );
+  }
+
+  const { type, message } = parsedErrorBody.data;
+
+  throw new AirtableApiError(type, message ?? response.statusText, response.status);
 }
