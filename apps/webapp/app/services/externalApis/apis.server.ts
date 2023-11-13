@@ -1,6 +1,14 @@
 export type Api = {
   identifier: string;
   name: string;
+  examples?: ApiExample[];
+};
+
+export type ApiExample = {
+  title: string;
+  version: string;
+  codeUrl: string;
+  slug: string;
 };
 
 export const apisList = [
@@ -27,6 +35,14 @@ export const apisList = [
   {
     identifier: "asana",
     name: "Asana",
+    examples: [
+      {
+        title: "Get user details from Asana",
+        slug: "get-user-details",
+        version: "1.0.0",
+        codeUrl: "https://github.com/triggerdotdev/api-reference/raw/main/src/asana.ts",
+      },
+    ],
   },
   {
     identifier: "atlassian",

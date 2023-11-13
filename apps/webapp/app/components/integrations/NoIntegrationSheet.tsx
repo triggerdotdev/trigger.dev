@@ -1,5 +1,5 @@
 import React from "react";
-import { Api } from "~/services/externalApis/apis";
+import { Api } from "~/services/externalApis/apis.server";
 import { Button } from "../primitives/Buttons";
 import { Callout } from "../primitives/Callout";
 import { Header1 } from "../primitives/Headers";
@@ -51,7 +51,7 @@ export function NoIntegrationSheet({
           )}
         </SheetHeader>
         <SheetBody>
-          <CustomHelp name={api.name} />
+          <CustomHelp api={api} />
         </SheetBody>
       </SheetContent>
     </Sheet>
