@@ -56,11 +56,14 @@ async function main() {
   // }
 }
 
+const batches = 30;
+const concurrentEvents = 5;
+
 async function mainParallel() {
   console.log("Preparing perf tests...");
 
   // wait for 10 seconds
-  await new Promise((resolve) => setTimeout(resolve, 10000));
+  await new Promise((resolve) => setTimeout(resolve, 5000));
 
   console.log("Starting perf tests in 1 second...");
 
@@ -68,10 +71,9 @@ async function mainParallel() {
   await new Promise((resolve) => setTimeout(resolve, 1000));
 
   // Send 5 events per second for 30 seconds (1 event == 10 runs)
-  for (let i = 0; i < 30; i++) {
-    console.log("Sending 5 event...");
-
-    await Promise.all([sendEvent(), sendEvent(), sendEvent(), sendEvent(), sendEvent()]);
+  for (let i = 0; i < batches; i++) {
+    console.log(`Sending ${concurrentEvents} events... batch ${i + 1}/${batches}`);
+    await Promise.all(new Array(concurrentEvents).fill(0).map(sendEvent));
 
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
