@@ -48,6 +48,7 @@ export function ConnectToIntegrationSheet({
               <Paragraph variant="small">{integration.description}</Paragraph>
             )}
           </div>
+
           <LinkButton
             to={docsIntegrationPath(integration.identifier)}
             variant="secondary/small"
@@ -133,6 +134,6 @@ function SelectedIntegrationMethod({
         />
       );
     case "custom":
-      return <CustomHelp name={integration.name} />;
+      return <CustomHelp api={integration} />;
   }
 }

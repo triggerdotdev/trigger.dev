@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { CodeExample } from "~/routes/resources.codeexample";
-import { Api, ApiExample, apisList } from "~/services/externalApis/apis.server";
+import { Api } from "~/services/externalApis/apis.server";
 import { cn } from "~/utils/cn";
+import { Feedback } from "../Feedback";
 import { Header1, Header2 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
 import { TextLink } from "../primitives/TextLink";
-import { Feedback } from "../Feedback";
-import { DetailCell } from "../primitives/DetailCell";
 
 const fallbackExamples = [
   {
@@ -88,11 +87,10 @@ export function CustomHelp({ api }: { api: Api }) {
         </>
       ) : (
         <>
-          <Header2 className="mb-2">Example code</Header2>
+          <Header2 className="mb-2">Example code using fetch / an existing SDK</Header2>
           <Paragraph spacing className="mb-4">
-            We are currently working on code samples for {api.name}. In the meantime, you can use
-            one of our examples below as a starting point if you want to use {api.name} in your
-            project. Please{" "}
+            You can use one of our examples below as a starting point / reference for your projects.
+            Please{" "}
             <Feedback
               button={
                 <span className="cursor-pointer text-indigo-500 transition duration-300 hover:text-indigo-400">
