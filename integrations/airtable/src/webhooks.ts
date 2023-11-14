@@ -93,7 +93,6 @@ export class Webhooks {
     return this.runTask(
       key,
       async (client, task, io) => {
-        // create webhook
         const response = await fetch(`${apiUrl}/${baseId}/webhooks`, {
           method: "POST",
           headers: {
@@ -138,7 +137,6 @@ export class Webhooks {
     return this.runTask(
       key,
       async (client, task, io) => {
-        // create webhook
         const response = await fetch(`${apiUrl}/${baseId}/webhooks`, {
           headers: {
             Authorization: `Bearer ${client._apiKey}`,
@@ -167,7 +165,6 @@ export class Webhooks {
     return this.runTask(
       key,
       async (client, task, io) => {
-        // create webhook
         const response = await fetch(`${apiUrl}/${baseId}/webhooks/${webhookId}`, {
           method: "DELETE",
           headers: {
@@ -438,7 +435,9 @@ export function createWebhookSource(
         });
 
         await io.store.job.set("set-id", "webhook-id", webhook.id);
-        await io.store.env.set("set-secret", "webhook-secret", webhook.macSecretBase64);
+
+        // FIXME: namespace this, maybe to key() output
+        await io.store.env.set("set-secret", "webhook-secret-base64", webhook.macSecretBase64);
       },
       read: async ({ io, ctx }) => {
         const listResponse = await io.integration.webhooks().list("list-webhooks", {
@@ -463,37 +462,13 @@ export function createWebhookSource(
       },
     },
     verify: async ({ request, io, ctx }) => {
-      const secret = await io.store.env.get("get-secret", "webhook-secret");
-
-      // if (!request.body) {
-      //   return { success: false, reason: "No body found." };
-      // }
-
-      // const rawBody = await request.text();
-
-      // // all headers are automatically lowercased
-      // const signature = request.headers.get("x-airtable-content-mac");
-
-      // if (!signature) {
-      //   return { success: false, reason: "No signature found." };
-      // }
-
-      // const hmac = require("crypto").createHmac("sha256", secret);
-      // hmac.update(rawBody, "ascii");
-      // const expectedContentHmac = "hmac-sha256=" + hmac.digest("hex");
-
-      // if (signature !== expectedContentHmac) {
-      //   return { success: false, reason: "Signatures don't match." };
-      // }
-
-      // FIXME: for some reason both verification methods fail
-
-      return { success: true };
+      // FIXME: namespace this, maybe to key() output
+      const secretBase64 = await io.store.env.get("get-secret", "webhook-secret-base64");
 
       return await verifyRequestSignature({
         request,
         headerName: "x-airtable-content-mac",
-        secret,
+        secret: Buffer.from(secretBase64, "base64"),
         algorithm: "sha256",
       });
     },

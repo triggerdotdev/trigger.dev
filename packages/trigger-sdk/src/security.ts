@@ -1,4 +1,4 @@
-import crypto from "crypto";
+import crypto, { type BinaryLike, type KeyObject } from "crypto";
 import { VerifyResult } from "./types";
 
 /** Easily verify webhook payloads when they're using common signing methods. */
@@ -14,7 +14,7 @@ export async function verifyRequestSignature({
   headerName: string;
   /** The secret that you use to hash the payload. For HttpEndpoints this will usually originally
       come from the Trigger.dev dashboard and should be stored in an environment variable. */
-  secret: string;
+  secret: BinaryLike | KeyObject;
   /** The hashing algorithm that was used to create the signature. Currently only `sha256` is
       supported. */
   algorithm: "sha256";
@@ -47,9 +47,13 @@ export async function verifyRequestSignature({
   }
 }
 
-export function verifyHmacSha256(headerValue: string, secret: string, body: string): boolean {
+export function verifyHmacSha256(
+  headerValue: string,
+  secret: BinaryLike | KeyObject,
+  body: string
+): boolean {
   const bodyDigest = crypto.createHmac("sha256", secret).update(body).digest("hex");
-  const signature = headerValue?.replace("sha256=", "") ?? "";
+  const signature = headerValue?.replace("hmac-sha256=", "").replace("sha256=", "") ?? "";
 
   return signature === bodyDigest;
 }
