@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ApiAuthenticationMethodApiKey, Integration } from "~/services/externalApis/types";
+import { Integration } from "~/services/externalApis/types";
 import { docsIntegrationPath } from "~/utils/pathBuilder";
 import { LinkButton } from "../primitives/Buttons";
 import { Header1, Header2 } from "../primitives/Headers";
