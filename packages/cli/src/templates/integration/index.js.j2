@@ -19,7 +19,7 @@ import { Models } from "./models";
 
 export type {{ identifier | capitalize }}IntegrationOptions = {
   id: string;
-  {{ apiKeyPropertyName }}: string;
+  {{ apiKeyPropertyName }}?: string;
 };
 
 export type {{ identifier | capitalize }}RunTask = InstanceType<typeof {{ identifier | capitalize }}>["runTask"];
