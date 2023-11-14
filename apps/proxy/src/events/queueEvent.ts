@@ -1,10 +1,10 @@
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
-import { ApiEventLog, SendEventBodySchema, SendEventOptions } from "@trigger.dev/core";
+import { ApiEventLog, SendEventBodySchema } from "@trigger.dev/core";
 import { generateErrorMessage } from "zod-error";
-import { getApiKeyFromRequest } from "../apikey";
 import { Env } from "..";
-import { calculateDeliverAt } from "./utils";
+import { getApiKeyFromRequest } from "../apikey";
 import { json } from "../json";
+import { calculateDeliverAt } from "./utils";
 
 /** Adds the event to an AWS SQS queue, so it can be consumed from the main Trigger.dev API */
 export async function queueEvent(request: Request, env: Env): Promise<Response> {
@@ -25,7 +25,7 @@ export async function queueEvent(request: Request, env: Env): Promise<Response> 
     const body = SendEventBodySchema.safeParse(anyBody);
     if (!body.success) {
       return json(
-        { message: generateErrorMessage(body.error.issues) },
+        { error: generateErrorMessage(body.error.issues) },
         {
           status: 422,
         }
@@ -74,11 +74,10 @@ export async function queueEvent(request: Request, env: Env): Promise<Response> 
       status: 200,
     });
   } catch (e) {
+    console.error("queueEvent error", e);
     return json(
       {
-        message: `Failed to parse event body: ${
-          e instanceof Error ? e.message : JSON.stringify(e)
-        }`,
+        error: `Failed to send event: ${e instanceof Error ? e.message : JSON.stringify(e)}`,
       },
       {
         status: 422,
