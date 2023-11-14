@@ -505,7 +505,9 @@ export function createWebhookSource(
 
       const webhookPayload = ReceivedPayload.parse(await request.json());
 
-      const cursor = await io.store.job.get("get-cursor", "cursor");
+      const webhookId = await io.store.job.get("get-webhook-id", "webhook-id");
+
+      const cursor = await io.store.job.get("get-cursor", `cursor-${webhookId}`);
 
       //fetch the actual payloads
       const response = await getAllPayloads(
@@ -519,7 +521,7 @@ export function createWebhookSource(
         return await io.logger.info("No payload fetch response, nothing to do!");
       }
 
-      await io.store.job.set("set-cursor", "cursor", response.cursor);
+      await io.store.job.set("set-cursor", `cursor-${webhookId}`, response.cursor);
 
       const eventsFromResponse = response.payloads.map((payload) => ({
         id: `${payload.timestamp.getTime()}-${payload.baseTransactionNumber}`,
