@@ -131,7 +131,6 @@ type {{ identifier | capitalize }}Events = (typeof events)[keyof typeof events];
 
 export type TriggerParams = {
   teamId?: string;
-  filter?: EventFilter;
 };
 
 type CreateTriggersResult<TEventSpecification extends {{ identifier | capitalize }}Events> = ExternalSourceTrigger<
