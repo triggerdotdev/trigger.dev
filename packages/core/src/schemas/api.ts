@@ -1,9 +1,9 @@
-import { ulid } from "ulid";
+import { ulid } from "ulidx";
 import { z } from "zod";
 import { Prettify } from "../types";
 import { addMissingVersionField } from "./addMissingVersionField";
 import { ErrorWithStackSchema, SchemaErrorSchema } from "./errors";
-import { EventRuleSchema } from "./eventFilter";
+import { EventFilterSchema, EventRuleSchema } from "./eventFilter";
 import { ConnectionAuthSchema, IntegrationConfigSchema } from "./integrations";
 import { DeserializedJsonSchema, SerializableJsonSchema } from "./json";
 import { DisplayPropertySchema, StyleSchema } from "./properties";
@@ -17,6 +17,7 @@ import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
 import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
 import { RunStatusSchema } from "./runs";
 import { JobRunStatusRecordSchema } from "./statuses";
+import { RequestFilterSchema } from "./requestFilter";
 
 export const UpdateTriggerSourceBodyV1Schema = z.object({
   registeredEvents: z.array(z.string()),
@@ -136,15 +137,6 @@ export type HandleTriggerSource = z.infer<typeof HandleTriggerSourceSchema>;
 
 export type TriggerSource = z.infer<typeof TriggerSourceSchema>;
 
-export const HttpSourceRequestSchema = z.object({
-  url: z.string().url(),
-  method: z.string(),
-  headers: z.record(z.string()),
-  rawBody: z.instanceof(Buffer).optional().nullable(),
-});
-
-export type HttpSourceRequest = z.infer<typeof HttpSourceRequestSchema>;
-
 export const HttpSourceRequestHeadersSchema = z.object({
   "x-ts-key": z.string(),
   "x-ts-dynamic-id": z.string().optional(),
@@ -173,6 +165,13 @@ export const HttpSourceRequestHeadersSchema = z.object({
 });
 
 export type HttpSourceRequestHeaders = z.output<typeof HttpSourceRequestHeadersSchema>;
+
+export const HttpEndpointRequestHeadersSchema = z.object({
+  "x-ts-key": z.string(),
+  "x-ts-http-url": z.string(),
+  "x-ts-http-method": z.string(),
+  "x-ts-http-headers": z.string().transform((s) => z.record(z.string()).parse(JSON.parse(s))),
+});
 
 export const PongSuccessResponseSchema = z.object({
   ok: z.literal(true),
@@ -289,11 +288,27 @@ export const DynamicTriggerEndpointMetadataSchema = z.object({
 
 export type DynamicTriggerEndpointMetadata = z.infer<typeof DynamicTriggerEndpointMetadataSchema>;
 
+const HttpEndpointMetadataSchema = z.object({
+  id: z.string(),
+  version: z.string(),
+  enabled: z.boolean(),
+  title: z.string().optional(),
+  icon: z.string().optional(),
+  properties: z.array(DisplayPropertySchema).optional(),
+  event: EventSpecificationSchema,
+  immediateResponseFilter: RequestFilterSchema.optional(),
+  skipTriggeringRuns: z.boolean().optional(),
+  source: z.string(),
+});
+
+export type HttpEndpointMetadata = z.infer<typeof HttpEndpointMetadataSchema>;
+
 export const IndexEndpointResponseSchema = z.object({
   jobs: z.array(JobMetadataSchema),
   sources: z.array(SourceMetadataSchema),
   dynamicTriggers: z.array(DynamicTriggerEndpointMetadataSchema),
   dynamicSchedules: z.array(RegisterDynamicSchedulePayloadSchema),
+  httpEndpoints: z.array(HttpEndpointMetadataSchema).optional(),
 });
 
 export type IndexEndpointResponse = z.infer<typeof IndexEndpointResponseSchema>;
@@ -311,6 +326,7 @@ const IndexEndpointStatsSchema = z.object({
   dynamicTriggers: z.number(),
   dynamicSchedules: z.number(),
   disabledJobs: z.number().default(0),
+  httpEndpoints: z.number().default(0),
 });
 
 export type IndexEndpointStats = z.infer<typeof IndexEndpointStatsSchema>;
@@ -374,6 +390,9 @@ export const RawEventSchema = z.object({
   /** This is optional, it defaults to "trigger.dev". It can be useful to set
       this as you can filter events using this in the `eventTrigger()`. */
   source: z.string().optional(),
+  /** This is optional, it defaults to "JSON". If your event is actually a request,
+      with a url, headers, method and rawBody you can use "REQUEST" */
+  payloadType: z.union([z.literal("JSON"), z.literal("REQUEST")]).optional(),
 });
 
 export type RawEvent = z.infer<typeof RawEventSchema>;
@@ -426,6 +445,11 @@ export const SendEventOptionsSchema = z.object({
 
 export const SendEventBodySchema = z.object({
   event: RawEventSchema,
+  options: SendEventOptionsSchema.optional(),
+});
+
+export const SendBulkEventsBodySchema = z.object({
+  events: RawEventSchema.array(),
   options: SendEventOptionsSchema.optional(),
 });
 
@@ -485,6 +509,13 @@ export const RunJobBodySchema = z.object({
     title: z.string(),
     slug: z.string(),
   }),
+  project: z
+    .object({
+      id: z.string(),
+      name: z.string(),
+      slug: z.string(),
+    })
+    .optional(),
   account: z
     .object({
       id: z.string(),
@@ -518,27 +549,29 @@ export const RunJobYieldExecutionErrorSchema = z.object({
 
 export type RunJobYieldExecutionError = z.infer<typeof RunJobYieldExecutionErrorSchema>;
 
-export const RunJobAutoYieldExecutionErrorSchema = z.object({
-  status: z.literal("AUTO_YIELD_EXECUTION"),
+export const AutoYieldMetadataSchema = z.object({
   location: z.string(),
   timeRemaining: z.number(),
   timeElapsed: z.number(),
   limit: z.number().optional(),
 });
 
-export type RunJobAutoYieldExecutionError = z.infer<typeof RunJobAutoYieldExecutionErrorSchema>;
+export type AutoYieldMetadata = z.infer<typeof AutoYieldMetadataSchema>;
+
+export const RunJobAutoYieldExecutionErrorSchema = AutoYieldMetadataSchema.extend({
+  status: z.literal("AUTO_YIELD_EXECUTION"),
+});
+
+export type RunJobAutoYieldExecutionError = Prettify<
+  z.infer<typeof RunJobAutoYieldExecutionErrorSchema>
+>;
 
 export const RunJobAutoYieldWithCompletedTaskExecutionErrorSchema = z.object({
   status: z.literal("AUTO_YIELD_EXECUTION_WITH_COMPLETED_TASK"),
   id: z.string(),
   properties: z.array(DisplayPropertySchema).optional(),
-  output: z.any(),
-  data: z.object({
-    location: z.string(),
-    timeRemaining: z.number(),
-    timeElapsed: z.number(),
-    limit: z.number().optional(),
-  }),
+  output: z.string().optional(),
+  data: AutoYieldMetadataSchema,
 });
 
 export type RunJobAutoYieldWithCompletedTaskExecutionError = z.infer<
@@ -589,6 +622,28 @@ export const RunJobSuccessSchema = z.object({
 
 export type RunJobSuccess = z.infer<typeof RunJobSuccessSchema>;
 
+export const RunJobErrorResponseSchema = z.union([
+  RunJobAutoYieldExecutionErrorSchema,
+  RunJobAutoYieldWithCompletedTaskExecutionErrorSchema,
+  RunJobYieldExecutionErrorSchema,
+  RunJobErrorSchema,
+  RunJobUnresolvedAuthErrorSchema,
+  RunJobInvalidPayloadErrorSchema,
+  RunJobResumeWithTaskSchema,
+  RunJobRetryWithTaskSchema,
+  RunJobCanceledWithTaskSchema,
+]);
+
+export type RunJobErrorResponse = z.infer<typeof RunJobErrorResponseSchema>;
+
+export const RunJobResumeWithParallelTaskSchema = z.object({
+  status: z.literal("RESUME_WITH_PARALLEL_TASK"),
+  task: TaskSchema,
+  childErrors: z.array(RunJobErrorResponseSchema),
+});
+
+export type RunJobResumeWithParallelTask = z.infer<typeof RunJobResumeWithParallelTaskSchema>;
+
 export const RunJobResponseSchema = z.discriminatedUnion("status", [
   RunJobAutoYieldExecutionErrorSchema,
   RunJobAutoYieldWithCompletedTaskExecutionErrorSchema,
@@ -597,6 +652,7 @@ export const RunJobResponseSchema = z.discriminatedUnion("status", [
   RunJobUnresolvedAuthErrorSchema,
   RunJobInvalidPayloadErrorSchema,
   RunJobResumeWithTaskSchema,
+  RunJobResumeWithParallelTaskSchema,
   RunJobRetryWithTaskSchema,
   RunJobCanceledWithTaskSchema,
   RunJobSuccessSchema,
@@ -731,12 +787,13 @@ export const RunTaskOptionsSchema = z.object({
     .optional(),
   /** Allows you to link the Integration connection in the logs. This is handled automatically in integrations.  */
   connectionKey: z.string().optional(),
-  /** An operation you want to perform on the Trigger.dev platform, current only "fetch" is supported. If you wish to `fetch` use [`io.backgroundFetch()`](https://trigger.dev/docs/sdk/io/backgroundfetch) instead. */
-  operation: z.enum(["fetch"]).optional(),
+  /** An operation you want to perform on the Trigger.dev platform, current only "fetch", "fetch-response", and "fetch-poll" is supported. If you wish to `fetch` use [`io.backgroundFetch()`](https://trigger.dev/docs/sdk/io/backgroundfetch) instead. */
+  operation: z.enum(["fetch", "fetch-response", "fetch-poll"]).optional(),
   /** A No Operation means that the code won't be executed. This is used internally to implement features like [io.wait()](https://trigger.dev/docs/sdk/io/wait).  */
   noop: z.boolean().default(false),
   redact: RedactSchema.optional(),
   trigger: TriggerMetadataSchema.optional(),
+  parallel: z.boolean().optional(),
 });
 
 export type RunTaskOptions = z.input<typeof RunTaskOptionsSchema>;
@@ -792,6 +849,16 @@ export const CompleteTaskBodyInputSchema = RunTaskBodyInputSchema.pick({
 
 export type CompleteTaskBodyInput = Prettify<z.input<typeof CompleteTaskBodyInputSchema>>;
 export type CompleteTaskBodyOutput = z.infer<typeof CompleteTaskBodyInputSchema>;
+
+export const CompleteTaskBodyV2InputSchema = RunTaskBodyInputSchema.pick({
+  properties: true,
+  description: true,
+  params: true,
+}).extend({
+  output: z.string().optional(),
+});
+
+export type CompleteTaskBodyV2Input = Prettify<z.input<typeof CompleteTaskBodyV2InputSchema>>;
 
 export const FailTaskBodyInputSchema = z.object({
   error: ErrorWithStackSchema,
@@ -896,3 +963,57 @@ export const GetRunStatusesSchema = z.object({
   statuses: z.array(JobRunStatusRecordSchema),
 });
 export type GetRunStatuses = z.infer<typeof GetRunStatusesSchema>;
+
+export const InvokeJobResponseSchema = z.object({
+  id: z.string(),
+});
+
+export const InvokeJobRequestBodySchema = z.object({
+  payload: z.any(),
+  context: z.any().optional(),
+  options: z
+    .object({
+      accountId: z.string().optional(),
+      callbackUrl: z.string().optional(),
+    })
+    .optional(),
+});
+
+export type InvokeJobRequestBody = z.infer<typeof InvokeJobRequestBodySchema>;
+
+export const InvokeOptionsSchema = z.object({
+  accountId: z.string().optional(),
+  idempotencyKey: z.string().optional(),
+  context: z.any().optional(),
+  callbackUrl: z.string().optional(),
+});
+
+export type InvokeOptions = z.infer<typeof InvokeOptionsSchema>;
+
+export const EphemeralEventDispatcherRequestBodySchema = z.object({
+  url: z.string(),
+  name: z.string().or(z.array(z.string())),
+  source: z.string().optional(),
+  filter: EventFilterSchema.optional(),
+  contextFilter: EventFilterSchema.optional(),
+  accountId: z.string().optional(),
+  timeoutInSeconds: z
+    .number()
+    .int()
+    .positive()
+    .min(10)
+    .max(60 * 60 * 24 * 365)
+    .default(3600),
+});
+
+export type EphemeralEventDispatcherRequestBody = z.infer<
+  typeof EphemeralEventDispatcherRequestBodySchema
+>;
+
+export const EphemeralEventDispatcherResponseBodySchema = z.object({
+  id: z.string(),
+});
+
+export type EphemeralEventDispatcherResponseBody = z.infer<
+  typeof EphemeralEventDispatcherResponseBodySchema
+>;

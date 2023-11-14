@@ -2,6 +2,7 @@ import { IntegrationTaskKey } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 import { OpenAIRunTask } from "./index";
 import { OpenAIRequestOptions } from "./types";
+import { handleOpenAIError } from "./taskUtils";
 
 type SpecificFineTuneRequest = {
   fineTuneId: string;
@@ -49,7 +50,8 @@ export class FineTunes {
         name: "Create fine tune",
         params,
         properties,
-      }
+      },
+      handleOpenAIError
     );
   }
 
@@ -66,7 +68,8 @@ export class FineTunes {
       {
         name: "List fine tunes",
         properties: [],
-      }
+      },
+      handleOpenAIError
     );
   }
 
@@ -89,7 +92,8 @@ export class FineTunes {
             text: params.fineTuneId,
           },
         ],
-      }
+      },
+      handleOpenAIError
     );
   }
 
@@ -115,7 +119,8 @@ export class FineTunes {
             text: params.fineTuneId,
           },
         ],
-      }
+      },
+      handleOpenAIError
     );
   }
 
@@ -138,7 +143,8 @@ export class FineTunes {
             text: params.fineTuneId,
           },
         ],
-      }
+      },
+      handleOpenAIError
     );
   }
 
@@ -189,7 +195,8 @@ export class FineTunes {
           name: "Create Fine Tuning Job",
           params,
           properties,
-        }
+        },
+        handleOpenAIError
       );
     },
 
@@ -212,7 +219,8 @@ export class FineTunes {
               text: params.id,
             },
           ],
-        }
+        },
+        handleOpenAIError
       );
     },
 
@@ -238,7 +246,8 @@ export class FineTunes {
               text: params.id,
             },
           ],
-        }
+        },
+        handleOpenAIError
       );
     },
 
@@ -262,7 +271,8 @@ export class FineTunes {
               text: params.id,
             },
           ],
-        }
+        },
+        handleOpenAIError
       );
     },
 
@@ -281,7 +291,8 @@ export class FineTunes {
         {
           name: "List Fine Tuning Jobs",
           params,
-        }
+        },
+        handleOpenAIError
       );
     },
   };

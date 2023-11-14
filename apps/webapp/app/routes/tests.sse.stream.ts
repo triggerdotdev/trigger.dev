@@ -1,7 +1,7 @@
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { logger } from "~/services/logger.server";
-import { sse } from "~/utils/sse";
+import { sse } from "~/utils/sse.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);

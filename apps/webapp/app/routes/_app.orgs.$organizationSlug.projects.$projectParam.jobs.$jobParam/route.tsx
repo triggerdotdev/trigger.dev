@@ -4,10 +4,10 @@ import { Fragment } from "react";
 import { typedjson } from "remix-typedjson";
 import { JobStatusBadge } from "~/components/jobs/JobStatusBadge";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { JobsMenu } from "~/components/navigation/JobsMenu";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
   PageButtons,
@@ -24,9 +24,12 @@ import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { projectMatchId, useProject } from "~/hooks/useProject";
 import { useOptionalRun } from "~/hooks/useRun";
+import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { findJobByParams } from "~/models/job.server";
 import { JobListPresenter } from "~/presenters/JobListPresenter.server";
+import { JobPresenter } from "~/presenters/JobPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { titleCase } from "~/utils";
 import { Handle } from "~/utils/handle";
 import {
   JobParamsSchema,
@@ -41,43 +44,34 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { jobParam, projectParam, organizationSlug } = JobParamsSchema.parse(params);
 
-  const jobsPresenter = new JobListPresenter();
+  const presenter = new JobPresenter();
+  const job = await presenter.call({
+    userId,
+    jobSlug: jobParam,
+    organizationSlug,
+    projectSlug: projectParam,
+  });
 
-  const [job, projectJobs] = await Promise.all([
-    findJobByParams({
-      userId,
-      slug: jobParam,
-      projectSlug: projectParam,
-      organizationSlug,
-    }),
-    jobsPresenter.call({ userId, projectSlug: projectParam }),
-  ]);
-
-  if (job === null) {
+  if (!job) {
     throw new Response("Not Found", {
       status: 404,
       statusText: `There is no Job ${jobParam} in this Project.`,
     });
   }
 
-  //todo identify job
-  // analytics.job.identify({ job });
-
   return typedjson({
     job,
-    projectJobs,
   });
 };
 
 export const handle: Handle = {
-  breadcrumb: (_match, matches) => {
-    const projectMatch = matches.find((m) => m.id === projectMatchId);
+  breadcrumb: (match) => {
+    const data = useTypedMatchData<typeof loader>(match);
     return (
-      <Fragment>
-        <BreadcrumbLink to={trimTrailingSlash(projectMatch?.pathname ?? "")} title="Jobs" />
-        <BreadcrumbIcon />
-        <JobsMenu matches={matches} />
-      </Fragment>
+      <BreadcrumbLink
+        to={trimTrailingSlash(match?.pathname ?? "")}
+        title={data?.job.title ?? "Job"}
+      />
     );
   },
 };
@@ -111,7 +105,12 @@ export default function Job() {
         </PageTitleRow>
         <PageInfoRow>
           <PageInfoGroup>
-            <PageInfoProperty icon={job.event.icon} label={"Trigger"} value={job.event.title} />
+            <PageInfoProperty
+              icon={job.event.icon}
+              label={"Trigger"}
+              value={job.event.title}
+              to={job.event.link ?? undefined}
+            />
             {job.dynamic && <PageInfoProperty icon="dynamic" value={"Dynamic"} />}
             <PageInfoProperty icon="id" label={"ID"} value={job.slug} />
             {job.properties &&
@@ -138,14 +137,7 @@ export default function Job() {
             <PageInfoProperty
               icon="pulse"
               label={"STATUS"}
-              value={
-                <JobStatusBadge
-                  enabled={job.status === "ACTIVE"}
-                  hasIntegrationsRequiringAction={job.hasIntegrationsRequiringAction}
-                  hasRuns={job.lastRun !== undefined}
-                  badgeSize="small"
-                />
-              }
+              value={titleCase(job.status.toLowerCase())}
             />
           </PageInfoGroup>
           <PageInfoGroup alignment="right">
@@ -154,14 +146,17 @@ export default function Job() {
             </Paragraph>
           </PageInfoGroup>
         </PageInfoRow>
+
+        {job.noRunsHelp && (
+          <Callout variant="info" to={job.noRunsHelp.link} className="mt-2">
+            {job.noRunsHelp.text}
+          </Callout>
+        )}
+
         <PageTabs
           tabs={[
             { label: "Runs", to: jobPath(organization, project, job) },
             { label: "Test", to: jobTestPath(organization, project, job) },
-            {
-              label: "Trigger",
-              to: jobTriggerPath(organization, project, job),
-            },
             {
               label: "Settings",
               to: jobSettingsPath(organization, project, job),

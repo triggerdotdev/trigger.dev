@@ -1,6 +1,6 @@
 import { Outlet } from "@remix-run/react";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
 import {
   PageButtons,
@@ -39,7 +39,7 @@ export default function Page() {
               to={docsPath("documentation/concepts/triggers")}
               variant="secondary/small"
             >
-              Triggers Documentation
+              Triggers documentation
             </LinkButton>
           </PageButtons>
         </PageTitleRow>

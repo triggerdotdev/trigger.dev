@@ -140,7 +140,8 @@ export class DynamicTrigger<
         return this.#client.registerTrigger(
           this.id,
           key,
-          this.registeredTriggerForParams(params, options)
+          this.registeredTriggerForParams(params, options),
+          task.idempotencyKey
         );
       },
       {
@@ -160,5 +161,9 @@ export class DynamicTrigger<
 
   get preprocessRuns() {
     return true;
+  }
+
+  async verifyPayload(payload: ReturnType<TEventSpec["parsePayload"]>) {
+    return { success: true as const };
   }
 }

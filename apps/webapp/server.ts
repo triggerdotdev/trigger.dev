@@ -20,7 +20,9 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(compression());
+if (process.env.DISABLE_COMPRESSION !== "1") {
+  app.use(compression());
+}
 
 // http://expressjs.com/en/advanced/best-practice-security.html#at-a-minimum-disable-x-powered-by-header
 app.disable("x-powered-by");
@@ -51,7 +53,7 @@ app.all(
       }
 );
 
-const port = process.env.REMIX_APP_PORT || 3000;
+const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
 
 if (process.env.HTTP_SERVER_DISABLED !== "true") {
   const server = app.listen(port, () => {

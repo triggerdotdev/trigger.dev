@@ -1,6 +1,6 @@
 import { createExpressServer } from "@trigger.dev/express";
 import { Resend } from "@trigger.dev/resend";
-import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
+import { TriggerClient, eventTrigger, invokeTrigger } from "@trigger.dev/sdk";
 import { z } from "zod";
 
 export const client = new TriggerClient({
@@ -20,12 +20,73 @@ client.defineJob({
   id: "send-resend-email",
   name: "Send Resend Email",
   version: "0.1.0",
-  trigger: eventTrigger({
-    name: "send.email",
+  trigger: invokeTrigger({
     schema: z.object({
-      to: z.union([z.string(), z.array(z.string())]),
-      subject: z.string(),
-      text: z.string(),
+      to: z.union([z.string(), z.array(z.string())]).default("eric@trigger.dev"),
+      subject: z.string().default("This is a test email"),
+      text: z.string().default("This is a test email"),
+    }),
+  }),
+  integrations: {
+    resend,
+  },
+  run: async (payload, io, ctx) => {
+    const response = await io.resend.emails.send("📧", {
+      to: payload.to,
+      subject: payload.subject,
+      text: payload.text,
+      from: "Trigger.dev <hello@email.trigger.dev>",
+    });
+
+    await io.logger.info("Sent email", { response });
+
+    const emailDetails = await io.resend.emails.get("get-email", response.id);
+  },
+});
+
+client.defineJob({
+  id: "batch-send-resend-email",
+  name: "Batch Send Resend Email",
+  version: "0.1.0",
+  trigger: invokeTrigger({
+    schema: z.object({
+      to: z.union([z.string(), z.array(z.string())]).default("eric@trigger.dev"),
+      subject: z.string().default("This is a test email"),
+      text: z.string().default("This is a test email"),
+    }),
+  }),
+  integrations: {
+    resend,
+  },
+  run: async (payload, io, ctx) => {
+    const response = await io.resend.batch.send("📧", [
+      {
+        to: payload.to,
+        subject: payload.subject,
+        text: payload.text,
+        from: "Trigger.dev <hello@email.trigger.dev>",
+      },
+      {
+        to: payload.to,
+        subject: payload.subject,
+        text: payload.text,
+        from: "Trigger.dev <hello@email.trigger.dev>",
+      },
+    ]);
+
+    await io.logger.info("Sent batched email", { response });
+  },
+});
+
+client.defineJob({
+  id: "send-resend-email-deprecated",
+  name: "Send Resend Email Deprecated",
+  version: "0.1.0",
+  trigger: invokeTrigger({
+    schema: z.object({
+      to: z.union([z.string(), z.array(z.string())]).default("eric@trigger.dev"),
+      subject: z.string().default("This is a test email"),
+      text: z.string().default("This is a test email"),
     }),
   }),
   integrations: {

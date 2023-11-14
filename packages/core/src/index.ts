@@ -6,10 +6,11 @@ export * from "./retry";
 export * from "./replacements";
 export * from "./searchParams";
 export * from "./eventFilterMatches";
-export * from "./bloom";
+export * from "./requestFilterMatches";
 
 export const API_VERSIONS = {
   LAZY_LOADED_CACHED_TASKS: "2023-09-29",
+  SERIALIZED_TASK_OUTPUT: "2023-11-01",
 } as const;
 
 export const PLATFORM_FEATURES = {

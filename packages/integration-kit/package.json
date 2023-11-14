@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/integration-kit",
-  "version": "2.2.3",
+  "version": "2.2.6",
   "description": "Trigger.dev Integration Kit has helpers to make creating integrations easier",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -34,7 +34,8 @@
     "typecheck": "tsup --dts-resolve --no-dts"
   },
   "dependencies": {
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "@trigger.dev/core": "workspace:*"
   },
   "engines": {
     "node": ">=18.0.0"

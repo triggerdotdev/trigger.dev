@@ -1,17 +1,17 @@
 import { UseDataFunctionReturn, useTypedRouteLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import type { loader as orgLoader } from "~/routes/_app.orgs.$organizationSlug/route";
-import type { loader as appLoader } from "~/routes/_app/route";
 import { hydrateObject, useMatchesData } from "~/utils";
 import { useChanged } from "./useChanged";
 import { UIMatch } from "@remix-run/react";
 import { useTypedMatchesData } from "./useTypedMatchData";
 
-export type MatchedOrganization = UseDataFunctionReturn<typeof appLoader>["organizations"][number];
+export type MatchedOrganization = UseDataFunctionReturn<typeof orgLoader>["organizations"][number];
+export const organizationMatchId = "routes/_app.orgs.$organizationSlug";
 
 export function useOptionalOrganizations(matches?: UIMatch[]) {
-  const data = useTypedMatchesData<typeof appLoader>({
-    id: "routes/_app",
+  const data = useTypedMatchesData<typeof orgLoader>({
+    id: "routes/_app.orgs.$organizationSlug",
     matches,
   });
   return data?.organizations;

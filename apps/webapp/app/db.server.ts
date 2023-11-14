@@ -3,6 +3,7 @@ import invariant from "tiny-invariant";
 import { z } from "zod";
 import { logger } from "./services/logger.server";
 import { env } from "./env.server";
+import { singleton } from "./utils/singleton";
 
 export type PrismaTransactionClient = Omit<
   PrismaClient,
@@ -66,24 +67,7 @@ export async function $transaction<R>(
 
 export { Prisma };
 
-let prisma: PrismaClient;
-
-declare global {
-  var __db__: PrismaClient;
-}
-
-// this is needed because in development we don't want to restart
-// the server with every change, but we want to make sure we don't
-// create a new connection to the DB with every change either.
-// in production we'll have a single connection to the DB.
-if (process.env.NODE_ENV === "production") {
-  prisma = getClient();
-} else {
-  if (!global.__db__) {
-    global.__db__ = getClient();
-  }
-  prisma = global.__db__;
-}
+export const prisma = singleton("prisma", getClient);
 
 function getClient() {
   const { DATABASE_URL } = process.env;
@@ -143,7 +127,6 @@ function getClient() {
   return client;
 }
 
-export { prisma };
 export type { PrismaClient } from "@trigger.dev/database";
 
 export const PrismaErrorSchema = z.object({

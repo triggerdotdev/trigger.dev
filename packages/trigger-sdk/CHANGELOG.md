@@ -1,5 +1,44 @@
 # @trigger.dev/sdk
 
+## 2.2.6
+
+### Patch Changes
+
+- cb1825bf: OpenAI support for 4.16.0
+- cb1825bf: Add support for background polling and use that in OpenAI integration to power assistants
+- d0217344: Add `io.sendEvents()`
+- cb1825bf: Adding support for waitForEvent
+- Updated dependencies [cb1825bf]
+- Updated dependencies [cb1825bf]
+- Updated dependencies [d0217344]
+  - @trigger.dev/core@2.2.6
+  - @trigger.dev/core-backend@2.2.6
+
+## 2.2.5
+
+### Patch Changes
+
+- 7e57f1f3: [TRI-1449] Display warning message when duplicate job IDs are detected
+- cf8f9946: Add `io.random()` which wraps `Math.random()` in a Task with helpful options.
+- a74716a1: Added waitForRequest built-in tasks
+- 620b8383: Added invokeTrigger(), which allows jobs to be manually invoked
+- 4a0f030e: Adding no-cache to our client fetch to fix Next.js POST caching
+- f4275e50: verifyRequestSignature – added an error if the passed in secret is undefined or empty
+- Updated dependencies [620b8383]
+- Updated dependencies [578d2e54]
+  - @trigger.dev/core@2.2.5
+  - @trigger.dev/core-backend@2.2.5
+
+## 2.2.4
+
+### Patch Changes
+
+- c1710ae7: Creates a new package @trigger.dev/core-backend that includes code shared between @trigger.dev/sdk and the Trigger.dev server
+- 9c4be40a: use idempotency-key as event-id for dynamic-trigger registrations
+- Updated dependencies [c1710ae7]
+  - @trigger.dev/core-backend@2.2.4
+  - @trigger.dev/core@2.2.4
+
 ## 2.2.3
 
 ### Patch Changes

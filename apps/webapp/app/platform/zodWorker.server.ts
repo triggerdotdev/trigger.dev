@@ -164,7 +164,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       this.#logDebug("pool:create", { attempts });
     });
 
-    this.#runner?.events.on("pool:listen:success", ({ workerPool, client }) => {
+    this.#runner?.events.on("pool:listen:success", async ({ workerPool, client }) => {
       this.#logDebug("pool:listen:success");
     });
 

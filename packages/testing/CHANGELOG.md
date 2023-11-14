@@ -1,5 +1,39 @@
 # @trigger.dev/testing
 
+## 2.2.6
+
+### Patch Changes
+
+- Updated dependencies [cb1825bf]
+- Updated dependencies [cb1825bf]
+- Updated dependencies [d0217344]
+- Updated dependencies [cb1825bf]
+  - @trigger.dev/sdk@2.2.6
+  - @trigger.dev/core@2.2.6
+
+## 2.2.5
+
+### Patch Changes
+
+- Updated dependencies [7e57f1f3]
+- Updated dependencies [cf8f9946]
+- Updated dependencies [a74716a1]
+- Updated dependencies [620b8383]
+- Updated dependencies [578d2e54]
+- Updated dependencies [4a0f030e]
+- Updated dependencies [f4275e50]
+  - @trigger.dev/sdk@2.2.5
+  - @trigger.dev/core@2.2.5
+
+## 2.2.4
+
+### Patch Changes
+
+- Updated dependencies [c1710ae7]
+- Updated dependencies [9c4be40a]
+  - @trigger.dev/sdk@2.2.4
+  - @trigger.dev/core@2.2.4
+
 ## 2.2.3
 
 ### Patch Changes

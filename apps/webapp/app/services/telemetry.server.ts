@@ -2,9 +2,11 @@ import { Job } from "@trigger.dev/database";
 import { TriggerClient } from "@trigger.dev/sdk";
 import { PostHog } from "posthog-node";
 import { env } from "~/env.server";
+import { MatchedOrganization } from "~/hooks/useOrganizations";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import type { User } from "~/models/user.server";
+import { singleton } from "~/utils/singleton";
 
 type Options = {
   postHogApiKey?: string;
@@ -73,7 +75,7 @@ class Telemetry {
   };
 
   organization = {
-    identify: ({ organization }: { organization: Organization }) => {
+    identify: ({ organization }: { organization: MatchedOrganization }) => {
       if (this.#posthogClient === undefined) return;
       this.#posthogClient.groupIdentify({
         groupType: "organization",
@@ -81,8 +83,6 @@ class Telemetry {
         properties: {
           name: organization.title,
           slug: organization.slug,
-          createdAt: organization.createdAt,
-          updatedAt: organization.updatedAt,
         },
       });
     },
@@ -236,13 +236,17 @@ type CaptureEvent = {
   userOnceProperties?: Record<string, any>;
 };
 
-export const telemetry = new Telemetry({
-  postHogApiKey: env.POSTHOG_PROJECT_KEY,
-  trigger:
-    env.TELEMETRY_TRIGGER_API_KEY && env.TELEMETRY_TRIGGER_API_URL
-      ? {
-          apiKey: env.TELEMETRY_TRIGGER_API_KEY,
-          apiUrl: env.TELEMETRY_TRIGGER_API_URL,
-        }
-      : undefined,
-});
+export const telemetry = singleton(
+  "telemetry",
+  () =>
+    new Telemetry({
+      postHogApiKey: env.POSTHOG_PROJECT_KEY,
+      trigger:
+        env.TELEMETRY_TRIGGER_API_KEY && env.TELEMETRY_TRIGGER_API_URL
+          ? {
+              apiKey: env.TELEMETRY_TRIGGER_API_KEY,
+              apiUrl: env.TELEMETRY_TRIGGER_API_URL,
+            }
+          : undefined,
+    })
+);

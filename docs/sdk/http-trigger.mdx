@@ -1,0 +1,54 @@
+---
+title: "HttpTrigger"
+description: "`HttpTrigger` allows you to trigger your Jobs from any webhooks."
+---
+
+There are two required steps to create an `HttpTrigger`:
+
+1. Use [client.defineHttpEndpoint()](/sdk/triggerclient/instancemethods/define-http-endpoint) to create an `HttpEndpoint`.
+2. Use [onRequest()](/sdk/http-endpoint#onrequest) to create an `HttpTrigger`.
+
+You can see a complete example on this page.
+
+<RequestExample>
+
+```typescript
+const caldotcom = client.defineHttpEndpoint({
+  //this should be unique inside your project
+  id: "cal.com",
+  //usually you'd use the domain name of the service
+  source: "cal.com",
+  //the icon is optional, it displays in the dashboard
+  icon: "caldotcom",
+  //this function is called when a webhook is received
+  verify: async (request) => {
+    //this is a useful helper function that can verify sha256 signatures
+    //each API has a different header name
+    return await verifyRequestSignature({
+      request,
+      //you can find the header name in the API's documentation
+      headerName: "X-Cal-Signature-256",
+      //you can find the secret in the Trigger.dev dashboard, on the HTTP endpoint page
+      secret: process.env.CALDOTCOM_SECRET!,
+      algorithm: "sha256",
+    });
+  },
+});
+
+client.defineJob({
+  id: "http-caldotcom",
+  name: "HTTP Cal.com",
+  version: "1.0.0",
+  enabled: true,
+  //this create a Trigger using the caldotcom endpoint
+  trigger: caldotcom.onRequest(),
+  run: async (request, io, ctx) => {
+    //note that when using HTTP endpoints, the first parameter is the request
+    //you need to get the body, usually it will be json so you do:
+    const body = await request.json();
+    await io.logger.info(`Body`, body);
+  },
+});
+```
+
+</RequestExample>

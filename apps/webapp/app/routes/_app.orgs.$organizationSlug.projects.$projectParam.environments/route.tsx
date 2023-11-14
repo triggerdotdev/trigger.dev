@@ -2,7 +2,7 @@ import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { useEventSource } from "remix-utils/sse/react";
+import { useEventSource } from "~/hooks/useEventSource";
 import {
   EndpointIndexStatusIcon,
   EndpointIndexStatusLabel,
@@ -10,14 +10,15 @@ import {
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { HowToUseApiKeysAndEndpoints } from "~/components/helpContent/HelpContentText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Badge } from "~/components/primitives/Badge";
-import { ButtonContent } from "~/components/primitives/Buttons";
+import { ButtonContent, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import {
+  PageButtons,
   PageDescription,
   PageHeader,
   PageTitle,
@@ -39,7 +40,11 @@ import { ClientEndpoint, EnvironmentsPresenter } from "~/presenters/Environments
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
-import { ProjectParamSchema, projectEnvironmentsStreamingPath } from "~/utils/pathBuilder";
+import {
+  ProjectParamSchema,
+  docsPath,
+  projectEnvironmentsStreamingPath,
+} from "~/utils/pathBuilder";
 import { requestUrl } from "~/utils/requestUrl.server";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
@@ -74,8 +79,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Environments" />,
-  expandSidebar: true,
+  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Environments & API Keys" />,
 };
 
 export default function Page() {
@@ -128,6 +132,15 @@ export default function Page() {
       <PageHeader>
         <PageTitleRow>
           <PageTitle title="Environments & API Keys" />
+          <PageButtons>
+            <LinkButton
+              LeadingIcon={"docs"}
+              to={docsPath("/documentation/concepts/environments-endpoints#environments")}
+              variant="secondary/small"
+            >
+              Environments documentation
+            </LinkButton>
+          </PageButtons>
         </PageTitleRow>
         <PageDescription>API Keys and endpoints for your environments.</PageDescription>
       </PageHeader>
@@ -164,13 +177,13 @@ export default function Page() {
                             className="w-full max-w-none"
                             secure
                             value={environment.apiKey}
-                            variant={"primary/medium"}
+                            variant={"secondary/medium"}
                             icon={<Badge variant="outline">Server</Badge>}
                           />
                           <ClipboardField
                             className="w-full max-w-none"
                             value={environment.pkApiKey}
-                            variant={"primary/medium"}
+                            variant={"secondary/medium"}
                             icon={<Badge variant="outline">Public</Badge>}
                           />
                         </div>
@@ -234,12 +247,9 @@ export default function Page() {
                       </div>
                     ))
                   ) : (
-                    <>
-                      <Paragraph>Add your first endpoint</Paragraph>
-                      <Paragraph>
-                        <FirstEndpointSheet projectId={project.id} environments={environments} />
-                      </Paragraph>
-                    </>
+                    <Paragraph>
+                      <FirstEndpointSheet projectId={project.id} environments={environments} />
+                    </Paragraph>
                   )}
                 </div>
                 {selectedEndpoint && selectedEndpoint.endpoint && (
@@ -285,7 +295,7 @@ function EndpointRow({
               <span className="text-amber-500">
                 The {environmentTitle({ type })} environment is not configured
               </span>
-              <ButtonContent variant="primary/small">Configure</ButtonContent>
+              <ButtonContent variant="secondary/small">Configure</ButtonContent>
             </div>
           </TableCell>
         </TableRow>

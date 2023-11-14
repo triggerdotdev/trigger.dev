@@ -2,6 +2,20 @@ import { EventFilter } from "../src";
 import { eventFilterMatches } from "../src/eventFilterMatches";
 
 describe("eventFilterMatches", () => {
+  it("should return true if the payload is undefined and the filter is empty", () => {
+    const payload = undefined;
+    const filter: EventFilter = {};
+    expect(eventFilterMatches(payload, filter)).toBe(true);
+  });
+
+  it("should return false if the payload is undefined and the filter isn't empty", () => {
+    const payload = undefined;
+    const filter: EventFilter = {
+      name: ["John"],
+    };
+    expect(eventFilterMatches(payload, filter)).toBe(false);
+  });
+
   it("should return true when payload matches string filter", () => {
     const payload = {
       name: "John",

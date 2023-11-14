@@ -1,0 +1,105 @@
+---
+title: "HTTP Trigger"
+sidebarTitle: "HTTP"
+description: "HTTP Triggers allow you to trigger your Jobs from any webhooks."
+---
+
+Sometimes you want to subscribe to changes from an API, and we don't have [an Integration](/integrations/introduction) for it yet. That's when you can use `defineHttpEndpoint` to receive webhooks, verify them, and create an HTTP Trigger.
+
+You should read the [HTTP endpoint](/documentation/concepts/http-endpoints) documentation to understand how to create an HTTP endpoint.
+
+## Examples
+
+## Cal.com
+
+Cal.com has webhooks that closely follow conventions, and so are easy to use.
+
+```ts Cal.com
+//create an HTTP endpoint
+const caldotcom = client.defineHttpEndpoint({
+  id: "cal.com",
+  source: "cal.com",
+  icon: "caldotcom",
+  verify: async (request) => {
+    //this helper function makes verifying most webhooks easy
+    return await verifyRequestSignature({
+      request,
+      headerName: "X-Cal-Signature-256",
+      secret: process.env.CALDOTCOM_SECRET!,
+      algorithm: "sha256",
+    });
+  },
+});
+
+client.defineJob({
+  id: "http-caldotcom",
+  name: "HTTP Cal.com",
+  version: "1.0.0",
+  enabled: true,
+  //create a Trigger from the HTTP endpoint above. The filter is optional.
+  trigger: caldotcom.onRequest({ filter: { body: { triggerEvent: ["BOOKING_CANCELLED"] } } }),
+  run: async (request, io, ctx) => {
+    //note that when using HTTP endpoints, the first parameter is the request
+    //you need to get the body, usually it will be json so you do:
+    const body = await request.json();
+    await io.logger.info(`Body`, body);
+  },
+});
+```
+
+## WhatsApp
+
+WhatsApp is more unusual. When you enter the webhook URL and secret into the Meta developer dashboard, they send a `GET` request that requires a specific Response.
+
+We can handle this though, by using the `respondWith` option. This allows us to define a function that will be called immediately when a Request is received. The filter ensures we only receive `GET` requests with a specific query parameter. Then in the `handler` we response appropriately if the `hub.verify_token` matches our secret.
+
+```ts
+const whatsApp = client.defineHttpEndpoint({
+  id: "whatsapp",
+  source: "whatsapp.com",
+  icon: "whatsapp",
+  //only needed for strange APIs like WhatsApp which don't setup the webhook until you pass the test
+  respondWith: {
+    //we don't want to trigger Runs for the verification `GET` request
+    skipTriggeringRuns: true,
+    //we only want to respond to `GET` requests with a specific query parameter
+    filter: {
+      method: ["GET"],
+      query: {
+        "hub.mode": [{ $startsWith: "sub" }],
+      },
+    },
+    handler: async (request, verify) => {
+      const searchParams = new URL(request.url).searchParams;
+      if (searchParams.get("hub.verify_token") !== process.env.WHATSAPP_WEBHOOK_SECRET) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      return new Response(searchParams.get("hub.challenge") ?? "OK", { status: 200 });
+    },
+  },
+  verify: async (request) => {
+    //verification of the actual webhooks is easy
+    return await verifyRequestSignature({
+      request,
+      headerName: "x-hub-signature-256",
+      secret: process.env.WHATSAPP_APP_SECRET!,
+      algorithm: "sha256",
+    });
+  },
+});
+
+client.defineJob({
+  id: "http-whatsapp",
+  name: "HTTP WhatsApp",
+  version: "1.1.0",
+  enabled: true,
+  //create a Trigger from the HTTP endpoint above. You can provide an optional filter.
+  trigger: whatsApp.onRequest(),
+  run: async (request, io, ctx) => {
+    //note that when using HTTP endpoints, the first parameter is the request
+    //you need to get the body, usually it will be json so you do:
+    const body = await request.json();
+    await io.logger.info(`Body`, body);
+  },
+});
+```

@@ -3,7 +3,7 @@ import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { DateTime } from "~/components/primitives/DateTime";
 import { LabelValueStack } from "~/components/primitives/LabelValueStack";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
@@ -43,7 +43,6 @@ export const handle: Handle = {
   breadcrumb: (match) => (
     <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Scheduled Triggers" />
   ),
-  expandSidebar: true,
 };
 
 export default function Integrations() {

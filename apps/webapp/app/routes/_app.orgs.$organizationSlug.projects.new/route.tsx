@@ -82,6 +82,7 @@ export default function NewOrganizationPage() {
                 {...conform.input(projectName, { type: "text" })}
                 placeholder="Your project name"
                 icon="folder"
+                autoFocus
               />
               <FormError id={projectName.errorId}>{projectName.error}</FormError>
             </InputGroup>

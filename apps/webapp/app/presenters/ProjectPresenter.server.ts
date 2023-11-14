@@ -91,6 +91,13 @@ export class ProjectPresenter {
                 active: false,
               },
             },
+            jobs: {
+              where: {
+                internal: false,
+                deletedAt: null,
+              },
+            },
+            httpEndpoints: true,
           },
         },
         organization: {
@@ -135,7 +142,8 @@ export class ProjectPresenter {
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
       hasInactiveExternalTriggers: project._count.sources > 0,
-      hasUnconfiguredIntegrations: project.organization._count.integrations > 0,
+      jobCount: project._count.jobs,
+      httpEndpointCount: project._count.httpEndpoints,
       environments: project.environments.map((environment) => ({
         id: environment.id,
         slug: environment.slug,

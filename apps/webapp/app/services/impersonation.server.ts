@@ -25,7 +25,7 @@ export function commitImpersonationSession(session: Session) {
 export async function getImpersonationId(request: Request) {
   const session = await getImpersonationSession(request);
 
-  return session.get("impersonatedUserId");
+  return session.get("impersonatedUserId") as string | undefined;
 }
 
 export async function setImpersonationId(userId: string, request: Request) {

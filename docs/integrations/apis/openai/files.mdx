@@ -1,0 +1,62 @@
+---
+title: File Tasks
+sidebarTitle: Files
+---
+
+Files are used to upload documents that can be used with features like [Assistants](https://platform.openai.com/docs/api-reference/assistants) and [Fine-tuning](https://platform.openai.com/docs/api-reference/fine-tuning). [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/files)
+
+### `list()`
+
+Returns a list of files that belong to the user's organization. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/files/list)
+
+```ts example.ts
+await io.openai.files.list("list-files");
+await io.openai.files.list("list-files", { purpose: "assistants" }); // gets only assistant files
+```
+
+### `create()`
+
+Upload a file that can be used across various endpoints/features. The size of all the files uploaded by one organization can be up to 100 GB.
+
+The size of individual files for can be a maximum of `512MB`. See the [Assistants Tools guide](https://platform.openai.com/docs/assistants/tools) to learn more about the types of files supported. The Fine-tuning API only supports `.jsonl` files.
+
+[Official OpenAI Docs](https://platform.openai.com/docs/api-reference/files/create)
+
+```ts example.ts
+const file = await io.openai.files.create("upload-file", {
+  purpose: "assistants",
+  file: fs.createReadStream("./fixtures/mydata.csv"),
+});
+```
+
+### `createAndWaitForProcessing()`
+
+Upload a file and will return when the file is processed by polling in the background using [io.backgroundPoll()](/sdk/io/background-poll).
+
+```ts example.ts
+const file = await io.openai.files.createAndWaitForProcessing("upload-file", {
+  purpose: "assistants",
+  file: fs.createReadStream("./fixtures/mydata.csv"),
+});
+```
+
+### `waitForProcessing()`
+
+Will return when the file is processed by polling in the background using [io.backgroundPoll()](/sdk/io/background-poll).
+
+```ts example.ts
+const file = await io.openai.files.create("upload-file", {
+  purpose: "assistants",
+  file: fs.createReadStream("./fixtures/mydata.csv"),
+});
+
+const processedFile = await io.openai.files.waitForProcessing("wait", file.id);
+```
+
+### `retrieve()`
+
+Returns information about a specific file. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/files/retrieve)
+
+```ts example.ts
+await io.openai.files.retrieve("retrieve-file", "file-id");
+```
