@@ -58,5 +58,10 @@ function redirectToOrigin(request: Request, env: Env) {
 }
 
 function queueingIsEnabled(env: Env) {
-  return env.AWS_SQS_ACCESS_KEY_ID && env.AWS_SQS_SECRET_ACCESS_KEY && env.AWS_SQS_QUEUE_URL;
+  return (
+    env.AWS_SQS_ACCESS_KEY_ID &&
+    env.AWS_SQS_SECRET_ACCESS_KEY &&
+    env.AWS_SQS_QUEUE_URL &&
+    env.AWS_SQS_REGION
+  );
 }

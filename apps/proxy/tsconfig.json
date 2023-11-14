@@ -26,6 +26,7 @@
     "strict": true /* Enable all strict type-checking options. */,
 
     "skipLibCheck": true /* Skip type checking all .d.ts files. */,
+    "baseUrl": ".",
     "paths": {
       "@trigger.dev/core": ["../../packages/core/src/index"],
       "@trigger.dev/core/*": ["../../packages/core/src/*"]
