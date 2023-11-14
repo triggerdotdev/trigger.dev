@@ -43,5 +43,5 @@ export function CodeExample({ example }: { example: ApiExample }) {
   const code = customerFetcher.data?.code;
   const cleanedCode = code?.replace(hideCodeRegex, "\n");
 
-  return customerFetcher.data && <CodeBlock code={cleanedCode ?? ""} className="mb-4" />;
+  return customerFetcher.data && <CodeBlock code={cleanedCode ?? ""} className="mt-2" />;
 }

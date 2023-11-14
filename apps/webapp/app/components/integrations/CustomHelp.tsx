@@ -1,10 +1,9 @@
-import { QueryClientProvider } from "react-query";
+import { useState } from "react";
 import { CodeExample } from "~/routes/resources.codeexample";
 import { Api, ApiExample } from "~/services/externalApis/apis.server";
+import { cn } from "~/utils/cn";
 import { Header1, Header2 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
-import { cn } from "~/utils/cn";
-import { useState } from "react";
 import { TextLink } from "../primitives/TextLink";
 
 export function CustomHelp({ api }: { api: Api }) {
@@ -32,8 +31,7 @@ export function CustomHelp({ api }: { api: Api }) {
             This is how you can use {api.name} with Trigger.dev. This code can be copied and
             modified to suit your use-case.
           </Paragraph>
-
-          <div className=" flex w-full flex-row gap-4 overflow-x-scroll	scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700 sm:h-full  lg:w-[22rem] lg:flex-col">
+          <div className=" flex w-full flex-row gap-4 overflow-x-scroll	scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700 sm:h-full">
             {api.examples?.map((example, index) => (
               <button
                 onClick={() => changeCodeExample(example)}
