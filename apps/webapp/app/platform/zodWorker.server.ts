@@ -14,7 +14,7 @@ import { run as graphileRun, parseCronItems } from "graphile-worker";
 import omit from "lodash.omit";
 import { z } from "zod";
 import { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
-import { workerLogger as logger } from "~/services/logger.server";
+import { workerLogger as logger, trace } from "~/services/logger.server";
 
 export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
@@ -476,7 +476,15 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       throw new Error(`No task for message type: ${String(typeName)}`);
     }
 
-    await task.handler(payload, job);
+    await trace(
+      {
+        worker_job: job,
+        worker_name: this.#name,
+      },
+      async () => {
+        await task.handler(payload, job);
+      }
+    );
   }
 
   async #handleRecurringTask(
