@@ -32,18 +32,19 @@ export function CustomHelp({ api }: { api: Api }) {
             modified to suit your use-case.
           </Paragraph>
           <div className=" flex w-full flex-row gap-4 overflow-x-scroll	scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700 sm:h-full">
-            {api.examples?.map((example, index) => (
-              <button
-                onClick={() => changeCodeExample(example)}
-                key={example.codeUrl}
-                className={cn(
-                  "w-64 min-w-[16rem] p-4 transition-colors duration-300 sm:w-full sm:rounded",
-                  "border-px border border-slate-900 bg-slate-900 text-slate-300 transition duration-300 hover:bg-slate-800"
-                )}
-              >
-                {example.title}
-              </button>
-            ))}
+            {api.examples.length > 1 &&
+              api.examples?.map((example, index) => (
+                <button
+                  onClick={() => changeCodeExample(example)}
+                  key={example.codeUrl}
+                  className={cn(
+                    "w-64 min-w-[16rem] p-4 transition-colors duration-300 sm:w-full sm:rounded",
+                    "border-px border border-slate-900 bg-slate-900 text-slate-300 transition duration-300 hover:bg-slate-800"
+                  )}
+                >
+                  {example.title}
+                </button>
+              ))}
           </div>
           {selectedExample && <CodeExample example={selectedExample} />}
         </>
