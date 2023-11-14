@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Integration } from "~/services/externalApis/types";
-import { docsIntegrationPath } from "~/utils/pathBuilder";
+import { apiReferencePath, docsIntegrationPath } from "~/utils/pathBuilder";
 import { LinkButton } from "../primitives/Buttons";
 import { Header1, Header2 } from "../primitives/Headers";
 import { NamedIconInBox } from "../primitives/NamedIcon";
@@ -48,7 +48,15 @@ export function ConnectToIntegrationSheet({
               <Paragraph variant="small">{integration.description}</Paragraph>
             )}
           </div>
-
+          <LinkButton
+            to={apiReferencePath(integration.identifier)}
+            variant="secondary/small"
+            TrailingIcon="arrow-up-right"
+            trailingIconClassName="h-4 w-4 text-slate-400"
+            target="_blank"
+          >
+            View examples
+          </LinkButton>
           <LinkButton
             to={docsIntegrationPath(integration.identifier)}
             variant="secondary/small"
