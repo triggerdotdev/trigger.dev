@@ -5,6 +5,8 @@ import { cn } from "~/utils/cn";
 import { Header1, Header2 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
 import { TextLink } from "../primitives/TextLink";
+import { Feedback } from "../Feedback";
+import { DetailCell } from "../primitives/DetailCell";
 
 const fallbackExamples = [
   {
@@ -61,12 +63,12 @@ export function CustomHelp({ api }: { api: Api }) {
 
       {api.examples && api.examples.length > 0 ? (
         <>
-          <Header2 className="mb-2">Example code</Header2>
+          <Header2 className="mb-2">Example {api.name} code</Header2>
           <Paragraph spacing className="mb-4">
             This is how you can use {api.name} with Trigger.dev. This code can be copied and
             modified to suit your use-case.
           </Paragraph>
-          <div className=" flex w-full flex-row gap-4 overflow-x-scroll	scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700 sm:h-full">
+          <div className=" flex w-full flex-row gap-4 overflow-x-scroll	scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
             {api.examples.length > 1 &&
               api.examples?.map((example, index) => (
                 <button
@@ -89,8 +91,18 @@ export function CustomHelp({ api }: { api: Api }) {
           <Paragraph spacing className="mb-4">
             We are currently working on code samples for {api.name}. In the meantime, you can use
             one of our examples below as a starting point if you want to use {api.name} in your
-            project. Please reach out to us if you're having any issues.
+            project. Please{" "}
+            <Feedback
+              button={
+                <span className="cursor-pointer text-indigo-500 transition duration-300 hover:text-indigo-400">
+                  reach out to us
+                </span>
+              }
+              defaultValue="help"
+            />{" "}
+            if you're having any issues.
           </Paragraph>
+
           <div className=" flex w-full flex-row gap-4 overflow-x-scroll	scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700 sm:h-full">
             {fallbackExamples.map((example, index) => (
               <button
