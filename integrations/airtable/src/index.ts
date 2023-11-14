@@ -18,8 +18,6 @@ import {
   WebhookDataType,
   Webhooks,
   createWebhookSource,
-  createTrigger,
-  createWebhookEventSource,
   createWebhookTrigger,
 } from "./webhooks";
 
@@ -66,10 +64,6 @@ export class Airtable implements TriggerIntegration {
   }
 
   get source() {
-    return createWebhookEventSource(this);
-  }
-
-  get webhookSource() {
     return createWebhookSource(this);
   }
 
@@ -133,19 +127,15 @@ export class Airtable implements TriggerIntegration {
     changeTypes?: WebhookChangeType[];
     dataTypes?: WebhookDataType[];
   }) {
-    return createTrigger(this.source, events.onTableChanged, params, {
-      changeTypes: params.changeTypes,
-      dataTypes: ["tableData", "tableFields", "tableMetadata"],
-    });
-  }
-
-  onTableChangesWebhookTrigger(params: {
-    baseId: string;
-    tableId?: string;
-    changeTypes?: WebhookChangeType[];
-    dataTypes?: WebhookDataType[];
-  }) {
-    return createWebhookTrigger(this.webhookSource, events.onTableChanged, params, {
+    // TODO: merge config here, provide default of
+    // {
+    //   "changeTypes": [
+    //     "add",
+    //     "remove",
+    //     "update"
+    //   ]
+    // }
+    return createWebhookTrigger(this.source, events.onTableChanged, params, {
       changeTypes: params.changeTypes,
       dataTypes: ["tableData", "tableFields", "tableMetadata"],
     });
