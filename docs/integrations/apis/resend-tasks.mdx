@@ -34,114 +34,43 @@ Send an email to a recipient with a text payload. [Official Resend Docs](https:/
 | `batch.send`    | Send a batch of emails at once   |
 | `batch.create`  | Create a batch of emails at once |
 
-## Example usage
+## Example
 
-In this example we'll create a task that sends a basic email built using React & Typescript to a 'to' email address with a 'subject', a 'text' field and a 'from' email address.
-Here we use [Zod](/documentation/guides/zod), a TypeScript-first schema declaration and validation library.
+In this example we use [Zod](/documentation/guides/zod), a TypeScript-first schema declaration and validation library.
 
-```ts example.ts
-// Importing necessary modules and packages.
-import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
+```ts
 import { Resend } from "@trigger.dev/resend";
+import { Job, eventTrigger } from "@trigger.dev/sdk";
 import { z } from "zod";
 
-// Importing React and React Email components for creating styled emails.
-import { Html } from "@react-email/html";
-import { Head } from "@react-email/head";
-import { Text } from "@react-email/text";
-import { Button } from "@react-email/button";
-import { Section } from "@react-email/section";
-import { Preview } from "@react-email/preview";
-import { Container } from "@react-email/container";
+...
 
-// Creating an instance of the Resend client with an API key obtained from an environment variable.
 const resend = new Resend({
   id: "resend",
   apiKey: process.env.RESEND_API_KEY!,
 });
 
-// Defining styles for the email's HTML components.
-const container = {
-  width: "480px",
-  margin: "0 auto",
-  padding: "20px 0 48px",
-};
-
-const title = {
-  fontSize: "24px",
-  lineHeight: 1.25,
-};
-
-const section = {
-  padding: "24px",
-  border: "solid 1px #dedede",
-  borderRadius: "5px",
-  textAlign: "center" as const,
-};
-
-const text = {
-  margin: "0 0 10px 0",
-  textAlign: "left" as const,
-};
-
-const button = {
-  fontSize: "14px",
-  font: "bold",
-  backgroundColor: "#28a745",
-  color: "#fff",
-  lineHeight: 1.5,
-  borderRadius: "0.2em",
-  textAlign: "center" as const,
-};
-
-// React component for creating a styled email.
-function BasicEmail({ name, text }: { name: string; text: string }) {
-  return (
-    <Html>
-      <Head />
-      <Preview>Welcome to Acme Inc!</Preview>
-      <Container style={container}>
-        <Section style={section}>
-          <Text>Hey {name}!</Text>
-          <Text>{text}</Text>
-          <Button style={button} pY={4} pX={4} href="https://acmecompany.inc/">
-            Get started
-          </Button>
-        </Section>
-      </Container>
-    </Html>
-  );
-}
-
-// Defining a job that sends a basic email built using React and Typescript.
 client.defineJob({
-  id: "resend-send-react-email", // Unique identifier for the job.
-  name: "Resend: send react email", // A specific name for the job.
-  version: "1.0.0", // Version number for the job.
+  id: "send-resend-email",
+  name: "Send Resend Email",
+  version: "0.1.0",
   trigger: eventTrigger({
-    //triggering an event to send email
     name: "send.email",
     schema: z.object({
-      //initiating the Zod schema
-      to: z.string(), //Storing EmailTo as a string in the Zod Object
-      subject: z.string(), //Storing Subject as a string in the Zod Object
-      text: z.string(), //Storing EmailBodyText as a string in the Zod Object
-      name: z.string(), //Storing Name as a string in the Zod Object
-      from: z.string(), //Storing EmailFrom as a string in the Zod Object
+      to: z.union([z.string(), z.array(z.string())]),
+      subject: z.string(),
+      text: z.string(),
     }),
   }),
   integrations: {
-    resend, // Integrating the Resend client into this job.
+    resend,
   },
   run: async (payload, io, ctx) => {
-    // Inside the 'run' function, an email is sent using the Resend service.
-
-    await io.resend.sendEmail("send-email", {
+    await io.resend.emails.send("send-email", {
       to: payload.to,
       subject: payload.subject,
       text: payload.text,
-      from: payload.from,
-      react: <BasicEmail name={payload.name} text={payload.text} />,
+      from: "Trigger.dev <hello@email.trigger.dev>",
     });
   },
 });
