@@ -70,7 +70,7 @@ export default function Page() {
             }}
           />
         </PageTitleRow>
-        <PageInfoRow>runList
+        <PageInfoRow>
           <PageInfoGroup>
             <PageInfoProperty
               icon={trigger.integration.definition.icon ?? trigger.integration.definitionId}
