@@ -1,14 +1,10 @@
+import { useFetcher } from "@remix-run/react";
 import React from "react";
 import { Api } from "~/services/externalApis/apis.server";
-import { Button } from "../primitives/Buttons";
-import { Callout } from "../primitives/Callout";
 import { Header1 } from "../primitives/Headers";
 import { NamedIconInBox } from "../primitives/NamedIcon";
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTrigger } from "../primitives/Sheet";
 import { CustomHelp } from "./CustomHelp";
-import { CheckIcon } from "@heroicons/react/24/solid";
-import { useFetcher } from "@remix-run/react";
-import { Paragraph } from "../primitives/Paragraph";
 
 export function NoIntegrationSheet({
   api,
