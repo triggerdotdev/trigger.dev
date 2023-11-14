@@ -270,7 +270,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       spec,
     });
 
-    const job = await this.#addJob(
+    const { job, durationInMs } = await this.#addJob(
       identifier as string,
       payload,
       spec,
@@ -282,6 +282,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       payload,
       spec,
       job,
+      durationInMs,
     });
 
     return job;
@@ -304,6 +305,8 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     spec: TaskSpec,
     tx: PrismaClientOrTransaction
   ) {
+    const now = performance.now();
+
     const results = await tx.$queryRawUnsafe(
       `SELECT * FROM ${this.graphileWorkerSchema}.add_job(
           identifier => $1::text,
@@ -327,6 +330,8 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       spec.jobKeyMode || null
     );
 
+    const durationInMs = performance.now() - now;
+
     const rows = AddJobResultsSchema.safeParse(results);
 
     if (!rows.success) {
@@ -337,7 +342,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     const job = rows.data[0];
 
-    return job as GraphileJob;
+    return { job: job as GraphileJob, durationInMs: Math.floor(durationInMs) };
   }
 
   async #removeJob(jobKey: string, tx: PrismaClientOrTransaction) {

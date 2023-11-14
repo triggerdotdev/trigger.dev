@@ -92,6 +92,14 @@ client.defineJob({
       throw new Error(`Expected string, got ${typeof result9}: ${JSON.stringify(result9)}`);
     }
 
+    const result10 = await io.runTask("big-json", async (task) => {
+      return fetch("https://jsonplaceholder.typicode.com/photos").then((res) => res.json());
+    });
+
+    if (!Array.isArray(result10)) {
+      throw new Error(`Expected array, got ${typeof result10}: ${JSON.stringify(result10)}`);
+    }
+
     await io.wait("wait-1", 1);
   },
 });

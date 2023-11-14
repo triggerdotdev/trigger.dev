@@ -1,7 +1,10 @@
 import type { JobRun, Task, TaskAttempt } from "@trigger.dev/database";
 import { CachedTask, ServerTask } from "@trigger.dev/core";
 
-export type TaskWithAttempts = Task & { attempts: TaskAttempt[]; run: JobRun };
+export type TaskWithAttempts = Task & {
+  attempts: TaskAttempt[];
+  run: { forceYieldImmediately: boolean };
+};
 
 export function taskWithAttemptsToServerTask(task: TaskWithAttempts): ServerTask {
   return {
