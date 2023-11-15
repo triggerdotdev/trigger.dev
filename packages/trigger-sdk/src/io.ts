@@ -845,7 +845,7 @@ export class IO {
       },
       {
         name: "Update Webhook Source",
-        description: "Update Webhook Source",
+        icon: "refresh",
         properties: [
           {
             label: "key",
