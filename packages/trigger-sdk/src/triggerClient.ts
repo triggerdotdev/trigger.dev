@@ -769,7 +769,7 @@ export class TriggerClient {
     source: WebhookSource<any, any>;
     event: EventSpecification<any>;
     params: any;
-    config: any;
+    config: Record<string, string[]>;
   }): void {
     const { source } = options;
 
@@ -789,6 +789,8 @@ export class TriggerClient {
           id: options.key,
         },
       };
+    } else {
+      registeredWebhook.config = deepMergeOptions(registeredWebhook.config, options.config);
     }
 
     this.#registeredWebhooks[options.key] = registeredWebhook;
