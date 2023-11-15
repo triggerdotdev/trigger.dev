@@ -47,16 +47,20 @@ type WebhookCRUDFunction<TIntegration extends TriggerIntegration> = (options: {
 
 interface WebhookCRUD<TIntegration extends TriggerIntegration> {
   create: WebhookCRUDFunction<TIntegration>;
-  read: WebhookCRUDFunction<TIntegration>;
+  // currently unused
+  read?: WebhookCRUDFunction<TIntegration>;
   update?: WebhookCRUDFunction<TIntegration>;
   delete: WebhookCRUDFunction<TIntegration>;
-};
+}
 
 export type WebhookConfig<TConfigKeys extends string> = {
   [K in TConfigKeys]: string[];
 };
 
-type RegisterFunctionEvent<TParams extends any, TConfig extends Record<string, string[]> = any> = {
+type RegisterFunctionEvent<
+  TParams extends any,
+  TConfig extends Record<string, string[]> = Record<string, string[]>,
+> = {
   source: {
     active: boolean;
     data?: any;
@@ -67,14 +71,14 @@ type RegisterFunctionEvent<TParams extends any, TConfig extends Record<string, s
   config: TConfig;
 };
 
-type WebhookRegisterEvent<TConfig extends Record<string, string[]> = any> = {
+type WebhookRegisterEvent<TConfig extends Record<string, string[]> = Record<string, string[]>> = {
   id: string;
   source: RegisterWebhookSource;
   dynamicTriggerId?: string;
   config: TConfig;
 };
 
-type RegisterFunctionOutput<TConfig extends Record<string, string[]> = any> = {
+type RegisterFunctionOutput<TConfig extends Record<string, string[]> = Record<string, string[]>> = {
   secret?: string;
   data?: SerializableJson;
   config: TConfig;
@@ -83,7 +87,7 @@ type RegisterFunctionOutput<TConfig extends Record<string, string[]> = any> = {
 type RegisterFunction<
   TIntegration extends TriggerIntegration,
   TParams extends any,
-  TConfig extends Record<string, string[]> = any,
+  TConfig extends Record<string, string[]> = Record<string, string[]>,
 > = (
   event: RegisterFunctionEvent<TParams, TConfig>,
   io: IOWithIntegrations<{ integration: TIntegration }>,
@@ -112,15 +116,15 @@ type HandlerFunction<
 }) => Promise<any>;
 
 type KeyFunction<TParams extends any> = (params: TParams) => string;
-type FilterFunction<TParams extends any, TConfig extends Record<string, string[]> = any> = (
-  params: TParams,
-  config?: TConfig
-) => EventFilter;
+type FilterFunction<
+  TParams extends any,
+  TConfig extends Record<string, string[]> = Record<string, string[]>,
+> = (params: TParams, config?: TConfig) => EventFilter;
 
 type WebhookOptions<
   TIntegration extends TriggerIntegration,
   TParams extends any,
-  TConfig extends Record<string, string[]> = any,
+  TConfig extends Record<string, string[]> = Record<string, string[]>,
 > = {
   id: string;
   version: string;
@@ -146,7 +150,7 @@ type WebhookOptions<
 export class WebhookSource<
   TIntegration extends TriggerIntegration,
   TParams extends any,
-  TConfig extends Record<string, string[]> = any,
+  TConfig extends Record<string, string[]> = Record<string, string[]>,
 > {
   constructor(private options: WebhookOptions<TIntegration, TParams, TConfig>) {}
 
@@ -252,7 +256,7 @@ export type WebhookParams<TWebhook extends WebhookSource<any, any, any>> =
 export type WebhookTriggerOptions<
   TEventSpecification extends EventSpecification<any>,
   TEventSource extends WebhookSource<any, any, any>,
-  TConfig extends Record<string, string[]> = any,
+  TConfig extends Record<string, string[]> = Record<string, string[]>,
 > = {
   event: TEventSpecification;
   source: TEventSource;
