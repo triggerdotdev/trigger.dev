@@ -1,0 +1,10 @@
+{
+  "subscription_contract_id": 8641781273,
+  "cycle_start_at": "2022-10-01T00:00:00-04:00",
+  "cycle_end_at": "2022-11-01T00:00:00-04:00",
+  "cycle_index": 1,
+  "contract_edit": null,
+  "billing_attempt_expected_date": "2022-11-01T00:00:00-04:00",
+  "skipped": false,
+  "edited": false
+}

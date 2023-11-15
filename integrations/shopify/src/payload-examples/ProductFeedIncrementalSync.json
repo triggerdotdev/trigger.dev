@@ -1,0 +1,83 @@
+{
+  "metadata": {
+    "action": "CREATE",
+    "type": "INCREMENTAL",
+    "resource": "PRODUCT",
+    "truncatedFields": [],
+    "occured_at": "2021-12-31T19:00:00-05:00"
+  },
+  "productFeed": {
+    "id": "gid://shopify/ProductFeed/12345",
+    "shop_id": "gid://shopify/Shop/12345",
+    "language": "EN",
+    "country": "CA"
+  },
+  "product": {
+    "id": "gid://shopify/Product/12345",
+    "title": "Coffee",
+    "description": "The best coffee in the world",
+    "onlineStoreUrl": "https://example.com/products/coffee",
+    "updatedAt": "2021-12-31T19:00:00-05:00",
+    "productType": "Coffee",
+    "vendor": "Cawfee Inc",
+    "handle": "",
+    "isPublished": true,
+    "publishedAt": "2021-12-31T19:00:00-05:00",
+    "images": {
+      "edges": [
+        {
+          "node": {
+            "id": "gid://shopify/ProductImage/394",
+            "url": "https://cdn.shopify.com/s/files/1/0262/9117/5446/products/IMG_0022.jpg?v=1675101331",
+            "height": 3024,
+            "width": 4032
+          }
+        }
+      ]
+    },
+    "options": [
+      {
+        "name": "Title",
+        "values": ["151cm", "155cm", "158cm"]
+      }
+    ],
+    "variants": {
+      "edges": [
+        {
+          "node": {
+            "id": "gid://shopify/ProductVariant/1",
+            "title": "151cm",
+            "price": {
+              "amount": "100.00",
+              "currencyCode": "CAD"
+            },
+            "compareAtPrice": null,
+            "barcode": null,
+            "weight": 2.3,
+            "weightUnit": "KILOGRAMS",
+            "requireShipping": true,
+            "image": null,
+            "selectedOptions": [
+              {
+                "name": "Title",
+                "value": "151cm"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "seo": {
+      "title": "seo title",
+      "description": "seo description"
+    },
+    "metafields": [
+      {
+        "namespace": "inventory",
+        "key": "is_counting_pieces",
+        "value": "true",
+        "type": "boolean"
+      }
+    ]
+  }
+}

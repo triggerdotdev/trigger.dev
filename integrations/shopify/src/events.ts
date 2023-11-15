@@ -1,5 +1,5 @@
 import { EventSpecification } from "@trigger.dev/sdk";
-import { Product, ProductDeleted } from "./schemas";
+import { Product, DeletedPayload } from "./schemas";
 import { onProductProperties } from "./utils";
 import { productCreated, productDeleted, productUpdated } from "./payload-examples";
 
@@ -13,13 +13,13 @@ export const onProductCreated: EventSpecification<Product> = {
   runProperties: (payload) => onProductProperties(payload),
 };
 
-export const onProductDeleted: EventSpecification<ProductDeleted> = {
+export const onProductDeleted: EventSpecification<DeletedPayload> = {
   name: "products/delete",
   title: "On Product Deleted",
   source: "shopify.com",
   icon: "shopify",
   examples: [productDeleted],
-  parsePayload: (payload) => payload as ProductDeleted,
+  parsePayload: (payload) => payload as DeletedPayload,
   runProperties: (payload) => onProductProperties(payload),
 };
 
