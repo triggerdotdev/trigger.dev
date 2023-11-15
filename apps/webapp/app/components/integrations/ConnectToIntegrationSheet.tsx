@@ -92,13 +92,6 @@ export function ConnectToIntegrationSheet({
                 variant="description"
               />
             )}
-            <RadioGroupItem
-              id="custom"
-              value="custom"
-              label="Fetch/Existing SDK"
-              description={`Alternatively, use ${integration.name} without our integration.`}
-              variant="description"
-            />
           </RadioGroup>
 
           {integrationMethod && (
@@ -141,7 +134,5 @@ function SelectedIntegrationMethod({
           callbackUrl={callbackUrl}
         />
       );
-    case "custom":
-      return <CustomHelp api={integration} />;
   }
 }
