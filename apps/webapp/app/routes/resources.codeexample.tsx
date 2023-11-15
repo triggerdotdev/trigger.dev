@@ -20,8 +20,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const code = await response.text();
 
+  const hideCodeRegex = /(\n)?\/\/ hide-code[\s\S]*?\/\/ end-hide-code(\n)*/gm;
+  const cleanedCode = code?.replace(hideCodeRegex, "\n");
+
   return json({
-    code,
+    code: cleanedCode,
   });
 }
 
@@ -39,9 +42,8 @@ export function CodeExample({ example }: { example: ApiExample }) {
         <Paragraph>Loading example code</Paragraph>
       </div>
     );
-  const hideCodeRegex = /(\n)?\/\/ hide-code[\s\S]*?\/\/ end-hide-code(\n)*/gm;
-  const code = customerFetcher.data?.code;
-  const cleanedCode = code?.replace(hideCodeRegex, "\n");
 
-  return customerFetcher.data && <CodeBlock code={cleanedCode ?? ""} className="mt-2" />;
+  return (
+    customerFetcher.data && <CodeBlock code={customerFetcher.data.code ?? ""} className="mt-2" />
+  );
 }
