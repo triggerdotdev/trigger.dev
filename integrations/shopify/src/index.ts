@@ -27,6 +27,7 @@ import {
   createTrigger,
   createWebhookEventSource,
 } from "./webhooks";
+import { ApiScope } from "./schemas";
 
 export type ShopifyIntegrationOptions = {
   id: string;
@@ -35,8 +36,7 @@ export type ShopifyIntegrationOptions = {
   apiVersion?: ApiVersion;
   adminAccessToken: string;
   hostName: string;
-  // TODO: types
-  scopes: string[];
+  scopes: ApiScope[];
 };
 
 export type ShopifyRunTask = InstanceType<typeof Shopify>["runTask"];
