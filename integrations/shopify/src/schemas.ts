@@ -97,7 +97,7 @@ export const ApiScopeSchema = z.enum([
   "read_customer_events",
 ]);
 
-export type ApiScope = z.infer<typeof ApiScopeSchema>
+export type ApiScope = z.infer<typeof ApiScopeSchema>;
 
 export const WebhookTopicSchema = z.enum([
   "app/uninstalled",
@@ -261,6 +261,161 @@ export const WebhookSubscriptionDataSchema = z.object({
 
 export type WebhookSubscriptionData = z.infer<typeof WebhookSubscriptionDataSchema>;
 
+export const FulfillmentSchema = z.object({
+  created_at: z.coerce.date(),
+  id: z.number(),
+  line_items: z
+    .object({
+      id: z.number(),
+      variant_id: z.number(),
+      title: z.string(),
+      quantity: z.number(),
+      price: z.string(),
+      grams: z.number(),
+      sku: z.string(),
+      variant_title: z.string(),
+      vendor: z.any().nullable(),
+      fulfillment_service: z.string(),
+      product_id: z.number(),
+      requires_shipping: z.boolean(),
+      taxable: z.boolean(),
+      gift_card: z.boolean(),
+      name: z.string(),
+      variant_inventory_management: z.string(),
+      properties: z.array(z.any()),
+      product_exists: z.boolean(),
+      fulfillable_quantity: z.number(),
+      total_discount: z.string(),
+      fulfillment_status: z.any().nullable(),
+      fulfillment_line_item_id: z.number(),
+      tax_lines: z.array(z.any()),
+      duties: z
+        .object({
+          id: z.string(),
+          harmonized_system_code: z.string(),
+          country_code_of_origin: z.string(),
+          shop_money: z.object({
+            amount: z.string(),
+            currency_code: z.string(),
+          }),
+          presentment_money: z.object({
+            amount: z.string(),
+            currency_code: z.string(),
+          }),
+          tax_lines: z
+            .object({
+              title: z.string(),
+              price: z.string(),
+              rate: z.number(),
+              price_set: z.object({
+                shop_money: z.object({
+                  amount: z.string(),
+                  currency_code: z.string(),
+                }),
+                presentment_money: z.object({
+                  amount: z.string(),
+                  currency_code: z.string(),
+                }),
+              }),
+            })
+            .array(),
+          admin_graphql_api_id: z.string(),
+        })
+        .array(),
+    })
+    .array(),
+  location_id: z.number(),
+  name: z.string(),
+  notify_customer: z.boolean(),
+  order_id: z.number(),
+  origin_address: z
+    .object({
+      address1: z.string(),
+      address2: z.string(),
+      city: z.string(),
+      country_code: z.string(),
+      province_code: z.string(),
+      zip: z.string(),
+    })
+    .array(),
+  receipt: z.object({
+    testcase: z.boolean(),
+    authorization: z.string(),
+  }),
+  service: z.string(),
+  shipment_status: z.string(),
+  status: z.string(),
+  tracking_company: z.string(),
+  tracking_numbers: z.string().array(),
+  tracking_number: z.string(),
+  tracking_urls: z.string().array(),
+  tracking_url: z.string(),
+  updated_at: z.coerce.date(),
+  variant_inventory_management: z.string(),
+});
+
+export type Fulfillment = z.infer<typeof FulfillmentSchema>;
+
+export const InventoryItemSchema = z.object({
+  cost: z.string(),
+  country_code_of_origin: z.string(),
+  country_harmonized_system_codes: z
+    .object({
+      harmonized_system_code: z.string(),
+      country_code: z.string(),
+    })
+    .array(),
+  created_at: z.coerce.date(),
+  harmonized_system_code: z.number(),
+  id: z.number(),
+  province_code_of_origin: z.string(),
+  sku: z.string(),
+  tracked: z.boolean(),
+  updated_at: z.coerce.date(),
+  requires_shipping: z.boolean(),
+});
+
+export type InventoryItem = z.infer<typeof InventoryItemSchema>;
+
+export const InventoryLevelSchema = z.object({
+  available: z.number(),
+  inventory_item_id: z.number(),
+  location_id: z.number(),
+  updated_at: z.coerce.date(),
+});
+
+export type InventoryLevel = z.infer<typeof InventoryLevelSchema>;
+
+export const ShopLocaleSchema = z.object({}).passthrough();
+
+export type ShopLocale = z.infer<typeof ShopLocaleSchema>;
+
+export const LocationSchema = z.object({
+  active: z.boolean(),
+  address1: z.string(),
+  address2: z.string(),
+  city: z.string(),
+  country: z.string(),
+  country_code: z.string(),
+  created_at: z.coerce.date(),
+  id: z.number(),
+  legacy: z.boolean(),
+  name: z.string(),
+  phone: z.string(),
+  province: z.string(),
+  province_code: z.string(),
+  updated_at: z.coerce.date(),
+  zip: z.string(),
+  localized_country_name: z.string(),
+  localized_province_name: z.string(),
+});
+
+export type Location = z.infer<typeof LocationSchema>;
+
+export const OrderSchema = z.object({}).passthrough();
+
+export type Order = z.infer<typeof OrderSchema>;
+
 export const ProductVariantSchema = z.object({
   barcode: z.string(),
   compare_at_price: z.string().nullable(),
@@ -328,7 +483,11 @@ export const ProductSchema = z.object({
 
 export type Product = z.infer<typeof ProductSchema>;
 
-export type ProductDeleted = Pick<Product, "id">;
+export const DeletedPayloadSchema = z.object({
+  id: z.number(),
+});
+
+export type DeletedPayload = z.infer<typeof DeletedPayloadSchema>;
 
 // TODO: construct from other schemas
 export const WebhookPayloadSchema = z.object({}).passthrough();
