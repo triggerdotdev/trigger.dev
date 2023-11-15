@@ -1220,6 +1220,7 @@ async function findRun(prisma: PrismaClientOrTransaction, id: string) {
           status: true,
           noop: true,
           output: true,
+          outputIsUndefined: true,
           parentId: true,
         },
         orderBy: {

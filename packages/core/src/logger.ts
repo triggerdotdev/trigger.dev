@@ -17,17 +17,20 @@ export class Logger {
   readonly #level: number;
   #filteredKeys: string[] = [];
   #jsonReplacer?: (key: string, value: unknown) => unknown;
+  #additionalFields: () => Record<string, unknown>;
 
   constructor(
     name: string,
     level: LogLevel = "info",
     filteredKeys: string[] = [],
-    jsonReplacer?: (key: string, value: unknown) => unknown
+    jsonReplacer?: (key: string, value: unknown) => unknown,
+    additionalFields?: () => Record<string, unknown>
   ) {
     this.#name = name;
     this.#level = logLevels.indexOf((process.env.TRIGGER_LOG_LEVEL ?? level) as LogLevel);
     this.#filteredKeys = filteredKeys;
-    this.#jsonReplacer = jsonReplacer;
+    this.#jsonReplacer = createReplacer(jsonReplacer);
+    this.#additionalFields = additionalFields ?? (() => ({}));
   }
 
   // Return a new Logger instance with the same name and a new log level
@@ -78,13 +81,14 @@ export class Logger {
   ) {
     const structuredLog = {
       ...structureArgs(safeJsonClone(args) as Record<string, unknown>[], this.#filteredKeys),
+      ...this.#additionalFields(),
       timestamp: new Date(),
       name: this.#name,
       message,
       level,
     };
 
-    loggerFunction(JSON.stringify(structuredLog, createReplacer(this.#jsonReplacer)));
+    loggerFunction(JSON.stringify(structuredLog, this.#jsonReplacer));
   }
 }
 
@@ -115,12 +119,16 @@ function safeJsonClone(obj: unknown) {
   try {
     return JSON.parse(JSON.stringify(obj, bigIntReplacer));
   } catch (e) {
-    return obj;
+    return;
   }
 }
 
 // If args is has a single item that is an object, return that object
 function structureArgs(args: Array<Record<string, unknown>>, filteredKeys: string[] = []) {
+  if (!args) {
+    return;
+  }
+
   if (args.length === 0) {
     return;
   }

@@ -1,7 +1,6 @@
 import { PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { taskOperationWorker } from "../worker.server";
 import { EphemeralDispatchableSchema } from "~/models/eventDispatcher.server";
-import { fetch } from "@whatwg-node/fetch";
 import { ExpireDispatcherService } from "./expireDispatcher.server";
 
 export class InvokeEphemeralDispatcherService {
@@ -61,22 +60,13 @@ export class InvokeEphemeralDispatcherService {
       accountId: eventRecord.externalAccount ? eventRecord.externalAccount.identifier : undefined,
     };
 
-    const abortController = new AbortController();
-
-    const timeoutId = setTimeout(() => {
-      abortController.abort();
-    }, 5000);
-
     const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json; charset=utf-8",
       },
       body: JSON.stringify(body),
-      signal: abortController.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(

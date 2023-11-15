@@ -1,5 +1,15 @@
 # @trigger.dev/integration-kit
 
+## 2.2.6
+
+### Patch Changes
+
+- cb1825bf: OpenAI support for 4.16.0
+- Updated dependencies [cb1825bf]
+- Updated dependencies [cb1825bf]
+- Updated dependencies [d0217344]
+  - @trigger.dev/core@2.2.6
+
 ## 2.2.5
 
 ### Patch Changes

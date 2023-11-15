@@ -191,7 +191,8 @@ export class CompleteRunTaskService {
       },
       data: {
         status: "COMPLETED",
-        output: taskBody.output ?? undefined,
+        output: taskBody.output as any,
+        outputIsUndefined: typeof taskBody.output === "undefined",
         completedAt: new Date(),
         outputProperties: taskBody.properties,
       },

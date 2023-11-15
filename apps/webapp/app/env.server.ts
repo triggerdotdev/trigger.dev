@@ -49,6 +49,16 @@ const EnvironmentSchema = z.object({
   TASK_OPERATION_WORKER_CONCURRENCY: z.coerce.number().int().default(10),
   TASK_OPERATION_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   GRACEFUL_SHUTDOWN_TIMEOUT: z.coerce.number().int().default(60000),
+  /** Optional. Only used if you use the apps/proxy */
+  AWS_SQS_REGION: z.string().optional(),
+  /** Optional. Only used if you use the apps/proxy */
+  AWS_SQS_ACCESS_KEY_ID: z.string().optional(),
+  /** Optional. Only used if you use the apps/proxy */
+  AWS_SQS_SECRET_ACCESS_KEY: z.string().optional(),
+  /** Optional. Only used if you use the apps/proxy */
+  AWS_SQS_QUEUE_URL: z.string().optional(),
+  AWS_SQS_BATCH_SIZE: z.coerce.number().int().optional().default(10),
+  DISABLE_SSE: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

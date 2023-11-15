@@ -33,7 +33,19 @@ import { Spinner } from "../primitives/Spinner";
 import type { DetailedTask } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam.tasks.$taskParam/route";
 
 export function TaskDetail({ task }: { task: DetailedTask }) {
-  const { name, description, icon, status, params, properties, output, style, attempts } = task;
+  const {
+    name,
+    description,
+    icon,
+    status,
+    params,
+    properties,
+    output,
+    outputIsUndefined,
+    style,
+    attempts,
+    noop,
+  } = task;
 
   const startedAt = task.startedAt ? new Date(task.startedAt) : undefined;
   const completedAt = task.completedAt ? new Date(task.completedAt) : undefined;
@@ -140,16 +152,18 @@ export function TaskDetail({ task }: { task: DetailedTask }) {
             <Paragraph variant="small">No input</Paragraph>
           )}
         </div>
-        <div className="mt-4 flex flex-col gap-2">
-          <Header3>Output</Header3>
-          {output ? (
-            <ClientOnly fallback={<Spinner />}>
-              {() => <CodeBlock code={output} maxLines={35} />}
-            </ClientOnly>
-          ) : (
-            <Paragraph variant="small">No output</Paragraph>
-          )}
-        </div>
+        {!noop && (
+          <div className="mt-4 flex flex-col gap-2">
+            <Header3>Output</Header3>
+            {output && !outputIsUndefined ? (
+              <ClientOnly fallback={<Spinner />}>
+                {() => <CodeBlock code={output} maxLines={35} />}
+              </ClientOnly>
+            ) : (
+              <Paragraph variant="small">No output</Paragraph>
+            )}
+          </div>
+        )}
       </RunPanelBody>
     </RunPanel>
   );

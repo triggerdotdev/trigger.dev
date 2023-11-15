@@ -1,4 +1,4 @@
-import { ulid } from "ulid";
+import { ulid } from "ulidx";
 import { z } from "zod";
 import { Prettify } from "../types";
 import { addMissingVersionField } from "./addMissingVersionField";
