@@ -811,9 +811,7 @@ export class TriggerClient {
 
         const webhookContext = {
           ...ctx,
-          webhook: {
-            secret: webhookContextMetadata.secret,
-          },
+          webhook: webhookContextMetadata,
         };
 
         const verifyResult = await io.runTask("verify", async () => {
