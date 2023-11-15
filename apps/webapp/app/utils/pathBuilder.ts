@@ -369,3 +369,8 @@ export function docsIntegrationPath(api: string) {
 export function docsCreateIntegration() {
   return `${docsRoot()}/integrations/create`;
 }
+
+//api
+export function apiReferencePath(apiSlug: string) {
+  return `https://trigger.dev/apis/${apiSlug}`;
+}
