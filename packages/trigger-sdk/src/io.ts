@@ -727,8 +727,9 @@ export class IO {
         return await this._triggerClient.sendEvent(event, options);
       },
       {
-        name: "sendEvent",
+        name: "Send Event",
         params: { event, options },
+        icon: "send",
         properties: [
           {
             label: "name",
@@ -753,8 +754,9 @@ export class IO {
         return await this._triggerClient.sendEvents(events, options);
       },
       {
-        name: "sendEvents",
+        name: "Send Multiple Events",
         params: { events, options },
+        icon: "send",
         properties: [
           {
             label: "Total Events",
