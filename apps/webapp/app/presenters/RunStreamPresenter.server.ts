@@ -1,6 +1,6 @@
 import { JobRun } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
-import { sse } from "~/utils/sse";
+import { sse } from "~/utils/sse.server";
 
 export class RunStreamPresenter {
   #prismaClient: PrismaClient;

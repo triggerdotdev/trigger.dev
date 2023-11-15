@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { EventFilterSchema, stringPatternMatchers } from "./eventFilter";
+import { Prettify } from "../types";
 
 const StringMatchSchema = z.union([
   /** Match against a string */
@@ -58,3 +59,11 @@ export const RequestFilterSchema = z.object({
 });
 
 export type RequestFilter = z.infer<typeof RequestFilterSchema>;
+
+/** Only Requests that match this filter will cause the `handler` function to run.
+ * For example, you can use this to only respond to `GET` Requests. */
+export const ResponseFilterSchema = RequestFilterSchema.omit({ method: true, query: true }).extend({
+  status: z.array(z.number()).optional(),
+});
+
+export type ResponseFilter = Prettify<z.infer<typeof ResponseFilterSchema>>;

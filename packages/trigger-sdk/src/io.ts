@@ -4,6 +4,8 @@ import {
   ConnectionAuth,
   CronOptions,
   ErrorWithStackSchema,
+  EventFilter,
+  FetchPollOperation,
   FetchRequestInit,
   FetchRetryOptions,
   FetchTimeoutOptions,
@@ -41,7 +43,14 @@ import { TriggerClient } from "./triggerClient";
 import { DynamicTrigger } from "./triggers/dynamic";
 import { ExternalSource, ExternalSourceParams } from "./triggers/externalSource";
 import { DynamicSchedule } from "./triggers/scheduled";
-import { EventSpecification, TaskLogger, TriggerContext } from "./types";
+import {
+  EventSpecification,
+  TaskLogger,
+  TriggerContext,
+  WaitForEventResult,
+  waitForEventSchema,
+} from "./types";
+import { z } from "zod";
 
 export type IOTask = ServerTask;
 
@@ -102,6 +111,12 @@ export class JSONOutputSerializer implements OutputSerializer {
     return value ? JSON.parse(value) : undefined;
   }
 }
+
+export type BackgroundFetchResponse<T> = {
+  status: number;
+  data: T;
+  headers: Record<string, string>;
+};
 
 export class IO {
   private _id: string;
@@ -331,6 +346,72 @@ export class IO {
     });
   }
 
+  async waitForEvent<T extends z.ZodTypeAny = z.ZodTypeAny>(
+    cacheKey: string | any[],
+    event: {
+      name: string;
+      schema?: T;
+      filter?: EventFilter;
+      source?: string;
+      contextFilter?: EventFilter;
+      accountId?: string;
+    },
+    options?: { timeoutInSeconds?: number }
+  ): Promise<WaitForEventResult<z.output<T>>> {
+    const timeoutInSeconds = options?.timeoutInSeconds ?? 60 * 60;
+
+    return (await this.runTask(
+      cacheKey,
+      async (task, io) => {
+        if (!task.callbackUrl) {
+          throw new Error("No callbackUrl found on task");
+        }
+
+        await this.triggerClient.createEphemeralEventDispatcher({
+          url: task.callbackUrl,
+          name: event.name,
+          filter: event.filter,
+          contextFilter: event.contextFilter,
+          source: event.source,
+          accountId: event.accountId,
+          timeoutInSeconds,
+        });
+
+        return {} as Promise<{}>;
+      },
+      {
+        name: "Wait for Event",
+        icon: "custom-event",
+        params: {
+          name: event.name,
+          source: event.source,
+          filter: event.filter,
+          contextFilter: event.contextFilter,
+          accountId: event.accountId,
+        },
+        callback: {
+          enabled: true,
+          timeoutInSeconds,
+        },
+        properties: [
+          {
+            label: "Event",
+            text: event.name,
+          },
+          {
+            label: "Timeout",
+            text: `${timeoutInSeconds}s`,
+          },
+          ...(event.source ? [{ label: "Source", text: event.source }] : []),
+          ...(event.accountId ? [{ label: "Account ID", text: event.accountId }] : []),
+        ],
+        parseOutput: (output) => {
+          return waitForEventSchema(event.schema ?? z.any()).parse(output);
+        },
+      }
+    )) as WaitForEventResult<z.output<T>>;
+  }
+
   /** `io.waitForRequest()` allows you to pause the execution of a run until the url provided in the callback is POSTed to.
    *  This is useful for integrating with external services that require a callback URL to be provided, or if you want to be able to wait until an action is performed somewhere else in your system.
    *  @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
@@ -447,19 +528,23 @@ export class IO {
     cacheKey: string | any[],
     url: string,
     requestInit?: FetchRequestInit,
-    retry?: FetchRetryOptions,
-    timeout?: FetchTimeoutOptions
+    options?: {
+      retry?: FetchRetryOptions;
+      timeout?: FetchTimeoutOptions;
+    }
   ): Promise<TResponseData> {
     const urlObject = new URL(url);
 
     return (await this.runTask(
       cacheKey,
       async (task) => {
+        console.log("task context", task.context);
+
         return task.output;
       },
       {
         name: `fetch ${urlObject.hostname}${urlObject.pathname}`,
-        params: { url, requestInit, retry, timeout },
+        params: { url, requestInit, retry: options?.retry, timeout: options?.timeout },
         operation: "fetch",
         icon: "background",
         noop: false,
@@ -477,7 +562,9 @@ export class IO {
             label: "background",
             text: "true",
           },
-          ...(timeout ? [{ label: "timeout", text: `${timeout.durationInMs}ms` }] : []),
+          ...(options?.timeout
+            ? [{ label: "timeout", text: `${options.timeout.durationInMs}ms` }]
+            : []),
         ],
         retry: {
           limit: 0,
@@ -486,7 +573,136 @@ export class IO {
     )) as TResponseData;
   }
 
-  /** `io.sendEvent()` allows you to send an event from inside a Job run. The sent even will trigger any Jobs that are listening for that event (based on the name).
+  /** `io.backgroundPoll()` will fetch data from a URL on an interval. The actual `fetch` requests are performed on the Trigger.dev server, so you don't have to worry about serverless function timeouts.
+   * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param params The options for the background poll
+   * @param params.url The URL to fetch from.
+   * @param params.requestInit The options for the request, like headers and method
+   * @param params.responseFilter An [EventFilter](https://trigger.dev/docs/documentation/guides/event-filter) that allows you to specify when to stop polling.
+   * @param params.interval The interval in seconds to poll the URL in seconds. Defaults to 10 seconds which is the minimum.
+   * @param params.timeout The timeout in seconds for each request in seconds. Defaults to 10 minutes. Minimum is 60 seconds and max is 1 hour
+   * @param params.requestTimeout An optional object that allows you to timeout individual fetch requests
+   * @param params.requestTimeout An optional object that allows you to timeout individual fetch requests
+   * @param params.requestTimeout.durationInMs The duration in milliseconds to timeout the request
+   * 
+   * @example
+   * ```ts
+   * const result = await io.backgroundPoll<{ id: string; status: string; }>("poll", {
+      url: `http://localhost:3030/api/v1/runs/${run.id}`,
+      requestInit: {
+        headers: {
+          Accept: "application/json",
+          Authorization: redactString`Bearer ${process.env["TRIGGER_API_KEY"]!}`,
+        },
+      },
+      interval: 10,
+      timeout: 600,
+      responseFilter: {
+        status: [200],
+        body: {
+          status: ["SUCCESS"],
+        },
+      },
+    });
+    * ```
+   */
+  async backgroundPoll<TResponseData>(
+    cacheKey: string | any[],
+    params: FetchPollOperation
+  ): Promise<TResponseData> {
+    const urlObject = new URL(params.url);
+
+    return (await this.runTask(
+      cacheKey,
+      async (task) => {
+        return task.output;
+      },
+      {
+        name: `poll ${urlObject.hostname}${urlObject.pathname}`,
+        params,
+        operation: "fetch-poll",
+        icon: "clock-bolt",
+        noop: false,
+        properties: [
+          {
+            label: "url",
+            text: params.url,
+          },
+          {
+            label: "interval",
+            text: `${params.interval}s`,
+          },
+          {
+            label: "timeout",
+            text: `${params.timeout}s`,
+          },
+        ],
+        retry: {
+          limit: 0,
+        },
+      }
+    )) as TResponseData;
+  }
+
+  /** `io.backgroundFetchResponse()` fetches data from a URL that can take longer that the serverless timeout. The actual `fetch` request is performed on the Trigger.dev platform, and the response is sent back to you.
+   * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param url The URL to fetch from.
+   * @param requestInit The options for the request
+   * @param retry The options for retrying the request if it fails
+   * An object where the key is a status code pattern and the value is a retrying strategy.
+   * Supported patterns are:
+   * - Specific status codes: 429
+   * - Ranges: 500-599
+   * - Wildcards: 2xx, 3xx, 4xx, 5xx
+   */
+  async backgroundFetchResponse<TResponseData>(
+    cacheKey: string | any[],
+    url: string,
+    requestInit?: FetchRequestInit,
+    options?: {
+      retry?: FetchRetryOptions;
+      timeout?: FetchTimeoutOptions;
+    }
+  ): Promise<BackgroundFetchResponse<TResponseData>> {
+    const urlObject = new URL(url);
+
+    return (await this.runTask(
+      cacheKey,
+      async (task) => {
+        return task.output;
+      },
+      {
+        name: `fetch response ${urlObject.hostname}${urlObject.pathname}`,
+        params: { url, requestInit, retry: options?.retry, timeout: options?.timeout },
+        operation: "fetch-response",
+        icon: "background",
+        noop: false,
+        properties: [
+          {
+            label: "url",
+            text: url,
+            url,
+          },
+          {
+            label: "method",
+            text: requestInit?.method ?? "GET",
+          },
+          {
+            label: "background",
+            text: "true",
+          },
+          ...(options?.timeout
+            ? [{ label: "timeout", text: `${options.timeout.durationInMs}ms` }]
+            : []),
+        ],
+        retry: {
+          limit: 0,
+        },
+      }
+    )) as BackgroundFetchResponse<TResponseData>;
+  }
+
+  /** `io.sendEvent()` allows you to send an event from inside a Job run. The sent event will trigger any Jobs that are listening for that event (based on the name).
    * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
    * @param event The event to send. The event name must match the name of the event that your Jobs are listening for.
    * @param options Options for sending the event.
@@ -506,6 +722,32 @@ export class IO {
             text: event.name,
           },
           ...(event?.id ? [{ label: "ID", text: event.id }] : []),
+          ...sendEventOptionsProperties(options),
+        ],
+      }
+    );
+  }
+
+  /** `io.sendEvents()` allows you to send multiple events from inside a Job run. The sent events will trigger any Jobs that are listening for those events (based on the name).
+   * @param cacheKey Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param event The events to send. The event names must match the names of the events that your Jobs are listening for.
+   * @param options Options for sending the events.
+   */
+  async sendEvents(cacheKey: string | any[], events: SendEvent[], options?: SendEventOptions) {
+    return await this.runTask(
+      cacheKey,
+      async (task) => {
+        return await this._triggerClient.sendEvents(events, options);
+      },
+      {
+        name: "sendEvents",
+        params: { events, options },
+        properties: [
+          {
+            label: "Total Events",
+            text: String(events.length),
+          },
+          ...sendEventOptionsProperties(options),
         ],
       }
     );
@@ -809,7 +1051,7 @@ export class IO {
   async runTask<T extends Json<T> | void>(
     cacheKey: string | any[],
     callback: (task: ServerTask, io: IO) => Promise<T>,
-    options?: RunTaskOptions,
+    options?: RunTaskOptions & { parseOutput?: (output: unknown) => T },
     onError?: RunTaskErrorCallback
   ): Promise<T> {
     this.#detectAutoYield("start_task", 500);
@@ -853,7 +1095,9 @@ export class IO {
 
       this._stats.cachedTaskHits++;
 
-      return cachedTask.output as T;
+      return options?.parseOutput
+        ? options.parseOutput(cachedTask.output)
+        : (cachedTask.output as T);
     }
 
     if (options?.noop && this._noopTasksBloomFilter) {
@@ -868,13 +1112,15 @@ export class IO {
       }
     }
 
+    const runOptions = { ...(options ?? {}), parseOutput: undefined };
+
     const response = await this._apiClient.runTask(
       this._id,
       {
         idempotencyKey,
         displayKey: typeof cacheKey === "string" ? cacheKey : undefined,
         noop: false,
-        ...(options ?? {}),
+        ...(runOptions ?? {}),
         parentId,
       },
       {
@@ -936,7 +1182,7 @@ export class IO {
         this.#addToCachedTasks(task);
       }
 
-      return task.output as T;
+      return options?.parseOutput ? options.parseOutput(task.output) : (task.output as T);
     }
 
     if (task.status === "ERRORED") {
@@ -995,7 +1241,9 @@ export class IO {
 
         this.#detectAutoYield("after_complete_task", 500);
 
-        return this._outputSerializer.deserialize<T>(output);
+        const deserializedOutput = this._outputSerializer.deserialize<T>(output);
+
+        return options?.parseOutput ? options.parseOutput(deserializedOutput) : deserializedOutput;
       } catch (error) {
         if (isTriggerError(error)) {
           throw error;
@@ -1266,4 +1514,14 @@ async function spaceOut<T>(callback: () => Promise<T>, index: number, delay: num
   await new Promise((resolve) => setTimeout(resolve, index * delay));
 
   return await callback();
+}
+
+function sendEventOptionsProperties(options?: SendEventOptions) {
+  return [
+    ...(options?.accountId ? [{ label: "Account ID", text: options.accountId }] : []),
+    ...(options?.deliverAfter
+      ? [{ label: "Deliver After", text: `${options.deliverAfter}s` }]
+      : []),
+    ...(options?.deliverAt ? [{ label: "Deliver At", text: options.deliverAt.toISOString() }] : []),
+  ];
 }

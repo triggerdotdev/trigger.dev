@@ -1,0 +1,55 @@
+---
+title: Image Tasks
+sidebarTitle: Images
+---
+
+Given a prompt and/or an input image, the model will generate a new image. See the [Image generation guide](https://platform.openai.com/docs/guides/images) and the [Official OpenAI docs](https://platform.openai.com/docs/api-reference/images).
+
+### `create()`
+
+Creates an image given a prompt. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/images/create)
+
+```ts example.ts
+await io.openai.images.create("dalle-3", {
+  model: "dall-e-3",
+  prompt:
+    "I would like to generate an image of an american giraffe riding a bycicle in a suburban neighborhood, into the sunset.",
+});
+```
+
+### `backgroundCreate()`
+
+Creates a an image given a prompt, but runs the request in the background using [io.backgroundFetch()](/sdk/io/backgroundfetch)
+
+```ts example.ts
+await io.openai.images.backgroundCreate("dalle-3", {
+  model: "dall-e-3",
+  prompt:
+    "I would like to generate an image of an american giraffe riding a bycicle in a suburban neighborhood, into the sunset.",
+});
+```
+
+### `edit()`
+
+Creates an edited or extended image given an original image and a prompt. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/images/createEdit)
+
+```ts example.ts
+await io.openai.images.edit("dalle-2", {
+  model: "dall-e-2",
+  image: fs.createReadStream("./giraffe.jpg"),
+  prompt: "A painting of a giraffe in a suburban neighborhood",
+  response_format: "url",
+});
+```
+
+### `createVariation()`
+
+Creates a variation of a given image. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/images/createVariation)
+
+```ts example.ts
+await io.openai.images.createVariation("dalle-3", {
+  model: "dall-e-2",
+  image: fs.createReadStream("./giraffe.jpg"),
+  response_format: "url",
+});
+```

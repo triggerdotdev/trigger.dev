@@ -1,6 +1,5 @@
-import { Await, useLoaderData } from "@remix-run/react";
-import { LoaderFunctionArgs, defer } from "@remix-run/server-runtime";
-import { Suspense } from "react";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TaskDetail } from "~/components/run/TaskDetail";
 import { TaskDetailsPresenter } from "~/presenters/TaskDetailsPresenter.server";
@@ -12,24 +11,26 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { taskParam } = TriggerSourceRunTaskParamsSchema.parse(params);
 
   const presenter = new TaskDetailsPresenter();
-  const taskPromise = presenter.call({
+  const task = await presenter.call({
     userId,
     id: taskParam,
   });
 
-  return defer({
-    taskPromise,
+  return typedjson({
+    task,
   });
 };
 
 export default function Page() {
-  const { taskPromise } = useLoaderData<typeof loader>();
+  const { task } = useTypedLoaderData<typeof loader>();
 
-  return (
-    <Suspense fallback={<Spinner />}>
-      <Await resolve={taskPromise} errorElement={<p>Error loading task!</p>}>
-        {(resolvedTask) => resolvedTask && <TaskDetail task={resolvedTask as any} />}
-      </Await>
-    </Suspense>
-  );
+  if (!task) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Spinner />
+      </div>
+    );
+  }
+
+  return <TaskDetail task={task} />;
 }

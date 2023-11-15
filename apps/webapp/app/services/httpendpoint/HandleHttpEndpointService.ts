@@ -80,7 +80,7 @@ export class HandleHttpEndpointService {
       });
 
     if (!httpEndpointEnvironment) {
-      logger.error("Could not find http endpoint environment", {
+      logger.debug("Could not find http endpoint environment", {
         httpEndpointId: httpEndpoint.id,
         environmentId: environment.id,
       });

@@ -1,0 +1,18 @@
+{
+  "extends": "@trigger.dev/tsconfig/node18.json",
+  "include": ["./src/**/*.ts", "tsup.config.ts"],
+  "compilerOptions": {
+    "lib": ["DOM", "DOM.Iterable", "ES2019"],
+    "paths": {
+      "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
+      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
+      "@trigger.dev/integration-kit/*": ["../../packages/integration-kit/src/*"],
+      "@trigger.dev/integration-kit": ["../../packages/integration-kit/src/index"]
+    },
+    "declaration": false,
+    "declarationMap": false,
+    "baseUrl": ".",
+    "stripInternal": true
+  },
+  "exclude": ["node_modules"]
+}

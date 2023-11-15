@@ -1,6 +1,6 @@
 {
   "extends": "@trigger.dev/tsconfig/node18.json",
-  "include": ["./src/**/*.ts", "tsup.config.ts"],
+  "include": ["./src/**/*.ts", "tsup.config.ts", "src/globals.d.ts", "./test/**/*.ts"],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2019"],
     "paths": {

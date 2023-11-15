@@ -1,0 +1,83 @@
+---
+title: "TriggerClient: sendEvents() instance method"
+sidebarTitle: "sendEvents()"
+description: "The `sendEvents()` instance method send multiple events that triggers any Jobs that are listening for those events (based on the name)."
+---
+
+You can call this function from anywhere in your backend to send multiple events. The other way to send multiple events is by using [io.sendEvents()](/sdk/io/sendevents) from inside a `run()` function.
+
+Use [eventTrigger()](/sdk/eventtrigger) on a Job to listen for events.
+
+For single events, use [client.sendEvent()](/sdk/triggerclient/instancemethods/sendevent) instead.
+
+## Parameters
+
+<Snippet file="send-events-params.mdx" />
+
+## Returns
+
+<Snippet file="send-events-return.mdx" />
+
+<RequestExample>
+
+```ts Simple example with payloads
+const event = client.sendEvents([
+  {
+    name: "new.user",
+    payload: {
+      userId: "u_12345",
+    },
+  },
+  {
+    name: "new.user",
+    payload: {
+      userId: "u_67890",
+    },
+  },
+]);
+```
+
+```ts Send multiple events with an ID
+const event = client.sendEvents([
+  {
+    id: "e_12345", // You can use this to deduplicate events
+    name: "new.user",
+    payload: {
+      userId: "u_12345",
+    },
+  },
+  {
+    id: "e_67890", // You can use this to deduplicate events
+    name: "new.user",
+    payload: {
+      userId: "u_67890",
+    },
+  },
+]);
+```
+
+```ts Send multiple events to be delivered later
+const event = client.sendEvents(
+  [
+    {
+      id: "e_12345", // You can use this to deduplicate events
+      name: "new.user",
+      payload: {
+        userId: "u_12345",
+      },
+    },
+    {
+      id: "e_67890", // You can use this to deduplicate events
+      name: "new.user",
+      payload: {
+        userId: "u_67890",
+      },
+    },
+  ],
+  {
+    deliverAt: new Date("2023-12-01T00:00:00.000Z"),
+  }
+);
+```
+
+</RequestExample>

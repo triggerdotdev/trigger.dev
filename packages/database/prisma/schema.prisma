@@ -104,6 +104,7 @@ model ExternalAccount {
   schedules          ScheduleSource[]
   triggerSources     TriggerSource[]
   missingConnections MissingConnection[]
+  EventDispatcher    EventDispatcher[]
 
   @@unique([environmentId, identifier])
 }
@@ -644,6 +645,9 @@ model EventDispatcher {
   registrations   DynamicTriggerRegistration[]
   scheduleSources ScheduleSource[]
 
+  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  externalAccountId String?
+
   @@unique([dispatchableId, environmentId])
 }
 
@@ -878,16 +882,18 @@ model Task {
   delayUntil DateTime?
   noop       Boolean    @default(false)
 
-  description      String?
-  properties       Json?
-  outputProperties Json?
-  params           Json?
-  output           Json?
-  error            String?
-  redact           Json?
-  style            Json?
-  operation        String?
-  callbackUrl      String?
+  description       String?
+  properties        Json?
+  outputProperties  Json?
+  params            Json?
+  output            Json?
+  outputIsUndefined Boolean @default(false)
+  context           Json?
+  error             String?
+  redact            Json?
+  style             Json?
+  operation         String?
+  callbackUrl       String?
 
   startedAt   DateTime?
   completedAt DateTime?

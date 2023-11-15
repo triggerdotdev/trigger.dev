@@ -48,7 +48,7 @@ export async function $transaction<R>(
     return await (prisma as PrismaClient).$transaction(fn, options);
   } catch (error) {
     if (isPrismaKnownError(error)) {
-      logger.debug("prisma.$transaction error", {
+      logger.error("prisma.$transaction error", {
         code: error.code,
         meta: error.meta,
         stack: error.stack,

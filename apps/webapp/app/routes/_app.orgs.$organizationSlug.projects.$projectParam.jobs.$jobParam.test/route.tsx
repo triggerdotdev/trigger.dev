@@ -1,6 +1,5 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ClipboardIcon } from "@heroicons/react/20/solid";
 import { ClockIcon, CodeBracketIcon } from "@heroicons/react/24/outline";
 import { Form, useActionData, useSubmit } from "@remix-run/react";
 import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
@@ -33,10 +32,14 @@ import { redirectBackWithErrorMessage, redirectWithSuccessMessage } from "~/mode
 import { TestJobPresenter } from "~/presenters/TestJobPresenter.server";
 import { TestJobService } from "~/services/jobs/testJob.server";
 import { requireUserId } from "~/services/session.server";
-import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import { isValidIcon } from "~/utils/icon";
-import { JobParamsSchema, jobRunDashboardPath, trimTrailingSlash } from "~/utils/pathBuilder";
+import {
+  JobParamsSchema,
+  docsPath,
+  jobRunDashboardPath,
+  trimTrailingSlash,
+} from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -139,7 +142,7 @@ export default function Page() {
     setDefaultJson(code);
   }, []);
 
-  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string>(environments[0].id);
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState(environments.at(0)?.id);
   const selectedEnvironment = environments.find((e) => e.id === selectedEnvironmentId);
 
   const currentJson = useRef<string>(defaultJson);
@@ -147,6 +150,10 @@ export default function Page() {
 
   const submitForm = useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
+      if (!selectedEnvironmentId) {
+        return;
+      }
+
       submit(
         {
           payload: currentJson.current,
@@ -175,10 +182,33 @@ export default function Page() {
 
   if (environments.length === 0) {
     return (
-      <Callout variant="warning">
-        Can't run a test when there are no environments. This shouldn't happen, please contact
-        support.
-      </Callout>
+      <div className="flex flex-col gap-4">
+        <Callout variant="info">
+          There are no environments that you can test this job with – you can't run Tests against
+          your teammates' Dev environments. You should run the code locally (using the CLI) so that
+          this Job will be associated with your Dev environment. This also means that this Job
+          hasn't been deployed to Staging or Prod yet.
+        </Callout>
+        <div>
+          <Header2 spacing>Useful guides</Header2>
+          <div className="flex gap-2">
+            <LinkButton
+              to={docsPath("documentation/guides/cli#dev-command")}
+              variant="secondary/small"
+              LeadingIcon="docs"
+            >
+              Using the CLI
+            </LinkButton>
+            <LinkButton
+              to={docsPath("documentation/guides/deployment")}
+              variant="secondary/small"
+              LeadingIcon="docs"
+            >
+              Deploying your Jobs
+            </LinkButton>
+          </div>
+        </div>
+      </div>
     );
   }
 

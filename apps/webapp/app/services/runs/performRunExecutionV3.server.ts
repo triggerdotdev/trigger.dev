@@ -38,6 +38,7 @@ import { logger } from "../logger.server";
 import { forceYieldCoordinator } from "./forceYieldCoordinator.server";
 import { workerQueue } from "../worker.server";
 import { ResumeTaskService } from "../tasks/resumeTask.server";
+import { createExecutionEvent } from "../executions/createExecutionEvent.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type FoundTask = FoundRun["tasks"][number];
@@ -67,7 +68,7 @@ export class PerformRunExecutionV3Service {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(input: PerformRunExecutionV3Input) {
+  public async call(input: PerformRunExecutionV3Input, driftInMs: number = 0) {
     const run = await findRun(this.#prismaClient, input.id);
 
     if (!run) {
@@ -80,7 +81,7 @@ export class PerformRunExecutionV3Service {
         break;
       }
       case "EXECUTE_JOB": {
-        await this.#executeJob(run, input);
+        await this.#executeJob(run, input, driftInMs);
         break;
       }
     }
@@ -177,7 +178,7 @@ export class PerformRunExecutionV3Service {
       });
     }
   }
-  async #executeJob(run: FoundRun, input: PerformRunExecutionV3Input) {
+  async #executeJob(run: FoundRun, input: PerformRunExecutionV3Input, driftInMs: number = 0) {
     try {
       const { isRetry, resumeTaskId } = input;
 
@@ -275,9 +276,31 @@ export class PerformRunExecutionV3Service {
 
       forceYieldCoordinator.registerRun(run.id);
 
+      await createExecutionEvent({
+        eventType: "start",
+        eventTime: new Date(),
+        drift: driftInMs,
+        organizationId: run.organizationId,
+        environmentId: run.environmentId,
+        projectId: run.projectId,
+        jobId: run.jobId,
+        runId: run.id,
+      });
+
       const { response, parser, errorParser, durationInMs } = await client.executeJobRequest(
         executionBody
       );
+
+      await createExecutionEvent({
+        eventType: "finish",
+        eventTime: new Date(),
+        drift: 0,
+        organizationId: run.organizationId,
+        environmentId: run.environmentId,
+        projectId: run.projectId,
+        jobId: run.jobId,
+        runId: run.id,
+      });
 
       forceYieldCoordinator.deregisterRun(run.id);
 
@@ -1220,6 +1243,7 @@ async function findRun(prisma: PrismaClientOrTransaction, id: string) {
           status: true,
           noop: true,
           output: true,
+          outputIsUndefined: true,
           parentId: true,
         },
         orderBy: {

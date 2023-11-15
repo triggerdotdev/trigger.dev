@@ -1,0 +1,75 @@
+---
+title: "io.waitForRequest()"
+sidebarTitle: "waitForRequest()"
+description: "`io.waitForRequest()` waits for a request to be made to the provided URL."
+---
+
+## Parameters
+
+<Snippet file="stable-key-param.mdx" />
+
+<ResponseField name="callback" type="function" required>
+  A callback function that is called with a single `url` parameter. When the URL is POSTed to, the
+  task will be completed and the POST request body will be returned.
+</ResponseField>
+
+<ResponseField name="options" type="object">
+  <Expandable title="fields" defaultOpen>
+    <ResponseField name="timeoutInSeconds" type="number">
+      The amount of time to wait for the request to be made before timing out. Defaults to 1 hour.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Returns
+
+Returns a `Promise` that resolves to the request body when the request is made.
+
+<RequestExample>
+  
+```ts example.ts
+type ScreenshotResponse = {
+  store: {
+    location: string;
+  }
+}
+
+client.defineJob({
+  id: "screenshot-one-example",
+  name: "Screenshot One Example",
+  version: "1.0.0",
+  trigger: invokeTrigger({
+    schema: z.object({
+      url: z.string().url().default("https://trigger.dev"),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    const result = await io.waitForRequest<ScreenshotResponse>(
+      "screenshot-one",
+      async (url) => {
+        await fetch(`https://api.screenshotone.com/take`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            access_key: process.env.SCREENSHOT_ONE_API_KEY,
+            url: payload.url,
+            store: "true",
+            storage_path: "my-screeshots",
+            response_type: "json",
+            async: "true",
+            webhook_url: url, // this is the URL that will be called when the screenshot is ready
+            storage_return_location: "true",
+          }),
+        });
+      },
+      {
+        timeoutInSeconds: 300,
+      }
+    );
+  },
+});
+```
+
+</RequestExample>

@@ -2,7 +2,7 @@ import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Fragment, useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { useEventSource } from "remix-utils/sse/react";
+import { useEventSource } from "~/hooks/useEventSource";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 import { RunOverview } from "~/components/run/RunOverview";
@@ -67,6 +67,7 @@ export default function Page() {
   const revalidator = useRevalidator();
   const events = useEventSource(runStreamingPath(organization, project, job, run), {
     event: "message",
+    disabled: !!run.completedAt,
   });
   useEffect(() => {
     if (events !== null) {

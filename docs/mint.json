@@ -1,6 +1,9 @@
 {
   "$schema": "https://mintlify.com/schema.json",
   "name": "Trigger.dev",
+  "openapi": [
+    "/openapi.yml"
+  ],
   "logo": {
     "dark": "/logo/dark.png",
     "light": "/logo/light.png",
@@ -95,6 +98,7 @@
           ]
         },
         "documentation/guides/writing-jobs-step-by-step",
+        "documentation/guides/task-library",
         "documentation/guides/video-walkthrough"
       ]
     },
@@ -251,7 +255,10 @@
       "pages": [
         {
           "group": "Airtable",
-          "pages": ["integrations/apis/airtable", "integrations/apis/airtable-tasks"]
+          "pages": [
+            "integrations/apis/airtable",
+            "integrations/apis/airtable-tasks"
+          ]
         },
         {
           "group": "GitHub",
@@ -264,18 +271,33 @@
         "integrations/apis/linear",
         {
           "group": "OpenAI",
-          "pages": ["integrations/apis/openai", "integrations/apis/openai-tasks"]
+          "pages": [
+            "integrations/apis/openai",
+            "integrations/apis/openai/chat",
+            "integrations/apis/openai/assistants",
+            "integrations/apis/openai/files",
+            "integrations/apis/openai/images",
+            "integrations/apis/openai/fine-tunes",
+            "integrations/apis/openai/models",
+            "integrations/apis/openai/completions"
+          ]
         },
         {
           "group": "Plain",
-          "pages": ["integrations/apis/plain", "integrations/apis/plain-tasks"]
+          "pages": [
+            "integrations/apis/plain",
+            "integrations/apis/plain-tasks"
+          ]
         },
         "integrations/apis/replicate",
         "integrations/apis/resend",
         "integrations/apis/sendgrid",
         {
           "group": "Slack",
-          "pages": ["integrations/apis/slack", "integrations/apis/slack-tasks"]
+          "pages": [
+            "integrations/apis/slack",
+            "integrations/apis/slack-tasks"
+          ]
         },
         "integrations/apis/stripe",
         {
@@ -302,6 +324,7 @@
               "group": "Instance methods",
               "pages": [
                 "sdk/triggerclient/instancemethods/sendevent",
+                "sdk/triggerclient/instancemethods/sendevents",
                 "sdk/triggerclient/instancemethods/getevent",
                 "sdk/triggerclient/instancemethods/cancel-event",
                 "sdk/triggerclient/instancemethods/cancel-runs-for-event",
@@ -322,11 +345,15 @@
           "pages": [
             "sdk/io/overview",
             "sdk/io/runtask",
-            "sdk/io/wait",
-            "sdk/io/logger",
             "sdk/io/sendevent",
+            "sdk/io/sendevents",
+            "sdk/io/wait",
+            "sdk/io/wait-for-event",
+            "sdk/io/wait-for-request",
             "sdk/io/backgroundfetch",
+            "sdk/io/background-poll",
             "sdk/io/random",
+            "sdk/io/logger",
             "sdk/io/try",
             "sdk/io/registerinterval",
             "sdk/io/unregisterinterval",
@@ -350,7 +377,10 @@
             "sdk/dynamictrigger/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamictrigger/register", "sdk/dynamictrigger/unregister"]
+              "pages": [
+                "sdk/dynamictrigger/register",
+                "sdk/dynamictrigger/unregister"
+              ]
             }
           ]
         },
@@ -361,7 +391,10 @@
             "sdk/dynamicschedule/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamicschedule/register", "sdk/dynamicschedule/unregister"]
+              "pages": [
+                "sdk/dynamicschedule/register",
+                "sdk/dynamicschedule/unregister"
+              ]
             }
           ]
         },
@@ -369,6 +402,12 @@
         "sdk/istriggererror",
         "sdk/redactstring",
         "sdk/verify-request-signature"
+      ]
+    },
+    {
+      "group": "HTTP Reference",
+      "pages": [
+        "sdk/api-reference/events/create-an-event"
       ]
     },
     {
@@ -383,7 +422,9 @@
     },
     {
       "group": "Overview",
-      "pages": ["examples/introduction"]
+      "pages": [
+        "examples/introduction"
+      ]
     }
   ],
   "footerSocials": {

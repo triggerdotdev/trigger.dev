@@ -14,8 +14,7 @@ import { run as graphileRun, parseCronItems } from "graphile-worker";
 import omit from "lodash.omit";
 import { z } from "zod";
 import { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
-import { PgListenService } from "~/services/db/pgListen.server";
-import { workerLogger as logger } from "~/services/logger.server";
+import { workerLogger as logger, trace } from "~/services/logger.server";
 
 export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
@@ -167,21 +166,6 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     this.#runner?.events.on("pool:listen:success", async ({ workerPool, client }) => {
       this.#logDebug("pool:listen:success");
-
-      // hijack client instance to listen and react to incoming NOTIFY events
-      const pgListen = new PgListenService(client, this.#name, logger);
-
-      await pgListen.on("trigger:graphile:migrate", async ({ latestMigration }) => {
-        this.#logDebug("Detected incoming migration", { latestMigration });
-
-        if (latestMigration > 10) {
-          // already migrated past v0.14 - nothing to do
-          return;
-        }
-
-        // simulate SIGTERM to trigger graceful shutdown
-        this._handleSignal("SIGTERM");
-      });
     });
 
     this.#runner?.events.on("pool:listen:error", ({ error }) => {
@@ -286,7 +270,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       spec,
     });
 
-    const job = await this.#addJob(
+    const { job, durationInMs } = await this.#addJob(
       identifier as string,
       payload,
       spec,
@@ -298,6 +282,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       payload,
       spec,
       job,
+      durationInMs,
     });
 
     return job;
@@ -320,6 +305,8 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     spec: TaskSpec,
     tx: PrismaClientOrTransaction
   ) {
+    const now = performance.now();
+
     const results = await tx.$queryRawUnsafe(
       `SELECT * FROM ${this.graphileWorkerSchema}.add_job(
           identifier => $1::text,
@@ -343,6 +330,8 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       spec.jobKeyMode || null
     );
 
+    const durationInMs = performance.now() - now;
+
     const rows = AddJobResultsSchema.safeParse(results);
 
     if (!rows.success) {
@@ -353,7 +342,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     const job = rows.data[0];
 
-    return job as GraphileJob;
+    return { job: job as GraphileJob, durationInMs: Math.floor(durationInMs) };
   }
 
   async #removeJob(jobKey: string, tx: PrismaClientOrTransaction) {
@@ -487,7 +476,15 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       throw new Error(`No task for message type: ${String(typeName)}`);
     }
 
-    await task.handler(payload, job);
+    await trace(
+      {
+        worker_job: job,
+        worker_name: this.#name,
+      },
+      async () => {
+        await task.handler(payload, job);
+      }
+    );
   }
 
   async #handleRecurringTask(

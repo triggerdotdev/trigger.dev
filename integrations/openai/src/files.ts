@@ -2,12 +2,19 @@ import { fileFromString } from "@trigger.dev/integration-kit";
 import { IntegrationTaskKey } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 import { OpenAIRunTask } from "./index";
-import { OpenAIRequestOptions } from "./types";
+import { OpenAIIntegrationOptions, OpenAIRequestOptions } from "./types";
+import {
+  createBackgroundFetchHeaders,
+  createBackgroundFetchUrl,
+  createTaskOutputProperties,
+  handleOpenAIError,
+} from "./taskUtils";
+import { Uploadable } from "openai/uploads";
 
 type CreateFileRequest = {
-  file: string | File;
+  file: string | File | Uploadable;
   fileName?: string;
-  purpose: string;
+  purpose: "fine-tune" | "assistants";
 };
 
 type CreateFineTuneFileRequest = {
@@ -19,11 +26,10 @@ type CreateFineTuneFileRequest = {
 };
 
 export class Files {
-  runTask: OpenAIRunTask;
-
-  constructor(runTask: OpenAIRunTask) {
-    this.runTask = runTask;
-  }
+  constructor(
+    private runTask: OpenAIRunTask,
+    private options: OpenAIIntegrationOptions
+  ) {}
 
   create(
     key: IntegrationTaskKey,
@@ -33,7 +39,7 @@ export class Files {
     return this.runTask(
       key,
       async (client, task) => {
-        let file: File;
+        let file: Uploadable;
 
         if (typeof params.file === "string") {
           file = await fileFromString(params.file, params.fileName ?? "file.txt");
@@ -59,24 +65,172 @@ export class Files {
             text: typeof params.file === "string" ? "string" : "File",
           },
         ],
-      }
+      },
+      handleOpenAIError
+    );
+  }
+
+  async createAndWaitForProcessing(
+    key: IntegrationTaskKey,
+    params: CreateFileRequest,
+    options: OpenAIRequestOptions = {}
+  ): Promise<OpenAI.Files.FileObject> {
+    return this.runTask(
+      key,
+      async (client, task, io) => {
+        let file: Uploadable;
+
+        if (typeof params.file === "string") {
+          file = await fileFromString(params.file, params.fileName ?? "file.txt");
+        } else {
+          file = params.file;
+        }
+
+        const { data, response } = await client.files
+          .create(
+            { file, purpose: params.purpose },
+            { idempotencyKey: task.idempotencyKey, ...options }
+          )
+          .withResponse();
+
+        task.outputProperties = createTaskOutputProperties(undefined, response.headers);
+
+        if (["processed", "error", "deleted"].includes(data.status)) {
+          return data;
+        }
+
+        const url = createBackgroundFetchUrl(
+          client,
+          `/files/${data.id}`,
+          this.options.defaultQuery,
+          options
+        );
+
+        const headers = this.options.defaultHeaders ?? {};
+
+        const processedFile = await io.backgroundPoll<OpenAI.Files.FileObject>("poll", {
+          url,
+          requestInit: {
+            headers: createBackgroundFetchHeaders(client, task.idempotencyKey, headers, options),
+          },
+          interval: 10,
+          timeout: 600,
+          responseFilter: {
+            status: [200],
+            body: {
+              status: ["processed", "error", "deleted"],
+            },
+          },
+        });
+
+        return processedFile;
+      },
+      {
+        name: "Create file and wait for processing",
+        params,
+        properties: [
+          {
+            label: "Purpose",
+            text: params.purpose,
+          },
+          {
+            label: "Input type",
+            text: typeof params.file === "string" ? "string" : "File",
+          },
+        ],
+      },
+      handleOpenAIError
+    );
+  }
+
+  async waitForProcessing(
+    key: IntegrationTaskKey,
+    id: string,
+    options: OpenAIRequestOptions = {}
+  ): Promise<OpenAI.Files.FileObject> {
+    return this.runTask(
+      key,
+      async (client, task, io) => {
+        const url = createBackgroundFetchUrl(
+          client,
+          `/files/${id}`,
+          this.options.defaultQuery,
+          options
+        );
+
+        const headers = this.options.defaultHeaders ?? {};
+
+        const processedFile = await io.backgroundPoll<OpenAI.Files.FileObject>("poll", {
+          url,
+          requestInit: {
+            headers: createBackgroundFetchHeaders(client, task.idempotencyKey, headers, options),
+          },
+          interval: 10,
+          timeout: 600,
+          responseFilter: {
+            status: [200],
+            body: {
+              status: ["processed", "error", "deleted"],
+            },
+          },
+        });
+
+        return processedFile;
+      },
+      {
+        name: "Wait for processing",
+        properties: [
+          {
+            label: "fileId",
+            text: id,
+          },
+        ],
+      },
+      handleOpenAIError
+    );
+  }
+
+  retrieve(
+    key: IntegrationTaskKey,
+    id: string,
+    options: OpenAIRequestOptions = {}
+  ): Promise<OpenAI.Files.FileObject> {
+    return this.runTask(
+      key,
+      async (client, task) => {
+        const response = await client.files.retrieve(id, options);
+        return response;
+      },
+      {
+        name: "Retrieve file",
+        properties: [
+          {
+            label: "fileId",
+            text: id,
+          },
+        ],
+      },
+      handleOpenAIError
     );
   }
 
   list(
     key: IntegrationTaskKey,
+    query?: OpenAI.Files.FileListParams,
     options: OpenAIRequestOptions = {}
   ): Promise<OpenAI.Files.FileObject[]> {
     return this.runTask(
       key,
       async (client, task) => {
-        const response = await client.files.list(options);
+        const response = await client.files.list(query, options);
+
         return response.data;
       },
       {
         name: "List files",
         properties: [],
-      }
+      },
+      handleOpenAIError
     );
   }
 
@@ -107,7 +261,8 @@ export class Files {
             text: params.examples.length.toString(),
           },
         ],
-      }
+      },
+      handleOpenAIError
     );
   }
 }
