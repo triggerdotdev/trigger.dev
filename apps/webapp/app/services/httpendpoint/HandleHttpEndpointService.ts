@@ -219,6 +219,7 @@ export class HandleHttpEndpointService {
       const rawContext = {
         secret,
         config: httpEndpoint.webhook.config,
+        params: httpEndpoint.webhook.params,
       };
       webhookContextMetadata = WebhookContextMetadataSchema.parse(rawContext);
     }
