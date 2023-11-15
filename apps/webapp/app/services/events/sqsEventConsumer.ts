@@ -1,6 +1,6 @@
 import { Consumer } from "sqs-consumer";
 import { PrismaClientOrTransaction, prisma } from "~/db.server";
-import { logger } from "../logger.server";
+import { logger, trace } from "../logger.server";
 import { Message, SQSClient } from "@aws-sdk/client-sqs";
 import { authenticateApiKey } from "../apiAuth.server";
 import { SendEventBodySchema } from "@trigger.dev/core";
@@ -49,22 +49,25 @@ export class SqsEventConsumer {
         },
       }),
       handleMessage: async (message) => {
-        await this.#processEvent(message);
+        await trace({ sqsMessage: message }, async () => await this.#processEvent(message));
       },
     });
 
-    this.#consumer.on("error", (err) => {
-      logger.error("SqsEventConsumer error", { error: err.message });
+    this.#consumer.on("error", (err, message) => {
+      logger.error("SqsEventConsumer error", { error: err.message, sqsMessage: message });
       //todo what do we want to do here?
     });
 
-    this.#consumer.on("processing_error", (err) => {
-      logger.error("SqsEventConsumer processing_error", { error: err.message });
+    this.#consumer.on("processing_error", (err, message) => {
+      logger.error("SqsEventConsumer processing_error", {
+        error: err.message,
+        sqsMessage: message,
+      });
       //todo what do we want to do here?
     });
 
-    this.#consumer.on("timeout_error", (err) => {
-      logger.error("SqsEventConsumer timeout_error", { error: err.message });
+    this.#consumer.on("timeout_error", (err, message) => {
+      logger.error("SqsEventConsumer timeout_error", { error: err.message, sqsMessage: message });
       //todo what do we want to do here?
     });
 
@@ -82,18 +85,17 @@ export class SqsEventConsumer {
   }
 
   async #processEvent(message: Message) {
-    logger.debug("SqsEventConsumer processing event", { message });
+    logger.debug("SqsEventConsumer processing event");
 
     //parse the body
     if (!message.Body) {
-      logger.error("SqsEventConsumer message has no body", { message });
+      logger.error("SqsEventConsumer message has no body");
       return;
     }
 
     const body = messageSchema.safeParse(JSON.parse(message.Body));
     if (!body.success) {
       logger.error("SqsEventConsumer message body is invalid", {
-        message,
         error: fromZodError(body.error).message,
       });
       return;
@@ -102,7 +104,7 @@ export class SqsEventConsumer {
     //authenticate API Key
     const authenticationResult = await authenticateApiKey(body.data.apiKey);
     if (!authenticationResult) {
-      logger.warn("SqsEventConsumer message has invalid API key", { message });
+      logger.warn("SqsEventConsumer message has invalid API key");
       return;
     }
 
@@ -117,7 +119,7 @@ export class SqsEventConsumer {
     );
 
     if (!event) {
-      logger.error("SqsEventConsumer failed to create event", { message });
+      logger.error("SqsEventConsumer failed to create event");
       return;
     }
 
