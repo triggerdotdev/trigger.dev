@@ -57,10 +57,7 @@ export type WebhookConfig<TConfigKeys extends string> = {
   [K in TConfigKeys]: string[];
 };
 
-type RegisterFunctionEvent<
-  TParams extends any,
-  TConfig extends Record<string, string[]> = Record<string, string[]>,
-> = {
+type RegisterFunctionEvent<TParams extends any, TConfig extends Record<string, string[]>> = {
   source: {
     active: boolean;
     data?: any;
@@ -71,14 +68,14 @@ type RegisterFunctionEvent<
   config: TConfig;
 };
 
-type WebhookRegisterEvent<TConfig extends Record<string, string[]> = Record<string, string[]>> = {
+type WebhookRegisterEvent<TConfig extends Record<string, string[]>> = {
   id: string;
   source: RegisterWebhookSource;
   dynamicTriggerId?: string;
   config: TConfig;
 };
 
-type RegisterFunctionOutput<TConfig extends Record<string, string[]> = Record<string, string[]>> = {
+type RegisterFunctionOutput<TConfig extends Record<string, string[]>> = {
   secret?: string;
   data?: SerializableJson;
   config: TConfig;
@@ -87,7 +84,7 @@ type RegisterFunctionOutput<TConfig extends Record<string, string[]> = Record<st
 type RegisterFunction<
   TIntegration extends TriggerIntegration,
   TParams extends any,
-  TConfig extends Record<string, string[]> = Record<string, string[]>,
+  TConfig extends Record<string, string[]>,
 > = (
   event: RegisterFunctionEvent<TParams, TConfig>,
   io: IOWithIntegrations<{ integration: TIntegration }>,
@@ -116,15 +113,16 @@ type EventGenerator<
 }) => Promise<any>;
 
 type KeyFunction<TParams extends any> = (params: TParams) => string;
-type FilterFunction<
-  TParams extends any,
-  TConfig extends Record<string, string[]> = Record<string, string[]>,
-> = (params: TParams, config?: TConfig) => EventFilter;
+
+type FilterFunction<TParams extends any, TConfig extends Record<string, string[]>> = (
+  params: TParams,
+  config?: TConfig
+) => EventFilter;
 
 type WebhookOptions<
   TIntegration extends TriggerIntegration,
   TParams extends any,
-  TConfig extends Record<string, string[]> = Record<string, string[]>,
+  TConfig extends Record<string, string[]>,
 > = {
   id: string;
   version: string;
@@ -149,7 +147,7 @@ type WebhookOptions<
 
 export class WebhookSource<
   TIntegration extends TriggerIntegration,
-  TParams extends any,
+  TParams extends any = any,
   TConfig extends Record<string, string[]> = Record<string, string[]>,
 > {
   constructor(private options: WebhookOptions<TIntegration, TParams, TConfig>) {}

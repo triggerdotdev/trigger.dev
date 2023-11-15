@@ -203,13 +203,14 @@ export function createTrigger<TEventSpecification extends ShopifyEvents>(
 
 export function createWebhookEventSource(
   integration: Shopify
-): WebhookSource<Shopify, TriggerParams> {
+): WebhookSource<Shopify> {
   return new WebhookSource({
     id: "shopify.webhook",
     schemas: {
       params: z.object({
         topic: WebhookTopicSchema,
       }),
+      config: z.record(z.string().array())
     },
     version: "0.1.0",
     integration,
