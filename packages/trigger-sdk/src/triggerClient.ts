@@ -816,9 +816,16 @@ export class TriggerClient {
           webhook: webhookContextMetadata,
         };
 
-        const verifyResult = await io.runTask("verify", async () => {
-          return await source.verify(request, io, webhookContext);
-        });
+        const verifyResult = await io.runTask(
+          "verify",
+          async () => {
+            return await source.verify(request, io, webhookContext);
+          },
+          {
+            name: "Verify Signature",
+            icon: "certificate",
+          }
+        );
 
         if (!verifyResult.success) {
           throw new Error(verifyResult.reason);
