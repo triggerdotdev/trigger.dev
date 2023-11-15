@@ -442,11 +442,16 @@ function getExecutionWorkerQueue() {
         handler: async (payload, job) => {
           const service = new PerformRunExecutionV3Service();
 
-          await service.call({
-            id: payload.id,
-            reason: payload.reason,
-            isRetry: false,
-          });
+          const driftInMs = Date.now() - job.run_at.getTime();
+
+          await service.call(
+            {
+              id: payload.id,
+              reason: payload.reason,
+              isRetry: false,
+            },
+            driftInMs
+          );
         },
       },
     },
