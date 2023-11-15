@@ -852,7 +852,7 @@ export class TriggerClient {
             if (!registerPayload.active) {
               console.log("Not active, run create");
 
-              await source.crud.create({
+              const createOptions = {
                 io,
                 ctx: {
                   ...payloadWithoutConfig,
@@ -861,7 +861,20 @@ export class TriggerClient {
                     diff: [],
                   },
                 },
-              });
+              };
+
+              await io.try(
+                async () => {
+                  await source.crud.create(createOptions);
+                },
+                async (error) => {
+                  console.log("Error during create, re-trying with delete first", error);
+                  await io.runTask("create-retry", async () => {
+                    await source.crud.delete(createOptions);
+                    await source.crud.create(createOptions);
+                  });
+                }
+              );
 
               return await io.updateWebhook("update-webhook-success", {
                 key: options.key,
@@ -870,7 +883,7 @@ export class TriggerClient {
               });
             }
 
-            const crudOptions = {
+            const updateOptions = {
               io,
               ctx: {
                 ...payloadWithoutConfig,
@@ -884,12 +897,12 @@ export class TriggerClient {
             console.log("Should update, run update");
 
             if (source.crud.update) {
-              await source.crud.update(crudOptions);
+              await source.crud.update(updateOptions);
             } else {
               console.log("No update function, running delete and create instead");
 
-              await source.crud.delete(crudOptions);
-              await source.crud.create(crudOptions);
+              await source.crud.delete(updateOptions);
+              await source.crud.create(updateOptions);
             }
 
             return await io.updateWebhook("update-webhook-success", {
