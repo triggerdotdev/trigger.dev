@@ -91,7 +91,7 @@ const deliverWebhookEvent = (key: string): EventSpecification<Request> => ({
   name: `${DELIVER_WEBHOOK_REQUEST}.${key}`,
   title: "Deliver Webhook",
   source: "internal",
-  icon: "webhook",
+  icon: "mail-fast",
   parsePayload: parseRequestPayload,
 });
 

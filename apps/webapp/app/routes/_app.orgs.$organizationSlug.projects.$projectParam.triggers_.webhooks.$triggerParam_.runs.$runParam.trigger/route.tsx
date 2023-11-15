@@ -27,7 +27,7 @@ export default function Page() {
   return (
     <TriggerDetail
       trigger={trigger}
-      event={{ icon: "register-source", title: "Register webhook" }}
+      event={{ icon: "webhook", title: "Register Webhook" }}
       properties={[]}
     />
   );

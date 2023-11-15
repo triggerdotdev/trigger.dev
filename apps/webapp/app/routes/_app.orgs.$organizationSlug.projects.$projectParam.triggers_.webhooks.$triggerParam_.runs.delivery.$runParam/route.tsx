@@ -118,7 +118,7 @@ export default function Page() {
   return (
     <RunOverview
       run={run}
-      trigger={{ icon: "cube-send", title: "Deliver webhook" }}
+      trigger={{ icon: "mail-fast", title: "Deliver Webhook" }}
       showRerun={false}
       paths={{
         back: webhookDeliveryPath(organization, project, { id: trigger.id }),

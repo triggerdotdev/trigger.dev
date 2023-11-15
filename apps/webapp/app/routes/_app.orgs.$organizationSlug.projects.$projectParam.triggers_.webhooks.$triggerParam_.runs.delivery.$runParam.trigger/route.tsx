@@ -27,7 +27,7 @@ export default function Page() {
   return (
     <TriggerDetail
       trigger={trigger}
-      event={{ icon: "cube-send", title: "Deliver webhook" }}
+      event={{ icon: "mail-fast", title: "Deliver Webhook" }}
       properties={[]}
     />
   );
