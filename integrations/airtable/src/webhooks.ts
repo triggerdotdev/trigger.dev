@@ -333,7 +333,7 @@ export function createWebhookSource(
         algorithm: "sha256",
       });
     },
-    handler: async ({ request, io, ctx }) => {
+    generateEvents: async ({ request, io, ctx }) => {
       await io.logger.debug("[@trigger.dev/airtable] Handling webhook payload");
 
       const webhookPayload = ReceivedPayload.parse(await request.json());

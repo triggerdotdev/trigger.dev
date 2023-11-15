@@ -831,9 +831,16 @@ export class TriggerClient {
           throw new Error(verifyResult.reason);
         }
 
-        return await io.runTask("handle", async () => {
-          return await source.handle(request, io, webhookContext);
-        });
+        return await io.runTask(
+          "generate-events",
+          async () => {
+            return await source.generateEvents(request, io, webhookContext);
+          },
+          {
+            name: "Generate Events",
+            icon: "building-factory-2",
+          }
+        );
       },
       __internal: true,
     });

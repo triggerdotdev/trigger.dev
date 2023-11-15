@@ -105,7 +105,7 @@ type WebhookHandlerContext<TParams extends any, TConfig extends Record<string, s
   secret: string;
 };
 
-type HandlerFunction<
+type EventGenerator<
   TParams extends any,
   TConfig extends Record<string, string[]>,
   TIntegration extends TriggerIntegration,
@@ -143,7 +143,7 @@ type WebhookOptions<
     io: IOWithIntegrations<{ integration: TIntegration }>;
     ctx: TriggerContext & { webhook: { secret: string } };
   }) => Promise<VerifyResult>;
-  handler: HandlerFunction<TParams, TConfig, TIntegration>;
+  generateEvents: EventGenerator<TParams, TConfig, TIntegration>;
   properties?: (params: TParams) => DisplayProperty[];
 };
 
@@ -154,7 +154,7 @@ export class WebhookSource<
 > {
   constructor(private options: WebhookOptions<TIntegration, TParams, TConfig>) {}
 
-  async handle(
+  async generateEvents(
     request: Request,
     io: IOWithIntegrations<{ integration: TIntegration }>,
     ctx: TriggerContext & { webhook: { secret: string } }
@@ -171,7 +171,7 @@ export class WebhookSource<
       secret: sourceMetadata.secret,
     };
 
-    return this.options.handler({ request, io, ctx: { ...ctx, ...handlerContext } });
+    return this.options.generateEvents({ request, io, ctx: { ...ctx, ...handlerContext } });
   }
 
   filter(params: TParams, config?: TConfig): EventFilter {
