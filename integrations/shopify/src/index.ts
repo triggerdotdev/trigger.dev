@@ -132,7 +132,7 @@ export class Shopify implements TriggerIntegration {
   runTask<T, TResult extends Json<T> | void>(
     key: IntegrationTaskKey,
     callback: (
-      client: ReturnType<(typeof this)["createClient"]>,
+      client: ReturnType<Shopify["createClient"]>,
       task: IOTask,
       io: IO
     ) => Promise<TResult>,

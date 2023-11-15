@@ -1,5 +1,5 @@
-import { AsyncMap } from "@trigger.dev/core/types";
-import { KeyValueStoreResponseBody } from "@trigger.dev/core/schemas";
+import { AsyncMap } from "@trigger.dev/core";
+import { KeyValueStoreResponseBody } from "@trigger.dev/core";
 
 type QueryKeyValueStoreFunction = (
   action: "GET" | "SET" | "DELETE",
