@@ -1,8 +1,4 @@
-import {
-  EventFilter,
-  IntegrationTaskKey,
-  verifyRequestSignature,
-} from "@trigger.dev/sdk";
+import { EventFilter, IntegrationTaskKey, verifyRequestSignature } from "@trigger.dev/sdk";
 import AirtableSDK, { Error as AirtableApiError } from "airtable";
 import { z } from "zod";
 import * as events from "./events";
@@ -301,7 +297,7 @@ export function createWebhookSource(
 
         await io.store.job.set("set-id", "webhook-id", webhook.id);
 
-        // FIXME: namespace this, maybe to key() output
+      // FIXME: namespace this, maybe to key() output - provide in context?
         await io.store.env.set("set-secret", "webhook-secret-base64", webhook.macSecretBase64);
       },
       read: async ({ io, ctx }) => {
@@ -327,7 +323,7 @@ export function createWebhookSource(
       },
     },
     verify: async ({ request, io, ctx }) => {
-      // FIXME: namespace this, maybe to key() output
+      // FIXME: namespace this, maybe to key() output - provide in context?
       const secretBase64 = await io.store.env.get("get-secret", "webhook-secret-base64");
 
       return await verifyRequestSignature({
@@ -340,22 +336,21 @@ export function createWebhookSource(
     handler: async ({ request, io, ctx }) => {
       await io.logger.debug("[@trigger.dev/airtable] Handling webhook payload");
 
-      // TODO: add oauth back
-      const client = integration.createClient();
-
       const webhookPayload = ReceivedPayload.parse(await request.json());
 
       const webhookId = await io.store.job.get("get-webhook-id", "webhook-id");
 
       const cursor = await io.store.job.get("get-cursor", `cursor-${webhookId}`);
 
-      //fetch the actual payloads
-      const response = await getAllPayloads(
-        webhookPayload.base.id,
-        webhookPayload.webhook.id,
-        client,
-        cursor
-      );
+      // TODO: maybe wrap every getPayload() call in a subtask
+      const response = await io.integration.runTask("get-all-payloads", async (client) => {
+        return await getAllPayloads(
+          webhookPayload.base.id,
+          webhookPayload.webhook.id,
+          client,
+          cursor
+        );
+      });
 
       if (!response) {
         return await io.logger.info("No payload fetch response, nothing to do!");
