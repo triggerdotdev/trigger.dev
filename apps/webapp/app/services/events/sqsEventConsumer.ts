@@ -54,17 +54,17 @@ export class SqsEventConsumer {
     });
 
     this.#consumer.on("error", (err) => {
-      logger.error("SqsEventConsumer error", { message: err.message });
+      logger.error("SqsEventConsumer error", { error: err.message });
       //todo what do we want to do here?
     });
 
     this.#consumer.on("processing_error", (err) => {
-      logger.error("SqsEventConsumer processing_error", { message: err.message });
+      logger.error("SqsEventConsumer processing_error", { error: err.message });
       //todo what do we want to do here?
     });
 
     this.#consumer.on("timeout_error", (err) => {
-      logger.error("SqsEventConsumer timeout_error", { message: err.message });
+      logger.error("SqsEventConsumer timeout_error", { error: err.message });
       //todo what do we want to do here?
     });
 
