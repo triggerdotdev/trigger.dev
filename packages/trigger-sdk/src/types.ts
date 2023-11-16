@@ -1,19 +1,25 @@
 import type {
   DisplayProperty,
   EventFilter,
+  FailedRunNotification,
   Logger,
   OverridableRunTaskOptions,
   Prettify,
   RedactString,
   RegisteredOptionsDiff,
+  RunNotificationJobMetadata,
+  RunNotificationRunMetadata,
   RunTaskOptions,
   RuntimeEnvironmentType,
+  ServerTask,
   SourceEventOption,
+  SuccessfulRunNotification,
   TriggerMetadata,
 } from "@trigger.dev/core";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
 import { z } from "zod";
+import type TypedEmitter from "typed-emitter";
 
 export type {
   DisplayProperty,
@@ -165,3 +171,10 @@ export function waitForEventSchema(schema: z.ZodTypeAny) {
     accountId: z.string().optional(),
   });
 }
+
+export type NotificationEvents = {
+  runSucceeeded: (notification: SuccessfulRunNotification<any>) => void;
+  runFailed: (notification: FailedRunNotification) => void;
+};
+
+export type NotificationsEventEmitter = TypedEmitter<NotificationEvents>;

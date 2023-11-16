@@ -366,6 +366,17 @@ export const EndpointHeadersSchema = z.object({
   "trigger-sdk-version": z.string().optional(),
 });
 
+export const ExecuteJobRunMetadataSchema = z.object({
+  successSubscription: z.boolean().optional(),
+  failedSubscription: z.boolean().optional(),
+});
+
+export const ExecuteJobHeadersSchema = EndpointHeadersSchema.extend({
+  "x-trigger-run-metadata": z
+    .preprocess((val) => typeof val === "string" && JSON.parse(val), ExecuteJobRunMetadataSchema)
+    .optional(),
+});
+
 export const RawEventSchema = z.object({
   /** The `name` property must exactly match any subscriptions you want to
       trigger. */

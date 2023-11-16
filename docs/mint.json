@@ -329,7 +329,8 @@
                 "sdk/triggerclient/instancemethods/define-http-endpoint",
                 "sdk/triggerclient/instancemethods/define-dynamic-trigger",
                 "sdk/triggerclient/instancemethods/define-dynamic-schedule",
-                "sdk/triggerclient/instancemethods/define-auth-resolver"
+                "sdk/triggerclient/instancemethods/define-auth-resolver",
+                "sdk/triggerclient/instancemethods/on"
               ]
             }
           ]

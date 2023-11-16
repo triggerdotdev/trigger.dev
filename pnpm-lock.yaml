@@ -1137,6 +1137,7 @@ importers:
       terminal-link: ^3.0.0
       tsup: ^6.5.0
       tsx: ^3.12.1
+      typed-emitter: ^2.1.0
       typescript: ^4.8.4
       ulid: ^2.3.0
       uuid: ^9.0.0
@@ -1170,6 +1171,7 @@ importers:
       rimraf: 3.0.2
       tsup: 6.5.0_typescript@4.9.5
       tsx: 3.12.2
+      typed-emitter: 2.1.0
       typescript: 4.9.5
 
   perf:
@@ -29897,6 +29899,7 @@ packages:
 
   /rxjs/7.8.1:
     resolution: {integrity: sha512-AA3TVj+0A2iuIoQkWEK/tqFjBq2j+6PO6Y0zJcvzLAFhEFIO3HL0vls9hWLncZbAAbK0mar7oZ4V079I/qPMxg==}
+    requiresBuild: true
     dependencies:
       tslib: 2.6.2
 
@@ -32583,6 +32586,12 @@ packages:
       call-bind: 1.0.2
       for-each: 0.3.3
       is-typed-array: 1.1.10
+
+  /typed-emitter/2.1.0:
+    resolution: {integrity: sha512-g/KzbYKbH5C2vPkaXGu8DJlHrGKHLsM25Zg9WuC9pMGfuvT+X25tZQWo5fK1BjBm8+UrVE9LDCvaY0CQk+fXDA==}
+    optionalDependencies:
+      rxjs: 7.8.1
+    dev: true
 
   /typedarray-to-buffer/3.1.5:
     resolution: {integrity: sha512-zdu8XMNEDepKKR+XYOXAVPtWui0ly0NtohUscw+UmaHiAWT8hrV1rr//H6V+0DvJ3OQ19S979M0laLfX8rm82Q==}
