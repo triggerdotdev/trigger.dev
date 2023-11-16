@@ -1,5 +1,14 @@
 # @trigger.dev/sdk
 
+## 2.2.7
+
+### Patch Changes
+
+- 756024da: Add support for listening to run notifications
+- Updated dependencies [756024da]
+  - @trigger.dev/core@2.2.7
+  - @trigger.dev/core-backend@2.2.7
+
 ## 2.2.6
 
 ### Patch Changes
