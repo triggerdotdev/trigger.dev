@@ -1,5 +1,11 @@
 # internal-platform
 
+## 2.2.7
+
+### Patch Changes
+
+- 756024da: Add support for listening to run notifications
+
 ## 2.2.6
 
 ### Patch Changes
