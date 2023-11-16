@@ -47,6 +47,7 @@ export class Shopify implements TriggerIntegration {
   private _io?: IO;
   private _connectionKey?: string;
   private _session?: Session;
+  private _shopDomain: string;
 
   constructor(private options: ShopifyIntegrationOptions) {
     if (Object.keys(options).includes("apiKey") && !options.apiKey) {
@@ -54,6 +55,7 @@ export class Shopify implements TriggerIntegration {
     }
 
     this._options = options;
+    this._shopDomain = this._options.hostName.replace("http://", "").replace("https://", "")
   }
 
   get authSource() {
@@ -70,14 +72,6 @@ export class Shopify implements TriggerIntegration {
 
   get clientSecret() {
     return this._options.apiSecretKey;
-  }
-
-  get adminAccessToken() {
-    return this._options.adminAccessToken;
-  }
-
-  get shopDomain() {
-    return this._options.hostName.replace("http://", "").replace("https://", "");
   }
 
   get source() {
@@ -108,7 +102,7 @@ export class Shopify implements TriggerIntegration {
         apiSecretKey: auth.accessToken,
         adminApiAccessToken: this._options.adminAccessToken,
         apiVersion: this._options.apiVersion ?? LATEST_API_VERSION,
-        hostName: this.shopDomain,
+        hostName: this._shopDomain,
         scopes: auth.scopes,
         restResources,
         // TODO: double check this
@@ -124,7 +118,7 @@ export class Shopify implements TriggerIntegration {
         apiSecretKey: this._options.apiKey,
         adminApiAccessToken: this._options.adminAccessToken,
         apiVersion: this._options.apiVersion ?? LATEST_API_VERSION,
-        hostName: this.shopDomain,
+        hostName: this._shopDomain,
         // TODO: check if this is safe to remove
         scopes: this._options.scopes,
         restResources,
