@@ -7,20 +7,17 @@ sidebarTitle: Overview & authentication
 
 Our Airtable integration allows you to easily connect to the Airtable API and perform tasks such as creating / updating / deleting single or multiple records in your tables.
 
-For examples of some of the things you can do with it, check out our Jobs Showcase:
-
 <Card
   title="Jobs Showcase - Airtable"
   icon="rocket"
-  href="https://trigger.dev/showcase?tags=&integrations=airtable"
+  href="https://trigger.dev/showcase?tags=&apis=airtable"
 >
   Check out pre-built Airtable jobs in our showcase.
 </Card>
 
 ## Installation
 
-To get started with the Airtable integration on Trigger.dev, you need to install the `@trigger.dev/airtable` package.
-You can do this using npm, pnpm, or yarn:
+To get started with our Airtable integration, you need to install the `@trigger.dev/airtable` packages. You can do this using `npm`, `pnpm`, or `yarn`:
 
 <CodeGroup>
 
@@ -44,7 +41,7 @@ To use the Airtable API with Trigger.dev, you can either use OAuth or a Personal
 
 ### OAuth
 
-To use OAuth you can connect to Airtable via the Trigger.dev [web app](https://cloud.trigger.dev). Click 'Integrations' in the side panel of any project, and configure Airtable with the ID you want to use in your job and the required [scopes](https://airtable.com/developers/web/api/scopes).
+To use OAuth you can connect to Airtable via the Trigger.dev [web app](https://cloud.trigger.dev). Click 'Integrations' in the side panel of any project, configure Airtable with a unique ID and the required [scopes](https://airtable.com/developers/web/api/scopes).
 
 ```ts
 import { Airtable } from "@trigger.dev/airtable";
@@ -57,7 +54,7 @@ const airtable = new Airtable({
 
 ### Personal Access Token
 
-You can create an Airtable Personal Access Token [here on their developer site](https://airtable.com/create/tokens).
+You can create an Airtable Personal Access Token [here](https://airtable.com/create/tokens).
 
 ```ts
 import { Airtable } from "@trigger.dev/airtable";
@@ -73,8 +70,6 @@ const airtable = new Airtable({
 
 Once you have set up a Airtable client, you can use it to create tasks.
 
-<CardGroup>
-  <Card title="Tasks" icon="sparkles" href="/integrations/apis/airtable-tasks">
-    Perform tasks such as creating / updating / deleting single or multiple records in table.
-  </Card>
-</CardGroup>
+<Card title="Tasks" icon="sparkles" href="/integrations/apis/airtable-tasks">
+  Perform tasks such as creating / updating / deleting single or multiple records in table.
+</Card>
