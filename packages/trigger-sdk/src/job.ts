@@ -1,10 +1,12 @@
 import {
+  FailedRunNotification,
   IntegrationConfig,
   InvokeOptions,
   JobMetadata,
   LogLevel,
   QueueOptions,
   RunNotification,
+  SuccessfulRunNotification,
 } from "@trigger.dev/core";
 import { IOWithIntegrations, TriggerIntegration } from "./integrations";
 import { TriggerClient } from "./triggerClient";
@@ -74,6 +76,12 @@ export type JobOptions<
     io: IOWithIntegrations<TIntegrations>,
     context: TriggerContext
   ) => Promise<TOutput>;
+
+  onSuccess?: (
+    notification: SuccessfulRunNotification<TOutput, TriggerEventType<TTrigger>>
+  ) => void;
+
+  onFailure?: (notification: FailedRunNotification<TriggerEventType<TTrigger>>) => void;
 
   // @internal
   __internal?: boolean;

@@ -3,6 +3,7 @@ import {
   ConnectionAuth,
   EndpointHeadersSchema,
   ErrorWithStackSchema,
+  ExecuteJobHeadersSchema,
   HttpSourceResponseSchema,
   IndexEndpointResponseSchema,
   NormalizedResponseSchema,
@@ -14,6 +15,7 @@ import {
   RegisterTriggerBodyV1,
   RunJobBody,
   RunJobResponseSchema,
+  RunNotification,
   ValidateResponse,
   ValidateResponseSchema,
 } from "@trigger.dev/core";
@@ -148,6 +150,7 @@ export class EndpointApi {
       response,
       parser: RunJobResponseSchema,
       errorParser: ErrorWithStackSchema,
+      headersParser: ExecuteJobHeadersSchema,
       durationInMs: Math.floor(performance.now() - startTimeInMs),
     };
   }
@@ -366,6 +369,20 @@ export class EndpointApi {
       response,
       durationInMs: Math.floor(performance.now() - startTimeInMs),
     };
+  }
+
+  async deliverRunNotification(notification: RunNotification<any>) {
+    const response = await safeFetch(this.url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-trigger-api-key": this.apiKey,
+        "x-trigger-action": "RUN_NOTIFICATION",
+      },
+      body: JSON.stringify(notification),
+    });
+
+    return response;
   }
 }
 

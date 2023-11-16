@@ -2,7 +2,6 @@ import {
   ApiEventLog,
   AutoYieldMetadata,
   ConnectionAuth,
-  EndpointHeadersSchema,
   RunJobAutoYieldWithCompletedTaskExecutionError,
   RunJobBody,
   RunJobError,
@@ -34,11 +33,11 @@ import { CompleteRunTaskService } from "~/routes/api.v1.runs.$runId.tasks.$id.co
 import { formatError } from "~/utils/formatErrors.server";
 import { safeJsonZodParse } from "~/utils/json";
 import { EndpointApi } from "../endpointApi.server";
-import { logger } from "../logger.server";
-import { forceYieldCoordinator } from "./forceYieldCoordinator.server";
-import { workerQueue } from "../worker.server";
-import { ResumeTaskService } from "../tasks/resumeTask.server";
 import { createExecutionEvent } from "../executions/createExecutionEvent.server";
+import { logger } from "../logger.server";
+import { ResumeTaskService } from "../tasks/resumeTask.server";
+import { workerQueue } from "../worker.server";
+import { forceYieldCoordinator } from "./forceYieldCoordinator.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type FoundTask = FoundRun["tasks"][number];
@@ -287,9 +286,8 @@ export class PerformRunExecutionV3Service {
         runId: run.id,
       });
 
-      const { response, parser, errorParser, durationInMs } = await client.executeJobRequest(
-        executionBody
-      );
+      const { response, parser, errorParser, headersParser, durationInMs } =
+        await client.executeJobRequest(executionBody);
 
       await createExecutionEvent({
         eventType: "finish",
@@ -312,7 +310,7 @@ export class PerformRunExecutionV3Service {
 
       // Update the endpoint version if it has changed
       const rawHeaders = Object.fromEntries(response.headers.entries());
-      const headers = EndpointHeadersSchema.safeParse(rawHeaders);
+      const headers = headersParser.safeParse(rawHeaders);
 
       if (
         headers.success &&
@@ -327,6 +325,58 @@ export class PerformRunExecutionV3Service {
             version: headers.data["trigger-version"],
           },
         });
+      }
+
+      if (headers.success && headers.data["x-trigger-run-metadata"]) {
+        logger.debug("Endpoint responded with run metadata", {
+          metadata: headers.data["x-trigger-run-metadata"],
+        });
+
+        if (
+          headers.data["x-trigger-run-metadata"].successSubscription &&
+          !run.subscriptions.some((s) => s.event === "SUCCESS")
+        ) {
+          await this.#prismaClient.jobRunSubscription.upsert({
+            where: {
+              runId_recipient_event: {
+                runId: run.id,
+                recipient: run.endpoint.id,
+                event: "SUCCESS",
+              },
+            },
+            create: {
+              runId: run.id,
+              recipient: run.endpoint.id,
+              recipientMethod: "ENDPOINT",
+              event: "SUCCESS",
+              status: "ACTIVE",
+            },
+            update: {},
+          });
+        }
+
+        if (
+          headers.data["x-trigger-run-metadata"].failedSubscription &&
+          !run.subscriptions.some((s) => s.event === "FAILURE")
+        ) {
+          await this.#prismaClient.jobRunSubscription.upsert({
+            where: {
+              runId_recipient_event: {
+                runId: run.id,
+                recipient: run.endpoint.id,
+                event: "FAILURE",
+              },
+            },
+            create: {
+              runId: run.id,
+              recipient: run.endpoint.id,
+              recipientMethod: "ENDPOINT",
+              event: "FAILURE",
+              status: "ACTIVE",
+            },
+            update: {},
+          });
+        }
       }
 
       const rawBody = await response.text();
@@ -1255,6 +1305,11 @@ async function findRun(prisma: PrismaClientOrTransaction, id: string) {
         include: {
           job: true,
           organization: true,
+        },
+      },
+      subscriptions: {
+        where: {
+          recipientMethod: "ENDPOINT",
         },
       },
       _count: {

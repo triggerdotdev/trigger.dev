@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { TaskStatusSchema } from "./tasks";
-import { JobRunStatusRecord, JobRunStatusRecordSchema } from "./statuses";
 import { Prettify } from "../types";
 import { RuntimeEnvironmentType } from "./api";
+import { ErrorWithStack } from "./errors";
+import { JobRunStatusRecord, JobRunStatusRecordSchema } from "./statuses";
+import { TaskStatusSchema } from "./tasks";
 
 export const RunStatusSchema = z.union([
   z.literal("PENDING"),
@@ -107,7 +108,38 @@ export const GetRunsSchema = z.object({
   nextCursor: z.string().optional(),
 });
 
-type RunNotificationCommon = {
+export type RunNotificationJobMetadata = { id: string; version: string };
+export type RunNotificationEnvMetadata = {
+  slug: string;
+  id: string;
+  type: RuntimeEnvironmentType;
+};
+export type RunNotificationOrgMetadata = { slug: string; id: string; title: string };
+export type RunNotificationProjectMetadata = { slug: string; id: string; name: string };
+export type RunNotificationAccountMetadata = { id: string; metadata?: any };
+export type RunNotificationInvocationMetadata<T = any> = {
+  id: string;
+  context: any;
+  timestamp: Date;
+  payload: T;
+};
+export type RunNotificationRunMetadata = {
+  /** The Run id */
+  id: string;
+  /** The Run status */
+  statuses: JobRunStatusRecord[];
+  /** When the run started */
+  startedAt: Date;
+  /** When the run was last updated */
+  updatedAt: Date;
+  /** When the run was completed */
+  completedAt: Date;
+
+  executionDurationInMs: number;
+  executionCount: number;
+};
+
+type RunNotificationCommon<TPayload = any> = {
   /** The Run id */
   id: string;
   /** The Run status */
@@ -123,20 +155,20 @@ type RunNotificationCommon = {
   executionCount: number;
 
   /** Job metadata */
-  job: { id: string; version: string };
+  job: RunNotificationJobMetadata;
   /** Environment metadata */
-  environment: { slug: string; id: string; type: RuntimeEnvironmentType };
+  environment: RunNotificationEnvMetadata;
   /** Organization metadata */
-  organization: { slug: string; id: string; title: string };
+  organization: RunNotificationOrgMetadata;
   /** Project metadata */
-  project: { slug: string; id: string; name: string };
+  project: RunNotificationProjectMetadata;
   /** Account metadata */
-  account?: { id: string; metadata?: any };
+  account?: RunNotificationAccountMetadata;
   /** Invocation metadata */
-  invocation: { id: string; context: any; timestamp: Date };
+  invocation: RunNotificationInvocationMetadata<TPayload>;
 };
 
-export type SuccessfulRunNotification<TOutput> = RunNotificationCommon & {
+export type SuccessfulRunNotification<TOutput, TPayload = any> = RunNotificationCommon<TPayload> & {
   ok: true;
   /** The Run status */
   status: "SUCCESS";
@@ -144,12 +176,25 @@ export type SuccessfulRunNotification<TOutput> = RunNotificationCommon & {
   output: TOutput;
 };
 
-export type FailedRunNotification = RunNotificationCommon & {
+export type FailedRunNotification<TPayload = any> = RunNotificationCommon<TPayload> & {
   ok: false;
   /** The Run status */
   status: "FAILURE" | "TIMED_OUT" | "ABORTED" | "CANCELED" | "UNRESOLVED_AUTH" | "INVALID_PAYLOAD";
   /** The error of the run */
   error: any;
+  /** The task that failed */
+  task?: {
+    id: string;
+    cacheKey: string | null;
+    status: string;
+    name: string;
+    icon: string | null;
+    startedAt: string;
+    error: ErrorWithStack;
+    params: any | null;
+  };
 };
 
-export type RunNotification<TOutput> = SuccessfulRunNotification<TOutput> | FailedRunNotification;
+export type RunNotification<TOutput, TPayload = any> =
+  | SuccessfulRunNotification<TOutput, TPayload>
+  | FailedRunNotification<TPayload>;

@@ -815,10 +815,13 @@ model JobRunSubscription {
   updatedAt DateTime @updatedAt
 
   deliveredAt DateTime?
+
+  @@unique([runId, recipient, event])
 }
 
 enum JobRunSubscriptionRecipientMethod {
   WEBHOOK
+  ENDPOINT
 }
 
 enum JobRunSubscriptionStatus {
