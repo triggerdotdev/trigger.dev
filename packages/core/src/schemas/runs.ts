@@ -109,7 +109,7 @@ export const GetRunsSchema = z.object({
 });
 
 export type RunNotificationJobMetadata = { id: string; version: string };
-export type RunNotitificationEnvMetadata = {
+export type RunNotificationEnvMetadata = {
   slug: string;
   id: string;
   type: RuntimeEnvironmentType;
@@ -157,7 +157,7 @@ type RunNotificationCommon<TPayload = any> = {
   /** Job metadata */
   job: RunNotificationJobMetadata;
   /** Environment metadata */
-  environment: RunNotitificationEnvMetadata;
+  environment: RunNotificationEnvMetadata;
   /** Organization metadata */
   organization: RunNotificationOrgMetadata;
   /** Project metadata */
