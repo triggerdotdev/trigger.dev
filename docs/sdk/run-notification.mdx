@@ -40,6 +40,9 @@ This document describes the payload of a Run's completion webhook.
 <ResponseField name="completedAt" type="Date" required>
   When the Run started
 </ResponseField>
+<ResponseField name="isTest" type="boolean" required>
+  Whether the Run was a test Run
+</ResponseField>
 <ResponseField name="executionDurationInMs" type="number" required>
   The duration of the Run in milliseconds
 </ResponseField>

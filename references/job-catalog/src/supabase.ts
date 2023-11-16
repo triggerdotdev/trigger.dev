@@ -30,6 +30,14 @@ export const client = new TriggerClient({
   ioLogLocalEnabled: true,
 });
 
+client.on("runSucceeeded", async (notification) => {
+  console.log("[client] Run succeeded", notification);
+});
+
+client.on("runFailed", async (notification) => {
+  console.log("[client] Run failed", notification);
+});
+
 createExpressServer(client);
 
 client.defineJob({

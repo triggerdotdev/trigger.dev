@@ -178,6 +178,7 @@ export class DeliverRunSubscriptionService {
       startedAt: run.startedAt,
       updatedAt: run.updatedAt,
       completedAt: run.completedAt,
+      isTest: run.isTest,
       executionDurationInMs: run.executionDuration,
       executionCount: run.executionCount,
       job: {

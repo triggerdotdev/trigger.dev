@@ -327,7 +327,7 @@ export class PerformRunExecutionV3Service {
         });
       }
 
-      if (headers.success && headers.data["x-trigger-run-metadata"]) {
+      if (headers.success && headers.data["x-trigger-run-metadata"] && !run.internal) {
         logger.debug("Endpoint responded with run metadata", {
           metadata: headers.data["x-trigger-run-metadata"],
         });

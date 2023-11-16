@@ -134,6 +134,8 @@ export type RunNotificationRunMetadata = {
   updatedAt: Date;
   /** When the run was completed */
   completedAt: Date;
+  /** If the run was a test or not */
+  isTest: boolean;
 
   executionDurationInMs: number;
   executionCount: number;
@@ -150,6 +152,8 @@ type RunNotificationCommon<TPayload = any> = {
   updatedAt: Date;
   /** When the run was completed */
   completedAt: Date;
+  /** If the run was a test or not */
+  isTest: boolean;
 
   executionDurationInMs: number;
   executionCount: number;
