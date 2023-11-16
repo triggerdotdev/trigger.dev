@@ -11,7 +11,7 @@ import {
   Prettify,
 } from "@trigger.dev/sdk";
 
-import { ApiVersion, LATEST_API_VERSION, shopifyApi } from "@shopify/shopify-api";
+import { ApiVersion, LATEST_API_VERSION, Session, shopifyApi } from "@shopify/shopify-api";
 
 // this has to be updated manually with each LATEST_API_VERSION bump
 import { restResources } from "@shopify/shopify-api/rest/admin/2023-10";
@@ -37,15 +37,18 @@ export type ShopifyIntegrationOptions = {
   adminAccessToken: string;
   hostName: string;
   scopes: ApiScope[];
+  session?: Session;
 };
 
 export type ShopifyRunTask = InstanceType<typeof Shopify>["runTask"];
 
 export class Shopify implements TriggerIntegration {
   private _options: ShopifyIntegrationOptions;
+
   private _client?: ReturnType<(typeof this)["createClient"]>;
   private _io?: IO;
   private _connectionKey?: string;
+  private _session?: Session;
 
   constructor(private options: ShopifyIntegrationOptions) {
     if (Object.keys(options).includes("apiKey") && !options.apiKey) {
@@ -86,9 +89,15 @@ export class Shopify implements TriggerIntegration {
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
     const shopify = new Shopify(this._options);
 
+    const client = this.createClient(auth);
+
+    const session = client.session.customAppSession(client.config.hostName);
+    session.accessToken = client.config.adminApiAccessToken;
+
     shopify._io = io;
     shopify._connectionKey = connectionKey;
-    shopify._client = this.createClient(auth);
+    shopify._client = client;
+    shopify._session = this._options.session ?? session;
 
     return shopify;
   }
@@ -118,6 +127,7 @@ export class Shopify implements TriggerIntegration {
         adminApiAccessToken: this._options.adminAccessToken,
         apiVersion: this._options.apiVersion ?? LATEST_API_VERSION,
         hostName: this.shopDomain,
+        // TODO: check if this is safe to remove
         scopes: this._options.scopes,
         restResources,
         // TODO: double check this
@@ -134,7 +144,8 @@ export class Shopify implements TriggerIntegration {
     callback: (
       client: ReturnType<Shopify["createClient"]>,
       task: IOTask,
-      io: IO
+      io: IO,
+      session: Session
     ) => Promise<TResult>,
     options?: RunTaskOptions,
     errorCallback?: RunTaskErrorCallback
@@ -146,7 +157,8 @@ export class Shopify implements TriggerIntegration {
       key,
       (task, io) => {
         if (!this._client) throw new Error("No client");
-        return callback(this._client, task, io);
+        if (!this._session) throw new Error("No session");
+        return callback(this._client, task, io, this._session);
       },
       {
         icon: "shopify",
@@ -168,12 +180,7 @@ export class Shopify implements TriggerIntegration {
   }
 
   get webhooks() {
-    return new Webhooks(
-      this.runTask.bind(this),
-      this._options.hostName,
-      LATEST_API_VERSION,
-      this.adminAccessToken
-    );
+    return new Webhooks(this.runTask.bind(this));
   }
 }
 

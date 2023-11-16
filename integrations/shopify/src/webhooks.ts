@@ -13,17 +13,11 @@ import {
 import { WebhookSource, WebhookTrigger } from "@trigger.dev/sdk/triggers/webhook";
 
 export class Webhooks {
-  runTask: ShopifyRunTask;
-  apiUrl: URL;
+  constructor(private runTask: ShopifyRunTask) {}
 
-  constructor(
-    runTask: ShopifyRunTask,
-    private shopDomain: string,
-    apiVersion: string,
-    private adminAccessToken: string
-  ) {
-    this.runTask = runTask;
-    this.apiUrl = new URL(`/admin/api/${apiVersion}/`, `https://${shopDomain}`);
+  #apiUrl(client: NonNullable<Shopify["_client"]>) {
+    const { apiVersion, hostName } = client.config;
+    return new URL(`/admin/api/${apiVersion}/`, `https://${hostName}`);
   }
 
   create(
@@ -36,11 +30,8 @@ export class Webhooks {
   ): Promise<WebhookSubscription> {
     return this.runTask(
       key,
-      async (client, task, io) => {
-        const session = client.session.customAppSession(this.shopDomain);
-        session.accessToken = this.adminAccessToken;
-
-        const webhook = new client.rest.Webhook({ session: session });
+      async (client, task, io, session) => {
+        const webhook = new client.rest.Webhook({ session });
 
         webhook.topic = params.topic;
         webhook.address = params.address;
@@ -85,10 +76,10 @@ export class Webhooks {
           },
         };
 
-        const request = new Request(new URL("webhooks.json", this.apiUrl), {
+        const request = new Request(new URL("webhooks.json", this.#apiUrl(client)), {
           method: "POST",
           headers: {
-            "X-Shopify-Access-Token": this.adminAccessToken,
+            "X-Shopify-Access-Token": client.config.adminApiAccessToken,
             "Content-Type": "application/json",
           },
           body: JSON.stringify(resource),
@@ -118,10 +109,7 @@ export class Webhooks {
   delete(key: IntegrationTaskKey, params: { id: number }): Promise<unknown> {
     return this.runTask(
       key,
-      async (client, task, io) => {
-        const session = client.session.customAppSession(this.shopDomain);
-        session.accessToken = this.adminAccessToken;
-
+      async (client, task, io, session) => {
         const deleteResult = await client.rest.Webhook.delete({ session, id: params.id });
 
         return JSON.parse(JSON.stringify(deleteResult));
@@ -145,11 +133,8 @@ export class Webhooks {
   ): Promise<WebhookSubscription> {
     return this.runTask(
       key,
-      async (client, task) => {
-        const session = client.session.customAppSession(this.shopDomain);
-        session.accessToken = this.adminAccessToken;
-
-        const webhook = new client.rest.Webhook({ session: session });
+      async (client, task, io, session) => {
+        const webhook = new client.rest.Webhook({ session });
 
         webhook.id = params.id;
         webhook.topic = params.topic;
@@ -202,16 +187,14 @@ export function createTrigger<TEventSpecification extends ShopifyEvents>(
   });
 }
 
-export function createWebhookEventSource(
-  integration: Shopify
-): WebhookSource<Shopify> {
+export function createWebhookEventSource(integration: Shopify): WebhookSource<Shopify> {
   return new WebhookSource({
     id: "shopify.webhook",
     schemas: {
       params: z.object({
         topic: WebhookTopicSchema,
       }),
-      config: z.record(z.string().array())
+      config: z.record(z.string().array()),
     },
     version: "0.1.0",
     integration,
