@@ -8,7 +8,7 @@ import { ShopifyRestResources } from ".";
 
 type OmitNonSerializable<T> = Omit<OmitFunctions<OmitIndexSignature<T>>, "session">;
 
-export type SerializedShopifyResource<T> = Prettify<OmitNonSerializable<T>>;
+export type SerializedShopifyResource<T> = Prettify<ObjectNonNullable<OmitNonSerializable<T>>>;
 
 export type RecursiveShopifySerializer<T> = T extends object
   ? T extends Array<infer U>
@@ -31,9 +31,8 @@ export type ShopifyResource<TResource extends keyof ShopifyRestResources> = Inst
   ShopifyRestResources[TResource]
 >;
 
-// TODO: fix nested props + remove readonly
 export type ShopifyWebhookPayload = {
   [K in keyof OmitIndexSignature<ShopifyRestResources>]: Prettify<
-    ObjectNonNullable<OmitFunctions<OmitIndexSignature<ShopifyResource<K>>>>
+    SerializedShopifyResource<ShopifyResource<K>>
   >;
 };
