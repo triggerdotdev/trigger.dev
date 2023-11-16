@@ -180,52 +180,52 @@ export const WebhookTopicSchema = z.enum([
   "locations/deactivate",
   "locations/delete",
   "locations/update",
-  // "markets/create",
-  // "markets/delete",
-  // "markets/update",
+  "markets/create",
+  "markets/delete",
+  "markets/update",
   // "order_transactions/create",
-  // "orders/cancelled",
-  // "orders/create",
-  // "orders/delete",
-  // "orders/edited",
-  // "orders/fulfilled",
-  // "orders/paid",
-  // "orders/partially_fulfilled",
-  // "orders/updated",
-  // "payment_schedules/due",
+  "orders/cancelled",
+  "orders/create",
+  "orders/delete",
+  "orders/edited",
+  "orders/fulfilled",
+  "orders/paid",
+  "orders/partially_fulfilled",
+  "orders/updated",
+  "payment_schedules/due",
   // "product_feeds/create",
   // "product_feeds/full_sync",
   // "product_feeds/incremental_sync",
-  // "product_listings/add",
-  // "product_listings/remove",
-  // "product_listings/update",
+  "product_listings/add",
+  "product_listings/remove",
+  "product_listings/update",
   "products/create",
   "products/delete",
   "products/update",
-  // "profiles/create",
-  // "profiles/delete",
-  // "profiles/update",
-  // "refunds/create",
+  "profiles/create",
+  "profiles/delete",
+  "profiles/update",
+  "refunds/create",
   // "scheduled_product_listings/add",
   // "scheduled_product_listings/remove",
   // "scheduled_product_listings/update",
-  // "selling_plan_groups/create",
-  // "selling_plan_groups/delete",
-  // "selling_plan_groups/update",
-  // "shop/update",
-  // "subscription_billing_attempts/challenged",
-  // "subscription_billing_attempts/failure",
-  // "subscription_billing_attempts/success",
-  // "subscription_billing_cycle_edits/create",
-  // "subscription_billing_cycle_edits/delete",
-  // "subscription_billing_cycle_edits/update",
-  // "subscription_contracts/create",
-  // "subscription_contracts/update",
-  // "tender_transactions/create",
-  // "themes/create",
-  // "themes/delete",
-  // "themes/publish",
-  // "themes/update",
+  "selling_plan_groups/create",
+  "selling_plan_groups/delete",
+  "selling_plan_groups/update",
+  "shop/update",
+  "subscription_billing_attempts/challenged",
+  "subscription_billing_attempts/failure",
+  "subscription_billing_attempts/success",
+  "subscription_billing_cycle_edits/create",
+  "subscription_billing_cycle_edits/delete",
+  "subscription_billing_cycle_edits/update",
+  "subscription_contracts/create",
+  "subscription_contracts/update",
+  "tender_transactions/create",
+  "themes/create",
+  "themes/delete",
+  "themes/publish",
+  "themes/update",
 ]);
 
 export type WebhookTopic = z.infer<typeof WebhookTopicSchema>;
@@ -388,7 +388,7 @@ export type InventoryLevel = z.infer<typeof InventoryLevelSchema>;
 
 export const ShopLocaleSchema = z.object({
   locale: z.string(),
-  published: z.boolean()
+  published: z.boolean(),
 });
 
 export type ShopLocale = z.infer<typeof ShopLocaleSchema>;
@@ -415,9 +415,45 @@ export const LocationSchema = z.object({
 
 export type Location = z.infer<typeof LocationSchema>;
 
+export const MarketSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  enabled: z.boolean(),
+  regions: z
+    .object({
+      country_code: z.string(),
+    })
+    .array(),
+});
+
+export type Market = z.infer<typeof MarketSchema>;
+
+export const PaymentScheduleSchema = z.object({
+  id: z.number(),
+  payment_terms_id: z.number(),
+  amount: z.string(),
+  currency: z.string(),
+  issued_at: z.coerce.date(),
+  due_at: z.coerce.date(),
+  completed_at: z.coerce.date(),
+  created_at: z.coerce.date(),
+  updated_at: z.coerce.date(),
+  admin_graphql_api_id: z.string(),
+});
+
+export type PaymentSchedule = z.infer<typeof PaymentScheduleSchema>;
+
 export const OrderSchema = z.object({}).passthrough();
 
 export type Order = z.infer<typeof OrderSchema>;
+
+export const ProductListingRemovedSchema = z.object({
+  product_listing: z.object({
+    product_id: z.number(),
+  }),
+});
+
+export type ProductListingRemoved = z.infer<typeof ProductListingRemovedSchema>;
 
 export const ProductVariantSchema = z.object({
   barcode: z.string(),
@@ -486,11 +522,111 @@ export const ProductSchema = z.object({
 
 export type Product = z.infer<typeof ProductSchema>;
 
+export const SellingPlanGroupSchema = z.object({
+  admin_graphql_api_id: z.string(),
+  id: z.number(),
+  name: z.string(),
+  merchant_code: z.string(),
+  admin_graphql_api_app: z.string(),
+  app_id: z.any().nullable(),
+  description: z.any().nullable(),
+  options: z.string().array(),
+  position: z.any().nullable(),
+  summary: z.string(),
+  selling_plans: z
+    .object({
+      name: z.string(),
+      options: z.string().array(),
+      position: z.any().nullable(),
+      description: z.any().nullable(),
+      billing_policy: z.object({
+        interval: z.string(),
+        interval_count: z.number(),
+        min_cycles: z.any().nullable(),
+        max_cycles: z.any().nullable(),
+      }),
+      delivery_policy: z.object({
+        interval: z.string(),
+        interval_count: z.number(),
+        anchors: z.any().array(),
+        cutoff: z.any().nullable(),
+        pre_anchor_behavior: z.string(),
+      }),
+      pricing_policies: z.any().array(),
+    })
+    .array(),
+  product_variants: z.any().array(),
+  products: z.any().array(),
+});
+
+export type SellingPlanGroup = z.infer<typeof SellingPlanGroupSchema>;
+
+export const SellingPlanGroupDeletedSchema = SellingPlanGroupSchema.pick({
+  admin_graphql_api_id: true,
+  id: true,
+});
+
+export type SellingPlanGroupDeleted = z.infer<typeof SellingPlanGroupDeletedSchema>;
+
+export const SubscriptionBillingAttemptSchema = z.object({
+  id: z.number(),
+  admin_graphql_api_id: z.string().nullable(),
+  idempotency_key: z.string(),
+  order_id: z.number(),
+  admin_graphql_api_order_id: z.string(),
+  subscription_contract_id: z.number(),
+  admin_graphql_api_subscription_contract_id: z.string(),
+  ready: z.boolean(),
+  error_message: z.any().nullable(),
+  error_code: z.any().nullable(),
+});
+
+export type SubscriptionBillingAttempt = z.infer<typeof SubscriptionBillingAttemptSchema>;
+
+export const SubscriptionBillingCycleSchema = z.object({
+  subscription_contract_id: z.number(),
+  cycle_start_at: z.coerce.date(),
+  cycle_end_at: z.coerce.date(),
+  cycle_index: z.number(),
+  contract_edit: z.any().nullable(),
+  billing_attempt_expected_date: z.coerce.date(),
+  skipped: z.boolean(),
+  edited: z.boolean(),
+});
+
+export type SubscriptionBillingCycle = z.infer<typeof SubscriptionBillingCycleSchema>;
+
+export const SubscriptionContractSchema = z.object({
+  admin_graphql_api_id: z.string(),
+  id: z.number(),
+  billing_policy: z.object({
+    interval: z.string(),
+    interval_count: z.number(),
+    min_cycles: z.number(),
+    max_cycles: z.number(),
+  }),
+  currency_code: z.string(),
+  customer_id: z.number(),
+  admin_graphql_api_customer_id: z.string(),
+  delivery_policy: z.object({
+    interval: z.string(),
+    interval_count: z.number(),
+  }),
+  status: z.string(),
+  admin_graphql_api_origin_order_id: z.string(),
+  origin_order_id: z.number(),
+  revision_id: z.string(),
+});
+
+export type SubscriptionContract = z.infer<typeof SubscriptionContractSchema>;
+
 export const DeletedPayloadSchema = z.object({
   id: z.number(),
 });
 
 export type DeletedPayload = z.infer<typeof DeletedPayloadSchema>;
+
+export type DeliveryProfile = DeletedPayload;
 
 // TODO: construct from other schemas
 export const WebhookPayloadSchema = z.object({}).passthrough();

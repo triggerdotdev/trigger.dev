@@ -1,3 +1,3 @@
-export const getBasicProperties = (payload: { id: string | number }) => {
+export const basicProperties = (payload: { id: string | number }) => {
   return [{ label: "ID", text: String(payload.id) }];
 };

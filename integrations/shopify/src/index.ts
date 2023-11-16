@@ -18,7 +18,6 @@ import { restResources } from "@shopify/shopify-api/rest/admin/2023-10";
 
 import "@shopify/shopify-api/adapters/node";
 
-import * as events from "./events";
 import { SerializedShopifyOutput } from "./types";
 import {
   ShopifyApiError,

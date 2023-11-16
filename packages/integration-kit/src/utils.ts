@@ -19,3 +19,10 @@ export const fromEntries = Object.fromEntries as <
     readonly [K, unknown]
   >[1];
 };
+
+export function titleCase(original: string): string {
+  return original
+    .split(" ")
+    .map((word) => word[0].toUpperCase() + word.slice(1))
+    .join(" ");
+}

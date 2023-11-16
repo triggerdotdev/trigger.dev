@@ -25,287 +25,109 @@ import SubscriptionBillingCycle from "./SubscriptionBillingCycle.json";
 import SubscriptionContract from "./SubscriptionContract.json";
 import TenderTransaction from "./TenderTransaction.json";
 import Theme from "./Theme.json";
+import { slugifyId } from "@trigger.dev/sdk/utils";
 
-export const fulfillmentCreated: EventSpecificationExample = {
-  id: "FulfillmentCreated",
-  name: "Fulfillment created",
-  payload: Fulfillment,
-};
-export const fulfillmentUpdated: EventSpecificationExample = {
-  id: "FulfillmentUpdated",
-  name: "Fulfillment updated",
-  payload: Fulfillment,
+const example = (name: string, payload: any): EventSpecificationExample => {
+  return {
+    id: slugifyId(name),
+    name,
+    payload,
+  };
 };
 
-export const inventoryItemCreated: EventSpecificationExample = {
-  id: "InventoryItemCreated",
-  name: "InventoryItem created",
-  payload: InventoryItem,
-};
-export const inventoryItemDeleted: EventSpecificationExample = {
-  id: "InventoryItemDeleted",
-  name: "InventoryItem deleted",
-  payload: InventoryItemDeleted,
-};
-export const inventoryItemUpdated: EventSpecificationExample = {
-  id: "InventoryItemUpdated",
-  name: "InventoryItem updated",
-  payload: InventoryItem,
-};
+export const fulfillmentCreated = example("Fulfillment created", Fulfillment);
+export const fulfillmentUpdated = example("Fulfillment updated", Fulfillment);
 
-export const inventoryLevelConnected: EventSpecificationExample = {
-  id: "InventoryLevelConnected",
-  name: "InventoryLevel connected",
-  payload: InventoryLevel,
-};
-export const inventoryLevelDisconnected: EventSpecificationExample = {
-  id: "InventoryLevelDisconnected",
-  name: "InventoryLevel disconnected",
-  payload: InventoryLevelDisconnected,
-};
-export const inventoryLevelUpdated: EventSpecificationExample = {
-  id: "InventoryLevelUpdated",
-  name: "InventoryLevel updated",
-  payload: InventoryLevel,
-};
+export const inventoryItemCreated = example("InventoryItem created", InventoryItem);
+export const inventoryItemDeleted = example("InventoryItem deleted", InventoryItemDeleted);
+export const inventoryItemUpdated = example("InventoryItem updated", InventoryItem);
 
-export const localeCreated: EventSpecificationExample = {
-  id: "LocaleCreated",
-  name: "Locale created",
-  payload: ShopLocale,
-};
-export const localeUpdated: EventSpecificationExample = {
-  id: "LocaleUpdated",
-  name: "Locale updated",
-  payload: ShopLocale,
-};
+export const inventoryLevelConnected = example("InventoryLevel connected", InventoryLevel);
+export const inventoryLevelDisconnected = example(
+  "InventoryLevel disconnected",
+  InventoryLevelDisconnected
+);
+export const inventoryLevelUpdated = example("InventoryLevel updated", InventoryLevel);
 
-export const locationActivated: EventSpecificationExample = {
-  id: "LocationActivated",
-  name: "Location activated",
-  payload: Location,
-};
-export const locationCreated: EventSpecificationExample = {
-  id: "LocationCreated",
-  name: "Location created",
-  payload: Location,
-};
-export const locationDeactivated: EventSpecificationExample = {
-  id: "LocationDeactivated",
-  name: "Location deactivated",
-  payload: Location,
-};
-export const locationDeleted: EventSpecificationExample = {
-  id: "LocationDeleted",
-  name: "Location deleted",
-  payload: Deleted,
-};
-export const locationUpdated: EventSpecificationExample = {
-  id: "LocationUpdated",
-  name: "Location updated",
-  payload: Location,
-};
+export const localeCreated = example("Locale created", ShopLocale);
+export const localeUpdated = example("Locale updated", ShopLocale);
 
-export const marketCreated: EventSpecificationExample = {
-  id: "MarketCreated",
-  name: "Market created",
-  payload: Market,
-};
-export const marketDeleted: EventSpecificationExample = {
-  id: "MarketDeleted",
-  name: "Market deleted",
-  payload: Deleted,
-};
-export const marketUpdated: EventSpecificationExample = {
-  id: "MarketUpdated",
-  name: "Market updated",
-  payload: Market,
-};
+export const locationActivated = example("Location activated", Location);
+export const locationCreated = example("Location created", Location);
+export const locationDeactivated = example("Location deactivated", Location);
+export const locationDeleted = example("Location deleted", Deleted);
+export const locationUpdated = example("Location updated", Location);
 
-export const orderCreated: EventSpecificationExample = {
-  id: "OrderCreated",
-  name: "Order created",
-  payload: Order,
-};
-export const orderDeleted: EventSpecificationExample = {
-  id: "OrderDeleted",
-  name: "Order deleted",
-  payload: Deleted,
-};
-export const orderEdited: EventSpecificationExample = {
-  id: "OrderEdited",
-  name: "Order edited",
-  payload: OrderEdited,
-};
-export const orderFulfilled: EventSpecificationExample = {
-  id: "OrderFulfilled",
-  name: "Order fulfilled",
-  payload: Order,
-};
-export const orderPaid: EventSpecificationExample = {
-  id: "OrderPaid",
-  name: "Order paid",
-  payload: Order,
-};
-export const orderPartiallyFulfilled: EventSpecificationExample = {
-  id: "OrderPartiallyFulfilled",
-  name: "Order partially fulfilled",
-  payload: Order,
-};
-export const orderUpdated: EventSpecificationExample = {
-  id: "OrderUpdated",
-  name: "Order updated",
-  payload: Order,
-};
+export const marketCreated = example("Market created", Market);
+export const marketDeleted = example("Market deleted", Deleted);
+export const marketUpdated = example("Market updated", Market);
 
-export const paymentScheduleDue: EventSpecificationExample = {
-  id: "PaymentScheduleDue",
-  name: "PaymentSchedule due",
-  payload: PaymentSchedule,
-};
+export const orderCancelled = example("Order cancelled", Order);
+export const orderCreated = example("Order created", Order);
+export const orderDeleted = example("Order deleted", Deleted);
+export const orderEdited = example("Order edited", OrderEdited);
+export const orderFulfilled = example("Order fulfilled", Order);
+export const orderPaid = example("Order paid", Order);
+export const orderPartiallyFulfilled = example("Order partially fulfilled", Order);
+export const orderUpdated = example("Order updated", Order);
 
-export const productCreated: EventSpecificationExample = {
-  id: "ProductCreated",
-  name: "Product created",
-  payload: Product,
-};
-export const productDeleted: EventSpecificationExample = {
-  id: "ProductDeleted",
-  name: "Product deleted",
-  payload: Deleted,
-};
-export const productUpdated: EventSpecificationExample = {
-  id: "ProductUpdated",
-  name: "Product updated",
-  payload: Product,
-};
+export const paymentScheduleDue = example("PaymentSchedule due", PaymentSchedule);
 
-export const productListingCreated: EventSpecificationExample = {
-  id: "ProductListingCreated",
-  name: "ProductListing created",
-  payload: ProductListing,
-};
-export const productListingRemoved: EventSpecificationExample = {
-  id: "ProductListingRemoved",
-  name: "ProductListing removed",
-  payload: ProductListingRemoved,
-};
-export const productListingUpdated: EventSpecificationExample = {
-  id: "ProductListingUpdated",
-  name: "ProductListing updated",
-  payload: ProductListing,
-};
+export const productCreated = example("Product created", Product);
+export const productDeleted = example("Product deleted", Deleted);
+export const productUpdated = example("Product updated", Product);
 
-export const deliveryProfileAdded: EventSpecificationExample = {
-  id: "DeliveryProfileAdded",
-  name: "DeliveryProfile added",
-  payload: DeliveryProfile,
-};
-export const deliveryProfileDeleted: EventSpecificationExample = {
-  id: "DeliveryProfileDeleted",
-  name: "DeliveryProfile deleted",
-  payload: Deleted,
-};
-export const deliveryProfileUpdated: EventSpecificationExample = {
-  id: "DeliveryProfileUpdated",
-  name: "DeliveryProfile updated",
-  payload: DeliveryProfile,
-};
+export const productlistingAdded = example("ProductListing added", ProductListing);
+export const productListingRemoved = example("ProductListing removed", ProductListingRemoved);
+export const productListingUpdated = example("ProductListing updated", ProductListing);
 
-export const refundCreated: EventSpecificationExample = {
-  id: "RefundCreated",
-  name: "Refund created",
-  payload: Refund,
-};
+export const deliveryProfileCreated = example("DeliveryProfile created", DeliveryProfile);
+export const deliveryProfileDeleted = example("DeliveryProfile deleted", Deleted);
+export const deliveryProfileUpdated = example("DeliveryProfile updated", DeliveryProfile);
 
-export const sellingPlanGroupAdded: EventSpecificationExample = {
-  id: "SellingPlanGroupAdded",
-  name: "SellingPlanGroup added",
-  payload: SellingPlanGroup,
-};
-export const sellingPlanGroupDeleted: EventSpecificationExample = {
-  id: "SellingPlanGroupDeleted",
-  name: "SellingPlanGroup deleted",
-  payload: SellingPlanGroupDeleted,
-};
-export const sellingPlanGroupUpdated: EventSpecificationExample = {
-  id: "SellingPlanGroupUpdated",
-  name: "SellingPlanGroup updated",
-  payload: SellingPlanGroup,
-};
+export const refundCreated = example("Refund created", Refund);
 
-export const shopUpdated: EventSpecificationExample = {
-  id: "ShopUpdated",
-  name: "Shop updated",
-  payload: Shop,
-};
+export const sellingPlanGroupCreated = example("SellingPlanGroup created", SellingPlanGroup);
+export const sellingPlanGroupDeleted = example("SellingPlanGroup deleted", SellingPlanGroupDeleted);
+export const sellingPlanGroupUpdated = example("SellingPlanGroup updated", SellingPlanGroup);
 
-export const subscriptionBillingAttemptChallenged: EventSpecificationExample = {
-  id: "SubscriptionBillingAttemptChallenged",
-  name: "SubscriptionBillingAttempt challenged",
-  payload: SubscriptionBillingAttempt,
-};
-export const subscriptionBillingAttemptFailure: EventSpecificationExample = {
-  id: "SubscriptionBillingAttemptFailure",
-  name: "SubscriptionBillingAttempt failure",
-  payload: SubscriptionBillingAttempt,
-};
-export const subscriptionBillingAttemptSuccess: EventSpecificationExample = {
-  id: "SubscriptionBillingAttemptSuccess",
-  name: "SubscriptionBillingAttempt success",
-  payload: SubscriptionBillingAttempt,
-};
+export const shopUpdated = example("Shop updated", Shop);
 
-export const subscriptionBillingcycleCreated: EventSpecificationExample = {
-  id: "SubscriptionBillingCycleCreated",
-  name: "SubscriptionBillingCycle created",
-  payload: SubscriptionBillingCycle,
-};
-export const subscriptionBillingcycleDeleted: EventSpecificationExample = {
-  id: "SubscriptionBillingCycleDeleted",
-  name: "SubscriptionBillingCycle deleted",
-  payload: Deleted,
-};
-export const subscriptionBillingcycleUpdated: EventSpecificationExample = {
-  id: "SubscriptionBillingCycleUpdated",
-  name: "SubscriptionBillingCycle updated",
-  payload: SubscriptionBillingCycle,
-};
+export const subscriptionBillingAttemptChallenged = example(
+  "SubscriptionBillingAttempt challenged",
+  SubscriptionBillingAttempt
+);
+export const subscriptionBillingAttemptFailure = example(
+  "SubscriptionBillingAttempt failure",
+  SubscriptionBillingAttempt
+);
+export const subscriptionBillingAttemptSuccess = example(
+  "SubscriptionBillingAttempt success",
+  SubscriptionBillingAttempt
+);
 
-export const subscriptionContractCreated: EventSpecificationExample = {
-  id: "SubscriptionContractCreated",
-  name: "SubscriptionContract created",
-  payload: SubscriptionContract,
-};
-export const subscriptionContractUpdated: EventSpecificationExample = {
-  id: "SubscriptionContractUpdated",
-  name: "SubscriptionContract updated",
-  payload: SubscriptionContract,
-};
+export const subscriptionBillingCycleCreated = example(
+  "SubscriptionBillingCycle created",
+  SubscriptionBillingCycle
+);
+export const subscriptionBillingCycleDeleted = example("SubscriptionBillingCycle deleted", Deleted);
+export const subscriptionBillingCycleUpdated = example(
+  "SubscriptionBillingCycle updated",
+  SubscriptionBillingCycle
+);
 
-export const tenderTransactionCreated: EventSpecificationExample = {
-  id: "TenderTransactionCreated",
-  name: "TenderTransaction created",
-  payload: TenderTransaction,
-};
+export const subscriptionContractCreated = example(
+  "SubscriptionContract created",
+  SubscriptionContract
+);
+export const subscriptionContractUpdated = example(
+  "SubscriptionContract updated",
+  SubscriptionContract
+);
 
-export const themeCreated: EventSpecificationExample = {
-  id: "ThemeCreated",
-  name: "Theme created",
-  payload: Theme,
-};
-export const themeDeleted: EventSpecificationExample = {
-  id: "ThemeDeleted",
-  name: "Theme deleted",
-  payload: Deleted,
-};
-export const themePublished: EventSpecificationExample = {
-  id: "ThemePublished",
-  name: "Theme published",
-  payload: Theme,
-};
-export const themeUpdated: EventSpecificationExample = {
-  id: "ThemeUpdated",
-  name: "Theme updated",
-  payload: Theme,
-};
+export const tenderTransactionCreated = example("TenderTransaction created", TenderTransaction);
+
+export const themeCreated = example("Theme created", Theme);
+export const themeDeleted = example("Theme deleted", Deleted);
+export const themePublished = example("Theme published", Theme);
+export const themeUpdated = example("Theme updated", Theme);
