@@ -8,17 +8,15 @@ import {
   Json,
   retry,
   ConnectionAuth,
-  Prettify,
 } from "@trigger.dev/sdk";
 
 import { ApiVersion, LATEST_API_VERSION, Session, shopifyApi } from "@shopify/shopify-api";
-
 // this has to be updated manually with each LATEST_API_VERSION bump
-import { restResources } from "@shopify/shopify-api/rest/admin/2023-10";
-
+import { restResources, type RestResources } from "@shopify/shopify-api/rest/admin/2023-10";
 import "@shopify/shopify-api/adapters/node";
 
-import { SerializedShopifyOutput } from "./types";
+import { ApiScope, WebhookTopic } from "./schemas";
+import { triggerCatalog } from "./triggers";
 import {
   ShopifyApiError,
   TriggerParams,
@@ -26,8 +24,8 @@ import {
   createTrigger,
   createWebhookEventSource,
 } from "./webhooks";
-import { ApiScope, WebhookTopic } from "./schemas";
-import { triggerCatalog } from "./triggers";
+
+export { RestResources as ShopifyRestResources };
 
 export type ShopifyIntegrationOptions = {
   id: string;
@@ -227,12 +225,3 @@ export function onError(error: unknown): ReturnType<RunTaskErrorCallback> {
     }
   }
 }
-
-export const serializeShopifyOutput = <T>(obj: T): Prettify<SerializedShopifyOutput<T>> => {
-  return JSON.parse(JSON.stringify(obj), (key, value) => {
-    if (typeof value === "function" || key.startsWith("_")) {
-      return undefined;
-    }
-    return value;
-  });
-};

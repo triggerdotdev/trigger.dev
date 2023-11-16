@@ -3,6 +3,8 @@ import { z } from "zod";
 import * as events from "./events";
 import { Shopify, ShopifyRunTask } from "./index";
 import {
+  DeletedPayload,
+  DeletedPayloadSchema,
   WebhookHeaderSchema,
   WebhookPayloadSchema,
   WebhookSubscription,
@@ -11,6 +13,8 @@ import {
   WebhookTopicSchema,
 } from "./schemas";
 import { WebhookSource, WebhookTrigger } from "@trigger.dev/sdk/triggers/webhook";
+import { serializeShopifyResource } from "./utils";
+import { SerializedShopifyResource, ShopifyResource } from "./types";
 
 export class Webhooks {
   constructor(private runTask: ShopifyRunTask) {}
@@ -27,7 +31,7 @@ export class Webhooks {
       address: string;
       fields?: string[];
     }
-  ): Promise<WebhookSubscription> {
+  ): Promise<SerializedShopifyResource<ShopifyResource<"Webhook">>> {
     return this.runTask(
       key,
       async (client, task, io, session) => {
@@ -42,8 +46,7 @@ export class Webhooks {
           update: true,
         });
 
-        // TODO: use typed serializer
-        return JSON.parse(JSON.stringify(webhook));
+        return serializeShopifyResource(webhook);
       },
       {
         name: "Create Webhook",
@@ -93,6 +96,7 @@ export class Webhooks {
 
         const webhook = await response.json();
         const parsed = WebhookSubscriptionDataSchema.parse(webhook);
+
         return parsed.webhook;
       },
       {
@@ -106,13 +110,13 @@ export class Webhooks {
     );
   }
 
-  delete(key: IntegrationTaskKey, params: { id: number }): Promise<unknown> {
+  delete(key: IntegrationTaskKey, params: { id: number }): Promise<DeletedPayload> {
     return this.runTask(
       key,
       async (client, task, io, session) => {
         const deleteResult = await client.rest.Webhook.delete({ session, id: params.id });
 
-        return JSON.parse(JSON.stringify(deleteResult));
+        return DeletedPayloadSchema.parse(deleteResult);
       },
       {
         name: "Delete Webhook",
@@ -130,7 +134,7 @@ export class Webhooks {
       address: string;
       fields?: string[];
     }
-  ): Promise<WebhookSubscription> {
+  ): Promise<SerializedShopifyResource<ShopifyResource<"Webhook">>> {
     return this.runTask(
       key,
       async (client, task, io, session) => {
@@ -146,8 +150,7 @@ export class Webhooks {
           update: true,
         });
 
-        // TODO: use typed serializer
-        return JSON.parse(JSON.stringify(webhook));
+        return serializeShopifyResource(webhook);
       },
       {
         name: "Update Webhook",

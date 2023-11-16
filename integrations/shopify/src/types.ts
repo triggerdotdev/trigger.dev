@@ -4,30 +4,36 @@ import {
   OmitIndexSignature,
   Prettify,
 } from "@trigger.dev/integration-kit";
-import { RestResources } from "@shopify/shopify-api/rest/admin/2023-10";
+import { ShopifyRestResources } from ".";
 
-export type SerializedShopifyOutput<T> = T extends object
+type OmitNonSerializable<T> = Omit<OmitFunctions<OmitIndexSignature<T>>, "session">;
+
+export type SerializedShopifyResource<T> = Prettify<OmitNonSerializable<T>>;
+
+export type RecursiveShopifySerializer<T> = T extends object
   ? T extends Array<infer U>
-    ? Array<SerializedShopifyOutput<U>>
-    : ObjectNonNullable<OmitFunctions<OmitIndexSignature<T>>>
+    ? Array<RecursiveShopifySerializer<U>>
+    : SerializedShopifyResource<T>
   : T;
 
 export type ShopifyReturnType<
   TPayload extends Omit<Request, "_request">,
   K extends unknown = unknown,
 > = Promise<
-  Awaited<SerializedShopifyOutput<Awaited<K extends keyof TPayload ? TPayload[K] : TPayload>>>
+  Awaited<RecursiveShopifySerializer<Awaited<K extends keyof TPayload ? TPayload[K] : TPayload>>>
 >;
 
 export type AwaitNested<T extends object, K extends keyof T> = Omit<T, K> & {
   [key in K]: Awaited<T[K]>;
 };
 
-type Resource<TResource extends keyof RestResources> = InstanceType<RestResources[TResource]>;
+export type ShopifyResource<TResource extends keyof ShopifyRestResources> = InstanceType<
+  ShopifyRestResources[TResource]
+>;
 
 // TODO: fix nested props + remove readonly
 export type ShopifyWebhookPayload = {
-  [K in keyof OmitIndexSignature<RestResources>]: Prettify<
-    ObjectNonNullable<OmitFunctions<OmitIndexSignature<Resource<K>>>>
+  [K in keyof OmitIndexSignature<ShopifyRestResources>]: Prettify<
+    ObjectNonNullable<OmitFunctions<OmitIndexSignature<ShopifyResource<K>>>>
   >;
 };
