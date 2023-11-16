@@ -181,6 +181,7 @@ type ShopifyEvents = (typeof events)[keyof typeof events];
 
 export type TriggerParams = {
   topic: WebhookTopic;
+  fields?: string[];
 };
 
 type CreateTriggersResult<TEventSpecification extends ShopifyEvents> = WebhookTrigger<

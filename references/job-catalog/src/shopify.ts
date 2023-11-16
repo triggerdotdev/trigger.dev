@@ -24,20 +24,20 @@ const shopify = new Shopify({
 // });
 
 client.defineJob({
-  id: "shopify-on-product-created",
-  name: "Shopify Example: onProductCreated",
+  id: "shopify-products-create",
+  name: "Shopify: products/create",
   version: "0.1.0",
-  trigger: shopify.onProductCreated(),
+  trigger: shopify.on("products/create"),
   run: async (payload, io, ctx) => {
     await io.logger.log(`product created: ${payload.id}`);
   },
 });
 
 client.defineJob({
-  id: "shopify-on-product-deleted",
-  name: "Shopify Example: onProductDeleted",
+  id: "shopify-products-delete",
+  name: "Shopify: products/delete",
   version: "0.1.0",
-  trigger: shopify.onProductDeleted(),
+  trigger: shopify.on("products/delete"),
   run: async (payload, io, ctx) => {
     await io.logger.log(`product deleted: ${payload.id}`);
   },

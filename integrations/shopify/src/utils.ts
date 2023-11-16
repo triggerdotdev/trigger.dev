@@ -1,5 +1,3 @@
-import { Product, DeletedPayload } from "./schemas";
-
-export const onProductProperties = (payload: Product | DeletedPayload) => {
-  return [{ label: "Product ID", text: String(payload.id) }];
+export const getBasicProperties = (payload: { id: string | number }) => {
+  return [{ label: "ID", text: String(payload.id) }];
 };

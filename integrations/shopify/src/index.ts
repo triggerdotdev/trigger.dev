@@ -27,7 +27,8 @@ import {
   createTrigger,
   createWebhookEventSource,
 } from "./webhooks";
-import { ApiScope } from "./schemas";
+import { ApiScope, WebhookTopic } from "./schemas";
+import { triggerCatalog } from "./triggers";
 
 export type ShopifyIntegrationOptions = {
   id: string;
@@ -158,22 +159,12 @@ export class Shopify implements TriggerIntegration {
     );
   }
 
-  // events
-  onProductCreated(params: Partial<TriggerParams> = {}) {
-    return createTrigger(this.source, events.onProductCreated, {
-      topic: "products/create",
-    });
-  }
+  on<TTopic extends WebhookTopic>(topic: TTopic, params?: Omit<TriggerParams, "topic">) {
+    const { eventSpec, params: catalogParams } = triggerCatalog[topic];
 
-  onProductDeleted(params: Partial<TriggerParams> = {}) {
-    return createTrigger(this.source, events.onProductDeleted, {
-      topic: "products/delete",
-    });
-  }
-
-  onProductUpdated(params: Partial<TriggerParams> = {}) {
-    return createTrigger(this.source, events.onProductUpdated, {
-      topic: "products/update",
+    return createTrigger(this.source, eventSpec, {
+      ...params,
+      ...catalogParams,
     });
   }
 

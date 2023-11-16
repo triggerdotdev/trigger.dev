@@ -53,9 +53,9 @@ export const inventoryItemUpdated: EventSpecificationExample = {
   payload: InventoryItem,
 };
 
-export const inventoryLevelCreated: EventSpecificationExample = {
-  id: "InventoryLevelCreated",
-  name: "InventoryLevel created",
+export const inventoryLevelConnected: EventSpecificationExample = {
+  id: "InventoryLevelConnected",
+  name: "InventoryLevel connected",
   payload: InventoryLevel,
 };
 export const inventoryLevelDisconnected: EventSpecificationExample = {
