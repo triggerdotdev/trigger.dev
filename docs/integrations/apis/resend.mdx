@@ -1,10 +1,23 @@
 ---
-title: Resend
+title: Resend overview & authentication
+sidebarTitle: Overview & authentication
 ---
 
-<Snippet file="integration-getting-started.mdx" />
+## Overview
 
-## Installation
+Resend is the email API for developers. With our Resend integration you can send email campaigns, transactional emails, and automated emails (drip campaigns) from your app.
+
+<Card
+  title="Jobs Showcase - Resend"
+  icon="rocket"
+  href="https://trigger.dev/showcase?tags=&apis=resend"
+>
+  Check out pre-built Resend jobs in our showcase.
+</Card>
+
+## Installing the Resend packages
+
+To get started with our Resend integration, you need to install the `@trigger.dev/resend` packages. You can do this using `npm`, `pnpm`, or `yarn`:
 
 <CodeGroup>
 
@@ -24,7 +37,7 @@ yarn add @trigger.dev/resend@latest
 
 ## Authentication
 
-Resend supports API Keys
+Resend supports API Keys. Official documentation [here](https://resend.com/docs/api-reference/api-keys/create-api-key).
 
 ```ts
 import { Resend } from "@trigger.dev/resend";
@@ -32,57 +45,13 @@ import { Resend } from "@trigger.dev/resend";
 const resend = new Resend({
   id: "resend",
   apiKey: process.env.RESEND_API_KEY!,
-});
-```
-
-## Example
-
-In this example we use [Zod](/documentation/guides/zod), a TypeScript-first schema declaration and validation library.
-
-```ts
-import { Resend } from "@trigger.dev/resend";
-import { Job, eventTrigger } from "@trigger.dev/sdk";
-import { z } from "zod";
-
-...
-
-const resend = new Resend({
-  id: "resend",
-  apiKey: process.env.RESEND_API_KEY!,
-});
-
-client.defineJob({
-  id: "send-resend-email",
-  name: "Send Resend Email",
-  version: "0.1.0",
-  trigger: eventTrigger({
-    name: "send.email",
-    schema: z.object({
-      to: z.union([z.string(), z.array(z.string())]),
-      subject: z.string(),
-      text: z.string(),
-    }),
-  }),
-  integrations: {
-    resend,
-  },
-  run: async (payload, io, ctx) => {
-    await io.resend.emails.send("send-email", {
-      to: payload.to,
-      subject: payload.subject,
-      text: payload.text,
-      from: "Trigger.dev <hello@email.trigger.dev>",
-    });
-  },
 });
 ```
 
 ## Tasks
 
-| Function Name   | Description                      |
-| --------------- | -------------------------------- |
-| `emails.send`   | Send an email                    |
-| `emails.create` | Create an email                  |
-| `emails.get`    | Get an email                     |
-| `batch.send`    | Send a batch of emails at once   |
-| `batch.create`  | Create a batch of emails at once |
+Once you have set up a Resend client, you can use it to create tasks.
+
+<Card title="Tasks" icon="sparkles" href="/integrations/apis/resend-tasks">
+  Send emails with Resend.
+</Card>

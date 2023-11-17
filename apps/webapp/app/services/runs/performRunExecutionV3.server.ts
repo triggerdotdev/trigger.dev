@@ -2,7 +2,6 @@ import {
   ApiEventLog,
   AutoYieldMetadata,
   ConnectionAuth,
-  EndpointHeadersSchema,
   RunJobAutoYieldWithCompletedTaskExecutionError,
   RunJobBody,
   RunJobError,
@@ -34,10 +33,11 @@ import { CompleteRunTaskService } from "~/routes/api.v1.runs.$runId.tasks.$id.co
 import { formatError } from "~/utils/formatErrors.server";
 import { safeJsonZodParse } from "~/utils/json";
 import { EndpointApi } from "../endpointApi.server";
+import { createExecutionEvent } from "../executions/createExecutionEvent.server";
 import { logger } from "../logger.server";
-import { forceYieldCoordinator } from "./forceYieldCoordinator.server";
-import { workerQueue } from "../worker.server";
 import { ResumeTaskService } from "../tasks/resumeTask.server";
+import { workerQueue } from "../worker.server";
+import { forceYieldCoordinator } from "./forceYieldCoordinator.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type FoundTask = FoundRun["tasks"][number];
@@ -67,7 +67,7 @@ export class PerformRunExecutionV3Service {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(input: PerformRunExecutionV3Input) {
+  public async call(input: PerformRunExecutionV3Input, driftInMs: number = 0) {
     const run = await findRun(this.#prismaClient, input.id);
 
     if (!run) {
@@ -80,7 +80,7 @@ export class PerformRunExecutionV3Service {
         break;
       }
       case "EXECUTE_JOB": {
-        await this.#executeJob(run, input);
+        await this.#executeJob(run, input, driftInMs);
         break;
       }
     }
@@ -177,7 +177,7 @@ export class PerformRunExecutionV3Service {
       });
     }
   }
-  async #executeJob(run: FoundRun, input: PerformRunExecutionV3Input) {
+  async #executeJob(run: FoundRun, input: PerformRunExecutionV3Input, driftInMs: number = 0) {
     try {
       const { isRetry, resumeTaskId } = input;
 
@@ -275,9 +275,30 @@ export class PerformRunExecutionV3Service {
 
       forceYieldCoordinator.registerRun(run.id);
 
-      const { response, parser, errorParser, durationInMs } = await client.executeJobRequest(
-        executionBody
-      );
+      await createExecutionEvent({
+        eventType: "start",
+        eventTime: new Date(),
+        drift: driftInMs,
+        organizationId: run.organizationId,
+        environmentId: run.environmentId,
+        projectId: run.projectId,
+        jobId: run.jobId,
+        runId: run.id,
+      });
+
+      const { response, parser, errorParser, headersParser, durationInMs } =
+        await client.executeJobRequest(executionBody);
+
+      await createExecutionEvent({
+        eventType: "finish",
+        eventTime: new Date(),
+        drift: 0,
+        organizationId: run.organizationId,
+        environmentId: run.environmentId,
+        projectId: run.projectId,
+        jobId: run.jobId,
+        runId: run.id,
+      });
 
       forceYieldCoordinator.deregisterRun(run.id);
 
@@ -289,7 +310,7 @@ export class PerformRunExecutionV3Service {
 
       // Update the endpoint version if it has changed
       const rawHeaders = Object.fromEntries(response.headers.entries());
-      const headers = EndpointHeadersSchema.safeParse(rawHeaders);
+      const headers = headersParser.safeParse(rawHeaders);
 
       if (
         headers.success &&
@@ -304,6 +325,58 @@ export class PerformRunExecutionV3Service {
             version: headers.data["trigger-version"],
           },
         });
+      }
+
+      if (headers.success && headers.data["x-trigger-run-metadata"] && !run.internal) {
+        logger.debug("Endpoint responded with run metadata", {
+          metadata: headers.data["x-trigger-run-metadata"],
+        });
+
+        if (
+          headers.data["x-trigger-run-metadata"].successSubscription &&
+          !run.subscriptions.some((s) => s.event === "SUCCESS")
+        ) {
+          await this.#prismaClient.jobRunSubscription.upsert({
+            where: {
+              runId_recipient_event: {
+                runId: run.id,
+                recipient: run.endpoint.id,
+                event: "SUCCESS",
+              },
+            },
+            create: {
+              runId: run.id,
+              recipient: run.endpoint.id,
+              recipientMethod: "ENDPOINT",
+              event: "SUCCESS",
+              status: "ACTIVE",
+            },
+            update: {},
+          });
+        }
+
+        if (
+          headers.data["x-trigger-run-metadata"].failedSubscription &&
+          !run.subscriptions.some((s) => s.event === "FAILURE")
+        ) {
+          await this.#prismaClient.jobRunSubscription.upsert({
+            where: {
+              runId_recipient_event: {
+                runId: run.id,
+                recipient: run.endpoint.id,
+                event: "FAILURE",
+              },
+            },
+            create: {
+              runId: run.id,
+              recipient: run.endpoint.id,
+              recipientMethod: "ENDPOINT",
+              event: "FAILURE",
+              status: "ACTIVE",
+            },
+            update: {},
+          });
+        }
       }
 
       const rawBody = await response.text();
@@ -1232,6 +1305,11 @@ async function findRun(prisma: PrismaClientOrTransaction, id: string) {
         include: {
           job: true,
           organization: true,
+        },
+      },
+      subscriptions: {
+        where: {
+          recipientMethod: "ENDPOINT",
         },
       },
       _count: {

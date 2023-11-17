@@ -36,6 +36,12 @@
     <ParamField body="enabled" type="boolean">
       The `enabled` property is an optional property that specifies whether the Job is enabled or not. The Job will be enabled by default if you omit this property. When a job is disabled, no new runs will be triggered or resumed. In progress runs will continue to run until they are finished or delayed by using `io.wait`.
     </ParamField>
+    <ParamField body="onSuccess" type="function">
+      The `onSuccess` property is an optional property that specifies a callback function to run when the Job finishes successfully. The callback function receives a [Run Notification](/sdk/run-notification) object as it's only parameter.
+    </ParamField>
+    <ParamField body="onFailure" type="function">
+      The `onFailure` property is an optional property that specifies a callback function to run when the Job fails to complete successfully. The callback function receives a [Run Notification](/sdk/run-notification) object as it's only parameter.
+    </ParamField>
     <ParamField body="logLevel" type="log | error | warn | info | debug">
       The `logLevel` property is an optional property that specifies the level of
       logging for the Job. The level is inherited from the client if you omit this property.

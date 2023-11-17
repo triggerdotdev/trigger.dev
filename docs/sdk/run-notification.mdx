@@ -40,11 +40,32 @@ This document describes the payload of a Run's completion webhook.
 <ResponseField name="completedAt" type="Date" required>
   When the Run started
 </ResponseField>
+<ResponseField name="isTest" type="boolean" required>
+  Whether the Run was a test Run
+</ResponseField>
 <ResponseField name="executionDurationInMs" type="number" required>
   The duration of the Run in milliseconds
 </ResponseField>
 <ResponseField name="executionCount" type="number" required>
   The number of individual function executions performed to complete the Run
+</ResponseField>
+
+<ResponseField name="invocation" type="object" required>
+  Metadata about the Invocation / Run
+  <Expandable title="properties">
+    <ResponseField name="id" type="string" required>
+      The Run ID
+    </ResponseField>
+    <ResponseField name="payload" type="any" required>
+      The payload that was passed to the Run
+    </ResponseField>
+    <ResponseField name="timestamp" type="Date" required>
+      The timestamp of the event/Run
+    </ResponseField>
+    <ResponseField name="context" type="any">
+      The context that was passed to the Run
+    </ResponseField>
+  </Expandable>
 </ResponseField>
 
 <ResponseField name="job" type="object" required>
@@ -55,6 +76,33 @@ This document describes the payload of a Run's completion webhook.
     </ResponseField>
     <ResponseField name="version" type="string" required>
       The Job's version
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="task" type="object">
+  Metadata about the Task that failed, only exists if the Run failed
+  <Expandable title="properties">
+    <ResponseField name="id" type="string" required>
+      The Task ID
+    </ResponseField>
+    <ResponseField name="cacheKey" type="string">
+      The Task's cache key
+    </ResponseField>
+    <ResponseField name="error" type="Error" required>
+      And Error-like object that caused the Task to fail
+    </ResponseField>
+    <ResponseField name="status" type="string" required>
+      The Task's status
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      The Task's name
+    </ResponseField>
+    <ResponseField name="startedAt" type="Date">
+      When the Task started
+    </ResponseField>
+    <ResponseField name="params" type="any">
+      The Task's params
     </ResponseField>
   </Expandable>
 </ResponseField>

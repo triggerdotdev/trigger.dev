@@ -6,6 +6,7 @@ import {
   DeserializedJson,
   EphemeralEventDispatcherRequestBody,
   ErrorWithStackSchema,
+  FailedRunNotification,
   GetRunOptionsWithTaskDetails,
   GetRunsOptions,
   HandleTriggerSource,
@@ -35,11 +36,13 @@ import {
   RunJobBodySchema,
   RunJobErrorResponse,
   RunJobResponse,
+  RunNotification,
   ScheduleMetadata,
   SendEvent,
   SendEventOptions,
   SourceMetadataV2,
   StatusUpdate,
+  SuccessfulRunNotification,
   WebhookContextMetadataSchema,
   WebhookMetadata,
 } from "@trigger.dev/core";
@@ -68,6 +71,7 @@ import { ExternalSource } from "./triggers/externalSource";
 import { DynamicIntervalOptions, DynamicSchedule } from "./triggers/scheduled";
 import type {
   EventSpecification,
+  NotificationsEventEmitter,
   Trigger,
   TriggerContext,
   TriggerPreprocessContext,
@@ -111,6 +115,7 @@ const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
   parsePayload: RegisterSourceEventSchemaV2.parse,
 };
 
+import EventEmitter from "node:events";
 import * as packageJson from "../package.json";
 import { formatSchemaErrors } from "./utils/formatSchemaErrors";
 import { WebhookSource } from "./triggers/webhook";
@@ -172,6 +177,7 @@ export class TriggerClient {
   #registeredSchedules: Record<string, Array<{ id: string; version: string }>> = {};
   #registeredHttpEndpoints: Record<string, HttpEndpoint<EventSpecification<any>>> = {};
   #authResolvers: Record<string, TriggerAuthResolver> = {};
+  #eventEmitter: NotificationsEventEmitter = new EventEmitter() as NotificationsEventEmitter;
 
   #client: ApiClient;
   #internalLogger: Logger;
@@ -186,6 +192,8 @@ export class TriggerClient {
       "noopTasksSet",
     ]);
   }
+
+  on = this.#eventEmitter.on.bind(this.#eventEmitter);
 
   async handleRequest(
     request: Request,
@@ -383,10 +391,14 @@ export class TriggerClient {
           triggerVersion,
         });
 
+        const standardHeaders = this.#standardResponseHeaders(timeOrigin);
+
+        standardHeaders["x-trigger-run-metadata"] = this.#serializeRunMetadata(job);
+
         return {
           status: 200,
           body: results,
-          headers: this.#standardResponseHeaders(timeOrigin),
+          headers: standardHeaders,
         };
       }
       case "PREPROCESS_RUN": {
@@ -554,6 +566,24 @@ export class TriggerClient {
         const timeout = json?.timeout ?? 15 * 60 * 1000;
 
         await new Promise((resolve) => setTimeout(resolve, timeout));
+
+        return {
+          status: 200,
+          body: {
+            ok: true,
+          },
+          headers: this.#standardResponseHeaders(timeOrigin),
+        };
+      }
+      case "RUN_NOTIFICATION": {
+        const rawJson = await request.json();
+        const runNotification = rawJson as RunNotification<any>;
+
+        if (runNotification.ok) {
+          await this.#deliverSuccessfulRunNotification(runNotification);
+        } else {
+          await this.#deliverFailedRunNotification(runNotification);
+        }
 
         return {
           status: 200,
@@ -1669,12 +1699,68 @@ export class TriggerClient {
     });
   }
 
-  #standardResponseHeaders(start: number) {
+  #standardResponseHeaders(start: number): Record<string, string> {
     return {
       "Trigger-Version": API_VERSIONS.LAZY_LOADED_CACHED_TASKS,
       "Trigger-SDK-Version": packageJson.version,
       "X-Trigger-Request-Timing": `dur=${performance.now() - start / 1000.0}`,
     };
+  }
+
+  #serializeRunMetadata(job: Job<Trigger<EventSpecification<any>>, any>) {
+    const metadata: Record<string, any> = {};
+
+    if (
+      this.#eventEmitter.listenerCount("runSucceeeded") > 0 ||
+      typeof job.options.onSuccess === "function"
+    ) {
+      metadata["successSubscription"] = true;
+    }
+
+    if (
+      this.#eventEmitter.listenerCount("runFailed") > 0 ||
+      typeof job.options.onFailure === "function"
+    ) {
+      metadata["failedSubscription"] = true;
+    }
+
+    return JSON.stringify(metadata);
+  }
+
+  async #deliverSuccessfulRunNotification(notification: SuccessfulRunNotification<any>) {
+    this.#internalLogger.debug("delivering successful run notification", {
+      notification,
+    });
+
+    this.#eventEmitter.emit("runSucceeeded", notification);
+
+    const job = this.#registeredJobs[notification.job.id];
+
+    if (!job) {
+      return;
+    }
+
+    if (typeof job.options.onSuccess === "function") {
+      await job.options.onSuccess(notification);
+    }
+  }
+
+  async #deliverFailedRunNotification(notification: FailedRunNotification) {
+    this.#internalLogger.debug("delivering failed run notification", {
+      notification,
+    });
+
+    this.#eventEmitter.emit("runFailed", notification);
+
+    const job = this.#registeredJobs[notification.job.id];
+
+    if (!job) {
+      return;
+    }
+
+    if (typeof job.options.onFailure === "function") {
+      await job.options.onFailure(notification);
+    }
   }
 }
 

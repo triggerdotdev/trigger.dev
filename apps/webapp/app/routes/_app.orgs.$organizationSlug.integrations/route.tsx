@@ -82,7 +82,7 @@ export default function Integrations() {
     <PageContainer>
       <PageHeader>
         <PageTitleRow>
-          <PageTitle title="Integrations" />
+          <PageTitle title="Integrations & APIs" />
           <PageButtons>
             <LinkButton
               to={docsPath("/integrations/introduction")}

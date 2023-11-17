@@ -1,6 +1,7 @@
 import { RunNotification } from "@trigger.dev/core";
 import { subtle } from "node:crypto";
 import { PrismaClient, prisma } from "~/db.server";
+import { EndpointApi } from "../endpointApi.server";
 
 // Infer the type of the #findSubscription method
 type FoundSubscription = NonNullable<
@@ -89,6 +90,34 @@ export class DeliverRunSubscriptionService {
 
         return true;
       }
+      case "ENDPOINT": {
+        const endpointId = subscription.recipient;
+
+        if (endpointId !== subscription.run.endpointId) {
+          return true;
+        }
+
+        const client = new EndpointApi(
+          subscription.run.environment.apiKey,
+          subscription.run.endpoint.url
+        );
+
+        const response = await client.deliverRunNotification(payload);
+
+        if (!response) {
+          throw new Error(
+            `Failed to deliver endpoint notification to ${subscription.run.endpoint.url}`
+          );
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to deliver endpoint notification to ${subscription.run.endpoint.url}: [${response.status}] ${response.statusText}`
+          );
+        }
+
+        return true;
+      }
     }
   }
 
@@ -107,6 +136,19 @@ export class DeliverRunSubscriptionService {
             organization: true,
             project: true,
             event: true,
+            endpoint: true,
+            tasks: {
+              where: {
+                status: "ERRORED",
+              },
+              take: 1,
+              orderBy: {
+                startedAt: "desc",
+              },
+              include: {
+                attempts: true,
+              },
+            },
           },
         },
       },
@@ -114,7 +156,20 @@ export class DeliverRunSubscriptionService {
   }
 
   #getPayload(run: FoundRun): RunNotification<any> {
-    const { id, job, version, statuses, environment, organization, project, event } = run;
+    const { id, job, version, statuses, environment, organization, project, event, tasks } = run;
+
+    const task = tasks[0]
+      ? {
+          id: tasks[0].idempotencyKey,
+          cacheKey: tasks[0].displayKey,
+          status: tasks[0].status,
+          name: tasks[0].name,
+          icon: tasks[0].icon,
+          startedAt: tasks[0].startedAt,
+          error: tasks[0].output,
+          params: tasks[0].params,
+        }
+      : undefined;
 
     const payload = {
       id,
@@ -123,10 +178,11 @@ export class DeliverRunSubscriptionService {
       startedAt: run.startedAt,
       updatedAt: run.updatedAt,
       completedAt: run.completedAt,
+      isTest: run.isTest,
       executionDurationInMs: run.executionDuration,
       executionCount: run.executionCount,
       job: {
-        id: job.id,
+        id: job.slug,
         version: version.version,
       },
       statuses: statuses.map((status) => ({
@@ -155,8 +211,14 @@ export class DeliverRunSubscriptionService {
         id: event.id,
         context: event.context,
         timestamp: event.timestamp,
+        payload: event.payload,
       },
-      ...(run.status === "SUCCESS" ? { output: run.output } : { error: run.output }),
+      ...(run.status === "SUCCESS"
+        ? { output: run.output }
+        : {
+            error: run.output,
+            task,
+          }),
     };
 
     return payload as RunNotification<any>;

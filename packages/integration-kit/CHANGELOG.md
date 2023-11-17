@@ -1,5 +1,12 @@
 # @trigger.dev/integration-kit
 
+## 2.2.7
+
+### Patch Changes
+
+- Updated dependencies [756024da]
+  - @trigger.dev/core@2.2.7
+
 ## 2.2.6
 
 ### Patch Changes
