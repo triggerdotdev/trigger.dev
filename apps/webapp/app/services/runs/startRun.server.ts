@@ -1,13 +1,12 @@
 import {
-  RuntimeEnvironmentType,
   type ConnectionType,
   type Integration,
   type IntegrationConnection,
 } from "@trigger.dev/database";
 import type { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
-import { enqueueRunExecutionV3 } from "~/models/jobRunExecution.server";
 import { workerQueue } from "../worker.server";
+import { ResumeRunService } from "./resumeRun.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type RunConnectionsByKey = Awaited<ReturnType<typeof createRunConnections>>;
@@ -60,37 +59,18 @@ export class StartRunService {
       )
       .filter(Boolean);
 
-    const updateRun = async () => {
-      if (run.preprocess) {
-        // Start the jobRun and increment the jobCount
-        return await this.#prismaClient.jobRun.update({
-          where: { id },
-          data: {
-            status: "PREPROCESSING",
-            runConnections: {
-              create: createRunConnections,
-            },
-          },
-        });
-      } else {
-        return await this.#prismaClient.jobRun.update({
-          where: { id },
-          data: {
-            status: "QUEUED",
-            queuedAt: new Date(),
-            runConnections: {
-              create: createRunConnections,
-            },
-          },
-        });
-      }
-    };
-
-    const updatedRun = await updateRun();
-
-    await enqueueRunExecutionV3(updatedRun, this.#prismaClient, {
-      skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
+    const updatedRun = await this.#prismaClient.jobRun.update({
+      where: { id },
+      data: {
+        status: "QUEUED",
+        queuedAt: new Date(),
+        runConnections: {
+          create: createRunConnections,
+        },
+      },
     });
+
+    await ResumeRunService.enqueue(updatedRun, this.#prismaClient);
   }
 
   async #handleMissingConnections(id: string, runConnectionsByKey: RunConnectionsByKey) {

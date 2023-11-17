@@ -3,7 +3,7 @@ import { ScheduledPayloadSchema, addMissingVersionField } from "@trigger.dev/cor
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { ZodWorker } from "~/platform/zodWorker.server";
+import { RedisGraphileRateLimiter, ZodWorker } from "~/platform/zodWorker.server";
 import { sendEmail } from "./email.server";
 import { IndexEndpointService } from "./endpoints/indexEndpoint.server";
 import { PerformEndpointIndexService } from "./endpoints/performEndpointIndexService";
@@ -26,6 +26,7 @@ import { DeliverRunSubscriptionsService } from "./runs/deliverRunSubscriptions.s
 import { ResumeTaskService } from "./tasks/resumeTask.server";
 import { ExpireDispatcherService } from "./dispatchers/expireDispatcher.server";
 import { InvokeEphemeralDispatcherService } from "./dispatchers/invokeEphemeralEventDispatcher.server";
+import { ResumeRunService } from "./runs/resumeRun.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -93,6 +94,9 @@ const workerCatalog = {
     id: z.string(),
   }),
   expireDispatcher: z.object({
+    id: z.string(),
+  }),
+  resumeRun: z.object({
     id: z.string(),
   }),
 };
@@ -223,7 +227,6 @@ function getWorkerQueue() {
       "events.invokeDispatcher": {
         priority: 0, // smaller number = higher priority
         maxAttempts: 6,
-        queueName: (payload) => `dispatcher:${payload.id}`, // use a queue for a dispatcher so runs are created sequentially
         handler: async (payload, job) => {
           const service = new InvokeDispatcherService();
 
@@ -403,6 +406,15 @@ function getWorkerQueue() {
           return await service.call(payload.id);
         },
       },
+      resumeRun: {
+        priority: 0,
+        maxAttempts: 10,
+        handler: async (payload, job) => {
+          const service = new ResumeRunService();
+
+          return await service.call(payload.id);
+        },
+      },
     },
   });
 }
@@ -421,6 +433,7 @@ function getExecutionWorkerQueue() {
     },
     shutdownTimeoutInMs: env.GRACEFUL_SHUTDOWN_TIMEOUT,
     schema: executionWorkerCatalog,
+    rateLimiter: new RedisGraphileRateLimiter(),
     tasks: {
       performRunExecutionV2: {
         priority: 0, // smaller number = higher priority

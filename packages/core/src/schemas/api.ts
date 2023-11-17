@@ -803,7 +803,6 @@ export const RunTaskOptionsSchema = z.object({
   /** A No Operation means that the code won't be executed. This is used internally to implement features like [io.wait()](https://trigger.dev/docs/sdk/io/wait).  */
   noop: z.boolean().default(false),
   redact: RedactSchema.optional(),
-  trigger: TriggerMetadataSchema.optional(),
   parallel: z.boolean().optional(),
 });
 

@@ -14,7 +14,8 @@ import { run as graphileRun, parseCronItems } from "graphile-worker";
 import omit from "lodash.omit";
 import { z } from "zod";
 import { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
-import { workerLogger as logger, trace } from "~/services/logger.server";
+import { workerLogger as logger, trace, workerLogger } from "~/services/logger.server";
+import { Callback, Redis, RedisOptions, Result } from "ioredis";
 
 export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
@@ -103,6 +104,7 @@ export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   cleanup?: ZodWorkerCleanupOptions;
   reporter?: ZodWorkerReporter;
   shutdownTimeoutInMs?: number;
+  rateLimiter?: GraphileRateLimiter;
 };
 
 export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
@@ -115,6 +117,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   #runner?: GraphileRunner;
   #cleanup: ZodWorkerCleanupOptions | undefined;
   #reporter?: ZodWorkerReporter;
+  #rateLimiter?: GraphileRateLimiter;
   #shutdownTimeoutInMs?: number;
   #shuttingDown = false;
 
@@ -127,6 +130,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     this.#recurringTasks = options.recurringTasks;
     this.#cleanup = options.cleanup;
     this.#reporter = options.reporter;
+    this.#rateLimiter = options.rateLimiter;
     this.#shutdownTimeoutInMs = options.shutdownTimeoutInMs ?? 60000; // default to 60 seconds
   }
 
@@ -150,6 +154,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       noHandleSignals: true,
       taskList: this.#createTaskListFromTasks(),
       parsedCronItems,
+      forbiddenFlags: this.#rateLimiter?.forbiddenFlags.bind(this.#rateLimiter),
     });
 
     if (!this.#runner) {
@@ -379,7 +384,11 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
         return this.#handleMessage(key, payload, helpers);
       };
 
-      taskList[key] = task;
+      if (this.#rateLimiter) {
+        taskList[key] = this.#rateLimiter.wrapTask(task);
+      } else {
+        taskList[key] = task;
+      }
     }
 
     for (const [key] of Object.entries(this.#recurringTasks ?? {})) {
@@ -646,4 +655,177 @@ function removeUndefinedKeys<T extends object>(obj: T): T {
     }
   }
   return obj;
+}
+
+export interface GraphileRateLimiter {
+  forbiddenFlags(): Promise<string[]>;
+  wrapTask(t: Task): Task;
+}
+
+declare module "ioredis" {
+  interface RedisCommander<Context> {
+    beforeTask(
+      setKey: string,
+      maxSizeKey: string,
+      forbiddenFlagsKey: string,
+      jobId: string,
+      forbiddenFlag: string,
+      callback?: Callback<string>
+    ): Result<string, Context>;
+
+    afterTask(
+      setKey: string,
+      maxSizeKey: string,
+      forbiddenFlagsKey: string,
+      jobId: string,
+      forbiddenFlag: string,
+      callback?: Callback<string>
+    ): Result<string, Context>;
+  }
+}
+
+export type RedisGraphileRateLimiterOptions = {
+  redis: RedisOptions;
+  prefix?: string;
+};
+
+// TODO: we need to somehow seed and update the rate limit for each flag in Redis
+export class RedisGraphileRateLimiter implements GraphileRateLimiter {
+  private redis: Redis;
+  private prefix: string;
+
+  constructor(options?: RedisGraphileRateLimiterOptions) {
+    this.redis = new Redis(options?.redis ?? {});
+    this.prefix = options?.prefix ?? "tr:gw";
+
+    this.redis.defineCommand("beforeTask", {
+      numberOfKeys: 3,
+      lua: `
+local setKey = KEYS[1]
+local maxSizeKey = KEYS[2]
+local forbiddenFlagsKey = KEYS[3]
+local jobId = ARGV[1]
+local forbiddenFlag = ARGV[2]
+
+local maxSize = tonumber(redis.call('GET', maxSizeKey))
+if maxSize == nil then
+    return false -- maxSize not set
+end
+
+redis.call('SADD', setKey, jobId)
+local currentSize = redis.call('SCARD', setKey)
+
+if currentSize < maxSize then
+    redis.call('SREM', forbiddenFlagsKey, forbiddenFlag)
+    return true
+else
+    redis.call('SADD', forbiddenFlagsKey, forbiddenFlag)
+    return false
+end
+      `,
+    });
+
+    this.redis.defineCommand("afterTask", {
+      numberOfKeys: 3,
+      lua: `
+local setKey = KEYS[1]
+local maxSizeKey = KEYS[2]
+local forbiddenFlagsKey = KEYS[3]
+local jobId = ARGV[1]
+local forbiddenFlag = ARGV[2]
+
+local maxSize = tonumber(redis.call('GET', maxSizeKey))
+if maxSize == nil then
+  return false -- maxSize not set
+end
+
+redis.call('SREM', setKey, jobId)
+local currentSize = redis.call('SCARD', setKey)
+
+if currentSize < maxSize then
+    redis.call('SREM', forbiddenFlagsKey, forbiddenFlag)
+    return true
+else
+    redis.call('SADD', forbiddenFlagsKey, forbiddenFlag)
+    return false
+end
+      `,
+    });
+  }
+
+  async forbiddenFlags(): Promise<string[]> {
+    return this.redis.smembers(this.#prefixKey("rl:forbiddenFlags"));
+  }
+
+  // wrapTask
+  // Before the task is run we need to:
+  // get the max concurreny for the flag
+  // if there is no max concurreny for the flag, we can skip the rest of the steps
+  // for each flag with the prefix "rl:"
+  // add the job id to a redis set with the key "rl:flag"
+  // get the length of the set
+  // if the length of the set is greater or equal to the max concurrency
+  // we need to add the flag to the "forbidden flags" list
+  // After the task is run
+  // for each flag with the prefix "rl:"
+  // get the max concurreny for the flag
+  // if there is no max concurreny for the flag, we can skip the rest of the steps
+  // remove the job id from the redis set with the key "rl:flag"
+  // get the length of the set
+  // get the max concurreny for the flag
+  // if the length of the set is less than the max concurrency
+  // we need to remove the flag from the "forbidden flags" list
+  // we need to make sure that if there are any errors thrown in the task that we still perform the "after task" steps, and then rethrow the error
+  wrapTask(t: Task): Task {
+    return async (payload: unknown, helpers: JobHelpers) => {
+      const flags = Object.keys(helpers.job.flags ?? {}).filter((flag) => flag.startsWith("rl:"));
+
+      if (flags.length === 0) {
+        return t(payload, helpers);
+      }
+
+      // Before
+      // TODO: handle errors
+      const beforeResults = await Promise.all(
+        flags.map(async (flag) => {
+          const result = await this.redis.beforeTask(
+            this.#prefixKey(flag),
+            this.#prefixKey(`${flag}:maxSize`),
+            this.#prefixKey("rl:forbiddenFlags"),
+            String(helpers.job.id),
+            flag
+          );
+
+          return result;
+        })
+      );
+
+      logger.debug("[rate-limiter] beforeTask results", { beforeResults, flags });
+
+      try {
+        await t(payload, helpers);
+      } finally {
+        // TODO: handle errors
+        const afterResults = await Promise.all(
+          flags.map(async (flag) => {
+            const result = await this.redis.afterTask(
+              this.#prefixKey(flag),
+              this.#prefixKey(`${flag}:maxSize`),
+              this.#prefixKey("rl:forbiddenFlags"),
+              String(helpers.job.id),
+              flag
+            );
+
+            return result;
+          })
+        );
+
+        logger.debug("[rate-limiter] afterTask results", { afterResults, flags });
+      }
+    };
+  }
+
+  #prefixKey(key: string): string {
+    return `${this.prefix}:${key}`;
+  }
 }

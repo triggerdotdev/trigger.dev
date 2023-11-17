@@ -5,6 +5,7 @@ import {
   StyleSchema,
 } from "@trigger.dev/core";
 import { PrismaClient, prisma } from "~/db.server";
+import { isRunCompleted, runBasicStatus } from "~/models/jobRun.server";
 import { mergeProperties } from "~/utils/mergeProperties.server";
 import { taskListToTree } from "~/utils/taskListToTree";
 
@@ -67,6 +68,8 @@ export class RunPresenter {
       id: run.id,
       number: run.number,
       status: run.status,
+      basicStatus: runBasicStatus(run.status),
+      isFinished: isRunCompleted(run.status),
       startedAt: run.startedAt,
       completedAt: run.completedAt,
       isTest: run.isTest,
