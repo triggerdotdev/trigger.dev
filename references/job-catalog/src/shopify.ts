@@ -1,4 +1,4 @@
-import { TriggerClient } from "@trigger.dev/sdk";
+import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
 import { createExpressServer } from "@trigger.dev/express";
 import { Shopify } from "@trigger.dev/shopify";
 
@@ -16,7 +16,6 @@ const shopify = new Shopify({
   apiKey: process.env["SHOPIFY_API_KEY"],
   apiSecretKey: process.env["SHOPIFY_API_SECRET_KEY"]!,
   hostName: process.env["SHOPIFY_SHOP_DOMAIN"]!,
-  scopes: ["read_products"],
 });
 
 // const shopify = new Shopify({
@@ -40,6 +39,57 @@ client.defineJob({
   trigger: shopify.on("products/delete"),
   run: async (payload, io, ctx) => {
     await io.logger.log(`product deleted: ${payload.id}`);
+  },
+});
+
+client.defineJob({
+  id: "shopify-task-examples",
+  name: "Shopify: Task Examples",
+  version: "0.1.0",
+  trigger: eventTrigger({
+    name: "shopify.task.examples",
+  }),
+  integrations: {
+    shopify,
+  },
+  run: async (payload, io, ctx) => {
+    await io.shopify.rest.Product.count("count-products");
+
+    const createdProduct = await io.shopify.rest.Product.save("create-product", {
+      update: true,
+      fromData: {
+        title: "Some Product",
+      },
+    });
+
+    await io.shopify.rest.Product.count("count-products-again");
+
+    const foundProduct = await io.shopify.rest.Product.find("find-product", {
+      id: createdProduct.id,
+    });
+
+    if (foundProduct) {
+      await io.shopify.rest.Variant.all("get-all-variants", {
+        product_id: foundProduct.id,
+      });
+
+      await io.shopify.rest.Product.delete("delete-product", {
+        id: foundProduct.id,
+      });
+    }
+
+    const allProducts = await io.shopify.rest.Product.all("get-all-products", {
+      limit: 2,
+      autoPaginate: true,
+    });
+
+    if (allProducts.data.length) {
+      const firstProduct = allProducts.data[0];
+
+      await io.shopify.rest.Product.delete("delete-first", {
+        id: firstProduct.id,
+      });
+    }
   },
 });
 

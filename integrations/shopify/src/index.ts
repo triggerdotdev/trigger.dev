@@ -30,8 +30,10 @@ import {
   createTrigger,
   createWebhookEventSource,
 } from "./webhooks";
+import { Rest, restProxy } from "./rest";
+import { OmitIndexSignature } from "@trigger.dev/integration-kit/types";
 
-export { RestResources as ShopifyRestResources };
+export type ShopifyRestResources = OmitIndexSignature<RestResources>;
 
 export type ShopifyIntegrationOptions = {
   id: string;
@@ -40,7 +42,7 @@ export type ShopifyIntegrationOptions = {
   apiVersion?: ApiVersion;
   adminAccessToken: string;
   hostName: string;
-  scopes: ApiScope[];
+  scopes?: ApiScope[];
   session?: Session;
 };
 
@@ -61,7 +63,7 @@ export class Shopify implements TriggerIntegration {
     }
 
     this._options = options;
-    this._shopDomain = this._options.hostName.replace("http://", "").replace("https://", "")
+    this._shopDomain = this._options.hostName.replace("http://", "").replace("https://", "");
   }
 
   get authSource() {
@@ -127,8 +129,6 @@ export class Shopify implements TriggerIntegration {
         adminApiAccessToken: this._options.adminAccessToken,
         apiVersion: this._options.apiVersion ?? LATEST_API_VERSION,
         hostName: this._shopDomain,
-        // TODO: check if this is safe to remove
-        scopes: this._options.scopes,
         restResources,
         // TODO: double check this
         isCustomStoreApp: true,
@@ -184,6 +184,18 @@ export class Shopify implements TriggerIntegration {
 
   get webhooks() {
     return new Webhooks(this.runTask.bind(this));
+  }
+
+  get rest() {
+    if (!this._session) {
+      throw new Error("No session");
+    }
+
+    return restProxy(
+      new Rest(this.runTask.bind(this), this._session),
+      this._session,
+      this.runTask.bind(this)
+    );
   }
 }
 
