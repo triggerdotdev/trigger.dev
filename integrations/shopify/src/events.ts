@@ -1,4 +1,3 @@
-import { DisplayProperty, EventSpecification, EventSpecificationExample } from "@trigger.dev/sdk";
 import {
   DeletedPayload,
   DeliveryProfile,
@@ -11,37 +10,10 @@ import {
   SubscriptionBillingAttempt,
   SubscriptionBillingCycle,
   SubscriptionContract,
-  WebhookTopic,
 } from "./schemas";
-import { basicProperties } from "./utils";
+import { basicProperties, eventSpec } from "./utils";
 import * as eg from "./payload-examples";
 import { ShopifyWebhookPayload } from "./types";
-import { titleCase } from "@trigger.dev/integration-kit/utils";
-
-export const eventSpec = <TEvent>({
-  topic,
-  examples,
-  runProperties,
-}: {
-  topic: WebhookTopic;
-  examples?: EventSpecificationExample[];
-  runProperties?: (payload: TEvent) => DisplayProperty[];
-}): EventSpecification<TEvent> => {
-  return {
-    name: topic,
-    title: topicToTitle(topic),
-    source: "shopify.com",
-    icon: "shopify",
-    examples,
-    parsePayload: (payload) => payload as TEvent,
-    runProperties,
-  };
-};
-
-const topicToTitle = (topic: WebhookTopic) => {
-  const prettyTopic = titleCase(topic.replace("_", " ").replace("/", " "));
-  return `On ${prettyTopic}`;
-};
 
 export const onFulfillmentCreated = eventSpec<ShopifyWebhookPayload["Fulfillment"]>({
   topic: "fulfillments/create",

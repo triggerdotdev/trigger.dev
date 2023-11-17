@@ -627,6 +627,3 @@ export const DeletedPayloadSchema = z.object({
 export type DeletedPayload = z.infer<typeof DeletedPayloadSchema>;
 
 export type DeliveryProfile = DeletedPayload;
-
-// TODO: construct from other schemas
-export const WebhookPayloadSchema = z.object({}).passthrough();

@@ -6,7 +6,6 @@ import {
   DeletedPayload,
   DeletedPayloadSchema,
   WebhookHeaderSchema,
-  WebhookPayloadSchema,
   WebhookSubscription,
   WebhookSubscriptionDataSchema,
   WebhookTopic,
@@ -248,11 +247,9 @@ export function createWebhookEventSource(integration: Shopify): WebhookSource<Sh
       const triggeredAt = headers["x-shopify-triggered-at"];
       const idempotencyKey = headers["x-shopify-webhook-id"];
 
-      const payload = WebhookPayloadSchema.parse(await request.json());
-
       await io.sendEvent("send-event", {
         id: idempotencyKey,
-        payload,
+        payload: await request.json(),
         source: "shopify.com",
         name: topic,
         timestamp: triggeredAt,
