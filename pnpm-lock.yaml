@@ -608,12 +608,12 @@ importers:
       rimraf: ^3.0.2
       tsup: 7.1.x
       typescript: 4.9.4
-      zod: 3.21.4
+      zod: 3.22.3
     dependencies:
       '@shopify/shopify-api': 8.0.2
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
-      zod: 3.21.4
+      zod: 3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@trigger.dev/tsup': link:../../config-packages/tsup
