@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/shopify",
-  "version": "2.2.6",
+  "version": "2.2.7",
   "description": "Trigger.dev integration for @shopify/shopify-api",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
