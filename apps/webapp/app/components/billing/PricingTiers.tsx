@@ -1,5 +1,6 @@
 import { cn } from "~/utils/cn";
 import { Paragraph } from "../primitives/Paragraph";
+import * as Slider from "@radix-ui/react-slider";
 
 export function PricingTiers({ children }: { children: React.ReactNode }) {
   return <div className="flex gap-4">{children}</div>;
@@ -72,11 +73,33 @@ function Header({ title, flatCost }: { title: string; flatCost?: number }) {
 function TierLimit({ description, pricedMetric }: { description: string; pricedMetric?: boolean }) {
   return (
     <div>
-      {pricedMetric ? <div>hi</div> : <hr className="my-4" />}
+      {pricedMetric ? <PricingSlider /> : <hr className="my-[1.6rem]" />}
 
       <Paragraph variant="small/bright" className="">
         {description}
       </Paragraph>
     </div>
+  );
+}
+
+export function PricingSlider() {
+  return (
+    <form>
+      <Slider.Root
+        className="relative my-4 flex h-5 w-full touch-none select-none items-center"
+        // It would be nice to set the default value to always be 1 bracket above your current one, up to the max.
+        defaultValue={[20]}
+        max={100}
+        step={5}
+      >
+        <Slider.Track className="relative h-[8px] grow rounded-full bg-slate-850">
+          <Slider.Range className="absolute h-full rounded-full bg-indigo-500" />
+        </Slider.Track>
+        <Slider.Thumb
+          className="block h-5 w-5 rounded-full border-4 border-indigo-500 bg-slate-850 shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] transition hover:border-indigo-400 hover:bg-slate-800 focus:shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] focus:outline-none"
+          aria-label="Pro tier pricing slider"
+        />
+      </Slider.Root>
+    </form>
   );
 }
