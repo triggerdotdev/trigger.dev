@@ -18,7 +18,7 @@ import * as eg from "./payload-examples";
 import { ShopifyWebhookPayload } from "./types";
 import { titleCase } from "@trigger.dev/integration-kit/utils";
 
-const eventSpec = <TEvent>({
+export const eventSpec = <TEvent>({
   topic,
   examples,
   runProperties,
