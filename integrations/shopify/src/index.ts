@@ -10,7 +10,13 @@ import {
   ConnectionAuth,
 } from "@trigger.dev/sdk";
 
-import { ApiVersion, LATEST_API_VERSION, Session, shopifyApi } from "@shopify/shopify-api";
+import {
+  ApiVersion,
+  LATEST_API_VERSION,
+  LogSeverity,
+  Session,
+  shopifyApi,
+} from "@shopify/shopify-api";
 // this has to be updated manually with each LATEST_API_VERSION bump
 import { restResources, type RestResources } from "@shopify/shopify-api/rest/admin/2023-10";
 import "@shopify/shopify-api/adapters/node";
@@ -107,13 +113,15 @@ export class Shopify implements TriggerIntegration {
         restResources,
         // TODO: double check this
         isEmbeddedApp: true,
+        logger: {
+          level: LogSeverity.Warning,
+        },
       });
     }
 
     // apiKey auth
     if (this._options.apiKey) {
       return shopifyApi({
-        // adminApiAccessToken
         apiKey: this._options.apiKey,
         apiSecretKey: this._options.apiKey,
         adminApiAccessToken: this._options.adminAccessToken,
@@ -125,6 +133,9 @@ export class Shopify implements TriggerIntegration {
         // TODO: double check this
         isCustomStoreApp: true,
         isEmbeddedApp: false,
+        logger: {
+          level: LogSeverity.Warning,
+        },
       });
     }
 
