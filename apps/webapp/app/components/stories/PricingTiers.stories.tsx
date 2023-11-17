@@ -16,8 +16,8 @@ export const AllTiers: Story = {
 
 function AllPricingTiers() {
   return (
-    <div className="grid h-screen place-items-center">
-      <PricingTiers>
+    <div className="mx-4 flex h-screen items-center justify-center">
+      <PricingTiers className="">
         <TierFree />
         <TierPro />
         <TierEnterprise />

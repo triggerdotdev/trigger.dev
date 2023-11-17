@@ -1,17 +1,41 @@
 import { cn } from "~/utils/cn";
 import { Paragraph } from "../primitives/Paragraph";
 import * as Slider from "@radix-ui/react-slider";
+import { Button } from "../primitives/Buttons";
+import { CheckIcon, XMarkIcon } from "@heroicons/react/24/solid";
 
-export function PricingTiers({ children }: { children: React.ReactNode }) {
-  return <div className="flex gap-4">{children}</div>;
+export function PricingTiers({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex w-full items-center justify-center gap-4", className)}>{children}</div>
+  );
 }
 
 export function TierFree() {
   return (
     <TierContainer>
       <Header title="Free" flatCost={0} />
-
       <TierLimit description="1 concurrent Run / month" />
+      <Button variant="secondary/large" fullWidth className="text-md my-6 font-medium">
+        Current Plan
+      </Button>
+      <ul className="flex flex-col gap-2">
+        <FeatureItem checked title="Up to 2 team members" />
+        <FeatureItem checked title="Up to 10 Jobs" />
+        <FeatureItem checked title="Unlimited Job Runs" />
+        <FeatureItem checked title="Unlimited Run duration" />
+        <FeatureItem checked title="24 hour log retention" />
+        <FeatureItem checked title="Community support" />
+        <FeatureItem title="Custom integrations" />
+        <FeatureItem title="Role-based access control" />
+        <FeatureItem title="SSO" />
+        <FeatureItem title="On-prem option" />
+      </ul>
     </TierContainer>
   );
 }
@@ -19,8 +43,23 @@ export function TierFree() {
 export function TierPro() {
   return (
     <TierContainer isHighlighted>
-      <Header title="Pro" flatCost={25} />
+      <Header title="Pro" isHighlighted flatCost={25} />
       <TierLimit pricedMetric description="Up to 5 concurrent Runs / month" />
+      <Button variant="primary/large" fullWidth className="text-md my-6 font-medium">
+        Upgrade
+      </Button>
+      <ul className="flex flex-col gap-2">
+        <FeatureItem checked title="Unlimited team members" />
+        <FeatureItem checked title="Unlimited Jobs" />
+        <FeatureItem checked title="Unlimited Job Runs" />
+        <FeatureItem checked title="Unlimited Run duration" />
+        <FeatureItem checked title="7 day log retention" />
+        <FeatureItem checked title="Dedicated Slack support" />
+        <FeatureItem title="Custom integrations" />
+        <FeatureItem title="Role-based access control" />
+        <FeatureItem title="SSO" />
+        <FeatureItem title="On-prem option" />
+      </ul>
     </TierContainer>
   );
 }
@@ -29,8 +68,22 @@ export function TierEnterprise() {
   return (
     <TierContainer>
       <Header title="Enterprise" />
-
       <TierLimit description="Flexible concurrent Runs / month" />
+      <Button variant="secondary/large" fullWidth className="text-md my-6 font-medium">
+        Contact us
+      </Button>
+      <ul className="flex flex-col gap-2">
+        <FeatureItem checked title="Unlimited team members" />
+        <FeatureItem checked title="Unlimited Jobs" />
+        <FeatureItem checked title="Unlimited Job Runs" />
+        <FeatureItem checked title="Unlimited Run duration" />
+        <FeatureItem checked title="30 day log retention" />
+        <FeatureItem checked title="Priority support" />
+        <FeatureItem checked title="Custom integrations" />
+        <FeatureItem checked title="Role-based access control" />
+        <FeatureItem checked title="SSO" />
+        <FeatureItem checked title="On-prem option" />
+      </ul>
     </TierContainer>
   );
 }
@@ -45,7 +98,7 @@ function TierContainer({
   return (
     <div
       className={cn(
-        "flex min-w-[16rem] flex-col rounded-md border p-6",
+        "flex w-full min-w-[16rem] flex-col rounded-md border p-6",
         isHighlighted ? "border-indigo-500" : "border-border"
       )}
     >
@@ -54,10 +107,20 @@ function TierContainer({
   );
 }
 
-function Header({ title, flatCost }: { title: string; flatCost?: number }) {
+function Header({
+  title,
+  flatCost,
+  isHighlighted,
+}: {
+  title: string;
+  flatCost?: number;
+  isHighlighted?: boolean;
+}) {
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="text-xl font-medium text-dimmed">{title}</h2>
+      <h2 className={cn("text-xl font-medium", isHighlighted ? "text-indigo-500" : "text-dimmed")}>
+        {title}
+      </h2>
       {flatCost === 0 || flatCost ? (
         <h3 className="text-4xl font-medium">
           ${flatCost}
@@ -74,7 +137,6 @@ function TierLimit({ description, pricedMetric }: { description: string; pricedM
   return (
     <div>
       {pricedMetric ? <PricingSlider /> : <hr className="my-[1.6rem]" />}
-
       <Paragraph variant="small/bright" className="">
         {description}
       </Paragraph>
@@ -82,7 +144,7 @@ function TierLimit({ description, pricedMetric }: { description: string; pricedM
   );
 }
 
-export function PricingSlider() {
+function PricingSlider() {
   return (
     <form>
       <Slider.Root
@@ -101,5 +163,20 @@ export function PricingSlider() {
         />
       </Slider.Root>
     </form>
+  );
+}
+
+function FeatureItem({ checked, title }: { checked?: boolean; title: string }) {
+  return (
+    <li className="flex items-center gap-2">
+      {checked ? (
+        <CheckIcon className="h-5 w-5 text-green-500" />
+      ) : (
+        <XMarkIcon className="h-5 w-5 text-slate-500" />
+      )}
+      <Paragraph variant="small" className={cn(checked ? "text-bright" : "text-dimmed")}>
+        {title}
+      </Paragraph>
+    </li>
   );
 }
