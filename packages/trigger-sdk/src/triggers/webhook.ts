@@ -273,6 +273,10 @@ export class WebhookTrigger<
     return this.options.event;
   }
 
+  get key() {
+    return slugifyId(this.options.source.key(this.options.params));
+  }
+
   toJSON(): TriggerMetadata {
     return {
       type: "static",
@@ -286,6 +290,7 @@ export class WebhookTrigger<
         source: this.event.source,
       },
       properties: this.options.source.properties(this.options.params),
+      link: `http-endpoints/${this.key}`,
     };
   }
 
@@ -303,17 +308,15 @@ export class WebhookTrigger<
   }
 
   attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpecification>, any>) {
-    const key = slugifyId(this.options.source.key(this.options.params));
-
     triggerClient.defineHttpEndpoint({
-      id: key,
+      id: this.key,
       source: "trigger.dev",
       icon: this.event.icon,
       verify: async () => ({ success: true }),
     });
 
     triggerClient.attachWebhook({
-      key,
+      key: this.key,
       source: this.options.source,
       event: this.options.event,
       params: this.options.params,
