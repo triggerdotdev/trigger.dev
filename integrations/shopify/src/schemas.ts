@@ -231,10 +231,9 @@ export const WebhookTopicSchema = z.enum([
 export type WebhookTopic = z.infer<typeof WebhookTopicSchema>;
 
 export const WebhookHeaderSchema = z.object({
-  "x-shopify-topic": WebhookTopicSchema,
-  "x-shopify-product-id": z.coerce.number(),
+  "x-shopify-topic": WebhookTopicSchema.or(z.string()),
   "x-shopify-webhook-id": z.string(),
-  "x-shopify-api-version": ApiVersionSchema,
+  "x-shopify-api-version": ApiVersionSchema.or(z.string()),
   "x-shopify-hmac-sha256": z.string(),
   "x-shopify-shop-domain": z.string(),
   "x-shopify-triggered-at": z.coerce.date(),
