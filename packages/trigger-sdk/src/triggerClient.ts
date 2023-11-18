@@ -837,7 +837,7 @@ export class TriggerClient {
         integration: source.integration,
       },
       run: async (request, io, ctx) => {
-        console.log("[webhook.deliver]");
+        this.#internalLogger.debug("[webhook.deliver]");
 
         const webhookContextMetadata = WebhookContextMetadataSchema.parse(ctx.source?.metadata);
 
@@ -888,15 +888,12 @@ export class TriggerClient {
       run: async (registerPayload, io, ctx) => {
         return await io.try(
           async () => {
-            console.log("[webhook.register]");
+            this.#internalLogger.debug("[webhook.register] Start");
 
             const { config, ...payloadWithoutConfig } = registerPayload;
 
-            // TODO: may want to use read operation to ensure the webhook actually exists
-            // await source.crud.read(crudOptions)
-
             if (!registerPayload.active) {
-              console.log("Not active, run create");
+              this.#internalLogger.debug("[webhook.register] Not active, run create");
 
               const createOptions = {
                 io,
@@ -914,7 +911,11 @@ export class TriggerClient {
                   await source.crud.create(createOptions);
                 },
                 async (error) => {
-                  console.log("Error during create, re-trying with delete first", error);
+                  this.#internalLogger.debug(
+                    "[webhook.register] Error during create, re-trying with delete first",
+                    { error }
+                  );
+
                   await io.runTask("create-retry", async () => {
                     await source.crud.delete(createOptions);
                     await source.crud.create(createOptions);
@@ -940,12 +941,14 @@ export class TriggerClient {
               },
             };
 
-            console.log("Should update, run update");
+            this.#internalLogger.debug("[webhook.register] Already active, run update");
 
             if (source.crud.update) {
               await source.crud.update(updateOptions);
             } else {
-              console.log("No update function, running delete and create instead");
+              this.#internalLogger.debug(
+                "[webhook.register] Run delete and create instead of update"
+              );
 
               await source.crud.delete(updateOptions);
               await source.crud.create(updateOptions);
@@ -958,7 +961,7 @@ export class TriggerClient {
             });
           },
           async (error) => {
-            console.log("Error while registering webhook", error);
+            this.#internalLogger.debug("[webhook.register] Error", { error });
 
             await io.updateWebhook("update-webhook-error", {
               key: options.key,
