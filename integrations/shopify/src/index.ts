@@ -12,11 +12,14 @@ import {
 
 import {
   ApiVersion,
+  HttpRetriableError,
+  HttpThrottlingError,
   LATEST_API_VERSION,
   LogSeverity,
   Session,
   shopifyApi,
 } from "@shopify/shopify-api";
+
 // this has to be updated manually with each LATEST_API_VERSION bump
 import { restResources, type RestResources } from "@shopify/shopify-api/rest/admin/2023-10";
 import "@shopify/shopify-api/adapters/node";
@@ -199,46 +202,35 @@ export class Shopify implements TriggerIntegration {
   }
 }
 
-function isShopifyApiError(error: unknown): error is ShopifyApiError {
-  if (typeof error !== "object" || error === null) {
-    return false;
-  }
-
-  const apiError = error as ShopifyApiError;
-
-  return apiError.name === "ShopifyApiError" && apiError.response instanceof Response;
-}
-
-function shouldRetry(method: string, status: number) {
-  return status === 429 || (method === "GET" && status >= 500);
-}
-
 export function onError(error: unknown): ReturnType<RunTaskErrorCallback> {
-  // TODO: handle InvalidShopError etc
+  if (!(error instanceof ShopifyError)) {
+    return;
+  }
 
-  if (!isShopifyApiError(error)) {
+  if (!(error instanceof HttpRetriableError)) {
     return {
       skipRetrying: true,
     };
   }
 
-  if (!shouldRetry(error.request.method, error.response.status)) {
-    return {
-      skipRetrying: true,
-    };
+  if (!(error instanceof HttpThrottlingError)) {
+    return;
   }
 
-  const rateLimitRemaining = error.response.headers.get("ratelimit-remaining");
-  const rateLimitReset = error.response.headers.get("ratelimit-reset");
+  const retryAfter = error.response.retryAfter;
 
-  if (rateLimitRemaining === "0" && rateLimitReset) {
-    const resetDate = new Date(Number(rateLimitReset) * 1000);
+  if (retryAfter) {
+    const retryAfterMs = Number(retryAfter) * 1000;
 
-    if (!Number.isNaN(resetDate.getTime())) {
-      return {
-        retryAt: resetDate,
-        error,
-      };
+    if (Number.isNaN(retryAfterMs)) {
+      return;
     }
+
+    const resetDate = new Date(Date.now() + retryAfterMs);
+
+    return {
+      retryAt: resetDate,
+      error,
+    };
   }
 }
