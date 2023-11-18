@@ -1,5 +1,6 @@
 import { AsyncMap } from "@trigger.dev/core";
 import { KeyValueStoreResponseBody } from "@trigger.dev/core";
+import { Json } from "../io";
 
 type QueryKeyValueStoreFunction = (
   action: "GET" | "SET" | "DELETE",
@@ -32,7 +33,7 @@ export class KeyValueStoreClient implements AsyncMap {
     return parts.join(":");
   }
 
-  async get(key: string) {
+  async get<T extends Json<T>>(key: string): Promise<T> {
     const result = await this.queryStore("GET", {
       key: this.#namespacedKey(key),
     });
@@ -44,7 +45,7 @@ export class KeyValueStoreClient implements AsyncMap {
     return result.value;
   }
 
-  async set(key: string, value: any) {
+  async set<T extends Json<T>>(key: string, value: T): Promise<T> {
     const result = await this.queryStore("SET", {
       key: this.#namespacedKey(key),
       value,

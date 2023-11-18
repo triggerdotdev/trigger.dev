@@ -121,7 +121,7 @@ export function createWebhookEventSource(integration: Shopify): WebhookSource<Sh
         await io.store.job.set("set-id", "webhook-id", webhook.id);
       },
       delete: async ({ io, ctx }) => {
-        const webhookId = await io.store.job.get("get-webhook-id", "webhook-id");
+        const webhookId = await io.store.job.get<number>("get-webhook-id", "webhook-id");
 
         await io.integration.rest.Webhook.delete("delete-webhook", {
           id: webhookId,
@@ -130,7 +130,7 @@ export function createWebhookEventSource(integration: Shopify): WebhookSource<Sh
         await io.store.job.delete("delete-webhook-id", "webhook-id");
       },
       update: async ({ io, ctx }) => {
-        const webhookId = await io.store.job.get("get-webhook-id", "webhook-id");
+        const webhookId = await io.store.job.get<number>("get-webhook-id", "webhook-id");
 
         await io.integration.rest.Webhook.save("update-webhook", {
           fromData: {

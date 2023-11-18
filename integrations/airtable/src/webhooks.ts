@@ -314,7 +314,7 @@ export function createWebhookSource(
         await io.store.job.set("set-webhook-id", "webhook-id", existingWebhook.id);
       },
       delete: async ({ io, ctx }) => {
-        const webhookId = await io.store.job.get("get-webhook-id", "webhook-id");
+        const webhookId = await io.store.job.get<string>("get-webhook-id", "webhook-id");
 
         await io.integration.webhooks().delete("delete-webhook", {
           baseId: ctx.params?.baseId,
@@ -338,9 +338,9 @@ export function createWebhookSource(
 
       const webhookPayload = ReceivedPayload.parse(await request.json());
 
-      const webhookId = await io.store.job.get("get-webhook-id", "webhook-id");
+      const webhookId = await io.store.job.get<string>("get-webhook-id", "webhook-id");
 
-      const cursor = await io.store.job.get("get-cursor", `cursor-${webhookId}`);
+      const cursor = await io.store.job.get<number>("get-cursor", `cursor-${webhookId}`);
 
       // TODO: maybe wrap every getPayload() call in a subtask
       const response = await io.integration.runTask("get-all-payloads", async (client) => {

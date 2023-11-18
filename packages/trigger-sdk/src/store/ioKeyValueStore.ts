@@ -1,5 +1,5 @@
 import { ApiClient } from "../apiClient";
-import { IO } from "../io";
+import { IO, Json } from "../io";
 
 export class IOKeyValueStore {
   constructor(
@@ -46,7 +46,7 @@ export class IOKeyValueStore {
     ];
   }
 
-  async get(cacheKey: string | any[], key: string) {
+  async get<T extends Json<T> = any>(cacheKey: string | any[], key: string): Promise<T> {
     return await this.io.runTask(
       cacheKey,
       async (task) => {
@@ -62,7 +62,7 @@ export class IOKeyValueStore {
     );
   }
 
-  async set(cacheKey: string | any[], key: string, value: any) {
+  async set<T extends Json<T>>(cacheKey: string | any[], key: string, value: T): Promise<T> {
     return await this.io.runTask(
       cacheKey,
       async (task) => {
