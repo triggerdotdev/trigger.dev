@@ -243,7 +243,7 @@ export class Resource<
           ...(params.fromData.id ? basicProperties({ id: params.fromData.id }) : []),
           {
             label: "Action",
-            text: params.fromData.id ? "Create" : "Update",
+            text: params.fromData.id ? "Update" : "Create",
           },
         ],
       }
