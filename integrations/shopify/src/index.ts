@@ -82,7 +82,7 @@ export class Shopify implements TriggerIntegration {
     return this._options.apiSecretKey;
   }
 
-  get source() {
+  get #source() {
     return createWebhookEventSource(this);
   }
 
@@ -176,13 +176,13 @@ export class Shopify implements TriggerIntegration {
   on<TTopic extends WebhookTopic>(topic: TTopic, params?: Omit<TriggerParams, "topic">) {
     const { eventSpec, params: catalogParams } = triggerCatalog[topic];
 
-    return createTrigger(this.source, eventSpec, {
+    return createTrigger(this.#source, eventSpec, {
       ...params,
       ...catalogParams,
     });
   }
 
-  get webhooks() {
+  get #webhooks() {
     return new Webhooks(this.runTask.bind(this));
   }
 

@@ -3,8 +3,6 @@ import { z } from "zod";
 import * as events from "./events";
 import { Shopify, ShopifyRunTask } from "./index";
 import {
-  DeletedPayload,
-  DeletedPayloadSchema,
   WebhookHeaderSchema,
   WebhookSubscription,
   WebhookSubscriptionDataSchema,
@@ -12,8 +10,6 @@ import {
   WebhookTopicSchema,
 } from "./schemas";
 import { WebhookSource, WebhookTrigger } from "@trigger.dev/sdk/triggers/webhook";
-import { serializeShopifyResource } from "./utils";
-import { SerializedShopifyResource, ShopifyResource } from "./types";
 
 export class Webhooks {
   constructor(private runTask: ShopifyRunTask) {}
@@ -21,41 +17,6 @@ export class Webhooks {
   #apiUrl(client: NonNullable<Shopify["_client"]>) {
     const { apiVersion, hostName } = client.config;
     return new URL(`/admin/api/${apiVersion}/`, `https://${hostName}`);
-  }
-
-  create(
-    key: IntegrationTaskKey,
-    params: {
-      topic: WebhookTopic;
-      address: string;
-      fields?: string[];
-    }
-  ): Promise<SerializedShopifyResource<ShopifyResource<"Webhook">>> {
-    return this.runTask(
-      key,
-      async (client, task, io, session) => {
-        const webhook = new client.rest.Webhook({ session });
-
-        webhook.topic = params.topic;
-        webhook.address = params.address;
-        webhook.format = "json";
-        webhook.fields = params.fields ?? null;
-
-        await webhook.save({
-          update: true,
-        });
-
-        return serializeShopifyResource(webhook);
-      },
-      {
-        name: "Create Webhook",
-        params,
-        properties: [
-          { label: "Webhook URL", text: params.address },
-          { label: "Topic", text: params.topic },
-        ],
-      }
-    );
   }
 
   // just here as an example if we ever want better platform support
@@ -108,60 +69,6 @@ export class Webhooks {
       }
     );
   }
-
-  delete(key: IntegrationTaskKey, params: { id: number }): Promise<DeletedPayload> {
-    return this.runTask(
-      key,
-      async (client, task, io, session) => {
-        const deleteResult = await client.rest.Webhook.delete({ session, id: params.id });
-
-        return DeletedPayloadSchema.parse(deleteResult);
-      },
-      {
-        name: "Delete Webhook",
-        params,
-        properties: [{ label: "Webhook ID", text: String(params.id) }],
-      }
-    );
-  }
-
-  update(
-    key: IntegrationTaskKey,
-    params: {
-      id: number;
-      topic: WebhookTopic;
-      address: string;
-      fields?: string[];
-    }
-  ): Promise<SerializedShopifyResource<ShopifyResource<"Webhook">>> {
-    return this.runTask(
-      key,
-      async (client, task, io, session) => {
-        const webhook = new client.rest.Webhook({ session });
-
-        webhook.id = params.id;
-        webhook.topic = params.topic;
-        webhook.address = params.address;
-        webhook.format = "json";
-        webhook.fields = params.fields ?? null;
-
-        await webhook.save({
-          update: true,
-        });
-
-        return serializeShopifyResource(webhook);
-      },
-      {
-        name: "Update Webhook",
-        params,
-        properties: [
-          { label: "Webhook ID", text: String(params.id) },
-          { label: "Webhook URL", text: params.address },
-          { label: "Topic", text: params.topic },
-        ],
-      }
-    );
-  }
 }
 
 type ShopifyEvents = (typeof events)[keyof typeof events];
@@ -203,10 +110,12 @@ export function createWebhookEventSource(integration: Shopify): WebhookSource<Sh
     key: (params) => params.topic,
     crud: {
       create: async ({ io, ctx }) => {
-        const webhook = await io.integration.webhooks.create("create-webhook", {
-          address: ctx.url,
-          topic: ctx.params.topic,
-          fields: ctx.config.desired.fields,
+        const webhook = await io.integration.rest.Webhook.save("create-webhook", {
+          fromData: {
+            address: ctx.url,
+            topic: ctx.params.topic,
+            fields: ctx.config.desired.fields,
+          },
         });
 
         await io.store.job.set("set-id", "webhook-id", webhook.id);
@@ -214,7 +123,7 @@ export function createWebhookEventSource(integration: Shopify): WebhookSource<Sh
       delete: async ({ io, ctx }) => {
         const webhookId = await io.store.job.get("get-webhook-id", "webhook-id");
 
-        await io.integration.webhooks.delete("delete-webhook", {
+        await io.integration.rest.Webhook.delete("delete-webhook", {
           id: webhookId,
         });
 
@@ -223,11 +132,13 @@ export function createWebhookEventSource(integration: Shopify): WebhookSource<Sh
       update: async ({ io, ctx }) => {
         const webhookId = await io.store.job.get("get-webhook-id", "webhook-id");
 
-        await io.integration.webhooks.update("update-webhook", {
-          id: webhookId,
-          address: ctx.url,
-          topic: ctx.params.topic,
-          fields: ctx.config.desired.fields,
+        await io.integration.rest.Webhook.save("update-webhook", {
+          fromData: {
+            id: webhookId,
+            address: ctx.url,
+            topic: ctx.params.topic,
+            fields: ctx.config.desired.fields,
+          },
         });
       },
     },
