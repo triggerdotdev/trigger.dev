@@ -218,7 +218,7 @@ export class Resource<
     );
   }
 
-  async save<TUpdate extends boolean, TFromData extends ShopifyInputType[TResourceType]>(
+  async save<TFromData extends ShopifyInputType[TResourceType], TUpdate extends boolean = true>(
     key: string,
     params: {
       update?: TUpdate;
