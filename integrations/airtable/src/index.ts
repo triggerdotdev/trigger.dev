@@ -121,25 +121,17 @@ export class Airtable implements TriggerIntegration {
   }
 
   //todo these require batch support because they send too many events
-  onTableChanges(params: {
-    baseId: string;
-    tableId?: string;
-    changeTypes?: WebhookChangeType[];
-    dataTypes?: WebhookDataType[];
-  }) {
-    // TODO: merge config here, provide default of
-    // {
-    //   "changeTypes": [
-    //     "add",
-    //     "remove",
-    //     "update"
-    //   ]
-    // }
-    return createWebhookTrigger(this.source, events.onTableChanged, params, {
-      changeTypes: params.changeTypes,
-      dataTypes: ["tableData", "tableFields", "tableMetadata"],
-    });
-  }
+  // onTableChanges(params: {
+  //   baseId: string;
+  //   tableId?: string;
+  //   changeTypes?: WebhookChangeType[];
+  //   dataTypes?: WebhookDataType[];
+  // }) {
+  //   return createWebhookTrigger(this.source, events.onTableChanged, params, {
+  //     changeTypes: params.changeTypes ?? ["add", "remove", "update"],
+  //     dataTypes: ["tableData", "tableFields", "tableMetadata"],
+  //   });
+  // }
 
   webhooks() {
     return new Webhooks(this.runTask.bind(this));
