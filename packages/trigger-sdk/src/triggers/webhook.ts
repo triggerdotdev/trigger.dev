@@ -12,7 +12,6 @@ import { IO } from "../io";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
 import type {
-  ConfigDiff,
   EventSpecification,
   SchemaParser,
   Trigger,
@@ -38,11 +37,7 @@ type WebhookCRUDContext = {
 type WebhookCRUDFunction<TIntegration extends TriggerIntegration> = (options: {
   io: IOWithIntegrations<{ integration: TIntegration }>;
   // TODO: doesn't like RegisterWebhookPayload type for some reason
-  ctx: WebhookCRUDContext & {
-    config: {
-      diff: ConfigDiff;
-    };
-  };
+  ctx: WebhookCRUDContext;
 }) => Promise<any>;
 
 interface WebhookCRUD<TIntegration extends TriggerIntegration> {

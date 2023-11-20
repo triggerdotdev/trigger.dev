@@ -1,4 +1,3 @@
-import { diff } from "ohash";
 import {
   API_VERSIONS,
   ConnectionAuth,
@@ -890,25 +889,14 @@ export class TriggerClient {
           async () => {
             this.#internalLogger.debug("[webhook.register] Start");
 
-            const { config, ...payloadWithoutConfig } = registerPayload;
+            const crudOptions = { io, ctx: registerPayload };
 
             if (!registerPayload.active) {
               this.#internalLogger.debug("[webhook.register] Not active, run create");
 
-              const createOptions = {
-                io,
-                ctx: {
-                  ...payloadWithoutConfig,
-                  config: {
-                    ...config,
-                    diff: [],
-                  },
-                },
-              };
-
               await io.try(
                 async () => {
-                  await source.crud.create(createOptions);
+                  await source.crud.create(crudOptions);
                 },
                 async (error) => {
                   this.#internalLogger.debug(
@@ -917,8 +905,8 @@ export class TriggerClient {
                   );
 
                   await io.runTask("create-retry", async () => {
-                    await source.crud.delete(createOptions);
-                    await source.crud.create(createOptions);
+                    await source.crud.delete(crudOptions);
+                    await source.crud.create(crudOptions);
                   });
                 }
               );
@@ -926,38 +914,27 @@ export class TriggerClient {
               return await io.updateWebhook("update-webhook-success", {
                 key: options.key,
                 active: true,
-                config: config.desired,
+                config: registerPayload.config.desired,
               });
             }
-
-            const updateOptions = {
-              io,
-              ctx: {
-                ...payloadWithoutConfig,
-                config: {
-                  ...config,
-                  diff: diff(config.current, config.desired),
-                },
-              },
-            };
 
             this.#internalLogger.debug("[webhook.register] Already active, run update");
 
             if (source.crud.update) {
-              await source.crud.update(updateOptions);
+              await source.crud.update(crudOptions);
             } else {
               this.#internalLogger.debug(
                 "[webhook.register] Run delete and create instead of update"
               );
 
-              await source.crud.delete(updateOptions);
-              await source.crud.create(updateOptions);
+              await source.crud.delete(crudOptions);
+              await source.crud.create(crudOptions);
             }
 
             return await io.updateWebhook("update-webhook-success", {
               key: options.key,
               active: true,
-              config: config.desired,
+              config: registerPayload.config.desired,
             });
           },
           async (error) => {
