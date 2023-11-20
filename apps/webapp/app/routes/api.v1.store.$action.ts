@@ -53,27 +53,21 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const store = new KeyValueStore(authenticatedEnv);
 
-  const { action } = body.data;
+  const { action, key } = body.data;
 
   try {
     switch (action) {
       case "GET": {
-        const { key } = body.data;
-
         const value = await store.get(key);
 
         return json({ action, key, value });
       }
       case "SET": {
-        const { key, value } = body.data;
-
-        const setValue = await store.set(key, value);
+        const setValue = await store.set(key, body.data.value);
 
         return json({ action, key, value: setValue });
       }
       case "DELETE": {
-        const { key } = body.data;
-
         const deleted = await store.delete(key);
 
         return json({ action, key, deleted });
