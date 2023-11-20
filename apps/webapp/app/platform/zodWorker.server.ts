@@ -786,39 +786,22 @@ end
 
       // Before
       // TODO: handle errors
-      const beforeResults = await Promise.all(
-        flags.map(async (flag) => {
-          const result = await this.redis.beforeTask(
-            this.#prefixKey(flag),
-            this.#prefixKey(`${flag}:maxSize`),
-            this.#prefixKey("rl:forbiddenFlags"),
-            String(helpers.job.id),
-            flag
-          );
-
-          return result;
-        })
+      const beforeResults = await Promise.allSettled(
+        flags.map(async (flag) => this.#callBeforeTask(flag, String(helpers.job.id)))
       );
+
+      // TODO: Do something with the settled promises
 
       logger.debug("[rate-limiter] beforeTask results", { beforeResults, flags });
 
       try {
         await t(payload, helpers);
       } finally {
-        // TODO: handle errors
-        const afterResults = await Promise.all(
-          flags.map(async (flag) => {
-            const result = await this.redis.afterTask(
-              this.#prefixKey(flag),
-              this.#prefixKey(`${flag}:maxSize`),
-              this.#prefixKey("rl:forbiddenFlags"),
-              String(helpers.job.id),
-              flag
-            );
-
-            return result;
-          })
+        const afterResults = await Promise.allSettled(
+          flags.map(async (flag) => this.#callAfterTask(flag, String(helpers.job.id)))
         );
+
+        // TODO: Do something with the settled promises
 
         logger.debug("[rate-limiter] afterTask results", { afterResults, flags });
       }
@@ -827,5 +810,41 @@ end
 
   #prefixKey(key: string): string {
     return `${this.prefix}:${key}`;
+  }
+
+  async #callBeforeTask(flag: string, jobId: string) {
+    const now = performance.now();
+    const results = await this.redis.beforeTask(
+      this.#prefixKey(flag),
+      this.#prefixKey(`${flag}:maxSize`),
+      this.#prefixKey("rl:forbiddenFlags"),
+      jobId,
+      flag
+    );
+
+    const durationInMs = performance.now() - now;
+
+    return {
+      results,
+      durationInMs,
+    };
+  }
+
+  async #callAfterTask(flag: string, jobId: string) {
+    const now = performance.now();
+    const results = await this.redis.afterTask(
+      this.#prefixKey(flag),
+      this.#prefixKey(`${flag}:maxSize`),
+      this.#prefixKey("rl:forbiddenFlags"),
+      jobId,
+      flag
+    );
+
+    const durationInMs = performance.now() - now;
+
+    return {
+      results,
+      durationInMs,
+    };
   }
 }
