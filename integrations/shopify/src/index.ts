@@ -18,6 +18,7 @@ import {
   LogSeverity,
   Session,
   shopifyApi,
+  ShopifyError,
 } from "@shopify/shopify-api";
 
 // this has to be updated manually with each LATEST_API_VERSION bump
@@ -27,7 +28,6 @@ import "@shopify/shopify-api/adapters/node";
 import { ApiScope, WebhookTopic } from "./schemas";
 import { triggerCatalog } from "./triggers";
 import {
-  ShopifyApiError,
   TriggerParams,
   Webhooks,
   createTrigger,
