@@ -107,22 +107,22 @@ export class Shopify implements TriggerIntegration {
 
   createClient(auth?: ConnectionAuth) {
     // oauth
-    if (auth) {
-      return shopifyApi({
-        apiKey: this._options.apiKey,
-        apiSecretKey: auth.accessToken,
-        adminApiAccessToken: this._options.adminAccessToken,
-        apiVersion: this._options.apiVersion ?? LATEST_API_VERSION,
-        hostName: this._shopDomain,
-        scopes: auth.scopes,
-        restResources,
-        // TODO: double check this
-        isEmbeddedApp: true,
-        logger: {
-          level: LogSeverity.Warning,
-        },
-      });
-    }
+    // if (auth) {
+    //   return shopifyApi({
+    //     apiKey: this._options.apiKey,
+    //     apiSecretKey: auth.accessToken,
+    //     adminApiAccessToken: this._options.adminAccessToken,
+    //     apiVersion: this._options.apiVersion ?? LATEST_API_VERSION,
+    //     hostName: this._shopDomain,
+    //     scopes: auth.scopes,
+    //     restResources: this._options.restResources ?? restResources,
+    //     isCustomStoreApp: false,
+    //     isEmbeddedApp: true,
+    //     logger: {
+    //       level: LogSeverity.Warning,
+    //     },
+    //   });
+    // }
 
     // apiKey auth
     if (this._options.apiKey) {
