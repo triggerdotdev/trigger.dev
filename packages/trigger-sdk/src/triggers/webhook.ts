@@ -2,7 +2,6 @@ import {
   DisplayProperty,
   EventFilter,
   HandleTriggerSource,
-  RegisterWebhookPayload,
   RegisterWebhookSource,
   TriggerMetadata,
   WebhookContextMetadataSchema,
@@ -23,6 +22,7 @@ import type {
 import { slugifyId } from "../utils";
 import { SerializableJson } from "@trigger.dev/core";
 import { Prettify } from "@trigger.dev/core";
+import { createHash } from "node:crypto";
 
 type WebhookCRUDContext = {
   active: boolean;
@@ -219,13 +219,18 @@ export class WebhookSource<
     return { success: true as const };
   }
 
+  #shortHash(str: string) {
+    const hash = createHash("sha1").update(str).digest("hex");
+    return hash.slice(0, 7);
+  }
+
   key(params: TParams): string {
-    const parts = [this.options.id, "webhook"];
+    const parts = ["webhook"];
 
     parts.push(this.options.key(params));
     parts.push(this.integration.id);
 
-    return parts.join("-");
+    return `${this.options.id}-${this.#shortHash(parts.join(""))}`;
   }
 
   get integration() {
