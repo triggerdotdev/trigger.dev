@@ -13,7 +13,7 @@ export const client = new TriggerClient({
 const shopify = new Shopify({
   id: "shopify",
   adminAccessToken: process.env["SHOPIFY_ADMIN_ACCESS_TOKEN"]!,
-  apiKey: process.env["SHOPIFY_API_KEY"],
+  apiKey: process.env["SHOPIFY_API_KEY"]!,
   apiSecretKey: process.env["SHOPIFY_API_SECRET_KEY"]!,
   hostName: process.env["SHOPIFY_SHOP_DOMAIN"]!,
 });

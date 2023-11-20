@@ -40,11 +40,12 @@ export type ShopifyRestResources = OmitIndexSignature<RestResources>;
 
 export type ShopifyIntegrationOptions = {
   id: string;
-  apiKey?: string;
+  apiKey: string;
   apiSecretKey: string;
   apiVersion?: ApiVersion;
   adminAccessToken: string;
   hostName: string;
+  restResources?: RestResources;
   scopes?: ApiScope[];
   session?: Session;
 };
@@ -79,10 +80,6 @@ export class Shopify implements TriggerIntegration {
 
   get metadata() {
     return { id: "shopify", name: "Shopify" };
-  }
-
-  get clientSecret() {
-    return this._options.apiSecretKey;
   }
 
   get #source() {
@@ -128,12 +125,12 @@ export class Shopify implements TriggerIntegration {
     if (this._options.apiKey) {
       return shopifyApi({
         apiKey: this._options.apiKey,
-        apiSecretKey: this._options.apiKey,
+        apiSecretKey: this._options.apiSecretKey,
         adminApiAccessToken: this._options.adminAccessToken,
         apiVersion: this._options.apiVersion ?? LATEST_API_VERSION,
         hostName: this._shopDomain,
-        restResources,
-        // TODO: double check this
+        scopes: this._options.scopes,
+        restResources: this._options.restResources ?? restResources,
         isCustomStoreApp: true,
         isEmbeddedApp: false,
         logger: {

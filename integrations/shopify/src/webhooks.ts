@@ -143,11 +143,16 @@ export function createWebhookEventSource(integration: Shopify): WebhookSource<Sh
       },
     },
     verify: async ({ request, io, ctx }) => {
+      const clientSecret = await io.integration.runTask(
+        "get-client-secret",
+        async (client) => client.config.apiSecretKey
+      );
+
       return await verifyRequestSignature({
         request,
         headerName: "x-shopify-hmac-sha256",
         headerEncoding: "base64",
-        secret: io.integration.clientSecret,
+        secret: clientSecret,
         algorithm: "sha256",
       });
     },
