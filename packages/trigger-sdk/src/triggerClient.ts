@@ -793,12 +793,16 @@ export class TriggerClient {
     this.#registeredSchedules[key] = jobs;
   }
 
-  attachWebhook(options: {
+  attachWebhook<
+    TIntegration extends TriggerIntegration,
+    TParams extends any,
+    TConfig extends Record<string, string[]>,
+  >(options: {
     key: string;
-    source: WebhookSource<any, any>;
+    source: WebhookSource<TIntegration, TParams, TConfig>;
     event: EventSpecification<any>;
     params: any;
-    config: Record<string, string[]>;
+    config: TConfig;
   }): void {
     const { source } = options;
 
@@ -889,7 +893,11 @@ export class TriggerClient {
           async () => {
             this.#internalLogger.debug("[webhook.register] Start");
 
-            const crudOptions = { io, ctx: registerPayload };
+            const crudOptions = {
+              io,
+              // this is just a more strongly typed payload
+              ctx: registerPayload as Parameters<(typeof source)["crud"]["create"]>[0]["ctx"],
+            };
 
             if (!registerPayload.active) {
               this.#internalLogger.debug("[webhook.register] Not active, run create");
