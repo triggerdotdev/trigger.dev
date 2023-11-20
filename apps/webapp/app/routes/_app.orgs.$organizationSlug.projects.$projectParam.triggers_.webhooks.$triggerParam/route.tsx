@@ -75,12 +75,13 @@ export default function Page() {
               icon={trigger.integration.definition.icon ?? trigger.integration.definitionId}
               label={trigger.integration.title ?? ""}
               value={trigger.integration.slug}
+              to={trigger.integrationLink}
             />
             <PageInfoProperty
-              label={trigger.active ? "Active" : "Inactive"}
-              value={
-                <NamedIcon name={trigger.active ? "active" : "inactive"} className="h-4 w-4" />
-              }
+              icon="webhook"
+              label="HTTP Endpoint"
+              value={trigger.httpEndpoint.key}
+              to={trigger.httpEndpointLink}
             />
           </PageInfoGroup>
         </PageInfoRow>
