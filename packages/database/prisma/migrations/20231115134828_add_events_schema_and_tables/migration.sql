@@ -1,5 +1,7 @@
 CREATE SCHEMA IF NOT EXISTS triggerdotdev_events;
 
+DROP TABLE IF EXISTS triggerdotdev_events.run_executions;
+
 CREATE TABLE triggerdotdev_events.run_executions (
   id SERIAL PRIMARY KEY,
   organization_id TEXT NOT NULL,
