@@ -23,29 +23,27 @@ import { SerializableJson } from "@trigger.dev/core";
 import { Prettify } from "@trigger.dev/core";
 import { createHash } from "node:crypto";
 
-type WebhookCRUDContext = {
+type WebhookCRUDContext<TParams extends any, TConfig extends Record<string, string[]>> = {
   active: boolean;
-  params?: any;
+  params: TParams;
   config: {
-    current: Record<string, string[]>;
-    desired: Record<string, string[]>;
+    current: Partial<TConfig>;
+    desired: TConfig;
   };
   url: string;
   secret: string;
 };
 
-type WebhookCRUDFunction<TIntegration extends TriggerIntegration> = (options: {
+type WebhookCRUDFunction<TIntegration extends TriggerIntegration, TParams extends any, TConfig extends Record<string, string[]>> = (options: {
   io: IOWithIntegrations<{ integration: TIntegration }>;
-  // TODO: doesn't like RegisterWebhookPayload type for some reason
-  ctx: WebhookCRUDContext;
+  ctx: WebhookCRUDContext<TParams, TConfig>;
 }) => Promise<any>;
 
-interface WebhookCRUD<TIntegration extends TriggerIntegration> {
-  create: WebhookCRUDFunction<TIntegration>;
-  // currently unused
-  read?: WebhookCRUDFunction<TIntegration>;
-  update?: WebhookCRUDFunction<TIntegration>;
-  delete: WebhookCRUDFunction<TIntegration>;
+interface WebhookCRUD<TIntegration extends TriggerIntegration, TParams extends any, TConfig extends Record<string, string[]>> {
+  create: WebhookCRUDFunction<TIntegration, TParams, TConfig>;
+  read?: WebhookCRUDFunction<TIntegration, TParams, TConfig>; // currently unused
+  update?: WebhookCRUDFunction<TIntegration, TParams, TConfig>;
+  delete: WebhookCRUDFunction<TIntegration, TParams, TConfig>;
 }
 
 export type WebhookConfig<TConfigKeys extends string> = {
@@ -128,7 +126,7 @@ type WebhookOptions<
     payload?: SchemaParser<TConfig>;
   };
   key: KeyFunction<TParams>;
-  crud: WebhookCRUD<TIntegration>;
+  crud: WebhookCRUD<TIntegration, TParams, TConfig>;
   filter?: FilterFunction<TParams, TConfig>;
   register?: RegisterFunction<TIntegration, TParams, TConfig>;
   verify?: (options: {
