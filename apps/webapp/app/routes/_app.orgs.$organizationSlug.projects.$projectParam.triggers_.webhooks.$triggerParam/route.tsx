@@ -1,7 +1,6 @@
 import { Outlet } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
@@ -82,10 +81,6 @@ export default function Page() {
               value={
                 <NamedIcon name={trigger.active ? "active" : "inactive"} className="h-4 w-4" />
               }
-            />
-            <PageInfoProperty
-              label="Environment"
-              value={<EnvironmentLabel environment={trigger.environment} />}
             />
           </PageInfoGroup>
         </PageInfoRow>

@@ -47,11 +47,6 @@ export class WebhookSourcePresenter {
             },
           },
         },
-        environment: {
-          select: {
-            type: true,
-          },
-        },
         createdAt: true,
         updatedAt: true,
         params: true,
@@ -82,7 +77,6 @@ export class WebhookSourcePresenter {
         id: webhook.id,
         active: webhook.active,
         integration: webhook.integration,
-        environment: webhook.environment,
         createdAt: webhook.createdAt,
         updatedAt: webhook.updatedAt,
         params: webhook.params,

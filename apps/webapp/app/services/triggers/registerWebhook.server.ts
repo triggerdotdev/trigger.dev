@@ -2,7 +2,7 @@ import { REGISTER_WEBHOOK, WebhookMetadata } from "@trigger.dev/core";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
-import { Prisma } from "@trigger.dev/database";
+import { Prisma, WebhookEnvironment } from "@trigger.dev/database";
 import { ulid } from "../ulid.server";
 import { getSecretStore } from "../secrets/secretStore.server";
 import { z } from "zod";
@@ -35,17 +35,20 @@ export class RegisterWebhookService {
         ? await findEndpoint(endpointIdOrEndpoint)
         : endpointIdOrEndpoint;
 
-    const webhook = await this.#upsertWebhook(endpoint, webhookMetadata);
+    const upsertResult = await this.#upsertWebhook(endpoint, webhookMetadata);
 
-    if (!webhook) {
+    if (!upsertResult) {
       return;
     }
 
-    if (webhook.active && isEqual(webhook.config, webhook.desiredConfig)) {
+    const { webhook, webhookEnvironment } = upsertResult;
+    const { config, desiredConfig } = webhookEnvironment;
+
+    if (webhook.active && isEqual(config, desiredConfig)) {
       return;
     }
 
-    return await this.#activateWebhook(endpoint, webhook);
+    return await this.#activateWebhook(endpoint, webhook, webhookEnvironment);
   }
 
   async #upsertWebhook(endpoint: ExtendedEndpoint, webhookMetadata: WebhookMetadata) {
@@ -60,18 +63,12 @@ export class RegisterWebhookService {
         create: {
           key: webhookMetadata.key,
           params: webhookMetadata.params,
-          desiredConfig: webhookMetadata.config,
           httpEndpoint: {
             connect: {
               key_projectId: {
                 key: webhookMetadata.httpEndpoint.id,
                 projectId: endpoint.projectId,
               },
-            },
-          },
-          environment: {
-            connect: {
-              id: endpoint.environmentId,
             },
           },
           project: {
@@ -91,7 +88,6 @@ export class RegisterWebhookService {
         update: {
           key: webhookMetadata.key,
           params: webhookMetadata.params,
-          desiredConfig: webhookMetadata.config,
         },
         include: {
           httpEndpoint: {
@@ -102,11 +98,40 @@ export class RegisterWebhookService {
         },
       });
 
-      return webhook;
+      const webhookEnvironment = await tx.webhookEnvironment.upsert({
+        where: {
+          environmentId_webhookId: {
+            environmentId: endpoint.environmentId,
+            webhookId: webhook.id,
+          },
+        },
+        create: {
+          desiredConfig: webhookMetadata.config,
+          webhook: {
+            connect: {
+              id: webhook.id,
+            },
+          },
+          environment: {
+            connect: {
+              id: endpoint.environmentId,
+            },
+          },
+        },
+        update: {
+          desiredConfig: webhookMetadata.config,
+        },
+      });
+
+      return { webhook, webhookEnvironment };
     });
   }
 
-  async #activateWebhook(endpoint: ExtendedEndpoint, webhook: ExtendedWebhook) {
+  async #activateWebhook(
+    endpoint: ExtendedEndpoint,
+    webhook: ExtendedWebhook,
+    webhookEnvironment: WebhookEnvironment
+  ) {
     const { httpEndpoint } = webhook;
 
     const secretStore = getSecretStore(httpEndpoint.secretReference.provider);
@@ -130,8 +155,8 @@ export class RegisterWebhookService {
         secret: secretData.secret,
         params: webhook.params,
         config: {
-          current: webhook.config ?? {},
-          desired: webhook.desiredConfig ?? {},
+          current: webhookEnvironment.config ?? {},
+          desired: webhookEnvironment.desiredConfig ?? {},
         },
       },
     });

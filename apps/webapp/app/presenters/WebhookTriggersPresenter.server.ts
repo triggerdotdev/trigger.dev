@@ -24,7 +24,6 @@ export class WebhookTriggersPresenter {
         key: true,
         active: true,
         params: true,
-        config: true,
         integration: {
           select: {
             id: true,
@@ -39,10 +38,15 @@ export class WebhookTriggersPresenter {
             },
           },
         },
-        environment: {
+        webhookEnvironments: {
           select: {
-            type: true,
-          },
+            id: true,
+            environment: {
+              select: {
+                type: true
+              }
+            }
+          }
         },
         createdAt: true,
         updatedAt: true,

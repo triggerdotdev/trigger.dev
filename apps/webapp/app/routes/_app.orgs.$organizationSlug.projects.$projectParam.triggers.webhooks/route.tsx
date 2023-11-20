@@ -111,9 +111,14 @@ export default function Integrations() {
                     )}
                   </TableCell>
                   <TableCell to={path}>
-                    <span className="flex">
-                      <EnvironmentLabel environment={w.environment} />
-                    </span>
+                    <div className="flex items-center justify-end gap-1">
+                      {w.webhookEnvironments.map((env) => (
+                        <EnvironmentLabel
+                          key={env.id}
+                          environment={env.environment}
+                        />
+                      ))}
+                    </div>
                   </TableCell>
                   <TableCell to={path}>
                     {w.active ? (
