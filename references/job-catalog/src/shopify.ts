@@ -56,11 +56,12 @@ client.defineJob({
     await io.shopify.rest.Product.count("count-products");
 
     const createdProduct = await io.shopify.rest.Product.save("create-product", {
-      update: true,
       fromData: {
         title: "Some Product",
       },
     });
+
+    await io.logger.info(`Created product ${createdProduct.id}: ${createdProduct.title}`)
 
     await io.shopify.rest.Product.count("count-products-again");
 
