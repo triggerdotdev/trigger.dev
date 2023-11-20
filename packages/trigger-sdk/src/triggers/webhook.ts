@@ -34,12 +34,20 @@ type WebhookCRUDContext<TParams extends any, TConfig extends Record<string, stri
   secret: string;
 };
 
-type WebhookCRUDFunction<TIntegration extends TriggerIntegration, TParams extends any, TConfig extends Record<string, string[]>> = (options: {
+type WebhookCRUDFunction<
+  TIntegration extends TriggerIntegration,
+  TParams extends any,
+  TConfig extends Record<string, string[]>,
+> = (options: {
   io: IOWithIntegrations<{ integration: TIntegration }>;
   ctx: WebhookCRUDContext<TParams, TConfig>;
 }) => Promise<any>;
 
-interface WebhookCRUD<TIntegration extends TriggerIntegration, TParams extends any, TConfig extends Record<string, string[]>> {
+interface WebhookCRUD<
+  TIntegration extends TriggerIntegration,
+  TParams extends any,
+  TConfig extends Record<string, string[]>,
+> {
   create: WebhookCRUDFunction<TIntegration, TParams, TConfig>;
   read?: WebhookCRUDFunction<TIntegration, TParams, TConfig>; // currently unused
   update?: WebhookCRUDFunction<TIntegration, TParams, TConfig>;
@@ -123,7 +131,6 @@ type WebhookOptions<
   schemas: {
     params: SchemaParser<TParams>;
     config?: SchemaParser<TConfig>;
-    payload?: SchemaParser<TConfig>;
   };
   key: KeyFunction<TParams>;
   crud: WebhookCRUD<TIntegration, TParams, TConfig>;
