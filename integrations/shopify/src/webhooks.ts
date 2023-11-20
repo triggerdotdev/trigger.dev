@@ -10,6 +10,7 @@ import {
   WebhookTopicSchema,
 } from "./schemas";
 import { WebhookSource, WebhookTrigger } from "@trigger.dev/sdk/triggers/webhook";
+import { TriggerParams } from "./types";
 
 export class Webhooks {
   constructor(private runTask: ShopifyRunTask) {}
@@ -72,11 +73,6 @@ export class Webhooks {
 }
 
 type ShopifyEvents = (typeof events)[keyof typeof events];
-
-export type TriggerParams = {
-  topic: WebhookTopic;
-  fields?: string[];
-};
 
 type CreateTriggersResult<TEventSpecification extends ShopifyEvents> = WebhookTrigger<
   TEventSpecification,

@@ -9,6 +9,7 @@ import {
   retry,
   ConnectionAuth,
 } from "@trigger.dev/sdk";
+import { OmitIndexSignature } from "@trigger.dev/integration-kit/types";
 
 import {
   ApiVersion,
@@ -27,14 +28,9 @@ import "@shopify/shopify-api/adapters/node";
 
 import { ApiScope, WebhookTopic } from "./schemas";
 import { triggerCatalog } from "./triggers";
-import {
-  TriggerParams,
-  Webhooks,
-  createTrigger,
-  createWebhookEventSource,
-} from "./webhooks";
+import { Webhooks, createTrigger, createWebhookEventSource } from "./webhooks";
 import { Rest, restProxy } from "./rest";
-import { OmitIndexSignature } from "@trigger.dev/integration-kit/types";
+import { TriggerParams } from "./types";
 
 export type ShopifyRestResources = OmitIndexSignature<RestResources>;
 

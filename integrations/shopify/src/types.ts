@@ -6,6 +6,7 @@ import {
   Prettify,
 } from "@trigger.dev/integration-kit";
 import { ShopifyRestResources } from "./index";
+import { WebhookTopic } from "./schemas";
 
 type OmitNonSerializable<T> = Omit<OmitFunctions<OmitIndexSignature<T>>, "session">;
 
@@ -59,3 +60,11 @@ type ResourceHasStandardMethods = {
 };
 
 export type ResourcesWithStandardMethods = keyof OmitValues<ResourceHasStandardMethods, false>;
+
+export type TriggerParams = {
+  topic: WebhookTopic;
+};
+
+export type TriggerConfig = {
+  fields?: string[];
+};

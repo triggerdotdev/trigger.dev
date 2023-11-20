@@ -2,9 +2,8 @@ import { z } from "zod";
 import * as events from "./events";
 import { DeletedPayload, WebhookTopic } from "./schemas";
 import { EventSpecification } from "@trigger.dev/sdk";
-import { TriggerParams } from "./webhooks";
 import { entries, fromEntries } from "@trigger.dev/integration-kit/utils";
-import { ShopifyWebhookPayload } from "./types";
+import { ShopifyWebhookPayload, TriggerParams } from "./types";
 import { eventSpec } from "./utils";
 
 const TriggerConfigSchema = z.object({
