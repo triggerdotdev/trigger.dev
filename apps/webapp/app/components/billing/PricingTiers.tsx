@@ -12,7 +12,14 @@ export function PricingTiers({
   className?: string;
 }) {
   return (
-    <div className={cn("flex w-full items-center justify-center gap-4", className)}>{children}</div>
+    <div
+      className={cn(
+        "flex w-full flex-col items-center justify-center gap-4 md:flex-row",
+        className
+      )}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -24,7 +31,7 @@ export function TierFree() {
       <Button variant="secondary/large" fullWidth className="text-md my-6 font-medium">
         Current Plan
       </Button>
-      <ul className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-2.5">
         <FeatureItem checked title="Up to 2 team members" />
         <FeatureItem checked title="Up to 10 Jobs" />
         <FeatureItem checked title="Unlimited Job Runs" />
@@ -48,7 +55,7 @@ export function TierPro() {
       <Button variant="primary/large" fullWidth className="text-md my-6 font-medium">
         Upgrade
       </Button>
-      <ul className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-2.5">
         <FeatureItem checked title="Unlimited team members" />
         <FeatureItem checked title="Unlimited Jobs" />
         <FeatureItem checked title="Unlimited Job Runs" />
@@ -72,7 +79,7 @@ export function TierEnterprise() {
       <Button variant="secondary/large" fullWidth className="text-md my-6 font-medium">
         Contact us
       </Button>
-      <ul className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-2.5">
         <FeatureItem checked title="Unlimited team members" />
         <FeatureItem checked title="Unlimited Jobs" />
         <FeatureItem checked title="Unlimited Job Runs" />
@@ -170,9 +177,9 @@ function FeatureItem({ checked, title }: { checked?: boolean; title: string }) {
   return (
     <li className="flex items-center gap-2">
       {checked ? (
-        <CheckIcon className="h-5 w-5 text-green-500" />
+        <CheckIcon className="h-4 w-4 text-green-500" />
       ) : (
-        <XMarkIcon className="h-5 w-5 text-slate-500" />
+        <XMarkIcon className="h-4 w-4 text-slate-500" />
       )}
       <Paragraph variant="small" className={cn(checked ? "text-bright" : "text-dimmed")}>
         {title}
