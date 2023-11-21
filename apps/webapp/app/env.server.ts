@@ -59,6 +59,16 @@ const EnvironmentSchema = z.object({
   AWS_SQS_QUEUE_URL: z.string().optional(),
   AWS_SQS_BATCH_SIZE: z.coerce.number().int().optional().default(10),
   DISABLE_SSE: z.string().optional(),
+
+  // Redis options
+  REDIS_HOST: z.string().optional(),
+  REDIS_READER_HOST: z.string().optional(),
+  REDIS_READER_PORT: z.coerce.number().optional(),
+  REDIS_PORT: z.coerce.number().optional(),
+  REDIS_USERNAME: z.string().optional(),
+  REDIS_PASSWORD: z.string().optional(),
+
+  DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
