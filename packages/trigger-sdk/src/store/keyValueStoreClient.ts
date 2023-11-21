@@ -4,7 +4,7 @@ import { Json } from "../io";
 
 type QueryKeyValueStoreFunction = (
   action: "GET" | "SET" | "DELETE",
-  data?: {
+  data: {
     key: string;
     value?: any;
   }
@@ -39,7 +39,7 @@ export class KeyValueStoreClient implements AsyncMap {
     });
 
     if (result.action !== "GET") {
-      throw new Error("Unexpected key-value store response.");
+      throw new Error(`Unexpected key-value store response: ${result.action}`);
     }
 
     return result.value;
@@ -52,7 +52,7 @@ export class KeyValueStoreClient implements AsyncMap {
     });
 
     if (result.action !== "SET") {
-      throw new Error("Unexpected key-value store response.");
+      throw new Error(`Unexpected key-value store response: ${result.action}`);
     }
 
     return result.value;
@@ -64,7 +64,7 @@ export class KeyValueStoreClient implements AsyncMap {
     });
 
     if (result.action !== "DELETE") {
-      throw new Error("Unexpected key-value store response.");
+      throw new Error(`Unexpected key-value store response: ${result.action}`);
     }
 
     return result.deleted;

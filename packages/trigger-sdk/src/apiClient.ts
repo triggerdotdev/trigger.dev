@@ -581,7 +581,7 @@ export class ApiClient {
 
   async #queryKeyValueStore(
     action: "GET" | "SET" | "DELETE",
-    data?: {
+    data: {
       key: string;
       value?: any;
     }
@@ -593,17 +593,45 @@ export class ApiClient {
       data,
     });
 
+    let requestInit: RequestInit | undefined;
+
+    switch (action) {
+      case "DELETE":
+        requestInit = {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+          },
+        };
+
+        break;
+      case "GET":
+        requestInit = {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+          },
+        };
+
+        break;
+      case "SET":
+        requestInit = {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify(data.value),
+        };
+
+        break;
+      default:
+        throw new Error("Unsupported key-value store action.");
+    }
+
     const response = await zodfetch(
       KeyValueStoreResponseBodySchema,
-      `${this.#apiUrl}/api/v1/store/${action}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(data),
-      }
+      `${this.#apiUrl}/api/v1/store/${data.key}`,
+      requestInit
     );
 
     return response;
