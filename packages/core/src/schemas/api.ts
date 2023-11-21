@@ -1114,19 +1114,24 @@ export type KeyValueStoreRequestBody = z.infer<typeof KeyValueStoreRequestBodySc
 
 export const KeyValueStoreResponseBodySchema = z.discriminatedUnion("action", [
   z.object({
+    action: z.literal("DELETE"),
+    key: z.string(),
+    deleted: z.boolean(),
+  }),
+  z.object({
     action: z.literal("GET"),
     key: z.string(),
-    value: z.any(),
+    value: z.string().optional(),
+  }),
+  z.object({
+    action: z.literal("HAS"),
+    key: z.string(),
+    has: z.boolean(),
   }),
   z.object({
     action: z.literal("SET"),
     key: z.string(),
-    value: z.any(),
-  }),
-  z.object({
-    action: z.literal("DELETE"),
-    key: z.string(),
-    deleted: z.boolean(),
+    value: z.string().optional(),
   }),
 ]);
 

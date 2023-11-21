@@ -1,7 +1,8 @@
-import { Prisma, RuntimeEnvironment } from "@trigger.dev/database";
+import { RuntimeEnvironment } from "@trigger.dev/database";
 import type { AsyncMap } from "@trigger.dev/core";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { logger } from "../logger.server";
 
 export class KeyValueStore implements AsyncMap {
   #prismaClient: PrismaClient;
@@ -10,49 +11,12 @@ export class KeyValueStore implements AsyncMap {
     this.#prismaClient = prismaClient;
   }
 
-  async get(key: string) {
-    const keyValueItem = await this.#prismaClient.keyValueItem.findUnique({
-      where: {
-        environmentId_key: {
-          key,
-          environmentId: this.environment.id,
-        },
-      },
-    });
-
-    if (!keyValueItem) {
-      return undefined;
-    }
-
-    return keyValueItem.value;
-  }
-
-  async set(key: string, value: any): Promise<any> {
-    const jsonValue = JSON.parse(JSON.stringify(value)) as Exclude<Prisma.JsonValue, null>;
-
-    const keyValueItem = await this.#prismaClient.keyValueItem.upsert({
-      where: {
-        environmentId_key: {
-          key,
-          environmentId: this.environment.id,
-        },
-      },
-      create: {
-        key,
-        environmentId: this.environment.id,
-        value: jsonValue,
-      },
-      update: {
-        value: jsonValue,
-      },
-    });
-
-    return keyValueItem.value;
-  }
-
-  async delete(key: string) {
+  async delete(key: string): Promise<boolean> {
     try {
       await this.#prismaClient.keyValueItem.delete({
+        select: {
+          id: true,
+        },
         where: {
           environmentId_key: {
             key,
@@ -65,5 +29,68 @@ export class KeyValueStore implements AsyncMap {
     } catch (error) {
       return false;
     }
+  }
+
+  async get(key: string): Promise<string | undefined> {
+    const keyValueItem = await this.#prismaClient.keyValueItem.findUnique({
+      select: {
+        value: true,
+      },
+      where: {
+        environmentId_key: {
+          key,
+          environmentId: this.environment.id,
+        },
+      },
+    });
+
+    if (!keyValueItem) {
+      logger.debug("KeyValueStore.get() key not found", { key, environment: this.environment.id });
+      return undefined;
+    }
+
+    return keyValueItem.value.toString();
+  }
+
+  async has(key: string): Promise<boolean> {
+    const keyValueItem = await this.#prismaClient.keyValueItem.findUnique({
+      select: {
+        id: true,
+      },
+      where: {
+        environmentId_key: {
+          key,
+          environmentId: this.environment.id,
+        },
+      },
+    });
+
+    return !!keyValueItem;
+  }
+
+  async set<TValue extends string>(key: string, value: TValue): Promise<TValue> {
+    const valueBuffer = Buffer.from(value);
+
+    await this.#prismaClient.keyValueItem.upsert({
+      select: {
+        value: true,
+      },
+      where: {
+        environmentId_key: {
+          key,
+          environmentId: this.environment.id,
+        },
+      },
+      create: {
+        key,
+        environmentId: this.environment.id,
+        value: valueBuffer,
+      },
+      update: {
+        value: valueBuffer,
+      },
+    });
+
+    return value;
   }
 }

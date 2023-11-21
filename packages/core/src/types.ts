@@ -4,7 +4,8 @@ export type Prettify<T> = {
 } & {};
 
 export interface AsyncMap {
-  get: (key: string) => Promise<any>;
-  set: (key: string, value: any) => Promise<any>;
   delete: (key: string) => Promise<boolean>;
+  get: (key: string) => Promise<any>;
+  has: (key: string) => Promise<boolean>;
+  set: (key: string, value: any) => Promise<any>;
 }

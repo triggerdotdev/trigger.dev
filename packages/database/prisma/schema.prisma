@@ -1274,7 +1274,7 @@ model KeyValueItem {
   id String @id @default(cuid())
 
   key   String
-  value Json
+  value Bytes
 
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String

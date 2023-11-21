@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
+import { assertExhaustive } from "@trigger.dev/core";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -14,9 +15,11 @@ const MAX_BODY_BYTE_LENGTH = 256 * 1024;
 export async function action({ request, params }: ActionFunctionArgs) {
   logger.info("Key-value store action", { url: request.url });
 
-  const method = request.method.toUpperCase();
+  const ActionMethodSchema = z.enum(["DELETE", "PUT"]);
 
-  if (method !== "DELETE" && method !== "PUT") {
+  const parsedMethod = ActionMethodSchema.safeParse(request.method.toUpperCase());
+
+  if (!parsedMethod.success) {
     return json({ error: "Method Not Allowed" }, { status: 405 });
   }
 
@@ -42,37 +45,38 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const { key } = parsedParams.data;
 
   try {
-    switch (method) {
+    switch (parsedMethod.data) {
       case "DELETE": {
         const deleted = await store.delete(key);
 
         return json({ action: "DELETE", key, deleted });
       }
       case "PUT": {
-        const requestBodyBytes = await getRequestBodyByteLength(request);
+        const value = await request.text();
 
-        if (requestBodyBytes > MAX_BODY_BYTE_LENGTH) {
-          logger.info("Max request body size exceeded", { requestBodyBytes });
+        const serializedValueBytes = value.length;
+
+        if (serializedValueBytes > MAX_BODY_BYTE_LENGTH) {
+          logger.info("Max request body size exceeded", { serializedValueBytes });
 
           return json(
-            { error: `Max request body size exceeded: ${MAX_BODY_BYTE_LENGTH}` },
+            { error: `Max request body size exceeded: ${MAX_BODY_BYTE_LENGTH} bytes` },
             { status: 413 }
           );
         }
-
-        const value = await request.json();
 
         const setValue = await store.set(key, value);
 
         return json({ action: "SET", key, value: setValue });
       }
       default: {
-        return json({ error: "Method Not Allowed" }, { status: 405 });
+        assertExhaustive(parsedMethod.data);
       }
     }
   } catch (error) {
     if (error instanceof Error) {
       logger.error("Error peforming key-value store action", {
+        method: parsedMethod.data,
         url: request.url,
         error: error.message,
       });
@@ -95,6 +99,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
+  const ActionMethodSchema = z.enum(["GET", "HEAD"]);
+
+  const parsedMethod = ActionMethodSchema.safeParse(request.method.toUpperCase());
+
+  if (!parsedMethod.success) {
+    return json({ error: "Method Not Allowed" }, { status: 405 });
+  }
+
   const authenticationResult = await authenticateApiRequest(request);
 
   if (!authenticationResult) {
@@ -109,12 +121,29 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const { key } = parsedParams.data;
 
   try {
-    const value = await store.get(key);
+    switch (parsedMethod.data) {
+      case "GET": {
+        const value = await store.get(key);
 
-    return json({ action: "GET", key, value });
+        return json({ action: "GET", key, value });
+      }
+      case "HEAD": {
+        const has = await store.has(key);
+
+        if (!has) {
+          return new Response("Key not found", { status: 404 });
+        }
+
+        return new Response("Key found", { status: 200 });
+      }
+      default: {
+        assertExhaustive(parsedMethod.data);
+      }
+    }
   } catch (error) {
     if (error instanceof Error) {
-      logger.error("Error during key-value store get", {
+      logger.error("Error peforming key-value store action", {
+        method: parsedMethod.data,
         url: request.url,
         error: error.message,
       });
@@ -125,9 +154,3 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return json({ error: "Something went wrong" }, { status: 500 });
   }
 }
-
-const getRequestBodyByteLength = async (request: Request) => {
-  const clonedRequest = request.clone();
-  const buffer = await clonedRequest.arrayBuffer();
-  return buffer.byteLength;
-};

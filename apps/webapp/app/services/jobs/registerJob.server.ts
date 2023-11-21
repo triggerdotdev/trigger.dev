@@ -3,6 +3,7 @@ import {
   JobMetadata,
   SCHEDULED_EVENT,
   TriggerMetadata,
+  assertExhaustive,
 } from "@trigger.dev/core";
 import type { Endpoint, Integration, Job, JobIntegration, JobVersion } from "@trigger.dev/database";
 import { DEFAULT_MAX_CONCURRENT_RUNS } from "~/consts";
@@ -13,7 +14,6 @@ import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { logger } from "../logger.server";
 import { RegisterScheduleSourceService } from "../schedules/registerScheduleSource.server";
-import { assertExhaustive } from "~/utils";
 
 export class RegisterJobService {
   #prismaClient: PrismaClient;

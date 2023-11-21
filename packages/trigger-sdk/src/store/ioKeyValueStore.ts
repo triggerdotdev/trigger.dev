@@ -25,7 +25,7 @@ export class IOKeyValueStore {
     return parts.join(":");
   }
 
-  #properties(key: string, value?: any) {
+  #sharedProperties(key: string) {
     return [
       {
         label: "namespace",
@@ -35,15 +35,23 @@ export class IOKeyValueStore {
         label: "key",
         text: key,
       },
-      ...(typeof value === "string"
-        ? [
-            {
-              label: "value",
-              text: value,
-            },
-          ]
-        : []),
     ];
+  }
+
+  async delete(cacheKey: string | any[], key: string): Promise<boolean> {
+    return await this.io.runTask(
+      cacheKey,
+      async (task) => {
+        return await this.apiClient.store.delete(this.#namespacedKey(key));
+      },
+      {
+        name: "Key-Value Store Delete",
+        icon: "database-minus",
+        params: { key },
+        properties: this.#sharedProperties(key),
+        style: { style: "minimal" },
+      }
+    );
   }
 
   async get<T extends Json<T> = any>(cacheKey: string | any[], key: string): Promise<T> {
@@ -56,7 +64,23 @@ export class IOKeyValueStore {
         name: "Key-Value Store Get",
         icon: "database-export",
         params: { key },
-        properties: this.#properties(key),
+        properties: this.#sharedProperties(key),
+        style: { style: "minimal" },
+      }
+    );
+  }
+
+  async has(cacheKey: string | any[], key: string): Promise<boolean> {
+    return await this.io.runTask(
+      cacheKey,
+      async (task) => {
+        return await this.apiClient.store.has(this.#namespacedKey(key));
+      },
+      {
+        name: "Key-Value Store Has",
+        icon: "database-search",
+        params: { key },
+        properties: this.#sharedProperties(key),
         style: { style: "minimal" },
       }
     );
@@ -72,24 +96,17 @@ export class IOKeyValueStore {
         name: "Key-Value Store Set",
         icon: "database-plus",
         params: { key, value },
-        properties: this.#properties(key, value),
-        style: { style: "minimal" },
-      }
-    );
-  }
-
-  async delete(cacheKey: string | any[], key: string) {
-    return await this.io.runTask(
-      cacheKey,
-      async (task) => {
-        // FIXME: returning false from a task does not work as expected
-        return await this.apiClient.store.delete(this.#namespacedKey(key));
-      },
-      {
-        name: "Key-Value Store Delete",
-        icon: "database-minus",
-        params: { key },
-        properties: this.#properties(key),
+        properties: [
+          ...this.#sharedProperties(key),
+          ...(typeof value !== "object" || value === null
+            ? [
+                {
+                  label: "value",
+                  text: String(value) ?? "undefined",
+                },
+              ]
+            : []),
+        ],
         style: { style: "minimal" },
       }
     );

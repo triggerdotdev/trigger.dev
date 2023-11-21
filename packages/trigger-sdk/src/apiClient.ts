@@ -38,6 +38,8 @@ import {
   UpdateWebhookBody,
   KeyValueStoreResponseBodySchema,
   KeyValueStoreResponseBody,
+  assertExhaustive,
+  HttpMethod,
 } from "@trigger.dev/core";
 
 import { z } from "zod";
@@ -580,10 +582,10 @@ export class ApiClient {
   }
 
   async #queryKeyValueStore(
-    action: "GET" | "SET" | "DELETE",
+    action: KeyValueStoreResponseBody["action"],
     data: {
       key: string;
-      value?: any;
+      value?: string;
     }
   ): Promise<KeyValueStoreResponseBody> {
     const apiKey = await this.#apiKey();
@@ -593,46 +595,66 @@ export class ApiClient {
       data,
     });
 
+    const STORE_URL = `${this.#apiUrl}/api/v1/store/${data.key}`;
+
+    const authHeader: HeadersInit = {
+      Authorization: `Bearer ${apiKey}`,
+    };
+
     let requestInit: RequestInit | undefined;
 
     switch (action) {
-      case "DELETE":
+      case "DELETE": {
         requestInit = {
           method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-          },
+          headers: authHeader,
         };
 
         break;
-      case "GET":
+      }
+      case "GET": {
         requestInit = {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-          },
+          method: "GET",
+          headers: authHeader,
         };
 
         break;
-      case "SET":
+      }
+      case "HAS": {
+        const headResponse = await fetchHead(STORE_URL, {
+          headers: authHeader,
+        });
+
+        return {
+          action: "HAS",
+          key: data.key,
+          has: !!headResponse.ok,
+        };
+      }
+      case "SET": {
+        const MAX_BODY_BYTE_LENGTH = 256 * 1024;
+
+        if ((data.value?.length ?? 0) > MAX_BODY_BYTE_LENGTH) {
+          throw new Error(`Max request body size exceeded: ${MAX_BODY_BYTE_LENGTH} bytes`);
+        }
+
         requestInit = {
           method: "PUT",
           headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
+            ...authHeader,
+            "Content-Type": "text/plain",
           },
-          body: JSON.stringify(data.value),
+          body: data.value,
         };
 
         break;
-      default:
-        throw new Error("Unsupported key-value store action.");
+      }
+      default: {
+        assertExhaustive(action);
+      }
     }
 
-    const response = await zodfetch(
-      KeyValueStoreResponseBodySchema,
-      `${this.#apiUrl}/api/v1/store/${data.key}`,
-      requestInit
-    );
+    const response = await zodfetch(KeyValueStoreResponseBodySchema, STORE_URL, requestInit);
 
     return response;
   }
@@ -801,6 +823,29 @@ async function zodfetchWithVersions<
     version,
     body: versionedSchema.parse(jsonBody),
   };
+}
+
+async function fetchHead(
+  url: string,
+  requestInitWithoutMethod?: Omit<RequestInit, "method">,
+  retryCount = 0
+): Promise<Response> {
+  const requestInit: RequestInit = {
+    ...requestInitWithoutMethod,
+    method: "HEAD",
+  };
+  const response = await fetch(url, { ...requestInit, cache: "no-cache" });
+
+  if (response.status >= 500 && retryCount < 6) {
+    // retry with exponential backoff and jitter
+    const delay = exponentialBackoff(retryCount + 1, 2, 50, 1150, 50);
+
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    return fetchHead(url, requestInitWithoutMethod, retryCount + 1);
+  }
+
+  return response;
 }
 
 async function zodfetch<TResponseSchema extends z.ZodTypeAny, TOptional extends boolean = false>(

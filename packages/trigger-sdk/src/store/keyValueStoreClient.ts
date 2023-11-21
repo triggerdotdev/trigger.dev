@@ -1,16 +1,18 @@
 import { AsyncMap } from "@trigger.dev/core";
 import { KeyValueStoreResponseBody } from "@trigger.dev/core";
-import { Json } from "../io";
+import { JSONOutputSerializer, Json } from "../io";
 
 type QueryKeyValueStoreFunction = (
-  action: "GET" | "SET" | "DELETE",
+  action: "DELETE" | "GET" | "HAS" | "SET",
   data: {
     key: string;
-    value?: any;
+    value?: string;
   }
 ) => Promise<KeyValueStoreResponseBody>;
 
 export class KeyValueStoreClient implements AsyncMap {
+  #serializer = new JSONOutputSerializer();
+
   constructor(
     private queryStore: QueryKeyValueStoreFunction,
     private type: string | null = null,
@@ -33,32 +35,7 @@ export class KeyValueStoreClient implements AsyncMap {
     return parts.join(":");
   }
 
-  async get<T extends Json<T>>(key: string): Promise<T> {
-    const result = await this.queryStore("GET", {
-      key: this.#namespacedKey(key),
-    });
-
-    if (result.action !== "GET") {
-      throw new Error(`Unexpected key-value store response: ${result.action}`);
-    }
-
-    return result.value;
-  }
-
-  async set<T extends Json<T>>(key: string, value: T): Promise<T> {
-    const result = await this.queryStore("SET", {
-      key: this.#namespacedKey(key),
-      value,
-    });
-
-    if (result.action !== "SET") {
-      throw new Error(`Unexpected key-value store response: ${result.action}`);
-    }
-
-    return result.value;
-  }
-
-  async delete(key: string) {
+  async delete(key: string): Promise<boolean> {
     const result = await this.queryStore("DELETE", {
       key: this.#namespacedKey(key),
     });
@@ -68,5 +45,42 @@ export class KeyValueStoreClient implements AsyncMap {
     }
 
     return result.deleted;
+  }
+
+  async get<T extends Json<T>>(key: string): Promise<T> {
+    const result = await this.queryStore("GET", {
+      key: this.#namespacedKey(key),
+    });
+
+    if (result.action !== "GET") {
+      throw new Error(`Unexpected key-value store response: ${result.action}`);
+    }
+
+    return this.#serializer.deserialize(result.value);
+  }
+
+  async has(key: string): Promise<boolean> {
+    const result = await this.queryStore("HAS", {
+      key: this.#namespacedKey(key),
+    });
+
+    if (result.action !== "HAS") {
+      throw new Error(`Unexpected key-value store response: ${result.action}`);
+    }
+
+    return result.has;
+  }
+
+  async set<T extends Json<T>>(key: string, value: T): Promise<T> {
+    const result = await this.queryStore("SET", {
+      key: this.#namespacedKey(key),
+      value: this.#serializer.serialize(value),
+    });
+
+    if (result.action !== "SET") {
+      throw new Error(`Unexpected key-value store response: ${result.action}`);
+    }
+
+    return this.#serializer.deserialize(result.value);
   }
 }
