@@ -291,6 +291,14 @@
           "pages": ["integrations/apis/resend", "integrations/apis/resend-tasks"]
         },
         {
+          "group": "Shopify",
+          "pages": [
+            "integrations/apis/shopify",
+            "integrations/apis/shopify-triggers",
+            "integrations/apis/shopify-tasks"
+          ]
+        },
+        {
           "group": "Slack",
           "pages": ["integrations/apis/slack", "integrations/apis/slack-tasks"]
         },

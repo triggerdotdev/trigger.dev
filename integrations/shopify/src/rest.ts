@@ -55,6 +55,9 @@ export class Resource<
     } as WithRequiredSession<TParams>;
   }
 
+  /**
+   * Fetch a single resource by its ID.
+   */
   async find(key: string, params: Optional<Parameters<TResource["find"]>[0], "session">) {
     return this.runTask(
       key,
@@ -113,6 +116,9 @@ export class Resource<
     );
   }
 
+  /**
+   * Fetch all resources of a given type.
+   */
   async all(
     key: string,
     params?: Optional<OmitIndexSignature<Parameters<TResource["all"]>[0]>, "session"> & {
@@ -144,7 +150,6 @@ export class Resource<
               }
             );
 
-            // FIXME: type
             data.push(...(moreData as any));
 
             pageInfo.nextPage = morePageInfo?.nextPage;
@@ -181,6 +186,9 @@ export class Resource<
     );
   }
 
+  /**
+   * Fetch the number of resources of a given type.
+   */
   async count(
     key: string,
     params?: Optional<OmitIndexSignature<Parameters<TResource["count"]>[0]>, "session">
@@ -218,6 +226,9 @@ export class Resource<
     );
   }
 
+  /**
+   * Create or update a resource of a given type. The resource will be created if no ID is specified.
+   */
   async save<TFromData extends ShopifyInputType[TResourceType], TUpdate extends boolean = true>(
     key: string,
     params: {
@@ -250,6 +261,9 @@ export class Resource<
     );
   }
 
+  /**
+   * Delete an existing resource.
+   */
   async delete(
     key: string,
     params: Optional<Parameters<TResource["delete"]>[0], "session">

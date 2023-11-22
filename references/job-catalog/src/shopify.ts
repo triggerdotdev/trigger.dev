@@ -61,7 +61,7 @@ client.defineJob({
       },
     });
 
-    await io.logger.info(`Created product ${createdProduct.id}: ${createdProduct.title}`)
+    await io.logger.info(`Created product ${createdProduct.id}: ${createdProduct.title}`);
 
     await io.shopify.rest.Product.count("count-products-again");
 

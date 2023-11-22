@@ -10,7 +10,7 @@ import {
   WebhookTopicSchema,
 } from "./schemas";
 import { WebhookSource, WebhookTrigger } from "@trigger.dev/sdk/triggers/webhook";
-import { TriggerParams } from "./types";
+import { TriggerConfig, TriggerParams } from "./types";
 
 export class Webhooks {
   constructor(private runTask: ShopifyRunTask) {}
@@ -82,13 +82,14 @@ type CreateTriggersResult<TEventSpecification extends ShopifyEvents> = WebhookTr
 export function createTrigger<TEventSpecification extends ShopifyEvents>(
   source: ReturnType<typeof createWebhookEventSource>,
   event: TEventSpecification,
-  params: TriggerParams
+  params: TriggerParams,
+  config: TriggerConfig
 ): CreateTriggersResult<TEventSpecification> {
   return new WebhookTrigger({
     event,
     params,
     source,
-    config: {},
+    config,
   });
 }
 

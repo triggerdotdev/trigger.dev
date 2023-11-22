@@ -30,7 +30,7 @@ import { ApiScope, WebhookTopic } from "./schemas";
 import { triggerCatalog } from "./triggers";
 import { Webhooks, createTrigger, createWebhookEventSource } from "./webhooks";
 import { Rest, restProxy } from "./rest";
-import { TriggerParams } from "./types";
+import { TriggerConfig } from "./types";
 
 export type ShopifyRestResources = OmitIndexSignature<RestResources>;
 
@@ -169,13 +169,13 @@ export class Shopify implements TriggerIntegration {
     );
   }
 
-  on<TTopic extends WebhookTopic>(topic: TTopic, params?: Omit<TriggerParams, "topic">) {
-    const { eventSpec, params: catalogParams } = triggerCatalog[topic];
+  /**
+   * Creates a webhook trigger.
+   */
+  on<TTopic extends WebhookTopic>(topic: TTopic, config?: TriggerConfig) {
+    const { eventSpec, params } = triggerCatalog[topic];
 
-    return createTrigger(this.#source, eventSpec, {
-      ...params,
-      ...catalogParams,
-    });
+    return createTrigger(this.#source, eventSpec, params, config ?? {});
   }
 
   get #webhooks() {
