@@ -99,7 +99,7 @@ export class PerformRunExecutionV3Service {
         jobKey: `job_run:EXECUTE_JOB:${run.id}`,
         maxAttempts: options.skipRetrying ? 1 : undefined,
         flags: [`rl:executions:${run.organizationId}`],
-        priority: run.number,
+        priority: run.number ?? 0,
       }
     );
   }

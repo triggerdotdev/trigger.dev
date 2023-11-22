@@ -4,9 +4,10 @@ import {
   type IntegrationConnection,
 } from "@trigger.dev/database";
 import type { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
-import { prisma } from "~/db.server";
+import { $transaction, prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
 import { ResumeRunService } from "./resumeRun.server";
+import { createHash } from "node:crypto";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type RunConnectionsByKey = Awaited<ReturnType<typeof createRunConnections>>;
@@ -58,19 +59,36 @@ export class StartRunService {
           : undefined
       )
       .filter(Boolean);
+    const lockId = jobIdToLockId(run.jobId);
 
-    const updatedRun = await this.#prismaClient.jobRun.update({
-      where: { id },
-      data: {
-        status: "QUEUED",
-        queuedAt: new Date(),
-        runConnections: {
-          create: createRunConnections,
-        },
+    await $transaction(
+      this.#prismaClient,
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockId})`;
+
+        const counter = await tx.jobCounter.upsert({
+          where: { jobId: run.jobId },
+          update: { lastNumber: { increment: 1 } },
+          create: { jobId: run.jobId, lastNumber: 1 },
+          select: { lastNumber: true },
+        });
+
+        const updatedRun = await this.#prismaClient.jobRun.update({
+          where: { id },
+          data: {
+            number: counter.lastNumber,
+            status: "QUEUED",
+            queuedAt: new Date(),
+            runConnections: {
+              create: createRunConnections,
+            },
+          },
+        });
+
+        await ResumeRunService.enqueue(updatedRun, tx);
       },
-    });
-
-    await ResumeRunService.enqueue(updatedRun, this.#prismaClient);
+      { timeout: 60000 }
+    );
   }
 
   async #handleMissingConnections(id: string, runConnectionsByKey: RunConnectionsByKey) {
@@ -216,4 +234,9 @@ async function createRunConnections(tx: PrismaClientOrTransaction, run: FoundRun
 
 function hasMissingConnections(runConnectionsByKey: RunConnectionsByKey) {
   return Object.values(runConnectionsByKey).some((connection) => connection.result === "missing");
+}
+
+function jobIdToLockId(jobId: string): number {
+  // Convert jobId to a unique lock identifier
+  return parseInt(createHash("sha256").update(jobId).digest("hex").slice(0, 8), 16);
 }

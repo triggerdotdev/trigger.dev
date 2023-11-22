@@ -98,7 +98,9 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
               to: paths.back,
               text: "Runs",
             }}
-            title={`Run #${run.number}`}
+            title={
+              typeof run.number === "number" ? `Run #${run.number}` : `Run ${run.id.slice(0, 8)}`
+            }
           />
           <PageButtons>
             {run.isTest && (

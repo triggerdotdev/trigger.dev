@@ -20,7 +20,7 @@ import { RunStatus } from "./RunStatuses";
 
 type RunTableItem = {
   id: string;
-  number: number;
+  number: number | null;
   environment: {
     type: RuntimeEnvironmentType;
   };
@@ -78,7 +78,9 @@ export function RunsTable({
             const path = `${runsParentPath}/${run.id}/trigger`;
             return (
               <TableRow key={run.id}>
-                <TableCell to={path}>#{run.number}</TableCell>
+                <TableCell to={path}>
+                  {typeof run.number === "number" ? `#${run.number}` : "-"}
+                </TableCell>
                 <TableCell to={path}>
                   <EnvironmentLabel environment={run.environment} />
                 </TableCell>

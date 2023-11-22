@@ -44,22 +44,8 @@ export class CreateRunService {
     });
 
     return await $transaction(this.#prismaClient, async (tx) => {
-      // Get the current max number for the given jobId
-      const latestJob = await tx.jobRun.findFirst({
-        where: { jobId: job.id },
-        orderBy: { id: "desc" },
-        select: {
-          number: true,
-        },
-      });
-
-      // Increment the number for the new execution
-      const newNumber = (latestJob?.number ?? 0) + 1;
-
-      // Create the new execution with the incremented number
       const run = await tx.jobRun.create({
         data: {
-          number: newNumber,
           preprocess: version.preprocessRuns,
           jobId: job.id,
           versionId: version.id,
@@ -101,7 +87,7 @@ export class CreateRunService {
         {
           id: run.id,
         },
-        { tx, queueName: `startRun:${run.jobId}` }
+        { tx }
       );
 
       return run;

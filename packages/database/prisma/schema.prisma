@@ -707,7 +707,7 @@ enum PayloadType {
 
 model JobRun {
   id       String  @id @default(cuid())
-  number   Int
+  number   Int?
   internal Boolean @default(false)
 
   job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -786,6 +786,11 @@ enum JobRunStatus {
   CANCELED
   UNRESOLVED_AUTH
   INVALID_PAYLOAD
+}
+
+model JobCounter {
+  jobId      String @id
+  lastNumber Int    @default(0)
 }
 
 model JobRunAutoYieldExecution {

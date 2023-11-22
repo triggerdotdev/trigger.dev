@@ -108,8 +108,8 @@ async function mainParallel() {
 
 async function mainParallelBulk() {
   const batches = 1;
-  const concurrency = 50;
-  const eventsPer = 20;
+  const concurrency = 10;
+  const eventsPer = 10;
 
   console.log("Preparing perf tests...");
 
@@ -169,7 +169,7 @@ async function mainSerial() {
   }
 }
 
-mainParallelBulk().catch((err) => {
+main().catch((err) => {
   console.error(err);
   process.exit(1);
 });

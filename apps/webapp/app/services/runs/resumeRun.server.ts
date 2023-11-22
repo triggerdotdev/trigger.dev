@@ -114,9 +114,10 @@ export class ResumeRunService {
       },
       {
         tx,
-        runAt: runAt,
+        runAt: runAt ?? run.createdAt,
         queueName: `run_resume:${run.id}`,
         jobKey: `run_resume:${run.id}`,
+        priority: run.number ?? 0,
       }
     );
   }
