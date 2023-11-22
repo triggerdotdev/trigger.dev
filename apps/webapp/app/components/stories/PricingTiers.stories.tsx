@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { PricingTiers, TierEnterprise, TierFree, TierPro } from "../billing/PricingTiers";
 
 const meta: Meta<typeof AllPricingTiers> = {
-  title: "Components/PricingTiers",
+  title: "Billing/PricingTiers",
   component: AllPricingTiers,
 };
 
@@ -16,8 +16,8 @@ export const AllTiers: Story = {
 
 function AllPricingTiers() {
   return (
-    <div className="mx-4 flex h-screen items-center justify-center">
-      <PricingTiers className="">
+    <div className="mx-4 flex h-screen flex-col items-center justify-center gap-4">
+      <PricingTiers className="w-[80rem]">
         <TierFree />
         <TierPro />
         <TierEnterprise />

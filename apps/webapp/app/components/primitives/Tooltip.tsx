@@ -1,8 +1,14 @@
-"use client";
-
 import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { cn } from "~/utils/cn";
+
+const variantClasses = {
+  basic:
+    "bg-popover border border-slate-800 rounded-md px-3 py-1.5 text-sm text-bright shadow-md fade-in-50",
+  dark: "bg-background border border-border rounded px-3 py-2 text-sm text-bright shadow-md fade-in-50",
+};
+
+type Variant = keyof typeof variantClasses;
 
 const TooltipProvider = TooltipPrimitive.Provider;
 
@@ -22,15 +28,20 @@ Tooltip.displayName = TooltipPrimitive.Root.displayName;
 
 const TooltipTrigger = TooltipPrimitive.Trigger;
 
+type TooltipContentProps = {
+  variant?: Variant;
+} & React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>;
+
 const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
->(({ className, sideOffset = 4, ...props }, ref) => (
+  TooltipContentProps
+>(({ className, sideOffset = 4, variant = "basic", ...props }, ref) => (
   <TooltipPrimitive.Content
     ref={ref}
     sideOffset={sideOffset}
     className={cn(
-      "z-50 overflow-hidden rounded-md border border-slate-800 bg-popover px-3 py-1.5 text-sm text-bright shadow-md animate-in fade-in-50 data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1",
+      "z-50 overflow-hidden animate-in data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1",
+      variantClasses[variant],
       className
     )}
     {...props}
@@ -43,17 +54,19 @@ function SimpleTooltip({
   content,
   side,
   hidden,
+  variant,
 }: {
   button: React.ReactNode;
   content: React.ReactNode;
   side?: React.ComponentProps<typeof TooltipContent>["side"];
   hidden?: boolean;
+  variant?: Variant;
 }) {
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger>{button}</TooltipTrigger>
-        <TooltipContent side={side} hidden={hidden} className="text-xs">
+        <TooltipContent side={side} hidden={hidden} className="text-xs" variant={variant}>
           {content}
         </TooltipContent>
       </Tooltip>

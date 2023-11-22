@@ -3,6 +3,9 @@ import { Paragraph } from "../primitives/Paragraph";
 import * as Slider from "@radix-ui/react-slider";
 import { Button } from "../primitives/Buttons";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/24/solid";
+import SegmentedControl from "../primitives/SegmentedControl";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { Header3 } from "../primitives/Headers";
 
 export function PricingTiers({
   children,
@@ -27,15 +30,21 @@ export function TierFree() {
   return (
     <TierContainer>
       <Header title="Free" flatCost={0} />
-      <TierLimit description="1 concurrent Run / month" />
+      <TierLimit>
+        Up to 5{" "}
+        <DefinitionTip title="Concurrent Runs" content="Description">
+          Concurrent Runs
+        </DefinitionTip>
+      </TierLimit>
       <Button variant="secondary/large" fullWidth className="text-md my-6 font-medium">
         Current Plan
       </Button>
       <ul className="flex flex-col gap-2.5">
-        <FeatureItem checked title="Up to 2 team members" />
-        <FeatureItem checked title="Up to 10 Jobs" />
-        <FeatureItem checked title="Unlimited Job Runs" />
-        <FeatureItem checked title="Unlimited Run duration" />
+        <FeatureItem checked title="Up to 10k Job Runs" />
+        <FeatureItem checked title="Unlimited Jobs" />
+        <FeatureItem checked title="Unlimited Tasks" />
+        <FeatureItem checked title="Unlimited Events" />
+        <FeatureItem checked title="Unlimited team members" />
         <FeatureItem checked title="24 hour log retention" />
         <FeatureItem checked title="Community support" />
         <FeatureItem title="Custom integrations" />
@@ -51,15 +60,20 @@ export function TierPro() {
   return (
     <TierContainer isHighlighted>
       <Header title="Pro" isHighlighted flatCost={25} />
-      <TierLimit pricedMetric description="Up to 5 concurrent Runs / month" />
+      <TierLimit pricedMetric>
+        <DefinitionTip title="Concurrent Runs" content="Description">
+          Concurrent Runs
+        </DefinitionTip>
+      </TierLimit>
       <Button variant="primary/large" fullWidth className="text-md my-6 font-medium">
         Upgrade
       </Button>
       <ul className="flex flex-col gap-2.5">
-        <FeatureItem checked title="Unlimited team members" />
+        <FeatureItem checked title="Includes 10k Job Runs, then < $1.30/1,000 Runs" />
         <FeatureItem checked title="Unlimited Jobs" />
-        <FeatureItem checked title="Unlimited Job Runs" />
-        <FeatureItem checked title="Unlimited Run duration" />
+        <FeatureItem checked title="Unlimited Tasks" />
+        <FeatureItem checked title="Unlimited Events" />
+        <FeatureItem checked title="Unlimited team members" />
         <FeatureItem checked title="7 day log retention" />
         <FeatureItem checked title="Dedicated Slack support" />
         <FeatureItem title="Custom integrations" />
@@ -75,15 +89,21 @@ export function TierEnterprise() {
   return (
     <TierContainer>
       <Header title="Enterprise" />
-      <TierLimit description="Flexible concurrent Runs / month" />
+      <TierLimit>
+        Flexible{" "}
+        <DefinitionTip title="Concurrent Runs" content="Description">
+          concurrent Runs
+        </DefinitionTip>
+      </TierLimit>
       <Button variant="secondary/large" fullWidth className="text-md my-6 font-medium">
         Contact us
       </Button>
       <ul className="flex flex-col gap-2.5">
-        <FeatureItem checked title="Unlimited team members" />
+        <FeatureItem checked title="Flexible Job Runs" />
         <FeatureItem checked title="Unlimited Jobs" />
-        <FeatureItem checked title="Unlimited Job Runs" />
-        <FeatureItem checked title="Unlimited Run duration" />
+        <FeatureItem checked title="Unlimited Tasks" />
+        <FeatureItem checked title="Unlimited Events" />
+        <FeatureItem checked title="Unlimited team members" />
         <FeatureItem checked title="30 day log retention" />
         <FeatureItem checked title="Priority support" />
         <FeatureItem checked title="Custom integrations" />
@@ -114,6 +134,36 @@ function TierContainer({
   );
 }
 
+function DefinitionTip({
+  content,
+  children,
+  title,
+}: {
+  content: React.ReactNode;
+  children: React.ReactNode;
+  title: React.ReactNode;
+}) {
+  return (
+    <TooltipProvider>
+      <Tooltip disableHoverableContent>
+        <TooltipTrigger>
+          <span className="underline decoration-slate-600 decoration-dashed underline-offset-4 transition hover:decoration-slate-500">
+            {children}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent align="end" side="right" variant="dark" className="">
+          <Header3 className="mb-1">{title}</Header3>
+          {typeof content === "string" ? (
+            <Paragraph variant="small">{content}</Paragraph>
+          ) : (
+            <div>{content}</div>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function Header({
   title,
   flatCost,
@@ -140,18 +190,41 @@ function Header({
   );
 }
 
-function TierLimit({ description, pricedMetric }: { description: string; pricedMetric?: boolean }) {
+function TierLimit({
+  children,
+  pricedMetric,
+}: {
+  children: React.ReactNode;
+  pricedMetric?: boolean;
+}) {
   return (
     <div>
-      {pricedMetric ? <PricingSlider /> : <hr className="my-[1.6rem]" />}
-      <Paragraph variant="small/bright" className="">
-        {description}
-      </Paragraph>
+      {pricedMetric ? (
+        <>
+          <Paragraph variant="small/bright" className="mb-2 mt-6">
+            {children}
+          </Paragraph>
+          <SegmentedControl name={"Concurrent Runs"} options={options} fullWidth />
+        </>
+      ) : (
+        <>
+          <hr className="my-[1.9rem]" />
+          <Paragraph variant="small/bright" className="mb-[0.6rem]">
+            {children}
+          </Paragraph>
+        </>
+      )}
     </div>
   );
 }
 
-function PricingSlider() {
+const options = [
+  { label: "Up to 20", value: "20" },
+  { label: "Up to 50", value: "50" },
+  { label: "Up to 100", value: "100" },
+];
+
+function UsageSlider() {
   return (
     <form>
       <Slider.Root
