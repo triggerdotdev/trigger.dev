@@ -117,6 +117,11 @@ export class RegisterWebhookService {
               id: endpoint.environmentId,
             },
           },
+          endpoint: {
+            connect: {
+              id: endpoint.id,
+            },
+          },
         },
         update: {
           desiredConfig: webhookMetadata.config,

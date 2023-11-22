@@ -215,6 +215,18 @@ export const HttpEndpointRequestHeadersSchema = z.object({
   "x-ts-http-headers": z.string().transform((s) => z.record(z.string()).parse(JSON.parse(s))),
 });
 
+export const WebhookSourceRequestHeadersSchema = z.object({
+  "x-ts-key": z.string(),
+  "x-ts-dynamic-id": z.string().optional(),
+  "x-ts-secret": z.string(),
+  "x-ts-params": z.string().transform((s) => JSON.parse(s)),
+  "x-ts-http-url": z.string(),
+  "x-ts-http-method": z.string(),
+  "x-ts-http-headers": z.string().transform((s) => z.record(z.string()).parse(JSON.parse(s))),
+});
+
+export type WebhookSourceRequestHeaders = z.output<typeof WebhookSourceRequestHeadersSchema>;
+
 export const PongSuccessResponseSchema = z.object({
   ok: z.literal(true),
   triggerVersion: z.string().optional(),
@@ -964,6 +976,14 @@ export const HttpSourceResponseSchema = z.object({
   events: z.array(RawEventSchema),
   metadata: HttpSourceResponseMetadataSchema.optional(),
 });
+
+export const WebhookDeliveryResponseSchema = z.object({
+  response: NormalizedResponseSchema,
+  verified: z.boolean(),
+  error: z.string().optional(),
+});
+
+export type WebhookDeliveryResponse = z.infer<typeof WebhookDeliveryResponseSchema>;
 
 export const RegisterTriggerBodySchemaV1 = z.object({
   rule: EventRuleSchema,

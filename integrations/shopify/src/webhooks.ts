@@ -94,7 +94,7 @@ export function createTrigger<TEventSpecification extends ShopifyEvents>(
 
 export function createWebhookEventSource(integration: Shopify): WebhookSource<Shopify> {
   return new WebhookSource({
-    id: "shopify.webhook",
+    id: "shopify",
     schemas: {
       params: z.object({
         topic: WebhookTopicSchema,
@@ -114,7 +114,13 @@ export function createWebhookEventSource(integration: Shopify): WebhookSource<Sh
           },
         });
 
+        const clientSecret = await io.integration.runTask(
+          "get-client-secret",
+          async (client) => client.config.apiSecretKey
+        );
+
         await io.store.job.set("set-id", "webhook-id", webhook.id);
+        await io.store.job.set("set-secret", "webhook-secret", clientSecret);
       },
       delete: async ({ io, ctx }) => {
         const webhookId = await io.store.job.get<number>("get-webhook-id", "webhook-id");
@@ -138,10 +144,12 @@ export function createWebhookEventSource(integration: Shopify): WebhookSource<Sh
         });
       },
     },
-    verify: async ({ request, io, ctx }) => {
-      const clientSecret = await io.integration.runTask(
-        "get-client-secret",
-        async (client) => client.config.apiSecretKey
+    verify: async ({ request, apiClient, ctx }) => {
+      // TODO: maybe pass namespace or shared store in context
+      const registerJobNamespace = (key: string) => `job:webhook.register.${key}`;
+
+      const clientSecret = await apiClient.store.get<string>(
+        `${registerJobNamespace(ctx.key)}:webhook-secret`
       );
 
       return await verifyRequestSignature({
@@ -152,14 +160,14 @@ export function createWebhookEventSource(integration: Shopify): WebhookSource<Sh
         algorithm: "sha256",
       });
     },
-    generateEvents: async ({ request, io, ctx }) => {
+    generateEvents: async ({ request, apiClient }) => {
       const headers = WebhookHeaderSchema.parse(Object.fromEntries(request.headers));
 
       const topic = headers["x-shopify-topic"];
       const triggeredAt = headers["x-shopify-triggered-at"];
       const idempotencyKey = headers["x-shopify-webhook-id"];
 
-      await io.sendEvent("send-event", {
+      await apiClient.sendEvent({
         id: idempotencyKey,
         payload: await request.json(),
         source: "shopify.com",

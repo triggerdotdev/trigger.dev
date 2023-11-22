@@ -4,7 +4,6 @@ import {
   HandleTriggerSource,
   RegisterWebhookSource,
   TriggerMetadata,
-  WebhookContextMetadataSchema,
   deepMergeFilters,
 } from "@trigger.dev/core";
 import { IOWithIntegrations, TriggerIntegration } from "../integrations";
@@ -22,6 +21,7 @@ import { slugifyId } from "../utils";
 import { SerializableJson } from "@trigger.dev/core";
 import { Prettify } from "@trigger.dev/core";
 import { createHash } from "node:crypto";
+import { ApiClient } from "../apiClient";
 
 type WebhookCRUDContext<TParams extends any, TConfig extends Record<string, string[]>> = {
   active: boolean;
@@ -103,14 +103,20 @@ type WebhookHandlerContext<TParams extends any, TConfig extends Record<string, s
   secret: string;
 };
 
+export type WebhookDeliveryContext = {
+  key: string;
+  secret: string;
+  params: any;
+};
+
 type EventGenerator<
   TParams extends any,
   TConfig extends Record<string, string[]>,
   TIntegration extends TriggerIntegration,
 > = (options: {
   request: Request;
-  io: IOWithIntegrations<{ integration: TIntegration }>;
-  ctx: TriggerContext & WebhookHandlerContext<TParams, TConfig>;
+  apiClient: ApiClient;
+  ctx: WebhookDeliveryContext;
 }) => Promise<any>;
 
 type KeyFunction<TParams extends any> = (params: TParams) => string;
@@ -138,8 +144,8 @@ type WebhookOptions<
   register?: RegisterFunction<TIntegration, TParams, TConfig>;
   verify?: (options: {
     request: Request;
-    io: IOWithIntegrations<{ integration: TIntegration }>;
-    ctx: TriggerContext & { webhook: { secret: string } };
+    apiClient: ApiClient;
+    ctx: WebhookDeliveryContext;
   }) => Promise<VerifyResult>;
   generateEvents: EventGenerator<TParams, TConfig, TIntegration>;
   properties?: (params: TParams) => DisplayProperty[];
@@ -152,24 +158,12 @@ export class WebhookSource<
 > {
   constructor(private options: WebhookOptions<TIntegration, TParams, TConfig>) {}
 
-  async generateEvents(
-    request: Request,
-    io: IOWithIntegrations<{ integration: TIntegration }>,
-    ctx: TriggerContext & { webhook: { secret: string } }
-  ) {
-    if (!ctx.source) {
-      throw new Error("Source context should be defined.");
-    }
-
-    const sourceMetadata = WebhookContextMetadataSchema.parse(ctx.source.metadata);
-
-    const handlerContext = {
-      params: sourceMetadata.params,
-      config: sourceMetadata.config as TConfig,
-      secret: sourceMetadata.secret,
-    };
-
-    return this.options.generateEvents({ request, io, ctx: { ...ctx, ...handlerContext } });
+  async generateEvents(request: Request, apiClient: ApiClient, ctx: WebhookDeliveryContext) {
+    return this.options.generateEvents({
+      request,
+      apiClient,
+      ctx,
+    });
   }
 
   filter(params: TParams, config?: TConfig): EventFilter {
@@ -208,12 +202,12 @@ export class WebhookSource<
 
   async verify(
     request: Request,
-    io: IOWithIntegrations<{ integration: TIntegration }>,
-    ctx: TriggerContext & { webhook: { secret: string } }
+    apiClient: ApiClient,
+    ctx: WebhookDeliveryContext
   ): Promise<VerifyResult> {
     if (this.options.verify) {
       const clonedRequest = request.clone();
-      return this.options.verify({ request: clonedRequest, io, ctx });
+      return this.options.verify({ request: clonedRequest, apiClient, ctx });
     }
 
     return { success: true as const };

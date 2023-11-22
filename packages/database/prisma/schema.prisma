@@ -390,10 +390,12 @@ model Endpoint {
   jobVersions              JobVersion[]
   jobRuns                  JobRun[]
   httpRequestDeliveries    HttpSourceRequestDelivery[]
+  webhookRequestDeliveries WebhookRequestDelivery[]
   dynamictriggers          DynamicTrigger[]
   sources                  TriggerSource[]
   indexings                EndpointIndex[]
   httpEndpointEnvironments TriggerHttpEndpointEnvironment[]
+  webhookEnvironments      WebhookEnvironment[]
 
   @@unique([environmentId, slug])
 }
@@ -1101,6 +1103,7 @@ model Webhook {
   params Json?
 
   webhookEnvironments WebhookEnvironment[]
+  requestDeliveries   WebhookRequestDelivery[]
 
   httpEndpoint   TriggerHttpEndpoint @relation(fields: [httpEndpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   httpEndpointId String @unique
@@ -1125,6 +1128,11 @@ model WebhookEnvironment {
   config        Json?
   desiredConfig Json?
 
+  requestDeliveries WebhookRequestDelivery[]
+
+  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  endpointId String
+
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
 
@@ -1135,6 +1143,33 @@ model WebhookEnvironment {
   updatedAt DateTime @updatedAt
 
   @@unique([environmentId, webhookId])
+}
+
+model WebhookRequestDelivery {
+  id      String @id @default(cuid())
+
+  url     String
+  method  String
+  headers Json
+
+  body    Bytes?
+
+  verified Boolean @default(false)
+  error    String?
+
+  webhook   Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  webhookId String
+
+  webhookEnvironment WebhookEnvironment @relation(fields: [webhookEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  webhookEnvironmentId String
+
+  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  endpointId String
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  deliveredAt DateTime?
 }
 
 model DynamicTriggerRegistration {

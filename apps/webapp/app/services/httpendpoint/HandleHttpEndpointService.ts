@@ -1,11 +1,10 @@
-import { PrismaClient, TriggerHttpEndpoint } from "@trigger.dev/database";
+import { PrismaClient } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requestUrl } from "~/utils/requestUrl.server";
 import { logger } from "../logger.server";
 import { json } from "@remix-run/server-runtime";
 import {
-  DELIVER_WEBHOOK_REQUEST,
   RequestFilterSchema,
   WebhookContextMetadata,
   WebhookContextMetadataSchema,
@@ -17,6 +16,7 @@ import { getSecretStore } from "../secrets/secretStore.server";
 import { createHttpSourceRequest } from "~/utils/createHttpSourceRequest";
 import { ulid } from "../ulid.server";
 import { env } from "~/env.server";
+import { HandleWebhookRequestService } from "../sources/handleWebhookRequest.server";
 
 export const HttpEndpointParamsSchema = z.object({
   httpEndpointId: z.string(),
@@ -141,16 +141,22 @@ export class HandleHttpEndpointService {
     const callClientImmediately = immediateResponseFilter.data
       ? await requestFilterMatches(request, immediateResponseFilter.data)
       : false;
+
     let httpResponse: Response | undefined;
+
     if (callClientImmediately) {
       logger.info("Calling client immediately", {
         httpEndpointId: httpEndpoint.id,
         environmentId: environment.id,
         immediateResponseFilter: immediateResponseFilter.data,
       });
+
       const clonedRequest = request.clone();
+
       const client = new EndpointApi(environment.apiKey, httpEndpointEnvironment.endpoint.url);
+
       const httpRequest = await createHttpSourceRequest(clonedRequest);
+
       const { response, parser } = await client.deliverHttpEndpointRequestForResponse({
         key: httpEndpoint.key,
         secret: secret,
@@ -158,7 +164,9 @@ export class HandleHttpEndpointService {
       });
 
       const responseJson = await response.json();
+
       const parsedResponseResult = parser.safeParse(responseJson);
+
       if (!parsedResponseResult.success) {
         logger.error("Could not parse response from client", {
           httpEndpointId: httpEndpoint.id,
@@ -166,6 +174,7 @@ export class HandleHttpEndpointService {
           responseJson,
           errors: parsedResponseResult.error,
         });
+
         return json(
           { error: true, message: "Could not parse response from client" },
           { status: 500 }
@@ -173,6 +182,7 @@ export class HandleHttpEndpointService {
       }
 
       const endpointResponse = parsedResponseResult.data;
+
       httpResponse = new Response(endpointResponse.body, {
         status: endpointResponse.status,
         headers: endpointResponse.headers,
@@ -195,6 +205,42 @@ export class HandleHttpEndpointService {
       return httpResponse;
     }
 
+    if (httpEndpoint.webhook) {
+      const webhookEnvironment = await this.#prismaClient.webhookEnvironment.findUnique({
+        where: {
+          environmentId_webhookId: {
+            environmentId: environment.id,
+            webhookId: httpEndpoint.webhook.id,
+          },
+        },
+        include: {
+          endpoint: true,
+        },
+      });
+
+      if (!webhookEnvironment) {
+        logger.debug("Could not find webhook environment", {
+          webhookId: httpEndpoint.webhook.id,
+          environmentId: environment.id,
+        });
+        return json(
+          { error: true, message: "Could not find webhook environment" },
+          { status: 404 }
+        );
+      }
+
+      const rawContext = {
+        secret,
+        config: webhookEnvironment.config,
+        params: httpEndpoint.webhook.params,
+      };
+      const webhookContextMetadata = WebhookContextMetadataSchema.parse(rawContext);
+
+      const service = new HandleWebhookRequestService(this.#prismaClient);
+
+      return await service.call(webhookEnvironment.id, request, webhookContextMetadata);
+    }
+
     const ingestService = new IngestSendEvent();
 
     let rawBody: string | undefined;
@@ -213,35 +259,17 @@ export class HandleHttpEndpointService {
     const headerId =
       request.headers.get("idempotency-key") ?? request.headers.get("x-request-id") ?? ulid();
 
-    let webhookContextMetadata: WebhookContextMetadata | undefined;
-
-    if (httpEndpoint.webhook) {
-      const rawContext = {
-        secret,
-        config: httpEndpoint.webhook.config,
-        params: httpEndpoint.webhook.params,
-      };
-      webhookContextMetadata = WebhookContextMetadataSchema.parse(rawContext);
-    }
-
     await ingestService.call(
       environment,
       {
         id: `${httpEndpoint.id}.${headerId}`,
-        name: httpEndpoint.webhook
-          ? `${DELIVER_WEBHOOK_REQUEST}.${httpEndpoint.webhook.key}`
-          : `httpendpoint.${httpEndpoint.key}`,
-        source: httpEndpoint.webhook ? undefined : httpEndpointEnvironment.source,
+        name: `httpendpoint.${httpEndpoint.key}`,
+        source: httpEndpointEnvironment.source,
         payload: event,
         payloadType: "REQUEST",
       },
       undefined,
-      httpEndpoint.webhook
-        ? {
-            id: "webhook",
-            metadata: webhookContextMetadata,
-          }
-        : undefined,
+      undefined,
       { httpEndpointId: httpEndpoint.id, httpEndpointEnvironmentId: httpEndpointEnvironment.id }
     );
 

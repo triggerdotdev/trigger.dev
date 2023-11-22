@@ -42,8 +42,9 @@ import {
   SourceMetadataV2,
   StatusUpdate,
   SuccessfulRunNotification,
-  WebhookContextMetadataSchema,
+  WebhookDeliveryResponse,
   WebhookMetadata,
+  WebhookSourceRequestHeadersSchema,
 } from "@trigger.dev/core";
 import { yellow } from "colorette";
 import { ApiClient } from "./apiClient";
@@ -74,6 +75,7 @@ import type {
   Trigger,
   TriggerContext,
   TriggerPreprocessContext,
+  VerifyResult,
 } from "./types";
 
 const parseRequestPayload = (rawPayload: any) => {
@@ -117,8 +119,7 @@ const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
 import EventEmitter from "node:events";
 import * as packageJson from "../package.json";
 import { formatSchemaErrors } from "./utils/formatSchemaErrors";
-import { WebhookSource } from "./triggers/webhook";
-import { z } from "zod";
+import { WebhookDeliveryContext, WebhookSource } from "./triggers/webhook";
 
 export type TriggerClientOptions = {
   /** The `id` property is used to uniquely identify the client.
@@ -151,6 +152,18 @@ export type TriggerAuthResolver = (
   integration: TriggerIntegration
 ) => Promise<AuthResolverResult | void | undefined>;
 
+type WebhookVerifyFunction = (
+  request: Request,
+  apiClient: ApiClient,
+  ctx: WebhookDeliveryContext
+) => Promise<VerifyResult>;
+
+type WebhookEventGeneratorFunction = (
+  request: Request,
+  apiClient: ApiClient,
+  ctx: WebhookDeliveryContext
+) => Promise<void>;
+
 /** A [TriggerClient](https://trigger.dev/docs/documentation/concepts/client-adaptors) is used to connect to a specific [Project](https://trigger.dev/docs/documentation/concepts/projects) by using an [API Key](https://trigger.dev/docs/documentation/concepts/environments-apikeys). */
 export class TriggerClient {
   #options: TriggerClientOptions;
@@ -167,6 +180,13 @@ export class TriggerClient {
       response?: NormalizedResponse;
       metadata?: HttpSourceResponseMetadata;
     } | void>
+  > = {};
+  #registeredWebhookSourceHandlers: Record<
+    string,
+    {
+      verify: WebhookVerifyFunction;
+      generateEvents: WebhookEventGeneratorFunction;
+    }
   > = {};
   #registeredDynamicTriggers: Record<
     string,
@@ -549,6 +569,61 @@ export class TriggerClient {
           headers: this.#standardResponseHeaders(timeOrigin),
         };
       }
+      case "DELIVER_WEBHOOK_REQUEST": {
+        const headers = WebhookSourceRequestHeadersSchema.safeParse(
+          Object.fromEntries(request.headers.entries())
+        );
+
+        if (!headers.success) {
+          return {
+            status: 400,
+            body: {
+              message: "Invalid headers",
+            },
+          };
+        }
+
+        const sourceRequestNeedsBody = headers.data["x-ts-http-method"] !== "GET";
+
+        const sourceRequestInit: RequestInit = {
+          method: headers.data["x-ts-http-method"],
+          headers: headers.data["x-ts-http-headers"],
+          body: sourceRequestNeedsBody ? request.body : undefined,
+        };
+
+        if (sourceRequestNeedsBody) {
+          try {
+            // @ts-ignore
+            sourceRequestInit.duplex = "half";
+          } catch (error) {
+            // ignore
+          }
+        }
+
+        const webhookRequest = new Request(headers.data["x-ts-http-url"], sourceRequestInit);
+
+        const key = headers.data["x-ts-key"];
+        const secret = headers.data["x-ts-secret"];
+        const params = headers.data["x-ts-params"];
+
+        const ctx = {
+          key,
+          secret,
+          params,
+        };
+
+        const { response, verified, error } = await this.#handleWebhookRequest(webhookRequest, ctx);
+
+        return {
+          status: 200,
+          body: {
+            response,
+            verified,
+            error,
+          },
+          headers: this.#standardResponseHeaders(timeOrigin),
+        };
+      }
       case "VALIDATE": {
         return {
           status: 200,
@@ -806,6 +881,11 @@ export class TriggerClient {
   }): void {
     const { source } = options;
 
+    this.#registeredWebhookSourceHandlers[options.key] = {
+      verify: source.verify.bind(source),
+      generateEvents: source.generateEvents.bind(source),
+    };
+
     let registeredWebhook = this.#registeredWebhooks[options.key];
 
     if (!registeredWebhook) {
@@ -828,55 +908,55 @@ export class TriggerClient {
 
     this.#registeredWebhooks[options.key] = registeredWebhook;
 
-    new Job(this, {
-      id: `webhook.deliver.${options.key}`,
-      name: `webhook.deliver.${options.key}`,
-      version: source.version,
-      trigger: new EventTrigger({
-        event: deliverWebhookEvent(options.key),
-        // verify: source.verify.bind(source),
-      }),
-      integrations: {
-        integration: source.integration,
-      },
-      run: async (request, io, ctx) => {
-        this.#internalLogger.debug("[webhook.deliver]");
+    // new Job(this, {
+    //   id: `webhook.deliver.${options.key}`,
+    //   name: `webhook.deliver.${options.key}`,
+    //   version: source.version,
+    //   trigger: new EventTrigger({
+    //     event: deliverWebhookEvent(options.key),
+    //     // verify: source.verify.bind(source),
+    //   }),
+    //   integrations: {
+    //     integration: source.integration,
+    //   },
+    //   run: async (request, io, ctx) => {
+    //     this.#internalLogger.debug("[webhook.deliver]");
 
-        const webhookContextMetadata = WebhookContextMetadataSchema.parse(ctx.source?.metadata);
+    //     const webhookContextMetadata = WebhookContextMetadataSchema.parse(ctx.source?.metadata);
 
-        const webhookContext = {
-          ...ctx,
-          webhook: webhookContextMetadata,
-        };
+    //     const webhookContext = {
+    //       ...ctx,
+    //       webhook: webhookContextMetadata,
+    //     };
 
-        const verifyResult = await io.runTask(
-          "verify",
-          async () => {
-            return await source.verify(request, io, webhookContext);
-          },
-          {
-            name: "Verify Signature",
-            icon: "certificate",
-          }
-        );
+    //     const verifyResult = await io.runTask(
+    //       "verify",
+    //       async () => {
+    //         return await source.verify(request, io, webhookContext);
+    //       },
+    //       {
+    //         name: "Verify Signature",
+    //         icon: "certificate",
+    //       }
+    //     );
 
-        if (!verifyResult.success) {
-          throw new Error(verifyResult.reason);
-        }
+    //     if (!verifyResult.success) {
+    //       throw new Error(verifyResult.reason);
+    //     }
 
-        return await io.runTask(
-          "generate-events",
-          async () => {
-            return await source.generateEvents(request, io, webhookContext);
-          },
-          {
-            name: "Generate Events",
-            icon: "building-factory-2",
-          }
-        );
-      },
-      __internal: true,
-    });
+    //     return await io.runTask(
+    //       "generate-events",
+    //       async () => {
+    //         return await source.generateEvents(request, io, webhookContext);
+    //       },
+    //       {
+    //         name: "Generate Events",
+    //         icon: "building-factory-2",
+    //       }
+    //     );
+    //   },
+    //   __internal: true,
+    // });
 
     new Job(this, {
       id: `webhook.register.${options.key}`,
@@ -1491,6 +1571,54 @@ export class TriggerClient {
 
     return {
       response,
+    };
+  }
+
+  async #handleWebhookRequest(
+    request: Request,
+    ctx: WebhookDeliveryContext
+  ): Promise<WebhookDeliveryResponse> {
+    this.#internalLogger.debug("Handling webhook request", {
+      ctx,
+    });
+
+    const okResponse = {
+      status: 200,
+      body: {
+        ok: true,
+      },
+    };
+
+    const handlers = this.#registeredWebhookSourceHandlers[ctx.key];
+
+    if (!handlers) {
+      this.#internalLogger.debug("No handler registered for webhook", {
+        ctx,
+      });
+
+      return {
+        response: okResponse,
+        verified: false,
+      };
+    }
+
+    const { verify, generateEvents } = handlers;
+
+    const verifyResult = await verify(request, this.#client, ctx);
+
+    if (!verifyResult.success) {
+      return {
+        response: okResponse,
+        verified: false,
+        error: verifyResult.reason,
+      };
+    }
+
+    await generateEvents(request, this.#client, ctx);
+
+    return {
+      response: okResponse,
+      verified: true,
     };
   }
 
