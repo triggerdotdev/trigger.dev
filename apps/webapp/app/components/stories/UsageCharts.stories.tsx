@@ -15,7 +15,7 @@ import {
 } from "recharts";
 
 const meta: Meta<typeof UsageCharts> = {
-  title: "Components/UsageCharts",
+  title: "Billing/UsageCharts",
   component: UsageCharts,
 };
 
