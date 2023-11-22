@@ -83,7 +83,7 @@ export const handle: Handle = {
           title={`${data.trigger.integration.title}: ${data.trigger.integration.slug}`}
         />
         <BreadcrumbIcon />
-        <BreadcrumbLink to={webhookDeliveryPath(org, project, { id: data.trigger.id })} title="Delivery" />
+        <BreadcrumbLink to={webhookDeliveryPath(org, project, { id: data.trigger.id })} title="Deliveries" />
         <BreadcrumbIcon />
         {data && data.run && (
           <BreadcrumbLink

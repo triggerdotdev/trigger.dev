@@ -106,7 +106,7 @@ export const handle: Handle = {
         <BreadcrumbIcon />
         <BreadcrumbLink
           to={trimTrailingSlash(match.pathname)}
-          title={`${data.trigger.integration.title}: ${data.trigger.integration.slug}`}
+          title={data.trigger.key}
         />
       </Fragment>
     );

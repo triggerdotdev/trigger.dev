@@ -1,11 +1,10 @@
-import type {  LoaderFunctionArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Fragment } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 import { Callout } from "~/components/primitives/Callout";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { RunsTable } from "~/components/runs/RunsTable";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
@@ -21,7 +20,8 @@ import {
 } from "~/utils/pathBuilder";
 import { ListPagination } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/ListPagination";
 import { RunListSearchSchema } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/route";
-import { WebhookSourcePresenter } from "~/presenters/WebhookSourcePresenter.server";
+import { WebhookDeliveryPresenter } from "~/presenters/WebhookDeliveryPresenter.server";
+import { WebhookDeliveryRunsTable } from "~/components/runs/WebhookDeliveryRunsTable";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -31,25 +31,24 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const s = Object.fromEntries(url.searchParams.entries());
   const searchParams = RunListSearchSchema.parse(s);
 
-  const presenter = new WebhookSourcePresenter();
-  const { trigger } = await presenter.call({
+  const presenter = new WebhookDeliveryPresenter();
+  const { webhook } = await presenter.call({
     userId: user.id,
     organizationSlug,
     projectSlug: projectParam,
     webhookId: triggerParam,
     direction: searchParams.direction,
     cursor: searchParams.cursor,
-    getDeliveryRuns: true
   });
 
-  if (!trigger) {
+  if (!webhook) {
     throw new Response("Trigger not found", {
       status: 404,
       statusText: "Not Found",
     });
   }
 
-  return typedjson({ trigger });
+  return typedjson({ webhook });
 };
 
 export const handle: Handle = {
@@ -68,38 +67,38 @@ export const handle: Handle = {
         <BreadcrumbLink to={projectWebhookTriggersPath(org, project)} title="Webhook Triggers" />
         <BreadcrumbIcon />
         <BreadcrumbLink
-          to={webhookTriggerPath(org, project, { id: data.trigger.id })}
-          title={`${data.trigger.integration.title}: ${data.trigger.integration.slug}`}
+          to={webhookTriggerPath(org, project, { id: data.webhook.id })}
+          title={data.webhook.key}
         />
         <BreadcrumbIcon />
-        <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Delivery" />
+        <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Deliveries" />
       </Fragment>
     );
   },
 };
 
 export default function Page() {
-  const { trigger } = useTypedLoaderData<typeof loader>();
+  const { webhook } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
 
   return (
     <>
       <Paragraph variant="small" spacing>
-        Webhook payloads are delivered to clients for validation and event generation. You can see the list
-        of attempted deliveries below.
+        Webhook payloads are delivered to clients for validation and event generation. You can see
+        the list of attempted deliveries below.
       </Paragraph>
 
-      {trigger.runList ? (
+      {webhook.requestDeliveries ? (
         <>
-          <ListPagination list={trigger.runList} className="mb-2 justify-end" />
-          <RunsTable
-            runs={trigger.runList.runs}
-            total={trigger.runList.runs.length}
+          <ListPagination list={webhook.requestDeliveries} className="mb-2 justify-end" />
+          <WebhookDeliveryRunsTable
+            runs={webhook.requestDeliveries.runs}
+            total={webhook.requestDeliveries.runs.length}
             hasFilters={false}
-            runsParentPath={webhookTriggerDeliveryRunsParentPath(organization, project, trigger)}
+            runsParentPath={webhookTriggerDeliveryRunsParentPath(organization, project, webhook)}
           />
-          <ListPagination list={trigger.runList} className="mt-2 justify-end" />
+          <ListPagination list={webhook.requestDeliveries} className="mt-2 justify-end" />
         </>
       ) : (
         <Callout variant="warning">No registration runs found</Callout>

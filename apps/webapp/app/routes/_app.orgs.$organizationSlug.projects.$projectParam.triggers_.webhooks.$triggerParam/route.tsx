@@ -62,7 +62,7 @@ export default function Page() {
       <PageHeader hideBorder>
         <PageTitleRow>
           <PageTitle
-            title={`${trigger.integration.title}: ${trigger.integration.slug}`}
+            title={trigger.key}
             backButton={{
               to: projectWebhookTriggersPath(organization, project),
               text: "Webhook Triggers",
@@ -80,7 +80,6 @@ export default function Page() {
             <PageInfoProperty
               icon="webhook"
               label="HTTP Endpoint"
-              value={trigger.httpEndpoint.key}
               to={trigger.httpEndpointLink}
             />
           </PageInfoGroup>
@@ -89,11 +88,11 @@ export default function Page() {
           layoutId="webhook-trigger"
           tabs={[
             {
-              label: "Registration Runs",
+              label: "Registrations",
               to: webhookTriggerPath(organization, project, trigger),
             },
             {
-              label: "Delivery Runs",
+              label: "Deliveries",
               to: webhookDeliveryPath(organization, project, trigger),
             },
           ]}

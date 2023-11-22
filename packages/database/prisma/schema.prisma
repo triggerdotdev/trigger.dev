@@ -326,6 +326,7 @@ model RuntimeEnvironment {
   httpEndpointEnvironments TriggerHttpEndpointEnvironment[]
   keyValueItems            KeyValueItem[]
   webhookEnvironments      WebhookEnvironment[]
+  webhookRequestDeliveries WebhookRequestDelivery[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -1147,6 +1148,7 @@ model WebhookEnvironment {
 
 model WebhookRequestDelivery {
   id      String @id @default(cuid())
+  number  Int
 
   url     String
   method  String
@@ -1160,6 +1162,9 @@ model WebhookRequestDelivery {
   webhook   Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   webhookId String
 
+  environment RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
   webhookEnvironment WebhookEnvironment @relation(fields: [webhookEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   webhookEnvironmentId String
 
@@ -1170,6 +1175,11 @@ model WebhookRequestDelivery {
   updatedAt   DateTime  @updatedAt
 
   deliveredAt DateTime?
+}
+
+model WebhookDeliveryCounter {
+  webhookId   String @id
+  lastNumber  Int    @default(0)
 }
 
 model DynamicTriggerRegistration {

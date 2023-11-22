@@ -4,6 +4,7 @@ import { workerQueue } from "../worker.server";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { createHttpSourceRequest } from "~/utils/createHttpSourceRequest";
 import { WebhookContextMetadata } from "@trigger.dev/core";
+import { createHash } from "crypto";
 
 export class HandleWebhookRequestService {
   #prismaClient: PrismaClient;
@@ -33,12 +34,25 @@ export class HandleWebhookRequestService {
 
     const webhookRequest = await createHttpSourceRequest(request);
 
+    const lockId = webhookIdToLockId(webhookEnvironment.webhookId);
+
     await this.#prismaClient.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockId})`;
+
+      const counter = await tx.webhookDeliveryCounter.upsert({
+        where: { webhookId: webhookEnvironment.id },
+        update: { lastNumber: { increment: 1 } },
+        create: { webhookId: webhookEnvironment.id, lastNumber: 1 },
+        select: { lastNumber: true },
+      });
+
       const delivery = await tx.webhookRequestDelivery.create({
         data: {
+          number: counter.lastNumber,
           webhookId: webhookEnvironment.webhookId,
           webhookEnvironmentId: webhookEnvironment.id,
           endpointId: webhookEnvironment.endpointId,
+          environmentId: webhookEnvironment.environmentId,
           url: webhookRequest.url,
           method: webhookRequest.method,
           headers: webhookRequest.headers,
@@ -52,7 +66,6 @@ export class HandleWebhookRequestService {
           id: delivery.id,
         },
         {
-          queueName: `deliver:${webhookEnvironment.id}`,
           tx,
           maxAttempts:
             webhookEnvironment.environment.type === RuntimeEnvironmentType.DEVELOPMENT
@@ -64,4 +77,9 @@ export class HandleWebhookRequestService {
 
     return { status: 200 };
   }
+}
+
+function webhookIdToLockId(webhookId: string): number {
+  // Convert webhookId to a unique lock identifier
+  return parseInt(createHash("sha256").update(webhookId).digest("hex").slice(0, 8), 16);
 }

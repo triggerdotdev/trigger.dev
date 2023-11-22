@@ -1,16 +1,9 @@
 import { useLocation } from "@remix-run/react";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Direction, RunList } from "~/presenters/RunListPresenter.server";
-import { WebhookDeliveryList } from "~/presenters/WebhookDeliveryListPresenter.server";
 import { cn } from "~/utils/cn";
 
-export function ListPagination({
-  list,
-  className,
-}: {
-  list: RunList | WebhookDeliveryList;
-  className?: string;
-}) {
+export function DeliveryListPagination({ list, className }: { list: RunList; className?: string }) {
   return (
     <div className={cn("flex items-center gap-1", className)}>
       <PreviousButton cursor={list.pagination.previous} />

@@ -2,10 +2,11 @@ import { User, Webhook } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
-import { Direction, RunListPresenter } from "./RunListPresenter.server";
+import { Direction } from "./RunListPresenter.server";
 import { organizationPath, projectPath } from "~/utils/pathBuilder";
+import { WebhookDeliveryListPresenter } from "./WebhookDeliveryListPresenter.server";
 
-export class WebhookSourcePresenter {
+export class WebhookDeliveryPresenter {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
@@ -19,7 +20,6 @@ export class WebhookSourcePresenter {
     webhookId,
     direction = "forward",
     cursor,
-    getDeliveryRuns = false,
   }: {
     userId: User["id"];
     projectSlug: Project["slug"];
@@ -27,7 +27,6 @@ export class WebhookSourcePresenter {
     webhookId: Webhook["id"];
     direction?: Direction;
     cursor?: string;
-    getDeliveryRuns?: boolean;
   }) {
     const webhook = await this.#prismaClient.webhook.findUnique({
       select: {
@@ -66,25 +65,20 @@ export class WebhookSourcePresenter {
       throw new Error("Webhook source not found");
     }
 
-    const runListPresenter = new RunListPresenter(this.#prismaClient);
-    const jobSlug = getDeliveryRuns
-      ? getDeliveryJobSlug(webhook.key)
-      : getRegistrationJobSlug(webhook.key);
-
-    const runList = await runListPresenter.call({
-      userId,
-      jobSlug,
-      organizationSlug,
-      projectSlug,
-      direction,
-      cursor,
-    });
+    const deliveryListPresenter = new WebhookDeliveryListPresenter(this.#prismaClient);
 
     const orgRootPath = organizationPath({ slug: organizationSlug });
     const projectRootPath = projectPath({ slug: organizationSlug }, { slug: projectSlug });
 
+    const requestDeliveries = await deliveryListPresenter.call({
+      userId,
+      webhookId: webhook.id,
+      direction,
+      cursor,
+    });
+
     return {
-      trigger: {
+      webhook: {
         id: webhook.id,
         key: webhook.key,
         active: webhook.active,
@@ -95,12 +89,8 @@ export class WebhookSourcePresenter {
         createdAt: webhook.createdAt,
         updatedAt: webhook.updatedAt,
         params: webhook.params,
-        runList,
+        requestDeliveries,
       },
     };
   }
 }
-
-const getRegistrationJobSlug = (key: string) => `webhook.register.${key}`;
-
-const getDeliveryJobSlug = (key: string) => `webhook.deliver.${key}`;

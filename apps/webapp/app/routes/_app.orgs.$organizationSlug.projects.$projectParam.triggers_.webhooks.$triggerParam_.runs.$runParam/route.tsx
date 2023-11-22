@@ -36,6 +36,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const trigger = await prisma.webhook.findUnique({
     select: {
       id: true,
+      key: true,
       integration: {
         select: {
           id: true,
@@ -79,7 +80,12 @@ export const handle: Handle = {
         <BreadcrumbIcon />
         <BreadcrumbLink
           to={webhookTriggerPath(org, project, { id: data.trigger.id })}
-          title={`${data.trigger.integration.title}: ${data.trigger.integration.slug}`}
+          title={data.trigger.key}
+        />
+        <BreadcrumbIcon />
+        <BreadcrumbLink
+          to={webhookTriggerPath(org, project, { id: data.trigger.id })}
+          title="Registrations"
         />
         <BreadcrumbIcon />
         {data && data.run && (

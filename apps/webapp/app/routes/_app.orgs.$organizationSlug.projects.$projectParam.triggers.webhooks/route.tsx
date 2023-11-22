@@ -59,6 +59,7 @@ export default function Integrations() {
       <Table containerClassName="mt-4">
         <TableHeader>
           <TableRow>
+            <TableHeaderCell>Key</TableHeaderCell>
             <TableHeaderCell>Integration</TableHeaderCell>
             <TableHeaderCell>Properties</TableHeaderCell>
             <TableHeaderCell>Environment</TableHeaderCell>
@@ -72,6 +73,7 @@ export default function Integrations() {
               const path = webhookTriggerPath(organization, project, w);
               return (
                 <TableRow key={w.id} className={cn(!w.active && "bg-rose-500/30")}>
+                <TableCell to={path}>{w.key}</TableCell>
                   <TableCell to={path}>
                     <div className="flex items-center gap-1">
                       <NamedIcon
