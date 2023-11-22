@@ -1,7 +1,7 @@
 import { StopIcon } from "@heroicons/react/24/outline";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { JobRunStatus, RuntimeEnvironmentType } from "@trigger.dev/database";
-import { formatDuration } from "~/utils";
+import { formatDuration, formatDurationMilliseconds } from "~/utils";
 import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 import { DateTime } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
@@ -28,6 +28,7 @@ type RunTableItem = {
   startedAt: Date | null;
   completedAt: Date | null;
   createdAt: Date | null;
+  executionDuration: number;
   version: string;
   isTest: boolean;
 };
@@ -56,6 +57,7 @@ export function RunsTable({
           <TableHeaderCell>Status</TableHeaderCell>
           <TableHeaderCell>Started</TableHeaderCell>
           <TableHeaderCell>Duration</TableHeaderCell>
+          <TableHeaderCell>Exec Time</TableHeaderCell>
           <TableHeaderCell>Test</TableHeaderCell>
           <TableHeaderCell>Version</TableHeaderCell>
           <TableHeaderCell>Created at</TableHeaderCell>
@@ -92,6 +94,11 @@ export function RunsTable({
                 </TableCell>
                 <TableCell to={path}>
                   {formatDuration(run.startedAt, run.completedAt, {
+                    style: "short",
+                  })}
+                </TableCell>
+                <TableCell to={path}>
+                  {formatDurationMilliseconds(run.executionDuration, {
                     style: "short",
                   })}
                 </TableCell>

@@ -85,6 +85,8 @@ export class RunPresenter {
       runConnections: run.runConnections,
       missingConnections: run.missingConnections,
       error: runError,
+      executionDuration: run.executionDuration,
+      executionCount: run.executionCount,
     };
   }
 
@@ -115,6 +117,8 @@ export class RunPresenter {
         isTest: true,
         properties: true,
         output: true,
+        executionCount: true,
+        executionDuration: true,
         version: {
           select: {
             version: true,

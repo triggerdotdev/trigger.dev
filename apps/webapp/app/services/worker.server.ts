@@ -450,6 +450,7 @@ function getExecutionWorkerQueue() {
             reason: payload.reason,
             resumeTaskId: payload.resumeTaskId,
             isRetry: payload.isRetry,
+            lastAttempt: job.max_attempts === job.attempts,
           });
         },
       },
@@ -466,6 +467,7 @@ function getExecutionWorkerQueue() {
               id: payload.id,
               reason: payload.reason,
               isRetry: false,
+              lastAttempt: job.max_attempts === job.attempts,
             },
             driftInMs
           );

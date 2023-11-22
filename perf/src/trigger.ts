@@ -17,7 +17,7 @@ triggerClient.defineJob({
     await io.runTask(
       "task-1",
       async (task) => {
-        await new Promise((resolve) => setTimeout(resolve, 10000));
+        await new Promise((resolve) => setTimeout(resolve, 5000));
 
         return {
           value: Math.random(),
@@ -41,7 +41,7 @@ triggerClient.defineJob({
     await io.runTask(
       "task-3",
       async (task) => {
-        await new Promise((resolve) => setTimeout(resolve, 20000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
         return {
           value: Math.random(),

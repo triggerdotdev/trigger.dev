@@ -41,6 +41,7 @@ export class RunListPresenter {
         startedAt: true,
         completedAt: true,
         createdAt: true,
+        executionDuration: true,
         isTest: true,
         status: true,
         environment: {
@@ -123,6 +124,7 @@ export class RunListPresenter {
         startedAt: run.startedAt,
         completedAt: run.completedAt,
         createdAt: run.createdAt,
+        executionDuration: run.executionDuration,
         isTest: run.isTest,
         status: run.status,
         version: run.version?.version ?? "unknown",

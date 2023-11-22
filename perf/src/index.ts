@@ -169,7 +169,34 @@ async function mainSerial() {
   }
 }
 
-main().catch((err) => {
+async function mainConcurrency() {
+  const batches = 1;
+  const concurrency = 10;
+  const eventsPer = 10;
+
+  console.log("Preparing perf tests...");
+
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+
+  console.log("Starting perf tests in 1 second...");
+
+  // wait for 1 seconds
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
+  // Send 5 events per second for 30 seconds (1 event == 10 runs)
+  for (let i = 0; i < batches; i++) {
+    console.log(`Sending ${concurrency} x ${eventsPer} events... batch ${i + 1}/${batches}`);
+    await Promise.all(new Array(concurrency).fill(0).map(() => sendEvents(eventsPer)));
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+
+async function mainSingle() {
+  await sendEvent();
+}
+
+mainConcurrency().catch((err) => {
   console.error(err);
   process.exit(1);
 });

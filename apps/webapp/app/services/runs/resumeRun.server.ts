@@ -1,7 +1,7 @@
 import { JobRun, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
-import { PerformRunExecutionV3Service } from "./performRunExecutionV3.server";
+import { PerformRunExecutionV3Service, RunExecutionPriority } from "./performRunExecutionV3.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 
@@ -34,10 +34,13 @@ export class ResumeRunService {
         break;
       }
       case "WAITING_TO_EXECUTE": {
-        await this.#executeRun(run);
+        await this.#executeRun(run, "resume");
         break;
       }
-      case "WAITING_TO_CONTINUE":
+      case "WAITING_TO_CONTINUE": {
+        await this.#resumeWaitingToContinueRun(run);
+        break;
+      }
       case "STARTED": {
         await this.#resumeStartedRun(run);
         break;
@@ -70,7 +73,7 @@ export class ResumeRunService {
       },
     });
 
-    await this.#executeRun(run);
+    await this.#executeRun(run, "initial");
   }
 
   async #resumeStartedRun(run: FoundRun) {
@@ -83,7 +86,20 @@ export class ResumeRunService {
       },
     });
 
-    await this.#executeRun(run);
+    await this.#executeRun(run, "initial");
+  }
+
+  async #resumeWaitingToContinueRun(run: FoundRun) {
+    await this.#prismaClient.jobRun.update({
+      where: {
+        id: run.id,
+      },
+      data: {
+        status: "WAITING_TO_EXECUTE",
+      },
+    });
+
+    await this.#executeRun(run, "resume");
   }
 
   async #resumePendingRun(run: FoundRun) {
@@ -97,11 +113,11 @@ export class ResumeRunService {
       },
     });
 
-    await this.#executeRun(run);
+    await this.#executeRun(run, "initial");
   }
 
-  async #executeRun(run: FoundRun) {
-    await PerformRunExecutionV3Service.enqueue(run, this.#prismaClient, {
+  async #executeRun(run: FoundRun, priority: RunExecutionPriority) {
+    await PerformRunExecutionV3Service.enqueue(run, priority, this.#prismaClient, {
       skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
     });
   }
@@ -115,9 +131,7 @@ export class ResumeRunService {
       {
         tx,
         runAt: runAt ?? run.createdAt,
-        queueName: `run_resume:${run.id}`,
         jobKey: `run_resume:${run.id}`,
-        priority: run.number ?? 0,
       }
     );
   }

@@ -59,7 +59,14 @@ export type PerformRunExecutionV3Input = {
    * @deprecated Resuming tasks now goes through ResumeTaskService, this is included here for backwards compatibility
    */
   resumeTaskId?: string;
+
+  /**
+   * Specifies whether this should be the last attempt to execute the run. If so, we can't retry the run in case of a failure.
+   */
+  lastAttempt: boolean;
 };
+
+export type RunExecutionPriority = "initial" | "resume";
 
 export class PerformRunExecutionV3Service {
   #prismaClient: PrismaClient;
@@ -80,6 +87,7 @@ export class PerformRunExecutionV3Service {
 
   static async enqueue(
     run: JobRun,
+    priority: RunExecutionPriority,
     tx: PrismaClientOrTransaction,
     options: {
       runAt?: Date;
@@ -95,11 +103,10 @@ export class PerformRunExecutionV3Service {
       {
         tx,
         runAt: options.runAt,
-        queueName: `job_run:${run.id}`,
         jobKey: `job_run:EXECUTE_JOB:${run.id}`,
         maxAttempts: options.skipRetrying ? 1 : undefined,
         flags: [`rl:executions:${run.organizationId}`],
-        priority: run.number ?? 0,
+        priority: priority === "initial" ? 0 : -1,
       }
     );
   }
@@ -181,7 +188,7 @@ export class PerformRunExecutionV3Service {
       forceYieldCoordinator.deregisterRun(run.id);
 
       if (!response) {
-        return await this.#failRunExecutionWithRetry(run, {
+        return await this.#failRunExecutionWithRetry(run, input.lastAttempt, {
           message: `Connection could not be established to the endpoint (${run.endpoint.url})`,
         });
       }
@@ -273,7 +280,7 @@ export class PerformRunExecutionV3Service {
           if (response.status >= 400 && response.status <= 499) {
             return await this.#failRunExecution(this.#prismaClient, run, errorBody.data);
           } else {
-            return await this.#failRunExecutionWithRetry(run, errorBody.data);
+            return await this.#failRunExecutionWithRetry(run, input.lastAttempt, errorBody.data);
           }
         }
 
@@ -298,7 +305,7 @@ export class PerformRunExecutionV3Service {
               durationInMs
             );
           } else {
-            return await this.#failRunExecutionWithRetry(run, {
+            return await this.#failRunExecutionWithRetry(run, input.lastAttempt, {
               message: `Endpoint responded with ${response.status} status code`,
             });
           }
@@ -992,7 +999,15 @@ export class PerformRunExecutionV3Service {
     });
   }
 
-  async #failRunExecutionWithRetry(run: FoundRun, output: Record<string, any>): Promise<void> {
+  async #failRunExecutionWithRetry(
+    run: FoundRun,
+    lastAttempt: boolean,
+    output: Record<string, any>
+  ): Promise<void> {
+    if (lastAttempt) {
+      return await this.#failRunExecution(this.#prismaClient, run, output);
+    }
+
     await this.#prismaClient.jobRun.update({
       where: { id: run.id },
       data: {

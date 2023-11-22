@@ -17,7 +17,7 @@ import type { RunBasicStatus } from "~/models/jobRun.server";
 import { ViewRun } from "~/presenters/RunPresenter.server";
 import { cancelSchema } from "~/routes/resources.runs.$runId.cancel";
 import { schema } from "~/routes/resources.runs.$runId.rerun";
-import { formatDuration } from "~/utils";
+import { formatDuration, formatDurationMilliseconds } from "~/utils";
 import { cn } from "~/utils/cn";
 import { runCompletedPath, runTaskPath, runTriggerPath } from "~/utils/pathBuilder";
 import { CodeBlock } from "../code/CodeBlock";
@@ -140,7 +140,17 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
             <PageInfoProperty
               icon={"clock"}
               label={"Duration"}
-              value={formatDuration(run.startedAt, run.completedAt)}
+              value={formatDuration(run.startedAt, run.completedAt, { style: "short" })}
+            />
+            <PageInfoProperty
+              icon={"hourglass"}
+              label={"Execution Time"}
+              value={formatDurationMilliseconds(run.executionDuration, { style: "short" })}
+            />
+            <PageInfoProperty
+              icon={"list-numbers"}
+              label={"Execution Count"}
+              value={run.executionCount}
             />
           </PageInfoGroup>
           <PageInfoGroup alignment="right">
