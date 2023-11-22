@@ -7,6 +7,15 @@ import SegmentedControl from "../primitives/SegmentedControl";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { Header3 } from "../primitives/Headers";
 
+const pricingDefinitions = {
+  concurrentRuns: "The number of Runs that can be executed at the same time.",
+  jobRuns: "A single execution of a Job.",
+  jobs: "A Job is like a function that is triggered by an event and performs a Run.",
+  tasks: "The individual building blocks of a Job Run.",
+  events: "Events allow you to run Jobs from your own code",
+  integrations: "Integrations make it easy to authenticate and use APIs.",
+};
+
 export function PricingTiers({
   children,
   className,
@@ -32,7 +41,7 @@ export function TierFree() {
       <Header title="Free" flatCost={0} />
       <TierLimit>
         Up to 5{" "}
-        <DefinitionTip title="Concurrent Runs" content="Description">
+        <DefinitionTip title="Concurrent Runs" content={pricingDefinitions.concurrentRuns}>
           Concurrent Runs
         </DefinitionTip>
       </TierLimit>
@@ -40,17 +49,37 @@ export function TierFree() {
         Current Plan
       </Button>
       <ul className="flex flex-col gap-2.5">
-        <FeatureItem checked title="Up to 10k Job Runs" />
-        <FeatureItem checked title="Unlimited Jobs" />
-        <FeatureItem checked title="Unlimited Tasks" />
-        <FeatureItem checked title="Unlimited Events" />
-        <FeatureItem checked title="Unlimited team members" />
-        <FeatureItem checked title="24 hour log retention" />
-        <FeatureItem checked title="Community support" />
-        <FeatureItem title="Custom integrations" />
-        <FeatureItem title="Role-based access control" />
-        <FeatureItem title="SSO" />
-        <FeatureItem title="On-prem option" />
+        <FeatureItem checked>
+          Up to 10k{" "}
+          <DefinitionTip title="Job Runs" content={pricingDefinitions.jobRuns}>
+            Job Runs
+          </DefinitionTip>
+        </FeatureItem>
+        <FeatureItem checked>
+          Unlimited{" "}
+          <DefinitionTip title="Jobs" content={pricingDefinitions.jobs}>
+            Jobs
+          </DefinitionTip>
+        </FeatureItem>
+        <FeatureItem checked>
+          Unlimited{" "}
+          <DefinitionTip title="Tasks" content={pricingDefinitions.tasks}>
+            Tasks
+          </DefinitionTip>
+        </FeatureItem>
+        <FeatureItem checked>
+          Unlimited{" "}
+          <DefinitionTip title="Events" content={pricingDefinitions.events}>
+            Events
+          </DefinitionTip>
+        </FeatureItem>
+        <FeatureItem checked>Unlimited team members</FeatureItem>
+        <FeatureItem checked>24 hour log retention</FeatureItem>
+        <FeatureItem checked>Community support</FeatureItem>
+        <FeatureItem>Custom integrations</FeatureItem>
+        <FeatureItem>Role-based access control</FeatureItem>
+        <FeatureItem>SSO</FeatureItem>
+        <FeatureItem>On-prem option</FeatureItem>
       </ul>
     </TierContainer>
   );
@@ -61,7 +90,7 @@ export function TierPro() {
     <TierContainer isHighlighted>
       <Header title="Pro" isHighlighted flatCost={25} />
       <TierLimit pricedMetric>
-        <DefinitionTip title="Concurrent Runs" content="Description">
+        <DefinitionTip title="Concurrent Runs" content={pricingDefinitions.concurrentRuns}>
           Concurrent Runs
         </DefinitionTip>
       </TierLimit>
@@ -69,17 +98,41 @@ export function TierPro() {
         Upgrade
       </Button>
       <ul className="flex flex-col gap-2.5">
-        <FeatureItem checked title="Includes 10k Job Runs, then < $1.30/1,000 Runs" />
-        <FeatureItem checked title="Unlimited Jobs" />
-        <FeatureItem checked title="Unlimited Tasks" />
-        <FeatureItem checked title="Unlimited Events" />
-        <FeatureItem checked title="Unlimited team members" />
-        <FeatureItem checked title="7 day log retention" />
-        <FeatureItem checked title="Dedicated Slack support" />
-        <FeatureItem title="Custom integrations" />
-        <FeatureItem title="Role-based access control" />
-        <FeatureItem title="SSO" />
-        <FeatureItem title="On-prem option" />
+        <FeatureItem checked>
+          Includes 10k{" "}
+          <DefinitionTip title="Job Runs" content={pricingDefinitions.jobRuns}>
+            Job Runs
+          </DefinitionTip>
+          , then{" "}
+          <DefinitionTip title="Runs volume discount" content={<RunsVolumeDiscountTable />}>
+            {"<"} $1.30/1,000 Runs
+          </DefinitionTip>
+        </FeatureItem>
+        <FeatureItem checked>
+          Unlimited{" "}
+          <DefinitionTip title="Jobs" content={pricingDefinitions.jobs}>
+            Jobs
+          </DefinitionTip>
+        </FeatureItem>
+        <FeatureItem checked>
+          Unlimited{" "}
+          <DefinitionTip title="Tasks" content={pricingDefinitions.tasks}>
+            Tasks
+          </DefinitionTip>
+        </FeatureItem>
+        <FeatureItem checked>
+          Unlimited{" "}
+          <DefinitionTip title="Events" content={pricingDefinitions.events}>
+            Events
+          </DefinitionTip>
+        </FeatureItem>
+        <FeatureItem checked>Unlimited team members</FeatureItem>
+        <FeatureItem checked>7 day log retention</FeatureItem>
+        <FeatureItem checked>Dedicated Slack support</FeatureItem>
+        <FeatureItem>Custom integrations</FeatureItem>
+        <FeatureItem>Role-based access control</FeatureItem>
+        <FeatureItem>SSO</FeatureItem>
+        <FeatureItem>On-prem option</FeatureItem>
       </ul>
     </TierContainer>
   );
@@ -91,7 +144,7 @@ export function TierEnterprise() {
       <Header title="Enterprise" />
       <TierLimit>
         Flexible{" "}
-        <DefinitionTip title="Concurrent Runs" content="Description">
+        <DefinitionTip title="Concurrent Runs" content={pricingDefinitions.concurrentRuns}>
           concurrent Runs
         </DefinitionTip>
       </TierLimit>
@@ -99,17 +152,37 @@ export function TierEnterprise() {
         Contact us
       </Button>
       <ul className="flex flex-col gap-2.5">
-        <FeatureItem checked title="Flexible Job Runs" />
-        <FeatureItem checked title="Unlimited Jobs" />
-        <FeatureItem checked title="Unlimited Tasks" />
-        <FeatureItem checked title="Unlimited Events" />
-        <FeatureItem checked title="Unlimited team members" />
-        <FeatureItem checked title="30 day log retention" />
-        <FeatureItem checked title="Priority support" />
-        <FeatureItem checked title="Custom integrations" />
-        <FeatureItem checked title="Role-based access control" />
-        <FeatureItem checked title="SSO" />
-        <FeatureItem checked title="On-prem option" />
+        <FeatureItem checked>
+          Flexible{" "}
+          <DefinitionTip title="Job Runs" content={pricingDefinitions.jobRuns}>
+            Job Runs
+          </DefinitionTip>
+        </FeatureItem>
+        <FeatureItem checked>
+          Unlimited{" "}
+          <DefinitionTip title="Jobs" content={pricingDefinitions.jobs}>
+            Jobs
+          </DefinitionTip>
+        </FeatureItem>
+        <FeatureItem checked>
+          Unlimited{" "}
+          <DefinitionTip title="Tasks" content={pricingDefinitions.tasks}>
+            Tasks
+          </DefinitionTip>
+        </FeatureItem>
+        <FeatureItem checked>
+          Unlimited{" "}
+          <DefinitionTip title="Events" content={pricingDefinitions.events}>
+            Events
+          </DefinitionTip>
+        </FeatureItem>
+        <FeatureItem checked>Unlimited team members</FeatureItem>
+        <FeatureItem checked>30 day log retention</FeatureItem>
+        <FeatureItem checked>Priority support</FeatureItem>
+        <FeatureItem checked>Custom integrations</FeatureItem>
+        <FeatureItem checked>Role-based access control</FeatureItem>
+        <FeatureItem checked>SSO</FeatureItem>
+        <FeatureItem checked>On-prem option</FeatureItem>
       </ul>
     </TierContainer>
   );
@@ -151,7 +224,7 @@ function DefinitionTip({
             {children}
           </span>
         </TooltipTrigger>
-        <TooltipContent align="end" side="right" variant="dark" className="">
+        <TooltipContent align="end" side="right" variant="dark" className="w-[16rem] min-w-[16rem]">
           <Header3 className="mb-1">{title}</Header3>
           {typeof content === "string" ? (
             <Paragraph variant="small">{content}</Paragraph>
@@ -161,6 +234,47 @@ function DefinitionTip({
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+function RunsVolumeDiscountTable() {
+  const runsVolumeDiscountRow =
+    "flex justify-between border-b border-border last:pb-0 last:border-none py-2";
+  return (
+    <ul>
+      <li className={runsVolumeDiscountRow}>
+        <Paragraph variant="small">First 10k/mo</Paragraph>
+        <Paragraph variant="small">Free</Paragraph>
+      </li>
+      <li className={runsVolumeDiscountRow}>
+        <Paragraph variant="small">10k – 20k</Paragraph>
+        <Paragraph variant="small">$1.25/1,000</Paragraph>
+      </li>
+      <li className={runsVolumeDiscountRow}>
+        <Paragraph variant="small">20k – 150k</Paragraph>
+        <Paragraph variant="small">$0.88/1,000</Paragraph>
+      </li>
+      <li className={runsVolumeDiscountRow}>
+        <Paragraph variant="small">150k – 500k</Paragraph>
+        <Paragraph variant="small">$0.61/1,000</Paragraph>
+      </li>
+      <li className={runsVolumeDiscountRow}>
+        <Paragraph variant="small">500k – 1M</Paragraph>
+        <Paragraph variant="small">$0.43/1,000</Paragraph>
+      </li>
+      <li className={runsVolumeDiscountRow}>
+        <Paragraph variant="small">1M – 2.5M</Paragraph>
+        <Paragraph variant="small">$0.30/1,000</Paragraph>
+      </li>
+      <li className={runsVolumeDiscountRow}>
+        <Paragraph variant="small">2.5M – 6.25M</Paragraph>
+        <Paragraph variant="small">$0.21/1,000</Paragraph>
+      </li>
+      <li className={runsVolumeDiscountRow}>
+        <Paragraph variant="small">6.25M +</Paragraph>
+        <Paragraph variant="small">$0.14/1,000</Paragraph>
+      </li>
+    </ul>
   );
 }
 
@@ -246,7 +360,7 @@ function UsageSlider() {
   );
 }
 
-function FeatureItem({ checked, title }: { checked?: boolean; title: string }) {
+function FeatureItem({ checked, children }: { checked?: boolean; children: React.ReactNode }) {
   return (
     <li className="flex items-center gap-2">
       {checked ? (
@@ -255,7 +369,7 @@ function FeatureItem({ checked, title }: { checked?: boolean; title: string }) {
         <XMarkIcon className="h-4 w-4 text-slate-500" />
       )}
       <Paragraph variant="small" className={cn(checked ? "text-bright" : "text-dimmed")}>
-        {title}
+        {children}
       </Paragraph>
     </li>
   );
