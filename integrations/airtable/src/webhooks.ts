@@ -5,6 +5,7 @@ import * as events from "./events";
 import { Airtable, AirtableRunTask } from "./index";
 import { ListWebhooksResponse, ListWebhooksResponseSchema } from "./schemas";
 import { WebhookSource, WebhookTrigger } from "@trigger.dev/sdk/triggers/webhook";
+import { registerJobNamespace } from "@trigger.dev/integration-kit/webhooks";
 
 const WebhookFromSourceSchema = z.union([
   z.literal("formSubmission"),
@@ -296,9 +297,7 @@ export function createWebhookSource(
         });
 
         await io.store.job.set("set-id", "webhook-id", webhook.id);
-
-      // FIXME: namespace this, maybe to key() output - provide in context?
-        await io.store.env.set("set-secret", "webhook-secret-base64", webhook.macSecretBase64);
+        await io.store.job.set("set-secret", "webhook-secret-base64", webhook.macSecretBase64);
       },
       read: async ({ io, ctx }) => {
         const listResponse = await io.integration.webhooks().list("list-webhooks", {
@@ -322,9 +321,12 @@ export function createWebhookSource(
         });
       },
     },
-    verify: async ({ request, io, ctx }) => {
-      // FIXME: namespace this, maybe to key() output - provide in context?
-      const secretBase64 = await io.store.env.get("get-secret", "webhook-secret-base64");
+    verify: async ({ request, apiClient, ctx }) => {
+      // TODO: maybe pass namespace or shared store in context
+
+      const secretBase64 = await apiClient.store.get<string>(
+        `${registerJobNamespace(ctx.key)}:webhook-secret-base64`
+      );
 
       return await verifyRequestSignature({
         request,
@@ -333,30 +335,33 @@ export function createWebhookSource(
         algorithm: "sha256",
       });
     },
-    generateEvents: async ({ request, io, ctx }) => {
-      await io.logger.debug("[@trigger.dev/airtable] Handling webhook payload");
+    generateEvents: async ({ request, apiClient, ctx }) => {
+      console.log("[@trigger.dev/airtable] Handling webhook payload");
 
       const webhookPayload = ReceivedPayload.parse(await request.json());
 
-      const webhookId = await io.store.job.get<string>("get-webhook-id", "webhook-id");
+      const webhookId = await apiClient.store.get<string>(
+        `${registerJobNamespace(ctx.key)}:webhook-id`
+      );
 
-      const cursor = await io.store.job.get<number>("get-cursor", `cursor-${webhookId}`);
+      const cursorKey = `cursor-${webhookId}`;
+      const cursor = await apiClient.store.get<number>(cursorKey);
 
-      // TODO: maybe wrap every getPayload() call in a subtask
-      const response = await io.integration.runTask("get-all-payloads", async (client) => {
-        return await getAllPayloads(
-          webhookPayload.base.id,
-          webhookPayload.webhook.id,
-          client,
-          cursor
-        );
-      });
+      // TODO: get auth back
+      const client = integration.createClient();
+
+      const response = await getAllPayloads(
+        webhookPayload.base.id,
+        webhookPayload.webhook.id,
+        client,
+        cursor
+      );
 
       if (!response) {
-        return await io.logger.info("No payload fetch response, nothing to do!");
+        return console.log("[@trigger.dev/airtable] No payload fetch response, nothing to do!");
       }
 
-      await io.store.job.set("set-cursor", `cursor-${webhookId}`, response.cursor);
+      await apiClient.store.set(cursorKey, response.cursor);
 
       const eventsFromResponse = response.payloads.map((payload) => ({
         id: `${payload.timestamp.getTime()}-${payload.baseTransactionNumber}`,
@@ -366,7 +371,7 @@ export function createWebhookSource(
         timestamp: payload.timestamp,
       }));
 
-      await io.sendEvents("send-events", eventsFromResponse);
+      await apiClient.sendEvents(eventsFromResponse);
     },
   });
 }
