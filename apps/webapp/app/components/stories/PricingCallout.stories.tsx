@@ -12,7 +12,7 @@ export default meta;
 
 type Story = StoryObj<typeof PricingCallouts>;
 
-export const AllTiers: Story = {
+export const Callouts: Story = {
   render: (args) => <PricingCallouts />,
 };
 
