@@ -93,13 +93,13 @@ export function Callout({
           href={to}
           target="_blank"
           className={cn(
-            `flex w-full items-start justify-between gap-2.5 rounded-md border py-2 pl-2 pr-3 shadow-md backdrop-blur-sm`,
+            `flex w-full items-center justify-between gap-2.5 rounded-md border py-2 pl-2 pr-3 shadow-md backdrop-blur-sm`,
             variantDefinition.className,
             variantDefinition.linkClassName,
             className
           )}
         >
-          <div className={"flex w-full items-start gap-x-2"}>
+          <div className={"flex w-full items-center gap-x-2"}>
             {icon ? icon : variantDefinition.icon}
 
             {typeof children === "string" ? (
@@ -144,7 +144,7 @@ export function Callout({
   return (
     <div
       className={cn(
-        "flex w-full items-start rounded-md border py-2 pl-2 pr-2 shadow-md backdrop-blur-sm",
+        "flex w-full items-center gap-2 rounded-md border py-2 pl-2 pr-2 shadow-md backdrop-blur-sm",
         variantDefinition.className,
         className
       )}
