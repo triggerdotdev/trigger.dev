@@ -442,15 +442,22 @@ function MenuCount({ count }: { count: number | string }) {
 }
 
 function FreePlanUsage({ to }: { to: string }) {
-  const numberOfRuns = 1_500;
+  const numberOfRuns = 2_500;
   const maximumNumberOfRuns = 10_000;
-  let progressAsPercent = (numberOfRuns / maximumNumberOfRuns) * 100;
+  let progressNumberOfRuns = (numberOfRuns / maximumNumberOfRuns) * 100;
+
+  const numberOfConcurrentRuns = 3;
+  const maxNumberOfConcurrentRuns = 5;
+  let progressNumberOfConcurrentRuns = (numberOfConcurrentRuns / maxNumberOfConcurrentRuns) * 100;
+
+  let progressAsPercent = Math.max(progressNumberOfRuns, progressNumberOfConcurrentRuns);
   progressAsPercent = Math.min(progressAsPercent, 100);
+
   const widthProgress = useMotionValue(progressAsPercent);
   const color = useTransform(
     widthProgress,
-    [0, 74, 75, 100],
-    ["#22C55E", "#22C55E", "#F59E0B", "#F43F5E"]
+    [0, 74, 75, 95, 100],
+    ["#22C55E", "#22C55E", "#F59E0B", "#F43F5E", "#F43F5E"]
   );
 
   return (
