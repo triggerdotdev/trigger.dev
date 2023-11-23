@@ -345,6 +345,43 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "openai-vision",
+  name: "OpenAI GPT 4 Vision",
+  version: "0.0.1",
+  trigger: invokeTrigger({
+    schema: z.object({
+      image: z.string(),
+      prompt: z.string().default("What’s in this image?"),
+      detail: z.enum(["low", "high", "auto"]).default("auto"),
+    }),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    const response = await io.openai.chat.completions.create("📺", {
+      model: "gpt-4-vision-preview",
+      max_tokens: 300,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: payload.prompt },
+            {
+              type: "image_url",
+              image_url: {
+                url: payload.image,
+                detail: payload.detail,
+              },
+            },
+          ],
+        },
+      ],
+    });
+  },
+});
+
 const perplexity = new OpenAI({
   id: "perplexity",
   apiKey: process.env["PERPLEXITY_API_KEY"]!,
