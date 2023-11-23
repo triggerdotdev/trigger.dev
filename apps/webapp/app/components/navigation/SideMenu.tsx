@@ -4,10 +4,14 @@ import {
   ChartBarIcon,
   EllipsisHorizontalIcon,
 } from "@heroicons/react/20/solid";
+import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
-import { useNavigation } from "@remix-run/react";
+import { Link, useNavigation } from "@remix-run/react";
 import { IconExclamationCircle } from "@tabler/icons-react";
+import { SlackIcon } from "@trigger.dev/companyicons";
+import { motion, useMotionValue, useTransform } from "framer-motion";
 import { AnchorHTMLAttributes, Fragment, useEffect, useRef, useState } from "react";
+import { useFeatures } from "~/hooks/useFeatures";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
 import { MatchedProject } from "~/hooks/useProject";
@@ -32,7 +36,7 @@ import {
 import { Feedback } from "../Feedback";
 import { ImpersonationBanner } from "../ImpersonationBanner";
 import { LogoIcon } from "../LogoIcon";
-import { UserAvatar, UserProfilePhoto } from "../UserProfilePhoto";
+import { UserProfilePhoto } from "../UserProfilePhoto";
 import { Button, LinkButton } from "../primitives/Buttons";
 import { Icon } from "../primitives/Icon";
 import { type IconNames } from "../primitives/NamedIcon";
@@ -46,8 +50,6 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
-import { useFeatures } from "~/hooks/useFeatures";
-import { SlackIcon } from "@trigger.dev/companyicons";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -220,6 +222,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               </Button>
             }
           />
+          <FreePlanUsage to={organizationBillingPath(organization)} />
         </div>
       </div>
     </div>
@@ -436,4 +439,42 @@ function SideMenuItem({
 
 function MenuCount({ count }: { count: number | string }) {
   return <div className="rounded-full bg-slate-900 px-2 py-1 text-xxs text-dimmed">{count}</div>;
+}
+
+function FreePlanUsage({ to }: { to: string }) {
+  const numberOfRuns = 1_500;
+  const maximumNumberOfRuns = 10_000;
+  let progressAsPercent = (numberOfRuns / maximumNumberOfRuns) * 100;
+  progressAsPercent = Math.min(progressAsPercent, 100);
+  const widthProgress = useMotionValue(progressAsPercent);
+  const color = useTransform(
+    widthProgress,
+    [0, 74, 75, 100],
+    ["#22C55E", "#22C55E", "#F59E0B", "#F43F5E"]
+  );
+
+  return (
+    <div className="rounded border border-slate-900 bg-[#101722] p-2.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1">
+          <ArrowUpCircleIcon className="h-5 w-5 text-dimmed" />
+          <Paragraph className="text-2sm text-bright">Free Plan</Paragraph>
+        </div>
+        <Link to={to} className="text-2sm text-indigo-500">
+          Learn more
+        </Link>
+      </div>
+      <div className="relative mt-3 h-1 rounded-full bg-[#0B1018]">
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: progressAsPercent + "%" }}
+          style={{
+            backgroundColor: color,
+          }}
+          transition={{ duration: 1, type: "spring" }}
+          className={cn("absolute left-0 top-0 h-full rounded-full")}
+        />
+      </div>
+    </div>
+  );
 }
