@@ -64,7 +64,7 @@ const schema = z.object({
   jobId: z.string(),
 });
 
-export const action: ActionFunction = async ({ request, params }) => {
+/* export const action: ActionFunction = async ({ request, params }) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam, triggerParam } = TriggerSourceParamSchema.parse(params);
 
@@ -88,7 +88,8 @@ export const action: ActionFunction = async ({ request, params }) => {
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }
-};
+}; */
+
 export const handle: Handle = {
   //this one is complicated because we render outside the parent route (using triggers_ in the path)
   breadcrumb: (match, matches) => {
