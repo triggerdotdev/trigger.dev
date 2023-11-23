@@ -120,6 +120,7 @@ import EventEmitter from "node:events";
 import * as packageJson from "../package.json";
 import { formatSchemaErrors } from "./utils/formatSchemaErrors";
 import { WebhookDeliveryContext, WebhookSource } from "./triggers/webhook";
+import { IOKeyValueStore } from "./store/ioKeyValueStore";
 
 export type TriggerClientOptions = {
   /** The `id` property is used to uniquely identify the client.
@@ -196,6 +197,7 @@ export class TriggerClient {
   #registeredSchedules: Record<string, Array<{ id: string; version: string }>> = {};
   #registeredHttpEndpoints: Record<string, HttpEndpoint<EventSpecification<any>>> = {};
   #authResolvers: Record<string, TriggerAuthResolver> = {};
+  #envStore: IOKeyValueStore;
   #eventEmitter: NotificationsEventEmitter = new EventEmitter() as NotificationsEventEmitter;
 
   #client: ApiClient;
@@ -210,6 +212,7 @@ export class TriggerClient {
       "output",
       "noopTasksSet",
     ]);
+    this.#envStore = new IOKeyValueStore(this.#client);
   }
 
   on = this.#eventEmitter.on.bind(this.#eventEmitter);
@@ -1118,6 +1121,12 @@ export class TriggerClient {
 
   async createEphemeralEventDispatcher(payload: EphemeralEventDispatcherRequestBody) {
     return this.#client.createEphemeralEventDispatcher(payload);
+  }
+
+  get store() {
+    return {
+      env: this.#envStore,
+    };
   }
 
   authorized(

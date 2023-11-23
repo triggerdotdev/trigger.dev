@@ -162,9 +162,9 @@ export class IO {
     this._timeOrigin = options.timeOrigin;
     this._executionTimeout = options.executionTimeout;
 
-    this._envStore = new IOKeyValueStore(this, options.apiClient);
-    this._jobStore = new IOKeyValueStore(this, options.apiClient, "job", options.jobId);
-    this._runStore = new IOKeyValueStore(this, options.apiClient, "run", options.id);
+    this._envStore = new IOKeyValueStore(options.apiClient);
+    this._jobStore = new IOKeyValueStore(options.apiClient, "job", options.jobId);
+    this._runStore = new IOKeyValueStore(options.apiClient, "run", options.id);
 
     this._stats = {
       initialCachedTasks: 0,
