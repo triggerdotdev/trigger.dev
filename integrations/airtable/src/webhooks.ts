@@ -322,8 +322,7 @@ export function createWebhookSource(
       },
     },
     verify: async ({ request, apiClient, ctx }) => {
-      // TODO: maybe pass namespace or shared store in context
-
+      // TODO: should pass namespaced store instead, e.g. apiClient.store.webhookRegistration.get()
       const secretBase64 = await apiClient.store.get<string>(
         `${registerJobNamespace(ctx.key)}:webhook-secret-base64`
       );

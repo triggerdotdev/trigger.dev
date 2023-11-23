@@ -9,6 +9,7 @@ import {
   WebhookTopicSchema,
 } from "./schemas";
 import { WebhookSource } from "@trigger.dev/sdk/triggers/webhook";
+import { registerJobNamespace } from "@trigger.dev/integration-kit/webhooks";
 
 export class Webhooks {
   constructor(private runTask: ShopifyRunTask) {}
@@ -126,9 +127,7 @@ export function createWebhookEventSource(integration: Shopify) {
       },
     },
     verify: async ({ request, apiClient, ctx }) => {
-      // TODO: maybe pass namespace or shared store in context
-      const registerJobNamespace = (key: string) => `job:webhook.register.${key}`;
-
+      // TODO: should pass namespaced store instead, e.g. apiClient.store.webhookRegistration.get()
       const clientSecret = await apiClient.store.get<string>(
         `${registerJobNamespace(ctx.key)}:webhook-secret`
       );
