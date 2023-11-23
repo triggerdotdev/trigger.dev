@@ -17,10 +17,10 @@ export const BillingCalculator: Story = {
 
 function Calculator() {
   return (
-    <div className="m-12 flex h-screen flex-col items-center justify-center gap-4">
-      <div className="flex w-full rounded-md border border-border p-6">
+    <div className="m-12 flex flex-col gap-8">
+      <div className="flex h-full w-full rounded-md border border-border p-6">
         <PricingCalculator />
-        <div className="mx-6 h-full w-px bg-border" />
+        <div className="mx-6 min-h-full w-px bg-border" />
         <RunsVolumeDiscountTable />
       </div>
       <div className="flex w-full rounded-md border border-border p-6">
