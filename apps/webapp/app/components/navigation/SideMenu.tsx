@@ -47,6 +47,7 @@ import {
 } from "../primitives/Popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { useFeatures } from "~/hooks/useFeatures";
+import { SlackIcon } from "@trigger.dev/companyicons";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -184,6 +185,13 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
           </div>
         </div>
         <div className="flex flex-col gap-1 border-t border-border p-1">
+          <SideMenuItem
+            name="Join our Slack"
+            icon={SlackIcon}
+            to="#"
+            data-action="join our slack"
+            target="_blank"
+          />
           <SideMenuItem
             name="Documentation"
             icon="docs"
