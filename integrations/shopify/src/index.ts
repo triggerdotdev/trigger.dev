@@ -26,11 +26,11 @@ import {
 import { restResources, type RestResources } from "@shopify/shopify-api/rest/admin/2023-10";
 import "@shopify/shopify-api/adapters/node";
 
-import { ApiScope, WebhookTopic } from "./schemas";
-import { triggerCatalog } from "./triggers";
-import { Webhooks, createTrigger, createWebhookEventSource } from "./webhooks";
+import { ApiScope } from "./schemas";
+import { createWebhookEventCatalog, WebhookEventCatalog } from "./triggers";
+import { Webhooks, createWebhookEventSource } from "./webhooks";
 import { Rest, restProxy } from "./rest";
-import { TriggerConfig } from "./types";
+import { GetWebhookParams } from "@trigger.dev/sdk/triggers/webhook";
 
 export type ShopifyRestResources = OmitIndexSignature<RestResources>;
 
@@ -47,6 +47,9 @@ export type ShopifyIntegrationOptions = {
 };
 
 export type ShopifyRunTask = InstanceType<typeof Shopify>["runTask"];
+
+type EventNamesFromCatalog<TEventCatalog extends WebhookEventCatalog<any, any>> =
+  TEventCatalog extends WebhookEventCatalog<infer U, any> ? keyof U : never;
 
 export class Shopify implements TriggerIntegration {
   private _options: ShopifyIntegrationOptions;
@@ -80,6 +83,10 @@ export class Shopify implements TriggerIntegration {
 
   get #source() {
     return createWebhookEventSource(this);
+  }
+
+  get #eventCatalog() {
+    return createWebhookEventCatalog(this.#source);
   }
 
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
@@ -172,10 +179,18 @@ export class Shopify implements TriggerIntegration {
   /**
    * Creates a webhook trigger.
    */
-  on<TTopic extends WebhookTopic>(topic: TTopic, config?: TriggerConfig) {
-    const { eventSpec, params } = triggerCatalog[topic];
-
-    return createTrigger(this.#source, eventSpec, params, config ?? {});
+  on<TName extends EventNamesFromCatalog<ReturnType<typeof createWebhookEventCatalog>>>(
+    name: TName,
+    params?: Omit<GetWebhookParams<ReturnType<typeof createWebhookEventSource>>, "topic">
+  ) {
+    const eventParams = {
+      topic: name,
+    };
+    const withEventParams = {
+      ...params,
+      ...eventParams,
+    };
+    return this.#eventCatalog.on(name, withEventParams);
   }
 
   get #webhooks() {

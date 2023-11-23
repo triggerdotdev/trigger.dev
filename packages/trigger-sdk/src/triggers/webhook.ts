@@ -247,8 +247,11 @@ export class WebhookSource<
   }
 }
 
-export type WebhookParams<TWebhook extends WebhookSource<any, any, any>> =
+export type GetWebhookParams<TWebhook extends WebhookSource<any, any, any>> =
   TWebhook extends WebhookSource<any, infer TParams, any> ? TParams : never;
+
+export type GetWebhookConfig<TWebhook extends WebhookSource<any, any, any>> =
+  TWebhook extends WebhookSource<any, any, infer TConfig> ? TConfig : never;
 
 export type WebhookTriggerOptions<
   TEventSpecification extends EventSpecification<any>,
@@ -257,7 +260,7 @@ export type WebhookTriggerOptions<
 > = {
   event: TEventSpecification;
   source: TEventSource;
-  params: WebhookParams<TEventSource>;
+  params: GetWebhookParams<TEventSource>;
   config: TConfig;
 };
 
@@ -270,6 +273,10 @@ export class WebhookTrigger<
 
   get event() {
     return this.options.event;
+  }
+
+  get source() {
+    return this.options.source;
   }
 
   get key() {

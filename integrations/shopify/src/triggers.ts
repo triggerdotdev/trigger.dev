@@ -1,37 +1,10 @@
-import { z } from "zod";
 import * as events from "./events";
-import { DeletedPayload, WebhookTopic } from "./schemas";
+import { DeletedPayload } from "./schemas";
 import { EventSpecification } from "@trigger.dev/sdk";
-import { entries, fromEntries } from "@trigger.dev/integration-kit/utils";
-import { ShopifyWebhookPayload, TriggerParams } from "./types";
+import { ShopifyWebhookPayload } from "./types";
 import { eventSpec } from "./utils";
-
-const TriggerConfigSchema = z.object({
-  fields: z.string().array().optional(),
-});
-
-type TriggerConfig = z.infer<typeof TriggerConfigSchema>;
-
-type TriggerCatalog<TEventName extends string> = {
-  [K in TEventName]: {
-    eventSpec: EventSpecification<any>;
-    params: Pick<TriggerParams, "topic">;
-  };
-};
-
-type TopicCatalog<TEventName extends string> = {
-  [K in TEventName]: EventSpecification<any>;
-};
-
-const catalogEntry = (
-  topic: WebhookTopic,
-  eventSpec: EventSpecification<any>
-): TriggerCatalog<WebhookTopic>[WebhookTopic] => {
-  return {
-    params: { topic },
-    eventSpec,
-  };
-};
+import { GetWebhookParams, WebhookSource, WebhookTrigger } from "@trigger.dev/sdk/triggers/webhook";
+import { createWebhookEventSource } from "./webhooks";
 
 // TODO: verify delete payloads
 const eventsWithoutExamples = {
@@ -109,7 +82,7 @@ const eventsWithoutExamples = {
   "scheduled_product_listings/update": eventSpec<any>({ topic: "scheduled_product_listings/update" }),
 };
 
-const topicCatalog: TopicCatalog<WebhookTopic> = {
+const topicCatalog = {
   ...eventsWithoutExamples,
   "fulfillments/create": events.onFulfillmentCreated,
   "fulfillments/update": events.onFulfillmentUpdated,
@@ -167,8 +140,46 @@ const topicCatalog: TopicCatalog<WebhookTopic> = {
   "themes/update": events.onThemeUpdated,
 };
 
-export const triggerCatalog: TriggerCatalog<WebhookTopic> = fromEntries(
-  entries(topicCatalog).map(([topic, eventSpec]) => {
-    return [topic, catalogEntry(topic, eventSpec)];
-  })
-);
+type WebhookCatalogOptions<
+  TEvents extends Record<string, EventSpecification<any, any>>,
+  TSource extends WebhookSource<any, any, any>,
+> = {
+  id: string;
+  events: TEvents;
+  source: TSource;
+};
+
+export class WebhookEventCatalog<
+  TEvents extends Record<string, EventSpecification<any, any>>,
+  TSource extends WebhookSource<any>,
+> {
+  constructor(private options: WebhookCatalogOptions<TEvents, TSource>) {}
+
+  get events() {
+    return this.options.events;
+  }
+
+  get source() {
+    return this.options.source;
+  }
+
+  on<TName extends keyof TEvents, TParams extends GetWebhookParams<TSource>>(
+    name: TName,
+    params: TParams
+  ): WebhookTrigger<TEvents[TName], TSource> {
+    return new WebhookTrigger({
+      event: this.events[name],
+      params,
+      source: this.source,
+      config: {},
+    });
+  }
+}
+
+export function createWebhookEventCatalog(source: ReturnType<typeof createWebhookEventSource>) {
+  return new WebhookEventCatalog({
+    id: "shopify",
+    events: topicCatalog,
+    source,
+  });
+}

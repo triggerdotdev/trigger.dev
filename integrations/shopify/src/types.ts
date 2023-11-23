@@ -60,11 +60,3 @@ type ResourceHasStandardMethods = {
 };
 
 export type ResourcesWithStandardMethods = keyof OmitValues<ResourceHasStandardMethods, false>;
-
-export type TriggerParams = {
-  topic: WebhookTopic;
-};
-
-export type TriggerConfig = {
-  fields?: string[];
-};

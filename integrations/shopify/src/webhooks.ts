@@ -9,8 +9,7 @@ import {
   WebhookTopic,
   WebhookTopicSchema,
 } from "./schemas";
-import { WebhookSource, WebhookTrigger } from "@trigger.dev/sdk/triggers/webhook";
-import { TriggerConfig, TriggerParams } from "./types";
+import { WebhookSource } from "@trigger.dev/sdk/triggers/webhook";
 
 export class Webhooks {
   constructor(private runTask: ShopifyRunTask) {}
@@ -72,46 +71,27 @@ export class Webhooks {
   }
 }
 
-type ShopifyEvents = (typeof events)[keyof typeof events];
-
-type CreateTriggersResult<TEventSpecification extends ShopifyEvents> = WebhookTrigger<
-  TEventSpecification,
-  ReturnType<typeof createWebhookEventSource>
->;
-
-export function createTrigger<TEventSpecification extends ShopifyEvents>(
-  source: ReturnType<typeof createWebhookEventSource>,
-  event: TEventSpecification,
-  params: TriggerParams,
-  config: TriggerConfig
-): CreateTriggersResult<TEventSpecification> {
-  return new WebhookTrigger({
-    event,
-    params,
-    source,
-    config,
-  });
-}
-
-export function createWebhookEventSource(integration: Shopify): WebhookSource<Shopify> {
+export function createWebhookEventSource(integration: Shopify) {
   return new WebhookSource({
     id: "shopify",
     schemas: {
       params: z.object({
         topic: WebhookTopicSchema,
+        fields: z.string().array().optional(),
       }),
-      config: z.record(z.string().array()),
+      // config: z.record(z.string().array()),
     },
     version: "0.1.0",
     integration,
-    key: (params) => params.topic,
+    key: (params) => `${params.topic}-${params.fields?.join(".")}`,
     crud: {
       create: async ({ io, ctx }) => {
         const webhook = await io.integration.rest.Webhook.save("create-webhook", {
           fromData: {
             address: ctx.url,
             topic: ctx.params.topic,
-            fields: ctx.config.desired.fields,
+            fields: ctx.params.fields,
+            // fields: ctx.config.desired.fields,
           },
         });
 
@@ -140,7 +120,8 @@ export function createWebhookEventSource(integration: Shopify): WebhookSource<Sh
             id: webhookId,
             address: ctx.url,
             topic: ctx.params.topic,
-            fields: ctx.config.desired.fields,
+            fields: ctx.params.fields,
+            // fields: ctx.config.desired.fields,
           },
         });
       },
