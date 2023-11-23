@@ -52,7 +52,7 @@ import {
   waitForEventSchema,
 } from "./types";
 import { z } from "zod";
-import { IOKeyValueStore } from "./store/ioKeyValueStore";
+import { KeyValueStore } from "./store/keyValueStore";
 
 export type IOTask = ServerTask;
 
@@ -142,9 +142,9 @@ export class IO {
   private _outputSerializer: OutputSerializer = new JSONOutputSerializer();
   private _visitedCacheKeys: Set<string> = new Set();
 
-  private _envStore: IOKeyValueStore;
-  private _jobStore: IOKeyValueStore;
-  private _runStore: IOKeyValueStore;
+  private _envStore: KeyValueStore;
+  private _jobStore: KeyValueStore;
+  private _runStore: KeyValueStore;
 
   get stats() {
     return this._stats;
@@ -162,9 +162,9 @@ export class IO {
     this._timeOrigin = options.timeOrigin;
     this._executionTimeout = options.executionTimeout;
 
-    this._envStore = new IOKeyValueStore(options.apiClient);
-    this._jobStore = new IOKeyValueStore(options.apiClient, "job", options.jobId);
-    this._runStore = new IOKeyValueStore(options.apiClient, "run", options.id);
+    this._envStore = new KeyValueStore(options.apiClient);
+    this._jobStore = new KeyValueStore(options.apiClient, "job", options.jobId);
+    this._runStore = new KeyValueStore(options.apiClient, "run", options.id);
 
     this._stats = {
       initialCachedTasks: 0,

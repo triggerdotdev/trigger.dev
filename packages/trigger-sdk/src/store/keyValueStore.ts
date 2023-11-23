@@ -2,7 +2,7 @@ import { ApiClient } from "../apiClient";
 import { Json } from "../io";
 import { runLocalStorage } from "../runLocalStorage";
 
-export class IOKeyValueStore {
+export class KeyValueStore {
   constructor(
     private apiClient: ApiClient,
     private type: string | null = null,
@@ -56,7 +56,7 @@ export class IOKeyValueStore {
     const { io } = runStore;
 
     if (!param2) {
-      throw new Error("Please provide a non-empty key when accessing the store.");
+      throw new Error("Please provide a non-empty key when accessing the store from inside a run.");
     }
 
     return await io.runTask(
@@ -92,7 +92,7 @@ export class IOKeyValueStore {
     const { io } = runStore;
 
     if (!param2) {
-      throw new Error("Please provide a non-empty key when accessing the store.");
+      throw new Error("Please provide a non-empty key when accessing the store from inside a run.");
     }
 
     return await io.runTask(
@@ -128,7 +128,7 @@ export class IOKeyValueStore {
     const { io } = runStore;
 
     if (!param2) {
-      throw new Error("Please provide a non-empty key when accessing the store.");
+      throw new Error("Please provide a non-empty key when accessing the store from inside a run.");
     }
 
     return await io.runTask(
@@ -164,7 +164,7 @@ export class IOKeyValueStore {
     const { io } = runStore;
 
     if (!param2 || typeof param2 !== "string") {
-      throw new Error("Please provide a non-empty key when accessing the store.");
+      throw new Error("Please provide a non-empty key when accessing the store from inside a run.");
     }
 
     const value = param3 as T;
