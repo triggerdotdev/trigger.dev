@@ -1,8 +1,7 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { PricingTiers, TierEnterprise, TierFree, TierPro } from "../billing/PricingTiers";
-import { Callout } from "../primitives/Callout";
-import { Button, LinkButton } from "../primitives/Buttons";
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
+import type { Meta, StoryObj } from "@storybook/react";
+import { LinkButton } from "../primitives/Buttons";
+import { Callout } from "../primitives/Callout";
 
 const meta: Meta<typeof PricingCallouts> = {
   title: "Billing/PricingCallouts",
