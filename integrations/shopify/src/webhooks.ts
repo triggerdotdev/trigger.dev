@@ -77,21 +77,21 @@ export function createWebhookEventSource(integration: Shopify) {
     schemas: {
       params: z.object({
         topic: WebhookTopicSchema,
-        fields: z.string().array().optional(),
+        // disabled for now, doesn't seem useful and complicates things
+        // fields: z.string().array().optional(),
       }),
       // config: z.record(z.string().array()),
     },
     version: "0.1.0",
     integration,
-    key: (params) => `${params.topic}-${params.fields?.join(".")}`,
+    key: (params) => params.topic,
     crud: {
       create: async ({ io, ctx }) => {
         const webhook = await io.integration.rest.Webhook.save("create-webhook", {
           fromData: {
             address: ctx.url,
             topic: ctx.params.topic,
-            fields: ctx.params.fields,
-            // fields: ctx.config.desired.fields,
+            // fields: ctx.params.fields,
           },
         });
 
@@ -120,8 +120,7 @@ export function createWebhookEventSource(integration: Shopify) {
             id: webhookId,
             address: ctx.url,
             topic: ctx.params.topic,
-            fields: ctx.params.fields,
-            // fields: ctx.config.desired.fields,
+            // fields: ctx.params.fields,
           },
         });
       },

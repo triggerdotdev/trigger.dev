@@ -180,17 +180,11 @@ export class Shopify implements TriggerIntegration {
    * Creates a webhook trigger.
    */
   on<TName extends EventNamesFromCatalog<ReturnType<typeof createWebhookEventCatalog>>>(
-    name: TName,
-    params?: Omit<GetWebhookParams<ReturnType<typeof createWebhookEventSource>>, "topic">
+    name: TName
+    // additional params have been disabled, see WebhookSource schema
+    // params?: Omit<GetWebhookParams<ReturnType<typeof createWebhookEventSource>>, "topic">
   ) {
-    const eventParams = {
-      topic: name,
-    };
-    const withEventParams = {
-      ...params,
-      ...eventParams,
-    };
-    return this.#eventCatalog.on(name, withEventParams);
+    return this.#eventCatalog.on(name, { topic: name });
   }
 
   get #webhooks() {
