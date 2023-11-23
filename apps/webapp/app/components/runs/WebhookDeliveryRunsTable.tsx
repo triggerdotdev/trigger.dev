@@ -69,19 +69,13 @@ export function WebhookDeliveryRunsTable({
           </TableBlankRow>
         ) : (
           runs.map((run) => {
-            const path = `.`;
-
-            const doNothing = (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
-              event.preventDefault();
-            };
-
             return (
               <TableRow key={run.id}>
-                <TableCell onClick={doNothing}>#{run.number}</TableCell>
-                <TableCell onClick={doNothing}>
+                <TableCell>#{run.number}</TableCell>
+                <TableCell>
                   <EnvironmentLabel environment={run.environment} />
                 </TableCell>
-                <TableCell onClick={doNothing}>
+                <TableCell>
                   <RunStatus
                     status={
                       !run.deliveredAt
@@ -92,25 +86,21 @@ export function WebhookDeliveryRunsTable({
                     }
                   />
                 </TableCell>
-                <TableCell onClick={doNothing}>{run.error?.slice(0, 30) ?? "–"}</TableCell>
-                <TableCell onClick={doNothing}>
-                  {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
-                </TableCell>
-                <TableCell onClick={doNothing}>
+                <TableCell>{run.error?.slice(0, 30) ?? "–"}</TableCell>
+                <TableCell>{run.createdAt ? <DateTime date={run.createdAt} /> : "–"}</TableCell>
+                <TableCell>
                   {formatDuration(run.createdAt, run.deliveredAt, {
                     style: "short",
                   })}
                 </TableCell>
-                <TableCell onClick={doNothing}>
+                <TableCell>
                   {run.verified ? (
                     <CheckIcon className="h-4 w-4 text-slate-400" />
                   ) : (
                     <StopIcon className="h-4 w-4 text-slate-850" />
                   )}
                 </TableCell>
-                <TableCell onClick={doNothing}>
-                  {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
-                </TableCell>
+                <TableCell>{run.createdAt ? <DateTime date={run.createdAt} /> : "–"}</TableCell>
               </TableRow>
             );
           })
