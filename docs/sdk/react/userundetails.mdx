@@ -39,7 +39,7 @@ There are a couple of ways you can get a runId to pass in:
 ```typescript components/EventDetails.tsx
 "use client";
 
-import { useEventDetails } from "@trigger.dev/react";
+import { useRunDetails } from "@trigger.dev/react";
 
 export function EventDetails({ runId }: { runId: string }) {
   const { isLoading, isError, data, error } = useRunDetails(runId);
