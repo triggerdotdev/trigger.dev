@@ -11,15 +11,6 @@ import type {
 } from "graphile-worker";
 import { run as graphileRun, parseCronItems } from "graphile-worker";
 
-import {
-  Callback,
-  Cluster,
-  ClusterNode,
-  ClusterOptions,
-  Redis,
-  RedisOptions,
-  Result,
-} from "ioredis";
 import omit from "lodash.omit";
 import { z } from "zod";
 import { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
@@ -102,6 +93,11 @@ export type ZodWorkerCleanupOptions = {
 
 type ZodWorkerReporter = (event: string, properties: Record<string, any>) => Promise<void>;
 
+export interface ZodWorkerRateLimiter {
+  forbiddenFlags(): Promise<string[]>;
+  wrapTask(t: Task, rescheduler: Task): Task;
+}
+
 export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   name: string;
   runnerOptions: RunnerOptions;
@@ -112,7 +108,7 @@ export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   cleanup?: ZodWorkerCleanupOptions;
   reporter?: ZodWorkerReporter;
   shutdownTimeoutInMs?: number;
-  rateLimiter?: GraphileRateLimiter;
+  rateLimiter?: ZodWorkerRateLimiter;
 };
 
 export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
@@ -125,7 +121,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   #runner?: GraphileRunner;
   #cleanup: ZodWorkerCleanupOptions | undefined;
   #reporter?: ZodWorkerReporter;
-  #rateLimiter?: GraphileRateLimiter;
+  #rateLimiter?: ZodWorkerRateLimiter;
   #shutdownTimeoutInMs?: number;
   #shuttingDown = false;
 
@@ -432,9 +428,10 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     await this.enqueue(helpers.job.task_identifier, payload, {
       runAt: helpers.job.run_at,
       queueName: helpers.job.queue_name ?? undefined,
-      priority: helpers.job.priority - 1,
+      priority: helpers.job.priority,
       jobKey: helpers.job.key ?? undefined,
       flags: Object.keys(helpers.job.flags ?? []),
+      maxAttempts: helpers.job.max_attempts,
     });
   }
 
@@ -675,240 +672,4 @@ function removeUndefinedKeys<T extends object>(obj: T): T {
     }
   }
   return obj;
-}
-
-export interface GraphileRateLimiter {
-  forbiddenFlags(): Promise<string[]>;
-  wrapTask(t: Task, rescheduler: Task): Task;
-  setMaxSizeForFlag(flag: string, maxSize: number): Promise<void>;
-  delMaxSizeForFlag(flag: string): Promise<void>;
-}
-
-declare module "ioredis" {
-  interface RedisCommander<Context> {
-    beforeTask(
-      setKey: string,
-      maxSizeKey: string,
-      forbiddenFlagsKey: string,
-      jobId: string,
-      timestamp: string,
-      windowSize: string,
-      forbiddenFlag: string,
-      maxSize: string,
-      callback?: Callback<string>
-    ): Result<string, Context>;
-
-    afterTask(
-      setKey: string,
-      maxSizeKey: string,
-      forbiddenFlagsKey: string,
-      jobId: string,
-      timestamp: string,
-      windowSize: string,
-      forbiddenFlag: string,
-      maxSize: string,
-      callback?: Callback<string>
-    ): Result<string, Context>;
-  }
-}
-
-export type RedisGraphileRateLimiterOptions = {
-  redis?: RedisOptions;
-  cluster?: {
-    startupNodes: ClusterNode[];
-    options?: ClusterOptions;
-  };
-  defaultConcurrency?: number;
-  windowSize?: number;
-  prefix?: string;
-};
-
-const FORBIDDEN_FLAG_KEY = "rl:forbiddenFlags";
-
-// TODO: we need to somehow seed and update the rate limit for each flag in Redis
-export class RedisGraphileRateLimiter implements GraphileRateLimiter {
-  private redis: Redis | Cluster;
-  private defaultMaxSize: number;
-  private windowSize: number;
-
-  constructor(options?: RedisGraphileRateLimiterOptions) {
-    this.redis = options?.cluster
-      ? new Redis.Cluster(options.cluster.startupNodes, options.cluster.options)
-      : new Redis(options?.redis ?? {});
-    this.defaultMaxSize = options?.defaultConcurrency ?? 10;
-    this.windowSize = options?.windowSize ?? 1000 * 15 * 60; // 2 minutes
-
-    this.redis.defineCommand("beforeTask", {
-      numberOfKeys: 3,
-      lua: `
-local setKey = KEYS[1]
-local maxSizeKey = KEYS[2]
-local forbiddenFlagsKey = KEYS[3]
-local jobId = ARGV[1]
-local timestamp = ARGV[2]
-local windowSize = ARGV[3]
-local forbiddenFlag = ARGV[4]
-local defaultMaxSize = ARGV[5]
-
-local maxSize = tonumber(redis.call('GET', maxSizeKey) or defaultMaxSize)
-local currentSize = redis.call('ZCOUNT', setKey, timestamp - windowSize, timestamp)
-
-if currentSize < maxSize then
-    redis.call('ZADD', setKey, timestamp, jobId)
-    redis.call('SREM', forbiddenFlagsKey, forbiddenFlag)
-
-    return true
-else
-    redis.call('SADD', forbiddenFlagsKey, forbiddenFlag)
-  
-    return false
-end
-      `,
-    });
-
-    this.redis.defineCommand("afterTask", {
-      numberOfKeys: 3,
-      lua: `
-local setKey = KEYS[1]
-local maxSizeKey = KEYS[2]
-local forbiddenFlagsKey = KEYS[3]
-local jobId = ARGV[1]
-local timestamp = ARGV[2]
-local windowSize = ARGV[3]
-local forbiddenFlag = ARGV[4]
-local defaultMaxSize = ARGV[5]
-
-local maxSize = tonumber(redis.call('GET', maxSizeKey) or defaultMaxSize)
-
--- Remove the job ID from the ZSET
-redis.call('ZREM', setKey, jobId)
-
--- Count the current number of jobs in the window
-local currentSize = redis.call('ZCOUNT', setKey, timestamp - windowSize, timestamp)
-
--- The cleanup of old job IDs is now an essential part of maintaining the ZSET's size
-redis.call('ZREMRANGEBYSCORE', setKey, '-inf', timestamp - windowSize)
-
--- Update the forbidden flags based on the current size
-if currentSize < maxSize then
-    -- Only remove the forbidden flag if it's no longer needed
-    redis.call('SREM', forbiddenFlagsKey, forbiddenFlag)
-    return true
-else
-    -- No need to add the forbidden flag here as it should be handled in beforeTask
-    return false
-end
-
-      `,
-    });
-
-    if (this.redis instanceof Redis) {
-      logger.debug("⚡ RedisGraphileRateLimiter connected to Redis", {
-        host: this.redis.options.host,
-        port: this.redis.options.port,
-      });
-    } else {
-      logger.debug("⚡ RedisGraphileRateLimiter connected to Redis Cluster", {
-        nodes: this.redis.nodes,
-      });
-    }
-  }
-
-  async forbiddenFlags(): Promise<string[]> {
-    return this.redis.smembers(FORBIDDEN_FLAG_KEY);
-  }
-
-  async setMaxSizeForFlag(flag: string, maxSize: number): Promise<void> {
-    await this.redis.set(`${flag}:maxSize`, String(maxSize));
-  }
-
-  async delMaxSizeForFlag(flag: string): Promise<void> {
-    await this.redis.del(`${flag}:maxSize`);
-  }
-
-  wrapTask(t: Task, rescheduler: Task): Task {
-    return async (payload: unknown, helpers: JobHelpers) => {
-      const flags = Object.keys(helpers.job.flags ?? {}).filter((flag) => flag.startsWith("rl:"));
-
-      if (flags.length === 0) {
-        return t(payload, helpers);
-      }
-
-      const beforeResults = await Promise.allSettled(
-        flags.map(async (flag) => this.#callBeforeTask(flag, String(helpers.job.id)))
-      );
-
-      // If any of the beforeTask calls returned false, then we need to re-schedule the task and return
-      if (beforeResults.some((result) => result.status === "rejected")) {
-        return await rescheduler(payload, helpers);
-      }
-
-      if (
-        beforeResults.some(
-          (result) => result.status === "fulfilled" && result.value?.results === null
-        )
-      ) {
-        return await rescheduler(payload, helpers);
-      }
-
-      try {
-        await t(payload, helpers);
-      } finally {
-        const afterResults = await Promise.allSettled(
-          flags.map(async (flag) => this.#callAfterTask(flag, String(helpers.job.id)))
-        );
-      }
-    };
-  }
-
-  async #callBeforeTask(flag: string, jobId: string) {
-    try {
-      const now = performance.now();
-      const results = await this.redis.beforeTask(
-        flag,
-        `${flag}:maxSize`,
-        FORBIDDEN_FLAG_KEY,
-        jobId,
-        String(Date.now()),
-        String(this.windowSize),
-        flag,
-        String(this.defaultMaxSize)
-      );
-
-      const durationInMs = performance.now() - now;
-
-      return {
-        results,
-        durationInMs,
-      };
-    } catch (error) {
-      logger.error("Failed to call beforeTask", { error, flag, jobId });
-    }
-  }
-
-  async #callAfterTask(flag: string, jobId: string) {
-    try {
-      const now = performance.now();
-
-      const results = await this.redis.afterTask(
-        flag,
-        `${flag}:maxSize`,
-        FORBIDDEN_FLAG_KEY,
-        jobId,
-        String(Date.now()),
-        String(this.windowSize),
-        flag,
-        String(this.defaultMaxSize)
-      );
-
-      const durationInMs = performance.now() - now;
-
-      return {
-        results,
-        durationInMs,
-      };
-    } catch (error) {
-      logger.error("Failed to call afterTask", { error, flag, jobId });
-    }
-  }
 }

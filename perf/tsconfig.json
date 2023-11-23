@@ -12,6 +12,8 @@
       "@trigger.dev/express/*": ["../packages/express/src/*"],
       "@trigger.dev/core": ["../packages/core/src/index"],
       "@trigger.dev/core/*": ["../packages/core/src/*"],
+      "@trigger.dev/core-backend": ["../packages/core-backend/src/index"],
+      "@trigger.dev/core-backend/*": ["../packages/core-backend/src/*"],
       "@trigger.dev/integration-kit": ["../packages/integration-kit/src/index"],
       "@trigger.dev/integration-kit/*": ["../packages/integration-kit/src/*"],
       "@trigger.dev/github": ["../integrations/github/src/index"],

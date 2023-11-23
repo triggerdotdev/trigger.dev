@@ -79,6 +79,7 @@ const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
 
 import EventEmitter from "node:events";
 import * as packageJson from "../package.json";
+import { ConcurrencyLimit, ConcurrencyLimitOptions } from "./concurrencyLimit";
 
 export type TriggerClientOptions = {
   /** The `id` property is used to uniquely identify the client.
@@ -620,6 +621,10 @@ export class TriggerClient {
     const endpoint = httpEndpoint(options);
     this.#registeredHttpEndpoints[endpoint.id] = endpoint;
     return endpoint;
+  }
+
+  defineConcurrencyLimit(options: ConcurrencyLimitOptions) {
+    return new ConcurrencyLimit(options);
   }
 
   attach(job: Job<Trigger<any>, any>): void {
@@ -1440,6 +1445,12 @@ export class TriggerClient {
       enabled: job.enabled,
       preprocessRuns: job.trigger.preprocessRuns,
       internal,
+      concurrencyLimit:
+        typeof job.options.concurrencyLimit === "number"
+          ? job.options.concurrencyLimit
+          : typeof job.options.concurrencyLimit === "object"
+          ? { id: job.options.concurrencyLimit.id, limit: job.options.concurrencyLimit.limit }
+          : undefined,
     };
   }
 

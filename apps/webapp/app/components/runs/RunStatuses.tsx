@@ -3,6 +3,7 @@ import {
   CheckCircleIcon,
   ClockIcon,
   ExclamationTriangleIcon,
+  PauseCircleIcon,
   WrenchIcon,
   XCircleIcon,
 } from "@heroicons/react/24/solid";
@@ -28,12 +29,13 @@ export function RunStatusIcon({ status, className }: { status: JobRunStatus; cla
     case "SUCCESS":
       return <CheckCircleIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "PENDING":
-    case "QUEUED":
+    case "WAITING_TO_CONTINUE":
       return <ClockIcon className={cn(runStatusClassNameColor(status), className)} />;
+    case "QUEUED":
+    case "WAITING_TO_EXECUTE":
+      return <PauseCircleIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "PREPROCESSING":
     case "STARTED":
-    case "WAITING_TO_CONTINUE":
-    case "WAITING_TO_EXECUTE":
     case "EXECUTING":
       return <Spinner className={cn(runStatusClassNameColor(status), className)} />;
     case "TIMED_OUT":
@@ -63,13 +65,12 @@ export function runStatusTitle(status: JobRunStatus): string {
     case "STARTED":
       return "In progress";
     case "QUEUED":
+    case "WAITING_TO_EXECUTE":
       return "Queued";
     case "EXECUTING":
       return "Executing";
     case "WAITING_TO_CONTINUE":
       return "Waiting";
-    case "WAITING_TO_EXECUTE":
-      return "Queued";
     case "FAILURE":
       return "Failed";
     case "TIMED_OUT":
@@ -105,7 +106,7 @@ export function runStatusClassNameColor(status: JobRunStatus): string {
     case "WAITING_TO_EXECUTE":
       return "text-blue-500";
     case "QUEUED":
-      return "text-amber-300";
+      return "text-slate-500";
     case "FAILURE":
     case "UNRESOLVED_AUTH":
     case "INVALID_PAYLOAD":

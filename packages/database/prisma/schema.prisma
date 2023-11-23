@@ -323,6 +323,7 @@ model RuntimeEnvironment {
   scheduleSources          ScheduleSource[]
   ExternalAccount          ExternalAccount[]
   httpEndpointEnvironments TriggerHttpEndpointEnvironment[]
+  concurrencyLimitGroups   ConcurrencyLimitGroup[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -477,11 +478,15 @@ model JobVersion {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
-  queue   JobQueue @relation(fields: [queueId], references: [id])
-  queueId String
+  queue   JobQueue? @relation(fields: [queueId], references: [id])
+  queueId String?
 
   startPosition  JobStartPosition @default(INITIAL)
   preprocessRuns Boolean          @default(false)
+
+  concurrencyLimit        Int?
+  concurrencyLimitGroup   ConcurrencyLimitGroup? @relation(fields: [concurrencyLimitGroupId], references: [id])
+  concurrencyLimitGroupId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -519,6 +524,23 @@ model EventExample {
   updatedAt DateTime @updatedAt
 
   @@unique([slug, jobVersionId])
+}
+
+model ConcurrencyLimitGroup {
+  id   String @id @default(cuid())
+  name String
+
+  concurrencyLimit Int
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jobVersion JobVersion[]
+
+  @@unique([environmentId, name])
 }
 
 model JobQueue {
@@ -731,8 +753,8 @@ model JobRun {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
-  queue   JobQueue @relation(fields: [queueId], references: [id])
-  queueId String
+  queue   JobQueue? @relation(fields: [queueId], references: [id])
+  queueId String?
 
   externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   externalAccountId String?

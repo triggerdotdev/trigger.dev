@@ -72,8 +72,8 @@ export default function Page() {
           <div className={cn("grid h-fit gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
             <div>
               <div className="mb-2 flex items-center justify-end gap-x-2">
-                <ListPagination list={list} />
                 <HelpTrigger title="How do I run my Job?" />
+                <ListPagination list={list} />
               </div>
               <RunsTable
                 total={list.runs.length}

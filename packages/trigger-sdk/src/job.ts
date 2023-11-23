@@ -20,6 +20,7 @@ import type {
 import { slugifyId } from "./utils";
 import { runLocalStorage } from "./runLocalStorage";
 import { Prettify } from "@trigger.dev/core";
+import { ConcurrencyLimit } from "./concurrencyLimit";
 
 export type JobOptions<
   TTrigger extends Trigger<EventSpecification<any>>,
@@ -60,9 +61,16 @@ export type JobOptions<
       });
       ``` */
   integrations?: TIntegrations;
-  /** @deprecated This property is deprecated and no longer effects the execution of the Job
-   * */
-  queue?: QueueOptions | string;
+
+  /**
+   * The `concurrencyLimit` property is used to limit the number of concurrent run executions of a job.
+   * Can be a number which represents the limit or a `ConcurrencyLimit` instance which can be used to
+   * group together multiple jobs to share the same concurrency limit.
+   *
+   * If undefined the job will be limited only by the server's global concurrency limit, or if you are using the
+   * Trigger.dev Cloud service, the concurrency limit of your plan.
+   */
+  concurrencyLimit?: number | ConcurrencyLimit;
   /** The `enabled` property is used to enable or disable the Job. If you disable a Job, it will not run. */
   enabled?: boolean;
   /** This function gets called automatically when a Run is Triggered.
@@ -174,6 +182,12 @@ export class Job<
       enabled: this.enabled,
       preprocessRuns: this.trigger.preprocessRuns,
       internal,
+      concurrencyLimit:
+        typeof this.options.concurrencyLimit === "number"
+          ? this.options.concurrencyLimit
+          : typeof this.options.concurrencyLimit === "object"
+          ? { id: this.options.concurrencyLimit.id, limit: this.options.concurrencyLimit.limit }
+          : undefined,
     };
   }
 

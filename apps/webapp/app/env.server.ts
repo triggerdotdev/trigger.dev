@@ -69,6 +69,7 @@ const EnvironmentSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
 
   DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
+  DEFAULT_DEV_ENV_EXECUTION_ATTEMPTS: z.coerce.number().int().positive().default(1),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

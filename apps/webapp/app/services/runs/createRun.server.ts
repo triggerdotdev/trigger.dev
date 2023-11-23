@@ -31,12 +31,6 @@ export class CreateRunService {
       },
     });
 
-    const jobQueue = await this.#prismaClient.jobQueue.findUniqueOrThrow({
-      where: {
-        id: version.queueId,
-      },
-    });
-
     const eventRecord = await this.#prismaClient.eventRecord.findUniqueOrThrow({
       where: {
         id: eventId,
@@ -54,7 +48,6 @@ export class CreateRunService {
           organizationId: environment.organizationId,
           projectId: environment.projectId,
           endpointId: endpoint.id,
-          queueId: jobQueue.id,
           externalAccountId: eventRecord.externalAccountId
             ? eventRecord.externalAccountId
             : undefined,

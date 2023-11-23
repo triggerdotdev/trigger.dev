@@ -118,7 +118,7 @@ export class ResumeRunService {
 
   async #executeRun(run: FoundRun, priority: RunExecutionPriority) {
     await PerformRunExecutionV3Service.enqueue(run, priority, this.#prismaClient, {
-      skipRetrying: run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
+      skipRetrying: run.version.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
     });
   }
 
@@ -147,7 +147,12 @@ async function findRun(prisma: PrismaClientOrTransaction, id: string) {
   return await prisma.jobRun.findUnique({
     where: { id },
     include: {
-      environment: true,
+      version: {
+        include: {
+          environment: true,
+          concurrencyLimitGroup: true,
+        },
+      },
     },
   });
 }

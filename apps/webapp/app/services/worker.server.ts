@@ -3,11 +3,7 @@ import { ScheduledPayloadSchema, addMissingVersionField } from "@trigger.dev/cor
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import {
-  GraphileRateLimiter,
-  RedisGraphileRateLimiter,
-  ZodWorker,
-} from "~/platform/zodWorker.server";
+import { ZodWorker } from "~/platform/zodWorker.server";
 import { sendEmail } from "./email.server";
 import { IndexEndpointService } from "./endpoints/indexEndpoint.server";
 import { PerformEndpointIndexService } from "./endpoints/performEndpointIndexService";
@@ -31,6 +27,7 @@ import { ResumeTaskService } from "./tasks/resumeTask.server";
 import { ExpireDispatcherService } from "./dispatchers/expireDispatcher.server";
 import { InvokeEphemeralDispatcherService } from "./dispatchers/invokeEphemeralEventDispatcher.server";
 import { ResumeRunService } from "./runs/resumeRun.server";
+import { executionRateLimiter } from "./runExecutionRateLimiter.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -437,7 +434,7 @@ function getExecutionWorkerQueue() {
     },
     shutdownTimeoutInMs: env.GRACEFUL_SHUTDOWN_TIMEOUT,
     schema: executionWorkerCatalog,
-    rateLimiter: getRateLimiter(),
+    rateLimiter: executionRateLimiter,
     tasks: {
       performRunExecutionV2: {
         priority: 0, // smaller number = higher priority
@@ -512,45 +509,6 @@ function getTaskOperationWorkerQueue() {
       },
     },
   });
-}
-
-function getRateLimiter(): GraphileRateLimiter | undefined {
-  if (env.REDIS_HOST && env.REDIS_PORT) {
-    if (env.REDIS_READER_HOST) {
-      return new RedisGraphileRateLimiter({
-        cluster: {
-          startupNodes: [
-            { host: env.REDIS_HOST, port: env.REDIS_PORT },
-            { host: env.REDIS_READER_HOST, port: env.REDIS_READER_PORT ?? env.REDIS_PORT },
-          ],
-          options: {
-            keyPrefix: "tr:gw:",
-            scaleReads: "slave",
-            redisOptions: {
-              username: env.REDIS_USERNAME,
-              password: env.REDIS_PASSWORD,
-              tls: {},
-              enableAutoPipelining: true,
-            },
-            dnsLookup: (address, callback) => callback(null, address),
-          },
-        },
-        defaultConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
-      });
-    } else {
-      return new RedisGraphileRateLimiter({
-        redis: {
-          keyPrefix: "tr:gw:",
-          port: env.REDIS_PORT,
-          host: env.REDIS_HOST,
-          username: env.REDIS_USERNAME,
-          password: env.REDIS_PASSWORD,
-          enableAutoPipelining: true,
-        },
-        defaultConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
-      });
-    }
-  }
 }
 
 export { executionWorker, workerQueue, taskOperationWorker };

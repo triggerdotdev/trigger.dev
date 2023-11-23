@@ -172,7 +172,7 @@ async function mainSerial() {
 async function mainConcurrency() {
   const batches = 1;
   const concurrency = 10;
-  const eventsPer = 10;
+  const eventsPer = 5;
 
   console.log("Preparing perf tests...");
 

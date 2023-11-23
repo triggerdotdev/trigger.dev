@@ -6,14 +6,15 @@ export type Direction = z.infer<typeof DirectionSchema>;
 
 type RunListOptions = {
   userId: string;
-  jobSlug: string;
+  jobSlug?: string;
   organizationSlug: string;
   projectSlug: string;
   direction?: Direction;
   cursor?: string;
+  pageSize?: number;
 };
 
-const PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 20;
 
 export type RunList = Awaited<ReturnType<RunListPresenter["call"]>>;
 
@@ -31,6 +32,7 @@ export class RunListPresenter {
     projectSlug,
     direction = "forward",
     cursor,
+    pageSize = DEFAULT_PAGE_SIZE,
   }: RunListOptions) {
     const directionMultiplier = direction === "forward" ? 1 : -1;
 
@@ -60,11 +62,19 @@ export class RunListPresenter {
             version: true,
           },
         },
+        job: {
+          select: {
+            slug: true,
+            title: true,
+          },
+        },
       },
       where: {
-        job: {
-          slug: jobSlug,
-        },
+        job: jobSlug
+          ? {
+              slug: jobSlug,
+            }
+          : undefined,
         project: {
           slug: projectSlug,
         },
@@ -83,8 +93,8 @@ export class RunListPresenter {
         },
       },
       orderBy: [{ id: "desc" }],
-      //take an extra page to tell if there are more
-      take: directionMultiplier * (PAGE_SIZE + 1),
+      //take an extra record to tell if there are more
+      take: directionMultiplier * (pageSize + 1),
       //skip the cursor if there is one
       skip: cursor ? 1 : 0,
       cursor: cursor
@@ -94,7 +104,7 @@ export class RunListPresenter {
         : undefined,
     });
 
-    const hasMore = runs.length > PAGE_SIZE;
+    const hasMore = runs.length > pageSize;
 
     //get cursors for next and previous pages
     let next: string | undefined;
@@ -103,19 +113,21 @@ export class RunListPresenter {
       case "forward":
         previous = cursor ? runs.at(0)?.id : undefined;
         if (hasMore) {
-          next = runs[PAGE_SIZE - 1]?.id;
+          next = runs[pageSize - 1]?.id;
         }
         break;
       case "backward":
         if (hasMore) {
           previous = runs[1]?.id;
+          next = runs[pageSize]?.id;
+        } else {
+          next = runs[pageSize - 1]?.id;
         }
-        next = runs[PAGE_SIZE - 1]?.id;
         break;
     }
 
     const runsToReturn =
-      direction === "backward" && hasMore ? runs.slice(1, PAGE_SIZE + 1) : runs.slice(0, PAGE_SIZE);
+      direction === "backward" && hasMore ? runs.slice(1, pageSize + 1) : runs.slice(0, pageSize);
 
     return {
       runs: runsToReturn.map((run) => ({
@@ -133,6 +145,7 @@ export class RunListPresenter {
           slug: run.environment.slug,
           userId: run.environment.orgMember?.userId,
         },
+        job: run.job,
       })),
       pagination: {
         next,

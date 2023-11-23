@@ -219,6 +219,11 @@ export const QueueOptionsSchema = z.object({
 
 export type QueueOptions = z.infer<typeof QueueOptionsSchema>;
 
+export const ConcurrencyLimitOptionsSchema = z.object({
+  id: z.string(),
+  limit: z.number(),
+});
+
 export const JobMetadataSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -230,6 +235,7 @@ export const JobMetadataSchema = z.object({
   enabled: z.boolean(),
   startPosition: z.enum(["initial", "latest"]),
   preprocessRuns: z.boolean(),
+  concurrencyLimit: ConcurrencyLimitOptionsSchema.or(z.number().int().positive()).optional(),
 });
 
 export type JobMetadata = z.infer<typeof JobMetadataSchema>;

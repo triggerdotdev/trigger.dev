@@ -16,7 +16,12 @@ import {
   supportsFeature,
 } from "@trigger.dev/core";
 import { BloomFilter } from "@trigger.dev/core-backend";
-import { JobRun } from "@trigger.dev/database";
+import {
+  ConcurrencyLimitGroup,
+  JobRun,
+  JobVersion,
+  RuntimeEnvironment,
+} from "@trigger.dev/database";
 import { generateErrorMessage } from "zod-error";
 import { eventRecordToApiJson } from "~/api.server";
 import {
@@ -39,6 +44,8 @@ import { ResumeTaskService } from "../tasks/resumeTask.server";
 import { executionWorker, workerQueue } from "../worker.server";
 import { forceYieldCoordinator } from "./forceYieldCoordinator.server";
 import { ResumeRunService } from "./resumeRun.server";
+import { executionRateLimiter } from "../runExecutionRateLimiter.server";
+import { env } from "~/env.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type FoundTask = FoundRun["tasks"][number];
@@ -86,7 +93,12 @@ export class PerformRunExecutionV3Service {
   }
 
   static async enqueue(
-    run: JobRun,
+    run: JobRun & {
+      version: JobVersion & {
+        environment: RuntimeEnvironment;
+        concurrencyLimitGroup?: ConcurrencyLimitGroup | null;
+      };
+    },
     priority: RunExecutionPriority,
     tx: PrismaClientOrTransaction,
     options: {
@@ -104,8 +116,8 @@ export class PerformRunExecutionV3Service {
         tx,
         runAt: options.runAt,
         jobKey: `job_run:EXECUTE_JOB:${run.id}`,
-        maxAttempts: options.skipRetrying ? 1 : undefined,
-        flags: [`rl:executions:${run.organizationId}`],
+        maxAttempts: options.skipRetrying ? env.DEFAULT_DEV_ENV_EXECUTION_ATTEMPTS : undefined,
+        flags: executionRateLimiter?.flagsForRun(run, run.version) ?? [],
         priority: priority === "initial" ? 0 : -1,
       }
     );
@@ -166,6 +178,7 @@ export class PerformRunExecutionV3Service {
         projectId: run.projectId,
         jobId: run.jobId,
         runId: run.id,
+        concurrencyLimitGroupId: run.version.concurrencyLimitGroupId,
       });
 
       forceYieldCoordinator.registerRun(run.id);
@@ -183,6 +196,7 @@ export class PerformRunExecutionV3Service {
         projectId: run.projectId,
         jobId: run.jobId,
         runId: run.id,
+        concurrencyLimitGroupId: run.version.concurrencyLimitGroupId,
       });
 
       forceYieldCoordinator.deregisterRun(run.id);
