@@ -122,7 +122,7 @@ export default function Page() {
     <RunOverview
       run={run}
       trigger={{ icon: "webhook", title: "Register Webhook" }}
-      showRerun={false}
+      showRerun={true}
       paths={{
         back: webhookTriggerPath(organization, project, { id: trigger.id }),
         run: webhookTriggerRunPath(organization, project, { id: trigger.id }, run),
