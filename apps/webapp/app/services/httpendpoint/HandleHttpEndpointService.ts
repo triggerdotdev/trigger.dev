@@ -1,4 +1,4 @@
-import { PrismaClient } from "@trigger.dev/database";
+import { PrismaClient, RuntimeEnvironment, Webhook } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requestUrl } from "~/utils/requestUrl.server";
@@ -6,7 +6,6 @@ import { logger } from "../logger.server";
 import { json } from "@remix-run/server-runtime";
 import {
   RequestFilterSchema,
-  WebhookContextMetadata,
   WebhookContextMetadataSchema,
   requestFilterMatches,
 } from "@trigger.dev/core";
@@ -206,39 +205,7 @@ export class HandleHttpEndpointService {
     }
 
     if (httpEndpoint.webhook) {
-      const webhookEnvironment = await this.#prismaClient.webhookEnvironment.findUnique({
-        where: {
-          environmentId_webhookId: {
-            environmentId: environment.id,
-            webhookId: httpEndpoint.webhook.id,
-          },
-        },
-        include: {
-          endpoint: true,
-        },
-      });
-
-      if (!webhookEnvironment) {
-        logger.debug("Could not find webhook environment", {
-          webhookId: httpEndpoint.webhook.id,
-          environmentId: environment.id,
-        });
-        return json(
-          { error: true, message: "Could not find webhook environment" },
-          { status: 404 }
-        );
-      }
-
-      const rawContext = {
-        secret,
-        config: webhookEnvironment.config,
-        params: httpEndpoint.webhook.params,
-      };
-      const webhookContextMetadata = WebhookContextMetadataSchema.parse(rawContext);
-
-      const service = new HandleWebhookRequestService(this.#prismaClient);
-
-      return await service.call(webhookEnvironment.id, request, webhookContextMetadata);
+      return await this.#handleWebhookRequest(request, environment, httpEndpoint.webhook, secret);
     }
 
     const ingestService = new IngestSendEvent();
@@ -279,6 +246,44 @@ export class HandleHttpEndpointService {
         status: 200,
       })
     );
+  }
+
+  async #handleWebhookRequest(
+    request: Request,
+    environment: RuntimeEnvironment,
+    webhook: Webhook,
+    secret: string
+  ) {
+    const webhookEnvironment = await this.#prismaClient.webhookEnvironment.findUnique({
+      where: {
+        environmentId_webhookId: {
+          environmentId: environment.id,
+          webhookId: webhook.id,
+        },
+      },
+      include: {
+        endpoint: true,
+      },
+    });
+
+    if (!webhookEnvironment) {
+      logger.debug("Could not find webhook environment", {
+        webhookId: webhook.id,
+        environmentId: environment.id,
+      });
+      return json({ error: true, message: "Could not find webhook environment" }, { status: 404 });
+    }
+
+    const rawContext = {
+      secret,
+      config: webhookEnvironment.config,
+      params: webhook.params,
+    };
+    const webhookContextMetadata = WebhookContextMetadataSchema.parse(rawContext);
+
+    const service = new HandleWebhookRequestService(this.#prismaClient);
+
+    return await service.call(webhookEnvironment.id, request, webhookContextMetadata);
   }
 }
 
