@@ -84,8 +84,10 @@ export class WebhookDeliveryListPresenter {
       case "backward":
         if (hasMore) {
           previous = runs[1]?.id;
+          next = runs[PAGE_SIZE]?.id;
+        } else {
+          next = runs[PAGE_SIZE - 1]?.id;
         }
-        next = runs[PAGE_SIZE - 1]?.id;
         break;
     }
 
