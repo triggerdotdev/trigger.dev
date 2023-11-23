@@ -54,7 +54,7 @@ function ConcurrentRunsSlider() {
               aria-label="Concurrent Runs slider"
             />
           </Slider.Root>
-          <div className="-ml-1 flex w-[calc(100%+2rem)] items-center justify-between">
+          <div className="-ml-2.5 flex w-[calc(100%+2rem)] items-center justify-between">
             {concurrentRuns.map((run, i) => {
               const concurrrentRunsLabels = Object.values(run)[0];
               return (
@@ -117,7 +117,7 @@ function RunsSlider() {
               aria-label="Concurrent Runs slider"
             />
           </Slider.Root>
-          <div className="-ml-0.5 flex w-[calc(100%+1rem)] items-center justify-between">
+          <div className="flex w-[calc(100%+1rem)] items-center justify-between">
             {Runs.map((run, i) => {
               const RunsLabels = Object.values(run)[0];
               return (
