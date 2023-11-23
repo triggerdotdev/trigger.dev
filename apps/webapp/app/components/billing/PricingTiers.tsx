@@ -6,6 +6,7 @@ import { CheckIcon, XMarkIcon } from "@heroicons/react/24/solid";
 import SegmentedControl from "../primitives/SegmentedControl";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { Header3 } from "../primitives/Headers";
+import { DefinitionTip } from "../DefinitionTooltip";
 
 const pricingDefinitions = {
   concurrentRuns: {
@@ -278,36 +279,6 @@ function TierContainer({
   );
 }
 
-function DefinitionTip({
-  content,
-  children,
-  title,
-}: {
-  content: React.ReactNode;
-  children: React.ReactNode;
-  title: React.ReactNode;
-}) {
-  return (
-    <TooltipProvider>
-      <Tooltip disableHoverableContent>
-        <TooltipTrigger>
-          <span className="underline decoration-slate-600 decoration-dashed underline-offset-4 transition hover:decoration-slate-500">
-            {children}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent align="end" side="right" variant="dark" className="w-[16rem] min-w-[16rem]">
-          <Header3 className="mb-1">{title}</Header3>
-          {typeof content === "string" ? (
-            <Paragraph variant="small">{content}</Paragraph>
-          ) : (
-            <div>{content}</div>
-          )}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
 function RunsVolumeDiscountTable() {
   const runsVolumeDiscountRow =
     "flex justify-between border-b border-border last:pb-0 last:border-none py-2";
@@ -408,28 +379,6 @@ const options = [
   { label: "Up to 50", value: "50" },
   { label: "Up to 100", value: "100" },
 ];
-
-function UsageSlider() {
-  return (
-    <form>
-      <Slider.Root
-        className="relative my-4 flex h-5 w-full touch-none select-none items-center"
-        // It would be nice to set the default value to always be 1 bracket above your current one, up to the max.
-        defaultValue={[20]}
-        max={100}
-        step={5}
-      >
-        <Slider.Track className="relative h-[8px] grow rounded-full bg-slate-850">
-          <Slider.Range className="absolute h-full rounded-full bg-indigo-500" />
-        </Slider.Track>
-        <Slider.Thumb
-          className="block h-5 w-5 rounded-full border-4 border-indigo-500 bg-slate-850 shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] transition hover:border-indigo-400 hover:bg-slate-800 focus:shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] focus:outline-none"
-          aria-label="Pro tier pricing slider"
-        />
-      </Slider.Root>
-    </form>
-  );
-}
 
 function FeatureItem({ checked, children }: { checked?: boolean; children: React.ReactNode }) {
   return (
