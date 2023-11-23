@@ -1,0 +1,11 @@
+{
+  "id": 706405506930370000,
+  "phone": null,
+  "addresses": [],
+  "accepts_marketing_updated_at": "2021-12-31T19:00:00-05:00",
+  "marketing_opt_in_level": null,
+  "tax_exemptions": [],
+  "email_marketing_consent": null,
+  "sms_marketing_consent": null,
+  "admin_graphql_api_id": "gid://shopify/Customer/706405506930370084"
+}

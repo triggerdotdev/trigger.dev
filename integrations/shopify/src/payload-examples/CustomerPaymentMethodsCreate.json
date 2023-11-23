@@ -1,0 +1,14 @@
+{
+  "admin_graphql_api_id": "gid://shopify/CustomerPaymentMethod/0eccccc666aac73efcd31094ddc4ebf0",
+  "token": "0eccccc666aac73efcd31094ddc4ebf0",
+  "customer_id": 82850125,
+  "admin_graphql_api_customer_id": "gid://shopify/Customer/82850125",
+  "instrument_type": "CustomerCreditCard",
+  "payment_instrument": {
+    "last_digits": "4242",
+    "month": 8,
+    "year": 2060,
+    "name": "Jim Smith",
+    "brand": "Visa"
+  }
+}

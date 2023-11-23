@@ -5,8 +5,8 @@ import { DisplayProperty, EventSpecificationExample } from "@trigger.dev/sdk";
 import { EventSpecification } from "@trigger.dev/sdk";
 import { titleCase } from "@trigger.dev/integration-kit";
 
-export const basicProperties = (payload: { id: string | number }) => {
-  return [{ label: "ID", text: String(payload.id) }];
+export const basicProperties = (payload: Record<string, any>) => {
+  return payload.id ? [{ label: "ID", text: String(payload.id) }] : [];
 };
 
 export const serializeShopifyResource = <TResource extends Base | Base[] | null>(

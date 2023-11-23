@@ -120,6 +120,13 @@ export const EventSpecificationExampleSchema = z.object({
 
 export type EventSpecificationExample = z.infer<typeof EventSpecificationExampleSchema>;
 
+export type TypedEventSpecificationExample<TEvent> = {
+  id: string;
+  name: string;
+  icon?: string;
+  payload: TEvent
+}
+
 export interface EventSpecification<TEvent extends any, TInvoke extends any = TEvent> {
   name: string | string[];
   title: string;

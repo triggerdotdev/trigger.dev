@@ -1,0 +1,8 @@
+{
+  "admin_graphql_api_id": "gid://shopify/BulkOperation/147595010",
+  "completed_at": "2023-10-10T11:30:21-04:00",
+  "created_at": "2023-10-10T11:30:21-04:00",
+  "error_code": null,
+  "status": "completed",
+  "type": "query"
+}

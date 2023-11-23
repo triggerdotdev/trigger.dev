@@ -1,0 +1,8 @@
+{
+  "fulfillment_order": {
+    "id": "gid://shopify/FulfillmentOrder/1",
+    "status": "in_progress",
+    "request_status": "accepted"
+  },
+  "message": "We will ship the item tomorrow."
+}

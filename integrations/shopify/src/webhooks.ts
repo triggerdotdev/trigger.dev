@@ -1,6 +1,5 @@
 import { IntegrationTaskKey, verifyRequestSignature } from "@trigger.dev/sdk";
 import { z } from "zod";
-import * as events from "./events";
 import { Shopify, ShopifyRunTask } from "./index";
 import {
   WebhookHeaderSchema,

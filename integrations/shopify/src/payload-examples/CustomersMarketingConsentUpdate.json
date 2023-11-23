@@ -1,0 +1,10 @@
+{
+  "id": 706405506930370000,
+  "phone": null,
+  "sms_marketing_consent": {
+    "state": null,
+    "opt_in_level": null,
+    "consent_updated_at": null,
+    "consent_collected_from": "other"
+  }
+}

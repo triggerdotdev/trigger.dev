@@ -1,0 +1,16 @@
+{
+  "original_fulfillment_order": {
+    "id": "gid://shopify/FulfillmentOrder/1",
+    "status": "open",
+    "request_status": "unsubmitted"
+  },
+  "submitted_fulfillment_order": {
+    "id": "gid://shopify/FulfillmentOrder/1",
+    "status": "open",
+    "request_status": "unsubmitted"
+  },
+  "fulfillment_order_merchant_request": {
+    "id": "gid://shopify/FulfillmentOrderMerchantRequest/1",
+    "message": "Fragile"
+  }
+}

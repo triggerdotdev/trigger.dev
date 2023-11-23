@@ -1,0 +1,13 @@
+{
+  "admin_graphql_api_customer_kept_id": "gid://shopify/Customer/1",
+  "admin_graphql_api_customer_deleted_id": "gid://shopify/Customer/2",
+  "admin_graphql_api_job_id": null,
+  "status": "failed",
+  "errors": [
+    {
+      "customer_ids": [1],
+      "field": "merge_in_progress",
+      "message": "John Doe is currently being merged."
+    }
+  ]
+}

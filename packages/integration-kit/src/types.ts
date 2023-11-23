@@ -1,5 +1,11 @@
 export type { FetchRetryOptions, FetchTimeoutOptions } from "@trigger.dev/core";
 
+export type Nullable<T> = T extends Record<string, any>
+  ? {
+      [K in keyof T]: T[K] | null;
+    }
+  : T | null;
+
 export type ObjectNonNullable<T, TKeys extends keyof T = keyof T> = {
   [K in keyof T]: K extends TKeys ? NonNullable<T[K]> : T[K];
 };

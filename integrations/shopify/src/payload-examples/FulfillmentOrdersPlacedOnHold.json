@@ -1,0 +1,14 @@
+{
+  "fulfillment_order": {
+    "id": "gid://shopify/FulfillmentOrder/1",
+    "status": "on_hold",
+    "fulfillment_holds": [
+      {
+        "reason": "other",
+        "reason_notes": "example"
+      }
+    ]
+  },
+  "remaining_fulfillment_order": null,
+  "held_fulfillment_order_line_items": []
+}
