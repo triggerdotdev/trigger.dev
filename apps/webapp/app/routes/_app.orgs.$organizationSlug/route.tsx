@@ -3,6 +3,7 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
+import { UpgradePrompt } from "~/components/billing/UpgradePrompt";
 import { Breadcrumb, BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { PageNavigationIndicator } from "~/components/navigation/PageNavigationIndicator";
 import { SideMenu } from "~/components/navigation/SideMenu";
@@ -74,9 +75,12 @@ export default function Organization() {
           organizations={organizations}
         />
         <div className="grid grid-rows-[2.25rem_1fr] overflow-hidden">
-          <div className="flex w-full items-center justify-between border-b border-ui-border pr-2">
+          <div className="flex w-full items-center justify-between border-b border-ui-border">
             <Breadcrumb />
-            <PageNavigationIndicator />
+            <div className="flex h-full items-center gap-4">
+              <PageNavigationIndicator />
+              <UpgradePrompt organization={organization} />
+            </div>
           </div>
           <Outlet />
         </div>
