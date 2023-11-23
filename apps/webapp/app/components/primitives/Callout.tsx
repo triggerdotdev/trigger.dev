@@ -7,6 +7,7 @@ import {
 import {
   ArrowTopRightOnSquareIcon,
   BookOpenIcon,
+  ChartBarIcon,
   CheckCircleIcon,
   ChevronRightIcon,
 } from "@heroicons/react/24/solid";
@@ -58,6 +59,12 @@ export const variantClasses = {
     textColor: "text-blue-300",
     linkClassName: "transition hover:bg-blue-400/40",
   },
+  pricing: {
+    className: "border-indigo-400/20 bg-indigo-800/30",
+    icon: <ChartBarIcon className="h-5 w-5 shrink-0 text-indigo-500" />,
+    textColor: "text-indigo-200",
+    linkClassName: "transition hover:bg-indigo-400/40",
+  },
 } as const;
 
 export type CalloutVariant = keyof typeof variantClasses;
@@ -66,12 +73,14 @@ export function Callout({
   children,
   className,
   icon,
+  cta,
   variant,
   to,
 }: {
   children?: React.ReactNode;
   className?: string;
   icon?: React.ReactNode;
+  cta?: React.ReactNode;
   variant: CalloutVariant;
   to?: string;
 }) {
@@ -135,20 +144,23 @@ export function Callout({
   return (
     <div
       className={cn(
-        `flex w-full items-start gap-2.5 rounded-md border py-2 pl-2 pr-3 shadow-md backdrop-blur-sm`,
+        "flex w-full items-start rounded-md border py-2 pl-2 pr-2 shadow-md backdrop-blur-sm",
         variantDefinition.className,
         className
       )}
     >
-      {icon ? icon : variantDefinition.icon}
+      <div className={cn(`flex w-full items-center gap-2.5`)}>
+        {icon ? icon : variantDefinition.icon}
 
-      {typeof children === "string" ? (
-        <Paragraph variant={"small"} className={variantDefinition.textColor}>
-          {children}
-        </Paragraph>
-      ) : (
-        children
-      )}
+        {typeof children === "string" ? (
+          <Paragraph variant={"small"} className={variantDefinition.textColor}>
+            {children}
+          </Paragraph>
+        ) : (
+          children
+        )}
+      </div>
+      {cta && cta}
     </div>
   );
 }
