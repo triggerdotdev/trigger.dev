@@ -126,9 +126,9 @@ export function createWebhookEventSource(integration: Shopify) {
         });
       },
     },
-    verify: async ({ request, apiClient, ctx }) => {
-      // TODO: should pass namespaced store instead, e.g. apiClient.store.webhookRegistration.get()
-      const clientSecret = await apiClient.store.get<string>(
+    verify: async ({ request, client, ctx }) => {
+      // TODO: should pass namespaced store instead, e.g. client.store.webhookRegistration.get()
+      const clientSecret = await client.store.env.get<string>(
         `${registerJobNamespace(ctx.key)}:webhook-secret`
       );
 
@@ -140,14 +140,14 @@ export function createWebhookEventSource(integration: Shopify) {
         algorithm: "sha256",
       });
     },
-    generateEvents: async ({ request, apiClient }) => {
+    generateEvents: async ({ request, client }) => {
       const headers = WebhookHeaderSchema.parse(Object.fromEntries(request.headers));
 
       const topic = headers["x-shopify-topic"];
       const triggeredAt = headers["x-shopify-triggered-at"];
       const idempotencyKey = headers["x-shopify-webhook-id"];
 
-      await apiClient.sendEvent({
+      await client.sendEvent({
         id: idempotencyKey,
         payload: await request.json(),
         source: "shopify.com",

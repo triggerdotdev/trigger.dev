@@ -21,7 +21,6 @@ import { slugifyId } from "../utils";
 import { SerializableJson } from "@trigger.dev/core";
 import { Prettify } from "@trigger.dev/core";
 import { createHash } from "node:crypto";
-import { ApiClient } from "../apiClient";
 
 type WebhookCRUDContext<TParams extends any, TConfig extends Record<string, string[]>> = {
   active: boolean;
@@ -115,7 +114,7 @@ type EventGenerator<
   TIntegration extends TriggerIntegration,
 > = (options: {
   request: Request;
-  apiClient: ApiClient;
+  client: TriggerClient;
   ctx: WebhookDeliveryContext;
 }) => Promise<any>;
 
@@ -144,7 +143,7 @@ type WebhookOptions<
   register?: RegisterFunction<TIntegration, TParams, TConfig>;
   verify?: (options: {
     request: Request;
-    apiClient: ApiClient;
+    client: TriggerClient;
     ctx: WebhookDeliveryContext;
   }) => Promise<VerifyResult>;
   generateEvents: EventGenerator<TParams, TConfig, TIntegration>;
@@ -158,10 +157,10 @@ export class WebhookSource<
 > {
   constructor(private options: WebhookOptions<TIntegration, TParams, TConfig>) {}
 
-  async generateEvents(request: Request, apiClient: ApiClient, ctx: WebhookDeliveryContext) {
+  async generateEvents(request: Request, client: TriggerClient, ctx: WebhookDeliveryContext) {
     return this.options.generateEvents({
       request,
-      apiClient,
+      client,
       ctx,
     });
   }
@@ -202,12 +201,12 @@ export class WebhookSource<
 
   async verify(
     request: Request,
-    apiClient: ApiClient,
+    client: TriggerClient,
     ctx: WebhookDeliveryContext
   ): Promise<VerifyResult> {
     if (this.options.verify) {
       const clonedRequest = request.clone();
-      return this.options.verify({ request: clonedRequest, apiClient, ctx });
+      return this.options.verify({ request: clonedRequest, client, ctx });
     }
 
     return { success: true as const };

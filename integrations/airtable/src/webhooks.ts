@@ -321,9 +321,9 @@ export function createWebhookSource(
         });
       },
     },
-    verify: async ({ request, apiClient, ctx }) => {
-      // TODO: should pass namespaced store instead, e.g. apiClient.store.webhookRegistration.get()
-      const secretBase64 = await apiClient.store.get<string>(
+    verify: async ({ request, client, ctx }) => {
+      // TODO: should pass namespaced store instead, e.g. client.store.webhookRegistration.get()
+      const secretBase64 = await client.store.env.get<string>(
         `${registerJobNamespace(ctx.key)}:webhook-secret-base64`
       );
 
@@ -334,25 +334,25 @@ export function createWebhookSource(
         algorithm: "sha256",
       });
     },
-    generateEvents: async ({ request, apiClient, ctx }) => {
+    generateEvents: async ({ request, client, ctx }) => {
       console.log("[@trigger.dev/airtable] Handling webhook payload");
 
       const webhookPayload = ReceivedPayload.parse(await request.json());
 
-      const webhookId = await apiClient.store.get<string>(
+      const webhookId = await client.store.env.get<string>(
         `${registerJobNamespace(ctx.key)}:webhook-id`
       );
 
       const cursorKey = `cursor-${webhookId}`;
-      const cursor = await apiClient.store.get<number>(cursorKey);
+      const cursor = await client.store.env.get<number>(cursorKey);
 
       // TODO: get auth back
-      const client = integration.createClient();
+      const airtable = integration.createClient();
 
       const response = await getAllPayloads(
         webhookPayload.base.id,
         webhookPayload.webhook.id,
-        client,
+        airtable,
         cursor
       );
 
@@ -360,7 +360,7 @@ export function createWebhookSource(
         return console.log("[@trigger.dev/airtable] No payload fetch response, nothing to do!");
       }
 
-      await apiClient.store.set(cursorKey, response.cursor);
+      await client.store.env.set(cursorKey, response.cursor);
 
       const eventsFromResponse = response.payloads.map((payload) => ({
         id: `${payload.timestamp.getTime()}-${payload.baseTransactionNumber}`,
@@ -370,7 +370,7 @@ export function createWebhookSource(
         timestamp: payload.timestamp,
       }));
 
-      await apiClient.sendEvents(eventsFromResponse);
+      await client.sendEvents(eventsFromResponse);
     },
   });
 }

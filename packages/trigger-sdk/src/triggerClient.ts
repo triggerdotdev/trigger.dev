@@ -155,13 +155,13 @@ export type TriggerAuthResolver = (
 
 type WebhookVerifyFunction = (
   request: Request,
-  apiClient: ApiClient,
+  client: TriggerClient,
   ctx: WebhookDeliveryContext
 ) => Promise<VerifyResult>;
 
 type WebhookEventGeneratorFunction = (
   request: Request,
-  apiClient: ApiClient,
+  client: TriggerClient,
   ctx: WebhookDeliveryContext
 ) => Promise<void>;
 
@@ -1613,7 +1613,7 @@ export class TriggerClient {
 
     const { verify, generateEvents } = handlers;
 
-    const verifyResult = await verify(request, this.#client, ctx);
+    const verifyResult = await verify(request, this, ctx);
 
     if (!verifyResult.success) {
       return {
@@ -1623,7 +1623,7 @@ export class TriggerClient {
       };
     }
 
-    await generateEvents(request, this.#client, ctx);
+    await generateEvents(request, this, ctx);
 
     return {
       response: okResponse,
