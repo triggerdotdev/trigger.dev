@@ -4,9 +4,9 @@ on:
   push:
     branches:
       - main
-      - improvements/*
     tags:
       - "v.docker.*"
+      - "build-*"
     paths:
       - ".github/workflows/publish.yml"
       - "packages/**"

@@ -24,16 +24,13 @@ jobs:
             if [[ $IMAGE_TAG == v.docker.* ]]; then
               ORIGINAL_VERSION="${IMAGE_TAG#v.docker.}"
               IMAGE_TAG="v${ORIGINAL_VERSION}"
+            elif [[ $IMAGE_TAG == build-* ]]; then
+              IMAGE_TAG="${IMAGE_TAG#build-}"
             fi
             echo "IMAGE_TAG=${IMAGE_TAG}"
           elif [[ $GITHUB_REF == refs/heads/main ]]; then
             # Handle main branch specifically
             IMAGE_TAG="main"
-            echo "IMAGE_TAG=${IMAGE_TAG}"
-          elif [[ $GITHUB_REF == refs/heads/* ]]; then
-            # Handle other branch references and replace slashes with dashes
-            ORIGINAL_VERSION="${GITHUB_REF#refs/heads/}"
-            IMAGE_TAG="${ORIGINAL_VERSION//\//-}.rc"
             echo "IMAGE_TAG=${IMAGE_TAG}"
           else
             echo "Invalid reference: ${GITHUB_REF}"
