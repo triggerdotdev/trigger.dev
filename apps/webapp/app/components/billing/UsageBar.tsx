@@ -1,57 +1,83 @@
 import { cn } from "~/utils/cn";
 import { Paragraph } from "../primitives/Paragraph";
 
-//data
-const numberOfCurrentRuns = 120_000;
-const tierRunLimit = 100_000;
-const billingLimit = 100 / 0.00125; // $100 spend limit divided by the cost per run (80,000 runs)
-const projectedRuns = 10_000;
+type UsageBarProps = {
+  numberOfCurrentRuns: number;
+  billingLimit: number;
+  tierRunLimit: number;
+  projectedRuns: number;
+};
 
-//create a maximum range for the progress bar
-const getLargestNumber = Math.max(numberOfCurrentRuns, tierRunLimit, billingLimit, projectedRuns);
-const maxRange = Math.round(getLargestNumber * 1.15);
-console.log("Max range:", maxRange);
+export function UsageBar({
+  numberOfCurrentRuns,
+  billingLimit,
+  tierRunLimit,
+  projectedRuns,
+}: UsageBarProps) {
+  //create a maximum range for the progress bar
+  const getLargestNumber = Math.max(numberOfCurrentRuns, tierRunLimit, billingLimit, projectedRuns);
+  const maxRange = Math.round(getLargestNumber * 1.15);
 
-//convert numberOfCurrentRuns runs into a percentage and calculate the exceeded amount
-let progressAsPercent = (numberOfCurrentRuns / tierRunLimit) * 100; // get current runs as a percentage
-let currentProgress = Math.max(tierRunLimit, progressAsPercent); // set the current progress to the larger of the two
-currentProgress = Math.min(progressAsPercent, 100); // set the current progress to a maximum of 100%
-const exceededProgress = (numberOfCurrentRuns / tierRunLimit) * 100; // get the exceeded number of runs as a percentage
+  //convert the freeRunLimit into a percentage
+  const tierRunLimitPercentage = Math.round((tierRunLimit / maxRange) * 100);
 
-//Todo this code is correct but the calculations above mean the exceeded progress bar can still push over 100%
-//find the overall progress as a percentage of the maxRange
-const exceededProgressAsRuns = Math.max(0, numberOfCurrentRuns - tierRunLimit); // get the exceeded number of runs
-let overallProgress = Math.round(((numberOfCurrentRuns + exceededProgressAsRuns) / maxRange) * 100); // get the overall progress as a percentage of the maxRange
-overallProgress = Math.min(progressAsPercent, 100); // set the overall progress to a maximum of 100%
-console.log("number of current runs:", numberOfCurrentRuns);
-console.log("Exceeded Progress as Run count:", exceededProgressAsRuns);
-console.log("Overall progress:", overallProgress);
+  //convert the projectedRuns into a percentage
+  const projectedRunsPercentage = Math.round((projectedRuns / maxRange) * 100);
 
-//convert the freeRunLimit into a percentage
-const freeRunLimit = Math.round((tierRunLimit / maxRange) * 100);
+  //convert the BillingLimit into a percentage
+  const billingLimitPercentage = Math.round((billingLimit / maxRange) * 100);
 
-export function UsageBar() {
+  const usagePercentage = Math.round((numberOfCurrentRuns / maxRange) * 100);
+
+  const usageCappedToLimitPercentage = Math.min(usagePercentage, tierRunLimitPercentage);
   return (
-    <div className="track relative w-full rounded-sm bg-slate-800">
-      <div style={{ width: `${70}%` }} className="usage absolute h-3 rounded-l-sm bg-green-900/50">
-        <Legend text="Billing limit:" value={numberOfCurrentRuns} position="bottomRow2" />
-      </div>
-      <div style={{ width: `${60}%` }} className="usage absolute h-3 rounded-l-sm bg-green-900">
-        <Legend text="Free tier limit:" value={numberOfCurrentRuns} position="bottomRow1" />
-      </div>
-      <div style={{ width: `${80}%` }} className="usage absolute h-3 rounded-l-sm">
-        <Legend text="Projected:" value={numberOfCurrentRuns} position="topRow2" />
-      </div>
-      <div style={{ width: `${20}%` }} className="usage relative h-3 rounded-sm">
+    <div className="h-fit w-full py-16">
+      <div className="relative h-3 w-full rounded-sm bg-slate-800">
         <div
-          style={{ width: `${exceededProgress}%` }}
-          className="absolute h-full rounded-l-sm bg-red-500"
+          style={{ width: `${billingLimitPercentage}%` }}
+          className="absolute h-3 rounded-l-sm bg-green-900/50"
         >
-          <Legend text="Current:" value={numberOfCurrentRuns} position="topRow1" />
+          <Legend
+            text="Billing limit:"
+            value={billingLimit}
+            position="bottomRow2"
+            percentage={billingLimitPercentage}
+          />
         </div>
         <div
-          style={{ width: `${currentProgress}%` }}
-          className="absolute h-full rounded-l-sm bg-green-600"
+          style={{ width: `${tierRunLimitPercentage}%` }}
+          className="absolute h-3 rounded-l-sm bg-green-900"
+        >
+          <Legend
+            text="Free tier limit:"
+            value={tierRunLimit}
+            position="bottomRow1"
+            percentage={tierRunLimitPercentage}
+          />
+        </div>
+        <div style={{ width: `${projectedRunsPercentage}%` }} className="absolute h-3 rounded-l-sm">
+          <Legend
+            text="Projected:"
+            value={projectedRuns}
+            position="topRow2"
+            percentage={projectedRunsPercentage}
+          />
+        </div>
+
+        <div
+          style={{ width: `${usagePercentage}%` }}
+          className="absolute h-3 rounded-l-sm bg-red-500"
+        >
+          <Legend
+            text="Current:"
+            value={numberOfCurrentRuns}
+            position="topRow1"
+            percentage={usagePercentage}
+          />
+        </div>
+        <div
+          style={{ width: `${usageCappedToLimitPercentage}%` }}
+          className="absolute h-3 rounded-l-sm bg-green-600"
         />
       </div>
     </div>
@@ -68,13 +94,20 @@ const positions = {
 type LegendProps = {
   text: string;
   value: number;
-  position: "topRow1" | "topRow2" | "bottomRow1" | "bottomRow2";
+  percentage: number;
+  position: keyof typeof positions;
 };
 
-function Legend({ text, value, position }: LegendProps) {
+function Legend({ text, value, position, percentage }: LegendProps) {
+  const flipLegendPositionValue = 80;
+  const flipLegendPosition = percentage > flipLegendPositionValue ? true : false;
   return (
     <div
-      className={cn("absolute left-full z-10 flex border-l border-slate-400", positions[position])}
+      className={cn(
+        "absolute left-full z-10 flex border-slate-400",
+        positions[position],
+        flipLegendPosition === true ? "-translate-x-full border-r" : "border-l"
+      )}
     >
       <Paragraph className="h-fit whitespace-nowrap bg-background px-1.5 text-xs text-dimmed">
         {text}
