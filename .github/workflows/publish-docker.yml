@@ -1,0 +1,72 @@
+name: "🐳 Publish Docker"
+on:
+  workflow_call:
+jobs:
+  publish:
+    runs-on: buildjet-4vcpu-ubuntu-2204
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      short_sha: ${{ steps.get_commit.outputs.sha_short }}
+    steps:
+      - name: 🐳 Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v3
+
+      - name: 🆚 Get the version
+        id: get_version
+        run: |
+          IMAGE_TAG="${GITHUB_REF#refs/tags/}"
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            if [[ $IMAGE_TAG == v.docker.* ]]; then
+              ORIGINAL_VERSION="${IMAGE_TAG#v.docker.}"
+              IMAGE_TAG="v${ORIGINAL_VERSION}"
+            elif [[ $IMAGE_TAG == build-* ]]; then
+              IMAGE_TAG="${IMAGE_TAG#build-}"
+            fi
+            echo "IMAGE_TAG=${IMAGE_TAG}"
+          elif [[ $GITHUB_REF == refs/heads/main ]]; then
+            # Handle main branch specifically
+            IMAGE_TAG="main"
+            echo "IMAGE_TAG=${IMAGE_TAG}"
+          else
+            echo "Invalid reference: ${GITHUB_REF}"
+            exit 1
+          fi
+          echo "::set-output name=version::${IMAGE_TAG}"
+      - name: 🔢 Get the commit hash
+        id: get_commit
+        run: |
+          echo ::set-output name=sha_short::$(echo ${{ github.sha }} | cut -c1-7)
+
+      - name: 🐳 Build Docker Image
+        run: |
+          docker build -t release_build_image -f ./docker/Dockerfile .
+
+      - name: 🐙 Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🐙 Push to GitHub Container Registry
+        run: |
+          docker tag release_build_image $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
+        env:
+          REGISTRY: ghcr.io/triggerdotdev
+          REPOSITORY: trigger.dev
+          IMAGE_TAG: ${{ steps.get_version.outputs.version }}
+
+      - name: 🐙 Push 'latest' to GitHub Container Registry
+        if: startsWith(github.ref, 'refs/tags/v.docker')
+        run: |
+          docker tag release_build_image $REGISTRY/$REPOSITORY:latest
+          docker push $REGISTRY/$REPOSITORY:latest
+        env:
+          REGISTRY: ghcr.io/triggerdotdev
+          REPOSITORY: trigger.dev
