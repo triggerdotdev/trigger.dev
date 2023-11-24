@@ -162,12 +162,13 @@ export function updateUser({
   name,
   email,
   marketingEmails,
-}: Pick<User, "id" | "name" | "email"> & {
+  referralSource,
+}: Pick<User, "id" | "name" | "email" | "referralSource"> & {
   marketingEmails?: boolean;
 }) {
   return prisma.user.update({
     where: { id },
-    data: { name, email, marketingEmails, confirmedBasicDetails: true },
+    data: { name, email, marketingEmails, referralSource, confirmedBasicDetails: true },
   });
 }
 

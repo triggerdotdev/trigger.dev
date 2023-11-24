@@ -18,6 +18,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { prisma } from "~/db.server";
+import { useFeatures } from "~/hooks/useFeatures";
 import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
@@ -100,6 +101,7 @@ export const action: ActionFunction = async ({ request }) => {
       id: userId,
       name: submission.value.name,
       email: submission.value.email,
+      referralSource: submission.value.referralSource ?? null,
     });
 
     return redirectWithSuccessMessage(rootPath(), request, "Your details have been updated.");
@@ -121,6 +123,7 @@ export default function Page() {
   const user = useUser();
   const lastSubmission = useActionData();
   const [enteredEmail, setEnteredEmail] = useState<string>(user.email ?? "");
+  const { isManagedCloud } = useFeatures();
 
   const [form, { name, email, confirmEmail, referralSource }] = useForm({
     id: "confirm-basic-details",
@@ -214,15 +217,17 @@ export default function Page() {
                 <input {...conform.input(confirmEmail, { type: "hidden" })} value={user.email} />
               </>
             )}
-            <InputGroup>
-              <Label htmlFor={confirmEmail.id}>How did you hear about us?</Label>
-              <Input
-                {...conform.input(referralSource, { type: "text" })}
-                placeholder="Google, Twitter…?"
-                icon="heart"
-                spellCheck={false}
-              />
-            </InputGroup>
+            {isManagedCloud && (
+              <InputGroup>
+                <Label htmlFor={confirmEmail.id}>How did you hear about us?</Label>
+                <Input
+                  {...conform.input(referralSource, { type: "text" })}
+                  placeholder="Google, Twitter…?"
+                  icon="heart"
+                  spellCheck={false}
+                />
+              </InputGroup>
+            )}
 
             <FormButtons
               confirmButton={

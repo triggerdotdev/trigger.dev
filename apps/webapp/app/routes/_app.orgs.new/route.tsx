@@ -1,10 +1,9 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { RadioGroup } from "@radix-ui/react-radio-group";
-import type { ActionFunction, LoaderFunction, LoaderFunctionArgs } from "@remix-run/node";
+import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
-import { Radio } from "lucide-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
@@ -18,6 +17,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { RadioGroupItem } from "~/components/primitives/RadioButton";
+import { useFeatures } from "~/hooks/useFeatures";
 import { createOrganization } from "~/models/organization.server";
 import { NewOrganizationPresenter } from "~/presenters/NewOrganizationPresenter.server";
 import { commitCurrentProjectSession, setCurrentProjectId } from "~/services/currentProject.server";
@@ -55,7 +55,7 @@ export const action: ActionFunction = async ({ request }) => {
       title: submission.value.orgName,
       userId,
       projectName: submission.value.projectName,
-      // companySize: submission.value.companySize,
+      companySize: submission.value.companySize ?? null,
     });
 
     const project = organization.projects[0];
@@ -74,6 +74,7 @@ export const action: ActionFunction = async ({ request }) => {
 export default function NewOrganizationPage() {
   const { hasOrganizations } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
+  const { isManagedCloud } = useFeatures();
 
   const [form, { orgName, projectName }] = useForm({
     id: "create-organization",
@@ -110,39 +111,41 @@ export default function NewOrganizationPage() {
             <Hint>Your Jobs will live inside this Project.</Hint>
             <FormError id={projectName.errorId}>{projectName.error}</FormError>
           </InputGroup>
-          <InputGroup>
-            <Label htmlFor={projectName.id}>Number of employees</Label>
-            <RadioGroup name="companySize" className="flex items-center justify-between gap-2">
-              <RadioGroupItem
-                id="employees-1-5"
-                label="1-5"
-                value={"1-5"}
-                variant="button/small"
-                className="grow"
-              />
-              <RadioGroupItem
-                id="employees-6-49"
-                label="6-49"
-                value={"6-49"}
-                variant="button/small"
-                className="grow"
-              />
-              <RadioGroupItem
-                id="employees-50-99"
-                label="50-99"
-                value={"50-99"}
-                variant="button/small"
-                className="grow"
-              />
-              <RadioGroupItem
-                id="employees-100+"
-                label="100+"
-                value={"100+"}
-                variant="button/small"
-                className="grow"
-              />
-            </RadioGroup>
-          </InputGroup>
+          {isManagedCloud && (
+            <InputGroup>
+              <Label htmlFor={projectName.id}>Number of employees</Label>
+              <RadioGroup name="companySize" className="flex items-center justify-between gap-2">
+                <RadioGroupItem
+                  id="employees-1-5"
+                  label="1-5"
+                  value={"1-5"}
+                  variant="button/small"
+                  className="grow"
+                />
+                <RadioGroupItem
+                  id="employees-6-49"
+                  label="6-49"
+                  value={"6-49"}
+                  variant="button/small"
+                  className="grow"
+                />
+                <RadioGroupItem
+                  id="employees-50-99"
+                  label="50-99"
+                  value={"50-99"}
+                  variant="button/small"
+                  className="grow"
+                />
+                <RadioGroupItem
+                  id="employees-100+"
+                  label="100+"
+                  value={"100+"}
+                  variant="button/small"
+                  className="grow"
+                />
+              </RadioGroup>
+            </InputGroup>
+          )}
 
           <FormButtons
             confirmButton={

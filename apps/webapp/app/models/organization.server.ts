@@ -21,7 +21,8 @@ export async function createOrganization(
     title,
     userId,
     projectName,
-  }: Pick<Organization, "title"> & {
+    companySize,
+  }: Pick<Organization, "title" | "companySize"> & {
     userId: User["id"];
     projectName: string;
   },
@@ -47,6 +48,7 @@ export async function createOrganization(
         title,
         userId,
         projectName,
+        companySize,
       },
       attemptCount + 1
     );
@@ -56,6 +58,7 @@ export async function createOrganization(
     data: {
       title,
       slug: uniqueOrgSlug,
+      companySize,
       members: {
         create: {
           userId: userId,
