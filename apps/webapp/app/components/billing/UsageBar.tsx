@@ -32,12 +32,27 @@ const freeRunLimit = Math.round((tierRunLimit / maxRange) * 100);
 
 export function UsageBar() {
   return (
-    <div className="track relative w-full bg-slate-800">
+    <div className="track relative w-full rounded-sm bg-slate-800">
+      <div style={{ width: `${70}%` }} className="usage absolute h-3 rounded-l-sm bg-green-900/50">
+        <Legend text="Billing limit:" value={numberOfCurrentRuns} position="bottomRow2" />
+      </div>
+      <div style={{ width: `${60}%` }} className="usage absolute h-3 rounded-l-sm bg-green-900">
+        <Legend text="Free tier limit:" value={numberOfCurrentRuns} position="bottomRow1" />
+      </div>
+      <div style={{ width: `${80}%` }} className="usage absolute h-3 rounded-l-sm">
+        <Legend text="Projected:" value={numberOfCurrentRuns} position="topRow2" />
+      </div>
       <div style={{ width: `${20}%` }} className="usage relative h-3 rounded-sm">
-        <div style={{ width: `${exceededProgress}%` }} className="absolute h-full bg-red-500">
+        <div
+          style={{ width: `${exceededProgress}%` }}
+          className="absolute h-full rounded-l-sm bg-red-500"
+        >
           <Legend text="Current:" value={numberOfCurrentRuns} position="topRow1" />
         </div>
-        <div style={{ width: `${currentProgress}%` }} className="absolute h-full bg-green-500" />
+        <div
+          style={{ width: `${currentProgress}%` }}
+          className="absolute h-full rounded-l-sm bg-green-600"
+        />
       </div>
     </div>
   );
@@ -58,8 +73,10 @@ type LegendProps = {
 
 function Legend({ text, value, position }: LegendProps) {
   return (
-    <div className={cn("absolute left-full flex border-l border-slate-400", positions[position])}>
-      <Paragraph className="h-fit bg-background px-1.5 text-xs text-dimmed">
+    <div
+      className={cn("absolute left-full z-10 flex border-l border-slate-400", positions[position])}
+    >
+      <Paragraph className="h-fit whitespace-nowrap bg-background px-1.5 text-xs text-dimmed">
         {text}
         <span className="ml-1 text-bright">{value}</span>
       </Paragraph>
