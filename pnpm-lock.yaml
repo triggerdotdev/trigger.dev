@@ -183,6 +183,7 @@ importers:
       morgan: ^1.10.0
       nanoid: ^3.3.4
       npm-run-all: ^4.1.5
+      ohash: ^1.1.3
       postcss: ^8.4.21
       postcss-import: ^14.1.0
       posthog-js: ^1.83.0
@@ -289,6 +290,7 @@ importers:
       marked: 4.2.5
       morgan: 1.10.0
       nanoid: 3.3.4
+      ohash: 1.1.3
       postcss-import: 14.1.0_postcss@8.4.21
       posthog-js: 1.83.0
       posthog-node: 3.1.1
@@ -590,6 +592,31 @@ importers:
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 16.18.11
+      rimraf: 3.0.2
+      tsup: 7.1.0_typescript@4.9.4
+      typescript: 4.9.4
+
+  integrations/shopify:
+    specifiers:
+      '@shopify/shopify-api': ^8.0.2
+      '@trigger.dev/integration-kit': workspace:^2.2.6
+      '@trigger.dev/sdk': workspace:^2.2.6
+      '@trigger.dev/tsconfig': workspace:*
+      '@trigger.dev/tsup': workspace:*
+      '@types/node': 16.x
+      rimraf: ^3.0.2
+      tsup: 7.1.x
+      typescript: 4.9.4
+      zod: 3.22.3
+    dependencies:
+      '@shopify/shopify-api': 8.0.2
+      '@trigger.dev/integration-kit': link:../../packages/integration-kit
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      zod: 3.22.3
+    devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@trigger.dev/tsup': link:../../config-packages/tsup
       '@types/node': 16.18.11
       rimraf: 3.0.2
       tsup: 7.1.0_typescript@4.9.4
@@ -1250,6 +1277,7 @@ importers:
       '@trigger.dev/resend': workspace:*
       '@trigger.dev/sdk': workspace:*
       '@trigger.dev/sendgrid': workspace:*
+      '@trigger.dev/shopify': workspace:*
       '@trigger.dev/slack': workspace:*
       '@trigger.dev/stripe': workspace:*
       '@trigger.dev/supabase': workspace:*
@@ -1276,6 +1304,7 @@ importers:
       '@trigger.dev/resend': link:../../integrations/resend
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       '@trigger.dev/sendgrid': link:../../integrations/sendgrid
+      '@trigger.dev/shopify': link:../../integrations/shopify
       '@trigger.dev/slack': link:../../integrations/slack
       '@trigger.dev/stripe': link:../../integrations/stripe
       '@trigger.dev/supabase': link:../../integrations/supabase
@@ -11963,6 +11992,25 @@ packages:
       - debug
     dev: false
 
+  /@shopify/network/3.2.1:
+    resolution: {integrity: sha512-Ih/6Oe80dynlUsRfEqptWBfsySCqI0rjQvPAjS8HuWeK9nZ+TvmYScfxjucKXZ2deXwAClnU6SMdh3/B1lMMog==}
+    engines: {node: ^14.17.0 || >=16.0.0}
+    dev: false
+
+  /@shopify/shopify-api/8.0.2:
+    resolution: {integrity: sha512-hvVLoEsYglE4GRqFhr9D6oMr2bV6tEdsD9PxuNZ6bYDptoD+kQFKsaP83jE1qtHhB3ve0DeevaVVYjS/2TU7MA==}
+    dependencies:
+      '@shopify/network': 3.2.1
+      compare-versions: 5.0.3
+      isbot: 3.6.13
+      jose: 4.15.4
+      node-fetch: 2.6.12
+      tslib: 2.6.2
+      uuid: 9.0.0
+    transitivePeerDependencies:
+      - encoding
+    dev: false
+
   /@sideway/address/4.1.4:
     resolution: {integrity: sha512-7vwq+rOHVWjyXxVlR76Agnvhy8I9rpzjosTESvmhNeXOXdZZB15Fl+TI9x1SiHZH5Jv2wTGduSxFDIaq0m3DUw==}
     dependencies:
@@ -18112,6 +18160,10 @@ packages:
   /commondir/1.0.1:
     resolution: {integrity: sha512-W9pAhw0ja1Edb5GVdIF1mjZw/ASI0AlShXM83UUGe2DVr5TdAPEA1OA8m/g8zWp9x6On7gqufY+FatDbC3MDQg==}
     dev: true
+
+  /compare-versions/5.0.3:
+    resolution: {integrity: sha512-4UZlZP8Z99MGEY+Ovg/uJxJuvoXuN4M6B3hKaiackiHrgzQFEe3diJi1mf1PNHbFujM7FvLrK2bpgIaImbtZ1A==}
+    dev: false
 
   /component-emitter/1.3.0:
     resolution: {integrity: sha512-Rd3se6QB+sO1TwqZjscQrurpEPIfO0/yYnSin6Q/rD3mOutHvUrCAhJub3r90uNb+SESBuE0QYoB90YdfatsRg==}
@@ -24484,6 +24536,10 @@ packages:
       '@sideway/formula': 3.0.1
       '@sideway/pinpoint': 2.0.0
 
+  /jose/4.15.4:
+    resolution: {integrity: sha512-W+oqK4H+r5sITxfxpSU+MMdr/YSWGvgZMQDIsNoBDGGy4i7GBPTtvFKibQzW06n3U3TqHjhvBJsirShsEJ6eeQ==}
+    dev: false
+
   /joycon/3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
     engines: {node: '>=10'}
@@ -27032,6 +27088,10 @@ packages:
       '@octokit/types': 9.0.0
     transitivePeerDependencies:
       - encoding
+    dev: false
+
+  /ohash/1.1.3:
+    resolution: {integrity: sha512-zuHHiGTYTA1sYJ/wZN+t5HKZaH23i4yI1HMwbuXm24Nid7Dv0KcuRlKoNKS9UNfAVSBlnGLcuQrnOKWOZoEGaw==}
     dev: false
 
   /on-exit-leak-free/2.1.2:

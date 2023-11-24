@@ -124,7 +124,7 @@ type RespondWith = {
   handler: (request: Request, verify: () => Promise<VerifyResult>) => Promise<Response>;
 };
 
-type VerifyCallback = (request: Request) => Promise<VerifyResult>;
+export type VerifyCallback = (request: Request) => Promise<VerifyResult>;
 
 export type EndpointOptions = {
   /** Used to uniquely identify the HTTP Endpoint inside your Project. */

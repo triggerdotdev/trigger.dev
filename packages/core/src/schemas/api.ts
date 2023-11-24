@@ -37,6 +37,18 @@ export const UpdateTriggerSourceBodyV2Schema = z.object({
 });
 export type UpdateTriggerSourceBodyV2 = z.infer<typeof UpdateTriggerSourceBodyV2Schema>;
 
+export const UpdateWebhookBodySchema = z.discriminatedUnion("active", [
+  z.object({
+    active: z.literal(false),
+  }),
+  z.object({
+    active: z.literal(true),
+    config: z.record(z.string().array()),
+  }),
+]);
+
+export type UpdateWebhookBody = z.infer<typeof UpdateWebhookBodySchema>;
+
 export const RegisterHTTPTriggerSourceBodySchema = z.object({
   type: z.literal("HTTP"),
   url: z.string().url(),
@@ -55,6 +67,36 @@ export const RegisterSourceChannelBodySchema = z.discriminatedUnion("type", [
   RegisterSMTPTriggerSourceBodySchema,
   RegisterSQSTriggerSourceBodySchema,
 ]);
+
+export const REGISTER_WEBHOOK = "dev.trigger.webhook.register";
+export const DELIVER_WEBHOOK_REQUEST = "dev.trigger.webhook.deliver";
+
+export const RegisterWebhookSourceSchema = z.object({
+  key: z.string(),
+  params: z.any(),
+  config: z.any(),
+  active: z.boolean(),
+  secret: z.string(),
+  url: z.string(),
+  data: DeserializedJsonSchema.optional(),
+  clientId: z.string().optional(),
+});
+
+export type RegisterWebhookSource = z.infer<typeof RegisterWebhookSourceSchema>;
+
+export const RegisterWebhookPayloadSchema = z.object({
+  active: z.boolean(),
+  params: z.any().optional(),
+  config: z.object({
+    current: z.record(z.string().array()),
+    desired: z.record(z.string().array()),
+  }),
+  // from HTTP Endpoint
+  url: z.string(),
+  secret: z.string(),
+});
+
+export type RegisterWebhookPayload = z.infer<typeof RegisterWebhookPayloadSchema>;
 
 export const REGISTER_SOURCE_EVENT_V1 = "dev.trigger.source.register";
 export const REGISTER_SOURCE_EVENT_V2 = "dev.trigger.source.register.v2";
@@ -173,6 +215,18 @@ export const HttpEndpointRequestHeadersSchema = z.object({
   "x-ts-http-headers": z.string().transform((s) => z.record(z.string()).parse(JSON.parse(s))),
 });
 
+export const WebhookSourceRequestHeadersSchema = z.object({
+  "x-ts-key": z.string(),
+  "x-ts-dynamic-id": z.string().optional(),
+  "x-ts-secret": z.string(),
+  "x-ts-params": z.string().transform((s) => JSON.parse(s)),
+  "x-ts-http-url": z.string(),
+  "x-ts-http-method": z.string(),
+  "x-ts-http-headers": z.string().transform((s) => z.record(z.string()).parse(JSON.parse(s))),
+});
+
+export type WebhookSourceRequestHeaders = z.output<typeof WebhookSourceRequestHeadersSchema>;
+
 export const PongSuccessResponseSchema = z.object({
   ok: z.literal(true),
   triggerVersion: z.string().optional(),
@@ -275,6 +329,26 @@ const SourceMetadataSchema = z.preprocess(
 
 type SourceMetadata = Prettify<z.infer<typeof SourceMetadataSchema>>;
 
+export const WebhookMetadataSchema = z.object({
+  key: z.string(),
+  params: z.any(),
+  config: z.record(z.array(z.string())),
+  integration: IntegrationConfigSchema,
+  httpEndpoint: z.object({
+    id: z.string(),
+  }),
+});
+
+export type WebhookMetadata = z.infer<typeof WebhookMetadataSchema>;
+
+export const WebhookContextMetadataSchema = z.object({
+  params: z.any(),
+  config: z.record(z.string().array()),
+  secret: z.string(),
+});
+
+export type WebhookContextMetadata = z.infer<typeof WebhookContextMetadataSchema>;
+
 export const DynamicTriggerEndpointMetadataSchema = z.object({
   id: z.string(),
   jobs: z.array(JobMetadataSchema.pick({ id: true, version: true })),
@@ -306,6 +380,7 @@ export type HttpEndpointMetadata = z.infer<typeof HttpEndpointMetadataSchema>;
 export const IndexEndpointResponseSchema = z.object({
   jobs: z.array(JobMetadataSchema),
   sources: z.array(SourceMetadataSchema),
+  webhooks: z.array(WebhookMetadataSchema),
   dynamicTriggers: z.array(DynamicTriggerEndpointMetadataSchema),
   dynamicSchedules: z.array(RegisterDynamicSchedulePayloadSchema),
   httpEndpoints: z.array(HttpEndpointMetadataSchema).optional(),
@@ -323,6 +398,7 @@ export type EndpointIndexError = z.infer<typeof EndpointIndexErrorSchema>;
 const IndexEndpointStatsSchema = z.object({
   jobs: z.number(),
   sources: z.number(),
+  webhooks: z.number(),
   dynamicTriggers: z.number(),
   dynamicSchedules: z.number(),
   disabledJobs: z.number().default(0),
@@ -901,6 +977,14 @@ export const HttpSourceResponseSchema = z.object({
   metadata: HttpSourceResponseMetadataSchema.optional(),
 });
 
+export const WebhookDeliveryResponseSchema = z.object({
+  response: NormalizedResponseSchema,
+  verified: z.boolean(),
+  error: z.string().optional(),
+});
+
+export type WebhookDeliveryResponse = z.infer<typeof WebhookDeliveryResponseSchema>;
+
 export const RegisterTriggerBodySchemaV1 = z.object({
   rule: EventRuleSchema,
   source: SourceMetadataV1Schema,
@@ -1028,3 +1112,28 @@ export const EphemeralEventDispatcherResponseBodySchema = z.object({
 export type EphemeralEventDispatcherResponseBody = z.infer<
   typeof EphemeralEventDispatcherResponseBodySchema
 >;
+
+export const KeyValueStoreResponseBodySchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("DELETE"),
+    key: z.string(),
+    deleted: z.boolean(),
+  }),
+  z.object({
+    action: z.literal("GET"),
+    key: z.string(),
+    value: z.string().optional(),
+  }),
+  z.object({
+    action: z.literal("HAS"),
+    key: z.string(),
+    has: z.boolean(),
+  }),
+  z.object({
+    action: z.literal("SET"),
+    key: z.string(),
+    value: z.string().optional(),
+  }),
+]);
+
+export type KeyValueStoreResponseBody = z.infer<typeof KeyValueStoreResponseBodySchema>;

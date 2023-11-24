@@ -14,8 +14,8 @@ import { onCommentProperties, onIssueProperties, updatedFromProperties } from ".
 export const onComment: EventSpecification<Get{{ identifier | capitalize }}Payload<CommentEvent>> = {
   name: "Comment",
   title: "On Comment",
-  source: "linear.app",
-  icon: "linear",
+  source: "{{ identifier }}.com",
+  icon: "{{ identifier }}",
   examples: [commentCreated, commentRemoved, commentUpdated],
   parsePayload: (payload) => payload as Get{{ identifier | capitalize }}Payload<CommentEvent>,
   runProperties: (payload) => [
@@ -28,8 +28,8 @@ export const onComment: EventSpecification<Get{{ identifier | capitalize }}Paylo
 export const onCommentCreated: EventSpecification<Get{{ identifier | capitalize }}Payload<CommentEvent, "create">> = {
   name: "Comment",
   title: "On Comment Created",
-  source: "linear.app",
-  icon: "linear",
+  source: "{{ identifier }}.com",
+  icon: "{{ identifier }}",
   filter: {
     action: ["create"],
   },
@@ -41,8 +41,8 @@ export const onCommentCreated: EventSpecification<Get{{ identifier | capitalize 
 export const onCommentRemoved: EventSpecification<Get{{ identifier | capitalize }}Payload<CommentEvent, "remove">> = {
   name: "Comment",
   title: "On Comment Removed",
-  source: "linear.app",
-  icon: "linear",
+  source: "{{ identifier }}.com",
+  icon: "{{ identifier }}",
   filter: {
     action: ["remove"],
   },
@@ -54,8 +54,8 @@ export const onCommentRemoved: EventSpecification<Get{{ identifier | capitalize 
 export const onCommentUpdated: EventSpecification<Get{{ identifier | capitalize }}Payload<CommentEvent, "update">> = {
   name: "Comment",
   title: "On Comment Updated",
-  source: "linear.app",
-  icon: "linear",
+  source: "{{ identifier }}.com",
+  icon: "{{ identifier }}",
   filter: {
     action: ["update"],
   },
@@ -67,8 +67,8 @@ export const onCommentUpdated: EventSpecification<Get{{ identifier | capitalize 
 export const onIssue: EventSpecification<Get{{ identifier | capitalize }}Payload<IssueEvent>> = {
   name: "Issue",
   title: "On Issue",
-  source: "linear.app",
-  icon: "linear",
+  source: "{{ identifier }}.com",
+  icon: "{{ identifier }}",
   examples: [issueCreated, issueRemoved, issueUpdated],
   parsePayload: (payload) => payload as Get{{ identifier | capitalize }}Payload<IssueEvent>,
   runProperties: (payload) => [
@@ -81,8 +81,8 @@ export const onIssue: EventSpecification<Get{{ identifier | capitalize }}Payload
 export const onIssueCreated: EventSpecification<Get{{ identifier | capitalize }}Payload<IssueEvent, "create">> = {
   name: "Issue",
   title: "On Issue Created",
-  source: "linear.app",
-  icon: "linear",
+  source: "{{ identifier }}.com",
+  icon: "{{ identifier }}",
   filter: {
     action: ["create"],
   },
@@ -94,8 +94,8 @@ export const onIssueCreated: EventSpecification<Get{{ identifier | capitalize }}
 export const onIssueRemoved: EventSpecification<Get{{ identifier | capitalize }}Payload<IssueEvent, "remove">> = {
   name: "Issue",
   title: "On Issue Removed",
-  source: "linear.app",
-  icon: "linear",
+  source: "{{ identifier }}.com",
+  icon: "{{ identifier }}",
   filter: {
     action: ["remove"],
   },
@@ -107,8 +107,8 @@ export const onIssueRemoved: EventSpecification<Get{{ identifier | capitalize }}
 export const onIssueUpdated: EventSpecification<Get{{ identifier | capitalize }}Payload<IssueEvent, "update">> = {
   name: "Issue",
   title: "On Issue Updated",
-  source: "linear.app",
-  icon: "linear",
+  source: "{{ identifier }}.com",
+  icon: "{{ identifier }}",
   filter: {
     action: ["update"],
   },

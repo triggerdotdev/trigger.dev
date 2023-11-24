@@ -1,16 +1,21 @@
-import { PrismaClient, TriggerHttpEndpoint } from "@trigger.dev/database";
+import { PrismaClient, RuntimeEnvironment, Webhook } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requestUrl } from "~/utils/requestUrl.server";
 import { logger } from "../logger.server";
 import { json } from "@remix-run/server-runtime";
-import { RequestFilterSchema, requestFilterMatches } from "@trigger.dev/core";
+import {
+  RequestFilterSchema,
+  WebhookContextMetadataSchema,
+  requestFilterMatches,
+} from "@trigger.dev/core";
 import { EndpointApi } from "../endpointApi.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
 import { getSecretStore } from "../secrets/secretStore.server";
 import { createHttpSourceRequest } from "~/utils/createHttpSourceRequest";
 import { ulid } from "../ulid.server";
 import { env } from "~/env.server";
+import { HandleWebhookRequestService } from "../sources/handleWebhookRequest.server";
 
 export const HttpEndpointParamsSchema = z.object({
   httpEndpointId: z.string(),
@@ -34,6 +39,7 @@ export class HandleHttpEndpointService {
       },
       include: {
         secretReference: true,
+        webhook: true,
         project: {
           include: {
             environments: {
@@ -108,6 +114,7 @@ export class HandleHttpEndpointService {
     //get the secret
     const secretStore = getSecretStore(httpEndpoint.secretReference.provider);
     let secret: string | undefined;
+
     try {
       const secretData = await secretStore.getSecretOrThrow(
         z.object({ secret: z.string() }),
@@ -119,6 +126,7 @@ export class HandleHttpEndpointService {
       logger.error("Getting secret threw", { error });
       return json({ error: true, message: "Could not retrieve secret" }, { status: 404 });
     }
+
     if (!secret) {
       logger.error("Could not find secret", {
         httpEndpointId: httpEndpoint.id,
@@ -132,16 +140,22 @@ export class HandleHttpEndpointService {
     const callClientImmediately = immediateResponseFilter.data
       ? await requestFilterMatches(request, immediateResponseFilter.data)
       : false;
+
     let httpResponse: Response | undefined;
+
     if (callClientImmediately) {
       logger.info("Calling client immediately", {
         httpEndpointId: httpEndpoint.id,
         environmentId: environment.id,
         immediateResponseFilter: immediateResponseFilter.data,
       });
+
       const clonedRequest = request.clone();
+
       const client = new EndpointApi(environment.apiKey, httpEndpointEnvironment.endpoint.url);
+
       const httpRequest = await createHttpSourceRequest(clonedRequest);
+
       const { response, parser } = await client.deliverHttpEndpointRequestForResponse({
         key: httpEndpoint.key,
         secret: secret,
@@ -149,7 +163,9 @@ export class HandleHttpEndpointService {
       });
 
       const responseJson = await response.json();
+
       const parsedResponseResult = parser.safeParse(responseJson);
+
       if (!parsedResponseResult.success) {
         logger.error("Could not parse response from client", {
           httpEndpointId: httpEndpoint.id,
@@ -157,6 +173,7 @@ export class HandleHttpEndpointService {
           responseJson,
           errors: parsedResponseResult.error,
         });
+
         return json(
           { error: true, message: "Could not parse response from client" },
           { status: 500 }
@@ -164,6 +181,7 @@ export class HandleHttpEndpointService {
       }
 
       const endpointResponse = parsedResponseResult.data;
+
       httpResponse = new Response(endpointResponse.body, {
         status: endpointResponse.status,
         headers: endpointResponse.headers,
@@ -186,11 +204,17 @@ export class HandleHttpEndpointService {
       return httpResponse;
     }
 
+    if (httpEndpoint.webhook) {
+      return await this.#handleWebhookRequest(request, environment, httpEndpoint.webhook, secret);
+    }
+
     const ingestService = new IngestSendEvent();
+
     let rawBody: string | undefined;
     try {
       rawBody = await request.text();
     } catch (e) {}
+
     const url = requestUrl(request);
     const event = {
       headers: Object.fromEntries(request.headers) as Record<string, string>,
@@ -222,6 +246,44 @@ export class HandleHttpEndpointService {
         status: 200,
       })
     );
+  }
+
+  async #handleWebhookRequest(
+    request: Request,
+    environment: RuntimeEnvironment,
+    webhook: Webhook,
+    secret: string
+  ) {
+    const webhookEnvironment = await this.#prismaClient.webhookEnvironment.findUnique({
+      where: {
+        environmentId_webhookId: {
+          environmentId: environment.id,
+          webhookId: webhook.id,
+        },
+      },
+      include: {
+        endpoint: true,
+      },
+    });
+
+    if (!webhookEnvironment) {
+      logger.debug("Could not find webhook environment", {
+        webhookId: webhook.id,
+        environmentId: environment.id,
+      });
+      return json({ error: true, message: "Could not find webhook environment" }, { status: 404 });
+    }
+
+    const rawContext = {
+      secret,
+      config: webhookEnvironment.config,
+      params: webhook.params,
+    };
+    const webhookContextMetadata = WebhookContextMetadataSchema.parse(rawContext);
+
+    const service = new HandleWebhookRequestService(this.#prismaClient);
+
+    return await service.call(webhookEnvironment.id, request, webhookContextMetadata);
   }
 }
 

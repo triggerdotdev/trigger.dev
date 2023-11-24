@@ -3,6 +3,7 @@ import {
   JobMetadata,
   SCHEDULED_EVENT,
   TriggerMetadata,
+  assertExhaustive,
 } from "@trigger.dev/core";
 import type { Endpoint, Integration, Job, JobIntegration, JobVersion } from "@trigger.dev/database";
 import { DEFAULT_MAX_CONCURRENT_RUNS } from "~/consts";
@@ -637,8 +638,4 @@ export class RegisterJobService {
       },
     });
   }
-}
-
-function assertExhaustive(x: never): never {
-  throw new Error("Unexpected object: " + x);
 }

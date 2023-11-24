@@ -291,6 +291,14 @@
           "pages": ["integrations/apis/resend", "integrations/apis/resend-tasks"]
         },
         {
+          "group": "Shopify",
+          "pages": [
+            "integrations/apis/shopify",
+            "integrations/apis/shopify-triggers",
+            "integrations/apis/shopify-tasks"
+          ]
+        },
+        {
           "group": "Slack",
           "pages": ["integrations/apis/slack", "integrations/apis/slack-tasks"]
         },
@@ -323,6 +331,7 @@
                 "sdk/triggerclient/instancemethods/getevent",
                 "sdk/triggerclient/instancemethods/cancel-event",
                 "sdk/triggerclient/instancemethods/cancel-runs-for-event",
+                "sdk/triggerclient/store",
                 "sdk/triggerclient/instancemethods/getruns",
                 "sdk/triggerclient/instancemethods/getrun",
                 "sdk/triggerclient/instancemethods/define-job",
@@ -343,6 +352,7 @@
             "sdk/io/runtask",
             "sdk/io/sendevent",
             "sdk/io/sendevents",
+            "sdk/io/store",
             "sdk/io/wait",
             "sdk/io/wait-for-event",
             "sdk/io/wait-for-request",

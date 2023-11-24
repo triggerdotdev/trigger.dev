@@ -1,0 +1,7 @@
+{
+  "fulfillment_order": {
+    "id": "gid://shopify/FulfillmentOrder/1",
+    "status": "closed"
+  },
+  "message": "We broke the last item."
+}
