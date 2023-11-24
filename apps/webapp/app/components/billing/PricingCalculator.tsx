@@ -22,7 +22,9 @@ const concurrentRuns = [
 
 const lastItemConcurrentRuns = concurrentRuns[concurrentRuns.length - 1];
 const maxItemsConcurrentRuns = Number(Object.keys(lastItemConcurrentRuns)[0]);
-const stepConcurrentRuns = concurrentRuns.length;
+const stepConcurrentRuns = maxItemsConcurrentRuns / concurrentRuns.length;
+
+console.log(maxItemsConcurrentRuns, stepConcurrentRuns);
 
 function ConcurrentRunsSlider() {
   return (
@@ -88,7 +90,7 @@ const Runs = [
 
 const lastItemRuns = Runs[Runs.length - 1];
 const maxItemsRuns = Number(Object.keys(lastItemRuns)[0]);
-const stepRuns = Runs.length;
+const stepRuns = maxItemsRuns / Runs.length;
 
 function RunsSlider() {
   return (
