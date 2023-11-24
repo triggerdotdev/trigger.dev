@@ -29,3 +29,8 @@ jobs:
   e2e:
     uses: ./.github/workflows/e2e.yml
     secrets: inherit
+
+  publish:
+    if: contains(github.event.pull_request.body, '/publish-docker')
+    uses: ./.github/workflows/publish-docker.yml
+    secrets: inherit
