@@ -6,6 +6,7 @@ on:
       - main
     paths-ignore:
       - "**.md"
+      - "**.mdx"
       - ".github/CODEOWNERS"
       - ".github/ISSUE_TEMPLATE/**"
 
