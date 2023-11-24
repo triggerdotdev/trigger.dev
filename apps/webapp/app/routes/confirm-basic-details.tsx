@@ -1,6 +1,5 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { FaceSmileIcon } from "@heroicons/react/20/solid";
 import { HandRaisedIcon } from "@heroicons/react/24/solid";
 import { ActionFunction, json } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
@@ -101,7 +100,7 @@ export const action: ActionFunction = async ({ request }) => {
       id: userId,
       name: submission.value.name,
       email: submission.value.email,
-      referralSource: submission.value.referralSource ?? null,
+      referralSource: submission.value.referralSource,
     });
 
     return redirectWithSuccessMessage(rootPath(), request, "Your details have been updated.");

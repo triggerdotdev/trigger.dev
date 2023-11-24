@@ -111,6 +111,7 @@ const variant = {
     button:
       "h-12 px-2 text-md font-medium bg-indigo-600 group-hover:bg-indigo-500/90 disabled:opacity-50",
     icon: "h-5",
+    iconSpacing: undefined,
     shortcutVariant: undefined,
     shortcut: undefined,
   },
@@ -119,6 +120,7 @@ const variant = {
     button:
       "h-12 px-2 text-md text-dimmed group-hover:text-bright transition font-medium bg-slate-800 group-hover:bg-slate-700/70 disabled:opacity-50",
     icon: "h-5",
+    iconSpacing: undefined,
     shortcutVariant: undefined,
     shortcut: undefined,
   },
@@ -127,6 +129,7 @@ const variant = {
     button:
       "h-12 px-2 text-md bg-rose-600 group-hover:bg-rose-500 group-disabled:opacity-50 group-disabled:group-hover:bg-rose-600",
     icon: "h-5",
+    iconSpacing: undefined,
     shortcutVariant: "medium" as const,
     shortcut: "ml-1.5 -mr-0.5 border-bright/40 text-bright group-hover:border-bright/60",
   },
