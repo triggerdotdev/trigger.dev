@@ -1,9 +1,14 @@
 {
   "extends": "@trigger.dev/tsconfig/node18.json",
-  "include": ["./src/**/*.ts"],
+  "include": [
+    "./src/**/*.ts"
+  ],
   "compilerOptions": {
     "baseUrl": ".",
-    "lib": ["DOM", "DOM.Iterable"],
+    "lib": [
+      "DOM",
+      "DOM.Iterable"
+    ],
     "paths": {
       "@/*": [
         "./src/*"
@@ -103,6 +108,12 @@
       ],
       "@trigger.dev/replicate/*": [
         "../../integrations/replicate/src/*"
+      ],
+      "@trigger.dev/shopify": [
+        "../../integrations/shopify/src/index"
+      ],
+      "@trigger.dev/shopify/*": [
+        "../../integrations/shopify/src/*"
       ]
     }
   }

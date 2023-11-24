@@ -14,3 +14,5 @@ export function safeParseBody(body: any) {
 
   return body;
 }
+
+export const registerJobNamespace = (webhookKey: string) => `job:webhook.register.${webhookKey}`;

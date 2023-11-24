@@ -154,6 +154,7 @@ export default function Job() {
         )}
 
         <PageTabs
+          layoutId="jobs"
           tabs={[
             { label: "Runs", to: jobPath(organization, project, job) },
             { label: "Test", to: jobTestPath(organization, project, job) },

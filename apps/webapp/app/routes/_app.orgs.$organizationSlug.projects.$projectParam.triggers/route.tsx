@@ -17,6 +17,7 @@ import {
   docsPath,
   projectScheduledTriggersPath,
   projectTriggersPath,
+  projectWebhookTriggersPath,
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
@@ -45,6 +46,7 @@ export default function Page() {
         </PageTitleRow>
         <PageDescription>A Trigger is what starts a Job Run.</PageDescription>
         <PageTabs
+          layoutId="triggers"
           tabs={[
             {
               label: "External Triggers",
@@ -53,6 +55,10 @@ export default function Page() {
             {
               label: "Scheduled Triggers",
               to: projectScheduledTriggersPath(organization, project),
+            },
+            {
+              label: "Webhook Triggers",
+              to: projectWebhookTriggersPath(organization, project),
             },
           ]}
         />

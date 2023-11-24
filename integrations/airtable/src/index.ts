@@ -10,9 +10,16 @@ import {
   type RunTaskOptions,
   type TriggerIntegration,
 } from "@trigger.dev/sdk";
-import AirtableSDK from "airtable";
+import AirtableSDK, { Error as AirtableApiError } from "airtable";
 import { Base } from "./base";
-import { Webhooks, createWebhookEventSource } from "./webhooks";
+import * as events from "./events";
+import {
+  WebhookChangeType,
+  WebhookDataType,
+  Webhooks,
+  createWebhookSource,
+  createWebhookTrigger,
+} from "./webhooks";
 
 export * from "./types";
 export * from "./base";
@@ -57,7 +64,7 @@ export class Airtable implements TriggerIntegration {
   }
 
   get source() {
-    return createWebhookEventSource(this);
+    return createWebhookSource(this);
   }
 
   cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
@@ -105,7 +112,7 @@ export class Airtable implements TriggerIntegration {
         ...(options ?? {}),
         connectionKey: this._connectionKey,
       },
-      errorCallback
+      errorCallback ?? onError
     );
   }
 
@@ -120,13 +127,47 @@ export class Airtable implements TriggerIntegration {
   //   changeTypes?: WebhookChangeType[];
   //   dataTypes?: WebhookDataType[];
   // }) {
-  //   return createTrigger(this.source, events.onTableChanged, params, {
-  //     changeTypes: params.changeTypes,
+  //   return createWebhookTrigger(this.source, events.onTableChanged, params, {
+  //     changeTypes: params.changeTypes ?? ["add", "remove", "update"],
   //     dataTypes: ["tableData", "tableFields", "tableMetadata"],
   //   });
   // }
 
   webhooks() {
     return new Webhooks(this.runTask.bind(this));
+  }
+}
+
+function isAirtableApiError(error: unknown): error is AirtableApiError {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  const airtableError = error as AirtableApiError;
+
+  return (
+    typeof airtableError.error === "string" &&
+    typeof airtableError.message === "string" &&
+    typeof airtableError.statusCode === "number"
+  );
+}
+
+export function onError(error: unknown): ReturnType<RunTaskErrorCallback> {
+  if (!isAirtableApiError(error)) {
+    return;
+  }
+
+  if (error.statusCode === 429) {
+    // see: https://airtable.com/developers/web/api/rate-limits
+    return {
+      retryAt: new Date(Date.now() + 30 * 1000),
+    };
+  }
+
+  if (error.statusCode >= 400 && error.statusCode < 500) {
+    // see: https://airtable.com/developers/web/api/errors#user-error-codes
+    return {
+      skipRetrying: true,
+    };
   }
 }

@@ -14,6 +14,9 @@ import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import {
   PageButtons,
   PageHeader,
+  PageInfoGroup,
+  PageInfoProperty,
+  PageInfoRow,
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
@@ -38,13 +41,15 @@ import { HttpEndpointParamSchema, docsPath, projectHttpEndpointsPath } from "~/u
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { projectParam, httpEndpointParam } = HttpEndpointParamSchema.parse(params);
+  const { projectParam, organizationSlug, httpEndpointParam } =
+    HttpEndpointParamSchema.parse(params);
 
   const presenter = new HttpEndpointPresenter();
   try {
     const result = await presenter.call({
       userId,
       projectSlug: projectParam,
+      organizationSlug,
       httpEndpointKey: httpEndpointParam,
     });
 
@@ -98,6 +103,17 @@ export default function Page() {
             </LinkButton>
           </PageButtons>
         </PageTitleRow>
+        {httpEndpoint.webhook && (
+          <PageInfoRow>
+            <PageInfoGroup>
+              <PageInfoProperty
+                icon="webhook"
+                label="Webhook Trigger"
+                to={httpEndpoint.webhookLink}
+              />
+            </PageInfoGroup>
+          </PageInfoRow>
+        )}
       </PageHeader>
       <PageBody>
         <Help defaultOpen={true}>

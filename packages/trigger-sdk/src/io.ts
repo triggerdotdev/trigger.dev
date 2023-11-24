@@ -18,6 +18,7 @@ import {
   SendEventOptions,
   ServerTask,
   UpdateTriggerSourceBodyV2,
+  UpdateWebhookBody,
   supportsFeature,
 } from "@trigger.dev/core";
 import { BloomFilter } from "@trigger.dev/core-backend";
@@ -51,11 +52,13 @@ import {
   waitForEventSchema,
 } from "./types";
 import { z } from "zod";
+import { KeyValueStore } from "./store/keyValueStore";
 
 export type IOTask = ServerTask;
 
 export type IOOptions = {
   id: string;
+  jobId: string;
   apiClient: ApiClient;
   client: TriggerClient;
   context: TriggerContext;
@@ -120,6 +123,7 @@ export type BackgroundFetchResponse<T> = {
 
 export class IO {
   private _id: string;
+  private _jobId: string;
   private _apiClient: ApiClient;
   private _triggerClient: TriggerClient;
   private _logger: Logger;
@@ -138,12 +142,17 @@ export class IO {
   private _outputSerializer: OutputSerializer = new JSONOutputSerializer();
   private _visitedCacheKeys: Set<string> = new Set();
 
+  private _envStore: KeyValueStore;
+  private _jobStore: KeyValueStore;
+  private _runStore: KeyValueStore;
+
   get stats() {
     return this._stats;
   }
 
   constructor(options: IOOptions) {
     this._id = options.id;
+    this._jobId = options.jobId;
     this._apiClient = options.apiClient;
     this._triggerClient = options.client;
     this._logger = options.logger ?? new Logger("trigger.dev", options.logLevel);
@@ -152,6 +161,10 @@ export class IO {
     this._jobLogLevel = options.jobLogLevel;
     this._timeOrigin = options.timeOrigin;
     this._executionTimeout = options.executionTimeout;
+
+    this._envStore = new KeyValueStore(options.apiClient);
+    this._jobStore = new KeyValueStore(options.apiClient, "job", options.jobId);
+    this._runStore = new KeyValueStore(options.apiClient, "run", options.id);
 
     this._stats = {
       initialCachedTasks: 0,
@@ -714,8 +727,9 @@ export class IO {
         return await this._triggerClient.sendEvent(event, options);
       },
       {
-        name: "sendEvent",
+        name: "Send Event",
         params: { event, options },
+        icon: "send",
         properties: [
           {
             label: "name",
@@ -740,8 +754,9 @@ export class IO {
         return await this._triggerClient.sendEvents(events, options);
       },
       {
-        name: "sendEvents",
+        name: "Send Multiple Events",
         params: { events, options },
+        icon: "send",
         properties: [
           {
             label: "Total Events",
@@ -820,6 +835,26 @@ export class IO {
         redact: {
           paths: ["secret"],
         },
+      }
+    );
+  }
+
+  async updateWebhook(cacheKey: string | any[], options: { key: string } & UpdateWebhookBody) {
+    return this.runTask(
+      cacheKey,
+      async (task) => {
+        return await this._apiClient.updateWebhook(options.key, options);
+      },
+      {
+        name: "Update Webhook Source",
+        icon: "refresh",
+        properties: [
+          {
+            label: "key",
+            text: options.key,
+          },
+        ],
+        params: options,
       }
     );
   }
@@ -1385,6 +1420,14 @@ export class IO {
 
       return await catchCallback(error);
     }
+  }
+
+  get store() {
+    return {
+      env: this._envStore,
+      job: this._jobStore,
+      run: this._runStore,
+    };
   }
 
   #addToCachedTasks(task: ServerTask) {

@@ -1,0 +1,7 @@
+{
+  "fulfillment_order": {
+    "id": "gid://shopify/FulfillmentOrder/1",
+    "status": "closed"
+  },
+  "message": "Order has not been shipped yet."
+}

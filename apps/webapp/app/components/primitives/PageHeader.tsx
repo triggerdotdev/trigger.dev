@@ -100,7 +100,7 @@ export function PageInfoProperty({
 }: {
   icon?: string | React.ReactNode;
   label?: string;
-  value: React.ReactNode;
+  value?: React.ReactNode;
   to?: string;
 }) {
   if (to === undefined) {
@@ -121,17 +121,18 @@ function PageInfoPropertyContent({
 }: {
   icon?: string | React.ReactNode;
   label?: string;
-  value: React.ReactNode;
+  value?: React.ReactNode;
 }) {
   return (
     <div className="flex items-center gap-1">
       {icon && typeof icon === "string" ? <NamedIcon name={icon} className="h-4 w-4" /> : icon}
       {label && (
         <Paragraph variant="extra-small/caps" className="mt-0.5 whitespace-nowrap">
-          {label}:
+          {label}
+          {value && ":"}
         </Paragraph>
       )}
-      <Paragraph variant="small">{value}</Paragraph>
+      {value && <Paragraph variant="small">{value}</Paragraph>}
     </div>
   );
 }

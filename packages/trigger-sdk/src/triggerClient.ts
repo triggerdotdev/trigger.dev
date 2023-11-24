@@ -1,6 +1,7 @@
 import {
   API_VERSIONS,
   ConnectionAuth,
+  DELIVER_WEBHOOK_REQUEST,
   DeserializedJson,
   EphemeralEventDispatcherRequestBody,
   ErrorWithStackSchema,
@@ -23,9 +24,13 @@ import {
   PreprocessRunBodySchema,
   Prettify,
   REGISTER_SOURCE_EVENT_V2,
+  REGISTER_WEBHOOK,
   RegisterSourceEventSchemaV2,
   RegisterSourceEventV2,
   RegisterTriggerBodyV2,
+  RegisterWebhookPayload,
+  RegisterWebhookPayloadSchema,
+  RequestWithRawBodySchema,
   RunJobBody,
   RunJobBodySchema,
   RunJobErrorResponse,
@@ -37,6 +42,9 @@ import {
   SourceMetadataV2,
   StatusUpdate,
   SuccessfulRunNotification,
+  WebhookDeliveryResponse,
+  WebhookMetadata,
+  WebhookSourceRequestHeadersSchema,
 } from "@trigger.dev/core";
 import { yellow } from "colorette";
 import { ApiClient } from "./apiClient";
@@ -67,7 +75,38 @@ import type {
   Trigger,
   TriggerContext,
   TriggerPreprocessContext,
+  VerifyResult,
 } from "./types";
+
+const parseRequestPayload = (rawPayload: any) => {
+  const result = RequestWithRawBodySchema.safeParse(rawPayload);
+
+  if (!result.success) {
+    throw new ParsedPayloadSchemaError(formatSchemaErrors(result.error.issues));
+  }
+
+  return new Request(new URL(result.data.url), {
+    method: result.data.method,
+    headers: result.data.headers,
+    body: result.data.rawBody,
+  });
+};
+
+const deliverWebhookEvent = (key: string): EventSpecification<Request> => ({
+  name: `${DELIVER_WEBHOOK_REQUEST}.${key}`,
+  title: "Deliver Webhook",
+  source: "internal",
+  icon: "mail-fast",
+  parsePayload: parseRequestPayload,
+});
+
+const registerWebhookEvent = (key: string): EventSpecification<RegisterWebhookPayload> => ({
+  name: `${REGISTER_WEBHOOK}.${key}`,
+  title: "Register Webhook",
+  source: "internal",
+  icon: "webhook",
+  parsePayload: RegisterWebhookPayloadSchema.parse,
+});
 
 const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
   name: REGISTER_SOURCE_EVENT_V2,
@@ -80,6 +119,9 @@ const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
 import EventEmitter from "node:events";
 import * as packageJson from "../package.json";
 import { ConcurrencyLimit, ConcurrencyLimitOptions } from "./concurrencyLimit";
+import { formatSchemaErrors } from "./utils/formatSchemaErrors";
+import { WebhookDeliveryContext, WebhookSource } from "./triggers/webhook";
+import { KeyValueStore } from "./store/keyValueStore";
 
 export type TriggerClientOptions = {
   /** The `id` property is used to uniquely identify the client.
@@ -112,11 +154,24 @@ export type TriggerAuthResolver = (
   integration: TriggerIntegration
 ) => Promise<AuthResolverResult | void | undefined>;
 
+type WebhookVerifyFunction = (
+  request: Request,
+  client: TriggerClient,
+  ctx: WebhookDeliveryContext
+) => Promise<VerifyResult>;
+
+type WebhookEventGeneratorFunction = (
+  request: Request,
+  client: TriggerClient,
+  ctx: WebhookDeliveryContext
+) => Promise<void>;
+
 /** A [TriggerClient](https://trigger.dev/docs/documentation/concepts/client-adaptors) is used to connect to a specific [Project](https://trigger.dev/docs/documentation/concepts/projects) by using an [API Key](https://trigger.dev/docs/documentation/concepts/environments-apikeys). */
 export class TriggerClient {
   #options: TriggerClientOptions;
   #registeredJobs: Record<string, Job<Trigger<EventSpecification<any>>, any>> = {};
   #registeredSources: Record<string, SourceMetadataV2> = {};
+  #registeredWebhooks: Record<string, WebhookMetadata> = {};
   #registeredHttpSourceHandlers: Record<
     string,
     (
@@ -128,6 +183,13 @@ export class TriggerClient {
       metadata?: HttpSourceResponseMetadata;
     } | void>
   > = {};
+  #registeredWebhookSourceHandlers: Record<
+    string,
+    {
+      verify: WebhookVerifyFunction;
+      generateEvents: WebhookEventGeneratorFunction;
+    }
+  > = {};
   #registeredDynamicTriggers: Record<
     string,
     DynamicTrigger<EventSpecification<any>, ExternalSource<any, any, any>>
@@ -136,6 +198,7 @@ export class TriggerClient {
   #registeredSchedules: Record<string, Array<{ id: string; version: string }>> = {};
   #registeredHttpEndpoints: Record<string, HttpEndpoint<EventSpecification<any>>> = {};
   #authResolvers: Record<string, TriggerAuthResolver> = {};
+  #envStore: KeyValueStore;
   #eventEmitter: NotificationsEventEmitter = new EventEmitter() as NotificationsEventEmitter;
 
   #client: ApiClient;
@@ -150,6 +213,7 @@ export class TriggerClient {
       "output",
       "noopTasksSet",
     ]);
+    this.#envStore = new KeyValueStore(this.#client);
   }
 
   on = this.#eventEmitter.on.bind(this.#eventEmitter);
@@ -262,6 +326,7 @@ export class TriggerClient {
         const body: IndexEndpointResponse = {
           jobs: this.#buildJobsIndex(),
           sources: Object.values(this.#registeredSources),
+          webhooks: Object.values(this.#registeredWebhooks),
           dynamicTriggers: Object.values(this.#registeredDynamicTriggers).map((trigger) => ({
             id: trigger.id,
             jobs: this.#jobMetadataByDynamicTriggers[trigger.id] ?? [],
@@ -505,6 +570,61 @@ export class TriggerClient {
         return {
           status: 200,
           body: response,
+          headers: this.#standardResponseHeaders(timeOrigin),
+        };
+      }
+      case "DELIVER_WEBHOOK_REQUEST": {
+        const headers = WebhookSourceRequestHeadersSchema.safeParse(
+          Object.fromEntries(request.headers.entries())
+        );
+
+        if (!headers.success) {
+          return {
+            status: 400,
+            body: {
+              message: "Invalid headers",
+            },
+          };
+        }
+
+        const sourceRequestNeedsBody = headers.data["x-ts-http-method"] !== "GET";
+
+        const sourceRequestInit: RequestInit = {
+          method: headers.data["x-ts-http-method"],
+          headers: headers.data["x-ts-http-headers"],
+          body: sourceRequestNeedsBody ? request.body : undefined,
+        };
+
+        if (sourceRequestNeedsBody) {
+          try {
+            // @ts-ignore
+            sourceRequestInit.duplex = "half";
+          } catch (error) {
+            // ignore
+          }
+        }
+
+        const webhookRequest = new Request(headers.data["x-ts-http-url"], sourceRequestInit);
+
+        const key = headers.data["x-ts-key"];
+        const secret = headers.data["x-ts-secret"];
+        const params = headers.data["x-ts-params"];
+
+        const ctx = {
+          key,
+          secret,
+          params,
+        };
+
+        const { response, verified, error } = await this.#handleWebhookRequest(webhookRequest, ctx);
+
+        return {
+          status: 200,
+          body: {
+            response,
+            verified,
+            error,
+          },
           headers: this.#standardResponseHeaders(timeOrigin),
         };
       }
@@ -756,6 +876,179 @@ export class TriggerClient {
     this.#registeredSchedules[key] = jobs;
   }
 
+  attachWebhook<
+    TIntegration extends TriggerIntegration,
+    TParams extends any,
+    TConfig extends Record<string, string[]>,
+  >(options: {
+    key: string;
+    source: WebhookSource<TIntegration, TParams, TConfig>;
+    event: EventSpecification<any>;
+    params: any;
+    config: TConfig;
+  }): void {
+    const { source } = options;
+
+    this.#registeredWebhookSourceHandlers[options.key] = {
+      verify: source.verify.bind(source),
+      generateEvents: source.generateEvents.bind(source),
+    };
+
+    let registeredWebhook = this.#registeredWebhooks[options.key];
+
+    if (!registeredWebhook) {
+      registeredWebhook = {
+        key: options.key,
+        params: options.params,
+        config: options.config,
+        integration: {
+          id: source.integration.id,
+          metadata: source.integration.metadata,
+          authSource: source.integration.authSource,
+        },
+        httpEndpoint: {
+          id: options.key,
+        },
+      };
+    } else {
+      registeredWebhook.config = deepMergeOptions(registeredWebhook.config, options.config);
+    }
+
+    this.#registeredWebhooks[options.key] = registeredWebhook;
+
+    // new Job(this, {
+    //   id: `webhook.deliver.${options.key}`,
+    //   name: `webhook.deliver.${options.key}`,
+    //   version: source.version,
+    //   trigger: new EventTrigger({
+    //     event: deliverWebhookEvent(options.key),
+    //     // verify: source.verify.bind(source),
+    //   }),
+    //   integrations: {
+    //     integration: source.integration,
+    //   },
+    //   run: async (request, io, ctx) => {
+    //     this.#internalLogger.debug("[webhook.deliver]");
+
+    //     const webhookContextMetadata = WebhookContextMetadataSchema.parse(ctx.source?.metadata);
+
+    //     const webhookContext = {
+    //       ...ctx,
+    //       webhook: webhookContextMetadata,
+    //     };
+
+    //     const verifyResult = await io.runTask(
+    //       "verify",
+    //       async () => {
+    //         return await source.verify(request, io, webhookContext);
+    //       },
+    //       {
+    //         name: "Verify Signature",
+    //         icon: "certificate",
+    //       }
+    //     );
+
+    //     if (!verifyResult.success) {
+    //       throw new Error(verifyResult.reason);
+    //     }
+
+    //     return await io.runTask(
+    //       "generate-events",
+    //       async () => {
+    //         return await source.generateEvents(request, io, webhookContext);
+    //       },
+    //       {
+    //         name: "Generate Events",
+    //         icon: "building-factory-2",
+    //       }
+    //     );
+    //   },
+    //   __internal: true,
+    // });
+
+    new Job(this, {
+      id: `webhook.register.${options.key}`,
+      name: `webhook.register.${options.key}`,
+      version: source.version,
+      trigger: new EventTrigger({
+        event: registerWebhookEvent(options.key),
+      }),
+      integrations: {
+        integration: source.integration,
+      },
+      run: async (registerPayload, io, ctx) => {
+        return await io.try(
+          async () => {
+            this.#internalLogger.debug("[webhook.register] Start");
+
+            const crudOptions = {
+              io,
+              // this is just a more strongly typed payload
+              ctx: registerPayload as Parameters<(typeof source)["crud"]["create"]>[0]["ctx"],
+            };
+
+            if (!registerPayload.active) {
+              this.#internalLogger.debug("[webhook.register] Not active, run create");
+
+              await io.try(
+                async () => {
+                  await source.crud.create(crudOptions);
+                },
+                async (error) => {
+                  this.#internalLogger.debug(
+                    "[webhook.register] Error during create, re-trying with delete first",
+                    { error }
+                  );
+
+                  await io.runTask("create-retry", async () => {
+                    await source.crud.delete(crudOptions);
+                    await source.crud.create(crudOptions);
+                  });
+                }
+              );
+
+              return await io.updateWebhook("update-webhook-success", {
+                key: options.key,
+                active: true,
+                config: registerPayload.config.desired,
+              });
+            }
+
+            this.#internalLogger.debug("[webhook.register] Already active, run update");
+
+            if (source.crud.update) {
+              await source.crud.update(crudOptions);
+            } else {
+              this.#internalLogger.debug(
+                "[webhook.register] Run delete and create instead of update"
+              );
+
+              await source.crud.delete(crudOptions);
+              await source.crud.create(crudOptions);
+            }
+
+            return await io.updateWebhook("update-webhook-success", {
+              key: options.key,
+              active: true,
+              config: registerPayload.config.desired,
+            });
+          },
+          async (error) => {
+            this.#internalLogger.debug("[webhook.register] Error", { error });
+
+            await io.updateWebhook("update-webhook-error", {
+              key: options.key,
+              active: false,
+            });
+
+            throw error;
+          }
+        );
+      },
+      __internal: true,
+    });
+  }
+
   async registerTrigger(
     id: string,
     key: string,
@@ -835,6 +1128,12 @@ export class TriggerClient {
     return this.#client.createEphemeralEventDispatcher(payload);
   }
 
+  get store() {
+    return {
+      env: this.#envStore,
+    };
+  }
+
   authorized(
     apiKey?: string | null
   ): "authorized" | "unauthorized" | "missing-client" | "missing-header" {
@@ -885,6 +1184,7 @@ export class TriggerClient {
 
     const io = new IO({
       id: body.run.id,
+      jobId: job.id,
       cachedTasks: body.tasks,
       cachedTasksCursor: body.cachedTaskCursor,
       yieldedExecutions: body.yieldedExecutions ?? [],
@@ -1285,6 +1585,54 @@ export class TriggerClient {
 
     return {
       response,
+    };
+  }
+
+  async #handleWebhookRequest(
+    request: Request,
+    ctx: WebhookDeliveryContext
+  ): Promise<WebhookDeliveryResponse> {
+    this.#internalLogger.debug("Handling webhook request", {
+      ctx,
+    });
+
+    const okResponse = {
+      status: 200,
+      body: {
+        ok: true,
+      },
+    };
+
+    const handlers = this.#registeredWebhookSourceHandlers[ctx.key];
+
+    if (!handlers) {
+      this.#internalLogger.debug("No handler registered for webhook", {
+        ctx,
+      });
+
+      return {
+        response: okResponse,
+        verified: false,
+      };
+    }
+
+    const { verify, generateEvents } = handlers;
+
+    const verifyResult = await verify(request, this, ctx);
+
+    if (!verifyResult.success) {
+      return {
+        response: okResponse,
+        verified: false,
+        error: verifyResult.reason,
+      };
+    }
+
+    await generateEvents(request, this, ctx);
+
+    return {
+      response: okResponse,
+      verified: true,
     };
   }
 

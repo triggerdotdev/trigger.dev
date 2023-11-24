@@ -1,0 +1,25 @@
+{
+  "id": 890612572568261600,
+  "payment_terms": {
+    "id": 706405506930370000,
+    "payment_terms_name": "Net 7",
+    "payment_terms_type": "net",
+    "due_in_days": 7,
+    "created_at": "2021-01-01T00:00:00-05:00",
+    "updated_at": "2021-01-01T00:00:01-05:00",
+    "payment_schedules": [
+      {
+        "id": 606405506930370000,
+        "created_at": "2021-01-01T00:00:00-05:00",
+        "updated_at": "2021-01-01T00:00:01-05:00",
+        "payment_terms_id": 706405506930370000,
+        "issued_at": "2021-01-01T00:00:00-05:00",
+        "due_at": "2021-01-02T00:00:00-05:00",
+        "completed_at": "2021-01-02T00:00:00-05:00",
+        "amount": "10.00",
+        "currency": "USD"
+      }
+    ]
+  },
+  "admin_graphql_api_id": "gid://shopify/DraftOrder/890612572568261625"
+}

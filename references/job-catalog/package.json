@@ -33,6 +33,7 @@
     "built-ins": "nodemon --watch src/built-ins.ts -r tsconfig-paths/register -r dotenv/config src/built-ins.ts",
     "edge-cases": "nodemon --watch src/edge-cases.ts -r tsconfig-paths/register -r dotenv/config src/edge-cases.ts",
     "notifications": "nodemon --watch src/notifications.ts -r tsconfig-paths/register -r dotenv/config src/notifications.ts",
+    "shopify": "nodemon --watch src/shopify.ts -r tsconfig-paths/register -r dotenv/config src/shopify.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {
@@ -48,6 +49,7 @@
     "@trigger.dev/resend": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "@trigger.dev/sendgrid": "workspace:*",
+    "@trigger.dev/shopify": "workspace:*",
     "@trigger.dev/slack": "workspace:*",
     "@trigger.dev/stripe": "workspace:*",
     "@trigger.dev/supabase": "workspace:*",

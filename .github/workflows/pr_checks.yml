@@ -1,11 +1,12 @@
 name: 🤖 PR Checks
 
 on:
-  pull_request_target:
+  pull_request:
     branches:
       - main
     paths-ignore:
       - "**.md"
+      - "**.mdx"
       - ".github/CODEOWNERS"
       - ".github/ISSUE_TEMPLATE/**"
 

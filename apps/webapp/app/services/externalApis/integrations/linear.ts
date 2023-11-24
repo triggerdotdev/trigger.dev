@@ -7,7 +7,7 @@ function usageSample(hasApiKey: boolean): HelpSample {
 import { Linear } from "@trigger.dev/linear";
 
 const linear = new Linear({
-  id: "__SLUG__",${hasApiKey ? ",\n  apiKey: process.env.LINEAR_API_KEY!" : ""}
+  id: "__SLUG__",${hasApiKey ? "\n  apiKey: process.env.LINEAR_API_KEY!," : ""}
 });
 
 client.defineJob({

@@ -28,6 +28,7 @@ import { ExpireDispatcherService } from "./dispatchers/expireDispatcher.server";
 import { InvokeEphemeralDispatcherService } from "./dispatchers/invokeEphemeralEventDispatcher.server";
 import { ResumeRunService } from "./runs/resumeRun.server";
 import { executionRateLimiter } from "./runExecutionRateLimiter.server";
+import { DeliverWebhookRequestService } from "./sources/deliverWebhookRequest.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -45,6 +46,7 @@ const workerCatalog = {
     id: z.string(),
   }),
   deliverHttpSourceRequest: z.object({ id: z.string() }),
+  deliverWebhookRequest: z.object({ id: z.string() }),
   refreshOAuthToken: z.object({
     organizationId: z.string(),
     connectionId: z.string(),
@@ -293,6 +295,16 @@ function getWorkerQueue() {
         queueName: (payload) => `sources:${payload.id}`,
         handler: async (payload, job) => {
           const service = new DeliverHttpSourceRequestService();
+
+          await service.call(payload.id);
+        },
+      },
+      deliverWebhookRequest: {
+        priority: 1, // smaller number = higher priority
+        maxAttempts: 14,
+        queueName: (payload) => `webhooks:${payload.id}`,
+        handler: async (payload, job) => {
+          const service = new DeliverWebhookRequestService();
 
           await service.call(payload.id);
         },

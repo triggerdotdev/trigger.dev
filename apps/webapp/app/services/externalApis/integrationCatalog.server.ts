@@ -6,6 +6,7 @@ import { plain } from "./integrations/plain";
 import { replicate } from "./integrations/replicate";
 import { resend } from "./integrations/resend";
 import { sendgrid } from "./integrations/sendgrid";
+import { shopify } from "./integrations/shopify";
 import { slack } from "./integrations/slack";
 import { stripe } from "./integrations/stripe";
 import { supabase, supabaseManagement } from "./integrations/supabase";
@@ -40,6 +41,7 @@ export const integrationCatalog = new IntegrationCatalog({
   plain,
   replicate,
   resend,
+  shopify,
   slack,
   stripe,
   supabaseManagement,

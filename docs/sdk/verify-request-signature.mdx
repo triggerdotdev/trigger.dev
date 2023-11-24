@@ -41,6 +41,9 @@ const caldotcom = client.defineHttpEndpoint({
     <ResponseField name="headerName" type="string" required>
       The name of the header that contains the signature. E.g. `X-Cal-Signature-256`.
     </ResponseField>
+    <ResponseField name="headerEncoding" type="BinaryToTextEncoding">
+      The header encoding. Defaults to `hex`.
+    </ResponseField>
     <ResponseField name="secret" type="string" required>
       The secret that you use to hash the payload. For HttpEndpoints this will usually originally
       come from the Trigger.dev dashboard and should be stored in an environment variable.
