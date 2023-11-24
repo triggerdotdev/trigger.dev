@@ -41,11 +41,11 @@ You can use Personal Access Tokens to authenticate with Shopify and get started 
 
 ### Personal Access Tokens
 
-To create the tokens on Shopify, login and [follow the instructions](https://help.shopify.com/en/manual/apps/app-types/custom-apps#create-and-install-a-custom-app). The required scopes depend on the tasks you wish to perform and which webhooks you intend to receive. Webhooks will generally need read access to the respective Shopify resource.
+To create the tokens on Shopify, login and [follow the instructions](https://help.shopify.com/en/manual/apps/app-types/custom-apps#create-and-install-a-custom-app).
+
+The [required scopes](https://shopify.dev/docs/api/usage/access-scopes#authenticated-access-scopes) depend on the tasks you wish to perform and which webhooks you intend to receive. Webhooks will generally need read access to the respective Shopify resource.
 
 Additionally, you will also have to provide your shop domain.
-
-More information can be found [here](https://shopify.dev/docs/api/usage/access-scopes#authenticated-access-scopes).
 
 ```ts my-job.ts
 import { Shopify } from "@trigger.dev/shopify";

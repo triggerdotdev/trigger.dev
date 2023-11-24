@@ -9,42 +9,31 @@ You can use these triggers to start a job when a Shopify event occurs.
 
 ## Triggers
 
-All triggers can be create folllowing the same general pattern:
+All triggers can be create folllowing the same pattern:
 
 ```ts
-shopify.on(topic, config)
+shopify.on("topic")
 ```
 
 <ParamField body="topic" type="string">
   The webhook topic you want to subscribe to. Generally a pattern of `<resource>/<action>`.
 </ParamField>
-<ParamField body="config" type="object">
-  <Expandable title="fields" defaultOpen>
-    <ParamField body="fields" type="string[]">
-      The resource-specific field names to include in the payload.
-    </ParamField>
-  </Expandable>
-</ParamField>
 
 ### Helpers
 
-`event` returns the associated event:
+The `filter()` method returns a new trigger with the applied payload filter:
 
 ```ts
-const event = shopify.on(topic, config).event
+const trigger = shopify.on("topic").filter(filter)
 ```
 
-`filter()` returns a new trigger with the applied payload filter:
-
-```ts
-const trigger = shopify.on(topic, config).filter(filter)
-```
+<ResponseField name="filter" type="EventFilter" required>
+  A filter to apply to the event. See our [EventFilter guide](/documentation/guides/event-filter).
+</ResponseField>
 
 ## Events
 
-What follows is a small selection of webhook topics and associated payloads.
-
-A complete list of possible topic names and payloads can be found [here](https://shopify.dev/docs/api/admin-rest/2023-07/resources/webhook#event-topics).
+What follows is a small selection of webhook topics and associated payloads. A complete list of possible topic names and payloads can be found [here](https://shopify.dev/docs/api/admin-rest/2023-07/resources/webhook#event-topics).
 
 
 ### `fulfillments/create`
@@ -716,9 +705,7 @@ client.defineJob({
   id: "<my-id>",
   name: "<my-job-name>",
   version: "0.1.0",
-  trigger: shopify.on("products/create", {
-    fields: ["id", "title", "status"]
-  }),
+  trigger: shopify.on("products/create"),
   run: async (payload, io, ctx) => {
     // Add tasks here
   },

@@ -12,7 +12,7 @@ Tasks are executed after the job is triggered and are the main building blocks o
 All tasks are using Shopify's [REST Resources](https://github.com/Shopify/shopify-api-js/blob/ff0900cd383712e6362b6dd3370d8ab11caabd3d/packages/shopify-api/docs/guides/rest-resources.md) and can be used with the same general pattern:
 
 ```ts
-await io.shopify.rest.<Resource>.<method>(cacheKey, params)
+await io.shopify.rest.<Resource>.<method>("cacheKey", params)
 ```
 
 <ParamField body="cacheKey" type="string" required>
