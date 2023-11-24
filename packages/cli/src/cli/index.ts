@@ -14,7 +14,10 @@ import { checkApiKeyIsDevServer } from "../utils/getApiKeyType";
 
 export const program = new Command();
 
-program.name(COMMAND_NAME).description("The Trigger.dev CLI").version("0.0.1");
+program
+  .name(COMMAND_NAME)
+  .description("The Trigger.dev CLI")
+  .version(getVersion(), "-v, --version", "Display the version number");
 
 program
   .command("init")
@@ -56,6 +59,10 @@ program
     "The URI path to the API handler function to use for this project.",
     "/api/trigger"
   )
+  .option(
+    "-t, --tunnel <url>",
+    "An optional custom tunnel URL. Use only if you already have an open tunnel to your local dev server."
+  )
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (path, options) => {
     try {
@@ -93,10 +100,13 @@ program
 
 program
   .command("update")
-  .description("Updates all @trigger.dev/* packages to their latest compatible versions")
+  .description(
+    "Updates all @trigger.dev/* packages to their latest compatible versions or the specified version"
+  )
   .argument("[path]", "The path to the directory that contains the package.json file", ".")
-  .action(async (path) => {
-    await updateCommand(path);
+  .option("--to <version tag>", "The version to update to (ex: 2.1.4)", "latest")
+  .action(async (path, options) => {
+    await updateCommand(path, options);
   });
 
 program

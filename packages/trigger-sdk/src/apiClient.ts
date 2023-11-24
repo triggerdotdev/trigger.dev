@@ -1,7 +1,7 @@
 import {
   ApiEventLog,
   ApiEventLogSchema,
-  CompleteTaskBodyInput,
+  CancelRunsForEventSchema,
   ConnectionAuthSchema,
   FailTaskBodyInput,
   GetEventSchema,
@@ -29,10 +29,21 @@ import {
   urlWithSearchParams,
   RunTaskResponseWithCachedTasksBodySchema,
   API_VERSIONS,
+  InvokeJobResponseSchema,
+  InvokeOptions,
+  InvokeJobRequestBody,
+  CompleteTaskBodyV2Input,
+  EphemeralEventDispatcherRequestBody,
+  EphemeralEventDispatcherResponseBodySchema,
+  UpdateWebhookBody,
+  KeyValueStoreResponseBodySchema,
+  KeyValueStoreResponseBody,
+  assertExhaustive,
+  HttpMethod,
 } from "@trigger.dev/core";
 
-import fetch, { type RequestInit } from "node-fetch";
 import { z } from "zod";
+import { KeyValueStoreClient } from "./store/keyValueStoreClient";
 
 export type ApiClientOptions = {
   apiKey?: string;
@@ -67,12 +78,15 @@ export class ApiClient {
   #apiUrl: string;
   #options: ApiClientOptions;
   #logger: Logger;
+  #storeClient: KeyValueStoreClient;
 
   constructor(options: ApiClientOptions) {
     this.#options = options;
 
     this.#apiUrl = this.#options.apiUrl ?? process.env.TRIGGER_API_URL ?? "https://api.trigger.dev";
     this.#logger = new Logger("trigger.dev", this.#options.logLevel);
+
+    this.#storeClient = new KeyValueStoreClient(this.#queryKeyValueStore.bind(this));
   }
 
   async registerEndpoint(options: { url: string; name: string }): Promise<EndpointRecord> {
@@ -139,7 +153,7 @@ export class ApiClient {
     );
   }
 
-  async completeTask(runId: string, id: string, task: CompleteTaskBodyInput) {
+  async completeTask(runId: string, id: string, task: CompleteTaskBodyV2Input) {
     const apiKey = await this.#apiKey();
 
     this.#logger.debug("Complete Task", {
@@ -154,6 +168,7 @@ export class ApiClient {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
+          "Trigger-Version": API_VERSIONS.SERIALIZED_TASK_OUTPUT,
         },
         body: JSON.stringify(task),
       }
@@ -200,6 +215,23 @@ export class ApiClient {
     });
   }
 
+  async sendEvents(events: SendEvent[], options: SendEventOptions = {}) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Sending multiple events", {
+      events,
+    });
+
+    return await zodfetch(ApiEventLogSchema.array(), `${this.#apiUrl}/api/v1/events/bulk`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ events, options }),
+    });
+  }
+
   async cancelEvent(eventId: string) {
     const apiKey = await this.#apiKey();
 
@@ -214,6 +246,26 @@ export class ApiClient {
         Authorization: `Bearer ${apiKey}`,
       },
     });
+  }
+
+  async cancelRunsForEvent(eventId: string) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Cancelling runs for event", {
+      eventId,
+    });
+
+    return await zodfetch(
+      CancelRunsForEventSchema,
+      `${this.#apiUrl}/api/v1/events/${eventId}/cancel-runs`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+      }
+    );
   }
 
   async updateStatus(runId: string, id: string, status: StatusUpdate) {
@@ -265,11 +317,31 @@ export class ApiClient {
     return response;
   }
 
+  async updateWebhook(key: string, webhookData: UpdateWebhookBody): Promise<TriggerSource> {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("activating webhook", {
+      webhookData,
+    });
+
+    const response = await zodfetch(TriggerSourceSchema, `${this.#apiUrl}/api/v1/webhooks/${key}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(webhookData),
+    });
+
+    return response;
+  }
+
   async registerTrigger(
     client: string,
     id: string,
     key: string,
-    payload: RegisterTriggerBodyV2
+    payload: RegisterTriggerBodyV2,
+    idempotencyKey?: string
   ): Promise<RegisterSourceEventV2> {
     const apiKey = await this.#apiKey();
 
@@ -278,15 +350,21 @@ export class ApiClient {
       payload,
     });
 
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    };
+
+    if (idempotencyKey) {
+      headers["Idempotency-Key"] = idempotencyKey;
+    }
+
     const response = await zodfetch(
       RegisterSourceEventSchemaV2,
       `${this.#apiUrl}/api/v2/${client}/triggers/${id}/registrations/${key}`,
       {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers: headers,
         body: JSON.stringify(payload),
       }
     );
@@ -449,6 +527,138 @@ export class ApiClient {
     );
   }
 
+  async invokeJob(jobId: string, payload: any, options: InvokeOptions = {}) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Invoking Job", {
+      jobId,
+    });
+
+    const body: InvokeJobRequestBody = {
+      payload,
+      context: options.context ?? {},
+      options: {
+        accountId: options.accountId,
+        callbackUrl: options.callbackUrl,
+      },
+    };
+
+    return await zodfetch(InvokeJobResponseSchema, `${this.#apiUrl}/api/v1/jobs/${jobId}/invoke`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        ...(options.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  async createEphemeralEventDispatcher(payload: EphemeralEventDispatcherRequestBody) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Creating ephemeral event dispatcher", {
+      payload,
+    });
+
+    const response = await zodfetch(
+      EphemeralEventDispatcherResponseBodySchema,
+      `${this.#apiUrl}/api/v1/event-dispatchers/ephemeral`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+
+    return response;
+  }
+
+  get store() {
+    return this.#storeClient;
+  }
+
+  async #queryKeyValueStore(
+    action: KeyValueStoreResponseBody["action"],
+    data: {
+      key: string;
+      value?: string;
+    }
+  ): Promise<KeyValueStoreResponseBody> {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("accessing key-value store", {
+      action,
+      data,
+    });
+
+    const STORE_URL = `${this.#apiUrl}/api/v1/store/${data.key}`;
+
+    const authHeader: HeadersInit = {
+      Authorization: `Bearer ${apiKey}`,
+    };
+
+    let requestInit: RequestInit | undefined;
+
+    switch (action) {
+      case "DELETE": {
+        requestInit = {
+          method: "DELETE",
+          headers: authHeader,
+        };
+
+        break;
+      }
+      case "GET": {
+        requestInit = {
+          method: "GET",
+          headers: authHeader,
+        };
+
+        break;
+      }
+      case "HAS": {
+        const headResponse = await fetchHead(STORE_URL, {
+          headers: authHeader,
+        });
+
+        return {
+          action: "HAS",
+          key: data.key,
+          has: !!headResponse.ok,
+        };
+      }
+      case "SET": {
+        const MAX_BODY_BYTE_LENGTH = 256 * 1024;
+
+        if ((data.value?.length ?? 0) > MAX_BODY_BYTE_LENGTH) {
+          throw new Error(`Max request body size exceeded: ${MAX_BODY_BYTE_LENGTH} bytes`);
+        }
+
+        requestInit = {
+          method: "PUT",
+          headers: {
+            ...authHeader,
+            "Content-Type": "text/plain",
+          },
+          body: data.value,
+        };
+
+        break;
+      }
+      default: {
+        assertExhaustive(action);
+      }
+    }
+
+    const response = await zodfetch(KeyValueStoreResponseBodySchema, STORE_URL, requestInit);
+
+    return response;
+  }
+
   async #apiKey() {
     const apiKey = getApiKey(this.#options.apiKey);
 
@@ -546,13 +756,14 @@ async function zodfetchWithVersions<
   options?: {
     errorMessage?: string;
     optional?: TOptional;
-  }
+  },
+  retryCount = 0
 ): Promise<
   TOptional extends true
     ? VersionedResponseBody<TVersionedResponseBodyMap, TUnversionedResponseBodySchema> | undefined
     : VersionedResponseBody<TVersionedResponseBodyMap, TUnversionedResponseBodySchema>
 > {
-  const response = await fetch(url, requestInit);
+  const response = await fetch(url, { ...requestInit, cache: "no-cache" });
 
   if (
     (!requestInit || requestInit.method === "GET") &&
@@ -567,6 +778,22 @@ async function zodfetchWithVersions<
     const body = await response.json();
 
     throw new Error(body.error);
+  }
+
+  if (response.status >= 500 && retryCount < 6) {
+    // retry with exponential backoff and jitter
+    const delay = exponentialBackoff(retryCount + 1, 2, 50, 1150, 50);
+
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    return zodfetchWithVersions(
+      versionedSchemaMap,
+      unversionedSchema,
+      url,
+      requestInit,
+      options,
+      retryCount + 1
+    );
   }
 
   if (response.status !== 200) {
@@ -598,6 +825,29 @@ async function zodfetchWithVersions<
   };
 }
 
+async function fetchHead(
+  url: string,
+  requestInitWithoutMethod?: Omit<RequestInit, "method">,
+  retryCount = 0
+): Promise<Response> {
+  const requestInit: RequestInit = {
+    ...requestInitWithoutMethod,
+    method: "HEAD",
+  };
+  const response = await fetch(url, { ...requestInit, cache: "no-cache" });
+
+  if (response.status >= 500 && retryCount < 6) {
+    // retry with exponential backoff and jitter
+    const delay = exponentialBackoff(retryCount + 1, 2, 50, 1150, 50);
+
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    return fetchHead(url, requestInitWithoutMethod, retryCount + 1);
+  }
+
+  return response;
+}
+
 async function zodfetch<TResponseSchema extends z.ZodTypeAny, TOptional extends boolean = false>(
   schema: TResponseSchema,
   url: string,
@@ -605,11 +855,12 @@ async function zodfetch<TResponseSchema extends z.ZodTypeAny, TOptional extends 
   options?: {
     errorMessage?: string;
     optional?: TOptional;
-  }
+  },
+  retryCount = 0
 ): Promise<
   TOptional extends true ? z.infer<TResponseSchema> | undefined : z.infer<TResponseSchema>
 > {
-  const response = await fetch(url, requestInit);
+  const response = await fetch(url, { ...requestInit, cache: "no-cache" });
 
   if (
     (!requestInit || requestInit.method === "GET") &&
@@ -626,6 +877,15 @@ async function zodfetch<TResponseSchema extends z.ZodTypeAny, TOptional extends 
     throw new Error(body.error);
   }
 
+  if (response.status >= 500 && retryCount < 6) {
+    // retry with exponential backoff and jitter
+    const delay = exponentialBackoff(retryCount + 1, 2, 50, 1150, 50);
+
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    return zodfetch(schema, url, requestInit, options, retryCount + 1);
+  }
+
   if (response.status !== 200) {
     throw new Error(
       options?.errorMessage ?? `Failed to fetch ${url}, got status code ${response.status}`
@@ -635,4 +895,21 @@ async function zodfetch<TResponseSchema extends z.ZodTypeAny, TOptional extends 
   const jsonBody = await response.json();
 
   return schema.parse(jsonBody);
+}
+
+function exponentialBackoff(
+  retryCount: number,
+  exponential: number,
+  minDelay: number,
+  maxDelay: number,
+  jitter: number
+): number {
+  // Calculate the delay using the exponential backoff formula
+  const delay = Math.min(Math.pow(exponential, retryCount) * minDelay, maxDelay);
+
+  // Calculate the jitter
+  const jitterValue = Math.random() * jitter;
+
+  // Return the calculated delay with jitter
+  return delay + jitterValue;
 }

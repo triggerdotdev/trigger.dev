@@ -1,6 +1,6 @@
 import { Outlet } from "@remix-run/react";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
 import {
   PageButtons,
@@ -17,6 +17,7 @@ import {
   docsPath,
   projectScheduledTriggersPath,
   projectTriggersPath,
+  projectWebhookTriggersPath,
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
@@ -39,12 +40,13 @@ export default function Page() {
               to={docsPath("documentation/concepts/triggers")}
               variant="secondary/small"
             >
-              Triggers Documentation
+              Triggers documentation
             </LinkButton>
           </PageButtons>
         </PageTitleRow>
         <PageDescription>A Trigger is what starts a Job Run.</PageDescription>
         <PageTabs
+          layoutId="triggers"
           tabs={[
             {
               label: "External Triggers",
@@ -53,6 +55,10 @@ export default function Page() {
             {
               label: "Scheduled Triggers",
               to: projectScheduledTriggersPath(organization, project),
+            },
+            {
+              label: "Webhook Triggers",
+              to: projectWebhookTriggersPath(organization, project),
             },
           ]}
         />

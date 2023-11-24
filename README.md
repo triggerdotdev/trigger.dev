@@ -62,8 +62,8 @@ Click the links to join the discussions about our upcoming features.
 | Dashboard                                                                            | View every Task in every Run                        | ✅     |
 | Serverless                                                                           | Long-running Jobs on your serverless backend        | ✅     |
 | React hooks                                                                          | Easily update your UI with Job progress             | ✅     |
+| React frameworks                                                                     | Support for Remix, Astro, RedwoodJS & more          | ✅     |
 | [Background tasks](https://github.com/triggerdotdev/trigger.dev/discussions/400)     | Offload long or intense Tasks to our infrastructure | 🛠️     |
-| [React frameworks](https://github.com/triggerdotdev/trigger.dev/discussions/411)     | Support for Remix, Astro, RedwoodJS & more          | 🛠️     |
 | [Long-running servers](https://github.com/triggerdotdev/trigger.dev/discussions/430) | Run Jobs on your long-running backend               | 🛠️     |
 | Polling Triggers                                                                     | Subscribe to changes without webhooks               | 🕝     |
 | Vercel integration                                                                   | Easy deploy and preview environment support         | 🕝     |
@@ -83,3 +83,9 @@ We provide an official trigger.dev docker image you can use to easily self-host 
 ## Development
 
 To setup and develop locally or contribute to the open source project, follow our [development guide](./CONTRIBUTING.md).
+
+## Meet the Amazing People Behind This Project 🚀
+
+<a href="https://github.com/triggerdotdev/trigger.dev/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=triggerdotdev/trigger.dev" />
+</a>

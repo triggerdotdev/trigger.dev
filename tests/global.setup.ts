@@ -69,6 +69,7 @@ const setup = async () => {
         },
         orgMember: { connect: { id: project.organization.members[0].id } },
         type: "DEVELOPMENT",
+        shortcode: "octopus-tentacles",
       },
     });
 
@@ -91,6 +92,7 @@ const setup = async () => {
         },
         orgMember: { connect: { id: project.organization.members[0].id } },
         type: "PRODUCTION",
+        shortcode: "stripey-zebra",
       },
     });
   });

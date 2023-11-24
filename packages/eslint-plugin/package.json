@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/eslint-plugin",
-  "version": "2.1.9",
+  "version": "2.2.7",
   "description": "ESLint plugin with trigger.dev best practices",
   "keywords": [
     "eslint",
@@ -29,7 +29,7 @@
     "npm-run-all": "^4.1.5"
   },
   "engines": {
-    "node": "^14.17.0 || ^16.0.0 || >= 18.0.0"
+    "node": ">=18.0.0"
   },
   "peerDependencies": {
     "eslint": ">=7"

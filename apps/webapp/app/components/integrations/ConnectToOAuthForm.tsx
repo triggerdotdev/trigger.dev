@@ -46,7 +46,8 @@ export function ConnectToOAuthForm({
 
   const [form, { title, slug, scopes, hasCustomClient, customClientId, customClientSecret }] =
     useForm({
-      lastSubmission: fetcher.data,
+      // TODO: type this
+      lastSubmission: fetcher.data as any,
       shouldRevalidate: "onSubmit",
       onValidate({ formData }) {
         return parse(formData, {

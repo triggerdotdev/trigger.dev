@@ -1,5 +1,45 @@
 # @trigger.dev/integration-kit
 
+## 2.2.7
+
+### Patch Changes
+
+- Updated dependencies [756024da]
+  - @trigger.dev/core@2.2.7
+
+## 2.2.6
+
+### Patch Changes
+
+- cb1825bf: OpenAI support for 4.16.0
+- Updated dependencies [cb1825bf]
+- Updated dependencies [cb1825bf]
+- Updated dependencies [d0217344]
+  - @trigger.dev/core@2.2.6
+
+## 2.2.5
+
+### Patch Changes
+
+- 620b8383: Allow customizing OpenAI background retries and timeouts
+- Updated dependencies [620b8383]
+- Updated dependencies [578d2e54]
+  - @trigger.dev/core@2.2.5
+
+## 2.2.4
+
+## 2.2.3
+
+## 2.2.2
+
+## 2.2.1
+
+## 2.2.0
+
+### Minor Changes
+
+- 975c5f1d: Drop support for Node v16, require Node >= 18. This allows us to use native fetch in our SDK which paves the way for multi-platform support.
+
 ## 2.1.9
 
 ## 2.1.8

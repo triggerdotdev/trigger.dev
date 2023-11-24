@@ -31,6 +31,27 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "schedule-example-2",
+  name: "Schedule Example 2",
+  version: "1.0.0",
+  enabled: true,
+  trigger: intervalTrigger({
+    seconds: 60 * 30, // 30 minutes
+  }),
+  run: async (payload, io, ctx) => {
+    await io.runTask("task-example-1", async () => {
+      return {
+        message: "Hello World",
+      };
+    });
+
+    await io.wait("wait-1", 1);
+
+    await io.logger.info("Hello World", { ctx });
+  },
+});
+
 const resend = new Resend({
   id: "resend-client",
   apiKey: process.env.RESEND_API_KEY!,

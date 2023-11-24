@@ -4,7 +4,7 @@ sidebarTitle: "Overview"
 description: "TriggerClient is used to create a client that connects to the Trigger.dev platform"
 ---
 
-A [TriggerClient](/documentation/concepts/client-adaptors) is used to connect to a specific [Project](/documentation/concepts/projects) by using an [API Key](/documentation/concepts/environments-apikeys).
+A [TriggerClient](/documentation/concepts/client-adaptors) is used to connect to a specific [Project](/documentation/concepts/projects) by using an [API Key](/documentation/concepts/environments-endpoints).
 
 ```ts Example
 export const client = new TriggerClient({
@@ -30,6 +30,10 @@ Creates a new TriggerClient object.
   Is used to uniquely identify the client.
 </ResponseField>
 
+<ResponseField name="store" type="object">
+  Exposes namespaced [Key-Value Stores](/sdk/triggerclient/instancemethods/store) you can access in and outside of your Jobs.
+</ResponseField>
+
 ## Instance methods
 
 #### [sendEvent()](/sdk/triggerclient/instancemethods/sendevent)
@@ -38,6 +42,12 @@ Sending an event triggers any Jobs that are listening for that event (based on t
 
 You can call this function from anywhere in your code to send an event. The other way to send an event is by using [io.sendEvent()](/sdk/io) from inside a `run()` function.
 
+#### [sendEvents()](/sdk/triggerclient/instancemethods/sendevents)
+
+Sending multiple events triggers any Jobs that are listening for those events (based on the name). Use [eventTrigger()](/sdk/eventtrigger) on a Job to listen for events.
+
+You can call this function from anywhere in your code to send multiple events. The other way to send multiple events is by using [io.sendEvents()](/sdk/io) from inside a `run()` function.
+
 #### [getEvent()](/sdk/triggerclient/instancemethods/getevent)
 
 The `getEvent()` method gets the event details for a given eventId.
@@ -45,6 +55,10 @@ The `getEvent()` method gets the event details for a given eventId.
 #### [cancelEvent()](/sdk/triggerclient/instancemethods/cancel-event)
 
 The `cancelEvent()` method cancels an event that is scheduled to be delivered in the future.
+
+#### [cancelRunsForEvent()](/sdk/triggerclient/instancemethods/cancel-runs-for-event)
+
+The `cancelRunsForEvent()` method cancels the job runs (yet to be executed) that are triggered by a given eventId.
 
 #### [getRuns()](/sdk/triggerclient/instancemethods/getruns)
 
@@ -58,6 +72,10 @@ The `getRun()` method gets the details for a given Run.
 
 The `defineJob()` method defines a new Job.
 
+#### [defineHttpEndpoint()](/sdk/triggerclient/instancemethods/define-http-endpoint)
+
+The `defineHttpEndpoint()` method defines a new HTTP Endpoint.
+
 #### [defineDynamicTrigger()](/sdk/triggerclient/instancemethods/define-dynamic-trigger)
 
 The `defineDynamicTrigger()` method defines a new Dynamic Trigger.
@@ -69,3 +87,7 @@ The `defineDynamicSchedule()` method defines a new Dynamic Schedule.
 #### [defineAuthResolver()](/sdk/triggerclient/instancemethods/define-auth-resolver)
 
 The `defineAuthResolver()` method defines a new Auth Resolver.
+
+#### [on()](/sdk/triggerclient/instancemethods/on)
+
+Use the `on()` method to listen for run notifications across all Jobs.

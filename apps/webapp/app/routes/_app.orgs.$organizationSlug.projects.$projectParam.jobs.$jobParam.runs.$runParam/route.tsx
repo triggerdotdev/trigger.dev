@@ -1,9 +1,9 @@
 import { useRevalidator } from "@remix-run/react";
-import { LoaderArgs } from "@remix-run/server-runtime";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Fragment, useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { useEventSource } from "remix-utils";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { useEventSource } from "~/hooks/useEventSource";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 import { RunOverview } from "~/components/run/RunOverview";
 import { jobMatchId, useJob } from "~/hooks/useJob";
@@ -22,7 +22,7 @@ import {
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { runParam } = RunParamsSchema.parse(params);
 
@@ -50,8 +50,6 @@ export const handle: Handle = {
 
     return (
       <Fragment>
-        <BreadcrumbLink to={trimTrailingSlash(jobMatch?.pathname ?? "")} title="Runs" />
-        <BreadcrumbIcon />
         {runData && runData.run && (
           <BreadcrumbLink to={match.pathname} title={`Run #${runData.run.number}`} />
         )}
@@ -69,6 +67,7 @@ export default function Page() {
   const revalidator = useRevalidator();
   const events = useEventSource(runStreamingPath(organization, project, job, run), {
     event: "message",
+    disabled: !!run.completedAt,
   });
   useEffect(() => {
     if (events !== null) {

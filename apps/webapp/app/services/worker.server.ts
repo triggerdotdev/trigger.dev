@@ -1,26 +1,32 @@
 import { DeliverEmailSchema } from "@/../../packages/emails/src";
-import { ScheduledPayloadSchema } from "@trigger.dev/core";
+import { ScheduledPayloadSchema, addMissingVersionField } from "@trigger.dev/core";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
 import { sendEmail } from "./email.server";
 import { IndexEndpointService } from "./endpoints/indexEndpoint.server";
+import { PerformEndpointIndexService } from "./endpoints/performEndpointIndexService";
 import { RecurringEndpointIndexService } from "./endpoints/recurringEndpointIndex.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
 import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
 import { integrationAuthRepository } from "./externalApis/integrationAuthRepository.server";
 import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
 import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated.server";
-import { PerformRunExecutionV1Service } from "./runs/performRunExecutionV1.server";
-import { PerformRunExecutionV2Service } from "./runs/performRunExecutionV2.server";
+import { PerformRunExecutionV3Service } from "./runs/performRunExecutionV3.server";
 import { StartRunService } from "./runs/startRun.server";
 import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.server";
 import { ActivateSourceService } from "./sources/activateSource.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
-import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout";
-import { addMissingVersionField } from "@trigger.dev/core";
+import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout.server";
+import { ProbeEndpointService } from "./endpoints/probeEndpoint.server";
+import { DeliverRunSubscriptionService } from "./runs/deliverRunSubscription.server";
+import { DeliverRunSubscriptionsService } from "./runs/deliverRunSubscriptions.server";
+import { ResumeTaskService } from "./tasks/resumeTask.server";
+import { ExpireDispatcherService } from "./dispatchers/expireDispatcher.server";
+import { InvokeEphemeralDispatcherService } from "./dispatchers/invokeEphemeralEventDispatcher.server";
+import { DeliverWebhookRequestService } from "./sources/deliverWebhookRequest.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -29,15 +35,16 @@ const workerCatalog = {
     sourceData: z.any().optional(),
     reason: z.string().optional(),
   }),
+  performEndpointIndexing: z.object({
+    id: z.string(),
+  }),
   scheduleEmail: DeliverEmailSchema,
   startRun: z.object({ id: z.string() }),
   processCallbackTimeout: z.object({
     id: z.string(),
   }),
-  performTaskOperation: z.object({
-    id: z.string(),
-  }),
   deliverHttpSourceRequest: z.object({ id: z.string() }),
+  deliverWebhookRequest: z.object({ id: z.string() }),
   refreshOAuthToken: z.object({
     organizationId: z.string(),
     connectionId: z.string(),
@@ -72,26 +79,57 @@ const workerCatalog = {
   connectionCreated: z.object({
     id: z.string(),
   }),
+  probeEndpoint: z.object({
+    id: z.string(),
+  }),
+  simulate: z.object({
+    seconds: z.number(),
+  }),
+  deliverRunSubscriptions: z.object({
+    id: z.string(),
+  }),
+  deliverRunSubscription: z.object({
+    id: z.string(),
+  }),
+  resumeTask: z.object({
+    id: z.string(),
+  }),
+  expireDispatcher: z.object({
+    id: z.string(),
+  }),
 };
 
 const executionWorkerCatalog = {
-  performRunExecution: z.object({
-    id: z.string(),
-  }),
   performRunExecutionV2: z.object({
     id: z.string(),
     reason: z.enum(["EXECUTE_JOB", "PREPROCESS"]),
     resumeTaskId: z.string().optional(),
     isRetry: z.boolean(),
   }),
+  performRunExecutionV3: z.object({
+    id: z.string(),
+    reason: z.enum(["EXECUTE_JOB", "PREPROCESS"]),
+  }),
+};
+
+const taskOperationWorkerCatalog = {
+  performTaskOperation: z.object({
+    id: z.string(),
+  }),
+  invokeEphemeralDispatcher: z.object({
+    id: z.string(),
+    eventRecordId: z.string(),
+  }),
 };
 
 let workerQueue: ZodWorker<typeof workerCatalog>;
 let executionWorker: ZodWorker<typeof executionWorkerCatalog>;
+let taskOperationWorker: ZodWorker<typeof taskOperationWorkerCatalog>;
 
 declare global {
   var __worker__: ZodWorker<typeof workerCatalog>;
   var __executionWorker__: ZodWorker<typeof executionWorkerCatalog>;
+  var __taskOperationWorker__: ZodWorker<typeof taskOperationWorkerCatalog>;
 }
 
 // this is needed because in development we don't want to restart
@@ -101,6 +139,7 @@ declare global {
 if (env.NODE_ENV === "production") {
   workerQueue = getWorkerQueue();
   executionWorker = getExecutionWorkerQueue();
+  taskOperationWorker = getTaskOperationWorkerQueue();
 } else {
   if (!global.__worker__) {
     global.__worker__ = getWorkerQueue();
@@ -112,9 +151,19 @@ if (env.NODE_ENV === "production") {
   }
 
   executionWorker = global.__executionWorker__;
+
+  if (!global.__taskOperationWorker__) {
+    global.__taskOperationWorker__ = getTaskOperationWorkerQueue();
+  }
+
+  taskOperationWorker = global.__taskOperationWorker__;
 }
 
 export async function init() {
+  // const pgNotify = new PgNotifyService();
+  // await pgNotify.call("trigger:graphile:migrate", { latestMigration: 10 });
+  // await new Promise((resolve) => setTimeout(resolve, 10000))
+
   if (env.WORKER_ENABLED === "true") {
     await workerQueue.initialize();
   }
@@ -122,12 +171,21 @@ export async function init() {
   if (env.EXECUTION_WORKER_ENABLED === "true") {
     await executionWorker.initialize();
   }
+
+  if (env.TASK_OPERATION_WORKER_ENABLED === "true") {
+    await taskOperationWorker.initialize();
+  }
 }
 
 function getWorkerQueue() {
   return new ZodWorker({
     name: "workerQueue",
     prisma,
+    cleanup: {
+      frequencyExpression: "13,27,43 * * * *",
+      ttl: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxCount: 1000,
+    },
     runnerOptions: {
       connectionString: env.DATABASE_URL,
       concurrency: env.WORKER_CONCURRENCY,
@@ -136,6 +194,7 @@ function getWorkerQueue() {
       schema: env.WORKER_SCHEMA,
       maxPoolSize: env.WORKER_CONCURRENCY,
     },
+    shutdownTimeoutInMs: env.GRACEFUL_SHUTDOWN_TIMEOUT,
     schema: workerCatalog,
     recurringTasks: {
       // Run this every 5 minutes
@@ -229,8 +288,19 @@ function getWorkerQueue() {
       deliverHttpSourceRequest: {
         priority: 1, // smaller number = higher priority
         maxAttempts: 14,
+        queueName: (payload) => `sources:${payload.id}`,
         handler: async (payload, job) => {
           const service = new DeliverHttpSourceRequestService();
+
+          await service.call(payload.id);
+        },
+      },
+      deliverWebhookRequest: {
+        priority: 1, // smaller number = higher priority
+        maxAttempts: 14,
+        queueName: (payload) => `webhooks:${payload.id}`,
+        handler: async (payload, job) => {
+          const service = new DeliverWebhookRequestService();
 
           await service.call(payload.id);
         },
@@ -253,18 +323,7 @@ function getWorkerQueue() {
           await service.call(payload.id);
         },
       },
-      performTaskOperation: {
-        priority: 0, // smaller number = higher priority
-        queueName: (payload) => `tasks:${payload.id}`,
-        maxAttempts: 3,
-        handler: async (payload, job) => {
-          const service = new PerformTaskOperationService();
-
-          await service.call(payload.id);
-        },
-      },
       scheduleEmail: {
-        queueName: "internal-queue",
         priority: 100,
         maxAttempts: 3,
         handler: async (payload, job) => {
@@ -276,8 +335,15 @@ function getWorkerQueue() {
         maxAttempts: 7,
         handler: async (payload, job) => {
           const service = new IndexEndpointService();
-
           await service.call(payload.id, payload.source, payload.reason, payload.sourceData);
+        },
+      },
+      performEndpointIndexing: {
+        priority: 1, // smaller number = higher priority
+        maxAttempts: 7,
+        handler: async (payload, job) => {
+          const service = new PerformEndpointIndexService();
+          await service.call(payload.id);
         },
       },
       deliverEvent: {
@@ -291,12 +357,62 @@ function getWorkerQueue() {
       },
       refreshOAuthToken: {
         priority: 8, // smaller number = higher priority
-        queueName: "internal-queue",
         maxAttempts: 7,
         handler: async (payload, job) => {
           await integrationAuthRepository.refreshConnection({
             connectionId: payload.connectionId,
           });
+        },
+      },
+      probeEndpoint: {
+        priority: 10,
+        maxAttempts: 1,
+        handler: async (payload, job) => {
+          const service = new ProbeEndpointService();
+
+          await service.call(payload.id);
+        },
+      },
+      simulate: {
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          await new Promise((resolve) => setTimeout(resolve, payload.seconds * 1000));
+        },
+      },
+      deliverRunSubscriptions: {
+        priority: 1, // smaller number = higher priority
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new DeliverRunSubscriptionsService();
+
+          await service.call(payload.id);
+        },
+      },
+      deliverRunSubscription: {
+        priority: 1, // smaller number = higher priority
+        maxAttempts: 13,
+        handler: async (payload, job) => {
+          const service = new DeliverRunSubscriptionService();
+
+          await service.call(payload.id);
+        },
+      },
+      resumeTask: {
+        priority: 0,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new ResumeTaskService();
+
+          return await service.call(payload.id);
+        },
+      },
+      expireDispatcher: {
+        priority: 10,
+        maxAttempts: 3,
+        handler: async (payload) => {
+          const service = new ExpireDispatcherService();
+
+          return await service.call(payload.id);
         },
       },
     },
@@ -315,24 +431,14 @@ function getExecutionWorkerQueue() {
       schema: env.WORKER_SCHEMA,
       maxPoolSize: env.EXECUTION_WORKER_CONCURRENCY,
     },
+    shutdownTimeoutInMs: env.GRACEFUL_SHUTDOWN_TIMEOUT,
     schema: executionWorkerCatalog,
     tasks: {
-      performRunExecution: {
-        priority: 0, // smaller number = higher priority
-        maxAttempts: 1,
-        handler: async (payload, job) => {
-          // This is a legacy task that we don't use anymore, but needs to be here for backwards compatibility
-          // TODO: remove this once all performRunExecution tasks have been processed
-          const service = new PerformRunExecutionV1Service();
-
-          await service.call(payload.id);
-        },
-      },
       performRunExecutionV2: {
         priority: 0, // smaller number = higher priority
         maxAttempts: 12,
         handler: async (payload, job) => {
-          const service = new PerformRunExecutionV2Service();
+          const service = new PerformRunExecutionV3Service();
 
           await service.call({
             id: payload.id,
@@ -342,8 +448,63 @@ function getExecutionWorkerQueue() {
           });
         },
       },
+      performRunExecutionV3: {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 12,
+        handler: async (payload, job) => {
+          const service = new PerformRunExecutionV3Service();
+
+          const driftInMs = Date.now() - job.run_at.getTime();
+
+          await service.call(
+            {
+              id: payload.id,
+              reason: payload.reason,
+              isRetry: false,
+            },
+            driftInMs
+          );
+        },
+      },
     },
   });
 }
 
-export { executionWorker, workerQueue };
+function getTaskOperationWorkerQueue() {
+  return new ZodWorker({
+    name: "taskOperationWorker",
+    prisma,
+    runnerOptions: {
+      connectionString: env.DATABASE_URL,
+      concurrency: env.TASK_OPERATION_WORKER_CONCURRENCY,
+      pollInterval: env.TASK_OPERATION_WORKER_POLL_INTERVAL,
+      noPreparedStatements: env.DATABASE_URL !== env.DIRECT_URL,
+      schema: env.WORKER_SCHEMA,
+      maxPoolSize: env.TASK_OPERATION_WORKER_CONCURRENCY,
+    },
+    shutdownTimeoutInMs: env.GRACEFUL_SHUTDOWN_TIMEOUT,
+    schema: taskOperationWorkerCatalog,
+    tasks: {
+      performTaskOperation: {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new PerformTaskOperationService();
+
+          await service.call(payload.id);
+        },
+      },
+      invokeEphemeralDispatcher: {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 10,
+        handler: async (payload, job) => {
+          const service = new InvokeEphemeralDispatcherService();
+
+          await service.call(payload.id, payload.eventRecordId);
+        },
+      },
+    },
+  });
+}
+
+export { executionWorker, workerQueue, taskOperationWorker };

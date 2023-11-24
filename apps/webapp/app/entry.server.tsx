@@ -1,6 +1,9 @@
 import { H } from "@highlight-run/node";
-import type { DataFunctionArgs, EntryContext, Headers } from "@remix-run/node"; // or cloudflare/deno
-import { Response } from "@remix-run/node"; // or cloudflare/deno
+import {
+  createReadableStreamFromReadable,
+  type DataFunctionArgs,
+  type EntryContext,
+} from "@remix-run/node"; // or cloudflare/deno
 import { RemixServer } from "@remix-run/react";
 import { parseAcceptLanguage } from "intl-parse-accept-language";
 import isbot from "isbot";
@@ -13,6 +16,8 @@ import {
   OperatingSystemPlatform,
 } from "./components/primitives/OperatingSystemProvider";
 import { env } from "./env.server";
+import { getSharedSqsEventConsumer } from "./services/events/sqsEventConsumer";
+import { singleton } from "./utils/singleton";
 
 const ABORT_DELAY = 30000;
 
@@ -36,7 +41,7 @@ export default function handleRequest(
   // response to render before sending it to the client. This
   // ensures that bots can see the full page content.
   if (isbot(request.headers.get("user-agent"))) {
-    return serveTheBots(
+    return handleBotRequest(
       request,
       responseStatusCode,
       responseHeaders,
@@ -46,7 +51,7 @@ export default function handleRequest(
     );
   }
 
-  return serveBrowsers(
+  return handleBrowserRequest(
     request,
     responseStatusCode,
     responseHeaders,
@@ -56,7 +61,7 @@ export default function handleRequest(
   );
 }
 
-function serveTheBots(
+function handleBotRequest(
   request: Request,
   responseStatusCode: number,
   responseHeaders: Headers,
@@ -65,76 +70,97 @@ function serveTheBots(
   platform: OperatingSystemPlatform
 ) {
   return new Promise((resolve, reject) => {
+    let shellRendered = false;
     const { pipe, abort } = renderToPipeableStream(
       <OperatingSystemContextProvider platform={platform}>
         <LocaleContextProvider locales={locales}>
-          <RemixServer context={remixContext} url={request.url} abortDelay={ABORT_DELAY} />
+          <RemixServer context={remixContext} url={request.url} abortDelay={ABORT_DELAY} />,
         </LocaleContextProvider>
       </OperatingSystemContextProvider>,
       {
-        // Use onAllReady to wait for the entire document to be ready
         onAllReady() {
-          responseHeaders.set("Content-Type", "text/html; charset=utf-8");
-          let body = new PassThrough();
-          pipe(body);
-          resolve(
-            new Response(body, {
-              status: responseStatusCode,
-              headers: responseHeaders,
-            })
-          );
-        },
-        onShellError(err: unknown) {
-          reject(err);
-        },
-      }
-    );
-    setTimeout(abort, ABORT_DELAY);
-  });
-}
+          shellRendered = true;
+          const body = new PassThrough();
+          const stream = createReadableStreamFromReadable(body);
 
-function serveBrowsers(
-  request: Request,
-  responseStatusCode: number,
-  responseHeaders: Headers,
-  remixContext: EntryContext,
-  locales: string[],
-  platform: OperatingSystemPlatform
-) {
-  return new Promise((resolve, reject) => {
-    let didError = false;
-    let shellReady = false;
-    const { pipe, abort } = renderToPipeableStream(
-      <OperatingSystemContextProvider platform={platform}>
-        <LocaleContextProvider locales={locales}>
-          <RemixServer context={remixContext} url={request.url} abortDelay={ABORT_DELAY} />
-        </LocaleContextProvider>
-      </OperatingSystemContextProvider>,
-      {
-        // use onShellReady to wait until a suspense boundary is triggered
-        onShellReady() {
-          shellReady = true;
-          responseHeaders.set("Content-Type", "text/html; charset=utf-8");
-          let body = new PassThrough();
-          pipe(body);
+          responseHeaders.set("Content-Type", "text/html");
+
           resolve(
-            new Response(body, {
-              status: didError ? 500 : responseStatusCode,
+            new Response(stream, {
               headers: responseHeaders,
+              status: responseStatusCode,
             })
           );
+
+          pipe(body);
         },
-        onShellError(err: unknown) {
-          reject(err);
+        onShellError(error: unknown) {
+          reject(error);
         },
         onError(error: unknown) {
-          didError = true;
-          if (shellReady) {
-            logError(error, request);
+          responseStatusCode = 500;
+          // Log streaming rendering errors from inside the shell.  Don't log
+          // errors encountered during initial shell rendering since they'll
+          // reject and get logged in handleDocumentRequest.
+          if (shellRendered) {
+            console.error(error);
           }
         },
       }
     );
+
+    setTimeout(abort, ABORT_DELAY);
+  });
+}
+
+function handleBrowserRequest(
+  request: Request,
+  responseStatusCode: number,
+  responseHeaders: Headers,
+  remixContext: EntryContext,
+  locales: string[],
+  platform: OperatingSystemPlatform
+) {
+  return new Promise((resolve, reject) => {
+    let shellRendered = false;
+    const { pipe, abort } = renderToPipeableStream(
+      <OperatingSystemContextProvider platform={platform}>
+        <LocaleContextProvider locales={locales}>
+          <RemixServer context={remixContext} url={request.url} abortDelay={ABORT_DELAY} />
+        </LocaleContextProvider>
+      </OperatingSystemContextProvider>,
+      {
+        onShellReady() {
+          shellRendered = true;
+          const body = new PassThrough();
+          const stream = createReadableStreamFromReadable(body);
+
+          responseHeaders.set("Content-Type", "text/html");
+
+          resolve(
+            new Response(stream, {
+              headers: responseHeaders,
+              status: responseStatusCode,
+            })
+          );
+
+          pipe(body);
+        },
+        onShellError(error: unknown) {
+          reject(error);
+        },
+        onError(error: unknown) {
+          responseStatusCode = 500;
+          // Log streaming rendering errors from inside the shell.  Don't log
+          // errors encountered during initial shell rendering since they'll
+          // reject and get logged in handleDocumentRequest.
+          if (shellRendered) {
+            console.error(error);
+          }
+        },
+      }
+    );
+
     setTimeout(abort, ABORT_DELAY);
   });
 }
@@ -166,3 +192,5 @@ function logError(error: unknown, request?: Request) {
   }
   console.error(error);
 }
+
+const sqsEventConsumer = singleton("sqsEventConsumer", getSharedSqsEventConsumer);

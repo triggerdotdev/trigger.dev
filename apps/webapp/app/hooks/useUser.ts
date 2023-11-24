@@ -1,11 +1,11 @@
 import type { User } from "~/models/user.server";
 import { useMatchesData } from "~/utils";
 import { useChanged } from "./useChanged";
-import { RouteMatch } from "@remix-run/react";
+import { UIMatch } from "@remix-run/react";
 import { useTypedMatchesData } from "./useTypedMatchData";
 import { loader } from "~/root";
 
-export function useOptionalUser(matches?: RouteMatch[]): User | undefined {
+export function useOptionalUser(matches?: UIMatch[]): User | undefined {
   const routeMatch = useTypedMatchesData<typeof loader>({
     id: "root",
     matches,
@@ -14,7 +14,7 @@ export function useOptionalUser(matches?: RouteMatch[]): User | undefined {
   return routeMatch?.user ?? undefined;
 }
 
-export function useUser(matches?: RouteMatch[]): User {
+export function useUser(matches?: UIMatch[]): User {
   const maybeUser = useOptionalUser(matches);
   if (!maybeUser) {
     throw new Error(

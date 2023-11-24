@@ -1,20 +1,29 @@
 ---
 title: "Triggers: Introduction"
 sidebarTitle: "Introduction"
-description: "A Trigger is what starts a Job Run. It can be a webhook, a schedule, or an event."
 ---
 
-We currently support three types of Triggers: Webhooks, Scheduled, and Events. You can use any of these to start a Job Run.
+We currently support five types of Triggers: Manual Invoke, Events, Scheduled, HTTP, and Integration Webhooks. You can use any of these to start a Job Run.
 
 <CardGroup>
-  <Card title="Webhooks" icon="webhook" href="/documentation/concepts/triggers/webhooks">
-    Start your Jobs in realtime when events happen in APIs
+  <Card title="Invoke" icon="bolt" href="/documentation/concepts/triggers/invoke">
+    Run your Job manually by using `Job.invoke()`
+  </Card>
+  <Card title="Event" icon="brackets-curly" href="/documentation/concepts/triggers/events">
+    Run your Job when you send events with data
   </Card>
   <Card title="Scheduled" icon="calendar" href="/documentation/concepts/triggers/scheduled">
     Run a Job on a repeating schedule
   </Card>
-  <Card title="Event" icon="brackets-curly" href="/documentation/concepts/triggers/events">
-    Run your Job when you send events with data
+  <Card
+    title="Integration webhooks"
+    icon="puzzle-piece-simple"
+    href="/documentation/concepts/triggers/webhooks"
+  >
+    Easily subscribe to realtime API changes using integrations
+  </Card>
+  <Card title="HTTP" icon="webhook" href="/documentation/concepts/triggers/http">
+    Trigger your Jobs in realtime when events happen in APIs
   </Card>
   <Card
     title="DynamicTrigger & DynamicSchedule"

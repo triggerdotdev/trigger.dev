@@ -1,7 +1,10 @@
-import type { Task, TaskAttempt } from "@trigger.dev/database";
+import type { JobRun, Task, TaskAttempt } from "@trigger.dev/database";
 import { CachedTask, ServerTask } from "@trigger.dev/core";
 
-export type TaskWithAttempts = Task & { attempts: TaskAttempt[] };
+export type TaskWithAttempts = Task & {
+  attempts: TaskAttempt[];
+  run: { forceYieldImmediately: boolean };
+};
 
 export function taskWithAttemptsToServerTask(task: TaskWithAttempts): ServerTask {
   return {
@@ -15,7 +18,8 @@ export function taskWithAttemptsToServerTask(task: TaskWithAttempts): ServerTask
     status: task.status,
     description: task.description,
     params: task.params as any,
-    output: task.output as any,
+    output: task.outputIsUndefined ? undefined : (task.output as any),
+    context: task.context as any,
     properties: task.properties as any,
     style: task.style as any,
     error: task.error,
@@ -24,12 +28,14 @@ export function taskWithAttemptsToServerTask(task: TaskWithAttempts): ServerTask
     idempotencyKey: task.idempotencyKey,
     operation: task.operation,
     callbackUrl: task.callbackUrl,
+    forceYield: task.run.forceYieldImmediately,
+    childExecutionMode: task.childExecutionMode,
   };
 }
 
 export type TaskForCaching = Pick<
   Task,
-  "id" | "status" | "idempotencyKey" | "noop" | "output" | "parentId"
+  "id" | "status" | "idempotencyKey" | "noop" | "output" | "parentId" | "outputIsUndefined"
 >;
 
 export function prepareTasksForCaching(
@@ -102,7 +108,7 @@ function prepareTaskForCaching(task: TaskForCaching): CachedTask {
     status: task.status,
     idempotencyKey: task.idempotencyKey,
     noop: task.noop,
-    output: task.output as any,
+    output: task.outputIsUndefined ? undefined : (task.output as any),
     parentId: task.parentId,
   };
 }

@@ -11,15 +11,28 @@ import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { OrganizationParamsSchema, jobPath, organizationTeamPath } from "~/utils/pathBuilder";
-import { OrgAdminHeader } from "../_app.orgs.$organizationSlug._index/OrgAdminHeader";
+import {
+  OrganizationParamsSchema,
+  jobPath,
+  newProjectPath,
+  organizationTeamPath,
+} from "~/utils/pathBuilder";
 import { Link } from "@remix-run/react/dist/components";
-import { LoaderArgs } from "@remix-run/server-runtime";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { OrgUsagePresenter } from "~/presenters/OrgUsagePresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { LinkButton } from "~/components/primitives/Buttons";
+import {
+  PageHeader,
+  PageTitleRow,
+  PageTitle,
+  PageButtons,
+} from "~/components/primitives/PageHeader";
+import { Handle } from "~/utils/handle";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 
-export async function loader({ params, request }: LoaderArgs) {
+export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
 
@@ -47,13 +60,21 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
   return null;
 };
 
+export const handle: Handle = {
+  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Usage & Billing" />,
+};
+
 export default function Page() {
   const organization = useOrganization();
   const loaderData = useTypedLoaderData<typeof loader>();
 
   return (
     <PageContainer>
-      <OrgAdminHeader />
+      <PageHeader>
+        <PageTitleRow>
+          <PageTitle title="Usage & Billing" />
+        </PageTitleRow>
+      </PageHeader>
       <PageBody>
         <div className="mb-4 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <div className="rounded border border-border p-6">
@@ -151,7 +172,7 @@ export default function Page() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="w-1/2 overflow-y-auto rounded border border-border px-3 py-6">
+          <div className="w-1/2 overflow-y-auto rounded border border-border px-3 py-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
             <div className="mb-2 flex items-baseline justify-between border-b border-border px-3 pb-4">
               <Header2 className="">Jobs</Header2>
               <Header2 className="">Runs</Header2>

@@ -1,0 +1,40 @@
+{
+  "name": "{{ packageName }}",
+  "version": "{{ integrationVersion.version }}",
+  "description": "Trigger.dev integration for {{ sdkPackage }}",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/index.js.map"
+  ],
+  "devDependencies": {
+    {% if triggerMonorepoPath %}
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@trigger.dev/tsup": "workspace:*",
+    {% endif %}
+    "@types/node": "16.x",
+    "rimraf": "^3.0.2",
+    "tsup": "7.1.x",
+    "typescript": "4.9.4"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "{{ latestVersion.name }}": "^{{ latestVersion.version }}",
+    "{{ sdkVersion.name }}": "{{ sdkVersion.version }}",
+    "{{ integrationKitVersion.name }}": "{{ integrationKitVersion.version }}",
+    "zod": "3.22.3"
+  },
+  "engines": {
+    "node": ">=16.8.0"
+  }
+}

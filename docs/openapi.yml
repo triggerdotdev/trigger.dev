@@ -1,0 +1,137 @@
+openapi: 3.0.0
+info:
+  title: Trigger.dev API
+  description: API for triggering events in Trigger.dev
+  version: 1.0.0
+servers:
+  - url: https://api.trigger.dev
+    description: Trigger.dev API server
+security:
+  - BearerAuth: []
+paths:
+  /api/v1/events:
+    post:
+      operationId: sendEvent
+      externalDocs:
+        description: Find more info here
+        url: "https://trigger.dev/docs/api/events/send-event"
+      tags:
+        - Events
+      summary: Create an event
+      description: Send an event to Trigger.dev to trigger job runs through eventTrigger()
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventRequest"
+      responses:
+        "200":
+          description: Event successfully sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventResponse"
+        "400":
+          description: Invalid request
+        "401":
+          description: Unauthorized - API key is missing or invalid
+        "422":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+    EventRequest:
+      type: object
+      properties:
+        event:
+          type: object
+          required:
+            - name
+          properties:
+            name:
+              type: string
+              description: The name of the event
+            payload:
+              type: object
+              additionalProperties: true
+              description: The payload of the event
+            context:
+              type: object
+              additionalProperties: true
+              description: An optional context object
+            id:
+              type: string
+              description: Unique identifier for the event. Auto-generated if not provided. If you provide an ID that already exists, the event will not be redelivered.
+            timestamp:
+              type: string
+              format: date-time
+              description: Event timestamp. Defaults to current timestamp if not provided.
+            source:
+              type: string
+              description: Event source, default is 'trigger.dev'.
+        options:
+          type: object
+          properties:
+            deliverAt:
+              type: string
+              format: date-time
+              description: Optional Date to deliver the event.
+            deliverAfter:
+              type: integer
+              description: Optional delay in seconds before delivering the event.
+            accountId:
+              type: string
+              description: Optional account ID to associate with the event.
+    EventResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The ID of the event that was sent.
+        name:
+          type: string
+          description: The name of the event that was sent.
+        payload:
+          $ref: "#/components/schemas/DeserializedJson"
+        context:
+          $ref: "#/components/schemas/DeserializedJson"
+          nullable: true
+          description: The context of the event that was sent. Null if no context was set.
+        timestamp:
+          type: string
+          format: date-time
+          description: The timestamp of the event that was sent.
+        deliverAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: The timestamp when the event will be delivered. Null if not applicable.
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: The timestamp when the event was delivered. Null if not applicable.
+        cancelledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: The timestamp when the event was cancelled. Null if the event wasn't cancelled.
+    DeserializedJson:
+      type: object
+      additionalProperties: true
+      description: A JSON object that represents the deserialized payload or context.
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

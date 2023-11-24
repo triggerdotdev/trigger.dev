@@ -8,6 +8,7 @@ import simplur from "simplur";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -17,12 +18,16 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { env } from "~/env.server";
-import { useOrganization } from "~/hooks/useOrganizations";
+import { organizationMatchId, useOrganization } from "~/hooks/useOrganizations";
+import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { inviteMembers } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { scheduleEmail } from "~/services/email.server";
 import { requireUserId } from "~/services/session.server";
+import { Handle } from "~/utils/handle";
 import { acceptInvitePath, organizationTeamPath } from "~/utils/pathBuilder";
+import { loader } from "../_app.orgs.$organizationSlug/route";
+import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 
 const schema = z.object({
   emails: z.preprocess((i) => {
@@ -85,13 +90,28 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 };
 
+export const handle: Handle = {
+  breadcrumb: (match, matches) => {
+    const orgMatch = matches.find((m) => m.id === organizationMatchId);
+    const data = useTypedMatchData<typeof loader>(orgMatch);
+    return (
+      <Fragment>
+        {data && <BreadcrumbLink to={organizationTeamPath(data?.organization)} title="Team" />}
+        <BreadcrumbIcon />
+        <BreadcrumbLink to={match.pathname} title="Invite" />
+      </Fragment>
+    );
+  },
+};
+
 export default function Page() {
   const organization = useOrganization();
   const lastSubmission = useActionData();
 
   const [form, { emails }] = useForm({
     id: "invite-members",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },
@@ -106,7 +126,7 @@ export default function Page() {
         <FormTitle
           LeadingIcon="invite-member"
           title="Invite team members"
-          description={`Invite a new team member to ${organization.title}.`}
+          description={`Invite new team members to ${organization.title}.`}
         />
         <Form method="post" {...form.props}>
           <Fieldset>
@@ -118,6 +138,7 @@ export default function Page() {
                     {...conform.input(email, { type: "email" })}
                     placeholder={index === 0 ? "Enter an email address" : "Add another email"}
                     icon="envelope"
+                    autoFocus={index === 0}
                     onChange={(e) => {
                       fieldValues.current[index] = e.target.value;
                       if (

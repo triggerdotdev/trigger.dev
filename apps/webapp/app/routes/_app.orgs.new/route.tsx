@@ -1,11 +1,13 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import type { ActionFunction } from "@remix-run/node";
-import { json } from "@remix-run/node";
+import { RadioGroup } from "@radix-ui/react-radio-group";
+import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
+import { json, redirect } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -14,15 +16,29 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { redirectWithSuccessMessage } from "~/models/message.server";
+import { RadioGroupItem } from "~/components/primitives/RadioButton";
+import { useFeatures } from "~/hooks/useFeatures";
 import { createOrganization } from "~/models/organization.server";
+import { NewOrganizationPresenter } from "~/presenters/NewOrganizationPresenter.server";
+import { commitCurrentProjectSession, setCurrentProjectId } from "~/services/currentProject.server";
 import { requireUserId } from "~/services/session.server";
-import { projectPath } from "~/utils/pathBuilder";
+import { projectPath, rootPath } from "~/utils/pathBuilder";
 
 const schema = z.object({
   orgName: z.string().min(3).max(50),
   projectName: z.string().min(3).max(50),
+  companySize: z.string().optional(),
 });
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const userId = await requireUserId(request);
+  const presenter = new NewOrganizationPresenter();
+  const { hasOrganizations } = await presenter.call({ userId });
+
+  return typedjson({
+    hasOrganizations,
+  });
+};
 
 export const action: ActionFunction = async ({ request }) => {
   const userId = await requireUserId(request);
@@ -39,66 +55,114 @@ export const action: ActionFunction = async ({ request }) => {
       title: submission.value.orgName,
       userId,
       projectName: submission.value.projectName,
+      companySize: submission.value.companySize ?? null,
     });
 
-    return redirectWithSuccessMessage(
-      projectPath(organization, organization.projects[0]),
-      request,
-      `${submission.value.orgName} created`
-    );
+    const project = organization.projects[0];
+    const session = await setCurrentProjectId(project.id, request);
+
+    return redirect(projectPath(organization, project), {
+      headers: {
+        "Set-Cookie": await commitCurrentProjectSession(session),
+      },
+    });
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }
 };
 
 export default function NewOrganizationPage() {
+  const { hasOrganizations } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
+  const { isManagedCloud } = useFeatures();
 
   const [form, { orgName, projectName }] = useForm({
     id: "create-organization",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },
+    shouldRevalidate: "onSubmit",
   });
 
   return (
-    <MainCenteredContainer>
-      <div>
-        <FormTitle LeadingIcon="organization" title="Create a new Organization" />
-        <Form method="post" {...form.props}>
-          <Fieldset>
-            <InputGroup>
-              <Label htmlFor={orgName.id}>Organization name</Label>
-              <Input
-                {...conform.input(orgName, { type: "text" })}
-                placeholder="Your Organization name"
-                icon="organization"
-              />
-              <Hint>E.g. your company name or your workspace name.</Hint>
-              <FormError id={orgName.errorId}>{orgName.error}</FormError>
-            </InputGroup>
-            <InputGroup>
-              <Label htmlFor={projectName.id}>Project name</Label>
-              <Input
-                {...conform.input(projectName, { type: "text" })}
-                placeholder="Your Project name"
-                icon="folder"
-              />
-              <Hint>Your Jobs will live inside this Project.</Hint>
-              <FormError id={projectName.errorId}>{projectName.error}</FormError>
-            </InputGroup>
-
-            <FormButtons
-              confirmButton={
-                <Button type="submit" variant={"primary/small"} TrailingIcon="arrow-right">
-                  Create
-                </Button>
-              }
+    <MainCenteredContainer className="max-w-[22rem]">
+      <FormTitle LeadingIcon="organization" title="Create an Organization" />
+      <Form method="post" {...form.props}>
+        <Fieldset>
+          <InputGroup>
+            <Label htmlFor={orgName.id}>Organization name</Label>
+            <Input
+              {...conform.input(orgName, { type: "text" })}
+              placeholder="Your Organization name"
+              icon="organization"
             />
-          </Fieldset>
-        </Form>
-      </div>
+            <Hint>E.g. your company name or your workspace name.</Hint>
+            <FormError id={orgName.errorId}>{orgName.error}</FormError>
+          </InputGroup>
+          <InputGroup>
+            <Label htmlFor={projectName.id}>Project name</Label>
+            <Input
+              {...conform.input(projectName, { type: "text" })}
+              placeholder="Your Project name"
+              icon="folder"
+            />
+            <Hint>Your Jobs will live inside this Project.</Hint>
+            <FormError id={projectName.errorId}>{projectName.error}</FormError>
+          </InputGroup>
+          {isManagedCloud && (
+            <InputGroup>
+              <Label htmlFor={projectName.id}>Number of employees</Label>
+              <RadioGroup name="companySize" className="flex items-center justify-between gap-2">
+                <RadioGroupItem
+                  id="employees-1-5"
+                  label="1-5"
+                  value={"1-5"}
+                  variant="button/small"
+                  className="grow"
+                />
+                <RadioGroupItem
+                  id="employees-6-49"
+                  label="6-49"
+                  value={"6-49"}
+                  variant="button/small"
+                  className="grow"
+                />
+                <RadioGroupItem
+                  id="employees-50-99"
+                  label="50-99"
+                  value={"50-99"}
+                  variant="button/small"
+                  className="grow"
+                />
+                <RadioGroupItem
+                  id="employees-100+"
+                  label="100+"
+                  value={"100+"}
+                  variant="button/small"
+                  className="grow"
+                />
+              </RadioGroup>
+            </InputGroup>
+          )}
+
+          <FormButtons
+            confirmButton={
+              <Button type="submit" variant={"primary/small"} TrailingIcon="arrow-right">
+                Create
+              </Button>
+            }
+            cancelButton={
+              hasOrganizations ? (
+                <LinkButton to={rootPath()} variant={"secondary/small"}>
+                  Cancel
+                </LinkButton>
+              ) : null
+            }
+          />
+        </Fieldset>
+      </Form>
     </MainCenteredContainer>
   );
 }

@@ -4,9 +4,9 @@ on:
   push:
     branches:
       - main
-      - improvements/*
     tags:
       - "v.docker.*"
+      - "build-*"
     paths:
       - ".github/workflows/publish.yml"
       - "packages/**"
@@ -38,190 +38,18 @@ env:
 
 jobs:
   typecheck:
-    name: ʦ TypeScript
-    runs-on: buildjet-4vcpu-ubuntu-2204
-    steps:
-      - name: ⬇️ Checkout repo
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+    uses: ./.github/workflows/typecheck.yml
+    secrets: inherit
 
-      - name: ⎔ Setup pnpm
-        uses: pnpm/action-setup@v2.2.4
-        with:
-          version: 7.18
-
-      - name: ⎔ Setup node
-        uses: buildjet/setup-node@v3
-        with:
-          node-version: 18
-          cache: "pnpm"
-
-      - name: 📥 Download deps
-        run: pnpm install --frozen-lockfile
-
-      - name: 📀 Generate Prisma Client
-        run: pnpm run generate
-
-      - name: 🔎 Type check
-        run: pnpm run typecheck --filter webapp
-
-  unitTests:
-    name: Unit Tests
-    runs-on: buildjet-4vcpu-ubuntu-2204
-    steps:
-      - name: ⬇️ Checkout repo
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: ⎔ Setup pnpm
-        uses: pnpm/action-setup@v2.2.4
-        with:
-          version: 7.18
-
-      - name: ⎔ Setup node
-        uses: buildjet/setup-node@v3
-        with:
-          node-version: 18
-          cache: "pnpm"
-
-      - name: 📥 Download deps
-        run: pnpm install --frozen-lockfile
-
-      - name: Run Unit Tests
-        run: |
-          pnpm run test
+  units:
+    uses: ./.github/workflows/unit-tests.yml
+    secrets: inherit
 
   e2e:
-    name: e2e Tests
-    runs-on: buildjet-4vcpu-ubuntu-2204
-    steps:
-      - name: 🐳 Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: ⬇️ Checkout repo
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: ⎔ Setup pnpm
-        uses: pnpm/action-setup@v2.2.4
-        with:
-          version: 7.18
-
-      - name: ⎔ Setup node
-        uses: buildjet/setup-node@v3
-        with:
-          node-version: 18
-          cache: "pnpm"
-
-      - name: 📥 Download deps
-        run: pnpm install --frozen-lockfile
-
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
-
-      - name: Run Playwright tests
-        run: |
-          # Setup environment variables
-          cp ./.env.example ./.env
-          cp ./references/nextjs-test/.env.example ./references/nextjs-test/.env.local
-
-          # Build packages
-          pnpm run build --filter @references/nextjs-test^...
-          pnpm --filter @trigger.dev/database generate
-
-          # Move trigger-cli bin to correct place
-          pnpm install --frozen-lockfile
-
-          # Execute tests
-          pnpm run docker
-          pnpm run db:migrate
-          pnpm run db:seed
-          pnpm run test:e2e
-
-          # Cleanup
-          pnpm run docker:stop
-
-      - name: Upload Playwright report
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 30
+    uses: ./.github/workflows/e2e.yml
+    secrets: inherit
 
   publish:
-    needs: [typecheck, unitTests, e2e]
-    runs-on: buildjet-4vcpu-ubuntu-2204
-    outputs:
-      version: ${{ steps.get_version.outputs.version }}
-      short_sha: ${{ steps.get_commit.outputs.sha_short }}
-    steps:
-      - name: 🐳 Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: ⬇️ Checkout repo
-        uses: actions/checkout@v3
-
-      - name: 🆚 Get the version
-        id: get_version
-        run: |
-          IMAGE_TAG="${GITHUB_REF#refs/tags/}"
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
-            if [[ $IMAGE_TAG == v.docker.* ]]; then
-              ORIGINAL_VERSION="${IMAGE_TAG#v.docker.}"
-              IMAGE_TAG="v${ORIGINAL_VERSION}"
-            fi
-            echo "IMAGE_TAG=${IMAGE_TAG}"
-          elif [[ $GITHUB_REF == refs/heads/improvements/* ]]; then
-            ORIGINAL_VERSION="${GITHUB_REF#refs/heads/improvements/}"
-            IMAGE_TAG="${ORIGINAL_VERSION}.rc"
-            echo "IMAGE_TAG=${IMAGE_TAG}"
-          elif [[ $GITHUB_REF == refs/heads/* ]]; then
-            IMAGE_TAG="${GITHUB_REF#refs/heads/}"
-            echo "IMAGE_TAG=${IMAGE_TAG}"
-          else
-            echo "Invalid reference: ${GITHUB_REF}"
-            exit 1
-          fi
-          echo "::set-output name=version::${IMAGE_TAG}"
-      - name: 🔢 Get the commit hash
-        id: get_commit
-        run: |
-          echo ::set-output name=sha_short::$(echo ${{ github.sha }} | cut -c1-7)
-
-      - name: 🐳 Build Docker Image
-        run: |
-          docker build -t release_build_image -f ./docker/Dockerfile .
-
-      - name: 🐙 Login to GitHub Container Registry
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 🐙 Push to GitHub Container Registry
-        run: |
-          docker tag release_build_image $REGISTRY/$REPOSITORY:$IMAGE_TAG
-          docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
-        env:
-          REGISTRY: ghcr.io/triggerdotdev
-          REPOSITORY: trigger.dev
-          IMAGE_TAG: ${{ steps.get_version.outputs.version }}
-
-      - name: 🐙 Push 'latest' to GitHub Container Registry
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          docker tag release_build_image $REGISTRY/$REPOSITORY:latest
-          docker push $REGISTRY/$REPOSITORY:latest
-        env:
-          REGISTRY: ghcr.io/triggerdotdev
-          REPOSITORY: trigger.dev
+    needs: [typecheck, units, e2e]
+    uses: ./.github/workflows/publish-docker.yml
+    secrets: inherit

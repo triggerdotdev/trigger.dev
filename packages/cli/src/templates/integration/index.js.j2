@@ -1,0 +1,245 @@
+import {
+  TriggerIntegration,
+  RunTaskOptions,
+  IO,
+  IOTask,
+  IntegrationTaskKey,
+  RunTaskErrorCallback,
+  Json,
+  retry,
+  ConnectionAuth,
+  Prettify,
+} from "@trigger.dev/sdk";
+import {{ identifier | capitalize }}Client from "{{ sdkPackage }}";
+
+import * as events from "./events";
+import { {{ identifier | capitalize }}ReturnType, Serialized{{ identifier | capitalize }}Output } from "./types";
+import { TriggerParams, Webhooks, createTrigger, createWebhookEventSource } from "./webhooks";
+import { Models } from "./models";
+
+export type {{ identifier | capitalize }}IntegrationOptions = {
+  id: string;
+  {{ apiKeyPropertyName }}?: string;
+};
+
+export type {{ identifier | capitalize }}RunTask = InstanceType<typeof {{ identifier | capitalize }}>["runTask"];
+
+export class {{ identifier | capitalize }}{{ " " }} implements TriggerIntegration {
+  private _options: {{ identifier | capitalize }}IntegrationOptions;
+  private _client?: any;
+  private _io?: IO;
+  private _connectionKey?: string;
+
+  constructor(private options: {{ identifier | capitalize }}IntegrationOptions) {
+    if (Object.keys(options).includes("{{ apiKeyPropertyName }}") && !options.{{ apiKeyPropertyName }}) {
+      {# FIXME: For some reason the spaces after the variables vanish #}
+      throw `Can't create {{ identifier | capitalize }} integration (${options.id}) as {{ apiKeyPropertyName }} was undefined`;
+    }
+
+    this._options = options;
+  }
+
+  get authSource() {
+    {% case authMethod %}
+    {% when "api-key" %}
+      return "LOCAL" as const;
+    {% when "oauth" %}
+      return "HOSTED" as const;
+    {% when "both-methods" %}
+      return this._options.{{ apiKeyPropertyName }} ? "LOCAL" : "HOSTED";
+    {% endcase %}
+  }
+
+  get id() {
+    return this.options.id;
+  }
+
+  get metadata() {
+    return { id: "{{ identifier }}", name: "{{ identifier | capitalize }}" };
+  }
+
+  get source() {
+    return createWebhookEventSource(this);
+  }
+
+  cloneForRun(io: IO, connectionKey: string, auth?: ConnectionAuth) {
+    const {{ identifier }} = new {{ identifier | capitalize }}(this._options);
+    {{ identifier }}._io = io;
+    {{ identifier }}._connectionKey = connectionKey;
+    {{ identifier }}._client = this.createClient(auth);
+    return {{ identifier }};
+  }
+
+  createClient(auth?: ConnectionAuth) {
+    // oauth
+    if (auth) {
+      return new {{ identifier | capitalize }}Client({
+        auth: auth.accessToken,
+      });
+    }
+
+    // apiKey auth
+    if (this._options.{{ apiKeyPropertyName }}) {
+      return new {{ identifier | capitalize }}Client({
+        apiKey: this._options.{{ apiKeyPropertyName }},
+      });
+    }
+
+    throw new Error("No auth");
+  }
+
+  runTask<T, TResult extends Json<T> | void>(
+    key: IntegrationTaskKey,
+    callback: (client: {{ identifier | capitalize }}Client, task: IOTask, io: IO) => Promise<TResult>,
+    options?: RunTaskOptions,
+    errorCallback?: RunTaskErrorCallback
+  ): Promise<TResult> {
+    if (!this._io) throw new Error("No IO");
+    if (!this._connectionKey) throw new Error("No connection key");
+
+    return this._io.runTask<TResult>(
+      key,
+      (task, io) => {
+        if (!this._client) throw new Error("No client");
+        return callback(this._client, task, io);
+      },
+      {
+        icon: "{{ identifier }}",
+        retry: retry.standardBackoff,
+        ...(options ?? {}),
+        connectionKey: this._connectionKey,
+      },
+      errorCallback ?? onError
+    );
+  }
+
+  // top-level task
+
+  request<T = any>(
+    key: IntegrationTaskKey,
+    params: {
+      route: string | URL;
+      options: Parameters<{{ identifier | capitalize }}Client["request"]>[1];
+    }
+  ): {{ identifier | capitalize }}ReturnType<T> {
+    return this.runTask(
+      key,
+      async (client) => {
+        const response = await client.request(params.route, params.options);
+
+        return response.json();
+      },
+      {
+        name: "Send Request",
+        params,
+        properties: [
+          { label: "Route", text: params.route.toString() },
+          ...(params.options.method ? [{ label: "Method", text: params.options.method }] : []),
+        ],
+        callback: { enabled: true },
+      }
+    );
+  }
+
+  // nested tasks
+
+  get models() {
+    return new Models(this.runTask.bind(this));
+  }
+
+  // events
+
+  onComment(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onComment, params);
+  }
+
+  onCommentCreated(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onCommentCreated, params);
+  }
+
+  onCommentRemoved(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onCommentRemoved, params);
+  }
+
+  onCommentUpdated(params: TriggerParams = {}) {
+    return createTrigger(this.source, events.onCommentUpdated, params);
+  }
+
+  // triggers (webhooks)
+
+  // private, just here to keep webhook logic in a separate file
+  get #webhooks() {
+    return new Webhooks(this.runTask.bind(this));
+  }
+
+  webhook = this.#webhooks.webhook;
+  webhooks = this.#webhooks.webhooks;
+
+  createWebhook = this.#webhooks.createWebhook;
+  deleteWebhook = this.#webhooks.deleteWebhook;
+  updateWebhook = this.#webhooks.updateWebhook;
+}
+
+class {{ identifier | capitalize }}ApiError extends Error {
+  constructor(
+    message: string,
+    readonly request: Request,
+    readonly response: Response
+  ) {
+    super(message);
+    this.name = "{{ identifier | capitalize }}ApiError";
+  }
+}
+
+function is{{ identifier | capitalize }}ApiError(error: unknown): error is {{ identifier | capitalize }}ApiError {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  const apiError = error as {{ identifier | capitalize }}ApiError;
+
+  return (
+    apiError.name === "{{ identifier | capitalize }}ApiError" &&
+    apiError.request instanceof Request &&
+    apiError.response instanceof Response
+  );
+}
+
+function shouldRetry(method: string, status: number) {
+  return status === 429 || (method === "GET" && status >= 500);
+}
+
+export function onError(error: unknown): ReturnType<RunTaskErrorCallback> {
+  if (!is{{ identifier | capitalize }}ApiError(error)) {
+    return;
+  }
+
+  if (!shouldRetry(error.request.method, error.response.status)) {
+    return {
+      skipRetrying: true,
+    };
+  }
+
+  const rateLimitRemaining = error.response.headers.get("ratelimit-remaining");
+  const rateLimitReset = error.response.headers.get("ratelimit-reset");
+
+  if (rateLimitRemaining === "0" && rateLimitReset) {
+    const resetDate = new Date(Number(rateLimitReset) * 1000);
+
+    if (!Number.isNaN(resetDate.getTime())) {
+      return {
+        retryAt: resetDate,
+        error,
+      };
+    }
+  }
+}
+
+export const serialize{{ identifier | capitalize }}Output = <T>(obj: T): Prettify<Serialized{{ identifier | capitalize }}Output<T>> => {
+  return JSON.parse(JSON.stringify(obj), (key, value) => {
+    if (typeof value === "function" || key.startsWith("_")) {
+      return undefined;
+    }
+    return value;
+  });
+};

@@ -1,0 +1,118 @@
+import { EventSpecification } from "@trigger.dev/sdk";
+import { CommentEvent, IssueEvent } from "./schemas";
+import { Get{{ identifier | capitalize }}Payload } from "./types";
+import {
+  commentCreated,
+  commentRemoved,
+  commentUpdated,
+  issueCreated,
+  issueRemoved,
+  issueUpdated,
+} from "./payload-examples";
+import { onCommentProperties, onIssueProperties, updatedFromProperties } from "./utils";
+
+export const onComment: EventSpecification<Get{{ identifier | capitalize }}Payload<CommentEvent>> = {
+  name: "Comment",
+  title: "On Comment",
+  source: "{{ identifier }}.com",
+  icon: "{{ identifier }}",
+  examples: [commentCreated, commentRemoved, commentUpdated],
+  parsePayload: (payload) => payload as Get{{ identifier | capitalize }}Payload<CommentEvent>,
+  runProperties: (payload) => [
+    { label: "Event action", text: payload.action },
+    ...onCommentProperties(payload),
+    ...updatedFromProperties(payload),
+  ],
+};
+
+export const onCommentCreated: EventSpecification<Get{{ identifier | capitalize }}Payload<CommentEvent, "create">> = {
+  name: "Comment",
+  title: "On Comment Created",
+  source: "{{ identifier }}.com",
+  icon: "{{ identifier }}",
+  filter: {
+    action: ["create"],
+  },
+  examples: [commentCreated],
+  parsePayload: (payload) => payload as Get{{ identifier | capitalize }}Payload<CommentEvent, "create">,
+  runProperties: (payload) => onCommentProperties(payload),
+};
+
+export const onCommentRemoved: EventSpecification<Get{{ identifier | capitalize }}Payload<CommentEvent, "remove">> = {
+  name: "Comment",
+  title: "On Comment Removed",
+  source: "{{ identifier }}.com",
+  icon: "{{ identifier }}",
+  filter: {
+    action: ["remove"],
+  },
+  examples: [commentRemoved],
+  parsePayload: (payload) => payload as Get{{ identifier | capitalize }}Payload<CommentEvent, "remove">,
+  runProperties: (payload) => onCommentProperties(payload),
+};
+
+export const onCommentUpdated: EventSpecification<Get{{ identifier | capitalize }}Payload<CommentEvent, "update">> = {
+  name: "Comment",
+  title: "On Comment Updated",
+  source: "{{ identifier }}.com",
+  icon: "{{ identifier }}",
+  filter: {
+    action: ["update"],
+  },
+  examples: [commentUpdated],
+  parsePayload: (payload) => payload as Get{{ identifier | capitalize }}Payload<CommentEvent, "update">,
+  runProperties: (payload) => [...onCommentProperties(payload), ...updatedFromProperties(payload)],
+};
+
+export const onIssue: EventSpecification<Get{{ identifier | capitalize }}Payload<IssueEvent>> = {
+  name: "Issue",
+  title: "On Issue",
+  source: "{{ identifier }}.com",
+  icon: "{{ identifier }}",
+  examples: [issueCreated, issueRemoved, issueUpdated],
+  parsePayload: (payload) => payload as Get{{ identifier | capitalize }}Payload<IssueEvent>,
+  runProperties: (payload) => [
+    { label: "Event action", text: payload.action },
+    ...onIssueProperties(payload),
+    ...updatedFromProperties(payload),
+  ],
+};
+
+export const onIssueCreated: EventSpecification<Get{{ identifier | capitalize }}Payload<IssueEvent, "create">> = {
+  name: "Issue",
+  title: "On Issue Created",
+  source: "{{ identifier }}.com",
+  icon: "{{ identifier }}",
+  filter: {
+    action: ["create"],
+  },
+  examples: [issueCreated],
+  parsePayload: (payload) => payload as Get{{ identifier | capitalize }}Payload<IssueEvent, "create">,
+  runProperties: (payload) => onIssueProperties(payload),
+};
+
+export const onIssueRemoved: EventSpecification<Get{{ identifier | capitalize }}Payload<IssueEvent, "remove">> = {
+  name: "Issue",
+  title: "On Issue Removed",
+  source: "{{ identifier }}.com",
+  icon: "{{ identifier }}",
+  filter: {
+    action: ["remove"],
+  },
+  examples: [issueRemoved],
+  parsePayload: (payload) => payload as Get{{ identifier | capitalize }}Payload<IssueEvent, "remove">,
+  runProperties: (payload) => onIssueProperties(payload),
+};
+
+export const onIssueUpdated: EventSpecification<Get{{ identifier | capitalize }}Payload<IssueEvent, "update">> = {
+  name: "Issue",
+  title: "On Issue Updated",
+  source: "{{ identifier }}.com",
+  icon: "{{ identifier }}",
+  filter: {
+    action: ["update"],
+  },
+  examples: [issueUpdated],
+  parsePayload: (payload) => payload as Get{{ identifier | capitalize }}Payload<IssueEvent, "update">,
+  runProperties: (payload) => [...onIssueProperties(payload), ...updatedFromProperties(payload)],
+};

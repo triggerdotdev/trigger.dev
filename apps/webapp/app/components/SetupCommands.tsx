@@ -53,13 +53,25 @@ export function RunDevCommand({ extra }: { extra?: string }) {
         <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
       </ClientTabsList>
       <ClientTabsContent value={"npm"}>
-        <ClipboardField variant="primary/medium" className="mb-4" value={`npm run dev${extra}`} />
+        <ClipboardField
+          variant="primary/medium"
+          className="mb-4"
+          value={`npm run dev${extra ? ` ${extra}` : ""}`}
+        />
       </ClientTabsContent>
       <ClientTabsContent value={"pnpm"}>
-        <ClipboardField variant="primary/medium" className="mb-4" value={`pnpm run dev${extra}`} />
+        <ClipboardField
+          variant="primary/medium"
+          className="mb-4"
+          value={`pnpm run dev${extra ? ` ${extra}` : ""}`}
+        />
       </ClientTabsContent>
       <ClientTabsContent value={"yarn"}>
-        <ClipboardField variant="primary/medium" className="mb-4" value={`yarn run dev${extra}`} />
+        <ClipboardField
+          variant="primary/medium"
+          className="mb-4"
+          value={`yarn run dev${extra ? ` ${extra}` : ""}`}
+        />
       </ClientTabsContent>
     </ClientTabs>
   );
@@ -77,21 +89,21 @@ export function TriggerDevCommand({ extra }: { extra?: string }) {
         <ClipboardField
           variant="primary/medium"
           className="mb-4"
-          value={`npx @trigger.dev/cli@latest dev${extra}`}
+          value={`npx @trigger.dev/cli@latest dev${extra ? ` ${extra}` : ""}`}
         />
       </ClientTabsContent>
       <ClientTabsContent value={"pnpm"}>
         <ClipboardField
           variant="primary/medium"
           className="mb-4"
-          value={`pnpm dlx @trigger.dev/cli@latest dev${extra}`}
+          value={`pnpm dlx @trigger.dev/cli@latest dev${extra ? ` ${extra}` : ""}`}
         />
       </ClientTabsContent>
       <ClientTabsContent value={"yarn"}>
         <ClipboardField
           variant="primary/medium"
           className="mb-4"
-          value={`yarn dlx @trigger.dev/cli@latest dev${extra}`}
+          value={`yarn dlx @trigger.dev/cli@latest dev${extra ? ` ${extra}` : ""}`}
         />
       </ClientTabsContent>
     </ClientTabs>

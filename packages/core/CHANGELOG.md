@@ -1,5 +1,58 @@
 # internal-platform
 
+## 2.2.7
+
+### Patch Changes
+
+- 756024da: Add support for listening to run notifications
+
+## 2.2.6
+
+### Patch Changes
+
+- cb1825bf: OpenAI support for 4.16.0
+- cb1825bf: Add support for background polling and use that in OpenAI integration to power assistants
+- d0217344: Add `io.sendEvents()`
+
+## 2.2.5
+
+### Patch Changes
+
+- 620b8383: Added invokeTrigger(), which allows jobs to be manually invoked
+- 578d2e54: Fixed Buffer reference error
+
+## 2.2.4
+
+### Patch Changes
+
+- c1710ae7: Creates a new package @trigger.dev/core-backend that includes code shared between @trigger.dev/sdk and the Trigger.dev server
+
+## 2.2.3
+
+### Patch Changes
+
+- 6e1b8a11: implement functionality to cancel job runs triggered by a given eventId.
+
+## 2.2.2
+
+## 2.2.1
+
+### Patch Changes
+
+- 044d38e3: Auto-yield run execution to help prevent duplicate task executions
+- abc9737a: Updated icon documentation in runTasks
+
+## 2.2.0
+
+### Minor Changes
+
+- 975c5f1d: Drop support for Node v16, require Node >= 18. This allows us to use native fetch in our SDK which paves the way for multi-platform support.
+
+### Patch Changes
+
+- 50e3d9e4: When indexing user's jobs errors are now stored and displayed
+- 59a94c71: Allow task property values to be blank, but strip them out before persisting them
+
 ## 2.1.9
 
 ### Patch Changes

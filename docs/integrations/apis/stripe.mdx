@@ -39,6 +39,8 @@ const stripe = new Stripe({
 
 The Stripe integration exposes a number of triggers that can be used on a job, powered by Stripe webhooks.
 
+We recommend testing Stripe payloads using [Stripe Shell](https://stripe.com/docs/stripe-cli?shell=true), Stripe's browser-based shell with the Stripe CLI pre-installed.
+
 ```ts
 client.defineJob({
   id: "stripe-price",

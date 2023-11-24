@@ -1,10 +1,23 @@
 ---
-title: SendGrid
+title: SendGrid overview & authentication
+sidebarTitle: Overview & authentication
 ---
 
-<Snippet file="integration-getting-started.mdx" />
+## Overview
 
-## Installation
+SendGrid is a cloud-based SMTP provider that allows you to send email without having to maintain email servers. With our SendGrid integration you can send email campaigns, transactional emails, and automated emails (drip campaigns) from your app.
+
+<Card
+  title="Jobs Showcase - SendGrid"
+  icon="rocket"
+  href="https://trigger.dev/showcase?tags=&apis=sendgrid"
+>
+  Check out pre-built SendGrid jobs in our showcase.
+</Card>
+
+## Installing the SendGrid packages
+
+To get started with our SendGrid integration, you need to install the `@trigger.dev/sendgrid` packages. You can do this using `npm`, `pnpm`, or `yarn`:
 
 <CodeGroup>
 
@@ -24,7 +37,7 @@ yarn add @trigger.dev/sendgrid@latest
 
 ## Authentication
 
-SendGrid integration supports API Keys. To authenticate, you'll need to create an instance of the SendGrid class and provide your API key.
+SendGrid supports API Keys. Official documentation [here](https://docs.sendgrid.com/ui/account-and-settings/api-keys).
 
 ```ts
 import { SendGrid } from "@trigger.dev/sendgrid";
@@ -32,53 +45,15 @@ import { SendGrid } from "@trigger.dev/sendgrid";
 const sendgrid = new SendGrid({
   id: "sendgrid",
   apiKey: process.env.SENDGRID_API_KEY!,
-});
-```
-
-## Example
-
-In this example we use [Zod](/documentation/guides/zod), a TypeScript-first schema declaration and validation library.
-
-```ts
-import { SendGrid } from "@trigger.dev/sendgrid";
-import { Job, eventTrigger } from "@trigger.dev/sdk";
-import { z } from "zod";
-
-// Create an instance of SendGrid
-const sendgrid = new SendGrid({
-  id: "sendgrid",
-  apiKey: process.env.SENDGRID_API_KEY!,
-});
-
-// Define a Trigger.dev job
-client.defineJob({
-  id: "send-sendgrid-email",
-  name: "Send SendGrid Email",
-  version: "0.1.0",
-  trigger: eventTrigger({
-    name: "send.email",
-    schema: z.object({
-      to: z.string(),
-      subject: z.string(),
-      text: z.string(),
-    }),
-  }),
-  integrations: {
-    sendgrid,
-  },
-  run: async (payload, io, ctx) => {
-    await io.sendgrid.sendEmail({
-      to: payload.to,
-      from: "Trigger.dev <hello@email.trigger.dev>",
-      subject: payload.subject,
-      text: payload.text,
-    });
-  },
 });
 ```
 
 ## Tasks
 
-| Function Name | Description   |
-| ------------- | ------------- |
-| `sendEmail`   | Send an email |
+Once you have set up a SendGrid client, you can use it to create tasks.
+
+{" "}
+
+<Card title="Tasks" icon="sparkles" href="/integrations/apis/sendgrid-tasks">
+  Send emails with SendGrid.
+</Card>

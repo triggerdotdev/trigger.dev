@@ -6,7 +6,8 @@
     "emitDecoratorMetadata": true,
     "declaration": false,
     "declarationMap": false,
-    "types": ["jest"]
+    "types": ["jest"],
+    "lib": ["DOM", "DOM.Iterable"]
   },
   "exclude": ["node_modules"]
 }

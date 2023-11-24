@@ -4,16 +4,11 @@ on:
   push:
     branches:
       - main
-    paths:
-      - ".github/workflows/release.yml"
-      - "packages/**"
-      - "!packages/**/*.md"
-      - ".changeset/**"
-      - "integrations/**"
-      - "!integrations/**/*.md"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "turbo.json"
+    paths-ignore:
+      - "**.md"
+      - ".github/CODEOWNERS"
+      - ".github/ISSUE_TEMPLATE/**"
+    
 
 jobs:
   release:

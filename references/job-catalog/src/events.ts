@@ -19,11 +19,15 @@ client.defineJob({
     name: "event.example",
   }),
   run: async (payload, io, ctx) => {
-    await io.runTask("task-example-1", async () => {
-      return {
-        message: "Hello World",
-      };
-    });
+    await io.runTask(
+      "task-example-1",
+      async () => {
+        return {
+          message: "Hello World",
+        };
+      },
+      { icon: "360" }
+    );
 
     await io.wait("wait-1", 1);
 
@@ -39,7 +43,7 @@ client.defineJob({
     name: "cancel.event.example",
   }),
   run: async (payload, io, ctx) => {
-    await io.sendEvent(
+    const event = await io.sendEvent(
       "send-event",
       { name: "Cancellable Event", id: payload.id, payload: { payload, ctx } },
       {
@@ -47,13 +51,13 @@ client.defineJob({
       }
     );
 
-    await io.getEvent("get-event", payload.id);
+    await io.getEvent("get-event", event.id);
 
     await io.wait("wait-1", 60); // 1 minute
 
-    await io.cancelEvent("cancel-event", payload.id);
+    await io.cancelEvent("cancel-event", event.id);
 
-    await io.getEvent("get-event-2", payload.id);
+    await io.getEvent("get-event-2", event.id);
   },
 });
 
@@ -70,6 +74,82 @@ client.defineJob({
   }),
   run: async (payload, io, ctx) => {
     await io.logger.info("Hello World", { ctx, payload });
+  },
+});
+
+client.defineJob({
+  id: "no-real-task",
+  name: "No real Task",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "no.real.task",
+    schema: z.object({
+      userId: z.string(),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Hello World", { ctx, payload });
+    await io.wait("Wait 1 sec", 1);
+    //this is a real task
+    // await io.runTask("task-example-1", async () => {
+    //   return {
+    //     message: "Hello World",
+    //   };
+    // });
+  },
+});
+
+client.defineJob({
+  id: "cancel-runs-example",
+  name: "Cancel Runs Example",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "cancel.runs.example",
+  }),
+  run: async (payload, io, ctx) => {
+    const event = await io.sendEvent("send-event", {
+      name: "foo.bar",
+      id: payload.id,
+      payload: { payload, ctx },
+    });
+
+    await io.wait("wait-1", 1); // 1 second
+
+    await io.runTask("cancel-runs", async () => {
+      return await client.cancelRunsForEvent(event.id);
+    });
+  },
+});
+
+client.defineJob({
+  id: "foo-bar-example",
+  name: "Foo Bar Example",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "foo.bar",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Hello World", { ctx, payload });
+
+    await io.wait("wait-1", 10); // 10 seconds
+
+    await io.logger.info("Hello World 2", { ctx, payload });
+  },
+});
+
+client.defineJob({
+  id: "foo-bar-example-2",
+  name: "Foo Bar Example 2",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "foo.bar",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Hello World", { ctx, payload });
+
+    await io.wait("wait-1", 10); // 10 seconds
+
+    await io.logger.info("Hello World 2", { ctx, payload });
   },
 });
 

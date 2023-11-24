@@ -1,10 +1,9 @@
 import { ArrowUpIcon } from "@heroicons/react/24/solid";
-import { LoaderArgs } from "@remix-run/server-runtime";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { FrameworkSelector } from "~/components/frameworks/FrameworkSelector";
 import { JobsTable } from "~/components/jobs/JobsTable";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
@@ -19,6 +18,7 @@ import {
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Switch } from "~/components/primitives/Switch";
 import { TextLink } from "~/components/primitives/TextLink";
 import { useFilterJobs } from "~/hooks/useFilterJobs";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -26,20 +26,15 @@ import { useProject } from "~/hooks/useProject";
 import { JobListPresenter } from "~/presenters/JobListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { Handle } from "~/utils/handle";
-import {
-  ProjectParamSchema,
-  projectIntegrationsPath,
-  trimTrailingSlash,
-} from "~/utils/pathBuilder";
+import { ProjectParamSchema, organizationIntegrationsPath } from "~/utils/pathBuilder";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { projectParam } = ProjectParamSchema.parse(params);
+  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
 
   try {
     const presenter = new JobListPresenter();
-    const jobs = await presenter.call({ userId, projectSlug: projectParam });
+    const jobs = await presenter.call({ userId, organizationSlug, projectSlug: projectParam });
 
     return typedjson({
       jobs,
@@ -53,17 +48,15 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   }
 };
 
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Jobs" />,
-  expandSidebar: true,
-};
-
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const { jobs } = useTypedLoaderData<typeof loader>();
-  const { filterText, setFilterText, filteredItems } = useFilterJobs(jobs);
-  const hasJobs = jobs.length > 0;
+  const { filterText, setFilterText, filteredItems, onlyActiveJobs, setOnlyActiveJobs } =
+    useFilterJobs(jobs);
+  const totalJobs = jobs.length;
+  const hasJobs = totalJobs > 0;
+  const activeJobCount = jobs.filter((j) => j.status === "ACTIVE").length;
 
   return (
     <PageContainer className={hasJobs ? "" : "grid-rows-1"}>
@@ -74,7 +67,8 @@ export default function Page() {
           </PageTitleRow>
           <PageInfoRow>
             <PageInfoGroup>
-              <PageInfoProperty icon={"job"} label={"Active Jobs"} value={jobs.length} />
+              <PageInfoProperty icon={"job"} label={"Total"} value={totalJobs} />
+              <PageInfoProperty icon={"job"} label={"Active"} value={activeJobCount} />
             </PageInfoGroup>
           </PageInfoRow>
         </PageHeader>
@@ -89,14 +83,14 @@ export default function Page() {
                     {jobs.some((j) => j.hasIntegrationsRequiringAction) && (
                       <Callout
                         variant="error"
-                        to={projectIntegrationsPath(organization, project)}
+                        to={organizationIntegrationsPath(organization)}
                         className="mb-2"
                       >
                         Some of your Jobs have Integrations that have not been configured.
                       </Callout>
                     )}
                     <div className="mb-2 flex flex-col">
-                      <div className="flex w-full">
+                      <div className="flex w-full gap-x-2">
                         <Input
                           placeholder="Search Jobs"
                           variant="tertiary"
@@ -105,6 +99,13 @@ export default function Page() {
                           value={filterText}
                           onChange={(e) => setFilterText(e.target.value)}
                           autoFocus
+                        />
+                        <Switch
+                          variant="small"
+                          label="Active Jobs"
+                          checked={onlyActiveJobs}
+                          onCheckedChange={setOnlyActiveJobs}
+                          className={"shrink-0"}
                         />
                         <HelpTrigger title="Example Jobs and inspiration" />
                       </div>
@@ -188,7 +189,7 @@ function ExampleJobs() {
           <a
             href={example.codeLink}
             key={example.title}
-            className="flex w-full items-center rounded border-b border-uiBorder py-2 transition hover:border-transparent hover:bg-slate-800"
+            className="flex w-full items-center rounded border-b border-ui-border py-2 transition hover:border-transparent hover:bg-slate-800"
           >
             {example.icon}
             <Paragraph variant="small">

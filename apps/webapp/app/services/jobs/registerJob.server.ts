@@ -3,6 +3,7 @@ import {
   JobMetadata,
   SCHEDULED_EVENT,
   TriggerMetadata,
+  assertExhaustive,
 } from "@trigger.dev/core";
 import type { Endpoint, Integration, Job, JobIntegration, JobVersion } from "@trigger.dev/database";
 import { DEFAULT_MAX_CONCURRENT_RUNS } from "~/consts";
@@ -222,7 +223,7 @@ export class RegisterJobService {
           },
           update: {
             name: example.name,
-            icon: example.icon,
+            icon: example.icon ?? null,
             payload: example.payload,
           },
         });
@@ -346,13 +347,15 @@ export class RegisterJobService {
           },
         });
 
-        if (trigger.properties) {
+        if (trigger.properties || trigger.link || trigger.help) {
           await this.#prismaClient.jobVersion.update({
             where: {
               id: jobVersion.id,
             },
             data: {
               properties: trigger.properties,
+              triggerLink: trigger.link,
+              triggerHelp: trigger.help,
             },
           });
         }
@@ -635,8 +638,4 @@ export class RegisterJobService {
       },
     });
   }
-}
-
-function assertExhaustive(x: never): never {
-  throw new Error("Unexpected object: " + x);
 }

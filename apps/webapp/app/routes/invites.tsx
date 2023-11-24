@@ -1,12 +1,11 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ActionFunction, LoaderArgs, json, redirect } from "@remix-run/node";
+import { ActionFunction, LoaderFunctionArgs, json, redirect } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import simplur from "simplur";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
-import { NavBar } from "~/components/navigation/NavBar";
 import { Button } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormTitle } from "~/components/primitives/FormTitle";
@@ -16,15 +15,15 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { acceptInvite, declineInvite, getUsersInvites } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser, requireUserId } from "~/services/session.server";
-import { invitesPath, organizationsPath } from "~/utils/pathBuilder";
+import { invitesPath, rootPath } from "~/utils/pathBuilder";
 
-export const loader = async ({ request }: LoaderArgs) => {
+export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
 
   //if there are no invites left we should redirect to the orgs page
   const invites = await getUsersInvites({ email: user.email });
   if (invites.length === 0) {
-    throw redirect(organizationsPath());
+    throw redirect(rootPath());
   }
 
   return typedjson({ invites });
@@ -52,11 +51,7 @@ export const action: ActionFunction = async ({ request }) => {
       });
 
       if (remainingInvites.length === 0) {
-        return redirectWithSuccessMessage(
-          organizationsPath(),
-          request,
-          `You joined ${organization.title}`
-        );
+        return redirectWithSuccessMessage(rootPath(), request, `You joined ${organization.title}`);
       } else {
         return redirectWithSuccessMessage(
           invitesPath(),
@@ -71,7 +66,7 @@ export const action: ActionFunction = async ({ request }) => {
       });
       if (remainingInvites.length === 0) {
         return redirectWithSuccessMessage(
-          organizationsPath(),
+          rootPath(),
           request,
           `You declined the invite for ${organization.title}`
         );
@@ -94,7 +89,8 @@ export default function Page() {
 
   const [form, { inviteId }] = useForm({
     id: "accept-invite",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },
@@ -102,14 +98,12 @@ export default function Page() {
 
   return (
     <AppContainer showBackgroundGradient={true}>
-      <NavBar />
       <MainCenteredContainer>
         <div>
           <FormTitle
             LeadingIcon="envelope"
             className="mb-0 text-sky-500"
             title={simplur`You have ${invites.length} new invitation[|s]`}
-            // description={simplur`You've been invited to join ${invites.length} team[|s].`}
           />
           {invites.map((invite) => (
             <Form key={invite.id} method="post" {...form.props}>

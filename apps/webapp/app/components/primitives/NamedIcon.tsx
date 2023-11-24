@@ -59,15 +59,19 @@ import {
 import { CompanyIcon, hasIcon } from "@trigger.dev/companyicons";
 import { ActivityIcon, HourglassIcon } from "lucide-react";
 import { DynamicTriggerIcon } from "~/assets/icons/DynamicTriggerIcon";
+import { EndpointIcon } from "~/assets/icons/EndpointIcon";
 import { ErrorIcon } from "~/assets/icons/ErrorIcon";
+import { OneTreeIcon } from "~/assets/icons/OneTreeIcon";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { SaplingIcon } from "~/assets/icons/SaplingIcon";
 import { ScheduleIcon } from "~/assets/icons/ScheduleIcon";
+import { TwoTreesIcon } from "~/assets/icons/TwoTreesIcon";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { cn } from "~/utils/cn";
+import { tablerIcons } from "~/utils/tablerIcons";
 import { LogoIcon } from "../LogoIcon";
 import { Spinner } from "./Spinner";
-import { SaplingIcon } from "~/assets/icons/SaplingIcon";
-import { TwoTreesIcon } from "~/assets/icons/TwoTreesIcon";
-import { OneTreeIcon } from "~/assets/icons/OneTreeIcon";
+import tablerSpritePath from "./tabler-sprite.svg";
 
 const icons = {
   account: (className: string) => <UserCircleIcon className={cn("text-slate-400", className)} />,
@@ -125,7 +129,9 @@ const icons = {
   "invite-member": (className: string) => (
     <UserPlusIcon className={cn("text-indigo-500", className)} />
   ),
-  job: (className: string) => <WrenchScrewdriverIcon className={cn("text-teal-500", className)} />,
+  job: (className: string) => (
+    <WrenchScrewdriverIcon className={cn("text-indigo-500", className)} />
+  ),
   key: (className: string) => <KeyIcon className={cn("text-amber-400", className)} />,
   lightbulb: (className: string) => <LightBulbIcon className={cn("text-amber-400", className)} />,
   "clipboard-checked": (className: string) => (
@@ -181,6 +187,11 @@ const icons = {
     <ScheduleIcon className={cn("text-sky-500", className)} />
   ),
   webhook: (className: string) => <WebhookIcon className={cn("text-pink-500", className)} />,
+  endpoint: (className: string) => <EndpointIcon className={cn("text-blue-500", className)} />,
+  "http-endpoint": (className: string) => (
+    <GlobeAltIcon className={cn("text-blue-500", className)} />
+  ),
+  runs: (className: string) => <RunsIcon className={cn("text-lime-500", className)} />,
 };
 
 export type IconNames = keyof typeof icons;
@@ -215,7 +226,15 @@ export function NamedIcon({
     );
   }
 
-  console.log(`Icon ${name} not found`);
+  if (tablerIcons.has("tabler-" + name)) {
+    return <TablerIcon name={"tabler-" + name} className={className} />;
+  } else if (name.startsWith("tabler-") && tablerIcons.has(name)) {
+    return <TablerIcon name={name} className={className} />;
+  }
+
+  if (name === "supabase-management") {
+    return <NamedIcon name="supabase" className={className} />;
+  }
 
   if (fallback) {
     return fallback;
@@ -245,5 +264,13 @@ export function NamedIconInBox({
     >
       <NamedIcon name={name} fallback={fallback} className={cn("h-6 w-6", iconClassName)} />
     </div>
+  );
+}
+
+export function TablerIcon({ name, className }: { name: string; className?: string }) {
+  return (
+    <svg className={cn("stroke-[1.5]", className)}>
+      <use xlinkHref={`${tablerSpritePath}#${name}`} />
+    </svg>
   );
 }

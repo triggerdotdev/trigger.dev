@@ -1,6 +1,7 @@
 {
   "$schema": "https://mintlify.com/schema.json",
   "name": "Trigger.dev",
+  "openapi": ["/openapi.yml"],
   "logo": {
     "dark": "/logo/dark.png",
     "light": "/logo/light.png",
@@ -58,6 +59,14 @@
     {
       "source": "/documentation/guides/manual",
       "destination": "/documentation/guides/manual/nextjs"
+    },
+    {
+      "source": "/documentation/concepts/limitations",
+      "destination": "/documentation/concepts/limits"
+    },
+    {
+      "source": "/documentation/guides/create-a-job",
+      "destination": "/documentation/guides/writing-jobs-step-by-step"
     }
   ],
   "navigation": [
@@ -76,6 +85,7 @@
                 "documentation/quickstarts/express",
                 "documentation/quickstarts/remix",
                 "documentation/quickstarts/redwood",
+                "documentation/quickstarts/nestjs",
                 "documentation/quickstarts/astro",
                 "documentation/quickstarts/nuxt",
                 "documentation/quickstarts/sveltekit",
@@ -85,7 +95,8 @@
             "documentation/quickstarts/supabase"
           ]
         },
-        "documentation/guides/create-a-job",
+        "documentation/guides/writing-jobs-step-by-step",
+        "documentation/guides/task-library",
         "documentation/guides/video-walkthrough"
       ]
     },
@@ -93,7 +104,7 @@
       "group": "Concepts",
       "pages": [
         "documentation/concepts/what-is-triggerdotdev",
-        "documentation/concepts/limitations",
+        "documentation/concepts/limits",
         "documentation/concepts/projects",
         "documentation/concepts/client-adaptors",
         {
@@ -108,12 +119,15 @@
           "group": "Triggers",
           "pages": [
             "documentation/concepts/triggers/introduction",
-            "documentation/concepts/triggers/webhooks",
+            "documentation/concepts/triggers/invoke",
             "documentation/concepts/triggers/events",
             "documentation/concepts/triggers/scheduled",
+            "documentation/concepts/triggers/http",
+            "documentation/concepts/triggers/webhooks",
             "documentation/concepts/triggers/dynamic"
           ]
         },
+        "documentation/concepts/http-endpoints",
         "documentation/concepts/resumability",
         "documentation/concepts/delays",
         "documentation/concepts/integrations",
@@ -197,6 +211,7 @@
             "documentation/guides/self-hosting",
             "documentation/guides/self-hosting/flyio",
             "documentation/guides/self-hosting/render",
+            "documentation/guides/self-hosting/kubernetes",
             "documentation/guides/self-hosting/supabase",
             "documentation/guides/tunneling-platform"
           ]
@@ -236,7 +251,10 @@
     {
       "group": "Integrations",
       "pages": [
-        "integrations/apis/airtable",
+        {
+          "group": "Airtable",
+          "pages": ["integrations/apis/airtable", "integrations/apis/airtable-tasks"]
+        },
         {
           "group": "GitHub",
           "pages": [
@@ -246,12 +264,44 @@
           ]
         },
         "integrations/apis/linear",
-        "integrations/apis/openai",
-        "integrations/apis/plain",
+        {
+          "group": "OpenAI",
+          "pages": [
+            "integrations/apis/openai",
+            "integrations/apis/openai/chat",
+            "integrations/apis/openai/assistants",
+            "integrations/apis/openai/files",
+            "integrations/apis/openai/images",
+            "integrations/apis/openai/fine-tunes",
+            "integrations/apis/openai/models",
+            "integrations/apis/openai/completions"
+          ]
+        },
+        {
+          "group": "Plain",
+          "pages": ["integrations/apis/plain", "integrations/apis/plain-tasks"]
+        },
         "integrations/apis/replicate",
-        "integrations/apis/resend",
-        "integrations/apis/sendgrid",
-        "integrations/apis/slack",
+        {
+          "group": "SendGrid",
+          "pages": ["integrations/apis/sendgrid", "integrations/apis/sendgrid-tasks"]
+        },
+        {
+          "group": "Resend",
+          "pages": ["integrations/apis/resend", "integrations/apis/resend-tasks"]
+        },
+        {
+          "group": "Shopify",
+          "pages": [
+            "integrations/apis/shopify",
+            "integrations/apis/shopify-triggers",
+            "integrations/apis/shopify-tasks"
+          ]
+        },
+        {
+          "group": "Slack",
+          "pages": ["integrations/apis/slack", "integrations/apis/slack-tasks"]
+        },
         "integrations/apis/stripe",
         {
           "group": "Supabase",
@@ -277,14 +327,19 @@
               "group": "Instance methods",
               "pages": [
                 "sdk/triggerclient/instancemethods/sendevent",
+                "sdk/triggerclient/instancemethods/sendevents",
                 "sdk/triggerclient/instancemethods/getevent",
                 "sdk/triggerclient/instancemethods/cancel-event",
+                "sdk/triggerclient/instancemethods/cancel-runs-for-event",
+                "sdk/triggerclient/store",
                 "sdk/triggerclient/instancemethods/getruns",
                 "sdk/triggerclient/instancemethods/getrun",
                 "sdk/triggerclient/instancemethods/define-job",
+                "sdk/triggerclient/instancemethods/define-http-endpoint",
                 "sdk/triggerclient/instancemethods/define-dynamic-trigger",
                 "sdk/triggerclient/instancemethods/define-dynamic-schedule",
-                "sdk/triggerclient/instancemethods/define-auth-resolver"
+                "sdk/triggerclient/instancemethods/define-auth-resolver",
+                "sdk/triggerclient/instancemethods/on"
               ]
             }
           ]
@@ -294,12 +349,18 @@
           "group": "IO",
           "pages": [
             "sdk/io/overview",
-            "sdk/io/logger",
-            "sdk/io/wait",
-            "sdk/io/sendevent",
             "sdk/io/runtask",
-            "sdk/io/try",
+            "sdk/io/sendevent",
+            "sdk/io/sendevents",
+            "sdk/io/store",
+            "sdk/io/wait",
+            "sdk/io/wait-for-event",
+            "sdk/io/wait-for-request",
             "sdk/io/backgroundfetch",
+            "sdk/io/background-poll",
+            "sdk/io/random",
+            "sdk/io/logger",
+            "sdk/io/try",
             "sdk/io/registerinterval",
             "sdk/io/unregisterinterval",
             "sdk/io/registercron",
@@ -308,9 +369,13 @@
           ]
         },
         "sdk/context",
+        "sdk/run-notification",
+        "sdk/invoke-trigger",
         "sdk/eventtrigger",
         "sdk/crontrigger",
         "sdk/intervaltrigger",
+        "sdk/http-endpoint",
+        "sdk/http-trigger",
         {
           "group": "DynamicTrigger",
           "pages": [
@@ -318,10 +383,7 @@
             "sdk/dynamictrigger/constructor",
             {
               "group": "Instance methods",
-              "pages": [
-                "sdk/dynamictrigger/register",
-                "sdk/dynamictrigger/unregister"
-              ]
+              "pages": ["sdk/dynamictrigger/register", "sdk/dynamictrigger/unregister"]
             }
           ]
         },
@@ -332,17 +394,19 @@
             "sdk/dynamicschedule/constructor",
             {
               "group": "Instance methods",
-              "pages": [
-                "sdk/dynamicschedule/register",
-                "sdk/dynamicschedule/unregister"
-              ]
+              "pages": ["sdk/dynamicschedule/register", "sdk/dynamicschedule/unregister"]
             }
           ]
         },
         "sdk/connection-auth",
         "sdk/istriggererror",
-        "sdk/redactstring"
+        "sdk/redactstring",
+        "sdk/verify-request-signature"
       ]
+    },
+    {
+      "group": "HTTP Reference",
+      "pages": ["sdk/api-reference/events/create-an-event"]
     },
     {
       "group": "React SDK",
@@ -356,9 +420,7 @@
     },
     {
       "group": "Overview",
-      "pages": [
-        "examples/introduction"
-      ]
+      "pages": ["examples/introduction"]
     }
   ],
   "footerSocials": {

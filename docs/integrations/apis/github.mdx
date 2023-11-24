@@ -1,11 +1,23 @@
 ---
-title: "GitHub: Introduction"
-sidebarTitle: "Introduction"
+title: GitHub overview & authentication
+sidebarTitle: Overview & authentication
 ---
 
-<Snippet file="integration-getting-started.mdx" />
+## Overview
 
-## Installation
+Our GitHub integration allows you to create triggers and tasks that interact with GitHub. Trigger jobs when events happen, like when a new issue is added to a repo, or when a pull request is opened, etc. You can also perform tasks like creating issues, getting information about a repo, adding comments, and much more.
+
+<Card
+  title="Jobs Showcase - GitHub"
+  icon="rocket"
+  href="https://trigger.dev/showcase?tags=&apis=github"
+>
+  Check out pre-built GitHub jobs in our showcase.
+</Card>
+
+## Installing the GitHub packages
+
+To get started with our GitHub integration, you need to install the `@trigger.dev/github` packages. You can do this using `npm`, `pnpm`, or `yarn`:
 
 <CodeGroup>
 
@@ -25,24 +37,40 @@ yarn add @trigger.dev/github@latest
 
 ## Authentication
 
-GitHub supports Personal Access Tokens and OAuth.
+GitHub supports Personal Access Tokens and OAuth. You can use either of these to authenticate with GitHub.
 
-```ts
-import { Github } from "@trigger.dev/github";
+### Personal Access Token
+
+To create a personal access token on GitHub, login and [follow the instructions](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token). Information on the required scopes can be found [here](https://docs.github.com/en/developers/apps/scopes-for-oauth-apps).
+
+```ts my-job.ts
+import { GitHub } from "@trigger.dev/github";
 
 //create GitHub client using a token
-const github = new Github({
+const github = new GitHub({
   id: "github",
   token: process.env.GITHUB_TOKEN!,
 });
+...
+```
+
+### OAuth
+
+To use OAuth you can connect to GitHub via the Trigger.dev [web app](https://cloud.trigger.dev). Click 'Integrations' in the side panel of any project, and configure GitHub with the ID you want to use in your job and the required [scopes](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps).
+
+```ts my-job.ts
+import { GitHub } from "@trigger.dev/github";
 
 //create GitHub client using OAuth
-const github2 = new Github({
-  id: "github2",
+const github = new GitHub({
+  id: "github",
 });
+...
 ```
 
 ## Triggers and Tasks
+
+Once you have set up a GitHub client, you can use it to create triggers and tasks.
 
 <CardGroup cols={2}>
   <Card title="Triggers" icon="stars" href="/integrations/apis/github-triggers">
@@ -52,51 +80,3 @@ const github2 = new Github({
     Perform tasks such as creating a new issue or a new comment.
   </Card>
 </CardGroup>
-
-## Using the underlying client
-
-You can use the underlying client to do anything Octokit supports. In this example we create a project card when a new issue is opened..
-
-<Info>
-  View [the official GitHub docs](https://docs.github.com/en/rest) for everything that is
-  supported{" "}
-</Info>
-
-```ts
-import { Github, events } from "@trigger.dev/github";
-
-const github = new Github({
-  id: "github",
-  token: process.env.GITHUB_TOKEN!,
-});
-
-client.defineJob({
-  id: "alert-on-new-github-issues",
-  name: "Alert on new GitHub issues",
-  version: "0.1.1",
-  trigger: github.triggers.repo({
-    event: events.onIssueOpened,
-    owner: "triggerdotdev",
-    repo: "trigger.dev",
-  }),
-  integrations: {
-    github,
-  },
-  run: async (payload, io, ctx) => {
-    //io.github.runTask allows you to use the underlying SDK client
-    const { data } = await io.github.runTask(
-      "create-card",
-      async (client) => {
-        return client.rest.projects.createCard({
-          column_id: 123,
-          note: "test",
-        });
-      },
-      { name: "Create card" }
-    );
-
-    //log the url of the created card
-    await io.logger.info(data.url);
-  },
-});
-```

@@ -1,0 +1,36 @@
+<ResponseField name="filter" type="RequestFilter" >
+  Only Requests that match this filter will cause the corresponding function to run. For example, you can use this to only allow `GET` Requests.
+
+  <Expandable title="options">
+    <ResponseField name="method" type="array">
+      An array of HTTP methods to match. For example, `["GET", "POST"]` will match both `GET` and `POST` Requests.
+    </ResponseField>
+    <ResponseField name="query" type="object">
+      An object of query parameters to match. This uses the [EventFilter matching syntax](/documentation/guides/event-filter).
+
+      ```ts
+      filter: {
+        query: {
+          "hub.mode": [{ $startsWith: "sub" }],
+        },
+      },
+      ```
+    </ResponseField>
+    <ResponseField name="headers" type="object">
+      An object of header key/values to match. This uses the [EventFilter matching syntax](/documentation/guides/event-filter).
+
+      ```ts
+      filter: {
+        header: {
+          "content-type": ["application/json"],
+        },
+      },
+      ```
+    </ResponseField>
+    <ResponseField name="body" type="object">
+      An object of key/values to match. This uses the [EventFilter matching syntax](/documentation/guides/event-filter).
+    </ResponseField>
+
+  </Expandable>
+
+</ResponseField>

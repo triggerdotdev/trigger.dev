@@ -36,7 +36,7 @@ export class NextScheduledEventService {
 
       const scheduleTime = calculateNextScheduledEvent(
         schedule.data,
-        scheduleSource.lastEventTimestamp
+        scheduleSource.lastEventTimestamp ?? scheduleSource.createdAt
       );
 
       logger.debug("enqueuing scheduled event", {
@@ -67,6 +67,7 @@ export class NextScheduledEventService {
         },
         data: {
           workerJobId: workerJob.id,
+          nextEventTimestamp: scheduleTime,
         },
       });
 

@@ -1,4 +1,4 @@
-import type { DeliverEmail } from "emails";
+import type { DeliverEmail, SendPlainTextOptions } from "emails";
 import { EmailClient } from "emails";
 import type { SendEmailOptions } from "remix-auth-email-link";
 import { redirect } from "remix-typedjson";
@@ -6,13 +6,19 @@ import { env } from "~/env.server";
 import type { User } from "~/models/user.server";
 import type { AuthUser } from "./authUser";
 import { workerQueue } from "./worker.server";
+import { logger } from "./logger.server";
+import { singleton } from "~/utils/singleton";
 
-const client = new EmailClient({
-  apikey: env.RESEND_API_KEY,
-  imagesBaseUrl: env.APP_ORIGIN,
-  from: env.FROM_EMAIL ?? "team@email.trigger.dev",
-  replyTo: env.REPLY_TO_EMAIL ?? "help@email.trigger.dev",
-});
+const client = singleton(
+  "email-client",
+  () =>
+    new EmailClient({
+      apikey: env.RESEND_API_KEY,
+      imagesBaseUrl: env.APP_ORIGIN,
+      from: env.FROM_EMAIL ?? "team@email.trigger.dev",
+      replyTo: env.REPLY_TO_EMAIL ?? "help@email.trigger.dev",
+    })
+);
 
 export async function sendMagicLinkEmail(options: SendEmailOptions<AuthUser>): Promise<void> {
   // Auto redirect when in development mode
@@ -20,11 +26,22 @@ export async function sendMagicLinkEmail(options: SendEmailOptions<AuthUser>): P
     throw redirect(options.magicLink);
   }
 
-  return client.send({
-    email: "magic_link",
-    to: options.emailAddress,
-    magicLink: options.magicLink,
-  });
+  logger.debug("Sending magic link email", { emailAddress: options.emailAddress });
+
+  try {
+    return await client.send({
+      email: "magic_link",
+      to: options.emailAddress,
+      magicLink: options.magicLink,
+    });
+  } catch (error) {
+    logger.error("Error sending magic link email", { error: JSON.stringify(error) });
+    throw error;
+  }
+}
+
+export async function sendPlainTextEmail(options: SendPlainTextOptions) {
+  return client.sendPlainText(options);
 }
 
 export async function scheduleWelcomeEmail(user: User) {

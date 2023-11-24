@@ -28,11 +28,26 @@ export const DynamicTriggerMetadataSchema = z.object({
   id: z.string(),
 });
 
+export const TriggerHelpSchema = z.object({
+  noRuns: z
+    .object({
+      text: z.string(),
+      link: z.string().optional(),
+    })
+    .optional(),
+});
+
 export const StaticTriggerMetadataSchema = z.object({
   type: z.literal("static"),
   title: z.union([z.string(), z.array(z.string())]),
   properties: z.array(DisplayPropertySchema).optional(),
   rule: EventRuleSchema,
+  link: z.string().optional(),
+  help: TriggerHelpSchema.optional(),
+});
+
+export const InvokeTriggerMetadataSchema = z.object({
+  type: z.literal("invoke"),
 });
 
 export const ScheduledTriggerMetadataSchema = z.object({
@@ -44,6 +59,7 @@ export const TriggerMetadataSchema = z.discriminatedUnion("type", [
   DynamicTriggerMetadataSchema,
   StaticTriggerMetadataSchema,
   ScheduledTriggerMetadataSchema,
+  InvokeTriggerMetadataSchema,
 ]);
 
 export type TriggerMetadata = z.infer<typeof TriggerMetadataSchema>;

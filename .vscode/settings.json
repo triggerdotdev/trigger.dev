@@ -1,0 +1,4 @@
+{
+  "deno.enablePaths": ["references/deno-reference"],
+  "debug.toolBarLocation": "commandCenter"
+}

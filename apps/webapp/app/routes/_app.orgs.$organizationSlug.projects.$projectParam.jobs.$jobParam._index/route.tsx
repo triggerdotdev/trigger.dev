@@ -1,27 +1,24 @@
 import { useNavigation } from "@remix-run/react";
-import { LoaderArgs } from "@remix-run/server-runtime";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import simplur from "simplur";
 import { z } from "zod";
 import { HowToRunYourJob } from "~/components/helpContent/HelpContentText";
+import { Callout } from "~/components/primitives/Callout";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { RunsTable } from "~/components/runs/RunsTable";
+import { useJob } from "~/hooks/useJob";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 import { RunListPresenter } from "~/presenters/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { Handle } from "~/utils/handle";
 import {
   JobParamsSchema,
-  projectIntegrationsPath,
   jobRunsParentPath,
-  trimTrailingSlash,
+  organizationIntegrationsPath,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "./ListPagination";
-import { Callout } from "~/components/primitives/Callout";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
-import { useJob } from "~/hooks/useJob";
-import simplur from "simplur";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
 
 export const DirectionSchema = z.union([z.literal("forward"), z.literal("backward")]);
 
@@ -30,7 +27,7 @@ export const RunListSearchSchema = z.object({
   direction: DirectionSchema.optional(),
 });
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { jobParam, projectParam, organizationSlug } = JobParamsSchema.parse(params);
 
@@ -53,10 +50,6 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   });
 };
 
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Runs" />,
-};
-
 export default function Page() {
   const { list } = useTypedLoaderData<typeof loader>();
   const navigation = useNavigation();
@@ -68,11 +61,7 @@ export default function Page() {
   return (
     <>
       {job.hasIntegrationsRequiringAction && (
-        <Callout
-          variant="error"
-          to={projectIntegrationsPath(organization, project)}
-          className="mb-2"
-        >
+        <Callout variant="error" to={organizationIntegrationsPath(organization)} className="mb-2">
           {simplur`This Job has ${
             job.integrations.filter((j) => j.setupStatus === "MISSING_FIELDS").length
           } Integration[|s] that [has|have] not been configured.`}

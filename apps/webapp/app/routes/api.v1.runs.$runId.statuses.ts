@@ -1,4 +1,4 @@
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { JobRunStatusRecordSchema } from "@trigger.dev/core";
 import { z } from "zod";
@@ -13,7 +13,7 @@ const ParamsSchema = z.object({
 
 const RecordsSchema = z.array(JobRunStatusRecordSchema);
 
-export async function loader({ request, params }: LoaderArgs) {
+export async function loader({ request, params }: LoaderFunctionArgs) {
   if (request.method.toUpperCase() === "OPTIONS") {
     return apiCors(request, json({}));
   }

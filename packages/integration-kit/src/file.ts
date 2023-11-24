@@ -1,7 +1,6 @@
 import fs, { promises } from "fs";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
-import fetch from "node-fetch";
 
 export async function fileFromString(contents: string | Buffer, fileName: string): Promise<File> {
   const directory = path.join("tmp", uuidv4());
@@ -13,7 +12,8 @@ export async function fileFromString(contents: string | Buffer, fileName: string
 
 export async function fileFromUrl(url: string) {
   const response = await fetch(url);
-  const content = await response.buffer();
+  const arrayBuffer = await response.arrayBuffer();
+  const content = Buffer.from(arrayBuffer);
   const fileName = path.basename(url);
 
   return fileFromString(content, fileName);

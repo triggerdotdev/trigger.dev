@@ -4,8 +4,7 @@ import { StepNumber } from "~/components/primitives/StepNumber";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { IntegrationIcon } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.integrations/route";
-import { jobTestPath } from "~/utils/pathBuilder";
+import { docsPath, jobTestPath } from "~/utils/pathBuilder";
 import { CodeBlock } from "../code/CodeBlock";
 import { InlineCode } from "../code/InlineCode";
 import { EnvironmentLabel } from "../environments/EnvironmentLabel";
@@ -21,6 +20,7 @@ import selectEnvironment from "./select-environment.png";
 import selectExample from "./select-example.png";
 import { StepContentContainer } from "../StepContentContainer";
 import { TriggerDevCommand } from "../SetupCommands";
+import { IntegrationIcon } from "~/assets/icons/IntegrationIcon";
 
 export function HowToRunYourJob() {
   const organization = useOrganization();
@@ -290,6 +290,143 @@ export function HowToUseApiKeysAndEndpoints() {
       </Paragraph>
       <Callout variant="docs" to="https://trigger.dev/docs/documentation/guides/deployment">
         Read the deployment guide to learn more.
+      </Callout>
+    </>
+  );
+}
+
+export function WhatAreHttpEndpoints() {
+  return (
+    <>
+      <Paragraph spacing>
+        HTTP endpoints allow you to trigger your Jobs from any webhooks. They require a bit more
+        work than using <TextLink to={docsPath("integrations/introduction")}>Integrations</TextLink>{" "}
+        but allow you to connect to any API.
+      </Paragraph>
+      <Header2 spacing>Getting started</Header2>
+      <Paragraph spacing>
+        You need to define the HTTP endpoint in your code. To do this you use{" "}
+        <InlineCode>client.defineHttpEndpoint()</InlineCode>. This will create an HTTP endpoint.
+      </Paragraph>
+      <Paragraph spacing>
+        Then you can create a Trigger from this by calling <InlineCode>.onRequest()</InlineCode> on
+        the created HTTP endpoint.
+      </Paragraph>
+      <Callout variant="docs" to={docsPath("documentation/concepts/http-endpoints")}>
+        Read the HTTP endpoints guide to learn more.
+      </Callout>
+      <Header2 spacing className="mt-4">
+        An example: cal.com
+      </Header2>
+      <CodeBlock
+        code={`//create an HTTP endpoint
+const caldotcom = client.defineHttpEndpoint({
+  id: "cal.com",
+  source: "cal.com",
+  icon: "caldotcom",
+  verify: async (request) => {
+    //this helper function makes verifying most webhooks easy
+    return await verifyRequestSignature({
+      request,
+      headerName: "X-Cal-Signature-256",
+      secret: process.env.CALDOTCOM_SECRET!,
+      algorithm: "sha256",
+    });
+  },
+});
+
+client.defineJob({
+  id: "http-caldotcom",
+  name: "HTTP Cal.com",
+  version: "1.0.0",
+  enabled: true,
+  //create a Trigger from the HTTP endpoint above. The filter is optional.
+  trigger: caldotcom.onRequest({ filter: { body: { triggerEvent: ["BOOKING_CANCELLED"] } } }),
+  run: async (request, io, ctx) => {
+    //note that when using HTTP endpoints, the first parameter is the request
+    //you need to get the body, usually it will be json so you do:
+    const body = await request.json();
+    await io.logger.info("Body", body);
+  },
+});`}
+      />
+    </>
+  );
+}
+
+export function HowToConnectHttpEndpoint() {
+  return (
+    <>
+      <Header2 spacing>Setting up your webhook</Header2>
+      <Paragraph spacing>
+        To start receiving data you need to enter the Endpoint URL and secret into the API service
+        you want to receive webhooks from.
+      </Paragraph>
+
+      <StepNumber stepNumber="1" title={<>Go to the relevant API dashboard</>} />
+      <StepContentContainer>
+        <Paragraph spacing>
+          For example, if you want to receive webhooks from Cal.com then you should login to your
+          Cal.com account and go to their Settings/Developer/Webhooks page.
+        </Paragraph>
+      </StepContentContainer>
+
+      <StepNumber stepNumber="2" title={<>Copy the Webhook URL and Secret</>} />
+      <StepContentContainer>
+        <Paragraph spacing>
+          A unique Webhook URL is created for each environment (Dev, Staging, and Prod). Jobs will
+          only be triggered from the relevant environment.
+        </Paragraph>
+        <Paragraph spacing>
+          Copy the relevant Endpoint URL and secret from the table opposite and paste it into the
+          correct place in the API dashboard you located in the previous step.
+        </Paragraph>
+      </StepContentContainer>
+
+      <StepNumber stepNumber="3" title={<>Add the Secret to your Environment variables</>} />
+      <StepContentContainer>
+        <Paragraph spacing>
+          You should also add the Secret to the Environment variables in your code and where you're
+          deploying. Usually in Node this means adding it to the .env file.
+        </Paragraph>
+        <Paragraph spacing>
+          Use the secret in the <InlineCode>verify()</InlineCode> function of HTTP Endpoint. This
+          ensures that someone can't just send a request to your Endpoint and trigger a Job.
+          Different APIs do this verification in different ways – a common way is to have a header
+          that has a hash of the payload and secret. Refer to the API's documentation for more
+          information.
+        </Paragraph>
+      </StepContentContainer>
+
+      <Header2 spacing>Triggering runs</Header2>
+      <StepNumber stepNumber="1" title="Ensure you're using the HTTP Endpoint in your code" />
+      <StepContentContainer>
+        <Paragraph spacing>
+          In your code, you should use the <InlineCode>.onRequest()</InlineCode> function in a Job
+          Trigger. You can filter so only data that matches your criteria triggers the Job.
+        </Paragraph>
+      </StepContentContainer>
+      <StepNumber stepNumber="2" title="Make sure your code is deployed (for Staging and Prod)" />
+      <StepContentContainer>
+        <Paragraph spacing>
+          If you're using the Staging or Prod environment, you need to make sure your code is
+          deployed. Deploy like you normally would –{" "}
+          <TextLink to={docsPath("documentation/guides/deployment")}>
+            read our deployment guide
+          </TextLink>
+          .
+        </Paragraph>
+      </StepContentContainer>
+      <StepNumber stepNumber="3" title="Perform an action that sends a webhook" />
+      <StepContentContainer>
+        <Paragraph spacing>
+          Now you need to actually perform an action on that third-party service that triggers the
+          webhook you've subscribed to. For example, add a new meeting using Cal.com.
+        </Paragraph>
+      </StepContentContainer>
+
+      <Callout variant="docs" to={docsPath("documentation/concepts/http-endpoints")}>
+        Read the HTTP endpoints guide to learn more.
       </Callout>
     </>
   );
