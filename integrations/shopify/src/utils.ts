@@ -1,9 +1,8 @@
 import { Base } from "@shopify/shopify-api/rest/base";
-import { RecursiveShopifySerializer } from "./types";
-import { WebhookTopic } from "./schemas";
-import { DisplayProperty, EventSpecificationExample } from "@trigger.dev/sdk";
-import { EventSpecification } from "@trigger.dev/sdk";
+import { DisplayProperty, EventSpecification, EventSpecificationExample } from "@trigger.dev/sdk";
 import { titleCase } from "@trigger.dev/integration-kit";
+import { WebhookTopic } from "./schemas";
+import { RecursiveShopifySerializer } from "./types";
 
 export const basicProperties = (payload: Record<string, any>) => {
   return payload.id ? [{ label: "ID", text: String(payload.id) }] : [];

@@ -1,3 +1,6 @@
+import { PageInfo, Session } from "@shopify/shopify-api";
+import { OmitIndexSignature, Optional, SomeNonNullable } from "@trigger.dev/integration-kit";
+import { z } from "zod";
 import { ShopifyRestResources, ShopifyRunTask } from "./index";
 import { basicProperties, serializeShopifyResource } from "./utils";
 import {
@@ -5,9 +8,6 @@ import {
   ResourcesWithStandardMethods,
   ShopifyInputType,
 } from "./types";
-import { PageInfo, Session } from "@shopify/shopify-api";
-import { OmitIndexSignature, Optional, SomeNonNullable } from "@trigger.dev/integration-kit/types";
-import { z } from "zod";
 
 type AllReturnType<TResource extends ShopifyRestResources[ResourcesWithStandardMethods]> = Promise<{
   data: RecursiveShopifySerializer<Awaited<ReturnType<TResource["all"]>>["data"]>;

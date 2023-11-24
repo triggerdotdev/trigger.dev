@@ -1,4 +1,5 @@
-import { IntegrationTaskKey, verifyRequestSignature } from "@trigger.dev/sdk";
+import { IntegrationTaskKey, verifyRequestSignature, WebhookSource } from "@trigger.dev/sdk";
+import { registerJobNamespace } from "@trigger.dev/integration-kit";
 import { z } from "zod";
 import { Shopify, ShopifyRunTask } from "./index";
 import {
@@ -8,8 +9,6 @@ import {
   WebhookTopic,
   WebhookTopicSchema,
 } from "./schemas";
-import { WebhookSource } from "@trigger.dev/sdk/triggers/webhook";
-import { registerJobNamespace } from "@trigger.dev/integration-kit/webhooks";
 
 export class Webhooks {
   constructor(private runTask: ShopifyRunTask) {}
