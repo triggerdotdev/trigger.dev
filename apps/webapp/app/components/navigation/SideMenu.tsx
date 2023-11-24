@@ -222,7 +222,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               </Button>
             }
           />
-          <FreePlanUsage to={organizationBillingPath(organization)} />
+          <FreePlanUsage to={organizationBillingPath(organization)} percentage={0.95} />
         </div>
       </div>
     </div>
@@ -441,19 +441,8 @@ function MenuCount({ count }: { count: number | string }) {
   return <div className="rounded-full bg-slate-900 px-2 py-1 text-xxs text-dimmed">{count}</div>;
 }
 
-function FreePlanUsage({ to }: { to: string }) {
-  const numberOfRuns = 2_500;
-  const maximumNumberOfRuns = 10_000;
-  let progressNumberOfRuns = (numberOfRuns / maximumNumberOfRuns) * 100;
-
-  const numberOfConcurrentRuns = 3;
-  const maxNumberOfConcurrentRuns = 5;
-  let progressNumberOfConcurrentRuns = (numberOfConcurrentRuns / maxNumberOfConcurrentRuns) * 100;
-
-  let progressAsPercent = Math.max(progressNumberOfRuns, progressNumberOfConcurrentRuns);
-  progressAsPercent = Math.min(progressAsPercent, 100);
-
-  const widthProgress = useMotionValue(progressAsPercent);
+function FreePlanUsage({ to, percentage }: { to: string; percentage: number }) {
+  const widthProgress = useMotionValue(percentage * 100);
   const color = useTransform(
     widthProgress,
     [0, 74, 75, 95, 100],
@@ -474,7 +463,7 @@ function FreePlanUsage({ to }: { to: string }) {
       <div className="relative mt-3 h-1 rounded-full bg-[#0B1018]">
         <motion.div
           initial={{ width: 0 }}
-          animate={{ width: progressAsPercent + "%" }}
+          animate={{ width: percentage * 100 + "%" }}
           style={{
             backgroundColor: color,
           }}
