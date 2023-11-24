@@ -14,17 +14,11 @@ export function PricingCalculator() {
 }
 
 const concurrentRuns = [
-  { 5: "Up to 5" },
-  { 20: "Up to 20" },
-  { 50: "Up to 50" },
-  { 100: "Up to 100" },
+  { value: 5, label: "Up to 5" },
+  { value: 20, label: "Up to 20" },
+  { value: 50, label: "Up to 50" },
+  { value: 100, label: "Up to 100" },
 ];
-
-const lastItemConcurrentRuns = concurrentRuns[concurrentRuns.length - 1];
-const maxItemsConcurrentRuns = Number(Object.keys(lastItemConcurrentRuns)[0]);
-const stepConcurrentRuns = maxItemsConcurrentRuns / concurrentRuns.length;
-
-console.log(maxItemsConcurrentRuns, stepConcurrentRuns);
 
 function ConcurrentRunsSlider() {
   return (
@@ -45,8 +39,8 @@ function ConcurrentRunsSlider() {
           <Slider.Root
             className="relative mb-2 mt-4 flex h-5 w-full touch-none select-none items-center"
             defaultValue={[0]}
-            max={maxItemsConcurrentRuns}
-            step={stepConcurrentRuns}
+            max={concurrentRuns.length - 1}
+            step={1}
           >
             <Slider.Track className="relative h-[8px] grow rounded-full bg-slate-850">
               <Slider.Range className="absolute h-full rounded-full bg-indigo-500" />
