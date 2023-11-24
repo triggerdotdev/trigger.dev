@@ -1,12 +1,10 @@
 import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { resolveSourceConnection } from "~/models/sourceConnection.server";
 import { EndpointApi } from "../endpointApi.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
 import { getSecretStore } from "../secrets/secretStore.server";
-import { resolveApiConnection, resolveRunConnection } from "~/models/runConnection.server";
-import { ConnectionAuth } from "@trigger.dev/sdk";
-import { resolveSourceConnection } from "~/models/sourceConnection.server";
 
 export class DeliverHttpSourceRequestService {
   #prismaClient: PrismaClient;

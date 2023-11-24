@@ -1,5 +1,17 @@
 import { z } from "zod";
 
+export const stringPatternMatchers = [
+  z.object({
+    $endsWith: z.string(),
+  }),
+  z.object({
+    $startsWith: z.string(),
+  }),
+  z.object({
+    $ignoreCaseEquals: z.string(),
+  }),
+] as const;
+
 const EventMatcherSchema = z.union([
   /** Match against a string */
   z.array(z.string()),
@@ -9,12 +21,7 @@ const EventMatcherSchema = z.union([
   z.array(z.boolean()),
   z.array(
     z.union([
-      z.object({
-        $endsWith: z.string(),
-      }),
-      z.object({
-        $startsWith: z.string(),
-      }),
+      ...stringPatternMatchers,
       z.object({
         $exists: z.boolean(),
       }),
@@ -44,9 +51,6 @@ const EventMatcherSchema = z.union([
       }),
       z.object({
         $includes: z.union([z.string(), z.number(), z.boolean()]),
-      }),
-      z.object({
-        $ignoreCaseEquals: z.string(),
       }),
     ])
   ),

@@ -19,7 +19,7 @@ import { Models } from "./models";
 
 export type {{ identifier | capitalize }}IntegrationOptions = {
   id: string;
-  {{ apiKeyPropertyName }}: string;
+  {{ apiKeyPropertyName }}?: string;
 };
 
 export type {{ identifier | capitalize }}RunTask = InstanceType<typeof {{ identifier | capitalize }}>["runTask"];
@@ -32,6 +32,7 @@ export class {{ identifier | capitalize }}{{ " " }} implements TriggerIntegratio
 
   constructor(private options: {{ identifier | capitalize }}IntegrationOptions) {
     if (Object.keys(options).includes("{{ apiKeyPropertyName }}") && !options.{{ apiKeyPropertyName }}) {
+      {# FIXME: For some reason the spaces after the variables vanish #}
       throw `Can't create {{ identifier | capitalize }} integration (${options.id}) as {{ apiKeyPropertyName }} was undefined`;
     }
 

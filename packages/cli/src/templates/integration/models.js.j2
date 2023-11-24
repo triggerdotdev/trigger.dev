@@ -1,12 +1,12 @@
 import { IntegrationTaskKey } from "@trigger.dev/sdk";
 import { Model, ModelVersion } from "{{ sdkPackage }}";
 
-import { {{ capitalizedIdentifier }}RunTask } from "./index";
+import { {{ identifier | capitalize }}RunTask } from "./index";
 import { modelProperties } from "./utils";
-import { {{ capitalizedIdentifier }}ReturnType } from "./types";
+import { {{ identifier | capitalize }}ReturnType } from "./types";
 
 export class Models {
-  constructor(private runTask: {{ capitalizedIdentifier }}RunTask) {}
+  constructor(private runTask: {{ identifier | capitalize }}RunTask) {}
 
   get(
     key: IntegrationTaskKey,
@@ -14,7 +14,7 @@ export class Models {
       model_owner: string;
       model_name: string;
     }
-  ): {{ capitalizedIdentifier }}ReturnType<Model> {
+  ): {{ identifier | capitalize }}ReturnType<Model> {
     return this.runTask(
       key,
       (client) => {
@@ -34,7 +34,7 @@ export class Models {
 }
 
 class Versions {
-  constructor(private runTask: {{ capitalizedIdentifier }}RunTask) {}
+  constructor(private runTask: {{ identifier | capitalize }}RunTask) {}
 
   get(
     key: IntegrationTaskKey,
@@ -43,7 +43,7 @@ class Versions {
       model_name: string;
       version_id: string;
     }
-  ): {{ capitalizedIdentifier }}ReturnType<ModelVersion> {
+  ): {{ identifier | capitalize }}ReturnType<ModelVersion> {
     return this.runTask(
       key,
       (client) => {
@@ -63,7 +63,7 @@ class Versions {
       model_owner: string;
       model_name: string;
     }
-  ): {{ capitalizedIdentifier }}ReturnType<ModelVersion[]> {
+  ): {{ identifier | capitalize }}ReturnType<ModelVersion[]> {
     return this.runTask(
       key,
       (client) => {

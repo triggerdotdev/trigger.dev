@@ -1,6 +1,5 @@
 import express, { Express } from "express";
 import { TriggerClient } from "@trigger.dev/sdk";
-import { Request as StandardRequest, Headers as StandardHeaders } from "@remix-run/web-fetch";
 
 /**
  * This is a convenience function to create an express server for the TriggerClient. If you want to use Trigger.dev with an existing express server, use `createMiddleware` instead.
@@ -92,20 +91,21 @@ export function createMiddleware(client: TriggerClient, path: string = "/api/tri
   };
 }
 
-function convertToStandardRequest(req: express.Request): StandardRequest {
+function convertToStandardRequest(req: express.Request): Request {
   const { headers: nextHeaders, method } = req;
 
-  const headers = new StandardHeaders();
+  const headers = new Headers();
 
   Object.entries(nextHeaders).forEach(([key, value]) => {
     headers.set(key, value as string);
   });
 
   // Create a new Request object (hardcode the url because it doesn't really matter what it is)
-  return new StandardRequest("https://express.js/api/trigger", {
+  return new Request("https://express.js/api/trigger", {
     headers,
     method,
     // @ts-ignore
     body: req.body ? JSON.stringify(req.body) : req,
+    duplex: "half",
   });
 }

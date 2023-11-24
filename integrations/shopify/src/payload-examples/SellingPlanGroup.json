@@ -1,0 +1,36 @@
+{
+  "admin_graphql_api_id": "gid://shopify/SellingPlanGroup/1039518989",
+  "id": 1039518989,
+  "name": "Subscribe & Save",
+  "merchant_code": "sub-n-save",
+  "admin_graphql_api_app": "gid://shopify/App/2525000003",
+  "app_id": null,
+  "description": null,
+  "options": ["Delivery every"],
+  "position": null,
+  "summary": "1 delivery frequency,  discount",
+  "selling_plans": [
+    {
+      "name": "Pay every month deliver every month",
+      "options": ["month"],
+      "position": null,
+      "description": null,
+      "billing_policy": {
+        "interval": "month",
+        "interval_count": 1,
+        "min_cycles": null,
+        "max_cycles": null
+      },
+      "delivery_policy": {
+        "interval": "month",
+        "interval_count": 1,
+        "anchors": [],
+        "cutoff": null,
+        "pre_anchor_behavior": "asap"
+      },
+      "pricing_policies": []
+    }
+  ],
+  "product_variants": [],
+  "products": []
+}

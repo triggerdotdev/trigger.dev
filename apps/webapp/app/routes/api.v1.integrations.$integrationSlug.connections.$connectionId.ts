@@ -1,4 +1,4 @@
-import { LoaderArgs, json } from "@remix-run/server-runtime";
+import { LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { resolveApiConnection } from "~/models/runConnection.server";
@@ -10,7 +10,7 @@ const ParamsSchema = z.object({
   connectionId: z.string(),
 });
 
-export async function loader({ request, params }: LoaderArgs) {
+export async function loader({ request, params }: LoaderFunctionArgs) {
   const authenticationResult = await authenticateApiRequest(request);
   if (!authenticationResult) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });

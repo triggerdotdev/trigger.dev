@@ -1,0 +1,380 @@
+---
+title: "Invoke triggers"
+sidebarTitle: "Manual Invoke"
+description: "Invoke Jobs manually using the invoke Trigger"
+---
+
+Sometimes it makes sense to be able to invoke a Job manually, without having to specify an event, especially for cases where you want to get notified when the invoked Job Run is complete.
+
+To specify that a job is manually invokable, you can use the `invokeTrigger()` function when defining a job:
+
+```ts exampleJob.ts
+import { invokeTrigger } from "@trigger.dev/sdk";
+import { client } from "@/trigger";
+
+export const exampleJob = client.defineJob({
+  id: "example-job",
+  name: "Example job",
+  version: "1.0.1",
+  trigger: invokeTrigger(),
+  run: async (payload, io, ctx) => {
+    // do something with the payload
+  },
+});
+```
+
+And then you can invoke the job using the `Job.invoke()` method:
+
+```ts example.ts
+import { exampleJob } from "./exampleJob";
+
+const jobRun = await exampleJob.invoke({ foo: "bar" });
+```
+
+## Payload Schema
+
+You can specify the type of the expected payload by passing a [Zod schema](https://zod.dev) to `invokeTrigger()`:
+
+```ts exampleJob.ts
+import { invokeTrigger } from "@trigger.dev/sdk";
+import { client } from "@/trigger";
+
+export const exampleJob = client.defineJob({
+  id: "example-job",
+  name: "Example job",
+  version: "1.0.1",
+  trigger: invokeTrigger({
+    //the expected payload shape
+    schema: z.object({
+      userId: z.string(),
+      tier: z.enum(["free", "pro"]),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    // payload is typed as { userId: string, tier: "free" | "pro" }
+  },
+});
+```
+
+Now when you invoke the job, you will get a type error if the payload does not match the schema:
+
+```ts example.ts
+import { exampleJob } from "./exampleJob";
+// this will throw a type error because the payload does not match the schema
+const jobRun = await exampleJob.invoke({ foo: "bar" });
+// this will work
+const jobRun = await exampleJob.invoke({ userId: "123", tier: "free" });
+```
+
+## Invoking a Job
+
+As you can see in the example above, invoking a job is as simple as calling the `Job.invoke()` method. This method returns a `JobRun` object that you can use to track the progress of the job run, especially in conjunction with our [React hooks](/documentation/guides/react-hooks), like [useRunDetails()](/sdk/react/userundetails)
+
+```ts
+import { exampleJob } from "./exampleJob";
+
+// Somewhere in your backend code
+const jobRun = await exampleJob.invoke({ userId: "123", tier: "free" });
+
+// Somewhere in your frontend code
+const { data: jobRunDetails } = useRunDetails(jobRun.id);
+```
+
+<Note>
+  There are many variations for how you could get the job run information passed from your backend
+  to your frontend, depending on the framework you are using and which rendering model. We'll leave
+  that as an exercise for the reader
+</Note>
+
+### Deduplicate Invocations
+
+You can pass an optional `idempotencyKey` to the `invoke()` method to deduplicate invocations. This is useful when you want to make sure that a job is only invoked once for a given payload.
+
+```ts
+import { exampleJob } from "./exampleJob";
+
+// Somewhere in your backend code
+const jobRun = await exampleJob.invoke(
+  { userId: "123", tier: "free" },
+  { idempotencyKey: "abc123" }
+);
+
+// This will not invoke the job again, but return the existing job run
+const jobRun2 = await exampleJob.invoke(
+  { userId: "123", tier: "free" },
+  { idempotencyKey: "abc123" }
+);
+```
+
+### Callback URL
+
+You can also pass an optional `callbackUrl` to the `invoke()` method to get notified when the job run is complete, either successfully or with an error.
+
+```ts
+import { exampleJob } from "./exampleJob";
+
+// Somewhere in your backend code
+const jobRun = await exampleJob.invoke(
+  { userId: "123", tier: "free" },
+  { callbackUrl: `${process.env.VERCEL_URL}/api/trigger/runs` }
+);
+```
+
+When the run is complete, we will issue a `POST` request to the URL with the [RunNotification payload](/sdk/run-notification).
+
+#### Verifying the callback
+
+You should make sure to verify the payload in your callback route to make sure that the request is coming from Trigger. You can do this by checking the `X-Trigger-Signature-256` header, which contains a HMAC signature of the payload using your [secret API Key](/documentation/concepts/environments-endpoints).
+
+```ts
+import { crypto } from "node:crypto"
+
+app.post("/api/trigger/runs", (req, res) => {
+  // Create digest with payload + hmac secret
+  const hashPayload = req.rawBody;
+  const hmac = crypto.createHmac("sha256", process.env.TRIGGER_API_KEY); /
+  const digest = Buffer.from(
+    signatureAlgorithm + "=" + hmac.update(hashPayload).digest("hex"),
+    "utf8"
+  );
+
+  // Get hash sent by the provider
+  const providerSig = Buffer.from(req.get("X-Trigger-Signature-256") || "", "utf8");
+
+  // Compare digest signature with signature sent by provider
+  if (providerSig.length !== digest.length || !crypto.timingSafeEqual(digest, providerSig)) {
+    res.status(401).send("Unauthorized");
+  } else {
+    // Webhook Authenticated
+    // process and respond...
+    res.json({ message: "Success" });
+  }
+});
+```
+
+### Additional context
+
+You can pass an optional `context` object to the `invoke()` method, which will be available in the job run context. This is useful for passing additional information to the job run that doesn't make sense in the payload.
+
+```ts
+import { exampleJob } from "./exampleJob";
+
+// Somewhere in your backend code
+const jobRun = await exampleJob.invoke(
+  { userId: "123", tier: "free" },
+  {
+    context: {
+      traceId: "trace_123",
+      correlationId: "def456",
+    },
+  }
+);
+```
+
+And then you can access the context in the job run:
+
+```ts
+export const exampleJob = client.defineJob({
+  id: "example-job",
+  name: "Example job",
+  version: "1.0.1",
+  trigger: invokeTrigger({
+    //the expected payload shape
+    schema: z.object({
+      userId: z.string(),
+      tier: z.enum(["free", "pro"]),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    console.log(ctx.event.context); // { traceId: "trace_123", correlationId: "def456" }
+  },
+});
+```
+
+## Invoking a job from a job
+
+You can also invoke a job from another job:
+
+```ts
+import { exampleJob } from "./exampleJob";
+
+client.defineJob({
+  id: "example-job2",
+  name: "Example job 2",
+  version: "1.0.1",
+  trigger: intervalTrigger({
+    seconds: 60,
+  }),
+  run: async (payload, io, ctx) => {
+    const jobRun = await exampleJob.invoke("⚡", { userId: "123", tier: "free" });
+  },
+});
+```
+
+Notice how the `invoke()` method takes a string as the first argument. This is because under the hood `invoke()` is automatically creating a [Task](/documentation/concepts/tasks) and the `"⚡"` string is the `cacheKey` for the created task. You can easily see the run created via the Run Dashboard:
+
+![Task](/images/invoke-task.png)
+
+<Warning>
+  If `Job.invoke()` is called within another job, and you **don't** include the `cacheKey` we'll
+  throw an error.
+</Warning>
+
+### Wait for completion
+
+You can also invoke a job and wait for it to complete before continuing execution of the current job:
+
+```ts
+import { exampleJob } from "./exampleJob";
+
+client.defineJob({
+  id: "example-job2",
+  name: "Example job 2",
+  version: "1.0.1",
+  trigger: intervalTrigger({
+    seconds: 60,
+  }),
+  run: async (payload, io, ctx) => {
+    const jobRun = await exampleJob.invokeAndWaitForCompletion("⚡", {
+      userId: "123",
+      tier: "free",
+    });
+
+    if (jobRun.ok) {
+      // The job run finished successfully
+      console.log(jobRun.output);
+    } else {
+      // The job run finished with an error
+      console.log(`The job failed with status ${jobRun.status}`, jobRun.error);
+    }
+  },
+});
+```
+
+By default, `invokeAndWaitForCompletion()` will wait for the job run to complete for up to 60 minutes. You can change this by passing a `timeoutInSeconds` option:
+
+```ts
+import { exampleJob } from "./exampleJob";
+
+client.defineJob({
+  id: "example-job2",
+  name: "Example job 2",
+  version: "1.0.1",
+  trigger: intervalTrigger({
+    seconds: 60,
+  }),
+  run: async (payload, io, ctx) => {
+    const jobRun = await exampleJob.invokeAndWaitForCompletion(
+      "⚡",
+      {
+        userId: "123",
+        tier: "free",
+      },
+      86_400 // 24 hours
+    );
+
+    if (jobRun.ok) {
+      // The job run finished successfully
+      console.log(jobRun.output);
+    } else {
+      // The job run finished with an error
+      console.log(`The job failed with status ${jobRun.status}`, jobRun.error);
+    }
+  },
+});
+```
+
+<Note>
+  If the invoked job run doesn't complete in the given time, the underlying task will fail, along
+  with the run
+</Note>
+
+The return value of `invokeAndWaitForCompletion` is a [RunNotification](/sdk/run-notification) object.
+
+### Batch invoke and wait for completion
+
+You can also batch invoke jobs and wait for them all to complete before continuing execution of the current job:
+
+```ts
+import { exampleJob } from "./exampleJob";
+
+client.defineJob({
+  id: "example-job2",
+  name: "Example job 2",
+  version: "1.0.1",
+  trigger: intervalTrigger({
+    seconds: 60,
+  }),
+  run: async (payload, io, ctx) => {
+    const runs = await exampleJob.batchInvokeAndWaitForCompletion("⚡", [
+      {
+        payload: {
+          userId: "123",
+          tier: "free",
+        },
+        timeoutInSeconds: 86_400, // 24 hours
+      },
+      {
+        payload: {
+          userId: "abc",
+          tier: "paid",
+        },
+        timeoutInSeconds: 86_400, // 24 hours
+      },
+    ]);
+
+    // runs is an array of RunNotification objects
+  },
+});
+```
+
+You can batch up to 25 invocations at once, and we will run them in parallel and wait for all of them to complete before continuing execution of the current job.
+
+You can in an optional `options` object to each invocation, if you want to pass `context` and `accountId` to each invocation:
+
+```ts
+import { exampleJob } from "./exampleJob";
+
+client.defineJob({
+  id: "example-job2",
+  name: "Example job 2",
+  version: "1.0.1",
+  trigger: intervalTrigger({
+    seconds: 60,
+  }),
+  run: async (payload, io, ctx) => {
+    const runs = await exampleJob.batchInvokeAndWaitForCompletion("⚡", [
+      {
+        payload: {
+          userId: "123",
+          tier: "free",
+        },
+        timeoutInSeconds: 86_400, // 24 hours
+        options: {
+          context: {
+            traceId: "trace_123",
+            correlationId: "def456",
+          },
+          accountId: "abc123",
+        },
+      },
+      {
+        payload: {
+          userId: "abc",
+          tier: "paid",
+        },
+        timeoutInSeconds: 86_400, // 24 hours
+        options: {
+          context: {
+            traceId: "trace_abc",
+            correlationId: "defabc",
+          },
+          accountId: "abc123",
+        },
+      },
+    ]);
+
+    // runs is an array of RunNotification objects
+  },
+});
+```

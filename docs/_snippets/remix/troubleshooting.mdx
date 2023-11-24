@@ -1,0 +1,46 @@
+## Troubleshooting
+
+### `'TriggerProvider' not found`
+
+When running the Remix app, you may see an error like this:
+
+```
+import { TriggerProvider } from "@trigger.dev/react";
+         ^^^^^^^^^^^^^^^
+SyntaxError: Named export 'TriggerProvider' not found. The requested module '@trigger.dev/react' is a CommonJS module, which may not support all module.exports as named exports.
+CommonJS modules can always be imported via the default export, for example using:
+
+import pkg from '@trigger.dev/react';
+const { TriggerProvider } = pkg;
+```
+
+To fix this, edit your `remix.config.js` file and add the `@trigger.dev/react` package to your list of `serverDependenciesToBundle`:
+
+```js
+export default {
+  // ... other config
+  serverDependenciesToBundle: ["@trigger.dev/react"],
+};
+```
+
+### `[ERROR] Node builtin "buffer"`
+
+When running the Remix app, you may see an error like this:
+
+```
+✘ [ERROR] Node builtin "buffer" (imported by "node_modules/@trigger.dev/core/dist/index.js") must be polyfilled for the browser.
+You can enable this polyfill in your Remix config, e.g. `browserNodeBuiltinsPolyfill: { modules: { buffer: true } }`
+[plugin browser-node-builtins-polyfill-plugin]
+```
+
+To fix this, edit your `remix.config.js` file and add the `browserNodeBuiltinsPolyfill` config:
+
+```js
+export default {
+  browserNodeBuiltinsPolyfill: {
+    modules: {
+      buffer: "empty",
+    },
+  },
+};
+```

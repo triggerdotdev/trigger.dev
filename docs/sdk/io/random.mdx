@@ -1,0 +1,26 @@
+---
+title: "io.random()"
+sidebarTitle: "random()"
+description: "`io.random()` is identical to `Math.random()` when called without options but ensures your random numbers are not regenerated on resume or retry. It will return a pseudo-random floating-point number between optional `min` (default: 0, inclusive) and `max` (default: 1, exclusive). Can optionally `round` to the nearest integer."
+---
+
+## Parameters
+
+<Snippet file="stable-key-param.mdx" />
+<ResponseField name="min" type="number" default="0" required>
+  Sets the lower bound (inclusive). Can't be higher than `max`.
+</ResponseField>
+<ResponseField name="max" type="number" default="1" required>
+  Sets the upper bound (exclusive). Can't be lower than `min`.
+</ResponseField>
+<ResponseField name="round" type="boolean" default="false" required>
+  Controls rounding to the nearest integer. Any `max` integer will become inclusive when enabled. Rounding with floating-point bounds may cause unexpected skew and boundary inclusivity.
+</ResponseField>
+
+## Returns
+
+A `Promise` that resolves with a pseudo-random number. Always resolves to an integer when rounding is enabled.
+
+<RequestExample>
+  <Snippet file="random-example.mdx" />
+</RequestExample>

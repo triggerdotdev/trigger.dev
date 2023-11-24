@@ -12,7 +12,7 @@ export function Footer() {
         <Link style={footerAnchor} href="https://trigger.dev/">
           Trigger.dev
         </Link>
-        . ©Trigger.dev, 2261 Market Street #4968, San Francisco, CA 94114
+        . ©Trigger.dev, 1111B S Governors Ave STE 6433, Dover, DE 19904
       </Text>
     </>
   );

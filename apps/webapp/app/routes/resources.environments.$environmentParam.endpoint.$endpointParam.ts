@@ -1,4 +1,4 @@
-import { ActionArgs, json } from "@remix-run/server-runtime";
+import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { IndexEndpointService } from "~/services/endpoints/indexEndpoint.server";
 import { workerQueue } from "~/services/worker.server";
@@ -8,7 +8,7 @@ const ParamsSchema = z.object({
   endpointParam: z.string(),
 });
 
-export async function action({ params }: ActionArgs) {
+export async function action({ params }: ActionFunctionArgs) {
   const { endpointParam } = ParamsSchema.parse(params);
 
   try {

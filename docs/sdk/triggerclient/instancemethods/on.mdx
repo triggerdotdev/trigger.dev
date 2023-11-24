@@ -1,0 +1,46 @@
+---
+title: "TriggerClient: on() instance method"
+sidebarTitle: "on()"
+description: "Use the `on()` method to listen for run notifications across all Jobs."
+---
+
+You can subscribe to run notifications across all your Jobs using the `on()` instance method, which currently supports two events:
+
+- `runSucceeded`: Triggered when a run succeeds.
+- `runFailed`: Triggered when a run fails.
+
+Both events receive a [Run Notification](/sdk/run-notification) object as their only parameter.
+
+You can use the notification to determine which job the run belongs to, access the run's payload, output, errors, and more.
+
+If you want to subscribe to just a single Job, see the [defineJob](/sdk/triggerclient/instancemethods/define-job) docs.
+
+## Parameters
+
+<ParamField body="event" type="runSucceeded | runFailed" required>
+  The notification event to listen for.
+</ParamField>
+
+<ParamField body="callback" type="function" required>
+  The callback function to run when the event is triggered. Receives a [Run
+  Notification](/sdk/run-notification) object as it's only parameter.
+</ParamField>
+
+<RequestExample>
+
+```ts example
+export const client = new TriggerClient({
+  id: "my-project",
+  apiKey: process.env.TRIGGER_API_KEY,
+});
+
+client.on("runSucceeeded", async (notification) => {
+  console.log(`Run on job ${notification.job.id} succeeded`);
+});
+
+client.on("runFailed", async (notification) => {
+  console.log(`Run on job ${notification.job.id} failed`);
+});
+```
+
+</RequestExample>

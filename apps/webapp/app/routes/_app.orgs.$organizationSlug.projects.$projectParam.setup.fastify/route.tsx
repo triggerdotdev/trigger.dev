@@ -1,6 +1,6 @@
 import { FastifyLogo } from "~/assets/logos/FastifyLogo";
 import { FrameworkComingSoon } from "~/components/frameworks/FrameworkComingSoon";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Handle } from "~/utils/handle";
 import { trimTrailingSlash } from "~/utils/pathBuilder";
 

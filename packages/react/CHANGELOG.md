@@ -1,5 +1,43 @@
 # @trigger.dev/react
 
+## 2.2.7
+
+### Patch Changes
+
+- Updated dependencies [756024da]
+  - @trigger.dev/core@2.2.7
+
+## 2.2.6
+
+### Patch Changes
+
+- Updated dependencies [cb1825bf]
+- Updated dependencies [cb1825bf]
+- Updated dependencies [d0217344]
+  - @trigger.dev/core@2.2.6
+
+## 2.2.5
+
+### Patch Changes
+
+- Updated dependencies [620b8383]
+- Updated dependencies [578d2e54]
+  - @trigger.dev/core@2.2.5
+
+## 2.2.4
+
+### Patch Changes
+
+- Updated dependencies [c1710ae7]
+  - @trigger.dev/core@2.2.4
+
+## 2.2.3
+
+### Patch Changes
+
+- Updated dependencies [6e1b8a11]
+  - @trigger.dev/core@2.2.3
+
 ## 2.2.2
 
 ### Patch Changes

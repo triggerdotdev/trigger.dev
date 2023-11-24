@@ -68,7 +68,7 @@ client.defineJob({
 });
 ```
 
-## 5. Add integrations
+## 5. Add integrations (optional)
 
 Integrations provide a convienent way to create and run tasks against authenticated APIs inside your Job's run function. You'll need to pass them in the `integrations` option when defining your Job.
 
@@ -165,6 +165,7 @@ client.defineJob({
   trigger: eventTrigger({
     name: "my.event",
   }),
+  // Optional integration
   integrations: { slack },
   run: async (payload, io, context) => {
     await io.logger.info("Received the my.event event", { payload });
@@ -198,6 +199,7 @@ client.defineJob({
   trigger: eventTrigger({
     name: "my.event",
   }),
+  // Optional integration
   integrations: { slack },
   run: async (payload, io, context) => {
     // Use runTask with the "get-user" cacheKey, and return the user
@@ -366,17 +368,15 @@ We recommend exploring all of the below sections to fully understand how to crea
 
     </Card>
 
- <Card title="Example Jobs" icon="slot-machine" href="/examples">
-    View example Jobs / the example jobs repo. These are a great starting
-    point for creating your own Jobs.
-  </Card>
-  <Card title="SDK reference" icon="code" href="/sdk">
-    How to use the SDK. This includes all the available Tasks, triggers and
-    actions you can use.
-  </Card>
- 
-  <Card title="Integrations" icon="grid-2" href="/integrations">
-    Integrations make it easy to authenticate and use APIs.
-Learn how to use and create integrations.
-  </Card>
+<Card title="Integrations" icon="grid-2" href="/integrations">
+  Integrations make it easy to authenticate and use APIs. Learn how to use and create integrations.
+</Card>
+<Card title="API catalog with code samples" icon="code" href="https://trigger.dev/apis">
+  Find code examples for the API you need that you can copy and paste into your
+  projects.
+</Card>
+<Card title="SDK reference" icon="book-open" href="/sdk">
+  How to use the SDK. This includes all the available Tasks, triggers and actions you can use.
+</Card>
+
 </CardGroup>

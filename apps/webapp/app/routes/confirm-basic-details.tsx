@@ -7,7 +7,6 @@ import { motion } from "framer-motion";
 import { forwardRef, useState } from "react";
 import { z } from "zod";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
-import { NavBar } from "~/components/navigation/NavBar";
 import { Button } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -22,7 +21,7 @@ import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
 import { requireUserId } from "~/services/session.server";
-import { organizationsPath } from "~/utils/pathBuilder";
+import { rootPath } from "~/utils/pathBuilder";
 
 function createSchema(
   constraints: {
@@ -101,11 +100,7 @@ export const action: ActionFunction = async ({ request }) => {
       email: submission.value.email,
     });
 
-    return redirectWithSuccessMessage(
-      organizationsPath(),
-      request,
-      "Your details have been updated."
-    );
+    return redirectWithSuccessMessage(rootPath(), request, "Your details have been updated.");
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }
@@ -127,7 +122,8 @@ export default function Page() {
 
   const [form, { name, email, confirmEmail }] = useForm({
     id: "confirm-basic-details",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema: createSchema() });
     },
@@ -137,7 +133,6 @@ export default function Page() {
 
   return (
     <AppContainer showBackgroundGradient={true}>
-      <NavBar />
       <MainCenteredContainer>
         <div>
           <Form method="post" {...form.props}>

@@ -38,8 +38,7 @@ description: "The third parameter in a Job's `run()` function. An object that co
       The Environment's ID
     </ResponseField>
     <ResponseField name="type" type="string" required>
-      The Environment's type. One of: "PRODUCTION", "STAGING", "DEVELOPMENT",
-      "PREVIEW".
+      The Environment's type. One of: "PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW".
     </ResponseField>
   </Expandable>
 </ResponseField>
@@ -70,6 +69,21 @@ description: "The third parameter in a Job's `run()` function. An object that co
     </ResponseField>
     <ResponseField name="startedAt" type="Date" required>
       When the Run started
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="project" type="object" required>
+  Metadata about the Project
+  <Expandable title="properties">
+    <ResponseField name="slug" type="string" required>
+      The Project's slug
+    </ResponseField>
+    <ResponseField name="id" type="string" required>
+      The Project's ID
+    </ResponseField>
+    <ResponseField name="name" type="string" required>
+      The Project's title
     </ResponseField>
   </Expandable>
 </ResponseField>
@@ -105,8 +119,8 @@ description: "The third parameter in a Job's `run()` function. An object that co
 </ResponseField>
 
 <ResponseField name="account" type="object">
-  Metadata about the Account that triggered the Run. This is a Trigger.dev
-  Connect property which is coming soon.
+  Metadata about the Account that triggered the Run. See the [BYO Auth
+  docs](/documentation/guides/using-integrations-byo-auth) for more information.
   <Expandable title="properties">
     <ResponseField name="id" type="string" required>
       The Account's ID

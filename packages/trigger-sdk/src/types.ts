@@ -1,18 +1,25 @@
 import type {
   DisplayProperty,
   EventFilter,
+  FailedRunNotification,
   Logger,
   OverridableRunTaskOptions,
   Prettify,
   RedactString,
   RegisteredOptionsDiff,
+  RunNotificationJobMetadata,
+  RunNotificationRunMetadata,
   RunTaskOptions,
   RuntimeEnvironmentType,
+  ServerTask,
   SourceEventOption,
+  SuccessfulRunNotification,
   TriggerMetadata,
 } from "@trigger.dev/core";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
+import { z } from "zod";
+import type TypedEmitter from "typed-emitter";
 
 export type {
   DisplayProperty,
@@ -32,6 +39,8 @@ export interface TriggerContext {
   environment: { slug: string; id: string; type: RuntimeEnvironmentType };
   /** Organization metadata */
   organization: { slug: string; id: string; title: string };
+  /** Project metadata */
+  project: { slug: string; id: string; name: string };
   /** Run metadata */
   run: { id: string; isTest: boolean; startedAt: Date; isRetry: boolean };
   /** Event metadata */
@@ -69,6 +78,23 @@ export type TriggerEventType<TTrigger extends Trigger<any>> = TTrigger extends T
   ? ReturnType<TEventSpec["parsePayload"]>
   : never;
 
+export type TriggerInvokeType<TTrigger extends Trigger<any>> = TTrigger extends Trigger<
+  infer TEventSpec
+>
+  ? TEventSpec["parseInvokePayload"] extends (payload: unknown) => infer TInvoke
+    ? TInvoke
+    : any
+  : never;
+
+export type VerifyResult =
+  | {
+      success: true;
+    }
+  | {
+      success: false;
+      reason?: string;
+    };
+
 export interface Trigger<TEventSpec extends EventSpecification<any>> {
   event: TEventSpec;
   toJSON(): TriggerMetadata;
@@ -77,20 +103,31 @@ export interface Trigger<TEventSpec extends EventSpecification<any>> {
   attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpec>, any>): void;
 
   preprocessRuns: boolean;
+
+  verifyPayload: (payload: ReturnType<TEventSpec["parsePayload"]>) => Promise<VerifyResult>;
 }
 
 export type TriggerPayload<TTrigger> = TTrigger extends Trigger<EventSpecification<infer TEvent>>
   ? TEvent
   : never;
 
-export type EventSpecificationExample = {
+export const EventSpecificationExampleSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  icon: z.string().optional(),
+  payload: z.any(),
+});
+
+export type EventSpecificationExample = z.infer<typeof EventSpecificationExampleSchema>;
+
+export type TypedEventSpecificationExample<TEvent> = {
   id: string;
   name: string;
   icon?: string;
-  payload: any;
-};
+  payload: TEvent
+}
 
-export interface EventSpecification<TEvent extends any> {
+export interface EventSpecification<TEvent extends any, TInvoke extends any = TEvent> {
   name: string | string[];
   title: string;
   source: string;
@@ -100,6 +137,7 @@ export interface EventSpecification<TEvent extends any> {
   examples?: Array<EventSpecificationExample>;
   filter?: EventFilter;
   parsePayload: (payload: unknown) => TEvent;
+  parseInvokePayload?: (payload: unknown) => TInvoke;
   runProperties?: (payload: TEvent) => DisplayProperty[];
 }
 
@@ -118,3 +156,32 @@ export type SchemaParserResult<T> =
 export type SchemaParser<T extends unknown = unknown> = {
   safeParse: (a: unknown) => SchemaParserResult<T>;
 };
+
+export type WaitForEventResult<TEvent> = {
+  id: string;
+  name: string;
+  source: string;
+  payload: TEvent;
+  timestamp: Date;
+  context?: any;
+  accountId?: string;
+};
+
+export function waitForEventSchema(schema: z.ZodTypeAny) {
+  return z.object({
+    id: z.string(),
+    name: z.string(),
+    source: z.string(),
+    payload: schema,
+    timestamp: z.coerce.date(),
+    context: z.any().optional(),
+    accountId: z.string().optional(),
+  });
+}
+
+export type NotificationEvents = {
+  runSucceeeded: (notification: SuccessfulRunNotification<any>) => void;
+  runFailed: (notification: FailedRunNotification) => void;
+};
+
+export type NotificationsEventEmitter = TypedEmitter<NotificationEvents>;

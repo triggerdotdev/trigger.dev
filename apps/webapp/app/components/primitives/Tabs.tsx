@@ -8,11 +8,12 @@ export type TabsProps = {
     to: string;
   }[];
   className?: string;
+  layoutId: string
 };
 
-export function Tabs({ tabs, className }: TabsProps) {
+export function Tabs({ tabs, className, layoutId }: TabsProps) {
   return (
-    <div className={cn(`flex flex-row gap-x-6 border-b border-uiBorder`, className)}>
+    <div className={cn(`flex flex-row gap-x-6 border-b border-ui-border`, className)}>
       {tabs.map((tab, index) => (
         <NavLink key={index} to={tab.to} className="group flex flex-col items-center pt-1" end>
           {({ isActive, isPending }) => (
@@ -26,7 +27,7 @@ export function Tabs({ tabs, className }: TabsProps) {
                 {tab.label}
               </span>
               {isActive || isPending ? (
-                <motion.div layoutId="underline" className="mt-1 h-0.5 w-full bg-indigo-500" />
+                <motion.div layoutId={layoutId} className="mt-1 h-0.5 w-full bg-indigo-500" />
               ) : (
                 <div className="mt-1 h-0.5 w-full bg-slate-500 opacity-0 transition duration-200 group-hover:opacity-100" />
               )}

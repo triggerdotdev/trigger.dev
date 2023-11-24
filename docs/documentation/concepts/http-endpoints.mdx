@@ -1,0 +1,88 @@
+---
+title: HTTP endpoints
+description: HTTP endpoints allow you to trigger your Jobs from any webhooks.
+---
+
+Sometimes you want to subscribe to changes from an API, and we don't have [an Integration](/integrations/introduction) for it yet. That's when you can use `defineHttpEndpoint` to receive webhooks, verify them, and create an [HTTP Trigger](/documentation/concepts/triggers/http).
+
+## Defining an HTTP endpoint
+
+We'll use Cal.com as an example:
+
+```ts
+const caldotcom = client.defineHttpEndpoint({
+  //this should be unique inside your project
+  id: "cal.com",
+  //usually you'd use the domain name of the service
+  source: "cal.com",
+  //the icon is optional, it displays in the dashboard
+  icon: "caldotcom",
+  //this function is called when a webhook is received
+  verify: async (request) => {
+    //this is a useful helper function that can verify sha256 signatures
+    //each API has a different header name
+    return await verifyRequestSignature({
+      request,
+      //you can find the header name in the API's documentation
+      headerName: "X-Cal-Signature-256",
+      //you can find the secret in the Trigger.dev dashboard, on the HTTP endpoint page
+      secret: process.env.CALDOTCOM_SECRET!,
+      algorithm: "sha256",
+    });
+  },
+});
+```
+
+When this code runs (and you're running the CLI dev command) the HTTP endpoint will be created and be visible in the Trigger.dev dashboard.
+
+The `verify` function is compulsory and is automatically called when a webhook is received. It's required to return a result from this function – 90% of the time you can use our `verifyRequestSignature` helper function.
+
+## Getting the URL and secret
+
+In our dashboard, you can navigate to the HTTP endpoints page. From there you can select your endpoint and copy the URL (1) and secret (2) for the appropriate Environment.
+
+![HTTP endpoint page](/images/http-endpoint.png)
+
+You then need to input these values into the developer section of the API you want to subscribe to. Some APIs, like Stripe's, don't require a secret to be entered. Instead they will generate one for you to use.
+
+### Saving the secret
+
+You should save the secret and add it to your environment variables. Locally this usually means adding it to your `.env` file. When you deploy you'll need to put it in relevant section of your cloud provider's dashboard. In the code above we're using `CALDOTCOM_SECRET` as the environment variable name.
+
+## Creating a Trigger
+
+```ts
+//... the code from above that created the caldotcom endpoint
+
+client.defineJob({
+  id: "http-caldotcom",
+  name: "HTTP Cal.com",
+  version: "1.0.0",
+  enabled: true,
+  //this create a Trigger using the caldotcom endpoint
+  trigger: caldotcom.onRequest(),
+  run: async (request, io, ctx) => {
+    //note that when using HTTP endpoints, the first parameter is the request
+    //you need to get the body, usually it will be json so you do:
+    const body = await request.json();
+    await io.logger.info(`Body`, body);
+  },
+});
+```
+
+You can create multiple Triggers from the same endpoint. You can also add filters to the Trigger so it only runs when the request matches certain criteria. View [the SDK reference](/sdk/).
+
+## More information
+
+<CardGroup cols={2}>
+  <Card title="HTTP Trigger" icon="webhook" href="/documentation/concepts/triggers/http">
+    Trigger your Jobs in realtime when events happen in APIs
+  </Card>
+  <Card
+    title="HTTP endpoint SDK reference"
+    icon="wand-magic-sparkles"
+    href="/sdk/triggerclient/instancemethods/define-http-endpoint"
+  >
+    SDK reference for `client.defineHttpEndpoint()`
+  </Card>
+</CardGroup>

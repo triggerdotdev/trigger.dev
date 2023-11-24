@@ -16,7 +16,7 @@ export const Table = forwardRef<HTMLTableElement, TableProps>(
     return (
       <div
         className={cn(
-          "overflow-x-auto whitespace-nowrap rounded-md border border-uiBorder scrollbar-thin scrollbar-track-midnight-850 scrollbar-thumb-slate-700",
+          "overflow-x-auto whitespace-nowrap rounded-md border border-ui-border scrollbar-thin scrollbar-track-midnight-850 scrollbar-thumb-slate-700",
           containerClassName,
           fullWidth && "w-full"
         )}
@@ -39,7 +39,7 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>
     return (
       <thead
         ref={ref}
-        className={cn("rounded-t-md", "relative divide-y divide-uiBorder bg-slate-850", className)}
+        className={cn("rounded-t-md", "relative divide-y divide-ui-border bg-slate-850", className)}
       >
         {children}
       </thead>
@@ -55,7 +55,7 @@ type TableBodyProps = {
 export const TableBody = forwardRef<HTMLTableSectionElement, TableBodyProps>(
   ({ className, children }, ref) => {
     return (
-      <tbody ref={ref} className={cn("relative divide-y divide-uiBorder", className)}>
+      <tbody ref={ref} className={cn("relative divide-y divide-ui-border", className)}>
         {children}
       </tbody>
     );
@@ -106,7 +106,7 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         ref={ref}
         scope="col"
         className={cn(
-          "px-4 py-3 align-middle text-xs font-normal uppercase tracking-wider text-dimmed",
+          "px-4 py-2 align-middle text-xxs font-normal uppercase tracking-wider text-dimmed",
           alignmentClassName,
           className
         )}

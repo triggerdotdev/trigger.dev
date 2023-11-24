@@ -1,6 +1,6 @@
 import type { Preview } from "@storybook/react";
 import "../app/tailwind.css";
-import { unstable_createRemixStub } from "@remix-run/testing";
+import { createRemixStub } from "@remix-run/testing";
 import React from "react";
 import { LocaleContextProvider } from "../app/components/primitives/LocaleProvider";
 import { OperatingSystemContextProvider } from "../app/components/primitives/OperatingSystemProvider";
@@ -23,13 +23,16 @@ const preview: Preview = {
         },
       ],
     },
+    layout: "fullscreen",
   },
   decorators: [
     (Story) => {
-      const RemixStub = unstable_createRemixStub([
+      const RemixStub = createRemixStub([
         {
           path: "/*",
-          element: <Story />,
+          action: () => ({ redirect: "/" }),
+          loader: () => ({ redirect: "/" }),
+          Component: Story,
         },
       ]);
 

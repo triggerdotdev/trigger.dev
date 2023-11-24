@@ -1,9 +1,10 @@
 import { Form } from "@remix-run/react";
-import type { ActionArgs } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { useUser } from "~/hooks/useUser";
 import { adminGetUsers } from "~/models/admin.server";
 import { commitImpersonationSession, setImpersonationId } from "~/services/impersonation.server";
 
@@ -15,7 +16,7 @@ export async function loader() {
 
 const FormSchema = z.object({ id: z.string() });
 
-export async function action({ request }: ActionArgs) {
+export async function action({ request }: ActionFunctionArgs) {
   if (request.method.toLowerCase() !== "post") {
     return new Response("Method not allowed", { status: 405 });
   }
@@ -34,6 +35,7 @@ const headerClassName = "py-3 px-2 pr-3 text-xs font-semibold leading-tight text
 const cellClassName = "whitespace-nowrap px-2 py-2 text-xs text-bright";
 
 export default function AdminDashboardRoute() {
+  const user = useUser();
   const { users } = useTypedLoaderData<typeof loader>();
 
   return (
@@ -42,6 +44,10 @@ export default function AdminDashboardRoute() {
       className="flex h-full min-w-0 flex-1 flex-col overflow-y-auto p-4 lg:order-last"
     >
       <h1 className="mb-2 text-2xl">Accounts ({users.length})</h1>
+
+      <LinkButton to="/" variant="secondary/small" className="mb-4">
+        Back to me
+      </LinkButton>
 
       <table className="w-full divide-y divide-border">
         <thead className="sticky -top-4 bg-midnight-800 text-left">

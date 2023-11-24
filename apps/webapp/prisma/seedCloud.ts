@@ -77,6 +77,7 @@ export async function seedCloud(prisma: PrismaClient) {
           id: adminMember.id,
         },
       },
+      shortcode: "octopus-tentacles",
     },
     update: {},
   });
@@ -100,6 +101,7 @@ export async function seedCloud(prisma: PrismaClient) {
           id: organization.id,
         },
       },
+      shortcode: "stripey-zebra",
     },
     update: {},
   });

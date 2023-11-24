@@ -1,9 +1,9 @@
 import { NoSymbolIcon } from "@heroicons/react/20/solid";
 import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { DateTime } from "~/components/primitives/DateTime";
 import { LabelValueStack } from "~/components/primitives/LabelValueStack";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
@@ -25,7 +25,7 @@ import { requireUser } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
 import { ProjectParamSchema, docsPath, trimTrailingSlash } from "~/utils/pathBuilder";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
 
@@ -43,7 +43,6 @@ export const handle: Handle = {
   breadcrumb: (match) => (
     <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Scheduled Triggers" />
   ),
-  expandSidebar: true,
 };
 
 export default function Integrations() {
@@ -143,7 +142,7 @@ export default function Integrations() {
               );
             })
           ) : (
-            <TableBlankRow colSpan={5}>
+            <TableBlankRow colSpan={100}>
               <Paragraph>No Scheduled triggers</Paragraph>
             </TableBlankRow>
           )}

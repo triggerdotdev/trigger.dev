@@ -40,7 +40,7 @@ export function DeleteJobDialogContent({
 
   return (
     <div className="flex w-full flex-col items-center gap-y-6">
-      <div className="flex flex-col items-center justify-center gap-y-2">
+      <div className="mt-5 flex flex-col items-center justify-center gap-y-2">
         <Header1>{title}</Header1>
         <Paragraph variant="small">ID: {slug}</Paragraph>
       </div>

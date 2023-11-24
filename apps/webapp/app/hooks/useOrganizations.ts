@@ -1,29 +1,29 @@
 import { UseDataFunctionReturn, useTypedRouteLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import type { loader as orgLoader } from "~/routes/_app.orgs.$organizationSlug/route";
-import type { loader as appLoader } from "~/routes/_app/route";
 import { hydrateObject, useMatchesData } from "~/utils";
 import { useChanged } from "./useChanged";
-import { RouteMatch } from "@remix-run/react";
+import { UIMatch } from "@remix-run/react";
 import { useTypedMatchesData } from "./useTypedMatchData";
 
-export type MatchedOrganization = UseDataFunctionReturn<typeof appLoader>["organizations"][number];
+export type MatchedOrganization = UseDataFunctionReturn<typeof orgLoader>["organizations"][number];
+export const organizationMatchId = "routes/_app.orgs.$organizationSlug";
 
-export function useOptionalOrganizations(matches?: RouteMatch[]) {
-  const data = useTypedMatchesData<typeof appLoader>({
-    id: "routes/_app",
+export function useOptionalOrganizations(matches?: UIMatch[]) {
+  const data = useTypedMatchesData<typeof orgLoader>({
+    id: "routes/_app.orgs.$organizationSlug",
     matches,
   });
   return data?.organizations;
 }
 
-export function useOrganizations(matches?: RouteMatch[]) {
+export function useOrganizations(matches?: UIMatch[]) {
   const orgs = useOptionalOrganizations(matches);
   invariant(orgs, "No organizations found in loader.");
   return orgs;
 }
 
-export function useOptionalOrganization(matches?: RouteMatch[]) {
+export function useOptionalOrganization(matches?: UIMatch[]) {
   const orgs = useOptionalOrganizations(matches);
   const org = useTypedMatchesData<typeof orgLoader>({
     id: "routes/_app.orgs.$organizationSlug",
@@ -37,13 +37,13 @@ export function useOptionalOrganization(matches?: RouteMatch[]) {
   return orgs.find((o) => o.id === org.organization.id);
 }
 
-export function useOrganization(matches?: RouteMatch[]) {
+export function useOrganization(matches?: UIMatch[]) {
   const org = useOptionalOrganization(matches);
   invariant(org, "No organization found in loader.");
   return org;
 }
 
-export function useIsNewOrganizationPage(matches?: RouteMatch[]): boolean {
+export function useIsNewOrganizationPage(matches?: UIMatch[]): boolean {
   const data = useTypedMatchesData<any>({
     id: "routes/_app.orgs.new",
     matches,

@@ -1,7 +1,7 @@
-import { ProjectJob } from "~/hooks/useJobs";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { JobRunStatus } from "~/models/job.server";
+import { ProjectJob } from "~/presenters/JobListPresenter.server";
 import { jobPath, jobTestPath } from "~/utils/pathBuilder";
 import { Button } from "../primitives/Buttons";
 import { DateTime } from "../primitives/DateTime";
@@ -27,10 +27,9 @@ import { JobStatusBadge } from "./JobStatusBadge";
 
 export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResultsText: string }) {
   const organization = useOrganization();
-  const project = useProject();
 
   return (
-    <Table>
+    <Table containerClassName="mb-4">
       <TableHeader>
         <TableRow>
           <TableHeaderCell>Job</TableHeaderCell>
@@ -45,7 +44,7 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
       <TableBody>
         {jobs.length > 0 ? (
           jobs.map((job) => {
-            const path = jobPath(organization, project, job);
+            const path = jobPath(organization, { slug: job.projectSlug }, job);
             return (
               <TableRow key={job.id} className="group">
                 <TableCell to={path}>
@@ -153,26 +152,25 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
                 <TableCellMenu isSticky>
                   <PopoverMenuItem to={path} title="View Job" icon="eye" />
                   <PopoverMenuItem
-                    to={jobTestPath(organization, project, job)}
+                    to={jobTestPath(organization, { slug: job.projectSlug }, job)}
                     title="Test Job"
                     icon="beaker"
                   />
 
                   <Dialog>
                     <DialogTrigger asChild>
-                      <Button variant="menu-item" LeadingIcon="trash-can">
+                      <Button variant="small-menu-item" LeadingIcon="trash-can" className="text-xs">
                         Delete Job
                       </Button>
                     </DialogTrigger>
                     <DialogContent>
-                      <DialogHeader>
-                        <DeleteJobDialogContent
-                          id={job.id}
-                          title={job.title}
-                          slug={job.slug}
-                          environments={job.environments}
-                        />
-                      </DialogHeader>
+                      <DialogHeader>Delete Job</DialogHeader>
+                      <DeleteJobDialogContent
+                        id={job.id}
+                        title={job.title}
+                        slug={job.slug}
+                        environments={job.environments}
+                      />
                     </DialogContent>
                   </Dialog>
                 </TableCellMenu>

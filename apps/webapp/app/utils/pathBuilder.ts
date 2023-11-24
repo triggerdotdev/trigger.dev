@@ -1,4 +1,9 @@
-import type { Integration, TriggerSource } from "@trigger.dev/database";
+import type {
+  Integration,
+  TriggerHttpEndpoint,
+  TriggerSource,
+  Webhook,
+} from "@trigger.dev/database";
 import { z } from "zod";
 import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
@@ -10,6 +15,8 @@ export type JobForPath = Pick<Job, "slug">;
 export type RunForPath = Pick<Job, "id">;
 export type IntegrationForPath = Pick<Integration, "slug">;
 export type TriggerForPath = Pick<TriggerSource, "id">;
+export type WebhookForPath = Pick<Webhook, "id">;
+export type HttpEndpointForPath = Pick<TriggerHttpEndpoint, "key">;
 
 export const OrganizationParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -31,7 +38,7 @@ export const TaskParamsSchema = RunParamsSchema.extend({
   taskParam: z.string(),
 });
 
-export const IntegrationClientParamSchema = ProjectParamSchema.extend({
+export const IntegrationClientParamSchema = OrganizationParamsSchema.extend({
   clientParam: z.string(),
 });
 
@@ -47,6 +54,10 @@ export const TriggerSourceRunTaskParamsSchema = TriggerSourceRunParamsSchema.ext
   taskParam: z.string(),
 });
 
+export const HttpEndpointParamSchema = ProjectParamSchema.extend({
+  httpEndpointParam: z.string(),
+});
+
 export function trimTrailingSlash(path: string) {
   return path.replace(/\/$/, "");
 }
@@ -57,7 +68,7 @@ export function parentPath(path: string) {
   return trimmedTrailingSlash.substring(0, lastSlashIndex);
 }
 
-export function organizationsPath() {
+export function rootPath() {
   return `/`;
 }
 
@@ -159,12 +170,23 @@ export function projectJobsPath(organization: OrgForPath, project: ProjectForPat
   return projectPath(organization, project);
 }
 
-export function projectIntegrationsPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${projectPath(organization, project)}/integrations`;
+export function organizationIntegrationsPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/integrations`;
 }
 
 export function projectTriggersPath(organization: OrgForPath, project: ProjectForPath) {
   return `${projectPath(organization, project)}/triggers`;
+}
+
+export function projectHttpEndpointsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/http-endpoints`;
+}
+export function projectHttpEndpointPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  httpEndpoint: HttpEndpointForPath
+) {
+  return `${projectHttpEndpointsPath(organization, project)}/${httpEndpoint.key}`;
 }
 
 export function projectEnvironmentsPath(organization: OrgForPath, project: ProjectForPath) {
@@ -195,28 +217,19 @@ function projectParam(project: ProjectForPath) {
 }
 
 // Integration
-export function integrationClientPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  client: IntegrationForPath
-) {
-  return `${projectIntegrationsPath(organization, project)}/${clientParam(client)}`;
+export function integrationClientPath(organization: OrgForPath, client: IntegrationForPath) {
+  return `${organizationIntegrationsPath(organization)}/${clientParam(client)}`;
 }
 
 export function integrationClientConnectionsPath(
   organization: OrgForPath,
-  project: ProjectForPath,
   client: IntegrationForPath
 ) {
-  return `${integrationClientPath(organization, project, client)}/connections`;
+  return `${integrationClientPath(organization, client)}/connections`;
 }
 
-export function integrationClientScopesPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  client: IntegrationForPath
-) {
-  return `${integrationClientPath(organization, project, client)}/scopes`;
+export function integrationClientScopesPath(organization: OrgForPath, client: IntegrationForPath) {
+  return `${integrationClientPath(organization, client)}/scopes`;
 }
 
 function clientParam(integration: IntegrationForPath) {
@@ -264,6 +277,82 @@ export function externalTriggerRunStreamingPath(
 
 function triggerSourceParam(trigger: TriggerForPath) {
   return trigger.id;
+}
+
+export function projectWebhookTriggersPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectTriggersPath(organization, project)}/webhooks`;
+}
+
+export function webhookTriggerPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath
+) {
+  return `${projectTriggersPath(organization, project)}/webhooks/${webhookSourceParam(webhook)}`;
+}
+
+export function webhookTriggerRunsParentPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath
+) {
+  return `${webhookTriggerPath(organization, project, webhook)}/runs`;
+}
+
+export function webhookTriggerRunPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath,
+  run: RunForPath
+) {
+  return `${webhookTriggerRunsParentPath(organization, project, webhook)}/${run.id}`;
+}
+
+export function webhookTriggerRunStreamingPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath,
+  run: RunForPath
+) {
+  return `${webhookTriggerRunPath(organization, project, webhook, run)}/stream`;
+}
+
+export function webhookDeliveryPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath
+) {
+  return `${webhookTriggerPath(organization, project, webhook)}/delivery`;
+}
+
+export function webhookTriggerDeliveryRunsParentPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath
+) {
+  return `${webhookTriggerRunsParentPath(organization, project, webhook)}/delivery`;
+}
+
+export function webhookTriggerDeliveryRunPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath,
+  run: RunForPath
+) {
+  return `${webhookTriggerDeliveryRunsParentPath(organization, project, webhook)}/${run.id}`;
+}
+
+export function webhookTriggerDeliveryRunStreamingPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath,
+  run: RunForPath
+) {
+  return `${webhookTriggerDeliveryRunPath(organization, project, webhook, run)}/stream`;
+}
+
+function webhookSourceParam(webhook: WebhookForPath) {
+  return webhook.id;
 }
 
 // Job
@@ -361,4 +450,9 @@ export function docsIntegrationPath(api: string) {
 
 export function docsCreateIntegration() {
   return `${docsRoot()}/integrations/create`;
+}
+
+//api
+export function apiReferencePath(apiSlug: string) {
+  return `https://trigger.dev/apis/${apiSlug}`;
 }

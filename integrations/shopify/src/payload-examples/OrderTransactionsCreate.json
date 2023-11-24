@@ -1,0 +1,45 @@
+{
+  "id": 120560818172775260,
+  "order_id": 820982911946154500,
+  "kind": "authorization",
+  "gateway": "visa",
+  "status": "success",
+  "message": null,
+  "created_at": "2021-12-31T19:00:00-05:00",
+  "test": false,
+  "authorization": "1001",
+  "location_id": null,
+  "user_id": null,
+  "parent_id": null,
+  "processed_at": null,
+  "device_id": null,
+  "error_code": null,
+  "source_name": "web",
+  "payment_details": {
+    "credit_card_bin": null,
+    "avs_result_code": null,
+    "cvv_result_code": null,
+    "credit_card_number": "•••• •••• •••• 1234",
+    "credit_card_company": "Visa",
+    "buyer_action_info": null,
+    "credit_card_name": null,
+    "credit_card_wallet": null,
+    "credit_card_expiration_month": null,
+    "credit_card_expiration_year": null
+  },
+  "receipt": {},
+  "amount": "403.00",
+  "currency": "USD",
+  "payment_id": "#9999.1",
+  "total_unsettled_set": {
+    "presentment_money": {
+      "amount": "403.0",
+      "currency": "USD"
+    },
+    "shop_money": {
+      "amount": "403.0",
+      "currency": "USD"
+    }
+  },
+  "admin_graphql_api_id": "gid://shopify/OrderTransaction/120560818172775265"
+}

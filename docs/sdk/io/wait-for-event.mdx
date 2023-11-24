@@ -1,0 +1,103 @@
+---
+title: "io.waitForEvent()"
+sidebarTitle: "waitForEvent()"
+description: "`io.waitForEvent()` waits for the next event to be emitted, and returns the event data"
+---
+
+## Parameters
+
+<Snippet file="stable-key-param.mdx" />
+
+<ResponseField name="event" type="object" required>
+  Specify the options for the event to wait for.
+
+{" "}
+
+<Expandable title="fields" defaultOpen>
+  <ResponseField name="name" type="string | string[]" required>
+    The name(s) of the event to wait for.
+  </ResponseField>
+  <ResponseField name="schema" type="ZodTypeAny">
+    An optional Zod schema to validate the event payload against. If omitted the `event.payload`
+    will be typed as `any`
+  </ResponseField>
+  <ResponseField name="filter" type="EventFilter">
+    An [EventFilter](/documentation/guides/event-filter) to match against the event payload.
+  </ResponseField>
+  <ResponseField name="source" type="string">
+    The source of the event to wait for. If omitted, the event can come from any source.
+  </ResponseField>
+  <ResponseField name="contextFilter" type="EventFilter">
+    An [EventFilter](/documentation/guides/event-filter) to match against the event context.
+  </ResponseField>
+  <ResponseField name="accountId" type="string">
+    The account ID of the event to wait for. If omitted, the event can come from any account.
+  </ResponseField>
+</Expandable>
+
+</ResponseField>
+
+<ResponseField name="options" type="object">
+  Specify the options for the event to wait for.
+
+{" "}
+
+<Expandable title="options" defaultOpen>
+  <ResponseField name="timeoutInSeconds" type="number">
+    The amount of time to wait for the event to be emitted before timing out. The default timeout is
+    1 hour and the maximum timeout is 1 year. If the timeout is reached, the task will fail with an
+    error message and the run will be exited.
+  </ResponseField>
+</Expandable>
+
+</ResponseField>
+
+## Returns
+
+<ResponseField name="id" type="string" required>
+  The ID of the event that was emitted.
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  The name of the event that was emitted.
+</ResponseField>
+
+<ResponseField name="payload" type="any" required>
+  The payload of the event that was emitted.
+</ResponseField>
+
+<ResponseField name="context" type="any">
+  The context of the event that was emitted.
+</ResponseField>
+
+<ResponseField name="timestamp" type="Date" required>
+  The timestamp of the event that was emitted.
+</ResponseField>
+
+<ResponseField name="accountId" type="string">
+  The account ID of the event that was emitted.
+</ResponseField>
+
+<RequestExample>
+  
+```ts example.ts
+const event = await io.waitForEvent(
+  "wait",
+  {
+    name: "my.event",
+    schema: z.object({
+      id: z.string(),
+      createdAt: z.coerce.date(),
+      isAdmin: z.boolean(),
+    }),
+    filter: {
+      isAdmin: [true], // Only wait for events where isAdmin is true
+    },
+  },
+  {
+    timeoutInSeconds: 60 * 60, // Wait for up to an hour
+  }
+);
+```
+
+</RequestExample>

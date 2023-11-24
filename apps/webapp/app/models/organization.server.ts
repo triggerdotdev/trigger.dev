@@ -9,60 +9,12 @@ import { customAlphabet } from "nanoid";
 import slug from "slug";
 import { prisma, PrismaClientOrTransaction } from "~/db.server";
 import { createProject } from "./project.server";
+import { generate } from "random-words";
+import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
 
 export type { Organization };
 
 const nanoid = customAlphabet("1234567890abcdef", 4);
-const apiKeyId = customAlphabet(
-  "1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
-  12
-);
-
-export function getOrganizationFromSlug({
-  userId,
-  slug,
-}: Pick<Organization, "slug"> & {
-  userId: User["id"];
-}) {
-  return prisma.organization.findFirst({
-    include: {
-      environments: true,
-    },
-    where: { slug, members: { some: { userId } } },
-  });
-}
-
-export function getOrganizations({ userId }: { userId: User["id"] }) {
-  return prisma.organization.findMany({
-    where: { members: { some: { userId } } },
-    orderBy: { createdAt: "desc" },
-    include: {
-      environments: {
-        orderBy: { slug: "asc" },
-      },
-      projects: {
-        orderBy: { name: "asc" },
-        include: {
-          _count: {
-            select: {
-              jobs: {
-                where: {
-                  internal: false,
-                  deletedAt: null,
-                },
-              },
-            },
-          },
-        },
-      },
-      _count: {
-        select: {
-          members: true,
-        },
-      },
-    },
-  });
-}
 
 export async function createOrganization(
   {
@@ -135,12 +87,14 @@ export async function createEnvironment(
   const slug = envSlug(type);
   const apiKey = createApiKeyForEnv(type);
   const pkApiKey = createPkApiKeyForEnv(type);
+  const shortcode = createShortcode().join("-");
 
   return await prismaClient.runtimeEnvironment.create({
     data: {
       slug,
       apiKey,
       pkApiKey,
+      shortcode,
       autoEnableInternalSources: type !== "DEVELOPMENT",
       organization: {
         connect: {
@@ -158,27 +112,6 @@ export async function createEnvironment(
   });
 }
 
-function createApiKeyForEnv(envType: RuntimeEnvironment["type"]) {
-  return `tr_${envSlug(envType)}_${apiKeyId(20)}`;
-}
-
-function createPkApiKeyForEnv(envType: RuntimeEnvironment["type"]) {
-  return `pk_${envSlug(envType)}_${apiKeyId(20)}`;
-}
-
-function envSlug(environmentType: RuntimeEnvironment["type"]) {
-  switch (environmentType) {
-    case "DEVELOPMENT": {
-      return "dev";
-    }
-    case "PRODUCTION": {
-      return "prod";
-    }
-    case "STAGING": {
-      return "stg";
-    }
-    case "PREVIEW": {
-      return "prev";
-    }
-  }
+function createShortcode() {
+  return generate({ exactly: 2 });
 }

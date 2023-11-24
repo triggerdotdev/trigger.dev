@@ -31,7 +31,7 @@ It will automatically update until the run has either completed or failed.
 ```typescript components/EventDetails.tsx
 "use client";
 
-import { useEventDetails } from "@trigger.dev/react";
+import { useEventRunDetails } from "@trigger.dev/react";
 
 export function EventDetails({ eventId }: { eventId: string }) {
   const { isLoading, isError, data, error } = useEventRunDetails(eventId);

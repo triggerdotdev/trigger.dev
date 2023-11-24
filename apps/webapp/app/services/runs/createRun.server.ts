@@ -11,17 +11,20 @@ export class CreateRunService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({
-    environment,
-    eventId,
-    job,
-    version,
-  }: {
-    environment: AuthenticatedEnvironment;
-    eventId: string;
-    job: Job;
-    version: JobVersion;
-  }) {
+  public async call(
+    {
+      environment,
+      eventId,
+      job,
+      version,
+    }: {
+      environment: AuthenticatedEnvironment;
+      eventId: string;
+      job: Job;
+      version: JobVersion;
+    },
+    options: { callbackUrl?: string } = {}
+  ) {
     const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
       where: {
         id: version.endpointId,
@@ -73,6 +76,25 @@ export class CreateRunService {
           internal: job.internal,
         },
       });
+
+      if (options.callbackUrl) {
+        await tx.jobRunSubscription.createMany({
+          data: [
+            {
+              runId: run.id,
+              recipientMethod: "WEBHOOK",
+              recipient: options.callbackUrl,
+              event: "SUCCESS",
+            },
+            {
+              runId: run.id,
+              recipientMethod: "WEBHOOK",
+              recipient: options.callbackUrl,
+              event: "FAILURE",
+            },
+          ],
+        });
+      }
 
       await workerQueue.enqueue(
         "startRun",

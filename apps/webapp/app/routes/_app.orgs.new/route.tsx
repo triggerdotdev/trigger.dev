@@ -1,11 +1,12 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import type { ActionFunction } from "@remix-run/node";
-import { json } from "@remix-run/node";
+import type { ActionFunction, LoaderFunction, LoaderFunctionArgs } from "@remix-run/node";
+import { json, redirect } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -14,15 +15,26 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { redirectWithSuccessMessage } from "~/models/message.server";
 import { createOrganization } from "~/models/organization.server";
+import { NewOrganizationPresenter } from "~/presenters/NewOrganizationPresenter.server";
+import { commitCurrentProjectSession, setCurrentProjectId } from "~/services/currentProject.server";
 import { requireUserId } from "~/services/session.server";
-import { projectPath } from "~/utils/pathBuilder";
+import { projectPath, rootPath } from "~/utils/pathBuilder";
 
 const schema = z.object({
   orgName: z.string().min(3).max(50),
   projectName: z.string().min(3).max(50),
 });
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const userId = await requireUserId(request);
+  const presenter = new NewOrganizationPresenter();
+  const { hasOrganizations } = await presenter.call({ userId });
+
+  return typedjson({
+    hasOrganizations,
+  });
+};
 
 export const action: ActionFunction = async ({ request }) => {
   const userId = await requireUserId(request);
@@ -41,22 +53,27 @@ export const action: ActionFunction = async ({ request }) => {
       projectName: submission.value.projectName,
     });
 
-    return redirectWithSuccessMessage(
-      projectPath(organization, organization.projects[0]),
-      request,
-      `${submission.value.orgName} created`
-    );
+    const project = organization.projects[0];
+    const session = await setCurrentProjectId(project.id, request);
+
+    return redirect(projectPath(organization, project), {
+      headers: {
+        "Set-Cookie": await commitCurrentProjectSession(session),
+      },
+    });
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }
 };
 
 export default function NewOrganizationPage() {
+  const { hasOrganizations } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
 
   const [form, { orgName, projectName }] = useForm({
     id: "create-organization",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },
@@ -94,6 +111,13 @@ export default function NewOrganizationPage() {
                 <Button type="submit" variant={"primary/small"} TrailingIcon="arrow-right">
                   Create
                 </Button>
+              }
+              cancelButton={
+                hasOrganizations ? (
+                  <LinkButton to={rootPath()} variant={"secondary/small"}>
+                    Cancel
+                  </LinkButton>
+                ) : null
               }
             />
           </Fieldset>

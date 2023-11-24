@@ -1,0 +1,166 @@
+---
+title: "RunNotification"
+sidebarTitle: "RunNotification"
+description: "The payload of a Run's completion webhook"
+---
+
+This document describes the payload of a Run's completion webhook.
+
+## Properties
+
+<ResponseField name="id" type="string" required>
+  The Run's ID
+</ResponseField>
+
+<ResponseField name="ok" type="boolean" required>
+  Whether the Run completed successfully or failed.
+</ResponseField>
+
+<ResponseField name="status" type="JobRunStatus" required>
+  The Run's status. Will always be `"SUCCESS"` if `ok` is `true`. If `ok` is `false`, will be one of
+  `"FAILURE" | "TIMED_OUT" | "ABORTED" | "CANCELED" | "UNRESOLVED_AUTH" | "INVALID_PAYLOAD"`
+</ResponseField>
+
+<ResponseField name="statuses" type="JobRunStatusRecord[]" required>
+  An array of the explicit run statuses that were created during the Run. See [Explicit Status
+  Hooks](/documentation/guides/react-hooks-statuses#useeventrunstatuses) for more.
+</ResponseField>
+
+<ResponseField name="output" type="any">
+  If the Run completed successfully, this will be the output of the Job.
+</ResponseField>
+
+<ResponseField name="error" type="any">
+  If the Run failed, this will be the error that caused the failure.
+</ResponseField>
+
+<ResponseField name="startedAt" type="Date" required>
+  When the Run started
+</ResponseField>
+<ResponseField name="completedAt" type="Date" required>
+  When the Run started
+</ResponseField>
+<ResponseField name="isTest" type="boolean" required>
+  Whether the Run was a test Run
+</ResponseField>
+<ResponseField name="executionDurationInMs" type="number" required>
+  The duration of the Run in milliseconds
+</ResponseField>
+<ResponseField name="executionCount" type="number" required>
+  The number of individual function executions performed to complete the Run
+</ResponseField>
+
+<ResponseField name="invocation" type="object" required>
+  Metadata about the Invocation / Run
+  <Expandable title="properties">
+    <ResponseField name="id" type="string" required>
+      The Run ID
+    </ResponseField>
+    <ResponseField name="payload" type="any" required>
+      The payload that was passed to the Run
+    </ResponseField>
+    <ResponseField name="timestamp" type="Date" required>
+      The timestamp of the event/Run
+    </ResponseField>
+    <ResponseField name="context" type="any">
+      The context that was passed to the Run
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="job" type="object" required>
+  Metadata about the Job
+  <Expandable title="properties">
+    <ResponseField name="id" type="string" required>
+      The Job's ID
+    </ResponseField>
+    <ResponseField name="version" type="string" required>
+      The Job's version
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="task" type="object">
+  Metadata about the Task that failed, only exists if the Run failed
+  <Expandable title="properties">
+    <ResponseField name="id" type="string" required>
+      The Task ID
+    </ResponseField>
+    <ResponseField name="cacheKey" type="string">
+      The Task's cache key
+    </ResponseField>
+    <ResponseField name="error" type="Error" required>
+      And Error-like object that caused the Task to fail
+    </ResponseField>
+    <ResponseField name="status" type="string" required>
+      The Task's status
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      The Task's name
+    </ResponseField>
+    <ResponseField name="startedAt" type="Date">
+      When the Task started
+    </ResponseField>
+    <ResponseField name="params" type="any">
+      The Task's params
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="environment" type="object" required>
+  Metadata about the Environment
+  <Expandable title="properties">
+    <ResponseField name="slug" type="string" required>
+      The Environment's slug
+    </ResponseField>
+    <ResponseField name="id" type="string" required>
+      The Environment's ID
+    </ResponseField>
+    <ResponseField name="type" type="string" required>
+      The Environment's type. One of: "PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW".
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="organization" type="object" required>
+  Metadata about the Organization
+  <Expandable title="properties">
+    <ResponseField name="slug" type="string" required>
+      The Organization's slug
+    </ResponseField>
+    <ResponseField name="id" type="string" required>
+      The Organization's ID
+    </ResponseField>
+    <ResponseField name="title" type="string" required>
+      The Organization's title
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="project" type="object" required>
+  Metadata about the Project
+  <Expandable title="properties">
+    <ResponseField name="slug" type="string" required>
+      The Project's slug
+    </ResponseField>
+    <ResponseField name="id" type="string" required>
+      The Project's ID
+    </ResponseField>
+    <ResponseField name="name" type="string" required>
+      The Project's title
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="account" type="object">
+  Metadata about the Account that triggered the Run. See the [BYO Auth
+  docs](/documentation/guides/using-integrations-byo-auth) for more information.
+  <Expandable title="properties">
+    <ResponseField name="id" type="string" required>
+      The Account's ID
+    </ResponseField>
+    <ResponseField name="metadata" type="any">
+      The Account's metadata. This is additional data that been passed through
+    </ResponseField>
+  </Expandable>
+</ResponseField>

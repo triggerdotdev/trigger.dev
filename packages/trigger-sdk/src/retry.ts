@@ -12,4 +12,11 @@ export const retry = {
     maxTimeoutInMs: 30000,
     randomize: true,
   },
+  exponentialBackoff: {
+    limit: 8,
+    factor: 2,
+    minTimeoutInMs: 1000,
+    maxTimeoutInMs: 30000,
+    randomize: true,
+  },
 } as const satisfies Record<string, RetryOptions>;

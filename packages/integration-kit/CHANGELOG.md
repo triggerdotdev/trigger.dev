@@ -1,5 +1,35 @@
 # @trigger.dev/integration-kit
 
+## 2.2.7
+
+### Patch Changes
+
+- Updated dependencies [756024da]
+  - @trigger.dev/core@2.2.7
+
+## 2.2.6
+
+### Patch Changes
+
+- cb1825bf: OpenAI support for 4.16.0
+- Updated dependencies [cb1825bf]
+- Updated dependencies [cb1825bf]
+- Updated dependencies [d0217344]
+  - @trigger.dev/core@2.2.6
+
+## 2.2.5
+
+### Patch Changes
+
+- 620b8383: Allow customizing OpenAI background retries and timeouts
+- Updated dependencies [620b8383]
+- Updated dependencies [578d2e54]
+  - @trigger.dev/core@2.2.5
+
+## 2.2.4
+
+## 2.2.3
+
 ## 2.2.2
 
 ## 2.2.1

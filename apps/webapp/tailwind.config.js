@@ -87,6 +87,14 @@ module.exports = {
             fontWeight: "500",
           },
         ],
+        "2sm": [
+          "0.8125rem",
+          {
+            lineHeight: "0.875rem",
+            letterSpacing: "-0.01em",
+            fontWeight: "500",
+          },
+        ],
       },
       colors: {
         midnight,
@@ -144,7 +152,8 @@ module.exports = {
         },
         devEnv: colors.pink,
         liveEnv: colors.green,
-        uiBorder: slate[800],
+        "ui-border": slate[800],
+        "ui-border-dimmed": slate[900],
       },
       borderRadius: {
         lg: radius,
@@ -192,5 +201,6 @@ module.exports = {
     require("@tailwindcss/typography"),
     require("tailwindcss-animate"),
     require("tailwind-scrollbar"),
+    require('tailwind-scrollbar-hide')
   ],
 };
