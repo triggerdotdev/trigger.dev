@@ -16,8 +16,25 @@ export const JobsUsageBar: Story = {
 
 function UsageProgressBar() {
   return (
-    <div className="m-12 flex h-screen flex-col items-center justify-center gap-8">
-      <UsageBar />
+    <div className="flex h-screen flex-col items-center justify-center p-12">
+      <UsageBar
+        numberOfCurrentRuns={90000}
+        billingLimit={180000}
+        tierRunLimit={50000}
+        projectedRuns={120000}
+      />
+      <UsageBar
+        numberOfCurrentRuns={30000}
+        billingLimit={180000}
+        tierRunLimit={50000}
+        projectedRuns={120000}
+      />
+      <UsageBar
+        numberOfCurrentRuns={90000}
+        billingLimit={180000}
+        tierRunLimit={50000}
+        projectedRuns={120000}
+      />
     </div>
   );
 }
