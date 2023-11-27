@@ -26,7 +26,7 @@ export async function action({ request }: ActionArgs) {
 
   const body: any = await request.json();
 
-  await workerQueue.enqueueBatch(
+  await workerQueue.batchEnqueue(
     "simulateBatch",
     [
       {

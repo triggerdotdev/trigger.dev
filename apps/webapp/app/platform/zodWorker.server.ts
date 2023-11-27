@@ -82,8 +82,12 @@ type BatchTaskSpec = TaskSpec & {
   maxPayloads?: number;
 };
 
-export type ZodWorkerEnqueueOptions = TaskSpec &
+export type ZodWorkerBatchEnqueueOptions = TaskSpec &
   Pick<BatchTaskSpec, "maxPayloads"> & {
+    tx?: PrismaClientOrTransaction;
+  };
+
+export type ZodWorkerEnqueueOptions = TaskSpec & {
     tx?: PrismaClientOrTransaction;
   };
 
@@ -313,13 +317,13 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     return job;
   }
 
-  public async enqueueBatch<
+  public async batchEnqueue<
     K extends keyof TMessageCatalog,
     TPayload extends z.infer<TMessageCatalog[K]>
   >(
     identifier: K,
     payload: TPayload extends any[] ? TPayload : never,
-    options?: ZodWorkerEnqueueOptions
+    options?: ZodWorkerBatchEnqueueOptions
   ): Promise<GraphileJob> {
     const task = this.#tasks[identifier];
 

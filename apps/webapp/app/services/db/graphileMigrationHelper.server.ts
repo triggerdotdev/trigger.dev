@@ -69,7 +69,7 @@ export class GraphileMigrationHelperService {
           flags := flags,
           job_key_mode := job_key_mode
         );
-        
+
         IF max_payloads IS NOT NULL
         AND json_array_length(v_job.payload) >= max_payloads THEN
           UPDATE ${env.WORKER_SCHEMA}.jobs SET run_at = NOW() WHERE jobs.id = v_job.id RETURNING * INTO v_job;

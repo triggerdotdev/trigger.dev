@@ -167,7 +167,7 @@ if (env.NODE_ENV === "production") {
 export async function init() {
   const migrationHelper = new GraphileMigrationHelperService();
   await migrationHelper.call();
-  
+
   // const pgNotify = new PgNotifyService();
   // await pgNotify.call("trigger:graphile:migrate", { latestMigration: 10 });
   // await new Promise((resolve) => setTimeout(resolve, 10000))
