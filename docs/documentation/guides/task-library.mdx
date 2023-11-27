@@ -215,6 +215,33 @@ await io.sendEvent("🚚", {
 
 [reference docs](/sdk/io/sendevent)
 
+## `sendEvents`
+
+This task allows you to send multiple events from inside your job run.
+
+If you want to send multiple events from outside a run (e.g. just from your backend) you should use [client.sendEvents()](/sdk/triggerclient/instancemethods/sendevents) instead.
+
+```ts
+await io.sendEvents("🚚🚚", [
+  {
+    id: "e_12345",
+    name: "new.user",
+    payload: {
+      userId: "u_12345",
+    },
+  },
+  {
+    id: "e_67890",
+    name: "new.user",
+    payload: {
+      userId: "u_67890",
+    },
+  },
+]);
+```
+
+[reference docs](/sdk/io/sendevents)
+
 ## `getEvent`
 
 This task allows you to get an event by ID from inside your job run.
