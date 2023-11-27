@@ -24,7 +24,6 @@ import {
 
 // this has to be updated manually with each LATEST_API_VERSION bump
 import { restResources, type RestResources } from "@shopify/shopify-api/rest/admin/2023-10";
-import "@shopify/shopify-api/adapters/node";
 
 import { ApiScope } from "./schemas";
 import { createWebhookEventCatalog, WebhookEventCatalog } from "./triggers";

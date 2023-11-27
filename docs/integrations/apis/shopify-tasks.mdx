@@ -186,6 +186,9 @@ client.defineJob({
 You can access the [Shopify API Client instance](https://github.com/Shopify/shopify-api-js/blob/ff0900cd383712e6362b6dd3370d8ab11caabd3d/packages/shopify-api/docs/reference/shopifyApi.md) by using the `runTask` method on the integration:
 
 ```ts
+import "@shopify/shopify-api/adapters/node";
+import { Shopify } from "@trigger.dev/shopify";
+
 const shopify = new Shopify({
   id: "shopify",
 });
