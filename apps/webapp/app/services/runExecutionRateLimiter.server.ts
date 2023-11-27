@@ -373,9 +373,13 @@ function getRateLimiter() {
             keyPrefix: KEY_PREFIX,
             scaleReads: "slave",
             redisOptions: {
-              username: env.REDIS_USERNAME,
               password: env.REDIS_PASSWORD,
-              tls: {},
+              tls: {
+                checkServerIdentity: () => {
+                  // disable TLS verification
+                  return undefined
+                }
+              },
               enableAutoPipelining: true,
             },
             dnsLookup: (address, callback) => callback(null, address),
