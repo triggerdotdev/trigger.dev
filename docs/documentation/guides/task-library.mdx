@@ -193,7 +193,7 @@ The store object exposes several namespaced **Key-Value Stores** you can access 
 await io.store.job.set("💾", "disk-A", "Doom 1.2 Demo #3");
 
 // get it again later
-const value = await io.store.job.get<string>("💾", "disk-A");
+const value = await io.store.job.get<string>("read-💾", "disk-A");
 ```
 
 If you want to acess the store from outside a run (e.g. just from your backend) you should use [client.store](/sdk/triggerclient/store) instead.
