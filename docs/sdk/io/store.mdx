@@ -14,6 +14,54 @@ description: "Exposes namespaced **Key-Value Stores** you can access inside of y
 - `store.job` to access and store data within the **Job**
 - `store.run` to access and store data within the **Run**
 
+You will only be able to access Run-scoped data from inside the _same_ Run when using `store.run`.
+
+To share data across Runs you can use `store.job`:
+
+```ts
+client.defineJob({
+  ...
+  run: async (payload, io, ctx) => {
+    // Run-scoped get - this will always return undefined
+    await io.store.run.get("run-get", "counter")
+
+    // Job-scoped get - this will only be undefined on the first run
+    const counter = await io.store.job.get<number | undefined>("job-get", "counter")
+
+    const currentCount = counter ?? 0
+    const incrementedCounter = currentCount++
+
+    // Run-scoped set - somewhat pointless as we don't access it again in this Run
+    await io.store.run.set("run-set", "counter", incrementedCounter);
+
+    // Job-scoped set
+    await io.store.job.set("job-set", "counter", incrementedCounter);
+  }
+})
+```
+
+And to share data across Jobs you can use `store.env` instead:
+
+```ts
+client.defineJob({
+  id: "job-1",
+  ...
+  run: async (payload, io, ctx) => {
+    // store data in one job
+    await io.store.env.set("cacheKey", "cross-run-shared-key", { foo: "bar" });
+  }
+})
+
+client.defineJob({
+  id: "job-2",
+  ...
+  run: async (payload, io, ctx) => {
+    // access from a different job
+    const value = await io.store.env.get<{ foo: string }>("cacheKey", "cross-run-shared-key");
+  }
+})
+```
+
 ## Methods
 
 ### `delete()`
