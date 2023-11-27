@@ -379,6 +379,7 @@ function getRateLimiter() {
               enableAutoPipelining: true,
             },
             dnsLookup: (address, callback) => callback(null, address),
+            slotsRefreshTimeout: 10000,
           },
         },
         defaultConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
