@@ -6,7 +6,6 @@ import {
   Prettify,
 } from "@trigger.dev/integration-kit";
 import { ShopifyRestResources } from "./index";
-import { WebhookTopic } from "./schemas";
 
 type OmitNonSerializable<T> = Omit<OmitFunctions<OmitIndexSignature<T>>, "session">;
 

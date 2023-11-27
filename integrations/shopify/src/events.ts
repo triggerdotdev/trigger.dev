@@ -1,7 +1,6 @@
+import { Nullable, Prettify } from "@trigger.dev/integration-kit";
 import { basicProperties, eventSpec } from "./utils";
 import { ShopifyExamples, ShopifyPayloads, shopifyExample } from "./payload-examples";
-import { Nullable } from "@trigger.dev/integration-kit/types";
-import { Prettify } from "@trigger.dev/integration-kit";
 
 type ShopifyThis<TResource> = Prettify<
   Nullable<TResource> & {

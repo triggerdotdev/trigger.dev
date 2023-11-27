@@ -184,6 +184,28 @@ We support the following log levels:
 
 [reference docs](/sdk/io/logger)
 
+## `store`
+
+The store object exposes several namespaced **Key-Value Stores** you can access inside of your Jobs. This is useful for storing small amounts of serializable data for later retrieval:
+
+```ts
+// store some data
+await io.store.job.set("💾", "disk-A", "Doom 1.2 Demo #3");
+
+// get it again later
+const value = await io.store.job.get<string>("read-💾", "disk-A");
+```
+
+If you want to access the store from outside a run (e.g. just from your backend) you should use [client.store](/sdk/triggerclient/store) instead.
+
+The following namespaces are at your disposal:
+
+- `store.env` to access and store data within the **Environment**
+- `store.job` to access and store data within the **Job**
+- `store.run` to access and store data within the **Run**
+
+[reference docs](/sdk/io/store)
+
 ## `random`
 
 Use this task to generate a random number that stays stable during run retries/resumes:
@@ -214,6 +236,33 @@ await io.sendEvent("🚚", {
 ```
 
 [reference docs](/sdk/io/sendevent)
+
+## `sendEvents`
+
+This task allows you to send multiple events from inside your job run.
+
+If you want to send multiple events from outside a run (e.g. just from your backend) you should use [client.sendEvents()](/sdk/triggerclient/instancemethods/sendevents) instead.
+
+```ts
+await io.sendEvents("🚚🚚", [
+  {
+    id: "e_12345",
+    name: "new.user",
+    payload: {
+      userId: "u_12345",
+    },
+  },
+  {
+    id: "e_67890",
+    name: "new.user",
+    payload: {
+      userId: "u_67890",
+    },
+  },
+]);
+```
+
+[reference docs](/sdk/io/sendevents)
 
 ## `getEvent`
 

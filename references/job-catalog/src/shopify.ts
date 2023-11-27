@@ -1,5 +1,7 @@
 import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
 import { createExpressServer } from "@trigger.dev/express";
+
+import "@shopify/shopify-api/adapters/node";
 import { Shopify } from "@trigger.dev/shopify";
 
 export const client = new TriggerClient({

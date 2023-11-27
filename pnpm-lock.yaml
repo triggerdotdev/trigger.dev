@@ -603,7 +603,6 @@ importers:
       '@trigger.dev/integration-kit': workspace:^2.2.6
       '@trigger.dev/sdk': workspace:^2.2.6
       '@trigger.dev/tsconfig': workspace:*
-      '@trigger.dev/tsup': workspace:*
       '@types/node': 16.x
       rimraf: ^3.0.2
       tsup: 7.1.x
@@ -616,7 +615,6 @@ importers:
       zod: 3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
-      '@trigger.dev/tsup': link:../../config-packages/tsup
       '@types/node': 16.18.11
       rimraf: 3.0.2
       tsup: 7.1.0_typescript@4.9.4
