@@ -94,21 +94,21 @@ A `Promise` that resolves to the stored value.
 
 <RequestExample>
 ```ts Example
-await client.store.env.set("key", "foo")
-await client.store.job.set("key", "bar")
-await client.store.run.set("key", "baz")
+await io.store.env.set("cacheKey", "key", "foo")
+await io.store.job.set("cacheKey", "key", "bar")
+await io.store.run.set("cacheKey", "key", "baz")
 
-await client.store.env.get("key") // "foo"
-await client.store.job.get("key") // "bar"
-await client.store.run.get("key") // "baz"
+await io.store.env.get("cacheKey", "key") // "foo"
+await io.store.job.get("cacheKey", "key") // "bar"
+await io.store.run.get("cacheKey", "key") // "baz"
 
-await client.store.env.has("key") // true
-await client.store.job.has("missing") // false
-await client.store.run.has("key") // true
+await io.store.env.has("cacheKey", "key") // true
+await io.store.job.has("cacheKey", "missing") // false
+await io.store.run.has("cacheKey", "key") // true
 
 // cleanup
-await client.store.env.delete("key")
-await client.store.job.delete("key")
-await client.store.run.delete("key")
+await io.store.env.delete("cacheKey", "key")
+await io.store.job.delete("cacheKey", "key")
+await io.store.run.delete("cacheKey", "key")
 ```
 </RequestExample>
