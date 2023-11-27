@@ -324,6 +324,12 @@
             "sdk/triggerclient/overview",
             "sdk/triggerclient/constructor",
             {
+              "group": "Instance properties",
+              "pages": [
+                "sdk/triggerclient/store"
+              ]
+            },
+            {
               "group": "Instance methods",
               "pages": [
                 "sdk/triggerclient/instancemethods/sendevent",
@@ -331,7 +337,6 @@
                 "sdk/triggerclient/instancemethods/getevent",
                 "sdk/triggerclient/instancemethods/cancel-event",
                 "sdk/triggerclient/instancemethods/cancel-runs-for-event",
-                "sdk/triggerclient/store",
                 "sdk/triggerclient/instancemethods/getruns",
                 "sdk/triggerclient/instancemethods/getrun",
                 "sdk/triggerclient/instancemethods/define-job",
