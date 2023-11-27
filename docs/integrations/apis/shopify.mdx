@@ -35,6 +35,34 @@ yarn add @trigger.dev/shopify@latest
 
 </CodeGroup>
 
+## Runtime Adapter
+
+It's **required** to import the correct Runtime Adapter for your platform. All examples will use the Node.js adapter, but you can change this to any of the following or even create your own [custom adapter](https://github.com/Shopify/shopify-api-js/blob/6adccd72527dc1fcf387adf09c5522010b6f31f2/packages/shopify-api/docs/guides/runtimes.md).
+
+<Warning>Only import **one** adapter!</Warning>
+
+```ts
+// Import the Node.js adapter
+import '@shopify/shopify-api/adapters/node';
+
+// Import the CloudFlare Worker adapter
+import '@shopify/shopify-api/adapters/cf-worker';
+
+// Import the generic Web API adapter
+import '@shopify/shopify-api/adapters/web-api';
+```
+
+You can then import and use `@trigger.dev/shopify` like any other integration:
+
+```ts
+import "@shopify/shopify-api/adapters/node";
+import { Shopify } from "@trigger.dev/shopify";
+
+const shopify = new Shopify({
+  ...
+});
+```
+
 ## Authentication
 
 You can use Personal Access Tokens to authenticate with Shopify and get started with building custom apps.
@@ -48,6 +76,7 @@ The [required scopes](https://shopify.dev/docs/api/usage/access-scopes#authentic
 Additionally, you will also have to provide your shop domain.
 
 ```ts my-job.ts
+import "@shopify/shopify-api/adapters/node";
 import { Shopify } from "@trigger.dev/shopify";
 
 //create Shopify client using a token

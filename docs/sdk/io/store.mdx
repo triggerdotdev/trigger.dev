@@ -5,7 +5,7 @@ description: "Exposes namespaced **Key-Value Stores** you can access inside of y
 ---
 
 <Warning>
-  Only use this for small values - there's a **256KB** per-item size limit.
+  Only use this for small values - there's a **256KB** size limit per item.
 </Warning>
 
 ## Namespaces
@@ -13,6 +13,54 @@ description: "Exposes namespaced **Key-Value Stores** you can access inside of y
 - `store.env` to access and store data within the **Environment**
 - `store.job` to access and store data within the **Job**
 - `store.run` to access and store data within the **Run**
+
+You will only be able to access Run-scoped data from inside the _same_ Run when using `store.run`.
+
+To share data across Runs you can use `store.job`:
+
+```ts
+client.defineJob({
+  ...
+  run: async (payload, io, ctx) => {
+    // Run-scoped get - this will always return undefined
+    await io.store.run.get("run-get", "counter")
+
+    // Job-scoped get - this will only be undefined on the first run
+    const counter = await io.store.job.get<number | undefined>("job-get", "counter")
+
+    const currentCount = counter ?? 0
+    const incrementedCounter = currentCount++
+
+    // Run-scoped set - somewhat pointless as we don't access it again in this Run
+    await io.store.run.set("run-set", "counter", incrementedCounter);
+
+    // Job-scoped set
+    await io.store.job.set("job-set", "counter", incrementedCounter);
+  }
+})
+```
+
+And to share data across Jobs you can use `store.env` instead:
+
+```ts
+client.defineJob({
+  id: "job-1",
+  ...
+  run: async (payload, io, ctx) => {
+    // store data in one job
+    await io.store.env.set("cacheKey", "cross-run-shared-key", { foo: "bar" });
+  }
+})
+
+client.defineJob({
+  id: "job-2",
+  ...
+  run: async (payload, io, ctx) => {
+    // access from a different job
+    const value = await io.store.env.get<{ foo: string }>("cacheKey", "cross-run-shared-key");
+  }
+})
+```
 
 ## Methods
 
@@ -94,21 +142,21 @@ A `Promise` that resolves to the stored value.
 
 <RequestExample>
 ```ts Example
-await client.store.env.set("key", "foo")
-await client.store.job.set("key", "bar")
-await client.store.run.set("key", "baz")
+await io.store.env.set("cacheKey", "key", "foo")
+await io.store.job.set("cacheKey", "key", "bar")
+await io.store.run.set("cacheKey", "key", "baz")
 
-await client.store.env.get("key") // "foo"
-await client.store.job.get("key") // "bar"
-await client.store.run.get("key") // "baz"
+await io.store.env.get("cacheKey", "key") // "foo"
+await io.store.job.get("cacheKey", "key") // "bar"
+await io.store.run.get("cacheKey", "key") // "baz"
 
-await client.store.env.has("key") // true
-await client.store.job.has("missing") // false
-await client.store.run.has("key") // true
+await io.store.env.has("cacheKey", "key") // true
+await io.store.job.has("cacheKey", "missing") // false
+await io.store.run.has("cacheKey", "key") // true
 
 // cleanup
-await client.store.env.delete("key")
-await client.store.job.delete("key")
-await client.store.run.delete("key")
+await io.store.env.delete("cacheKey", "key")
+await io.store.job.delete("cacheKey", "key")
+await io.store.run.delete("cacheKey", "key")
 ```
 </RequestExample>
