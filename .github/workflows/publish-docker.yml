@@ -63,7 +63,7 @@ jobs:
           IMAGE_TAG: ${{ steps.get_version.outputs.version }}
 
       - name: 🐙 Push 'latest' to GitHub Container Registry
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/v.docker')
         run: |
           docker tag release_build_image $REGISTRY/$REPOSITORY:latest
           docker push $REGISTRY/$REPOSITORY:latest

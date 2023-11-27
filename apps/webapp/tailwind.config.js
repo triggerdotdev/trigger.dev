@@ -194,6 +194,10 @@ module.exports = {
       gridTemplateColumns: {
         carousel: "repeat(6, 200px)",
       },
+      screens: {
+        'lg-height': {'raw': '(max-height: 750px)'},
+        'md-height': {'raw': '(max-height: 600px)'},
+      }
     },
   },
   plugins: [
