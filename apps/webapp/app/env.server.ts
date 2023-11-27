@@ -18,14 +18,7 @@ const EnvironmentSchema = z.object({
   REMIX_APP_PORT: z.string().optional(),
   LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
   APP_ORIGIN: z.string().default("http://localhost:3030"),
-  APP_ENV: z
-    .union([
-      z.literal("development"),
-      z.literal("production"),
-      z.literal("test"),
-      z.literal("staging"),
-    ])
-    .default(process.env.NODE_ENV),
+  APP_ENV: z.string().default(process.env.NODE_ENV),
   SECRET_STORE: SecretStoreOptionsSchema.default("DATABASE"),
   POSTHOG_PROJECT_KEY: z.string().optional(),
   TELEMETRY_TRIGGER_API_KEY: z.string().optional(),
