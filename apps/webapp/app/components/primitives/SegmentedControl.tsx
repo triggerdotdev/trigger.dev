@@ -41,7 +41,7 @@ export default function SegmentedControl({
               value={option.value}
               className={({ active, checked }) =>
                 cn(
-                  "relative flex h-full grow cursor-pointer rounded-[2px] font-normal focus:outline-none",
+                  "relative flex h-full grow cursor-pointer rounded-[2px] text-center font-normal focus:outline-none",
                   active
                     ? "ring-offset-2 focus-visible:ring focus-visible:ring-indigo-500 focus-visible:ring-opacity-60"
                     : "",
