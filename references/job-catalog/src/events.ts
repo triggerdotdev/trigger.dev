@@ -153,4 +153,35 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "batch-trigger-receive",
+  name: "Batch Trigger Receive",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "batch.trigger",
+    batch: {
+      maxPayloads: 5,
+    },
+  }),
+  run: async (payload) => {
+    return Array.isArray(payload) ? payload.length : "Not an array";
+  },
+});
+
+client.defineJob({
+  id: "batch-trigger-send",
+  name: "Batch Trigger Send",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "batch.trigger.send",
+  }),
+  run: async (payload, io) => {
+    for (let i = 0; i < 10; i++) {
+      await io.sendEvent(`send-${i}`, {
+        name: "batch.trigger",
+      });
+    }
+  },
+});
+
 createExpressServer(client);
