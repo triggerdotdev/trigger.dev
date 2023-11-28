@@ -10,6 +10,7 @@ export type CreateExecutionEventInput = {
   eventTime: Date;
   eventType: "start" | "finish";
   drift?: number;
+  concurrencyLimitGroupId?: string | null;
 };
 
 export class CreateExecutionEventService {
@@ -25,7 +26,8 @@ export class CreateExecutionEventService {
         "run_id",
         "event_time",
         "event_type",
-        "drift_amount_in_ms"
+        "drift_amount_in_ms",
+        "concurrency_limit_group_id"
       ) VALUES (
         ${input.organizationId},
         ${input.projectId},
@@ -34,7 +36,8 @@ export class CreateExecutionEventService {
         ${input.runId},
         ${input.eventTime},
         ${input.eventType === "start" ? 1 : -1},
-        ${input.drift}
+        ${input.drift},
+        ${input.concurrencyLimitGroupId}
       )
     `;
   }

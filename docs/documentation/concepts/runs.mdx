@@ -24,7 +24,7 @@ client.defineJob({
   run: async (payload, io, ctx) => {
     // 2. Regular code and Tasks
     // 3. Optionally return data from run execution
-    return { status: 'success' }
+    return { status: "success" };
   },
 });
 ```
@@ -63,6 +63,52 @@ A few things you can do with `io`:
 ### context
 
 The `context` object gives you access to information about the current Run, Job, Environment, Organization and Event. [View the full reference](/sdk/context) for `context`.
+
+## Run Statuses
+
+### Pending
+
+The run has been created but has not started yet. This is the initial status of a run.
+
+### Queued
+
+The run is waiting to be executed. Runs can be queued because of [Run Execution Concurrency Limits](/documentation/concepts/limits#concurrent-run-executions)
+
+### Waiting on Connections
+
+If a run depends on a hosted integration, it will be in this status until the integration is ready.
+
+### Executing
+
+The run is currently executing. This means that the run function is running.
+
+### Waiting
+
+The run is waiting, either because of a call to `io.wait()` or because a task failed and will be retried at some point in the future. Runs in this state don't count towards concurrency limits.
+
+### Failed
+
+The run failed. This can happen if the run function throws an error or if a task fails and the run is not configured to retry.
+
+### Completed
+
+The run completed successfully. This means that the run function finished executing and all tasks completed successfully.
+
+### Cancelled
+
+The run was cancelled. This can happen if the run is cancelled manually.
+
+### Timed Out
+
+The run timed out. This can happen if the run exceeds the maximum run duration, or if we receive a serverless function execution timed out response when hitting your endpoint repeatedly with no new task creation.
+
+### Invalid Payload
+
+The run failed because the payload was invalid.
+
+### Unresolved Auth
+
+The run failed because the auth data could not be resolved when using a custom Auth Resolver.
 
 ## References
 

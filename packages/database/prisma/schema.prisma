@@ -328,6 +328,7 @@ model RuntimeEnvironment {
   scheduleSources          ScheduleSource[]
   ExternalAccount          ExternalAccount[]
   httpEndpointEnvironments TriggerHttpEndpointEnvironment[]
+  concurrencyLimitGroups   ConcurrencyLimitGroup[]
   keyValueItems            KeyValueItem[]
   webhookEnvironments      WebhookEnvironment[]
   webhookRequestDeliveries WebhookRequestDelivery[]
@@ -488,11 +489,15 @@ model JobVersion {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
-  queue   JobQueue @relation(fields: [queueId], references: [id])
-  queueId String
+  queue   JobQueue? @relation(fields: [queueId], references: [id])
+  queueId String?
 
   startPosition  JobStartPosition @default(INITIAL)
   preprocessRuns Boolean          @default(false)
+
+  concurrencyLimit        Int?
+  concurrencyLimitGroup   ConcurrencyLimitGroup? @relation(fields: [concurrencyLimitGroupId], references: [id])
+  concurrencyLimitGroupId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -530,6 +535,23 @@ model EventExample {
   updatedAt DateTime @updatedAt
 
   @@unique([slug, jobVersionId])
+}
+
+model ConcurrencyLimitGroup {
+  id   String @id @default(cuid())
+  name String
+
+  concurrencyLimit Int
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jobVersion JobVersion[]
+
+  @@unique([environmentId, name])
 }
 
 model JobQueue {
@@ -718,7 +740,7 @@ enum PayloadType {
 
 model JobRun {
   id       String  @id @default(cuid())
-  number   Int
+  number   Int?
   internal Boolean @default(false)
 
   job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -742,8 +764,8 @@ model JobRun {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
-  queue   JobQueue @relation(fields: [queueId], references: [id])
-  queueId String
+  queue   JobQueue? @relation(fields: [queueId], references: [id])
+  queueId String?
 
   externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   externalAccountId String?
@@ -787,6 +809,9 @@ enum JobRunStatus {
   WAITING_ON_CONNECTIONS
   PREPROCESSING
   STARTED
+  EXECUTING
+  WAITING_TO_CONTINUE
+  WAITING_TO_EXECUTE
   SUCCESS
   FAILURE
   TIMED_OUT
@@ -794,6 +819,11 @@ enum JobRunStatus {
   CANCELED
   UNRESOLVED_AUTH
   INVALID_PAYLOAD
+}
+
+model JobCounter {
+  jobId      String @id
+  lastNumber Int    @default(0)
 }
 
 model JobRunAutoYieldExecution {

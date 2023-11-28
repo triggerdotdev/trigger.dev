@@ -43,6 +43,13 @@ export class JobPresenter {
                 eventSpecification: true,
                 properties: true,
                 status: true,
+                concurrencyLimit: true,
+                concurrencyLimitGroup: {
+                  select: {
+                    name: true,
+                    concurrencyLimit: true,
+                  },
+                },
                 runs: {
                   select: {
                     createdAt: true,
@@ -186,6 +193,8 @@ export class JobPresenter {
       enabled: alias.version.status === "ACTIVE",
       lastRun: alias.version.runs.at(0)?.createdAt,
       version: alias.version.version,
+      concurrencyLimit: alias.version.concurrencyLimit,
+      concurrencyLimitGroup: alias.version.concurrencyLimitGroup,
     }));
 
     const projectRootPath = projectPath({ slug: organizationSlug }, { slug: projectSlug });

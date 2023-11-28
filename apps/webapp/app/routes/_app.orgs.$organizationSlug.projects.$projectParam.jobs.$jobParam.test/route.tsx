@@ -297,7 +297,9 @@ export default function Page() {
                           label={<DateTime date={run.created} />}
                           description={
                             <>
-                              Run #{run.number}{" "}
+                              {typeof run.number === "number"
+                                ? `Run #${run.number}`
+                                : `Run ${run.id.slice(0, 8)}`}
                               <span className={runStatusClassNameColor(run.status)}>
                                 {runStatusTitle(run.status).toLocaleLowerCase()}
                               </span>

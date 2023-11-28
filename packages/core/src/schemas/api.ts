@@ -273,6 +273,11 @@ export const QueueOptionsSchema = z.object({
 
 export type QueueOptions = z.infer<typeof QueueOptionsSchema>;
 
+export const ConcurrencyLimitOptionsSchema = z.object({
+  id: z.string(),
+  limit: z.number(),
+});
+
 export const JobMetadataSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -284,6 +289,7 @@ export const JobMetadataSchema = z.object({
   enabled: z.boolean(),
   startPosition: z.enum(["initial", "latest"]),
   preprocessRuns: z.boolean(),
+  concurrencyLimit: ConcurrencyLimitOptionsSchema.or(z.number().int().positive()).optional(),
 });
 
 export type JobMetadata = z.infer<typeof JobMetadataSchema>;
@@ -879,7 +885,6 @@ export const RunTaskOptionsSchema = z.object({
   /** A No Operation means that the code won't be executed. This is used internally to implement features like [io.wait()](https://trigger.dev/docs/sdk/io/wait).  */
   noop: z.boolean().default(false),
   redact: RedactSchema.optional(),
-  trigger: TriggerMetadataSchema.optional(),
   parallel: z.boolean().optional(),
 });
 

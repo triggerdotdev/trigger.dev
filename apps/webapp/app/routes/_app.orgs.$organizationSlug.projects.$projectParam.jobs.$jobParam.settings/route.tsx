@@ -24,7 +24,7 @@ export default function Page() {
   const project = useProject();
 
   return (
-    <Help defaultOpen>
+    <Help>
       {(open) => (
         <div className={cn("grid h-fit gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
           <div className="w-full">
@@ -32,7 +32,7 @@ export default function Page() {
               <Header2 className="mb-2 flex items-center gap-1">Environments</Header2>
               <HelpTrigger title="How do disable a Job?" />
             </div>
-            <JobStatusTable environments={job.environments} />
+            <JobStatusTable environments={job.environments} displayStyle="long" />
             <div className="mt-4 flex w-full items-center justify-end gap-x-3">
               {job.status === "ACTIVE" && (
                 <Paragraph variant="small">

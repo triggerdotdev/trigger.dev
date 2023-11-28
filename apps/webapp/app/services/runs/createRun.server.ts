@@ -31,12 +31,6 @@ export class CreateRunService {
       },
     });
 
-    const jobQueue = await this.#prismaClient.jobQueue.findUniqueOrThrow({
-      where: {
-        id: version.queueId,
-      },
-    });
-
     const eventRecord = await this.#prismaClient.eventRecord.findUniqueOrThrow({
       where: {
         id: eventId,
@@ -44,22 +38,8 @@ export class CreateRunService {
     });
 
     return await $transaction(this.#prismaClient, async (tx) => {
-      // Get the current max number for the given jobId
-      const latestJob = await tx.jobRun.findFirst({
-        where: { jobId: job.id },
-        orderBy: { id: "desc" },
-        select: {
-          number: true,
-        },
-      });
-
-      // Increment the number for the new execution
-      const newNumber = (latestJob?.number ?? 0) + 1;
-
-      // Create the new execution with the incremented number
       const run = await tx.jobRun.create({
         data: {
-          number: newNumber,
           preprocess: version.preprocessRuns,
           jobId: job.id,
           versionId: version.id,
@@ -68,7 +48,6 @@ export class CreateRunService {
           organizationId: environment.organizationId,
           projectId: environment.projectId,
           endpointId: endpoint.id,
-          queueId: jobQueue.id,
           externalAccountId: eventRecord.externalAccountId
             ? eventRecord.externalAccountId
             : undefined,

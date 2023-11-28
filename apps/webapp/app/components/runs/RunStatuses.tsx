@@ -3,24 +3,13 @@ import {
   CheckCircleIcon,
   ClockIcon,
   ExclamationTriangleIcon,
+  PauseCircleIcon,
   WrenchIcon,
   XCircleIcon,
 } from "@heroicons/react/24/solid";
 import type { JobRunStatus } from "@trigger.dev/database";
 import { cn } from "~/utils/cn";
 import { Spinner } from "../primitives/Spinner";
-
-export function hasFinished(status: JobRunStatus): boolean {
-  return (
-    status === "SUCCESS" ||
-    status === "FAILURE" ||
-    status === "ABORTED" ||
-    status === "TIMED_OUT" ||
-    status === "CANCELED" ||
-    status === "UNRESOLVED_AUTH" ||
-    status === "INVALID_PAYLOAD"
-  );
-}
 
 export function RunStatus({ status }: { status: JobRunStatus }) {
   return (
@@ -40,49 +29,26 @@ export function RunStatusIcon({ status, className }: { status: JobRunStatus; cla
     case "SUCCESS":
       return <CheckCircleIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "PENDING":
+    case "WAITING_TO_CONTINUE":
       return <ClockIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "QUEUED":
-      return <ClockIcon className={cn(runStatusClassNameColor(status), className)} />;
+    case "WAITING_TO_EXECUTE":
+      return <PauseCircleIcon className={cn(runStatusClassNameColor(status), className)} />;
+    case "PREPROCESSING":
     case "STARTED":
+    case "EXECUTING":
       return <Spinner className={cn(runStatusClassNameColor(status), className)} />;
-    case "FAILURE":
-      return <XCircleIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "TIMED_OUT":
       return <ExclamationTriangleIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "UNRESOLVED_AUTH":
+    case "FAILURE":
+    case "ABORTED":
     case "INVALID_PAYLOAD":
       return <XCircleIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "WAITING_ON_CONNECTIONS":
       return <WrenchIcon className={cn(runStatusClassNameColor(status), className)} />;
-    case "ABORTED":
-      return <XCircleIcon className={cn(runStatusClassNameColor(status), className)} />;
-    case "PREPROCESSING":
-      return <Spinner className={cn(runStatusClassNameColor(status), className)} />;
     case "CANCELED":
       return <NoSymbolIcon className={cn(runStatusClassNameColor(status), className)} />;
-  }
-}
-
-export type RunBasicStatus = "WAITING" | "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
-
-export function runBasicStatus(status: JobRunStatus): RunBasicStatus {
-  switch (status) {
-    case "WAITING_ON_CONNECTIONS":
-    case "QUEUED":
-    case "PREPROCESSING":
-    case "PENDING":
-      return "PENDING";
-    case "STARTED":
-      return "RUNNING";
-    case "FAILURE":
-    case "TIMED_OUT":
-    case "UNRESOLVED_AUTH":
-    case "CANCELED":
-    case "ABORTED":
-    case "INVALID_PAYLOAD":
-      return "FAILED";
-    case "SUCCESS":
-      return "COMPLETED";
     default: {
       const _exhaustiveCheck: never = status;
       throw new Error(`Non-exhaustive match for value: ${status}`);
@@ -99,7 +65,12 @@ export function runStatusTitle(status: JobRunStatus): string {
     case "STARTED":
       return "In progress";
     case "QUEUED":
+    case "WAITING_TO_EXECUTE":
       return "Queued";
+    case "EXECUTING":
+      return "Executing";
+    case "WAITING_TO_CONTINUE":
+      return "Waiting";
     case "FAILURE":
       return "Failed";
     case "TIMED_OUT":
@@ -130,9 +101,12 @@ export function runStatusClassNameColor(status: JobRunStatus): string {
     case "PENDING":
       return "text-slate-500";
     case "STARTED":
+    case "EXECUTING":
+    case "WAITING_TO_CONTINUE":
+    case "WAITING_TO_EXECUTE":
       return "text-blue-500";
     case "QUEUED":
-      return "text-amber-300";
+      return "text-slate-500";
     case "FAILURE":
     case "UNRESOLVED_AUTH":
     case "INVALID_PAYLOAD":
@@ -147,5 +121,9 @@ export function runStatusClassNameColor(status: JobRunStatus): string {
       return "text-blue-500";
     case "CANCELED":
       return "text-slate-500";
+    default: {
+      const _exhaustiveCheck: never = status;
+      throw new Error(`Non-exhaustive match for value: ${status}`);
+    }
   }
 }

@@ -97,6 +97,7 @@ export default function NewOrganizationPage() {
               {...conform.input(orgName, { type: "text" })}
               placeholder="Your Organization name"
               icon="organization"
+              autoFocus
             />
             <Hint>E.g. your company name or your workspace name.</Hint>
             <FormError id={orgName.errorId}>{orgName.error}</FormError>

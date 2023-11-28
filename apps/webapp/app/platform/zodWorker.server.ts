@@ -94,6 +94,11 @@ export type ZodWorkerCleanupOptions = {
 
 type ZodWorkerReporter = (event: string, properties: Record<string, any>) => Promise<void>;
 
+export interface ZodWorkerRateLimiter {
+  forbiddenFlags(): Promise<string[]>;
+  wrapTask(t: Task, rescheduler: Task): Task;
+}
+
 export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   name: string;
   runnerOptions: RunnerOptions;
@@ -104,6 +109,7 @@ export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   cleanup?: ZodWorkerCleanupOptions;
   reporter?: ZodWorkerReporter;
   shutdownTimeoutInMs?: number;
+  rateLimiter?: ZodWorkerRateLimiter;
 };
 
 export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
@@ -116,6 +122,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   #runner?: GraphileRunner;
   #cleanup: ZodWorkerCleanupOptions | undefined;
   #reporter?: ZodWorkerReporter;
+  #rateLimiter?: ZodWorkerRateLimiter;
   #shutdownTimeoutInMs?: number;
   #shuttingDown = false;
 
@@ -128,6 +135,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     this.#recurringTasks = options.recurringTasks;
     this.#cleanup = options.cleanup;
     this.#reporter = options.reporter;
+    this.#rateLimiter = options.rateLimiter;
     this.#shutdownTimeoutInMs = options.shutdownTimeoutInMs ?? 60000; // default to 60 seconds
   }
 
@@ -151,6 +159,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       noHandleSignals: true,
       taskList: this.#createTaskListFromTasks(),
       parsedCronItems,
+      forbiddenFlags: this.#rateLimiter?.forbiddenFlags.bind(this.#rateLimiter),
     });
 
     if (!this.#runner) {
@@ -395,7 +404,11 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
         return this.#handleMessage(key, payload, helpers);
       };
 
-      taskList[key] = task;
+      if (this.#rateLimiter) {
+        taskList[key] = this.#rateLimiter.wrapTask(task, this.#rescheduleTask.bind(this));
+      } else {
+        taskList[key] = task;
+      }
     }
 
     for (const [key] of Object.entries(this.#recurringTasks ?? {})) {
@@ -423,6 +436,19 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     }
 
     return taskList;
+  }
+
+  async #rescheduleTask(payload: unknown, helpers: JobHelpers) {
+    this.#logDebug("Rescheduling task", { payload, job: helpers.job });
+
+    await this.enqueue(helpers.job.task_identifier, payload, {
+      runAt: helpers.job.run_at,
+      queueName: helpers.job.queue_name ?? undefined,
+      priority: helpers.job.priority,
+      jobKey: helpers.job.key ?? undefined,
+      flags: Object.keys(helpers.job.flags ?? []),
+      maxAttempts: helpers.job.max_attempts,
+    });
   }
 
   #createCronItemsFromRecurringTasks() {

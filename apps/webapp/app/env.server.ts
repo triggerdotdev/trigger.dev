@@ -18,14 +18,7 @@ const EnvironmentSchema = z.object({
   REMIX_APP_PORT: z.string().optional(),
   LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
   APP_ORIGIN: z.string().default("http://localhost:3030"),
-  APP_ENV: z
-    .union([
-      z.literal("development"),
-      z.literal("production"),
-      z.literal("test"),
-      z.literal("staging"),
-    ])
-    .default(process.env.NODE_ENV),
+  APP_ENV: z.string().default(process.env.NODE_ENV),
   SECRET_STORE: SecretStoreOptionsSchema.default("DATABASE"),
   POSTHOG_PROJECT_KEY: z.string().optional(),
   TELEMETRY_TRIGGER_API_KEY: z.string().optional(),
@@ -59,6 +52,17 @@ const EnvironmentSchema = z.object({
   AWS_SQS_QUEUE_URL: z.string().optional(),
   AWS_SQS_BATCH_SIZE: z.coerce.number().int().optional().default(10),
   DISABLE_SSE: z.string().optional(),
+
+  // Redis options
+  REDIS_HOST: z.string().optional(),
+  REDIS_READER_HOST: z.string().optional(),
+  REDIS_READER_PORT: z.coerce.number().optional(),
+  REDIS_PORT: z.coerce.number().optional(),
+  REDIS_USERNAME: z.string().optional(),
+  REDIS_PASSWORD: z.string().optional(),
+
+  DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
+  DEFAULT_DEV_ENV_EXECUTION_ATTEMPTS: z.coerce.number().int().positive().default(1),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
