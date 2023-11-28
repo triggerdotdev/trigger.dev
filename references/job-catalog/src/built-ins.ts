@@ -307,6 +307,13 @@ client.defineJob({
     name: "store.example",
   }),
   run: async (payload, io, ctx) => {
+    // key tests
+    await io.store.job.set("set-emoji", "🍔", "🐮");
+    await io.store.job.get("get-emoji", "🍔");
+
+    await io.store.job.set("set-url", "https://example.com/?foo=bar", "url");
+    await io.store.job.get("get-url", "https://example.com/?foo=bar");
+
     // value tests
     await io.store.job.set("set-undefined", "test", undefined);
     await io.store.job.get("get-undefined", "test");

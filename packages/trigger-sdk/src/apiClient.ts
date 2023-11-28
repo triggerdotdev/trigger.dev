@@ -595,7 +595,9 @@ export class ApiClient {
       data,
     });
 
-    const STORE_URL = `${this.#apiUrl}/api/v1/store/${data.key}`;
+    const encodedKey = encodeURIComponent(data.key);
+
+    const STORE_URL = `${this.#apiUrl}/api/v1/store/${encodedKey}`;
 
     const authHeader: HeadersInit = {
       Authorization: `Bearer ${apiKey}`,
@@ -627,7 +629,7 @@ export class ApiClient {
 
         return {
           action: "HAS",
-          key: data.key,
+          key: encodedKey,
           has: !!headResponse.ok,
         };
       }
