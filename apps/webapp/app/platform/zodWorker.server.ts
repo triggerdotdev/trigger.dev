@@ -21,6 +21,14 @@ export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
 }
 
+type BatchMessageKeys<TMessageCatalog extends MessageCatalogSchema> = {
+  [K in keyof TMessageCatalog]: TMessageCatalog[K] extends z.ZodArray<any> ? K : never;
+}[keyof TMessageCatalog];
+
+type BatchMessageCatalogSchema<TMessageCatalog extends MessageCatalogSchema> = {
+  [K in BatchMessageKeys<TMessageCatalog>]: TMessageCatalog[K];
+};
+
 const RawCronPayloadSchema = z.object({
   _cron: z.object({
     ts: z.coerce.date(),
@@ -78,18 +86,17 @@ export type ZodRecurringTasks = {
 type BatchTaskSpec = TaskSpec & {
   /** Unique identifier for the job, can be used to update or remove it later if needed. */
   jobKey: string;
-  /** How many payloads should this batch hold? (Default: _unlimited_) */
+  /** The maximum number of payloads per batch. (Server limits still apply.) */
   maxPayloads?: number;
 };
 
-export type ZodWorkerBatchEnqueueOptions = TaskSpec &
-  Pick<BatchTaskSpec, "maxPayloads"> & {
+export type ZodWorkerBatchEnqueueOptions = BatchTaskSpec & {
     tx?: PrismaClientOrTransaction;
   };
 
 export type ZodWorkerEnqueueOptions = TaskSpec & {
-    tx?: PrismaClientOrTransaction;
-  };
+  tx?: PrismaClientOrTransaction;
+};
 
 export type ZodWorkerDequeueOptions = {
   tx?: PrismaClientOrTransaction;
@@ -318,8 +325,8 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   }
 
   public async batchEnqueue<
-    K extends keyof TMessageCatalog,
-    TPayload extends z.infer<TMessageCatalog[K]>
+    K extends BatchMessageKeys<TMessageCatalog>,
+    TPayload extends z.infer<BatchMessageCatalogSchema<TMessageCatalog>[K]>
   >(
     identifier: K,
     payload: TPayload extends any[] ? TPayload : never,
