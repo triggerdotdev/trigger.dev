@@ -1,12 +1,9 @@
-import { cn } from "~/utils/cn";
-import { Paragraph } from "../primitives/Paragraph";
-import * as Slider from "@radix-ui/react-slider";
-import { Button } from "../primitives/Buttons";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/24/solid";
-import SegmentedControl from "../primitives/SegmentedControl";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
-import { Header3 } from "../primitives/Headers";
+import { cn } from "~/utils/cn";
 import { DefinitionTip } from "../DefinitionTooltip";
+import { Button } from "../primitives/Buttons";
+import { Paragraph } from "../primitives/Paragraph";
+import SegmentedControl from "../primitives/SegmentedControl";
 
 const pricingDefinitions = {
   concurrentRuns: {
@@ -45,7 +42,7 @@ export function PricingTiers({
   return (
     <div
       className={cn(
-        "flex w-full flex-col items-center justify-center gap-4 md:flex-row",
+        "flex min-w-full flex-col items-center justify-center gap-4 md:flex-row",
         className
       )}
     >
@@ -145,7 +142,7 @@ export function TierPro() {
           </DefinitionTip>
           , then{" "}
           <DefinitionTip title="Runs volume discount" content={<RunsVolumeDiscountTable />}>
-            {"<"} $1.30/1,000 Runs
+            {"<"} $1.25/1k Runs
           </DefinitionTip>
         </FeatureItem>
         <FeatureItem checked>
