@@ -1,7 +1,9 @@
 {
   "$schema": "https://mintlify.com/schema.json",
   "name": "Trigger.dev",
-  "openapi": ["/openapi.yml"],
+  "openapi": [
+    "/openapi.yml"
+  ],
   "logo": {
     "dark": "/logo/dark.png",
     "light": "/logo/light.png",
@@ -253,7 +255,10 @@
       "pages": [
         {
           "group": "Airtable",
-          "pages": ["integrations/apis/airtable", "integrations/apis/airtable-tasks"]
+          "pages": [
+            "integrations/apis/airtable",
+            "integrations/apis/airtable-tasks"
+          ]
         },
         {
           "group": "GitHub",
@@ -279,16 +284,25 @@
         },
         {
           "group": "Plain",
-          "pages": ["integrations/apis/plain", "integrations/apis/plain-tasks"]
+          "pages": [
+            "integrations/apis/plain",
+            "integrations/apis/plain-tasks"
+          ]
         },
         "integrations/apis/replicate",
         {
           "group": "SendGrid",
-          "pages": ["integrations/apis/sendgrid", "integrations/apis/sendgrid-tasks"]
+          "pages": [
+            "integrations/apis/sendgrid",
+            "integrations/apis/sendgrid-tasks"
+          ]
         },
         {
           "group": "Resend",
-          "pages": ["integrations/apis/resend", "integrations/apis/resend-tasks"]
+          "pages": [
+            "integrations/apis/resend",
+            "integrations/apis/resend-tasks"
+          ]
         },
         {
           "group": "Shopify",
@@ -300,7 +314,10 @@
         },
         {
           "group": "Slack",
-          "pages": ["integrations/apis/slack", "integrations/apis/slack-tasks"]
+          "pages": [
+            "integrations/apis/slack",
+            "integrations/apis/slack-tasks"
+          ]
         },
         "integrations/apis/stripe",
         {
@@ -339,6 +356,7 @@
                 "sdk/triggerclient/instancemethods/define-dynamic-trigger",
                 "sdk/triggerclient/instancemethods/define-dynamic-schedule",
                 "sdk/triggerclient/instancemethods/define-auth-resolver",
+                "sdk/triggerclient/instancemethods/concurrency-limit",
                 "sdk/triggerclient/instancemethods/on"
               ]
             }
@@ -383,7 +401,10 @@
             "sdk/dynamictrigger/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamictrigger/register", "sdk/dynamictrigger/unregister"]
+              "pages": [
+                "sdk/dynamictrigger/register",
+                "sdk/dynamictrigger/unregister"
+              ]
             }
           ]
         },
@@ -394,7 +415,10 @@
             "sdk/dynamicschedule/constructor",
             {
               "group": "Instance methods",
-              "pages": ["sdk/dynamicschedule/register", "sdk/dynamicschedule/unregister"]
+              "pages": [
+                "sdk/dynamicschedule/register",
+                "sdk/dynamicschedule/unregister"
+              ]
             }
           ]
         },
@@ -406,7 +430,9 @@
     },
     {
       "group": "HTTP Reference",
-      "pages": ["sdk/api-reference/events/create-an-event"]
+      "pages": [
+        "sdk/api-reference/events/create-an-event"
+      ]
     },
     {
       "group": "React SDK",
@@ -420,7 +446,9 @@
     },
     {
       "group": "Overview",
-      "pages": ["examples/introduction"]
+      "pages": [
+        "examples/introduction"
+      ]
     }
   ],
   "footerSocials": {
