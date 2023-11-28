@@ -1,9 +1,9 @@
-import { ActionArgs, json, redirect } from "@remix-run/server-runtime";
+import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { workerQueue } from "~/services/worker.server";
 
-export async function action({ request }: ActionArgs) {
+export async function action({ request }: ActionFunctionArgs) {
   // Next authenticate the request
   const authenticationResult = await authenticateApiRequest(request);
 
@@ -36,7 +36,7 @@ export async function action({ request }: ActionArgs) {
     {
       jobKey: "simulateBatch",
       runAt: new Date(Date.now() + (body.deliverAfter ?? 0) * 1000),
-      maxPayloads: body.maxPayloads ?? null
+      maxPayloads: body.maxPayloads ?? null,
     }
   );
 
