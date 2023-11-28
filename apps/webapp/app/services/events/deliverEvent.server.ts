@@ -41,6 +41,9 @@ export class DeliverEventService {
             enabled: true,
             manual: false,
           },
+          include: {
+            batcher: true,
+          },
         });
 
         logger.debug("Found possible event dispatchers", {
@@ -65,17 +68,32 @@ export class DeliverEventService {
           eventRecord: eventRecord.id,
         });
 
+        const DEFAULT_MAX_PAYLOADS = 10;
+        const DEFAULT_MAX_INTERVAL_IN_SECONDS = 10;
+
         await Promise.all(
-          matchingEventDispatchers.map((eventDispatcher) =>
-            workerQueue.enqueue(
-              "events.invokeDispatcher",
-              {
-                id: eventDispatcher.id,
-                eventRecordId: eventRecord.id,
-              },
-              { tx }
-            )
-          )
+          matchingEventDispatchers.map((eventDispatcher) => {
+            if (eventDispatcher.batcher) {
+              return workerQueue.batchEnqueue("simulateBatch", [{ seconds: 20 }], {
+                tx,
+                jobKey: eventDispatcher.id,
+                maxPayloads: eventDispatcher.batcher.maxPayloads ?? DEFAULT_MAX_PAYLOADS,
+                runAt: new Date(
+                  Date.now() +
+                    (eventDispatcher.batcher.maxInterval ?? DEFAULT_MAX_INTERVAL_IN_SECONDS) * 1000
+                ),
+              });
+            } else {
+              return workerQueue.enqueue(
+                "events.invokeDispatcher",
+                {
+                  id: eventDispatcher.id,
+                  eventRecordId: eventRecord.id,
+                },
+                { tx }
+              );
+            }
+          })
         );
 
         await tx.eventRecord.update({

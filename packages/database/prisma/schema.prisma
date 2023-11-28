@@ -325,6 +325,7 @@ model RuntimeEnvironment {
   JobQueue                 JobQueue[]
   sources                  TriggerSource[]
   eventDispatchers         EventDispatcher[]
+  eventDispatchBatchers    EventDispatchBatcher[]
   scheduleSources          ScheduleSource[]
   ExternalAccount          ExternalAccount[]
   httpEndpointEnvironments TriggerHttpEndpointEnvironment[]
@@ -650,6 +651,8 @@ model EventDispatcher {
 
   enabled Boolean @default(true)
 
+  batcher   EventDispatchBatcher?
+
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
 
@@ -660,6 +663,22 @@ model EventDispatcher {
   externalAccountId String?
 
   @@unique([dispatchableId, environmentId])
+}
+
+model EventDispatchBatcher {
+  id String @id @default(cuid())
+
+  maxPayloads Int?
+  maxInterval Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  eventDispatcher EventDispatcher @relation(fields: [eventDispatcherId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  eventDispatcherId String @unique
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
 }
 
 enum JobStartPosition {

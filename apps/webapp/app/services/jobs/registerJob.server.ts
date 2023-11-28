@@ -312,12 +312,15 @@ export class RegisterJobService {
   ) {
     switch (trigger.type) {
       case "static": {
-        await this.#prismaClient.eventDispatcher.upsert({
+        const eventDispatcher = await this.#prismaClient.eventDispatcher.upsert({
           where: {
             dispatchableId_environmentId: {
               dispatchableId: job.id,
               environmentId: environment.id,
             },
+          },
+          include: {
+            batcher: true,
           },
           create: {
             event:
@@ -346,6 +349,42 @@ export class RegisterJobService {
             enabled: true,
           },
         });
+
+        if (trigger.batch) {
+          let maxPayloads: number | null = null;
+          let maxInterval: number | null = null;
+
+          if (typeof trigger.batch !== "boolean") {
+            maxPayloads = trigger.batch.maxPayloads ?? null;
+            maxInterval = trigger.batch.maxInterval ?? null;
+          }
+
+          await this.#prismaClient.eventDispatchBatcher.upsert({
+            where: {
+              eventDispatcherId: eventDispatcher.id,
+              environmentId: eventDispatcher.environmentId,
+            },
+            create: {
+              eventDispatcherId: eventDispatcher.id,
+              environmentId: eventDispatcher.environmentId,
+              maxPayloads,
+              maxInterval,
+            },
+            update: {
+              maxPayloads,
+              maxInterval,
+            },
+          });
+        } else {
+          if (eventDispatcher.batcher) {
+            await this.#prismaClient.eventDispatchBatcher.delete({
+              where: {
+                eventDispatcherId: eventDispatcher.id,
+                environmentId: eventDispatcher.environmentId,
+              },
+            });
+          }
+        }
 
         if (trigger.properties || trigger.link || trigger.help) {
           await this.#prismaClient.jobVersion.update({
