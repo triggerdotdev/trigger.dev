@@ -3,9 +3,10 @@ import { Paragraph } from "../primitives/Paragraph";
 
 type UsageBarProps = {
   numberOfCurrentRuns: number;
-  billingLimit: number;
+  billingLimit?: number | undefined;
   tierRunLimit: number;
   projectedRuns: number;
+  subscribedToPaidTier?: boolean;
 };
 
 export function UsageBar({
@@ -13,9 +14,15 @@ export function UsageBar({
   billingLimit,
   tierRunLimit,
   projectedRuns,
+  subscribedToPaidTier = false,
 }: UsageBarProps) {
   //create a maximum range for the progress bar
-  const getLargestNumber = Math.max(numberOfCurrentRuns, tierRunLimit, billingLimit, projectedRuns);
+  const getLargestNumber = Math.max(
+    numberOfCurrentRuns,
+    tierRunLimit,
+    projectedRuns,
+    billingLimit ?? -Infinity
+  );
   const maxRange = Math.round(getLargestNumber * 1.15);
 
   //convert the freeRunLimit into a percentage
@@ -25,7 +32,8 @@ export function UsageBar({
   const projectedRunsPercentage = Math.round((projectedRuns / maxRange) * 100);
 
   //convert the BillingLimit into a percentage
-  const billingLimitPercentage = Math.round((billingLimit / maxRange) * 100);
+  const billingLimitPercentage =
+    billingLimit !== undefined ? Math.round((billingLimit / maxRange) * 100) : 0;
 
   const usagePercentage = Math.round((numberOfCurrentRuns / maxRange) * 100);
 
@@ -33,23 +41,25 @@ export function UsageBar({
   return (
     <div className="h-fit w-full py-16">
       <div className="relative h-3 w-full rounded-sm bg-slate-800">
+        {billingLimit && (
+          <div
+            style={{ width: `${billingLimitPercentage}%` }}
+            className="absolute h-3 rounded-l-sm"
+          >
+            <Legend
+              text="Billing limit:"
+              value={billingLimit}
+              position="bottomRow2"
+              percentage={billingLimitPercentage}
+            />
+          </div>
+        )}
         <div
-          style={{ width: `${billingLimitPercentage}%` }}
+          style={{ width: `${tierRunLimitPercentage}%` }}
           className="absolute h-3 rounded-l-sm bg-green-900/50"
         >
           <Legend
-            text="Billing limit:"
-            value={billingLimit}
-            position="bottomRow2"
-            percentage={billingLimitPercentage}
-          />
-        </div>
-        <div
-          style={{ width: `${tierRunLimitPercentage}%` }}
-          className="absolute h-3 rounded-l-sm bg-green-900"
-        >
-          <Legend
-            text="Free tier limit:"
+            text={`${subscribedToPaidTier ? "Included free:" : "Free tier limit:"}`}
             value={tierRunLimit}
             position="bottomRow1"
             percentage={tierRunLimitPercentage}
@@ -66,7 +76,10 @@ export function UsageBar({
 
         <div
           style={{ width: `${usagePercentage}%` }}
-          className="absolute h-3 rounded-l-sm bg-red-500"
+          className={cn(
+            "absolute h-3 rounded-l-sm",
+            subscribedToPaidTier ? "bg-green-600" : "bg-rose-600"
+          )}
         >
           <Legend
             text="Current:"
@@ -109,7 +122,7 @@ function Legend({ text, value, position, percentage }: LegendProps) {
         flipLegendPosition === true ? "-translate-x-full border-r" : "border-l"
       )}
     >
-      <Paragraph className="h-fit whitespace-nowrap bg-background px-1.5 text-xs text-dimmed">
+      <Paragraph className="mr-px h-fit whitespace-nowrap bg-background px-1.5 text-xs text-dimmed">
         {text}
         <span className="ml-1 text-bright">{value}</span>
       </Paragraph>
