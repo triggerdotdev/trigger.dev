@@ -1,4 +1,9 @@
-import { EventFilter, TriggerMetadata, deepMergeFilters } from "@trigger.dev/core";
+import {
+  EventDispatchBatcherOptions,
+  EventFilter,
+  TriggerMetadata,
+  deepMergeFilters,
+} from "@trigger.dev/core";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
 import {
@@ -18,6 +23,7 @@ type EventTriggerOptions<TEventSpecification extends EventSpecification<any>> = 
   source?: string;
   filter?: EventFilter;
   verify?: EventTypeFromSpecification<TEventSpecification> extends Request ? VerifyCallback : never;
+  batch?: EventDispatchBatcherOptions;
 };
 
 export class EventTrigger<TEventSpecification extends EventSpecification<any>>
@@ -38,6 +44,7 @@ export class EventTrigger<TEventSpecification extends EventSpecification<any>>
         source: this.#options.source ?? "trigger.dev",
         payload: deepMergeFilters(this.#options.filter ?? {}, this.#options.event.filter ?? {}),
       },
+      batch: this.#options.batch,
     };
   }
 
@@ -46,6 +53,17 @@ export class EventTrigger<TEventSpecification extends EventSpecification<any>>
   }
 
   attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpecification>, any>): void {}
+
+  batch(
+    options?: Exclude<EventDispatchBatcherOptions, boolean>
+  ): EventTrigger<TEventSpecification> {
+    const { batch, ...rest } = this.#options;
+
+    return new EventTrigger({
+      ...rest,
+      batch: options ?? true,
+    });
+  }
 
   get preprocessRuns() {
     return false;
@@ -93,6 +111,8 @@ type TriggerOptions<TEvent> = {
    * ```
    */
   filter?: EventFilter;
+  /** Used to set batching options. */
+  batch?: EventDispatchBatcherOptions;
 
   examples?: EventSpecificationExample[];
 };
@@ -106,6 +126,7 @@ export function eventTrigger<TEvent extends any = any>(
   return new EventTrigger({
     name: options.name,
     filter: options.filter,
+    batch: options.batch,
     event: {
       name: options.name,
       title: "Event",
