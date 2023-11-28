@@ -397,7 +397,7 @@ function getRateLimiter() {
           username: env.REDIS_USERNAME,
           password: env.REDIS_PASSWORD,
           enableAutoPipelining: true,
-          tls: {}
+          ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} })
         },
         defaultConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
       });
