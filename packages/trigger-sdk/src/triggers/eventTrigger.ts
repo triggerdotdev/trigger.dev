@@ -122,7 +122,7 @@ type TriggerOptions<TEvent> = {
  */
 export function eventTrigger<TEvent extends any = any>(
   options: TriggerOptions<TEvent>
-): Trigger<EventSpecification<TEvent>> {
+): EventTrigger<EventSpecification<TEvent>> {
   return new EventTrigger({
     name: options.name,
     filter: options.filter,
