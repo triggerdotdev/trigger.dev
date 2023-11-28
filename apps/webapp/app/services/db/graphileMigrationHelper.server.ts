@@ -51,7 +51,7 @@ export class GraphileMigrationHelperService {
         text[],
         text,
         integer
-        );`);
+      );`);
 
     await this.#prismaClient.$executeRawUnsafe(`
       CREATE OR REPLACE FUNCTION add_batch_job(
