@@ -404,7 +404,7 @@ export type EndpointIndexError = z.infer<typeof EndpointIndexErrorSchema>;
 const IndexEndpointStatsSchema = z.object({
   jobs: z.number(),
   sources: z.number(),
-  webhooks: z.number(),
+  webhooks: z.number().optional(),
   dynamicTriggers: z.number(),
   dynamicSchedules: z.number(),
   disabledJobs: z.number().default(0),

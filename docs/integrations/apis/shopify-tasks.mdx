@@ -28,11 +28,59 @@ await io.shopify.rest.<Resource>.<method>("cacheKey", params)
 Fetch all resources of a given type.
 
 ```ts
-await io.shopify.rest.Variant.all("get-all-variants", {,
+await io.shopify.rest.Variant.all("get-all-variants", {
   autoPaginate: true, // Pagination helper, disabled by default
   product_id: 123456 // Optional, resource-specific parameter
 })
 ```
+
+**Returns**
+
+<ResponseField name="data" type="array" required>
+  An array of Shopify resources.
+</ResponseField>
+<ResponseField name="pageInfo" type="PageInfo">
+  The `PageInfo` object. Will be `undefined` if there are no further pages.
+
+  <Expandable title="properties">
+    <ResponseField name="limit" type="string" required>
+      The maximum number of results shown per page.
+    </ResponseField>
+    <ResponseField name="fields" type="string[]">
+      An array of resource fields to show in the results.
+    </ResponseField>
+    <ResponseField name="previousPageUrl" type="string">
+      The optional URL of the previous page.
+    </ResponseField>
+    <ResponseField name="nextPageUrl" type="string">
+      The optional URL of the next page.
+    </ResponseField>
+    <ResponseField name="prevPage" type="PageInfoParams">
+      The optional `PageInfoParams` object of the previous page.
+
+      <Expandable title="properties" defaultOpen>
+        <ResponseField name="path" type="string" required>
+          The path of the previous page.
+        </ResponseField>
+        <ResponseField name="query" type="object" required>
+          The query parameters of the previous page.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="nextPage" type="PageInfoParams">
+      The optional `PageInfoParams` object of the next page.
+
+      <Expandable title="properties" defaultOpen>
+        <ResponseField name="path" type="string" required>
+          The path of the next page.
+        </ResponseField>
+        <ResponseField name="query" type="object" required>
+          The query parameters of the next page.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
 
 ### `count()`
 
@@ -44,6 +92,12 @@ await io.shopify.rest.Product.count("count-products", {
 })
 ```
 
+**Returns**
+
+<ResponseField name="count" type="number" required>
+  The number of resources.
+</ResponseField>
+
 ### `find()`
 
 Fetch a single resource by its ID.
@@ -53,6 +107,10 @@ await io.shopify.rest.Product.find("find-product", {
   id: 123456
 })
 ```
+
+**Returns**
+
+A `Promise` that resolves to the Shopify resource.
 
 ### `save()`
 
@@ -75,6 +133,10 @@ await io.shopify.rest.Product.save("update-product", {
 })
 ```
 
+**Returns**
+
+A `Promise` that resolves to the Shopify resource.
+
 ### `delete()`
 
 Delete an existing resource.
@@ -84,6 +146,10 @@ await io.shopify.rest.Product.delete("delete-product", {
   id: 123456
 })
 ```
+
+**Returns**
+
+A `Promise` that resolves to `undefined` when the resource has been deleted. Throws an error otherwise.
 
 ## Resources
 
@@ -186,6 +252,9 @@ client.defineJob({
 You can access the [Shopify API Client instance](https://github.com/Shopify/shopify-api-js/blob/ff0900cd383712e6362b6dd3370d8ab11caabd3d/packages/shopify-api/docs/reference/shopifyApi.md) by using the `runTask` method on the integration:
 
 ```ts
+import "@shopify/shopify-api/adapters/node";
+import { Shopify } from "@trigger.dev/shopify";
+
 const shopify = new Shopify({
   id: "shopify",
 });

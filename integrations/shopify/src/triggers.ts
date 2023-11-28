@@ -1,6 +1,10 @@
+import {
+  EventSpecification,
+  GetWebhookParams,
+  WebhookSource,
+  WebhookTrigger,
+} from "@trigger.dev/sdk";
 import { shopifyEvent } from "./events";
-import { EventSpecification } from "@trigger.dev/sdk";
-import { GetWebhookParams, WebhookSource, WebhookTrigger } from "@trigger.dev/sdk/triggers/webhook";
 import { createWebhookEventSource } from "./webhooks";
 
 const shopifyEvents = {

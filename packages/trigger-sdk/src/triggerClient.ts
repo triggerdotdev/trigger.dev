@@ -728,9 +728,9 @@ export class TriggerClient {
    * @returns An HTTP Endpoint, that can be used to create an HTTP Trigger.
    * @link https://trigger.dev/docs/documentation/concepts/http-endpoints
    */
-  defineHttpEndpoint(options: EndpointOptions) {
+  defineHttpEndpoint(options: EndpointOptions, suppressWarnings = false) {
     const existingHttpEndpoint = this.#registeredHttpEndpoints[options.id];
-    if (existingHttpEndpoint) {
+    if (!suppressWarnings && existingHttpEndpoint) {
       console.warn(
         yellow(
           `[@trigger.dev/sdk] Warning: The HttpEndpoint "${existingHttpEndpoint.id}" you're attempting to define has already been defined. Please assign a different ID to the HttpEndpoint.`

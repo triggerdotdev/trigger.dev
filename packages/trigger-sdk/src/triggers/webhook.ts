@@ -313,12 +313,15 @@ export class WebhookTrigger<
   }
 
   attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpecification>, any>) {
-    triggerClient.defineHttpEndpoint({
-      id: this.key,
-      source: "trigger.dev",
-      icon: this.event.icon,
-      verify: async () => ({ success: true }),
-    });
+    triggerClient.defineHttpEndpoint(
+      {
+        id: this.key,
+        source: "trigger.dev",
+        icon: this.event.icon,
+        verify: async () => ({ success: true }),
+      },
+      true
+    );
 
     triggerClient.attachWebhook({
       key: this.key,
