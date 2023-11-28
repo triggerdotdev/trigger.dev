@@ -42,14 +42,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const store = new KeyValueStore(authenticatedEnv);
 
-  const { key } = parsedParams.data;
+  const decodedKey = decodeURIComponent(parsedParams.data.key);
 
   try {
     switch (parsedMethod.data) {
       case "DELETE": {
-        const deleted = await store.delete(key);
+        const deleted = await store.delete(decodedKey);
 
-        return json({ action: "DELETE", key, deleted });
+        return json({ action: "DELETE", key: decodedKey, deleted });
       }
       case "PUT": {
         const value = await request.text();
@@ -65,9 +65,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
           );
         }
 
-        const setValue = await store.set(key, value);
+        const setValue = await store.set(decodedKey, value);
 
-        return json({ action: "SET", key, value: setValue });
+        return json({ action: "SET", key: decodedKey, value: setValue });
       }
       default: {
         assertExhaustive(parsedMethod.data);
