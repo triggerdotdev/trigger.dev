@@ -55,18 +55,25 @@ function SimpleTooltip({
   side,
   hidden,
   variant,
+  className,
 }: {
   button: React.ReactNode;
   content: React.ReactNode;
   side?: React.ComponentProps<typeof TooltipContent>["side"];
   hidden?: boolean;
   variant?: Variant;
+  className?: string;
 }) {
   return (
     <TooltipProvider>
       <Tooltip>
-        <TooltipTrigger>{button}</TooltipTrigger>
-        <TooltipContent side={side} hidden={hidden} className="text-xs" variant={variant}>
+        <TooltipTrigger className="h-fit">{button}</TooltipTrigger>
+        <TooltipContent
+          side={side}
+          hidden={hidden}
+          className={cn("text-xs", className)}
+          variant={variant}
+        >
           {content}
         </TooltipContent>
       </Tooltip>
