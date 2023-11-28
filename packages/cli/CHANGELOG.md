@@ -1,5 +1,15 @@
 # create-trigger
 
+## 2.2.8
+
+### Patch Changes
+
+- 067e19fe: - Simplify `Webhook Triggers` and use the new HTTP Endpoints
+  - Add a `Key-Value Store` for use in and outside of Jobs
+  - Add a `@trigger.dev/shopify` package
+- Updated dependencies [067e19fe]
+  - @trigger.dev/core@2.2.8
+
 ## 2.2.7
 
 ### Patch Changes
