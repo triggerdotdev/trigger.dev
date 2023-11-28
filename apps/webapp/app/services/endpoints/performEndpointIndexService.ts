@@ -324,7 +324,7 @@ export class PerformEndpointIndexService {
       for (const webhook of webhooks) {
         try {
           await this.#registerWebhookService.call(endpoint, webhook);
-          indexStats.webhooks++;
+          indexStats.webhooks = indexStats.webhooks ?? 0 + 1;
         } catch (error) {
           logger.error("Failed to register webhook", {
             endpointId: endpoint.id,
