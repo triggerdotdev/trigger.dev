@@ -38,6 +38,21 @@ export class GraphileMigrationHelperService {
     // - max_payloads is new
     // - payload must be a JSON array
 
+    // FIXME: should delete all functions with same name
+    await this.#prismaClient.$executeRawUnsafe(`
+      DROP FUNCTION IF EXISTS add_batch_job(
+        text,
+        text,
+        json,
+        text,
+        timestamp with time zone,
+        integer,
+        integer,
+        text[],
+        text,
+        integer
+        );`);
+
     await this.#prismaClient.$executeRawUnsafe(`
       CREATE OR REPLACE FUNCTION add_batch_job(
         identifier text,
@@ -46,13 +61,13 @@ export class GraphileMigrationHelperService {
         queue_name text default null::text,
         run_at timestamp with time zone default null::timestamp with time zone,
         max_attempts integer default null::integer,
-        max_payloads integer default null::integer,
         priority integer default null::integer,
         flags text[] default null::text[],
-        job_key_mode text default 'preserve_run_at'::text
-      ) RETURNS ${env.WORKER_SCHEMA}.jobs AS $$
+        job_key_mode text default 'preserve_run_at'::text,
+        max_payloads integer default null::integer
+      ) RETURNS ${env.WORKER_SCHEMA}._private_jobs AS $$
       DECLARE
-        v_job ${env.WORKER_SCHEMA}.jobs;
+        v_job ${env.WORKER_SCHEMA}._private_jobs;
       BEGIN
         IF json_typeof(payload) IS DISTINCT FROM 'array' THEN
           RAISE EXCEPTION 'Must only call add_batch_job with an array payload';
@@ -60,11 +75,11 @@ export class GraphileMigrationHelperService {
 
         v_job := ${env.WORKER_SCHEMA}.add_job(
           identifier := identifier,
-          job_key := job_key,
           payload := payload,
           queue_name := queue_name,
           run_at := run_at,
           max_attempts := max_attempts,
+          job_key := job_key,
           priority := priority,
           flags := flags,
           job_key_mode := job_key_mode
@@ -72,7 +87,10 @@ export class GraphileMigrationHelperService {
 
         IF max_payloads IS NOT NULL
         AND json_array_length(v_job.payload) >= max_payloads THEN
-          UPDATE ${env.WORKER_SCHEMA}.jobs SET run_at = NOW() WHERE jobs.id = v_job.id RETURNING * INTO v_job;
+          UPDATE ${env.WORKER_SCHEMA}._private_jobs
+            SET run_at = NOW()
+            WHERE _private_jobs.id = v_job.id
+            RETURNING * INTO v_job;
           -- lie that this job was just inserted so a worker picks it up ASAP
           PERFORM pg_notify('jobs:insert', '');
         END IF;
