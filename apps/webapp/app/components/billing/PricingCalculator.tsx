@@ -50,7 +50,7 @@ function ConcurrentRunsSlider() {
               aria-label="Concurrent Runs slider"
             />
           </Slider.Root>
-          <div className="-ml-2.5 flex w-[calc(100%+2rem)] items-center justify-between">
+          <div className="ml-1.5 flex w-[99.85%] items-center justify-between">
             {concurrentRuns.map((run, i) => {
               const concurrrentRunsLabels = Object.values(run)[0];
               return (
@@ -72,19 +72,15 @@ function ConcurrentRunsSlider() {
 }
 
 const Runs = [
-  { 10_000: "10k" },
-  { 20_000: "20k" },
-  { 150_000: "150k" },
-  { 500_000: "500k" },
-  { 1_000_000: "1m" },
-  { 2_500_000: "2.5m" },
-  { 6_250_000: "6.25m" },
-  { 6_250_001: "6.25m+" },
+  { value: 10_000, label: "10k" },
+  { value: 20_000, label: "20k" },
+  { value: 150_000, label: "150k" },
+  { value: 500_000, label: "500k" },
+  { value: 1_000_000, label: "1m" },
+  { value: 2_500_000, label: "2.5m" },
+  { value: 6_250_000, label: "6.25m" },
+  { value: 6_250_001, label: "6.25m+" },
 ];
-
-const lastItemRuns = Runs[Runs.length - 1];
-const maxItemsRuns = Number(Object.keys(lastItemRuns)[0]);
-const stepRuns = maxItemsRuns / Runs.length;
 
 function RunsSlider() {
   return (
@@ -102,8 +98,8 @@ function RunsSlider() {
           <Slider.Root
             className="relative mb-2 mt-4 flex h-5 w-full touch-none select-none items-center"
             defaultValue={[0]}
-            max={maxItemsRuns}
-            step={stepRuns}
+            max={Runs.length - 1}
+            step={1}
           >
             <Slider.Track className="relative h-[8px] grow rounded-full bg-slate-850">
               <Slider.Range className="absolute h-full rounded-full bg-indigo-500" />
