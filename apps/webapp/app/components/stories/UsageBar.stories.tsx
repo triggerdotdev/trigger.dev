@@ -26,7 +26,7 @@ function UsageProgressBar() {
       </UsageBarWrapper>
       <UsageBarWrapper title="Billing limit set">
         <UsageBar
-          numberOfCurrentRuns={30000}
+          numberOfCurrentRuns={35674}
           tierRunLimit={50000}
           projectedRuns={120000}
           billingLimit={180000}
@@ -50,12 +50,15 @@ function UsageProgressBar() {
           subscribedToPaidTier
         />
       </UsageBarWrapper>
+      <UsageBarWrapper title="Brand new user usage">
+        <UsageBar numberOfCurrentRuns={0} tierRunLimit={50000} projectedRuns={0} />
+      </UsageBarWrapper>
       <UsageBarWrapper title="Overlapping UI example">
         <UsageBar
-          numberOfCurrentRuns={90000}
+          numberOfCurrentRuns={95000}
           tierRunLimit={50000}
           billingLimit={55000}
-          projectedRuns={100000}
+          projectedRuns={93132}
           subscribedToPaidTier
         />
       </UsageBarWrapper>
