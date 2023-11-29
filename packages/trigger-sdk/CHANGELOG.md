@@ -1,5 +1,15 @@
 # @trigger.dev/sdk
 
+## 2.2.9
+
+### Patch Changes
+
+- 1dcd87a2: Fix: `Key-Value Store` keys will now be URI encoded
+- 6ebd435e: Feature: Run execution concurrency limits
+- Updated dependencies [6ebd435e]
+  - @trigger.dev/core@2.2.9
+  - @trigger.dev/core-backend@2.2.9
+
 ## 2.2.8
 
 ### Patch Changes
