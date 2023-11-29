@@ -174,11 +174,17 @@ client.defineJob({
   version: "1.0.0",
   trigger: eventTrigger({
     name: "batch.trigger.send",
+    schema: z.object({
+      total: z.number().default(10),
+    }),
   }),
   run: async (payload, io) => {
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < payload.total; i++) {
       await io.sendEvent(`send-${i}`, {
         name: "batch.trigger",
+        payload: {
+          count: i,
+        },
       });
     }
   },
