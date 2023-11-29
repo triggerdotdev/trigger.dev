@@ -1,7 +1,7 @@
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { LinkButton } from "../primitives/Buttons";
 import { Paragraph } from "../primitives/Paragraph";
-import { organizationBillingPath } from "~/utils/pathBuilder";
+import { PlansPath, organizationBillingPath } from "~/utils/pathBuilder";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
 
 type UpgradePromptProps = {
@@ -18,7 +18,7 @@ export function UpgradePrompt({ organization }: UpgradePromptProps) {
         variant={"primary/small"}
         LeadingIcon={ArrowUpCircleIcon}
         leadingIconClassName="px-0"
-        to={organizationBillingPath(organization)}
+        to={PlansPath(organization)}
       >
         Upgrade
       </LinkButton>

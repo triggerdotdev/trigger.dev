@@ -111,6 +111,14 @@ export function organizationBillingPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/billing`;
 }
 
+export function UsagePath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/billing`;
+}
+
+export function PlansPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/billing/plans`;
+}
+
 function organizationParam(organization: OrgForPath) {
   return organization.slug;
 }
