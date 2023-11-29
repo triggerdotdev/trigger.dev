@@ -55,6 +55,7 @@ services:
       - 6379:6379
 
   redisinsight:
+    container_name: redisinsight
     image: redislabs/redisinsight:latest
     ports:
       - "8001:8001"
