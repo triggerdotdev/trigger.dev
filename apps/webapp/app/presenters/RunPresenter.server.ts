@@ -78,6 +78,7 @@ export class RunPresenter {
         slug: run.environment.slug,
       },
       event: this.#prepareEventData(run.event),
+      payload: run.payload,
       tasks,
       runConnections: run.runConnections,
       missingConnections: run.missingConnections,
@@ -112,6 +113,7 @@ export class RunPresenter {
         isTest: true,
         properties: true,
         output: true,
+        payload: true,
         version: {
           select: {
             version: true,

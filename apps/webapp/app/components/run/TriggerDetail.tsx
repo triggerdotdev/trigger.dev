@@ -15,17 +15,19 @@ import { DisplayProperty } from "@trigger.dev/core";
 
 export function TriggerDetail({
   trigger,
+  payload,
   event,
   properties,
 }: {
   trigger: DetailedEvent;
+  payload: string;
   event: {
     title: string;
     icon: string;
   };
   properties: DisplayProperty[];
 }) {
-  const { id, name, payload, context, timestamp, deliveredAt } = trigger;
+  const { id, name, context, timestamp, deliveredAt } = trigger;
 
   return (
     <RunPanel selected={false}>
