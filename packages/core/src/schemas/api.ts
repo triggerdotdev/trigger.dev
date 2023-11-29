@@ -576,6 +576,7 @@ export type AutoYieldConfig = z.infer<typeof AutoYieldConfigSchema>;
 
 export const RunJobBodySchema = z.object({
   event: ApiEventLogSchema,
+  payload: z.string().nullable(),
   job: z.object({
     id: z.string(),
     version: z.string(),

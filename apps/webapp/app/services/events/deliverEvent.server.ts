@@ -74,7 +74,7 @@ export class DeliverEventService {
         await Promise.all(
           matchingEventDispatchers.map((eventDispatcher) => {
             if (eventDispatcher.batcher) {
-              return workerQueue.batchEnqueue("simulateBatch", [{ seconds: 20 }], {
+              return workerQueue.batchEnqueue("events.invokeDispatchChunker", [eventRecord.id], {
                 tx,
                 jobKey: eventDispatcher.id,
                 maxPayloads: eventDispatcher.batcher.maxPayloads ?? DEFAULT_MAX_PAYLOADS,

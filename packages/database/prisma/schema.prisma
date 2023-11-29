@@ -739,6 +739,7 @@ model JobRun {
   id       String  @id @default(cuid())
   number   Int
   internal Boolean @default(false)
+  payload  String?
 
   job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   jobId String

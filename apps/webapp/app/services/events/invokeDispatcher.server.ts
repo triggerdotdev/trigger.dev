@@ -1,10 +1,9 @@
-import { z } from "zod";
 import type { PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { CreateRunService } from "~/services/runs/createRun.server";
-import { InvokeEphemeralDispatcherService } from "../dispatchers/invokeEphemeralEventDispatcher.server";
 import { DispatchableSchema } from "~/models/eventDispatcher.server";
+import { InvokeEphemeralDispatcherService } from "../dispatchers/invokeEphemeralEventDispatcher.server";
 
 export class InvokeDispatcherService {
   #prismaClient: PrismaClientOrTransaction;
@@ -13,7 +12,7 @@ export class InvokeDispatcherService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(id: string, eventRecordId: string) {
+  public async call(id: string, eventRecordIds: string[]) {
     const eventDispatcher = await this.#prismaClient.eventDispatcher.findUniqueOrThrow({
       where: {
         id,
@@ -36,15 +35,27 @@ export class InvokeDispatcherService {
       return;
     }
 
-    const eventRecord = await this.#prismaClient.eventRecord.findUniqueOrThrow({
+    const eventRecords = await this.#prismaClient.eventRecord.findMany({
       where: {
-        id: eventRecordId,
+        id: { in: eventRecordIds },
+      },
+      select: {
+        id: true,
       },
     });
 
-    logger.debug("Invoking event dispatcher", {
+    if (!eventRecords.length) {
+      logger.debug("No event records found", {
+        eventDispatcher,
+        eventRecordIds,
+      });
+
+      return;
+    }
+
+    logger.debug("Invoking batch event dispatcher", {
       eventDispatcher,
-      eventRecord: eventRecord.id,
+      eventRecordIds,
     });
 
     const dispatchable = DispatchableSchema.safeParse(eventDispatcher.dispatchable);
@@ -72,7 +83,7 @@ export class InvokeDispatcherService {
         const createRunService = new CreateRunService(this.#prismaClient);
 
         await createRunService.call({
-          eventId: eventRecord.id,
+          eventIds: eventRecords.map((e) => e.id),
           job: jobVersion.job,
           version: jobVersion,
           environment: eventDispatcher.environment,
@@ -122,7 +133,7 @@ export class InvokeDispatcherService {
           const createRunService = new CreateRunService(this.#prismaClient);
 
           await createRunService.call({
-            eventId: eventRecord.id,
+            eventIds: eventRecords.map((e) => e.id),
             job: job,
             version: latestJobVersion,
             environment: eventDispatcher.environment,
@@ -132,7 +143,11 @@ export class InvokeDispatcherService {
         break;
       }
       case "EPHEMERAL": {
-        await InvokeEphemeralDispatcherService.enqueue(eventDispatcher.id, eventRecord.id);
+        if (eventRecords.length > 1) {
+          throw new Error("Ephemeral dispatcher unsupported when batching is enabled.");
+        }
+
+        await InvokeEphemeralDispatcherService.enqueue(eventDispatcher.id, eventRecords[0].id);
 
         break;
       }

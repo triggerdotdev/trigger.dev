@@ -28,6 +28,7 @@ import { ExpireDispatcherService } from "./dispatchers/expireDispatcher.server";
 import { InvokeEphemeralDispatcherService } from "./dispatchers/invokeEphemeralEventDispatcher.server";
 import { DeliverWebhookRequestService } from "./sources/deliverWebhookRequest.server";
 import { GraphileMigrationHelperService } from "./db/graphileMigrationHelper.server";
+import { DispatchChunkerService } from "./events/dispatchChunker.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -66,6 +67,11 @@ const workerCatalog = {
     ])
   ),
   deliverEvent: z.object({ id: z.string() }),
+  "events.invokeDispatchChunker": z.array(z.string()),
+  "events.invokeBatchDispatcher": z.object({
+    id: z.string(),
+    eventRecordIds: z.string().array(),
+  }),
   "events.invokeDispatcher": z.object({
     id: z.string(),
     eventRecordId: z.string(),
@@ -230,6 +236,30 @@ function getWorkerQueue() {
       },
     },
     tasks: {
+      "events.invokeDispatchChunker": {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 6,
+        queueName: (payload, jobKey) => `dispatcher-chunk:${jobKey}`,
+        handler: async (payload, job) => {
+          if (!job.key) {
+            throw new Error("Job key is required for batch jobs.");
+          }
+
+          const service = new DispatchChunkerService();
+
+          await service.call(job.key, payload);
+        },
+      },
+      "events.invokeBatchDispatcher": {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 6,
+        queueName: (payload) => `dispatcher-batch:${payload.id}`,
+        handler: async (payload, job) => {
+          const service = new InvokeDispatcherService();
+
+          await service.call(payload.id, payload.eventRecordIds);
+        },
+      },
       "events.invokeDispatcher": {
         priority: 0, // smaller number = higher priority
         maxAttempts: 6,
@@ -237,7 +267,7 @@ function getWorkerQueue() {
         handler: async (payload, job) => {
           const service = new InvokeDispatcherService();
 
-          await service.call(payload.id, payload.eventRecordId);
+          await service.call(payload.id, [payload.eventRecordId]);
         },
       },
       "events.deliverScheduled": {

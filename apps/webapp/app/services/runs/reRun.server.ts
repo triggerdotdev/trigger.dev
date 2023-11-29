@@ -69,7 +69,7 @@ export class ReRunService {
             organization: existingRun.organization,
             project: existingRun.project,
           },
-          eventId: eventLog.id,
+          eventIds: [eventLog.id],
           job: existingRun.job,
           version: existingRun.version,
         });

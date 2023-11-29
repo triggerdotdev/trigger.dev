@@ -1217,7 +1217,9 @@ export class TriggerClient {
     );
 
     try {
-      const parsedPayload = job.trigger.event.parsePayload(body.event.payload ?? {});
+      // For compatibility with old Job Runs where payload is only available on the related Event Record
+      const payload = body.payload ? JSON.parse(body.payload) : body.event.payload;
+      const parsedPayload = job.trigger.event.parsePayload(payload ?? {});
 
       if (!context.run.isTest) {
         const verified = await job.trigger.verifyPayload(parsedPayload);

@@ -102,7 +102,7 @@ export class TestJobService {
 
         return await createRunService.call({
           environment,
-          eventId: eventLog.id,
+          eventIds: [eventLog.id],
           job: version.job,
           version,
         });

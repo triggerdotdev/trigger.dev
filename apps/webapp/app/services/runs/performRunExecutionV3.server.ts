@@ -545,6 +545,7 @@ export class PerformRunExecutionV3Service {
 
       return {
         event,
+        payload: run.payload,
         job: {
           id: run.version.job.slug,
           version: run.version.version,
@@ -596,6 +597,7 @@ export class PerformRunExecutionV3Service {
 
     return {
       event,
+      payload: run.payload,
       job: {
         id: run.version.job.slug,
         version: run.version.version,
