@@ -126,7 +126,7 @@ importers:
       '@tabler/icons-react': ^2.39.0
       '@tailwindcss/forms': ^0.5.3
       '@tailwindcss/typography': ^0.5.9
-      '@team-plain/typescript-sdk': ^2.2.0
+      '@team-plain/typescript-sdk': ^3.5.0
       '@total-typescript/ts-reset': ^0.4.2
       '@trigger.dev/companyicons': ^1.5.32
       '@trigger.dev/core': workspace:*
@@ -262,7 +262,7 @@ importers:
       '@remix-run/server-runtime': 2.1.0_typescript@5.2.2
       '@remix-run/v1-meta': 0.1.3_ybjp5xbtg4zthziheradfmei64
       '@tabler/icons-react': 2.40.0_react@18.2.0
-      '@team-plain/typescript-sdk': 2.2.0
+      '@team-plain/typescript-sdk': 3.5.0
       '@trigger.dev/companyicons': 1.5.32_biqbaboplfbrettd7655fr4n2y
       '@trigger.dev/core': link:../../packages/core
       '@trigger.dev/core-backend': link:../../packages/core-backend
@@ -14227,17 +14227,6 @@ packages:
       react: 18.2.0
     dev: false
 
-  /@team-plain/typescript-sdk/2.2.0:
-    resolution: {integrity: sha512-ZNRZJ1uhQYHqaAKNAMdcSvULxutDQldocJWEDxJ5CJX4QYyzD8adK7gB9szKQDsxHFA3sZgTjtSruFBOf+C2fw==}
-    dependencies:
-      '@graphql-typed-document-node/core': 3.2.0_graphql@16.6.0
-      axios: 1.4.0
-      graphql: 16.6.0
-      zod: 3.22.4
-    transitivePeerDependencies:
-      - debug
-    dev: false
-
   /@team-plain/typescript-sdk/2.7.0:
     resolution: {integrity: sha512-n5CRvOuGAUvuAIAL2/4jgr6dG1kW8pelbXyq4YObzGcvUcQRyJ69d93bBvduFAh5/1sQYMUle6BYT/3liwpcfQ==}
     dependencies:
@@ -14247,6 +14236,14 @@ packages:
       zod: 3.22.4
     transitivePeerDependencies:
       - debug
+    dev: false
+
+  /@team-plain/typescript-sdk/3.5.0:
+    resolution: {integrity: sha512-9kweiSlYAN31VI7yzILGxdlZqsGJ+FmCEfXyEZ/0/i3r6vOwq45FDqtjadnQJVtFm+rf/8vCFRN+wEYMIEv6Aw==}
+    dependencies:
+      '@graphql-typed-document-node/core': 3.2.0_graphql@16.6.0
+      graphql: 16.6.0
+      zod: 3.22.4
     dev: false
 
   /@testing-library/dom/8.19.1:
