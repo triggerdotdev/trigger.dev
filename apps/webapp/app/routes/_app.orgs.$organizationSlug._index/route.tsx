@@ -10,6 +10,8 @@ import {
   PageTitleRow,
   PageTitle,
   PageButtons,
+  PageInfoRow,
+  PageInfoGroup,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -38,6 +40,13 @@ export default function Page() {
             </LinkButton>
           </PageButtons>
         </PageTitleRow>
+        <PageInfoRow>
+          <PageInfoGroup alignment="right">
+            <Paragraph variant="extra-small" className="text-slate-600">
+              UID: {organization.id}
+            </Paragraph>
+          </PageInfoGroup>
+        </PageInfoRow>
       </PageHeader>
       <PageBody>
         <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

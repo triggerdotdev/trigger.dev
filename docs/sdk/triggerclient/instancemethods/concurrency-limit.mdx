@@ -1,0 +1,47 @@
+---
+title: "defineConcurrencyLimit()"
+description: "Define a concurrency limit group to control the concurrency of your jobs."
+---
+
+You can control the concurrency of run executions for a group of jobs using a concurrency limit group.
+
+<RequestExample>
+
+```ts example
+const concurrencyLimit = client.defineConcurrencyLimit({
+  id: `test-shared`,
+  limit: 5, // Limit all jobs in this group to 5 concurrent executions
+});
+
+client.defineJob({
+  id: `test-job-1`,
+  name: `Test Job 1`,
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "test",
+  }),
+  concurrencyLimit,
+});
+
+client.defineJob({
+  id: `test-job-2`,
+  name: `Test Job 2`,
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "test",
+  }),
+  concurrencyLimit,
+});
+```
+
+</RequestExample>
+
+## Parameters
+
+<ParamField body="id" type="string" required>
+  The ID of the concurrency limit group.
+</ParamField>
+
+<ParamField body="limit" type="number" required>
+  The maximum number of concurrent executions allowed for this group.
+</ParamField>

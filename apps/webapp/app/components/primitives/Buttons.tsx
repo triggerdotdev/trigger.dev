@@ -304,8 +304,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
   }
 );
 
-type LinkPropsType = Pick<LinkProps, "to" | "target"> & React.ComponentProps<typeof ButtonContent>;
-export const LinkButton = ({ to, ...props }: LinkPropsType) => {
+type LinkPropsType = Pick<LinkProps, "to" | "target" | "onClick"> &
+  React.ComponentProps<typeof ButtonContent>;
+export const LinkButton = ({ to, onClick, ...props }: LinkPropsType) => {
   const innerRef = useRef<HTMLAnchorElement>(null);
   if (props.shortcut) {
     useShortcutKeys({
@@ -324,6 +325,7 @@ export const LinkButton = ({ to, ...props }: LinkPropsType) => {
         href={to.toString()}
         ref={innerRef}
         className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
+        onClick={onClick}
       >
         <ButtonContent {...props} />
       </ExtLink>
@@ -334,6 +336,7 @@ export const LinkButton = ({ to, ...props }: LinkPropsType) => {
         to={to}
         ref={innerRef}
         className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
+        onClick={onClick}
       >
         <ButtonContent {...props} />
       </Link>

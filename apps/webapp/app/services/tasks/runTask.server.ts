@@ -71,7 +71,7 @@ export class RunTaskService {
         status = "CANCELED";
       } else {
         status =
-          delayUntilInFuture || callbackEnabled || taskBody.trigger
+          delayUntilInFuture || callbackEnabled
             ? "WAITING"
             : taskBody.noop
             ? "COMPLETED"
@@ -180,7 +180,7 @@ export class RunTaskService {
     if (existingTask) {
       if (existingTask.status === "CANCELED") {
         const existingTaskStatus =
-          delayUntilInFuture || callbackEnabled || taskBody.trigger
+          delayUntilInFuture || callbackEnabled
             ? "WAITING"
             : taskBody.noop
             ? "COMPLETED"

@@ -18,6 +18,9 @@ export const RunStatusSchema = z.union([
   z.literal("CANCELED"),
   z.literal("UNRESOLVED_AUTH"),
   z.literal("INVALID_PAYLOAD"),
+  z.literal("EXECUTING"),
+  z.literal("WAITING_TO_CONTINUE"),
+  z.literal("WAITING_TO_EXECUTE"),
 ]);
 
 export const RunTaskSchema = z.object({

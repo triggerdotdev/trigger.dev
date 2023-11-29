@@ -1,8 +1,7 @@
 import { PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
-import { workerQueue } from "../worker.server";
-import { enqueueRunExecutionV3 } from "~/models/jobRunExecution.server";
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { logger } from "../logger.server";
+import { ResumeRunService } from "../runs/resumeRun.server";
+import { workerQueue } from "../worker.server";
 
 type FoundTask = Awaited<ReturnType<typeof findTask>>;
 
@@ -81,9 +80,7 @@ export class ResumeTaskService {
       }
     }
 
-    await enqueueRunExecutionV3(task.run, this.#prismaClient, {
-      skipRetrying: task.run.environment.type === RuntimeEnvironmentType.DEVELOPMENT,
-    });
+    await ResumeRunService.enqueue(task.run, this.#prismaClient);
   }
 
   public static async enqueue(id: string, runAt?: Date, tx?: PrismaClientOrTransaction) {

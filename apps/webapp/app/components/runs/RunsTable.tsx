@@ -1,7 +1,7 @@
 import { StopIcon } from "@heroicons/react/24/outline";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { JobRunStatus, RuntimeEnvironmentType } from "@trigger.dev/database";
-import { formatDuration } from "~/utils";
+import { formatDuration, formatDurationMilliseconds } from "~/utils";
 import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 import { DateTime } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
@@ -20,14 +20,16 @@ import { RunStatus } from "./RunStatuses";
 
 type RunTableItem = {
   id: string;
-  number: number;
+  number: number | null;
   environment: {
     type: RuntimeEnvironmentType;
   };
+  job: { title: string; slug: string };
   status: JobRunStatus;
   startedAt: Date | null;
   completedAt: Date | null;
   createdAt: Date | null;
+  executionDuration: number;
   version: string;
   isTest: boolean;
 };
@@ -35,6 +37,7 @@ type RunTableItem = {
 type RunsTableProps = {
   total: number;
   hasFilters: boolean;
+  showJob?: boolean;
   runs: RunTableItem[];
   isLoading?: boolean;
   runsParentPath: string;
@@ -45,6 +48,7 @@ export function RunsTable({
   hasFilters,
   runs,
   isLoading = false,
+  showJob = false,
   runsParentPath,
 }: RunsTableProps) {
   return (
@@ -52,10 +56,12 @@ export function RunsTable({
       <TableHeader>
         <TableRow>
           <TableHeaderCell>Run</TableHeaderCell>
+          {showJob && <TableHeaderCell>Job</TableHeaderCell>}
           <TableHeaderCell>Env</TableHeaderCell>
           <TableHeaderCell>Status</TableHeaderCell>
           <TableHeaderCell>Started</TableHeaderCell>
           <TableHeaderCell>Duration</TableHeaderCell>
+          <TableHeaderCell>Exec Time</TableHeaderCell>
           <TableHeaderCell>Test</TableHeaderCell>
           <TableHeaderCell>Version</TableHeaderCell>
           <TableHeaderCell>Created at</TableHeaderCell>
@@ -66,19 +72,24 @@ export function RunsTable({
       </TableHeader>
       <TableBody>
         {total === 0 && !hasFilters ? (
-          <TableBlankRow colSpan={8}>
-            <NoRuns title="No Runs found for this Job" />
+          <TableBlankRow colSpan={showJob ? 10 : 9}>
+            <NoRuns title="No Runs found" />
           </TableBlankRow>
         ) : runs.length === 0 ? (
-          <TableBlankRow colSpan={8}>
+          <TableBlankRow colSpan={showJob ? 10 : 9}>
             <NoRuns title="No Runs match your filters" />
           </TableBlankRow>
         ) : (
           runs.map((run) => {
-            const path = `${runsParentPath}/${run.id}/trigger`;
+            const path = showJob
+              ? `${runsParentPath}/jobs/${run.job.slug}/runs/${run.id}/trigger`
+              : `${runsParentPath}/${run.id}/trigger`;
             return (
               <TableRow key={run.id}>
-                <TableCell to={path}>#{run.number}</TableCell>
+                <TableCell to={path}>
+                  {typeof run.number === "number" ? `#${run.number}` : "-"}
+                </TableCell>
+                {showJob && <TableCell to={path}>{run.job.slug}</TableCell>}
                 <TableCell to={path}>
                   <EnvironmentLabel environment={run.environment} />
                 </TableCell>
@@ -90,6 +101,11 @@ export function RunsTable({
                 </TableCell>
                 <TableCell to={path}>
                   {formatDuration(run.startedAt, run.completedAt, {
+                    style: "short",
+                  })}
+                </TableCell>
+                <TableCell to={path}>
+                  {formatDurationMilliseconds(run.executionDuration, {
                     style: "short",
                   })}
                 </TableCell>
@@ -121,6 +137,7 @@ export function RunsTable({
     </Table>
   );
 }
+
 function NoRuns({ title }: { title: string }) {
   return (
     <div className="flex items-center justify-center">

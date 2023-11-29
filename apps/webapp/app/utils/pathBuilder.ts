@@ -126,6 +126,10 @@ export function projectPath(organization: OrgForPath, project: ProjectForPath) {
   return `/orgs/${organizationParam(organization)}/projects/${projectParam(project)}`;
 }
 
+export function projectRunsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/runs`;
+}
+
 export function projectSetupPath(organization: OrgForPath, project: ProjectForPath) {
   return `${projectPath(organization, project)}/setup`;
 }

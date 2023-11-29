@@ -16,7 +16,7 @@ The following limits apply to the Trigger.dev Cloud service and users of the sel
 | Connected Integrations                                                  | Up to 50  | Up to 1000  | Custom                    |
 | Task Output Size                                                        | 3MB       | 3MB         | 3MB                       |
 | [Tasks per Run](#tasks-per-runs)                                        | Up to 250 | Up to 1000  | Custom                    |
-| [Concurrent Run Executions](#concurrent-run-executions)                 | Up to 10  | Up to 10    | Custom                    |
+| [Concurrent Run Executions](#concurrent-run-executions)                 | Up to 10  | Up to 100   | Custom                    |
 | [Maximum Task Duration](#maximum-task-duration)                         | < 2m      | < 2m        | < Deployment Grace Period |
 | [Maximum Run Execution Duration](#maximum-total-run-execution-duration) | up to 15m | up to 2 hrs | Custom                    |
 | [Yielded Executions per Run](#yielded-executions-per-run)               | Up to 100 | Up to 100   | Custom                    |
@@ -87,6 +87,51 @@ A Run Execution is a single HTTP request from the Trigger.dev server to your end
 This does not include runs that are waiting for a [io.wait()](/sdk/io/wait) to complete, so you could in theory have 1000s of "In Progress" jobs at a given time with no current run executions.
 
 Going over this limit does not abort or cancel runs, but it will prevent new run executions until the number of concurrent executions drops below the limit.
+
+You can limit the execution concurrency of a specific job like so:
+
+```ts
+client.defineJob({
+  id: `test-job-1`,
+  name: `Test Job 1`,
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "test",
+  }),
+  concurrencyLimit: 5, // Limit this job to 5 concurrent executions
+});
+```
+
+Alternatively, you can limit a group of jobs concurrency limit by defining a concurrency limit and passing it to the `defineJobs()` method:
+
+```ts
+const concurrencyLimit = client.defineConcurrencyLimit({
+  id: `test-shared`,
+  limit: 5, // Limit all jobs in this group to 5 concurrent executions
+});
+
+client.defineJob({
+  id: `test-job-1`,
+  name: `Test Job 1`,
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "test",
+  }),
+  concurrencyLimit,
+});
+
+client.defineJob({
+  id: `test-job-2`,
+  name: `Test Job 2`,
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "test",
+  }),
+  concurrencyLimit,
+});
+```
+
+The two jobs above will share the same concurrency limit, so between them they can only have 5 concurrent executions.
 
 ### Maximum Task Duration
 
