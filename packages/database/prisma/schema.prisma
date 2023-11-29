@@ -794,6 +794,8 @@ model JobRun {
 
   forceYieldImmediately Boolean @default(false)
 
+  impure Boolean @default(false)
+
   tasks              Task[]
   runConnections     RunConnection[]
   missingConnections MissingConnection[]

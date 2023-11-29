@@ -87,6 +87,7 @@ export class RunPresenter {
       error: runError,
       executionDuration: run.executionDuration,
       executionCount: run.executionCount,
+      impure: run.impure,
     };
   }
 
@@ -119,6 +120,7 @@ export class RunPresenter {
         output: true,
         executionCount: true,
         executionDuration: true,
+        impure: true,
         version: {
           select: {
             version: true,

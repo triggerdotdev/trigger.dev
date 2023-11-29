@@ -5,6 +5,7 @@ import {
   RunJobAutoYieldWithCompletedTaskExecutionError,
   RunJobBody,
   RunJobError,
+  RunJobImpureError,
   RunJobInvalidPayloadError,
   RunJobResumeWithParallelTask,
   RunJobResumeWithTask,
@@ -407,6 +408,11 @@ export class PerformRunExecutionV3Service {
         }
         case "RESUME_WITH_PARALLEL_TASK": {
           await this.#resumeParallelRunWithTask(run, safeBody.data, durationInMs);
+
+          break;
+        }
+        case "IMPURE_JOB": {
+          await this.#failImpureJobRun(run, safeBody.data, durationInMs);
 
           break;
         }
@@ -1064,6 +1070,31 @@ export class PerformRunExecutionV3Service {
             },
           },
           forceYieldImmediately: false,
+        },
+      });
+
+      await workerQueue.enqueue(
+        "deliverRunSubscriptions",
+        {
+          id: run.id,
+        },
+        { tx }
+      );
+    });
+  }
+
+  async #failImpureJobRun(run: FoundRun, data: RunJobImpureError, durationInMs: number) {
+    return await $transaction(this.#prismaClient, async (tx) => {
+      await tx.jobRun.update({
+        where: { id: run.id },
+        data: {
+          completedAt: new Date(),
+          status: "FAILURE",
+          output: data.error,
+          executionDuration: {
+            increment: durationInMs,
+          },
+          impure: true,
         },
       });
 

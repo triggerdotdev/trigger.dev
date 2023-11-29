@@ -53,6 +53,7 @@ import {
   AutoYieldWithCompletedTaskExecutionError,
   CanceledWithTaskError,
   ErrorWithTask,
+  ImpureJobError,
   ParsedPayloadSchemaError,
   ResumeWithParallelTaskError,
   ResumeWithTaskError,
@@ -60,7 +61,7 @@ import {
   YieldExecutionError,
 } from "./errors";
 import { EndpointOptions, HttpEndpoint, httpEndpoint } from "./httpEndpoint";
-import { TriggerIntegration } from "./integrations";
+import { IOWithIntegrations, TriggerIntegration } from "./integrations";
 import { IO, IOStats } from "./io";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { Job, JobOptions } from "./job";
@@ -1234,9 +1235,53 @@ export class TriggerClient {
         }
       }
 
-      const output = await runLocalStorage.runWith({ io, ctx: context }, () => {
-        return job.options.run(parsedPayload, ioWithConnections, context);
+      const output: any = await this.#runJobWithLocalStore({
+        job,
+        payload: parsedPayload,
+        io,
+        ioWithConnections,
+        ctx: context,
       });
+
+      // Only run non-internal jobs in development env
+      if (context.environment.type === "DEVELOPMENT" && !job.options.__internal) {
+        const ioForReRerun = new IO({
+          id: body.run.id,
+          jobId: job.id,
+          cachedTasks: body.tasks,
+          cachedTasksCursor: body.cachedTaskCursor,
+          yieldedExecutions: body.yieldedExecutions ?? [],
+          noopTasksSet: body.noopTasksSet,
+          apiClient: this.#client,
+          logger: this.#internalLogger,
+          client: this,
+          context,
+          jobLogLevel: job.logLevel ?? this.#options.logLevel ?? "info",
+          jobLogger: this.#options.ioLogLocalEnabled
+            ? new Logger(job.id, job.logLevel ?? this.#options.logLevel ?? "info")
+            : undefined,
+          serverVersion: triggerVersion,
+          timeOrigin,
+          executionTimeout: body.runChunkExecutionLimit,
+        });
+        const ioWithConnectionsForReRun = createIOWithIntegrations(
+          ioForReRerun,
+          resolvedConnections.data,
+          job.options.integrations
+        );
+
+        const reRunOutput: any = await this.#runJobWithLocalStore({
+          job,
+          payload: parsedPayload,
+          io: ioForReRerun,
+          ioWithConnections: ioWithConnectionsForReRun,
+          ctx: context,
+        });
+
+        if (JSON.stringify(output) !== JSON.stringify(reRunOutput)) {
+          throw new ImpureJobError({ initial: output, reRun: reRunOutput });
+        }
+      }
 
       if (this.#options.verbose) {
         this.#logIOStats(io.stats);
@@ -1262,7 +1307,38 @@ export class TriggerClient {
     }
   }
 
+  async #runJobWithLocalStore({
+    job,
+    payload,
+    ctx,
+    io,
+    ioWithConnections,
+  }: {
+    job: Job<Trigger<any>, Record<string, TriggerIntegration>>;
+    payload: any;
+    ctx: TriggerContext;
+    io: IO;
+    ioWithConnections: IOWithIntegrations<Record<string, TriggerIntegration>>;
+  }) {
+    return await runLocalStorage.runWith({ io, ctx }, () => {
+      return job.options.run(payload, ioWithConnections, ctx);
+    });
+  }
+
   #convertErrorToExecutionResponse(error: any, body: RunJobBody): RunJobErrorResponse {
+    if (error instanceof ImpureJobError) {
+      return {
+        status: "IMPURE_JOB",
+        error: {
+          message: "Inconsistent Output",
+          output: {
+            initial: error.output.initial,
+            reRun: error.output.reRun,
+          },
+        },
+      };
+    }
+
     if (error instanceof AutoYieldExecutionError) {
       return {
         status: "AUTO_YIELD_EXECUTION",

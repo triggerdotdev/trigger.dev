@@ -77,7 +77,13 @@ export function TaskCard({
             styleName={style?.style}
           />
           <RunPanelBody>
-            {error && <RunPanelError text={error.message} stackTrace={error.stack} />}
+            {error && (
+              <RunPanelError
+                text={error.message}
+                error={JSON.stringify(error.output, null, 2)}
+                stackTrace={error.stack}
+              />
+            )}
             {description && <RunPanelDescription text={description} variant={style?.variant} />}
             <RunPanelIconSection>
               {displayKey && <RunPanelIconProperty icon="key" label="Key" value={displayKey} />}

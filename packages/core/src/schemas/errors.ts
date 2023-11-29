@@ -1,9 +1,11 @@
 import { z } from "zod";
+import { DeserializedJsonSchema } from "./json";
 
 export const ErrorWithStackSchema = z.object({
   message: z.string(),
   name: z.string().optional(),
   stack: z.string().optional(),
+  output: DeserializedJsonSchema.optional(),
 });
 
 export type ErrorWithStack = z.infer<typeof ErrorWithStackSchema>;

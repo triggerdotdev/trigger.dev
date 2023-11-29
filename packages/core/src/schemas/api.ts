@@ -708,6 +708,19 @@ export const RunJobCanceledWithTaskSchema = z.object({
 
 export type RunJobCanceledWithTask = z.infer<typeof RunJobCanceledWithTaskSchema>;
 
+export const RunJobImpureErrorSchema = z.object({
+  status: z.literal("IMPURE_JOB"),
+  error: z.object({
+    message: z.string(),
+    output: z.object({
+      initial: DeserializedJsonSchema.optional(),
+      reRun: DeserializedJsonSchema.optional(),
+    }),
+  }),
+});
+
+export type RunJobImpureError = z.infer<typeof RunJobImpureErrorSchema>;
+
 export const RunJobSuccessSchema = z.object({
   status: z.literal("SUCCESS"),
   output: DeserializedJsonSchema.optional(),
@@ -716,6 +729,7 @@ export const RunJobSuccessSchema = z.object({
 export type RunJobSuccess = z.infer<typeof RunJobSuccessSchema>;
 
 export const RunJobErrorResponseSchema = z.union([
+  RunJobImpureErrorSchema,
   RunJobAutoYieldExecutionErrorSchema,
   RunJobAutoYieldWithCompletedTaskExecutionErrorSchema,
   RunJobYieldExecutionErrorSchema,
@@ -738,6 +752,7 @@ export const RunJobResumeWithParallelTaskSchema = z.object({
 export type RunJobResumeWithParallelTask = z.infer<typeof RunJobResumeWithParallelTaskSchema>;
 
 export const RunJobResponseSchema = z.discriminatedUnion("status", [
+  RunJobImpureErrorSchema,
   RunJobAutoYieldExecutionErrorSchema,
   RunJobAutoYieldWithCompletedTaskExecutionErrorSchema,
   RunJobYieldExecutionErrorSchema,
