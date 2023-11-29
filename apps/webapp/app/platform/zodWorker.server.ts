@@ -60,7 +60,7 @@ const AddJobResultsSchema = z.array(GraphileJobSchema);
 
 export type ZodTasks<TConsumerSchema extends MessageCatalogSchema> = {
   [K in keyof TConsumerSchema]: {
-    queueName?: string | ((payload: z.infer<TConsumerSchema[K]>) => string);
+    queueName?: string | ((payload: z.infer<TConsumerSchema[K]>, jobKey?: string) => string);
     jobKey?: string | ((payload: z.infer<TConsumerSchema[K]>) => string | undefined);
     priority?: number;
     maxAttempts?: number;
@@ -92,8 +92,8 @@ type BatchTaskSpec = TaskSpec & {
 };
 
 export type ZodWorkerBatchEnqueueOptions = BatchTaskSpec & {
-    tx?: PrismaClientOrTransaction;
-  };
+  tx?: PrismaClientOrTransaction;
+};
 
 export type ZodWorkerEnqueueOptions = TaskSpec & {
   tx?: PrismaClientOrTransaction;
@@ -292,16 +292,16 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       ...optionsWithoutTx,
     };
 
-    if (typeof task.queueName === "function") {
-      spec.queueName = task.queueName(payload);
-    }
-
     if (typeof task.jobKey === "function") {
       const jobKey = task.jobKey(payload);
 
       if (jobKey) {
         spec.jobKey = jobKey;
       }
+    }
+
+    if (typeof task.queueName === "function") {
+      spec.queueName = task.queueName(payload, spec.jobKey);
     }
 
     logger.debug("Enqueuing worker task", {
@@ -346,10 +346,6 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       ...optionsWithoutTx,
     };
 
-    if (typeof task.queueName === "function") {
-      spec.queueName = task.queueName(payload);
-    }
-
     if (typeof task.jobKey === "function") {
       const jobKey = task.jobKey(payload);
 
@@ -360,6 +356,10 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     if (!spec.jobKey) {
       throw new Error("Failed to enqueue batch job: 'jobKey' can't be empty or undefined");
+    }
+
+    if (typeof task.queueName === "function") {
+      spec.queueName = task.queueName(payload, spec.jobKey);
     }
 
     logger.debug("Enqueuing batch worker task", {
