@@ -65,7 +65,7 @@ export function TierFree() {
         </DefinitionTip>
       </TierLimit>
       <Button variant="secondary/large" fullWidth className="text-md my-6 font-medium">
-        Current Plan
+        Choose Plan
       </Button>
       <ul className="flex flex-col gap-2.5">
         <FeatureItem checked>
