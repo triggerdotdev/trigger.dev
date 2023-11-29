@@ -1,6 +1,12 @@
 import { parse } from "@conform-to/zod";
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { PlainClient, uiComponent } from "@team-plain/typescript-sdk";
+import {
+  ComponentDividerSpacingSize,
+  ComponentSpacerSize,
+  ComponentTextColor,
+  ComponentTextSize,
+  PlainClient,
+} from "@team-plain/typescript-sdk";
 import { inspect } from "util";
 import { z } from "zod";
 import { env } from "~/env.server";
@@ -62,8 +68,6 @@ export async function action({ request }: ActionFunctionArgs) {
       onCreate: {
         externalId: user.id,
         fullName: user.name ?? "",
-        // TODO - Optional: set 'first name' on user
-        // shortName: ''
         email: {
           email: user.email,
           isVerified: true,
@@ -72,8 +76,6 @@ export async function action({ request }: ActionFunctionArgs) {
       onUpdate: {
         externalId: { value: user.id },
         fullName: { value: user.name ?? "" },
-        // TODO - see above
-        // shortName: { value: "" },
         email: {
           email: user.email,
           isVerified: true,
@@ -94,50 +96,63 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     const title = feedbackTypeLabel[submission.value.feedbackType as FeedbackType];
-    const createThreadRes = await client.createThread({
-      customerIdentifier: {
-        customerId: upsertCustomerRes.data.customer.id,
-      },
+    const upsertTimelineEntryRes = await client.upsertCustomTimelineEntry({
+      customerId: upsertCustomerRes.data.customer.id,
       title,
       components: [
-        uiComponent.text({
-          text: `New ${title} reported by ${user.name} (${user.email})`,
-        }),
-        uiComponent.divider({ spacingSize: "M" }),
-        uiComponent.text({
-          size: "S",
-          color: "MUTED",
-          text: "Page",
-        }),
-        uiComponent.text({
-          text: submission.value.path,
-        }),
-        uiComponent.spacer({ size: "M" }),
-        uiComponent.text({
-          size: "S",
-          color: "MUTED",
-          text: "Message",
-        }),
-        uiComponent.text({
-          text: submission.value.message,
-        }),
+        {
+          componentText: {
+            text: `New ${title} reported by ${user.name} (${user.email})`,
+          },
+        },
+        {
+          componentDivider: {
+            dividerSpacingSize: ComponentDividerSpacingSize.M,
+          },
+        },
+        {
+          componentText: {
+            textSize: ComponentTextSize.S,
+            textColor: ComponentTextColor.Muted,
+            text: "Page",
+          },
+        },
+        {
+          componentText: {
+            text: submission.value.path,
+          },
+        },
+        {
+          componentSpacer: {
+            spacerSize: ComponentSpacerSize.M,
+          },
+        },
+        {
+          componentText: {
+            textSize: ComponentTextSize.S,
+            textColor: ComponentTextColor.Muted,
+            text: "Message",
+          },
+        },
+        {
+          componentText: {
+            text: submission.value.message,
+          },
+        },
       ],
-      // TODO: Optional: set labels on threads here on creation
-      // labelTypeIds: [],
-
-      // TODO: Optional: set the priority (0 is urgent, 3 is low)
-      // priority: 0,
+      changeCustomerStatusToActive: true,
+      sendCustomTimelineEntryCreatedNotification: true,
     });
 
-    if (createThreadRes.error) {
+    if (upsertTimelineEntryRes.error) {
       console.error(
-        inspect(createThreadRes.error, {
+        inspect(upsertTimelineEntryRes.error, {
           showHidden: false,
           depth: null,
           colors: true,
         })
       );
-      submission.error.message = createThreadRes.error.message;
+      submission.error.message = upsertTimelineEntryRes.error.message;
       return json(submission);
     }
 
