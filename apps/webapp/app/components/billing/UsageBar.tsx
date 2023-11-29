@@ -2,6 +2,7 @@ import { cn } from "~/utils/cn";
 import { formatter, separator } from "~/utils/numberFormatter";
 import { Paragraph } from "../primitives/Paragraph";
 import { SimpleTooltip } from "../primitives/Tooltip";
+import { motion } from "framer-motion";
 
 type UsageBarProps = {
   numberOfCurrentRuns: number;
@@ -37,7 +38,10 @@ export function UsageBar({
     <div className="h-fit w-full py-16">
       <div className="relative h-3 w-full rounded-sm bg-slate-800">
         {billingLimit && (
-          <div
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: billingLimitPercentage + "%" }}
+            transition={{ duration: 1.5, type: "spring" }}
             style={{ width: `${billingLimitPercentage}%` }}
             className="absolute h-3 rounded-l-sm"
           >
@@ -48,9 +52,12 @@ export function UsageBar({
               percentage={billingLimitPercentage}
               tooltipContent={`Billing Limit: ${separator(billingLimit)}`}
             />
-          </div>
+          </motion.div>
         )}
-        <div
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: tierRunLimitPercentage + "%" }}
+          transition={{ duration: 1.5, type: "spring" }}
           style={{ width: `${tierRunLimitPercentage}%` }}
           className="absolute h-3 rounded-l-sm bg-green-900/50"
         >
@@ -65,9 +72,12 @@ export function UsageBar({
                 : `Free Tier Runs Limit: ${separator(tierRunLimit)}`
             }`}
           />
-        </div>
+        </motion.div>
         {projectedRuns !== 0 && (
-          <div
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: projectedRunsPercentage + "%" }}
+            transition={{ duration: 1.5, type: "spring" }}
             style={{ width: `${projectedRunsPercentage}%` }}
             className="absolute h-3 rounded-l-sm"
           >
@@ -78,9 +88,12 @@ export function UsageBar({
               percentage={projectedRunsPercentage}
               tooltipContent={`Projected Runs: ${separator(projectedRuns)}`}
             />
-          </div>
+          </motion.div>
         )}
-        <div
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: usagePercentage + "%" }}
+          transition={{ duration: 1.5, type: "spring" }}
           style={{ width: `${usagePercentage}%` }}
           className={cn(
             "absolute h-3 rounded-l-sm",
@@ -94,8 +107,11 @@ export function UsageBar({
             percentage={usagePercentage}
             tooltipContent={`Current Run count: ${separator(numberOfCurrentRuns)}`}
           />
-        </div>
-        <div
+        </motion.div>
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: usageCappedToLimitPercentage + "%" }}
+          transition={{ duration: 1.5, type: "spring" }}
           style={{ width: `${usageCappedToLimitPercentage}%` }}
           className="absolute h-3 rounded-l-sm bg-green-600"
         />
