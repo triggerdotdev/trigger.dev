@@ -144,7 +144,8 @@ export function Callout({
   return (
     <div
       className={cn(
-        "flex w-full items-center gap-2 rounded-md border py-2 pl-2 pr-2 shadow-md backdrop-blur-sm",
+        "flex w-full items-center gap-2 rounded-md border pl-2 pr-2 shadow-md backdrop-blur-sm",
+        cta ? "py-2" : "py-2.5",
         variantDefinition.className,
         className
       )}
