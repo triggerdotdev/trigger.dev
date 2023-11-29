@@ -1,5 +1,12 @@
 # proxy
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [6ebd435e]
+  - @trigger.dev/core@2.2.9
+
 ## 0.0.2
 
 ### Patch Changes

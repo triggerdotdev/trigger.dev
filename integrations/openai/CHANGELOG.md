@@ -1,5 +1,15 @@
 # @trigger.dev/slack
 
+## 2.2.9
+
+### Patch Changes
+
+- ca05d5f6: Adding additional assistant tasks
+- Updated dependencies [1dcd87a2]
+- Updated dependencies [6ebd435e]
+  - @trigger.dev/sdk@2.2.9
+  - @trigger.dev/integration-kit@2.2.9
+
 ## 2.2.8
 
 ### Patch Changes

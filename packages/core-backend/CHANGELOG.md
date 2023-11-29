@@ -1,5 +1,7 @@
 # @trigger.dev/core-backend
 
+## 2.2.9
+
 ## 2.2.8
 
 ## 2.2.7
