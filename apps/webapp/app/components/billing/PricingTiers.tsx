@@ -42,7 +42,7 @@ export function PricingTiers({
   return (
     <div
       className={cn(
-        "flex min-w-full flex-col items-center justify-center gap-4 md:flex-row",
+        "flex min-w-full flex-col items-start justify-center gap-4 md:flex-row",
         className
       )}
     >
@@ -354,17 +354,15 @@ function TierLimit({
     <div>
       {pricedMetric ? (
         <>
-          <Paragraph variant="small/bright" className="mb-2 mt-6">
-            {children}
-          </Paragraph>
+          <div className="mb-2 mt-6 font-sans text-sm font-normal text-bright">{children}</div>
           <SegmentedControl name={"Concurrent Runs"} options={options} fullWidth />
         </>
       ) : (
         <>
           <hr className="my-[1.9rem]" />
-          <Paragraph variant="small/bright" className="mb-[0.6rem]">
+          <div className="mb-[0.6rem] mt-6 font-sans text-sm font-normal text-bright">
             {children}
-          </Paragraph>
+          </div>
         </>
       )}
     </div>
@@ -385,9 +383,9 @@ function FeatureItem({ checked, children }: { checked?: boolean; children: React
       ) : (
         <XMarkIcon className="h-4 w-4 text-slate-500" />
       )}
-      <Paragraph variant="small" className={cn(checked ? "text-bright" : "text-dimmed")}>
+      <div className={cn("font-sans text-sm font-normal", checked ? "text-bright" : "text-dimmed")}>
         {children}
-      </Paragraph>
+      </div>
     </li>
   );
 }
