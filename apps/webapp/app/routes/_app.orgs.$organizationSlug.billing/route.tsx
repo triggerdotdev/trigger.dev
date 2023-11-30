@@ -1,42 +1,26 @@
-import { ArrowRightIcon } from "@heroicons/react/20/solid";
-import {
-  ForwardIcon,
-  SquaresPlusIcon,
-  UsersIcon,
-  WrenchScrewdriverIcon,
-} from "@heroicons/react/24/solid";
-import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps, XAxis, YAxis } from "recharts";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Header2 } from "~/components/primitives/Headers";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import { TextLink } from "~/components/primitives/TextLink";
-import { useOrganization } from "~/hooks/useOrganizations";
-import {
-  OrganizationParamsSchema,
-  PlansPath,
-  UsagePath,
-  jobPath,
-  newProjectPath,
-  organizationTeamPath,
-} from "~/utils/pathBuilder";
-import { Link } from "@remix-run/react/dist/components";
+import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
+import { CalendarDaysIcon, GiftIcon, ReceiptRefundIcon } from "@heroicons/react/24/solid";
+import { Outlet } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { OrgUsagePresenter } from "~/presenters/OrgUsagePresenter.server";
-import { requireUserId } from "~/services/session.server";
+import { typedjson } from "remix-typedjson";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
 import {
-  PageHeader,
-  PageTitleRow,
-  PageTitle,
   PageButtons,
-  PageDescription,
+  PageHeader,
+  PageInfoGroup,
+  PageInfoProperty,
+  PageInfoRow,
   PageTabs,
+  PageTitle,
+  PageTitleRow,
 } from "~/components/primitives/PageHeader";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { OrgUsagePresenter } from "~/presenters/OrgUsagePresenter.server";
+import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
-import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
-import { Outlet } from "@remix-run/react";
+import { OrganizationParamsSchema, PlansPath, UsagePath } from "~/utils/pathBuilder";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -52,19 +36,6 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   return typedjson(data);
 }
-
-const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
-  if (active && payload) {
-    return (
-      <div className="flex items-center gap-2 rounded border border-border bg-slate-900 px-4 py-2 text-sm text-dimmed">
-        <p className="text-white">{label}:</p>
-        <p className="text-white">{payload[0].value}</p>
-      </div>
-    );
-  }
-
-  return null;
-};
 
 export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Usage & Billing" />,
@@ -95,7 +66,25 @@ export default function Page() {
             </LinkButton>
           </PageButtons>
         </PageTitleRow>
-        <PageDescription>Current bill total: $0.00</PageDescription>
+
+        <PageInfoRow>
+          <PageInfoGroup>
+            <PageInfoProperty
+              icon={<ReceiptRefundIcon className="h-4 w-4 text-green-600" />}
+              label={"Current Bill Total"}
+              value={"$0.00"}
+            />
+            <PageInfoProperty
+              icon={<GiftIcon className="h-4 w-4 text-green-600" />}
+              value={"You’re currently on the free plan"}
+            />
+            <PageInfoProperty
+              icon={<CalendarDaysIcon className="h-4 w-4 text-green-600" />}
+              label={"Billing period"}
+              value={"Nov 2, 2023 to Dec 2, 2023 (8 days remaining)"}
+            />
+          </PageInfoGroup>
+        </PageInfoRow>
         <PageTabs
           tabs={[
             {
