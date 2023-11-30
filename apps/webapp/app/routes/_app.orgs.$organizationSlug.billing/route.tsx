@@ -1,5 +1,5 @@
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
-import { CalendarDaysIcon, GiftIcon, ReceiptRefundIcon } from "@heroicons/react/24/solid";
+import { CalendarDaysIcon, ReceiptRefundIcon } from "@heroicons/react/24/solid";
 import { Outlet } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
@@ -71,12 +71,7 @@ export default function Page() {
           <PageInfoGroup>
             <PageInfoProperty
               icon={<ReceiptRefundIcon className="h-4 w-4 text-green-600" />}
-              label={"Current Bill Total"}
-              value={"$0.00"}
-            />
-            <PageInfoProperty
-              icon={<GiftIcon className="h-4 w-4 text-green-600" />}
-              value={"You’re currently on the Free plan"}
+              value={"You’re currently on the Pro plan ($80/mo)"}
             />
             <PageInfoProperty
               icon={<CalendarDaysIcon className="h-4 w-4 text-green-600" />}
