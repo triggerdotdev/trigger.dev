@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sveltekit",
-  "version": "2.2.9",
+  "version": "2.2.10",
   "description": "Trigger.dev svelteKit integration",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -33,7 +33,7 @@
     "build:tsup": "tsup"
   },
   "peerDependencies": {
-    "@trigger.dev/sdk": "workspace:^2.2.9"
+    "@trigger.dev/sdk": "workspace:^2.2.10"
   },
   "dependencies": {
     "debug": "^4.3.4"
