@@ -203,27 +203,6 @@ export default function Page() {
           </div>
         </div>
       </div>
-      <div className="w-full overflow-y-auto rounded border border-border px-3 py-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
-        <div className="mb-2 flex items-baseline justify-between border-b border-border px-3 pb-4">
-          <Header3>Jobs</Header3>
-          <Header3>Runs</Header3>
-        </div>
-        <div className="space-y-2">
-          {loaderData.jobs.map((job) => (
-            <Link
-              to={jobPath(organization, job.project, job)}
-              className="flex items-center rounded px-4 py-3 transition hover:bg-slate-850"
-              key={job.id}
-            >
-              <div className="space-y-1">
-                <p className="text-sm font-medium leading-none">{job.slug}</p>
-                <p className="text-sm text-muted-foreground">Project: {job.project.name}</p>
-              </div>
-              <div className="ml-auto font-medium">{job._count.runs.toLocaleString()}</div>
-            </Link>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
