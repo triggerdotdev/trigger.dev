@@ -76,7 +76,7 @@ export default function Page() {
             />
             <PageInfoProperty
               icon={<GiftIcon className="h-4 w-4 text-green-600" />}
-              value={"You’re currently on the free plan"}
+              value={"You’re currently on the Free plan"}
             />
             <PageInfoProperty
               icon={<CalendarDaysIcon className="h-4 w-4 text-green-600" />}
