@@ -9,6 +9,7 @@ import {
   YAxis,
 } from "recharts";
 import { Header3 } from "../primitives/Headers";
+import { Paragraph } from "../primitives/Paragraph";
 
 const tooltipStyle = {
   display: "flex",
@@ -46,19 +47,27 @@ export function ConcurrentRunsChart({
           <Tooltip cursor={{ fill: "rgba(255,255,255,0.05)" }} contentStyle={tooltipStyle} />
           <ReferenceLine
             y={planLimit}
-            label="Plan limit"
+            label={<ReferenceLineLabel />}
             stroke="#1A2434"
             color="#fff"
             strokeDasharray={5}
             ifOverflow="extendDomain"
             className="text-xs"
-          >
-            <Label position="top" offset={-10} className="text-white" />
-          </ReferenceLine>
+          />
           <Line type="stepAfter" dataKey="Concurrent Runs" stroke="#16A34A" strokeWidth={2} />
         </LineChart>
       </ResponsiveContainer>
     </>
+  );
+}
+
+function ReferenceLineLabel() {
+  return (
+    <text x={500} y={"31"} fill={"#94A3B8"} textAnchor="middle">
+      <tspan x={"8em"} dy={"0.3em"}>
+        Plan limit
+      </tspan>
+    </text>
   );
 }
 
