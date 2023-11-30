@@ -13,6 +13,7 @@ import {
 import { RunsTable } from "~/components/runs/RunsTable";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useUser } from "~/hooks/useUser";
 import { RunListPresenter } from "~/presenters/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { ProjectParamSchema, docsPath, projectPath } from "~/utils/pathBuilder";
@@ -48,6 +49,7 @@ export default function Page() {
   const isLoading = navigation.state !== "idle";
   const organization = useOrganization();
   const project = useProject();
+  const user = useUser();
 
   return (
     <PageContainer>
@@ -79,6 +81,7 @@ export default function Page() {
             runs={list.runs}
             isLoading={isLoading}
             runsParentPath={projectPath(organization, project)}
+            currentUser={user}
           />
           <ListPagination list={list} className="mt-2 justify-end" />
         </div>
