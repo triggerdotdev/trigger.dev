@@ -29,9 +29,12 @@ export function ConcurrentRunsChart({
   concurrentRunsLimit: number;
 }) {
   return (
-    <>
+    <div className="relative">
       <Header3 className="mb-4">Monthly concurrent Runs</Header3>
-      <ResponsiveContainer width="100%" height="100%" className="min-h-[20rem]">
+      <Paragraph className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+        No concurrent Runs to show
+      </Paragraph>
+      <ResponsiveContainer width="100%" height="100%" className="relative min-h-[20rem]">
         <LineChart
           data={ConcurrentRunsData}
           margin={{
@@ -57,7 +60,7 @@ export function ConcurrentRunsChart({
           <Line type="stepAfter" dataKey="Concurrent Runs" stroke="#16A34A" strokeWidth={2} />
         </LineChart>
       </ResponsiveContainer>
-    </>
+    </div>
   );
 }
 

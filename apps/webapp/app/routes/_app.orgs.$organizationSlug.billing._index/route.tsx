@@ -97,8 +97,11 @@ export default function Page() {
             </div>
             <UsageBar numberOfCurrentRuns={15467} tierRunLimit={10000} projectedRuns={25347} />
           </div>
-          <div className="w-full">
+          <div className="relative w-full">
             <Header3 className="mb-4">Monthly Runs</Header3>
+            <Paragraph className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+              No Runs to show
+            </Paragraph>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart
                 data={loaderData.chartData}
