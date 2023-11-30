@@ -105,6 +105,10 @@ export function createWebhookEventSource(integration: Shopify) {
       delete: async ({ io, ctx }) => {
         const webhookId = await io.store.job.get<number>("get-webhook-id", "webhook-id");
 
+        if (!webhookId) {
+          throw new Error("Missing webhook ID for delete operation.");
+        }
+
         await io.integration.rest.Webhook.delete("delete-webhook", {
           id: webhookId,
         });
@@ -129,6 +133,10 @@ export function createWebhookEventSource(integration: Shopify) {
       const clientSecret = await client.store.env.get<string>(
         `${registerJobNamespace(ctx.key)}:webhook-secret`
       );
+
+      if (!clientSecret) {
+        throw new Error("Missing secret for verification.");
+      }
 
       return await verifyRequestSignature({
         request,
