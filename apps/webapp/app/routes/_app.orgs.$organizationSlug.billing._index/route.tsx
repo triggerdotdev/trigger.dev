@@ -1,18 +1,16 @@
 import { ArrowRightIcon } from "@heroicons/react/20/solid";
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
-import {
-  ForwardIcon,
-  SquaresPlusIcon,
-  UsersIcon,
-  WrenchScrewdriverIcon,
-} from "@heroicons/react/24/solid";
+import { SquaresPlusIcon, UsersIcon, WrenchScrewdriverIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react/dist/components";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps, XAxis, YAxis } from "recharts";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { ConcurrentRunsChart } from "~/components/billing/ConcurrentRunsChart";
+import { UsageBar } from "~/components/billing/UsageBar";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
-import { Header2 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
+import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -43,9 +41,9 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
   if (active && payload) {
     return (
-      <div className="flex items-center gap-2 rounded border border-border bg-slate-900 px-4 py-2 text-sm text-dimmed">
-        <p className="text-white">{label}:</p>
-        <p className="text-white">{payload[0].value}</p>
+      <div className="flex gap-1 rounded border border-border bg-background px-3 py-2 text-xs text-bright">
+        <p>{label}:</p>
+        <p>{payload[0].value}</p>
       </div>
     );
   }
@@ -58,43 +56,101 @@ export default function Page() {
   const loaderData = useTypedLoaderData<typeof loader>();
 
   return (
-    <>
-      <Callout
-        variant={"pricing"}
-        cta={
-          <LinkButton
-            variant="primary/small"
-            LeadingIcon={ArrowUpCircleIcon}
-            leadingIconClassName="px-0"
-            to={PlansPath(organization)}
+    <div className="flex flex-col gap-4">
+      <div>
+        <Header2 spacing>Concurrent Runs</Header2>
+        <div className="flex w-full flex-col gap-4 rounded border border-border p-6">
+          <Callout
+            variant={"pricing"}
+            cta={
+              <LinkButton
+                variant="primary/small"
+                LeadingIcon={ArrowUpCircleIcon}
+                leadingIconClassName="px-0"
+                to={PlansPath(organization)}
+              >
+                Increase concurrent Runs
+              </LinkButton>
+            }
           >
-            Increase concurrency
-          </LinkButton>
-        }
-        className="mb-4"
-      >
-        Some of your Runs are being queued because your Run concurrency is limited to 50.
-      </Callout>
-      <div className="mb-4 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            Some of your Runs are being queued because the number of concurrent Runs is limited to
+            50.
+          </Callout>
+          <ConcurrentRunsChart concurrentRunsLimit={25} />
+        </div>
+      </div>
+
+      <div className="@container">
+        <Header2 spacing>Runs</Header2>
+        <div className="flex flex-col gap-8 rounded border border-border p-6 @4xl:flex-row">
+          <div className="flex w-full flex-col gap-4">
+            <div className="flex w-full items-center gap-6">
+              <div className="flex flex-col gap-2">
+                <Header3 className="">Month-to-date</Header3>
+                <p className="text-3xl font-medium text-bright">$0.00</p>
+              </div>
+              <ArrowRightIcon className="h-6 w-6 text-dimmed/50" />
+              <div className="flex flex-col gap-2 text-dimmed">
+                <Header3 className="text-dimmed">Projected</Header3>
+                <p className="text-3xl font-medium">$25.00</p>
+              </div>
+            </div>
+            <UsageBar numberOfCurrentRuns={15467} tierRunLimit={10000} projectedRuns={25347} />
+          </div>
+          <div className="w-full">
+            <Header3 className="mb-4 pl-6">Monthly Runs</Header3>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart
+                data={loaderData.chartData}
+                margin={{
+                  top: 0,
+                  right: 0,
+                  left: 0,
+                  bottom: 0,
+                }}
+                className="-ml-7"
+              >
+                <XAxis
+                  dataKey="name"
+                  stroke="#94A3B8"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  stroke="#94A3B8"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(value) => `${value}`}
+                />
+                <Tooltip cursor={{ fill: "rgba(255,255,255,0.05)" }} content={<CustomTooltip />} />
+                <Bar dataKey="total" fill="#16A34A" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <div className="rounded border border-border p-6">
           <div className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <Header2>Total Runs this month</Header2>
-            <ForwardIcon className="h-6 w-6 text-dimmed" />
+            <Header3>Total Runs this month</Header3>
+            <NamedIcon className="h-6 w-6 text-dimmed/50" name={"runs"} />
           </div>
           <div>
-            <p className="text-3xl font-bold">{loaderData.runsCount.toLocaleString()}</p>
+            <p className="text-3xl font-medium">{loaderData.runsCount.toLocaleString()}</p>
             <Paragraph variant="small" className="text-dimmed">
-              {loaderData.runsCountLastMonth} runs last month
+              {loaderData.runsCountLastMonth} Runs last month
             </Paragraph>
           </div>
         </div>
         <div className="rounded border border-border p-6">
           <div className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <Header2>Total Jobs</Header2>
-            <WrenchScrewdriverIcon className="h-6 w-6 text-dimmed" />
+            <Header3>Total Jobs</Header3>
+            <WrenchScrewdriverIcon className="h-6 w-6 text-dimmed/50" />
           </div>
           <div>
-            <p className="text-3xl font-bold">{loaderData.totalJobs.toLocaleString()}</p>
+            <p className="text-3xl font-medium">{loaderData.totalJobs.toLocaleString()}</p>
             <Paragraph variant="small" className="text-dimmed">
               {loaderData.totalJobs === loaderData.totalJobsLastMonth ? (
                 <>No change since last month</>
@@ -108,11 +164,11 @@ export default function Page() {
         </div>
         <div className="rounded border border-border p-6">
           <div className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <Header2>Total Integrations</Header2>
-            <SquaresPlusIcon className="h-6 w-6 text-dimmed" />
+            <Header3>Total Integrations</Header3>
+            <SquaresPlusIcon className="h-6 w-6 text-dimmed/50" />
           </div>
           <div>
-            <p className="text-3xl font-bold">{loaderData.totalIntegrations.toLocaleString()}</p>
+            <p className="text-3xl font-medium">{loaderData.totalIntegrations.toLocaleString()}</p>
             <Paragraph variant="small" className="text-dimmed">
               {loaderData.totalIntegrations === loaderData.totalIntegrationsLastMonth ? (
                 <>No change since last month</>
@@ -132,11 +188,11 @@ export default function Page() {
         </div>
         <div className="rounded border border-border p-6">
           <div className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <Header2>Team members</Header2>
-            <UsersIcon className="h-6 w-6 text-dimmed" />
+            <Header3>Team members</Header3>
+            <UsersIcon className="h-6 w-6 text-dimmed/50" />
           </div>
           <div>
-            <p className="text-3xl font-bold">{loaderData.totalMembers.toLocaleString()}</p>
+            <p className="text-3xl font-medium">{loaderData.totalMembers.toLocaleString()}</p>
             <TextLink
               to={organizationTeamPath(organization)}
               className="group text-sm text-dimmed hover:text-bright"
@@ -147,52 +203,27 @@ export default function Page() {
           </div>
         </div>
       </div>
-      <div className="flex max-h-[500px] gap-x-4">
-        <div className="w-1/2 rounded border border-border py-6 pr-2">
-          <Header2 className="mb-8 pl-6">Job Runs per month</Header2>
-          <ResponsiveContainer width="100%" height={400}>
-            <BarChart data={loaderData.chartData}>
-              <XAxis
-                dataKey="name"
-                stroke="#888888"
-                fontSize={12}
-                tickLine={false}
-                axisLine={false}
-              />
-              <YAxis
-                stroke="#888888"
-                fontSize={12}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(value) => `${value}`}
-              />
-              <Tooltip cursor={{ fill: "rgba(255,255,255,0.05)" }} content={<CustomTooltip />} />
-              <Bar dataKey="total" fill="#DB2777" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+      <div className="w-full overflow-y-auto rounded border border-border px-3 py-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+        <div className="mb-2 flex items-baseline justify-between border-b border-border px-3 pb-4">
+          <Header3>Jobs</Header3>
+          <Header3>Runs</Header3>
         </div>
-        <div className="w-1/2 overflow-y-auto rounded border border-border px-3 py-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
-          <div className="mb-2 flex items-baseline justify-between border-b border-border px-3 pb-4">
-            <Header2 className="">Jobs</Header2>
-            <Header2 className="">Runs</Header2>
-          </div>
-          <div className="space-y-2">
-            {loaderData.jobs.map((job) => (
-              <Link
-                to={jobPath(organization, job.project, job)}
-                className="flex items-center rounded px-4 py-3 transition hover:bg-slate-850"
-                key={job.id}
-              >
-                <div className="space-y-1">
-                  <p className="text-sm font-medium leading-none">{job.slug}</p>
-                  <p className="text-sm text-muted-foreground">Project: {job.project.name}</p>
-                </div>
-                <div className="ml-auto font-medium">{job._count.runs.toLocaleString()}</div>
-              </Link>
-            ))}
-          </div>
+        <div className="space-y-2">
+          {loaderData.jobs.map((job) => (
+            <Link
+              to={jobPath(organization, job.project, job)}
+              className="flex items-center rounded px-4 py-3 transition hover:bg-slate-850"
+              key={job.id}
+            >
+              <div className="space-y-1">
+                <p className="text-sm font-medium leading-none">{job.slug}</p>
+                <p className="text-sm text-muted-foreground">Project: {job.project.name}</p>
+              </div>
+              <div className="ml-auto font-medium">{job._count.runs.toLocaleString()}</div>
+            </Link>
+          ))}
         </div>
       </div>
-    </>
+    </div>
   );
 }
