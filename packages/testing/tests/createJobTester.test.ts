@@ -38,7 +38,7 @@ test("no integrations", async () => {
   expect(testRun.output).toEqual("job done");
 });
 
-test("stripe integration", async () => {
+test("stripe integration (dev env)", async () => {
   const jobToTest = client.defineJob({
     id: "stripe-example-1",
     name: "Stripe Example 1",
@@ -74,6 +74,68 @@ test("stripe integration", async () => {
         id: "charge_1234",
       },
     },
+  });
+
+  // job run was successful
+  expect(testRun).toHaveSucceeded();
+
+  // task was called exactly once
+  expect(testRun.tasks["create-charge"]).toHaveBeenCalledTimes(2);
+
+  // wask was called with correct params
+  expect(testRun.tasks["create-charge"]).toHaveBeenCalledWith({
+    amount: 100,
+    currency: "usd",
+    customer: "cus_123",
+    source: "src_123",
+  });
+
+  // mocked task output was correctly returned
+  expect(testRun.tasks["create-charge"]).toHaveReturnedWith({
+    id: "charge_1234",
+  });
+
+  // job run has expected output
+  expect(testRun.output).toEqual({ id: "charge_1234" });
+});
+
+test("stripe integration (non-dev env)", async () => {
+  const jobToTest = client.defineJob({
+    id: "stripe-example-1",
+    name: "Stripe Example 1",
+    version: "0.1.0",
+    trigger: eventTrigger({
+      name: "stripe.example",
+      schema: z.object({
+        customerId: z.string(),
+        source: z.string(),
+      }),
+    }),
+    integrations: {
+      stripe,
+    },
+    run: async (payload, io, ctx) => {
+      return await io.stripe.createCharge("create-charge", {
+        amount: 100,
+        currency: "usd",
+        source: payload.source,
+        customer: payload.customerId,
+      });
+    },
+  });
+
+  const testRun = await testJob(jobToTest, {
+    payload: {
+      customerId: "cus_123",
+      source: "src_123",
+    },
+    // mock task return
+    tasks: {
+      "create-charge": {
+        id: "charge_1234",
+      },
+    },
+    env: "PRODUCTION",
   });
 
   // job run was successful
