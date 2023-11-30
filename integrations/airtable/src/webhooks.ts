@@ -315,6 +315,10 @@ export function createWebhookSource(
       delete: async ({ io, ctx }) => {
         const webhookId = await io.store.job.get<string>("get-webhook-id", "webhook-id");
 
+        if (!webhookId) {
+          throw new Error("Missing webhook ID for delete operation.");
+        }
+
         await io.integration.webhooks().delete("delete-webhook", {
           baseId: ctx.params?.baseId,
           webhookId,
@@ -326,6 +330,10 @@ export function createWebhookSource(
       const secretBase64 = await client.store.env.get<string>(
         `${registerJobNamespace(ctx.key)}:webhook-secret-base64`
       );
+
+      if (!secretBase64) {
+        throw new Error("Missing secret for verification.");
+      }
 
       return await verifyRequestSignature({
         request,
