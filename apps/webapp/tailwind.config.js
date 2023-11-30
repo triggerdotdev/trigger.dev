@@ -76,7 +76,7 @@ module.exports = {
       fontFamily: {
         sans: ["Inter", "sans-serif"],
         mono: ["Roboto Mono", "monospace"],
-        title: ["Poppins", "sans-serif"]
+        title: ["Poppins", "sans-serif"],
       },
       fontSize: {
         xxs: [
@@ -197,10 +197,11 @@ module.exports = {
     },
   },
   plugins: [
+    require("@tailwindcss/container-queries"),
     require("@tailwindcss/forms"),
     require("@tailwindcss/typography"),
     require("tailwindcss-animate"),
     require("tailwind-scrollbar"),
-    require('tailwind-scrollbar-hide')
+    require("tailwind-scrollbar-hide"),
   ],
 };
