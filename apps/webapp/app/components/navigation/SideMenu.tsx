@@ -133,7 +133,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             <SideMenuItem
               name="HTTP endpoints"
               icon="http-endpoint"
-              iconColor="text-green-500"
+              iconColor="text-pink-500"
               count={project.httpEndpointCount}
               to={projectHttpEndpointsPath(organization, project)}
               data-action="httpendpoints"
@@ -180,7 +180,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               name={isManagedCloud ? "Usage & Billing" : "Usage"}
               icon={ChartBarIcon}
               to={organizationBillingPath(organization)}
-              iconColor="text-pink-500"
+              iconColor="text-green-600"
               data-action="usage & billing"
             />
           </div>
