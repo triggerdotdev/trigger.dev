@@ -98,7 +98,6 @@ importers:
       '@radix-ui/react-popover': ^1.0.5
       '@radix-ui/react-radio-group': ^1.1.3
       '@radix-ui/react-select': ^1.2.1
-      '@radix-ui/react-slider': ^1.1.2
       '@radix-ui/react-switch': ^1.0.3
       '@radix-ui/react-tabs': ^1.0.3
       '@radix-ui/react-tooltip': ^1.0.5
@@ -125,10 +124,9 @@ importers:
       '@swc/core': ^1.3.4
       '@swc/helpers': ^0.4.11
       '@tabler/icons-react': ^2.39.0
-      '@tailwindcss/container-queries': ^0.1.1
       '@tailwindcss/forms': ^0.5.3
       '@tailwindcss/typography': ^0.5.9
-      '@team-plain/typescript-sdk': ^2.2.0
+      '@team-plain/typescript-sdk': ^3.5.0
       '@total-typescript/ts-reset': ^0.4.2
       '@trigger.dev/companyicons': ^1.5.32
       '@trigger.dev/core': workspace:*
@@ -177,6 +175,7 @@ importers:
       highlight.run: ^7.3.4
       humanize-duration: ^3.27.3
       intl-parse-accept-language: ^1.0.0
+      ioredis: ^5.3.2
       isbot: ^3.6.5
       jsonpointer: ^5.0.1
       lodash.omit: ^4.5.0
@@ -185,6 +184,7 @@ importers:
       morgan: ^1.10.0
       nanoid: ^3.3.4
       npm-run-all: ^4.1.5
+      ohash: ^1.1.3
       postcss: ^8.4.21
       postcss-import: ^14.1.0
       posthog-js: ^1.83.0
@@ -252,7 +252,6 @@ importers:
       '@radix-ui/react-popover': 1.0.5_bwbutfx4xj25dewzmxso6o3wga
       '@radix-ui/react-radio-group': 1.1.3_daadhm4ohxobgnrt365as5bhny
       '@radix-ui/react-select': 1.2.1_bwbutfx4xj25dewzmxso6o3wga
-      '@radix-ui/react-slider': 1.1.2_daadhm4ohxobgnrt365as5bhny
       '@radix-ui/react-switch': 1.0.3_daadhm4ohxobgnrt365as5bhny
       '@radix-ui/react-tabs': 1.0.3_biqbaboplfbrettd7655fr4n2y
       '@radix-ui/react-tooltip': 1.0.5_bwbutfx4xj25dewzmxso6o3wga
@@ -263,8 +262,7 @@ importers:
       '@remix-run/server-runtime': 2.1.0_typescript@5.2.2
       '@remix-run/v1-meta': 0.1.3_ybjp5xbtg4zthziheradfmei64
       '@tabler/icons-react': 2.40.0_react@18.2.0
-      '@tailwindcss/container-queries': 0.1.1_tailwindcss@3.3.2
-      '@team-plain/typescript-sdk': 2.7.0
+      '@team-plain/typescript-sdk': 3.5.0
       '@trigger.dev/companyicons': 1.5.32_biqbaboplfbrettd7655fr4n2y
       '@trigger.dev/core': link:../../packages/core
       '@trigger.dev/core-backend': link:../../packages/core-backend
@@ -286,6 +284,7 @@ importers:
       highlight.run: 7.3.4
       humanize-duration: 3.27.3
       intl-parse-accept-language: 1.0.0
+      ioredis: 5.3.2
       isbot: 3.6.5
       jsonpointer: 5.0.1
       lodash.omit: 4.5.0
@@ -293,6 +292,7 @@ importers:
       marked: 4.2.5
       morgan: 1.10.0
       nanoid: 3.3.4
+      ohash: 1.1.3
       postcss-import: 14.1.0_postcss@8.4.21
       posthog-js: 1.83.0
       posthog-node: 3.1.1
@@ -415,8 +415,8 @@ importers:
 
   integrations/airtable:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.7
-      '@trigger.dev/sdk': workspace:^2.2.7
+      '@trigger.dev/integration-kit': workspace:^2.2.9
+      '@trigger.dev/sdk': workspace:^2.2.9
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       airtable: ^0.12.1
@@ -443,8 +443,8 @@ importers:
       '@octokit/types': ^9.2.3
       '@octokit/webhooks': ^10.4.0
       '@octokit/webhooks-types': ^6.10.0
-      '@trigger.dev/integration-kit': workspace:^2.2.7
-      '@trigger.dev/sdk': workspace:^2.2.7
+      '@trigger.dev/integration-kit': workspace:^2.2.9
+      '@trigger.dev/sdk': workspace:^2.2.9
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       octokit: ^2.0.14
@@ -470,8 +470,8 @@ importers:
   integrations/linear:
     specifiers:
       '@linear/sdk': ^8.0.0
-      '@trigger.dev/integration-kit': workspace:^2.2.7
-      '@trigger.dev/sdk': workspace:^2.2.7
+      '@trigger.dev/integration-kit': workspace:^2.2.9
+      '@trigger.dev/sdk': workspace:^2.2.9
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -492,8 +492,8 @@ importers:
 
   integrations/openai:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.7
-      '@trigger.dev/sdk': workspace:^2.2.7
+      '@trigger.dev/integration-kit': workspace:^2.2.9
+      '@trigger.dev/sdk': workspace:^2.2.9
       '@trigger.dev/tsconfig': workspace:*
       '@types/jest': ^29.5.3
       '@types/node': '18'
@@ -520,8 +520,8 @@ importers:
   integrations/plain:
     specifiers:
       '@team-plain/typescript-sdk': ^2.7.0
-      '@trigger.dev/integration-kit': workspace:^2.2.7
-      '@trigger.dev/sdk': workspace:^2.2.7
+      '@trigger.dev/integration-kit': workspace:^2.2.9
+      '@trigger.dev/sdk': workspace:^2.2.9
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
@@ -538,8 +538,8 @@ importers:
 
   integrations/replicate:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.7
-      '@trigger.dev/sdk': workspace:^2.2.7
+      '@trigger.dev/integration-kit': workspace:^2.2.9
+      '@trigger.dev/sdk': workspace:^2.2.9
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       replicate: ^0.18.1
@@ -561,8 +561,8 @@ importers:
 
   integrations/resend:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.7
-      '@trigger.dev/sdk': workspace:^2.2.7
+      '@trigger.dev/integration-kit': workspace:^2.2.9
+      '@trigger.dev/sdk': workspace:^2.2.9
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       resend: ^2.0.0
@@ -581,8 +581,8 @@ importers:
   integrations/sendgrid:
     specifiers:
       '@sendgrid/mail': ^7.7.0
-      '@trigger.dev/integration-kit': workspace:^2.2.7
-      '@trigger.dev/sdk': workspace:^2.2.7
+      '@trigger.dev/integration-kit': workspace:^2.2.9
+      '@trigger.dev/sdk': workspace:^2.2.9
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -599,10 +599,33 @@ importers:
       tsup: 7.1.0_typescript@4.9.4
       typescript: 4.9.4
 
+  integrations/shopify:
+    specifiers:
+      '@shopify/shopify-api': ^8.0.2
+      '@trigger.dev/integration-kit': workspace:^2.2.9
+      '@trigger.dev/sdk': workspace:^2.2.9
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': 16.x
+      rimraf: ^3.0.2
+      tsup: 7.1.x
+      typescript: 4.9.4
+      zod: 3.22.3
+    dependencies:
+      '@shopify/shopify-api': 8.0.2
+      '@trigger.dev/integration-kit': link:../../packages/integration-kit
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      zod: 3.22.3
+    devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 16.18.11
+      rimraf: 3.0.2
+      tsup: 7.1.0_typescript@4.9.4
+      typescript: 4.9.4
+
   integrations/slack:
     specifiers:
       '@slack/web-api': ^6.8.1
-      '@trigger.dev/sdk': workspace:^2.2.7
+      '@trigger.dev/sdk': workspace:^2.2.9
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
@@ -620,8 +643,8 @@ importers:
 
   integrations/stripe:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.7
-      '@trigger.dev/sdk': workspace:^2.2.7
+      '@trigger.dev/integration-kit': workspace:^2.2.9
+      '@trigger.dev/sdk': workspace:^2.2.9
       '@types/node': 16.x
       rimraf: ^3.0.2
       stripe: ^12.14.0
@@ -644,8 +667,8 @@ importers:
   integrations/supabase:
     specifiers:
       '@supabase/supabase-js': ^2.26.0
-      '@trigger.dev/integration-kit': workspace:^2.2.7
-      '@trigger.dev/sdk': workspace:^2.2.7
+      '@trigger.dev/integration-kit': workspace:^2.2.9
+      '@trigger.dev/sdk': workspace:^2.2.9
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 18.x
       rimraf: ^3.0.2
@@ -668,8 +691,8 @@ importers:
 
   integrations/typeform:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.7
-      '@trigger.dev/sdk': workspace:^2.2.7
+      '@trigger.dev/integration-kit': workspace:^2.2.9
+      '@trigger.dev/sdk': workspace:^2.2.9
       '@typeform/api-client': ^1.8.0
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -923,7 +946,7 @@ importers:
 
   packages/express:
     specifiers:
-      '@trigger.dev/sdk': workspace:^2.2.7
+      '@trigger.dev/sdk': workspace:^2.2.9
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/express': ^4.17.13
@@ -971,7 +994,7 @@ importers:
     specifiers:
       '@nestjs/common': ^10.2.4
       '@remix-run/web-fetch': ^4.3.5
-      '@trigger.dev/sdk': workspace:^2.2.7
+      '@trigger.dev/sdk': workspace:^2.2.9
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/express': ^4.17.13
@@ -1024,7 +1047,7 @@ importers:
   packages/react:
     specifiers:
       '@tanstack/react-query': 5.0.0-beta.2
-      '@trigger.dev/core': workspace:^2.2.7
+      '@trigger.dev/core': workspace:^2.2.9
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/react': 18.2.17
@@ -1119,8 +1142,8 @@ importers:
 
   packages/trigger-sdk:
     specifiers:
-      '@trigger.dev/core': workspace:^2.2.7
-      '@trigger.dev/core-backend': workspace:^2.2.7
+      '@trigger.dev/core': workspace:^2.2.9
+      '@trigger.dev/core-backend': workspace:^2.2.9
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/node': '18'
@@ -1254,6 +1277,7 @@ importers:
       '@trigger.dev/resend': workspace:*
       '@trigger.dev/sdk': workspace:*
       '@trigger.dev/sendgrid': workspace:*
+      '@trigger.dev/shopify': workspace:*
       '@trigger.dev/slack': workspace:*
       '@trigger.dev/stripe': workspace:*
       '@trigger.dev/supabase': workspace:*
@@ -1280,6 +1304,7 @@ importers:
       '@trigger.dev/resend': link:../../integrations/resend
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       '@trigger.dev/sendgrid': link:../../integrations/sendgrid
+      '@trigger.dev/shopify': link:../../integrations/shopify
       '@trigger.dev/slack': link:../../integrations/slack
       '@trigger.dev/stripe': link:../../integrations/stripe
       '@trigger.dev/supabase': link:../../integrations/supabase
@@ -7899,6 +7924,10 @@ packages:
   /@humanwhocodes/object-schema/1.2.1:
     resolution: {integrity: sha512-ZnQMnLV4e7hDlUvw8H+U8ASL02SS2Gn6+9Ac3wGGLIe7+je2AeAOxPY+izIPJDfFDb7eDjev0Us8MO1iFRN8hA==}
 
+  /@ioredis/commands/1.2.0:
+    resolution: {integrity: sha512-Sx1pU8EM64o2BrqNpEO1CNLtKQwyhuXuqyfH7oGKCk+1a33d2r5saW8zNwm3j6BTExtjrv2BxTgzzkMwts6vGg==}
+    dev: false
+
   /@isaacs/cliui/8.0.2:
     resolution: {integrity: sha512-O8jcjabXaleOG9DQ0+ARXWZBTfnP4WNAqzuiJK7ll44AmxGKv/J2M4TPjxjY3znBCfvBXFzucm1twdyFybFqEA==}
     engines: {node: '>=12'}
@@ -10387,12 +10416,6 @@ packages:
       '@babel/runtime': 7.22.5
     dev: false
 
-  /@radix-ui/number/1.0.1:
-    resolution: {integrity: sha512-T5gIdVO2mmPW3NNhjNgEP3cqMXjXL9UbO0BzWcXfvdBs+BohbQxvd/K5hSVKmn9/lbTdsQVKbUcP5WLCwvUbBg==}
-    dependencies:
-      '@babel/runtime': 7.22.5
-    dev: false
-
   /@radix-ui/primitive/1.0.0:
     resolution: {integrity: sha512-3e7rn8FDMin4CgeL7Z/49smCA3rFYY3Ha2rUQ7HRWFadS5iCRw08ZgVT1LaNTCNqgvrUiyczLflrVrF0SRQtNA==}
     dependencies:
@@ -11013,37 +11036,6 @@ packages:
       react-remove-scroll: 2.5.5_e74vmjybjy5dsfplslbsgtbvvi
     transitivePeerDependencies:
       - '@types/react'
-    dev: false
-
-  /@radix-ui/react-slider/1.1.2_daadhm4ohxobgnrt365as5bhny:
-    resolution: {integrity: sha512-NKs15MJylfzVsCagVSWKhGGLNR1W9qWs+HtgbmjjVUB3B9+lb3PYoXxVju3kOrpf0VKyVCtZp+iTwVoqpa1Chw==}
-    peerDependencies:
-      '@types/react': '*'
-      '@types/react-dom': '*'
-      react: ^16.8 || ^17.0 || ^18.0
-      react-dom: ^16.8 || ^17.0 || ^18.0
-    peerDependenciesMeta:
-      '@types/react':
-        optional: true
-      '@types/react-dom':
-        optional: true
-    dependencies:
-      '@babel/runtime': 7.22.5
-      '@radix-ui/number': 1.0.1
-      '@radix-ui/primitive': 1.0.1
-      '@radix-ui/react-collection': 1.0.3_daadhm4ohxobgnrt365as5bhny
-      '@radix-ui/react-compose-refs': 1.0.1_e74vmjybjy5dsfplslbsgtbvvi
-      '@radix-ui/react-context': 1.0.1_e74vmjybjy5dsfplslbsgtbvvi
-      '@radix-ui/react-direction': 1.0.1_e74vmjybjy5dsfplslbsgtbvvi
-      '@radix-ui/react-primitive': 1.0.3_daadhm4ohxobgnrt365as5bhny
-      '@radix-ui/react-use-controllable-state': 1.0.1_e74vmjybjy5dsfplslbsgtbvvi
-      '@radix-ui/react-use-layout-effect': 1.0.1_e74vmjybjy5dsfplslbsgtbvvi
-      '@radix-ui/react-use-previous': 1.0.1_e74vmjybjy5dsfplslbsgtbvvi
-      '@radix-ui/react-use-size': 1.0.1_e74vmjybjy5dsfplslbsgtbvvi
-      '@types/react': 18.2.17
-      '@types/react-dom': 18.2.7
-      react: 18.2.0
-      react-dom: 18.2.0_react@18.2.0
     dev: false
 
   /@radix-ui/react-slot/1.0.0_react@18.2.0:
@@ -12001,6 +11993,25 @@ packages:
       '@sendgrid/helpers': 7.7.0
     transitivePeerDependencies:
       - debug
+    dev: false
+
+  /@shopify/network/3.2.1:
+    resolution: {integrity: sha512-Ih/6Oe80dynlUsRfEqptWBfsySCqI0rjQvPAjS8HuWeK9nZ+TvmYScfxjucKXZ2deXwAClnU6SMdh3/B1lMMog==}
+    engines: {node: ^14.17.0 || >=16.0.0}
+    dev: false
+
+  /@shopify/shopify-api/8.0.2:
+    resolution: {integrity: sha512-hvVLoEsYglE4GRqFhr9D6oMr2bV6tEdsD9PxuNZ6bYDptoD+kQFKsaP83jE1qtHhB3ve0DeevaVVYjS/2TU7MA==}
+    dependencies:
+      '@shopify/network': 3.2.1
+      compare-versions: 5.0.3
+      isbot: 3.6.13
+      jose: 4.15.4
+      node-fetch: 2.6.12
+      tslib: 2.6.2
+      uuid: 9.0.0
+    transitivePeerDependencies:
+      - encoding
     dev: false
 
   /@sideway/address/4.1.4:
@@ -14153,14 +14164,6 @@ packages:
     resolution: {integrity: sha512-VqKsBSX159cLFTnCzkCmGhZtSPJHNN0lM2sC4xe0HPOfPUnjiex7rDHDdut4oe4iKRecDDpwXwM9BcU6xCPlCg==}
     dev: false
 
-  /@tailwindcss/container-queries/0.1.1_tailwindcss@3.3.2:
-    resolution: {integrity: sha512-p18dswChx6WnTSaJCSGx6lTmrGzNNvm2FtXmiO6AuA1V4U5REyoqwmT6kgAsIMdjo07QdAfYXHJ4hnMtfHzWgA==}
-    peerDependencies:
-      tailwindcss: '>=3.2.0'
-    dependencies:
-      tailwindcss: 3.3.2_ts-node@10.9.1
-    dev: false
-
   /@tailwindcss/forms/0.5.3_tailwindcss@3.1.8:
     resolution: {integrity: sha512-y5mb86JUoiUgBjY/o6FJSFZSEttfb3Q5gllE4xoKjAAD+vBrnIhE4dViwUuow3va8mpH4s9jyUbUbrRGoRdc2Q==}
     peerDependencies:
@@ -14233,6 +14236,14 @@ packages:
       zod: 3.22.4
     transitivePeerDependencies:
       - debug
+    dev: false
+
+  /@team-plain/typescript-sdk/3.5.0:
+    resolution: {integrity: sha512-9kweiSlYAN31VI7yzILGxdlZqsGJ+FmCEfXyEZ/0/i3r6vOwq45FDqtjadnQJVtFm+rf/8vCFRN+wEYMIEv6Aw==}
+    dependencies:
+      '@graphql-typed-document-node/core': 3.2.0_graphql@16.6.0
+      graphql: 16.6.0
+      zod: 3.22.4
     dev: false
 
   /@testing-library/dom/8.19.1:
@@ -18005,6 +18016,11 @@ packages:
     resolution: {integrity: sha512-rQ1+kcj+ttHG0MKVGBUXwayCCF1oh39BF5COIpRzuCEv8Mwjv0XucrI2ExNTOn9IlLifGClWQcU9BrZORvtw6Q==}
     engines: {node: '>=6'}
 
+  /cluster-key-slot/1.1.2:
+    resolution: {integrity: sha512-RMr0FhtfXemyinomL4hrWcYJxmX6deFdCxpJzhDttxgO1+bcCnkk+9drydLVDmAMG7NE6aN/fl4F7ucU/90gAA==}
+    engines: {node: '>=0.10.0'}
+    dev: false
+
   /co/4.6.0:
     resolution: {integrity: sha512-QVb0dM5HvG+uaxitm8wONl7jltx8dqhfU33DcqtOZcLSVIKSDDLDi7+0LbAKiyI8hD9u42m2YxXSkMGWThaecQ==}
     engines: {iojs: '>= 1.0.0', node: '>= 0.12.0'}
@@ -18149,6 +18165,10 @@ packages:
   /commondir/1.0.1:
     resolution: {integrity: sha512-W9pAhw0ja1Edb5GVdIF1mjZw/ASI0AlShXM83UUGe2DVr5TdAPEA1OA8m/g8zWp9x6On7gqufY+FatDbC3MDQg==}
     dev: true
+
+  /compare-versions/5.0.3:
+    resolution: {integrity: sha512-4UZlZP8Z99MGEY+Ovg/uJxJuvoXuN4M6B3hKaiackiHrgzQFEe3diJi1mf1PNHbFujM7FvLrK2bpgIaImbtZ1A==}
+    dev: false
 
   /component-emitter/1.3.0:
     resolution: {integrity: sha512-Rd3se6QB+sO1TwqZjscQrurpEPIfO0/yYnSin6Q/rD3mOutHvUrCAhJub3r90uNb+SESBuE0QYoB90YdfatsRg==}
@@ -18940,6 +18960,11 @@ packages:
 
   /delegates/1.0.0:
     resolution: {integrity: sha512-bd2L678uiWATM6m5Z1VzNCErI3jiGzt6HGY8OVICs40JQq/HALfbyNJmp0UDakEY4pMMaN0Ly5om/B1VI/+xfQ==}
+
+  /denque/2.1.0:
+    resolution: {integrity: sha512-HVQE3AAb/pxF8fQAoiqpvg9i3evqug3hoiwakOyZAwJm+6vZehbkYXZ0l4JxS+I3QxM97v5aaRNhj8v5oBhekw==}
+    engines: {node: '>=0.10'}
+    dev: false
 
   /depd/2.0.0:
     resolution: {integrity: sha512-g7nH6P6dyDioJogAAGprGpCtVImJhpPk/roCzdb3fIh61/s/nPsfR6onyMwkCAR/OlC3yBC0lESvUoQEAssIrw==}
@@ -23253,6 +23278,23 @@ packages:
       loose-envify: 1.4.0
     dev: false
 
+  /ioredis/5.3.2:
+    resolution: {integrity: sha512-1DKMMzlIHM02eBBVOFQ1+AolGjs6+xEcM4PDL7NqOS6szq7H9jSaEkIUH6/a5Hl241LzW6JLSiAbNvTQjUupUA==}
+    engines: {node: '>=12.22.0'}
+    dependencies:
+      '@ioredis/commands': 1.2.0
+      cluster-key-slot: 1.1.2
+      debug: 4.3.4
+      denque: 2.1.0
+      lodash.defaults: 4.2.0
+      lodash.isarguments: 3.1.0
+      redis-errors: 1.2.0
+      redis-parser: 3.0.0
+      standard-as-callback: 2.1.0
+    transitivePeerDependencies:
+      - supports-color
+    dev: false
+
   /ip/1.1.8:
     resolution: {integrity: sha512-PuExPYUiu6qMBQb4l06ecm6T6ujzhmh+MeJcW9wa89PoAz5pvd4zPgN5WJV104mb6S2T1AwNIAaB70JNrLQWhg==}
 
@@ -24525,6 +24567,10 @@ packages:
       '@sideway/formula': 3.0.1
       '@sideway/pinpoint': 2.0.0
 
+  /jose/4.15.4:
+    resolution: {integrity: sha512-W+oqK4H+r5sITxfxpSU+MMdr/YSWGvgZMQDIsNoBDGGy4i7GBPTtvFKibQzW06n3U3TqHjhvBJsirShsEJ6eeQ==}
+    dev: false
+
   /joycon/3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
     engines: {node: '>=10'}
@@ -25018,6 +25064,14 @@ packages:
   /lodash.debounce/4.0.8:
     resolution: {integrity: sha512-FT1yDzDYEoYWhnSGnpE/4Kj1fLZkDFyqRb7fNt6FdYOSxlUWAtp42Eh6Wb0rGIv/m9Bgo7x4GhQbm5Ys4SG5ow==}
     dev: true
+
+  /lodash.defaults/4.2.0:
+    resolution: {integrity: sha512-qjxPLHd3r5DnsdGacqOMU6pb/avJzdh9tFX2ymgoZE27BmjXrNy/y4LoaiTeAb+O3gL8AfpJGtqfX/ae2leYYQ==}
+    dev: false
+
+  /lodash.isarguments/3.1.0:
+    resolution: {integrity: sha512-chi4NHZlZqZD18a0imDHnZPrDeBbTtVN7GXMwuGdRH9qotxAjYs3aVLKc7zNOG9eddR5Ksd8rvFEBc9SsggPpg==}
+    dev: false
 
   /lodash.isplainobject/4.0.6:
     resolution: {integrity: sha512-oSXzaWypCMHkPC3NvBEaPHf0KsA5mvPrOPgQWDsbg8n7orZ290M0BmC/jgRZ4vcJ6DTAhjrsSYgdsW/F+MFOBA==}
@@ -27074,6 +27128,10 @@ packages:
       '@octokit/types': 9.0.0
     transitivePeerDependencies:
       - encoding
+    dev: false
+
+  /ohash/1.1.3:
+    resolution: {integrity: sha512-zuHHiGTYTA1sYJ/wZN+t5HKZaH23i4yI1HMwbuXm24Nid7Dv0KcuRlKoNKS9UNfAVSBlnGLcuQrnOKWOZoEGaw==}
     dev: false
 
   /on-exit-leak-free/2.1.2:
@@ -29229,6 +29287,18 @@ packages:
       strip-indent: 3.0.0
     dev: false
 
+  /redis-errors/1.2.0:
+    resolution: {integrity: sha512-1qny3OExCf0UvUV/5wpYKf2YwPcOqXzkwKKSmKHiE6ZMQs5heeE/c8eXK+PNllPvmjgAbfnsbpkGZWy8cBpn9w==}
+    engines: {node: '>=4'}
+    dev: false
+
+  /redis-parser/3.0.0:
+    resolution: {integrity: sha512-DJnGAeenTdpMEH6uAJRK/uiyEIH9WVsUmoLwzudwGJUwZPp80PDBWPHXSAGNPwNvIXAbe7MSUB1zQFugFml66A==}
+    engines: {node: '>=4'}
+    dependencies:
+      redis-errors: 1.2.0
+    dev: false
+
   /reduce-css-calc/2.1.8:
     resolution: {integrity: sha512-8liAVezDmUcH+tdzoEGrhfbGcP7nOV4NkGE3a74+qqvE7nt9i4sKLGBuZNOnpI4WiGksiNPklZxva80061QiPg==}
     dependencies:
@@ -30752,6 +30822,10 @@ packages:
       as-table: 1.0.55
       get-source: 2.0.12
     dev: true
+
+  /standard-as-callback/2.1.0:
+    resolution: {integrity: sha512-qoRRSyROncaz1z0mvYqIE4lCd9p2R90i6GxW3uZv5ucSu8tU7B5HXUP1gG8pVZsYNVaXjk8ClXHPttLyxAL48A==}
+    dev: false
 
   /static-extend/0.1.2:
     resolution: {integrity: sha512-72E9+uLc27Mt718pMHt9VMNiAL4LMsmDbBva8mxWUCkT07fSzEGMYUCk0XWY6lp0j6RBAG4cJ3mWuZv2OE3s0g==}

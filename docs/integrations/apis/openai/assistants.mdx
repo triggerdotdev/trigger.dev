@@ -1,6 +1,6 @@
 ---
 title: Assistant Tasks
-sidebarTitle: Assitants (Beta)
+sidebarTitle: Assistants (Beta)
 ---
 
 <Note>
@@ -31,6 +31,54 @@ const assistant = await io.openai.beta.assistants.create("create-assistant", {
   tools: [{ type: "code_interpreter" }],
   file_ids: [file.id],
 });
+```
+
+### `update()`
+
+Update an assistant. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/assistants/modifyAssistant)
+
+```ts example.ts
+const file = await io.openai.files.createAndWaitForProcessing("upload-file", {
+  purpose: "assistants",
+  file: fs.createReadStream("./fixtures/mydata.csv"),
+});
+
+const assistantId = "asst_abc123";
+
+const assistant = await io.openai.beta.assistants.update("update-assistant", assistantId, {
+  file_ids: [file.id], // add a file to the assistant
+});
+```
+
+### `list()`
+
+List assistants. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/assistants/listAssistants)
+
+```ts example.ts
+const assistants = await io.openai.beta.assistants.list("list");
+
+// with pagination
+const assistants = await io.openai.beta.assistants.list("list", {
+  limit: 10,
+  order: "desc",
+  after: "asst_abc123",
+});
+```
+
+### `retrieve()`
+
+Retrieve an assistant. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/assistants/getAssistant)
+
+```ts example.ts
+const assistant = await io.openai.beta.assistants.retrieve("get-assistant", "asst_abc123");
+```
+
+### `del()`
+
+Delete an assistant. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/assistants/deleteAssistant)
+
+```ts example.ts
+const deletedAssistant = await io.openai.beta.assistants.del("delete-assistant", "asst_abc123");
 ```
 
 ## Threads
@@ -132,11 +180,25 @@ Create messages within threads. [Official OpenAI docs](https://platform.openai.c
 
 ### `list()`
 
-List all messages in a thread.
+List messages in a thread.
 
 ```ts example.ts
 const messages = await io.openai.beta.threads.messages.list("list-messages", "thread_abc123");
+// with pagination
+const messages = await io.openai.beta.threads.messages.list("list-messages", "thread_abc123", {
+  limit: 10,
+  order: "desc",
+  after: "message_abc123",
+});
 ```
+
+If you want to list all messages in a thread, you can use the `listAll()` helper:
+
+```ts example.ts
+const messages = await io.openai.beta.threads.messages.listAll("list-messages", "thread_abc123");
+```
+
+This will automatically paginate through all messages in the thread and return them as a single array.
 
 ### `create()`
 

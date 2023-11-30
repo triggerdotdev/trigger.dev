@@ -7,6 +7,7 @@ import {
   createBackgroundFetchUrl,
   createTaskOutputProperties,
   handleOpenAIError,
+  isRequestOptions,
 } from "./taskUtils";
 import { RunSubmitToolOutputsParams } from "openai/resources/beta/threads/runs/runs";
 import { ThreadUpdateParams } from "openai/resources/beta/threads/threads";
@@ -15,7 +16,7 @@ export class Threads {
   constructor(
     private runTask: OpenAIRunTask,
     private options: OpenAIIntegrationOptions
-  ) {}
+  ) { }
 
   /**
    * Create a thread and run it in one task.
@@ -261,7 +262,7 @@ class Runs {
   constructor(
     private runTask: OpenAIRunTask,
     private options: OpenAIIntegrationOptions
-  ) {}
+  ) { }
 
   /**
    * Creates a run and waits for it to complete by polling in the background.
@@ -551,15 +552,70 @@ class Messages {
   constructor(
     private runTask: OpenAIRunTask,
     private options: OpenAIIntegrationOptions
-  ) {}
+  ) { }
+
+  /**
+   * Returns messages for a given thread.
+   */
+  list(
+    key: IntegrationTaskKey,
+    threadId: string,
+    params?: Prettify<OpenAI.Beta.Threads.MessageListParams>,
+    options?: OpenAIRequestOptions
+  ): Promise<OpenAI.Beta.Threads.ThreadMessage[]>
+  list(
+    key: IntegrationTaskKey,
+    threadId: string,
+    options?: OpenAIRequestOptions
+  ): Promise<OpenAI.Beta.Threads.ThreadMessage[]>
+  async list(
+    key: IntegrationTaskKey,
+    threadId: string,
+    params: Prettify<OpenAI.Beta.AssistantListParams> | OpenAIRequestOptions = {},
+    options: OpenAIRequestOptions | undefined = undefined
+  ): Promise<OpenAI.Beta.Threads.ThreadMessage[]> {
+    return this.runTask(
+      key,
+      async (client, task, io) => {
+        if (isRequestOptions(params)) {
+          const { data: page, response } = await client.beta.threads.messages
+            .list(threadId, {
+              idempotencyKey: task.idempotencyKey,
+              ...params,
+            })
+            .withResponse();
+
+          task.outputProperties = createTaskOutputProperties(undefined, response.headers);
+
+          return page.data;
+        }
+
+        const { data: page, response } = await client.beta.threads.messages
+          .list(threadId, params, {
+            idempotencyKey: task.idempotencyKey,
+            ...options,
+          })
+          .withResponse();
+
+        task.outputProperties = createTaskOutputProperties(undefined, response.headers);
+
+        return page.data;
+      },
+      {
+        name: "List Messages",
+        properties: [{ label: "threadId", text: threadId }],
+      },
+      handleOpenAIError
+    );
+  }
 
   /**
    * Returns all messages for a given thread.
    */
-  async list(
+  async listAll(
     key: IntegrationTaskKey,
     threadId: string,
-    options: OpenAIRequestOptions = {}
+    options: OpenAIRequestOptions = {},
   ): Promise<OpenAI.Beta.Threads.ThreadMessage[]> {
     return this.runTask(
       key,
@@ -573,8 +629,8 @@ class Messages {
 
         const allMessages = [];
 
-        for await (const fineTuningJob of page) {
-          allMessages.push(fineTuningJob);
+        for await (const message of page) {
+          allMessages.push(message);
         }
 
         task.outputProperties = createTaskOutputProperties(undefined, response.headers);
@@ -582,7 +638,7 @@ class Messages {
         return allMessages;
       },
       {
-        name: "List Messages",
+        name: "List All Messages",
         properties: [{ label: "threadId", text: threadId }],
       },
       handleOpenAIError

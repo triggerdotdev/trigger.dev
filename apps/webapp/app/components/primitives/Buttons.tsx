@@ -106,6 +106,33 @@ const variant = {
     shortcutVariant: "medium" as const,
     shortcut: "ml-1.5 -mr-0.5 border-bright/40 text-bright group-hover:border-bright/60",
   },
+  "primary/extra-large": {
+    textColor: "text-bright group-hover:text-white transition group-disabled:text-dimmed/80",
+    button:
+      "h-12 px-2 text-md font-medium bg-indigo-600 group-hover:bg-indigo-500/90 disabled:opacity-50",
+    icon: "h-5",
+    iconSpacing: undefined,
+    shortcutVariant: undefined,
+    shortcut: undefined,
+  },
+  "secondary/extra-large": {
+    textColor: "text-dimmed",
+    button:
+      "h-12 px-2 text-md text-dimmed group-hover:text-bright transition font-medium bg-slate-800 group-hover:bg-slate-700/70 disabled:opacity-50",
+    icon: "h-5",
+    iconSpacing: undefined,
+    shortcutVariant: undefined,
+    shortcut: undefined,
+  },
+  "danger/extra-large": {
+    textColor: "text-bright group-hover:text-white transition group-disabled:text-bright/50",
+    button:
+      "h-12 px-2 text-md bg-rose-600 group-hover:bg-rose-500 group-disabled:opacity-50 group-disabled:group-hover:bg-rose-600",
+    icon: "h-5",
+    iconSpacing: undefined,
+    shortcutVariant: "medium" as const,
+    shortcut: "ml-1.5 -mr-0.5 border-bright/40 text-bright group-hover:border-bright/60",
+  },
   "menu-item": {
     textColor: "text-bright px-1",
     button:
@@ -277,8 +304,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
   }
 );
 
-type LinkPropsType = Pick<LinkProps, "to" | "target"> & React.ComponentProps<typeof ButtonContent>;
-export const LinkButton = ({ to, ...props }: LinkPropsType) => {
+type LinkPropsType = Pick<LinkProps, "to" | "target" | "onClick"> &
+  React.ComponentProps<typeof ButtonContent>;
+export const LinkButton = ({ to, onClick, ...props }: LinkPropsType) => {
   const innerRef = useRef<HTMLAnchorElement>(null);
   if (props.shortcut) {
     useShortcutKeys({
@@ -297,6 +325,7 @@ export const LinkButton = ({ to, ...props }: LinkPropsType) => {
         href={to.toString()}
         ref={innerRef}
         className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
+        onClick={onClick}
       >
         <ButtonContent {...props} />
       </ExtLink>
@@ -307,6 +336,7 @@ export const LinkButton = ({ to, ...props }: LinkPropsType) => {
         to={to}
         ref={innerRef}
         className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
+        onClick={onClick}
       >
         <ButtonContent {...props} />
       </Link>

@@ -31,3 +31,7 @@ export function deepMergeFilters(...filters: EventFilter[]): EventFilter {
 
   return result;
 }
+
+export function assertExhaustive(x: never): never {
+  throw new Error("Unexpected object: " + x);
+}

@@ -1,0 +1,22 @@
+{
+  "original_fulfillment_order": {
+    "id": "gid://shopify/FulfillmentOrder/1",
+    "status": "closed",
+    "assigned_location_id": "gid://shopify/Location/0"
+  },
+  "moved_fulfillment_order": {
+    "id": "gid://shopify/FulfillmentOrder/2",
+    "status": "open",
+    "assigned_location_id": "gid://shopify/Location/1"
+  },
+  "destination_location_id": "gid://shopify/Location/1",
+  "fulfillment_order_line_items_requested": [
+    {
+      "id": "gid://shopify/FulfillmentOrderLineItem/1",
+      "quantity": 1
+    }
+  ],
+  "source_location": {
+    "id": "gid://shopify/Location/0"
+  }
+}

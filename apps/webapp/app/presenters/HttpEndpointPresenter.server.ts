@@ -1,11 +1,9 @@
-import { TriggerHttpEndpoint } from "@trigger.dev/database";
 import { z } from "zod";
 import { PrismaClient, prisma } from "~/db.server";
-import { Project } from "~/models/project.server";
-import { User } from "~/models/user.server";
 import { sortEnvironments } from "~/services/environmentSort.server";
 import { httpEndpointUrl } from "~/services/httpendpoint/HandleHttpEndpointService";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
+import { projectPath } from "~/utils/pathBuilder";
 
 export class HttpEndpointPresenter {
   #prismaClient: PrismaClient;
@@ -17,10 +15,12 @@ export class HttpEndpointPresenter {
   public async call({
     userId,
     projectSlug,
+    organizationSlug,
     httpEndpointKey,
   }: {
     userId: string;
     projectSlug: string;
+    organizationSlug: string;
     httpEndpointKey: string;
   }) {
     const httpEndpoint = await this.#prismaClient.triggerHttpEndpoint.findFirst({
@@ -55,6 +55,12 @@ export class HttpEndpointPresenter {
                 },
               },
             },
+          },
+        },
+        webhook: {
+          select: {
+            id: true,
+            key: true,
           },
         },
       },
@@ -138,11 +144,15 @@ export class HttpEndpointPresenter {
           ?.webhookUrl,
       }));
 
+    const projectRootPath = projectPath({ slug: organizationSlug }, { slug: projectSlug });
+
     return {
       httpEndpoint: {
         ...httpEndpoint,
-
         httpEndpointEnvironments,
+        webhookLink: httpEndpoint.webhook
+          ? `${projectRootPath}/triggers/webhooks/${httpEndpoint.webhook.id}`
+          : undefined,
       },
       environments: relevantEnvironments,
       unconfiguredEnvironments: relevantEnvironments.filter(

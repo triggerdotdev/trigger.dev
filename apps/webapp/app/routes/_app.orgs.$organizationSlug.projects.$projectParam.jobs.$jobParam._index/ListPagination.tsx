@@ -1,9 +1,16 @@
 import { useLocation } from "@remix-run/react";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Direction, RunList } from "~/presenters/RunListPresenter.server";
+import { WebhookDeliveryList } from "~/presenters/WebhookDeliveryListPresenter.server";
 import { cn } from "~/utils/cn";
 
-export function ListPagination({ list, className }: { list: RunList; className?: string }) {
+export function ListPagination({
+  list,
+  className,
+}: {
+  list: RunList | WebhookDeliveryList;
+  className?: string;
+}) {
   return (
     <div className={cn("flex items-center gap-1", className)}>
       <PreviousButton cursor={list.pagination.previous} />
@@ -15,31 +22,39 @@ export function ListPagination({ list, className }: { list: RunList; className?:
 function NextButton({ cursor }: { cursor?: string }) {
   const path = useCursorPath(cursor, "forward");
 
-  return path ? (
+  return (
     <LinkButton
-      to={path}
+      to={path ?? "#"}
       variant={"tertiary/small"}
       TrailingIcon="chevron-right"
-      className="flex items-center"
+      className={cn(
+        "flex items-center",
+        !path && "cursor-default opacity-50 group-hover:bg-transparent group-hover:text-slate-800"
+      )}
+      onClick={(e) => !path && e.preventDefault()}
     >
       Next
     </LinkButton>
-  ) : null;
+  );
 }
 
 function PreviousButton({ cursor }: { cursor?: string }) {
   const path = useCursorPath(cursor, "backward");
 
-  return path ? (
+  return (
     <LinkButton
-      to={path}
+      to={path ?? "#"}
       variant={"tertiary/small"}
       LeadingIcon="chevron-left"
-      className="flex items-center"
+      className={cn(
+        "flex items-center",
+        !path && "cursor-default opacity-50 group-hover:bg-transparent group-hover:text-slate-800"
+      )}
+      onClick={(e) => !path && e.preventDefault()}
     >
       Prev
     </LinkButton>
-  ) : null;
+  );
 }
 
 function useCursorPath(cursor: string | undefined, direction: Direction) {

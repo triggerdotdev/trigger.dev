@@ -105,12 +105,14 @@ export default function Page() {
     };
   }, [selected, clients]);
 
-  const isAnyClientFullyConfigured = useMemo(() => {
-    return clients.some((client) => {
-      const { DEVELOPMENT, PRODUCTION } = client.endpoints;
-      return PRODUCTION.state === "configured" && DEVELOPMENT.state === PRODUCTION.state;
-    });
-  }, [clients]);
+  const isAnyClientFullyConfigured = clients.some((client) => {
+    const { DEVELOPMENT, PRODUCTION, STAGING } = client.endpoints;
+    return (
+      PRODUCTION.state === "configured" ||
+      DEVELOPMENT.state === "configured" ||
+      (STAGING && STAGING.state === "configured")
+    );
+  });
 
   const organization = useOrganization();
   const project = useProject();

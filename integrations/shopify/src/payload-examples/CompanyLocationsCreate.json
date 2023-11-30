@@ -1,0 +1,57 @@
+{
+  "name": "Montreal",
+  "external_id": "123456789",
+  "phone": "555-555-5555",
+  "locale": "en",
+  "created_at": "2021-12-31T19:00:00-05:00",
+  "updated_at": "2021-12-31T19:00:00-05:00",
+  "note": "Head Office Location",
+  "buyer_experience_configuration": null,
+  "admin_graphql_api_id": "gid://shopify/CompanyLocation/408372092144951419",
+  "tax_exemptions": ["CA_BC_CONTRACTOR_EXEMPTION", "CA_BC_RESELLER_EXEMPTION"],
+  "company": {
+    "name": "Example Company",
+    "note": "This is an example company",
+    "external_id": "123456789",
+    "main_contact_admin_graphql_api_id": "gid://shopify/CompanyContact/408372092144951652",
+    "created_at": "2021-12-31T19:00:00-05:00",
+    "updated_at": "2021-12-31T19:00:00-05:00",
+    "customer_since": "2021-12-31T19:00:00-05:00",
+    "admin_graphql_api_id": "gid://shopify/Company/408372092144951419"
+  },
+  "billing_address": {
+    "address1": "175 Sherbrooke Street West",
+    "city": "Montreal",
+    "province": "Quebec",
+    "country": "Canada",
+    "zip": "H3A 0G4",
+    "recipient": "Adam Felix",
+    "address2": null,
+    "phone": "+49738001239",
+    "zone_code": "QC",
+    "country_code": "CA",
+    "created_at": "2021-12-31T19:00:00-05:00",
+    "updated_at": "2021-12-31T19:00:00-05:00",
+    "admin_graphql_api_id": "gid://shopify/CompanyAddress/141016871799219115",
+    "company_admin_graphql_api_id": "gid://shopify/Company/408372092144951419"
+  },
+  "shipping_address": {
+    "address1": "175 Sherbrooke Street West",
+    "city": "Montreal",
+    "province": "Quebec",
+    "country": "Canada",
+    "zip": "H3A 0G4",
+    "recipient": "Adam Felix",
+    "address2": null,
+    "phone": "+49738001239",
+    "zone_code": "QC",
+    "country_code": "CA",
+    "created_at": "2021-12-31T19:00:00-05:00",
+    "updated_at": "2021-12-31T19:00:00-05:00",
+    "admin_graphql_api_id": "gid://shopify/CompanyAddress/141016871799219115",
+    "company_admin_graphql_api_id": "gid://shopify/Company/408372092144951419"
+  },
+  "tax_registration": {
+    "tax_id": "1214214141"
+  }
+}

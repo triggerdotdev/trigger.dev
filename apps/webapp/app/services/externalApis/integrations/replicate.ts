@@ -9,7 +9,7 @@ function usageSample(hasApiKey: boolean): HelpSample {
 import { Replicate } from "@trigger.dev/replicate";
 
 const replicate = new Replicate({
-  id: "__SLUG__",${hasApiKey ? `,\n  ${apiKeyPropertyName}: process.env.REPLICATE_API_KEY!` : ""}
+  id: "__SLUG__",${hasApiKey ? `\n  ${apiKeyPropertyName}: process.env.REPLICATE_API_KEY!,` : ""}
 });
 
 client.defineJob({

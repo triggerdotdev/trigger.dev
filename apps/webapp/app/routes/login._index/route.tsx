@@ -1,20 +1,17 @@
-import type { DataFunctionArgs, LoaderFunctionArgs, SerializeFrom } from "@remix-run/node";
+import type { LoaderFunctionArgs } from "@remix-run/node";
 import { Form } from "@remix-run/react";
-import { ServerRuntimeMetaArgs, ServerRuntimeMetaDescriptor } from "@remix-run/server-runtime";
 import { getMatchesData, metaV1 } from "@remix-run/v1-meta";
 import {
-  TypedJsonResponse,
   TypedMetaFunction,
   UseDataFunctionReturn,
   redirect,
   typedjson,
   useTypedLoaderData,
 } from "remix-typedjson";
-import { LogoIcon } from "~/components/LogoIcon";
-import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
+import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
-import { FormTitle } from "~/components/primitives/FormTitle";
+import { Header1 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
@@ -67,61 +64,59 @@ export default function LoginPage() {
   const data = useTypedLoaderData<typeof loader>();
 
   return (
-    <AppContainer showBackgroundGradient={true}>
-      <MainCenteredContainer>
-        <Form
-          action={`/auth/github${data.redirectTo ? `?redirectTo=${data.redirectTo}` : ""}`}
-          method="post"
-        >
-          <div className="flex flex-col items-center">
-            <a href="https://trigger.dev">
-              <LogoIcon className="mb-4 h-16 w-16" />
-            </a>
-            <FormTitle divide={false} title="Welcome to Trigger.dev" className="mb-2 pb-0" />
-            <Paragraph variant="small" className="mb-4">
-              Create an account or login
-            </Paragraph>
-            <Fieldset>
-              <div className="flex flex-col gap-y-2">
-                {data.showGithubAuth && (
-                  <Button
-                    type="submit"
-                    variant="primary/large"
-                    fullWidth
-                    data-action="continue with github"
-                  >
-                    <NamedIcon name={"github"} className={"mr-1.5 h-4 w-4"} />
-                    Continue with GitHub
-                  </Button>
-                )}
-                <LinkButton
-                  to="/login/magic"
-                  variant="secondary/large"
+    <LoginPageLayout>
+      <Form
+        action={`/auth/github${data.redirectTo ? `?redirectTo=${data.redirectTo}` : ""}`}
+        method="post"
+        className="w-full"
+      >
+        <div className="flex flex-col items-center">
+          <Header1 className="pb-4 font-normal sm:text-2xl md:text-3xl lg:text-4xl">
+            Welcome
+          </Header1>
+          <Paragraph variant="base" className="mb-6">
+            Create an account or login
+          </Paragraph>
+          <Fieldset className="w-full">
+            <div className="flex flex-col gap-y-2">
+              {data.showGithubAuth && (
+                <Button
+                  type="submit"
+                  variant="primary/extra-large"
                   fullWidth
-                  data-action="continue with email"
+                  data-action="continue with github"
                 >
-                  <NamedIcon
-                    name={"envelope"}
-                    className={"mr-1.5 h-4 w-4 text-dimmed transition group-hover:text-bright"}
-                  />
-                  Continue with Email
-                </LinkButton>
-              </div>
-              <Paragraph variant="extra-small" className="mt-2 text-center">
-                By signing up you agree to our{" "}
-                <TextLink href="https://trigger.dev/legal" target="_blank">
-                  terms
-                </TextLink>
-                {" "}and{" "}
-                <TextLink href="https://trigger.dev/legal/privacy" target="_blank">
-                  privacy
-                </TextLink>
-                {" "}policy.
-              </Paragraph>
-            </Fieldset>
-          </div>
-        </Form>
-      </MainCenteredContainer>
-    </AppContainer>
+                  <NamedIcon name={"github"} className={"mr-2 h-6 w-6"} />
+                  Continue with GitHub
+                </Button>
+              )}
+              <LinkButton
+                to="/login/magic"
+                variant="secondary/extra-large"
+                fullWidth
+                data-action="continue with email"
+              >
+                <NamedIcon
+                  name={"envelope"}
+                  className={"mr-1.5 h-4 w-4 text-dimmed transition group-hover:text-bright"}
+                />
+                Continue with Email
+              </LinkButton>
+            </div>
+            <Paragraph variant="extra-small" className="mt-2 text-center">
+              By signing up you agree to our{" "}
+              <TextLink href="https://trigger.dev/legal" target="_blank">
+                terms
+              </TextLink>
+              {" "}and{" "}
+              <TextLink href="https://trigger.dev/legal/privacy" target="_blank">
+                privacy
+              </TextLink>
+              {" "}policy.
+            </Paragraph>
+          </Fieldset>
+        </div>
+      </Form>
+    </LoginPageLayout>
   );
 }

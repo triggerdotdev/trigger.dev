@@ -1,0 +1,162 @@
+---
+title: "store"
+sidebarTitle: "store"
+description: "Exposes namespaced **Key-Value Stores** you can access inside of your Jobs."
+---
+
+<Warning>
+  Only use this for small values - there's a **256KB** size limit per item.
+</Warning>
+
+## Namespaces
+
+- `store.env` to access and store data within the **Environment**
+- `store.job` to access and store data within the **Job**
+- `store.run` to access and store data within the **Run**
+
+You will only be able to access Run-scoped data from inside the _same_ Run when using `store.run`.
+
+To share data across Runs you can use `store.job`:
+
+```ts
+client.defineJob({
+  ...
+  run: async (payload, io, ctx) => {
+    // Run-scoped get - this will always return undefined
+    await io.store.run.get("run-get", "counter")
+
+    // Job-scoped get - this will only be undefined on the first run
+    const counter = await io.store.job.get<number | undefined>("job-get", "counter")
+
+    const currentCount = counter ?? 0
+    const incrementedCounter = currentCount++
+
+    // Run-scoped set - somewhat pointless as we don't access it again in this Run
+    await io.store.run.set("run-set", "counter", incrementedCounter);
+
+    // Job-scoped set
+    await io.store.job.set("job-set", "counter", incrementedCounter);
+  }
+})
+```
+
+And to share data across Jobs you can use `store.env` instead:
+
+```ts
+client.defineJob({
+  id: "job-1",
+  ...
+  run: async (payload, io, ctx) => {
+    // store data in one job
+    await io.store.env.set("cacheKey", "cross-run-shared-key", { foo: "bar" });
+  }
+})
+
+client.defineJob({
+  id: "job-2",
+  ...
+  run: async (payload, io, ctx) => {
+    // access from a different job
+    const value = await io.store.env.get<{ foo: string }>("cacheKey", "cross-run-shared-key");
+  }
+})
+```
+
+## Methods
+
+### `delete()`
+
+Deletes an item from the Key-Value Store.
+
+<Snippet file="stable-key-param.mdx" />
+
+<ParamField body="key" type="string" required>
+  The `key` of the item to delete.
+</ParamField>
+
+#### Returns
+
+A `Promise` that resolves when the item has been deleted.
+
+```ts
+await client.store.env.delete("cacheKey", "key")
+```
+
+### `has()`
+
+Checks if an item exists in the Key-Value Store.
+
+<Snippet file="stable-key-param.mdx" />
+
+<ParamField body="key" type="string" required>
+  The `key` of the item to check existence of.
+</ParamField>
+
+#### Returns
+
+A `Promise` that resolves to a `boolean` value indicating existence.
+
+```ts
+const exists = await client.store.env.has("cacheKey", "key")
+```
+
+### `get()`
+
+Retrieves an item from the Key-Value Store.
+
+<Snippet file="stable-key-param.mdx" />
+
+<ParamField body="key" type="string" required>
+  The `key` of the item to retrieve.
+</ParamField>
+
+#### Returns
+
+A `Promise` that resolves to the stored value or `undefined` if missing.
+
+```ts
+const val = await client.store.env.get("cacheKey", "key")
+```
+
+### `set()`
+
+Stores an item in the Key-Value Store.
+
+<Snippet file="stable-key-param.mdx" />
+
+<ParamField body="key" type="string" required>
+  The `key` of the item to store.
+</ParamField>
+
+<ParamField body="value" type="any" required>
+  The serializable `value` to store.
+</ParamField>
+
+```ts
+const val = await client.store.env.set("cacheKey", "key", "value")
+```
+
+#### Returns
+
+A `Promise` that resolves to the stored value.
+
+<RequestExample>
+```ts Example
+await io.store.env.set("cacheKey", "key", "foo")
+await io.store.job.set("cacheKey", "key", "bar")
+await io.store.run.set("cacheKey", "key", "baz")
+
+await io.store.env.get("cacheKey", "key") // "foo"
+await io.store.job.get("cacheKey", "key") // "bar"
+await io.store.run.get("cacheKey", "key") // "baz"
+
+await io.store.env.has("cacheKey", "key") // true
+await io.store.job.has("cacheKey", "missing") // false
+await io.store.run.has("cacheKey", "key") // true
+
+// cleanup
+await io.store.env.delete("cacheKey", "key")
+await io.store.job.delete("cacheKey", "key")
+await io.store.run.delete("cacheKey", "key")
+```
+</RequestExample>

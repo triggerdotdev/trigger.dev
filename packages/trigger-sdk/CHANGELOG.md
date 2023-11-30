@@ -1,5 +1,27 @@
 # @trigger.dev/sdk
 
+## 2.2.9
+
+### Patch Changes
+
+- 1dcd87a2: Fix: `Key-Value Store` keys will now be URI encoded
+- 6ebd435e: Feature: Run execution concurrency limits
+- Updated dependencies [6ebd435e]
+  - @trigger.dev/core@2.2.9
+  - @trigger.dev/core-backend@2.2.9
+
+## 2.2.8
+
+### Patch Changes
+
+- 067e19fe: - Simplify `Webhook Triggers` and use the new HTTP Endpoints
+  - Add a `Key-Value Store` for use in and outside of Jobs
+  - Add a `@trigger.dev/shopify` package
+- 096151c0: Fix `@trigger.dev/shopify` imports, enhance docs, and suppress HTTP Endpoint warnings
+- Updated dependencies [067e19fe]
+  - @trigger.dev/core@2.2.8
+  - @trigger.dev/core-backend@2.2.8
+
 ## 2.2.7
 
 ### Patch Changes

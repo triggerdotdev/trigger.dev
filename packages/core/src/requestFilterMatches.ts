@@ -10,7 +10,8 @@ export async function requestFilterMatches(
     return false;
   }
 
-  if (filter.headers && !eventFilterMatches(clonedRequest.headers, filter.headers)) {
+  const headersObj = Object.fromEntries(clonedRequest.headers.entries());
+  if (filter.headers && !eventFilterMatches(headersObj, filter.headers)) {
     return false;
   }
 

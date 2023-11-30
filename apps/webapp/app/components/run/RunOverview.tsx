@@ -10,13 +10,14 @@ import {
   useNavigate,
   useNavigation,
 } from "@remix-run/react";
-import { JobRunStatus, RuntimeEnvironmentType } from "@trigger.dev/database";
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { useMemo } from "react";
 import { usePathName } from "~/hooks/usePathName";
+import type { RunBasicStatus } from "~/models/jobRun.server";
 import { ViewRun } from "~/presenters/RunPresenter.server";
 import { cancelSchema } from "~/routes/resources.runs.$runId.cancel";
 import { schema } from "~/routes/resources.runs.$runId.rerun";
-import { formatDuration } from "~/utils";
+import { formatDuration, formatDurationMilliseconds } from "~/utils";
 import { cn } from "~/utils/cn";
 import { runCompletedPath, runTaskPath, runTriggerPath } from "~/utils/pathBuilder";
 import { CodeBlock } from "../code/CodeBlock";
@@ -38,14 +39,7 @@ import {
 } from "../primitives/PageHeader";
 import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
-import {
-  RunBasicStatus,
-  RunStatusIcon,
-  RunStatusLabel,
-  hasFinished,
-  runBasicStatus,
-  runStatusTitle,
-} from "../runs/RunStatuses";
+import { RunStatusIcon, RunStatusLabel, runStatusTitle } from "../runs/RunStatuses";
 import {
   RunPanel,
   RunPanelBody,
@@ -95,8 +89,6 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
     }
   }, [pathName]);
 
-  const basicStatus = runBasicStatus(run.status);
-
   return (
     <PageContainer>
       <PageHeader>
@@ -106,7 +98,9 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
               to: paths.back,
               text: "Runs",
             }}
-            title={`Run #${run.number}`}
+            title={
+              typeof run.number === "number" ? `Run #${run.number}` : `Run ${run.id.slice(0, 8)}`
+            }
           />
           <PageButtons>
             {run.isTest && (
@@ -115,15 +109,15 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
                 Test run
               </span>
             )}
-            {showRerun && hasFinished(run.status) && (
+            {showRerun && run.isFinished && (
               <RerunPopover
                 runId={run.id}
                 runsPath={paths.runsPath}
                 environmentType={run.environment.type}
-                status={basicStatus}
+                status={run.basicStatus}
               />
             )}
-            {!hasFinished(run.status) && <CancelRun runId={run.id} />}
+            {!run.isFinished && <CancelRun runId={run.id} />}
           </PageButtons>
         </PageTitleRow>
         <PageInfoRow>
@@ -146,7 +140,17 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
             <PageInfoProperty
               icon={"clock"}
               label={"Duration"}
-              value={formatDuration(run.startedAt, run.completedAt)}
+              value={formatDuration(run.startedAt, run.completedAt, { style: "short" })}
+            />
+            <PageInfoProperty
+              icon={"hourglass"}
+              label={"Execution Time"}
+              value={formatDurationMilliseconds(run.executionDuration, { style: "short" })}
+            />
+            <PageInfoProperty
+              icon={"list-numbers"}
+              label={"Execution Count"}
+              value={run.executionCount}
             />
           </PageInfoGroup>
           <PageInfoGroup alignment="right">
@@ -211,10 +215,10 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
                   );
                 })
               ) : (
-                <BlankTasks status={run.status} basicStatus={basicStatus} />
+                <BlankTasks status={run.basicStatus} />
               )}
             </div>
-            {(basicStatus === "COMPLETED" || basicStatus === "FAILED") && (
+            {(run.basicStatus === "COMPLETED" || run.basicStatus === "FAILED") && (
               <div>
                 <Header2 className={cn("mb-2")}>Run Summary</Header2>
                 <RunPanel
@@ -285,14 +289,8 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
   );
 }
 
-function BlankTasks({
-  status,
-  basicStatus,
-}: {
-  status: JobRunStatus;
-  basicStatus: RunBasicStatus;
-}) {
-  switch (basicStatus) {
+function BlankTasks({ status }: { status: RunBasicStatus }) {
+  switch (status) {
     default:
     case "COMPLETED":
       return <Paragraph variant="small">There were no tasks for this run.</Paragraph>;

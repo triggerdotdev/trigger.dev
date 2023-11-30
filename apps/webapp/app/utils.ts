@@ -158,19 +158,10 @@ export const obfuscateApiKey = (apiKey: string) => {
   return `${prefix}_${slug}_${"*".repeat(secretPart.length)}`;
 };
 
-export function appEnvTitleTag(appEnv?: "test" | "production" | "development" | "staging"): string {
-  if (!appEnv) {
+export function appEnvTitleTag(appEnv?: string): string {
+  if (!appEnv || appEnv === "production") {
     return "";
   }
 
-  switch (appEnv) {
-    case "test":
-      return " (test)";
-    case "production":
-      return "";
-    case "development":
-      return " (dev)";
-    case "staging":
-      return " (staging)";
-  }
+  return ` (${appEnv})`
 }

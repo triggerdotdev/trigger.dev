@@ -28,6 +28,7 @@ import {
   projectEnvironmentsPath,
   projectHttpEndpointsPath,
   projectPath,
+  projectRunsPath,
   projectSetupPath,
   projectTriggersPath,
 } from "~/utils/pathBuilder";
@@ -121,6 +122,12 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               count={project.jobCount}
               to={projectPath(organization, project)}
               data-action="jobs"
+            />
+            <SideMenuItem
+              name="Runs"
+              icon="runs"
+              iconColor="text-teal-500"
+              to={projectRunsPath(organization, project)}
             />
             <SideMenuItem
               name="Triggers"

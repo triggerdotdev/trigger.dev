@@ -1,0 +1,207 @@
+{
+  "id": 890088186047892400,
+  "order_id": 820982911946154500,
+  "created_at": null,
+  "note": "Things were damaged",
+  "user_id": 548380009,
+  "processed_at": null,
+  "restock": false,
+  "duties": [],
+  "total_duties_set": {
+    "shop_money": {
+      "amount": "0.00",
+      "currency_code": "USD"
+    },
+    "presentment_money": {
+      "amount": "0.00",
+      "currency_code": "USD"
+    }
+  },
+  "return": null,
+  "admin_graphql_api_id": "gid://shopify/Refund/890088186047892319",
+  "refund_line_items": [
+    {
+      "id": 866550311766439000,
+      "quantity": 1,
+      "line_item_id": 866550311766439000,
+      "location_id": null,
+      "restock_type": "no_restock",
+      "subtotal": 199,
+      "total_tax": 0,
+      "subtotal_set": {
+        "shop_money": {
+          "amount": "199.00",
+          "currency_code": "USD"
+        },
+        "presentment_money": {
+          "amount": "199.00",
+          "currency_code": "USD"
+        }
+      },
+      "total_tax_set": {
+        "shop_money": {
+          "amount": "0.00",
+          "currency_code": "USD"
+        },
+        "presentment_money": {
+          "amount": "0.00",
+          "currency_code": "USD"
+        }
+      },
+      "line_item": {
+        "id": 866550311766439000,
+        "variant_id": 808950810,
+        "title": "IPod Nano - 8GB",
+        "quantity": 1,
+        "sku": "IPOD2008PINK",
+        "variant_title": null,
+        "vendor": null,
+        "fulfillment_service": "manual",
+        "product_id": 632910392,
+        "requires_shipping": true,
+        "taxable": true,
+        "gift_card": false,
+        "name": "IPod Nano - 8GB",
+        "variant_inventory_management": "shopify",
+        "properties": [],
+        "product_exists": true,
+        "fulfillable_quantity": 1,
+        "grams": 567,
+        "price": "199.00",
+        "total_discount": "0.00",
+        "fulfillment_status": null,
+        "price_set": {
+          "shop_money": {
+            "amount": "199.00",
+            "currency_code": "USD"
+          },
+          "presentment_money": {
+            "amount": "199.00",
+            "currency_code": "USD"
+          }
+        },
+        "total_discount_set": {
+          "shop_money": {
+            "amount": "0.00",
+            "currency_code": "USD"
+          },
+          "presentment_money": {
+            "amount": "0.00",
+            "currency_code": "USD"
+          }
+        },
+        "discount_allocations": [],
+        "duties": [],
+        "admin_graphql_api_id": "gid://shopify/LineItem/866550311766439020",
+        "tax_lines": []
+      }
+    },
+    {
+      "id": 141249953214523040,
+      "quantity": 1,
+      "line_item_id": 141249953214522980,
+      "location_id": null,
+      "restock_type": "no_restock",
+      "subtotal": 199,
+      "total_tax": 0,
+      "subtotal_set": {
+        "shop_money": {
+          "amount": "199.00",
+          "currency_code": "USD"
+        },
+        "presentment_money": {
+          "amount": "199.00",
+          "currency_code": "USD"
+        }
+      },
+      "total_tax_set": {
+        "shop_money": {
+          "amount": "0.00",
+          "currency_code": "USD"
+        },
+        "presentment_money": {
+          "amount": "0.00",
+          "currency_code": "USD"
+        }
+      },
+      "line_item": {
+        "id": 141249953214522980,
+        "variant_id": 808950810,
+        "title": "IPod Nano - 8GB",
+        "quantity": 1,
+        "sku": "IPOD2008PINK",
+        "variant_title": null,
+        "vendor": null,
+        "fulfillment_service": "manual",
+        "product_id": 632910392,
+        "requires_shipping": true,
+        "taxable": true,
+        "gift_card": false,
+        "name": "IPod Nano - 8GB",
+        "variant_inventory_management": "shopify",
+        "properties": [],
+        "product_exists": true,
+        "fulfillable_quantity": 1,
+        "grams": 567,
+        "price": "199.00",
+        "total_discount": "5.00",
+        "fulfillment_status": null,
+        "price_set": {
+          "shop_money": {
+            "amount": "199.00",
+            "currency_code": "USD"
+          },
+          "presentment_money": {
+            "amount": "199.00",
+            "currency_code": "USD"
+          }
+        },
+        "total_discount_set": {
+          "shop_money": {
+            "amount": "5.00",
+            "currency_code": "USD"
+          },
+          "presentment_money": {
+            "amount": "5.00",
+            "currency_code": "USD"
+          }
+        },
+        "discount_allocations": [
+          {
+            "amount": "5.00",
+            "discount_application_index": 0,
+            "amount_set": {
+              "shop_money": {
+                "amount": "5.00",
+                "currency_code": "USD"
+              },
+              "presentment_money": {
+                "amount": "5.00",
+                "currency_code": "USD"
+              }
+            }
+          },
+          {
+            "amount": "5.00",
+            "discount_application_index": 2,
+            "amount_set": {
+              "shop_money": {
+                "amount": "5.00",
+                "currency_code": "USD"
+              },
+              "presentment_money": {
+                "amount": "5.00",
+                "currency_code": "USD"
+              }
+            }
+          }
+        ],
+        "duties": [],
+        "admin_graphql_api_id": "gid://shopify/LineItem/141249953214522974",
+        "tax_lines": []
+      }
+    }
+  ],
+  "transactions": [],
+  "order_adjustments": []
+}

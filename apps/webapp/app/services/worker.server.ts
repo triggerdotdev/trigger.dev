@@ -26,6 +26,9 @@ import { DeliverRunSubscriptionsService } from "./runs/deliverRunSubscriptions.s
 import { ResumeTaskService } from "./tasks/resumeTask.server";
 import { ExpireDispatcherService } from "./dispatchers/expireDispatcher.server";
 import { InvokeEphemeralDispatcherService } from "./dispatchers/invokeEphemeralEventDispatcher.server";
+import { ResumeRunService } from "./runs/resumeRun.server";
+import { executionRateLimiter } from "./runExecutionRateLimiter.server";
+import { DeliverWebhookRequestService } from "./sources/deliverWebhookRequest.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -43,6 +46,7 @@ const workerCatalog = {
     id: z.string(),
   }),
   deliverHttpSourceRequest: z.object({ id: z.string() }),
+  deliverWebhookRequest: z.object({ id: z.string() }),
   refreshOAuthToken: z.object({
     organizationId: z.string(),
     connectionId: z.string(),
@@ -93,6 +97,9 @@ const workerCatalog = {
     id: z.string(),
   }),
   expireDispatcher: z.object({
+    id: z.string(),
+  }),
+  resumeRun: z.object({
     id: z.string(),
   }),
 };
@@ -223,7 +230,6 @@ function getWorkerQueue() {
       "events.invokeDispatcher": {
         priority: 0, // smaller number = higher priority
         maxAttempts: 6,
-        queueName: (payload) => `dispatcher:${payload.id}`, // use a queue for a dispatcher so runs are created sequentially
         handler: async (payload, job) => {
           const service = new InvokeDispatcherService();
 
@@ -289,6 +295,16 @@ function getWorkerQueue() {
         queueName: (payload) => `sources:${payload.id}`,
         handler: async (payload, job) => {
           const service = new DeliverHttpSourceRequestService();
+
+          await service.call(payload.id);
+        },
+      },
+      deliverWebhookRequest: {
+        priority: 1, // smaller number = higher priority
+        maxAttempts: 14,
+        queueName: (payload) => `webhooks:${payload.id}`,
+        handler: async (payload, job) => {
+          const service = new DeliverWebhookRequestService();
 
           await service.call(payload.id);
         },
@@ -403,6 +419,15 @@ function getWorkerQueue() {
           return await service.call(payload.id);
         },
       },
+      resumeRun: {
+        priority: 0,
+        maxAttempts: 10,
+        handler: async (payload, job) => {
+          const service = new ResumeRunService();
+
+          return await service.call(payload.id);
+        },
+      },
     },
   });
 }
@@ -421,6 +446,7 @@ function getExecutionWorkerQueue() {
     },
     shutdownTimeoutInMs: env.GRACEFUL_SHUTDOWN_TIMEOUT,
     schema: executionWorkerCatalog,
+    rateLimiter: executionRateLimiter,
     tasks: {
       performRunExecutionV2: {
         priority: 0, // smaller number = higher priority
@@ -433,6 +459,7 @@ function getExecutionWorkerQueue() {
             reason: payload.reason,
             resumeTaskId: payload.resumeTaskId,
             isRetry: payload.isRetry,
+            lastAttempt: job.max_attempts === job.attempts,
           });
         },
       },
@@ -449,6 +476,7 @@ function getExecutionWorkerQueue() {
               id: payload.id,
               reason: payload.reason,
               isRetry: false,
+              lastAttempt: job.max_attempts === job.attempts,
             },
             driftInMs
           );

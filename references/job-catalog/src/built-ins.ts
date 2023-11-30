@@ -205,7 +205,7 @@ const sendWaitForEventJob = client.defineJob({
     });
   },
 });
-  
+
 client.defineJob({
   id: "send-event-example",
   name: "Send Event Example",
@@ -297,6 +297,76 @@ client.defineJob({
     name: "test.event",
   }),
   run: async (payload, io, ctx) => {},
+});
+
+client.defineJob({
+  id: "store-example",
+  name: "Key-Value Store Example",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "store.example",
+  }),
+  run: async (payload, io, ctx) => {
+    // key tests
+    await io.store.job.set("set-emoji", "🍔", "🐮");
+    await io.store.job.get("get-emoji", "🍔");
+
+    await io.store.job.set("set-url", "https://example.com/?foo=bar", "url");
+    await io.store.job.get("get-url", "https://example.com/?foo=bar");
+
+    // value tests
+    await io.store.job.set("set-undefined", "test", undefined);
+    await io.store.job.get("get-undefined", "test");
+
+    await io.store.job.set("set-null", "test", null);
+    await io.store.job.get("get-null", "test");
+
+    await io.store.job.set("set-false", "test", false);
+    await io.store.job.get("get-false", "test");
+
+    await io.store.job.set("set-zero", "test", 0);
+    await io.store.job.get("get-zero", "test");
+
+    await io.store.job.set("set-object", "test", { foo: "bar" });
+    await io.store.job.get("get-object", "test");
+
+    await io.store.job.delete("delete-value-test", "test");
+
+    // job store
+    await io.store.job.get("job-get-nonexistent", "some-key");
+    await io.store.job.has("job-has-nonexistent", "some-key");
+    await io.store.job.set("job-set", "some-key", "some-value");
+    await io.store.job.has("job-has", "some-key");
+    await io.store.job.get("job-get", "some-key");
+    await io.store.job.delete("job-delete", "some-key");
+    await io.store.job.delete("job-delete-nonexistent", "some-key");
+
+    // run store
+    await io.store.run.get("run-get-nonexistent", "some-key");
+    await io.store.run.has("run-has-nonexistent", "some-key");
+    await io.store.run.set("run-set", "some-key", "some-value");
+    await io.store.run.has("run-has", "some-key");
+    await io.store.run.get("run-get", "some-key");
+    await io.store.run.delete("run-delete", "some-key");
+    await io.store.run.delete("run-delete-nonexistent", "some-key");
+
+    // env store
+    await io.store.env.get("env-get-nonexistent", "some-key");
+    await io.store.env.has("env-has-nonexistent", "some-key");
+    await io.store.env.set("env-set", "some-key", "some-value");
+    await io.store.env.has("env-has", "some-key");
+    await io.store.env.get("env-get", "some-key");
+    await io.store.env.delete("env-delete", "some-key");
+    await io.store.env.delete("env-delete-nonexistent", "some-key");
+
+    // fail on large value
+    const largeValue = Array(256 * 1024)
+      .fill("F")
+      .join("");
+
+    await io.store.job.set("large-value-fail", "large-value", largeValue);
+    await io.store.job.delete("large-value-delete", "large-value");
+  },
 });
 
 createExpressServer(client);

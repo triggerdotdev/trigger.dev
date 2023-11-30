@@ -3,6 +3,7 @@ import {
   JobMetadata,
   SCHEDULED_EVENT,
   TriggerMetadata,
+  assertExhaustive,
 } from "@trigger.dev/core";
 import type { Endpoint, Integration, Job, JobIntegration, JobVersion } from "@trigger.dev/database";
 import { DEFAULT_MAX_CONCURRENT_RUNS } from "~/consts";
@@ -13,6 +14,7 @@ import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { logger } from "../logger.server";
 import { RegisterScheduleSourceService } from "../schedules/registerScheduleSource.server";
+import { executionRateLimiter } from "../runExecutionRateLimiter.server";
 
 export class RegisterJobService {
   #prismaClient: PrismaClient;
@@ -104,32 +106,28 @@ export class RegisterJobService {
       },
     });
 
-    // Upsert the JobQueue
-    const queueName = "default";
+    const { examples, ...eventSpecification } = metadata.event;
 
     // Job Queues are going to be deprecated or used for something else, we're just doing this for now
-    const jobQueue = await this.#prismaClient.jobQueue.upsert({
-      where: {
-        environmentId_name: {
-          environmentId: environment.id,
-          name: queueName,
-        },
-      },
-      create: {
-        environment: {
-          connect: {
-            id: environment.id,
-          },
-        },
-        name: queueName,
-        maxJobs: DEFAULT_MAX_CONCURRENT_RUNS,
-      },
-      update: {
-        maxJobs: DEFAULT_MAX_CONCURRENT_RUNS,
-      },
-    });
-
-    const { examples, ...eventSpecification } = metadata.event;
+    const concurrencyLimitGroup =
+      typeof metadata.concurrencyLimit === "object"
+        ? await this.#prismaClient.concurrencyLimitGroup.upsert({
+            where: {
+              environmentId_name: {
+                environmentId: environment.id,
+                name: metadata.concurrencyLimit.id,
+              },
+            },
+            create: {
+              environmentId: environment.id,
+              name: metadata.concurrencyLimit.id,
+              concurrencyLimit: metadata.concurrencyLimit.limit,
+            },
+            update: {
+              concurrencyLimit: metadata.concurrencyLimit.limit,
+            },
+          })
+        : null;
 
     // Upsert the JobVersion
     const jobVersion = await this.#prismaClient.jobVersion.upsert({
@@ -141,57 +139,29 @@ export class RegisterJobService {
         },
       },
       create: {
-        job: {
-          connect: {
-            id: job.id,
-          },
-        },
-        endpoint: {
-          connect: {
-            id: endpoint.id,
-          },
-        },
-        environment: {
-          connect: {
-            id: environment.id,
-          },
-        },
-        organization: {
-          connect: {
-            id: environment.organizationId,
-          },
-        },
-        project: {
-          connect: {
-            id: environment.projectId,
-          },
-        },
-        queue: {
-          connect: {
-            id: jobQueue.id,
-          },
-        },
+        jobId: job.id,
+        endpointId: endpoint.id,
+        environmentId: environment.id,
+        organizationId: environment.organizationId,
+        projectId: environment.projectId,
         version: metadata.version,
         eventSpecification,
         preprocessRuns: metadata.preprocessRuns,
         startPosition: "LATEST",
         status: "ACTIVE",
+        concurrencyLimitGroupId: concurrencyLimitGroup?.id ?? null,
+        concurrencyLimit:
+          typeof metadata.concurrencyLimit === "number" ? metadata.concurrencyLimit : null,
       },
       update: {
         status: "ACTIVE",
         startPosition: "LATEST",
         eventSpecification,
         preprocessRuns: metadata.preprocessRuns,
-        queue: {
-          connect: {
-            id: jobQueue.id,
-          },
-        },
-        endpoint: {
-          connect: {
-            id: endpoint.id,
-          },
-        },
+        endpointId: endpoint.id,
+        concurrencyLimitGroupId: concurrencyLimitGroup?.id ?? null,
+        concurrencyLimit:
+          typeof metadata.concurrencyLimit === "number" ? metadata.concurrencyLimit : null,
       },
       include: {
         integrations: {
@@ -199,8 +169,27 @@ export class RegisterJobService {
             integration: true,
           },
         },
+        concurrencyLimitGroup: true,
       },
     });
+
+    try {
+      if (jobVersion.concurrencyLimitGroup) {
+        // Upsert the maxSize for the concurrency limit group
+        await executionRateLimiter?.putConcurrencyLimitGroup(
+          jobVersion.concurrencyLimitGroup,
+          environment
+        );
+      }
+
+      await executionRateLimiter?.putJobVersionConcurrencyLimit(jobVersion, environment);
+    } catch (error) {
+      logger.error("Error setting concurrency limit", {
+        error,
+        jobVersionId: jobVersion.id,
+        environmentId: environment.id,
+      });
+    }
 
     // Upsert the examples and delete any that are no longer in the metadata
     const upsertedExamples = new Set<string>();
@@ -637,8 +626,4 @@ export class RegisterJobService {
       },
     });
   }
-}
-
-function assertExhaustive(x: never): never {
-  throw new Error("Unexpected object: " + x);
 }

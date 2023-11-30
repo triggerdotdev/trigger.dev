@@ -60,11 +60,11 @@ function createTaskUsageProperties(
     },
     ...("completion_tokens" in usage
       ? [
-          {
-            label: "Completion Usage",
-            text: String(usage.completion_tokens),
-          },
-        ]
+        {
+          label: "Completion Usage",
+          text: String(usage.completion_tokens),
+        },
+      ]
       : []),
   ];
 }
@@ -83,35 +83,35 @@ function createTaskRateLimitProperties(headers: Headers | undefined) {
   return [
     ...(remainingRequests
       ? [
-          {
-            label: "Remaining Requests",
-            text: remainingRequests ?? "Unknown",
-          },
-        ]
+        {
+          label: "Remaining Requests",
+          text: remainingRequests ?? "Unknown",
+        },
+      ]
       : []),
     ...(resetRequests
       ? [
-          {
-            label: "Reset Requests",
-            text: resetRequests ?? "Unknown",
-          },
-        ]
+        {
+          label: "Reset Requests",
+          text: resetRequests ?? "Unknown",
+        },
+      ]
       : []),
     ...(remainingTokens
       ? [
-          {
-            label: "Remaining Tokens",
-            text: remainingTokens ?? "Unknown",
-          },
-        ]
+        {
+          label: "Remaining Tokens",
+          text: remainingTokens ?? "Unknown",
+        },
+      ]
       : []),
     ...(resetTokens
       ? [
-          {
-            label: "Reset Tokens",
-            text: resetTokens ?? "Unknown",
-          },
-        ]
+        {
+          label: "Reset Tokens",
+          text: resetTokens ?? "Unknown",
+        },
+      ]
       : []),
   ];
 }
@@ -282,3 +282,32 @@ export const backgroundTaskRetries: FetchRetryOptions = {
     randomize: true,
   },
 };
+
+type KeysEnum<T> = { [P in keyof Required<T>]: true };
+
+const requestOptionsKeys: KeysEnum<OpenAIRequestOptions> = {
+  method: true,
+  path: true,
+  query: true,
+  headers: true,
+  idempotencyKey: true,
+};
+
+export const isRequestOptions = (obj: unknown): obj is OpenAIRequestOptions => {
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    !isEmptyObj(obj) &&
+    Object.keys(obj).every((k) => hasOwn(requestOptionsKeys, k))
+  );
+};
+
+function isEmptyObj(obj: Object | null | undefined): boolean {
+  if (!obj) return true;
+  for (const _k in obj) return false;
+  return true;
+}
+
+function hasOwn(obj: Object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}

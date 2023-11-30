@@ -3,6 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import { GetEvent } from "@trigger.dev/core";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { runOriginalStatus } from "~/models/jobRun.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { apiCors } from "~/utils/apiCors";
 
@@ -49,7 +50,7 @@ function toJSON(eventRecord: FoundEventRecord): GetEvent {
     updatedAt: eventRecord.updatedAt,
     runs: eventRecord.runs.map((run) => ({
       id: run.id,
-      status: run.status,
+      status: runOriginalStatus(run.status),
       startedAt: run.startedAt,
       completedAt: run.completedAt,
     })),

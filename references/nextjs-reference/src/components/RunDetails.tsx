@@ -5,6 +5,8 @@ import { useEventRunStatuses } from "@trigger.dev/react";
 export function EventRunData({ id }: { id: string }) {
   const { fetchStatus, error, statuses, run } = useEventRunStatuses(id);
 
+  console.log(run?.status);
+
   if (fetchStatus === "loading") {
     return <p>Loading...</p>;
   }

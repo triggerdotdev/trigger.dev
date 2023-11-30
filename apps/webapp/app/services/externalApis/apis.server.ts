@@ -117,6 +117,15 @@ export const apisList = [
   {
     identifier: "clerk",
     name: "Clerk",
+    examples: [
+      {
+        title: "A job that is triggered by a Clerk webhook.",
+        slug: "clerk-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/clerk-http-endpoint.ts",
+      },
+    ],
   },
   {
     identifier: "clickup",
@@ -283,6 +292,13 @@ export const apisList = [
     name: "HubSpot",
     examples: [
       {
+        title: "A job that is triggered by a HubSpot webhook.",
+        slug: "hubspot-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/hubspot-http-endpoint.ts",
+      },
+      {
         title: "Create a contact in HubSpot.",
         slug: "create-contact-in-hubspot",
         version: "1.0.0",
@@ -294,6 +310,13 @@ export const apisList = [
     identifier: "huggingface",
     name: "Hugging Face",
     examples: [
+      {
+        title: "A job that is triggered by a Hugging Face webhook.",
+        slug: "hugging-face-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/hugging-face-http-endpoint.ts",
+      },
       {
         title: "Text classification with Hugging Face.",
         slug: "text-classification-with-hugging-face",
@@ -394,6 +417,13 @@ export const apisList = [
     name: "Mailgun",
     examples: [
       {
+        title: "A job that is triggered by a Mailgun webhook.",
+        slug: "mailgun-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/mailgun-http-endpoint.ts",
+      },
+      {
         title: "Send an email with Mailgun.",
         slug: "send-email-with-mailgun",
         version: "1.0.0",
@@ -429,6 +459,13 @@ export const apisList = [
     identifier: "novu",
     name: "Novu",
     examples: [
+      {
+        title: "A job that is triggered by a Novu webhook.",
+        slug: "novu-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/novu-http-endpoint.ts",
+      },
       {
         title: "Create a new subscriber in Novu",
         slug: "create-new-subscriber-in-novu",
@@ -757,6 +794,13 @@ export const apisList = [
     identifier: "whatsapp",
     name: "WhatsApp",
     examples: [
+      {
+        title: "A job that is triggered by a WhatsApp webhook.",
+        slug: "whatsapp-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/whatsapp-http-endpoint.ts",
+      },
       {
         title: "Send a message to a WhatsApp number",
         slug: "whatapp-send-message",

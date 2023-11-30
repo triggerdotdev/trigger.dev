@@ -229,6 +229,37 @@ client.defineJob({
 });
 
 client.defineJob({
+  id: "openai-manage-assistant",
+  name: "OpenAI GPT Manage Assistant",
+  version: "0.0.1",
+  trigger: invokeTrigger({
+    schema: z.object({
+      assistantId: z.string().optional(),
+    }),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    const assistants = await io.openai.beta.assistants.list("list", {
+      limit: 10
+    });
+
+    if (payload.assistantId) {
+      await io.openai.beta.assistants.retrieve("retrieve", payload.assistantId);
+      await io.openai.beta.assistants.update("update", payload.assistantId, {
+        name: "Updated name",
+      });
+      await io.openai.beta.assistants.del("delete", payload.assistantId);
+    }
+
+    for (const assistant of assistants) {
+      await io.openai.beta.assistants.del(`delete ${assistant.id}`, assistant.id);
+    }
+  },
+});
+
+client.defineJob({
   id: "openai-use-assistant",
   name: "OpenAI GPT Use Assistant",
   version: "0.0.1",
@@ -342,6 +373,43 @@ client.defineJob({
     );
 
     return run;
+  },
+});
+
+client.defineJob({
+  id: "openai-vision",
+  name: "OpenAI GPT 4 Vision",
+  version: "0.0.1",
+  trigger: invokeTrigger({
+    schema: z.object({
+      image: z.string(),
+      prompt: z.string().default("What’s in this image?"),
+      detail: z.enum(["low", "high", "auto"]).default("auto"),
+    }),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    const response = await io.openai.chat.completions.create("📺", {
+      model: "gpt-4-vision-preview",
+      max_tokens: 300,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: payload.prompt },
+            {
+              type: "image_url",
+              image_url: {
+                url: payload.image,
+                detail: payload.detail,
+              },
+            },
+          ],
+        },
+      ],
+    });
   },
 });
 
