@@ -17,11 +17,13 @@ export class CreateRunService {
       eventIds,
       job,
       version,
+      batched,
     }: {
       environment: AuthenticatedEnvironment;
       eventIds: string[];
       job: Job;
       version: JobVersion;
+      batched: boolean;
     },
     options: { callbackUrl?: string } = {}
   ) {
@@ -54,10 +56,12 @@ export class CreateRunService {
           jobId: job.id,
           versionId: version.id,
           eventId: firstEvent.id,
+          eventIds: eventRecords.map((event) => event.id),
           environmentId: environment.id,
           organizationId: environment.organizationId,
           projectId: environment.projectId,
           endpointId: endpoint.id,
+          batched,
           payload: JSON.stringify(
             eventRecords.length > 1
               ? eventRecords.map((event) => event.payload) ?? [{}]

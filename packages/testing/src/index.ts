@@ -1,4 +1,5 @@
 import {
+  BatcherOptions,
   RunJobBody,
   SendEvent,
   SendEventBodySchema,
@@ -85,9 +86,15 @@ const buildRequest = (action: TriggerAction, apiKey: string, opts: Record<string
   });
 };
 
-const buildRequestBody = (event: RunJobBody["event"], job: RunJobBody["job"]): RunJobBody => ({
+const buildRequestBody = (
+  event: RunJobBody["event"],
+  job: RunJobBody["job"],
+  batched: boolean
+): RunJobBody => ({
   event,
   job,
+  payload: JSON.stringify(batched ? [event.payload] : event.payload),
+  batched,
   run: {
     id: String(Math.random()),
     isTest: false,
@@ -192,8 +199,11 @@ export const createJobTester =
       return run(payload, io, ctx);
     };
 
+    const triggerMetadata = job.trigger.toJSON();
+    const batchOptions = triggerMetadata.type === "static" ? triggerMetadata.batch : undefined;
+
     const request = buildRequest("EXECUTE_JOB", client.apiKey() ?? "", {
-      body: buildRequestBody(eventLog, job),
+      body: buildRequestBody(eventLog, job, !!batchOptions),
       jobId: job.id,
     });
     const requestResult = await client.handleRequest(request);

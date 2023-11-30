@@ -28,6 +28,7 @@ export default function Page() {
     <TriggerDetail
       trigger={trigger}
       event={{ icon: "mail-fast", title: "Deliver Webhook" }}
+      payload={trigger.payload}
       properties={[]}
     />
   );

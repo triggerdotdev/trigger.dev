@@ -1,13 +1,22 @@
 import {
+  BatcherOptions,
   IntegrationConfig,
   JobMetadata,
   SCHEDULED_EVENT,
   TriggerMetadata,
   assertExhaustive,
 } from "@trigger.dev/core";
-import type { Endpoint, Integration, Job, JobIntegration, JobVersion } from "@trigger.dev/database";
+import type {
+  Endpoint,
+  EventDispatcher,
+  Integration,
+  Job,
+  JobIntegration,
+  JobVersion,
+  Prisma,
+} from "@trigger.dev/database";
 import { DEFAULT_MAX_CONCURRENT_RUNS } from "~/consts";
-import type { PrismaClient } from "~/db.server";
+import type { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
@@ -15,6 +24,12 @@ import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { logger } from "../logger.server";
 import { RegisterScheduleSourceService } from "../schedules/registerScheduleSource.server";
 import { executionRateLimiter } from "../runExecutionRateLimiter.server";
+
+type ExtendedEventDispatcher = Prisma.EventDispatcherGetPayload<{
+  include: {
+    batcher: true;
+  };
+}>;
 
 export class RegisterJobService {
   #prismaClient: PrismaClient;
@@ -338,41 +353,7 @@ export class RegisterJobService {
           },
         });
 
-        if (trigger.batch) {
-          let maxPayloads: number | null = null;
-          let maxInterval: number | null = null;
-
-          if (typeof trigger.batch !== "boolean") {
-            maxPayloads = trigger.batch.maxPayloads ?? null;
-            maxInterval = trigger.batch.maxInterval ?? null;
-          }
-
-          await this.#prismaClient.eventDispatchBatcher.upsert({
-            where: {
-              eventDispatcherId: eventDispatcher.id,
-              environmentId: eventDispatcher.environmentId,
-            },
-            create: {
-              eventDispatcherId: eventDispatcher.id,
-              environmentId: eventDispatcher.environmentId,
-              maxPayloads,
-              maxInterval,
-            },
-            update: {
-              maxPayloads,
-              maxInterval,
-            },
-          });
-        } else {
-          if (eventDispatcher.batcher) {
-            await this.#prismaClient.eventDispatchBatcher.delete({
-              where: {
-                eventDispatcherId: eventDispatcher.id,
-                environmentId: eventDispatcher.environmentId,
-              },
-            });
-          }
-        }
+        await this.#registerDispatchBatcher(this.#prismaClient, eventDispatcher, trigger.batch);
 
         if (trigger.properties || trigger.link || trigger.help) {
           await this.#prismaClient.jobVersion.update({
@@ -430,6 +411,48 @@ export class RegisterJobService {
         });
 
         break;
+      }
+    }
+  }
+
+  async #registerDispatchBatcher(
+    tx: PrismaClientOrTransaction,
+    eventDispatcher: ExtendedEventDispatcher,
+    batchOptions?: BatcherOptions
+  ) {
+    if (batchOptions) {
+      let maxPayloads: number | null = null;
+      let maxInterval: number | null = null;
+
+      if (typeof batchOptions !== "boolean") {
+        maxPayloads = batchOptions.maxPayloads ?? null;
+        maxInterval = batchOptions.maxInterval ?? null;
+      }
+
+      await tx.eventDispatchBatcher.upsert({
+        where: {
+          eventDispatcherId: eventDispatcher.id,
+          environmentId: eventDispatcher.environmentId,
+        },
+        create: {
+          eventDispatcherId: eventDispatcher.id,
+          environmentId: eventDispatcher.environmentId,
+          maxPayloads,
+          maxInterval,
+        },
+        update: {
+          maxPayloads,
+          maxInterval,
+        },
+      });
+    } else {
+      if (eventDispatcher.batcher) {
+        await tx.eventDispatchBatcher.delete({
+          where: {
+            eventDispatcherId: eventDispatcher.id,
+            environmentId: eventDispatcher.environmentId,
+          },
+        });
       }
     }
   }

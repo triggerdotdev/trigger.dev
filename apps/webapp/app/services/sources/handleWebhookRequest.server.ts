@@ -3,8 +3,9 @@ import { prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { createHttpSourceRequest } from "~/utils/createHttpSourceRequest";
-import { WebhookContextMetadata } from "@trigger.dev/core";
+import { BatcherOptions, WebhookContextMetadata } from "@trigger.dev/core";
 import { createHash } from "crypto";
+import { ZodWorkerBatchEnqueueOptions } from "~/platform/zodWorker.server";
 
 export class HandleWebhookRequestService {
   #prismaClient: PrismaClient;
@@ -19,6 +20,7 @@ export class HandleWebhookRequestService {
         id,
       },
       include: {
+        deliveryBatcher: true,
         endpoint: true,
         environment: true,
       },
@@ -60,22 +62,64 @@ export class HandleWebhookRequestService {
         },
       });
 
-      await workerQueue.enqueue(
-        "deliverWebhookRequest",
-        {
-          id: delivery.id,
-        },
-        {
+      if (webhookEnvironment.deliveryBatcher) {
+        const { maxPayloads, runAt } = this.#getBatchEnqueueOptions(
+          webhookEnvironment.deliveryBatcher
+        );
+
+        await workerQueue.batchEnqueue("batchWebhookDeliveryRequests", [delivery.id], {
           tx,
           maxAttempts:
             webhookEnvironment.environment.type === RuntimeEnvironmentType.DEVELOPMENT
               ? 1
               : undefined,
-        }
-      );
+          jobKey: webhookEnvironment.id,
+          maxPayloads,
+          runAt,
+        });
+      } else {
+        await workerQueue.enqueue(
+          "deliverWebhookRequest",
+          {
+            webhookEnvironmentId: webhookEnvironment.id,
+            requestDeliveryId: delivery.id,
+          },
+          {
+            tx,
+            maxAttempts:
+              webhookEnvironment.environment.type === RuntimeEnvironmentType.DEVELOPMENT
+                ? 1
+                : undefined,
+          }
+        );
+      }
     });
 
     return { status: 200 };
+  }
+
+  #getBatchEnqueueOptions(batcherConfig?: {
+    maxPayloads: number | null;
+    maxInterval: number | null;
+  }): Pick<ZodWorkerBatchEnqueueOptions, "maxPayloads" | "runAt"> {
+    const DEFAULT_MAX_PAYLOADS = 500;
+    const DEFAULT_MAX_INTERVAL_IN_SECONDS = 10 * 60;
+
+    const MAX_PAYLOADS = DEFAULT_MAX_PAYLOADS;
+    const MAX_INTERVAL_IN_SECONDS = DEFAULT_MAX_INTERVAL_IN_SECONDS;
+
+    const maxPayloads = Math.min(batcherConfig?.maxPayloads ?? DEFAULT_MAX_PAYLOADS, MAX_PAYLOADS);
+
+    const runAt = new Date(
+      Date.now() +
+        Math.min(
+          batcherConfig?.maxInterval ?? DEFAULT_MAX_INTERVAL_IN_SECONDS,
+          MAX_INTERVAL_IN_SECONDS
+        ) *
+          1000
+    );
+
+    return { maxPayloads, runAt };
   }
 }
 

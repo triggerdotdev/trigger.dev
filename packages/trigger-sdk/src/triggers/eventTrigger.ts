@@ -1,9 +1,4 @@
-import {
-  EventDispatchBatcherOptions,
-  EventFilter,
-  TriggerMetadata,
-  deepMergeFilters,
-} from "@trigger.dev/core";
+import { BatcherOptions, EventFilter, TriggerMetadata, deepMergeFilters } from "@trigger.dev/core";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
 import {
@@ -23,7 +18,7 @@ type EventTriggerOptions<TEventSpecification extends EventSpecification<any>> = 
   source?: string;
   filter?: EventFilter;
   verify?: EventTypeFromSpecification<TEventSpecification> extends Request ? VerifyCallback : never;
-  batch?: EventDispatchBatcherOptions;
+  batch?: BatcherOptions;
 };
 
 export class EventTrigger<TEventSpecification extends EventSpecification<any>>
@@ -55,7 +50,7 @@ export class EventTrigger<TEventSpecification extends EventSpecification<any>>
   attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpecification>, any>): void {}
 
   batch(
-    options?: Exclude<EventDispatchBatcherOptions, boolean>
+    options?: Exclude<BatcherOptions, boolean>
   ): EventTrigger<TEventSpecification> {
     const { batch, ...rest } = this.#options;
 
@@ -112,7 +107,7 @@ type TriggerOptions<TEvent> = {
    */
   filter?: EventFilter;
   /** Used to set batching options. */
-  batch?: EventDispatchBatcherOptions;
+  batch?: BatcherOptions;
 
   examples?: EventSpecificationExample[];
 };

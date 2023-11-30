@@ -18,6 +18,7 @@ export class InvokeDispatcherService {
         id,
       },
       include: {
+        batcher: true,
         environment: {
           include: {
             project: true,
@@ -53,7 +54,7 @@ export class InvokeDispatcherService {
       return;
     }
 
-    logger.debug("Invoking batch event dispatcher", {
+    logger.debug("Invoking event dispatcher", {
       eventDispatcher,
       eventRecordIds,
     });
@@ -83,6 +84,7 @@ export class InvokeDispatcherService {
         const createRunService = new CreateRunService(this.#prismaClient);
 
         await createRunService.call({
+          batched: !!eventDispatcher.batcher,
           eventIds: eventRecords.map((e) => e.id),
           job: jobVersion.job,
           version: jobVersion,
@@ -133,6 +135,7 @@ export class InvokeDispatcherService {
           const createRunService = new CreateRunService(this.#prismaClient);
 
           await createRunService.call({
+            batched: !!eventDispatcher.batcher,
             eventIds: eventRecords.map((e) => e.id),
             job: job,
             version: latestJobVersion,

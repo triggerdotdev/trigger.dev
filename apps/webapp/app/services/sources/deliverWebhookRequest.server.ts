@@ -11,10 +11,10 @@ export class DeliverWebhookRequestService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(id: string) {
-    const requestDelivery = await this.#prismaClient.webhookRequestDelivery.findUniqueOrThrow({
+  public async call(webhookEnvironmentId: string, requestDeliveryIds: string[], batched = false) {
+    const webhookEnvironment = await this.#prismaClient.webhookEnvironment.findUniqueOrThrow({
       where: {
-        id,
+        id: webhookEnvironmentId,
       },
       include: {
         webhook: {
@@ -31,25 +31,40 @@ export class DeliverWebhookRequestService {
             },
           },
         },
-        webhookEnvironment: {
+        environment: {
           include: {
-            environment: {
-              include: {
-                organization: true,
-                project: true,
-              },
-            },
+            organization: true,
+            project: true,
           },
         },
         endpoint: true,
       },
     });
 
-    if (!requestDelivery.webhookEnvironment.active) {
+    if (!webhookEnvironment.active) {
       return;
     }
 
-    const { secretReference } = requestDelivery.webhook.httpEndpoint;
+    const requestDeliveries = await this.#prismaClient.webhookRequestDelivery.findMany({
+      where: {
+        id: { in: requestDeliveryIds },
+      },
+      include: {
+        endpoint: true,
+      },
+    });
+
+    if (!requestDeliveries.length) {
+      throw new Error(`No request deliveries found, expected ${requestDeliveryIds.length} total.`);
+    }
+
+    if (!batched && requestDeliveries.length > 1) {
+      throw new Error(
+        `Batching is disabled. Will not handle multiple deliveries. Requested ${requestDeliveryIds.length} total.`
+      );
+    }
+
+    const { secretReference } = webhookEnvironment.webhook.httpEndpoint;
 
     const secretStore = getSecretStore(secretReference.provider);
 
@@ -61,36 +76,44 @@ export class DeliverWebhookRequestService {
     );
 
     if (!secret) {
-      throw new Error(`Secret not found for ${requestDelivery.webhook.key}`);
+      throw new Error(`Secret not found for ${webhookEnvironment.webhook.key}`);
     }
 
     const clientApi = new EndpointApi(
-      requestDelivery.webhookEnvironment.environment.apiKey,
-      requestDelivery.endpoint.url
+      webhookEnvironment.environment.apiKey,
+      requestDeliveries[0].endpoint.url
     );
 
-    const { response, verified, error } = await clientApi.deliverWebhookRequest({
-      key: requestDelivery.webhook.key,
+    const requests = requestDeliveries.map((delivery) => ({
+      url: delivery.url,
+      method: delivery.method,
+      headers: delivery.headers as Record<string, string>,
+      rawBody: delivery.body,
+    }));
+
+    const { response, deliveryResults } = await clientApi.deliverWebhookRequests({
+      key: webhookEnvironment.webhook.key,
       secret: secret.secret,
-      params: requestDelivery.webhook.params,
-      request: {
-        url: requestDelivery.url,
-        method: requestDelivery.method,
-        headers: requestDelivery.headers as Record<string, string>,
-        rawBody: requestDelivery.body,
-      },
+      params: webhookEnvironment.webhook.params,
+      requests,
+      batched,
     });
 
-    await this.#prismaClient.webhookRequestDelivery.update({
-      where: {
-        id,
-      },
-      data: {
-        deliveredAt: new Date(),
-        verified,
-        error,
-      },
-    });
+    const deliveredAt = new Date();
+
+    await Promise.allSettled(
+      deliveryResults.map((result, i) => {
+        return this.#prismaClient.webhookRequestDelivery.update({
+          where: {
+            id: requestDeliveries[i].id,
+          },
+          data: {
+            ...result,
+            deliveredAt,
+          },
+        });
+      })
+    );
 
     return response;
   }

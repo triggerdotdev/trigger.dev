@@ -1,5 +1,6 @@
 import {
   API_VERSIONS,
+  BatcherOptions,
   ConnectionAuth,
   DELIVER_WEBHOOK_REQUEST,
   DeserializedJson,
@@ -43,7 +44,9 @@ import {
   StatusUpdate,
   SuccessfulRunNotification,
   WebhookDeliveryResponse,
+  WebhookDeliveryResult,
   WebhookMetadata,
+  WebhookSourceRequestBodySchema,
   WebhookSourceRequestHeadersSchema,
 } from "@trigger.dev/core";
 import { yellow } from "colorette";
@@ -587,24 +590,30 @@ export class TriggerClient {
           };
         }
 
-        const sourceRequestNeedsBody = headers.data["x-ts-http-method"] !== "GET";
+        const parsedBody = await request.json();
 
-        const sourceRequestInit: RequestInit = {
-          method: headers.data["x-ts-http-method"],
-          headers: headers.data["x-ts-http-headers"],
-          body: sourceRequestNeedsBody ? request.body : undefined,
-        };
+        const serializedRequests = WebhookSourceRequestBodySchema.parse(parsedBody);
 
-        if (sourceRequestNeedsBody) {
-          try {
-            // @ts-ignore
-            sourceRequestInit.duplex = "half";
-          } catch (error) {
-            // ignore
+        const requests = serializedRequests.map((req) => {
+          const needsBody = req.method !== "GET";
+
+          const sourceRequestInit: RequestInit = {
+            method: req.method,
+            headers: req.headers,
+            body: needsBody ? request.body : undefined,
+          };
+
+          if (needsBody) {
+            try {
+              // @ts-ignore
+              sourceRequestInit.duplex = "half";
+            } catch (error) {
+              // ignore
+            }
           }
-        }
 
-        const webhookRequest = new Request(headers.data["x-ts-http-url"], sourceRequestInit);
+          return new Request(req.url, sourceRequestInit);
+        });
 
         const key = headers.data["x-ts-key"];
         const secret = headers.data["x-ts-secret"];
@@ -616,14 +625,25 @@ export class TriggerClient {
           params,
         };
 
-        const { response, verified, error } = await this.#handleWebhookRequest(webhookRequest, ctx);
+        const deliveryResults: WebhookDeliveryResult[] = [];
+
+        for (const request of requests) {
+          const { verified, error } = await this.#handleWebhookRequest(request, ctx);
+          deliveryResults.push({ verified, error });
+        }
+
+        const okResponse = {
+          status: 200,
+          body: {
+            ok: true,
+          },
+        };
 
         return {
           status: 200,
           body: {
-            response,
-            verified,
-            error,
+            response: okResponse,
+            deliveryResults,
           },
           headers: this.#standardResponseHeaders(timeOrigin),
         };
@@ -899,6 +919,7 @@ export class TriggerClient {
     if (!registeredWebhook) {
       registeredWebhook = {
         key: options.key,
+        batch: options.source.batch,
         params: options.params,
         config: options.config,
         integration: {
@@ -1224,15 +1245,42 @@ export class TriggerClient {
     try {
       // For compatibility with old Job Runs where payload is only available on the related Event Record
       const payload = body.payload ? JSON.parse(body.payload) : body.event.payload;
-      const parsedPayload = job.trigger.event.parsePayload(payload ?? {});
 
-      if (!context.run.isTest) {
-        const verified = await job.trigger.verifyPayload(parsedPayload);
-        if (!verified.success) {
-          return {
-            status: "ERROR",
-            error: { message: `Payload verification failed. ${verified.reason}` },
-          };
+      let parsedPayload: any = {};
+
+      if (body.batched) {
+        if (!Array.isArray(payload)) {
+          throw new Error("The payload for batched Runs needs to be an array.");
+        }
+
+        parsedPayload = payload.map((element) => job.trigger.event.parsePayload(element));
+
+        if (!context.run.isTest) {
+          for (const parsedElement of parsedPayload) {
+            const verified = await job.trigger.verifyPayload(parsedElement);
+
+            if (!verified.success) {
+              return {
+                status: "ERROR",
+                error: {
+                  message: `Payload verification failed with batching enabled. ${verified.reason}`,
+                },
+              };
+            }
+          }
+        }
+      } else {
+        parsedPayload = job.trigger.event.parsePayload(payload ?? {});
+
+        if (!context.run.isTest) {
+          const verified = await job.trigger.verifyPayload(parsedPayload);
+
+          if (!verified.success) {
+            return {
+              status: "ERROR",
+              error: { message: `Payload verification failed. ${verified.reason}` },
+            };
+          }
         }
       }
 
@@ -1593,17 +1641,10 @@ export class TriggerClient {
   async #handleWebhookRequest(
     request: Request,
     ctx: WebhookDeliveryContext
-  ): Promise<WebhookDeliveryResponse> {
+  ): Promise<WebhookDeliveryResult> {
     this.#internalLogger.debug("Handling webhook request", {
       ctx,
     });
-
-    const okResponse = {
-      status: 200,
-      body: {
-        ok: true,
-      },
-    };
 
     const handlers = this.#registeredWebhookSourceHandlers[ctx.key];
 
@@ -1613,7 +1654,6 @@ export class TriggerClient {
       });
 
       return {
-        response: okResponse,
         verified: false,
       };
     }
@@ -1624,7 +1664,6 @@ export class TriggerClient {
 
     if (!verifyResult.success) {
       return {
-        response: okResponse,
         verified: false,
         error: verifyResult.reason,
       };
@@ -1633,7 +1672,6 @@ export class TriggerClient {
     await generateEvents(request, this, ctx);
 
     return {
-      response: okResponse,
       verified: true,
     };
   }

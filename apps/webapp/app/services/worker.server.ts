@@ -30,7 +30,8 @@ import { ResumeRunService } from "./runs/resumeRun.server";
 import { executionRateLimiter } from "./runExecutionRateLimiter.server";
 import { DeliverWebhookRequestService } from "./sources/deliverWebhookRequest.server";
 import { GraphileMigrationHelperService } from "./db/graphileMigrationHelper.server";
-import { DispatchChunkerService } from "./events/dispatchChunker.server";
+import { DispatchBatcherService } from "./events/dispatchBatcher.server";
+import { WebhookDeliveryBatcherService } from "./sources/webhookDeliveryBatcher.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -48,7 +49,15 @@ const workerCatalog = {
     id: z.string(),
   }),
   deliverHttpSourceRequest: z.object({ id: z.string() }),
-  deliverWebhookRequest: z.object({ id: z.string() }),
+  batchWebhookDeliveryRequests: z.array(z.string()),
+  deliverWebhookRequest: z.object({
+    webhookEnvironmentId: z.string(),
+    requestDeliveryId: z.string(),
+  }),
+  deliverMultipleWebhookRequests: z.object({
+    webhookEnvironmentId: z.string(),
+    requestDeliveryIds: z.string().array(),
+  }),
   refreshOAuthToken: z.object({
     organizationId: z.string(),
     connectionId: z.string(),
@@ -250,7 +259,7 @@ function getWorkerQueue() {
             throw new Error("Job key is required for batch jobs.");
           }
 
-          const service = new DispatchChunkerService();
+          const service = new DispatchBatcherService();
 
           await service.call(job.key, payload);
         },
@@ -337,14 +346,38 @@ function getWorkerQueue() {
           await service.call(payload.id);
         },
       },
-      deliverWebhookRequest: {
+      batchWebhookDeliveryRequests: {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 6,
+        queueName: (payload, jobKey) => `webhooks-batch:${jobKey}`,
+        handler: async (payload, job) => {
+          if (!job.key) {
+            throw new Error("Job key is required for batch jobs.");
+          }
+
+          const service = new WebhookDeliveryBatcherService();
+
+          await service.call(job.key, payload);
+        },
+      },
+      deliverMultipleWebhookRequests: {
         priority: 1, // smaller number = higher priority
         maxAttempts: 14,
-        queueName: (payload) => `webhooks:${payload.id}`,
+        queueName: (payload) => `webhooks:${payload}`,
         handler: async (payload, job) => {
           const service = new DeliverWebhookRequestService();
 
-          await service.call(payload.id);
+          await service.call(payload.webhookEnvironmentId, payload.requestDeliveryIds, true);
+        },
+      },
+      deliverWebhookRequest: {
+        priority: 1, // smaller number = higher priority
+        maxAttempts: 14,
+        queueName: (payload) => `webhooks:${payload.webhookEnvironmentId}`,
+        handler: async (payload, job) => {
+          const service = new DeliverWebhookRequestService();
+
+          await service.call(payload.webhookEnvironmentId, [payload.requestDeliveryId]);
         },
       },
       startRun: {

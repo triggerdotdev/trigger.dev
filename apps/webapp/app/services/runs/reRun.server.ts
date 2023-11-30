@@ -1,4 +1,4 @@
-import { PrismaClient, prisma } from "~/db.server";
+import { Prisma, PrismaClient, prisma } from "~/db.server";
 import { CreateRunService } from "../runs/createRun.server";
 
 export class ReRunService {
@@ -51,10 +51,14 @@ export class ReRunService {
                   },
                 }
               : undefined,
-            eventId: `${existingRun.event.eventId}:retry:${new Date().getTime()}`,
+            eventId: `${existingRun.id}-batch:retry:${new Date().getTime()}`,
             name: existingRun.event.name,
             timestamp: new Date(),
-            payload: existingRun.event.payload ?? {},
+            // Get payload directly from Run if batched
+            payload:
+              existingRun.batched && existingRun.payload
+                ? (JSON.parse(existingRun.payload) as Prisma.InputJsonValue)
+                : existingRun.event.payload ?? {},
             context: existingRun.event.context ?? {},
             source: existingRun.event.source,
             isTest: existingRun.event.isTest,
@@ -72,6 +76,7 @@ export class ReRunService {
           eventIds: [eventLog.id],
           job: existingRun.job,
           version: existingRun.version,
+          batched: existingRun.batched,
         });
       });
     } catch (error) {

@@ -4,9 +4,8 @@ import { logger } from "~/services/logger.server";
 import { workerQueue } from "../worker.server";
 
 const DEFAULT_MAX_PAYLOAD_SIZE = 2 * 1024 * 1024; // 2MB
-const DEFAULT_MAX_INTERVAL_IN_SECONDS = 20;
 
-export class DispatchChunkerService {
+export class DispatchBatcherService {
   #prismaClient: PrismaClientOrTransaction;
 
   constructor(
@@ -52,12 +51,14 @@ export class DispatchChunkerService {
 
     const chunks: Record<number, string[]> = { 0: [] };
 
-    const maxInterval = eventDispatcher.batcher.maxInterval ?? DEFAULT_MAX_INTERVAL_IN_SECONDS;
-
     for (const event of eventRecords) {
       if (chunkSize + event.payloadSize > this.maxPayloadSize) {
         // enqueue full chunk
-        await this.#enqueueChunk(eventDispatcher.id, chunks[chunkIndex], maxInterval);
+        await this.#enqueueChunk(
+          eventDispatcher.id,
+          chunks[chunkIndex],
+          eventDispatcher.batcher.maxInterval
+        );
 
         // start new chunk
         chunkIndex++;
@@ -70,22 +71,28 @@ export class DispatchChunkerService {
     }
 
     if (chunks[chunkIndex].length) {
-      await this.#enqueueChunk(eventDispatcher.id, chunks[chunkIndex], maxInterval);
+      await this.#enqueueChunk(
+        eventDispatcher.id,
+        chunks[chunkIndex],
+        eventDispatcher.batcher.maxInterval
+      );
     }
   }
 
-  async #enqueueChunk(dispatcherId: string, eventRecordIds: string[], deliverAfter?: number) {
+  async #enqueueChunk(dispatcherId: string, eventRecordIds: string[], maxInterval: number | null) {
     logger.debug("Invoking batch event dispatcher", {
       dispatcherId,
       totalEvents: eventRecordIds.length,
     });
 
+    const MAX_INTERVAL_IN_SECONDS = 10 * 60;
+
+    const deliverAfter = maxInterval ? Math.max(maxInterval, MAX_INTERVAL_IN_SECONDS) : undefined;
+
     await workerQueue.enqueue(
       "events.invokeBatchDispatcher",
-      { id: dispatcherId, eventRecordIds },
-      // {
-      //   runAt: deliverAfter ? deliverAfterToDate(deliverAfter) : undefined,
-      // }
+      { id: dispatcherId, eventRecordIds }
+      // { runAt: deliverAfter ? deliverAfterToDate(deliverAfter) : undefined }
     );
   }
 }

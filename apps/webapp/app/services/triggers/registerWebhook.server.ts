@@ -1,4 +1,4 @@
-import { REGISTER_WEBHOOK, WebhookMetadata } from "@trigger.dev/core";
+import { BatcherOptions, REGISTER_WEBHOOK, WebhookMetadata } from "@trigger.dev/core";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
@@ -16,6 +16,12 @@ type ExtendedWebhook = Prisma.WebhookGetPayload<{
         secretReference: true;
       };
     };
+  };
+}>;
+
+type ExtendedWebhookEnvironment = Prisma.WebhookEnvironmentGetPayload<{
+  include: {
+    deliveryBatcher: true;
   };
 }>;
 
@@ -126,7 +132,12 @@ export class RegisterWebhookService {
         update: {
           desiredConfig: webhookMetadata.config,
         },
+        include: {
+          deliveryBatcher: true,
+        },
       });
+
+      await this.#registerDeliveryBatcher(tx, webhookEnvironment, webhookMetadata.batch);
 
       return { webhook, webhookEnvironment };
     });
@@ -165,5 +176,52 @@ export class RegisterWebhookService {
         },
       },
     });
+  }
+
+  async #registerDeliveryBatcher(
+    tx: PrismaClientOrTransaction,
+    webhookEnvironment: ExtendedWebhookEnvironment,
+    batchOptions?: BatcherOptions
+  ) {
+    if (batchOptions) {
+      let maxPayloads: number | null = null;
+      let maxInterval: number | null = null;
+
+      if (typeof batchOptions !== "boolean") {
+        maxPayloads = batchOptions.maxPayloads ?? null;
+        maxInterval = batchOptions.maxInterval ?? null;
+      }
+
+      await tx.webhookDeliveryBatcher.upsert({
+        where: {
+          webhookId_webhookEnvironmentId: {
+            webhookId: webhookEnvironment.webhookId,
+            webhookEnvironmentId: webhookEnvironment.id,
+          },
+        },
+        create: {
+          webhookId: webhookEnvironment.webhookId,
+          webhookEnvironmentId: webhookEnvironment.id,
+          environmentId: webhookEnvironment.environmentId,
+          maxPayloads,
+          maxInterval,
+        },
+        update: {
+          maxPayloads,
+          maxInterval,
+        },
+      });
+    } else {
+      if (webhookEnvironment.deliveryBatcher) {
+        await tx.webhookDeliveryBatcher.delete({
+          where: {
+            webhookId_webhookEnvironmentId: {
+              webhookId: webhookEnvironment.webhookId,
+              webhookEnvironmentId: webhookEnvironment.id,
+            },
+          },
+        });
+      }
+    }
   }
 }

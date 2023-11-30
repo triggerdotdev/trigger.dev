@@ -333,6 +333,7 @@ model RuntimeEnvironment {
   keyValueItems            KeyValueItem[]
   webhookEnvironments      WebhookEnvironment[]
   webhookRequestDeliveries WebhookRequestDelivery[]
+  webhookDeliveryBatchers  WebhookDeliveryBatcher[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -673,7 +674,7 @@ model EventDispatcher {
 
   enabled Boolean @default(true)
 
-  batcher   EventDispatchBatcher?
+  batcher EventDispatchBatcher?
 
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
@@ -696,8 +697,8 @@ model EventDispatchBatcher {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  eventDispatcher EventDispatcher @relation(fields: [eventDispatcherId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  eventDispatcherId String @unique
+  eventDispatcher   EventDispatcher @relation(fields: [eventDispatcherId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  eventDispatcherId String          @unique
 
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
@@ -761,7 +762,9 @@ model JobRun {
   id       String  @id @default(cuid())
   number   Int?
   internal Boolean @default(false)
-  payload  String?
+
+  payload String?
+  batched Boolean @default(false)
 
   job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   jobId String
@@ -771,6 +774,9 @@ model JobRun {
 
   event   EventRecord @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   eventId String
+
+  // Will be empty unless batched
+  eventIds String[]
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
@@ -1152,13 +1158,15 @@ model TriggerSourceOption {
 model Webhook {
   id String @id @default(cuid())
 
-  active Boolean @default(false)
+  active  Boolean @default(false)
+  batched Boolean @default(false)
 
   key    String
   params Json?
 
   webhookEnvironments WebhookEnvironment[]
   requestDeliveries   WebhookRequestDelivery[]
+  deliveryBatchers    WebhookDeliveryBatcher[]
 
   httpEndpoint   TriggerHttpEndpoint @relation(fields: [httpEndpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   httpEndpointId String              @unique
@@ -1183,7 +1191,8 @@ model WebhookEnvironment {
   config        Json?
   desiredConfig Json?
 
-  requestDeliveries WebhookRequestDelivery[]
+  requestDeliveries WebhookRequestDelivery[]  
+  deliveryBatcher   WebhookDeliveryBatcher?
 
   endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   endpointId String
@@ -1229,6 +1238,27 @@ model WebhookRequestDelivery {
   updatedAt DateTime @updatedAt
 
   deliveredAt DateTime?
+}
+
+model WebhookDeliveryBatcher {
+  id String @id @default(cuid())
+
+  maxPayloads Int?
+  maxInterval Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  webhook   Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  webhookId String
+
+  webhookEnvironment   WebhookEnvironment @relation(fields: [webhookEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  webhookEnvironmentId String             @unique
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  @@unique([webhookId, webhookEnvironmentId])
 }
 
 model WebhookDeliveryCounter {

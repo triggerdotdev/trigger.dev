@@ -131,6 +131,7 @@ export class InvokeJobService {
           eventIds: [eventLog.id],
           job: job,
           version,
+          batched: false
         },
         {
           callbackUrl: options.callbackUrl,

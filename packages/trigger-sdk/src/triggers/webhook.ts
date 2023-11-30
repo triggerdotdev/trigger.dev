@@ -1,4 +1,5 @@
 import {
+  BatcherOptions,
   DisplayProperty,
   EventFilter,
   HandleTriggerSource,
@@ -141,6 +142,7 @@ type WebhookOptions<
   crud: WebhookCRUD<TIntegration, TParams, TConfig>;
   filter?: FilterFunction<TParams, TConfig>;
   register?: RegisterFunction<TIntegration, TParams, TConfig>;
+  batch?: BatcherOptions;
   verify?: (options: {
     request: Request;
     client: TriggerClient;
@@ -224,6 +226,10 @@ export class WebhookSource<
     parts.push(this.integration.id);
 
     return `${this.options.id}-${this.#shortHash(parts.join(""))}`;
+  }
+
+  get batch() {
+    return this.options.batch;
   }
 
   get integration() {

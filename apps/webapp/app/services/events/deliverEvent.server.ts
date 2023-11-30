@@ -5,6 +5,7 @@ import { EventFilterSchema, RequestWithRawBodySchema, eventFilterMatches } from 
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { workerQueue } from "../worker.server";
+import { ZodWorkerBatchEnqueueOptions } from "~/platform/zodWorker.server";
 
 export class DeliverEventService {
   #prismaClient: PrismaClientOrTransaction;
@@ -68,20 +69,16 @@ export class DeliverEventService {
           eventRecord: eventRecord.id,
         });
 
-        const DEFAULT_MAX_PAYLOADS = 10;
-        const DEFAULT_MAX_INTERVAL_IN_SECONDS = 10;
-
         await Promise.all(
           matchingEventDispatchers.map((eventDispatcher) => {
             if (eventDispatcher.batcher) {
+              const { maxPayloads, runAt } = this.#getBatchEnqueueOptions(eventDispatcher.batcher);
+
               return workerQueue.batchEnqueue("events.invokeDispatchChunker", [eventRecord.id], {
                 tx,
                 jobKey: eventDispatcher.id,
-                maxPayloads: eventDispatcher.batcher.maxPayloads ?? DEFAULT_MAX_PAYLOADS,
-                runAt: new Date(
-                  Date.now() +
-                    (eventDispatcher.batcher.maxInterval ?? DEFAULT_MAX_INTERVAL_IN_SECONDS) * 1000
-                ),
+                maxPayloads,
+                runAt,
               });
             } else {
               return workerQueue.enqueue(
@@ -139,6 +136,30 @@ export class DeliverEventService {
       payload: payloadFilter.data,
       context: contextFilter.data,
     });
+  }
+
+  #getBatchEnqueueOptions(batcherConfig?: {
+    maxPayloads: number | null;
+    maxInterval: number | null;
+  }): Pick<ZodWorkerBatchEnqueueOptions, "maxPayloads" | "runAt"> {
+    const DEFAULT_MAX_PAYLOADS = 500;
+    const DEFAULT_MAX_INTERVAL_IN_SECONDS = 10 * 60;
+
+    const MAX_PAYLOADS = DEFAULT_MAX_PAYLOADS;
+    const MAX_INTERVAL_IN_SECONDS = DEFAULT_MAX_INTERVAL_IN_SECONDS;
+
+    const maxPayloads = Math.min(batcherConfig?.maxPayloads ?? DEFAULT_MAX_PAYLOADS, MAX_PAYLOADS);
+
+    const runAt = new Date(
+      Date.now() +
+        Math.min(
+          batcherConfig?.maxInterval ?? DEFAULT_MAX_INTERVAL_IN_SECONDS,
+          MAX_INTERVAL_IN_SECONDS
+        ) *
+          1000
+    );
+
+    return { maxPayloads, runAt };
   }
 }
 

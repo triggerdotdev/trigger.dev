@@ -254,12 +254,22 @@ export class EndpointApi {
     return HttpSourceResponseSchema.parse(anyBody);
   }
 
-  async deliverWebhookRequest(options: {
+  // TODO: ensure backward compat
+  async deliverWebhookRequests(options: {
     key: string;
     secret: string;
     params: any;
-    request: HttpSourceRequest;
+    requests: HttpSourceRequest[];
+    batched: boolean;
   }) {
+    const serializedRequests = options.requests.map((request) => {
+      const { rawBody, ...requestWithoutRawBody } = request;
+      return {
+        ...requestWithoutRawBody,
+        body: rawBody?.toString(),
+      };
+    });
+
     const response = await safeFetch(this.url, {
       method: "POST",
       headers: {
@@ -267,13 +277,11 @@ export class EndpointApi {
         "x-trigger-api-key": this.apiKey,
         "x-trigger-action": "DELIVER_WEBHOOK_REQUEST",
         "x-ts-key": options.key,
+        "x-ts-batched": JSON.stringify(options.batched),
         "x-ts-secret": options.secret,
         "x-ts-params": JSON.stringify(options.params ?? {}),
-        "x-ts-http-url": options.request.url,
-        "x-ts-http-method": options.request.method,
-        "x-ts-http-headers": JSON.stringify(options.request.headers),
       },
-      body: options.request.rawBody,
+      body: JSON.stringify(serializedRequests),
     });
 
     if (!response) {

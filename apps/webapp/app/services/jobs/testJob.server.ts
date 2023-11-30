@@ -105,6 +105,7 @@ export class TestJobService {
           eventIds: [eventLog.id],
           job: version.job,
           version,
+          batched: false
         });
       },
       { timeout: 10000 }

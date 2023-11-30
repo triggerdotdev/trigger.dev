@@ -14,7 +14,7 @@ import {
   ScheduleMetadataSchema,
 } from "./schedules";
 import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
-import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
+import { BatcherOptionsSchema, EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
 import { RunStatusSchema } from "./runs";
 import { JobRunStatusRecordSchema } from "./statuses";
 import { RequestFilterSchema } from "./requestFilter";
@@ -217,15 +217,24 @@ export const HttpEndpointRequestHeadersSchema = z.object({
 
 export const WebhookSourceRequestHeadersSchema = z.object({
   "x-ts-key": z.string(),
+  "x-ts-batched": z.string().transform((s) => JSON.parse(s) as boolean),
   "x-ts-dynamic-id": z.string().optional(),
   "x-ts-secret": z.string(),
   "x-ts-params": z.string().transform((s) => JSON.parse(s)),
-  "x-ts-http-url": z.string(),
-  "x-ts-http-method": z.string(),
-  "x-ts-http-headers": z.string().transform((s) => z.record(z.string()).parse(JSON.parse(s))),
 });
 
 export type WebhookSourceRequestHeaders = z.output<typeof WebhookSourceRequestHeadersSchema>;
+
+export const WebhookSourceRequestBodySchema = z
+  .object({
+    url: z.string(),
+    method: z.string(),
+    headers: z.record(z.string()),
+    body: z.string().optional(),
+  })
+  .array();
+
+export type WebhookSourceRequestBody = z.infer<typeof WebhookSourceRequestBodySchema>;
 
 export const PongSuccessResponseSchema = z.object({
   ok: z.literal(true),
@@ -339,6 +348,7 @@ export const WebhookMetadataSchema = z.object({
   key: z.string(),
   params: z.any(),
   config: z.record(z.array(z.string())),
+  batch: BatcherOptionsSchema.optional(),
   integration: IntegrationConfigSchema,
   httpEndpoint: z.object({
     id: z.string(),
@@ -583,6 +593,7 @@ export type AutoYieldConfig = z.infer<typeof AutoYieldConfigSchema>;
 export const RunJobBodySchema = z.object({
   event: ApiEventLogSchema,
   payload: z.string().nullable(),
+  batched: z.boolean(),
   job: z.object({
     id: z.string(),
     version: z.string(),
@@ -983,10 +994,16 @@ export const HttpSourceResponseSchema = z.object({
   metadata: HttpSourceResponseMetadataSchema.optional(),
 });
 
-export const WebhookDeliveryResponseSchema = z.object({
-  response: NormalizedResponseSchema,
+export const WebhookDeliveryResultSchema = z.object({
   verified: z.boolean(),
   error: z.string().optional(),
+});
+
+export type WebhookDeliveryResult = z.infer<typeof WebhookDeliveryResultSchema>;
+
+export const WebhookDeliveryResponseSchema = z.object({
+  response: NormalizedResponseSchema,
+  deliveryResults: WebhookDeliveryResultSchema.array(),
 });
 
 export type WebhookDeliveryResponse = z.infer<typeof WebhookDeliveryResponseSchema>;
