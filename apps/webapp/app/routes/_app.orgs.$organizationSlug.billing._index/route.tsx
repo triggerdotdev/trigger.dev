@@ -92,13 +92,13 @@ export default function Page() {
               <ArrowRightIcon className="h-6 w-6 text-dimmed/50" />
               <div className="flex flex-col gap-2 text-dimmed">
                 <Header3 className="text-dimmed">Projected</Header3>
-                <p className="text-3xl font-medium">$25.00</p>
+                <p className="text-3xl font-medium">$5.25</p>
               </div>
             </div>
             <UsageBar numberOfCurrentRuns={15467} tierRunLimit={10000} projectedRuns={25347} />
           </div>
           <div className="w-full">
-            <Header3 className="mb-4 pl-6">Monthly Runs</Header3>
+            <Header3 className="mb-4">Monthly Runs</Header3>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart
                 data={loaderData.chartData}
