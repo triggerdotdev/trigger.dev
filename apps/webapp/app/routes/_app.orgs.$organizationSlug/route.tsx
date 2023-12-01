@@ -7,12 +7,13 @@ import { UpgradePrompt } from "~/components/billing/UpgradePrompt";
 import { Breadcrumb, BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { PageNavigationIndicator } from "~/components/navigation/PageNavigationIndicator";
 import { SideMenu } from "~/components/navigation/SideMenu";
+import { featuresForRequest } from "~/features.server";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { useUser } from "~/hooks/useUser";
+import { BillingPresenter } from "~/presenters/BillingPresenter.server";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
-import { getCurrentProjectId } from "~/services/currentProject.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { requireUserId } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
@@ -40,11 +41,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   telemetry.organization.identify({ organization });
 
+  const { isManagedCloud } = featuresForRequest(request);
+  const billingPresenter = new BillingPresenter(isManagedCloud);
+  const currentPlan = billingPresenter.currentPlan(organization.id);
+
   return typedjson({
     organizations,
     organization,
     currentProject: project,
     isImpersonating: !!impersonationId,
+    currentPlan,
   });
 };
 
