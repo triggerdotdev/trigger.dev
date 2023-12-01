@@ -9,6 +9,7 @@
  * - `"debug"`: Everything.
  */
 import { env } from "node:process";
+import { Buffer } from "node:buffer";
 
 export type LogLevel = "log" | "error" | "warn" | "info" | "debug";
 

@@ -19,6 +19,7 @@ import { slugifyId } from "../utils";
 import { SerializableJson } from "@trigger.dev/core";
 import { ConnectionAuth } from "@trigger.dev/core";
 import { Prettify } from "@trigger.dev/core";
+import type { Buffer } from "node:buffer";
 
 export type HttpSourceEvent = {
   url: string;
