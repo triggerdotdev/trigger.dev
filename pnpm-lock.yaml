@@ -1,6 +1,9 @@
 lockfileVersion: 5.4
 
 patchedDependencies:
+  tsup@8.0.1:
+    hash: a5ztaafw5l4qfghy2hjjuynb34
+    path: patches/tsup@8.0.1.patch
   '@changesets/assemble-release-plan@5.2.4':
     hash: 3wuhjtl4hjck4itk3w32z4cd5u
     path: patches/@changesets__assemble-release-plan@5.2.4.patch
