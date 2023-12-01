@@ -31,9 +31,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { isManagedCloud } = featuresForRequest(request);
   const billingPresenter = new BillingService(isManagedCloud);
   const currentPlan = await billingPresenter.currentPlan(organization.id);
+  const plans = await billingPresenter.getPlans();
 
   return typedjson({
     currentPlan,
+    plans,
   });
 };
 
@@ -47,7 +49,7 @@ export const handle: Handle = {
 };
 
 export default function Subscribed() {
-  const { currentPlan } = useTypedLoaderData<typeof loader>();
+  const { currentPlan, plans } = useTypedLoaderData<typeof loader>();
   useNewCustomerSubscribed();
 
   return (
@@ -66,7 +68,11 @@ export default function Subscribed() {
         <PlanItem item="Runs/mo" value="Volume discounted" />
       </ul>
 
-      <RunsVolumeDiscountTable hideHeader className="mb-4 border-b border-border pb-2 pl-4" />
+      <RunsVolumeDiscountTable
+        hideHeader
+        className="mb-4 border-b border-border pb-2 pl-4"
+        brackets={plans?.paid.runs?.pricing?.brackets ?? []}
+      />
       <FormButtons
         confirmButton={
           <LinkButton to={"/"} variant={"primary/small"} TrailingIcon={"arrow-right"}>

@@ -53,7 +53,7 @@ export default function Page() {
         <div className="flex h-full w-full rounded-md border border-border p-6">
           <PricingCalculator />
           <div className="mx-6 min-h-full w-px bg-border" />
-          <RunsVolumeDiscountTable />
+          <RunsVolumeDiscountTable brackets={plans.paid.runs?.pricing?.brackets ?? []} />
         </div>
       </div>
     </div>
