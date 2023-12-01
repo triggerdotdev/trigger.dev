@@ -7,14 +7,6 @@ sidebarTitle: Overview & authentication
 
 Our Shopify integration allows you to create triggers and tasks that interact with Shopify. Trigger jobs when events happen, like when a new product is added to a shop, or when an order is paid for, etc. You can also perform tasks like creating products, editing variants, getting information about an order, and a lot more.
 
-{/* <Card
-  title="Jobs Showcase - Shopify"
-  icon="rocket"
-  href="https://trigger.dev/showcase?tags=&apis=shopify"
->
-  Check out pre-built Shopify jobs in our showcase.
-</Card> */}
-
 ## Installing the Shopify packages
 
 To get started with our Shopify integration, you need to install the `@trigger.dev/shopify` packages. You can do this using `npm`, `pnpm`, or `yarn`:
@@ -43,13 +35,13 @@ It's **required** to import the correct Runtime Adapter for your platform. All e
 
 ```ts
 // Import the Node.js adapter
-import '@shopify/shopify-api/adapters/node';
+import "@shopify/shopify-api/adapters/node";
 
 // Import the CloudFlare Worker adapter
-import '@shopify/shopify-api/adapters/cf-worker';
+import "@shopify/shopify-api/adapters/cf-worker";
 
 // Import the generic Web API adapter
-import '@shopify/shopify-api/adapters/web-api';
+import "@shopify/shopify-api/adapters/web-api";
 ```
 
 You can then import and use `@trigger.dev/shopify` like any other integration:
@@ -102,3 +94,9 @@ Once you have set up a Shopify client, you can use it to create triggers and tas
     Perform Tasks such as creating new variants, or editing orders, and more.
   </Card>
 </CardGroup>
+
+## Example jobs
+
+<Card title="Code examples" icon="code" href="https://trigger.dev/apis/shopify">
+  Check out pre-built jobs using Shopify in our API section.
+</Card>
