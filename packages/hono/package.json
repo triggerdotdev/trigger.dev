@@ -1,7 +1,7 @@
 {
-  "name": "@trigger.dev/core-backend",
-  "version": "2.2.11",
-  "description": "Core code used across `@trigger.dev/sdk` and Trigger.dev server",
+  "name": "@trigger.dev/hono",
+  "version": "2.2.10",
+  "description": "A Trigger.dev adapter for Hono.dev",
   "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -28,19 +28,20 @@
     "clean": "rimraf dist",
     "build": "npm run clean && npm run build:tsup",
     "build:tsup": "tsup --dts-resolve",
-    "typecheck": "tsc --noEmit",
-    "test": "jest"
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "hono": "3.x",
+    "@trigger.dev/sdk": "workspace:^2.2.10"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
-    "@types/jest": "^29.5.3",
-    "@types/node": "18",
-    "jest": "^29.6.2",
     "rimraf": "^3.0.2",
-    "ts-jest": "^29.1.1",
     "tsup": "^8.0.1",
     "@trigger.dev/tsup": "workspace:*",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "hono": "3.10.3",
+    "@trigger.dev/sdk": "workspace:*"
   },
   "engines": {
     "node": ">=18.0.0"

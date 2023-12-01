@@ -2,6 +2,7 @@ import { InstallPackage } from "../utils/addDependencies";
 import { PackageManager } from "../utils/getUserPkgManager";
 import { Astro } from "./astro";
 import { Express } from "./express";
+import { Hono } from "./hono";
 import { NextJs } from "./nextjs";
 import { Remix } from "./remix";
 
@@ -53,7 +54,7 @@ export interface Framework {
 }
 
 /** The order of these matters. The first one that matches the folder will be used, so stricter ones should be first. */
-const frameworks: Framework[] = [new NextJs(), new Remix(), new Astro(), new Express()];
+const frameworks: Framework[] = [new NextJs(), new Remix(), new Astro(), new Express(), new Hono()];
 
 export const getFramework = async (
   path: string,

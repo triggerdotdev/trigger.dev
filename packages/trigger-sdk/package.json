@@ -5,6 +5,7 @@
   "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "module": "./dist/index.mjs",
   "publishConfig": {
     "access": "public"
   },
@@ -13,8 +14,12 @@
   ],
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "require": "./dist/index.js"
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     },
     "./package.json": "./package.json"
   },
@@ -51,10 +56,10 @@
     "@types/ws": "^8.5.3",
     "encoding": "^0.1.13",
     "rimraf": "^3.0.2",
-    "tsup": "^6.5.0",
-    "tsx": "^3.12.1",
+    "tsup": "^8.0.1",
+    "@trigger.dev/tsup": "workspace:*",
     "typed-emitter": "^2.1.0",
-    "typescript": "^4.8.4"
+    "typescript": "^5.3.0"
   },
   "engines": {
     "node": ">=18.0.0"
