@@ -125,6 +125,10 @@ export function PlansPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/billing/plans`;
 }
 
+export function SubscribedPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/subscribed`;
+}
+
 function organizationParam(organization: OrgForPath) {
   return organization.slug;
 }
