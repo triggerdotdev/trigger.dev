@@ -43,7 +43,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const { isManagedCloud } = featuresForRequest(request);
   const billingPresenter = new BillingPresenter(isManagedCloud);
-  const currentPlan = billingPresenter.currentPlan(organization.id);
+  const currentPlan = await billingPresenter.currentPlan(organization.id);
 
   return typedjson({
     organizations,
