@@ -1,4 +1,21 @@
 import { defineConfig } from "tsup";
+import { Plugin } from "esbuild";
+
+const restoreNodeProtocolPlugin = (): Plugin => {
+  return {
+    name: "node-protocol-plugin-restorer",
+    setup(build) {
+      build.onResolve(
+        {
+          filter: /node:/,
+        },
+        async (args) => {
+          return { path: args.path, external: true };
+        }
+      );
+    },
+  };
+};
 
 export default defineConfig([
   {
@@ -6,15 +23,14 @@ export default defineConfig([
     config: "tsconfig.build.json",
     entry: ["./src/index.ts"],
     outDir: "./dist",
-    platform: "neutral",
-    format: ["cjs"],
+    platform: "node",
+    format: ["cjs", "esm"],
     legacyOutput: true,
     sourcemap: true,
     clean: true,
     bundle: true,
     splitting: false,
     dts: true,
-    external: ["http", "https", "util", "events", "tty", "os", "timers"],
-    esbuildPlugins: [],
+    esbuildPlugins: [restoreNodeProtocolPlugin()],
   },
 ]);
