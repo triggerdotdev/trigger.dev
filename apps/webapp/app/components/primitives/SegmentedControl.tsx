@@ -9,6 +9,7 @@ type Options = {
 
 type SegmentedControlProps = {
   name: string;
+  value?: string;
   defaultValue?: string;
   options: Options[];
   fullWidth?: boolean;
@@ -17,6 +18,7 @@ type SegmentedControlProps = {
 
 export default function SegmentedControl({
   name,
+  value,
   defaultValue,
   options,
   fullWidth,
@@ -25,6 +27,7 @@ export default function SegmentedControl({
   return (
     <div className={cn("flex h-10 rounded bg-slate-850", fullWidth ? "w-full" : "w-fit")}>
       <RadioGroup
+        value={value}
         defaultValue={defaultValue ?? options[0].value}
         name={name}
         onChange={(c: string) => {

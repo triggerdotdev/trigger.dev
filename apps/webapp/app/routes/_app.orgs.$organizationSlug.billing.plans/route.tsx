@@ -1,4 +1,8 @@
+import { useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
+import { useActionData } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { SetPlanBodySchema } from "@trigger.dev/billing";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PricingCalculator } from "~/components/billing/PricingCalculator";
 import { PricingTiers, TierEnterprise, TierFree, TierPro } from "~/components/billing/PricingTiers";
@@ -25,7 +29,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404 });
   }
 
-  return typedjson({ plans });
+  return typedjson({ plans, organizationSlug });
 }
 
 export const handle: Handle = {
@@ -33,7 +37,7 @@ export const handle: Handle = {
 };
 
 export default function Page() {
-  const { plans } = useTypedLoaderData<typeof loader>();
+  const { plans, organizationSlug } = useTypedLoaderData<typeof loader>();
 
   return (
     <div className="flex flex-col gap-4">
@@ -43,11 +47,7 @@ export default function Page() {
       <Callout variant={"pricing"}>
         You have exceeded the monthly 10,000 Runs limit. Upgrade to a paid plan before Nov 30.
       </Callout>
-      <PricingTiers>
-        <TierFree />
-        <TierPro />
-        <TierEnterprise />
-      </PricingTiers>
+      <PricingTiers organizationSlug={organizationSlug} plans={plans} />
       <div>
         <Header2 spacing>Estimate your usage</Header2>
         <div className="flex h-full w-full rounded-md border border-border p-6">

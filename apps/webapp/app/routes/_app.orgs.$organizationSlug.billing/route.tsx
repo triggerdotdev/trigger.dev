@@ -20,7 +20,7 @@ import {
 import { featuresForRequest } from "~/features.server";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { BillingPresenter } from "~/presenters/BillingPresenter.server";
+import { BillingService } from "~/services/billing.server";
 import { OrgUsagePresenter } from "~/presenters/OrgUsagePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { formatDurationInDays } from "~/utils";
@@ -40,7 +40,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   }
 
   const { isManagedCloud } = featuresForRequest(request);
-  const billingPresenter = new BillingPresenter(isManagedCloud);
+  const billingPresenter = new BillingService(isManagedCloud);
   const portal = await billingPresenter.customerPortalUrl(data.id, organizationSlug);
   const stripePortalLink = portal?.success ? portal?.customerPortalUrl : undefined;
 

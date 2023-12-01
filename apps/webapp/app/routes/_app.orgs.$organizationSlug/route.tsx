@@ -12,7 +12,7 @@ import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
 import { useTypedMatchData, useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { useUser } from "~/hooks/useUser";
-import { BillingPresenter } from "~/presenters/BillingPresenter.server";
+import { BillingService } from "~/services/billing.server";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { requireUserId } from "~/services/session.server";
@@ -50,7 +50,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   telemetry.organization.identify({ organization });
 
   const { isManagedCloud } = featuresForRequest(request);
-  const billingPresenter = new BillingPresenter(isManagedCloud);
+  const billingPresenter = new BillingService(isManagedCloud);
   const currentPlan = await billingPresenter.currentPlan(organization.id);
 
   return typedjson({

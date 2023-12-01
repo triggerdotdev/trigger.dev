@@ -1,5 +1,5 @@
 import { cn } from "~/utils/cn";
-import { formatter, separator } from "~/utils/numberFormatter";
+import { formatter, formatNumberCompact } from "~/utils/numberFormatter";
 import { Paragraph } from "../primitives/Paragraph";
 import { SimpleTooltip } from "../primitives/Tooltip";
 import { motion } from "framer-motion";
@@ -49,7 +49,7 @@ export function UsageBar({
               value={formatter.format(billingLimit)}
               position="bottomRow2"
               percentage={billingLimitPercentage}
-              tooltipContent={`Billing Limit: ${separator(billingLimit)}`}
+              tooltipContent={`Billing Limit: ${formatNumberCompact(billingLimit)}`}
             />
           </motion.div>
         )}
@@ -67,8 +67,8 @@ export function UsageBar({
             percentage={tierRunLimitPercentage}
             tooltipContent={`${
               subscribedToPaidTier
-                ? `Runs included free: ${separator(tierRunLimit)}`
-                : `Free Tier Runs Limit: ${separator(tierRunLimit)}`
+                ? `Runs included free: ${formatNumberCompact(tierRunLimit)}`
+                : `Free Tier Runs Limit: ${formatNumberCompact(tierRunLimit)}`
             }`}
           />
         </motion.div>
@@ -85,7 +85,7 @@ export function UsageBar({
               value={formatter.format(projectedRuns)}
               position="topRow2"
               percentage={projectedRunsPercentage}
-              tooltipContent={`Projected Runs: ${separator(projectedRuns)}`}
+              tooltipContent={`Projected Runs: ${formatNumberCompact(projectedRuns)}`}
             />
           </motion.div>
         )}
@@ -104,7 +104,7 @@ export function UsageBar({
             value={formatter.format(numberOfCurrentRuns)}
             position="topRow1"
             percentage={usagePercentage}
-            tooltipContent={`Current Run count: ${separator(numberOfCurrentRuns)}`}
+            tooltipContent={`Current Run count: ${formatNumberCompact(numberOfCurrentRuns)}`}
           />
         </motion.div>
         <motion.div

@@ -1,9 +1,17 @@
+import { useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/24/solid";
+import { Form, useActionData, useNavigation } from "@remix-run/react";
+import { Plan, Plans, SetPlanBodySchema } from "@trigger.dev/billing";
 import { cn } from "~/utils/cn";
 import { DefinitionTip } from "../DefinitionTooltip";
 import { Button } from "../primitives/Buttons";
 import { Paragraph } from "../primitives/Paragraph";
 import SegmentedControl from "../primitives/SegmentedControl";
+import { formatNumberCompact } from "~/utils/numberFormatter";
+import { useState } from "react";
+import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
+import { Spinner } from "../primitives/Spinner";
 
 const pricingDefinitions = {
   concurrentRuns: {
@@ -33,10 +41,12 @@ const pricingDefinitions = {
 };
 
 export function PricingTiers({
-  children,
+  organizationSlug,
+  plans,
   className,
 }: {
-  children: React.ReactNode;
+  organizationSlug: string;
+  plans: Plans;
   className?: string;
 }) {
   return (
@@ -46,17 +56,19 @@ export function PricingTiers({
         className
       )}
     >
-      {children}
+      <TierFree plan={plans.free} />
+      <TierPro plan={plans.paid} organizationSlug={organizationSlug} showActionText={true} />
+      <TierEnterprise />
     </div>
   );
 }
 
-export function TierFree() {
+export function TierFree({ plan }: { plan: Plan }) {
   return (
     <TierContainer>
-      <Header title="Free" flatCost={0} />
+      <Header title={plan.title} cost={0} />
       <TierLimit>
-        Up to 5{" "}
+        Up to {plan.concurrentRuns?.freeAllowance}{" "}
         <DefinitionTip
           title={pricingDefinitions.concurrentRuns.title}
           content={pricingDefinitions.concurrentRuns.content}
@@ -69,7 +81,7 @@ export function TierFree() {
       </Button>
       <ul className="flex flex-col gap-2.5">
         <FeatureItem checked>
-          Up to 10k{" "}
+          Up to {plan.runs?.freeAllowance ? formatNumberCompact(plan.runs.freeAllowance) : ""}{" "}
           <DefinitionTip
             title={pricingDefinitions.jobRuns.title}
             content={pricingDefinitions.jobRuns.content}
@@ -116,70 +128,132 @@ export function TierFree() {
   );
 }
 
-export function TierPro() {
+export function TierPro({
+  plan,
+  organizationSlug,
+  showActionText,
+}: {
+  plan: Plan;
+  organizationSlug: string;
+  showActionText: boolean;
+}) {
+  const lastSubmission = useActionData();
+  const [form, { path, feedbackType, message }] = useForm({
+    id: "subscribe",
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
+    onValidate({ formData }) {
+      return parse(formData, { schema: SetPlanBodySchema });
+    },
+  });
+
+  const navigation = useNavigation();
+  const isLoading = navigation.state === "submitting" || navigation.state === "loading";
+
+  const currentPlan = useCurrentPlan();
+  const currentConcurrencyTier = currentPlan?.subscription?.plan.concurrentRuns.pricing?.code;
+  const [concurrentBracketCode, setConcurrentBracketCode] = useState(
+    currentConcurrencyTier ?? plan.concurrentRuns?.pricing?.tiers[0].code
+  );
+
+  const concurrencyTiers = plan.concurrentRuns?.pricing?.tiers ?? [];
+  const selectedTier = concurrencyTiers.find((c) => c.code === concurrentBracketCode);
+
+  const freeRunCount = plan.runs?.pricing?.brackets[0].upto ?? 0;
+  const mostExpensiveRunCost = plan.runs?.pricing?.brackets[1]?.unitCost ?? 0;
+
+  const isCurrentPlan = currentConcurrencyTier === concurrentBracketCode;
+
+  let actionText = isCurrentPlan ? "Current Plan" : "Select plan";
+
+  if (showActionText && !isCurrentPlan) {
+    const currentTierIndex = concurrencyTiers.findIndex((c) => c.code === currentConcurrencyTier);
+    const selectedTierIndex = concurrencyTiers.findIndex((c) => c.code === concurrentBracketCode);
+    actionText = currentTierIndex < selectedTierIndex ? "Upgrade" : "Downgrade";
+  }
+
   return (
     <TierContainer isHighlighted>
-      <Header title="Pro" isHighlighted flatCost={25} />
-      <TierLimit pricedMetric>
-        <DefinitionTip
-          title={pricingDefinitions.concurrentRuns.title}
-          content={pricingDefinitions.concurrentRuns.content}
+      <Form action={`/resources/${organizationSlug}/subscribe`} method="post" {...form.props}>
+        <Header title={plan.title} isHighlighted cost={selectedTier?.tierCost} />
+
+        <div className="mb-2 mt-6 font-sans text-sm font-normal text-bright">
+          <DefinitionTip
+            title={pricingDefinitions.concurrentRuns.title}
+            content={pricingDefinitions.concurrentRuns.content}
+          >
+            {pricingDefinitions.concurrentRuns.title}
+          </DefinitionTip>
+        </div>
+        <input type="hidden" name="type" value="paid" />
+        <input type="hidden" name="planCode" value={plan.code} />
+        <SegmentedControl
+          name="concurrentRunBracket"
+          options={concurrencyTiers.map((c) => ({ label: `Up to ${c.upto}`, value: c.code }))}
+          fullWidth
+          value={concurrentBracketCode}
+          onChange={(v) => setConcurrentBracketCode(v)}
+        />
+        <Button
+          variant="primary/large"
+          fullWidth
+          className="text-md my-6 font-medium"
+          type="submit"
+          disabled={isLoading || isCurrentPlan}
+          LeadingIcon={isLoading ? "spinner-white" : undefined}
         >
-          {pricingDefinitions.concurrentRuns.title}
-        </DefinitionTip>
-      </TierLimit>
-      <Button variant="primary/large" fullWidth className="text-md my-6 font-medium">
-        Upgrade
-      </Button>
-      <ul className="flex flex-col gap-2.5">
-        <FeatureItem checked>
-          Includes 10k{" "}
-          <DefinitionTip
-            title={pricingDefinitions.jobRuns.title}
-            content={pricingDefinitions.jobRuns.content}
-          >
-            {pricingDefinitions.jobRuns.title}
-          </DefinitionTip>
-          , then{" "}
-          <DefinitionTip title="Runs volume discount" content={<RunsVolumeDiscountTable />}>
-            {"<"} $1.25/1k Runs
-          </DefinitionTip>
-        </FeatureItem>
-        <FeatureItem checked>
-          Unlimited{" "}
-          <DefinitionTip
-            title={pricingDefinitions.jobs.title}
-            content={pricingDefinitions.jobs.content}
-          >
-            Jobs
-          </DefinitionTip>
-        </FeatureItem>
-        <FeatureItem checked>
-          Unlimited{" "}
-          <DefinitionTip
-            title={pricingDefinitions.tasks.title}
-            content={pricingDefinitions.tasks.content}
-          >
-            Tasks
-          </DefinitionTip>
-        </FeatureItem>
-        <FeatureItem checked>
-          Unlimited{" "}
-          <DefinitionTip
-            title={pricingDefinitions.events.title}
-            content={pricingDefinitions.events.content}
-          >
-            Events
-          </DefinitionTip>
-        </FeatureItem>
-        <FeatureItem checked>Unlimited team members</FeatureItem>
-        <FeatureItem checked>7 day log retention</FeatureItem>
-        <FeatureItem checked>Dedicated Slack support</FeatureItem>
-        <FeatureItem>Custom Integrations</FeatureItem>
-        <FeatureItem>Role-based access control</FeatureItem>
-        <FeatureItem>SSO</FeatureItem>
-        <FeatureItem>On-prem option</FeatureItem>
-      </ul>
+          {isLoading ? "Updating plan" : actionText}
+        </Button>
+        <ul className="flex flex-col gap-2.5">
+          <FeatureItem checked>
+            Includes {freeRunCount ? formatNumberCompact(freeRunCount) : ""}{" "}
+            <DefinitionTip
+              title={pricingDefinitions.jobRuns.title}
+              content={pricingDefinitions.jobRuns.content}
+            >
+              {pricingDefinitions.jobRuns.title}
+            </DefinitionTip>
+            , then{" "}
+            <DefinitionTip title="Runs volume discount" content={<RunsVolumeDiscountTable />}>
+              {"<"} ${(mostExpensiveRunCost * 1000).toFixed(2)}/1k Runs
+            </DefinitionTip>
+          </FeatureItem>
+          <FeatureItem checked>
+            Unlimited{" "}
+            <DefinitionTip
+              title={pricingDefinitions.jobs.title}
+              content={pricingDefinitions.jobs.content}
+            >
+              Jobs
+            </DefinitionTip>
+          </FeatureItem>
+          <FeatureItem checked>
+            Unlimited{" "}
+            <DefinitionTip
+              title={pricingDefinitions.tasks.title}
+              content={pricingDefinitions.tasks.content}
+            >
+              Tasks
+            </DefinitionTip>
+          </FeatureItem>
+          <FeatureItem checked>
+            Unlimited{" "}
+            <DefinitionTip
+              title={pricingDefinitions.events.title}
+              content={pricingDefinitions.events.content}
+            >
+              Events
+            </DefinitionTip>
+          </FeatureItem>
+          <FeatureItem checked>Unlimited team members</FeatureItem>
+          <FeatureItem checked>7 day log retention</FeatureItem>
+          <FeatureItem checked>Dedicated Slack support</FeatureItem>
+          <FeatureItem>Custom Integrations</FeatureItem>
+          <FeatureItem>Role-based access control</FeatureItem>
+          <FeatureItem>SSO</FeatureItem>
+          <FeatureItem>On-prem option</FeatureItem>
+        </ul>
+      </Form>
     </TierContainer>
   );
 }
@@ -319,11 +393,11 @@ function RunsVolumeDiscountTable() {
 
 function Header({
   title,
-  flatCost,
+  cost: flatCost,
   isHighlighted,
 }: {
   title: string;
-  flatCost?: number;
+  cost?: number;
   isHighlighted?: boolean;
 }) {
   return (
@@ -343,37 +417,14 @@ function Header({
   );
 }
 
-function TierLimit({
-  children,
-  pricedMetric,
-}: {
-  children: React.ReactNode;
-  pricedMetric?: boolean;
-}) {
+function TierLimit({ children }: { children: React.ReactNode }) {
   return (
     <div>
-      {pricedMetric ? (
-        <>
-          <div className="mb-2 mt-6 font-sans text-sm font-normal text-bright">{children}</div>
-          <SegmentedControl name={"Concurrent Runs"} options={options} fullWidth />
-        </>
-      ) : (
-        <>
-          <hr className="my-[1.9rem]" />
-          <div className="mb-[0.6rem] mt-6 font-sans text-sm font-normal text-bright">
-            {children}
-          </div>
-        </>
-      )}
+      <hr className="my-[1.9rem]" />
+      <div className="mb-[0.6rem] mt-6 font-sans text-sm font-normal text-bright">{children}</div>
     </div>
   );
 }
-
-const options = [
-  { label: "Up to 20", value: "20" },
-  { label: "Up to 50", value: "50" },
-  { label: "Up to 100", value: "100" },
-];
 
 function FeatureItem({ checked, children }: { checked?: boolean; children: React.ReactNode }) {
   return (

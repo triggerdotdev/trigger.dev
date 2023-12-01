@@ -1,10 +1,10 @@
-import { BillingClient } from "@trigger.dev/billing";
+import { BillingClient, SetPlanBody } from "@trigger.dev/billing";
 import { PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { organizationBillingPath } from "~/utils/pathBuilder";
 
-export class BillingPresenter {
+export class BillingService {
   #billingClient: BillingClient | undefined;
   #prismaClient: PrismaClient;
 
@@ -94,6 +94,17 @@ export class BillingPresenter {
       return result;
     } catch (e) {
       logger.error("Error getting plans", { error: e });
+      return undefined;
+    }
+  }
+
+  async setPlan(orgId: string, plan: SetPlanBody) {
+    if (!this.#billingClient) return undefined;
+    try {
+      const result = await this.#billingClient.setPlan(orgId, plan);
+      return result;
+    } catch (e) {
+      logger.error("Error setting plan", { orgId, error: e });
       return undefined;
     }
   }

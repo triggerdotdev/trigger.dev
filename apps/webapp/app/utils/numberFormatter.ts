@@ -1,5 +1,5 @@
-export const formatter = Intl.NumberFormat("en", { notation: "compact" });
+export const formatter = Intl.NumberFormat("en", { notation: "compact", compactDisplay: "short" });
 
-export const separator = (num: number): string => {
-  return num.toLocaleString("en-US");
+export const formatNumberCompact = (num: number): string => {
+  return formatter.format(num);
 };
