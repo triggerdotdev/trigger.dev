@@ -71,7 +71,7 @@ export function ErrorBoundary() {
           <Links />
         </head>
         <body className="h-full overflow-hidden bg-darkBackground">
-          <AppContainer showBackgroundGradient={true}>
+          <AppContainer>
             <MainCenteredContainer>
               <RouteErrorDisplay />
             </MainCenteredContainer>
