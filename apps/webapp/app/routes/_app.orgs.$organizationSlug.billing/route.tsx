@@ -1,5 +1,5 @@
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
-import { CalendarDaysIcon, ReceiptRefundIcon } from "@heroicons/react/24/solid";
+import { CalendarDaysIcon, ReceiptRefundIcon } from "@heroicons/react/20/solid";
 import { Outlet } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
