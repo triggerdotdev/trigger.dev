@@ -28,7 +28,10 @@ export class BillingPresenter {
       firstDayOfMonth.setDate(1);
       firstDayOfMonth.setHours(0, 0, 0, 0);
 
-      console.log("firstDayOfMonth", firstDayOfMonth);
+      const firstDayOfNextMonth = new Date();
+      firstDayOfNextMonth.setDate(1);
+      firstDayOfNextMonth.setMonth(firstDayOfNextMonth.getMonth() + 1);
+      firstDayOfNextMonth.setHours(0, 0, 0, 0);
 
       const currentRunCount = await this.#prismaClient.jobRun.count({
         where: {
@@ -44,12 +47,19 @@ export class BillingPresenter {
         return undefined;
       }
 
+      const periodStart = firstDayOfMonth;
+      const periodEnd = firstDayOfNextMonth;
+      const periodRemainingDuration = periodEnd.getTime() - new Date().getTime();
+
       const usage = {
         currentRunCount,
         runCountCap: result.subscription?.plan.runs?.freeAllowance,
         exceededRunCount: result.subscription?.plan.runs?.freeAllowance
           ? currentRunCount > result.subscription?.plan.runs?.freeAllowance
           : false,
+        periodStart,
+        periodEnd,
+        periodRemainingDuration,
       };
 
       return { ...result, usage };
