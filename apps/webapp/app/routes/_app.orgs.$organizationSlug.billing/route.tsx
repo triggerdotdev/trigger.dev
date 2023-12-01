@@ -25,6 +25,8 @@ import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { useFeatures } from "~/hooks/useFeatures";
 import { DateTime } from "~/components/primitives/DateTime";
 import { formatDuration, formatDurationMilliseconds } from "~/utils";
+import { featuresForRequest } from "~/features.server";
+import { BillingPresenter } from "~/presenters/BillingPresenter.server";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -37,9 +39,12 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404 });
   }
 
-  //todo generate a Stripe customer portal link, if managed cloud
+  const { isManagedCloud } = featuresForRequest(request);
+  const billingPresenter = new BillingPresenter(isManagedCloud);
+  const portal = await billingPresenter.customerPortalUrl(data.id, organizationSlug);
+  const stripePortalLink = portal?.success ? portal?.customerPortalUrl : undefined;
 
-  return typedjson({ ...data, stripePortalLink: undefined });
+  return typedjson({ ...data, stripePortalLink });
 }
 
 export const handle: Handle = {
@@ -62,10 +67,10 @@ export default function Page() {
               <>
                 {stripePortalLink && (
                   <>
-                    <LinkButton to={""} variant="secondary/small">
+                    <LinkButton to={stripePortalLink} variant="secondary/small">
                       Invoices
                     </LinkButton>
-                    <LinkButton to={""} variant="secondary/small">
+                    <LinkButton to={stripePortalLink} variant="secondary/small">
                       Manage card details
                     </LinkButton>
                   </>

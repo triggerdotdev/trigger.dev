@@ -1,6 +1,8 @@
 import { BillingClient } from "@trigger.dev/billing";
 import { PrismaClient, prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { organizationBillingPath } from "~/utils/pathBuilder";
 
 export class BillingPresenter {
   #billingClient: BillingClient | undefined;
@@ -65,6 +67,18 @@ export class BillingPresenter {
       return { ...result, usage };
     } catch (e) {
       logger.error("Error getting current plan", { orgId, error: e });
+      return undefined;
+    }
+  }
+
+  async customerPortalUrl(orgId: string, orgSlug: string) {
+    if (!this.#billingClient) return undefined;
+    try {
+      return this.#billingClient.createPortalSession(orgId, {
+        returnUrl: `${env.APP_ORIGIN}${organizationBillingPath({ slug: orgSlug })}`,
+      });
+    } catch (e) {
+      logger.error("Error getting customer portal Url", { orgId, error: e });
       return undefined;
     }
   }
