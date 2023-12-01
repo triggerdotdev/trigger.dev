@@ -159,6 +159,13 @@ export const apisList = [
     name: "Discord",
     examples: [
       {
+        title: "A job that is triggered by a Discord webhook.",
+        slug: "discord-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/discord-http-endpoint.ts",
+      },
+      {
         title: "Create a Discord bot and send a message to a channel.",
         slug: "discord-bot-send-message",
         version: "1.0.0",

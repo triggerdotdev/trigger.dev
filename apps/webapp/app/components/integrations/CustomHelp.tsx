@@ -18,12 +18,8 @@ export function CustomHelp({ api }: { api: Api }) {
     <div className="mt-4">
       <Header1 className="mb-2">Using {api.name} with an SDK or requests</Header1>
       <Paragraph spacing>
-        To get started we recommend searching for the official Node SDK for {api.name}, you can then
-        use their API documentation to get started and create tasks. If they don't have an official
-        SDK there are often third parties you can use instead.
-      </Paragraph>
-      <Paragraph spacing className="mb-4">
-        You can subscribe to any API with{" "}
+        You can use Trigger.dev with any existing Node SDK or even just using fetch. You can
+        subscribe to any API with{" "}
         <TextLink href="https://trigger.dev/docs/documentation/concepts/http-endpoints">
           HTTP endpoints
         </TextLink>{" "}
@@ -64,7 +60,12 @@ export function CustomHelp({ api }: { api: Api }) {
         </>
       ) : (
         <>
-          <Header2 className="mb-2">We're happy to help</Header2>
+          <Header2 className="mb-2">Getting started with {api.name}</Header2>
+          <Paragraph spacing className="mb-4">
+            We recommend searching for the official {api.name} Node SDK. If they have one, you can
+            install it and then use their API documentation to get started and create tasks. If they
+            don't, there are often third party SDKs you can use instead.
+          </Paragraph>
           <Paragraph spacing className="mb-4">
             Please{" "}
             <Feedback
