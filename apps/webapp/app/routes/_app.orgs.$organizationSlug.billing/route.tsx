@@ -27,6 +27,7 @@ import { formatDurationInDays } from "~/utils";
 import { Handle } from "~/utils/handle";
 import { OrganizationParamsSchema, plansPath, usagePath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { ActiveSubscription } from "@trigger.dev/billing";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -50,6 +51,29 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Usage & Billing" />,
 };
+
+function planLabel(subscription?: ActiveSubscription) {
+  if (!subscription) {
+    return "You're currently on the Free plan";
+  }
+  if (!subscription.isPaying) {
+    return `You're currently on the ${subscription.plan.title} plan`;
+  }
+  const costDescription = subscription.plan.concurrentRuns.pricing
+    ? `\$${subscription.plan.concurrentRuns.pricing?.tierCost}/mo`
+    : "";
+  if (subscription.canceledAt) {
+    return (
+      <>
+        You're on the {costDescription} {subscription.plan.title} plan until{" "}
+        <DateTime includeTime={false} date={subscription.canceledAt} /> when you'll be on the Free
+        plan
+      </>
+    );
+  }
+
+  return `You're currently on the ${costDescription} ${subscription.plan.title} plan`;
+}
 
 export default function Page() {
   const { stripePortalLink } = useTypedLoaderData<typeof loader>();
@@ -93,11 +117,7 @@ export default function Page() {
             {currentPlan?.subscription && (
               <PageInfoProperty
                 icon={<ReceiptRefundIcon className="h-4 w-4 text-green-600" />}
-                value={`You're currently on the${
-                  currentPlan.subscription.plan.concurrentRuns.pricing?.tierCost
-                    ? ` \$${currentPlan.subscription.plan.concurrentRuns.pricing?.tierCost}/mo`
-                    : ""
-                } ${currentPlan.subscription?.plan.title} plan`}
+                value={planLabel(currentPlan.subscription)}
               />
             )}
             {currentPlan?.subscription?.isPaying && (
