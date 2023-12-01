@@ -5,7 +5,8 @@ import { Link } from "@remix-run/react";
 import { cn } from "~/utils/cn";
 
 export function FreePlanUsage({ to, percentage }: { to: string; percentage: number }) {
-  const widthProgress = useMotionValue(percentage * 100);
+  const cappedPercentage = Math.min(percentage, 1);
+  const widthProgress = useMotionValue(cappedPercentage * 100);
   const color = useTransform(
     widthProgress,
     [0, 74, 75, 95, 100],
@@ -26,7 +27,7 @@ export function FreePlanUsage({ to, percentage }: { to: string; percentage: numb
       <div className="relative mt-3 h-1 rounded-full bg-[#0B1018]">
         <motion.div
           initial={{ width: 0 }}
-          animate={{ width: percentage * 100 + "%" }}
+          animate={{ width: cappedPercentage * 100 + "%" }}
           style={{
             backgroundColor: color,
           }}

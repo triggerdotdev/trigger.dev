@@ -50,6 +50,7 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -68,6 +69,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
   const borderRef = useRef<HTMLDivElement>(null);
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);
   const { isManagedCloud } = useFeatures();
+  const currentPlan = useCurrentPlan();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -228,7 +230,12 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               </Button>
             }
           />
-          <FreePlanUsage to={organizationBillingPath(organization)} percentage={0.75} />
+          {currentPlan && currentPlan.usage.runCountCap && currentPlan.usage.exceededRunCount && (
+            <FreePlanUsage
+              to={organizationBillingPath(organization)}
+              percentage={currentPlan.usage.currentRunCount / currentPlan.usage.runCountCap}
+            />
+          )}
         </div>
       </div>
     </div>

@@ -12,8 +12,6 @@ type UpgradePromptProps = {
 export function UpgradePrompt({ organization }: UpgradePromptProps) {
   const currentPlan = useCurrentPlan();
 
-  console.log("currentPlan", currentPlan);
-
   if (!currentPlan || !currentPlan.usage.exceededRunCount) {
     return null;
   }
