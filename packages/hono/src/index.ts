@@ -1,5 +1,5 @@
 import { TriggerClient } from "@trigger.dev/sdk";
-import type { HonoRequest, MiddlewareHandler } from "hono";
+import type { Env, Hono, HonoRequest, MiddlewareHandler } from "hono";
 
 export function createMiddleware(
   client: TriggerClient,
@@ -23,6 +23,28 @@ export function createMiddleware(
       headers: response.headers,
     });
   };
+}
+
+export function addMiddleware<TEnv extends Env = Env>(
+  app: Hono<TEnv>,
+  callback: (app: TEnv["Variables"]) => TriggerClient
+) {
+  app.use("/api/trigger", async (c, next) => {
+    const client = callback(c.env);
+
+    if (c.req.method === "HEAD") {
+      return new Response(null, { status: 200 });
+    }
+
+    const request = convertToStandardRequest(c.req);
+
+    const response = await client.handleRequest(request);
+
+    return new Response(JSON.stringify(response.body), {
+      status: response.status,
+      headers: response.headers,
+    });
+  });
 }
 
 function convertToStandardRequest(req: HonoRequest): Request {
