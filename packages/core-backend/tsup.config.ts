@@ -25,7 +25,7 @@ export default defineConfig([
     outDir: "./dist",
     platform: "node",
     format: ["cjs", "esm"],
-    legacyOutput: true,
+    legacyOutput: false,
     sourcemap: true,
     clean: true,
     bundle: true,

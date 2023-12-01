@@ -852,7 +852,7 @@ importers:
       '@trigger.dev/tsconfig': workspace:*
       '@types/jest': ^29.5.3
       '@types/node': '18'
-      esbuild: ^0.18.11
+      esbuild: ^0.19.2
       jest: ^29.6.2
       rimraf: ^3.0.2
       ts-jest: ^29.1.1
@@ -862,10 +862,10 @@ importers:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/jest': 29.5.3
       '@types/node': 18.17.1
-      esbuild: 0.18.11
+      esbuild: 0.19.2
       jest: 29.6.2_@types+node@18.17.1
       rimraf: 3.0.2
-      ts-jest: 29.1.1_hlodu5araekh62oay6pkawx5ri
+      ts-jest: 29.1.1_gvfo2e2egci37ifbumszhzyqkq
       tsup: 8.0.1_typescript@5.3.2
       typescript: 5.3.2
 
@@ -15514,7 +15514,6 @@ packages:
       typescript: 5.1.6
     transitivePeerDependencies:
       - supports-color
-    dev: false
 
   /@typescript-eslint/parser/5.59.6_mhvizudgavq6jzvqzwcqcv4nnm:
     resolution: {integrity: sha512-7pCa6al03Pv1yf/dUg/s1pXz/yGMUBAw5EeWqNTFiSueKvRNonze3hma3lhdsOrQcaOXhbk5gKu2Fludiho9VA==}
@@ -15534,6 +15533,7 @@ packages:
       typescript: 4.9.5
     transitivePeerDependencies:
       - supports-color
+    dev: true
 
   /@typescript-eslint/parser/5.59.6_ox3na7ge7wjdarbyztnclevxam:
     resolution: {integrity: sha512-7pCa6al03Pv1yf/dUg/s1pXz/yGMUBAw5EeWqNTFiSueKvRNonze3hma3lhdsOrQcaOXhbk5gKu2Fludiho9VA==}
@@ -15719,6 +15719,7 @@ packages:
       typescript: 4.9.5
     transitivePeerDependencies:
       - supports-color
+    dev: true
 
   /@typescript-eslint/typescript-estree/5.59.6_typescript@5.0.4:
     resolution: {integrity: sha512-vW6JP3lMAs/Tq4KjdI/RiHaaJSO7IUsbkz17it/Rl9Q+WkQ77EOuOnlbaU8kKfVIOJxMhnRiBG+olE7f3M16DA==}
@@ -15760,7 +15761,6 @@ packages:
       typescript: 5.1.6
     transitivePeerDependencies:
       - supports-color
-    dev: false
 
   /@typescript-eslint/typescript-estree/5.59.6_typescript@5.2.2:
     resolution: {integrity: sha512-vW6JP3lMAs/Tq4KjdI/RiHaaJSO7IUsbkz17it/Rl9Q+WkQ77EOuOnlbaU8kKfVIOJxMhnRiBG+olE7f3M16DA==}
@@ -20365,7 +20365,7 @@ packages:
       eslint-import-resolver-webpack:
         optional: true
     dependencies:
-      '@typescript-eslint/parser': 5.59.6_mhvizudgavq6jzvqzwcqcv4nnm
+      '@typescript-eslint/parser': 5.59.6_ko3fmmbeyij36muomfgt2u76xu
       debug: 3.2.7
       eslint: 8.45.0
       eslint-import-resolver-node: 0.3.7
@@ -20394,7 +20394,7 @@ packages:
       eslint-import-resolver-webpack:
         optional: true
     dependencies:
-      '@typescript-eslint/parser': 5.59.6_eslint@8.42.0
+      '@typescript-eslint/parser': 5.59.6_binxsscxvozjxebftqdoazsxm4
       debug: 3.2.7
       eslint: 8.42.0
       eslint-import-resolver-node: 0.3.7
@@ -20479,7 +20479,7 @@ packages:
       '@typescript-eslint/parser':
         optional: true
     dependencies:
-      '@typescript-eslint/parser': 5.59.6_eslint@8.42.0
+      '@typescript-eslint/parser': 5.59.6_binxsscxvozjxebftqdoazsxm4
       array-includes: 3.1.6
       array.prototype.flat: 1.3.1
       array.prototype.flatmap: 1.3.1
@@ -20512,7 +20512,7 @@ packages:
       '@typescript-eslint/parser':
         optional: true
     dependencies:
-      '@typescript-eslint/parser': 5.59.6_mhvizudgavq6jzvqzwcqcv4nnm
+      '@typescript-eslint/parser': 5.59.6_ko3fmmbeyij36muomfgt2u76xu
       array-includes: 3.1.6
       array.prototype.flat: 1.3.1
       array.prototype.flatmap: 1.3.1
@@ -32029,7 +32029,7 @@ packages:
   /ts-interface-checker/0.1.13:
     resolution: {integrity: sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA==}
 
-  /ts-jest/29.1.1_hlodu5araekh62oay6pkawx5ri:
+  /ts-jest/29.1.1_gvfo2e2egci37ifbumszhzyqkq:
     resolution: {integrity: sha512-D6xjnnbP17cC85nliwGiL+tpoKN0StpgE0TeOjXQTU6MVCfsB4v7aW05CgQ/1OywGb0x/oy9hHFnN+sczTiRaA==}
     engines: {node: ^14.15.0 || ^16.10.0 || >=18.0.0}
     hasBin: true
@@ -32051,7 +32051,7 @@ packages:
         optional: true
     dependencies:
       bs-logger: 0.2.6
-      esbuild: 0.18.11
+      esbuild: 0.19.2
       fast-json-stable-stringify: 2.1.0
       jest: 29.6.2_@types+node@18.17.1
       jest-util: 29.6.2
@@ -32631,6 +32631,7 @@ packages:
     dependencies:
       tslib: 1.14.1
       typescript: 4.9.5
+    dev: true
 
   /tsutils/3.21.0_typescript@5.0.4:
     resolution: {integrity: sha512-mHKK3iUXL+3UF6xL5k0PEhKRUBKPBCv/+RkEOpjRWxxx27KKRBmmA60A9pgOUvMi8GKhRMPEmjBRPzs2W7O1OA==}
@@ -32650,7 +32651,6 @@ packages:
     dependencies:
       tslib: 1.14.1
       typescript: 5.1.6
-    dev: false
 
   /tsutils/3.21.0_typescript@5.2.2:
     resolution: {integrity: sha512-mHKK3iUXL+3UF6xL5k0PEhKRUBKPBCv/+RkEOpjRWxxx27KKRBmmA60A9pgOUvMi8GKhRMPEmjBRPzs2W7O1OA==}
