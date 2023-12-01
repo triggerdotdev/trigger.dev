@@ -765,7 +765,7 @@ async function zodfetchWithVersions<
     ? VersionedResponseBody<TVersionedResponseBodyMap, TUnversionedResponseBodySchema> | undefined
     : VersionedResponseBody<TVersionedResponseBodyMap, TUnversionedResponseBodySchema>
 > {
-  const response = await fetch(url, { ...requestInit, cache: "no-cache" });
+  const response = await fetch(url, requestInitWithCache(requestInit));
 
   if (
     (!requestInit || requestInit.method === "GET") &&
@@ -827,6 +827,17 @@ async function zodfetchWithVersions<
   };
 }
 
+function requestInitWithCache(requestInit?: RequestInit): RequestInit {
+  try {
+    return {
+      ...requestInit,
+      cache: "no-cache",
+    };
+  } catch (error) {
+    return requestInit ?? {};
+  }
+}
+
 async function fetchHead(
   url: string,
   requestInitWithoutMethod?: Omit<RequestInit, "method">,
@@ -836,7 +847,7 @@ async function fetchHead(
     ...requestInitWithoutMethod,
     method: "HEAD",
   };
-  const response = await fetch(url, { ...requestInit, cache: "no-cache" });
+  const response = await fetch(url, requestInitWithCache(requestInit));
 
   if (response.status >= 500 && retryCount < 6) {
     // retry with exponential backoff and jitter
@@ -862,7 +873,7 @@ async function zodfetch<TResponseSchema extends z.ZodTypeAny, TOptional extends 
 ): Promise<
   TOptional extends true ? z.infer<TResponseSchema> | undefined : z.infer<TResponseSchema>
 > {
-  const response = await fetch(url, { ...requestInit, cache: "no-cache" });
+  const response = await fetch(url, requestInitWithCache(requestInit));
 
   if (
     (!requestInit || requestInit.method === "GET") &&
