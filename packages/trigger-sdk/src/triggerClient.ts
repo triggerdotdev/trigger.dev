@@ -46,6 +46,7 @@ import {
   WebhookMetadata,
   WebhookSourceRequestHeadersSchema,
 } from "@trigger.dev/core";
+import { env } from "node:process";
 import { ApiClient } from "./apiClient";
 import {
   AutoYieldExecutionError,
@@ -118,9 +119,9 @@ const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
 import EventEmitter from "node:events";
 import * as packageJson from "../package.json";
 import { ConcurrencyLimit, ConcurrencyLimitOptions } from "./concurrencyLimit";
-import { formatSchemaErrors } from "./utils/formatSchemaErrors";
-import { WebhookDeliveryContext, WebhookSource } from "./triggers/webhook";
 import { KeyValueStore } from "./store/keyValueStore";
+import { WebhookDeliveryContext, WebhookSource } from "./triggers/webhook";
+import { formatSchemaErrors } from "./utils/formatSchemaErrors";
 
 export type TriggerClientOptions = {
   /** The `id` property is used to uniquely identify the client.
@@ -1136,7 +1137,7 @@ export class TriggerClient {
       return "missing-header";
     }
 
-    const localApiKey = this.#options.apiKey ?? process.env.TRIGGER_API_KEY;
+    const localApiKey = this.#options.apiKey ?? env.TRIGGER_API_KEY;
 
     if (!localApiKey) {
       return "missing-client";
@@ -1146,7 +1147,7 @@ export class TriggerClient {
   }
 
   apiKey() {
-    return this.#options.apiKey ?? process.env.TRIGGER_API_KEY;
+    return this.#options.apiKey ?? env.TRIGGER_API_KEY;
   }
 
   async #preprocessRun(body: PreprocessRunBody, job: Job<Trigger<EventSpecification<any>>, any>) {
