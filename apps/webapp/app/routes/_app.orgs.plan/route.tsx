@@ -23,7 +23,7 @@ export default function ChoosePlanPage() {
       </PricingTiers>
 
       <Sheet>
-        <SheetTrigger>
+        <SheetTrigger asChild>
           <Button variant="tertiary/small" LeadingIcon={ChartBarIcon} leadingIconClassName="px-0">
             Estimate usage
           </Button>
