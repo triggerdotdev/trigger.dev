@@ -1,9 +1,8 @@
-import { UseDataFunctionReturn, useTypedRouteLoaderData } from "remix-typedjson";
+import { UIMatch } from "@remix-run/react";
+import { UseDataFunctionReturn } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import type { loader as orgLoader } from "~/routes/_app.orgs.$organizationSlug/route";
-import { hydrateObject, useMatchesData } from "~/utils";
 import { useChanged } from "./useChanged";
-import { UIMatch } from "@remix-run/react";
 import { useTypedMatchesData } from "./useTypedMatchData";
 
 export type MatchedOrganization = UseDataFunctionReturn<typeof orgLoader>["organizations"][number];

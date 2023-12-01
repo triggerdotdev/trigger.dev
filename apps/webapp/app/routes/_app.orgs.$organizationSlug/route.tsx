@@ -1,4 +1,4 @@
-import { Outlet } from "@remix-run/react";
+import { Outlet, UIMatch } from "@remix-run/react";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -10,7 +10,7 @@ import { SideMenu } from "~/components/navigation/SideMenu";
 import { featuresForRequest } from "~/features.server";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
-import { useTypedMatchData } from "~/hooks/useTypedMatchData";
+import { useTypedMatchData, useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { useUser } from "~/hooks/useUser";
 import { BillingPresenter } from "~/presenters/BillingPresenter.server";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
@@ -24,6 +24,14 @@ const ParamsSchema = z.object({
   organizationSlug: z.string(),
   projectParam: z.string().optional(),
 });
+
+export function useCurrentPlan(matches?: UIMatch[]) {
+  const data = useTypedMatchesData<typeof loader>({
+    id: "routes/_app.orgs.$organizationSlug",
+    matches,
+  });
+  return data?.currentPlan;
+}
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -44,6 +52,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { isManagedCloud } = featuresForRequest(request);
   const billingPresenter = new BillingPresenter(isManagedCloud);
   const currentPlan = await billingPresenter.currentPlan(organization.id);
+
+  console.log("currentPlan", JSON.stringify(currentPlan));
 
   return typedjson({
     organizations,
