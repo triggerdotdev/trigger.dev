@@ -28,7 +28,7 @@ export class Hono implements Framework {
   }
 
   possibleEnvFilenames(): string[] {
-    return [".env"];
+    return [".dev.vars", ".env"];
   }
 
   async install(path: string, { typescript, endpointSlug }: ProjectInstallOptions): Promise<void> {}
