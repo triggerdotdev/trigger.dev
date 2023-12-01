@@ -25,7 +25,7 @@ export const links: LinksFunction = () => {
 
 export const meta: TypedMetaFunction<typeof loader> = (args) => {
   return metaV1(args, {
-    title: `Trigger.dev${appEnvTitleTag(args.data.appEnv)}`,
+    title: `Trigger.dev${appEnvTitleTag(args.data?.appEnv)}`,
     charset: "utf-8",
     viewport: "width=1024, initial-scale=1",
   });
