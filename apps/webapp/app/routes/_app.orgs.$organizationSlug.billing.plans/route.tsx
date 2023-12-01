@@ -16,6 +16,9 @@ export default function Page() {
       <Callout variant={"pricing"}>
         Some of your Runs are being queued because your Run concurrency is limited to 50.
       </Callout>
+      <Callout variant={"pricing"}>
+        You have exceeded the monthly 10,000 Runs limit. Upgrade to a paid plan before Nov 30.
+      </Callout>
       <PricingTiers>
         <TierFree />
         <TierPro />

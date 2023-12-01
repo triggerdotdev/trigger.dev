@@ -1,7 +1,6 @@
 import { ArrowRightIcon } from "@heroicons/react/20/solid";
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { SquaresPlusIcon, UsersIcon, WrenchScrewdriverIcon } from "@heroicons/react/24/solid";
-import { Link } from "@remix-run/react/dist/components";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps, XAxis, YAxis } from "recharts";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -16,12 +15,7 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { OrgUsagePresenter } from "~/presenters/OrgUsagePresenter.server";
 import { requireUserId } from "~/services/session.server";
-import {
-  OrganizationParamsSchema,
-  PlansPath,
-  jobPath,
-  organizationTeamPath,
-} from "~/utils/pathBuilder";
+import { OrganizationParamsSchema, PlansPath, organizationTeamPath } from "~/utils/pathBuilder";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
