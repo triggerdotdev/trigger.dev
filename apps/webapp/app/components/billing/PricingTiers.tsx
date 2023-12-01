@@ -2,7 +2,7 @@ import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
-import { Plan, Plans, SetPlanBodySchema } from "@trigger.dev/billing";
+import { ActiveSubscription, Plan, Plans, SetPlanBodySchema } from "@trigger.dev/billing";
 import { cn } from "~/utils/cn";
 import { DefinitionTip } from "../DefinitionTooltip";
 import { Button } from "../primitives/Buttons";
@@ -49,6 +49,13 @@ export function PricingTiers({
   plans: Plans;
   className?: string;
 }) {
+  const currentPlan = useCurrentPlan();
+  //if they've canceled, we set the subscription to undefined so they can re-upgrade
+  let currentSubscription = currentPlan?.subscription;
+  if (currentPlan?.subscription?.canceledAt) {
+    currentSubscription = undefined;
+  }
+
   return (
     <div
       className={cn(
@@ -56,8 +63,18 @@ export function PricingTiers({
         className
       )}
     >
-      <TierFree plan={plans.free} organizationSlug={organizationSlug} showActionText={true} />
-      <TierPro plan={plans.paid} organizationSlug={organizationSlug} showActionText={true} />
+      <TierFree
+        plan={plans.free}
+        currentSubscription={currentSubscription}
+        organizationSlug={organizationSlug}
+        showActionText={true}
+      />
+      <TierPro
+        plan={plans.paid}
+        currentSubscription={currentSubscription}
+        organizationSlug={organizationSlug}
+        showActionText={true}
+      />
       <TierEnterprise />
     </div>
   );
@@ -67,10 +84,12 @@ export function TierFree({
   plan,
   organizationSlug,
   showActionText,
+  currentSubscription,
 }: {
   plan: Plan;
   organizationSlug: string;
   showActionText: boolean;
+  currentSubscription?: ActiveSubscription;
 }) {
   const lastSubmission = useActionData();
   const [form] = useForm({
@@ -85,10 +104,8 @@ export function TierFree({
   const navigation = useNavigation();
   const isLoading = navigation.state === "submitting" || navigation.state === "loading";
 
-  const currentPlan = useCurrentPlan();
   const isCurrentPlan =
-    currentPlan?.subscription?.isPaying === undefined ||
-    currentPlan?.subscription?.isPaying === false;
+    currentSubscription?.isPaying === undefined || currentSubscription?.isPaying === false;
 
   let actionText = "Select plan";
 
@@ -177,10 +194,12 @@ export function TierPro({
   plan,
   organizationSlug,
   showActionText,
+  currentSubscription,
 }: {
   plan: Plan;
   organizationSlug: string;
   showActionText: boolean;
+  currentSubscription?: ActiveSubscription;
 }) {
   const lastSubmission = useActionData();
   const [form] = useForm({
@@ -195,8 +214,7 @@ export function TierPro({
   const navigation = useNavigation();
   const isLoading = navigation.state === "submitting" || navigation.state === "loading";
 
-  const currentPlan = useCurrentPlan();
-  const currentConcurrencyTier = currentPlan?.subscription?.plan.concurrentRuns.pricing?.code;
+  const currentConcurrencyTier = currentSubscription?.plan.concurrentRuns.pricing?.code;
   const [concurrentBracketCode, setConcurrentBracketCode] = useState(
     currentConcurrencyTier ?? plan.concurrentRuns?.pricing?.tiers[0].code
   );
