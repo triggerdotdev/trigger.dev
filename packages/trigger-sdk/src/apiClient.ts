@@ -829,10 +829,14 @@ async function zodfetchWithVersions<
 
 function requestInitWithCache(requestInit?: RequestInit): RequestInit {
   try {
-    return {
+    const withCache: RequestInit = {
       ...requestInit,
       cache: "no-cache",
     };
+
+    const _ = new Request("http://localhost", withCache);
+
+    return withCache;
   } catch (error) {
     return requestInit ?? {};
   }
