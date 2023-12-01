@@ -6,8 +6,20 @@ import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormTitle } from "~/components/primitives/FormTitle";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { useNewCustomerSubscribed } from "~/hooks/useNewCustomerSubscribed";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { Handle } from "~/utils/handle";
+
+export const handle: Handle = {
+  scripts: () => [
+    {
+      src: "https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js",
+      crossOrigin: "anonymous",
+    },
+  ],
+};
 
 export default function Subscribed() {
+  const currentPlan = useCurrentPlan();
   useNewCustomerSubscribed();
   return (
     <MainCenteredContainer className="max-w-[22rem]">
