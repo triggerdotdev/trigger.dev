@@ -48,14 +48,14 @@ export const apisList = [
     identifier: "anthropic",
     name: "Anthropic",
   },
-  {
-    identifier: "appsmith",
-    name: "Appsmith",
-  },
-  {
-    identifier: "appwrite",
-    name: "Appwrite",
-  },
+  // {
+  //   identifier: "appsmith",
+  //   name: "Appsmith",
+  // },
+  // {
+  //   identifier: "appwrite",
+  //   name: "Appwrite",
+  // },
   {
     identifier: "asana",
     name: "Asana",
@@ -74,10 +74,6 @@ export const apisList = [
         codeUrl: "https://github.com/triggerdotdev/api-reference/raw/main/src/asana.ts",
       },
     ],
-  },
-  {
-    identifier: "atlassian",
-    name: "Atlassian",
   },
   {
     identifier: "aws",
@@ -170,26 +166,26 @@ export const apisList = [
       },
     ],
   },
-  {
-    identifier: "documenso",
-    name: "Documenso",
-  },
-  {
-    identifier: "dropbox",
-    name: "Dropbox",
-  },
-  {
-    identifier: "facebook",
-    name: "Facebook",
-  },
-  {
-    identifier: "fastify",
-    name: "Fastify",
-  },
-  {
-    identifier: "flickr",
-    name: "Flickr",
-  },
+  // {
+  //   identifier: "documenso",
+  //   name: "Documenso",
+  // },
+  // {
+  //   identifier: "dropbox",
+  //   name: "Dropbox",
+  // },
+  // {
+  //   identifier: "facebook",
+  //   name: "Facebook",
+  // },
+  // {
+  //   identifier: "fastify",
+  //   name: "Fastify",
+  // },
+  // {
+  //   identifier: "flickr",
+  //   name: "Flickr",
+  // },
   {
     identifier: "github",
     name: "GitHub",
@@ -355,14 +351,14 @@ export const apisList = [
       },
     ],
   },
-  {
-    identifier: "instabug",
-    name: "Instabug",
-  },
-  {
-    identifier: "keep",
-    name: "Keep",
-  },
+  // {
+  //   identifier: "instabug",
+  //   name: "Instabug",
+  // },
+  // {
+  //   identifier: "keep",
+  //   name: "Keep",
+  // },
   {
     identifier: "lemonsqueezy",
     name: "Lemon Squeezy",
@@ -375,10 +371,10 @@ export const apisList = [
       },
     ],
   },
-  {
-    identifier: "linkedin",
-    name: "LinkedIn",
-  },
+  // {
+  //   identifier: "linkedin",
+  //   name: "LinkedIn",
+  // },
   {
     identifier: "linear",
     name: "Linear",
@@ -418,10 +414,10 @@ export const apisList = [
       },
     ],
   },
-  {
-    identifier: "lotus",
-    name: "Lotus",
-  },
+  // {
+  //   identifier: "lotus",
+  //   name: "Lotus",
+  // },
   {
     identifier: "mailchimp",
     name: "Mailchimp",
@@ -531,18 +527,18 @@ export const apisList = [
       },
     ],
   },
-  {
-    identifier: "posthog",
-    name: "Posthog",
-  },
-  {
-    identifier: "raycast",
-    name: "Raycast",
-  },
-  {
-    identifier: "reddit",
-    name: "Reddit",
-  },
+  // {
+  //   identifier: "posthog",
+  //   name: "Posthog",
+  // },
+  // {
+  //   identifier: "raycast",
+  //   name: "Raycast",
+  // },
+  // {
+  //   identifier: "reddit",
+  //   name: "Reddit",
+  // },
   {
     identifier: "replicate",
     name: "Replicate",
