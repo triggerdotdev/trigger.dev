@@ -1,5 +1,12 @@
 # @trigger.dev/typeform
 
+## 2.2.10
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@2.2.10
+- @trigger.dev/sdk@2.2.10
+
 ## 2.2.9
 
 ### Patch Changes
