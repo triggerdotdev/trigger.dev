@@ -1,4 +1,6 @@
 import { ChartBarIcon } from "@heroicons/react/20/solid";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PricingCalculator } from "~/components/billing/PricingCalculator";
 import { PricingTiers, TierEnterprise, TierFree, TierPro } from "~/components/billing/PricingTiers";
 import { RunsVolumeDiscountTable } from "~/components/billing/RunsVolumeDiscountTable";
@@ -11,16 +13,34 @@ import {
   SheetHeader,
   SheetTrigger,
 } from "~/components/primitives/Sheet";
+import { featuresForRequest } from "~/features.server";
+import { OrgBillingPlanPresenter } from "~/presenters/OrgBillingPlanPresenter";
+import { OrganizationParamsSchema, organizationBillingPath } from "~/utils/pathBuilder";
+
+export async function loader({ params, request }: LoaderFunctionArgs) {
+  const { organizationSlug } = OrganizationParamsSchema.parse(params);
+
+  const { isManagedCloud } = featuresForRequest(request);
+  if (!isManagedCloud) {
+    return redirect(organizationBillingPath({ slug: organizationSlug }));
+  }
+
+  const presenter = new OrgBillingPlanPresenter();
+  const plans = await presenter.call({ slug: organizationSlug });
+  if (!plans) {
+    throw new Response(null, { status: 404 });
+  }
+
+  return typedjson({ plans, organizationSlug });
+}
 
 export default function ChoosePlanPage() {
+  const { plans, organizationSlug } = useTypedLoaderData<typeof loader>();
+
   return (
     <div className="mx-auto flex h-full w-full max-w-[80rem] flex-col items-center justify-center gap-12 overflow-y-auto px-12">
       <Header1>Subscribe for full access</Header1>
-      <PricingTiers>
-        <TierFree />
-        <TierPro />
-        <TierEnterprise />
-      </PricingTiers>
+      <PricingTiers organizationSlug={organizationSlug} plans={plans} showActionText={false} />
 
       <Sheet>
         <SheetTrigger asChild>
@@ -37,7 +57,7 @@ export default function ChoosePlanPage() {
           <SheetBody>
             <PricingCalculator />
             <div className="mt-8 rounded border border-border p-6">
-              <RunsVolumeDiscountTable />
+              <RunsVolumeDiscountTable brackets={plans.paid.runs?.pricing?.brackets ?? []} />
             </div>
           </SheetBody>
         </SheetContent>

@@ -44,10 +44,12 @@ export function PricingTiers({
   organizationSlug,
   plans,
   className,
+  showActionText = true,
 }: {
   organizationSlug: string;
   plans: Plans;
   className?: string;
+  showActionText?: boolean;
 }) {
   const currentPlan = useCurrentPlan();
   //if they've canceled, we set the subscription to undefined so they can re-upgrade
@@ -67,13 +69,13 @@ export function PricingTiers({
         plan={plans.free}
         currentSubscription={currentSubscription}
         organizationSlug={organizationSlug}
-        showActionText={true}
+        showActionText={showActionText}
       />
       <TierPro
         plan={plans.paid}
         currentSubscription={currentSubscription}
         organizationSlug={organizationSlug}
-        showActionText={true}
+        showActionText={showActionText}
       />
       <TierEnterprise />
     </div>

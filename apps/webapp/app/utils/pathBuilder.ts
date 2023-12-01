@@ -105,6 +105,10 @@ export function newOrganizationPath() {
   return `/orgs/new`;
 }
 
+export function selectPlanPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/select-plan`;
+}
+
 export function organizationTeamPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/team`;
 }
