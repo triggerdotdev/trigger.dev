@@ -130,7 +130,7 @@ importers:
       '@tailwindcss/typography': ^0.5.9
       '@team-plain/typescript-sdk': ^3.5.0
       '@total-typescript/ts-reset': ^0.4.2
-      '@trigger.dev/billing': ^1.0.7
+      '@trigger.dev/billing': ^1.0.8
       '@trigger.dev/companyicons': ^1.5.32
       '@trigger.dev/core': workspace:*
       '@trigger.dev/core-backend': workspace:*
@@ -268,7 +268,7 @@ importers:
       '@tabler/icons-react': 2.40.0_react@18.2.0
       '@tailwindcss/container-queries': 0.1.1_tailwindcss@3.3.2
       '@team-plain/typescript-sdk': 3.5.0
-      '@trigger.dev/billing': 1.0.7
+      '@trigger.dev/billing': 1.0.8
       '@trigger.dev/companyicons': 1.5.32_biqbaboplfbrettd7655fr4n2y
       '@trigger.dev/core': link:../../packages/core
       '@trigger.dev/core-backend': link:../../packages/core-backend
@@ -14333,8 +14333,8 @@ packages:
     resolution: {integrity: sha512-vqd7ZUDSrXFVT1n8b2kc3LnklncDQFPvR58yUS1kEP23/nHPAO9l1lMjUfnPrXYYk4Hj54rrLKMW5ipwk7k09A==}
     dev: true
 
-  /@trigger.dev/billing/1.0.7:
-    resolution: {integrity: sha512-ys1yQjIuJZ7chGS3wsVLzjsHif4bN5c2u/GG4PYGOECjIFXEifZsmIqAFWIEIh4Kxh7uYR3qMh/noTREv4SUxA==}
+  /@trigger.dev/billing/1.0.8:
+    resolution: {integrity: sha512-vqSsbqCHn7yAjjLY4kqRizEID6bZ0p73l5VoeSeplO+qDJGZDzL8aM104+Vqd3t2kCy7o+MtEwJ/cZNStKroKA==}
     dependencies:
       zod: 3.22.3
     dev: false
