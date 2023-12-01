@@ -230,7 +230,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               </Button>
             }
           />
-          {currentPlan && currentPlan.usage.runCountCap && currentPlan.usage.exceededRunCount && (
+          {currentPlan && !currentPlan.subscription?.isPaying && currentPlan.usage.runCountCap && (
             <FreePlanUsage
               to={organizationBillingPath(organization)}
               percentage={currentPlan.usage.currentRunCount / currentPlan.usage.runCountCap}

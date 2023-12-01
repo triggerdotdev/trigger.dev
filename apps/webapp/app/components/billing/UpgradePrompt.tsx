@@ -19,7 +19,7 @@ export function UpgradePrompt({ organization }: UpgradePromptProps) {
   return (
     <div className="flex h-full w-full items-center gap-4 bg-gradient-to-r from-transparent to-indigo-900/50 pr-1.5">
       <Paragraph variant="extra-small" className="text-rose-500">
-        You have exceded the monthly {currentPlan.usage.runCountCap} Runs limit
+        You have exceeded the monthly {currentPlan.usage.runCountCap} Runs limit
       </Paragraph>
       <LinkButton
         variant={"primary/small"}

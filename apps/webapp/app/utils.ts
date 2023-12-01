@@ -141,6 +141,16 @@ export function formatDurationMilliseconds(
   return duration;
 }
 
+export function formatDurationInDays(milliseconds: number): string {
+  let duration = humanizeDuration(milliseconds, {
+    maxDecimalPoints: 0,
+    largest: 2,
+    units: ["d"],
+  });
+
+  return duration;
+}
+
 export function titleCase(original: string): string {
   return original
     .split(" ")
@@ -163,5 +173,5 @@ export function appEnvTitleTag(appEnv?: string): string {
     return "";
   }
 
-  return ` (${appEnv})`
+  return ` (${appEnv})`;
 }

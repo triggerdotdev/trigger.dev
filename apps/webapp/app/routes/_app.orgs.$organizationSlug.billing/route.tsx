@@ -23,7 +23,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { BillingPresenter } from "~/presenters/BillingPresenter.server";
 import { OrgUsagePresenter } from "~/presenters/OrgUsagePresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { formatDurationMilliseconds } from "~/utils";
+import { formatDurationInDays } from "~/utils";
 import { Handle } from "~/utils/handle";
 import { OrganizationParamsSchema, PlansPath, UsagePath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
@@ -108,10 +108,7 @@ export default function Page() {
                   <>
                     <DateTime date={currentPlan.usage.periodStart} includeTime={false} /> to{" "}
                     <DateTime date={currentPlan.usage.periodEnd} includeTime={false} /> (
-                    {formatDurationMilliseconds(currentPlan.usage.periodRemainingDuration, {
-                      style: "short",
-                    })}{" "}
-                    remaining)
+                    {formatDurationInDays(currentPlan.usage.periodRemainingDuration)} remaining)
                   </>
                 }
               />
@@ -122,7 +119,7 @@ export default function Page() {
           <PageTabs
             tabs={[
               {
-                label: "Usage & Billing",
+                label: "Usage",
                 to: UsagePath(organization),
               },
               {
