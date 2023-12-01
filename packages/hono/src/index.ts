@@ -25,9 +25,9 @@ export function createMiddleware(
   };
 }
 
-export function addMiddleware<TEnv extends Env = Env>(
+export function addMiddleware<TEnv extends Env>(
   app: Hono<TEnv>,
-  callback: (app: TEnv["Variables"]) => TriggerClient
+  callback: (env: TEnv["Bindings"]) => TriggerClient
 ) {
   app.use("/api/trigger", async (c, next) => {
     const client = callback(c.env);
