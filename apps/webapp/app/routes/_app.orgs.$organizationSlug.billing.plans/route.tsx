@@ -1,16 +1,40 @@
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PricingCalculator } from "~/components/billing/PricingCalculator";
 import { PricingTiers, TierEnterprise, TierFree, TierPro } from "~/components/billing/PricingTiers";
 import { RunsVolumeDiscountTable } from "~/components/billing/RunsVolumeDiscountTable";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
+import { featuresForRequest } from "~/features.server";
+import { OrgBillingPlanPresenter } from "~/presenters/OrgBillingPlanPresenter";
 import { Handle } from "~/utils/handle";
+import { OrganizationParamsSchema, organizationBillingPath } from "~/utils/pathBuilder";
+
+export async function loader({ params, request }: LoaderFunctionArgs) {
+  const { organizationSlug } = OrganizationParamsSchema.parse(params);
+
+  const { isManagedCloud } = featuresForRequest(request);
+  if (!isManagedCloud) {
+    return redirect(organizationBillingPath({ slug: organizationSlug }));
+  }
+
+  const presenter = new OrgBillingPlanPresenter();
+  const plans = await presenter.call({ slug: organizationSlug });
+  if (!plans) {
+    throw new Response(null, { status: 404 });
+  }
+
+  return typedjson({ plans });
+}
 
 export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Plans" />,
 };
 
 export default function Page() {
+  const { plans } = useTypedLoaderData<typeof loader>();
+
   return (
     <div className="flex flex-col gap-4">
       <Callout variant={"pricing"}>

@@ -82,4 +82,19 @@ export class BillingPresenter {
       return undefined;
     }
   }
+
+  async getPlans() {
+    if (!this.#billingClient) return undefined;
+    try {
+      const result = await this.#billingClient.plans();
+      if (!result.success) {
+        logger.error("Error getting plans", { error: result.error });
+        return undefined;
+      }
+      return result;
+    } catch (e) {
+      logger.error("Error getting plans", { error: e });
+      return undefined;
+    }
+  }
 }

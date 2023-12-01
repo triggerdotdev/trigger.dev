@@ -6,6 +6,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { DateTime } from "~/components/primitives/DateTime";
 import {
   PageButtons,
   PageHeader,
@@ -16,17 +17,16 @@ import {
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
+import { featuresForRequest } from "~/features.server";
+import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { BillingPresenter } from "~/presenters/BillingPresenter.server";
 import { OrgUsagePresenter } from "~/presenters/OrgUsagePresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { formatDurationMilliseconds } from "~/utils";
 import { Handle } from "~/utils/handle";
 import { OrganizationParamsSchema, PlansPath, UsagePath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { useFeatures } from "~/hooks/useFeatures";
-import { DateTime } from "~/components/primitives/DateTime";
-import { formatDuration, formatDurationMilliseconds } from "~/utils";
-import { featuresForRequest } from "~/features.server";
-import { BillingPresenter } from "~/presenters/BillingPresenter.server";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -118,19 +118,21 @@ export default function Page() {
             )}
           </PageInfoGroup>
         </PageInfoRow>
-        <PageTabs
-          tabs={[
-            {
-              label: "Usage & Billing",
-              to: UsagePath(organization),
-            },
-            {
-              label: "Plans",
-              to: PlansPath(organization),
-            },
-          ]}
-          layoutId="usage-and-billing"
-        />
+        {isManagedCloud && (
+          <PageTabs
+            tabs={[
+              {
+                label: "Usage & Billing",
+                to: UsagePath(organization),
+              },
+              {
+                label: "Plans",
+                to: PlansPath(organization),
+              },
+            ]}
+            layoutId="usage-and-billing"
+          />
+        )}
       </PageHeader>
       <PageBody scrollable={false}>
         <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
