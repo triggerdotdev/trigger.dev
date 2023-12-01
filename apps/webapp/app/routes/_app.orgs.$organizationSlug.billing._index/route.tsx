@@ -59,7 +59,7 @@ export default function Page() {
     <div className="flex flex-col gap-4">
       <div>
         <Header2 spacing>Concurrent Runs</Header2>
-        <div className="flex w-full flex-col gap-4 rounded border border-border p-6">
+        <div className="flex w-full flex-col gap-5 rounded border border-border p-6">
           <Callout
             variant={"pricing"}
             cta={
@@ -82,55 +82,75 @@ export default function Page() {
 
       <div className="@container">
         <Header2 spacing>Runs</Header2>
-        <div className="flex flex-col gap-8 rounded border border-border p-6 @4xl:flex-row">
-          <div className="flex w-full flex-col gap-4">
-            <div className="flex w-full items-center gap-6">
-              <div className="flex flex-col gap-2">
-                <Header3 className="">Month-to-date</Header3>
-                <p className="text-3xl font-medium text-bright">$0.00</p>
-              </div>
-              <ArrowRightIcon className="h-6 w-6 text-dimmed/50" />
-              <div className="flex flex-col gap-2 text-dimmed">
-                <Header3 className="text-dimmed">Projected</Header3>
-                <p className="text-3xl font-medium">$5.25</p>
-              </div>
-            </div>
-            <UsageBar numberOfCurrentRuns={15467} tierRunLimit={10000} projectedRuns={25347} />
-          </div>
-          <div className="relative w-full">
-            <Header3 className="mb-4">Monthly Runs</Header3>
-            <Paragraph className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-              No Runs to show
-            </Paragraph>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart
-                data={loaderData.chartData}
-                margin={{
-                  top: 0,
-                  right: 0,
-                  left: 0,
-                  bottom: 0,
-                }}
-                className="-ml-7"
+        <div className="flex flex-col gap-5 rounded border border-border p-6">
+          <Callout
+            variant={"pricing"}
+            cta={
+              <LinkButton
+                variant="primary/small"
+                LeadingIcon={ArrowUpCircleIcon}
+                leadingIconClassName="px-0"
+                to={PlansPath(organization)}
               >
-                <XAxis
-                  dataKey="name"
-                  stroke="#94A3B8"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  stroke="#94A3B8"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(value) => `${value}`}
-                />
-                <Tooltip cursor={{ fill: "rgba(255,255,255,0.05)" }} content={<CustomTooltip />} />
-                <Bar dataKey="total" fill="#16A34A" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+                Upgrade
+              </LinkButton>
+            }
+          >
+            You have exceeded the monthly 10,000 Runs limit. Upgrade to a paid plan before Nov 30.
+          </Callout>
+          <div className="flex flex-col @4xl:flex-row">
+            <div className="flex w-full flex-col gap-4">
+              <div className="flex w-full items-center gap-6">
+                <div className="flex flex-col gap-2">
+                  <Header3 className="">Month-to-date</Header3>
+                  <p className="text-3xl font-medium text-bright">$0.00</p>
+                </div>
+                <ArrowRightIcon className="h-6 w-6 text-dimmed/50" />
+                <div className="flex flex-col gap-2 text-dimmed">
+                  <Header3 className="text-dimmed">Projected</Header3>
+                  <p className="text-3xl font-medium">$5.25</p>
+                </div>
+              </div>
+              <UsageBar numberOfCurrentRuns={15467} tierRunLimit={10000} projectedRuns={25347} />
+            </div>
+            <div className="relative w-full">
+              <Header3 className="mb-4">Monthly Runs</Header3>
+              <Paragraph className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                No Runs to show
+              </Paragraph>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart
+                  data={loaderData.chartData}
+                  margin={{
+                    top: 0,
+                    right: 0,
+                    left: 0,
+                    bottom: 0,
+                  }}
+                  className="-ml-7"
+                >
+                  <XAxis
+                    dataKey="name"
+                    stroke="#94A3B8"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    stroke="#94A3B8"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(value) => `${value}`}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "rgba(255,255,255,0.05)" }}
+                    content={<CustomTooltip />}
+                  />
+                  <Bar dataKey="total" fill="#16A34A" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
       </div>

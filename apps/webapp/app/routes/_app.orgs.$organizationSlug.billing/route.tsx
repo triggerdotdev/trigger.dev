@@ -71,7 +71,7 @@ export default function Page() {
           <PageInfoGroup>
             <PageInfoProperty
               icon={<ReceiptRefundIcon className="h-4 w-4 text-green-600" />}
-              value={"You’re currently on the Pro plan ($80/mo)"}
+              value={"You’re currently on the $80/mo Pro plan"}
             />
             <PageInfoProperty
               icon={<CalendarDaysIcon className="h-4 w-4 text-green-600" />}

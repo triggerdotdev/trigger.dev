@@ -19,13 +19,12 @@ export function UsageBar({
   projectedRuns,
   subscribedToPaidTier = false,
 }: UsageBarProps) {
-  //create a maximum range for the progress bar
   const getLargestNumber = Math.max(
     numberOfCurrentRuns,
     tierRunLimit,
     projectedRuns,
     billingLimit ?? -Infinity
-  );
+  ); //creates a maximum range for the progress bar
   const maxRange = Math.round(getLargestNumber * 1.1); // add 10% to the largest number so the bar doesn't reach the end
   const tierRunLimitPercentage = Math.round((tierRunLimit / maxRange) * 100); //convert the freeRunLimit into a percentage
   const projectedRunsPercentage = Math.round((projectedRuns / maxRange) * 100); //convert the projectedRuns into a percentage
