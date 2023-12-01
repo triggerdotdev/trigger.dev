@@ -8,6 +8,34 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { useNewCustomerSubscribed } from "~/hooks/useNewCustomerSubscribed";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { Handle } from "~/utils/handle";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { requireUserId } from "~/services/session.server";
+import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
+import { OrganizationParamsSchema } from "~/utils/pathBuilder";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { featuresForRequest } from "~/features.server";
+import { BillingService } from "~/services/billing.server";
+
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  const userId = await requireUserId(request);
+
+  const { organizationSlug } = OrganizationParamsSchema.parse(params);
+
+  const orgsPresenter = new OrganizationsPresenter();
+  const { organization } = await orgsPresenter.call({
+    userId,
+    request,
+    organizationSlug,
+  });
+
+  const { isManagedCloud } = featuresForRequest(request);
+  const billingPresenter = new BillingService(isManagedCloud);
+  const currentPlan = await billingPresenter.currentPlan(organization.id);
+
+  return typedjson({
+    currentPlan,
+  });
+};
 
 export const handle: Handle = {
   scripts: () => [
@@ -19,8 +47,9 @@ export const handle: Handle = {
 };
 
 export default function Subscribed() {
-  const currentPlan = useCurrentPlan();
+  const { currentPlan } = useTypedLoaderData<typeof loader>();
   useNewCustomerSubscribed();
+
   return (
     <MainCenteredContainer className="max-w-[22rem]">
       <FormTitle
@@ -29,8 +58,11 @@ export default function Subscribed() {
         className="mb-0"
       />
       <ul>
-        <PlanItem item="Your plan" value="Pro" />
-        <PlanItem item="Concurrent Runs/mo" value="Up to 20" />
+        <PlanItem item="Your plan" value={currentPlan?.subscription?.plan.title ?? "–"} />
+        <PlanItem
+          item="Concurrent Runs/mo"
+          value={`${currentPlan?.subscription?.plan.concurrentRuns.pricing?.upto}`}
+        />
         <PlanItem item="Runs/mo" value="Volume discounted" />
       </ul>
 

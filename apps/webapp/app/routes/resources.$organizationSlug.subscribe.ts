@@ -7,7 +7,11 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { BillingService } from "~/services/billing.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
-import { OrganizationParamsSchema, organizationBillingPath } from "~/utils/pathBuilder";
+import {
+  OrganizationParamsSchema,
+  organizationBillingPath,
+  subscribedPath,
+} from "~/utils/pathBuilder";
 
 export async function action({ request, params }: ActionFunctionArgs) {
   const user = await requireUser(request);
@@ -64,11 +68,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         );
       }
       case "updated_subscription": {
-        return redirectWithSuccessMessage(
-          organizationBillingPath({ slug: organizationSlug }),
-          request,
-          "Your subscription has been updated."
-        );
+        return redirect(subscribedPath({ slug: organizationSlug }), request);
       }
     }
   } catch (e) {
