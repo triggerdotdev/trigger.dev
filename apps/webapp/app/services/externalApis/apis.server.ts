@@ -531,14 +531,14 @@ export const apisList = [
   //   identifier: "posthog",
   //   name: "Posthog",
   // },
-  // {
-  //   identifier: "raycast",
-  //   name: "Raycast",
-  // },
-  // {
-  //   identifier: "reddit",
-  //   name: "Reddit",
-  // },
+  {
+    identifier: "raycast",
+    name: "Raycast",
+  },
+  {
+    identifier: "reddit",
+    name: "Reddit",
+  },
   {
     identifier: "replicate",
     name: "Replicate",
