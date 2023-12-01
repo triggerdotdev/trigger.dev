@@ -15,7 +15,7 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { OrgUsagePresenter } from "~/presenters/OrgUsagePresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { OrganizationParamsSchema, PlansPath, organizationTeamPath } from "~/utils/pathBuilder";
+import { OrganizationParamsSchema, plansPath, organizationTeamPath } from "~/utils/pathBuilder";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -61,7 +61,7 @@ export default function Page() {
                 variant="primary/small"
                 LeadingIcon={ArrowUpCircleIcon}
                 leadingIconClassName="px-0"
-                to={PlansPath(organization)}
+                to={plansPath(organization)}
               >
                 Increase concurrent Runs
               </LinkButton>
@@ -84,7 +84,7 @@ export default function Page() {
                 variant="primary/small"
                 LeadingIcon={ArrowUpCircleIcon}
                 leadingIconClassName="px-0"
-                to={PlansPath(organization)}
+                to={plansPath(organization)}
               >
                 Upgrade
               </LinkButton>

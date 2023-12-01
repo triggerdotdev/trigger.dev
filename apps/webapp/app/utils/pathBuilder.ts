@@ -117,15 +117,15 @@ export function organizationBillingPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/billing`;
 }
 
-export function UsagePath(organization: OrgForPath) {
+export function usagePath(organization: OrgForPath) {
   return `${organizationPath(organization)}/billing`;
 }
 
-export function PlansPath(organization: OrgForPath) {
+export function plansPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/billing/plans`;
 }
 
-export function SubscribedPath(organization: OrgForPath) {
+export function subscribedPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/subscribed`;
 }
 

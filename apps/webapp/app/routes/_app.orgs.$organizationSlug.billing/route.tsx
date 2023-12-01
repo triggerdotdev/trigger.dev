@@ -25,7 +25,7 @@ import { OrgUsagePresenter } from "~/presenters/OrgUsagePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { formatDurationInDays } from "~/utils";
 import { Handle } from "~/utils/handle";
-import { OrganizationParamsSchema, PlansPath, UsagePath } from "~/utils/pathBuilder";
+import { OrganizationParamsSchema, plansPath, usagePath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
@@ -76,7 +76,7 @@ export default function Page() {
                   </>
                 )}
                 <LinkButton
-                  to={PlansPath(organization)}
+                  to={plansPath(organization)}
                   variant="primary/small"
                   LeadingIcon={ArrowUpCircleIcon}
                   leadingIconClassName="px-0"
@@ -120,11 +120,11 @@ export default function Page() {
             tabs={[
               {
                 label: "Usage",
-                to: UsagePath(organization),
+                to: usagePath(organization),
               },
               {
                 label: "Plans",
-                to: PlansPath(organization),
+                to: plansPath(organization),
               },
             ]}
             layoutId="usage-and-billing"
