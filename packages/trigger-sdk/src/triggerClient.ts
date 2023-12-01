@@ -46,7 +46,6 @@ import {
   WebhookMetadata,
   WebhookSourceRequestHeadersSchema,
 } from "@trigger.dev/core";
-import { yellow } from "colorette";
 import { ApiClient } from "./apiClient";
 import {
   AutoYieldExecutionError,
@@ -691,9 +690,7 @@ export class TriggerClient {
 
     if (existingRegisteredJob) {
       console.warn(
-        yellow(
-          `[@trigger.dev/sdk] Warning: The Job "${existingRegisteredJob.id}" you're attempting to define has already been defined. Please assign a different ID to the job.`
-        )
+        `[@trigger.dev/sdk] Warning: The Job "${existingRegisteredJob.id}" you're attempting to define has already been defined. Please assign a different ID to the job.`
       );
     }
 
@@ -732,9 +729,7 @@ export class TriggerClient {
     const existingHttpEndpoint = this.#registeredHttpEndpoints[options.id];
     if (!suppressWarnings && existingHttpEndpoint) {
       console.warn(
-        yellow(
-          `[@trigger.dev/sdk] Warning: The HttpEndpoint "${existingHttpEndpoint.id}" you're attempting to define has already been defined. Please assign a different ID to the HttpEndpoint.`
-        )
+        `[@trigger.dev/sdk] Warning: The HttpEndpoint "${existingHttpEndpoint.id}" you're attempting to define has already been defined. Please assign a different ID to the HttpEndpoint.`
       );
     }
 

@@ -31,7 +31,7 @@ import {
 } from "supabase-management-js";
 import { z } from "zod";
 import { Prettify, safeParseBody } from "@trigger.dev/integration-kit";
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import { GenericSchema } from "../database/types";
 
 export type SupabaseManagementIntegrationOptions =

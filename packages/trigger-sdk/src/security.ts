@@ -1,5 +1,5 @@
-import crypto from "crypto";
-import type { BinaryToTextEncoding, BinaryLike, KeyObject } from "crypto";
+import crypto from "node:crypto";
+import type { BinaryToTextEncoding, BinaryLike, KeyObject } from "node:crypto";
 import { VerifyResult } from "./types";
 
 /** Easily verify webhook payloads when they're using common signing methods. */
