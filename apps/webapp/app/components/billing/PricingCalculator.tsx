@@ -1,28 +1,57 @@
 import * as Slider from "@radix-ui/react-slider";
+import { Plans } from "@trigger.dev/billing";
+import { useCallback, useState } from "react";
+import { DefinitionTip } from "../DefinitionTooltip";
 import { Header2 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
-import { DefinitionTip } from "../DefinitionTooltip";
+import { formatNumberCompact } from "~/utils/numberFormatter";
 
-export function PricingCalculator() {
+export function PricingCalculator({ plans }: { plans: Plans }) {
+  const [selectedConcurrencyIndex, setSelectedConcurrencyIndex] = useState(0);
+  const concurrentRunTiers = [
+    { code: "free", upto: plans.free.concurrentRuns?.freeAllowance! },
+    ...(plans.paid.concurrentRuns?.pricing?.tiers ?? []),
+  ];
+  const [runs, setRuns] = useState(0);
+  const runBrackets = [
+    ...(plans.paid.runs?.pricing?.brackets.map((b, index, arr) => ({
+      unitCost: b.unitCost,
+      from: index === 0 ? 0 : arr[index - 1].upto! + 1,
+      upto: b.upto ?? arr[index - 1].upto! * 10,
+    })) ?? []),
+  ];
+
+  console.log("Paid", plans.paid);
+
   return (
     <div className="flex w-full flex-col gap-4">
-      <ConcurrentRunsSlider />
-      <RunsSlider />
+      <ConcurrentRunsSlider
+        options={concurrentRunTiers}
+        selectedIndex={selectedConcurrencyIndex}
+        setSelectedIndex={setSelectedConcurrencyIndex}
+      />
+      <RunsSlider brackets={runBrackets} runs={runs} setRuns={setRuns} />
       <GrandTotal />
     </div>
   );
 }
 
-const concurrentRuns = [
-  { value: 5, label: "Up to 5" },
-  { value: 20, label: "Up to 20" },
-  { value: 50, label: "Up to 50" },
-  { value: 100, label: "Up to 100" },
-];
+function ConcurrentRunsSlider({
+  options,
+  selectedIndex,
+  setSelectedIndex,
+}: {
+  options: {
+    code: string;
+    upto: number;
+  }[];
+  selectedIndex: number;
+  setSelectedIndex: (index: number) => void;
+}) {
+  const selectedOption = options[selectedIndex];
 
-function ConcurrentRunsSlider() {
   return (
-    <form>
+    <div>
       <div className="flex">
         <div className="flex w-full flex-col">
           <div className="flex items-center justify-between">
@@ -34,12 +63,13 @@ function ConcurrentRunsSlider() {
                 Concurrent Runs
               </DefinitionTip>
             </Header2>
-            <Header2>Up to 5</Header2>
+            <Header2>Up to {selectedOption.upto}</Header2>
           </div>
           <Slider.Root
             className="relative mb-2 mt-4 flex h-5 w-full touch-none select-none items-center"
-            defaultValue={[0]}
-            max={concurrentRuns.length - 1}
+            value={[selectedIndex]}
+            onValueChange={(value) => setSelectedIndex(value[0])}
+            max={options.length - 1}
             step={1}
           >
             <Slider.Track className="relative h-[8px] grow rounded-full bg-slate-850">
@@ -51,11 +81,10 @@ function ConcurrentRunsSlider() {
             />
           </Slider.Root>
           <div className="ml-1.5 flex w-[99.85%] items-center justify-between">
-            {concurrentRuns.map((run, i) => {
-              const concurrrentRunsLabels = Object.values(run)[0];
+            {options.map((tier, i) => {
               return (
                 <Paragraph variant="extra-small" className="text-slate-600" key={i}>
-                  {concurrrentRunsLabels}
+                  {tier.upto}
                 </Paragraph>
               );
             })}
@@ -67,24 +96,34 @@ function ConcurrentRunsSlider() {
         </div>
       </div>
       <hr className="mt-6 border-border" />
-    </form>
+    </div>
   );
 }
 
-const Runs = [
-  { value: 10_000, label: "10k" },
-  { value: 20_000, label: "20k" },
-  { value: 150_000, label: "150k" },
-  { value: 500_000, label: "500k" },
-  { value: 1_000_000, label: "1m" },
-  { value: 2_500_000, label: "2.5m" },
-  { value: 6_250_000, label: "6.25m" },
-  { value: 6_250_001, label: "6.25m+" },
-];
+const runIncrements = 10_000;
+function RunsSlider({
+  brackets,
+  runs,
+  setRuns,
+}: {
+  brackets: {
+    from: number;
+    upto: number;
+    unitCost: number;
+  }[];
+  runs: number;
+  setRuns: (value: number) => void;
+}) {
+  const [value, setValue] = useState(0);
 
-function RunsSlider() {
+  const updateRuns = useCallback((value: number) => {
+    setValue(value);
+    const r = calculateRuns(value / runIncrements, brackets);
+    setRuns(r);
+  }, []);
+
   return (
-    <form>
+    <div>
       <div className="flex">
         <div className="flex w-full flex-col">
           <div className="flex items-center justify-between">
@@ -93,12 +132,13 @@ function RunsSlider() {
                 Runs
               </DefinitionTip>
             </Header2>
-            <Header2>10k</Header2>
+            <Header2>{formatNumberCompact(runs)}</Header2>
           </div>
           <Slider.Root
             className="relative mb-2 mt-4 flex h-5 w-full touch-none select-none items-center"
-            defaultValue={[0]}
-            max={Runs.length - 1}
+            value={[value]}
+            onValueChange={(value) => updateRuns(value[0])}
+            max={runIncrements}
             step={1}
           >
             <Slider.Track className="relative h-[8px] grow rounded-full bg-slate-850">
@@ -110,14 +150,16 @@ function RunsSlider() {
             />
           </Slider.Root>
           <div className="flex w-[calc(100%+1rem)] items-center justify-between">
-            {Runs.map((run, i) => {
-              const RunsLabels = Object.values(run)[0];
+            {brackets.map((bracket, i) => {
               return (
                 <Paragraph variant="extra-small" className="text-slate-600" key={i}>
-                  {RunsLabels}
+                  {formatNumberCompact(bracket.from)}
                 </Paragraph>
               );
             })}
+            <Paragraph variant="extra-small" className="text-slate-600">
+              {formatNumberCompact(brackets[brackets.length - 1].upto)}
+            </Paragraph>
           </div>
         </div>
         <div className="flex h-full items-start">
@@ -126,8 +168,27 @@ function RunsSlider() {
         </div>
       </div>
       <hr className="mt-6 border-border" />
-    </form>
+    </div>
   );
+}
+
+function calculateRuns(percentage: number, brackets: { from: number; upto: number }[]) {
+  //first we find which bucket we're in
+  const buckets = brackets.length;
+  const bucket = Math.min(Math.floor(percentage * buckets), brackets.length - 1);
+  const percentagePerBucket = 1 / buckets;
+
+  //relevant bracket
+  let bracket = brackets[bucket];
+  const from = bracket.from;
+  const upto = bracket.upto;
+
+  //how far as we into the bracket
+  const percentageIntoBracket = (percentage - bucket * percentagePerBucket) / percentagePerBucket;
+
+  //calculate the runs
+  const runs = Math.floor(from + (upto - from) * percentageIntoBracket);
+  return runs;
 }
 
 function GrandTotal() {

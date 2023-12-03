@@ -51,7 +51,7 @@ export default function Page() {
       <div>
         <Header2 spacing>Estimate your usage</Header2>
         <div className="flex h-full w-full rounded-md border border-border p-6">
-          <PricingCalculator />
+          <PricingCalculator plans={plans} />
           <div className="mx-6 min-h-full w-px bg-border" />
           <RunsVolumeDiscountTable brackets={plans.paid.runs?.pricing?.brackets ?? []} />
         </div>
