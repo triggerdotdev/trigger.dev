@@ -1,5 +1,5 @@
 import * as Slider from "@radix-ui/react-slider";
-import { Plans } from "@trigger.dev/billing";
+import { Plans, estimate } from "@trigger.dev/billing";
 import { useCallback, useState } from "react";
 import { DefinitionTip } from "../DefinitionTooltip";
 import { Header2 } from "../primitives/Headers";
@@ -21,7 +21,10 @@ export function PricingCalculator({ plans }: { plans: Plans }) {
     })) ?? []),
   ];
 
-  console.log("Paid", plans.paid);
+  const result = estimate({
+    usage: { runs, concurrent_runs: concurrentRunTiers[selectedConcurrencyIndex].upto - 1 },
+    plans: [plans.free, plans.paid],
+  });
 
   return (
     <div className="flex w-full flex-col gap-4">
@@ -29,9 +32,15 @@ export function PricingCalculator({ plans }: { plans: Plans }) {
         options={concurrentRunTiers}
         selectedIndex={selectedConcurrencyIndex}
         setSelectedIndex={setSelectedConcurrencyIndex}
+        cost={result?.cost.concurrentRunCost ?? 0}
       />
-      <RunsSlider brackets={runBrackets} runs={runs} setRuns={setRuns} />
-      <GrandTotal />
+      <RunsSlider
+        brackets={runBrackets}
+        runs={runs}
+        setRuns={setRuns}
+        cost={result?.cost.runsCost ?? 0}
+      />
+      <GrandTotal cost={result?.cost.total ?? 0} />
     </div>
   );
 }
@@ -40,6 +49,7 @@ function ConcurrentRunsSlider({
   options,
   selectedIndex,
   setSelectedIndex,
+  cost,
 }: {
   options: {
     code: string;
@@ -47,6 +57,7 @@ function ConcurrentRunsSlider({
   }[];
   selectedIndex: number;
   setSelectedIndex: (index: number) => void;
+  cost: number;
 }) {
   const selectedOption = options[selectedIndex];
 
@@ -92,7 +103,7 @@ function ConcurrentRunsSlider({
         </div>
         <div className="flex h-full items-start">
           <span className="ml-6 text-dimmed">=</span>
-          <Header2 className="min-w-[8ch] text-right text-dimmed">$30.00</Header2>
+          <Header2 className="min-w-[8ch] text-right text-dimmed">${cost.toFixed(2)}</Header2>
         </div>
       </div>
       <hr className="mt-6 border-border" />
@@ -105,6 +116,7 @@ function RunsSlider({
   brackets,
   runs,
   setRuns,
+  cost,
 }: {
   brackets: {
     from: number;
@@ -113,6 +125,7 @@ function RunsSlider({
   }[];
   runs: number;
   setRuns: (value: number) => void;
+  cost: number;
 }) {
   const [value, setValue] = useState(0);
 
@@ -164,7 +177,7 @@ function RunsSlider({
         </div>
         <div className="flex h-full items-start">
           <span className="ml-6 text-dimmed">=</span>
-          <Header2 className="min-w-[8ch] text-right text-dimmed">$13.53</Header2>
+          <Header2 className="min-w-[8ch] text-right text-dimmed">${cost.toFixed(2)}</Header2>
         </div>
       </div>
       <hr className="mt-6 border-border" />
@@ -191,11 +204,11 @@ function calculateRuns(percentage: number, brackets: { from: number; upto: numbe
   return runs;
 }
 
-function GrandTotal() {
+function GrandTotal({ cost }: { cost: number }) {
   return (
     <div className="flex justify-between">
       <Header2>Total monthly estimate</Header2>
-      <Header2>$43.53</Header2>
+      <Header2>${cost.toFixed(2)}</Header2>
     </div>
   );
 }
