@@ -15,7 +15,11 @@ import {
 } from "~/components/primitives/Sheet";
 import { featuresForRequest } from "~/features.server";
 import { OrgBillingPlanPresenter } from "~/presenters/OrgBillingPlanPresenter";
-import { OrganizationParamsSchema, organizationBillingPath } from "~/utils/pathBuilder";
+import {
+  OrganizationParamsSchema,
+  organizationBillingPath,
+  organizationPath,
+} from "~/utils/pathBuilder";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
@@ -40,7 +44,12 @@ export default function ChoosePlanPage() {
   return (
     <div className="mx-auto flex h-full w-full max-w-[80rem] flex-col items-center justify-center gap-12 overflow-y-auto px-12">
       <Header1>Subscribe for full access</Header1>
-      <PricingTiers organizationSlug={organizationSlug} plans={plans} showActionText={false} />
+      <PricingTiers
+        organizationSlug={organizationSlug}
+        plans={plans}
+        showActionText={false}
+        freeButtonPath={organizationPath({ slug: organizationSlug })}
+      />
 
       <Sheet>
         <SheetTrigger asChild>

@@ -5,7 +5,7 @@ import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { ActiveSubscription, Plan, Plans, SetPlanBodySchema } from "@trigger.dev/billing";
 import { cn } from "~/utils/cn";
 import { DefinitionTip } from "../DefinitionTooltip";
-import { Button } from "../primitives/Buttons";
+import { Button, LinkButton } from "../primitives/Buttons";
 import { Paragraph } from "../primitives/Paragraph";
 import SegmentedControl from "../primitives/SegmentedControl";
 import { formatNumberCompact } from "~/utils/numberFormatter";
@@ -45,11 +45,13 @@ export function PricingTiers({
   plans,
   className,
   showActionText = true,
+  freeButtonPath,
 }: {
   organizationSlug: string;
   plans: Plans;
   className?: string;
   showActionText?: boolean;
+  freeButtonPath?: string;
 }) {
   const currentPlan = useCurrentPlan();
   //if they've canceled, we set the subscription to undefined so they can re-upgrade
@@ -70,6 +72,7 @@ export function PricingTiers({
         currentSubscription={currentSubscription}
         organizationSlug={organizationSlug}
         showActionText={showActionText}
+        buttonPath={freeButtonPath}
       />
       <TierPro
         plan={plans.paid}
@@ -87,11 +90,13 @@ export function TierFree({
   organizationSlug,
   showActionText,
   currentSubscription,
+  buttonPath,
 }: {
   plan: Plan;
   organizationSlug: string;
   showActionText: boolean;
   currentSubscription?: ActiveSubscription;
+  buttonPath?: string;
 }) {
   const lastSubmission = useActionData();
   const [form] = useForm({
@@ -133,15 +138,26 @@ export function TierFree({
           </DefinitionTip>
         </TierLimit>
         <input type="hidden" name="type" value="free" />
-        <Button
-          variant="secondary/large"
-          fullWidth
-          className="text-md my-6 font-medium"
-          disabled={isLoading || isCurrentPlan}
-          LeadingIcon={isLoading ? "spinner-white" : undefined}
-        >
-          {isLoading ? "Updating plan" : actionText}
-        </Button>
+        {buttonPath ? (
+          <LinkButton
+            variant="secondary/large"
+            fullWidth
+            className="text-md my-6 font-medium"
+            to={buttonPath}
+          >
+            {actionText}
+          </LinkButton>
+        ) : (
+          <Button
+            variant="secondary/large"
+            fullWidth
+            className="text-md my-6 font-medium"
+            disabled={isLoading || isCurrentPlan}
+            LeadingIcon={isLoading ? "spinner-white" : undefined}
+          >
+            {isLoading ? "Updating plan" : actionText}
+          </Button>
+        )}
         <ul className="flex flex-col gap-2.5">
           <FeatureItem checked>
             Up to {plan.runs?.freeAllowance ? formatNumberCompact(plan.runs.freeAllowance) : ""}{" "}
