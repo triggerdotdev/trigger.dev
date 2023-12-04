@@ -543,18 +543,22 @@ importers:
       '@trigger.dev/integration-kit': workspace:^2.2.10
       '@trigger.dev/sdk': workspace:^2.2.10
       '@trigger.dev/tsconfig': workspace:*
+      '@trigger.dev/tsup': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
-      tsup: ^6.5.0
+      tsup: 8.0.1
+      typescript: ^5.3.0
     dependencies:
       '@team-plain/typescript-sdk': 2.7.0
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@trigger.dev/tsup': link:../../config-packages/tsup
       '@types/node': 18.15.13
       rimraf: 3.0.2
-      tsup: 6.6.3
+      tsup: 8.0.1_a5ztaafw5l4qfghy2hjjuynb34_typescript@5.3.2
+      typescript: 5.3.2
 
   integrations/replicate:
     specifiers:
