@@ -235,7 +235,7 @@ function SliderMarker({
 }) {
   return (
     <div
-      className="absolute top-0 h-4 w-px bg-slate-850"
+      className="absolute top-0 h-4"
       style={{
         left: `${percentage * 100}%`,
       }}
