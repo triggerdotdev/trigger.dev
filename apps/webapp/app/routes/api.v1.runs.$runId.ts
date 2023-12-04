@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { runOriginalStatus } from "~/models/jobRun.server";
 import { ApiRunPresenter } from "~/presenters/ApiRunPresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { apiCors } from "~/utils/apiCors";
@@ -79,7 +80,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     request,
     json({
       id: jobRun.id,
-      status: jobRun.status,
+      status: runOriginalStatus(jobRun.status),
       startedAt: jobRun.startedAt,
       updatedAt: jobRun.updatedAt,
       completedAt: jobRun.completedAt,

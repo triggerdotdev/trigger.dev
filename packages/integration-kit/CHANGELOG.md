@@ -1,5 +1,24 @@
 # @trigger.dev/integration-kit
 
+## 2.2.11
+
+### Patch Changes
+
+- @trigger.dev/core@2.2.11
+
+## 2.2.10
+
+### Patch Changes
+
+- @trigger.dev/core@2.2.10
+
+## 2.2.9
+
+### Patch Changes
+
+- Updated dependencies [6ebd435e]
+  - @trigger.dev/core@2.2.9
+
 ## 2.2.8
 
 ### Patch Changes

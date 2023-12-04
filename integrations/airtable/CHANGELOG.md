@@ -1,5 +1,30 @@
 # @trigger.dev/airtable
 
+## 2.2.11
+
+### Patch Changes
+
+- de652c1d: Fix Shopify task types and KV `get()` return types
+- Updated dependencies [de652c1d]
+  - @trigger.dev/sdk@2.2.11
+  - @trigger.dev/integration-kit@2.2.11
+
+## 2.2.10
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@2.2.10
+- @trigger.dev/sdk@2.2.10
+
+## 2.2.9
+
+### Patch Changes
+
+- Updated dependencies [1dcd87a2]
+- Updated dependencies [6ebd435e]
+  - @trigger.dev/sdk@2.2.9
+  - @trigger.dev/integration-kit@2.2.9
+
 ## 2.2.8
 
 ### Patch Changes

@@ -3,6 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import { JobRunStatusRecordSchema } from "@trigger.dev/core";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { runOriginalStatus } from "~/models/jobRun.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { apiCors } from "~/utils/apiCors";
@@ -66,7 +67,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       json({
         run: {
           id: run.id,
-          status: run.status,
+          status: runOriginalStatus(run.status),
           output: run.output,
         },
         statuses: parsedStatuses,

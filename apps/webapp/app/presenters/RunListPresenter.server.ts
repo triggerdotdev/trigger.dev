@@ -1,5 +1,5 @@
-import { PrismaClient, prisma } from "~/db.server";
 import { z } from "zod";
+import { PrismaClient, prisma } from "~/db.server";
 import { DirectionSchema } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/route";
 
 export type Direction = z.infer<typeof DirectionSchema>;
@@ -36,6 +36,41 @@ export class RunListPresenter {
   }: RunListOptions) {
     const directionMultiplier = direction === "forward" ? 1 : -1;
 
+    // Find the organization that the user is a member of
+    const organization = await this.#prismaClient.organization.findFirstOrThrow({
+      where: {
+        slug: organizationSlug,
+        members: { some: { userId } },
+      },
+    });
+
+
+    // Find the project scoped to the organization
+    const project = await this.#prismaClient.project.findFirstOrThrow({
+      where: {
+        slug: projectSlug,
+        organizationId: organization.id,
+      },
+    });
+
+    // Find all runtimeEnvironments that the user has access to
+    const environments = await this.#prismaClient.runtimeEnvironment.findMany({
+      where: {
+        projectId: project.id,
+        OR: [
+          { orgMember: { userId } },
+          { orgMemberId: null },
+        ]
+      }
+    });
+
+    const job = jobSlug ? await this.#prismaClient.job.findFirstOrThrow({
+      where: {
+        slug: jobSlug,
+        projectId: project.id,
+      },
+    }) : undefined;
+
     const runs = await this.#prismaClient.jobRun.findMany({
       select: {
         id: true,
@@ -70,26 +105,11 @@ export class RunListPresenter {
         },
       },
       where: {
-        job: jobSlug
-          ? {
-              slug: jobSlug,
-            }
-          : undefined,
-        project: {
-          slug: projectSlug,
-        },
-        organization: { slug: organizationSlug, members: { some: { userId } } },
-        environment: {
-          OR: [
-            {
-              orgMember: null,
-            },
-            {
-              orgMember: {
-                userId,
-              },
-            },
-          ],
+        jobId: job?.id,
+        projectId: project.id,
+        organizationId: organization.id,
+        environmentId: {
+          in: environments.map((environment) => environment.id),
         },
       },
       orderBy: [{ id: "desc" }],
@@ -99,8 +119,8 @@ export class RunListPresenter {
       skip: cursor ? 1 : 0,
       cursor: cursor
         ? {
-            id: cursor,
-          }
+          id: cursor,
+        }
         : undefined,
     });
 

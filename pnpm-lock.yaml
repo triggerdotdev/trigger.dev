@@ -126,7 +126,7 @@ importers:
       '@tabler/icons-react': ^2.39.0
       '@tailwindcss/forms': ^0.5.3
       '@tailwindcss/typography': ^0.5.9
-      '@team-plain/typescript-sdk': ^2.2.0
+      '@team-plain/typescript-sdk': ^3.5.0
       '@total-typescript/ts-reset': ^0.4.2
       '@trigger.dev/companyicons': ^1.5.32
       '@trigger.dev/core': workspace:*
@@ -262,7 +262,7 @@ importers:
       '@remix-run/server-runtime': 2.1.0_typescript@5.2.2
       '@remix-run/v1-meta': 0.1.3_ybjp5xbtg4zthziheradfmei64
       '@tabler/icons-react': 2.40.0_react@18.2.0
-      '@team-plain/typescript-sdk': 2.2.0
+      '@team-plain/typescript-sdk': 3.5.0
       '@trigger.dev/companyicons': 1.5.32_biqbaboplfbrettd7655fr4n2y
       '@trigger.dev/core': link:../../packages/core
       '@trigger.dev/core-backend': link:../../packages/core-backend
@@ -415,8 +415,8 @@ importers:
 
   integrations/airtable:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.8
-      '@trigger.dev/sdk': workspace:^2.2.8
+      '@trigger.dev/integration-kit': workspace:^2.2.11
+      '@trigger.dev/sdk': workspace:^2.2.11
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       airtable: ^0.12.1
@@ -443,8 +443,8 @@ importers:
       '@octokit/types': ^9.2.3
       '@octokit/webhooks': ^10.4.0
       '@octokit/webhooks-types': ^6.10.0
-      '@trigger.dev/integration-kit': workspace:^2.2.8
-      '@trigger.dev/sdk': workspace:^2.2.8
+      '@trigger.dev/integration-kit': workspace:^2.2.11
+      '@trigger.dev/sdk': workspace:^2.2.11
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       octokit: ^2.0.14
@@ -470,8 +470,8 @@ importers:
   integrations/linear:
     specifiers:
       '@linear/sdk': ^8.0.0
-      '@trigger.dev/integration-kit': workspace:^2.2.8
-      '@trigger.dev/sdk': workspace:^2.2.8
+      '@trigger.dev/integration-kit': workspace:^2.2.11
+      '@trigger.dev/sdk': workspace:^2.2.11
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -492,8 +492,8 @@ importers:
 
   integrations/openai:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.8
-      '@trigger.dev/sdk': workspace:^2.2.8
+      '@trigger.dev/integration-kit': workspace:^2.2.11
+      '@trigger.dev/sdk': workspace:^2.2.11
       '@trigger.dev/tsconfig': workspace:*
       '@types/jest': ^29.5.3
       '@types/node': '18'
@@ -520,8 +520,8 @@ importers:
   integrations/plain:
     specifiers:
       '@team-plain/typescript-sdk': ^2.7.0
-      '@trigger.dev/integration-kit': workspace:^2.2.8
-      '@trigger.dev/sdk': workspace:^2.2.8
+      '@trigger.dev/integration-kit': workspace:^2.2.11
+      '@trigger.dev/sdk': workspace:^2.2.11
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
@@ -538,8 +538,8 @@ importers:
 
   integrations/replicate:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.8
-      '@trigger.dev/sdk': workspace:^2.2.8
+      '@trigger.dev/integration-kit': workspace:^2.2.11
+      '@trigger.dev/sdk': workspace:^2.2.11
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       replicate: ^0.18.1
@@ -561,8 +561,8 @@ importers:
 
   integrations/resend:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.8
-      '@trigger.dev/sdk': workspace:^2.2.8
+      '@trigger.dev/integration-kit': workspace:^2.2.11
+      '@trigger.dev/sdk': workspace:^2.2.11
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       resend: ^2.0.0
@@ -581,8 +581,8 @@ importers:
   integrations/sendgrid:
     specifiers:
       '@sendgrid/mail': ^7.7.0
-      '@trigger.dev/integration-kit': workspace:^2.2.8
-      '@trigger.dev/sdk': workspace:^2.2.8
+      '@trigger.dev/integration-kit': workspace:^2.2.11
+      '@trigger.dev/sdk': workspace:^2.2.11
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -602,8 +602,8 @@ importers:
   integrations/shopify:
     specifiers:
       '@shopify/shopify-api': ^8.0.2
-      '@trigger.dev/integration-kit': workspace:^2.2.8
-      '@trigger.dev/sdk': workspace:^2.2.8
+      '@trigger.dev/integration-kit': workspace:^2.2.11
+      '@trigger.dev/sdk': workspace:^2.2.11
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -625,7 +625,7 @@ importers:
   integrations/slack:
     specifiers:
       '@slack/web-api': ^6.8.1
-      '@trigger.dev/sdk': workspace:^2.2.8
+      '@trigger.dev/sdk': workspace:^2.2.11
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2
@@ -643,8 +643,8 @@ importers:
 
   integrations/stripe:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.8
-      '@trigger.dev/sdk': workspace:^2.2.8
+      '@trigger.dev/integration-kit': workspace:^2.2.11
+      '@trigger.dev/sdk': workspace:^2.2.11
       '@types/node': 16.x
       rimraf: ^3.0.2
       stripe: ^12.14.0
@@ -667,8 +667,8 @@ importers:
   integrations/supabase:
     specifiers:
       '@supabase/supabase-js': ^2.26.0
-      '@trigger.dev/integration-kit': workspace:^2.2.8
-      '@trigger.dev/sdk': workspace:^2.2.8
+      '@trigger.dev/integration-kit': workspace:^2.2.11
+      '@trigger.dev/sdk': workspace:^2.2.11
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 18.x
       rimraf: ^3.0.2
@@ -691,8 +691,8 @@ importers:
 
   integrations/typeform:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.2.8
-      '@trigger.dev/sdk': workspace:^2.2.8
+      '@trigger.dev/integration-kit': workspace:^2.2.11
+      '@trigger.dev/sdk': workspace:^2.2.11
       '@typeform/api-client': ^1.8.0
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -946,7 +946,7 @@ importers:
 
   packages/express:
     specifiers:
-      '@trigger.dev/sdk': workspace:^2.2.8
+      '@trigger.dev/sdk': workspace:^2.2.11
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/express': ^4.17.13
@@ -994,7 +994,7 @@ importers:
     specifiers:
       '@nestjs/common': ^10.2.4
       '@remix-run/web-fetch': ^4.3.5
-      '@trigger.dev/sdk': workspace:^2.2.8
+      '@trigger.dev/sdk': workspace:^2.2.11
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/express': ^4.17.13
@@ -1047,7 +1047,7 @@ importers:
   packages/react:
     specifiers:
       '@tanstack/react-query': 5.0.0-beta.2
-      '@trigger.dev/core': workspace:^2.2.8
+      '@trigger.dev/core': workspace:^2.2.11
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/react': 18.2.17
@@ -1142,8 +1142,8 @@ importers:
 
   packages/trigger-sdk:
     specifiers:
-      '@trigger.dev/core': workspace:^2.2.8
-      '@trigger.dev/core-backend': workspace:^2.2.8
+      '@trigger.dev/core': workspace:^2.2.11
+      '@trigger.dev/core-backend': workspace:^2.2.11
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/node': '18'
@@ -14221,17 +14221,6 @@ packages:
       react: 18.2.0
     dev: false
 
-  /@team-plain/typescript-sdk/2.2.0:
-    resolution: {integrity: sha512-ZNRZJ1uhQYHqaAKNAMdcSvULxutDQldocJWEDxJ5CJX4QYyzD8adK7gB9szKQDsxHFA3sZgTjtSruFBOf+C2fw==}
-    dependencies:
-      '@graphql-typed-document-node/core': 3.2.0_graphql@16.6.0
-      axios: 1.4.0
-      graphql: 16.6.0
-      zod: 3.22.4
-    transitivePeerDependencies:
-      - debug
-    dev: false
-
   /@team-plain/typescript-sdk/2.7.0:
     resolution: {integrity: sha512-n5CRvOuGAUvuAIAL2/4jgr6dG1kW8pelbXyq4YObzGcvUcQRyJ69d93bBvduFAh5/1sQYMUle6BYT/3liwpcfQ==}
     dependencies:
@@ -14241,6 +14230,14 @@ packages:
       zod: 3.22.4
     transitivePeerDependencies:
       - debug
+    dev: false
+
+  /@team-plain/typescript-sdk/3.5.0:
+    resolution: {integrity: sha512-9kweiSlYAN31VI7yzILGxdlZqsGJ+FmCEfXyEZ/0/i3r6vOwq45FDqtjadnQJVtFm+rf/8vCFRN+wEYMIEv6Aw==}
+    dependencies:
+      '@graphql-typed-document-node/core': 3.2.0_graphql@16.6.0
+      graphql: 16.6.0
+      zod: 3.22.4
     dev: false
 
   /@testing-library/dom/8.19.1:

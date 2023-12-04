@@ -1,6 +1,8 @@
-import { z } from "zod"
+import { z } from "zod";
 
-export const PriceEventNamesSchema = z.array(z.enum(["price.created", "price.updated", "price.deleted"]));
+export const PriceEventNamesSchema = z.array(
+  z.enum(["price.created", "price.updated", "price.deleted"])
+);
 export type PriceEventNames = z.infer<typeof PriceEventNamesSchema>;
 
 export const ProductEventNamesSchema = z.array(
@@ -88,3 +90,21 @@ export const PayoutEventNamesSchema = z.array(
   ])
 );
 export type PayoutEventNames = z.infer<typeof PayoutEventNamesSchema>;
+
+export const InvoiceEventNamesSchema = z.array(
+  z.enum([
+    "invoice.created",
+    "invoice.finalized",
+    "invoice.finalization_failed",
+    "invoice.deleted",
+    "invoice.marked_uncollectible",
+    "invoice.paid",
+    "invoice.payment_action_required",
+    "invoice.payment_failed",
+    "invoice.payment_succeeded",
+    "invoice.sent",
+    "invoice.upcoming",
+    "invoice.voided",
+  ])
+);
+export type InvoiceEventNames = z.infer<typeof InvoiceEventNamesSchema>;
