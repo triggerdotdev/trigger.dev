@@ -76,7 +76,7 @@ export default function Subscribed() {
       <FormButtons
         confirmButton={
           <LinkButton to={"/"} variant={"primary/small"} TrailingIcon={"arrow-right"}>
-            Finish
+            Continue
           </LinkButton>
         }
       />
