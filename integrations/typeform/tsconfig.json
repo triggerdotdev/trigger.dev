@@ -20,7 +20,11 @@
     "lib": ["es2019"],
     "module": "commonjs",
     "target": "es2021",
-    "stripInternal": true
+    "stripInternal": true,
+    "paths": {
+      "@trigger.dev/tsup/*": ["../../config-packages/tsup/src/*"],
+      "@trigger.dev/tsup": ["../../config-packages/tsup/src/index"]
+    }
   },
   "include": ["./src/**/*.ts", "tsup.config.ts"],
   "exclude": ["node_modules"]
