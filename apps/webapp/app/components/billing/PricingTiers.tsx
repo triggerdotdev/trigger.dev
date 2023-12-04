@@ -13,6 +13,7 @@ import { useState } from "react";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { Spinner } from "../primitives/Spinner";
 import { RunsVolumeDiscountTable } from "./RunsVolumeDiscountTable";
+import { Feedback } from "../Feedback";
 
 const pricingDefinitions = {
   concurrentRuns: {
@@ -367,9 +368,14 @@ export function TierEnterprise() {
         </DefinitionTip>
       </TierLimit>
       <div className="py-6">
-        <LinkButton variant="secondary/large" fullWidth className="text-md font-medium" to={""}>
-          Contact us
-        </LinkButton>
+        <Feedback
+          button={
+            <LinkButton variant="secondary/large" fullWidth className="text-md font-medium" to={""}>
+              Contact us
+            </LinkButton>
+          }
+          defaultValue="enterprise"
+        />
       </div>
       <ul className="flex flex-col gap-2.5">
         <FeatureItem checked>
