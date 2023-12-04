@@ -52,7 +52,7 @@ export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Usage & Billing" />,
 };
 
-function planLabel(subscription?: ActiveSubscription) {
+function planLabel(subscription: ActiveSubscription | undefined, periodEnd: Date) {
   if (!subscription) {
     return "You're currently on the Free plan";
   }
@@ -66,8 +66,7 @@ function planLabel(subscription?: ActiveSubscription) {
     return (
       <>
         You're on the {costDescription} {subscription.plan.title} plan until{" "}
-        <DateTime includeTime={false} date={subscription.canceledAt} /> when you'll be on the Free
-        plan
+        <DateTime includeTime={false} date={periodEnd} /> when you'll be on the Free plan
       </>
     );
   }
@@ -117,7 +116,7 @@ export default function Page() {
             {currentPlan?.subscription && (
               <PageInfoProperty
                 icon={<ReceiptRefundIcon className="h-4 w-4 text-green-600" />}
-                value={planLabel(currentPlan.subscription)}
+                value={planLabel(currentPlan.subscription, currentPlan.usage.periodEnd)}
               />
             )}
             {currentPlan?.subscription?.isPaying && (
