@@ -63,9 +63,7 @@ export class CreateRunService {
           endpointId: endpoint.id,
           batched,
           payload: JSON.stringify(
-            eventRecords.length > 1
-              ? eventRecords.map((event) => event.payload) ?? [{}]
-              : firstEvent.payload ?? {}
+            batched ? eventRecords.map((event) => event.payload) ?? [{}] : firstEvent.payload ?? {}
           ),
           externalAccountId: firstEvent.externalAccountId
             ? firstEvent.externalAccountId
