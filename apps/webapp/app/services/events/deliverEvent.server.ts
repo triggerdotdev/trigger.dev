@@ -74,7 +74,7 @@ export class DeliverEventService {
             if (eventDispatcher.batcher) {
               const { maxPayloads, runAt } = this.#getBatchEnqueueOptions(eventDispatcher.batcher);
 
-              return workerQueue.batchEnqueue("events.invokeDispatchChunker", [eventRecord.id], {
+              return workerQueue.batchEnqueue("events.invokeDispatchBatcher", [eventRecord.id], {
                 tx,
                 jobKey: eventDispatcher.id,
                 maxPayloads,

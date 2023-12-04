@@ -78,7 +78,7 @@ const workerCatalog = {
     ])
   ),
   deliverEvent: z.object({ id: z.string() }),
-  "events.invokeDispatchChunker": z.array(z.string()),
+  "events.invokeDispatchBatcher": z.array(z.string()),
   "events.invokeBatchDispatcher": z.object({
     id: z.string(),
     eventRecordIds: z.string().array(),
@@ -250,7 +250,7 @@ function getWorkerQueue() {
       },
     },
     tasks: {
-      "events.invokeDispatchChunker": {
+      "events.invokeDispatchBatcher": {
         priority: 0, // smaller number = higher priority
         maxAttempts: 6,
         queueName: (payload, jobKey) => `dispatcher-chunk:${jobKey}`,
