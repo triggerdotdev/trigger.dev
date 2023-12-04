@@ -1,5 +1,4 @@
 import {
-  ObjectNonNullable,
   OmitFunctions,
   OmitIndexSignature,
   OmitValues,
@@ -7,16 +6,14 @@ import {
 } from "@trigger.dev/integration-kit";
 import { ShopifyRestResources } from "./index";
 
-type OmitNonSerializable<T> = Omit<OmitFunctions<OmitIndexSignature<T>>, "session">;
+type OmitNonSerializable<T> = OmitFunctions<OmitIndexSignature<T>>;
 
-export type SerializedShopifyResource<T, TNonNullable extends boolean = true> = Prettify<
-  TNonNullable extends true ? ObjectNonNullable<OmitNonSerializable<T>> : OmitNonSerializable<T>
->;
+export type SerializedShopifyResource<T> = Prettify<Omit<OmitNonSerializable<T>, "session">>;
 
-export type RecursiveShopifySerializer<T, TNonNullable extends boolean = true> = T extends object
+export type RecursiveShopifySerializer<T> = T extends object
   ? T extends Array<infer U>
     ? Array<RecursiveShopifySerializer<U>>
-    : SerializedShopifyResource<T, TNonNullable>
+    : SerializedShopifyResource<T>
   : T;
 
 export type ShopifyReturnType<
@@ -42,7 +39,7 @@ export type ShopifyWebhookPayload = {
 
 export type ShopifyInputType = {
   [K in keyof OmitIndexSignature<ShopifyRestResources>]: Prettify<
-    Partial<SerializedShopifyResource<ShopifyResource<K>, false>>
+    Partial<SerializedShopifyResource<ShopifyResource<K>>>
   > & { id?: number };
 };
 

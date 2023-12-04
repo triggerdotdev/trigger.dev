@@ -74,9 +74,12 @@ export class KeyValueStore {
     );
   }
 
-  async get<T extends Json<T> = any>(cacheKey: string | any[], key: string): Promise<T>;
-  async get<T extends Json<T> = any>(key: string): Promise<T>;
-  async get<T extends Json<T> = any>(param1: string | any[], param2?: string): Promise<T> {
+  async get<T extends Json<T> = any>(cacheKey: string | any[], key: string): Promise<T | undefined>;
+  async get<T extends Json<T> = any>(key: string): Promise<T | undefined>;
+  async get<T extends Json<T> = any>(
+    param1: string | any[],
+    param2?: string
+  ): Promise<T | undefined> {
     const runStore = runLocalStorage.getStore();
 
     if (!runStore) {
