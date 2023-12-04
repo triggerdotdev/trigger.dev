@@ -1170,20 +1170,24 @@ importers:
     specifiers:
       '@sveltejs/kit': ^1.20.4
       '@trigger.dev/tsconfig': workspace:*
+      '@trigger.dev/tsup': workspace:*
       '@types/debug': ^4.1.7
       '@types/ws': ^8.5.3
       debug: ^4.3.4
       rimraf: ^3.0.2
-      tsup: ^6.5.0
+      tsup: 8.0.1
+      typescript: ^5.3.0
     dependencies:
       debug: 4.3.4
     devDependencies:
       '@sveltejs/kit': 1.25.1
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@trigger.dev/tsup': link:../../config-packages/tsup
       '@types/debug': 4.1.7
       '@types/ws': 8.5.4
       rimraf: 3.0.2
-      tsup: 6.6.3
+      tsup: 8.0.1_a5ztaafw5l4qfghy2hjjuynb34_typescript@5.3.2
+      typescript: 5.3.2
 
   packages/testing:
     specifiers:
