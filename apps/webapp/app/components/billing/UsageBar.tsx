@@ -1,5 +1,5 @@
 import { cn } from "~/utils/cn";
-import { formatter, formatNumberCompact } from "~/utils/numberFormatter";
+import { formatNumberCompact } from "~/utils/numberFormatter";
 import { Paragraph } from "../primitives/Paragraph";
 import { SimpleTooltip } from "../primitives/Tooltip";
 import { motion } from "framer-motion";
@@ -46,7 +46,7 @@ export function UsageBar({
           >
             <Legend
               text="Billing limit:"
-              value={formatter.format(billingLimit)}
+              value={formatNumberCompact(billingLimit)}
               position="bottomRow2"
               percentage={billingLimitPercentage}
               tooltipContent={`Billing Limit: ${formatNumberCompact(billingLimit)}`}
@@ -62,7 +62,7 @@ export function UsageBar({
         >
           <Legend
             text={`${subscribedToPaidTier ? "Included free:" : "Free tier limit:"}`}
-            value={formatter.format(tierRunLimit)}
+            value={formatNumberCompact(tierRunLimit)}
             position="bottomRow1"
             percentage={tierRunLimitPercentage}
             tooltipContent={`${
@@ -82,7 +82,7 @@ export function UsageBar({
           >
             <Legend
               text="Projected:"
-              value={formatter.format(projectedRuns)}
+              value={formatNumberCompact(projectedRuns)}
               position="topRow2"
               percentage={projectedRunsPercentage}
               tooltipContent={`Projected Runs: ${formatNumberCompact(projectedRuns)}`}
@@ -101,7 +101,7 @@ export function UsageBar({
         >
           <Legend
             text="Current:"
-            value={formatter.format(numberOfCurrentRuns)}
+            value={formatNumberCompact(numberOfCurrentRuns)}
             position="topRow1"
             percentage={usagePercentage}
             tooltipContent={`Current Run count: ${formatNumberCompact(numberOfCurrentRuns)}`}

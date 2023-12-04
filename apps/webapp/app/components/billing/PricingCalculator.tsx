@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import { DefinitionTip } from "../DefinitionTooltip";
 import { Header2 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
-import { formatNumberCompact } from "~/utils/numberFormatter";
+import { formatCurrency, formatNumberCompact } from "~/utils/numberFormatter";
 import { cn } from "~/utils/cn";
 
 export function PricingCalculator({ plans }: { plans: Plans }) {
@@ -104,7 +104,9 @@ function ConcurrentRunsSlider({
         </div>
         <div className="flex h-full items-start">
           <span className="ml-6 text-dimmed">=</span>
-          <Header2 className="min-w-[8ch] text-right text-dimmed">${cost.toFixed(2)}</Header2>
+          <Header2 className="min-w-[8ch] text-right text-dimmed">
+            {formatCurrency(cost, true)}
+          </Header2>
         </div>
       </div>
       <hr className="mt-6 border-border" />
@@ -184,7 +186,9 @@ function RunsSlider({
         </div>
         <div className="flex h-full items-start">
           <span className="ml-6 text-dimmed">=</span>
-          <Header2 className="min-w-[8ch] text-right text-dimmed">${cost.toFixed(2)}</Header2>
+          <Header2 className="min-w-[8ch] text-right text-dimmed">
+            {formatCurrency(cost, true)}
+          </Header2>
         </div>
       </div>
       <hr className="mt-6 border-border" />
@@ -215,7 +219,7 @@ function GrandTotal({ cost }: { cost: number }) {
   return (
     <div className="flex justify-between">
       <Header2>Total monthly estimate</Header2>
-      <Header2>${cost.toFixed(2)}</Header2>
+      <Header2>{formatCurrency(cost, true)}</Header2>
     </div>
   );
 }

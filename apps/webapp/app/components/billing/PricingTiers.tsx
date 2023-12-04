@@ -138,26 +138,28 @@ export function TierFree({
           </DefinitionTip>
         </TierLimit>
         <input type="hidden" name="type" value="free" />
-        {buttonPath ? (
-          <LinkButton
-            variant="secondary/large"
-            fullWidth
-            className="text-md my-6 font-medium"
-            to={buttonPath}
-          >
-            {actionText}
-          </LinkButton>
-        ) : (
-          <Button
-            variant="secondary/large"
-            fullWidth
-            className="text-md my-6 font-medium"
-            disabled={isLoading || isCurrentPlan}
-            LeadingIcon={isLoading ? "spinner-white" : undefined}
-          >
-            {isLoading ? "Updating plan" : actionText}
-          </Button>
-        )}
+        <div className="py-6">
+          {buttonPath ? (
+            <LinkButton
+              variant="secondary/large"
+              fullWidth
+              className="text-md font-medium"
+              to={buttonPath}
+            >
+              {actionText}
+            </LinkButton>
+          ) : (
+            <Button
+              variant="secondary/large"
+              fullWidth
+              className="text-md font-medium"
+              disabled={isLoading || isCurrentPlan}
+              LeadingIcon={isLoading ? "spinner-white" : undefined}
+            >
+              {isLoading ? "Updating plan" : actionText}
+            </Button>
+          )}
+        </div>
         <ul className="flex flex-col gap-2.5">
           <FeatureItem checked>
             Up to {plan.runs?.freeAllowance ? formatNumberCompact(plan.runs.freeAllowance) : ""}{" "}
@@ -279,16 +281,18 @@ export function TierPro({
           value={concurrentBracketCode}
           onChange={(v) => setConcurrentBracketCode(v)}
         />
-        <Button
-          variant="primary/large"
-          fullWidth
-          className="text-md my-6 font-medium"
-          type="submit"
-          disabled={isLoading || isCurrentPlan}
-          LeadingIcon={isLoading ? "spinner-white" : undefined}
-        >
-          {isLoading ? "Updating plan" : actionText}
-        </Button>
+        <div className="py-6">
+          <Button
+            variant="primary/large"
+            fullWidth
+            className="text-md font-medium"
+            type="submit"
+            disabled={isLoading || isCurrentPlan}
+            LeadingIcon={isLoading ? "spinner-white" : undefined}
+          >
+            {isLoading ? "Updating plan" : actionText}
+          </Button>
+        </div>
         <ul className="flex flex-col gap-2.5">
           <FeatureItem checked>
             Includes {freeRunCount ? formatNumberCompact(freeRunCount) : ""}{" "}
@@ -356,9 +360,11 @@ export function TierEnterprise() {
           {pricingDefinitions.concurrentRuns.title}
         </DefinitionTip>
       </TierLimit>
-      <Button variant="secondary/large" fullWidth className="text-md my-6 font-medium">
-        Contact us
-      </Button>
+      <div className="py-6">
+        <LinkButton variant="secondary/large" fullWidth className="text-md font-medium" to={""}>
+          Contact us
+        </LinkButton>
+      </div>
       <ul className="flex flex-col gap-2.5">
         <FeatureItem checked>
           Flexible{" "}

@@ -57,7 +57,7 @@ export default function ChoosePlanPage() {
             Estimate usage
           </Button>
         </SheetTrigger>
-        <SheetContent size="content">
+        <SheetContent size="lg">
           <SheetHeader className="justify-between">
             <div className="flex items-center gap-4">
               <Header1>Estimate your usage</Header1>
