@@ -68,9 +68,10 @@ export function ConcurrentRunsChart({
           )}
           <Line
             dataKey="maxConcurrentRuns"
+            name="Concurrent runs"
             stroke="#16A34A"
             strokeWidth={2}
-            name="Concurrent runs"
+            dot={false}
           />
         </LineChart>
       </ResponsiveContainer>

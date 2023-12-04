@@ -3,17 +3,15 @@ import { parse } from "@conform-to/zod";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { ActiveSubscription, Plan, Plans, SetPlanBodySchema } from "@trigger.dev/billing";
-import { cn } from "~/utils/cn";
-import { DefinitionTip } from "../DefinitionTooltip";
-import { Button, LinkButton } from "../primitives/Buttons";
-import { Paragraph } from "../primitives/Paragraph";
-import SegmentedControl from "../primitives/SegmentedControl";
-import { formatNumberCompact } from "~/utils/numberFormatter";
 import { useState } from "react";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
-import { Spinner } from "../primitives/Spinner";
-import { RunsVolumeDiscountTable } from "./RunsVolumeDiscountTable";
+import { cn } from "~/utils/cn";
+import { formatNumberCompact } from "~/utils/numberFormatter";
+import { DefinitionTip } from "../DefinitionTooltip";
 import { Feedback } from "../Feedback";
+import { Button, LinkButton } from "../primitives/Buttons";
+import SegmentedControl from "../primitives/SegmentedControl";
+import { RunsVolumeDiscountTable } from "./RunsVolumeDiscountTable";
 
 const pricingDefinitions = {
   concurrentRuns: {
@@ -370,9 +368,9 @@ export function TierEnterprise() {
       <div className="py-6">
         <Feedback
           button={
-            <LinkButton variant="secondary/large" fullWidth className="text-md font-medium" to={""}>
+            <Button variant="secondary/large" fullWidth className="text-md font-medium">
               Contact us
-            </LinkButton>
+            </Button>
           }
           defaultValue="enterprise"
         />
