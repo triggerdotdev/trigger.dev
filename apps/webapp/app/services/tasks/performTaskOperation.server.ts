@@ -214,8 +214,8 @@ export class PerformTaskOperationService {
         const abortController = new AbortController();
 
         // calculate the actual timeout. If timeoutInMs is undefined, we use the default of 120s
-        // Also make sure the timeout is at least 1s, but not bigger than 120s
-        const actualTimeoutInMs = Math.min(Math.max(timeout?.durationInMs ?? 120000, 1000), 120000);
+        // Also make sure the timeout is at least 1s, but not bigger than 300s
+        const actualTimeoutInMs = Math.min(Math.max(timeout?.durationInMs ?? 120000, 1000), 300000);
 
         const timeoutId = setTimeout(() => {
           abortController.abort();
