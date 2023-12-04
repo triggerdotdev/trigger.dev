@@ -5,6 +5,7 @@ import { DefinitionTip } from "../DefinitionTooltip";
 import { Header2 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
 import { formatNumberCompact } from "~/utils/numberFormatter";
+import { cn } from "~/utils/cn";
 
 export function PricingCalculator({ plans }: { plans: Plans }) {
   const [selectedConcurrencyIndex, setSelectedConcurrencyIndex] = useState(0);
@@ -162,17 +163,23 @@ function RunsSlider({
               aria-label="Concurrent Runs slider"
             />
           </Slider.Root>
-          <div className="flex w-[calc(100%+1rem)] items-center justify-between">
-            {brackets.map((bracket, i) => {
+          <div className="relative w-full">
+            {brackets.map((bracket, i, arr) => {
+              const percentagePerBracket = 1 / arr.length;
               return (
-                <Paragraph variant="extra-small" className="text-slate-600" key={i}>
-                  {formatNumberCompact(bracket.from)}
-                </Paragraph>
+                <SliderMarker
+                  key={i}
+                  percentage={(i / (arr.length - 1)) * percentagePerBracket * (arr.length - 1)}
+                  alignment={i === 0 ? "left" : "center"}
+                  text={formatNumberCompact(bracket.from)}
+                />
               );
             })}
-            <Paragraph variant="extra-small" className="text-slate-600">
-              {formatNumberCompact(brackets[brackets.length - 1].upto)}
-            </Paragraph>
+            <SliderMarker
+              percentage={1}
+              alignment={"right"}
+              text={formatNumberCompact(brackets[brackets.length - 1].upto)}
+            />
           </div>
         </div>
         <div className="flex h-full items-start">
@@ -209,6 +216,40 @@ function GrandTotal({ cost }: { cost: number }) {
     <div className="flex justify-between">
       <Header2>Total monthly estimate</Header2>
       <Header2>${cost.toFixed(2)}</Header2>
+    </div>
+  );
+}
+
+function SliderMarker({
+  percentage,
+  alignment,
+  text,
+}: {
+  percentage: number;
+  alignment: "left" | "center" | "right";
+  text: string;
+}) {
+  return (
+    <div
+      className="absolute top-0 h-4 w-px bg-slate-850"
+      style={{
+        left: `${percentage * 100}%`,
+      }}
+    >
+      <div
+        className={cn(
+          "absolute flex items-center",
+          alignment === "left"
+            ? "left-0 justify-start"
+            : alignment === "center"
+            ? "-translate-x-1/2 justify-center"
+            : "justify-middle right-0"
+        )}
+      >
+        <Paragraph variant="extra-small" className="text-slate-600">
+          {text}
+        </Paragraph>
+      </div>
     </div>
   );
 }
