@@ -600,7 +600,7 @@ export class TriggerClient {
           const sourceRequestInit: RequestInit = {
             method: req.method,
             headers: req.headers,
-            body: needsBody ? request.body : undefined,
+            body: needsBody ? req.body : undefined,
           };
 
           if (needsBody) {
