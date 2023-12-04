@@ -1,6 +1,5 @@
 import type { TriggerClient } from "@trigger.dev/sdk";
 import type { NextApiRequest, NextApiResponse } from "next";
-import { NextResponse } from "next/server";
 
 export function createPagesRoute(client: TriggerClient) {
   const handler = async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -40,10 +39,15 @@ export function createAppRoute(client: TriggerClient) {
     const response = await client.handleRequest(req);
 
     if (!response) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return new Response(JSON.stringify({ error: "Not found" }), {
+        status: 404,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
     }
 
-    return new NextResponse(JSON.stringify(response.body), {
+    return new Response(JSON.stringify(response.body), {
       status: response.status,
       headers: response.headers,
     });
