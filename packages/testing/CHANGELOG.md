@@ -1,5 +1,20 @@
 # @trigger.dev/testing
 
+## 2.2.11
+
+### Patch Changes
+
+- Updated dependencies [de652c1d]
+  - @trigger.dev/sdk@2.2.11
+  - @trigger.dev/core@2.2.11
+
+## 2.2.10
+
+### Patch Changes
+
+- @trigger.dev/core@2.2.10
+- @trigger.dev/sdk@2.2.10
+
 ## 2.2.9
 
 ### Patch Changes

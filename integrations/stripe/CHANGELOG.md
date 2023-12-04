@@ -1,5 +1,21 @@
 # @trigger.dev/stripe
 
+## 2.2.11
+
+### Patch Changes
+
+- Updated dependencies [de652c1d]
+  - @trigger.dev/sdk@2.2.11
+  - @trigger.dev/integration-kit@2.2.11
+
+## 2.2.10
+
+### Patch Changes
+
+- 7e3a82ef: Added invoice and invoice item webhook triggers
+  - @trigger.dev/integration-kit@2.2.10
+  - @trigger.dev/sdk@2.2.10
+
 ## 2.2.9
 
 ### Patch Changes

@@ -47,7 +47,7 @@ export class KeyValueStoreClient implements AsyncMap {
     return result.deleted;
   }
 
-  async get<T extends Json<T>>(key: string): Promise<T> {
+  async get<T extends Json<T>>(key: string): Promise<T | undefined> {
     const result = await this.queryStore("GET", {
       key: this.#namespacedKey(key),
     });

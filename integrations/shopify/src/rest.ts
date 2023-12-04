@@ -9,8 +9,23 @@ import {
   ShopifyInputType,
 } from "./types";
 
-type AllReturnType<TResource extends ShopifyRestResources[ResourcesWithStandardMethods]> = Promise<{
-  data: RecursiveShopifySerializer<Awaited<ReturnType<TResource["all"]>>["data"]>;
+type ResourceArrayWithIndexSignature<T extends any[]> = T extends Array<infer U>
+  ? Array<U & { [key: string]: any }>
+  : never;
+
+type RecursiveSomeNonNullable<T, TSome> = T extends object
+  ? T extends Array<infer U>
+    ? Array<RecursiveSomeNonNullable<U, TSome extends keyof U ? TSome : never>>
+    : SomeNonNullable<T, TSome extends keyof T ? TSome : never>
+  : T;
+
+type AllReturnType<
+  TResource extends ShopifyRestResources[ResourcesWithStandardMethods],
+  TSerializedData extends Record<any, any>[] = RecursiveShopifySerializer<
+    Awaited<ReturnType<TResource["all"]>>["data"]
+  >,
+> = Promise<{
+  data: ResourceArrayWithIndexSignature<RecursiveSomeNonNullable<TSerializedData, "id">>;
   pageInfo?: PageInfo;
 }>;
 
@@ -18,13 +33,23 @@ type CountReturnType = Promise<{ count: number }>;
 
 type DeleteReturnType = Promise<void>;
 
+type FindReturnType<
+  TResource extends ShopifyRestResources[ResourcesWithStandardMethods],
+  TSerialized extends Record<any, any> = RecursiveShopifySerializer<InstanceType<TResource>>,
+> = Promise<
+  | (SomeNonNullable<TSerialized, "id"> & {
+      [key: string]: any;
+    })
+  | null
+>;
+
 type SaveReturnType<
   TResource extends ShopifyRestResources[ResourcesWithStandardMethods],
   TUpdate extends boolean,
   TFromData extends any,
 > = Promise<
   TUpdate extends true
-    ? SomeNonNullable<RecursiveShopifySerializer<TResource["prototype"], false>, "id">
+    ? SomeNonNullable<RecursiveShopifySerializer<TResource["prototype"]>, "id">
     : TFromData
 >;
 
@@ -58,14 +83,18 @@ export class Resource<
   /**
    * Fetch a single resource by its ID.
    */
-  async find(key: string, params: Optional<Parameters<TResource["find"]>[0], "session">) {
+  async find(
+    key: string,
+    params: Optional<Parameters<TResource["find"]>[0], "session">
+  ): FindReturnType<TResource> {
     return this.runTask(
       key,
       async (client, task, io) => {
-        const abc = this.#withSession(params ?? {});
-        const resource = await client.rest[this.resourceType].find(this.#withSession(params));
+        const resource = (await client.rest[this.resourceType].find(
+          this.#withSession(params)
+        )) as Awaited<ReturnType<TResource["find"]>>;
 
-        return serializeShopifyResource(resource);
+        return JSON.parse(JSON.stringify(resource));
       },
       {
         name: `Find ${this.resourceType}`,
