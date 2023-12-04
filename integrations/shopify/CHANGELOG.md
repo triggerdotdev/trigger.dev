@@ -1,5 +1,14 @@
 # @trigger.dev/shopify
 
+## 2.2.11
+
+### Patch Changes
+
+- de652c1d: Fix Shopify task types and KV `get()` return types
+- Updated dependencies [de652c1d]
+  - @trigger.dev/sdk@2.2.11
+  - @trigger.dev/integration-kit@2.2.11
+
 ## 2.2.10
 
 ### Patch Changes

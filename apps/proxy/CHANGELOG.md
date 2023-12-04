@@ -1,5 +1,11 @@
 # proxy
 
+## 0.0.5
+
+### Patch Changes
+
+- @trigger.dev/core@2.2.11
+
 ## 0.0.4
 
 ### Patch Changes
