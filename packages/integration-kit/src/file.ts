@@ -1,5 +1,5 @@
-import fs, { promises } from "fs";
-import path from "path";
+import fs, { promises } from "node:fs";
+import path from "node:path";
 import { v4 as uuidv4 } from "uuid";
 
 export async function fileFromString(contents: string | Buffer, fileName: string): Promise<File> {
