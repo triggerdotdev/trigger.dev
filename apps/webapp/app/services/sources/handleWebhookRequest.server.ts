@@ -103,10 +103,10 @@ export class HandleWebhookRequestService {
     maxInterval: number | null;
   }): Pick<ZodWorkerBatchEnqueueOptions, "maxPayloads" | "runAt"> {
     const DEFAULT_MAX_PAYLOADS = 500;
-    const DEFAULT_MAX_INTERVAL_IN_SECONDS = 10 * 60;
+    const DEFAULT_MAX_INTERVAL_IN_SECONDS = 10;
 
     const MAX_PAYLOADS = DEFAULT_MAX_PAYLOADS;
-    const MAX_INTERVAL_IN_SECONDS = DEFAULT_MAX_INTERVAL_IN_SECONDS;
+    const MAX_INTERVAL_IN_SECONDS = 10 * 60;
 
     const maxPayloads = Math.min(batcherConfig?.maxPayloads ?? DEFAULT_MAX_PAYLOADS, MAX_PAYLOADS);
 
