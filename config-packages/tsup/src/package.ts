@@ -30,6 +30,9 @@ export const options: Options = {
   bundle: true,
   splitting: false,
   dts: true,
+  treeshake: {
+    preset: "recommended",
+  },
   esbuildPlugins: [restoreNodeProtocolPlugin()],
 };
 
