@@ -834,6 +834,7 @@ export class PerformRunExecutionV3Service {
             ],
           },
           forceYieldImmediately: false,
+          status: "WAITING_TO_EXECUTE",
         },
         select: {
           executionCount: true,
@@ -1005,6 +1006,7 @@ export class PerformRunExecutionV3Service {
             },
           },
           forceYieldImmediately: false,
+          status: "WAITING_TO_EXECUTE",
         },
       });
 
