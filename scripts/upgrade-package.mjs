@@ -65,19 +65,29 @@ async function updatePackage(directory) {
   // Updating tsconfig.json
   const tsconfigPath = join(directory, "tsconfig.json");
   const tsconfig = JSON.parse(await fs.readFile(tsconfigPath, "utf8"));
-  tsconfig.compilerOptions = tsconfig.compilerOptions || {};
-  tsconfig.compilerOptions.paths = {
-    ...tsconfig.compilerOptions.paths,
-    "@trigger.dev/tsup/*": ["../../config-packages/tsup/src/*"],
-    "@trigger.dev/tsup": ["../../config-packages/tsup/src/index"],
-  };
 
-  await fs.writeFile(
-    tsconfigPath,
-    await prettier.format(JSON.stringify(tsconfig, null, 2), { parser: "json", ...prettierConfig })
-  );
+  if (tsconfig.extends === "@trigger.dev/tsconfig/integration.json") {
+    console.log(
+      `✅ tsconfig.json for ${packageJson.name} already extends @trigger.dev/tsconfig/integration.json`
+    );
+  } else {
+    tsconfig.compilerOptions = tsconfig.compilerOptions || {};
+    tsconfig.compilerOptions.paths = {
+      ...tsconfig.compilerOptions.paths,
+      "@trigger.dev/tsup/*": ["../../config-packages/tsup/src/*"],
+      "@trigger.dev/tsup": ["../../config-packages/tsup/src/index"],
+    };
 
-  console.log(`✅ Updated tsconfig.json for ${packageJson.name}`);
+    await fs.writeFile(
+      tsconfigPath,
+      await prettier.format(JSON.stringify(tsconfig, null, 2), {
+        parser: "json",
+        ...prettierConfig,
+      })
+    );
+
+    console.log(`✅ Updated tsconfig.json for ${packageJson.name}`);
+  }
 
   // Updating tsup.config.ts
   const tsupConfigPath = join(directory, "tsup.config.ts");
