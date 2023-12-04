@@ -51,29 +51,35 @@ export default function Page() {
   const loaderData = useTypedLoaderData<typeof loader>();
   const currentPlan = useCurrentPlan();
 
-  console.log(currentPlan);
+  const hitConcurrencyLimit = currentPlan?.subscription?.limits.concurrentRuns
+    ? loaderData.concurrencyData.some(
+        (c) => c.maxConcurrentRuns >= currentPlan.subscription!.limits.concurrentRuns!
+      )
+    : false;
 
   return (
     <div className="flex flex-col gap-4">
       <div>
         <Header2 spacing>Concurrent Runs</Header2>
         <div className="flex w-full flex-col gap-5 rounded border border-border p-6">
-          <Callout
-            variant={"pricing"}
-            cta={
-              <LinkButton
-                variant="primary/small"
-                LeadingIcon={ArrowUpCircleIcon}
-                leadingIconClassName="px-0"
-                to={plansPath(organization)}
-              >
-                Increase concurrent Runs
-              </LinkButton>
-            }
-          >
-            Some of your Runs are being queued because the number of concurrent Runs is limited to
-            50.
-          </Callout>
+          {hitConcurrencyLimit && (
+            <Callout
+              variant={"pricing"}
+              cta={
+                <LinkButton
+                  variant="primary/small"
+                  LeadingIcon={ArrowUpCircleIcon}
+                  leadingIconClassName="px-0"
+                  to={plansPath(organization)}
+                >
+                  Increase concurrent Runs
+                </LinkButton>
+              }
+            >
+              {`Some of your Runs are being queued because the number of concurrent Runs is limited to
+            ${currentPlan?.subscription?.limits.concurrentRuns}.`}
+            </Callout>
+          )}
           <ConcurrentRunsChart
             data={loaderData.concurrencyData}
             concurrentRunsLimit={currentPlan?.subscription?.limits.concurrentRuns}

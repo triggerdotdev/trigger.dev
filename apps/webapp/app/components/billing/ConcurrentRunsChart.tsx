@@ -2,6 +2,7 @@ import {
   Label,
   Line,
   LineChart,
+  Rectangle,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -30,8 +31,6 @@ export function ConcurrentRunsChart({
   concurrentRunsLimit?: number;
   data: { name: string; maxConcurrentRuns: number }[];
 }) {
-  console.log(data);
-
   return (
     <div className="relative">
       <Header3 className="mb-4">Concurrent Runs</Header3>
@@ -81,7 +80,7 @@ export function ConcurrentRunsChart({
 
 function ReferenceLineLabel({ y }: { y: number }) {
   return (
-    <text x={0} y={y} fill={"#94A3B8"}>
+    <text x={0} y={y} fill={"#F43F5E"}>
       <tspan x={"8em"} dy={"0.3em"}>
         Concurrency limit
       </tspan>

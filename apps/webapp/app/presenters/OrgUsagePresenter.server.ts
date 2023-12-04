@@ -219,7 +219,6 @@ function fillInMissingConcurrencyDays(
   days: number,
   data: Array<{ day: Date; max_concurrent_runs: BigInt }>
 ) {
-  console.log("inputData", data);
   const outputData: Array<{ name: string; maxConcurrentRuns: number }> = [];
   for (let i = 0; i < days; i++) {
     const date = new Date(startDate);
