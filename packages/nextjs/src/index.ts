@@ -43,7 +43,10 @@ export function createAppRoute(client: TriggerClient) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    return NextResponse.json(response.body, { status: response.status, headers: response.headers });
+    return new NextResponse(JSON.stringify(response.body), {
+      status: response.status,
+      headers: response.headers,
+    });
   };
 
   return {
