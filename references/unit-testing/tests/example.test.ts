@@ -41,7 +41,7 @@ test("no integrations", async () => {
   expect(testRun.output).toEqual("job done");
 });
 
-test("stripe integration", async () => {
+test("stripe integration (dev env)", async () => {
   const jobToTest = client.defineJob({
     id: "stripe-example-1",
     name: "Stripe Example 1",
@@ -83,6 +83,68 @@ test("stripe integration", async () => {
   expect(testRun).toHaveSucceeded();
 
   // task was called exactly once
+  expect(testRun.tasks["create-charge"]).toHaveBeenCalledTimes(2);
+
+  // wask was called with correct params
+  expect(testRun.tasks["create-charge"]).toHaveBeenCalledWith({
+    amount: 100,
+    currency: "usd",
+    customer: "cus_123",
+    source: "src_123",
+  });
+
+  // mocked task output was correctly returned
+  expect(testRun.tasks["create-charge"]).toHaveReturnedWith({
+    id: "charge_1234",
+  });
+
+  // job run has expected output
+  expect(testRun.output).toEqual({ id: "charge_1234" });
+});
+
+test("stripe integration (non-dev env)", async () => {
+  const jobToTest = client.defineJob({
+    id: "stripe-example-1",
+    name: "Stripe Example 1",
+    version: "0.1.0",
+    trigger: eventTrigger({
+      name: "stripe.example",
+      schema: z.object({
+        customerId: z.string(),
+        source: z.string(),
+      }),
+    }),
+    integrations: {
+      stripe,
+    },
+    run: async (payload, io, ctx) => {
+      return await io.stripe.createCharge("create-charge", {
+        amount: 100,
+        currency: "usd",
+        source: payload.source,
+        customer: payload.customerId,
+      });
+    },
+  });
+
+  const testRun = await testJob(jobToTest, {
+    payload: {
+      customerId: "cus_123",
+      source: "src_123",
+    },
+    // mock task return
+    tasks: {
+      "create-charge": {
+        id: "charge_1234",
+      },
+    },
+    env: "PRODUCTION",
+  });
+
+  // job run was successful
+  expect(testRun).toHaveSucceeded();
+
+  // task was called exactly once
   expect(testRun.tasks["create-charge"]).toHaveBeenCalledOnce();
 
   // wask was called with correct params
@@ -102,7 +164,7 @@ test("stripe integration", async () => {
   expect(testRun.output).toEqual({ id: "charge_1234" });
 });
 
-test("dummy integration", async () => {
+test("dummy integration (dev env)", async () => {
   const jobToTest = client.defineJob({
     id: "dummy-job",
     name: "Dummy Job",
@@ -164,6 +226,104 @@ test("dummy integration", async () => {
   expect(testRun).toHaveSucceeded();
 
   // each task was called exactly once
+  expect(testRun.tasks["verse"]).toHaveBeenCalledTimes(2);
+  expect(testRun.tasks["chorus"]).toHaveBeenCalledTimes(2);
+
+  // tasks were called with correct params
+  expect(testRun.tasks["verse"]).toHaveBeenCalledWith({
+    we: {
+      strangersToLove: false,
+      knowTheRules: true,
+    },
+    thinkingOf: "full commitment",
+  });
+  expect(testRun.tasks["chorus"]).toHaveBeenCalledWith({
+    neverGonna: ["give you up", "let you down"],
+  });
+
+  // mocked task outputs were correctly returned
+  expect(testRun.tasks["verse"]).toHaveReturnedWith({
+    tellYou: {
+      how: "I'm feeling",
+    },
+    makeYou: "understand",
+  });
+  expect(testRun.tasks["chorus"]).toHaveReturnedWith({
+    alsoNever: ["run around", "desert you"],
+  });
+
+  // job run has expected output
+  expect(testRun.output).toEqual({
+    makeCry: false,
+    sayGoodbye: false,
+    tellLie: false,
+    hurtYou: false,
+  });
+});
+
+test("dummy integration (non-dev env)", async () => {
+  const jobToTest = client.defineJob({
+    id: "dummy-job",
+    name: "Dummy Job",
+    version: "0.1.0",
+    trigger: eventTrigger({
+      name: "start.rolling",
+      schema: z.object({
+        strangers: z.boolean(),
+        rules: z.boolean(),
+        thinkingOf: z.string().startsWith("git"),
+        never: z.array(z.string()).length(2),
+        alsoNever: z.array(z.string()),
+      }),
+    }),
+    integrations: {
+      dummy,
+    },
+    run: async (payload, io, ctx) => {
+      const getCommitment = (query: string) => (query.endsWith("-a") ? "full" : "partial");
+      await io.dummy.taskOne("verse", {
+        we: {
+          strangersToLove: payload.strangers,
+          knowTheRules: payload.rules,
+        },
+        thinkingOf: `${getCommitment(payload.thinkingOf)} commitment`,
+      });
+      await io.dummy.taskTwo("chorus", {
+        neverGonna: payload.never,
+      });
+      return ["makeCry", "sayGoodbye"]
+        .concat(payload.alsoNever)
+        .reduce((rick, never) => ({ ...rick, [never]: false }), {});
+    },
+  });
+
+  const testRun = await testJob(jobToTest, {
+    payload: {
+      strangers: false,
+      rules: true,
+      thinkingOf: "git commit -a",
+      never: ["give you up", "let you down"],
+      alsoNever: ["tellLie", "hurtYou"],
+    },
+    // mock task return
+    tasks: {
+      verse: {
+        tellYou: {
+          how: "I'm feeling",
+        },
+        makeYou: "understand",
+      },
+      chorus: {
+        alsoNever: ["run around", "desert you"],
+      },
+    },
+    env: "PRODUCTION",
+  });
+
+  // job run was successful
+  expect(testRun).toHaveSucceeded();
+
+  // each task was called exactly once
   expect(testRun.tasks["verse"]).toHaveBeenCalledOnce();
   expect(testRun.tasks["chorus"]).toHaveBeenCalledOnce();
 
@@ -199,7 +359,7 @@ test("dummy integration", async () => {
   });
 });
 
-test("two integrations", async () => {
+test("two integrations (dev env)", async () => {
   const jobToTest = client.defineJob({
     id: "two-integrations",
     name: "Two Integrations",
@@ -248,6 +408,91 @@ test("two integrations", async () => {
         id: "charge_1234",
       },
     },
+  });
+
+  // job run was successful
+  expect(testRun).toHaveSucceeded();
+
+  // each task was called exactly once
+  expect(testRun.tasks["task-one"]).toHaveBeenCalledTimes(2);
+  expect(testRun.tasks["task-two"]).toHaveBeenCalledTimes(2);
+  expect(testRun.tasks["create-charge"]).toHaveBeenCalledTimes(2);
+
+  // tasks were called with correct params
+  expect(testRun.tasks["task-one"]).toHaveBeenCalledWith({
+    foo: "bar",
+  });
+  expect(testRun.tasks["task-two"]).toHaveBeenCalledWith({
+    bar: "baz",
+  });
+  expect(testRun.tasks["create-charge"]).toHaveBeenCalledWith({
+    amount: 100,
+    currency: "usd",
+    customer: "cus_123",
+    source: "src_123",
+  });
+
+  // mocked task outputs were correctly returned
+  expect(testRun.tasks["task-one"]).toHaveReturnedWith({ bar: "baz" });
+  expect(testRun.tasks["task-two"]).toHaveReturnedWith({ foo: "bar" });
+  expect(testRun.tasks["create-charge"]).toHaveReturnedWith({
+    id: "charge_1234",
+  });
+
+  // job run has expected output
+  expect(testRun.output).toEqual({ id: "charge_1234" });
+});
+
+test("two integrations (non-dev env)", async () => {
+  const jobToTest = client.defineJob({
+    id: "two-integrations",
+    name: "Two Integrations",
+    version: "0.1.0",
+    trigger: eventTrigger({
+      name: "two.integrations",
+      schema: z.object({
+        customerId: z.string(),
+        source: z.string(),
+      }),
+    }),
+    integrations: {
+      dummy,
+      stripe,
+    },
+    run: async (payload, io, ctx) => {
+      await io.dummy.taskOne("task-one", {
+        foo: "bar",
+      });
+      await io.dummy.taskTwo("task-two", {
+        bar: "baz",
+      });
+      return await io.stripe.createCharge("create-charge", {
+        amount: 100,
+        currency: "usd",
+        source: payload.source,
+        customer: payload.customerId,
+      });
+    },
+  });
+
+  const testRun = await testJob(jobToTest, {
+    payload: {
+      customerId: "cus_123",
+      source: "src_123",
+    },
+    // mock task return
+    tasks: {
+      "task-one": {
+        bar: "baz",
+      },
+      "task-two": {
+        foo: "bar",
+      },
+      "create-charge": {
+        id: "charge_1234",
+      },
+    },
+    env: "STAGING",
   });
 
   // job run was successful

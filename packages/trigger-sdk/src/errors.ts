@@ -1,5 +1,9 @@
-import { DisplayProperty } from "@trigger.dev/core";
+import { DeserializedJson, DisplayProperty } from "@trigger.dev/core";
 import { ErrorWithStack, SchemaError, ServerTask } from "@trigger.dev/core";
+
+export class ImpureJobError {
+  constructor(public output: { initial?: DeserializedJson; reRun?: DeserializedJson }) {}
+}
 
 export class ResumeWithTaskError {
   constructor(public task: ServerTask) {}

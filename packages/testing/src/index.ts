@@ -1,5 +1,6 @@
 import {
   RunJobBody,
+  RuntimeEnvironmentType,
   SendEvent,
   SendEventBodySchema,
   SendEventOptions,
@@ -85,7 +86,11 @@ const buildRequest = (action: TriggerAction, apiKey: string, opts: Record<string
   });
 };
 
-const buildRequestBody = (event: RunJobBody["event"], job: RunJobBody["job"]): RunJobBody => ({
+const buildRequestBody = (
+  event: RunJobBody["event"],
+  job: RunJobBody["job"],
+  env?: RuntimeEnvironmentType
+): RunJobBody => ({
   event,
   job,
   run: {
@@ -97,7 +102,7 @@ const buildRequestBody = (event: RunJobBody["event"], job: RunJobBody["job"]): R
   environment: {
     id: String(Math.random()),
     slug: "test-env",
-    type: "DEVELOPMENT",
+    type: env ?? "DEVELOPMENT",
   },
   organization: {
     id: String(Math.random()),
@@ -117,6 +122,7 @@ export const createJobTester =
     opts: {
       payload?: TriggerEventType<TTrigger>;
       tasks?: TTasks;
+      env?: RuntimeEnvironmentType;
     } = {}
   ): Promise<
     {
@@ -193,7 +199,7 @@ export const createJobTester =
     };
 
     const request = buildRequest("EXECUTE_JOB", client.apiKey() ?? "", {
-      body: buildRequestBody(eventLog, job),
+      body: buildRequestBody(eventLog, job, opts.env),
       jobId: job.id,
     });
     const requestResult = await client.handleRequest(request);

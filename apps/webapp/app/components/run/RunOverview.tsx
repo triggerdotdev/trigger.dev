@@ -164,6 +164,17 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
         <div className="grid h-full grid-cols-2 gap-2">
           <div className="flex flex-col gap-6 overflow-y-auto py-4 pl-4 pr-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
             <div>
+              {run.impure && (
+                <Callout
+                  variant={"error"}
+                  to="https://trigger.dev/docs/documentation/concepts/tasks"
+                  className="mb-4"
+                >
+                  This Run produces some side-effects (external API calls, random number generators,
+                  etc.) that are not wrapped in Tasks - this can cause unpredictable results. Read
+                  the docs to view the solution.
+                </Callout>
+              )}
               {run.status === "SUCCESS" &&
                 (run.tasks.length === 0 || run.tasks.every((t) => t.noop)) && (
                   <Callout
@@ -261,7 +272,11 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
                     </RunPanelIconSection>
                     <RunPanelDivider />
                     {run.error && (
-                      <RunPanelError text={run.error.message} stackTrace={run.error.stack} />
+                      <RunPanelError
+                        text={run.error.message}
+                        error={JSON.stringify(run.error.output, null, 2)}
+                        stackTrace={run.error.stack}
+                      />
                     )}
                     {run.output ? (
                       <CodeBlock language="json" code={run.output} maxLines={10} />
