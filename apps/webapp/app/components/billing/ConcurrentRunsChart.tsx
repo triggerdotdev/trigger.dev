@@ -24,19 +24,25 @@ const tooltipStyle = {
 };
 
 export function ConcurrentRunsChart({
-  concurrentRunsLimit: planLimit,
+  concurrentRunsLimit,
+  data,
 }: {
-  concurrentRunsLimit: number;
+  concurrentRunsLimit?: number;
+  data: { name: string; maxConcurrentRuns: number }[];
 }) {
+  console.log(data);
+
   return (
     <div className="relative">
-      <Header3 className="mb-4">Monthly concurrent Runs</Header3>
-      <Paragraph className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-        No concurrent Runs to show
-      </Paragraph>
+      <Header3 className="mb-4">Concurrent Runs</Header3>
+      {data.length === 0 && (
+        <Paragraph className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+          No concurrent Runs to show
+        </Paragraph>
+      )}
       <ResponsiveContainer width="100%" height="100%" className="relative min-h-[20rem]">
         <LineChart
-          data={ConcurrentRunsData}
+          data={data}
           margin={{
             top: 0,
             right: 0,
@@ -48,79 +54,36 @@ export function ConcurrentRunsChart({
           <XAxis stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} dataKey="name" />
           <YAxis stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
           <Tooltip cursor={{ fill: "rgba(255,255,255,0.05)" }} contentStyle={tooltipStyle} />
-          <ReferenceLine
-            y={planLimit}
-            label={<ReferenceLineLabel />}
-            stroke="#1A2434"
-            color="#fff"
-            strokeDasharray={5}
-            ifOverflow="extendDomain"
-            className="text-xs"
+          {concurrentRunsLimit && (
+            <ReferenceLine
+              y={concurrentRunsLimit}
+              label={<ReferenceLineLabel y={concurrentRunsLimit} />}
+              stroke="#F43F5E"
+              color="#fff"
+              strokeWidth={1}
+              strokeDasharray={5}
+              ifOverflow="extendDomain"
+              className="text-xs"
+            />
+          )}
+          <Line
+            dataKey="maxConcurrentRuns"
+            stroke="#16A34A"
+            strokeWidth={2}
+            name="Concurrent runs"
           />
-          <Line type="stepAfter" dataKey="Concurrent Runs" stroke="#16A34A" strokeWidth={2} />
         </LineChart>
       </ResponsiveContainer>
     </div>
   );
 }
 
-function ReferenceLineLabel() {
+function ReferenceLineLabel({ y }: { y: number }) {
   return (
-    <text x={500} y={"31"} fill={"#94A3B8"} textAnchor="middle">
+    <text x={0} y={y} fill={"#94A3B8"}>
       <tspan x={"8em"} dy={"0.3em"}>
-        Plan limit
+        Concurrency limit
       </tspan>
     </text>
   );
 }
-
-export const ConcurrentRunsData = [
-  {
-    name: "Nov 23",
-    "Concurrent Runs": 2,
-  },
-  {
-    name: "Dec 23",
-    "Concurrent Runs": 4,
-  },
-  {
-    name: "Jan 24",
-    "Concurrent Runs": 3,
-  },
-  {
-    name: "Feb 24",
-    "Concurrent Runs": 5,
-  },
-  {
-    name: "Mar 24",
-    "Concurrent Runs": 25,
-  },
-  {
-    name: "Apr 24",
-    "Concurrent Runs": 2,
-  },
-  {
-    name: "May 24",
-    "Concurrent Runs": 10,
-  },
-  {
-    name: "Jun 24",
-    "Concurrent Runs": 8,
-  },
-  {
-    name: "Jul 24",
-    "Concurrent Runs": null,
-  },
-  {
-    name: "Aug 24",
-    "Concurrent Runs": null,
-  },
-  {
-    name: "Sep 24",
-    "Concurrent Runs": null,
-  },
-  {
-    name: "Oct 24",
-    "Concurrent Runs": null,
-  },
-];

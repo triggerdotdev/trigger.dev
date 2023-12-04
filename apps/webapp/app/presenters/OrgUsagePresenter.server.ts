@@ -1,3 +1,4 @@
+import { formatDateTime } from "~/components/primitives/DateTime";
 import { PrismaClient, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 
@@ -61,17 +62,19 @@ export class OrgUsagePresenter {
     // ]
     // This will be used to generate the chart on the usage page
     // Use prisma queryRaw for this since prisma doesn't support grouping by month
-    const chartDataRaw = await this.#prismaClient.$queryRaw<
+    const monthlyRunsDataRaw = await this.#prismaClient.$queryRaw<
       {
         month: string;
         count: number;
       }[]
     >`SELECT TO_CHAR("createdAt", 'YYYY-MM') as month, COUNT(*) as count FROM "JobRun" WHERE "organizationId" = ${organization.id} AND "createdAt" >= NOW() - INTERVAL '6 months' AND "internal" = FALSE GROUP BY month ORDER BY month ASC`;
 
-    const chartData = chartDataRaw.map((obj) => ({
+    const monthlyRunsData = monthlyRunsDataRaw.map((obj) => ({
       name: obj.month,
       total: Number(obj.count), // Convert BigInt to Number
     }));
+
+    const monthlyRunsDataDisplay = fillInMissingRunMonthlyData(monthlyRunsData, 6);
 
     const totalJobs = await this.#prismaClient.job.count({
       where: {
@@ -112,49 +115,68 @@ export class OrgUsagePresenter {
       },
     });
 
-    const jobs = await this.#prismaClient.job.findMany({
-      where: {
-        organizationId: organization.id,
-        deletedAt: null,
-        internal: false,
-      },
-      select: {
-        id: true,
-        slug: true,
-        _count: {
-          select: {
-            runs: {
-              where: {
-                createdAt: {
-                  gte: startOfMonth,
-                },
-              },
-            },
-          },
-        },
-        project: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-          },
-        },
-      },
-    });
+    // Max concurrency each day over past 30 days
+    const concurrencyChartRawData = await this.#prismaClient.$queryRaw<
+      { day: Date; max_concurrent_runs: BigInt }[]
+    >`
+      WITH time_boundaries AS (
+        SELECT generate_series(
+            NOW() - interval '30 days', 
+            NOW(), 
+            interval '1 day'
+        ) AS day_start
+      ),
+      events AS (
+          SELECT
+              day_start,
+              event_time,
+              event_type,
+              SUM(event_type) OVER (ORDER BY event_time) AS running_total
+          FROM
+              time_boundaries
+          JOIN
+              triggerdotdev_events.run_executions
+          ON
+              event_time >= day_start AND event_time < day_start + interval '1 day'
+          WHERE triggerdotdev_events.run_executions.organization_id = ${organization.id}
+      ),
+      max_concurrent_per_day AS (
+          SELECT
+              date_trunc('day', event_time) AS day,
+              MAX(running_total) AS max_concurrent_runs
+          FROM
+              events
+          GROUP BY day
+      )
+      SELECT
+          day,
+          max_concurrent_runs
+      FROM
+          max_concurrent_per_day
+      ORDER BY
+          day;`;
 
-    const chartDataDisplay = fillInMissingMonthlyData(chartData, 6);
+    const ThirtyDaysAgo = new Date();
+    ThirtyDaysAgo.setDate(ThirtyDaysAgo.getDate() - 30);
+    ThirtyDaysAgo.setHours(0, 0, 0, 0);
+
+    const concurrencyChartRawDataFilledIn = fillInMissingConcurrencyDays(
+      ThirtyDaysAgo,
+      30,
+      concurrencyChartRawData
+    );
 
     return {
       id: organization.id,
       runsCount,
       runsCountLastMonth,
-      chartData: chartDataDisplay,
+      monthlyRunsData: monthlyRunsDataDisplay,
+      concurrencyData: concurrencyChartRawDataFilledIn,
       totalJobs,
       totalJobsLastMonth,
       totalIntegrations,
       totalIntegrationsLastMonth,
       totalMembers,
-      jobs,
     };
   }
 }
@@ -163,7 +185,7 @@ export class OrgUsagePresenter {
 // So for example, if data is [{ name: "2021-01", total: 10 }, { name: "2021-03", total: 30 }] and the totalNumberOfMonths is 6
 // And the current month is "2021-04", then this function will return:
 // [{ name: "2020-11", total: 0 }, { name: "2020-12", total: 0 }, { name: "2021-01", total: 10 }, { name: "2021-02", total: 0 }, { name: "2021-03", total: 30 }, { name: "2021-04", total: 0 }]
-function fillInMissingMonthlyData(
+function fillInMissingRunMonthlyData(
   data: Array<{ name: string; total: number }>,
   totalNumberOfMonths: number
 ): Array<{ name: string; total: number }> {
@@ -185,6 +207,38 @@ function fillInMissingMonthlyData(
   });
 
   return completeData;
+}
+
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+
+function fillInMissingConcurrencyDays(
+  startDate: Date,
+  days: number,
+  data: Array<{ day: Date; max_concurrent_runs: BigInt }>
+) {
+  console.log("inputData", data);
+  const outputData: Array<{ name: string; maxConcurrentRuns: number }> = [];
+  for (let i = 0; i < days; i++) {
+    const date = new Date(startDate);
+    date.setDate(date.getDate() + i);
+    const foundData = data.find((d) => d.day.toISOString() === date.toISOString());
+    if (!foundData) {
+      outputData.push({
+        name: dateFormatter.format(date),
+        maxConcurrentRuns: 0,
+      });
+    } else {
+      outputData.push({
+        name: dateFormatter.format(date),
+        maxConcurrentRuns: Number(foundData.max_concurrent_runs),
+      });
+    }
+  }
+
+  return outputData;
 }
 
 // Start month will be like 2023-03 and endMonth will be like 2023-10

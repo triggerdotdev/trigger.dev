@@ -16,6 +16,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { OrgUsagePresenter } from "~/presenters/OrgUsagePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { OrganizationParamsSchema, plansPath, organizationTeamPath } from "~/utils/pathBuilder";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -48,6 +49,9 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
 export default function Page() {
   const organization = useOrganization();
   const loaderData = useTypedLoaderData<typeof loader>();
+  const currentPlan = useCurrentPlan();
+
+  console.log(currentPlan);
 
   return (
     <div className="flex flex-col gap-4">
@@ -70,7 +74,10 @@ export default function Page() {
             Some of your Runs are being queued because the number of concurrent Runs is limited to
             50.
           </Callout>
-          <ConcurrentRunsChart concurrentRunsLimit={25} />
+          <ConcurrentRunsChart
+            data={loaderData.concurrencyData}
+            concurrentRunsLimit={currentPlan?.subscription?.limits.concurrentRuns}
+          />
         </div>
       </div>
 
@@ -114,7 +121,7 @@ export default function Page() {
               </Paragraph>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart
-                  data={loaderData.chartData}
+                  data={loaderData.monthlyRunsData}
                   margin={{
                     top: 0,
                     right: 0,

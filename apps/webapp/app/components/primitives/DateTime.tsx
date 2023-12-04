@@ -39,7 +39,7 @@ export const DateTime = ({
   return <Fragment>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</Fragment>;
 };
 
-function formatDateTime(
+export function formatDateTime(
   date: Date,
   timeZone: string,
   locales: string[],
