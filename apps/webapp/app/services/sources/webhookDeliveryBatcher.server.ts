@@ -44,7 +44,7 @@ export class WebhookDeliveryBatcherService {
     }
 
     const requestDeliveries = await prisma.$queryRaw<{ id: string; bodySize: number }[]>`
-      SELECT id, LENGTH(payload::text) AS bodySize FROM "WebhookRequestDelivery"
+      SELECT id, LENGTH(payload::text) AS "bodySize" FROM "WebhookRequestDelivery"
       WHERE id IN (${Prisma.join(eventRecordIds)});
     `;
 
@@ -54,6 +54,14 @@ export class WebhookDeliveryBatcherService {
     const chunks: Record<number, string[]> = { 0: [] };
 
     for (const delivery of requestDeliveries) {
+      logger.debug("Delivery body size is larger than maxPayloadSize", {
+        delivery,
+      });
+
+      if (delivery.bodySize > this.maxPayloadSize) {
+        continue;
+      }
+
       if (chunkSize + delivery.bodySize > this.maxPayloadSize) {
         // enqueue full chunk
         await this.#enqueueChunk(webhookEnvironment.id, chunks[chunkIndex], batcher.maxInterval);
@@ -89,7 +97,7 @@ export class WebhookDeliveryBatcherService {
 
     await workerQueue.enqueue(
       "deliverMultipleWebhookRequests",
-      { webhookEnvironmentId, requestDeliveryIds },
+      { webhookEnvironmentId, requestDeliveryIds }
       // { runAt: deliverAfter ? deliverAfterToDate(deliverAfter) : undefined }
     );
   }

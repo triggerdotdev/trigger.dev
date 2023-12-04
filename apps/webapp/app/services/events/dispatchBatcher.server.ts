@@ -42,7 +42,7 @@ export class DispatchBatcherService {
     }
 
     const eventRecords = await prisma.$queryRaw<{ id: string; payloadSize: number }[]>`
-      SELECT id, LENGTH(payload::text) AS payloadSize FROM "EventRecord"
+      SELECT id, LENGTH(payload::text) AS "payloadSize" FROM "EventRecord"
       WHERE id IN (${Prisma.join(eventRecordIds)});
     `;
 
@@ -52,6 +52,14 @@ export class DispatchBatcherService {
     const chunks: Record<number, string[]> = { 0: [] };
 
     for (const event of eventRecords) {
+      logger.debug("Event payload size is larger than maxPayloadSize", {
+        event,
+      });
+
+      if (event.payloadSize > this.maxPayloadSize) {
+        continue;
+      }
+
       if (chunkSize + event.payloadSize > this.maxPayloadSize) {
         // enqueue full chunk
         await this.#enqueueChunk(
