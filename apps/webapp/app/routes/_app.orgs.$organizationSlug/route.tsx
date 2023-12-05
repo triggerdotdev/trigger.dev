@@ -92,7 +92,7 @@ export default function Organization() {
           <div className="flex w-full items-center justify-between border-b border-ui-border">
             <Breadcrumb />
             <div className="flex h-full items-center gap-4">
-              <PageNavigationIndicator />
+              <PageNavigationIndicator className="mr-2" />
               <UpgradePrompt organization={organization} />
             </div>
           </div>
