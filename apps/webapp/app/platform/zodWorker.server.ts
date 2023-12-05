@@ -14,7 +14,7 @@ import { run as graphileRun, makeWorkerUtils, parseCronItems } from "graphile-wo
 
 import omit from "lodash.omit";
 import { z } from "zod";
-import { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
+import { $replica, PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { PgListenService } from "~/services/db/pgListen.server";
 import { workerLogger as logger, trace } from "~/services/logger.server";
 
@@ -735,7 +735,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       payload,
     });
 
-    const rawResults = await this.#prisma.$queryRawUnsafe(
+    const rawResults = await $replica.$queryRawUnsafe(
       `SELECT id
         FROM ${this.graphileWorkerSchema}.jobs
         WHERE run_at > $1
@@ -798,7 +798,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     const schema = z.array(z.object({ count: z.coerce.number() }));
 
     // Count the number of jobs that have been added since the startAt date and before the payload._cron.ts date
-    const rawAddedResults = await this.#prisma.$queryRawUnsafe(
+    const rawAddedResults = await $replica.$queryRawUnsafe(
       `SELECT COUNT(*) FROM ${this.graphileWorkerSchema}.jobs WHERE created_at > $1 AND created_at < $2`,
       startAt,
       payload._cron.ts
@@ -807,7 +807,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     const addedCountResults = schema.parse(rawAddedResults)[0];
 
     // Count the total number of jobs in the jobs table
-    const rawTotalResults = await this.#prisma.$queryRawUnsafe(
+    const rawTotalResults = await $replica.$queryRawUnsafe(
       `SELECT COUNT(*) FROM ${this.graphileWorkerSchema}.jobs`
     );
 
