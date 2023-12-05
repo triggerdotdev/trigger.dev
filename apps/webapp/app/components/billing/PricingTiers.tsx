@@ -24,7 +24,7 @@ const pricingDefinitions = {
   },
   jobs: {
     title: "Jobs",
-    content: "A Job is like a function that is triggered by an event and performs a Run.",
+    content: "A durable function that can be executed on a schedule or in response to an event.",
   },
   tasks: {
     title: "Tasks",
@@ -32,11 +32,11 @@ const pricingDefinitions = {
   },
   events: {
     title: "Events",
-    content: "Events allow you to run Jobs from your own code",
+    content: "Events trigger Jobs to start running.",
   },
   integrations: {
     title: "Integrations",
-    content: "Custom Integrations to authenticate and use your internal APIs.",
+    content: "Easily subscribe to webhooks and perform actions using APIs.",
   },
 };
 
