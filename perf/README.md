@@ -4,6 +4,10 @@ You can use this to test the performance locally.
 
 ## Setup
 
+```
+cd perf
+```
+
 ```bash
 pnpm run server
 ```
