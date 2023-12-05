@@ -2,14 +2,12 @@ import {
   Label,
   Line,
   LineChart,
-  Rectangle,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
-import { Header3 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
 
 const tooltipStyle = {
@@ -44,10 +42,10 @@ export function ConcurrentRunsChart({
         <LineChart
           data={data}
           margin={{
-            top: 0,
+            top: 20,
             right: 0,
             left: 0,
-            bottom: 0,
+            bottom: 10,
           }}
           className="-ml-8"
         >
@@ -57,15 +55,16 @@ export function ConcurrentRunsChart({
             tickLine={false}
             axisLine={false}
             dataKey="name"
-            label={"Last 30 days"}
-          />
+            className="text-xs"
+          >
+            <Label value="Last 30 days" offset={-8} position="insideBottom" fill="#94A3B8" />
+          </XAxis>
           <YAxis stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
           <Tooltip cursor={{ fill: "rgba(255,255,255,0.05)" }} contentStyle={tooltipStyle} />
           {concurrentRunsLimit && (
             <ReferenceLine
               y={concurrentRunsLimit}
               stroke="#F43F5E"
-              color="#F43F5E"
               strokeWidth={1}
               strokeDasharray={5}
               ifOverflow="extendDomain"
@@ -73,8 +72,8 @@ export function ConcurrentRunsChart({
             >
               <Label
                 value="Concurrent Runs limit"
-                offset={5}
-                position="insideBottomLeft"
+                offset={8}
+                position="insideTopLeft"
                 fill="#F43F5E"
               />
             </ReferenceLine>
