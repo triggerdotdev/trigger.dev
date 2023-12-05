@@ -35,7 +35,9 @@ export default function Page() {
   return (
     <TriggerDetail
       trigger={trigger}
+      batched={run.batched}
       event={job.event}
+      eventIds={run.eventIds}
       payload={payload}
       properties={run.properties}
     />

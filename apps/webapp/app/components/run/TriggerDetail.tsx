@@ -18,6 +18,8 @@ export function TriggerDetail({
   payload,
   event,
   properties,
+  batched = false,
+  eventIds,
 }: {
   trigger: DetailedEvent;
   payload: string;
@@ -26,6 +28,8 @@ export function TriggerDetail({
     icon: string;
   };
   properties: DisplayProperty[];
+  batched?: boolean;
+  eventIds?: string[];
 }) {
   const { id, name, context, timestamp, deliveredAt } = trigger;
 
@@ -47,7 +51,18 @@ export function TriggerDetail({
             />
           )}
           <RunPanelIconProperty icon="id" label="Event name" value={name} />
-          <RunPanelIconProperty icon="account" label="Event ID" value={id} />
+          {batched ? (
+            <>
+              <RunPanelIconProperty icon="packages" label="Batched" value={String(batched)} />
+              <RunPanelIconProperty
+                icon="hash"
+                label="Total Events"
+                value={eventIds ? eventIds.length : 0}
+              />
+            </>
+          ) : (
+            <RunPanelIconProperty icon="account" label="Event ID" value={id} />
+          )}
           {trigger.externalAccount && (
             <RunPanelIconProperty
               icon="account"
@@ -68,6 +83,12 @@ export function TriggerDetail({
           <CodeBlock code={payload} />
           <Header3>Context</Header3>
           <CodeBlock code={context} />
+          {batched && eventIds && (
+            <>
+              <Header3>Event IDs</Header3>
+              <CodeBlock code={JSON.stringify(eventIds, null, 2)} />
+            </>
+          )}
         </div>
       </RunPanelBody>
     </RunPanel>
