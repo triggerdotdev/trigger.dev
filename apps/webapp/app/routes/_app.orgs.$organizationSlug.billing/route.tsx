@@ -1,8 +1,7 @@
-import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { CalendarDaysIcon, ReceiptRefundIcon } from "@heroicons/react/20/solid";
+import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { Outlet } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { ActiveSubscription } from "@trigger.dev/billing";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -17,17 +16,12 @@ import {
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
-import { featuresForRequest } from "~/features.server";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { BillingService } from "~/services/billing.server";
-import { OrgUsagePresenter } from "~/presenters/OrgUsagePresenter.server";
-import { requireUserId } from "~/services/session.server";
 import { formatDurationInDays } from "~/utils";
 import { Handle } from "~/utils/handle";
-import { OrganizationParamsSchema, plansPath, usagePath } from "~/utils/pathBuilder";
+import { plansPath, stripePortalPath, usagePath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { ActiveSubscription } from "@trigger.dev/billing";
 
 export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Usage & Billing" />,
@@ -70,12 +64,12 @@ export default function Page() {
               <>
                 {currentPlan?.subscription?.isPaying && (
                   <>
-                    {/* <LinkButton to={stripePortalLink} variant="secondary/small">
+                    <LinkButton to={stripePortalPath(organization)} variant="secondary/small">
                       Invoices
                     </LinkButton>
-                    <LinkButton to={stripePortalLink} variant="secondary/small">
+                    <LinkButton to={stripePortalPath(organization)} variant="secondary/small">
                       Manage card details
-                    </LinkButton> */}
+                    </LinkButton>
                   </>
                 )}
                 <LinkButton

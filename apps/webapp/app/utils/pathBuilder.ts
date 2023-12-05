@@ -125,6 +125,10 @@ export function usagePath(organization: OrgForPath) {
   return `${organizationPath(organization)}/billing`;
 }
 
+export function stripePortalPath(organization: OrgForPath) {
+  return `/resources/${organization.slug}/subscription/portal`;
+}
+
 export function plansPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/billing/plans`;
 }
