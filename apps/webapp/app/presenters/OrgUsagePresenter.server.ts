@@ -113,7 +113,7 @@ export class OrgUsagePresenter {
     const hasConcurrencyData = concurrencyChartRawData.length > 0;
     const concurrencyChartRawDataFilledIn = fillInMissingConcurrencyDays(
       ThirtyDaysAgo,
-      30,
+      31,
       concurrencyChartRawData
     );
 
