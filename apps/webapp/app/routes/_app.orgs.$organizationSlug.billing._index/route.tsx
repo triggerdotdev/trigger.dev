@@ -116,7 +116,7 @@ export default function Page() {
               a paid plan before Nov 30.
             </Callout>
           )}
-          <div className="flex flex-col @4xl:flex-row">
+          <div className="flex flex-col gap-x-8 @4xl:flex-row">
             <div className="flex w-full flex-col gap-4">
               {loaderData.runCostEstimation !== undefined &&
                 loaderData.projectedRunCostEstimation !== undefined && (
