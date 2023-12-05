@@ -713,7 +713,7 @@ importers:
       '@trigger.dev/tsup': workspace:*
       '@types/node': 18.x
       rimraf: ^3.0.2
-      supabase-management-js: 0.0.0-canary-20231204142207
+      supabase-management-js: ^1.0.0
       tsup: 8.0.1
       typescript: ^5.3.0
       zod: 3.22.3
@@ -721,7 +721,7 @@ importers:
       '@supabase/supabase-js': 2.31.0
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
-      supabase-management-js: 0.0.0-canary-20231204142207
+      supabase-management-js: 1.0.0
       zod: 3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
@@ -30247,8 +30247,8 @@ packages:
       pirates: 4.0.5
       ts-interface-checker: 0.1.13
 
-  /supabase-management-js/0.0.0-canary-20231204142207:
-    resolution: {integrity: sha512-UubKGdvQlLSs9sHYGFQkzUThgUQMcZByeuyFCNh4TYFkuBgT/yaaxhVF0vF+2yChpPfNdTnFnSYx8MSwuTxdkg==}
+  /supabase-management-js/1.0.0:
+    resolution: {integrity: sha512-CjtUcT1i3lsIyRwS3/HG6BUB8EaJTEdAPP0GQu8dRDi61HvJeBrswCfG/GRxebC0ZZFov+oHqFIWPe1ztyUqYA==}
     engines: {node: '>=18.0.0'}
     dependencies:
       openapi-fetch: 0.6.2
@@ -30986,7 +30986,7 @@ packages:
     dependencies:
       bs-logger: 0.2.6
       fast-json-stable-stringify: 2.1.0
-      jest: 29.6.2_@types+node@16.18.11
+      jest: 29.6.2_@types+node@18.15.13
       jest-util: 29.6.2
       json5: 2.2.3
       lodash.memoize: 4.1.2

@@ -28,7 +28,7 @@
     "@supabase/supabase-js": "^2.26.0",
     "@trigger.dev/integration-kit": "workspace:^2.2.10",
     "@trigger.dev/sdk": "workspace:^2.2.10",
-    "supabase-management-js": "0.0.0-canary-20231204142207",
+    "supabase-management-js": "^1.0.0",
     "zod": "3.22.3"
   },
   "engines": {
