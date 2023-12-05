@@ -89,6 +89,13 @@ export const apisList = [
     name: "Brex",
     examples: [
       {
+        title: "A job that is triggered by a Brex webhook.",
+        slug: "brex-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/brex-http-endpoint.ts",
+      },
+      {
         title: "Create a new title in a Brex account.",
         slug: "create-new-brex-title",
         version: "1.0.0",
@@ -160,6 +167,13 @@ export const apisList = [
         slug: "discord-bot-send-message",
         version: "1.0.0",
         codeUrl: "https://github.com/triggerdotdev/api-reference/raw/main/src/discord.ts",
+      },
+      {
+        title: "A job that is triggered by a Discord webhook.",
+        slug: "discord-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/discord-http-endpoint.ts",
       },
     ],
   },
@@ -233,6 +247,13 @@ export const apisList = [
         version: "1.0.0",
         codeUrl: "https://github.com/triggerdotdev/api-reference/raw/main/src/gmail.ts",
       },
+      {
+        title: "A job that is triggered by a Gmail webhook.",
+        slug: "gmail-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/gmail-http-endpoint.ts",
+      },
     ],
   },
   {
@@ -250,11 +271,27 @@ export const apisList = [
   {
     identifier: "googledocs",
     name: "Google Docs",
+    examples: [
+      {
+        title: "A job that is triggered by a Google Docs webhook.",
+        slug: "google-docs-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/google-docs-http-endpoint.ts",
+      },
+    ],
   },
   {
     identifier: "googledrive",
     name: "Google Drive",
     examples: [
+      {
+        title: "A job that is triggered by a Google Drive webhook.",
+        slug: "google-drive-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/google-drive-http-endpoint.ts",
+      },
       {
         title: "Update a filename in Google Drive.",
         slug: "update-google-drive-filename",
@@ -279,6 +316,13 @@ export const apisList = [
     identifier: "googlesheets",
     name: "Google Sheets",
     examples: [
+      {
+        title: "A job that is triggered by a Google Sheets webhook.",
+        slug: "google-sheets-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/google-sheets-http-endpoint.ts",
+      },
       {
         title: "Insert data into a row in Google Sheets.",
         slug: "insert-data-into-google-sheets",
@@ -503,6 +547,15 @@ export const apisList = [
   {
     identifier: "pagerduty",
     name: "PagerDuty",
+    examples: [
+      {
+        title: "A job that is triggered by a PagerDuty webhook.",
+        slug: "pagerduty-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/pagerduty-http-endpoint.ts",
+      },
+    ],
   },
   {
     identifier: "plain",
@@ -825,6 +878,13 @@ export const apisList = [
     identifier: "youtube",
     name: "YouTube",
     examples: [
+      {
+        title: "A job that is triggered by a YouTube webhook.",
+        slug: "youtube-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/youtube-http-endpoint.ts",
+      },
       {
         title: "Search for a YouTube video",
         slug: "youtube-search-video",
