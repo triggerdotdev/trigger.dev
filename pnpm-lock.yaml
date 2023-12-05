@@ -996,24 +996,28 @@ importers:
     specifiers:
       '@trigger.dev/sdk': workspace:^2.2.10
       '@trigger.dev/tsconfig': workspace:*
+      '@trigger.dev/tsup': workspace:*
       '@types/debug': ^4.1.7
       '@types/express': ^4.17.13
       debug: ^4.3.4
       express: ^4.18.2
       rimraf: ^3.0.2
-      tsup: ^6.5.0
+      tsup: 8.0.1
       tsx: ^3.12.1
+      typescript: ^5.3.0
     dependencies:
       debug: 4.3.4
       express: 4.18.2
     devDependencies:
       '@trigger.dev/sdk': link:../trigger-sdk
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@trigger.dev/tsup': link:../../config-packages/tsup
       '@types/debug': 4.1.7
       '@types/express': 4.17.15
       rimraf: 3.0.2
-      tsup: 6.6.3
+      tsup: 8.0.1_a5ztaafw5l4qfghy2hjjuynb34_typescript@5.3.2
       tsx: 3.12.2
+      typescript: 5.3.2
 
   packages/hono:
     specifiers:
