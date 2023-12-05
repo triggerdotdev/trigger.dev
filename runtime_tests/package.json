@@ -23,7 +23,7 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "test": "pnpm run test:wrangler && pnpm run test:bun && pnpm run test:node",
+    "test": "pnpm run test:wrangler && pnpm run test:bun && pnpm run test:node && pnpm run test:deno",
     "test:wrangler": "vitest --run --config ./tests/wrangler/vitest.config.ts",
     "test:bun": "bun test tests/bun",
     "test:node": "vitest --run --config ./tests/node/vitest.config.ts",
