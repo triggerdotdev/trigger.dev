@@ -35,7 +35,6 @@ export function ConcurrentRunsChart({
 }) {
   return (
     <div className="relative">
-      <Header3 className="mb-4">Concurrent Runs</Header3>
       {!hasConcurrencyData && (
         <Paragraph className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
           No concurrent Runs to show
@@ -52,20 +51,33 @@ export function ConcurrentRunsChart({
           }}
           className="-ml-8"
         >
-          <XAxis stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} dataKey="name" />
+          <XAxis
+            stroke="#94A3B8"
+            fontSize={12}
+            tickLine={false}
+            axisLine={false}
+            dataKey="name"
+            label={"Last 30 days"}
+          />
           <YAxis stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
           <Tooltip cursor={{ fill: "rgba(255,255,255,0.05)" }} contentStyle={tooltipStyle} />
           {concurrentRunsLimit && (
             <ReferenceLine
               y={concurrentRunsLimit}
-              label={<ReferenceLineLabel y={concurrentRunsLimit} />}
               stroke="#F43F5E"
-              color="#fff"
+              color="#F43F5E"
               strokeWidth={1}
               strokeDasharray={5}
               ifOverflow="extendDomain"
               className="text-xs"
-            />
+            >
+              <Label
+                value="Concurrent Runs limit"
+                offset={5}
+                position="insideBottomLeft"
+                fill="#F43F5E"
+              />
+            </ReferenceLine>
           )}
           <Line
             dataKey="maxConcurrentRuns"
@@ -77,15 +89,5 @@ export function ConcurrentRunsChart({
         </LineChart>
       </ResponsiveContainer>
     </div>
-  );
-}
-
-function ReferenceLineLabel({ y }: { y: number }) {
-  return (
-    <text x={0} y={y} fill={"#F43F5E"}>
-      <tspan x={"8em"} dy={"0.3em"}>
-        Concurrency limit
-      </tspan>
-    </text>
   );
 }

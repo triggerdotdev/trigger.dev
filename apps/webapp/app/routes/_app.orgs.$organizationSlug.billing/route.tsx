@@ -29,12 +29,6 @@ import { OrganizationParamsSchema, plansPath, usagePath } from "~/utils/pathBuil
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { ActiveSubscription } from "@trigger.dev/billing";
 
-export async function loader({ params, request }: LoaderFunctionArgs) {
-  const userId = await requireUserId(request);
-  const { organizationSlug } = OrganizationParamsSchema.parse(params);
-  return typedjson({});
-}
-
 export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Usage & Billing" />,
 };
@@ -74,16 +68,16 @@ export default function Page() {
           <PageButtons>
             {isManagedCloud && (
               <>
-                {/* {stripePortalLink && (
+                {currentPlan?.subscription?.isPaying && (
                   <>
-                    <LinkButton to={stripePortalLink} variant="secondary/small">
+                    {/* <LinkButton to={stripePortalLink} variant="secondary/small">
                       Invoices
                     </LinkButton>
                     <LinkButton to={stripePortalLink} variant="secondary/small">
                       Manage card details
-                    </LinkButton>
+                    </LinkButton> */}
                   </>
-                )} */}
+                )}
                 <LinkButton
                   to={plansPath(organization)}
                   variant="primary/small"

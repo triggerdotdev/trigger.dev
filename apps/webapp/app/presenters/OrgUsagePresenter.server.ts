@@ -28,29 +28,12 @@ export class OrgUsagePresenter {
       return;
     }
 
-    const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const startOfLastMonth = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1); // this works for January as well
-    const endOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1);
-    endOfMonth.setDate(endOfMonth.getDate() - 1);
-
     // Get count of runs since the start of the current month
     const runsCount = await this.#prismaClient.jobRun.count({
       where: {
         organizationId: organization.id,
         createdAt: {
           gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-        },
-        internal: false,
-      },
-    });
-
-    // Get the count of runs for last month
-    const runsCountLastMonth = await this.#prismaClient.jobRun.count({
-      where: {
-        organizationId: organization.id,
-        createdAt: {
-          gte: startOfLastMonth,
-          lt: startOfMonth,
         },
         internal: false,
       },
@@ -81,45 +64,6 @@ export class OrgUsagePresenter {
     }));
 
     const monthlyRunsDataDisplay = fillInMissingRunMonthlyData(monthlyRunsData, 6);
-
-    const totalJobs = await this.#prismaClient.job.count({
-      where: {
-        organizationId: organization.id,
-        internal: false,
-      },
-    });
-
-    const totalJobsLastMonth = await this.#prismaClient.job.count({
-      where: {
-        organizationId: organization.id,
-        createdAt: {
-          lt: startOfMonth,
-        },
-        deletedAt: null,
-        internal: false,
-      },
-    });
-
-    const totalIntegrations = await this.#prismaClient.integration.count({
-      where: {
-        organizationId: organization.id,
-      },
-    });
-
-    const totalIntegrationsLastMonth = await this.#prismaClient.integration.count({
-      where: {
-        organizationId: organization.id,
-        createdAt: {
-          lt: startOfMonth,
-        },
-      },
-    });
-
-    const totalMembers = await this.#prismaClient.orgMember.count({
-      where: {
-        organizationId: organization.id,
-      },
-    });
 
     // Max concurrency each day over past 30 days
     const concurrencyChartRawData = await this.#prismaClient.$queryRaw<
@@ -173,6 +117,8 @@ export class OrgUsagePresenter {
       concurrencyChartRawData
     );
 
+    const endOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1);
+    endOfMonth.setDate(endOfMonth.getDate() - 1);
     const projectedRunsCount = Math.round(
       runsCount / (new Date().getDate() / endOfMonth.getDate())
     );
@@ -202,16 +148,10 @@ export class OrgUsagePresenter {
       id: organization.id,
       runsCount,
       projectedRunsCount,
-      runsCountLastMonth,
       monthlyRunsData: monthlyRunsDataDisplay,
       hasMonthlyRunData,
       concurrencyData: concurrencyChartRawDataFilledIn,
       hasConcurrencyData,
-      totalJobs,
-      totalJobsLastMonth,
-      totalIntegrations,
-      totalIntegrationsLastMonth,
-      totalMembers,
       runCostEstimation,
       projectedRunCostEstimation,
     };
@@ -260,15 +200,21 @@ function fillInMissingConcurrencyDays(
   for (let i = 0; i < days; i++) {
     const date = new Date(startDate);
     date.setDate(date.getDate() + i);
+
+    let formattedDate = `${date.getDate()}`;
+    if (date.getDate() === 1) {
+      formattedDate = dateFormatter.format(date);
+    }
+
     const foundData = data.find((d) => d.day.toISOString() === date.toISOString());
     if (!foundData) {
       outputData.push({
-        name: dateFormatter.format(date),
+        name: formattedDate,
         maxConcurrentRuns: 0,
       });
     } else {
       outputData.push({
-        name: dateFormatter.format(date),
+        name: formattedDate,
         maxConcurrentRuns: Number(foundData.max_concurrent_runs),
       });
     }
@@ -301,12 +247,4 @@ function getMonthsBetween(startMonth: string, endMonth: string): string[] {
   }
 
   return result;
-}
-
-function getLastSecondOfMonth(endMonth: string) {
-  const [year, month] = endMonth.split("-").map(Number);
-  const nextMonthFirstDay = new Date(year, month, 1);
-  nextMonthFirstDay.setDate(0);
-  nextMonthFirstDay.setHours(23, 59, 59);
-  return nextMonthFirstDay;
 }
