@@ -81,6 +81,7 @@ const app: Express = express();
 
 //add the middleware
 app.use(createMiddleware(client));
+// app.use(express.json()); //if you're parsing JSON, you need to add the Trigger middleware before this
 
 //..the rest of your Express code
 ```
