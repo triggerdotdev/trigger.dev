@@ -11,9 +11,12 @@ import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { featuresForRequest } from "~/features.server";
+import { useFeatures } from "~/hooks/useFeatures";
 import { OrgBillingPlanPresenter } from "~/presenters/OrgBillingPlanPresenter";
 import { Handle } from "~/utils/handle";
 import { OrganizationParamsSchema, organizationBillingPath } from "~/utils/pathBuilder";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { formatNumberCompact } from "~/utils/numberFormatter";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
@@ -24,12 +27,16 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   }
 
   const presenter = new OrgBillingPlanPresenter();
-  const plans = await presenter.call({ slug: organizationSlug });
-  if (!plans) {
+  const result = await presenter.call({ slug: organizationSlug, isManagedCloud });
+  if (!result) {
     throw new Response(null, { status: 404 });
   }
 
-  return typedjson({ plans, organizationSlug });
+  return typedjson({
+    plans: result.plans,
+    maxConcurrency: result.maxConcurrency,
+    organizationSlug,
+  });
 }
 
 export const handle: Handle = {
@@ -37,16 +44,33 @@ export const handle: Handle = {
 };
 
 export default function Page() {
-  const { plans, organizationSlug } = useTypedLoaderData<typeof loader>();
+  const { plans, maxConcurrency, organizationSlug } = useTypedLoaderData<typeof loader>();
+  const currentPlan = useCurrentPlan();
+
+  const hitConcurrencyLimit =
+    currentPlan?.subscription?.limits.concurrentRuns && maxConcurrency
+      ? maxConcurrency >= currentPlan.subscription!.limits.concurrentRuns!
+      : false;
+
+  const hitRunLimit = currentPlan?.usage?.runCountCap
+    ? currentPlan.usage.currentRunCount > currentPlan.usage.runCountCap
+    : false;
 
   return (
     <div className="flex flex-col gap-4">
-      <Callout variant={"pricing"}>
-        Some of your Runs are being queued because your Run concurrency is limited to 50.
-      </Callout>
-      <Callout variant={"pricing"}>
-        You have exceeded the monthly 10,000 Runs limit. Upgrade to a paid plan before Nov 30.
-      </Callout>
+      {hitConcurrencyLimit && (
+        <Callout variant={"pricing"}>
+          Some of your Runs are being queued because your Run concurrency is limited to{" "}
+          {currentPlan?.subscription?.limits.concurrentRuns}.
+        </Callout>
+      )}
+      {hitRunLimit && (
+        <Callout variant={"pricing"}>
+          {`You have exceeded the monthly
+          ${formatNumberCompact(currentPlan!.subscription!.limits.runs!)} Runs limit. Upgrade so you
+          can continue to perform Runs.`}
+        </Callout>
+      )}
       <PricingTiers organizationSlug={organizationSlug} plans={plans} />
       <div>
         <Header2 spacing>Estimate your usage</Header2>
