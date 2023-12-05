@@ -110,7 +110,7 @@ export class Job<
 > {
   readonly options: JobOptions<TTrigger, TIntegrations, TOutput>;
 
-  private client?: TriggerClient;
+  client?: TriggerClient;
 
   constructor(options: JobOptions<TTrigger, TIntegrations, TOutput>) {
     this.options = options;
