@@ -46,6 +46,14 @@ TRIGGER_API_URL=https://api.trigger.dev # change this if you are self-hosting
 
 Replace `<development server api key>` with the actual API key obtained from the previous step.
 
+## Enable Node.js compatibility
+
+If you are using Cloudflare Workers, you'll need to enable Node.js compatibility mode in your `wrangler.toml` file:
+
+```toml
+compatibility_flags = ["nodejs_compat"]
+```
+
 ## Add Middelware to Your Hono app
 
 Our `@trigger.dev/hono` package provides two different ways of configuring the necessary middleware needed to connect your Hono app to Trigger.dev. `addMiddleware` which should be used for Cloudflare Workers, and `createMiddleware` which can be used with Bun, Deno, and Node.js.
