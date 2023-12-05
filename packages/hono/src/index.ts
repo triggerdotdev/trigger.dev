@@ -1,4 +1,4 @@
-import { TriggerClient } from "@trigger.dev/sdk";
+import type { TriggerClient } from "@trigger.dev/sdk";
 import type { Env, Hono, HonoRequest, MiddlewareHandler } from "hono";
 
 export function createMiddleware(
