@@ -142,7 +142,7 @@ type WebhookOptions<
   crud: WebhookCRUD<TIntegration, TParams, TConfig>;
   filter?: FilterFunction<TParams, TConfig>;
   register?: RegisterFunction<TIntegration, TParams, TConfig>;
-  batch?: BatcherOptions;
+  batch?: Exclude<BatcherOptions, boolean>;
   verify?: (options: {
     request: Request;
     client: TriggerClient;
@@ -267,6 +267,7 @@ export type WebhookTriggerOptions<
   source: TEventSource;
   params: GetWebhookParams<TEventSource>;
   config: TConfig;
+  batch?: BatcherOptions;
 };
 
 export class WebhookTrigger<
@@ -302,7 +303,19 @@ export class WebhookTrigger<
       },
       properties: this.options.source.properties(this.options.params),
       link: `http-endpoints/${this.key}`,
+      batch: this.options.batch,
     };
+  }
+
+  batch(
+    options?: Exclude<BatcherOptions, boolean>
+  ): WebhookTrigger<TEventSpecification, TEventSource> {
+    const { batch, ...rest } = this.options;
+
+    return new WebhookTrigger({
+      ...rest,
+      batch: options ?? true,
+    });
   }
 
   filter(eventFilter: EventFilter) {

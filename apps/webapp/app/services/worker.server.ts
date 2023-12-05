@@ -363,7 +363,7 @@ function getWorkerQueue() {
       deliverMultipleWebhookRequests: {
         priority: 1, // smaller number = higher priority
         maxAttempts: 14,
-        queueName: (payload) => `webhooks:${payload}`,
+        queueName: (payload) => `webhooks:${payload.webhookEnvironmentId}`,
         handler: async (payload, job) => {
           const service = new DeliverWebhookRequestService();
 

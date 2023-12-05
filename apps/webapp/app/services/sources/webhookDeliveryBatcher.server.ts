@@ -15,7 +15,7 @@ export class WebhookDeliveryBatcherService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(id: string, eventRecordIds: string[]) {
+  public async call(id: string, deliveryIds: string[]) {
     const webhookEnvironment = await this.#prismaClient.webhookEnvironment.findUniqueOrThrow({
       where: {
         id,
@@ -44,8 +44,8 @@ export class WebhookDeliveryBatcherService {
     }
 
     const requestDeliveries = await prisma.$queryRaw<{ id: string; bodySize: number }[]>`
-      SELECT id, LENGTH(payload::text) AS "bodySize" FROM "WebhookRequestDelivery"
-      WHERE id IN (${Prisma.join(eventRecordIds)});
+      SELECT id, OCTET_LENGTH(body) AS "bodySize" FROM "WebhookRequestDelivery"
+      WHERE id IN (${Prisma.join(deliveryIds)});
     `;
 
     let chunkSize = 0;
