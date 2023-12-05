@@ -1,5 +1,8 @@
+import { estimate } from "@trigger.dev/billing";
 import { formatDateTime } from "~/components/primitives/DateTime";
 import { PrismaClient, prisma } from "~/db.server";
+import { featuresForRequest } from "~/features.server";
+import { BillingService } from "~/services/billing.server";
 import { logger } from "~/services/logger.server";
 
 export class OrgUsagePresenter {
@@ -9,7 +12,7 @@ export class OrgUsagePresenter {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({ userId, slug }: { userId: string; slug: string }) {
+  public async call({ userId, slug, request }: { userId: string; slug: string; request: Request }) {
     const organization = await this.#prismaClient.organization.findFirst({
       where: {
         slug,
@@ -27,6 +30,8 @@ export class OrgUsagePresenter {
 
     const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const startOfLastMonth = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1); // this works for January as well
+    const endOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1);
+    endOfMonth.setDate(endOfMonth.getDate() - 1);
 
     // Get count of runs since the start of the current month
     const runsCount = await this.#prismaClient.jobRun.count({
@@ -69,6 +74,7 @@ export class OrgUsagePresenter {
       }[]
     >`SELECT TO_CHAR("createdAt", 'YYYY-MM') as month, COUNT(*) as count FROM "JobRun" WHERE "organizationId" = ${organization.id} AND "createdAt" >= NOW() - INTERVAL '6 months' AND "internal" = FALSE GROUP BY month ORDER BY month ASC`;
 
+    const hasMonthlyRunData = monthlyRunsDataRaw.length > 0;
     const monthlyRunsData = monthlyRunsDataRaw.map((obj) => ({
       name: obj.month,
       total: Number(obj.count), // Convert BigInt to Number
@@ -160,23 +166,54 @@ export class OrgUsagePresenter {
     ThirtyDaysAgo.setDate(ThirtyDaysAgo.getDate() - 30);
     ThirtyDaysAgo.setHours(0, 0, 0, 0);
 
+    const hasConcurrencyData = concurrencyChartRawData.length > 0;
     const concurrencyChartRawDataFilledIn = fillInMissingConcurrencyDays(
       ThirtyDaysAgo,
       30,
       concurrencyChartRawData
     );
 
+    const projectedRunsCount = Math.round(
+      runsCount / (new Date().getDate() / endOfMonth.getDate())
+    );
+
+    const { isManagedCloud } = featuresForRequest(request);
+    const billingPresenter = new BillingService(isManagedCloud);
+    const plans = await billingPresenter.getPlans();
+
+    let runCostEstimation: number | undefined = undefined;
+    let projectedRunCostEstimation: number | undefined = undefined;
+
+    if (plans) {
+      const estimationResult = estimate({
+        usage: { currentRunCount: runsCount },
+        plans: [plans.free, plans.paid],
+      });
+      runCostEstimation = estimationResult?.cost.runsCost;
+
+      const projectedEstimationResult = estimate({
+        usage: { currentRunCount: projectedRunsCount },
+        plans: [plans.free, plans.paid],
+      });
+      projectedRunCostEstimation = projectedEstimationResult?.cost.runsCost;
+    }
+
     return {
       id: organization.id,
       runsCount,
+      projectedRunsCount,
       runsCountLastMonth,
       monthlyRunsData: monthlyRunsDataDisplay,
+      hasMonthlyRunData,
       concurrencyData: concurrencyChartRawDataFilledIn,
+      hasConcurrencyData,
       totalJobs,
       totalJobsLastMonth,
       totalIntegrations,
       totalIntegrationsLastMonth,
       totalMembers,
+      runCostEstimation,
+      projectedRunCostEstimation,
     };
   }
 }

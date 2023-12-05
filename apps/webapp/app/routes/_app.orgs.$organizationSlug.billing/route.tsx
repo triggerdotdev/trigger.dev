@@ -32,20 +32,7 @@ import { ActiveSubscription } from "@trigger.dev/billing";
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
-
-  const presenter = new OrgUsagePresenter();
-  const data = await presenter.call({ userId, slug: organizationSlug });
-
-  if (!data) {
-    throw new Response(null, { status: 404 });
-  }
-
-  const { isManagedCloud } = featuresForRequest(request);
-  const billingPresenter = new BillingService(isManagedCloud);
-  const portal = await billingPresenter.customerPortalUrl(data.id, organizationSlug);
-  const stripePortalLink = portal?.success ? portal?.customerPortalUrl : undefined;
-
-  return typedjson({ ...data, stripePortalLink });
+  return typedjson({});
 }
 
 export const handle: Handle = {
@@ -75,7 +62,6 @@ function planLabel(subscription: ActiveSubscription | undefined, periodEnd: Date
 }
 
 export default function Page() {
-  const { stripePortalLink } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const { isManagedCloud } = useFeatures();
   const currentPlan = useCurrentPlan();
@@ -88,7 +74,7 @@ export default function Page() {
           <PageButtons>
             {isManagedCloud && (
               <>
-                {stripePortalLink && (
+                {/* {stripePortalLink && (
                   <>
                     <LinkButton to={stripePortalLink} variant="secondary/small">
                       Invoices
@@ -97,7 +83,7 @@ export default function Page() {
                       Manage card details
                     </LinkButton>
                   </>
-                )}
+                )} */}
                 <LinkButton
                   to={plansPath(organization)}
                   variant="primary/small"

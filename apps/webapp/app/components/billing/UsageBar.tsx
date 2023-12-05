@@ -6,8 +6,8 @@ import { motion } from "framer-motion";
 
 type UsageBarProps = {
   numberOfCurrentRuns: number;
-  billingLimit?: number | undefined;
-  tierRunLimit: number;
+  billingLimit?: number;
+  tierRunLimit?: number;
   projectedRuns: number;
   subscribedToPaidTier?: boolean;
 };
@@ -21,17 +21,20 @@ export function UsageBar({
 }: UsageBarProps) {
   const getLargestNumber = Math.max(
     numberOfCurrentRuns,
-    tierRunLimit,
+    tierRunLimit ?? -Infinity,
     projectedRuns,
     billingLimit ?? -Infinity
-  ); //creates a maximum range for the progress bar
-  const maxRange = Math.round(getLargestNumber * 1.1); // add 10% to the largest number so the bar doesn't reach the end
-  const tierRunLimitPercentage = Math.round((tierRunLimit / maxRange) * 100); //convert the freeRunLimit into a percentage
-  const projectedRunsPercentage = Math.round((projectedRuns / maxRange) * 100); //convert the projectedRuns into a percentage
+  );
+  //creates a maximum range for the progress bar, add 10% to the largest number so the bar doesn't reach the end
+  const maxRange = Math.round(getLargestNumber * 1.1);
+  const tierRunLimitPercentage = tierRunLimit ? Math.round((tierRunLimit / maxRange) * 100) : 0;
+  const projectedRunsPercentage = Math.round((projectedRuns / maxRange) * 100);
   const billingLimitPercentage =
-    billingLimit !== undefined ? Math.round((billingLimit / maxRange) * 100) : 0; //convert the BillingLimit into a percentage
-  const usagePercentage = Math.round((numberOfCurrentRuns / maxRange) * 100); //convert the currentRuns into a percentage
-  const usageCappedToLimitPercentage = Math.min(usagePercentage, tierRunLimitPercentage); //cap the usagePercentage to the freeRunLimitPercentage
+    billingLimit !== undefined ? Math.round((billingLimit / maxRange) * 100) : 0;
+  const usagePercentage = Math.round((numberOfCurrentRuns / maxRange) * 100);
+
+  //cap the usagePercentage to the freeRunLimitPercentage
+  const usageCappedToLimitPercentage = Math.min(usagePercentage, tierRunLimitPercentage);
 
   return (
     <div className="h-fit w-full py-16">
@@ -53,25 +56,27 @@ export function UsageBar({
             />
           </motion.div>
         )}
-        <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: tierRunLimitPercentage + "%" }}
-          transition={{ duration: 1.5, type: "spring" }}
-          style={{ width: `${tierRunLimitPercentage}%` }}
-          className="absolute h-3 rounded-l-sm bg-green-900/50"
-        >
-          <Legend
-            text={`${subscribedToPaidTier ? "Included free:" : "Free tier limit:"}`}
-            value={formatNumberCompact(tierRunLimit)}
-            position="bottomRow1"
-            percentage={tierRunLimitPercentage}
-            tooltipContent={`${
-              subscribedToPaidTier
-                ? `Runs included free: ${formatNumberCompact(tierRunLimit)}`
-                : `Free Tier Runs Limit: ${formatNumberCompact(tierRunLimit)}`
-            }`}
-          />
-        </motion.div>
+        {tierRunLimit && (
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: tierRunLimitPercentage + "%" }}
+            transition={{ duration: 1.5, type: "spring" }}
+            style={{ width: `${tierRunLimitPercentage}%` }}
+            className="absolute h-3 rounded-l-sm bg-green-900/50"
+          >
+            <Legend
+              text={`${subscribedToPaidTier ? "Included free:" : "Free tier limit:"}`}
+              value={formatNumberCompact(tierRunLimit)}
+              position="bottomRow1"
+              percentage={tierRunLimitPercentage}
+              tooltipContent={`${
+                subscribedToPaidTier
+                  ? `Runs included free: ${formatNumberCompact(tierRunLimit)}`
+                  : `Free Tier Runs Limit: ${formatNumberCompact(tierRunLimit)}`
+              }`}
+            />
+          </motion.div>
+        )}
         {projectedRuns !== 0 && (
           <motion.div
             initial={{ width: 0 }}

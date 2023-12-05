@@ -17,6 +17,8 @@ import { OrgUsagePresenter } from "~/presenters/OrgUsagePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { OrganizationParamsSchema, plansPath, organizationTeamPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { estimate } from "@trigger.dev/billing";
+import { formatCurrency, formatNumberCompact } from "~/utils/numberFormatter";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -24,7 +26,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const presenter = new OrgUsagePresenter();
 
-  const data = await presenter.call({ userId, slug: organizationSlug });
+  const data = await presenter.call({ userId, slug: organizationSlug, request });
 
   if (!data) {
     throw new Response(null, { status: 404 });
@@ -57,6 +59,10 @@ export default function Page() {
       )
     : false;
 
+  const hitsRunLimit = currentPlan?.usage?.runCountCap
+    ? currentPlan.usage.currentRunCount > currentPlan.usage.runCountCap
+    : false;
+
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -83,6 +89,7 @@ export default function Page() {
           <ConcurrentRunsChart
             data={loaderData.concurrencyData}
             concurrentRunsLimit={currentPlan?.subscription?.limits.concurrentRuns}
+            hasConcurrencyData={loaderData.hasConcurrencyData}
           />
         </div>
       </div>
@@ -90,41 +97,61 @@ export default function Page() {
       <div className="@container">
         <Header2 spacing>Runs</Header2>
         <div className="flex flex-col gap-5 rounded border border-border p-6">
-          <Callout
-            variant={"pricing"}
-            cta={
-              <LinkButton
-                variant="primary/small"
-                LeadingIcon={ArrowUpCircleIcon}
-                leadingIconClassName="px-0"
-                to={plansPath(organization)}
-              >
-                Upgrade
-              </LinkButton>
-            }
-          >
-            You have exceeded the monthly 10,000 Runs limit. Upgrade to a paid plan before Nov 30.
-          </Callout>
+          {hitsRunLimit && (
+            <Callout
+              variant={"pricing"}
+              cta={
+                <LinkButton
+                  variant="primary/small"
+                  LeadingIcon={ArrowUpCircleIcon}
+                  leadingIconClassName="px-0"
+                  to={plansPath(organization)}
+                >
+                  Upgrade
+                </LinkButton>
+              }
+            >
+              You have exceeded the monthly{" "}
+              {formatNumberCompact(currentPlan!.subscription!.limits.runs!)} Runs limit. Upgrade to
+              a paid plan before Nov 30.
+            </Callout>
+          )}
           <div className="flex flex-col @4xl:flex-row">
             <div className="flex w-full flex-col gap-4">
-              <div className="flex w-full items-center gap-6">
-                <div className="flex flex-col gap-2">
-                  <Header3 className="">Month-to-date</Header3>
-                  <p className="text-3xl font-medium text-bright">$0.00</p>
-                </div>
-                <ArrowRightIcon className="h-6 w-6 text-dimmed/50" />
-                <div className="flex flex-col gap-2 text-dimmed">
-                  <Header3 className="text-dimmed">Projected</Header3>
-                  <p className="text-3xl font-medium">$5.25</p>
-                </div>
-              </div>
-              <UsageBar numberOfCurrentRuns={15467} tierRunLimit={10000} projectedRuns={25347} />
+              {loaderData.runCostEstimation !== undefined &&
+                loaderData.projectedRunCostEstimation !== undefined && (
+                  <div className="flex w-full items-center gap-6">
+                    <div className="flex flex-col gap-2">
+                      <Header3 className="">Month-to-date</Header3>
+                      <p className="text-3xl font-medium text-bright">
+                        {formatCurrency(loaderData.runCostEstimation, false)}
+                      </p>
+                    </div>
+                    <ArrowRightIcon className="h-6 w-6 text-dimmed/50" />
+                    <div className="flex flex-col gap-2 text-dimmed">
+                      <Header3 className="text-dimmed">Projected</Header3>
+                      <p className="text-3xl font-medium">
+                        {formatCurrency(loaderData.projectedRunCostEstimation, false)}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              <UsageBar
+                numberOfCurrentRuns={loaderData.runsCount}
+                tierRunLimit={
+                  currentPlan?.usage.runCountCap ??
+                  currentPlan?.subscription?.plan.runs?.pricing?.brackets.at(0)?.upto
+                }
+                projectedRuns={loaderData.projectedRunsCount}
+              />
             </div>
             <div className="relative w-full">
               <Header3 className="mb-4">Monthly Runs</Header3>
-              <Paragraph className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                No Runs to show
-              </Paragraph>
+              {!loaderData.hasMonthlyRunData && (
+                <Paragraph className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                  No Runs to show
+                </Paragraph>
+              )}
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart
                   data={loaderData.monthlyRunsData}

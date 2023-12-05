@@ -27,14 +27,16 @@ const tooltipStyle = {
 export function ConcurrentRunsChart({
   concurrentRunsLimit,
   data,
+  hasConcurrencyData,
 }: {
   concurrentRunsLimit?: number;
   data: { name: string; maxConcurrentRuns: number }[];
+  hasConcurrencyData: boolean;
 }) {
   return (
     <div className="relative">
       <Header3 className="mb-4">Concurrent Runs</Header3>
-      {data.length === 0 && (
+      {!hasConcurrencyData && (
         <Paragraph className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
           No concurrent Runs to show
         </Paragraph>
