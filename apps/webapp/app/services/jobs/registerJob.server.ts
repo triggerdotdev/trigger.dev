@@ -8,7 +8,6 @@ import {
 } from "@trigger.dev/core";
 import type {
   Endpoint,
-  EventDispatcher,
   Integration,
   Job,
   JobIntegration,
@@ -421,13 +420,8 @@ export class RegisterJobService {
     batchOptions?: BatcherOptions
   ) {
     if (batchOptions) {
-      let maxPayloads: number | null = null;
-      let maxInterval: number | null = null;
-
-      if (typeof batchOptions !== "boolean") {
-        maxPayloads = batchOptions.maxPayloads ?? null;
-        maxInterval = batchOptions.maxInterval ?? null;
-      }
+      const maxPayloads = batchOptions.maxPayloads ?? null;
+      const maxInterval = batchOptions.maxInterval ?? null;
 
       await tx.eventDispatchBatcher.upsert({
         where: {

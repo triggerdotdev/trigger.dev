@@ -37,13 +37,10 @@ export const TriggerHelpSchema = z.object({
     .optional(),
 });
 
-export const BatcherOptionsSchema = z.union([
-  z.boolean(),
-  z.object({
-    maxPayloads: z.number().optional(),
-    maxInterval: z.number().optional(),
-  }),
-]);
+export const BatcherOptionsSchema = z.object({
+  maxPayloads: z.number().optional(),
+  maxInterval: z.number().optional(),
+});
 
 export type BatcherOptions = z.infer<typeof BatcherOptionsSchema>;
 

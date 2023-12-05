@@ -49,14 +49,12 @@ export class EventTrigger<TEventSpecification extends EventSpecification<any>>
 
   attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpecification>, any>): void {}
 
-  batch(
-    options?: Exclude<BatcherOptions, boolean>
-  ): EventTrigger<TEventSpecification> {
+  batch(options?: BatcherOptions): EventTrigger<TEventSpecification> {
     const { batch, ...rest } = this.#options;
 
     return new EventTrigger({
       ...rest,
-      batch: options ?? true,
+      batch: options ?? {},
     });
   }
 
