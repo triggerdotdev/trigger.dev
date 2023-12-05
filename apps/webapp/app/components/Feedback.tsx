@@ -1,12 +1,15 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
+import { DiscordIcon } from "@trigger.dev/companyicons";
 import { ReactNode, useState } from "react";
 import { FeedbackType, feedbackTypeLabel, schema } from "~/routes/resources.feedback";
 import { Button } from "./primitives/Buttons";
 import { Fieldset } from "./primitives/Fieldset";
 import { FormButtons } from "./primitives/FormButtons";
 import { FormError } from "./primitives/FormError";
+import { Header2 } from "./primitives/Headers";
 import { InputGroup } from "./primitives/InputGroup";
 import { Label } from "./primitives/Label";
 import { Paragraph } from "./primitives/Paragraph";
@@ -20,8 +23,6 @@ import {
 } from "./primitives/Select";
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTrigger } from "./primitives/Sheet";
 import { TextArea } from "./primitives/TextArea";
-import { DiscordIcon } from "@trigger.dev/companyicons";
-import { ChevronRightIcon } from "@heroicons/react/24/solid";
 
 type FeedbackProps = {
   button: ReactNode;
@@ -55,19 +56,16 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild={true}>{button}</SheetTrigger>
-      <SheetContent size="sm">
-        <SheetHeader className="justify-between">Help & feedback</SheetHeader>
-        <SheetBody>
+      <SheetContent>
+        <SheetHeader className="justify-between">How can we help?</SheetHeader>
+        <SheetBody className="flex h-full flex-col justify-between">
           <DiscordBanner />
-          <Paragraph variant="small" className="mb-4 border-t border-slate-800 pt-3">
-            Or use this form to ask for help or give us feedback. We read every message and will get
-            back to you as soon as we can.
-          </Paragraph>
+          <hr className="mb-3" />
+          <Header2 className="mb-4">Send us a message</Header2>
           <Form method="post" action="/resources/feedback" {...form.props}>
             <Fieldset className="max-w-full">
               <input value={location.pathname} {...conform.input(path, { type: "hidden" })} />
               <InputGroup className="max-w-full">
-                <Label>How can we help?</Label>
                 <SelectGroup>
                   <Select {...conform.input(feedbackType)} defaultValue={defaultValue}>
                     <SelectTrigger size="medium" width="full">
@@ -90,14 +88,19 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
                 <FormError id={message.errorId}>{message.error}</FormError>
               </InputGroup>
               <FormError>{form.error}</FormError>
-              <FormButtons
-                className="w-full"
-                confirmButton={
-                  <Button type="submit" variant="primary/medium">
-                    Send
-                  </Button>
-                }
-              />
+              <div className="flex w-full items-center justify-between">
+                <Paragraph variant="small" className="w-full">
+                  We read every message and respond quickly.
+                </Paragraph>
+                <FormButtons
+                  className="m-0 w-max"
+                  confirmButton={
+                    <Button type="submit" variant="primary/medium">
+                      Send
+                    </Button>
+                  }
+                />
+              </div>
             </Fieldset>
           </Form>
         </SheetBody>
@@ -109,7 +112,7 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
 function DiscordBanner() {
   return (
     <a
-      href="https://discord.gg/nkqV9xBYWy"
+      href="https://trigger.dev/discord"
       target="_blank"
       className="group mb-4 flex w-full items-center justify-between rounded-md border border-slate-600 bg-gradient-to-br from-blue-400/30 to-indigo-400/50 p-4 transition hover:border-indigo-400"
     >
@@ -120,13 +123,11 @@ function DiscordBanner() {
           <br />
           Discord community
         </h2>
-        <Paragraph variant="small">
+        <Paragraph variant="small/bright">
           Get help or answer questions from the Trigger.dev community.
         </Paragraph>
       </div>
-      <div className="h-full">
-        <ChevronRightIcon className="h-5 w-5 text-slate-400 transition group-hover:translate-x-1 group-hover:text-indigo-400" />
-      </div>
+      <ChevronRightIcon className="h-5 w-5 text-slate-400 transition group-hover:translate-x-1 group-hover:text-indigo-400" />
     </a>
   );
 }
