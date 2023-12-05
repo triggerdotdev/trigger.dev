@@ -1,4 +1,4 @@
-import { MAX_RUN_CHUNK_EXECUTION_LIMIT, RESPONSE_TIMEOUT_STATUS_CODES } from "~/consts";
+import { MAX_RUN_CHUNK_EXECUTION_LIMIT } from "~/consts";
 import { prisma, PrismaClient } from "~/db.server";
 import { EndpointApi } from "../endpointApi.server";
 import { logger } from "../logger.server";
@@ -46,8 +46,10 @@ export class ProbeEndpointService {
       },
     });
 
+    const rawBody = await response.text();
+
     // If the response is a 200, or it was a timeout, we can assume the endpoint is up and update the runChunkExecutionLimit
-    if (response.status === 200 || detectResponseIsTimeout(response)) {
+    if (response.status === 200 || detectResponseIsTimeout(rawBody, response)) {
       await this.#prismaClient.endpoint.update({
         where: {
           id,
