@@ -695,7 +695,11 @@ export class TriggerClient {
       );
     }
 
-    return new Job<TTrigger, TIntegrations, TOutput>(this, options);
+    const job = new Job<TTrigger, TIntegrations, TOutput>(options);
+
+    this.attach(job);
+
+    return job;
   }
 
   defineAuthResolver(
@@ -745,7 +749,7 @@ export class TriggerClient {
 
   attach(job: Job<Trigger<any>, any>): void {
     this.#registeredJobs[job.id] = job;
-    job.trigger.attachToJob(this, job);
+    job.attachToClient(this);
   }
 
   attachDynamicTrigger(trigger: DynamicTrigger<any, any>): void {
@@ -830,7 +834,7 @@ export class TriggerClient {
 
     this.#registeredSources[options.key] = registeredSource;
 
-    new Job(this, {
+    this.defineJob({
       id: options.key,
       name: options.key,
       version: options.source.version,
@@ -912,57 +916,7 @@ export class TriggerClient {
 
     this.#registeredWebhooks[options.key] = registeredWebhook;
 
-    // new Job(this, {
-    //   id: `webhook.deliver.${options.key}`,
-    //   name: `webhook.deliver.${options.key}`,
-    //   version: source.version,
-    //   trigger: new EventTrigger({
-    //     event: deliverWebhookEvent(options.key),
-    //     // verify: source.verify.bind(source),
-    //   }),
-    //   integrations: {
-    //     integration: source.integration,
-    //   },
-    //   run: async (request, io, ctx) => {
-    //     this.#internalLogger.debug("[webhook.deliver]");
-
-    //     const webhookContextMetadata = WebhookContextMetadataSchema.parse(ctx.source?.metadata);
-
-    //     const webhookContext = {
-    //       ...ctx,
-    //       webhook: webhookContextMetadata,
-    //     };
-
-    //     const verifyResult = await io.runTask(
-    //       "verify",
-    //       async () => {
-    //         return await source.verify(request, io, webhookContext);
-    //       },
-    //       {
-    //         name: "Verify Signature",
-    //         icon: "certificate",
-    //       }
-    //     );
-
-    //     if (!verifyResult.success) {
-    //       throw new Error(verifyResult.reason);
-    //     }
-
-    //     return await io.runTask(
-    //       "generate-events",
-    //       async () => {
-    //         return await source.generateEvents(request, io, webhookContext);
-    //       },
-    //       {
-    //         name: "Generate Events",
-    //         icon: "building-factory-2",
-    //       }
-    //     );
-    //   },
-    //   __internal: true,
-    // });
-
-    new Job(this, {
+    this.defineJob({
       id: `webhook.register.${options.key}`,
       name: `webhook.register.${options.key}`,
       version: source.version,

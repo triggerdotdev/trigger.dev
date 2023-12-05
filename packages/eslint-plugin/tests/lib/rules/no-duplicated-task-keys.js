@@ -243,7 +243,7 @@ ruleTester.run("no-duplicated-task-keys", rule, {
       import { client } from "@/trigger";
       
       // your first job
-      new Job(client, {
+      client.defineJob({
         id: "example-job",
         name: "Example Job",
         version: "0.0.1",
@@ -294,7 +294,7 @@ ruleTester.run("no-duplicated-task-keys", rule, {
       import { client } from "@/trigger";
       
       // your first job
-      new Job(client, {
+      client.defineJob({
         id: "example-job",
         name: "Example Job",
         version: "0.0.1",
