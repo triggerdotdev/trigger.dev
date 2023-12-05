@@ -109,7 +109,9 @@ export function TierFree({
   });
 
   const navigation = useNavigation();
-  const isLoading = navigation.state === "submitting" || navigation.state === "loading";
+  const isLoading =
+    (navigation.state === "submitting" || navigation.state === "loading") &&
+    navigation.formData?.get("type") === "free";
 
   const isCurrentPlan =
     currentSubscription?.isPaying === undefined || currentSubscription?.isPaying === false;
@@ -232,7 +234,9 @@ export function TierPro({
   });
 
   const navigation = useNavigation();
-  const isLoading = navigation.state === "submitting" || navigation.state === "loading";
+  const isLoading =
+    (navigation.state === "submitting" || navigation.state === "loading") &&
+    navigation.formData?.get("planCode") === plan.code;
 
   const currentConcurrencyTier = currentSubscription?.plan.concurrentRuns.pricing?.code;
   const [concurrentBracketCode, setConcurrentBracketCode] = useState(
