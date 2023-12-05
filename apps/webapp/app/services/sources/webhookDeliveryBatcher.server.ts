@@ -54,11 +54,10 @@ export class WebhookDeliveryBatcherService {
     const chunks: Record<number, string[]> = { 0: [] };
 
     for (const delivery of requestDeliveries) {
-      logger.debug("Delivery body size is larger than maxPayloadSize", {
-        delivery,
-      });
-
       if (delivery.bodySize > this.maxPayloadSize) {
+        logger.debug("Delivery body size is larger than maxPayloadSize", {
+          delivery,
+        });
         continue;
       }
 

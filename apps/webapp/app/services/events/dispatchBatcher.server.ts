@@ -52,11 +52,10 @@ export class DispatchBatcherService {
     const chunks: Record<number, string[]> = { 0: [] };
 
     for (const event of eventRecords) {
-      logger.debug("Event payload size is larger than maxPayloadSize", {
-        event,
-      });
-
       if (event.payloadSize > this.maxPayloadSize) {
+        logger.debug("Event payload size is larger than maxPayloadSize", {
+          event,
+        });
         continue;
       }
 
