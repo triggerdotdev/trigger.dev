@@ -5,6 +5,7 @@ import { isValidRegex } from "./utils/regex";
 const EnvironmentSchema = z.object({
   NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
   DATABASE_URL: z.string(),
+  DATABASE_READ_REPLICA_URL: z.string().optional(),
   DATABASE_CONNECTION_LIMIT: z.coerce.number().int().default(10),
   DATABASE_POOL_TIMEOUT: z.coerce.number().int().default(60),
   DIRECT_URL: z.string(),
