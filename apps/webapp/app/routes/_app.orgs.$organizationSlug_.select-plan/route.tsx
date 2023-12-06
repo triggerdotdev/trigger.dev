@@ -30,12 +30,12 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   }
 
   const presenter = new OrgBillingPlanPresenter();
-  const plans = await presenter.call({ slug: organizationSlug });
-  if (!plans) {
+  const result = await presenter.call({ slug: organizationSlug, isManagedCloud });
+  if (!result) {
     throw new Response(null, { status: 404 });
   }
 
-  return typedjson({ plans, organizationSlug });
+  return typedjson({ plans: result.plans, organizationSlug });
 }
 
 export default function ChoosePlanPage() {
