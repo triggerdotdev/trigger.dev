@@ -1,5 +1,14 @@
 # @trigger.dev/sdk
 
+## 2.3.1
+
+### Patch Changes
+
+- f3efcc0c: Moved Logger to core-backend, no longer importing node:buffer in core/react
+- Updated dependencies [f3efcc0c]
+  - @trigger.dev/core-backend@2.3.1
+  - @trigger.dev/core@2.3.1
+
 ## 2.3.0
 
 ### Minor Changes
