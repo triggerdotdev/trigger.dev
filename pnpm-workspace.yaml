@@ -6,3 +6,4 @@ packages:
   - "references/*"
   - "docs"
   - "perf"
+  - "runtime_tests"

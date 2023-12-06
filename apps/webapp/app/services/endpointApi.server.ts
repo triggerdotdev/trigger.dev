@@ -452,6 +452,7 @@ function addStandardRequestOptions(options: RequestInit) {
       ...options.headers,
       "user-agent": "triggerdotdev-server/2.0.0",
       "x-trigger-version": API_VERSIONS.LAZY_LOADED_CACHED_TASKS,
+      accept: "application/json",
     },
   };
 }

@@ -202,9 +202,14 @@ export class PerformRunExecutionV3Service {
       forceYieldCoordinator.deregisterRun(run.id);
 
       if (!response) {
-        return await this.#failRunExecutionWithRetry(run, input.lastAttempt, {
-          message: `Connection could not be established to the endpoint (${run.endpoint.url})`,
-        });
+        return await this.#failRunExecutionWithRetry(
+          run,
+          input.lastAttempt,
+          {
+            message: `Connection could not be established to the endpoint (${run.endpoint.url})`,
+          },
+          durationInMs
+        );
       }
 
       // Update the endpoint version if it has changed
@@ -285,6 +290,8 @@ export class PerformRunExecutionV3Service {
           status: response.status,
           runId: run.id,
           endpoint: run.endpoint.url,
+          headers: rawHeaders,
+          rawBody,
         });
 
         const errorBody = safeJsonZodParse(errorParser, rawBody);
@@ -294,7 +301,12 @@ export class PerformRunExecutionV3Service {
           if (response.status >= 400 && response.status <= 499) {
             return await this.#failRunExecution(this.#prismaClient, run, errorBody.data);
           } else {
-            return await this.#failRunExecutionWithRetry(run, input.lastAttempt, errorBody.data);
+            return await this.#failRunExecutionWithRetry(
+              run,
+              input.lastAttempt,
+              errorBody.data,
+              durationInMs
+            );
           }
         }
 
@@ -311,7 +323,7 @@ export class PerformRunExecutionV3Service {
           );
         } else {
           // If the error is a timeout, we should mark this execution as succeeded (by not throwing an error) and enqueue a new execution
-          if (detectResponseIsTimeout(response)) {
+          if (detectResponseIsTimeout(rawBody, response)) {
             return await this.#resumeRunExecutionAfterTimeout(
               this.#prismaClient,
               run,
@@ -319,9 +331,14 @@ export class PerformRunExecutionV3Service {
               durationInMs
             );
           } else {
-            return await this.#failRunExecutionWithRetry(run, input.lastAttempt, {
-              message: `Endpoint responded with ${response.status} status code`,
-            });
+            return await this.#failRunExecutionWithRetry(
+              run,
+              input.lastAttempt,
+              {
+                message: `Endpoint responded with ${response.status} status code`,
+              },
+              durationInMs
+            );
           }
         }
       }
@@ -1000,6 +1017,9 @@ export class PerformRunExecutionV3Service {
           executionDuration: {
             increment: durationInMs,
           },
+          executionCount: {
+            increment: 1,
+          },
           endpoint: {
             update: {
               // Never allow the execution limit to be less than 10 seconds or more than MAX_RUN_CHUNK_EXECUTION_LIMIT
@@ -1022,7 +1042,8 @@ export class PerformRunExecutionV3Service {
   async #failRunExecutionWithRetry(
     run: FoundRun,
     lastAttempt: boolean,
-    output: Record<string, any>
+    output: Record<string, any>,
+    durationInMs: number = 0
   ): Promise<void> {
     if (lastAttempt) {
       return await this.#failRunExecution(this.#prismaClient, run, output);
@@ -1032,10 +1053,16 @@ export class PerformRunExecutionV3Service {
       where: { id: run.id },
       data: {
         status: "WAITING_TO_EXECUTE",
+        executionDuration: {
+          increment: durationInMs,
+        },
+        executionCount: {
+          increment: 1,
+        },
       },
     });
 
-    throw new Error(JSON.stringify(output));
+    await ResumeRunService.enqueue(run, this.#prismaClient);
   }
 
   async #failRunExecution(
@@ -1055,6 +1082,9 @@ export class PerformRunExecutionV3Service {
           output,
           executionDuration: {
             increment: durationInMs,
+          },
+          executionCount: {
+            increment: 1,
           },
           tasks: {
             updateMany: {

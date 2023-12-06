@@ -5,11 +5,13 @@ import {
   InvokeOptions,
   JobMetadata,
   LogLevel,
-  QueueOptions,
+  Prettify,
   RunNotification,
   SuccessfulRunNotification,
 } from "@trigger.dev/core";
+import { ConcurrencyLimit } from "./concurrencyLimit";
 import { IOWithIntegrations, TriggerIntegration } from "./integrations";
+import { runLocalStorage } from "./runLocalStorage";
 import { TriggerClient } from "./triggerClient";
 import type {
   EventSpecification,
@@ -19,11 +21,6 @@ import type {
   TriggerInvokeType,
 } from "./types";
 import { slugifyId } from "./utils";
-import { runLocalStorage } from "./runLocalStorage";
-import { Prettify } from "@trigger.dev/core";
-import { ConcurrencyLimit } from "./concurrencyLimit";
-import { EventTrigger } from "./triggers/eventTrigger";
-import { WebhookTrigger } from "./triggers/webhook";
 
 export type JobOptions<
   TTrigger extends Trigger<EventSpecification<any>>,
@@ -129,19 +126,19 @@ export class Job<
 > {
   readonly options: JobOptions<TTrigger, TIntegrations, TOutput>;
 
-  client: TriggerClient;
+  client?: TriggerClient;
 
-  constructor(
-    /** An instance of [TriggerClient](/sdk/triggerclient) that is used to send events
-  to the Trigger API. */
-    client: TriggerClient,
-    options: JobOptions<TTrigger, TIntegrations, TOutput>
-  ) {
-    this.client = client;
+  constructor(options: JobOptions<TTrigger, TIntegrations, TOutput>) {
     this.options = options;
     this.#validate();
+  }
 
-    client.attach(this);
+  /**
+   * Attaches the job to a client. This is called automatically when you define a job using `client.defineJob()`.
+   */
+  attachToClient(client: TriggerClient) {
+    this.client = client;
+    this.trigger.attachToJob(client, this);
   }
 
   get id() {
@@ -223,6 +220,14 @@ export class Job<
     param2: TriggerInvokeType<TTrigger> | InvokeOptions | undefined = undefined,
     param3: InvokeOptions | undefined = undefined
   ): Promise<{ id: string }> {
+    const triggerClient = this.client;
+
+    if (!triggerClient) {
+      throw new Error(
+        "Cannot invoke a job that is not attached to a client. Make sure you attach the job to a client before invoking it."
+      );
+    }
+
     const runStore = runLocalStorage.getStore();
 
     if (typeof param1 === "string") {
@@ -237,7 +242,7 @@ export class Job<
       return await runStore.io.runTask(
         param1,
         async (task) => {
-          const result = await this.client.invokeJob(this.id, param2, {
+          const result = await triggerClient.invokeJob(this.id, param2, {
             idempotencyKey: task.idempotencyKey,
             ...options,
           });
@@ -274,7 +279,7 @@ export class Job<
       throw new Error("Cannot invoke a job from within a run without a cacheKey.");
     }
 
-    return await this.client.invokeJob(this.id, param1, param3);
+    return await triggerClient.invokeJob(this.id, param1, param3);
   }
 
   async invokeAndWaitForCompletion(
@@ -283,6 +288,14 @@ export class Job<
     timeoutInSeconds: number = 60 * 60, // 1 hour
     options: Prettify<Pick<InvokeOptions, "accountId" | "context">> = {}
   ): Promise<RunNotification<TOutput>> {
+    const triggerClient = this.client;
+
+    if (!triggerClient) {
+      throw new Error(
+        "Cannot invoke a job that is not attached to a client. Make sure you attach the job to a client before invoking it."
+      );
+    }
+
     const runStore = runLocalStorage.getStore();
 
     if (!runStore) {
@@ -302,7 +315,7 @@ export class Job<
             : undefined
           : payload;
 
-        const result = await this.client.invokeJob(this.id, parsedPayload, {
+        const result = await triggerClient.invokeJob(this.id, parsedPayload, {
           idempotencyKey: task.idempotencyKey,
           callbackUrl: task.callbackUrl ?? undefined,
           ...options,

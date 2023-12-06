@@ -49,7 +49,7 @@ import {
   WebhookSourceRequestBodySchema,
   WebhookSourceRequestHeadersSchema,
 } from "@trigger.dev/core";
-import { yellow } from "colorette";
+import { env } from "node:process";
 import { ApiClient } from "./apiClient";
 import {
   AutoYieldExecutionError,
@@ -122,9 +122,9 @@ const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
 import EventEmitter from "node:events";
 import * as packageJson from "../package.json";
 import { ConcurrencyLimit, ConcurrencyLimitOptions } from "./concurrencyLimit";
-import { formatSchemaErrors } from "./utils/formatSchemaErrors";
-import { WebhookDeliveryContext, WebhookSource } from "./triggers/webhook";
 import { KeyValueStore } from "./store/keyValueStore";
+import { WebhookDeliveryContext, WebhookSource } from "./triggers/webhook";
+import { formatSchemaErrors } from "./utils/formatSchemaErrors";
 
 export type TriggerClientOptions = {
   /** The `id` property is used to uniquely identify the client.
@@ -711,13 +711,15 @@ export class TriggerClient {
 
     if (existingRegisteredJob) {
       console.warn(
-        yellow(
-          `[@trigger.dev/sdk] Warning: The Job "${existingRegisteredJob.id}" you're attempting to define has already been defined. Please assign a different ID to the job.`
-        )
+        `[@trigger.dev/sdk] Warning: The Job "${existingRegisteredJob.id}" you're attempting to define has already been defined. Please assign a different ID to the job.`
       );
     }
 
-    return new Job<TTrigger, TIntegrations, TOutput>(this, options);
+    const job = new Job<TTrigger, TIntegrations, TOutput>(options);
+
+    this.attach(job);
+
+    return job;
   }
 
   defineAuthResolver(
@@ -752,9 +754,7 @@ export class TriggerClient {
     const existingHttpEndpoint = this.#registeredHttpEndpoints[options.id];
     if (!suppressWarnings && existingHttpEndpoint) {
       console.warn(
-        yellow(
-          `[@trigger.dev/sdk] Warning: The HttpEndpoint "${existingHttpEndpoint.id}" you're attempting to define has already been defined. Please assign a different ID to the HttpEndpoint.`
-        )
+        `[@trigger.dev/sdk] Warning: The HttpEndpoint "${existingHttpEndpoint.id}" you're attempting to define has already been defined. Please assign a different ID to the HttpEndpoint.`
       );
     }
 
@@ -769,7 +769,7 @@ export class TriggerClient {
 
   attach(job: Job<Trigger<any>, any>): void {
     this.#registeredJobs[job.id] = job;
-    job.trigger.attachToJob(this, job);
+    job.attachToClient(this);
   }
 
   attachDynamicTrigger(trigger: DynamicTrigger<any, any>): void {
@@ -854,7 +854,7 @@ export class TriggerClient {
 
     this.#registeredSources[options.key] = registeredSource;
 
-    new Job(this, {
+    this.defineJob({
       id: options.key,
       name: options.key,
       version: options.source.version,
@@ -937,57 +937,7 @@ export class TriggerClient {
 
     this.#registeredWebhooks[options.key] = registeredWebhook;
 
-    // new Job(this, {
-    //   id: `webhook.deliver.${options.key}`,
-    //   name: `webhook.deliver.${options.key}`,
-    //   version: source.version,
-    //   trigger: new EventTrigger({
-    //     event: deliverWebhookEvent(options.key),
-    //     // verify: source.verify.bind(source),
-    //   }),
-    //   integrations: {
-    //     integration: source.integration,
-    //   },
-    //   run: async (request, io, ctx) => {
-    //     this.#internalLogger.debug("[webhook.deliver]");
-
-    //     const webhookContextMetadata = WebhookContextMetadataSchema.parse(ctx.source?.metadata);
-
-    //     const webhookContext = {
-    //       ...ctx,
-    //       webhook: webhookContextMetadata,
-    //     };
-
-    //     const verifyResult = await io.runTask(
-    //       "verify",
-    //       async () => {
-    //         return await source.verify(request, io, webhookContext);
-    //       },
-    //       {
-    //         name: "Verify Signature",
-    //         icon: "certificate",
-    //       }
-    //     );
-
-    //     if (!verifyResult.success) {
-    //       throw new Error(verifyResult.reason);
-    //     }
-
-    //     return await io.runTask(
-    //       "generate-events",
-    //       async () => {
-    //         return await source.generateEvents(request, io, webhookContext);
-    //       },
-    //       {
-    //         name: "Generate Events",
-    //         icon: "building-factory-2",
-    //       }
-    //     );
-    //   },
-    //   __internal: true,
-    // });
-
-    new Job(this, {
+    this.defineJob({
       id: `webhook.register.${options.key}`,
       name: `webhook.register.${options.key}`,
       version: source.version,
@@ -1162,7 +1112,7 @@ export class TriggerClient {
       return "missing-header";
     }
 
-    const localApiKey = this.#options.apiKey ?? process.env.TRIGGER_API_KEY;
+    const localApiKey = this.#options.apiKey ?? env.TRIGGER_API_KEY;
 
     if (!localApiKey) {
       return "missing-client";
@@ -1172,7 +1122,7 @@ export class TriggerClient {
   }
 
   apiKey() {
-    return this.#options.apiKey ?? process.env.TRIGGER_API_KEY;
+    return this.#options.apiKey ?? env.TRIGGER_API_KEY;
   }
 
   async #preprocessRun(body: PreprocessRunBody, job: Job<Trigger<EventSpecification<any>>, any>) {

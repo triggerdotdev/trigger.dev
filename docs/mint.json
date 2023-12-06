@@ -91,6 +91,7 @@
                 "documentation/quickstarts/astro",
                 "documentation/quickstarts/nuxt",
                 "documentation/quickstarts/sveltekit",
+                "documentation/quickstarts/hono",
                 "documentation/quickstarts/fastify"
               ]
             },
@@ -141,7 +142,7 @@
       "group": "Guides",
       "pages": [
         {
-          "group": "Platforms",
+          "group": "Frameworks",
           "pages": [
             "documentation/guides/platforms/nextjs",
             "documentation/guides/platforms/express",

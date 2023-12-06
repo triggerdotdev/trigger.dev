@@ -150,7 +150,7 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
             <PageInfoProperty
               icon={"list-numbers"}
               label={"Execution Count"}
-              value={run.executionCount}
+              value={<>{run.executionCount}</>}
             />
           </PageInfoGroup>
           <PageInfoGroup alignment="right">

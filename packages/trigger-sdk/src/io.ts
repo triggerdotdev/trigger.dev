@@ -53,6 +53,7 @@ import {
 } from "./types";
 import { z } from "zod";
 import { KeyValueStore } from "./store/keyValueStore";
+import { Buffer } from "node:buffer";
 
 export type IOTask = ServerTask;
 

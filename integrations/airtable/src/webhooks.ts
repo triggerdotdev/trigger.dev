@@ -6,6 +6,7 @@ import { Airtable, AirtableRunTask } from "./index";
 import { ListWebhooksResponse, ListWebhooksResponseSchema } from "./schemas";
 import { WebhookSource, WebhookTrigger } from "@trigger.dev/sdk/triggers/webhook";
 import { registerJobNamespace } from "@trigger.dev/integration-kit/webhooks";
+import { Buffer } from "node:buffer";
 
 const WebhookFromSourceSchema = z.union([
   z.literal("formSubmission"),

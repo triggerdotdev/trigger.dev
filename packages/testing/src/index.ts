@@ -167,8 +167,8 @@ export const createJobTester =
 
     const { client, trigger } = job;
 
-    mockSendEvent(client);
-    const eventLog = await client.sendEvent({
+    mockSendEvent(client!);
+    const eventLog = await client!.sendEvent({
       name: typeof trigger.event.name === "string" ? trigger.event.name : trigger.event.name[0],
       payload: opts.payload,
     });
@@ -202,11 +202,11 @@ export const createJobTester =
     const triggerMetadata = job.trigger.toJSON();
     const batchOptions = triggerMetadata.type === "static" ? triggerMetadata.batch : undefined;
 
-    const request = buildRequest("EXECUTE_JOB", client.apiKey() ?? "", {
+    const request = buildRequest("EXECUTE_JOB", client!.apiKey() ?? "", {
       body: buildRequestBody(eventLog, job, !!batchOptions),
       jobId: job.id,
     });
-    const requestResult = await client.handleRequest(request);
+    const requestResult = await client!.handleRequest(request);
 
     const { output, status, ...rest } = requestResult.body;
 
