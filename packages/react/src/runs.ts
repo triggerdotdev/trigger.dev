@@ -28,7 +28,7 @@ export function useRunDetails(
 
   return useQuery(
     {
-      queryKey: [`triggerdotdev-run-${runId}`],
+      queryKey: [`triggerdotdev-details-${runId}`],
       queryFn: async () => {
         return await zodfetch(GetRunSchema, url, {
           method: "GET",
