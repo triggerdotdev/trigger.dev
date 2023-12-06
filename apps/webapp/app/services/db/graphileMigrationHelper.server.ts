@@ -86,6 +86,8 @@ export class GraphileMigrationHelperService {
         );
 
         IF max_payloads IS NOT NULL
+        -- we only add payloads one at a time so batches will never exceed max_payloads
+        -- if we ever decide to enqueue more, this will have to be adjusted to prevent oversized batches
         AND json_array_length(v_job.payload) >= max_payloads THEN
           UPDATE ${env.WORKER_SCHEMA}._private_jobs
             SET run_at = NOW()

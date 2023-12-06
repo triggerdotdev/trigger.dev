@@ -188,10 +188,6 @@ export async function init() {
   const migrationHelper = new GraphileMigrationHelperService();
   await migrationHelper.call();
 
-  // const pgNotify = new PgNotifyService();
-  // await pgNotify.call("trigger:graphile:migrate", { latestMigration: 10 });
-  // await new Promise((resolve) => setTimeout(resolve, 10000))
-
   if (env.WORKER_ENABLED === "true") {
     await workerQueue.initialize();
   }

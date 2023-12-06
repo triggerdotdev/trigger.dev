@@ -208,7 +208,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
         this.#logDebug("Detected incoming migration", { latestMigration });
 
         if (latestMigration > 10) {
-          // already migrated past v0.14 - nothing to do
+          this.#logDebug("Already migrated past v0.14 - nothing to do", { latestMigration });
           return;
         }
 
