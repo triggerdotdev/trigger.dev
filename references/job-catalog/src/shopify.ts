@@ -3,6 +3,7 @@ import { createExpressServer } from "@trigger.dev/express";
 
 import "@shopify/shopify-api/adapters/node";
 import { Shopify } from "@trigger.dev/shopify";
+import { z } from "zod";
 
 export const client = new TriggerClient({
   id: "job-catalog",
@@ -92,6 +93,36 @@ client.defineJob({
       await io.shopify.rest.Product.delete("delete-first", {
         id: firstProduct.id,
       });
+    }
+  },
+});
+
+client.defineJob({
+  id: "shopify-delete-all-webhooks",
+  name: "Shopify Admin: Delete All Webhooks",
+  version: "0.1.0",
+  integrations: {
+    shopify,
+  },
+  trigger: eventTrigger({
+    name: "shopify.delete.all.webhooks",
+    schema: z.object({
+      delete: z.boolean().default(false),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    const webhooks = await io.shopify.rest.Webhook.all("get-all-webhooks");
+
+    await io.logger.log(`found ${webhooks.data.length} webhook(s)`);
+
+    if (payload.delete) {
+      let i = 0;
+      for (const webhook of webhooks.data) {
+        await io.shopify.rest.Webhook.delete("delete webhook" + i, { id: webhook.id });
+        i++;
+      }
+
+      await io.logger.log(`deleted ${i + 1} webhook(s)`);
     }
   },
 });
