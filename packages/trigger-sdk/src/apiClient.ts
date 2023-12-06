@@ -20,8 +20,6 @@ import {
   JobRunStatusRecordSchema,
   KeyValueStoreResponseBody,
   KeyValueStoreResponseBodySchema,
-  LogLevel,
-  Logger,
   RegisterScheduleResponseBodySchema,
   RegisterSourceEventSchemaV2,
   RegisterSourceEventV2,
@@ -40,6 +38,7 @@ import {
   assertExhaustive,
   urlWithSearchParams,
 } from "@trigger.dev/core";
+import { LogLevel, Logger } from "@trigger.dev/core-backend";
 import { env } from "node:process";
 
 import { z } from "zod";
