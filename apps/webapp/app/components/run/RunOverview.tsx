@@ -186,6 +186,9 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
                     properties={[
                       { label: "Event name", text: run.event.name },
                       { label: "Batched", text: String(run.batched) },
+                      ...(run.batched
+                        ? [{ label: "Total Events", text: String(run.eventIds.length) }]
+                        : []),
                     ]
                       .concat(
                         run.event.externalAccount
