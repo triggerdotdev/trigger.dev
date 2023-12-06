@@ -1,5 +1,13 @@
 # create-trigger
 
+## 2.3.0
+
+### Patch Changes
+
+- 17f6f29d: Added hono framework support
+- Updated dependencies [17f6f29d]
+  - @trigger.dev/core@2.3.0
+
 ## 2.2.11
 
 ### Patch Changes

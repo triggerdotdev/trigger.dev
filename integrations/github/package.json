@@ -1,13 +1,15 @@
 {
   "name": "@trigger.dev/github",
-  "version": "2.2.11",
+  "version": "2.3.0",
   "description": "The official GitHub integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "publishConfig": {
     "access": "public"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "devDependencies": {
     "@octokit/types": "^9.2.3",
     "@octokit/webhooks-types": "^6.10.0",
@@ -27,8 +29,8 @@
     "@octokit/request": "^6.2.5",
     "@octokit/request-error": "^4.0.1",
     "@octokit/webhooks": "^10.4.0",
-    "@trigger.dev/integration-kit": "workspace:^2.2.11",
-    "@trigger.dev/sdk": "workspace:^2.2.11",
+    "@trigger.dev/integration-kit": "workspace:^2.3.0",
+    "@trigger.dev/sdk": "workspace:^2.3.0",
     "octokit": "^2.0.14",
     "zod": "3.22.3"
   },
