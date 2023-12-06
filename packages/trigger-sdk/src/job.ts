@@ -21,6 +21,8 @@ import type {
   TriggerInvokeType,
 } from "./types";
 import { slugifyId } from "./utils";
+import { EventTrigger } from "./triggers/eventTrigger";
+import { WebhookTrigger } from "./triggers/webhook";
 
 export type JobOptions<
   TTrigger extends Trigger<EventSpecification<any>>,
