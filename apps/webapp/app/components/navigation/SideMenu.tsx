@@ -490,8 +490,8 @@ function SideMenuItem({
         isActive ? "bg-slate-850 text-bright" : "group-hover:text-bright"
       )}
     >
-      <div className="flex w-full items-center justify-between overflow-hidden">
-        <span className="truncate">{name}</span>
+      <div className="flex w-full items-center justify-between">
+        {name}
         <div className="flex items-center gap-1">
           {count !== undefined && count > 0 && <MenuCount count={count} />}
           {typeof hasWarning === "string" ? (
