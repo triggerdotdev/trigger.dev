@@ -1,5 +1,13 @@
 # @trigger.dev/plain
 
+## 2.3.2
+
+### Patch Changes
+
+- 0c14e4cd: Fixed importing package subpath
+  - @trigger.dev/integration-kit@2.3.2
+  - @trigger.dev/sdk@2.3.2
+
 ## 2.3.1
 
 ### Patch Changes
