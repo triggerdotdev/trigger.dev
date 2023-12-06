@@ -196,11 +196,5 @@ function prettyPrintBytes(value: unknown): string {
 function getSizeInBytes(value: unknown) {
   const jsonString = JSON.stringify(value);
 
-  if (typeof window === "undefined") {
-    // Node.js environment
-    return Buffer.byteLength(jsonString, "utf8");
-  } else {
-    // Browser environment
-    return new TextEncoder().encode(jsonString).length;
-  }
+  return Buffer.byteLength(jsonString, "utf8");
 }

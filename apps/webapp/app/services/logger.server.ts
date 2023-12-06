@@ -1,5 +1,5 @@
-import type { LogLevel } from "@trigger.dev/core";
-import { Logger } from "@trigger.dev/core";
+import type { LogLevel } from "@trigger.dev/core-backend";
+import { Logger } from "@trigger.dev/core-backend";
 import { sensitiveDataReplacer } from "./sensitiveDataReplacer";
 import { AsyncLocalStorage } from "async_hooks";
 
