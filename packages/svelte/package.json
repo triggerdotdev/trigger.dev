@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/svelte",
-  "version": "2.1.9",
+  "version": "2.3.0",
   "description": "Trigger.dev Svelte SDK",
   "license": "MIT",
   "scripts": {
