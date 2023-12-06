@@ -25,11 +25,11 @@ export function detectResponseIsTimeout(rawBody: string, response?: Response) {
     return false;
   }
 
-  if (isResponseVercelTimeout(response)) {
-    return true;
-  }
-
-  return isResponseCloudflareTimeout(rawBody, response);
+  return (
+    isResponseVercelTimeout(response) ||
+    isResponseDenoDeployTimeout(rawBody, response) ||
+    isResponseCloudflareTimeout(rawBody, response)
+  );
 }
 
 function isResponseCloudflareTimeout(rawBody: string, response: Response) {
@@ -45,4 +45,8 @@ function isResponseVercelTimeout(response: Response) {
     VERCEL_RESPONSE_TIMEOUT_STATUS_CODES.includes(response.status) ||
     response.headers.get("x-vercel-error") === "FUNCTION_INVOCATION_TIMEOUT"
   );
+}
+
+function isResponseDenoDeployTimeout(rawBody: string, response: Response) {
+  return response.status === 502 && rawBody.includes("TIME_LIMIT");
 }
