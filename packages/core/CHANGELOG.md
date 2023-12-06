@@ -1,5 +1,11 @@
 # internal-platform
 
+## 2.3.1
+
+### Patch Changes
+
+- f3efcc0c: Moved Logger to core-backend, no longer importing node:buffer in core/react
+
 ## 2.3.0
 
 ### Minor Changes

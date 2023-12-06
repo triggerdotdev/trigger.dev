@@ -1,5 +1,13 @@
 # @trigger.dev/testing
 
+## 2.3.1
+
+### Patch Changes
+
+- Updated dependencies [f3efcc0c]
+  - @trigger.dev/sdk@2.3.1
+  - @trigger.dev/core@2.3.1
+
 ## 2.3.0
 
 ### Minor Changes
