@@ -46,6 +46,18 @@ client.defineJob({
 });
 
 client.defineJob({
+  id: "shopify-products-delete-batch",
+  name: "Shopify: products/delete (batch)",
+  version: "0.1.0",
+  trigger: shopify.on("products/delete").batch({
+    maxPayloads: 5,
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.log(`products deleted: ${payload.length}`);
+  },
+});
+
+client.defineJob({
   id: "shopify-task-examples",
   name: "Shopify: Task Examples",
   version: "0.1.0",
