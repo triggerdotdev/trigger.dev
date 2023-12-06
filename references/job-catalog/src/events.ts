@@ -153,6 +153,9 @@ client.defineJob({
   },
 });
 
+const maxPayloads = 5;
+const maxInterval = 10;
+
 client.defineJob({
   id: "batch-trigger-receive",
   name: "Batch Trigger Receive",
@@ -160,13 +163,23 @@ client.defineJob({
   trigger: eventTrigger({
     name: "batch.trigger",
     batch: {
-      maxPayloads: 5,
+      maxPayloads,
+      maxInterval,
     },
   }),
-  run: async (payload) => {
-    return Array.isArray(payload) ? payload.length : "Not an array";
+  run: async (payload, io) => {
+    await io.logger.info(`Should at most receive ${maxPayloads} payloads per batch`);
+    await io.logger.info(`Should wait no more than ${maxInterval} seconds between batches`);
+
+    const totalPayloadSize = payload.reduce((sum, p) => sum + JSON.stringify(p).length, 0);
+
+    return `Received ${payload.length} payloads. Total size in bytes: ${totalPayloadSize}`;
   },
 });
+
+const getLargeString = (bytes: number) => {
+  return Array(bytes).fill("F").join("");
+};
 
 client.defineJob({
   id: "batch-trigger-send",
@@ -175,15 +188,22 @@ client.defineJob({
   trigger: eventTrigger({
     name: "batch.trigger.send",
     schema: z.object({
-      total: z.number().default(10),
+      payloads: z.number().default(12),
+      // expect batches to be chunked as they will exceed the server limit
+      oversized: z.boolean().default(false),
     }),
   }),
   run: async (payload, io) => {
-    for (let i = 0; i < payload.total; i++) {
+    for (let i = 0; i < payload.payloads; i++) {
       await io.sendEvent(`send-${i}`, {
         name: "batch.trigger",
         payload: {
           count: i,
+          ...(payload.oversized
+            ? {
+                largePayload: getLargeString(512 * 1024), // 512KB
+              }
+            : undefined),
         },
       });
     }
