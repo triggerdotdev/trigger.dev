@@ -8,6 +8,9 @@
  * - `"info"`: Info, Warnings, Errors and essential messages.
  * - `"debug"`: Everything.
  */
+import { env } from "node:process";
+import { Buffer } from "node:buffer";
+
 export type LogLevel = "log" | "error" | "warn" | "info" | "debug";
 
 const logLevels: Array<LogLevel> = ["log", "error", "warn", "info", "debug"];
@@ -27,7 +30,7 @@ export class Logger {
     additionalFields?: () => Record<string, unknown>
   ) {
     this.#name = name;
-    this.#level = logLevels.indexOf((process.env.TRIGGER_LOG_LEVEL ?? level) as LogLevel);
+    this.#level = logLevels.indexOf((env.TRIGGER_LOG_LEVEL ?? level) as LogLevel);
     this.#filteredKeys = filteredKeys;
     this.#jsonReplacer = createReplacer(jsonReplacer);
     this.#additionalFields = additionalFields ?? (() => ({}));
@@ -169,7 +172,7 @@ function filterKeys(obj: unknown, keys: string[]): any {
 }
 
 function prettyPrintBytes(value: unknown): string {
-  if (process.env.NODE_ENV === "production") {
+  if (env.NODE_ENV === "production") {
     return "skipped size";
   }
 

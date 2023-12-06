@@ -21,6 +21,7 @@ import { Linear, LinearRunTask, serializeLinearOutput } from "./index";
 import { WebhookPayloadSchema } from "./schemas";
 import { LinearReturnType } from "./types";
 import { queryProperties } from "./utils";
+import { Buffer } from "node:buffer";
 
 export class Webhooks {
   runTask: LinearRunTask;
@@ -43,7 +44,10 @@ export class Webhooks {
     );
   }
 
-  webhooks(key: IntegrationTaskKey, params?: L.WebhooksQueryVariables): LinearReturnType<Webhook[]> {
+  webhooks(
+    key: IntegrationTaskKey,
+    params?: L.WebhooksQueryVariables
+  ): LinearReturnType<Webhook[]> {
     return this.runTask(
       key,
       async (client, task, io) => {
