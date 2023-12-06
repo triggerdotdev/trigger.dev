@@ -84,6 +84,11 @@ export function createWebhookEventSource(integration: Shopify) {
     version: "0.1.0",
     integration,
     key: (params) => params.topic,
+    // controls delivery batching - disabled by default
+    // batch: {
+    //   maxPayloads: 5,
+    //   maxInterval: 30,
+    // },
     crud: {
       create: async ({ io, ctx }) => {
         const webhook = await io.integration.rest.Webhook.save("create-webhook", {

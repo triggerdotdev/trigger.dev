@@ -286,6 +286,11 @@ export function createWebhookSource(
         source: options?.fromSources ?? ["client", "anonymousUser", "formSubmission"],
       },
     }),
+    // TODO: sensible defaults
+    // batch: {
+    //   maxPayloads: 200,
+    //   maxInterval: 20,
+    // },
     key: (params) =>
       `airtable.webhook.${params.baseId}${params.tableId ? `.${params.tableId}` : ""}`,
     crud: {
