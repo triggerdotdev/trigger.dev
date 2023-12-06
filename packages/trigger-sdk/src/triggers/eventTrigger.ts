@@ -63,9 +63,11 @@ export class EventTrigger<
   /**
    * Used to configure batching options. An empty object will enable batching with server defaults.
    *
+   * Batching will cause the `payload` parameter of the run function to become an array of payloads instead.
+   *
    * @param options - Is an object containing the following properties:
-   * @param {number} options.maxPayloads - The `maxPayloads` property defines how many event payloads you will receive at most per batch. This is affected by server limits, but you should never receive more than this.
-   * @param {number} options.maxInterval - The `maxInterval` property defines how many seconds to wait before sending out batches that aren't full yet. This is affected by server limits, but you should never receive more than this.
+   * @param {number} options.maxPayloads - The `maxPayloads` property defines How many event payloads you will at most receive per batch. May be reduced by server limits..
+   * @param {number} options.maxInterval - The `maxInterval` property defines how many seconds to wait before sending out incomplete batches. May be cut short by server limits.
    */
   batch(options?: BatcherOptions): EventTrigger<TEventSpecification, {}> {
     const { batch, ...rest } = this.#options;
@@ -126,8 +128,10 @@ type TriggerOptions<TEvent, TBatcherOptions extends OptionalBatcherOptions = und
   /**
    * Used to configure batching options. An empty object will enable batching with server defaults.
    *
-   * @param {number} maxPayloads - The `maxPayloads` property defines how many event payloads you will receive at most per batch. This is affected by server limits, but you should never receive more than this.
-   * @param {number} maxInterval - The `maxInterval` property defines how many seconds to wait before sending out batches that aren't full yet. This is affected by server limits, but you should never receive more than this.
+   * Batching will cause the `payload` parameter of the run function to become an array of payloads instead.
+   *
+   * @param {number} maxPayloads - The `maxPayloads` property defines How many event payloads you will at most receive per batch. May be reduced by server limits..
+   * @param {number} maxInterval - The `maxInterval` property defines how many seconds to wait before sending out incomplete batches. May be cut short by server limits.
    */
   batch?: TBatcherOptions;
 
