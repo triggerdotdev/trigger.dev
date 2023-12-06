@@ -3,6 +3,7 @@ import {
   DisplayProperty,
   EventFilter,
   HandleTriggerSource,
+  OptionalBatcherOptions,
   RegisterWebhookSource,
   TriggerMetadata,
   deepMergeFilters,
@@ -262,20 +263,37 @@ export type WebhookTriggerOptions<
   TEventSpecification extends EventSpecification<any>,
   TEventSource extends WebhookSource<any, any, any>,
   TConfig extends Record<string, string[]> = Record<string, string[]>,
+  TBatcherOptions extends OptionalBatcherOptions = undefined,
 > = {
   event: TEventSpecification;
   source: TEventSource;
   params: GetWebhookParams<TEventSource>;
   config: TConfig;
-  batch?: BatcherOptions;
+
+  /**
+   * Used to configure batching options. An empty object will enable batching with server defaults.
+   *
+   * @param {number} maxPayloads - The `maxPayloads` property defines how many event payloads you will receive at most per batch. This is affected by server limits, but you should never receive more than this.
+   * @param {number} maxInterval - The `maxInterval` property defines how many seconds to wait before sending out batches that aren't full yet. This is affected by server limits, but you should never receive more than this.
+   */
+  batch?: TBatcherOptions;
 };
 
 export class WebhookTrigger<
   TEventSpecification extends EventSpecification<any>,
   TEventSource extends WebhookSource<any, any, any>,
+  TConfig extends Record<string, string[]> = Record<string, string[]>,
+  TBatcherOptions extends OptionalBatcherOptions = undefined,
 > implements Trigger<TEventSpecification>
 {
-  constructor(private options: WebhookTriggerOptions<TEventSpecification, TEventSource>) {}
+  constructor(
+    private options: WebhookTriggerOptions<
+      TEventSpecification,
+      TEventSource,
+      TConfig,
+      TBatcherOptions
+    >
+  ) {}
 
   get event() {
     return this.options.event;
@@ -307,7 +325,14 @@ export class WebhookTrigger<
     };
   }
 
-  batch(options?: BatcherOptions): WebhookTrigger<TEventSpecification, TEventSource> {
+  /**
+   * Used to configure batching options. An empty object will enable batching with server defaults.
+   *
+   * @param options - Is an object containing the following properties:
+   * @param {number} options.maxPayloads - The `maxPayloads` property defines how many event payloads you will receive at most per batch. This is affected by server limits, but you should never receive more than this.
+   * @param {number} options.maxInterval - The `maxInterval` property defines how many seconds to wait before sending out batches that aren't full yet. This is affected by server limits, but you should never receive more than this.
+   */
+  batch(options?: BatcherOptions): WebhookTrigger<TEventSpecification, TEventSource, TConfig, {}> {
     const { batch, ...rest } = this.options;
 
     return new WebhookTrigger({

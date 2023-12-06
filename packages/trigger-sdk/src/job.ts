@@ -1,4 +1,5 @@
 import {
+  BatcherOptions,
   FailedRunNotification,
   IntegrationConfig,
   InvokeOptions,
@@ -21,6 +22,8 @@ import { slugifyId } from "./utils";
 import { runLocalStorage } from "./runLocalStorage";
 import { Prettify } from "@trigger.dev/core";
 import { ConcurrencyLimit } from "./concurrencyLimit";
+import { EventTrigger } from "./triggers/eventTrigger";
+import { WebhookTrigger } from "./triggers/webhook";
 
 export type JobOptions<
   TTrigger extends Trigger<EventSpecification<any>>,
@@ -80,20 +83,35 @@ export type JobOptions<
    * @param context An object that contains information about the Organization, Job, Run and more.
    */
   run: (
-    payload: TriggerEventType<TTrigger>,
+    payload: ArrayIfBatched<TTrigger, TriggerEventType<TTrigger>>,
     io: IOWithIntegrations<TIntegrations>,
     context: TriggerContext
   ) => Promise<TOutput>;
 
   onSuccess?: (
-    notification: SuccessfulRunNotification<TOutput, TriggerEventType<TTrigger>>
+    notification: SuccessfulRunNotification<
+      TOutput,
+      ArrayIfBatched<TTrigger, TriggerEventType<TTrigger>>
+    >
   ) => void;
 
-  onFailure?: (notification: FailedRunNotification<TriggerEventType<TTrigger>>) => void;
+  onFailure?: (
+    notification: FailedRunNotification<ArrayIfBatched<TTrigger, TriggerEventType<TTrigger>>>
+  ) => void;
 
   // @internal
   __internal?: boolean;
 };
+
+type HasBatchingEnabled<TBatcherOptions> = TBatcherOptions extends BatcherOptions ? true : false;
+
+type ArrayIfTrue<TBool, T> = TBool extends true ? T[] : T;
+
+type ArrayIfBatched<TTrigger extends Trigger<any>, T> = TTrigger extends EventTrigger<any, infer U>
+  ? ArrayIfTrue<HasBatchingEnabled<U>, T>
+  : TTrigger extends WebhookTrigger<any, any, any, infer U>
+  ? ArrayIfTrue<HasBatchingEnabled<U>, T>
+  : T;
 
 export type JobPayload<TJob> = TJob extends Job<Trigger<EventSpecification<infer TEvent>>, any>
   ? TEvent

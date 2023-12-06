@@ -1,4 +1,10 @@
-import { BatcherOptions, EventFilter, TriggerMetadata, deepMergeFilters } from "@trigger.dev/core";
+import {
+  BatcherOptions,
+  EventFilter,
+  OptionalBatcherOptions,
+  TriggerMetadata,
+  deepMergeFilters,
+} from "@trigger.dev/core";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
 import {
@@ -12,21 +18,26 @@ import { formatSchemaErrors } from "../utils/formatSchemaErrors";
 import { ParsedPayloadSchemaError } from "../errors";
 import { VerifyCallback } from "../httpEndpoint";
 
-type EventTriggerOptions<TEventSpecification extends EventSpecification<any>> = {
+type EventTriggerOptions<
+  TEventSpecification extends EventSpecification<any>,
+  TBatcherOptions extends OptionalBatcherOptions = undefined,
+> = {
   event: TEventSpecification;
   name?: string | string[];
   source?: string;
   filter?: EventFilter;
   verify?: EventTypeFromSpecification<TEventSpecification> extends Request ? VerifyCallback : never;
-  batch?: BatcherOptions;
+  batch?: TBatcherOptions;
 };
 
-export class EventTrigger<TEventSpecification extends EventSpecification<any>>
-  implements Trigger<TEventSpecification>
+export class EventTrigger<
+  TEventSpecification extends EventSpecification<any>,
+  TBatcherOptions extends OptionalBatcherOptions = undefined,
+> implements Trigger<TEventSpecification>
 {
-  #options: EventTriggerOptions<TEventSpecification>;
+  #options: EventTriggerOptions<TEventSpecification, TBatcherOptions>;
 
-  constructor(options: EventTriggerOptions<TEventSpecification>) {
+  constructor(options: EventTriggerOptions<TEventSpecification, TBatcherOptions>) {
     this.#options = options;
   }
 
@@ -49,7 +60,14 @@ export class EventTrigger<TEventSpecification extends EventSpecification<any>>
 
   attachToJob(triggerClient: TriggerClient, job: Job<Trigger<TEventSpecification>, any>): void {}
 
-  batch(options?: BatcherOptions): EventTrigger<TEventSpecification> {
+  /**
+   * Used to configure batching options. An empty object will enable batching with server defaults.
+   *
+   * @param options - Is an object containing the following properties:
+   * @param {number} options.maxPayloads - The `maxPayloads` property defines how many event payloads you will receive at most per batch. This is affected by server limits, but you should never receive more than this.
+   * @param {number} options.maxInterval - The `maxInterval` property defines how many seconds to wait before sending out batches that aren't full yet. This is affected by server limits, but you should never receive more than this.
+   */
+  batch(options?: BatcherOptions): EventTrigger<TEventSpecification, {}> {
     const { batch, ...rest } = this.#options;
 
     return new EventTrigger({
@@ -75,7 +93,7 @@ export class EventTrigger<TEventSpecification extends EventSpecification<any>>
 }
 
 /** Configuration options for an EventTrigger */
-type TriggerOptions<TEvent> = {
+type TriggerOptions<TEvent, TBatcherOptions extends OptionalBatcherOptions = undefined> = {
   /** The name of the event you are subscribing to. Must be an exact match (case sensitive). To trigger on multiple possible events, pass in an array of event names */
   name: string | string[];
   /** A [Zod](https://trigger.dev/docs/documentation/guides/zod) schema that defines the shape of the event payload.
@@ -104,8 +122,14 @@ type TriggerOptions<TEvent> = {
    * ```
    */
   filter?: EventFilter;
-  /** Used to set batching options. */
-  batch?: BatcherOptions;
+
+  /**
+   * Used to configure batching options. An empty object will enable batching with server defaults.
+   *
+   * @param {number} maxPayloads - The `maxPayloads` property defines how many event payloads you will receive at most per batch. This is affected by server limits, but you should never receive more than this.
+   * @param {number} maxInterval - The `maxInterval` property defines how many seconds to wait before sending out batches that aren't full yet. This is affected by server limits, but you should never receive more than this.
+   */
+  batch?: TBatcherOptions;
 
   examples?: EventSpecificationExample[];
 };
@@ -113,9 +137,12 @@ type TriggerOptions<TEvent> = {
 /** `eventTrigger()` is set as a [Job's trigger](https://trigger.dev/docs/sdk/job) to subscribe to an event a Job from [a sent event](https://trigger.dev/docs/sdk/triggerclient/instancemethods/sendevent)
  * @param options options for the EventTrigger
  */
-export function eventTrigger<TEvent extends any = any>(
-  options: TriggerOptions<TEvent>
-): EventTrigger<EventSpecification<TEvent>> {
+export function eventTrigger<
+  TEvent extends any = any,
+  TBatcherOptions extends OptionalBatcherOptions = undefined,
+>(
+  options: TriggerOptions<TEvent, TBatcherOptions>
+): EventTrigger<EventSpecification<TEvent>, TBatcherOptions> {
   return new EventTrigger({
     name: options.name,
     filter: options.filter,

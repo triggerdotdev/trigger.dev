@@ -124,8 +124,8 @@ export type TypedEventSpecificationExample<TEvent> = {
   id: string;
   name: string;
   icon?: string;
-  payload: TEvent
-}
+  payload: TEvent;
+};
 
 export interface EventSpecification<TEvent extends any, TInvoke extends any = TEvent> {
   name: string | string[];

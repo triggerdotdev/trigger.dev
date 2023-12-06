@@ -44,6 +44,8 @@ export const BatcherOptionsSchema = z.object({
 
 export type BatcherOptions = z.infer<typeof BatcherOptionsSchema>;
 
+export type OptionalBatcherOptions = BatcherOptions | undefined;
+
 export const StaticTriggerMetadataSchema = z.object({
   type: z.literal("static"),
   title: z.union([z.string(), z.array(z.string())]),
