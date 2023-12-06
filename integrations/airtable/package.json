@@ -1,13 +1,15 @@
 {
   "name": "@trigger.dev/airtable",
-  "version": "2.2.11",
+  "version": "2.3.0",
   "description": "Trigger.dev integration for airtable",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "publishConfig": {
     "access": "public"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "16.x",
@@ -23,8 +25,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@trigger.dev/integration-kit": "workspace:^2.2.11",
-    "@trigger.dev/sdk": "workspace:^2.2.11",
+    "@trigger.dev/integration-kit": "workspace:^2.3.0",
+    "@trigger.dev/sdk": "workspace:^2.3.0",
     "airtable": "^0.12.1",
     "zod": "3.22.3"
   },
