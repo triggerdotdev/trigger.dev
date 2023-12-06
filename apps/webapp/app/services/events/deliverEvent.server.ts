@@ -74,9 +74,19 @@ export class DeliverEventService {
             if (eventDispatcher.batcher) {
               const { maxPayloads, runAt } = this.#getBatchEnqueueOptions(eventDispatcher.batcher);
 
+              const jobKeyParts = [eventDispatcher.id];
+
+              if (eventRecord.isTest) {
+                jobKeyParts.push(String(eventRecord.isTest));
+              }
+
+              if (eventRecord.externalAccountId) {
+                jobKeyParts.push(eventRecord.externalAccountId);
+              }
+
               return workerQueue.batchEnqueue("events.invokeDispatchBatcher", [eventRecord.id], {
                 tx,
-                jobKey: eventDispatcher.id,
+                jobKey: jobKeyParts.join(":"),
                 maxPayloads,
                 runAt,
               });
