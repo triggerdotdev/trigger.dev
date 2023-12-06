@@ -1045,20 +1045,24 @@ export class PerformRunExecutionV3Service {
       return await this.#failRunExecution(this.#prismaClient, run, output);
     }
 
-    await this.#prismaClient.jobRun.update({
+    const updatedJob = await this.#prismaClient.jobRun.update({
       where: { id: run.id },
       data: {
         status: "WAITING_TO_EXECUTE",
-        executionDuration: {
-          increment: durationInMs,
-        },
-        executionCount: {
+        executionFailureCount: {
           increment: 1,
         },
       },
     });
 
-    await ResumeRunService.enqueue(run, this.#prismaClient);
+    if (updatedJob.executionFailureCount >= 10) {
+      return await this.#failRunExecution(this.#prismaClient, run, output);
+    }
+
+    // Use the job.executionFailureCount to determine how long to wait before retrying, using an exponential backoff
+    const runAt = new Date(Date.now() + Math.pow(1.5, updatedJob.executionFailureCount) * 500); // 500ms, 750ms, 1125ms, 1687ms, 2531ms, 3796ms, 5694ms, 8541ms, 12812ms, 19218ms
+
+    await ResumeRunService.enqueue(run, this.#prismaClient, runAt);
   }
 
   async #failRunExecution(
