@@ -1,5 +1,5 @@
 import { PlainClient } from "@team-plain/typescript-sdk";
-import { Prettify } from "@trigger.dev/integration-kit/prettify";
+import { Prettify } from "@trigger.dev/integration-kit";
 
 export type PlainSDK = InstanceType<typeof PlainClient>;
 
