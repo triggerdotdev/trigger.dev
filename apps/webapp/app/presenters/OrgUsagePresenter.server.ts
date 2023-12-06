@@ -186,35 +186,25 @@ function fillInMissingRunMonthlyData(
   return completeData;
 }
 
-const dateFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-});
-
 function fillInMissingConcurrencyDays(
   startDate: Date,
   days: number,
   data: Array<{ day: Date; max_concurrent_runs: BigInt }>
 ) {
-  const outputData: Array<{ name: string; maxConcurrentRuns: number }> = [];
+  const outputData: Array<{ date: Date; maxConcurrentRuns: number }> = [];
   for (let i = 0; i < days; i++) {
     const date = new Date(startDate);
     date.setDate(date.getDate() + i);
 
-    let formattedDate = `${date.getDate()}`;
-    if (date.getDate() === 1) {
-      formattedDate = dateFormatter.format(date);
-    }
-
     const foundData = data.find((d) => d.day.toISOString() === date.toISOString());
     if (!foundData) {
       outputData.push({
-        name: formattedDate,
+        date,
         maxConcurrentRuns: 0,
       });
     } else {
       outputData.push({
-        name: formattedDate,
+        date,
         maxConcurrentRuns: Number(foundData.max_concurrent_runs),
       });
     }

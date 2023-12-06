@@ -22,13 +22,20 @@ const tooltipStyle = {
   color: "#E2E8F0",
 };
 
+type DataItem = { date: Date; maxConcurrentRuns: number };
+
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+
 export function ConcurrentRunsChart({
   concurrentRunsLimit,
   data,
   hasConcurrencyData,
 }: {
   concurrentRunsLimit?: number;
-  data: { name: string; maxConcurrentRuns: number }[];
+  data: DataItem[];
   hasConcurrencyData: boolean;
 }) {
   return (
@@ -54,13 +61,28 @@ export function ConcurrentRunsChart({
             fontSize={12}
             tickLine={false}
             axisLine={false}
-            dataKey="name"
+            dataKey={(item: DataItem) => {
+              if (item.date.getDate() === 1) {
+                return dateFormatter.format(item.date);
+              }
+              return `${item.date.getDate()}`;
+            }}
             className="text-xs"
           >
             <Label value="Last 30 days" offset={-8} position="insideBottom" fill="#94A3B8" />
           </XAxis>
           <YAxis stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
-          <Tooltip cursor={{ fill: "rgba(255,255,255,0.05)" }} contentStyle={tooltipStyle} />
+          <Tooltip
+            cursor={{ fill: "rgba(255,255,255,0.05)" }}
+            contentStyle={tooltipStyle}
+            labelFormatter={(value, data) => {
+              const date = data.at(0)?.payload.date;
+              if (!date) {
+                return "";
+              }
+              return dateFormatter.format(date);
+            }}
+          />
           {concurrentRunsLimit && (
             <ReferenceLine
               y={concurrentRunsLimit}
