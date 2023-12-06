@@ -38,7 +38,7 @@ export class Hono implements Framework {
   async printInstallationComplete(projectUrl: string): Promise<void> {
     logger.info(
       boxen(
-        "Automatic installation isn't currently supported for Hono.dev. \nFollow the steps in our manual installation guide: https://trigger.dev/docs/documentation/guides/manual/hono",
+        "Automatic installation isn't currently supported for Hono.dev. \nFollow the steps in our quickstart installation guide: https://trigger.dev/docs/documentation/quickstarts/hono",
         { padding: 1, margin: 1, borderStyle: "double", borderColor: "magenta" }
       )
     );
