@@ -283,6 +283,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
   public async stop() {
     await this.#runner?.stop();
+    await this.#workerUtils?.release();
   }
 
   public async enqueue<K extends keyof TMessageCatalog>(
