@@ -2,25 +2,22 @@ import type {
   DisplayProperty,
   EventFilter,
   FailedRunNotification,
-  Logger,
   OverridableRunTaskOptions,
   Prettify,
   RedactString,
   RegisteredOptionsDiff,
-  RunNotificationJobMetadata,
-  RunNotificationRunMetadata,
   RunTaskOptions,
   RuntimeEnvironmentType,
-  ServerTask,
   SomeRequired,
   SourceEventOption,
   SuccessfulRunNotification,
   TriggerMetadata,
 } from "@trigger.dev/core";
+import { Logger } from "@trigger.dev/core-backend";
+import type TypedEmitter from "typed-emitter";
+import { z } from "zod";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
-import { z } from "zod";
-import type TypedEmitter from "typed-emitter";
 
 export type {
   DisplayProperty,

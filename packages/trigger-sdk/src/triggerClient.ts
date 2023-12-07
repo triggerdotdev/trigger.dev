@@ -20,8 +20,6 @@ import {
   IntegrationConfig,
   InvokeOptions,
   JobMetadata,
-  LogLevel,
-  Logger,
   NormalizedResponse,
   PreprocessRunBody,
   PreprocessRunBodySchema,
@@ -52,8 +50,13 @@ import {
   WebhookSourceRequestBodySchema,
   WebhookSourceRequestHeadersSchema,
 } from "@trigger.dev/core";
+import { LogLevel, Logger } from "@trigger.dev/core-backend";
+import { z } from "zod";
+import EventEmitter from "node:events";
 import { env } from "node:process";
+import * as packageJson from "../package.json";
 import { ApiClient } from "./apiClient";
+import { ConcurrencyLimit, ConcurrencyLimitOptions } from "./concurrencyLimit";
 import {
   AutoYieldExecutionError,
   AutoYieldWithCompletedTaskExecutionError,
@@ -71,19 +74,22 @@ import { IO, IOStats } from "./io";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { Job, JobOptions } from "./job";
 import { runLocalStorage } from "./runLocalStorage";
+import { KeyValueStore } from "./store/keyValueStore";
 import { DynamicTrigger, DynamicTriggerOptions } from "./triggers/dynamic";
 import { EventTrigger } from "./triggers/eventTrigger";
 import { ExternalSource } from "./triggers/externalSource";
 import { DynamicIntervalOptions, DynamicSchedule } from "./triggers/scheduled";
-import type {
-  EventSpecification,
-  GenericTriggerContext,
-  NotificationsEventEmitter,
-  Trigger,
-  TriggerContext,
-  TriggerPreprocessContext,
-  VerifyResult,
+import { WebhookDeliveryContext, WebhookSource } from "./triggers/webhook";
+import {
+  type EventSpecification,
+  type GenericTriggerContext,
+  type NotificationsEventEmitter,
+  type Trigger,
+  type TriggerContext,
+  type TriggerPreprocessContext,
+  type VerifyResult,
 } from "./types";
+import { formatSchemaErrors } from "./utils/formatSchemaErrors";
 
 const parseRequestPayload = (rawPayload: any) => {
   const result = RequestWithRawBodySchema.safeParse(rawPayload);
@@ -98,14 +104,6 @@ const parseRequestPayload = (rawPayload: any) => {
     body: result.data.rawBody,
   });
 };
-
-const deliverWebhookEvent = (key: string): EventSpecification<Request> => ({
-  name: `${DELIVER_WEBHOOK_REQUEST}.${key}`,
-  title: "Deliver Webhook",
-  source: "internal",
-  icon: "mail-fast",
-  parsePayload: parseRequestPayload,
-});
 
 const registerWebhookEvent = (key: string): EventSpecification<RegisterWebhookPayload> => ({
   name: `${REGISTER_WEBHOOK}.${key}`,
@@ -122,14 +120,6 @@ const registerSourceEvent: EventSpecification<RegisterSourceEventV2> = {
   icon: "register-source",
   parsePayload: RegisterSourceEventSchemaV2.parse,
 };
-
-import EventEmitter from "node:events";
-import * as packageJson from "../package.json";
-import { ConcurrencyLimit, ConcurrencyLimitOptions } from "./concurrencyLimit";
-import { KeyValueStore } from "./store/keyValueStore";
-import { WebhookDeliveryContext, WebhookSource } from "./triggers/webhook";
-import { formatSchemaErrors } from "./utils/formatSchemaErrors";
-import { z } from "zod";
 
 export type TriggerClientOptions = {
   /** The `id` property is used to uniquely identify the client.

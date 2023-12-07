@@ -4,8 +4,8 @@ import { z } from "zod";
 import * as events from "./events";
 import { Airtable, AirtableRunTask } from "./index";
 import { ListWebhooksResponse, ListWebhooksResponseSchema } from "./schemas";
-import { WebhookSource, WebhookTrigger } from "@trigger.dev/sdk/triggers/webhook";
-import { registerJobNamespace } from "@trigger.dev/integration-kit/webhooks";
+import { WebhookSource, WebhookTrigger } from "@trigger.dev/sdk";
+import { registerJobNamespace } from "@trigger.dev/integration-kit";
 import { Buffer } from "node:buffer";
 
 const WebhookFromSourceSchema = z.union([
