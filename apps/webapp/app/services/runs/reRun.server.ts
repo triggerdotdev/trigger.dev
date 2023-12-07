@@ -29,11 +29,12 @@ export class ReRunService {
 
         const eventIds = existingRun.eventIds.length
           ? existingRun.eventIds
-          : [existingRun.event.id];
+          : [existingRun.event.eventId];
 
         const eventRecords = await this.#prismaClient.eventRecord.findMany({
           where: {
-            id: { in: eventIds },
+            environmentId: existingRun.environmentId,
+            eventId: { in: eventIds },
           },
         });
 
@@ -60,7 +61,7 @@ export class ReRunService {
                 isTest: event.isTest,
               },
               select: {
-                id: true,
+                eventId: true,
               },
             })
           )
@@ -74,7 +75,7 @@ export class ReRunService {
             organization: existingRun.organization,
             project: existingRun.project,
           },
-          eventIds: eventLogs.map((e) => e.id),
+          eventIds: eventLogs.map((e) => e.eventId),
           job: existingRun.job,
           version: existingRun.version,
           batched: existingRun.batched,

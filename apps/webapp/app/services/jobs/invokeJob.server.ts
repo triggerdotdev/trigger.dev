@@ -128,7 +128,7 @@ export class InvokeJobService {
       const run = await createRunService.call(
         {
           environment,
-          eventIds: [eventLog.id],
+          eventIds: [eventLog.eventId],
           job: job,
           version,
           batched: false

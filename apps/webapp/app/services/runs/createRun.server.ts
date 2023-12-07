@@ -39,7 +39,8 @@ export class CreateRunService {
 
     const eventRecords = await this.#prismaClient.eventRecord.findMany({
       where: {
-        id: { in: eventIds },
+        environmentId: environment.id,
+        eventId: { in: eventIds },
       },
     });
 
@@ -56,7 +57,7 @@ export class CreateRunService {
           jobId: job.id,
           versionId: version.id,
           eventId: firstEvent.id,
-          eventIds: eventRecords.map((event) => event.id),
+          eventIds: eventRecords.map((event) => event.eventId),
           environmentId: environment.id,
           organizationId: environment.organizationId,
           projectId: environment.projectId,

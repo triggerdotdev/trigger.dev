@@ -42,6 +42,7 @@ export class InvokeDispatcherService {
       },
       select: {
         id: true,
+        eventId: true,
       },
     });
 
@@ -85,7 +86,7 @@ export class InvokeDispatcherService {
 
         await createRunService.call({
           batched: !!eventDispatcher.batcher,
-          eventIds: eventRecords.map((e) => e.id),
+          eventIds: eventRecords.map((e) => e.eventId),
           job: jobVersion.job,
           version: jobVersion,
           environment: eventDispatcher.environment,
@@ -136,7 +137,7 @@ export class InvokeDispatcherService {
 
           await createRunService.call({
             batched: !!eventDispatcher.batcher,
-            eventIds: eventRecords.map((e) => e.id),
+            eventIds: eventRecords.map((e) => e.eventId),
             job: job,
             version: latestJobVersion,
             environment: eventDispatcher.environment,
