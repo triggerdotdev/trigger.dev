@@ -1362,7 +1362,15 @@ export class TriggerClient {
   #createRunContext(execution: RunJobBody): GenericTriggerContext<any> {
     const { event, organization, project, environment, job, run, source } = execution;
 
-    let eventMetadata: SomeRequired<EventMetadata, "context">[] | undefined;
+    const sharedTriggerContext: TriggerContext = {
+      organization,
+      project: project ?? { id: "unknown", name: "unknown", slug: "unknown" }, // backwards compat with old servers
+      environment,
+      job,
+      run,
+      account: execution.account,
+      source,
+    };
 
     if (execution.batched) {
       if (!execution.context) {
@@ -1375,30 +1383,26 @@ export class TriggerClient {
         throw new Error("Context length needs to match number of event IDs.");
       }
 
-      eventMetadata = execution.eventIds.map((id, i) => ({
-        id,
-        name: execution.event.name,
-        context: parsedContext[i],
-        timestamp: execution.event.timestamp,
-      }));
+      return {
+        ...sharedTriggerContext,
+        events: execution.eventIds.map((id, i) => ({
+          id,
+          name: execution.event.name,
+          context: parsedContext[i],
+          timestamp: execution.event.timestamp,
+        })),
+      };
+    } else {
+      return {
+        ...sharedTriggerContext,
+        event: {
+          id: event.id,
+          name: event.name,
+          context: event.context,
+          timestamp: event.timestamp,
+        },
+      };
     }
-
-    return {
-      event: {
-        id: event.id,
-        name: event.name,
-        context: event.context,
-        timestamp: event.timestamp,
-      },
-      events: eventMetadata,
-      organization,
-      project: project ?? { id: "unknown", name: "unknown", slug: "unknown" }, // backwards compat with old servers
-      environment,
-      job,
-      run,
-      account: execution.account,
-      source,
-    };
   }
 
   #createPreprocessRunContext(body: PreprocessRunBody): TriggerPreprocessContext {
