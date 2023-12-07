@@ -29,6 +29,7 @@ export default function Page() {
       trigger={trigger}
       event={{ icon: "webhook", title: "Register Webhook" }}
       payload={trigger.payload}
+      context={trigger.context}
       properties={[]}
     />
   );

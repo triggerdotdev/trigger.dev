@@ -6,6 +6,8 @@ import {
   DeserializedJson,
   EphemeralEventDispatcherRequestBody,
   ErrorWithStackSchema,
+  EventMetadata,
+  EventMetadataSchema,
   FailedRunNotification,
   GetRunOptionsWithTaskDetails,
   GetRunsOptions,
@@ -40,6 +42,7 @@ import {
   ScheduleMetadata,
   SendEvent,
   SendEventOptions,
+  SomeRequired,
   SourceMetadataV2,
   StatusUpdate,
   SuccessfulRunNotification,
@@ -74,6 +77,7 @@ import { ExternalSource } from "./triggers/externalSource";
 import { DynamicIntervalOptions, DynamicSchedule } from "./triggers/scheduled";
 import type {
   EventSpecification,
+  GenericTriggerContext,
   NotificationsEventEmitter,
   Trigger,
   TriggerContext,
@@ -125,6 +129,7 @@ import { ConcurrencyLimit, ConcurrencyLimitOptions } from "./concurrencyLimit";
 import { KeyValueStore } from "./store/keyValueStore";
 import { WebhookDeliveryContext, WebhookSource } from "./triggers/webhook";
 import { formatSchemaErrors } from "./utils/formatSchemaErrors";
+import { z } from "zod";
 
 export type TriggerClientOptions = {
   /** The `id` property is used to uniquely identify the client.
@@ -1235,7 +1240,7 @@ export class TriggerClient {
       }
 
       const output = await runLocalStorage.runWith({ io, ctx: context }, () => {
-        return job.options.run(parsedPayload, ioWithConnections, context);
+        return job.options.run(parsedPayload, ioWithConnections, context as any);
       });
 
       if (this.#options.verbose) {
@@ -1364,8 +1369,29 @@ export class TriggerClient {
     };
   }
 
-  #createRunContext(execution: RunJobBody): TriggerContext {
+  #createRunContext(execution: RunJobBody): GenericTriggerContext<any> {
     const { event, organization, project, environment, job, run, source } = execution;
+
+    let eventMetadata: SomeRequired<EventMetadata, "context">[] | undefined;
+
+    if (execution.batched) {
+      if (!execution.context) {
+        throw new Error("Context needs to be defined for batched events.");
+      }
+
+      const parsedContext = z.array(z.any()).parse(JSON.parse(execution.context));
+
+      if (parsedContext.length !== execution.eventIds.length) {
+        throw new Error("Context length needs to match number of event IDs.");
+      }
+
+      eventMetadata = execution.eventIds.map((id, i) => ({
+        id,
+        name: execution.event.name,
+        context: parsedContext[i],
+        timestamp: execution.event.timestamp,
+      }));
+    }
 
     return {
       event: {
@@ -1374,6 +1400,7 @@ export class TriggerClient {
         context: event.context,
         timestamp: event.timestamp,
       },
+      events: eventMetadata,
       organization,
       project: project ?? { id: "unknown", name: "unknown", slug: "unknown" }, // backwards compat with old servers
       environment,

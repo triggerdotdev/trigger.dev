@@ -32,6 +32,9 @@ export default function Page() {
   const payload =
     run.payload !== null ? JSON.stringify(JSON.parse(run.payload), null, 2) : trigger.payload;
 
+  const context =
+    run.context !== null ? JSON.stringify(JSON.parse(run.context), null, 2) : trigger.context;
+
   return (
     <TriggerDetail
       trigger={trigger}
@@ -39,6 +42,7 @@ export default function Page() {
       event={job.event}
       eventIds={run.eventIds}
       payload={payload}
+      context={context}
       properties={run.properties}
     />
   );

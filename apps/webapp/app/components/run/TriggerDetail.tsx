@@ -16,6 +16,7 @@ import { DisplayProperty } from "@trigger.dev/core";
 export function TriggerDetail({
   trigger,
   payload,
+  context,
   event,
   properties,
   batched = false,
@@ -23,6 +24,7 @@ export function TriggerDetail({
 }: {
   trigger: DetailedEvent;
   payload: string;
+  context: string;
   event: {
     title: string;
     icon: string;
@@ -31,7 +33,7 @@ export function TriggerDetail({
   batched?: boolean;
   eventIds?: string[];
 }) {
-  const { id, name, context, timestamp, deliveredAt } = trigger;
+  const { id, name, timestamp, deliveredAt } = trigger;
 
   return (
     <RunPanel selected={false}>

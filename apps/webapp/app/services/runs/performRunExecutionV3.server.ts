@@ -451,8 +451,10 @@ export class PerformRunExecutionV3Service {
 
       return {
         event,
+        eventIds: run.eventIds,
         batched: run.batched,
         payload: run.payload,
+        context: run.context,
         job: {
           id: run.version.job.slug,
           version: run.version.version,
@@ -504,8 +506,10 @@ export class PerformRunExecutionV3Service {
 
     return {
       event,
+      eventIds: run.eventIds,
       batched: run.batched,
       payload: run.payload,
+      context: run.context,
       job: {
         id: run.version.job.slug,
         version: run.version.version,

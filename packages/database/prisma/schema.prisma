@@ -764,6 +764,7 @@ model JobRun {
   internal Boolean @default(false)
 
   payload String?
+  context String?
   batched Boolean @default(false)
 
   job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)

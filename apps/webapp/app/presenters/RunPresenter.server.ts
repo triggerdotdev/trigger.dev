@@ -84,6 +84,7 @@ export class RunPresenter {
       eventIds: run.eventIds,
       batched: run.batched,
       payload: run.payload,
+      context: run.context,
       tasks,
       runConnections: run.runConnections,
       missingConnections: run.missingConnections,
@@ -123,6 +124,7 @@ export class RunPresenter {
         batched: true,
         eventIds: true,
         payload: true,
+        context: true,
         executionCount: true,
         executionDuration: true,
         version: {

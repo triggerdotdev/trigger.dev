@@ -590,9 +590,20 @@ export const AutoYieldConfigSchema = z.object({
 
 export type AutoYieldConfig = z.infer<typeof AutoYieldConfigSchema>;
 
+export const EventMetadataSchema = ApiEventLogSchema.pick({
+  id: true,
+  name: true,
+  timestamp: true,
+  context: true,
+});
+
+export type EventMetadata = z.infer<typeof EventMetadataSchema>;
+
 export const RunJobBodySchema = z.object({
   event: ApiEventLogSchema,
+  eventIds: z.string().array(),
   payload: z.string().nullable(),
+  context: z.string().nullable(),
   batched: z.boolean(),
   job: z.object({
     id: z.string(),

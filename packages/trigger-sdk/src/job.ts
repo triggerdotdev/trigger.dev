@@ -15,8 +15,8 @@ import { runLocalStorage } from "./runLocalStorage";
 import { TriggerClient } from "./triggerClient";
 import type {
   EventSpecification,
+  GenericTriggerContext,
   Trigger,
-  TriggerContext,
   TriggerEventType,
   TriggerInvokeType,
 } from "./types";
@@ -84,7 +84,7 @@ export type JobOptions<
   run: (
     payload: ArrayIfBatched<TTrigger, TriggerEventType<TTrigger>>,
     io: IOWithIntegrations<TIntegrations>,
-    context: TriggerContext
+    context: GetTriggerContext<TTrigger>
   ) => Promise<TOutput>;
 
   onSuccess?: (
@@ -111,6 +111,12 @@ type ArrayIfBatched<TTrigger extends Trigger<any>, T> = TTrigger extends EventTr
   : TTrigger extends WebhookTrigger<any, any, any, infer U>
   ? ArrayIfTrue<HasBatchingEnabled<U>, T>
   : T;
+
+type GetTriggerContext<TTrigger extends Trigger<any>> = TTrigger extends EventTrigger<any, infer U>
+  ? GenericTriggerContext<HasBatchingEnabled<U>>
+  : TTrigger extends WebhookTrigger<any, any, any, infer U>
+  ? GenericTriggerContext<HasBatchingEnabled<U>>
+  : GenericTriggerContext<false>;
 
 export type JobPayload<TJob> = TJob extends Job<Trigger<EventSpecification<infer TEvent>>, any>
   ? TEvent
