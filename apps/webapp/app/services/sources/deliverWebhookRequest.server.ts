@@ -11,7 +11,7 @@ export class DeliverWebhookRequestService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(webhookEnvironmentId: string, requestDeliveryIds: string[], batched = false) {
+  public async call(webhookEnvironmentId: string, requestDeliveryIds: string[]) {
     const webhookEnvironment = await this.#prismaClient.webhookEnvironment.findUniqueOrThrow({
       where: {
         id: webhookEnvironmentId,
@@ -31,6 +31,7 @@ export class DeliverWebhookRequestService {
             },
           },
         },
+        deliveryBatcher: true,
         environment: {
           include: {
             organization: true,
@@ -58,7 +59,7 @@ export class DeliverWebhookRequestService {
       throw new Error(`No request deliveries found, expected ${requestDeliveryIds.length} total.`);
     }
 
-    if (!batched && requestDeliveries.length > 1) {
+    if (requestDeliveries.length > 1 && !webhookEnvironment.deliveryBatcher) {
       throw new Error(
         `Batching is disabled. Will not handle multiple deliveries. Requested ${requestDeliveryIds.length} total.`
       );
@@ -96,7 +97,7 @@ export class DeliverWebhookRequestService {
       secret: secret.secret,
       params: webhookEnvironment.webhook.params,
       requests,
-      batched,
+      batched: !!webhookEnvironment.deliveryBatcher,
     });
 
     const deliveredAt = new Date();

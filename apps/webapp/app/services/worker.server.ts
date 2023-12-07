@@ -255,7 +255,7 @@ function getWorkerQueue() {
             throw new Error("Job key is required for batch jobs.");
           }
 
-          const batcherId = job.key.split(":")[0]
+          const batcherId = job.key.split(":")[0];
 
           const service = new DispatchBatcherService();
 
@@ -353,7 +353,7 @@ function getWorkerQueue() {
             throw new Error("Job key is required for batch jobs.");
           }
 
-          const batcherId = job.key.split(":")[0]
+          const batcherId = job.key.split(":")[0];
 
           const service = new WebhookDeliveryBatcherService();
 
@@ -367,7 +367,7 @@ function getWorkerQueue() {
         handler: async (payload, job) => {
           const service = new DeliverWebhookRequestService();
 
-          await service.call(payload.webhookEnvironmentId, payload.requestDeliveryIds, true);
+          await service.call(payload.webhookEnvironmentId, payload.requestDeliveryIds);
         },
       },
       deliverWebhookRequest: {
