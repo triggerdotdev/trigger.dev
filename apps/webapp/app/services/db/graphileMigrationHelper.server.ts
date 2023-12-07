@@ -38,7 +38,7 @@ export class GraphileMigrationHelperService {
     // - max_payloads is new
     // - payload must be a JSON array
 
-    // FIXME: should delete all functions with same name
+    // Update this if function signature changes
     await this.#prismaClient.$executeRawUnsafe(`
       DROP FUNCTION IF EXISTS add_batch_job(
         text,
@@ -89,10 +89,10 @@ export class GraphileMigrationHelperService {
         -- we only add payloads one at a time so batches will never exceed max_payloads
         -- if we ever decide to enqueue more, this will have to be adjusted to prevent oversized batches
         AND json_array_length(v_job.payload) >= max_payloads THEN
-          UPDATE ${env.WORKER_SCHEMA}._private_jobs
-            SET run_at = NOW()
-            WHERE _private_jobs.id = v_job.id
-            RETURNING * INTO v_job;
+          v_job := ${env.WORKER_SCHEMA}.reschedule_jobs(
+            ARRAY[v_job.id],
+            run_at := NOW()
+          );
           -- lie that this job was just inserted so a worker picks it up ASAP
           PERFORM pg_notify('jobs:insert', '');
         END IF;
