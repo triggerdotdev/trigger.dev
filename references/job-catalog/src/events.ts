@@ -153,7 +153,7 @@ client.defineJob({
   },
 });
 
-const maxPayloads = 5;
+const maxPayloads = 10;
 const maxInterval = 10;
 
 client.defineJob({
@@ -201,7 +201,7 @@ client.defineJob({
           count: i,
           ...(payload.oversized
             ? {
-                largePayload: getLargeString(512 * 1024), // 512KB
+                largePayload: getLargeString(250 * 1000), // 250KB
               }
             : undefined),
         },
