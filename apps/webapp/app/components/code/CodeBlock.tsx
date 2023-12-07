@@ -191,8 +191,8 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
       Array.from({ length: end - start + 1 }, (_, i) => start + i)
     );
 
-    // if there are more than 1000 lines, don't highlight
-    const shouldHighlight = lineCount <= 1000;
+    // if there are more than 1000 lines or 20_000 characters, don't highlight
+    const shouldHighlight = lineCount <= 1000 && code.length <= 20_000;
 
     return (
       <div
