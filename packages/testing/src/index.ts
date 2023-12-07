@@ -92,7 +92,9 @@ const buildRequestBody = (
   batched: boolean
 ): RunJobBody => ({
   event,
+  eventIds: [event.id],
   job,
+  context: JSON.stringify(batched ? [event.context ?? {}] : event.context ?? {}),
   payload: JSON.stringify(batched ? [event.payload] : event.payload),
   batched,
   run: {
