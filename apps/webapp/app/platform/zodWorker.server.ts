@@ -569,13 +569,29 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     return taskList;
   }
 
+  async #getQueueName(queueId: number | null) {
+    if (queueId === null) {
+      return;
+    }
+
+    const schema = z.array(z.object({ queue_name: z.string() }));
+
+    const rawQueueNameResults = await $replica.$queryRawUnsafe(
+      `SELECT queue_name FROM ${this.graphileWorkerSchema}._private_job_queues WHERE id = $1`,
+      queueId
+    );
+
+    const queueNameResults = schema.parse(rawQueueNameResults);
+
+    return queueNameResults[0]?.queue_name;
+  }
+
   async #rescheduleTask(payload: unknown, helpers: JobHelpers) {
     this.#logDebug("Rescheduling task", { payload, job: helpers.job });
 
     await this.enqueue(helpers.job.task_identifier, payload, {
       runAt: helpers.job.run_at,
-      // TODO: fix queueName, maybe use reschedule helper
-      // queueName: helpers.job.job_queue_id ?? undefined,
+      queueName: await this.#getQueueName(helpers.job.job_queue_id),
       priority: helpers.job.priority,
       jobKey: helpers.job.key ?? undefined,
       flags: Object.keys(helpers.job.flags ?? []),
