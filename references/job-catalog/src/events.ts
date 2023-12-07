@@ -193,12 +193,13 @@ client.defineJob({
       oversized: z.boolean().default(false),
     }),
   }),
-  run: async (payload, io) => {
+  run: async (payload, io, ctx) => {
     for (let i = 0; i < payload.payloads; i++) {
       await io.sendEvent(`send-${i}`, {
         name: "batch.trigger",
         payload: {
           count: i,
+          run: ctx.run.id,
           ...(payload.oversized
             ? {
                 largePayload: getLargeString(250 * 1000), // 250KB
