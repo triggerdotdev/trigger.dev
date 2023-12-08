@@ -47,7 +47,7 @@ export class DispatchBatcherService {
     `;
 
     let chunkSize = 0;
-    let chunkIndex = 0;
+    let i = 0;
 
     const chunks: Record<number, string[]> = { 0: [] };
 
@@ -61,47 +61,29 @@ export class DispatchBatcherService {
 
       if (chunkSize + event.payloadSize > this.maxPayloadSize) {
         // enqueue full chunk
-        await this.#enqueueChunk(
-          eventDispatcher.id,
-          chunks[chunkIndex],
-          eventDispatcher.batcher.maxInterval
-        );
+        await this.#enqueueChunk(eventDispatcher.id, chunks[i]);
 
         // start new chunk
-        chunkIndex++;
+        i++;
         chunkSize = 0;
-        chunks[chunkIndex] = [];
+        chunks[i] = [];
       }
 
       chunkSize += event.payloadSize;
-      chunks[chunkIndex].push(event.id);
+      chunks[i].push(event.id);
     }
 
-    if (chunks[chunkIndex].length) {
-      await this.#enqueueChunk(
-        eventDispatcher.id,
-        chunks[chunkIndex],
-        eventDispatcher.batcher.maxInterval
-      );
+    if (chunks[i].length) {
+      await this.#enqueueChunk(eventDispatcher.id, chunks[i]);
     }
   }
 
-  async #enqueueChunk(dispatcherId: string, eventRecordIds: string[], maxInterval: number | null) {
+  async #enqueueChunk(dispatcherId: string, eventRecordIds: string[]) {
     logger.debug("Invoking batch event dispatcher", {
       dispatcherId,
       totalEvents: eventRecordIds.length,
     });
 
-    const MAX_INTERVAL_IN_SECONDS = 10 * 60;
-
-    const deliverAfter = maxInterval ? Math.max(maxInterval, MAX_INTERVAL_IN_SECONDS) : undefined;
-
-    await workerQueue.enqueue(
-      "events.invokeBatchDispatcher",
-      { id: dispatcherId, eventRecordIds }
-      // { runAt: deliverAfter ? deliverAfterToDate(deliverAfter) : undefined }
-    );
+    await workerQueue.enqueue("events.invokeBatchDispatcher", { id: dispatcherId, eventRecordIds });
   }
 }
-
-const deliverAfterToDate = (seconds: number) => new Date(Date.now() + seconds * 1000);

@@ -49,7 +49,7 @@ export class WebhookDeliveryBatcherService {
     `;
 
     let chunkSize = 0;
-    let chunkIndex = 0;
+    let i = 0;
 
     const chunks: Record<number, string[]> = { 0: [] };
 
@@ -63,43 +63,32 @@ export class WebhookDeliveryBatcherService {
 
       if (chunkSize + delivery.bodySize > this.maxPayloadSize) {
         // enqueue full chunk
-        await this.#enqueueChunk(webhookEnvironment.id, chunks[chunkIndex], batcher.maxInterval);
+        await this.#enqueueChunk(webhookEnvironment.id, chunks[i]);
 
         // start new chunk
-        chunkIndex++;
+        i++;
         chunkSize = 0;
-        chunks[chunkIndex] = [];
+        chunks[i] = [];
       }
 
       chunkSize += delivery.bodySize;
-      chunks[chunkIndex].push(delivery.id);
+      chunks[i].push(delivery.id);
     }
 
-    if (chunks[chunkIndex].length) {
-      await this.#enqueueChunk(webhookEnvironment.id, chunks[chunkIndex], batcher.maxInterval);
+    if (chunks[i].length) {
+      await this.#enqueueChunk(webhookEnvironment.id, chunks[i]);
     }
   }
 
-  async #enqueueChunk(
-    webhookEnvironmentId: string,
-    requestDeliveryIds: string[],
-    maxInterval: number | null
-  ) {
+  async #enqueueChunk(webhookEnvironmentId: string, requestDeliveryIds: string[]) {
     logger.debug("Invoking batch webhook delivery", {
       webhookEnvironmentId,
       totalDeliveries: requestDeliveryIds.length,
     });
 
-    const MAX_INTERVAL_IN_SECONDS = 10 * 60;
-
-    const deliverAfter = maxInterval ? Math.max(maxInterval, MAX_INTERVAL_IN_SECONDS) : undefined;
-
-    await workerQueue.enqueue(
-      "deliverMultipleWebhookRequests",
-      { webhookEnvironmentId, requestDeliveryIds }
-      // { runAt: deliverAfter ? deliverAfterToDate(deliverAfter) : undefined }
-    );
+    await workerQueue.enqueue("deliverMultipleWebhookRequests", {
+      webhookEnvironmentId,
+      requestDeliveryIds,
+    });
   }
 }
-
-const deliverAfterToDate = (seconds: number) => new Date(Date.now() + seconds * 1000);
