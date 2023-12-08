@@ -10,19 +10,12 @@ import {
   type RunTaskOptions,
   type TriggerIntegration,
 } from "@trigger.dev/sdk";
-import AirtableSDK, { Error as AirtableApiError } from "airtable";
+import AirtableSDK from "airtable";
 import { Base } from "./base";
-import * as events from "./events";
-import {
-  WebhookChangeType,
-  WebhookDataType,
-  Webhooks,
-  createWebhookSource,
-  createWebhookTrigger,
-} from "./webhooks";
+import { Webhooks, createWebhookSource } from "./webhooks";
 
-export * from "./types";
 export * from "./base";
+export * from "./types";
 
 export type AirtableIntegrationOptions = {
   /** An ID for this client  */
@@ -138,12 +131,12 @@ export class Airtable implements TriggerIntegration {
   }
 }
 
-function isAirtableApiError(error: unknown): error is AirtableApiError {
+function isAirtableApiError(error: unknown): error is AirtableSDK.Error {
   if (typeof error !== "object" || error === null) {
     return false;
   }
 
-  const airtableError = error as AirtableApiError;
+  const airtableError = error as AirtableSDK.Error;
 
   return (
     typeof airtableError.error === "string" &&

@@ -1,5 +1,5 @@
 import { EventFilter, IntegrationTaskKey, verifyRequestSignature } from "@trigger.dev/sdk";
-import AirtableSDK, { Error as AirtableApiError } from "airtable";
+import AirtableSDK from "airtable";
 import { z } from "zod";
 import * as events from "./events";
 import { Airtable, AirtableRunTask } from "./index";
@@ -456,7 +456,7 @@ async function handleWebhookError(response: Response, errorType: string) {
   const parsedErrorBody = AirtableErrorBodySchema.safeParse(rawErrorBody);
 
   if (!parsedErrorBody.success) {
-    throw new AirtableApiError(
+    throw new AirtableSDK.Error(
       `${errorType}_PARSE_ERROR`,
       `${response.statusText}:\n${rawErrorBody}`,
       response.status
@@ -465,5 +465,5 @@ async function handleWebhookError(response: Response, errorType: string) {
 
   const { type, message } = parsedErrorBody.data;
 
-  throw new AirtableApiError(type, message ?? response.statusText, response.status);
+  throw new AirtableSDK.Error(type, message ?? response.statusText, response.status);
 }

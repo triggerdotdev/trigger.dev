@@ -1,5 +1,17 @@
 # create-trigger
 
+## 2.3.4
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.4
+
+## 2.3.3
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.3
+
 ## 2.3.2
 
 ### Patch Changes

@@ -1,5 +1,17 @@
 # proxy
 
+## 0.0.10
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.4
+
+## 0.0.9
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.3
+
 ## 0.0.8
 
 ### Patch Changes

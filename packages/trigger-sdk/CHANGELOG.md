@@ -1,5 +1,20 @@
 # @trigger.dev/sdk
 
+## 2.3.4
+
+### Patch Changes
+
+- 6a3c563f: Fixed Job.attachToClient
+  - @trigger.dev/core@2.3.4
+  - @trigger.dev/core-backend@2.3.4
+
+## 2.3.3
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.3
+- @trigger.dev/core-backend@2.3.3
+
 ## 2.3.2
 
 ### Patch Changes
