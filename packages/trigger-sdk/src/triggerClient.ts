@@ -1,13 +1,9 @@
 import {
   API_VERSIONS,
-  BatcherOptions,
   ConnectionAuth,
-  DELIVER_WEBHOOK_REQUEST,
   DeserializedJson,
   EphemeralEventDispatcherRequestBody,
   ErrorWithStackSchema,
-  EventMetadata,
-  EventMetadataSchema,
   FailedRunNotification,
   GetRunOptionsWithTaskDetails,
   GetRunsOptions,
@@ -40,14 +36,13 @@ import {
   ScheduleMetadata,
   SendEvent,
   SendEventOptions,
-  SomeRequired,
   SourceMetadataV2,
   StatusUpdate,
   SuccessfulRunNotification,
-  WebhookDeliveryResponse,
   WebhookDeliveryResult,
   WebhookMetadata,
-  WebhookSourceRequestBodySchema,
+  WebhookSourceBatchedRequestBodySchema,
+  WebhookSourceBatchedRequestHeadersSchema,
   WebhookSourceRequestHeadersSchema,
 } from "@trigger.dev/core";
 import { LogLevel, Logger } from "@trigger.dev/core-backend";
@@ -585,9 +580,67 @@ export class TriggerClient {
           };
         }
 
+        const sourceRequestNeedsBody = headers.data["x-ts-http-method"] !== "GET";
+
+        const sourceRequestInit: RequestInit = {
+          method: headers.data["x-ts-http-method"],
+          headers: headers.data["x-ts-http-headers"],
+          body: sourceRequestNeedsBody ? request.body : undefined,
+        };
+
+        if (sourceRequestNeedsBody) {
+          try {
+            // @ts-ignore
+            sourceRequestInit.duplex = "half";
+          } catch (error) {
+            // ignore
+          }
+        }
+
+        const webhookRequest = new Request(headers.data["x-ts-http-url"], sourceRequestInit);
+
+        const ctx = {
+          key: headers.data["x-ts-key"],
+          secret: headers.data["x-ts-secret"],
+          params: headers.data["x-ts-params"],
+        };
+
+        const { verified, error } = await this.#handleWebhookRequest(webhookRequest, ctx);
+
+        const okResponse = {
+          status: 200,
+          body: {
+            ok: true,
+          },
+        };
+
+        return {
+          status: 200,
+          body: {
+            response: okResponse,
+            verified,
+            error,
+          },
+          headers: this.#standardResponseHeaders(timeOrigin),
+        };
+      }
+      case "DELIVER_BATCHED_WEBHOOK_REQUEST": {
+        const headers = WebhookSourceBatchedRequestHeadersSchema.safeParse(
+          Object.fromEntries(request.headers.entries())
+        );
+
+        if (!headers.success) {
+          return {
+            status: 400,
+            body: {
+              message: "Invalid headers",
+            },
+          };
+        }
+
         const parsedBody = await request.json();
 
-        const serializedRequests = WebhookSourceRequestBodySchema.parse(parsedBody);
+        const serializedRequests = WebhookSourceBatchedRequestBodySchema.parse(parsedBody);
 
         const requests = serializedRequests.map((req) => {
           const needsBody = req.method !== "GET";
@@ -610,14 +663,10 @@ export class TriggerClient {
           return new Request(req.url, sourceRequestInit);
         });
 
-        const key = headers.data["x-ts-key"];
-        const secret = headers.data["x-ts-secret"];
-        const params = headers.data["x-ts-params"];
-
         const ctx = {
-          key,
-          secret,
-          params,
+          key: headers.data["x-ts-key"],
+          secret: headers.data["x-ts-secret"],
+          params: headers.data["x-ts-params"],
         };
 
         const deliveryResults: WebhookDeliveryResult[] = [];

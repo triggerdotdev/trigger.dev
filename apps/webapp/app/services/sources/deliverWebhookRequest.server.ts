@@ -1,8 +1,9 @@
 import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { EndpointApi } from "../endpointApi.server";
+import { EndpointApi, WebhookRequest } from "../endpointApi.server";
 import { getSecretStore } from "../secrets/secretStore.server";
+import { WebhookRequestDelivery } from "@trigger.dev/database";
 
 export class DeliverWebhookRequestService {
   #prismaClient: PrismaClient;
@@ -85,37 +86,63 @@ export class DeliverWebhookRequestService {
       requestDeliveries[0].endpoint.url
     );
 
-    const requests = requestDeliveries.map((delivery) => ({
+    const context = {
+      key: webhookEnvironment.webhook.key,
+      secret: secret.secret,
+      params: webhookEnvironment.webhook.params,
+    };
+
+    if (webhookEnvironment.deliveryBatcher) {
+      const { response, deliveryResults } = await clientApi.deliverBatchedWebhookRequests({
+        ...context,
+        requests: requestDeliveries.map(this.#buildWebhookRequest),
+      });
+
+      const deliveredAt = new Date();
+
+      await Promise.allSettled(
+        deliveryResults.map((result, i) =>
+          this.#completeWebhookRequestDelivery(requestDeliveries[i].id, result, deliveredAt)
+        )
+      );
+
+      return response;
+    } else {
+      const delivery = requestDeliveries[0];
+
+      const { response, verified, error } = await clientApi.deliverWebhookRequest({
+        ...context,
+        request: this.#buildWebhookRequest(delivery),
+      });
+
+      await this.#completeWebhookRequestDelivery(delivery.id, { verified, error });
+
+      return response;
+    }
+  }
+
+  #buildWebhookRequest(delivery: WebhookRequestDelivery): WebhookRequest {
+    return {
       url: delivery.url,
       method: delivery.method,
       headers: delivery.headers as Record<string, string>,
       rawBody: delivery.body,
-    }));
+    };
+  }
 
-    const { response, deliveryResults } = await clientApi.deliverWebhookRequests({
-      key: webhookEnvironment.webhook.key,
-      secret: secret.secret,
-      params: webhookEnvironment.webhook.params,
-      requests,
-      batched: !!webhookEnvironment.deliveryBatcher,
+  async #completeWebhookRequestDelivery(
+    id: string,
+    result: { verified: boolean; error?: string },
+    deliveredAt = new Date()
+  ) {
+    return await this.#prismaClient.webhookRequestDelivery.update({
+      where: {
+        id,
+      },
+      data: {
+        ...result,
+        deliveredAt,
+      },
     });
-
-    const deliveredAt = new Date();
-
-    await Promise.allSettled(
-      deliveryResults.map((result, i) => {
-        return this.#prismaClient.webhookRequestDelivery.update({
-          where: {
-            id: requestDeliveries[i].id,
-          },
-          data: {
-            ...result,
-            deliveredAt,
-          },
-        });
-      })
-    );
-
-    return response;
   }
 }

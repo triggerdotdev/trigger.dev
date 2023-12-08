@@ -217,15 +217,28 @@ export const HttpEndpointRequestHeadersSchema = z.object({
 
 export const WebhookSourceRequestHeadersSchema = z.object({
   "x-ts-key": z.string(),
-  "x-ts-batched": z.string().transform((s) => JSON.parse(s) as boolean),
   "x-ts-dynamic-id": z.string().optional(),
   "x-ts-secret": z.string(),
   "x-ts-params": z.string().transform((s) => JSON.parse(s)),
+  "x-ts-http-url": z.string(),
+  "x-ts-http-method": z.string(),
+  "x-ts-http-headers": z.string().transform((s) => z.record(z.string()).parse(JSON.parse(s))),
 });
 
 export type WebhookSourceRequestHeaders = z.output<typeof WebhookSourceRequestHeadersSchema>;
 
-export const WebhookSourceRequestBodySchema = z
+export const WebhookSourceBatchedRequestHeadersSchema = WebhookSourceRequestHeadersSchema.pick({
+  "x-ts-key": true,
+  "x-ts-dynamic-id": true,
+  "x-ts-secret": true,
+  "x-ts-params": true,
+});
+
+export type WebhookSourceBatchedRequestHeaders = z.output<
+  typeof WebhookSourceBatchedRequestHeadersSchema
+>;
+
+export const WebhookSourceBatchedRequestBodySchema = z
   .object({
     url: z.string(),
     method: z.string(),
@@ -234,7 +247,7 @@ export const WebhookSourceRequestBodySchema = z
   })
   .array();
 
-export type WebhookSourceRequestBody = z.infer<typeof WebhookSourceRequestBodySchema>;
+export type WebhookSourceRequestBody = z.infer<typeof WebhookSourceBatchedRequestBodySchema>;
 
 export const PongSuccessResponseSchema = z.object({
   ok: z.literal(true),
@@ -1012,10 +1025,18 @@ export const WebhookDeliveryResultSchema = z.object({
 
 export type WebhookDeliveryResult = z.infer<typeof WebhookDeliveryResultSchema>;
 
-export const WebhookDeliveryResponseSchema = z.object({
+export const WebhookBatchedDeliveryResponseSchema = z.object({
   response: NormalizedResponseSchema,
   deliveryResults: WebhookDeliveryResultSchema.array(),
 });
+
+export type WebhookBatchedDeliveryResponse = z.infer<typeof WebhookBatchedDeliveryResponseSchema>;
+
+export const WebhookDeliveryResponseSchema = z
+  .object({
+    response: NormalizedResponseSchema,
+  })
+  .merge(WebhookDeliveryResultSchema);
 
 export type WebhookDeliveryResponse = z.infer<typeof WebhookDeliveryResponseSchema>;
 
