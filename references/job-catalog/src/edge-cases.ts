@@ -1,5 +1,5 @@
 import { createExpressServer } from "@trigger.dev/express";
-import { TriggerClient, invokeTrigger } from "@trigger.dev/sdk";
+import { Job, TriggerClient, invokeTrigger } from "@trigger.dev/sdk";
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 
@@ -103,5 +103,15 @@ client.defineJob({
     await io.wait("wait-1", 1);
   },
 });
+
+const job = new Job({
+  id: "attach-to-client",
+  name: "Attach to Client",
+  version: "1.0.0",
+  trigger: invokeTrigger(),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Hello from job", { ctx })
+  },
+}).attachToClient(client);
 
 createExpressServer(client);

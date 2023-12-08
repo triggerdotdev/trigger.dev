@@ -121,8 +121,8 @@ export class Job<
    * Attaches the job to a client. This is called automatically when you define a job using `client.defineJob()`.
    */
   attachToClient(client: TriggerClient) {
-    this.client = client;
-    this.trigger.attachToJob(client, this);
+    client.attach(this);
+    return this;
   }
 
   get id() {
@@ -185,8 +185,8 @@ export class Job<
         typeof this.options.concurrencyLimit === "number"
           ? this.options.concurrencyLimit
           : typeof this.options.concurrencyLimit === "object"
-          ? { id: this.options.concurrencyLimit.id, limit: this.options.concurrencyLimit.limit }
-          : undefined,
+            ? { id: this.options.concurrencyLimit.id, limit: this.options.concurrencyLimit.limit }
+            : undefined,
     };
   }
 
