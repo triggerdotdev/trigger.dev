@@ -397,7 +397,7 @@ importers:
     devDependencies:
       eslint: 8.31.0
       eslint-config-prettier: 8.6.0_eslint@8.31.0
-      eslint-config-turbo: 1.11.0_eslint@8.31.0
+      eslint-config-turbo: 1.11.1_eslint@8.31.0
       eslint-plugin-react: 7.31.8_eslint@8.31.0
       typescript: 4.9.4
 
@@ -425,8 +425,8 @@ importers:
 
   integrations/airtable:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.3.3
-      '@trigger.dev/sdk': workspace:^2.3.3
+      '@trigger.dev/integration-kit': workspace:^2.3.4
+      '@trigger.dev/sdk': workspace:^2.3.4
       '@trigger.dev/tsconfig': workspace:*
       '@trigger.dev/tsup': workspace:*
       '@types/node': 16.x
@@ -455,8 +455,8 @@ importers:
       '@octokit/types': ^9.2.3
       '@octokit/webhooks': ^10.4.0
       '@octokit/webhooks-types': ^6.10.0
-      '@trigger.dev/integration-kit': workspace:^2.3.3
-      '@trigger.dev/sdk': workspace:^2.3.3
+      '@trigger.dev/integration-kit': workspace:^2.3.4
+      '@trigger.dev/sdk': workspace:^2.3.4
       '@trigger.dev/tsconfig': workspace:*
       '@trigger.dev/tsup': workspace:*
       '@types/node': '18'
@@ -486,8 +486,8 @@ importers:
   integrations/linear:
     specifiers:
       '@linear/sdk': ^8.0.0
-      '@trigger.dev/integration-kit': workspace:^2.3.3
-      '@trigger.dev/sdk': workspace:^2.3.3
+      '@trigger.dev/integration-kit': workspace:^2.3.4
+      '@trigger.dev/sdk': workspace:^2.3.4
       '@trigger.dev/tsconfig': workspace:*
       '@trigger.dev/tsup': workspace:*
       '@types/node': 16.x
@@ -510,8 +510,8 @@ importers:
 
   integrations/openai:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.3.3
-      '@trigger.dev/sdk': workspace:^2.3.3
+      '@trigger.dev/integration-kit': workspace:^2.3.4
+      '@trigger.dev/sdk': workspace:^2.3.4
       '@trigger.dev/tsconfig': workspace:*
       '@trigger.dev/tsup': workspace:*
       '@types/jest': ^29.5.3
@@ -540,8 +540,8 @@ importers:
   integrations/plain:
     specifiers:
       '@team-plain/typescript-sdk': ^2.7.0
-      '@trigger.dev/integration-kit': workspace:^2.3.3
-      '@trigger.dev/sdk': workspace:^2.3.3
+      '@trigger.dev/integration-kit': workspace:^2.3.4
+      '@trigger.dev/sdk': workspace:^2.3.4
       '@trigger.dev/tsconfig': workspace:*
       '@trigger.dev/tsup': workspace:*
       '@types/node': '18'
@@ -562,8 +562,8 @@ importers:
 
   integrations/replicate:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.3.3
-      '@trigger.dev/sdk': workspace:^2.3.3
+      '@trigger.dev/integration-kit': workspace:^2.3.4
+      '@trigger.dev/sdk': workspace:^2.3.4
       '@trigger.dev/tsconfig': workspace:*
       '@trigger.dev/tsup': workspace:*
       '@types/node': 16.x
@@ -587,8 +587,8 @@ importers:
 
   integrations/resend:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.3.3
-      '@trigger.dev/sdk': workspace:^2.3.3
+      '@trigger.dev/integration-kit': workspace:^2.3.4
+      '@trigger.dev/sdk': workspace:^2.3.4
       '@trigger.dev/tsconfig': workspace:*
       '@trigger.dev/tsup': workspace:*
       '@types/node': '18'
@@ -611,8 +611,8 @@ importers:
   integrations/sendgrid:
     specifiers:
       '@sendgrid/mail': ^7.7.0
-      '@trigger.dev/integration-kit': workspace:^2.3.3
-      '@trigger.dev/sdk': workspace:^2.3.3
+      '@trigger.dev/integration-kit': workspace:^2.3.4
+      '@trigger.dev/sdk': workspace:^2.3.4
       '@trigger.dev/tsconfig': workspace:*
       '@trigger.dev/tsup': workspace:*
       '@types/node': 16.x
@@ -634,8 +634,8 @@ importers:
   integrations/shopify:
     specifiers:
       '@shopify/shopify-api': ^8.0.2
-      '@trigger.dev/integration-kit': workspace:^2.3.3
-      '@trigger.dev/sdk': workspace:^2.3.3
+      '@trigger.dev/integration-kit': workspace:^2.3.4
+      '@trigger.dev/sdk': workspace:^2.3.4
       '@trigger.dev/tsconfig': workspace:*
       '@trigger.dev/tsup': workspace:*
       '@types/node': 16.x
@@ -659,7 +659,7 @@ importers:
   integrations/slack:
     specifiers:
       '@slack/web-api': ^6.8.1
-      '@trigger.dev/sdk': workspace:^2.3.3
+      '@trigger.dev/sdk': workspace:^2.3.4
       '@trigger.dev/tsconfig': workspace:*
       '@trigger.dev/tsup': workspace:*
       '@types/node': '18'
@@ -681,8 +681,8 @@ importers:
 
   integrations/stripe:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.3.3
-      '@trigger.dev/sdk': workspace:^2.3.3
+      '@trigger.dev/integration-kit': workspace:^2.3.4
+      '@trigger.dev/sdk': workspace:^2.3.4
       '@trigger.dev/tsup': workspace:*
       '@types/node': 16.x
       rimraf: ^3.0.2
@@ -707,8 +707,8 @@ importers:
   integrations/supabase:
     specifiers:
       '@supabase/supabase-js': ^2.26.0
-      '@trigger.dev/integration-kit': workspace:^2.3.3
-      '@trigger.dev/sdk': workspace:^2.3.3
+      '@trigger.dev/integration-kit': workspace:^2.3.4
+      '@trigger.dev/sdk': workspace:^2.3.4
       '@trigger.dev/tsconfig': workspace:*
       '@trigger.dev/tsup': workspace:*
       '@types/node': 18.x
@@ -733,8 +733,8 @@ importers:
 
   integrations/typeform:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.3.3
-      '@trigger.dev/sdk': workspace:^2.3.3
+      '@trigger.dev/integration-kit': workspace:^2.3.4
+      '@trigger.dev/sdk': workspace:^2.3.4
       '@trigger.dev/tsup': workspace:*
       '@typeform/api-client': ^1.8.0
       '@types/node': 16.x
@@ -994,7 +994,7 @@ importers:
 
   packages/express:
     specifiers:
-      '@trigger.dev/sdk': workspace:^2.3.3
+      '@trigger.dev/sdk': workspace:^2.3.4
       '@trigger.dev/tsconfig': workspace:*
       '@trigger.dev/tsup': workspace:*
       '@types/debug': ^4.1.7
@@ -1064,7 +1064,7 @@ importers:
     specifiers:
       '@nestjs/common': ^10.2.4
       '@remix-run/web-fetch': ^4.3.5
-      '@trigger.dev/sdk': workspace:^2.3.3
+      '@trigger.dev/sdk': workspace:^2.3.4
       '@trigger.dev/tsconfig': workspace:*
       '@trigger.dev/tsup': workspace:*
       '@types/debug': ^4.1.7
@@ -1123,7 +1123,7 @@ importers:
   packages/react:
     specifiers:
       '@tanstack/react-query': 5.0.0-beta.2
-      '@trigger.dev/core': workspace:^2.3.3
+      '@trigger.dev/core': workspace:^2.3.4
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/react': 18.2.17
@@ -1226,8 +1226,8 @@ importers:
 
   packages/trigger-sdk:
     specifiers:
-      '@trigger.dev/core': workspace:^2.3.3
-      '@trigger.dev/core-backend': workspace:^2.3.3
+      '@trigger.dev/core': workspace:^2.3.4
+      '@trigger.dev/core-backend': workspace:^2.3.4
       '@trigger.dev/tsconfig': workspace:*
       '@trigger.dev/tsup': workspace:*
       '@types/debug': ^4.1.7
@@ -19146,13 +19146,13 @@ packages:
       eslint: 8.45.0
     dev: true
 
-  /eslint-config-turbo/1.11.0_eslint@8.31.0:
-    resolution: {integrity: sha512-PBiDoO1ZRHBXoydfn/qYazJTwmoRNXdsf3CBg6j7BMVvuAPa39e7ao6KccsDplyLgV2jIjeRtra/q1CUaWs2kg==}
+  /eslint-config-turbo/1.11.1_eslint@8.31.0:
+    resolution: {integrity: sha512-F0w5nusZ3SMSXS+ns/f0GLiRmLyP0+20Nd1xPgRXxJSW3UCsurysuqfCjo4VwSIVK2mfkDSdrn6/+JxV3WZgiw==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
       eslint: 8.31.0
-      eslint-plugin-turbo: 1.11.0_eslint@8.31.0
+      eslint-plugin-turbo: 1.11.1_eslint@8.31.0
     dev: true
 
   /eslint-doc-generator/1.4.3_eslint@8.45.0:
@@ -19855,8 +19855,8 @@ packages:
       - typescript
     dev: true
 
-  /eslint-plugin-turbo/1.11.0_eslint@8.31.0:
-    resolution: {integrity: sha512-u3GeDFuKUMcQOPi5euJIAivTvJBPMZL62LVrNc4uGksGMYekl7Dl3yGcevcUpebm7XDValyWcw1iHZjUm3DfCg==}
+  /eslint-plugin-turbo/1.11.1_eslint@8.31.0:
+    resolution: {integrity: sha512-QegEzLp9CIsDVQOSSjvEl6QUUGpb7Hj9IdFdgz7OHBYzhCArY5z+Q3y+LO6jn1MSkzGUteGNjLhrlkjXadePCA==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
