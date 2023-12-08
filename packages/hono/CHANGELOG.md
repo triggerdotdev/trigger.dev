@@ -1,5 +1,12 @@
 # @trigger.dev/hono
 
+## 2.3.4
+
+### Patch Changes
+
+- Updated dependencies [6a3c563f]
+  - @trigger.dev/sdk@2.3.4
+
 ## 2.3.3
 
 ### Patch Changes
