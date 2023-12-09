@@ -60,7 +60,7 @@ Our `@trigger.dev/hono` package provides two different ways of configuring the n
 
 ### Cloudflare Workers
 
-Becase environment variables in Cloudflare Workers aren't available in the global scope, but are instead available only inside the fetch handler, we need to use the `addMiddleware` function to add the necessary middleware to your Hono app.
+Because environment variables in Cloudflare Workers aren't available in the global scope, but are instead available only inside the fetch handler, we need to use the `addMiddleware` function to add the necessary middleware to your Hono app.
 
 ```ts
 import { Hono } from "hono";
