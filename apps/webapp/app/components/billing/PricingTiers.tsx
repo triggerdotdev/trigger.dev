@@ -12,6 +12,7 @@ import { Feedback } from "../Feedback";
 import { Button, LinkButton } from "../primitives/Buttons";
 import SegmentedControl from "../primitives/SegmentedControl";
 import { RunsVolumeDiscountTable } from "./RunsVolumeDiscountTable";
+import { Spinner } from "../primitives/Spinner";
 
 const pricingDefinitions = {
   concurrentRuns: {
@@ -156,9 +157,15 @@ export function TierFree({
               fullWidth
               className="text-md font-medium"
               disabled={isLoading || isCurrentPlan}
-              LeadingIcon={isLoading ? "spinner-white" : undefined}
             >
-              {isLoading ? "Updating plan" : actionText}
+              {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <Spinner color="white" />
+                  Updating plan
+                </div>
+              ) : (
+                actionText
+              )}
             </Button>
           )}
         </div>
@@ -292,9 +299,15 @@ export function TierPro({
             className="text-md font-medium"
             type="submit"
             disabled={isLoading || isCurrentPlan}
-            LeadingIcon={isLoading ? "spinner-white" : undefined}
           >
-            {isLoading ? "Updating plan" : actionText}
+            {isLoading ? (
+              <div className="flex items-center gap-2">
+                <Spinner color="white" />
+                Updating plan
+              </div>
+            ) : (
+              actionText
+            )}
           </Button>
         </div>
         <ul className="flex flex-col gap-2.5">
