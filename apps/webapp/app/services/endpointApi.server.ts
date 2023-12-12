@@ -126,6 +126,7 @@ export class EndpointApi {
         "x-trigger-api-key": this.apiKey,
         "x-trigger-action": "INDEX_ENDPOINT",
       },
+      redirect: "manual",
     });
 
     return {
