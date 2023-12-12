@@ -15,6 +15,7 @@ import { requireUserId } from "~/services/session.server";
 import { formatCurrency, formatNumberCompact } from "~/utils/numberFormatter";
 import { OrganizationParamsSchema, plansPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { DateTime } from "~/components/primitives/DateTime";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -51,7 +52,7 @@ export default function Page() {
 
   const hitConcurrencyLimit = currentPlan?.subscription?.limits.concurrentRuns
     ? loaderData.concurrencyData.some(
-        (c) => c.maxConcurrentRuns >= currentPlan.subscription!.limits.concurrentRuns!
+        (c) => c.maxConcurrentRuns >= (currentPlan.subscription?.limits.concurrentRuns ?? Infinity)
       )
     : false;
 
@@ -62,7 +63,7 @@ export default function Page() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <Header2 spacing>Concurrent Runs</Header2>
+        <Header2 spacing>Concurrent runs</Header2>
         <div className="flex w-full flex-col gap-5 rounded border border-border p-6">
           {hitConcurrencyLimit && (
             <Callout
@@ -74,11 +75,11 @@ export default function Page() {
                   leadingIconClassName="px-0"
                   to={plansPath(organization)}
                 >
-                  Increase concurrent Runs
+                  Increase concurrent runs
                 </LinkButton>
               }
             >
-              {`Some of your Runs are being queued because the number of concurrent Runs is limited to
+              {`Some of your runs are being queued because the number of concurrent runs is limited to
             ${currentPlan?.subscription?.limits.concurrentRuns}.`}
             </Callout>
           )}
@@ -108,8 +109,9 @@ export default function Page() {
               }
             >
               You have exceeded the monthly{" "}
-              {formatNumberCompact(currentPlan!.subscription!.limits.runs!)} Runs limit. Upgrade to
-              a paid plan before Nov 30.
+              {formatNumberCompact(currentPlan?.subscription?.limits.runs ?? 0)} runs limit. Upgrade
+              to a paid plan before{" "}
+              <DateTime date={loaderData.periodEnd} includeSeconds={false} includeTime={false} />.
             </Callout>
           )}
           <div className="flex flex-col gap-x-8 @4xl:flex-row">
@@ -142,10 +144,10 @@ export default function Page() {
               />
             </div>
             <div className="relative w-full">
-              <Header3 className="mb-4">Monthly Runs</Header3>
+              <Header3 className="mb-4">Monthly runs</Header3>
               {!loaderData.hasMonthlyRunData && (
                 <Paragraph className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                  No Runs to show
+                  No runs to show
                 </Paragraph>
               )}
               <ResponsiveContainer width="100%" height={200}>

@@ -144,6 +144,15 @@ export class OrgUsagePresenter {
       projectedRunCostEstimation = projectedEstimationResult?.cost.runsCost;
     }
 
+    const periodStart = new Date();
+    periodStart.setDate(1);
+    periodStart.setHours(0, 0, 0, 0);
+
+    const periodEnd = new Date();
+    periodEnd.setDate(1);
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
+    periodEnd.setHours(0, 0, 0, 0);
+
     return {
       id: organization.id,
       runsCount,
@@ -154,6 +163,8 @@ export class OrgUsagePresenter {
       hasConcurrencyData,
       runCostEstimation,
       projectedRunCostEstimation,
+      periodStart,
+      periodEnd,
     };
   }
 }
