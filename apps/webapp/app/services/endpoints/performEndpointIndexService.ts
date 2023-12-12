@@ -13,6 +13,7 @@ import { fromZodError } from "zod-validation-error";
 import { IndexEndpointStats } from "@trigger.dev/core";
 import { RegisterHttpEndpointService } from "../triggers/registerHttpEndpoint.server";
 import { RegisterWebhookService } from "../triggers/registerWebhook.server";
+import { EndpointIndex } from "@trigger.dev/database";
 
 export class PerformEndpointIndexService {
   #prismaClient: PrismaClient;
@@ -29,7 +30,7 @@ export class PerformEndpointIndexService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(id: string) {
+  public async call(id: string, redirectCount = 0): Promise<EndpointIndex> {
     const endpointIndex = await this.#prismaClient.endpointIndex.update({
       where: {
         id,
@@ -64,6 +65,39 @@ export class PerformEndpointIndexService {
       return updateEndpointIndexWithError(this.#prismaClient, id, {
         message: `Could not connect to endpoint ${endpointIndex.endpoint.url}`,
       });
+    }
+
+    if (isRedirect(response.status)) {
+      // Update the endpoint URL with the response.headers.location
+      logger.debug("Endpoint is redirecting", {
+        headers: Object.fromEntries(response.headers.entries()),
+      });
+
+      const location = response.headers.get("location");
+
+      if (!location) {
+        return updateEndpointIndexWithError(this.#prismaClient, id, {
+          message: `Endpoint ${endpointIndex.endpoint.url} is redirecting but no location header is present`,
+        });
+      }
+
+      if (redirectCount > 5) {
+        return updateEndpointIndexWithError(this.#prismaClient, id, {
+          message: `Endpoint ${endpointIndex.endpoint.url} is redirecting too many times`,
+        });
+      }
+
+      await this.#prismaClient.endpoint.update({
+        where: {
+          id: endpointIndex.endpoint.id,
+        },
+        data: {
+          url: location,
+        },
+      });
+
+      // Re-run the endpoint index
+      return await this.call(id, redirectCount + 1);
     }
 
     if (response.status === 401) {
@@ -377,4 +411,11 @@ async function updateEndpointIndexWithError(
       error,
     },
   });
+}
+
+const redirectStatus = [301, 302, 303, 307, 308];
+const redirectStatusSet = new Set(redirectStatus);
+
+function isRedirect(status: number) {
+  return redirectStatusSet.has(status);
 }
