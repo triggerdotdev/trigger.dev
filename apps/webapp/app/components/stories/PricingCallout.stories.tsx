@@ -32,7 +32,7 @@ function PricingCallouts() {
           </LinkButton>
         }
       >
-        Some of your Runs are being queued because your Run concurrency is limited to 50.
+        Some of your runs are being queued because your run concurrency is limited to 50.
       </Callout>
     </div>
   );

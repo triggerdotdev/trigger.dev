@@ -62,7 +62,7 @@ export default function Subscribed() {
       <ul>
         <PlanItem item="Your plan" value={currentPlan?.subscription?.plan.title ?? "–"} />
         <PlanItem
-          item="Concurrent Runs/mo"
+          item="Concurrent runs/mo"
           value={`${currentPlan?.subscription?.plan.concurrentRuns.pricing?.upto}`}
         />
         <PlanItem item="Runs/mo" value="Volume discounted" />

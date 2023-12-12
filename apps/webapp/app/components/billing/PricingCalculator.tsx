@@ -69,10 +69,10 @@ function ConcurrentRunsSlider({
           <div className="flex items-center justify-between">
             <Header2>
               <DefinitionTip
-                content="The number of Runs that can be executed at the same time. Get in touch if you need more than 100."
-                title="Concurrent Runs"
+                content="The number of runs that can be executed at the same time. Get in touch if you need more than 100."
+                title="Concurrent runs"
               >
-                Concurrent Runs
+                Concurrent runs
               </DefinitionTip>
             </Header2>
             <Header2>Up to {selectedOption.upto}</Header2>
@@ -89,7 +89,7 @@ function ConcurrentRunsSlider({
             </Slider.Track>
             <Slider.Thumb
               className="block h-5 w-5 rounded-full border-4 border-indigo-500 bg-slate-850 shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] transition hover:border-indigo-400 hover:bg-slate-800 focus:shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] focus:outline-none"
-              aria-label="Concurrent Runs slider"
+              aria-label="Concurrent runs slider"
             />
           </Slider.Root>
           <div className="ml-1.5 flex w-[99.85%] items-center justify-between">
@@ -162,7 +162,7 @@ function RunsSlider({
             </Slider.Track>
             <Slider.Thumb
               className="block h-5 w-5 rounded-full border-4 border-indigo-500 bg-slate-850 shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] transition hover:border-indigo-400 hover:bg-slate-800 focus:shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] focus:outline-none"
-              aria-label="Concurrent Runs slider"
+              aria-label="Concurrent runs slider"
             />
           </Slider.Root>
           <div className="relative w-full">

@@ -16,12 +16,12 @@ import { Spinner } from "../primitives/Spinner";
 
 const pricingDefinitions = {
   concurrentRuns: {
-    title: "Concurrent Runs",
-    content: "The number of Runs that can be executed at the same time.",
+    title: "Concurrent runs",
+    content: "The number of runs that can be executed at the same time.",
   },
   jobRuns: {
-    title: "Job Runs",
-    content: "A single execution of a Job.",
+    title: "Job runs",
+    content: "A single execution of a job.",
   },
   jobs: {
     title: "Jobs",
@@ -29,11 +29,11 @@ const pricingDefinitions = {
   },
   tasks: {
     title: "Tasks",
-    content: "The individual building blocks of a Job Run.",
+    content: "The individual building blocks of a job run.",
   },
   events: {
     title: "Events",
-    content: "Events trigger Jobs to start running.",
+    content: "Events trigger jobs to start running.",
   },
   integrations: {
     title: "Integrations",
@@ -185,7 +185,7 @@ export function TierFree({
               title={pricingDefinitions.jobs.title}
               content={pricingDefinitions.jobs.content}
             >
-              Jobs
+              jobs
             </DefinitionTip>
           </FeatureItem>
           <FeatureItem checked>
@@ -194,7 +194,7 @@ export function TierFree({
               title={pricingDefinitions.tasks.title}
               content={pricingDefinitions.tasks.content}
             >
-              Tasks
+              tasks
             </DefinitionTip>
           </FeatureItem>
           <FeatureItem checked>
@@ -203,13 +203,13 @@ export function TierFree({
               title={pricingDefinitions.events.title}
               content={pricingDefinitions.events.content}
             >
-              Events
+              events
             </DefinitionTip>
           </FeatureItem>
           <FeatureItem checked>Unlimited team members</FeatureItem>
           <FeatureItem checked>24 hour log retention</FeatureItem>
           <FeatureItem checked>Community support</FeatureItem>
-          <FeatureItem>Custom Integrations</FeatureItem>
+          <FeatureItem>Custom integrations</FeatureItem>
           <FeatureItem>Role-based access control</FeatureItem>
           <FeatureItem>SSO</FeatureItem>
           <FeatureItem>On-prem option</FeatureItem>
@@ -326,7 +326,7 @@ export function TierPro({
                 <RunsVolumeDiscountTable hideHeader brackets={plan.runs?.pricing?.brackets ?? []} />
               }
             >
-              {"<"} ${(mostExpensiveRunCost * 1000).toFixed(2)}/1K Runs
+              {"<"} ${(mostExpensiveRunCost * 1000).toFixed(2)}/1K runs
             </DefinitionTip>
           </FeatureItem>
           <FeatureItem checked>
@@ -335,7 +335,7 @@ export function TierPro({
               title={pricingDefinitions.jobs.title}
               content={pricingDefinitions.jobs.content}
             >
-              Jobs
+              jobs
             </DefinitionTip>
           </FeatureItem>
           <FeatureItem checked>
@@ -344,7 +344,7 @@ export function TierPro({
               title={pricingDefinitions.tasks.title}
               content={pricingDefinitions.tasks.content}
             >
-              Tasks
+              tasks
             </DefinitionTip>
           </FeatureItem>
           <FeatureItem checked>
@@ -353,13 +353,13 @@ export function TierPro({
               title={pricingDefinitions.events.title}
               content={pricingDefinitions.events.content}
             >
-              Events
+              events
             </DefinitionTip>
           </FeatureItem>
           <FeatureItem checked>Unlimited team members</FeatureItem>
           <FeatureItem checked>7 day log retention</FeatureItem>
           <FeatureItem checked>Dedicated Slack support</FeatureItem>
-          <FeatureItem>Custom Integrations</FeatureItem>
+          <FeatureItem>Custom integrations</FeatureItem>
           <FeatureItem>Role-based access control</FeatureItem>
           <FeatureItem>SSO</FeatureItem>
           <FeatureItem>On-prem option</FeatureItem>
@@ -408,7 +408,7 @@ export function TierEnterprise() {
             title={pricingDefinitions.jobs.title}
             content={pricingDefinitions.jobs.content}
           >
-            Jobs
+            jobs
           </DefinitionTip>
         </FeatureItem>
         <FeatureItem checked>
@@ -417,7 +417,7 @@ export function TierEnterprise() {
             title={pricingDefinitions.tasks.title}
             content={pricingDefinitions.tasks.content}
           >
-            Tasks
+            tasks
           </DefinitionTip>
         </FeatureItem>
         <FeatureItem checked>
@@ -426,7 +426,7 @@ export function TierEnterprise() {
             title={pricingDefinitions.events.title}
             content={pricingDefinitions.events.content}
           >
-            Events
+            events
           </DefinitionTip>
         </FeatureItem>
         <FeatureItem checked>Unlimited team members</FeatureItem>

@@ -60,15 +60,15 @@ export default function Page() {
     <div className="flex flex-col gap-4">
       {hitConcurrencyLimit && (
         <Callout variant={"pricing"}>
-          Some of your Runs are being queued because your Run concurrency is limited to{" "}
+          Some of your runs are being queued because your run concurrency is limited to{" "}
           {currentPlan?.subscription?.limits.concurrentRuns}.
         </Callout>
       )}
       {hitRunLimit && (
         <Callout variant={"pricing"}>
           {`You have exceeded the monthly
-          ${formatNumberCompact(currentPlan!.subscription!.limits.runs!)} Runs limit. Upgrade so you
-          can continue to perform Runs.`}
+          ${formatNumberCompact(currentPlan!.subscription!.limits.runs!)} runs limit. Upgrade so you
+          can continue to perform runs.`}
         </Callout>
       )}
       <PricingTiers organizationSlug={organizationSlug} plans={plans} />

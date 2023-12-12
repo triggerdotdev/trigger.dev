@@ -15,7 +15,7 @@ import { requireUserId } from "~/services/session.server";
 import { formatCurrency, formatNumberCompact } from "~/utils/numberFormatter";
 import { OrganizationParamsSchema, plansPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { DateTime } from "~/components/primitives/DateTime";
+import { DateTime, formatDateTime } from "~/components/primitives/DateTime";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -108,10 +108,12 @@ export default function Page() {
                 </LinkButton>
               }
             >
-              You have exceeded the monthly{" "}
-              {formatNumberCompact(currentPlan?.subscription?.limits.runs ?? 0)} runs limit. Upgrade
-              to a paid plan before{" "}
-              <DateTime date={loaderData.periodEnd} includeSeconds={false} includeTime={false} />.
+              <Paragraph variant="small">
+                You have exceeded the monthly{" "}
+                {formatNumberCompact(currentPlan?.subscription?.limits.runs ?? 0)} runs limit.
+                Upgrade to a paid plan before{" "}
+                <DateTime date={loaderData.periodEnd} includeSeconds={false} includeTime={false} />.
+              </Paragraph>
             </Callout>
           )}
           <div className="flex flex-col gap-x-8 @4xl:flex-row">

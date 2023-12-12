@@ -52,7 +52,7 @@ export function UsageBar({
               value={formatNumberCompact(billingLimit)}
               position="bottomRow2"
               percentage={billingLimitPercentage}
-              tooltipContent={`Billing Limit: ${formatNumberCompact(billingLimit)}`}
+              tooltipContent={`Billing limit: ${formatNumberCompact(billingLimit)}`}
             />
           </motion.div>
         )}
@@ -72,7 +72,7 @@ export function UsageBar({
               tooltipContent={`${
                 subscribedToPaidTier
                   ? `Runs included free: ${formatNumberCompact(tierRunLimit)}`
-                  : `Free Tier Runs Limit: ${formatNumberCompact(tierRunLimit)}`
+                  : `Free tier runs limit: ${formatNumberCompact(tierRunLimit)}`
               }`}
             />
           </motion.div>
@@ -90,7 +90,7 @@ export function UsageBar({
               value={formatNumberCompact(projectedRuns)}
               position="topRow2"
               percentage={projectedRunsPercentage}
-              tooltipContent={`Projected Runs: ${formatNumberCompact(projectedRuns)}`}
+              tooltipContent={`Projected runs: ${formatNumberCompact(projectedRuns)}`}
             />
           </motion.div>
         )}
@@ -109,7 +109,7 @@ export function UsageBar({
             value={formatNumberCompact(numberOfCurrentRuns)}
             position="topRow1"
             percentage={usagePercentage}
-            tooltipContent={`Current Run count: ${formatNumberCompact(numberOfCurrentRuns)}`}
+            tooltipContent={`Current run count: ${formatNumberCompact(numberOfCurrentRuns)}`}
           />
         </motion.div>
         <motion.div
