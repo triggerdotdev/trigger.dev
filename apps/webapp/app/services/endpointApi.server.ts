@@ -18,6 +18,7 @@ import {
   RunNotification,
   ValidateResponse,
   ValidateResponseSchema,
+  WebhookBatchedDeliveryResponseSchema,
   WebhookDeliveryResponseSchema,
 } from "@trigger.dev/core";
 import { performance } from "node:perf_hooks";
@@ -33,6 +34,8 @@ const HttpSourceRequestSchema = z.object({
 });
 
 export type HttpSourceRequest = z.infer<typeof HttpSourceRequestSchema>;
+
+export type WebhookRequest = HttpSourceRequest;
 
 export class EndpointApiError extends Error {
   constructor(message: string, stack?: string) {
@@ -259,7 +262,7 @@ export class EndpointApi {
     key: string;
     secret: string;
     params: any;
-    request: HttpSourceRequest;
+    request: WebhookRequest;
   }) {
     const response = await safeFetch(this.url, {
       method: "POST",
@@ -292,6 +295,50 @@ export class EndpointApi {
     });
 
     return WebhookDeliveryResponseSchema.parse(anyBody);
+  }
+
+  async deliverBatchedWebhookRequests(options: {
+    key: string;
+    secret: string;
+    params: any;
+    requests: WebhookRequest[];
+  }) {
+    const serializedRequests = options.requests.map((request) => {
+      const { rawBody, ...requestWithoutRawBody } = request;
+      return {
+        ...requestWithoutRawBody,
+        body: rawBody?.toString(),
+      };
+    });
+
+    const response = await safeFetch(this.url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "x-trigger-api-key": this.apiKey,
+        "x-trigger-action": "DELIVER_BATCHED_WEBHOOK_REQUEST",
+        "x-ts-key": options.key,
+        "x-ts-secret": options.secret,
+        "x-ts-params": JSON.stringify(options.params ?? {}),
+      },
+      body: JSON.stringify(serializedRequests),
+    });
+
+    if (!response) {
+      throw new Error(`Could not connect to endpoint ${this.url}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(`Could not connect to endpoint ${this.url}. Status code: ${response.status}`);
+    }
+
+    const anyBody = await response.json();
+
+    logger.debug("deliverBatchedWebhookRequests() response from endpoint", {
+      body: anyBody,
+    });
+
+    return WebhookBatchedDeliveryResponseSchema.parse(anyBody);
   }
 
   async deliverHttpEndpointRequestForResponse(options: {

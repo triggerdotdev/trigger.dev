@@ -28,5 +28,22 @@ export default function Page() {
   const job = useJob();
   const run = useRun();
 
-  return <TriggerDetail trigger={trigger} event={job.event} properties={run.properties} />;
+  // For compatibility with old Job Runs where payload is only available on the related Event Record
+  const payload =
+    run.payload !== null ? JSON.stringify(JSON.parse(run.payload), null, 2) : trigger.payload;
+
+  const context =
+    run.context !== null ? JSON.stringify(JSON.parse(run.context), null, 2) : trigger.context;
+
+  return (
+    <TriggerDetail
+      trigger={trigger}
+      batched={run.batched}
+      event={job.event}
+      eventIds={run.eventIds}
+      payload={payload}
+      context={context}
+      properties={run.properties}
+    />
+  );
 }

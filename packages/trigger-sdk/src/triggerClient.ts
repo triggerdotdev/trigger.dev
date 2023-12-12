@@ -1,7 +1,6 @@
 import {
   API_VERSIONS,
   ConnectionAuth,
-  DELIVER_WEBHOOK_REQUEST,
   DeserializedJson,
   EphemeralEventDispatcherRequestBody,
   ErrorWithStackSchema,
@@ -40,11 +39,14 @@ import {
   SourceMetadataV2,
   StatusUpdate,
   SuccessfulRunNotification,
-  WebhookDeliveryResponse,
+  WebhookDeliveryResult,
   WebhookMetadata,
+  WebhookSourceBatchedRequestBodySchema,
+  WebhookSourceBatchedRequestHeadersSchema,
   WebhookSourceRequestHeadersSchema,
 } from "@trigger.dev/core";
 import { LogLevel, Logger } from "@trigger.dev/core-backend";
+import { z } from "zod";
 import EventEmitter from "node:events";
 import { env } from "node:process";
 import * as packageJson from "../package.json";
@@ -75,6 +77,7 @@ import { DynamicIntervalOptions, DynamicSchedule } from "./triggers/scheduled";
 import { WebhookDeliveryContext, WebhookSource } from "./triggers/webhook";
 import {
   type EventSpecification,
+  type GenericTriggerContext,
   type NotificationsEventEmitter,
   type Trigger,
   type TriggerContext,
@@ -596,24 +599,95 @@ export class TriggerClient {
 
         const webhookRequest = new Request(headers.data["x-ts-http-url"], sourceRequestInit);
 
-        const key = headers.data["x-ts-key"];
-        const secret = headers.data["x-ts-secret"];
-        const params = headers.data["x-ts-params"];
-
         const ctx = {
-          key,
-          secret,
-          params,
+          key: headers.data["x-ts-key"],
+          secret: headers.data["x-ts-secret"],
+          params: headers.data["x-ts-params"],
         };
 
-        const { response, verified, error } = await this.#handleWebhookRequest(webhookRequest, ctx);
+        const { verified, error } = await this.#handleWebhookRequest(webhookRequest, ctx);
+
+        const okResponse = {
+          status: 200,
+          body: {
+            ok: true,
+          },
+        };
 
         return {
           status: 200,
           body: {
-            response,
+            response: okResponse,
             verified,
             error,
+          },
+          headers: this.#standardResponseHeaders(timeOrigin),
+        };
+      }
+      case "DELIVER_BATCHED_WEBHOOK_REQUEST": {
+        const headers = WebhookSourceBatchedRequestHeadersSchema.safeParse(
+          Object.fromEntries(request.headers.entries())
+        );
+
+        if (!headers.success) {
+          return {
+            status: 400,
+            body: {
+              message: "Invalid headers",
+            },
+          };
+        }
+
+        const parsedBody = await request.json();
+
+        const serializedRequests = WebhookSourceBatchedRequestBodySchema.parse(parsedBody);
+
+        const requests = serializedRequests.map((req) => {
+          const needsBody = req.method !== "GET";
+
+          const sourceRequestInit: RequestInit = {
+            method: req.method,
+            headers: req.headers,
+            body: needsBody ? req.body : undefined,
+          };
+
+          if (needsBody) {
+            try {
+              // @ts-ignore
+              sourceRequestInit.duplex = "half";
+            } catch (error) {
+              // ignore
+            }
+          }
+
+          return new Request(req.url, sourceRequestInit);
+        });
+
+        const ctx = {
+          key: headers.data["x-ts-key"],
+          secret: headers.data["x-ts-secret"],
+          params: headers.data["x-ts-params"],
+        };
+
+        const deliveryResults: WebhookDeliveryResult[] = [];
+
+        for (const request of requests) {
+          const { verified, error } = await this.#handleWebhookRequest(request, ctx);
+          deliveryResults.push({ verified, error });
+        }
+
+        const okResponse = {
+          status: 200,
+          body: {
+            ok: true,
+          },
+        };
+
+        return {
+          status: 200,
+          body: {
+            response: okResponse,
+            deliveryResults,
           },
           headers: this.#standardResponseHeaders(timeOrigin),
         };
@@ -890,6 +964,7 @@ export class TriggerClient {
     if (!registeredWebhook) {
       registeredWebhook = {
         key: options.key,
+        batch: options.source.batch,
         params: options.params,
         config: options.config,
         integration: {
@@ -1163,20 +1238,49 @@ export class TriggerClient {
     );
 
     try {
-      const parsedPayload = job.trigger.event.parsePayload(body.event.payload ?? {});
+      // For compatibility with old Job Runs where payload is only available on the related Event Record
+      const payload = body.payload ? JSON.parse(body.payload) : body.event.payload;
 
-      if (!context.run.isTest) {
-        const verified = await job.trigger.verifyPayload(parsedPayload);
-        if (!verified.success) {
-          return {
-            status: "ERROR",
-            error: { message: `Payload verification failed. ${verified.reason}` },
-          };
+      let parsedPayload: any = {};
+
+      if (body.batched) {
+        if (!Array.isArray(payload)) {
+          throw new Error("The payload for batched Runs needs to be an array.");
+        }
+
+        parsedPayload = payload.map((element) => job.trigger.event.parsePayload(element));
+
+        if (!context.run.isTest) {
+          for (const parsedElement of parsedPayload) {
+            const verified = await job.trigger.verifyPayload(parsedElement);
+
+            if (!verified.success) {
+              return {
+                status: "ERROR",
+                error: {
+                  message: `Payload verification failed with batching enabled. ${verified.reason}`,
+                },
+              };
+            }
+          }
+        }
+      } else {
+        parsedPayload = job.trigger.event.parsePayload(payload ?? {});
+
+        if (!context.run.isTest) {
+          const verified = await job.trigger.verifyPayload(parsedPayload);
+
+          if (!verified.success) {
+            return {
+              status: "ERROR",
+              error: { message: `Payload verification failed. ${verified.reason}` },
+            };
+          }
         }
       }
 
       const output = await runLocalStorage.runWith({ io, ctx: context }, () => {
-        return job.options.run(parsedPayload, ioWithConnections, context);
+        return job.options.run(parsedPayload, ioWithConnections, context as any);
       });
 
       if (this.#options.verbose) {
@@ -1305,16 +1409,10 @@ export class TriggerClient {
     };
   }
 
-  #createRunContext(execution: RunJobBody): TriggerContext {
+  #createRunContext(execution: RunJobBody): GenericTriggerContext<any> {
     const { event, organization, project, environment, job, run, source } = execution;
 
-    return {
-      event: {
-        id: event.id,
-        name: event.name,
-        context: event.context,
-        timestamp: event.timestamp,
-      },
+    const sharedTriggerContext: TriggerContext = {
       organization,
       project: project ?? { id: "unknown", name: "unknown", slug: "unknown" }, // backwards compat with old servers
       environment,
@@ -1323,6 +1421,38 @@ export class TriggerClient {
       account: execution.account,
       source,
     };
+
+    if (execution.batched) {
+      if (!execution.context) {
+        throw new Error("Context needs to be defined for batched events.");
+      }
+
+      const parsedContext = z.array(z.any()).parse(JSON.parse(execution.context));
+
+      if (parsedContext.length !== execution.eventIds.length) {
+        throw new Error("Context length needs to match number of event IDs.");
+      }
+
+      return {
+        ...sharedTriggerContext,
+        events: execution.eventIds.map((id, i) => ({
+          id,
+          name: execution.event.name,
+          context: parsedContext[i],
+          timestamp: execution.event.timestamp,
+        })),
+      };
+    } else {
+      return {
+        ...sharedTriggerContext,
+        event: {
+          id: event.id,
+          name: event.name,
+          context: event.context,
+          timestamp: event.timestamp,
+        },
+      };
+    }
   }
 
   #createPreprocessRunContext(body: PreprocessRunBody): TriggerPreprocessContext {
@@ -1532,17 +1662,10 @@ export class TriggerClient {
   async #handleWebhookRequest(
     request: Request,
     ctx: WebhookDeliveryContext
-  ): Promise<WebhookDeliveryResponse> {
+  ): Promise<WebhookDeliveryResult> {
     this.#internalLogger.debug("Handling webhook request", {
       ctx,
     });
-
-    const okResponse = {
-      status: 200,
-      body: {
-        ok: true,
-      },
-    };
 
     const handlers = this.#registeredWebhookSourceHandlers[ctx.key];
 
@@ -1552,7 +1675,6 @@ export class TriggerClient {
       });
 
       return {
-        response: okResponse,
         verified: false,
       };
     }
@@ -1563,7 +1685,6 @@ export class TriggerClient {
 
     if (!verifyResult.success) {
       return {
-        response: okResponse,
         verified: false,
         error: verifyResult.reason,
       };
@@ -1572,7 +1693,6 @@ export class TriggerClient {
     await generateEvents(request, this, ctx);
 
     return {
-      response: okResponse,
       verified: true,
     };
   }

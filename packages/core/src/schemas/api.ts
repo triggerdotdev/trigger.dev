@@ -14,7 +14,7 @@ import {
   ScheduleMetadataSchema,
 } from "./schedules";
 import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
-import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
+import { BatcherOptionsSchema, EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
 import { RunStatusSchema } from "./runs";
 import { JobRunStatusRecordSchema } from "./statuses";
 import { RequestFilterSchema } from "./requestFilter";
@@ -227,6 +227,28 @@ export const WebhookSourceRequestHeadersSchema = z.object({
 
 export type WebhookSourceRequestHeaders = z.output<typeof WebhookSourceRequestHeadersSchema>;
 
+export const WebhookSourceBatchedRequestHeadersSchema = WebhookSourceRequestHeadersSchema.pick({
+  "x-ts-key": true,
+  "x-ts-dynamic-id": true,
+  "x-ts-secret": true,
+  "x-ts-params": true,
+});
+
+export type WebhookSourceBatchedRequestHeaders = z.output<
+  typeof WebhookSourceBatchedRequestHeadersSchema
+>;
+
+export const WebhookSourceBatchedRequestBodySchema = z
+  .object({
+    url: z.string(),
+    method: z.string(),
+    headers: z.record(z.string()),
+    body: z.string().optional(),
+  })
+  .array();
+
+export type WebhookSourceRequestBody = z.infer<typeof WebhookSourceBatchedRequestBodySchema>;
+
 export const PongSuccessResponseSchema = z.object({
   ok: z.literal(true),
   triggerVersion: z.string().optional(),
@@ -339,6 +361,7 @@ export const WebhookMetadataSchema = z.object({
   key: z.string(),
   params: z.any(),
   config: z.record(z.array(z.string())),
+  batch: BatcherOptionsSchema.optional(),
   integration: IntegrationConfigSchema,
   httpEndpoint: z.object({
     id: z.string(),
@@ -580,8 +603,21 @@ export const AutoYieldConfigSchema = z.object({
 
 export type AutoYieldConfig = z.infer<typeof AutoYieldConfigSchema>;
 
+export const EventMetadataSchema = ApiEventLogSchema.pick({
+  id: true,
+  name: true,
+  timestamp: true,
+  context: true,
+});
+
+export type EventMetadata = z.infer<typeof EventMetadataSchema>;
+
 export const RunJobBodySchema = z.object({
   event: ApiEventLogSchema,
+  eventIds: z.string().array(),
+  payload: z.string().nullable(),
+  context: z.string().nullable(),
+  batched: z.boolean(),
   job: z.object({
     id: z.string(),
     version: z.string(),
@@ -982,11 +1018,25 @@ export const HttpSourceResponseSchema = z.object({
   metadata: HttpSourceResponseMetadataSchema.optional(),
 });
 
-export const WebhookDeliveryResponseSchema = z.object({
-  response: NormalizedResponseSchema,
+export const WebhookDeliveryResultSchema = z.object({
   verified: z.boolean(),
   error: z.string().optional(),
 });
+
+export type WebhookDeliveryResult = z.infer<typeof WebhookDeliveryResultSchema>;
+
+export const WebhookBatchedDeliveryResponseSchema = z.object({
+  response: NormalizedResponseSchema,
+  deliveryResults: WebhookDeliveryResultSchema.array(),
+});
+
+export type WebhookBatchedDeliveryResponse = z.infer<typeof WebhookBatchedDeliveryResponseSchema>;
+
+export const WebhookDeliveryResponseSchema = z
+  .object({
+    response: NormalizedResponseSchema,
+  })
+  .merge(WebhookDeliveryResultSchema);
 
 export type WebhookDeliveryResponse = z.infer<typeof WebhookDeliveryResponseSchema>;
 

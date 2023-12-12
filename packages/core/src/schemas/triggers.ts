@@ -37,6 +37,15 @@ export const TriggerHelpSchema = z.object({
     .optional(),
 });
 
+export const BatcherOptionsSchema = z.object({
+  maxPayloads: z.number().optional(),
+  maxInterval: z.number().optional(),
+});
+
+export type BatcherOptions = z.infer<typeof BatcherOptionsSchema>;
+
+export type OptionalBatcherOptions = BatcherOptions | undefined;
+
 export const StaticTriggerMetadataSchema = z.object({
   type: z.literal("static"),
   title: z.union([z.string(), z.array(z.string())]),
@@ -44,6 +53,7 @@ export const StaticTriggerMetadataSchema = z.object({
   rule: EventRuleSchema,
   link: z.string().optional(),
   help: TriggerHelpSchema.optional(),
+  batch: BatcherOptionsSchema.optional(),
 });
 
 export const InvokeTriggerMetadataSchema = z.object({

@@ -8,6 +8,7 @@ import type {
   RegisteredOptionsDiff,
   RunTaskOptions,
   RuntimeEnvironmentType,
+  SomeRequired,
   SourceEventOption,
   SuccessfulRunNotification,
   TriggerMetadata,
@@ -29,6 +30,14 @@ export type {
   SourceEventOption,
 };
 
+type BatchedContext = SomeRequired<Omit<TriggerContext, "event">, "events">;
+
+type NonBatchedContext = SomeRequired<Omit<TriggerContext, "events">, "event">;
+
+export type GenericTriggerContext<TBatched extends boolean> = TBatched extends true
+  ? BatchedContext
+  : NonBatchedContext;
+
 export interface TriggerContext {
   /** Job metadata */
   job: { id: string; version: string };
@@ -41,7 +50,9 @@ export interface TriggerContext {
   /** Run metadata */
   run: { id: string; isTest: boolean; startedAt: Date; isRetry: boolean };
   /** Event metadata */
-  event: { id: string; name: string; context: any; timestamp: Date };
+  event?: { id: string; name: string; context: any; timestamp: Date };
+  /** Batched event metadata */
+  events?: { id: string; name: string; context: any; timestamp: Date }[];
   /** Source metadata */
   source?: { id: string; metadata?: any };
   /** Account metadata */

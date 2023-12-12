@@ -1,13 +1,21 @@
 import {
+  BatcherOptions,
   IntegrationConfig,
   JobMetadata,
   SCHEDULED_EVENT,
   TriggerMetadata,
   assertExhaustive,
 } from "@trigger.dev/core";
-import type { Endpoint, Integration, Job, JobIntegration, JobVersion } from "@trigger.dev/database";
+import type {
+  Endpoint,
+  Integration,
+  Job,
+  JobIntegration,
+  JobVersion,
+  Prisma,
+} from "@trigger.dev/database";
 import { DEFAULT_MAX_CONCURRENT_RUNS } from "~/consts";
-import type { PrismaClient } from "~/db.server";
+import type { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
@@ -15,6 +23,12 @@ import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { logger } from "../logger.server";
 import { RegisterScheduleSourceService } from "../schedules/registerScheduleSource.server";
 import { executionRateLimiter } from "../runExecutionRateLimiter.server";
+
+type ExtendedEventDispatcher = Prisma.EventDispatcherGetPayload<{
+  include: {
+    batcher: true;
+  };
+}>;
 
 export class RegisterJobService {
   #prismaClient: PrismaClient;
@@ -300,12 +314,15 @@ export class RegisterJobService {
   ) {
     switch (trigger.type) {
       case "static": {
-        await this.#prismaClient.eventDispatcher.upsert({
+        const eventDispatcher = await this.#prismaClient.eventDispatcher.upsert({
           where: {
             dispatchableId_environmentId: {
               dispatchableId: job.id,
               environmentId: environment.id,
             },
+          },
+          include: {
+            batcher: true,
           },
           create: {
             event:
@@ -334,6 +351,8 @@ export class RegisterJobService {
             enabled: true,
           },
         });
+
+        await this.#registerDispatchBatcher(this.#prismaClient, eventDispatcher, trigger.batch);
 
         if (trigger.properties || trigger.link || trigger.help) {
           await this.#prismaClient.jobVersion.update({
@@ -391,6 +410,43 @@ export class RegisterJobService {
         });
 
         break;
+      }
+    }
+  }
+
+  async #registerDispatchBatcher(
+    tx: PrismaClientOrTransaction,
+    eventDispatcher: ExtendedEventDispatcher,
+    batchOptions?: BatcherOptions
+  ) {
+    if (batchOptions) {
+      const maxPayloads = batchOptions.maxPayloads ?? null;
+      const maxInterval = batchOptions.maxInterval ?? null;
+
+      await tx.eventDispatchBatcher.upsert({
+        where: {
+          eventDispatcherId: eventDispatcher.id,
+          environmentId: eventDispatcher.environmentId,
+        },
+        create: {
+          eventDispatcherId: eventDispatcher.id,
+          environmentId: eventDispatcher.environmentId,
+          maxPayloads,
+          maxInterval,
+        },
+        update: {
+          maxPayloads,
+          maxInterval,
+        },
+      });
+    } else {
+      if (eventDispatcher.batcher) {
+        await tx.eventDispatchBatcher.delete({
+          where: {
+            eventDispatcherId: eventDispatcher.id,
+            environmentId: eventDispatcher.environmentId,
+          },
+        });
       }
     }
   }

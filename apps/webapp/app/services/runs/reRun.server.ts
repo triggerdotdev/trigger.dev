@@ -1,4 +1,4 @@
-import { PrismaClient, prisma } from "~/db.server";
+import { Prisma, PrismaClient, prisma } from "~/db.server";
 import { CreateRunService } from "../runs/createRun.server";
 
 export class ReRunService {
@@ -27,39 +27,45 @@ export class ReRunService {
           },
         });
 
-        const eventLog = await this.#prismaClient.eventRecord.create({
-          data: {
-            organization: {
-              connect: {
-                id: existingRun.environment.organizationId,
-              },
-            },
-            project: {
-              connect: {
-                id: existingRun.environment.projectId,
-              },
-            },
-            environment: {
-              connect: {
-                id: existingRun.environment.id,
-              },
-            },
-            externalAccount: existingRun.externalAccount
-              ? {
-                  connect: {
-                    id: existingRun.externalAccount.id,
-                  },
-                }
-              : undefined,
-            eventId: `${existingRun.event.eventId}:retry:${new Date().getTime()}`,
-            name: existingRun.event.name,
-            timestamp: new Date(),
-            payload: existingRun.event.payload ?? {},
-            context: existingRun.event.context ?? {},
-            source: existingRun.event.source,
-            isTest: existingRun.event.isTest,
+        const eventIds = existingRun.eventIds.length
+          ? existingRun.eventIds
+          : [existingRun.event.eventId];
+
+        const eventRecords = await this.#prismaClient.eventRecord.findMany({
+          where: {
+            environmentId: existingRun.environmentId,
+            eventId: { in: eventIds },
           },
         });
+
+        if (eventIds.length !== eventRecords.length) {
+          throw new Error(
+            `Event records don't match. Found ${eventRecords.length}, expected ${eventIds.length}`
+          );
+        }
+
+        const eventLogs = await Promise.all(
+          eventRecords.map((event) =>
+            this.#prismaClient.eventRecord.create({
+              data: {
+                organizationId: existingRun.environment.organizationId,
+                projectId: existingRun.environment.projectId,
+                environmentId: existingRun.environment.id,
+                externalAccountId: existingRun.externalAccount?.id,
+                eventId: `${event.id}:retry:${new Date().getTime()}`,
+                name: event.name,
+                timestamp: new Date(),
+                payload: event.payload ?? {},
+                context: event.context ?? {},
+                source: event.source,
+                isTest: event.isTest,
+              },
+              select: {
+                eventId: true,
+              },
+            })
+          )
+        );
 
         const createRunService = new CreateRunService(tx);
 
@@ -69,9 +75,10 @@ export class ReRunService {
             organization: existingRun.organization,
             project: existingRun.project,
           },
-          eventId: eventLog.id,
+          eventIds: eventLogs.map((e) => e.eventId),
           job: existingRun.job,
           version: existingRun.version,
+          batched: existingRun.batched,
         });
       });
     } catch (error) {

@@ -14,28 +14,41 @@ export class CreateRunService {
   public async call(
     {
       environment,
-      eventId,
+      eventIds,
       job,
       version,
+      batched,
     }: {
       environment: AuthenticatedEnvironment;
-      eventId: string;
+      eventIds: string[];
       job: Job;
       version: JobVersion;
+      batched: boolean;
     },
     options: { callbackUrl?: string } = {}
   ) {
+    if (!eventIds.length) {
+      throw new Error("No event IDs provided.");
+    }
+
     const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
       where: {
         id: version.endpointId,
       },
     });
 
-    const eventRecord = await this.#prismaClient.eventRecord.findUniqueOrThrow({
+    const eventRecords = await this.#prismaClient.eventRecord.findMany({
       where: {
-        id: eventId,
+        environmentId: environment.id,
+        eventId: { in: eventIds },
       },
     });
+
+    if (!eventRecords.length) {
+      throw new Error("No event records found.");
+    }
+
+    const firstEvent = eventRecords[0];
 
     return await $transaction(this.#prismaClient, async (tx) => {
       const run = await tx.jobRun.create({
@@ -43,15 +56,23 @@ export class CreateRunService {
           preprocess: version.preprocessRuns,
           jobId: job.id,
           versionId: version.id,
-          eventId: eventId,
+          eventId: firstEvent.id,
+          eventIds: eventRecords.map((event) => event.eventId),
           environmentId: environment.id,
           organizationId: environment.organizationId,
           projectId: environment.projectId,
           endpointId: endpoint.id,
-          externalAccountId: eventRecord.externalAccountId
-            ? eventRecord.externalAccountId
+          batched,
+          payload: JSON.stringify(
+            batched ? eventRecords.map((event) => event.payload) ?? [{}] : firstEvent.payload ?? {}
+          ),
+          context: JSON.stringify(
+            batched ? eventRecords.map((event) => event.context) ?? [{}] : firstEvent.context ?? {}
+          ),
+          externalAccountId: firstEvent.externalAccountId
+            ? firstEvent.externalAccountId
             : undefined,
-          isTest: eventRecord.isTest,
+          isTest: firstEvent.isTest,
           internal: job.internal,
         },
       });

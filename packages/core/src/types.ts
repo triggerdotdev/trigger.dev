@@ -9,3 +9,7 @@ export interface AsyncMap {
   has: (key: string) => Promise<boolean>;
   set: (key: string, value: any) => Promise<any>;
 }
+
+export type SomeRequired<T extends Record<any, any>, TSome extends keyof T> = T & {
+  [K in TSome]-?: T[K];
+};

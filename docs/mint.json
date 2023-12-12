@@ -216,6 +216,7 @@
             "documentation/guides/self-hosting/render",
             "documentation/guides/self-hosting/kubernetes",
             "documentation/guides/self-hosting/supabase",
+            "documentation/guides/self-hosting/graphile-migration",
             "documentation/guides/tunneling-platform"
           ]
         },

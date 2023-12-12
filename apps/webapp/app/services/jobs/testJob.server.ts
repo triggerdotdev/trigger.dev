@@ -102,9 +102,10 @@ export class TestJobService {
 
         return await createRunService.call({
           environment,
-          eventId: eventLog.id,
+          eventIds: [eventLog.eventId],
           job: version.job,
           version,
+          batched: false
         });
       },
       { timeout: 10000 }

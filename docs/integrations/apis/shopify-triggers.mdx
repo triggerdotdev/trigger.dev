@@ -12,23 +12,56 @@ You can use these triggers to start a job when a Shopify event occurs.
 All triggers can be create folllowing the same pattern:
 
 ```ts
-shopify.on("topic")
+shopify.on("topic");
 ```
 
 <ParamField body="topic" type="string">
   The webhook topic you want to subscribe to. Generally a pattern of `<resource>/<action>`.
 </ParamField>
 
-### Helpers
+## Helpers
+
+### filter()
 
 The `filter()` method returns a new trigger with the applied payload filter:
 
 ```ts
-const trigger = shopify.on("topic").filter(filter)
+shopify.on("topic").filter(filter);
 ```
 
 <ResponseField name="filter" type="EventFilter" required>
   A filter to apply to the event. See our [EventFilter guide](/documentation/guides/event-filter).
+</ResponseField>
+
+### batch()
+
+The `batch()` method returns a new trigger with batching enabled.
+
+Batching will cause the `payload` parameter of the run function to become an array of payloads instead.
+
+```ts
+shopify.on("topic").batch({
+  // receive no more than 5 payloads per batch
+  maxPayloads: 5,
+  // send out incomplete batches after 10 seconds
+  maxInterval: 10,
+});
+
+// shortcut to enable with sensible defaults
+shopify.on("topic").batch();
+```
+
+<ResponseField name="options" type="object">
+  Used to configure batching options. An empty or absent object will enable batching with server defaults.
+
+  <Expandable title="batch options" defaultOpen>
+    <ResponseField name="maxPayloads" type="number">
+      How many event payloads you will at most receive per batch. May be reduced by server limits..
+    </ResponseField>
+    <ResponseField name="maxInterval" type="number">
+      How many seconds to wait before sending out incomplete batches. May be cut short by server limits.
+    </ResponseField>
+  </Expandable>
 </ResponseField>
 
 ## Events

@@ -28,6 +28,8 @@ export default function Page() {
     <TriggerDetail
       trigger={trigger}
       event={{ icon: "register-source", title: "Register external source" }}
+      payload={trigger.payload}
+      context={trigger.context}
       properties={[]}
     />
   );

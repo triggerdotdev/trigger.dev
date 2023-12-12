@@ -153,4 +153,62 @@ client.defineJob({
   },
 });
 
+const maxPayloads = 10;
+const maxInterval = 10;
+
+client.defineJob({
+  id: "batch-trigger-receive",
+  name: "Batch Trigger Receive",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "batch.trigger",
+    batch: {
+      maxPayloads,
+      maxInterval,
+    },
+  }),
+  run: async (payload, io) => {
+    await io.logger.info(`Should at most receive ${maxPayloads} payloads per batch`);
+    await io.logger.info(`Should wait no more than ${maxInterval} seconds between batches`);
+
+    const totalPayloadSize = payload.reduce((sum, p) => sum + JSON.stringify(p).length, 0);
+
+    return `Received ${payload.length} payloads. Total size in bytes: ${totalPayloadSize}`;
+  },
+});
+
+const getLargeString = (bytes: number) => {
+  return Array(bytes).fill("F").join("");
+};
+
+client.defineJob({
+  id: "batch-trigger-send",
+  name: "Batch Trigger Send",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "batch.trigger.send",
+    schema: z.object({
+      payloads: z.number().default(12),
+      // expect batches to be chunked as they will exceed the server limit
+      oversized: z.boolean().default(false),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    for (let i = 0; i < payload.payloads; i++) {
+      await io.sendEvent(`send-${i}`, {
+        name: "batch.trigger",
+        payload: {
+          count: i,
+          run: ctx.run.id,
+          ...(payload.oversized
+            ? {
+                largePayload: getLargeString(250 * 1000), // 250KB
+              }
+            : undefined),
+        },
+      });
+    }
+  },
+});
+
 createExpressServer(client);

@@ -5,6 +5,7 @@ import { EventFilterSchema, RequestWithRawBodySchema, eventFilterMatches } from 
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { workerQueue } from "../worker.server";
+import { ZodWorkerBatchEnqueueOptions } from "~/platform/zodWorker.server";
 
 export class DeliverEventService {
   #prismaClient: PrismaClientOrTransaction;
@@ -41,6 +42,9 @@ export class DeliverEventService {
             enabled: true,
             manual: false,
           },
+          include: {
+            batcher: true,
+          },
         });
 
         logger.debug("Found possible event dispatchers", {
@@ -66,16 +70,37 @@ export class DeliverEventService {
         });
 
         await Promise.all(
-          matchingEventDispatchers.map((eventDispatcher) =>
-            workerQueue.enqueue(
-              "events.invokeDispatcher",
-              {
-                id: eventDispatcher.id,
-                eventRecordId: eventRecord.id,
-              },
-              { tx }
-            )
-          )
+          matchingEventDispatchers.map((eventDispatcher) => {
+            if (eventDispatcher.batcher) {
+              const { maxPayloads, runAt } = this.#getBatchEnqueueOptions(eventDispatcher.batcher);
+
+              const jobKeyParts = [eventDispatcher.id];
+
+              if (eventRecord.isTest) {
+                jobKeyParts.push(String(eventRecord.isTest));
+              }
+
+              if (eventRecord.externalAccountId) {
+                jobKeyParts.push(eventRecord.externalAccountId);
+              }
+
+              return workerQueue.batchEnqueue("events.invokeDispatchBatcher", [eventRecord.id], {
+                tx,
+                jobKey: jobKeyParts.join(":"),
+                maxPayloads,
+                runAt,
+              });
+            } else {
+              return workerQueue.enqueue(
+                "events.invokeDispatcher",
+                {
+                  id: eventDispatcher.id,
+                  eventRecordId: eventRecord.id,
+                },
+                { tx }
+              );
+            }
+          })
         );
 
         await tx.eventRecord.update({
@@ -121,6 +146,30 @@ export class DeliverEventService {
       payload: payloadFilter.data,
       context: contextFilter.data,
     });
+  }
+
+  #getBatchEnqueueOptions(batcherConfig?: {
+    maxPayloads: number | null;
+    maxInterval: number | null;
+  }): Pick<ZodWorkerBatchEnqueueOptions, "maxPayloads" | "runAt"> {
+    const DEFAULT_MAX_PAYLOADS = 10;
+    const DEFAULT_MAX_INTERVAL_IN_SECONDS = 30;
+
+    const MAX_PAYLOADS = 250;
+    const MAX_INTERVAL_IN_SECONDS = 10 * 60;
+
+    const maxPayloads = Math.min(batcherConfig?.maxPayloads ?? DEFAULT_MAX_PAYLOADS, MAX_PAYLOADS);
+
+    const runAt = new Date(
+      Date.now() +
+        Math.min(
+          batcherConfig?.maxInterval ?? DEFAULT_MAX_INTERVAL_IN_SECONDS,
+          MAX_INTERVAL_IN_SECONDS
+        ) *
+          1000
+    );
+
+    return { maxPayloads, runAt };
   }
 }
 

@@ -66,8 +66,50 @@ You can have multiple Jobs that subscribe to the same event, they will all trigg
       </Expandable>
     </ResponseField>
 
+    <ResponseField name="batch" type="object">
+      Used to configure batching options. An empty object will enable batching with server defaults.
+
+      Batching will cause the `payload` parameter of the run function to become an array of payloads instead.
+
+      <Expandable title="batch options" defaultOpen>
+        <ResponseField name="maxPayloads" type="number">
+          How many event payloads you will at most receive per batch. May be reduced by server limits..
+        </ResponseField>
+        <ResponseField name="maxInterval" type="number">
+          How many seconds to wait before sending out incomplete batches. May be cut short by server limits.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
   </Expandable>
 </ResponseField>
+
+## Batching
+
+Batching will cause the `payload` parameter of the run function to become an array of payloads instead.
+
+It can be enabled via the `batch` property or alternatively via the `batch()` method on existing triggers:
+
+```typescript
+eventTrigger({
+  name: "batch.this",
+  batch: {
+    // receive no more than 5 payloads per batch
+    maxPayloads: 5,
+    // send out incomplete batches after 10 seconds
+    maxInterval: 10,
+  }
+});
+
+// alternatively
+eventTrigger({ name: "batch.this" }).batch({
+  maxPayloads: 5,
+  maxInterval: 10,
+});
+
+// shortcut to enable with sensible defaults
+eventTrigger({ name: "batch.this" }).batch();
+```
 
 <RequestExample>
 

@@ -1,0 +1,30 @@
+---
+title: "Graphile migration"
+description: "The `graphile-worker` migration may require manual intervention"
+---
+
+## See any warnings?
+
+<Frame>
+  <img src="/images/graphile-migration-error.png" alt="Graphile Migration Error" />
+</Frame>
+
+A warning like this may have brought you here. If it hasn't, you probably **don't** need this!
+
+## Graceful shutdown
+
+The above issue only arises if there are any locked jobs when automatic `graphile-worker` migration is attempted.
+
+To prevent this, please shut your server down _gracefully_. How you do this will depend on your platform. This may involve:
+
+- Sending SIGTERM via the `kill` command
+- Using `docker stop` or `docker-compose down`
+- Triggering a deployment on your managed platform of choice
+
+### Changing the default timeout
+
+Set the `GRACEFUL_SHUTDOWN_TIMEOUT` environment variable to change the default of 60 seconds - values are specified in _milliseconds_. This may be required if you have active jobs that need longer to complete.
+
+## Problems
+
+If you run into any other issues, you may have to temporarily scale down to using only _a single instance_. All other instructions above still apply.

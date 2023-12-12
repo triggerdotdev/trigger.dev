@@ -29,6 +29,9 @@ import { InvokeEphemeralDispatcherService } from "./dispatchers/invokeEphemeralE
 import { ResumeRunService } from "./runs/resumeRun.server";
 import { executionRateLimiter } from "./runExecutionRateLimiter.server";
 import { DeliverWebhookRequestService } from "./sources/deliverWebhookRequest.server";
+import { GraphileMigrationHelperService } from "./db/graphileMigrationHelper.server";
+import { DispatchBatcherService } from "./events/dispatchBatcher.server";
+import { WebhookDeliveryBatcherService } from "./sources/webhookDeliveryBatcher.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -46,7 +49,15 @@ const workerCatalog = {
     id: z.string(),
   }),
   deliverHttpSourceRequest: z.object({ id: z.string() }),
-  deliverWebhookRequest: z.object({ id: z.string() }),
+  batchWebhookDeliveryRequests: z.array(z.string()),
+  deliverWebhookRequest: z.object({
+    webhookEnvironmentId: z.string(),
+    requestDeliveryId: z.string(),
+  }),
+  deliverMultipleWebhookRequests: z.object({
+    webhookEnvironmentId: z.string(),
+    requestDeliveryIds: z.string().array(),
+  }),
   refreshOAuthToken: z.object({
     organizationId: z.string(),
     connectionId: z.string(),
@@ -67,6 +78,11 @@ const workerCatalog = {
     ])
   ),
   deliverEvent: z.object({ id: z.string() }),
+  "events.invokeDispatchBatcher": z.array(z.string()),
+  "events.invokeBatchDispatcher": z.object({
+    id: z.string(),
+    eventRecordIds: z.string().array(),
+  }),
   "events.invokeDispatcher": z.object({
     id: z.string(),
     eventRecordId: z.string(),
@@ -87,6 +103,11 @@ const workerCatalog = {
   simulate: z.object({
     seconds: z.number(),
   }),
+  simulateBatch: z.array(
+    z.object({
+      seconds: z.number(),
+    })
+  ),
   deliverRunSubscriptions: z.object({
     id: z.string(),
   }),
@@ -163,11 +184,9 @@ if (env.NODE_ENV === "production") {
 
   taskOperationWorker = global.__taskOperationWorker__;
 }
-
 export async function init() {
-  // const pgNotify = new PgNotifyService();
-  // await pgNotify.call("trigger:graphile:migrate", { latestMigration: 10 });
-  // await new Promise((resolve) => setTimeout(resolve, 10000))
+  const migrationHelper = new GraphileMigrationHelperService();
+  await migrationHelper.call();
 
   if (env.WORKER_ENABLED === "true") {
     await workerQueue.initialize();
@@ -204,7 +223,7 @@ function getWorkerQueue() {
     recurringTasks: {
       // Run this every 5 minutes
       autoIndexProductionEndpoints: {
-        pattern: "*/5 * * * *",
+        match: "*/5 * * * *",
         handler: async (payload, job) => {
           const service = new RecurringEndpointIndexService();
 
@@ -213,7 +232,7 @@ function getWorkerQueue() {
       },
       // Run this every hour
       purgeOldIndexings: {
-        pattern: "0 * * * *",
+        match: "0 * * * *",
         handler: async (payload, job) => {
           // Delete indexings that are older than 7 days
           await prisma.endpointIndex.deleteMany({
@@ -227,13 +246,39 @@ function getWorkerQueue() {
       },
     },
     tasks: {
+      "events.invokeDispatchBatcher": {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 6,
+        queueName: (payload, jobKey) => `dispatcher-chunk:${jobKey}`,
+        handler: async (payload, job) => {
+          if (!job.key) {
+            throw new Error("Job key is required for batch jobs.");
+          }
+
+          const batcherId = job.key.split(":")[0];
+
+          const service = new DispatchBatcherService();
+
+          await service.call(batcherId, payload);
+        },
+      },
+      "events.invokeBatchDispatcher": {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 6,
+        queueName: (payload) => `dispatcher-batch:${payload.id}`,
+        handler: async (payload, job) => {
+          const service = new InvokeDispatcherService();
+
+          await service.call(payload.id, payload.eventRecordIds);
+        },
+      },
       "events.invokeDispatcher": {
         priority: 0, // smaller number = higher priority
         maxAttempts: 6,
         handler: async (payload, job) => {
           const service = new InvokeDispatcherService();
 
-          await service.call(payload.id, payload.eventRecordId);
+          await service.call(payload.id, [payload.eventRecordId]);
         },
       },
       "events.deliverScheduled": {
@@ -299,14 +344,40 @@ function getWorkerQueue() {
           await service.call(payload.id);
         },
       },
-      deliverWebhookRequest: {
+      batchWebhookDeliveryRequests: {
+        priority: 0, // smaller number = higher priority
+        maxAttempts: 6,
+        queueName: (payload, jobKey) => `webhooks-batch:${jobKey}`,
+        handler: async (payload, job) => {
+          if (!job.key) {
+            throw new Error("Job key is required for batch jobs.");
+          }
+
+          const batcherId = job.key.split(":")[0];
+
+          const service = new WebhookDeliveryBatcherService();
+
+          await service.call(batcherId, payload);
+        },
+      },
+      deliverMultipleWebhookRequests: {
         priority: 1, // smaller number = higher priority
         maxAttempts: 14,
-        queueName: (payload) => `webhooks:${payload.id}`,
+        queueName: (payload) => `webhooks:${payload.webhookEnvironmentId}`,
         handler: async (payload, job) => {
           const service = new DeliverWebhookRequestService();
 
-          await service.call(payload.id);
+          await service.call(payload.webhookEnvironmentId, payload.requestDeliveryIds);
+        },
+      },
+      deliverWebhookRequest: {
+        priority: 1, // smaller number = higher priority
+        maxAttempts: 14,
+        queueName: (payload) => `webhooks:${payload.webhookEnvironmentId}`,
+        handler: async (payload, job) => {
+          const service = new DeliverWebhookRequestService();
+
+          await service.call(payload.webhookEnvironmentId, [payload.requestDeliveryId]);
         },
       },
       startRun: {
@@ -381,6 +452,12 @@ function getWorkerQueue() {
         maxAttempts: 5,
         handler: async (payload, job) => {
           await new Promise((resolve) => setTimeout(resolve, payload.seconds * 1000));
+        },
+      },
+      simulateBatch: {
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          await new Promise((resolve) => setTimeout(resolve, payload[0].seconds * 1000));
         },
       },
       deliverRunSubscriptions: {
