@@ -2,7 +2,7 @@ import { ChartBarIcon } from "@heroicons/react/20/solid";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PricingCalculator } from "~/components/billing/PricingCalculator";
-import { PricingTiers, TierEnterprise, TierFree, TierPro } from "~/components/billing/PricingTiers";
+import { PricingTiers } from "~/components/billing/PricingTiers";
 import { RunsVolumeDiscountTable } from "~/components/billing/RunsVolumeDiscountTable";
 import { Button } from "~/components/primitives/Buttons";
 import { Header1 } from "~/components/primitives/Headers";
@@ -14,14 +14,19 @@ import {
   SheetTrigger,
 } from "~/components/primitives/Sheet";
 import { featuresForRequest } from "~/features.server";
+import { useOptionalProject, useProject } from "~/hooks/useProject";
 import { OrgBillingPlanPresenter } from "~/presenters/OrgBillingPlanPresenter";
+import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
+import { requireUserId } from "~/services/session.server";
 import {
   OrganizationParamsSchema,
   organizationBillingPath,
   organizationPath,
+  projectPath,
 } from "~/utils/pathBuilder";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
+  const userId = await requireUserId(request);
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
 
   const { isManagedCloud } = featuresForRequest(request);
@@ -35,11 +40,19 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404 });
   }
 
-  return typedjson({ plans: result.plans, organizationSlug });
+  const orgsPresenter = new OrganizationsPresenter();
+  const { organizations, organization, project } = await orgsPresenter.call({
+    userId,
+    request,
+    organizationSlug,
+  });
+
+  return typedjson({ plans: result.plans, organizationSlug, projectSlug: project.slug });
 }
 
 export default function ChoosePlanPage() {
-  const { plans, organizationSlug } = useTypedLoaderData<typeof loader>();
+  const { plans, organizationSlug, projectSlug } = useTypedLoaderData<typeof loader>();
+  const project = useOptionalProject();
 
   return (
     <div className="mx-auto flex h-full w-full max-w-[80rem] flex-col items-center justify-center gap-12 overflow-y-auto px-12">
@@ -48,7 +61,7 @@ export default function ChoosePlanPage() {
         organizationSlug={organizationSlug}
         plans={plans}
         showActionText={false}
-        freeButtonPath={organizationPath({ slug: organizationSlug })}
+        freeButtonPath={projectPath({ slug: organizationSlug }, { slug: projectSlug })}
       />
 
       <Sheet>
