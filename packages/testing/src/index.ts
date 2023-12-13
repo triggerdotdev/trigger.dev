@@ -192,18 +192,22 @@ export const createJobTester =
       return run(payload, io, ctx);
     };
 
-    const request = buildRequest("EXECUTE_JOB", client!.apiKey() ?? "", {
-      body: buildRequestBody(eventLog, job),
-      jobId: job.id,
-    });
-    const requestResult = await client!.handleRequest(request);
+    try {
+      const request = buildRequest("EXECUTE_JOB", client!.apiKey() ?? "", {
+        body: buildRequestBody(eventLog, job),
+        jobId: job.id,
+      });
+      const requestResult = await client!.handleRequest(request);
 
-    const { output, status, ...rest } = requestResult.body;
+      const { output, status, ...rest } = requestResult.body;
 
-    return {
-      output,
-      status,
-      tasks,
-      ...rest,
-    };
+      return {
+        output,
+        status,
+        tasks,
+        ...rest,
+      };
+    } finally {
+      job.options.run = run;
+    }
   };
