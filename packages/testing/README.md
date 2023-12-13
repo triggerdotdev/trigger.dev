@@ -76,7 +76,7 @@ expect(testRun.output).toEqual({ bar: "baz" });
 
 ## More information
 
-See the official [Trigger.dev Unit Testing Reference](https://github.com/triggerdotdev/trigger.dev/references/unit-testing/) for a working setup with Vitest.
+See the official [Trigger.dev Unit Testing Reference](https://github.com/triggerdotdev/trigger.dev/tree/main/references/unit-testing/) for a working setup with Vitest.
 
 ## License
 
