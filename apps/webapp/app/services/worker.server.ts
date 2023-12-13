@@ -151,11 +151,13 @@ const taskOperationWorkerCatalog = {
 let workerQueue: ZodWorker<typeof workerCatalog>;
 let executionWorker: ZodWorker<typeof executionWorkerCatalog>;
 let taskOperationWorker: ZodWorker<typeof taskOperationWorkerCatalog>;
+let migrationHelper: GraphileMigrationHelperService;
 
 declare global {
   var __worker__: ZodWorker<typeof workerCatalog>;
   var __executionWorker__: ZodWorker<typeof executionWorkerCatalog>;
   var __taskOperationWorker__: ZodWorker<typeof taskOperationWorkerCatalog>;
+  var __migrationHelper__: GraphileMigrationHelperService;
 }
 
 // this is needed because in development we don't want to restart
@@ -166,6 +168,7 @@ if (env.NODE_ENV === "production") {
   workerQueue = getWorkerQueue();
   executionWorker = getExecutionWorkerQueue();
   taskOperationWorker = getTaskOperationWorkerQueue();
+  migrationHelper = getMigrationHelper();
 } else {
   if (!global.__worker__) {
     global.__worker__ = getWorkerQueue();
@@ -183,10 +186,15 @@ if (env.NODE_ENV === "production") {
   }
 
   taskOperationWorker = global.__taskOperationWorker__;
+
+  if (!global.__migrationHelper__) {
+    global.__migrationHelper__ = getMigrationHelper();
+  }
+
+  migrationHelper = global.__migrationHelper__;
 }
 export async function init() {
-  const migrationHelper = new GraphileMigrationHelperService();
-  await migrationHelper.call();
+  await migrationHelper.migrate();
 
   if (env.WORKER_ENABLED === "true") {
     await workerQueue.initialize();
@@ -199,6 +207,10 @@ export async function init() {
   if (env.TASK_OPERATION_WORKER_ENABLED === "true") {
     await taskOperationWorker.initialize();
   }
+}
+
+function getMigrationHelper() {
+  return new GraphileMigrationHelperService();
 }
 
 function getWorkerQueue() {

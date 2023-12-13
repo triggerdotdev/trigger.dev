@@ -7,13 +7,24 @@ import { z } from "zod";
 
 export class GraphileMigrationHelperService {
   #prismaClient: PrismaClient;
+  #migrated = false;
 
   constructor(prismaClient: PrismaClient = prisma) {
     this.#prismaClient = prismaClient;
   }
 
-  public async call() {
-    this.#logDebug("GraphileMigrationHelperService.call");
+  public async migrate() {
+    if (this.#migrated) {
+      return;
+    }
+
+    // add jitter to reduce concurrency bugs and duplicate work
+    // see: https://www.postgresql.org/message-id/1268737328.16792.7.camel%40fsopti579.F-Secure.com
+    await new Promise((resolve) => {
+      setTimeout(resolve, Math.random() * 2000);
+    });
+
+    this.#logDebug("GraphileMigrationHelperService.migrate");
 
     await this.#detectAndPrepareForMigrations();
 
@@ -23,6 +34,8 @@ export class GraphileMigrationHelperService {
     });
 
     await this.#upsertBatchJobFunction();
+
+    this.#migrated = true;
   }
 
   #logDebug(message: string, args?: any) {
@@ -38,69 +51,58 @@ export class GraphileMigrationHelperService {
     // - max_payloads is new
     // - payload must be a JSON array
 
-    // Update this if function signature changes
-    await this.#prismaClient.$executeRawUnsafe(`
-      DROP FUNCTION IF EXISTS add_batch_job(
-        text,
-        text,
-        json,
-        text,
-        timestamp with time zone,
-        integer,
-        integer,
-        text[],
-        text,
-        integer
-      );`);
+    try {
+      await this.#prismaClient.$executeRawUnsafe(`
+        CREATE OR REPLACE FUNCTION add_batch_job(
+          identifier text,
+          job_key text,
+          payload json default null::json,
+          queue_name text default null::text,
+          run_at timestamp with time zone default null::timestamp with time zone,
+          max_attempts integer default null::integer,
+          priority integer default null::integer,
+          flags text[] default null::text[],
+          job_key_mode text default 'preserve_run_at'::text,
+          max_payloads integer default null::integer
+        ) RETURNS ${env.WORKER_SCHEMA}._private_jobs AS $$
+        DECLARE
+          v_job ${env.WORKER_SCHEMA}._private_jobs;
+        BEGIN
+          IF json_typeof(payload) IS DISTINCT FROM 'array' THEN
+            RAISE EXCEPTION 'Must only call add_batch_job with an array payload';
+          END IF;
 
-    await this.#prismaClient.$executeRawUnsafe(`
-      CREATE OR REPLACE FUNCTION add_batch_job(
-        identifier text,
-        job_key text,
-        payload json default null::json,
-        queue_name text default null::text,
-        run_at timestamp with time zone default null::timestamp with time zone,
-        max_attempts integer default null::integer,
-        priority integer default null::integer,
-        flags text[] default null::text[],
-        job_key_mode text default 'preserve_run_at'::text,
-        max_payloads integer default null::integer
-      ) RETURNS ${env.WORKER_SCHEMA}._private_jobs AS $$
-      DECLARE
-        v_job ${env.WORKER_SCHEMA}._private_jobs;
-      BEGIN
-        IF json_typeof(payload) IS DISTINCT FROM 'array' THEN
-          RAISE EXCEPTION 'Must only call add_batch_job with an array payload';
-        END IF;
-
-        v_job := ${env.WORKER_SCHEMA}.add_job(
-          identifier := identifier,
-          payload := payload,
-          queue_name := queue_name,
-          run_at := run_at,
-          max_attempts := max_attempts,
-          job_key := job_key,
-          priority := priority,
-          flags := flags,
-          job_key_mode := job_key_mode
-        );
-
-        IF max_payloads IS NOT NULL
-        -- we only add payloads one at a time so batches will never exceed max_payloads
-        -- if we ever decide to enqueue more, this will have to be adjusted to prevent oversized batches
-        AND json_array_length(v_job.payload) >= max_payloads THEN
-          v_job := ${env.WORKER_SCHEMA}.reschedule_jobs(
-            ARRAY[v_job.id],
-            run_at := NOW()
+          v_job := ${env.WORKER_SCHEMA}.add_job(
+            identifier := identifier,
+            payload := payload,
+            queue_name := queue_name,
+            run_at := run_at,
+            max_attempts := max_attempts,
+            job_key := job_key,
+            priority := priority,
+            flags := flags,
+            job_key_mode := job_key_mode
           );
-          -- lie that this job was just inserted so a worker picks it up ASAP
-          PERFORM pg_notify('jobs:insert', '');
-        END IF;
 
-        RETURN v_job;
-      END
-      $$ LANGUAGE plpgsql VOLATILE;
-    `);
+          IF max_payloads IS NOT NULL
+          -- we only add payloads one at a time so batches will never exceed max_payloads
+          -- if we ever decide to enqueue more, this will have to be adjusted to prevent oversized batches
+          AND json_array_length(v_job.payload) >= max_payloads THEN
+            v_job := ${env.WORKER_SCHEMA}.reschedule_jobs(
+              ARRAY[v_job.id],
+              run_at := NOW()
+            );
+            -- lie that this job was just inserted so a worker picks it up ASAP
+            PERFORM pg_notify('jobs:insert', '');
+          END IF;
+
+          RETURN v_job;
+        END
+        $$ LANGUAGE plpgsql VOLATILE;
+      `);
+    } catch (error) {
+      this.#logDebug("upsertBatchJobFunction() error", error);
+    }
   }
 
   async #getLatestMigration() {
