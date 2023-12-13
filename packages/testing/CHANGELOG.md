@@ -1,5 +1,13 @@
 # @trigger.dev/testing
 
+## 2.3.5
+
+### Patch Changes
+
+- fc31c6c0: Fix test isolation by restoring the original run function
+  - @trigger.dev/core@2.3.5
+  - @trigger.dev/sdk@2.3.5
+
 ## 2.3.4
 
 ### Patch Changes
