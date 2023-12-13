@@ -132,13 +132,13 @@ export class OrgUsagePresenter {
 
     if (plans) {
       const estimationResult = estimate({
-        usage: { currentRunCount: runsCount },
+        usage: { runs: runsCount },
         plans: [plans.free, plans.paid],
       });
       runCostEstimation = estimationResult?.cost.runsCost;
 
       const projectedEstimationResult = estimate({
-        usage: { currentRunCount: projectedRunsCount },
+        usage: { runs: projectedRunsCount },
         plans: [plans.free, plans.paid],
       });
       projectedRunCostEstimation = projectedEstimationResult?.cost.runsCost;
