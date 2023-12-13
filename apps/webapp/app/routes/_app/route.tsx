@@ -3,7 +3,6 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson } from "remix-typedjson";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
-import { useIsOrgChildPage } from "~/hooks/useIsOrgChildPage";
 import { clearRedirectTo, commitSession } from "~/services/redirectTo.server";
 import { requireUser } from "~/services/session.server";
 import { confirmBasicDetailsPath } from "~/utils/pathBuilder";
@@ -22,11 +21,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function App() {
-  const isOrgChildPage = useIsOrgChildPage();
-  const showBackgroundGradient = !isOrgChildPage;
-
   return (
-    <AppContainer showBackgroundGradient={showBackgroundGradient}>
+    <AppContainer>
       <Outlet />
     </AppContainer>
   );
@@ -35,7 +31,7 @@ export default function App() {
 export function ErrorBoundary() {
   return (
     <>
-      <AppContainer showBackgroundGradient={true}>
+      <AppContainer>
         <MainCenteredContainer>
           <RouteErrorDisplay />
         </MainCenteredContainer>

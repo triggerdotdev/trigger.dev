@@ -53,7 +53,7 @@ export default function Page() {
     <PageContainer>
       <PageHeader>
         <PageTitleRow>
-          <PageTitle title={`${project.name} Runs`} />
+          <PageTitle title={`${project.name} runs`} />
           <PageButtons>
             <LinkButton
               LeadingIcon={"docs"}
@@ -64,7 +64,7 @@ export default function Page() {
             </LinkButton>
           </PageButtons>
         </PageTitleRow>
-        <PageDescription>All Job Runs in this project</PageDescription>
+        <PageDescription>All job runs in this project</PageDescription>
       </PageHeader>
 
       <PageBody scrollable={false}>

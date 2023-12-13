@@ -82,16 +82,16 @@ const variant = {
   "primary/large": {
     textColor: "text-bright group-hover:text-white transition group-disabled:text-dimmed/80 px-1",
     button:
-      "h-10 px-2 text-sm font-medium bg-indigo-600 group-hover:bg-indigo-500/90 group-disabled:opacity-50",
+      "h-10 px-2 text-sm font-medium bg-indigo-600 group-hover:bg-indigo-500/90 group-disabled:opacity-50 group-disabled:group-hover:bg-indigo-600",
     icon: "h-5",
     iconSpacing: "gap-x-0.5",
     shortcutVariant: undefined,
     shortcut: undefined,
   },
   "secondary/large": {
-    textColor: "text-dimmed px-1",
+    textColor: "text-bright group-disabled:text-dimmed px-1",
     button:
-      "h-10 px-2 text-sm text-dimmed group-hover:text-bright transition font-medium bg-slate-800 group-hover:bg-slate-700/70 disabled:opacity-50",
+      "h-10 px-2 text-sm transition font-medium bg-slate-800 group-hover:bg-slate-700/70 group-disabled:opacity-40 group-disabled:group-hover:bg-slate-800",
     icon: "h-5",
     iconSpacing: "gap-x-0.5",
     shortcutVariant: undefined,

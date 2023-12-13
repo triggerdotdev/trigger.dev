@@ -17,12 +17,13 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { RadioGroupItem } from "~/components/primitives/RadioButton";
+import { featuresForRequest } from "~/features.server";
 import { useFeatures } from "~/hooks/useFeatures";
 import { createOrganization } from "~/models/organization.server";
 import { NewOrganizationPresenter } from "~/presenters/NewOrganizationPresenter.server";
 import { commitCurrentProjectSession, setCurrentProjectId } from "~/services/currentProject.server";
 import { requireUserId } from "~/services/session.server";
-import { projectPath, rootPath } from "~/utils/pathBuilder";
+import { plansPath, projectPath, rootPath, selectPlanPath } from "~/utils/pathBuilder";
 
 const schema = z.object({
   orgName: z.string().min(3).max(50),
@@ -61,10 +62,20 @@ export const action: ActionFunction = async ({ request }) => {
     const project = organization.projects[0];
     const session = await setCurrentProjectId(project.id, request);
 
+    const { isManagedCloud } = featuresForRequest(request);
+
+    const headers = {
+      "Set-Cookie": await commitCurrentProjectSession(session),
+    };
+
+    if (isManagedCloud) {
+      return redirect(selectPlanPath(organization), {
+        headers,
+      });
+    }
+
     return redirect(projectPath(organization, project), {
-      headers: {
-        "Set-Cookie": await commitCurrentProjectSession(session),
-      },
+      headers,
     });
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });

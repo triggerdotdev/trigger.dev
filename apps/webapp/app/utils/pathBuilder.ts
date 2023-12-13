@@ -105,6 +105,10 @@ export function newOrganizationPath() {
   return `/orgs/new`;
 }
 
+export function selectPlanPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/select-plan`;
+}
+
 export function organizationTeamPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/team`;
 }
@@ -115,6 +119,22 @@ export function inviteTeamMemberPath(organization: OrgForPath) {
 
 export function organizationBillingPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/billing`;
+}
+
+export function usagePath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/billing`;
+}
+
+export function stripePortalPath(organization: OrgForPath) {
+  return `/resources/${organization.slug}/subscription/portal`;
+}
+
+export function plansPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/billing/plans`;
+}
+
+export function subscribedPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/subscribed`;
 }
 
 function organizationParam(organization: OrgForPath) {

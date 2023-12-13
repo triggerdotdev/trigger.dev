@@ -12,6 +12,7 @@ export function featuresForRequest(request: Request): TriggerFeatures {
   const isManagedCloud =
     url.host === "cloud.trigger.dev" ||
     url.host === "test-cloud.trigger.dev" ||
+    url.host === "internal.trigger.dev" ||
     process.env.CLOUD_ENV === "development";
 
   return {
