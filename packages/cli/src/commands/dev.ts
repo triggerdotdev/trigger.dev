@@ -20,6 +20,7 @@ import { Throttle } from "../utils/throttle";
 import { TriggerApi } from "../utils/triggerApi";
 import { wait } from "../utils/wait";
 import { YaltTunnel } from "@trigger.dev/yalt";
+import chalk from "chalk";
 
 const asyncExecFile = util.promisify(childProcess.execFile);
 
@@ -85,8 +86,8 @@ export async function devCommand(path: string, anyOptions: any) {
 
   const resolvedPath = resolvePath(path);
   runtime = await getJsRuntime(resolvedPath, logger);
-  //check for outdated packages, don't await this
-  runtime.checkForOutdatedPackages();
+  //check for outdated packages, don't immediately await this
+  const checkForOutdatedPackagesPromise = runtime.checkForOutdatedPackages();
 
   // Read from package.json to get the endpointId
   const endpointId = await getEndpointId(runtime, options.clientId);
@@ -149,6 +150,17 @@ export async function devCommand(path: string, anyOptions: any) {
     //don't trigger a watch when it collects the paths
     ignoreInitial: true,
   });
+
+  const outdatedPackages = await checkForOutdatedPackagesPromise;
+
+  if (outdatedPackages) {
+    console.log(
+      chalk.bgYellow(
+        `New @trigger.dev/* packages available (${outdatedPackages.from} -> ${outdatedPackages.to})`
+      )
+    );
+    console.log(chalk.bgBlue("Run npx @trigger.dev/cli@latest update"));
+  }
 
   const connectingSpinner = ora(`[trigger.dev] Registering endpoint ${endpointHandlerUrl}...`);
   let hasConnected = false;
@@ -465,7 +477,12 @@ async function resolveEndpointUrl(apiUrl: string, apiKey: string, endpoint: Serv
 
   if (supportsTunneling) {
     const tunnelSpinner = ora(`🚇 Creating Trigger.dev tunnel`).start();
-    const tunnelUrl = await createNativeTunnel(endpoint.hostname, endpoint.port, triggerApi, tunnelSpinner);
+    const tunnelUrl = await createNativeTunnel(
+      endpoint.hostname,
+      endpoint.port,
+      triggerApi,
+      tunnelSpinner
+    );
 
     if (tunnelUrl) {
       tunnelSpinner.succeed(`🚇 Trigger.dev tunnel ready`);
@@ -487,7 +504,12 @@ async function resolveEndpointUrl(apiUrl: string, apiKey: string, endpoint: Serv
 
 let yaltTunnel: YaltTunnel | null = null;
 
-async function createNativeTunnel(hostname: string, port: number, triggerApi: TriggerApi, spinner: Ora) {
+async function createNativeTunnel(
+  hostname: string,
+  port: number,
+  triggerApi: TriggerApi,
+  spinner: Ora
+) {
   try {
     const response = await triggerApi.createTunnel();
 
@@ -497,7 +519,7 @@ async function createNativeTunnel(hostname: string, port: number, triggerApi: Tr
     yaltTunnel = new YaltTunnel(response.url, `${hostname}:${port}`, {
       WebSocket: WebSocket.default,
       connectionTimeout: 1000,
-      maxRetries: 10
+      maxRetries: 10,
     });
 
     await yaltTunnel.connect();
