@@ -72,6 +72,7 @@
     "@trigger.dev/core-backend": "workspace:*",
     "@trigger.dev/database": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
+    "@trigger.dev/yalt": "workspace:*",
     "@types/pg": "8.6.6",
     "@uiw/react-codemirror": "^4.19.5",
     "@whatwg-node/fetch": "^0.9.14",

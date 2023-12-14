@@ -15,6 +15,7 @@ module.exports = {
     "@trigger.dev/core-backend",
     "@trigger.dev/sdk",
     "@trigger.dev/billing",
+    "@trigger.dev/yalt",
     "emails",
     "highlight.run",
     "random-words",
@@ -24,6 +25,7 @@ module.exports = {
       "../../packages/core/src/**/*",
       "../../packages/core-backend/src/**/*",
       "../../packages/trigger-sdk/src/**/*",
+      "../../packages/yalt/src/**/*",
       "../../packages/emails/src/**/*",
     ];
   },

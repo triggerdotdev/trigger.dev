@@ -19,6 +19,7 @@ import { RequireKeys } from "../utils/requiredKeys";
 import { Throttle } from "../utils/throttle";
 import { TriggerApi } from "../utils/triggerApi";
 import { wait } from "../utils/wait";
+import { YaltTunnel } from "@trigger.dev/yalt";
 
 const asyncExecFile = util.promisify(childProcess.execFile);
 
@@ -128,7 +129,8 @@ export async function devCommand(path: string, anyOptions: any) {
   telemetryClient.dev.serverRunning(path, resolvedOptions);
 
   // Setup tunnel
-  const endpointUrl = await resolveEndpointUrl(apiUrl, verifiedEndpoint);
+  const endpointUrl = await resolveEndpointUrl(apiUrl, apiKey, verifiedEndpoint);
+
   if (!endpointUrl) {
     telemetryClient.dev.failed("failed_to_create_tunnel", resolvedOptions);
     return;
@@ -444,7 +446,7 @@ function findServerUrls(resolvedOptions: ResolvedOptions, framework?: Framework)
   return urls;
 }
 
-async function resolveEndpointUrl(apiUrl: string, endpoint: ServerEndpoint) {
+async function resolveEndpointUrl(apiUrl: string, apiKey: string, endpoint: ServerEndpoint) {
   // use tunnel URL if provided
   if (endpoint.type === "tunnel") {
     return endpoint.url;
@@ -457,18 +459,57 @@ async function resolveEndpointUrl(apiUrl: string, endpoint: ServerEndpoint) {
     return `http://${endpoint.hostname}:${endpoint.port}`;
   }
 
-  // Setup tunnel
-  const tunnelSpinner = ora(`🚇 Creating tunnel`).start();
-  const tunnelUrl = await createTunnel(endpoint.hostname, endpoint.port, tunnelSpinner);
+  const triggerApi = new TriggerApi(apiKey, apiUrl);
 
-  if (tunnelUrl) {
-    tunnelSpinner.succeed(`🚇 Created tunnel: ${tunnelUrl}`);
+  const supportsTunneling = await triggerApi.supportsTunneling();
+
+  if (supportsTunneling) {
+    const tunnelSpinner = ora(`🚇 Creating Trigger.dev tunnel`).start();
+    const tunnelUrl = await createNativeTunnel(endpoint.hostname, endpoint.port, triggerApi, tunnelSpinner);
+
+    if (tunnelUrl) {
+      tunnelSpinner.succeed(`🚇 Trigger.dev tunnel ready`);
+    }
+
+    return tunnelUrl;
+  } else {
+    // Setup tunnel
+    const tunnelSpinner = ora(`🚇 Creating tunnel`).start();
+    const tunnelUrl = await createNgrokTunnel(endpoint.hostname, endpoint.port, tunnelSpinner);
+
+    if (tunnelUrl) {
+      tunnelSpinner.succeed(`🚇 Created tunnel: ${tunnelUrl}`);
+    }
+
+    return tunnelUrl;
   }
-
-  return tunnelUrl;
 }
 
-async function createTunnel(hostname: string, port: number, spinner: Ora) {
+let yaltTunnel: YaltTunnel | null = null;
+
+async function createNativeTunnel(hostname: string, port: number, triggerApi: TriggerApi, spinner: Ora) {
+  try {
+    const response = await triggerApi.createTunnel();
+
+    // import WS dynamically
+    const WebSocket = await import("ws");
+
+    yaltTunnel = new YaltTunnel(response.url, `${hostname}:${port}`, {
+      WebSocket: WebSocket.default,
+      connectionTimeout: 1000,
+      maxRetries: 10
+    });
+
+    await yaltTunnel.connect();
+
+    return `https://${response.url}`;
+  } catch (e) {
+    spinner.fail(`Failed to create tunnel.\n${e}`);
+    return;
+  }
+}
+
+async function createNgrokTunnel(hostname: string, port: number, spinner: Ora) {
   try {
     return await ngrok.connect({ addr: `${hostname}:${port}` });
   } catch (error: any) {
