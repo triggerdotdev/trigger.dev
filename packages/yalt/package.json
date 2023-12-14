@@ -28,8 +28,7 @@
     "clean": "rimraf dist",
     "build": "npm run clean && npm run build:tsup",
     "build:tsup": "tsup --dts-resolve",
-    "typecheck": "tsc --noEmit",
-    "test": "jest"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "zod": "3.22.3",
