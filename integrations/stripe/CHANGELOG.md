@@ -1,5 +1,12 @@
 # @trigger.dev/stripe
 
+## 2.3.6
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@2.3.6
+- @trigger.dev/sdk@2.3.6
+
 ## 2.3.5
 
 ### Patch Changes

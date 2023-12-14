@@ -1,5 +1,14 @@
 # create-trigger
 
+## 2.3.6
+
+### Patch Changes
+
+- 812b5afe: Add support for the built-in Trigger.dev tunnel (Yalt)
+- Updated dependencies [812b5afe]
+  - @trigger.dev/yalt@2.3.6
+  - @trigger.dev/core@2.3.6
+
 ## 2.3.5
 
 ### Patch Changes
