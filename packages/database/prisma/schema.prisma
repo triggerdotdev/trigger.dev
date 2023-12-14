@@ -316,6 +316,8 @@ model RuntimeEnvironment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  tunnelId String?
+
   endpoints                Endpoint[]
   jobVersions              JobVersion[]
   events                   EventRecord[]

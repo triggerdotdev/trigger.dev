@@ -6,11 +6,6 @@ export const triggerClient = new TriggerClient({
   apiUrl: process.env.TRIGGER_API_URL!,
 });
 
-const concurrencyLimit = triggerClient.defineConcurrencyLimit({
-  id: `perf-test-shared`,
-  limit: 5,
-});
-
 triggerClient.defineJob({
   id: `perf-test-1`,
   name: `Perf Test 1`,
@@ -18,7 +13,6 @@ triggerClient.defineJob({
   trigger: eventTrigger({
     name: "perf.test",
   }),
-  concurrencyLimit,
   run: async (payload, io, ctx) => {
     await io.runTask(
       "task-1",
@@ -65,7 +59,6 @@ triggerClient.defineJob({
   trigger: eventTrigger({
     name: "perf.test",
   }),
-  concurrencyLimit: 5,
   run: async (payload, io, ctx) => {
     await io.runTask(
       "task-1",
@@ -112,7 +105,6 @@ triggerClient.defineJob({
   trigger: eventTrigger({
     name: "perf.test",
   }),
-  concurrencyLimit,
   run: async (payload, io, ctx) => {
     await io.runTask(
       "task-1",

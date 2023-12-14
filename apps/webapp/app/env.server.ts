@@ -64,6 +64,9 @@ const EnvironmentSchema = z.object({
 
   DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
   DEFAULT_DEV_ENV_EXECUTION_ATTEMPTS: z.coerce.number().int().positive().default(1),
+
+  TUNNEL_HOST: z.string().optional(),
+  TUNNEL_SECRET_KEY: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

@@ -46,7 +46,10 @@
     "useDefineForClassFields": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "types": ["vitest/globals"]
+    "types": ["vitest/globals"],
+    "paths": {
+      "@trigger.dev/yalt": ["../yalt/src/index"]
+    }
   },
   "exclude": ["node_modules"]
 }
