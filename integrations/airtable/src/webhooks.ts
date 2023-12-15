@@ -1,11 +1,12 @@
 import { EventFilter, IntegrationTaskKey, verifyRequestSignature } from "@trigger.dev/sdk";
-import AirtableSDK, { Error as AirtableApiError } from "airtable";
+import AirtableSDK from "airtable";
 import { z } from "zod";
 import * as events from "./events";
 import { Airtable, AirtableRunTask } from "./index";
 import { ListWebhooksResponse, ListWebhooksResponseSchema } from "./schemas";
-import { WebhookSource, WebhookTrigger } from "@trigger.dev/sdk/triggers/webhook";
-import { registerJobNamespace } from "@trigger.dev/integration-kit/webhooks";
+import { WebhookSource, WebhookTrigger } from "@trigger.dev/sdk";
+import { registerJobNamespace } from "@trigger.dev/integration-kit";
+import { Buffer } from "node:buffer";
 
 const WebhookFromSourceSchema = z.union([
   z.literal("formSubmission"),
@@ -315,6 +316,10 @@ export function createWebhookSource(
       delete: async ({ io, ctx }) => {
         const webhookId = await io.store.job.get<string>("get-webhook-id", "webhook-id");
 
+        if (!webhookId) {
+          throw new Error("Missing webhook ID for delete operation.");
+        }
+
         await io.integration.webhooks().delete("delete-webhook", {
           baseId: ctx.params?.baseId,
           webhookId,
@@ -326,6 +331,10 @@ export function createWebhookSource(
       const secretBase64 = await client.store.env.get<string>(
         `${registerJobNamespace(ctx.key)}:webhook-secret-base64`
       );
+
+      if (!secretBase64) {
+        throw new Error("Missing secret for verification.");
+      }
 
       return await verifyRequestSignature({
         request,
@@ -442,7 +451,7 @@ async function handleWebhookError(response: Response, errorType: string) {
   const parsedErrorBody = AirtableErrorBodySchema.safeParse(rawErrorBody);
 
   if (!parsedErrorBody.success) {
-    throw new AirtableApiError(
+    throw new AirtableSDK.Error(
       `${errorType}_PARSE_ERROR`,
       `${response.statusText}:\n${rawErrorBody}`,
       response.status
@@ -451,5 +460,5 @@ async function handleWebhookError(response: Response, errorType: string) {
 
   const { type, message } = parsedErrorBody.data;
 
-  throw new AirtableApiError(type, message ?? response.statusText, response.status);
+  throw new AirtableSDK.Error(type, message ?? response.statusText, response.status);
 }

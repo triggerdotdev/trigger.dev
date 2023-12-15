@@ -1,42 +1,8 @@
 import { cn } from "~/utils/cn";
-import gradientPath from "./app-container-gradient.svg";
 
 /** This container is used to surround the entire app, it correctly places the nav bar */
-export function AppContainer({
-  children,
-  showBackgroundGradient,
-}: {
-  children: React.ReactNode;
-  showBackgroundGradient?: boolean;
-}) {
-  return (
-    <BackgroundGradient showBackgroundGradient={showBackgroundGradient}>
-      <div className={cn("grid h-full w-full grid-rows-1 overflow-hidden")}>{children}</div>
-    </BackgroundGradient>
-  );
-}
-
-export function BackgroundGradient({
-  children,
-  showBackgroundGradient,
-}: {
-  children: React.ReactNode;
-  showBackgroundGradient?: boolean;
-}) {
-  return (
-    <div
-      className={cn("h-full w-full bg-contain bg-right-top bg-no-repeat")}
-      style={
-        showBackgroundGradient
-          ? {
-              backgroundImage: `url(${gradientPath})`,
-            }
-          : undefined
-      }
-    >
-      {children}
-    </div>
-  );
+export function AppContainer({ children }: { children: React.ReactNode }) {
+  return <div className={cn("grid h-full w-full grid-rows-1 overflow-hidden")}>{children}</div>;
 }
 
 /** This container should be placed around the content on a page */

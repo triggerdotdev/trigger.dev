@@ -1,4 +1,4 @@
-import { FetchRetryOptions, FetchTimeoutOptions, fileFromUrl } from "@trigger.dev/integration-kit";
+import { FetchRetryOptions, FetchTimeoutOptions } from "@trigger.dev/integration-kit";
 import { IntegrationTaskKey, Prettify } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 import { OpenAIRunTask } from "./index";
@@ -209,9 +209,8 @@ export class Images {
     return this.runTask(
       key,
       async (client, task) => {
-        const file =
-          typeof params.image === "string" ? await fileFromUrl(params.image) : params.image;
-        const mask = typeof params.mask === "string" ? await fileFromUrl(params.mask) : params.mask;
+        const file = typeof params.image === "string" ? await fetch(params.image) : params.image;
+        const mask = typeof params.mask === "string" ? await fetch(params.mask) : params.mask;
 
         const { data, response } = await client.images
           .edit(
@@ -288,8 +287,7 @@ export class Images {
     return this.runTask(
       key,
       async (client, task) => {
-        const file =
-          typeof params.image === "string" ? await fileFromUrl(params.image) : params.image;
+        const file = typeof params.image === "string" ? await fetch(params.image) : params.image;
 
         const { data, response } = await client.images
           .createVariation(

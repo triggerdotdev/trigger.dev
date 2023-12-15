@@ -1,5 +1,67 @@
 # @trigger.dev/integration-kit
 
+## 2.3.6
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.6
+
+## 2.3.5
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.5
+
+## 2.3.4
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.4
+
+## 2.3.3
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.3
+
+## 2.3.2
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.2
+
+## 2.3.1
+
+### Patch Changes
+
+- Updated dependencies [f3efcc0c]
+  - @trigger.dev/core@2.3.1
+
+## 2.3.0
+
+### Minor Changes
+
+- 17f6f29d: Support for Deno, Bun and Cloudflare workers, as well as conditionally exporting ESM versions of the package instead of just commonjs.
+
+  Cloudflare worker support requires the node compat flag turned on (https://developers.cloudflare.com/workers/runtime-apis/nodejs/)
+
+### Patch Changes
+
+- Updated dependencies [17f6f29d]
+  - @trigger.dev/core@2.3.0
+
+## 2.2.11
+
+### Patch Changes
+
+- @trigger.dev/core@2.2.11
+
+## 2.2.10
+
+### Patch Changes
+
+- @trigger.dev/core@2.2.10
+
 ## 2.2.9
 
 ### Patch Changes

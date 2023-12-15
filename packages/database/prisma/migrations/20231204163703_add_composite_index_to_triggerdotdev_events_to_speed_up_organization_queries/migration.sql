@@ -1,0 +1,1 @@
+CREATE INDEX idx_event_time_organization_id ON triggerdotdev_events.run_executions (event_time, organization_id);

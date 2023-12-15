@@ -1,7 +1,7 @@
 {
   "name": "@trigger.dev/testing",
   "description": "A collection of useful tools to write tests for Trigger.dev.",
-  "version": "2.2.9",
+  "version": "2.3.6",
   "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -10,7 +10,10 @@
   ],
   "exports": {
     ".": {
-      "import": "./dist/esm/index.js",
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
@@ -43,7 +46,9 @@
   "devDependencies": {
     "@trigger.dev/stripe": "workspace:*",
     "@trigger.dev/tsconfig": "workspace:*",
-    "tsup": "^7.2.0",
-    "typescript": "^5.2.2"
-  }
+    "tsup": "8.0.1",
+    "typescript": "^5.3.0",
+    "@trigger.dev/tsup": "workspace:*"
+  },
+  "module": "./dist/index.mjs"
 }

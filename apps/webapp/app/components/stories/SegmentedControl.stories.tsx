@@ -1,19 +1,20 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
-import FormSegmentedControl from "../primitives/FormSegmentedControl";
 import { MainCenteredContainer } from "../layout/AppLayout";
+import SegmentedControl from "../primitives/SegmentedControl";
 
-const meta: Meta = {
-  title: "Primitives/FormSegmentedControl",
+const meta: Meta<typeof StyledSegmentedControl> = {
+  title: "Primitives/SegmentedControl",
   decorators: [withDesign],
+  component: StyledSegmentedControl,
 };
 
 export default meta;
 
-type Story = StoryObj<typeof FormSegmentedControl>;
+type Story = StoryObj<typeof StyledSegmentedControl>;
 
 export const Basic: Story = {
-  render: () => <SegmentedControl />,
+  render: () => <StyledSegmentedControl />,
 };
 
 Basic.parameters = {
@@ -28,10 +29,10 @@ const options = [
   { label: "Label 2", value: "Users" },
 ];
 
-function SegmentedControl() {
+function StyledSegmentedControl() {
   return (
     <MainCenteredContainer>
-      <FormSegmentedControl name="name" options={options} />
+      <SegmentedControl name="name" options={options} />
     </MainCenteredContainer>
   );
 }

@@ -4,6 +4,7 @@ import type { Logger } from "@trigger.dev/sdk";
 import { ExternalSource, HandlerEvent } from "@trigger.dev/sdk";
 import { z } from "zod";
 import { Github } from "./index";
+import { Buffer } from "node:buffer";
 
 type WebhookData = {
   id: number;

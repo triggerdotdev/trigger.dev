@@ -1,5 +1,6 @@
 import {
   AcademicCapIcon,
+  ArrowRightIcon,
   ArrowRightOnRectangleIcon,
   ChartBarIcon,
   EllipsisHorizontalIcon,
@@ -7,11 +8,14 @@ import {
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 import { useNavigation } from "@remix-run/react";
 import { IconExclamationCircle } from "@tabler/icons-react";
+import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
 import { AnchorHTMLAttributes, Fragment, useEffect, useRef, useState } from "react";
+import { useFeatures } from "~/hooks/useFeatures";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
 import { MatchedProject } from "~/hooks/useProject";
 import { User } from "~/models/user.server";
+import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { cn } from "~/utils/cn";
 import {
   accountPath,
@@ -33,8 +37,12 @@ import {
 import { Feedback } from "../Feedback";
 import { ImpersonationBanner } from "../ImpersonationBanner";
 import { LogoIcon } from "../LogoIcon";
-import { UserAvatar, UserProfilePhoto } from "../UserProfilePhoto";
+import { StepContentContainer } from "../StepContentContainer";
+import { UserProfilePhoto } from "../UserProfilePhoto";
+import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { Button, LinkButton } from "../primitives/Buttons";
+import { ClipboardField } from "../primitives/ClipboardField";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
 import { Icon } from "../primitives/Icon";
 import { type IconNames } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
@@ -46,8 +54,8 @@ import {
   PopoverMenuItem,
   PopoverSectionHeader,
 } from "../primitives/Popover";
+import { StepNumber } from "../primitives/StepNumber";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
-import { useFeatures } from "~/hooks/useFeatures";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -66,6 +74,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
   const borderRef = useRef<HTMLDivElement>(null);
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);
   const { isManagedCloud } = useFeatures();
+  const currentPlan = useCurrentPlan();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -138,7 +147,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             <SideMenuItem
               name="HTTP endpoints"
               icon="http-endpoint"
-              iconColor="text-green-500"
+              iconColor="text-pink-500"
               count={project.httpEndpointCount}
               to={projectHttpEndpointsPath(organization, project)}
               data-action="httpendpoints"
@@ -185,12 +194,78 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               name={isManagedCloud ? "Usage & Billing" : "Usage"}
               icon={ChartBarIcon}
               to={organizationBillingPath(organization)}
-              iconColor="text-pink-500"
+              iconColor="text-green-600"
               data-action="usage & billing"
             />
           </div>
         </div>
         <div className="flex flex-col gap-1 border-t border-border p-1">
+          {currentPlan?.subscription?.isPaying === true ? (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon={SlackIcon}
+                  data-action="join our slack"
+                  fullWidth
+                  textAlignLeft
+                >
+                  Join our Slack
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>Join our Slack</DialogHeader>
+                <div className="mt-2 flex flex-col gap-4">
+                  <div className="flex items-center gap-4">
+                    <Icon icon={SlackIcon} className="h-10 w-10 min-w-[2.5rem]" />
+                    <Paragraph variant="base/bright">
+                      As a subscriber, you have access to a dedicated Slack channel for 1-to-1
+                      support with the Trigger.dev team.
+                    </Paragraph>
+                  </div>
+                  <hr className="border-slate-800" />
+                  <div>
+                    <StepNumber stepNumber="1" title="Create a new Slack channel" />
+                    <StepContentContainer>
+                      <Paragraph>
+                        In your Slack app, create a new channel from the main menu by going to File{" "}
+                        <ArrowRightIcon className="inline h-4 w-4 text-dimmed" /> New Channel
+                      </Paragraph>
+                    </StepContentContainer>
+                    <StepNumber stepNumber="2" title="Setup your channel" />
+                    <StepContentContainer>
+                      <Paragraph>
+                        Name your channel, set its visibility and click 'Create'.
+                      </Paragraph>
+                    </StepContentContainer>
+                    <StepNumber stepNumber="3" title="Invite Trigger.dev" />
+                    <StepContentContainer>
+                      <Paragraph>
+                        Invite this email address to your channel:{" "}
+                        <ClipboardField
+                          variant="primary/medium"
+                          value="james@trigger.dev"
+                          className="my-2"
+                        />
+                      </Paragraph>
+                      <Paragraph>
+                        As soon as we can, we'll accept your invitation and say hello!
+                      </Paragraph>
+                    </StepContentContainer>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          ) : (
+            <SideMenuItem
+              name="Join our Discord"
+              icon={DiscordIcon}
+              to="https://trigger.dev/discord"
+              data-action="join our discord"
+              target="_blank"
+            />
+          )}
+
           <SideMenuItem
             name="Documentation"
             icon="docs"
@@ -219,6 +294,12 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               </Button>
             }
           />
+          {currentPlan && !currentPlan.subscription?.isPaying && currentPlan.usage.runCountCap && (
+            <FreePlanUsage
+              to={organizationBillingPath(organization)}
+              percentage={currentPlan.usage.currentRunCount / currentPlan.usage.runCountCap}
+            />
+          )}
         </div>
       </div>
     </div>
@@ -409,8 +490,8 @@ function SideMenuItem({
         isActive ? "bg-slate-850 text-bright" : "group-hover:text-bright"
       )}
     >
-      <div className="flex w-full items-center justify-between overflow-hidden">
-        <span className="truncate">{name}</span>
+      <div className="flex w-full items-center justify-between">
+        {name}
         <div className="flex items-center gap-1">
           {count !== undefined && count > 0 && <MenuCount count={count} />}
           {typeof hasWarning === "string" ? (

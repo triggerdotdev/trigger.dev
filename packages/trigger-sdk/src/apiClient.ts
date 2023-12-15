@@ -1,46 +1,45 @@
 import {
+  API_VERSIONS,
   ApiEventLog,
   ApiEventLogSchema,
   CancelRunsForEventSchema,
+  CompleteTaskBodyV2Input,
   ConnectionAuthSchema,
+  EphemeralEventDispatcherRequestBody,
+  EphemeralEventDispatcherResponseBodySchema,
   FailTaskBodyInput,
   GetEventSchema,
   GetRunOptionsWithTaskDetails,
   GetRunSchema,
+  GetRunStatusesSchema,
   GetRunsOptions,
   GetRunsSchema,
-  LogLevel,
-  Logger,
+  InvokeJobRequestBody,
+  InvokeJobResponseSchema,
+  InvokeOptions,
+  JobRunStatusRecordSchema,
+  KeyValueStoreResponseBody,
+  KeyValueStoreResponseBodySchema,
   RegisterScheduleResponseBodySchema,
   RegisterSourceEventSchemaV2,
   RegisterSourceEventV2,
+  RegisterTriggerBodyV2,
   RunTaskBodyInput,
+  RunTaskResponseWithCachedTasksBodySchema,
   ScheduleMetadata,
   SendEvent,
   SendEventOptions,
   ServerTaskSchema,
+  StatusUpdate,
   TriggerSource,
   TriggerSourceSchema,
   UpdateTriggerSourceBodyV2,
-  RegisterTriggerBodyV2,
-  GetRunStatusesSchema,
-  JobRunStatusRecordSchema,
-  StatusUpdate,
-  urlWithSearchParams,
-  RunTaskResponseWithCachedTasksBodySchema,
-  API_VERSIONS,
-  InvokeJobResponseSchema,
-  InvokeOptions,
-  InvokeJobRequestBody,
-  CompleteTaskBodyV2Input,
-  EphemeralEventDispatcherRequestBody,
-  EphemeralEventDispatcherResponseBodySchema,
   UpdateWebhookBody,
-  KeyValueStoreResponseBodySchema,
-  KeyValueStoreResponseBody,
   assertExhaustive,
-  HttpMethod,
+  urlWithSearchParams,
 } from "@trigger.dev/core";
+import { LogLevel, Logger } from "@trigger.dev/core-backend";
+import { env } from "node:process";
 
 import { z } from "zod";
 import { KeyValueStoreClient } from "./store/keyValueStoreClient";
@@ -83,7 +82,7 @@ export class ApiClient {
   constructor(options: ApiClientOptions) {
     this.#options = options;
 
-    this.#apiUrl = this.#options.apiUrl ?? process.env.TRIGGER_API_URL ?? "https://api.trigger.dev";
+    this.#apiUrl = this.#options.apiUrl ?? env.TRIGGER_API_URL ?? "https://api.trigger.dev";
     this.#logger = new Logger("trigger.dev", this.#options.logLevel);
 
     this.#storeClient = new KeyValueStoreClient(this.#queryKeyValueStore.bind(this));
@@ -708,7 +707,7 @@ export class ApiClient {
 }
 
 function getApiKey(key?: string) {
-  const apiKey = key ?? process.env.TRIGGER_API_KEY;
+  const apiKey = key ?? env.TRIGGER_API_KEY;
 
   if (!apiKey) {
     return { status: "missing" as const };
@@ -765,7 +764,7 @@ async function zodfetchWithVersions<
     ? VersionedResponseBody<TVersionedResponseBodyMap, TUnversionedResponseBodySchema> | undefined
     : VersionedResponseBody<TVersionedResponseBodyMap, TUnversionedResponseBodySchema>
 > {
-  const response = await fetch(url, { ...requestInit, cache: "no-cache" });
+  const response = await fetch(url, requestInitWithCache(requestInit));
 
   if (
     (!requestInit || requestInit.method === "GET") &&
@@ -827,6 +826,21 @@ async function zodfetchWithVersions<
   };
 }
 
+function requestInitWithCache(requestInit?: RequestInit): RequestInit {
+  try {
+    const withCache: RequestInit = {
+      ...requestInit,
+      cache: "no-cache",
+    };
+
+    const _ = new Request("http://localhost", withCache);
+
+    return withCache;
+  } catch (error) {
+    return requestInit ?? {};
+  }
+}
+
 async function fetchHead(
   url: string,
   requestInitWithoutMethod?: Omit<RequestInit, "method">,
@@ -836,7 +850,7 @@ async function fetchHead(
     ...requestInitWithoutMethod,
     method: "HEAD",
   };
-  const response = await fetch(url, { ...requestInit, cache: "no-cache" });
+  const response = await fetch(url, requestInitWithCache(requestInit));
 
   if (response.status >= 500 && retryCount < 6) {
     // retry with exponential backoff and jitter
@@ -862,7 +876,7 @@ async function zodfetch<TResponseSchema extends z.ZodTypeAny, TOptional extends 
 ): Promise<
   TOptional extends true ? z.infer<TResponseSchema> | undefined : z.infer<TResponseSchema>
 > {
-  const response = await fetch(url, { ...requestInit, cache: "no-cache" });
+  const response = await fetch(url, requestInitWithCache(requestInit));
 
   if (
     (!requestInit || requestInit.method === "GET") &&

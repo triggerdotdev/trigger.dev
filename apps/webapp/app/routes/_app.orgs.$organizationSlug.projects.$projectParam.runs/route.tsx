@@ -53,9 +53,9 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader hideBorder>
+      <PageHeader>
         <PageTitleRow>
-          <PageTitle title={`${project.name} Runs`} />
+          <PageTitle title={`${project.name} runs`} />
           <PageButtons>
             <LinkButton
               LeadingIcon={"docs"}

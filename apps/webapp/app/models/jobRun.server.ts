@@ -43,3 +43,14 @@ export function runBasicStatus(status: JobRunStatus): RunBasicStatus {
     }
   }
 }
+
+export function runOriginalStatus(status: JobRunStatus) {
+  switch (status) {
+    case "EXECUTING":
+    case "WAITING_TO_CONTINUE":
+    case "WAITING_TO_EXECUTE":
+      return "STARTED";
+    default:
+      return status;
+  }
+}

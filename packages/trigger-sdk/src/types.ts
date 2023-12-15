@@ -2,24 +2,21 @@ import type {
   DisplayProperty,
   EventFilter,
   FailedRunNotification,
-  Logger,
   OverridableRunTaskOptions,
   Prettify,
   RedactString,
   RegisteredOptionsDiff,
-  RunNotificationJobMetadata,
-  RunNotificationRunMetadata,
   RunTaskOptions,
   RuntimeEnvironmentType,
-  ServerTask,
   SourceEventOption,
   SuccessfulRunNotification,
   TriggerMetadata,
 } from "@trigger.dev/core";
+import { Logger } from "@trigger.dev/core-backend";
+import type TypedEmitter from "typed-emitter";
+import { z } from "zod";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
-import { z } from "zod";
-import type TypedEmitter from "typed-emitter";
 
 export type {
   DisplayProperty,
@@ -124,8 +121,8 @@ export type TypedEventSpecificationExample<TEvent> = {
   id: string;
   name: string;
   icon?: string;
-  payload: TEvent
-}
+  payload: TEvent;
+};
 
 export interface EventSpecification<TEvent extends any, TInvoke extends any = TEvent> {
   name: string | string[];

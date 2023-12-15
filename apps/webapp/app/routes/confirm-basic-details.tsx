@@ -137,7 +137,7 @@ export default function Page() {
   const shouldShowConfirm = user.email !== enteredEmail || user.email === "";
 
   return (
-    <AppContainer showBackgroundGradient={true}>
+    <AppContainer>
       <MainCenteredContainer className="max-w-[22rem]">
         <Form method="post" {...form.props}>
           <FormTitle

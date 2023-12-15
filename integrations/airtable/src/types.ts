@@ -1,5 +1,3 @@
-import { Prettify } from "@trigger.dev/integration-kit";
-
 export type AirtableFieldSet = {
   [key: string]:
     | undefined

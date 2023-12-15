@@ -242,7 +242,7 @@ client.defineJob({
   },
   run: async (payload, io, ctx) => {
     const assistants = await io.openai.beta.assistants.list("list", {
-      limit: 10
+      limit: 10,
     });
 
     if (payload.assistantId) {
@@ -499,6 +499,37 @@ client.defineJob({
           content: "If you were a programming language, what would you be and why?",
         },
       ],
+    });
+  },
+});
+
+client.defineJob({
+  id: "openai-files",
+  name: "OpenAI Files",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "openai.files",
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    const fileAsString = await io.openai.files.createAndWaitForProcessing("upload-file-as-string", {
+      purpose: "assistants",
+      file: "This is a string",
+    });
+
+    const fileAsFetch = await io.openai.files.createAndWaitForProcessing("upload-file-as-fetch", {
+      purpose: "assistants",
+      file: await fetch("https://trigger.dev"),
+    });
+
+    await io.openai.images.edit("dalle-2", {
+      model: "dall-e-2",
+      image:
+        "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/497142eb-7a51-4262-de1c-da75917cb000/public",
+      prompt: "Can you make this image look like a painting?",
+      response_format: "url",
     });
   },
 });

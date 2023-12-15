@@ -61,11 +61,11 @@ export function WebhookDeliveryRunsTable({
       <TableBody>
         {total === 0 && !hasFilters ? (
           <TableBlankRow colSpan={8}>
-            <NoRuns title="No Runs found for this Job" />
+            <NoRuns title="No runs found for this job" />
           </TableBlankRow>
         ) : runs.length === 0 ? (
           <TableBlankRow colSpan={8}>
-            <NoRuns title="No Runs match your filters" />
+            <NoRuns title="No runs match your filters" />
           </TableBlankRow>
         ) : (
           runs.map((run) => {

@@ -9,8 +9,8 @@ You can define a job by using the `TriggerClient.defineJob` instance method:
 
 <RequestExample>
 
-```ts client.defineJob
-client.defineJob({
+```ts Example
+new Job({
   id: "github-integration-on-issue",
   name: "GitHub Integration - On Issue",
   version: "0.1.0",
@@ -23,11 +23,11 @@ client.defineJob({
     await io.logger.info("This is a simple log info message");
     return { payload, ctx };
   },
-});
+}).attachToClient(client);
 ```
 
 ```ts notifications
-client.defineJob({
+new Job({
   id: "github-integration-on-issue",
   name: "GitHub Integration - On Issue",
   version: "0.1.0",
@@ -46,7 +46,7 @@ client.defineJob({
     await io.logger.info("This is a simple log info message");
     return { payload, ctx };
   },
-});
+}).attachToClient(client);
 ```
 
 </RequestExample>
@@ -54,10 +54,6 @@ client.defineJob({
 # Constructor
 
 ## Parameters
-
-<ParamField body="client" type="object" required>
-  An instance of [TriggerClient](/sdk/triggerclient) that is used to send events to the Trigger API.
-</ParamField>
 
 <Snippet file="jobs/options.mdx" />
 
