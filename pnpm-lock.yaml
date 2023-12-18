@@ -399,12 +399,12 @@ importers:
     specifiers:
       '@cloudflare/workers-types': ~4.20231121.0
       '@trigger.dev/yalt': workspace:*
-      wrangler: ^3.20.0
+      wrangler: ^3.21.0
     dependencies:
       '@trigger.dev/yalt': link:../../packages/yalt
     devDependencies:
       '@cloudflare/workers-types': 4.20231121.0
-      wrangler: 3.20.0
+      wrangler: 3.21.0
 
   config-packages/eslint-config-custom:
     specifiers:
@@ -1312,6 +1312,7 @@ importers:
     specifiers:
       '@trigger.dev/tsconfig': workspace:*
       '@trigger.dev/tsup': workspace:*
+      '@types/debug': ^4.1.7
       '@types/jest': ^29.5.3
       '@types/node': '18'
       jest: ^29.6.2
@@ -1327,6 +1328,7 @@ importers:
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@trigger.dev/tsup': link:../../config-packages/tsup
+      '@types/debug': 4.1.7
       '@types/jest': 29.5.3
       '@types/node': 18.17.1
       jest: 29.6.2_@types+node@18.17.1
@@ -33143,12 +33145,13 @@ packages:
       - utf-8-validate
     dev: true
 
-  /wrangler/3.20.0:
-    resolution: {integrity: sha512-7mg25zJByhBmrfG+CbImSid7JNd5lxGovLA167ndtE8Yrqd3TUukrGWL8o0RCQIm0FUcgl2nCzWArJDShlZVKA==}
+  /wrangler/3.21.0:
+    resolution: {integrity: sha512-DLoo4XfjeyuGRAVWZFHmU1jWnZIfyLGDm6Ika9oy/CLCPfJzVJvf2jI70EU5BlEHWDZXMSJKw7FDdgSqwhaQXg==}
     engines: {node: '>=16.17.0'}
     hasBin: true
     dependencies:
       '@cloudflare/kv-asset-handler': 0.2.0
+      '@cspotcode/source-map-support': 0.8.1
       '@esbuild-plugins/node-globals-polyfill': 0.2.3_esbuild@0.17.19
       '@esbuild-plugins/node-modules-polyfill': 0.2.2_esbuild@0.17.19
       blake3-wasm: 2.1.5
@@ -33160,7 +33163,6 @@ packages:
       resolve.exports: 2.0.2
       selfsigned: 2.4.1
       source-map: 0.6.1
-      source-map-support: 0.5.21
       xxhash-wasm: 1.0.2
     optionalDependencies:
       fsevents: 2.3.3
