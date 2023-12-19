@@ -89,9 +89,29 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const s = Object.fromEntries(url.searchParams.entries());
   const searchParams = RunListSearchSchema.parse(s);
 
+  const status = url.searchParams.get("status");
+  const environment = url.searchParams.get("environment");
+
+  let filterStatus: JobRunStatus[] | undefined;
+  if (status && status !== "ALL") {
+    if (filterableStatuses.hasOwnProperty(status)) {
+      filterStatus = filterableStatuses[status as FilterableStatus] as JobRunStatus[];
+    }
+  }
+
+  let filterEnvironment: RuntimeEnvironmentType | undefined;
+  if (environment && environment !== "ALL") {
+    if (environmentKeys.includes(environment)) {
+      filterEnvironment = environment as RuntimeEnvironmentType;
+    }
+  }
+
   const presenter = new RunListPresenter();
+
   const list = await presenter.call({
     userId,
+    filterEnvironment: filterEnvironment,
+    filterStatus: filterStatus,
     projectSlug: projectParam,
     organizationSlug,
     direction: searchParams.direction,
@@ -99,30 +119,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     pageSize: 25,
   });
 
-  const status = url.searchParams.get("status");
-  const environment = url.searchParams.get("environment");
-
-  const statusArray = filterableStatuses[status as FilterableStatus];
-
-  // Filter based on both status and environment
-  let filteredRuns = list.runs;
-
-  if (status && statusArray && !statusArray.includes("ALL")) {
-    filteredRuns = filteredRuns.filter((run) => statusArray.includes(run.status));
-  }
-
-  if (environment && environment !== ExtendedRuntimeEnvironment.ALL) {
-    filteredRuns = filteredRuns.filter((run) => run.environment.type === environment);
-  }
-
   return typedjson({
     list,
-    filteredRuns,
   });
 };
 
 export default function Page() {
-  const { list, filteredRuns } = useTypedLoaderData<typeof loader>();
+  const { list } = useTypedLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
   const organization = useOrganization();
@@ -149,6 +152,19 @@ export default function Page() {
     navigate(`${location.pathname}?${queryString}`);
   };
 
+  useEffect(() => {
+    const status = url.get("status");
+    const environment = url.get("environment");
+
+    if (status && status !== "ALL") {
+      setselectedStatus(status);
+    }
+
+    if (environment && environment !== "ALL") {
+      setSelectedEnvironment(environment!);
+    }
+  });
+
   const handleStatusChange = (value: FilterableStatus) => {
     handleFilterChange("status", value);
     setselectedStatus(value);
@@ -158,14 +174,6 @@ export default function Page() {
     handleFilterChange("environment", value);
     setSelectedEnvironment(value);
   };
-
-  useEffect(() => {
-    const status = url.get("status");
-    const environment = url.get("environment");
-
-    setselectedStatus(status as FilterableStatus);
-    setSelectedEnvironment(environment as ExtendedRuntimeEnvironmentType);
-  });
 
   return (
     <PageContainer>
@@ -255,7 +263,7 @@ export default function Page() {
             total={list.runs.length}
             hasFilters={false}
             showJob={true}
-            runs={filteredRuns}
+            runs={list.runs}
             isLoading={isLoading}
             runsParentPath={projectPath(organization, project)}
             currentUser={user}
