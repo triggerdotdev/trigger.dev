@@ -1,4 +1,4 @@
-import { useNavigation } from "@remix-run/react";
+import { useLocation, useNavigate, useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -19,6 +19,67 @@ import { requireUserId } from "~/services/session.server";
 import { ProjectParamSchema, docsPath, projectPath } from "~/utils/pathBuilder";
 import { ListPagination } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/ListPagination";
 import { RunListSearchSchema } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/route";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/primitives/Select";
+import { useEffect, useState } from "react";
+import { JobRunStatus, RuntimeEnvironmentType } from "@trigger.dev/database";
+import {
+  CheckCircleIcon,
+  ClockIcon,
+  ExclamationTriangleIcon,
+  PauseCircleIcon,
+  XCircleIcon,
+} from "@heroicons/react/24/solid";
+import { ChartBarIcon } from "@heroicons/react/20/solid";
+import { cn } from "~/utils/cn";
+import { Spinner } from "~/components/primitives/Spinner";
+import { NoSymbolIcon } from "@heroicons/react/20/solid";
+
+// Filter -> status types
+const ExtendedJobRunStatus = {
+  ALL: "ALL" as const,
+  ...JobRunStatus,
+} as const;
+type ExtendedJobRunStatusKey = keyof typeof ExtendedJobRunStatus;
+
+type FilterableStatus =
+  | "ALL"
+  | "QUEUED"
+  | "IN_PROGRESS"
+  | "WAITING"
+  | "COMPLETED"
+  | "FAILED"
+  | "CANCELED"
+  | "TIMEDOUT";
+
+const filterableStatuses: Record<FilterableStatus, ExtendedJobRunStatusKey[]> = {
+  ALL: ["ALL"],
+  QUEUED: ["QUEUED", "WAITING_TO_EXECUTE", "PENDING", "WAITING_ON_CONNECTIONS"],
+  IN_PROGRESS: ["STARTED", "EXECUTING", "PREPROCESSING"],
+  WAITING: ["WAITING_TO_CONTINUE"],
+  COMPLETED: ["SUCCESS"],
+  FAILED: ["FAILURE", "UNRESOLVED_AUTH", "INVALID_PAYLOAD", "ABORTED"],
+  TIMEDOUT: ["TIMED_OUT"],
+  CANCELED: ["CANCELED"],
+};
+
+const statusKeys: FilterableStatus[] = Object.keys(filterableStatuses) as FilterableStatus[];
+
+// Filter -> Environment types
+const ExtendedRuntimeEnvironment = {
+  ALL: "ALL" as const,
+  ...RuntimeEnvironmentType,
+} as const;
+type ExtendedRuntimeEnvironmentType = keyof typeof ExtendedRuntimeEnvironment;
+const environmentKeys: ExtendedRuntimeEnvironmentType[] = Object.keys(
+  ExtendedRuntimeEnvironment
+) as ExtendedRuntimeEnvironmentType[];
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -50,6 +111,72 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const user = useUser();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const url = new URLSearchParams(location.search);
+
+  const [selectedEnvironment, setSelectedEnvironment] = useState<string>(
+    ExtendedRuntimeEnvironment.ALL
+  );
+  const [selectedStatus, setselectedStatus] = useState<string>(ExtendedJobRunStatus.ALL);
+  const [filteredList, setFilteredList] = useState(list.runs);
+
+  const handleFilterChange = (filterType: string, value: string) => {
+    url.set(filterType, value);
+
+    const filters = ["status", "environment"]; // Add more filters as needed
+    const queryString = filters
+      .map((filter) => (url.has(filter) ? `${filter}=${url.get(filter)}` : null))
+      .filter((filter) => filter !== null)
+      .join("&");
+
+    navigate(`${location.pathname}?${queryString}`);
+  };
+
+  const handleStatusChange = (value: FilterableStatus) => {
+    handleFilterChange("status", value);
+    setselectedStatus(value);
+  };
+
+  const handleEnvironmentChange = (value: string) => {
+    handleFilterChange("environment", value);
+    setSelectedEnvironment(value);
+  };
+
+  useEffect(() => {
+    const status = url.get("status");
+    const environment = url.get("environment");
+
+    if (status && status in filterableStatuses) {
+      const statusArray = filterableStatuses[status as FilterableStatus];
+
+      if (
+        (!status || !statusArray || statusArray.includes("ALL")) &&
+        (!environment || environment === ExtendedRuntimeEnvironment.ALL)
+      ) {
+        setselectedStatus(ExtendedJobRunStatus.ALL);
+        setSelectedEnvironment(ExtendedRuntimeEnvironment.ALL);
+        setFilteredList(list.runs);
+        return;
+      }
+
+      // Filter based on both status and environment
+      let filteredRuns = list.runs;
+
+      if (status && statusArray && !statusArray.includes("ALL")) {
+        filteredRuns = filteredRuns.filter((run) => statusArray.includes(run.status));
+        setselectedStatus(status);
+      }
+
+      if (environment && environment !== ExtendedRuntimeEnvironment.ALL) {
+        filteredRuns = filteredRuns.filter((run) => run.environment.type === environment);
+        setSelectedEnvironment(environment);
+      }
+
+      setFilteredList(filteredRuns);
+    } else {
+    }
+  }, [location.search, list.runs, setFilteredList, setselectedStatus, setSelectedEnvironment]);
 
   return (
     <PageContainer>
@@ -71,14 +198,75 @@ export default function Page() {
 
       <PageBody scrollable={false}>
         <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
-          <div className="mb-2 flex items-center justify-end gap-x-2">
+          <div className="mb-2 flex items-center justify-between gap-x-2">
+            <div className="flex flex-row justify-between gap-x-2">
+              {/* environment filter */}
+              <SelectGroup>
+                <Select
+                  name="environment"
+                  value={selectedEnvironment}
+                  onValueChange={handleEnvironmentChange}
+                >
+                  <SelectTrigger size="secondary/small" width="full">
+                    <SelectValue placeholder="Select environment" className="ml-2 p-0" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {environmentKeys.map((env) => (
+                      <SelectItem key={env} value={env}>
+                        {
+                          <div className="flex gap-x-2">
+                            <span
+                              className={cn(
+                                "inline-flex h-4 items-center justify-center rounded-[2px] px-1 text-xxs font-medium uppercase tracking-wider text-midnight-900",
+                                filterEnvironmentColorClassName(env)
+                              )}
+                            >
+                              {filterEnvironmentTitle(env)}
+                            </span>
+                            <span
+                              className={cn(
+                                "inline-flex h-4 items-center justify-center px-1 text-xxs font-medium uppercase tracking-wider text-dimmed"
+                              )}
+                            >
+                              {env === "ALL" ? env + " Environments" : env}
+                            </span>
+                          </div>
+                        }
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </SelectGroup>
+
+              {/* status filter */}
+              <SelectGroup>
+                <Select name="status" value={selectedStatus} onValueChange={handleStatusChange}>
+                  <SelectTrigger size="secondary/small" width="full">
+                    <SelectValue placeholder="Select environment" className="ml-2 p-0" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statusKeys.map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {
+                          <span className="flex items-center gap-1 text-xxs font-medium uppercase tracking-wider">
+                            <FilterStatusIcon status={status} className="h-4 w-4" />
+                            <FilterStatusLabel status={status} />
+                          </span>
+                        }
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </SelectGroup>
+            </div>
+
             <ListPagination list={list} />
           </div>
           <RunsTable
             total={list.runs.length}
             hasFilters={false}
             showJob={true}
-            runs={list.runs}
+            runs={filteredList}
             isLoading={isLoading}
             runsParentPath={projectPath(organization, project)}
             currentUser={user}
@@ -88,4 +276,121 @@ export default function Page() {
       </PageBody>
     </PageContainer>
   );
+}
+
+function filterEnvironmentTitle(environment: ExtendedRuntimeEnvironmentType) {
+  switch (environment) {
+    case "ALL":
+      return "All";
+    case "PRODUCTION":
+      return "Prod";
+    case "STAGING":
+      return "Staging";
+    case "DEVELOPMENT":
+      return "Dev";
+    case "PREVIEW":
+      return "Preview";
+  }
+}
+
+function filterEnvironmentColorClassName(environment: ExtendedRuntimeEnvironmentType) {
+  switch (environment) {
+    case "ALL":
+      return "bg-white";
+    case "PRODUCTION":
+      return "bg-green-500";
+    case "STAGING":
+      return "bg-amber-500";
+    case "DEVELOPMENT":
+      return "bg-pink-500";
+    case "PREVIEW":
+      return "bg-yellow-500";
+  }
+}
+
+export function FilterStatusLabel({ status }: { status: FilterableStatus }) {
+  return <span className={filterStatusClassNameColor(status)}>{filterStatusTitle(status)}</span>;
+}
+
+export function FilterStatusIcon({
+  status,
+  className,
+}: {
+  status: FilterableStatus;
+  className: string;
+}) {
+  switch (status) {
+    case "ALL":
+      return <ChartBarIcon className={cn(className, "text-white")} />;
+    case "COMPLETED":
+      return <CheckCircleIcon className={cn(filterStatusClassNameColor(status), className)} />;
+    case "WAITING":
+      return <ClockIcon className={cn(filterStatusClassNameColor(status), className)} />;
+    case "QUEUED":
+      return <PauseCircleIcon className={cn(filterStatusClassNameColor(status), className)} />;
+    case "IN_PROGRESS":
+      return <Spinner className={cn(filterStatusClassNameColor(status), className)} />;
+    case "TIMEDOUT":
+      return (
+        <ExclamationTriangleIcon className={cn(filterStatusClassNameColor(status), className)} />
+      );
+    case "CANCELED":
+      return <NoSymbolIcon className={cn(filterStatusClassNameColor(status), className)} />;
+    case "FAILED":
+      return <XCircleIcon className={cn(filterStatusClassNameColor(status), className)} />;
+    default: {
+      const _exhaustiveCheck: never = status;
+      throw new Error(`Non-exhaustive match for value: ${status}`);
+    }
+  }
+}
+
+export function filterStatusTitle(status: FilterableStatus): string {
+  switch (status) {
+    case "ALL":
+      return "All Status";
+    case "QUEUED":
+      return "Queued";
+    case "IN_PROGRESS":
+      return "In progress";
+    case "WAITING":
+      return "Waiting";
+    case "COMPLETED":
+      return "Completed";
+    case "FAILED":
+      return "Failed";
+    case "CANCELED":
+      return "Canceled";
+    case "TIMEDOUT":
+      return "Timed out";
+    default: {
+      const _exhaustiveCheck: never = status;
+      throw new Error(`Non-exhaustive match for value: ${status}`);
+    }
+  }
+}
+
+export function filterStatusClassNameColor(status: FilterableStatus): string {
+  switch (status) {
+    case "ALL":
+      return "text-dimmed";
+    case "QUEUED":
+      return "text-slate-500";
+    case "IN_PROGRESS":
+      return "text-blue-500";
+    case "WAITING":
+      return "text-blue-500";
+    case "COMPLETED":
+      return "text-green-500";
+    case "FAILED":
+      return "text-rose-500";
+    case "CANCELED":
+      return "text-slate-500";
+    case "TIMEDOUT":
+      return "text-amber-300";
+    default: {
+      const _exhaustiveCheck: never = status;
+      throw new Error(`Non-exhaustive match for value: ${status}`);
+    }
+  }
 }
