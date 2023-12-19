@@ -147,35 +147,32 @@ export default function Page() {
     const status = url.get("status");
     const environment = url.get("environment");
 
-    if (status && status in filterableStatuses) {
-      const statusArray = filterableStatuses[status as FilterableStatus];
+    const statusArray = filterableStatuses[status as FilterableStatus];
 
-      if (
-        (!status || !statusArray || statusArray.includes("ALL")) &&
-        (!environment || environment === ExtendedRuntimeEnvironment.ALL)
-      ) {
-        setselectedStatus(ExtendedJobRunStatus.ALL);
-        setSelectedEnvironment(ExtendedRuntimeEnvironment.ALL);
-        setFilteredList(list.runs);
-        return;
-      }
-
-      // Filter based on both status and environment
-      let filteredRuns = list.runs;
-
-      if (status && statusArray && !statusArray.includes("ALL")) {
-        filteredRuns = filteredRuns.filter((run) => statusArray.includes(run.status));
-        setselectedStatus(status);
-      }
-
-      if (environment && environment !== ExtendedRuntimeEnvironment.ALL) {
-        filteredRuns = filteredRuns.filter((run) => run.environment.type === environment);
-        setSelectedEnvironment(environment);
-      }
-
-      setFilteredList(filteredRuns);
-    } else {
+    if (
+      (!status || !statusArray || statusArray.includes("ALL")) &&
+      (!environment || environment === ExtendedRuntimeEnvironment.ALL)
+    ) {
+      setselectedStatus(ExtendedJobRunStatus.ALL);
+      setSelectedEnvironment(ExtendedRuntimeEnvironment.ALL);
+      setFilteredList(list.runs);
+      return;
     }
+
+    // Filter based on both status and environment
+    let filteredRuns = list.runs;
+
+    if (status && statusArray && !statusArray.includes("ALL")) {
+      filteredRuns = filteredRuns.filter((run) => statusArray.includes(run.status));
+      setselectedStatus(status);
+    }
+
+    if (environment && environment !== ExtendedRuntimeEnvironment.ALL) {
+      filteredRuns = filteredRuns.filter((run) => run.environment.type === environment);
+      setSelectedEnvironment(environment);
+    }
+
+    setFilteredList(filteredRuns);
   }, [location.search, list.runs, setFilteredList, setselectedStatus, setSelectedEnvironment]);
 
   return (
