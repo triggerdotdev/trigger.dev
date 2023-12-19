@@ -82,6 +82,13 @@ export const apisList = [
         version: "1.0.0",
         codeUrl: "https://github.com/triggerdotdev/api-reference/raw/main/src/aws.ts",
       },
+      {
+        title: "A job that is triggered by an AWS webhook.",
+        slug: "aws-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/aws-http-endpoint.ts",
+      },
     ],
   },
   {
@@ -155,6 +162,20 @@ export const apisList = [
         slug: "translate-text-with-deepl",
         version: "1.0.0",
         codeUrl: "https://github.com/triggerdotdev/api-reference/raw/main/src/deepl.ts",
+      },
+    ],
+  },
+
+  {
+    identifier: "digitalocean",
+    name: "DigitalOcean",
+    examples: [
+      {
+        title: "DigitalOcean create Uptime",
+        slug: "digitalocean-create-uptime",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/digitalocean.ts",
       },
     ],
   },
@@ -478,6 +499,15 @@ export const apisList = [
   {
     identifier: "microsoftazure",
     name: "Microsoft Azure",
+    examples: [
+      {
+        title: "A job that is triggered by a Microsoft Azure webhook.",
+        slug: "microsoft-azure-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/azure-http-endpoint.ts",
+      },
+    ],
   },
   {
     identifier: "monday",
@@ -554,6 +584,13 @@ export const apisList = [
         version: "1.0.0",
         codeUrl:
           "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/pagerduty-http-endpoint.ts",
+      },
+      {
+        title: "Install an addon in PagerDuty",
+        slug: "pagerduty-install-addon",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/pagerduty.ts",
       },
     ],
   },
@@ -827,6 +864,13 @@ export const apisList = [
         version: "1.0.0",
         codeUrl: "https://github.com/triggerdotdev/api-reference/raw/main/src/twilio.ts",
       },
+      {
+        title: "A job that is triggered by a Twilio webhook.",
+        slug: "twilio-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/twilio-http-endpoint.ts",
+      },
     ],
   },
   {
@@ -890,6 +934,21 @@ export const apisList = [
         slug: "youtube-search-video",
         version: "1.0.0",
         codeUrl: "https://github.com/triggerdotdev/api-reference/raw/main/src/youtube.ts",
+      },
+    ],
+  },
+  {
+    identifier: "zapier",
+    name: "Zapier",
+    examples: [
+      {
+        title: "Store name in Zapier",
+        slug: "zapier-store-name",
+        version: "1.0.0",
+        exampleType: ["api-reference"],
+        apisUsed: ["zapier"],
+        categories: ["dev-ops", "productivity"],
+        codeUrl: "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/zapier.ts",
       },
     ],
   },
