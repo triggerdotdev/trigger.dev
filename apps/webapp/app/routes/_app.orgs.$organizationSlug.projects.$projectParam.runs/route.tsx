@@ -99,13 +99,30 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     pageSize: 25,
   });
 
+  const status = url.searchParams.get("status");
+  const environment = url.searchParams.get("environment");
+
+  const statusArray = filterableStatuses[status as FilterableStatus];
+
+  // Filter based on both status and environment
+  let filteredRuns = list.runs;
+
+  if (status && statusArray && !statusArray.includes("ALL")) {
+    filteredRuns = filteredRuns.filter((run) => statusArray.includes(run.status));
+  }
+
+  if (environment && environment !== ExtendedRuntimeEnvironment.ALL) {
+    filteredRuns = filteredRuns.filter((run) => run.environment.type === environment);
+  }
+
   return typedjson({
     list,
+    filteredRuns,
   });
 };
 
 export default function Page() {
-  const { list } = useTypedLoaderData<typeof loader>();
+  const { list, filteredRuns } = useTypedLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
   const organization = useOrganization();
@@ -119,7 +136,6 @@ export default function Page() {
     ExtendedRuntimeEnvironment.ALL
   );
   const [selectedStatus, setselectedStatus] = useState<string>(ExtendedJobRunStatus.ALL);
-  const [filteredList, setFilteredList] = useState(list.runs);
 
   const handleFilterChange = (filterType: string, value: string) => {
     url.set(filterType, value);
@@ -147,33 +163,9 @@ export default function Page() {
     const status = url.get("status");
     const environment = url.get("environment");
 
-    const statusArray = filterableStatuses[status as FilterableStatus];
-
-    if (
-      (!status || !statusArray || statusArray.includes("ALL")) &&
-      (!environment || environment === ExtendedRuntimeEnvironment.ALL)
-    ) {
-      setselectedStatus(ExtendedJobRunStatus.ALL);
-      setSelectedEnvironment(ExtendedRuntimeEnvironment.ALL);
-      setFilteredList(list.runs);
-      return;
-    }
-
-    // Filter based on both status and environment
-    let filteredRuns = list.runs;
-
-    if (status && statusArray && !statusArray.includes("ALL")) {
-      filteredRuns = filteredRuns.filter((run) => statusArray.includes(run.status));
-      setselectedStatus(status);
-    }
-
-    if (environment && environment !== ExtendedRuntimeEnvironment.ALL) {
-      filteredRuns = filteredRuns.filter((run) => run.environment.type === environment);
-      setSelectedEnvironment(environment);
-    }
-
-    setFilteredList(filteredRuns);
-  }, [location.search, list.runs, setFilteredList, setselectedStatus, setSelectedEnvironment]);
+    setselectedStatus(status as FilterableStatus);
+    setSelectedEnvironment(environment as ExtendedRuntimeEnvironmentType);
+  });
 
   return (
     <PageContainer>
@@ -263,7 +255,7 @@ export default function Page() {
             total={list.runs.length}
             hasFilters={false}
             showJob={true}
-            runs={filteredList}
+            runs={filteredRuns}
             isLoading={isLoading}
             runsParentPath={projectPath(organization, project)}
             currentUser={user}
