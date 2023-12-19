@@ -142,14 +142,7 @@ export default function Page() {
 
   const handleFilterChange = (filterType: string, value: string) => {
     url.set(filterType, value);
-
-    const filters = ["status", "environment"]; // Add more filters as needed
-    const queryString = filters
-      .map((filter) => (url.has(filter) ? `${filter}=${url.get(filter)}` : null))
-      .filter((filter) => filter !== null)
-      .join("&");
-
-    navigate(`${location.pathname}?${queryString}`);
+    navigate(`${location.pathname}?${url.toString()}`);
   };
 
   useEffect(() => {
