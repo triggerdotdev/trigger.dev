@@ -9,7 +9,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "~4.20231121.0",
-    "wrangler": "^3.20.0"
+    "wrangler": "^3.21.0"
   },
   "dependencies": {
     "@trigger.dev/yalt": "workspace:*"
