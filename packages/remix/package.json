@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/remix",
-  "version": "2.3.6",
+  "version": "2.3.7",
   "description": "Trigger.dev Remix integration",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -39,7 +39,7 @@
     "build:tsup": "tsup"
   },
   "peerDependencies": {
-    "@trigger.dev/sdk": "workspace:^2.3.6",
+    "@trigger.dev/sdk": "workspace:^2.3.7",
     "@remix-run/server-runtime": ">1.19.0"
   },
   "dependencies": {

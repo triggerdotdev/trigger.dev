@@ -1,5 +1,13 @@
 # @trigger.dev/slack
 
+## 2.3.7
+
+### Patch Changes
+
+- 771feb53: Awaiting completion with threads/runs now works with the "requires_action" status
+  - @trigger.dev/integration-kit@2.3.7
+  - @trigger.dev/sdk@2.3.7
+
 ## 2.3.6
 
 ### Patch Changes

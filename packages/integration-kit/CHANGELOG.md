@@ -1,5 +1,11 @@
 # @trigger.dev/integration-kit
 
+## 2.3.7
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.7
+
 ## 2.3.6
 
 ### Patch Changes
