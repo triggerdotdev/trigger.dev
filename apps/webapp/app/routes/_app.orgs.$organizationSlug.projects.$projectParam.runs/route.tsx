@@ -27,7 +27,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/primitives/Select";
-import { useEffect, useState } from "react";
 import { JobRunStatus, RuntimeEnvironmentType } from "@trigger.dev/database";
 import {
   CheckCircleIcon,
@@ -135,37 +134,20 @@ export default function Page() {
   const location = useLocation();
   const url = new URLSearchParams(location.search);
 
-  const [selectedEnvironment, setSelectedEnvironment] = useState<string>(
-    ExtendedRuntimeEnvironment.ALL
-  );
-  const [selectedStatus, setselectedStatus] = useState<string>(ExtendedJobRunStatus.ALL);
+  const selectedEnvironment = url.get("environment") || ExtendedRuntimeEnvironment.ALL;
+  const selectedStatus = url.get("status") || ExtendedJobRunStatus.ALL;
 
   const handleFilterChange = (filterType: string, value: string) => {
     url.set(filterType, value);
     navigate(`${location.pathname}?${url.toString()}`);
   };
 
-  useEffect(() => {
-    const status = url.get("status");
-    const environment = url.get("environment");
-
-    if (status && status !== "ALL") {
-      setselectedStatus(status);
-    }
-
-    if (environment && environment !== "ALL") {
-      setSelectedEnvironment(environment!);
-    }
-  });
-
   const handleStatusChange = (value: FilterableStatus) => {
     handleFilterChange("status", value);
-    setselectedStatus(value);
   };
 
   const handleEnvironmentChange = (value: string) => {
     handleFilterChange("environment", value);
-    setSelectedEnvironment(value);
   };
 
   return (
