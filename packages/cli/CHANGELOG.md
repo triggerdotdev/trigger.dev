@@ -1,5 +1,14 @@
 # create-trigger
 
+## 2.3.7
+
+### Patch Changes
+
+- dfa47b62: Don't proxy certain headers across the Yalt boundary as it can mess-up proxied local requests
+- Updated dependencies [dfa47b62]
+  - @trigger.dev/yalt@2.3.7
+  - @trigger.dev/core@2.3.7
+
 ## 2.3.6
 
 ### Patch Changes
