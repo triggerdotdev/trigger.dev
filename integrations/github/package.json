@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/github",
-  "version": "2.3.6",
+  "version": "2.3.7",
   "description": "The official GitHub integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -29,9 +29,9 @@
     "@octokit/request": "^8.1.6",
     "@octokit/request-error": "^5.0.1",
     "@octokit/webhooks": "^12.0.10",
-    "@trigger.dev/integration-kit": "workspace:^2.3.6",
-    "@trigger.dev/sdk": "workspace:^2.3.6",
     "octokit": "^3.1.2",
+    "@trigger.dev/integration-kit": "workspace:^2.3.7",
+    "@trigger.dev/sdk": "workspace:^2.3.7",
     "zod": "3.22.3"
   },
   "engines": {
