@@ -1,5 +1,13 @@
 # @trigger.dev/github
 
+## 2.3.8
+
+### Patch Changes
+
+- 5060eec0: Update Octokit to account for CVE-2023-50728
+  - @trigger.dev/integration-kit@2.3.8
+  - @trigger.dev/sdk@2.3.8
+
 ## 2.3.7
 
 ### Patch Changes
