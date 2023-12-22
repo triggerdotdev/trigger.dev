@@ -1,5 +1,11 @@
 # @trigger.dev/remix
 
+## 2.3.8
+
+### Patch Changes
+
+- @trigger.dev/sdk@2.3.8
+
 ## 2.3.7
 
 ### Patch Changes

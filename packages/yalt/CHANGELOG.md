@@ -1,5 +1,7 @@
 # @trigger.dev/yalt
 
+## 2.3.8
+
 ## 2.3.7
 
 ### Patch Changes
