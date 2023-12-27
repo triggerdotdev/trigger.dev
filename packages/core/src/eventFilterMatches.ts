@@ -198,5 +198,15 @@ function contentFilterMatches(actualValue: any, contentFilter: ContentFilters[nu
     return actualValue !== null;
   }
 
+  if ("$not" in contentFilter) {
+    if (Array.isArray(actualValue)) {
+      return !actualValue.includes(contentFilter.$not);
+    } else if (typeof actualValue === 'number' || typeof actualValue === 'boolean' || typeof actualValue === 'string') {
+      return actualValue !== contentFilter.$not;
+    }
+
+    return false;
+  }
+
   return true;
 }
