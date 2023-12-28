@@ -213,24 +213,24 @@ export default app;
 
 ### Deno
 
-To import packages with Deno, use the `npm:` specifier. Import `@trigger.dev/sdk` and `@trigger.dev/hono` packages using [npm: specifiers](https://docs.deno.com/runtime/manual/node/npm_specifiers)
-
+Import trigger.dev packages with Deno using [npm: specifiers](https://docs.deno.com/runtime/manual/node/npm_specifiers):
 ```ts index.ts
 import { createMiddleware } from "npm:@trigger.dev/hono@latest";
 import { TriggerClient, invokeTrigger } from "npm:@trigger.dev/sdk@latest";
 import { Hono } from "npm:hono"; // Make sure to use the npm specifier for hono as well
 ```
-To load a .env file on startup, pass the deno command a `--env` cli flag like so:
+
+To load a `.env` file on startup, pass the `deno run` command a `--env` flag:
 ```bash
-deno run --env --allow-net --allow-read --watch index.ts
+deno run --env --allow-net --watch index.ts
 ```
-You can also load the environment variables in code like so: 
-`dotenv` package:
+
+You can also load an environment variables file in code using the `dotenv` package:
 ```ts index.ts
 import { load } from "https://deno.land/std@0.208.0/dotenv/mod.ts";
 const env = await load();
 ```
-In which case you need to pass the `--allow-env` cli flag
+In which case you need to pass the `--allow-env` and `--allow-read` flags:
 ```bash
 deno run --allow-env --allow-net --allow-read --watch index.ts
 ```
