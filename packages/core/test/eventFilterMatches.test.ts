@@ -276,6 +276,30 @@ describe("eventFilterMatches", () => {
     expect(eventFilterMatches(payload, filter)).toBe(true);
   });
 
+  it("should return false when payload not matches an not condition", () => {
+    const payload = {
+      name: "John",
+      age: 30,
+      score: 100,
+      isAdmin: false,
+      hobbies: ["reading", "swimming"],
+      address: {
+        street: "123 Main St",
+        city: "Anytown",
+        state: "CA",
+        zip: "12345",
+      },
+    };
+    const filter: EventFilter = {
+      hobbies: [{ $not: "reading" }],
+      age: [{ $not: 30 }],
+      isAdmin: [{ $not: false }],
+      name: [{ $not: 'John' }]
+    };
+
+    expect(eventFilterMatches(payload, filter)).toBe(false);
+  });
+
   it("should return true when payload matches an ignoreCaseEquals condition", () => {
     const payload = {
       name: "John",
