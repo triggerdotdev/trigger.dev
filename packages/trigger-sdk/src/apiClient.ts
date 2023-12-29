@@ -3,6 +3,7 @@ import {
   ApiEventLog,
   ApiEventLogSchema,
   CancelRunsForEventSchema,
+  CancelRunsForJobSchema,
   CompleteTaskBodyV2Input,
   ConnectionAuthSchema,
   EphemeralEventDispatcherRequestBody,
@@ -551,6 +552,26 @@ export class ApiClient {
       },
       body: JSON.stringify(body),
     });
+  }
+
+  async cancelRunsForJob(jobId: string) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Cancelling Runs for Job", {
+      jobId,
+    });
+
+    return await zodfetch(
+      CancelRunsForJobSchema,
+      `${this.#apiUrl}/api/v1/jobs/${jobId}/cancel-runs`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+      }
+    );
   }
 
   async createEphemeralEventDispatcher(payload: EphemeralEventDispatcherRequestBody) {
