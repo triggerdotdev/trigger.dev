@@ -3,7 +3,12 @@ on:
   workflow_call:
 jobs:
   publish:
-    runs-on: buildjet-4vcpu-ubuntu-2204
+    strategy:
+      fail-fast: true
+      matrix:
+        runs-on: [buildjet-4vcpu-ubuntu-2204, buildjet-4vcpu-ubuntu-2204-arm]
+    name: Publish Docker - ${{matrix.runs-on}}
+    runs-on: ${{matrix.runs-on}}
     outputs:
       version: ${{ steps.get_version.outputs.version }}
       short_sha: ${{ steps.get_commit.outputs.sha_short }}
@@ -35,6 +40,9 @@ jobs:
           else
             echo "Invalid reference: ${GITHUB_REF}"
             exit 1
+          fi
+          if [[ ${{matrix.runs-on}} == *-arm ]]; then
+            IMAGE_TAG="${IMAGE_TAG}-arm"
           fi
           echo "::set-output name=version::${IMAGE_TAG}"
       - name: 🔢 Get the commit hash
