@@ -4,10 +4,10 @@ on:
 jobs:
   publish:
     strategy:
-      fail-fast: true
+      fail-fast: true # when a job fails, all remaining ones will be cancelled
       matrix:
         runs-on: [buildjet-4vcpu-ubuntu-2204, buildjet-4vcpu-ubuntu-2204-arm]
-    name: Publish Docker - ${{matrix.runs-on}}
+    name: ${{matrix.runs-on}}
     runs-on: ${{matrix.runs-on}}
     outputs:
       version: ${{ steps.get_version.outputs.version }}
@@ -73,8 +73,12 @@ jobs:
       - name: 🐙 Push 'latest' to GitHub Container Registry
         if: startsWith(github.ref, 'refs/tags/v.docker')
         run: |
-          docker tag release_build_image $REGISTRY/$REPOSITORY:latest
-          docker push $REGISTRY/$REPOSITORY:latest
+          LATEST=latest
+          if [[ ${{matrix.runs-on}} == *-arm ]]; then
+            LATEST="${LATEST}-arm"
+          fi
+          docker tag release_build_image $REGISTRY/$REPOSITORY:$LATEST
+          docker push $REGISTRY/$REPOSITORY:$LATEST
         env:
           REGISTRY: ghcr.io/triggerdotdev
           REPOSITORY: trigger.dev
