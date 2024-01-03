@@ -2,8 +2,9 @@ import { User, Webhook } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
-import { Direction, RunListPresenter } from "./RunListPresenter.server";
+import { RunListPresenter } from "./RunListPresenter.server";
 import { organizationPath, projectPath } from "~/utils/pathBuilder";
+import { Direction } from "~/components/runs/RunStatuses";
 
 export class WebhookSourcePresenter {
   #prismaClient: PrismaClient;

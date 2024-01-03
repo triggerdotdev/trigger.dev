@@ -20,13 +20,8 @@ import {
   organizationIntegrationsPath,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "./ListPagination";
-
-export const DirectionSchema = z.union([z.literal("forward"), z.literal("backward")]);
-
-export const RunListSearchSchema = z.object({
-  cursor: z.string().optional(),
-  direction: DirectionSchema.optional(),
-});
+import { RunListSearchSchema } from "~/components/runs/RunStatuses";
+import { RunsFilters } from "~/components/runs/RunFilters";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -39,6 +34,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const presenter = new RunListPresenter();
   const list = await presenter.call({
     userId,
+    filterEnvironment: searchParams.environment,
+    filterStatus: searchParams.status,
     jobSlug: jobParam,
     projectSlug: projectParam,
     organizationSlug,
@@ -73,10 +70,14 @@ export default function Page() {
         {(open) => (
           <div className={cn("grid h-fit gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
             <div>
-              <div className="mb-2 flex items-center justify-end gap-x-2">
-                <HelpTrigger title="How do I run my Job?" />
-                <ListPagination list={list} />
+              <div className="mb-2 flex items-center justify-between gap-x-2">
+                <RunsFilters />
+                <div className="flex items-center justify-end gap-x-2">
+                  <HelpTrigger title="How do I run my Job?" />
+                  <ListPagination list={list} />
+                </div>
               </div>
+
               <RunsTable
                 total={list.runs.length}
                 hasFilters={false}
