@@ -48,18 +48,25 @@ export const apisList = [
     identifier: "anthropic",
     name: "Anthropic",
   },
-  {
-    identifier: "appsmith",
-    name: "Appsmith",
-  },
-  {
-    identifier: "appwrite",
-    name: "Appwrite",
-  },
+  // {
+  //   identifier: "appsmith",
+  //   name: "Appsmith",
+  // },
+  // {
+  //   identifier: "appwrite",
+  //   name: "Appwrite",
+  // },
   {
     identifier: "asana",
     name: "Asana",
     examples: [
+      {
+        title: "A job that is triggered by a Asana webhook.",
+        slug: "asana-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/asana-http-endpoint.ts",
+      },
       {
         title: "Get user details from Asana",
         slug: "get-user-details",
@@ -67,10 +74,6 @@ export const apisList = [
         codeUrl: "https://github.com/triggerdotdev/api-reference/raw/main/src/asana.ts",
       },
     ],
-  },
-  {
-    identifier: "atlassian",
-    name: "Atlassian",
   },
   {
     identifier: "aws",
@@ -184,6 +187,13 @@ export const apisList = [
     name: "Discord",
     examples: [
       {
+        title: "A job that is triggered by a Discord webhook.",
+        slug: "discord-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/discord-http-endpoint.ts",
+      },
+      {
         title: "Create a Discord bot and send a message to a channel.",
         slug: "discord-bot-send-message",
         version: "1.0.0",
@@ -198,26 +208,26 @@ export const apisList = [
       },
     ],
   },
-  {
-    identifier: "documenso",
-    name: "Documenso",
-  },
-  {
-    identifier: "dropbox",
-    name: "Dropbox",
-  },
-  {
-    identifier: "facebook",
-    name: "Facebook",
-  },
-  {
-    identifier: "fastify",
-    name: "Fastify",
-  },
-  {
-    identifier: "flickr",
-    name: "Flickr",
-  },
+  // {
+  //   identifier: "documenso",
+  //   name: "Documenso",
+  // },
+  // {
+  //   identifier: "dropbox",
+  //   name: "Dropbox",
+  // },
+  // {
+  //   identifier: "facebook",
+  //   name: "Facebook",
+  // },
+  // {
+  //   identifier: "fastify",
+  //   name: "Fastify",
+  // },
+  // {
+  //   identifier: "flickr",
+  //   name: "Flickr",
+  // },
   {
     identifier: "github",
     name: "GitHub",
@@ -399,6 +409,13 @@ export const apisList = [
     name: "Instagram",
     examples: [
       {
+        title: "A job that is triggered by a Instagram webhook.",
+        slug: "instagram-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/instagram-http-endpoint.ts",
+      },
+      {
         title: "Post an image to Instagram",
         slug: "post-image-to-instagram",
         version: "1.0.0",
@@ -406,14 +423,14 @@ export const apisList = [
       },
     ],
   },
-  {
-    identifier: "instabug",
-    name: "Instabug",
-  },
-  {
-    identifier: "keep",
-    name: "Keep",
-  },
+  // {
+  //   identifier: "instabug",
+  //   name: "Instabug",
+  // },
+  // {
+  //   identifier: "keep",
+  //   name: "Keep",
+  // },
   {
     identifier: "lemonsqueezy",
     name: "Lemon Squeezy",
@@ -426,10 +443,10 @@ export const apisList = [
       },
     ],
   },
-  {
-    identifier: "linkedin",
-    name: "LinkedIn",
-  },
+  // {
+  //   identifier: "linkedin",
+  //   name: "LinkedIn",
+  // },
   {
     identifier: "linear",
     name: "Linear",
@@ -469,10 +486,10 @@ export const apisList = [
       },
     ],
   },
-  {
-    identifier: "lotus",
-    name: "Lotus",
-  },
+  // {
+  //   identifier: "lotus",
+  //   name: "Lotus",
+  // },
   {
     identifier: "mailchimp",
     name: "Mailchimp",
@@ -607,10 +624,10 @@ export const apisList = [
       },
     ],
   },
-  {
-    identifier: "posthog",
-    name: "Posthog",
-  },
+  // {
+  //   identifier: "posthog",
+  //   name: "Posthog",
+  // },
   {
     identifier: "raycast",
     name: "Raycast",
@@ -664,6 +681,13 @@ export const apisList = [
     name: "Salesforce",
     examples: [
       {
+        title: "A job that is triggered by a Salesforce webhook.",
+        slug: "salesforce-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/salesforce-http-endpoint.ts",
+      },
+      {
         title: "Create a new contact in Salesforce.",
         slug: "salesforce-create-contact",
         version: "1.0.0",
@@ -675,6 +699,13 @@ export const apisList = [
     identifier: "segment",
     name: "Segment",
     examples: [
+      {
+        title: "A job that is triggered by a Segment webhook.",
+        slug: "segment-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/segment-http-endpoint.ts",
+      },
       {
         title: "Get source information from Segment.",
         slug: "segment-get-source-information",
@@ -762,10 +793,30 @@ export const apisList = [
     name: "Snyk",
     examples: [
       {
+        title: "A job that is triggered by a Snyk webhook.",
+        slug: "snyk-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/snyk-http-endpoint.ts",
+      },
+      {
         title: "Get user details from Snyk.",
         slug: "snyk-get-user-details",
         version: "1.0.0",
         codeUrl: "https://github.com/triggerdotdev/api-reference/raw/main/src/snyk.ts",
+      },
+    ],
+  },
+  {
+    identifier: "square",
+    name: "Square",
+    examples: [
+      {
+        title: "A job that is triggered by a Square webhook.",
+        slug: "square-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/square-http-endpoint.ts",
       },
     ],
   },
@@ -830,6 +881,16 @@ export const apisList = [
     name: "Svix",
     examples: [
       {
+        title: "A job that is triggered by a Svix webhook.",
+        slug: "svix-http-endpoint",
+        version: "1.0.0",
+        exampleType: ["http-endpoint"],
+        apisUsed: ["svix"],
+        tags: ["dev-ops"],
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/svix-http-endpoint.ts",
+      },
+      {
         title: "Create an application in Svix",
         slug: "svix-create-application",
         version: "1.0.0",
@@ -841,6 +902,13 @@ export const apisList = [
     identifier: "todoist",
     name: "Todoist",
     examples: [
+      {
+        title: "A job that is triggered by a Todoist webhook.",
+        slug: "todoist-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/todoist-http-endpoint.ts",
+      },
       {
         title: "Add a new project in Todoist.",
         slug: "todoist-add-new-project",
@@ -945,10 +1013,14 @@ export const apisList = [
         title: "Store name in Zapier",
         slug: "zapier-store-name",
         version: "1.0.0",
-        exampleType: ["api-reference"],
-        apisUsed: ["zapier"],
-        categories: ["dev-ops", "productivity"],
         codeUrl: "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/zapier.ts",
+      },
+      {
+        title: "A job that is triggered by a Zapier webhook.",
+        slug: "zapier-http-endpoint",
+        version: "1.0.0",
+        codeUrl:
+          "https://raw.githubusercontent.com/triggerdotdev/api-reference/main/src/zapier-http-endpoint.ts",
       },
     ],
   },
