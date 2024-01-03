@@ -26,10 +26,11 @@ import {
 } from "@heroicons/react/20/solid";
 import { Spinner } from "../primitives/Spinner";
 import { Paragraph } from "../primitives/Paragraph";
+import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 
 export function RunsFilters() {
   const navigate = useNavigate();
-  const location = useLocation();
+  const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
   const { environment, status } = RunListSearchSchema.parse(
     Object.fromEntries(searchParams.entries())
