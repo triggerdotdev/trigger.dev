@@ -2,7 +2,6 @@ import { Framework, getFramework } from "../frameworks";
 import { PackageManager, getUserPackageManager } from "./getUserPkgManager";
 import { Logger } from "./logger";
 import { run as ncuRun } from "npm-check-updates";
-import chalk from "chalk";
 import fs from "fs/promises";
 import pathModule from "path";
 
@@ -14,7 +13,7 @@ export abstract class JsRuntime {
     this.projectRootPath = projectRootPath;
   }
   abstract get id(): string;
-  abstract checkForOutdatedPackages(): Promise<void>;
+  abstract checkForOutdatedPackages(): Promise<{ from: string; to: string } | undefined>;
   abstract getUserPackageManager(): Promise<PackageManager | undefined>;
   abstract getFramework(): Promise<Framework | undefined>;
   abstract getEndpointId(): Promise<string | undefined>;
@@ -46,7 +45,7 @@ class NodeJsRuntime extends JsRuntime {
     return pathModule.join(this.projectRootPath, "package.json");
   }
 
-  async checkForOutdatedPackages(): Promise<void> {
+  async checkForOutdatedPackages(): Promise<{ from: string; to: string } | undefined> {
     const updates = (await ncuRun({
       packageFile: `${this.packageJsonPath}`,
       filter: "/trigger.dev/.+$/",
@@ -62,12 +61,27 @@ class NodeJsRuntime extends JsRuntime {
     const packageFile = await fs.readFile(this.packageJsonPath);
     const data = JSON.parse(Buffer.from(packageFile).toString("utf8"));
     const dependencies = data.dependencies;
-    console.log(chalk.bgYellow("Updates available for trigger.dev packages"));
-    console.log(chalk.bgBlue("Run npx @trigger.dev/cli@latest update"));
 
-    for (let dep in updates) {
-      console.log(`${dep}  ${dependencies[dep]}  →  ${updates[dep]}`);
+    const hasUpdates = Object.keys(updates).length > 0;
+
+    if (!hasUpdates) {
+      return;
     }
+
+    const firstDep = Object.keys(updates)[0];
+
+    if (!firstDep) {
+      return;
+    }
+
+    const from = dependencies[firstDep];
+    const to = updates[firstDep];
+
+    if (!to || !from) {
+      return;
+    }
+
+    return { from, to };
   }
 
   async getUserPackageManager() {
@@ -118,8 +132,8 @@ class DenoRuntime extends JsRuntime {
     }
   }
 
-  async checkForOutdatedPackages() {
-    // not implemented currently
+  async checkForOutdatedPackages(): Promise<{ from: string; to: string } | undefined> {
+    return;
   }
   async getUserPackageManager() {
     return undefined;

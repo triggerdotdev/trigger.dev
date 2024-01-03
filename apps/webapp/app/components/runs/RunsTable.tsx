@@ -73,11 +73,11 @@ export function RunsTable({
       <TableBody>
         {total === 0 && !hasFilters ? (
           <TableBlankRow colSpan={showJob ? 10 : 9}>
-            <NoRuns title="No Runs found" />
+            <NoRuns title="No runs found" />
           </TableBlankRow>
         ) : runs.length === 0 ? (
           <TableBlankRow colSpan={showJob ? 10 : 9}>
-            <NoRuns title="No Runs match your filters" />
+            <NoRuns title="No runs match your filters" />
           </TableBlankRow>
         ) : (
           runs.map((run) => {

@@ -27,6 +27,7 @@ import { Button } from "../primitives/Buttons";
 import { Callout } from "../primitives/Callout";
 import { DateTime } from "../primitives/DateTime";
 import { Header2 } from "../primitives/Headers";
+import { Icon } from "../primitives/Icon";
 import { NamedIcon } from "../primitives/NamedIcon";
 import {
   PageButtons,
@@ -143,18 +144,18 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
               value={formatDuration(run.startedAt, run.completedAt, { style: "short" })}
             />
             <PageInfoProperty
-              icon={"hourglass"}
+              icon={<Icon icon="alarm-filled" className="h-4 w-4 text-blue-500" />}
               label={"Execution Time"}
               value={formatDurationMilliseconds(run.executionDuration, { style: "short" })}
             />
             <PageInfoProperty
-              icon={"list-numbers"}
+              icon={<Icon icon="list-numbers" className="h-4 w-4 text-yellow-500" />}
               label={"Execution Count"}
-              value={run.executionCount}
+              value={<>{run.executionCount}</>}
             />
           </PageInfoGroup>
           <PageInfoGroup alignment="right">
-            <Paragraph variant="extra-small" className="text-slate-600">
+            <Paragraph variant="extra-small" className="whitespace-nowrap text-slate-600">
               RUN ID: {run.id}
             </Paragraph>
           </PageInfoGroup>

@@ -123,7 +123,7 @@ export default function Page() {
   });
 
   return (
-    <AppContainer showBackgroundGradient={true}>
+    <AppContainer>
       <MainCenteredContainer>
         <FormTitle LeadingIcon="user" title="Profile" />
         <Form method="post" {...form.props} className="max-w-md">

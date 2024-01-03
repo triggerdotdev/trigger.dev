@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/express",
-  "version": "2.2.11",
+  "version": "2.3.8",
   "description": "Official Express adapter for Trigger.dev",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -13,19 +13,25 @@
   ],
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "require": "./dist/index.js"
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     },
     "./package.json": "./package.json"
   },
   "devDependencies": {
-    "@trigger.dev/sdk": "workspace:^2.2.11",
+    "@trigger.dev/sdk": "workspace:^2.3.8",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/express": "^4.17.13",
     "rimraf": "^3.0.2",
-    "tsup": "^6.5.0",
-    "tsx": "^3.12.1"
+    "tsup": "8.0.1",
+    "tsx": "^3.12.1",
+    "@trigger.dev/tsup": "workspace:*",
+    "typescript": "^5.3.0"
   },
   "scripts": {
     "clean": "rimraf dist",
@@ -33,7 +39,7 @@
     "build:tsup": "tsup"
   },
   "peerDependencies": {
-    "@trigger.dev/sdk": "workspace:^2.2.11"
+    "@trigger.dev/sdk": "workspace:^2.3.8"
   },
   "dependencies": {
     "debug": "^4.3.4",
@@ -41,5 +47,6 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "module": "./dist/index.mjs"
 }

@@ -22,7 +22,7 @@ class Telemetry {
 
   constructor({ postHogApiKey, trigger }: Options) {
     if (postHogApiKey) {
-      this.#posthogClient = new PostHog(postHogApiKey, { host: "https://app.posthog.com" });
+      this.#posthogClient = new PostHog(postHogApiKey, { host: "https://eu.posthog.com" });
     } else {
       console.log("No PostHog API key, so analytics won't track");
     }

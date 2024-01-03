@@ -97,7 +97,7 @@ export default function Page() {
   });
 
   return (
-    <AppContainer showBackgroundGradient={true}>
+    <AppContainer>
       <MainCenteredContainer>
         <div>
           <FormTitle

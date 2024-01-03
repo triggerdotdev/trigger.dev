@@ -1,7 +1,7 @@
 import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
 import { Stripe } from "@trigger.dev/stripe";
 import { toHaveSucceeded, createJobTester } from "../src";
-import { expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { z } from "zod";
 
 expect.extend({ toHaveSucceeded });
@@ -97,4 +97,50 @@ test("stripe integration", async () => {
 
   // job run has expected output
   expect(testRun.output).toEqual({ id: "charge_1234" });
+});
+
+describe("isolation test", () => {
+  const jobToTest = client.defineJob({
+    id: "isolation-test",
+    name: "isolation-test",
+    version: "0.1.0",
+    trigger: eventTrigger({
+      name: "isolation-test",
+    }),
+    run: async (payload, io, ctx) => {
+      const number = await io.runTask("get-number", async () => {
+        return 42;
+      });
+      return { number };
+    },
+  });
+
+  test("run 1", async () => {
+    const testRun = await testJob(jobToTest, {
+      tasks: {
+        "get-number": 1,
+      },
+      payload: 1
+    });
+
+    // job run was successful
+    expect(testRun).toHaveSucceeded();
+
+    // job run has expected output
+    expect(testRun.output.number).toEqual(1);
+  });
+
+  test("run 2", async () => {
+    const testRun = await testJob(jobToTest, {
+      tasks: {
+        "get-number": 2,
+      },
+    });
+
+    // job run was successful
+    expect(testRun).toHaveSucceeded();
+
+    // job run has expected output
+    expect(testRun.output.number).toEqual(2);
+  });
 });

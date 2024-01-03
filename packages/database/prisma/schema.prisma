@@ -316,6 +316,8 @@ model RuntimeEnvironment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  tunnelId String?
+
   endpoints                Endpoint[]
   jobVersions              JobVersion[]
   events                   EventRecord[]
@@ -784,8 +786,9 @@ model JobRun {
   timedOutAt     DateTime?
   timedOutReason String?
 
-  executionCount    Int @default(0)
-  executionDuration Int @default(0)
+  executionCount        Int @default(0)
+  executionFailureCount Int @default(0)
+  executionDuration     Int @default(0)
 
   isTest     Boolean @default(false)
   preprocess Boolean @default(false)

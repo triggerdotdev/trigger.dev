@@ -1,5 +1,69 @@
 # create-trigger
 
+## 2.3.8
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.8
+- @trigger.dev/yalt@2.3.8
+
+## 2.3.7
+
+### Patch Changes
+
+- dfa47b62: Don't proxy certain headers across the Yalt boundary as it can mess-up proxied local requests
+- Updated dependencies [dfa47b62]
+  - @trigger.dev/yalt@2.3.7
+  - @trigger.dev/core@2.3.7
+
+## 2.3.6
+
+### Patch Changes
+
+- 812b5afe: Add support for the built-in Trigger.dev tunnel (Yalt)
+- Updated dependencies [812b5afe]
+  - @trigger.dev/yalt@2.3.6
+  - @trigger.dev/core@2.3.6
+
+## 2.3.5
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.5
+
+## 2.3.4
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.4
+
+## 2.3.3
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.3
+
+## 2.3.2
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.2
+
+## 2.3.1
+
+### Patch Changes
+
+- Updated dependencies [f3efcc0c]
+  - @trigger.dev/core@2.3.1
+
+## 2.3.0
+
+### Patch Changes
+
+- 17f6f29d: Added hono framework support
+- Updated dependencies [17f6f29d]
+  - @trigger.dev/core@2.3.0
+
 ## 2.2.11
 
 ### Patch Changes

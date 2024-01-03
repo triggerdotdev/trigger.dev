@@ -89,6 +89,7 @@
                 "documentation/quickstarts/astro",
                 "documentation/quickstarts/nuxt",
                 "documentation/quickstarts/sveltekit",
+                "documentation/quickstarts/hono",
                 "documentation/quickstarts/fastify"
               ]
             },
@@ -139,7 +140,7 @@
       "group": "Guides",
       "pages": [
         {
-          "group": "Platforms",
+          "group": "Frameworks",
           "pages": [
             "documentation/guides/platforms/nextjs",
             "documentation/guides/platforms/express",
@@ -335,6 +336,7 @@
                 "sdk/triggerclient/instancemethods/getevent",
                 "sdk/triggerclient/instancemethods/cancel-event",
                 "sdk/triggerclient/instancemethods/cancel-runs-for-event",
+                "sdk/triggerclient/instancemethods/cancel-runs-for-job",
                 "sdk/triggerclient/instancemethods/getruns",
                 "sdk/triggerclient/instancemethods/getrun",
                 "sdk/triggerclient/instancemethods/define-job",

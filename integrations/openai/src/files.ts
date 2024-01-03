@@ -1,4 +1,4 @@
-import { fileFromString } from "@trigger.dev/integration-kit";
+import { Buffer } from "node:buffer";
 import { IntegrationTaskKey } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 import { OpenAIRunTask } from "./index";
@@ -9,7 +9,7 @@ import {
   createTaskOutputProperties,
   handleOpenAIError,
 } from "./taskUtils";
-import { Uploadable } from "openai/uploads";
+import { Uploadable, toFile } from "openai/uploads";
 
 type CreateFileRequest = {
   file: string | File | Uploadable;
@@ -42,7 +42,7 @@ export class Files {
         let file: Uploadable;
 
         if (typeof params.file === "string") {
-          file = await fileFromString(params.file, params.fileName ?? "file.txt");
+          file = await toFile(Buffer.from(params.file), params.fileName ?? "file.txt");
         } else {
           file = params.file;
         }
@@ -81,7 +81,7 @@ export class Files {
         let file: Uploadable;
 
         if (typeof params.file === "string") {
-          file = await fileFromString(params.file, params.fileName ?? "file.txt");
+          file = await toFile(Buffer.from(params.file), params.fileName ?? "file.txt");
         } else {
           file = params.file;
         }
@@ -242,8 +242,8 @@ export class Files {
     return this.runTask(
       key,
       async (client, task) => {
-        const file = await fileFromString(
-          params.examples.map((d) => JSON.stringify(d)).join("\n"),
+        const file = await toFile(
+          Buffer.from(params.examples.map((d) => JSON.stringify(d)).join("\n")),
           params.fileName
         );
 

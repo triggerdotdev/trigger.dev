@@ -1,24 +1,25 @@
 import {
+  ConnectionAuth,
   DisplayProperty,
   EventFilter,
   HandleTriggerSource,
   HttpSourceResponseMetadata,
-  Logger,
   NormalizedResponse,
+  Prettify,
   RegisterTriggerSource,
   SendEvent,
+  SerializableJson,
   TriggerMetadata,
   deepMergeFilters,
 } from "@trigger.dev/core";
+import { Logger } from "@trigger.dev/core-backend";
+import type { Buffer } from "buffer";
 import { IOWithIntegrations, TriggerIntegration } from "../integrations";
 import { IO } from "../io";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
 import type { EventSpecification, SchemaParser, Trigger, TriggerContext } from "../types";
 import { slugifyId } from "../utils";
-import { SerializableJson } from "@trigger.dev/core";
-import { ConnectionAuth } from "@trigger.dev/core";
-import { Prettify } from "@trigger.dev/core";
 
 export type HttpSourceEvent = {
   url: string;

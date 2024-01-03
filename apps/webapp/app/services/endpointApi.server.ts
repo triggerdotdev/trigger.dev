@@ -123,6 +123,7 @@ export class EndpointApi {
         "x-trigger-api-key": this.apiKey,
         "x-trigger-action": "INDEX_ENDPOINT",
       },
+      redirect: "manual",
     });
 
     return {
@@ -444,6 +445,7 @@ function addStandardRequestOptions(options: RequestInit) {
       ...options.headers,
       "user-agent": "triggerdotdev-server/2.0.0",
       "x-trigger-version": API_VERSIONS.LAZY_LOADED_CACHED_TASKS,
+      accept: "application/json",
     },
   };
 }

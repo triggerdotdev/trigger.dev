@@ -9,9 +9,11 @@
     "lib": ["DOM", "DOM.Iterable"],
     "paths": {
       "@trigger.dev/sdk": ["../trigger-sdk/src/index"],
-      "@trigger.dev/sdk/*": ["../trigger-sdk/src/*"], 
+      "@trigger.dev/sdk/*": ["../trigger-sdk/src/*"],
       "@trigger.dev/core": ["../core/src/index"],
-      "@trigger.dev/core/*": ["../core/src/*"]
+      "@trigger.dev/core/*": ["../core/src/*"],
+      "@trigger.dev/tsup/*": ["../../config-packages/tsup/src/*"],
+      "@trigger.dev/tsup": ["../../config-packages/tsup/src/index"]
     }
   },
   "exclude": ["node_modules"]

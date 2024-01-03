@@ -1,7 +1,6 @@
 import fetch from "./fetchUseProxy";
 import { z } from "zod";
-import core from "@trigger.dev/core";
-const { GetEndpointIndexResponseSchema } = core;
+import { GetEndpointIndexResponseSchema } from "@trigger.dev/core";
 
 export type CreateEndpointOptions = {
   id: string;
@@ -25,9 +24,9 @@ export type EndpointData = {
 
 export type EndpointResponse =
   | {
-      ok: true;
-      data: EndpointData;
-    }
+    ok: true;
+    data: EndpointData;
+  }
   | { ok: false; error: string; retryable: boolean };
 
 const RETRYABLE_PATTERN = /Could not connect to endpoint/i;
@@ -56,13 +55,53 @@ const WhoamiResponseSchema = z.object({
   userId: z.string().optional(),
 });
 
+const CreateTunnelResponseSchema = z.object({
+  url: z.string(),
+});
+
 export type WhoamiResponse = z.infer<typeof WhoamiResponseSchema>;
 
 export class TriggerApi {
   constructor(
     private apiKey: string,
     private baseUrl: string
-  ) {}
+  ) { }
+
+  async supportsTunneling(): Promise<boolean> {
+    const response = await fetch(`${this.baseUrl}/api/v1/tunnels`, {
+      method: "HEAD",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+    });
+
+    return response.ok;
+  }
+
+  async createTunnel() {
+    const response = await fetch(`${this.baseUrl}/api/v1/tunnels`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Could not create tunnel: ${response.status}`);
+    }
+
+    const body = await response.json();
+
+    const parsedBody = CreateTunnelResponseSchema.safeParse(body);
+
+    if (!parsedBody.success) {
+      throw new Error(`Could not create tunnel: ${parsedBody.error.message}`);
+    }
+
+    return parsedBody.data;
+  }
 
   async whoami(): Promise<WhoamiResponse | undefined> {
     const response = await fetch(`${this.baseUrl}/api/v1/whoami`, {

@@ -1,0 +1,25 @@
+name = "yalt"
+main = "src/index.ts"
+compatibility_date = "2023-12-06"
+workers_dev = false
+logpush = true
+
+routes = [
+  { pattern = "*.yalt.dev/*", zone_name = "yalt.dev" },
+  { pattern = "yalt.dev/*", zone_name = "yalt.dev" },
+]
+
+[vars]
+WORKER_HOST = "yalt.dev"
+
+[[kv_namespaces]]
+binding = "tunnelIds"
+id = "e8cf1fcc9ad34fa0819694d86afa97ca"
+
+[[durable_objects.bindings]]
+name = "connections"
+class_name = "YaltConnection"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["YaltConnection"]

@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/cli",
-  "version": "2.2.11",
+  "version": "2.3.8",
   "description": "The Trigger.dev CLI",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -41,6 +41,7 @@
     "@types/mock-fs": "^4.13.1",
     "@types/node": "16",
     "@types/node-fetch": "^2.6.2",
+    "@types/ws": "^8.5.3",
     "rimraf": "^3.0.2",
     "tsup": "^6.5.0",
     "type-fest": "^3.6.0",
@@ -57,6 +58,7 @@
   },
   "dependencies": {
     "@trigger.dev/core": "workspace:*",
+    "@trigger.dev/yalt": "workspace:*",
     "@types/degit": "^2.8.3",
     "boxen": "^7.1.1",
     "chalk": "^5.2.0",
@@ -85,6 +87,7 @@
     "terminal-link": "^3.0.0",
     "tsconfck": "^2.1.2",
     "url": "^0.11.1",
+    "ws": "^8.11.0",
     "zod": "3.22.3"
   },
   "engines": {

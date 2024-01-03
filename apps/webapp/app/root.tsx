@@ -25,7 +25,7 @@ export const links: LinksFunction = () => {
 
 export const meta: TypedMetaFunction<typeof loader> = (args) => {
   return metaV1(args, {
-    title: `Trigger.dev${appEnvTitleTag(args.data.appEnv)}`,
+    title: `Trigger.dev${appEnvTitleTag(args.data?.appEnv)}`,
     charset: "utf-8",
     viewport: "width=1024, initial-scale=1",
   });
@@ -71,7 +71,7 @@ export function ErrorBoundary() {
           <Links />
         </head>
         <body className="h-full overflow-hidden bg-darkBackground">
-          <AppContainer showBackgroundGradient={true}>
+          <AppContainer>
             <MainCenteredContainer>
               <RouteErrorDisplay />
             </MainCenteredContainer>

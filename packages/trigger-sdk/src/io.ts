@@ -11,8 +11,6 @@ import {
   FetchTimeoutOptions,
   InitialStatusUpdate,
   IntervalOptions,
-  LogLevel,
-  Logger,
   RunTaskOptions,
   SendEvent,
   SendEventOptions,
@@ -21,6 +19,7 @@ import {
   UpdateWebhookBody,
   supportsFeature,
 } from "@trigger.dev/core";
+import { LogLevel, Logger } from "@trigger.dev/core-backend";
 import { BloomFilter } from "@trigger.dev/core-backend";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { webcrypto } from "node:crypto";
@@ -53,6 +52,7 @@ import {
 } from "./types";
 import { z } from "zod";
 import { KeyValueStore } from "./store/keyValueStore";
+import { Buffer } from "node:buffer";
 
 export type IOTask = ServerTask;
 

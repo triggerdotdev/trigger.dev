@@ -9,7 +9,7 @@ const supabase = new SupabaseManagement({
   id: "__SLUG__",
 });
 
-new Job(client, {
+client.defineJob({
   id: "on-new-todos",
   name: "On New Todos",
   version: "0.1.1",
@@ -32,7 +32,7 @@ const supabase = new SupabaseManagement({
   apiKey: process.env.SUPABASE_API_KEY!,
 });
 
-new Job(client, {
+client.defineJob({
   id: "on-new-todos",
   name: "On New Todos",
   version: "0.1.1",
@@ -136,7 +136,7 @@ const supabase = new Supabase<Database>({
   supabaseKey: process.env.SUPABASE_API_KEY!,
 });
 
-new Job(client, {
+client.defineJob({
   id: "on-new-users",
   name: "On New Users",
   version: "0.1.1",

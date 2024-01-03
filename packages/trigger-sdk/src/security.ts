@@ -1,4 +1,4 @@
-import crypto from "crypto";
+import crypto from "node:crypto";
 import type { BinaryToTextEncoding, BinaryLike, KeyObject } from "crypto";
 import { VerifyResult } from "./types";
 

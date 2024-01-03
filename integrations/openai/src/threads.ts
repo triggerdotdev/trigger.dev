@@ -16,7 +16,7 @@ export class Threads {
   constructor(
     private runTask: OpenAIRunTask,
     private options: OpenAIIntegrationOptions
-  ) { }
+  ) {}
 
   /**
    * Create a thread and run it in one task.
@@ -113,7 +113,7 @@ export class Threads {
           responseFilter: {
             status: [200],
             body: {
-              status: ["completed", "expired", "cancelled", "failed"],
+              status: ["completed", "expired", "cancelled", "failed", "requires_action"],
             },
           },
         });
@@ -262,7 +262,7 @@ class Runs {
   constructor(
     private runTask: OpenAIRunTask,
     private options: OpenAIIntegrationOptions
-  ) { }
+  ) {}
 
   /**
    * Creates a run and waits for it to complete by polling in the background.
@@ -306,7 +306,7 @@ class Runs {
           responseFilter: {
             status: [200],
             body: {
-              status: ["completed", "expired", "cancelled", "failed"],
+              status: ["completed", "expired", "cancelled", "failed", "requires_action"],
             },
           },
         });
@@ -355,7 +355,7 @@ class Runs {
           responseFilter: {
             status: [200],
             body: {
-              status: ["completed", "expired", "cancelled", "failed"],
+              status: ["completed", "expired", "cancelled", "failed", "requires_action"],
             },
           },
         });
@@ -552,7 +552,7 @@ class Messages {
   constructor(
     private runTask: OpenAIRunTask,
     private options: OpenAIIntegrationOptions
-  ) { }
+  ) {}
 
   /**
    * Returns messages for a given thread.
@@ -562,12 +562,12 @@ class Messages {
     threadId: string,
     params?: Prettify<OpenAI.Beta.Threads.MessageListParams>,
     options?: OpenAIRequestOptions
-  ): Promise<OpenAI.Beta.Threads.ThreadMessage[]>
+  ): Promise<OpenAI.Beta.Threads.ThreadMessage[]>;
   list(
     key: IntegrationTaskKey,
     threadId: string,
     options?: OpenAIRequestOptions
-  ): Promise<OpenAI.Beta.Threads.ThreadMessage[]>
+  ): Promise<OpenAI.Beta.Threads.ThreadMessage[]>;
   async list(
     key: IntegrationTaskKey,
     threadId: string,
@@ -615,7 +615,7 @@ class Messages {
   async listAll(
     key: IntegrationTaskKey,
     threadId: string,
-    options: OpenAIRequestOptions = {},
+    options: OpenAIRequestOptions = {}
   ): Promise<OpenAI.Beta.Threads.ThreadMessage[]> {
     return this.runTask(
       key,
