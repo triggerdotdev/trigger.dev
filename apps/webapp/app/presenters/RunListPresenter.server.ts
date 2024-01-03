@@ -1,3 +1,4 @@
+import { JobRunStatus, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
 import { PrismaClient, prisma } from "~/db.server";
 import { DirectionSchema } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/route";
@@ -11,6 +12,8 @@ type RunListOptions = {
   organizationSlug: string;
   projectSlug: string;
   direction?: Direction;
+  filterStatus?: JobRunStatus[];
+  filterEnvironment?: RuntimeEnvironmentType;
   cursor?: string;
   pageSize?: number;
 };
@@ -31,6 +34,8 @@ export class RunListPresenter {
     jobSlug,
     organizationSlug,
     projectSlug,
+    filterEnvironment,
+    filterStatus,
     direction = "forward",
     cursor,
     pageSize = DEFAULT_PAGE_SIZE,
@@ -115,6 +120,8 @@ export class RunListPresenter {
         environmentId: {
           in: environments.map((environment) => environment.id),
         },
+        status: filterStatus ? { in: filterStatus } : undefined,
+        environment: filterEnvironment ? { type: filterEnvironment } : undefined,
       },
       orderBy: [{ id: "desc" }],
       //take an extra record to tell if there are more
