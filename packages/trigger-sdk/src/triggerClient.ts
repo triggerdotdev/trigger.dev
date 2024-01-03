@@ -1065,6 +1065,10 @@ export class TriggerClient {
     return this.#client.invokeJob(jobId, payload, options);
   }
 
+  async cancelRunsForJob(jobId: string) {
+    return this.#client.cancelRunsForJob(jobId);
+  }
+
   async createEphemeralEventDispatcher(payload: EphemeralEventDispatcherRequestBody) {
     return this.#client.createEphemeralEventDispatcher(payload);
   }
@@ -1684,15 +1688,15 @@ export class TriggerClient {
         auth:
           resolvedAuth.type === "apiKey"
             ? {
-              type: "apiKey",
-              accessToken: resolvedAuth.token,
-              additionalFields: resolvedAuth.additionalFields,
-            }
+                type: "apiKey",
+                accessToken: resolvedAuth.token,
+                additionalFields: resolvedAuth.additionalFields,
+              }
             : {
-              type: "oauth2",
-              accessToken: resolvedAuth.token,
-              additionalFields: resolvedAuth.additionalFields,
-            },
+                type: "oauth2",
+                accessToken: resolvedAuth.token,
+                additionalFields: resolvedAuth.additionalFields,
+              },
       };
     } catch (resolverError) {
       if (resolverError instanceof Error) {
@@ -1709,8 +1713,9 @@ export class TriggerClient {
 
       return {
         ok: false,
-        error: `Auth could not be resolved for ${integration.id
-          }: auth resolver threw an unknown error: ${JSON.stringify(resolverError)}`,
+        error: `Auth could not be resolved for ${
+          integration.id
+        }: auth resolver threw an unknown error: ${JSON.stringify(resolverError)}`,
       };
     }
   }
@@ -1737,8 +1742,8 @@ export class TriggerClient {
         typeof job.options.concurrencyLimit === "number"
           ? job.options.concurrencyLimit
           : typeof job.options.concurrencyLimit === "object"
-            ? { id: job.options.concurrencyLimit.id, limit: job.options.concurrencyLimit.limit }
-            : undefined,
+          ? { id: job.options.concurrencyLimit.id, limit: job.options.concurrencyLimit.limit }
+          : undefined,
     };
   }
 
