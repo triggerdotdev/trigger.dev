@@ -9,9 +9,5 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "packageManager": "pnpm@7.13.5",
-  "dependencies": {
-    "optional": "^0.1.4",
-    "sharp": "^0.33.1"
-  }
+  "packageManager": "pnpm@7.13.5"
 }
