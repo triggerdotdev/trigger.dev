@@ -98,7 +98,7 @@ export function RunsFilters() {
             {statusKeys.map((status) => (
               <SelectItem key={status} value={status}>
                 {
-                  <span className="flex items-center gap-1 text-xxs font-medium uppercase tracking-wider">
+                  <span className="flex items-center gap-1 text-xs">
                     <FilterStatusIcon status={status} className="h-4 w-4" />
                     <FilterStatusLabel status={status} />
                   </span>
