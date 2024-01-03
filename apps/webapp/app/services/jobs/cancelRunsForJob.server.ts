@@ -11,6 +11,9 @@ const CANCELLABLE_JOB_RUN_STATUS: JobRunStatus[] = [
   JobRunStatus.WAITING_ON_CONNECTIONS,
   JobRunStatus.PREPROCESSING,
   JobRunStatus.STARTED,
+  JobRunStatus.EXECUTING,
+  JobRunStatus.WAITING_TO_CONTINUE,
+  JobRunStatus.WAITING_TO_EXECUTE,
 ];
 
 export class CancelRunsForJobService {
