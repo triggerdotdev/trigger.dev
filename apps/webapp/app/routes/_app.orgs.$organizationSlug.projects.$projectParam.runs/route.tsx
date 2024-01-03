@@ -139,6 +139,8 @@ export default function Page() {
 
   const handleFilterChange = (filterType: string, value: string) => {
     url.set(filterType, value);
+    url.delete("cursor");
+    url.delete("direction");
     navigate(`${location.pathname}?${url.toString()}`);
   };
 
