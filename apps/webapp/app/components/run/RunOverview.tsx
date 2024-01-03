@@ -10,7 +10,7 @@ import {
   useNavigate,
   useNavigation,
 } from "@remix-run/react";
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
+import { RuntimeEnvironmentType, User } from "@trigger.dev/database";
 import { useMemo } from "react";
 import { usePathName } from "~/hooks/usePathName";
 import type { RunBasicStatus } from "~/models/jobRun.server";
@@ -66,11 +66,12 @@ type RunOverviewProps = {
     run: string;
     runsPath: string;
   };
+  currentUser: User;
 };
 
 const taskPattern = /\/tasks\/(.*)/;
 
-export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps) {
+export function RunOverview({ run, trigger, showRerun, paths, currentUser }: RunOverviewProps) {
   const navigate = useNavigate();
   const pathName = usePathName();
 
@@ -89,6 +90,9 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
       return taskId;
     }
   }, [pathName]);
+
+  const usernameForEnv =
+    currentUser.id !== run.environment.userId ? run.environment.userName : undefined;
 
   return (
     <PageContainer>
@@ -136,7 +140,7 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
             <PageInfoProperty icon={"property"} label={"Version"} value={`v${run.version}`} />
             <PageInfoProperty
               label={"Env"}
-              value={<EnvironmentLabel environment={run.environment} />}
+              value={<EnvironmentLabel environment={run.environment} userName={usernameForEnv} />}
             />
             <PageInfoProperty
               icon={"clock"}

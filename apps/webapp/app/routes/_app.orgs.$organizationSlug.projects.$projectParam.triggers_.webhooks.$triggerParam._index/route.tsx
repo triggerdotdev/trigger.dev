@@ -9,6 +9,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { RunsTable } from "~/components/runs/RunsTable";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useUser } from "~/hooks/useUser";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
@@ -105,10 +106,7 @@ export const handle: Handle = {
         <BreadcrumbIcon />
         <BreadcrumbLink to={projectWebhookTriggersPath(org, project)} title="Webhook Triggers" />
         <BreadcrumbIcon />
-        <BreadcrumbLink
-          to={trimTrailingSlash(match.pathname)}
-          title={data.trigger.key}
-        />
+        <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title={data.trigger.key} />
       </Fragment>
     );
   },
@@ -118,6 +116,7 @@ export default function Page() {
   const { trigger } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
+  const user = useUser();
   const navigation = useNavigation();
   const lastSubmission = useActionData();
 
@@ -135,17 +134,17 @@ export default function Page() {
   return (
     <>
       <Paragraph variant="small" spacing>
-        Webhook Triggers need to be registered with the external service. You can see the list
-        of attempted registrations below.
+        Webhook Triggers need to be registered with the external service. You can see the list of
+        attempted registrations below.
       </Paragraph>
 
-      {!trigger.active &&
+      {!trigger.active && (
         <Form method="post" {...form.props}>
-        <Callout variant="error" className="justiy-between mb-4 items-center">
-          <Paragraph variant="small" className={cn(variantClasses.error.textColor, "grow")}>
-            Registration hasn't succeeded yet, check the runs below.
-          </Paragraph>
-          {/* <input
+          <Callout variant="error" className="justiy-between mb-4 items-center">
+            <Paragraph variant="small" className={cn(variantClasses.error.textColor, "grow")}>
+              Registration hasn't succeeded yet, check the runs below.
+            </Paragraph>
+            {/* <input
             {...conform.input(jobId, { type: "hidden" })}
             defaultValue={trigger.registrationJob?.id}
           />
@@ -159,8 +158,9 @@ export default function Page() {
           >
             {isLoading ? "Retrying…" : "Retry now"}
           </Button> */}
-        </Callout>
-      </Form>}
+          </Callout>
+        </Form>
+      )}
 
       {trigger.runList ? (
         <>
@@ -170,6 +170,7 @@ export default function Page() {
             total={trigger.runList.runs.length}
             hasFilters={false}
             runsParentPath={webhookTriggerRunsParentPath(organization, project, trigger)}
+            currentUser={user}
           />
           <ListPagination list={trigger.runList} className="mt-2 justify-end" />
         </>

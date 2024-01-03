@@ -10,6 +10,7 @@ import { RunsTable } from "~/components/runs/RunsTable";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useUser } from "~/hooks/useUser";
 import { RunListPresenter } from "~/presenters/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -57,6 +58,7 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const job = useJob();
+  const user = useUser();
 
   return (
     <>
@@ -81,6 +83,7 @@ export default function Page() {
                 runs={list.runs}
                 isLoading={isLoading}
                 runsParentPath={jobRunsParentPath(organization, project, job)}
+                currentUser={user}
               />
               <ListPagination list={list} className="mt-2 justify-end" />
             </div>

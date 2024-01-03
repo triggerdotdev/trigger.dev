@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { PrismaClient, prisma } from "~/db.server";
 import { DirectionSchema } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/route";
+import { getUsername } from "~/utils/username";
 
 export type Direction = z.infer<typeof DirectionSchema>;
 
@@ -44,7 +45,6 @@ export class RunListPresenter {
       },
     });
 
-
     // Find the project scoped to the organization
     const project = await this.#prismaClient.project.findFirstOrThrow({
       where: {
@@ -57,19 +57,17 @@ export class RunListPresenter {
     const environments = await this.#prismaClient.runtimeEnvironment.findMany({
       where: {
         projectId: project.id,
-        OR: [
-          { orgMember: { userId } },
-          { orgMemberId: null },
-        ]
-      }
+      },
     });
 
-    const job = jobSlug ? await this.#prismaClient.job.findFirstOrThrow({
-      where: {
-        slug: jobSlug,
-        projectId: project.id,
-      },
-    }) : undefined;
+    const job = jobSlug
+      ? await this.#prismaClient.job.findFirstOrThrow({
+          where: {
+            slug: jobSlug,
+            projectId: project.id,
+          },
+        })
+      : undefined;
 
     const runs = await this.#prismaClient.jobRun.findMany({
       select: {
@@ -87,7 +85,13 @@ export class RunListPresenter {
             slug: true,
             orgMember: {
               select: {
-                userId: true,
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    displayName: true,
+                  },
+                },
               },
             },
           },
@@ -119,8 +123,8 @@ export class RunListPresenter {
       skip: cursor ? 1 : 0,
       cursor: cursor
         ? {
-          id: cursor,
-        }
+            id: cursor,
+          }
         : undefined,
     });
 
@@ -163,7 +167,8 @@ export class RunListPresenter {
         environment: {
           type: run.environment.type,
           slug: run.environment.slug,
-          userId: run.environment.orgMember?.userId,
+          userId: run.environment.orgMember?.user.id,
+          userName: getUsername(run.environment.orgMember?.user),
         },
         job: run.job,
       })),

@@ -44,6 +44,7 @@ import { z } from "zod";
 import { ActivateSourceService } from "~/services/sources/activateSource.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { nanoid } from "nanoid";
+import { useUser } from "~/hooks/useUser";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -130,6 +131,7 @@ export default function Page() {
   const { trigger } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
+  const user = useUser();
   const navigation = useNavigation();
   const lastSubmission = useActionData();
 
@@ -234,6 +236,7 @@ export default function Page() {
                 total={trigger.runList.runs.length}
                 hasFilters={false}
                 runsParentPath={externalTriggerRunsParentPath(organization, project, trigger)}
+                currentUser={user}
               />
               <ListPagination list={trigger.runList} className="mt-2 justify-end" />
             </>
