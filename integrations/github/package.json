@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/github",
-  "version": "2.3.6",
+  "version": "2.3.8",
   "description": "The official GitHub integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -11,8 +11,8 @@
     "dist"
   ],
   "devDependencies": {
-    "@octokit/types": "^9.2.3",
-    "@octokit/webhooks-types": "^6.10.0",
+    "@octokit/types": "^12.4.0",
+    "@octokit/webhooks-types": "^7.3.1",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "18",
     "rimraf": "^3.0.2",
@@ -26,12 +26,12 @@
     "build:tsup": "tsup"
   },
   "dependencies": {
-    "@octokit/request": "^6.2.5",
-    "@octokit/request-error": "^4.0.1",
-    "@octokit/webhooks": "^10.4.0",
-    "@trigger.dev/integration-kit": "workspace:^2.3.6",
-    "@trigger.dev/sdk": "workspace:^2.3.6",
-    "octokit": "^2.0.14",
+    "@octokit/request": "^8.1.6",
+    "@octokit/request-error": "^5.0.1",
+    "@octokit/webhooks": "^12.0.10",
+    "octokit": "^3.1.2",
+    "@trigger.dev/integration-kit": "workspace:^2.3.8",
+    "@trigger.dev/sdk": "workspace:^2.3.8",
     "zod": "3.22.3"
   },
   "engines": {

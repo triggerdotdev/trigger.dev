@@ -36,7 +36,7 @@ export async function createRequestMessage(id: string, request: Request): Promis
   return {
     type: "request",
     id,
-    headers: Object.fromEntries(headers),
+    headers: stripHeaders(Object.fromEntries(headers)),
     method,
     url,
     body,
@@ -86,26 +86,48 @@ export class YaltApiClient {
   }
 }
 
-export type YaltTunnelOptions = {
+export type YaltTunnelSocketOptions = {
   WebSocket?: any;
   connectionTimeout?: number;
   maxRetries?: number;
 };
+
+export type YaltTunnelOptions = {
+  verbose?: boolean;
+};
+
 export class YaltTunnel {
   socket?: WebSocket;
 
   constructor(
     private url: string,
     private address: string,
+    private socketOptions: YaltTunnelSocketOptions = {},
     private options: YaltTunnelOptions = {}
   ) {}
 
+  private log(message: string, properties: Record<string, any> = {}) {
+    if (this.options.verbose) {
+      console.log(JSON.stringify({ message, ...properties }));
+    }
+  }
+
   async connect() {
-    this.socket = new WebSocket(`wss://${this.url}/connect`, [], this.options);
+    this.log("Connecting to tunnel", {
+      url: this.url,
+      address: this.address,
+      socketOptions: this.socketOptions,
+    });
 
-    this.socket.addEventListener("open", () => {});
+    this.socket = new WebSocket(`wss://${this.url}/connect`, [], this.socketOptions);
 
-    this.socket.addEventListener("close", (event) => {});
+    this.socket.addEventListener("open", (args) => {
+      this.log("Connected to tunnel");
+    });
+
+    this.socket.addEventListener("close", (event) => {
+      this.log("Disconnected from tunnel", { event: event.code, reason: event.reason });
+    });
 
     this.socket.addEventListener("message", async (event) => {
       const data = JSON.parse(
@@ -115,7 +137,7 @@ export class YaltTunnel {
       const message = ServerMessages.safeParse(data);
 
       if (!message.success) {
-        console.error(message.error);
+        this.log("Received invalid message", { data });
         return;
       }
 
@@ -132,7 +154,7 @@ export class YaltTunnel {
     });
 
     this.socket.addEventListener("error", (event) => {
-      console.error(event);
+      this.log("Socket error", { error: event.message });
     });
   }
 
@@ -147,13 +169,31 @@ export class YaltTunnel {
 
     let response: Response | null = null;
 
+    this.log("Sending local request", {
+      originalUrl: originalUrl.href,
+      requestId: request.id,
+      headers: request.headers,
+    });
+
     try {
       response = await fetch(originalUrl.href, {
         method: request.method,
-        headers: request.headers,
+        headers: stripHeaders(request.headers),
         body: request.body,
       });
     } catch (error) {
+      if (error instanceof Error) {
+        this.log("Error sending local request", {
+          error: error.message,
+          name: error.name,
+          stack: error.stack,
+          requestId: request.id,
+          cause: "cause" in error ? error.cause : undefined,
+        });
+      } else {
+        this.log("Error sending local request", { error, requestId: request.id });
+      }
+
       // Return a 502 response
       response = new Response(
         JSON.stringify({
@@ -164,15 +204,33 @@ export class YaltTunnel {
     }
 
     try {
-      await sendResponse(request.id, response, this.socket);
+      await this.sendResponse(request.id, response, this.socket);
     } catch (error) {
       console.error(error);
     }
   }
+
+  private async sendResponse(id: string, response: Response, socket: WebSocket) {
+    const message = await createResponseMessage(id, response);
+
+    this.log("Sending response", { requestId: id, status: response.status });
+
+    return socket.send(JSON.stringify(message));
+  }
 }
 
-async function sendResponse(id: string, response: Response, socket: WebSocket) {
-  const message = await createResponseMessage(id, response);
+// Remove headers that should not be included like connection, host, etc
+function stripHeaders(headers: Record<string, string>) {
+  const blacklistHeaders = [
+    "connection",
+    "cf-ray",
+    "cf-connecting-ip",
+    "host",
+    "cf-ipcountry",
+    "content-length",
+  ];
 
-  return socket.send(JSON.stringify(message));
+  return Object.fromEntries(
+    Object.entries(headers).filter(([key]) => !blacklistHeaders.includes(key.toLowerCase()))
+  );
 }

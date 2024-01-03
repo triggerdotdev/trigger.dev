@@ -213,19 +213,26 @@ export default app;
 
 ### Deno
 
-Deno works similarly to Bun, but the imports are slightly different. First, import the `@trigger.dev/sdk` and `@trigger.dev/hono` packages using [npm: specifiers](https://docs.deno.com/runtime/manual/node/npm_specifiers)
-
+Import trigger.dev packages with Deno using [npm: specifiers](https://docs.deno.com/runtime/manual/node/npm_specifiers):
 ```ts index.ts
 import { createMiddleware } from "npm:@trigger.dev/hono@latest";
 import { TriggerClient, invokeTrigger } from "npm:@trigger.dev/sdk@latest";
 import { Hono } from "npm:hono"; // Make sure to use the npm specifier for hono as well
 ```
 
-Deno doesn't automatically load environment variables from a `.env` file, so you'll need to load them manually using the `dotenv` package:
+To load a `.env` file on startup, pass the `deno run` command a `--env` flag:
+```bash
+deno run --env --allow-net --watch index.ts
+```
 
+You can also load an environment variables file in code using the `dotenv` package:
 ```ts index.ts
 import { load } from "https://deno.land/std@0.208.0/dotenv/mod.ts";
 const env = await load();
+```
+In which case you need to pass the `--allow-env` and `--allow-read` flags:
+```bash
+deno run --allow-env --allow-net --allow-read --watch index.ts
 ```
 
 Now we can create the `TriggerClient`, define our jobs, and create the middleware:
@@ -373,7 +380,7 @@ yarn dlx @trigger.dev/cli@latest dev --client-id hono-client -p 8787 -H localhos
 Run your Hono app locally, like you normally would. For example:
 
 ```bash
-deno run --allow-net --allow-read --watch index.ts
+deno run --env --allow-net --watch index.ts
 ```
 
 In a **_separate terminal window or tab_** run:

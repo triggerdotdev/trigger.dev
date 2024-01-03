@@ -2,6 +2,7 @@ name = "yalt"
 main = "src/index.ts"
 compatibility_date = "2023-12-06"
 workers_dev = false
+logpush = true
 
 routes = [
   { pattern = "*.yalt.dev/*", zone_name = "yalt.dev" },

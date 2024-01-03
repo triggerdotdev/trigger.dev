@@ -34,6 +34,7 @@
     "edge-cases": "nodemon --watch src/edge-cases.ts -r tsconfig-paths/register -r dotenv/config src/edge-cases.ts",
     "notifications": "nodemon --watch src/notifications.ts -r tsconfig-paths/register -r dotenv/config src/notifications.ts",
     "shopify": "nodemon --watch src/shopify.ts -r tsconfig-paths/register -r dotenv/config src/shopify.ts",
+    "canceling": "nodemon --watch src/canceling.ts -r tsconfig-paths/register -r dotenv/config src/canceling.ts",
     "dev:trigger": "trigger-cli dev --port 8080"
   },
   "dependencies": {

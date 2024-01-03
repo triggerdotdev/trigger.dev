@@ -516,11 +516,16 @@ async function createNativeTunnel(
     // import WS dynamically
     const WebSocket = await import("ws");
 
-    yaltTunnel = new YaltTunnel(response.url, `${hostname}:${port}`, {
-      WebSocket: WebSocket.default,
-      connectionTimeout: 1000,
-      maxRetries: 10,
-    });
+    yaltTunnel = new YaltTunnel(
+      response.url,
+      `${hostname}:${port}`,
+      {
+        WebSocket: WebSocket.default,
+        connectionTimeout: 1000,
+        maxRetries: 10,
+      },
+      { verbose: process.env.TUNNEL_VERBOSE === "1" }
+    );
 
     await yaltTunnel.connect();
 
