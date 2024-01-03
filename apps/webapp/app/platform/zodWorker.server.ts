@@ -148,7 +148,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       return true;
     }
 
-    this.#logDebug("Initializing worker queue with options", {
+    this.#logDebug("Initializing graphile worker queue with options", {
       runnerOptions: this.#runnerOptions,
     });
 
@@ -163,7 +163,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     });
 
     if (!this.#runner) {
-      throw new Error("Failed to initialize worker queue");
+      throw new Error("Failed to initialize graphile worker queue");
     }
 
     this.#runner?.events.on("pool:create", ({ workerPool }) => {

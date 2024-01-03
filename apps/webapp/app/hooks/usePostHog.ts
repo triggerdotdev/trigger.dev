@@ -17,7 +17,7 @@ export const usePostHog = (apiKey?: string, logging = false, debug = false): voi
     if (postHogInitialized.current === true) return;
     if (logging) console.log("Initializing PostHog");
     posthog.init(apiKey, {
-      api_host: "https://app.posthog.com",
+      api_host: "https://eu.posthog.com",
       opt_in_site_apps: true,
       debug,
       loaded: function (posthog) {

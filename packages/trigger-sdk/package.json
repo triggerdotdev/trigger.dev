@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sdk",
-  "version": "2.3.6",
+  "version": "2.3.8",
   "description": "trigger.dev Node.JS SDK",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -30,8 +30,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:^2.3.6",
-    "@trigger.dev/core-backend": "workspace:^2.3.6",
+    "@trigger.dev/core": "workspace:^2.3.8",
+    "@trigger.dev/core-backend": "workspace:^2.3.8",
     "chalk": "^5.2.0",
     "cronstrue": "^2.21.0",
     "debug": "^4.3.4",

@@ -15,3 +15,4 @@ export * from "./runs";
 export * from "./addMissingVersionField";
 export * from "./statuses";
 export * from "./request";
+export * from "./jobs";
