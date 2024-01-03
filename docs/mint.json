@@ -47,8 +47,8 @@
       "url": "sdk"
     },
     {
-      "name": "Example Jobs",
-      "url": "examples"
+      "name": "Examples",
+      "url": "https://trigger.dev/apis"
     }
   ],
   "redirects": [
