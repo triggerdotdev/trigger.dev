@@ -1,6 +1,7 @@
 import { useLocation } from "@remix-run/react";
 import { LinkButton } from "~/components/primitives/Buttons";
-import { Direction, RunList } from "~/presenters/RunListPresenter.server";
+import { Direction } from "~/components/runs/RunStatuses";
+import { RunList } from "~/presenters/RunListPresenter.server";
 import { WebhookDeliveryList } from "~/presenters/WebhookDeliveryListPresenter.server";
 import { cn } from "~/utils/cn";
 

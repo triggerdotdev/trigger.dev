@@ -2,7 +2,6 @@ import { Outlet } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
   PageHeader,
   PageInfoGroup,
@@ -12,8 +11,10 @@ import {
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
+import { RunListSearchSchema } from "~/components/runs/RunStatuses";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { WebhookSourcePresenter } from "~/presenters/WebhookSourcePresenter.server";
 import { requireUser } from "~/services/session.server";
 import {
   TriggerSourceParamSchema,
@@ -21,8 +22,6 @@ import {
   webhookDeliveryPath,
   webhookTriggerPath,
 } from "~/utils/pathBuilder";
-import { RunListSearchSchema } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/route";
-import { WebhookSourcePresenter } from "~/presenters/WebhookSourcePresenter.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -77,11 +76,7 @@ export default function Page() {
               value={trigger.integration.slug}
               to={trigger.integrationLink}
             />
-            <PageInfoProperty
-              icon="webhook"
-              label="HTTP Endpoint"
-              to={trigger.httpEndpointLink}
-            />
+            <PageInfoProperty icon="webhook" label="HTTP Endpoint" to={trigger.httpEndpointLink} />
           </PageInfoGroup>
         </PageInfoRow>
         <PageTabs

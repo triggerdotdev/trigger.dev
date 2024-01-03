@@ -1,10 +1,12 @@
-import { JobRunStatus, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
+import {
+  Direction,
+  FilterableEnvironment,
+  FilterableStatus,
+  filterableStatuses,
+} from "~/components/runs/RunStatuses";
 import { PrismaClient, prisma } from "~/db.server";
-import { DirectionSchema } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/route";
 import { getUsername } from "~/utils/username";
-
-export type Direction = z.infer<typeof DirectionSchema>;
 
 type RunListOptions = {
   userId: string;
@@ -12,8 +14,8 @@ type RunListOptions = {
   organizationSlug: string;
   projectSlug: string;
   direction?: Direction;
-  filterStatus?: JobRunStatus[];
-  filterEnvironment?: RuntimeEnvironmentType;
+  filterStatus?: FilterableStatus;
+  filterEnvironment?: FilterableEnvironment;
   cursor?: string;
   pageSize?: number;
 };
@@ -40,6 +42,8 @@ export class RunListPresenter {
     cursor,
     pageSize = DEFAULT_PAGE_SIZE,
   }: RunListOptions) {
+    const filterStatuses = filterStatus ? filterableStatuses[filterStatus] : undefined;
+
     const directionMultiplier = direction === "forward" ? 1 : -1;
 
     // Find the organization that the user is a member of
@@ -120,7 +124,7 @@ export class RunListPresenter {
         environmentId: {
           in: environments.map((environment) => environment.id),
         },
-        status: filterStatus ? { in: filterStatus } : undefined,
+        status: filterStatuses ? { in: filterStatuses } : undefined,
         environment: filterEnvironment ? { type: filterEnvironment } : undefined,
       },
       orderBy: [{ id: "desc" }],
