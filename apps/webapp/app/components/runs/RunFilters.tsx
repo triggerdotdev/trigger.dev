@@ -1,21 +1,3 @@
-import { cn } from "~/utils/cn";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../primitives/Select";
-import { useLocation, useNavigate } from "@remix-run/react";
-import {
-  FilterableEnvironment,
-  FilterableStatus,
-  RunListSearchSchema,
-  environmentKeys,
-  statusKeys,
-} from "./RunStatuses";
-import { EnvironmentLabel, environmentTitle } from "../environments/EnvironmentLabel";
 import {
   CheckCircleIcon,
   ClockIcon,
@@ -24,9 +6,27 @@ import {
   PauseCircleIcon,
   XCircleIcon,
 } from "@heroicons/react/20/solid";
-import { Spinner } from "../primitives/Spinner";
-import { Paragraph } from "../primitives/Paragraph";
+import { useNavigate } from "@remix-run/react";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { cn } from "~/utils/cn";
+import { EnvironmentLabel } from "../environments/EnvironmentLabel";
+import { Paragraph } from "../primitives/Paragraph";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../primitives/Select";
+import { Spinner } from "../primitives/Spinner";
+import {
+  FilterableEnvironment,
+  FilterableStatus,
+  RunListSearchSchema,
+  environmentKeys,
+  statusKeys,
+} from "./RunStatuses";
 
 export function RunsFilters() {
   const navigate = useNavigate();
