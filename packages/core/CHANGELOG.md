@@ -1,5 +1,11 @@
 # internal-platform
 
+## 2.3.9
+
+### Patch Changes
+
+- 740b7b23: feat: Add $not to eventFilters
+
 ## 2.3.8
 
 ## 2.3.7
