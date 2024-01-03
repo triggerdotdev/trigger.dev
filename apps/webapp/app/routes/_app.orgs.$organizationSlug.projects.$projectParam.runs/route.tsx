@@ -187,8 +187,8 @@ export default function Page() {
                   <SelectContent>
                     {environmentKeys.map((env) => (
                       <SelectItem key={env} value={env}>
-                        {
-                          <div className="flex gap-x-2">
+                        <div className="flex gap-x-2">
+                          {env !== "ALL" && (
                             <span
                               className={cn(
                                 "inline-flex h-4 items-center justify-center rounded-[2px] px-1 text-xxs font-medium uppercase tracking-wider text-midnight-900",
@@ -197,15 +197,15 @@ export default function Page() {
                             >
                               {filterEnvironmentTitle(env)}
                             </span>
-                            <span
-                              className={cn(
-                                "inline-flex h-4 items-center justify-center px-1 text-xxs font-medium uppercase tracking-wider text-dimmed"
-                              )}
-                            >
-                              {env === "ALL" ? env + " Environments" : env}
-                            </span>
-                          </div>
-                        }
+                          )}
+                          <span
+                            className={cn(
+                              "inline-flex h-4 items-center justify-center pl-1 text-xxs font-medium uppercase tracking-wider text-dimmed"
+                            )}
+                          >
+                            {env === "ALL" ? env + " Environments" : env}
+                          </span>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -270,7 +270,7 @@ function filterEnvironmentTitle(environment: ExtendedRuntimeEnvironmentType) {
 function filterEnvironmentColorClassName(environment: ExtendedRuntimeEnvironmentType) {
   switch (environment) {
     case "ALL":
-      return "bg-white";
+      return "bg-indigo-500";
     case "PRODUCTION":
       return "bg-green-500";
     case "STAGING":
@@ -295,7 +295,7 @@ export function FilterStatusIcon({
 }) {
   switch (status) {
     case "ALL":
-      return <ChartBarIcon className={cn(className, "text-white")} />;
+      return <span className="w-[0.0625rem]"></span>;
     case "COMPLETED":
       return <CheckCircleIcon className={cn(filterStatusClassNameColor(status), className)} />;
     case "WAITING":
