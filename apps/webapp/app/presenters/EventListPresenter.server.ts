@@ -65,6 +65,7 @@ export class EventListPresenter {
         deliveredAt: true,
         isTest: true,
         createdAt: true,
+        cancelledAt: true,
         environment: {
           select: {
             type: true,
@@ -143,6 +144,7 @@ export class EventListPresenter {
         deliverAt: event.deliverAt,
         deliveredAt: event.deliveredAt,
         createdAt: event.createdAt,
+        cancelledAt: event.cancelledAt,
         isTest: event.isTest,
         environment: {
           type: event.environment.type,

@@ -28,6 +28,7 @@ type EventTableItem = {
   isTest: boolean;
   deliverAt: Date | null;
   deliveredAt: Date | null;
+  cancelledAt: Date | null;
   runs: number;
 };
 
@@ -57,6 +58,7 @@ export function EventsTable({
           <TableHeaderCell>Received Time</TableHeaderCell>
           <TableHeaderCell>Delivery Time</TableHeaderCell>
           <TableHeaderCell>Delivered</TableHeaderCell>
+          <TableHeaderCell>Canceled Time</TableHeaderCell>
           <TableHeaderCell>Test</TableHeaderCell>
           <TableHeaderCell>Runs</TableHeaderCell>
           <TableHeaderCell>
@@ -93,6 +95,9 @@ export function EventsTable({
                 </TableCell>
                 <TableCell to={path}>
                   {event.deliveredAt ? <DateTime date={event.deliveredAt} /> : "–"}
+                </TableCell>
+                <TableCell to={path}>
+                  {event.cancelledAt ? <DateTime date={event.cancelledAt} /> : "–"}
                 </TableCell>
                 <TableCell to={path}>
                   {event.isTest ? (
