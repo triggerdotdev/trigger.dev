@@ -25,7 +25,7 @@ export function EventDetail({ event }: { event: Event }) {
           {deliveredAt && (
             <RunPanelIconProperty
               icon="flag"
-              label="Finished at"
+              label="Delivered"
               value={<DateTime date={deliveredAt} />}
             />
           )}
