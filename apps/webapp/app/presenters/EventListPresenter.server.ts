@@ -89,6 +89,7 @@ export class EventListPresenter {
         },
       },
       where: {
+        internal: false,
         projectId: project.id,
         organizationId: organization.id,
         environmentId: {
