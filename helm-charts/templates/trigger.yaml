@@ -89,7 +89,7 @@ stringData:
                             "DATABASE_URL" (include "trigger.postgresql.connectionString" .) }}
   {{- $secretObj := (lookup "v1" "Secret" .Release.Namespace (include "trigger.name" .)) | default dict }}
   {{- $secretData := (get $secretObj "data") | default dict }}
-  {{ range $key, $value := .Values.envVars }}
+  {{ range $key, $value := .Values.trigger.env }}
     {{- $default := get $requiredVars $key -}}
     {{- $current := get $secretData $key | b64dec -}}
     {{- $v := $value | default ($current | default $default) -}}
