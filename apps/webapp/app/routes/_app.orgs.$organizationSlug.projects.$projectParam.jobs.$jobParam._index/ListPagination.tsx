@@ -1,5 +1,6 @@
 import { useLocation } from "@remix-run/react";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { EventList } from "~/presenters/EventListPresenter.server";
 import { Direction } from "~/components/runs/RunStatuses";
 import { RunList } from "~/presenters/RunListPresenter.server";
 import { WebhookDeliveryList } from "~/presenters/WebhookDeliveryListPresenter.server";
@@ -9,7 +10,7 @@ export function ListPagination({
   list,
   className,
 }: {
-  list: RunList | WebhookDeliveryList;
+  list: RunList | WebhookDeliveryList | EventList;
   className?: string;
 }) {
   return (
