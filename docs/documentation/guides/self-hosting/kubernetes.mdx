@@ -1,13 +1,13 @@
 ---
 title: "Deploy to Kubernetes"
-description: "Deploy self hosted version of [Trigger.dev](https://trigger.dev) to your kubernetes cluster using our helm chart"
+description: "Deploy [Trigger.dev](https://trigger.dev) to your kubernetes cluster using our helm chart"
 ---
 
 <Warning>WARNING: Kubernetes deploys are not officially supported yet, please only use these instructions as a general guide and starting point.</Warning>
 
 **Prerequisites**
-- You have understanding of [Kubernetes](https://kubernetes.io/)
-- Installed [Helm package manager](https://helm.sh/) version v3.11.3 or greater
+- You have an understanding of [Kubernetes](https://kubernetes.io/)
+- You have [Helm](https://helm.sh/) version v3.11.3 or greater installed
 - You have [kubectl](https://kubernetes.io/docs/reference/kubectl/kubectl/) installed and connected to your kubernetes cluster
 
 By deploying Trigger.dev on Kubernetes, you can take advantage of its features to ensure that the application is fault-tolerant, highly available, and scalable.
@@ -27,7 +27,7 @@ cd trigger.dev/helm-charts
 
 ## Add Helm values
 
-Create a `my-values.yaml` file to configure various installation settings, such as the docker image tags and environment variables. To explore all configurable properties for your values file visit our [readme](https://github.com/triggerdotdev/trigger.dev/tree/main/helm-charts/).
+Create a `my-values.yaml` file to configure various installation settings, such as the docker image tags and environment variables. To explore all configurable parameters for your values file visit our [readme](https://github.com/triggerdotdev/trigger.dev/tree/main/helm-charts#parameters).
 
 ### Set image tags
 
@@ -57,7 +57,7 @@ At a bare minimum, Trigger.dev requires the following environment variables to b
 - `SESSION_SECRET`
 - `ENCRYPTION_KEY`
 - `DIRECT_URL`
-- `DATABASE_URL`_
+- `DATABASE_URL`
 
 When the above environment variables are not defined, the Helm chart will automatically generate values for you. It will persist them in a secret which is preserved between upgrades or uninstalls. It is however strongly recommended to define your own values!
 
@@ -72,7 +72,7 @@ trigger:
 
 ### Routing external traffic
 By default, Trigger.dev takes all traffic coming to your external load balancer's IP address and routes them Trigger.dev's services. 
-Trigger.dev uses Nginx to route external traffic. You can install Nginx along with Trigger by setting `ingress.enabled` to `true` in the Helm values file. View all [properties for ingress](https://github.com/triggerdotdev/trigger.dev/tree/main/helm-charts/).
+Trigger.dev uses Nginx to route external traffic. You can install Nginx along with Trigger by setting `ingress.enabled` to `true` in the Helm values file. View all [parameters for ingress](https://github.com/triggerdotdev/trigger.dev/tree/main/helm-charts#ingress-parameters).
 
 ```yaml my-values.yaml
 ...
@@ -83,7 +83,7 @@ ingress:
 
 ### Database 
 With this Helm chart, you spin up a PostgreSQL instance powered by Bitnami alongside other Trigger.dev services in your cluster. 
-When persistence is enabled, the data will be stored as Kubernetes Persistence Volume. View all [properties for postgresql](https://github.com/triggerdotdev/trigger.dev/tree/main/helm-charts/).
+When persistence is enabled, the data will be stored as a Kubernetes Persistence Volume. View all [parameters for postgres](https://github.com/triggerdotdev/trigger.dev/tree/main/helm-charts#postgres-parameters).
 
 ```yaml my-values.yaml
 postgresql:
@@ -181,13 +181,13 @@ Once installation is complete, you will have to create the first account. No def
 
 ### Local access
 
-Forward a local port to access directly from your device:
+Forward a local port to access the webapp directly from your device:
 
 ```bash
 kubectl --namespace trigger port-forward svc/trigger 2024:3000
 ```
 
-Log in via email at `http://localhost:2024`, then check your logs for the magic link.
+Log in via email at `http://localhost:2024`, then check your logs for the magic link:
 
 ```bash
 kubectl --namespace trigger logs deployments/trigger
