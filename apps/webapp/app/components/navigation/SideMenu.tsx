@@ -31,6 +31,7 @@ import {
   projectHttpEndpointsPath,
   projectPath,
   projectRunsPath,
+  projectEventsPath,
   projectSetupPath,
   projectTriggersPath,
 } from "~/utils/pathBuilder";
@@ -143,6 +144,12 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               to={projectTriggersPath(organization, project)}
               data-action="triggers"
               hasWarning={project.hasInactiveExternalTriggers}
+            />
+            <SideMenuItem
+              name="Events"
+              icon="custom-event"
+              iconColor="text-teal-500"
+              to={projectEventsPath(organization, project)}
             />
             <SideMenuItem
               name="HTTP endpoints"
