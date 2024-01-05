@@ -3,6 +3,7 @@ import {
   ArrowRightIcon,
   ArrowRightOnRectangleIcon,
   ChartBarIcon,
+  CursorArrowRaysIcon,
   EllipsisHorizontalIcon,
 } from "@heroicons/react/20/solid";
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
@@ -147,8 +148,8 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             />
             <SideMenuItem
               name="Events"
-              icon="custom-event"
-              iconColor="text-teal-500"
+              icon={CursorArrowRaysIcon}
+              iconColor="text-sky-500"
               to={projectEventsPath(organization, project)}
             />
             <SideMenuItem
