@@ -162,7 +162,14 @@ ingress:
 The following command will install our chart into the `trigger` namespace:
 
 ```bash
+# with custom values read from my-values.yaml
 helm upgrade --install --atomic --namespace trigger --create-namespace trigger . --values my-values.yaml
+
+# with default values
+helm upgrade --install --atomic --namespace trigger --create-namespace trigger .
+
+# with inlined values
+helm upgrade --install --atomic --namespace trigger --create-namespace trigger . --set trigger.replicaCount=3
 ```
 
 To watch the pods coming up, simply run this from another terminal:
@@ -187,7 +194,7 @@ Forward a local port to access the webapp directly from your device:
 kubectl --namespace trigger port-forward svc/trigger 2024:3000
 ```
 
-Log in via email at `http://localhost:2024`, then check your logs for the magic link:
+Log in via email at `http://localhost:2024` then check your logs for the magic link:
 
 ```bash
 kubectl --namespace trigger logs deployments/trigger
