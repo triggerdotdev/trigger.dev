@@ -99,7 +99,7 @@ export default function Integrations() {
       </PageHeader>
 
       <PageBody scrollable={false}>
-        <div className="grid h-full max-w-full grid-cols-[2fr_3fr] gap-4 divide-x divide-slate-900 overflow-hidden">
+        <div className="grid h-full max-w-full grid-cols-[2fr_3fr] divide-x divide-slate-900 overflow-hidden">
           <PossibleIntegrationsList
             options={options}
             organizationId={organization.id}
@@ -142,7 +142,7 @@ function PossibleIntegrationsList({
 
   return (
     <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
-      <div className="py-4 pl-4">
+      <div className="p-4">
         <div className="flex items-center justify-between">
           <Header2 className="mb-2">Connect an API</Header2>
           <Switch
