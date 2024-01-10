@@ -156,6 +156,14 @@ export const RunListSearchSchema = z.object({
   direction: DirectionSchema.optional(),
   status: FilterableStatus.optional(),
   environment: FilterableEnvironment.optional(),
+  from: z
+    .string()
+    .transform((value) => parseInt(value))
+    .optional(),
+  to: z
+    .string()
+    .transform((value) => parseInt(value))
+    .optional(),
 });
 
 export const filterableStatuses: Record<FilterableStatus, JobRunStatus[]> = {
@@ -169,3 +177,35 @@ export const filterableStatuses: Record<FilterableStatus, JobRunStatus[]> = {
 };
 
 export const statusKeys: FilterableStatus[] = Object.keys(filterableStatuses) as FilterableStatus[];
+
+export const FilterableRelativeTimeFrame = z.union([
+  z.literal("5 mins"),
+  z.literal("15 mins"),
+  z.literal("30 mins"),
+  z.literal("1 hour"),
+  z.literal("3 hours"),
+  z.literal("6 hours"),
+  z.literal("1 day"),
+  z.literal("3 days"),
+  z.literal("7 days"),
+  z.literal("10 days"),
+  z.literal("14 days"),
+  z.literal("30 days"),
+]);
+
+export type FilterableRelativeTimeFrame = z.infer<typeof FilterableRelativeTimeFrame>;
+
+export const relativeTimeFrameKeys: FilterableRelativeTimeFrame[] = [
+  "5 mins",
+  "15 mins",
+  "30 mins",
+  "1 hour",
+  "3 hours",
+  "6 hours",
+  "1 day",
+  "3 days",
+  "7 days",
+  "10 days",
+  "14 days",
+  "30 days",
+];

@@ -40,6 +40,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     direction: searchParams.direction,
     cursor: searchParams.cursor,
     pageSize: 25,
+    from: searchParams.from,
+    to: searchParams.to,
   });
 
   return typedjson({
