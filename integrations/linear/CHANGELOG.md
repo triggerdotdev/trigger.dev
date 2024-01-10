@@ -1,5 +1,14 @@
 # @trigger.dev/linear
 
+## 2.3.10
+
+### Patch Changes
+
+- Updated dependencies [8277f4d2]
+- Updated dependencies [73cb8839]
+  - @trigger.dev/sdk@2.3.10
+  - @trigger.dev/integration-kit@2.3.10
+
 ## 2.3.9
 
 ### Patch Changes
