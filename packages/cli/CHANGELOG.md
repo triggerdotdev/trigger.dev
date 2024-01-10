@@ -1,5 +1,12 @@
 # create-trigger
 
+## 2.3.10
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.10
+- @trigger.dev/yalt@2.3.10
+
 ## 2.3.9
 
 ### Patch Changes
