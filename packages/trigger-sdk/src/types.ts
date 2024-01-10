@@ -76,12 +76,10 @@ export type TriggerEventType<TTrigger extends Trigger<any>> = TTrigger extends T
   : never;
 
 export type TriggerInvokeType<TTrigger extends Trigger<any>> = TTrigger extends Trigger<
-  infer TEventSpec
+  EventSpecification<any, infer TInvoke>
 >
-  ? TEventSpec["parseInvokePayload"] extends (payload: unknown) => infer TInvoke
-    ? TInvoke
-    : any
-  : never;
+  ? TInvoke
+  : any;
 
 export type VerifyResult =
   | {
