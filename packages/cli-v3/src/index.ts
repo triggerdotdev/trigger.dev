@@ -1,11 +1,11 @@
-import { CommonYargsArgv, CommonYargsOptions } from "./yargsTypes";
-import makeCLI from "yargs";
+import os from "node:os";
 import type Yargs from "yargs";
+import makeCLI from "yargs";
+import { version as packageVersion } from "../package.json";
+import { isBuildFailure } from "./buildFailure";
 import { printInitialBanner } from "./initialBanner";
 import { logger } from "./logger";
-import { version as packageVersion } from "../package.json";
-
-export async function main(argv: string[]): Promise<void> {}
+import { CommonYargsArgv, CommonYargsOptions } from "./yargsTypes";
 
 export class CommandLineArgsError extends Error {}
 
@@ -181,4 +181,66 @@ export function createCLIParser(argv: string[]) {
   cli.exitProcess(false);
 
   return cli;
+}
+
+export async function main(argv: string[]): Promise<void> {
+  const cli = createCLIParser(argv);
+  let cliHandlerThrew = false;
+  try {
+    await cli.parse();
+  } catch (e) {
+    cliHandlerThrew = true;
+    logger.log(""); // Just adds a bit of space
+    if (e instanceof CommandLineArgsError) {
+      logger.error(e.message);
+      //if there was a user-input error, we run again with the help command
+      await createCLIParser([...argv, "--help"]).parse();
+    } else if (e instanceof Error && e.message.includes("Raw mode is not supported on")) {
+      // the current terminal doesn't support raw mode, which Ink needs to render
+      // Ink doesn't throw a typed error or subclass or anything, so we just check the message content.
+      // https://github.com/vadimdemedes/ink/blob/546fe16541fd05ad4e638d6842ca4cbe88b4092b/src/components/App.tsx#L138-L148
+
+      const currentPlatform = os.platform();
+      logger.error(
+        `This terminal doesn't support raw mode.
+        Try running your previous command in a terminal that supports raw mode, like ${
+          currentPlatform === "win32"
+            ? ", such as Command Prompt or Powershell."
+            : currentPlatform === "darwin"
+            ? ", such as Terminal.app or iTerm."
+            : "."
+        }`
+      );
+    } else if (isBuildFailure(e)) {
+      logger.error(e.message);
+    } else {
+      logger.error(e instanceof Error ? e.message : e);
+      logger.log(
+        "If you think this is a bug then please create an issue at https://github.com/triggerdotdev/trigger.dev/issues"
+      );
+      //todo report error to Baselime
+    }
+    throw e;
+  } finally {
+    try {
+      //todo do we need this?
+      // In the bin script `bin/index.js`, we open an IPC channel,
+      // so IPC messages from this process are propagated through the
+      // bootstrapper. Normally, Node's SIGINT handler would close this for us,
+      // but interactive dev mode enables raw mode on stdin which disables the
+      // built-in handler. Make sure this channel is closed once it's no longer
+      // needed, so we can cleanly exit. Note, we don't want to disconnect if
+      // this file was imported in Jest, as that would stop communication with
+      // the test runner.
+      if (typeof jest === "undefined") process.disconnect?.();
+
+      //todo stop Baselime
+    } catch (e) {
+      logger.error(e);
+      // Only re-throw if we haven't already re-thrown an exception from a
+      // command handler.
+      // eslint-disable-next-line no-unsafe-finally
+      if (!cliHandlerThrew) throw e;
+    }
+  }
 }

@@ -1,7 +1,7 @@
 import process from "process";
 import { hideBin } from "yargs/helpers";
-import { FatalError } from "./errors";
 import { main } from ".";
+import { FatalError } from "./errors";
 
 /**
  * The main entrypoint for the CLI.
