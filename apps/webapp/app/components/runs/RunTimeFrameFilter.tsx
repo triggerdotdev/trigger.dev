@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
 import { Button } from "../primitives/Buttons";
 import { ChevronDownIcon } from "lucide-react";
-import { FilterableRelativeTimeFrame, relativeTimeFrameKeys } from "./RunStatuses";
 import { Paragraph } from "../primitives/Paragraph";
 import { cn } from "~/utils/cn";
 
@@ -36,23 +35,23 @@ export function RunTimeFrameFilter({ from, to, onValueChange }: RunTimeFrameFilt
         </Paragraph>
 
         <div className="grid grid-cols-3 gap-2">
-          {relativeTimeFrameKeys.map((timeframe) => (
+          {timeFrameValues.map((timeframe) => (
             <Button
-              key={timeframe}
+              key={timeframe.value}
               variant="tertiary/small"
               className={cn(
                 "w-full border border-slate-700 group-hover:bg-slate-700",
                 from &&
                   to &&
-                  filterRelativeTimeFrameValue(timeframe) === to - from &&
+                  timeframe.value === to - from &&
                   "border-slate-700 bg-slate-700 group-hover:border-slate-700 group-hover:bg-slate-700"
               )}
               onClick={() => {
                 setIsOpen(false);
-                onValueChange(filterRelativeTimeFrameValue(timeframe));
+                onValueChange(timeframe.value);
               }}
             >
-              <Paragraph variant="extra-small">{timeframe}</Paragraph>
+              <Paragraph variant="extra-small">{timeframe.label}</Paragraph>
             </Button>
           ))}
         </div>
@@ -61,50 +60,69 @@ export function RunTimeFrameFilter({ from, to, onValueChange }: RunTimeFrameFilt
   );
 }
 
-export const determineTimeFrame = (from: number | undefined, to: number | undefined) => {
+const determineTimeFrame = (from: number | undefined, to: number | undefined) => {
   if (!from || !to) {
     return "Timeframe";
   }
 
-  const timeframe = relativeTimeFrameKeys.find(
-    (timeframe) => filterRelativeTimeFrameValue(timeframe) === to - from
-  );
+  const timeframe = timeFrameValues.find((timeframe) => timeframe.value === to - from);
 
   if (!timeframe) {
     return `${new Date(from).toUTCString()} - ${new Date(to).toUTCString()}`;
   }
 
-  return timeframe;
+  return timeframe.label;
 };
 
-export function filterRelativeTimeFrameValue(timeframe: FilterableRelativeTimeFrame) {
-  switch (timeframe) {
-    case "5 mins":
-      return 5 * 60 * 1000;
-    case "15 mins":
-      return 15 * 60 * 1000;
-    case "30 mins":
-      return 30 * 60 * 1000;
-    case "1 hour":
-      return 60 * 60 * 1000;
-    case "3 hours":
-      return 3 * 60 * 60 * 1000;
-    case "6 hours":
-      return 6 * 60 * 60 * 1000;
-    case "1 day":
-      return 24 * 60 * 60 * 1000;
-    case "3 days":
-      return 3 * 24 * 60 * 60 * 1000;
-    case "7 days":
-      return 7 * 24 * 60 * 60 * 1000;
-    case "10 days":
-      return 10 * 24 * 60 * 60 * 1000;
-    case "14 days":
-      return 14 * 24 * 60 * 60 * 1000;
-    case "30 days":
-      return 30 * 24 * 60 * 60 * 1000;
-    default:
-      const _exhaustiveCheck: never = timeframe;
-      throw new Error(`Non-exhaustive match for value: ${timeframe}`);
-  }
-}
+const timeFrameValues = [
+  {
+    label: "5 mins",
+    value: 5 * 60 * 1000,
+  },
+  {
+    label: "15 mins",
+    value: 15 * 60 * 1000,
+  },
+  {
+    label: "30 mins",
+    value: 30 * 60 * 1000,
+  },
+  {
+    label: "1 hour",
+    value: 60 * 60 * 1000,
+  },
+  {
+    label: "3 hours",
+    value: 3 * 60 * 60 * 1000,
+  },
+  {
+    label: "6 hours",
+    value: 6 * 60 * 60 * 1000,
+  },
+  {
+    label: "1 day",
+    value: 24 * 60 * 60 * 1000,
+  },
+  {
+    label: "3 days",
+    value: 3 * 24 * 60 * 60 * 1000,
+  },
+  {
+    label: "7 days",
+    value: 7 * 24 * 60 * 60 * 1000,
+  },
+  {
+    label: "10 days",
+    value: 10 * 24 * 60 * 60 * 1000,
+  },
+  {
+    label: "14 days",
+    value: 14 * 24 * 60 * 60 * 1000,
+  },
+  {
+    label: "30 days",
+    value: 30 * 24 * 60 * 60 * 1000,
+  },
+];
+
+export type RelativeTimeFrameItem = (typeof timeFrameValues)[number];
