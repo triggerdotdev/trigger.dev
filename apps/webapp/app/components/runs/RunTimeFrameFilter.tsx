@@ -4,6 +4,7 @@ import { Button } from "../primitives/Buttons";
 import { ChevronDownIcon } from "lucide-react";
 import { Paragraph } from "../primitives/Paragraph";
 import { cn } from "~/utils/cn";
+import { formatDateTime } from "../primitives/DateTime";
 
 type RunTimeFrameFilterProps = {
   from?: number;
@@ -68,7 +69,10 @@ const determineTimeFrame = (from: number | undefined, to: number | undefined) =>
   const timeframe = timeFrameValues.find((timeframe) => timeframe.value === to - from);
 
   if (!timeframe) {
-    return `${new Date(from).toUTCString()} - ${new Date(to).toUTCString()}`;
+    const toDateTime = formatDateTime(new Date(to), "UTC", ["en-US"], false, true);
+    const fromDateTime = formatDateTime(new Date(from), "UTC", ["en-US"], false, true);
+
+    return `${fromDateTime} - ${toDateTime} (UTC)`;
   }
 
   return timeframe.label;
