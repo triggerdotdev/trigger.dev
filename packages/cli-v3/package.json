@@ -1,0 +1,53 @@
+{
+  "name": "trigger.dev",
+  "version": "1.0.0",
+  "description": "A Command-Line Interface for Trigger.dev (v3) projects",
+  "keywords": [
+    "trigger.dev",
+    "background job",
+    "background task",
+    "serverless queue"
+  ],
+  "homepage": "https://github.com/triggerdotdev/trigger.dev",
+  "bugs": {
+    "url": "https://github.com/triggerdotdev/trigger.dev/issues"
+  },
+  "license": "Apache-2.0",
+  "main": "dist/cli.js",
+  "types": "dist/cli.d.ts",
+  "bin": {
+    "trigger-v3-cli": "./bin/index.js"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "scripts": {
+    "build": "pnpm run clean && pnpm run bundle",
+    "bundle": "node -r esbuild-register scripts/bundle.ts",
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "clean": "rimraf dist",
+    "dev": "pnpm run clean && concurrently -c black,blue --kill-others-on-fail false \"pnpm run bundle --watch\" \"pnpm run typecheck --watch --preserveWatchOutput\"",
+    "prepublishOnly": "SOURCEMAPS=false npm run build",
+    "start": "pnpm run bundle && cross-env NODE_OPTIONS=--enable-source-maps ./bin/trigger.dev.js"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.3",
+    "@types/yargs": "^17.0.32",
+    "chalk": "^5.2.0",
+    "cli-table3": "^0.6.3",
+    "concurrently": "^8.2.0",
+    "esbuild": "^0.19.11",
+    "esbuild-jest": "^0.5.0",
+    "jest": "^29.6.2",
+    "rimraf": "^3.0.2",
+    "supports-color": "^9.4.0",
+    "typescript": "^5.3.3",
+    "update-check": "^1.5.4",
+    "yargs": "^17.7.2"
+  },
+  "dependencies": {
+    "semver": "^7.5.0"
+  }
+}

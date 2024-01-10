@@ -1,0 +1,28 @@
+{
+  "root": true,
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist", "templates", "**/templates/**"],
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "lib": ["esnext"],
+    "incremental": true,
+    // `alwaysStrict: false` is needed because otherwise esbuild will add `"use strict";`
+    // statements throughout the imported libraries which can break them.
+    "alwaysStrict": false,
+    "skipLibCheck": true,
+    "target": "ESNext",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "allowJs": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "outDir": "dist",
+    "types": ["node", "jest"],
+    "jsx": "react",
+    "resolveJsonModule": true,
+    "paths": {}
+  }
+}
