@@ -1,12 +1,12 @@
 import chalk from "chalk";
-import supportsColor from "supports-color";
 import checkForUpdate from "update-check";
-import pkg from "../package.json";
-import { version as packageVersion } from "../package.json";
 import { logger } from "./logger";
 import type { Result } from "update-check";
+import { getVersion } from "./getVersion";
+import pkg from "../../package.json";
 
 export async function printInitialBanner(performUpdateCheck = true) {
+  const packageVersion = getVersion();
   let text = ` ⛅️ Trigger.dev ${packageVersion}`;
   let maybeNewVersion: string | undefined;
   if (performUpdateCheck) {
@@ -16,18 +16,12 @@ export async function printInitialBanner(performUpdateCheck = true) {
     }
   }
 
-  logger.log(
-    text +
-      "\n" +
-      (supportsColor.stdout
-        ? chalk.hex("#FF8800")("-".repeat(text.length))
-        : "-".repeat(text.length))
-  );
+  logger.log(text + "\n" + chalk.hex("#FF8800")("-".repeat(text.length)));
 
   // Log a slightly more noticeable message if this is a major bump
   if (maybeNewVersion !== undefined) {
-    const currentMajor = parseInt(packageVersion.split(".")[0]);
-    const newMajor = parseInt(maybeNewVersion.split(".")[0]);
+    const currentMajor = parseInt(packageVersion.split(".")[0]!);
+    const newMajor = parseInt(maybeNewVersion.split(".")[0]!);
     if (newMajor > currentMajor) {
       logger.warn(
         `Please update to the latest version of \`trigger.dev\` to prevent critical errors.
