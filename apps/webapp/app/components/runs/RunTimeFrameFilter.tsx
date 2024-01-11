@@ -14,6 +14,22 @@ type RunTimeFrameFilterProps = {
 
 export function RunTimeFrameFilter({ from, to, onValueChange }: RunTimeFrameFilterProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [activeTimeFrame, setActiveTimeFrame] = useState<RelativeTimeFrameItem | undefined>();
+
+  const determineTimeFrame = (from: number | undefined, to: number | undefined) => {
+    if (!from || !to) {
+      return "Timeframe";
+    }
+
+    if (activeTimeFrame) {
+      return activeTimeFrame.label;
+    }
+
+    const toDateTime = formatDateTime(new Date(to), "UTC", ["en-US"], false, true);
+    const fromDateTime = formatDateTime(new Date(from), "UTC", ["en-US"], false, true);
+
+    return `${fromDateTime} - ${toDateTime} (UTC)`;
+  };
 
   return (
     <Popover onOpenChange={(open) => setIsOpen(open)} open={isOpen} modal>
@@ -42,13 +58,12 @@ export function RunTimeFrameFilter({ from, to, onValueChange }: RunTimeFrameFilt
               variant="tertiary/small"
               className={cn(
                 "w-full border border-slate-700 group-hover:bg-slate-700",
-                from &&
-                  to &&
-                  timeframe.value === to - from &&
+                activeTimeFrame?.value === timeframe.value &&
                   "border-slate-700 bg-slate-700 group-hover:border-slate-700 group-hover:bg-slate-700"
               )}
               onClick={() => {
                 setIsOpen(false);
+                setActiveTimeFrame(timeframe);
                 onValueChange(timeframe.value);
               }}
             >
@@ -60,23 +75,6 @@ export function RunTimeFrameFilter({ from, to, onValueChange }: RunTimeFrameFilt
     </Popover>
   );
 }
-
-const determineTimeFrame = (from: number | undefined, to: number | undefined) => {
-  if (!from || !to) {
-    return "Timeframe";
-  }
-
-  const timeframe = timeFrameValues.find((timeframe) => timeframe.value === to - from);
-
-  if (!timeframe) {
-    const toDateTime = formatDateTime(new Date(to), "UTC", ["en-US"], false, true);
-    const fromDateTime = formatDateTime(new Date(from), "UTC", ["en-US"], false, true);
-
-    return `${fromDateTime} - ${toDateTime} (UTC)`;
-  }
-
-  return timeframe.label;
-};
 
 const timeFrameValues = [
   {
