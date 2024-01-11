@@ -5,15 +5,14 @@ import {
   ChartBarIcon,
   CursorArrowRaysIcon,
   EllipsisHorizontalIcon,
+  ShieldCheckIcon,
 } from "@heroicons/react/20/solid";
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 import { useNavigation } from "@remix-run/react";
-import { IconExclamationCircle } from "@tabler/icons-react";
 import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
-import { AnchorHTMLAttributes, Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useFeatures } from "~/hooks/useFeatures";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
-import { usePathName } from "~/hooks/usePathName";
 import { MatchedProject } from "~/hooks/useProject";
 import { User } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
@@ -28,11 +27,12 @@ import {
   organizationIntegrationsPath,
   organizationPath,
   organizationTeamPath,
+  personalAccessTokensPath,
   projectEnvironmentsPath,
+  projectEventsPath,
   projectHttpEndpointsPath,
   projectPath,
   projectRunsPath,
-  projectEventsPath,
   projectSetupPath,
   projectTriggersPath,
 } from "~/utils/pathBuilder";
@@ -42,11 +42,10 @@ import { LogoIcon } from "../LogoIcon";
 import { StepContentContainer } from "../StepContentContainer";
 import { UserProfilePhoto } from "../UserProfilePhoto";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
-import { Button, LinkButton } from "../primitives/Buttons";
+import { Button } from "../primitives/Buttons";
 import { ClipboardField } from "../primitives/ClipboardField";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
 import { Icon } from "../primitives/Icon";
-import { type IconNames } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
 import {
   Popover,
@@ -57,7 +56,8 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { StepNumber } from "../primitives/StepNumber";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { MenuCount, SideMenuItem } from "./SideMenuItem";
+import { SideMenuHeader } from "./SideMenuHeader";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -418,6 +418,12 @@ function UserMenu({ user }: { user: SideMenuUser }) {
               leadingIconClassName="text-indigo-500"
             />
             <PopoverMenuItem
+              to={personalAccessTokensPath()}
+              title="Personal Access Tokens"
+              icon={ShieldCheckIcon}
+              leadingIconClassName="text-emerald-500"
+            />
+            <PopoverMenuItem
               to={logoutPath()}
               title="Log out"
               icon={ArrowRightOnRectangleIcon}
@@ -428,100 +434,4 @@ function UserMenu({ user }: { user: SideMenuUser }) {
       </PopoverContent>
     </Popover>
   );
-}
-
-function SideMenuHeader({ title, children }: { title: string; children: React.ReactNode }) {
-  const [isHeaderMenuOpen, setHeaderMenuOpen] = useState(false);
-  const navigation = useNavigation();
-
-  useEffect(() => {
-    setHeaderMenuOpen(false);
-  }, [navigation.location?.pathname]);
-
-  return (
-    <div className="group flex items-center justify-between pl-1.5">
-      <Paragraph
-        variant="extra-extra-small/caps"
-        className="cursor-default truncate text-slate-500"
-      >
-        {title}
-      </Paragraph>
-      <Popover onOpenChange={(open) => setHeaderMenuOpen(open)} open={isHeaderMenuOpen}>
-        <PopoverCustomTrigger className="p-1">
-          <EllipsisHorizontalIcon className="h-4 w-4 text-slate-500 transition group-hover:text-bright" />
-        </PopoverCustomTrigger>
-        <PopoverContent
-          className="min-w-max overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
-          align="start"
-        >
-          <div className="flex flex-col gap-1 p-1">{children}</div>
-        </PopoverContent>
-      </Popover>
-    </div>
-  );
-}
-
-function SideMenuItem({
-  icon,
-  iconColor,
-  name,
-  to,
-  hasWarning,
-  count,
-  target,
-  subItem = false,
-}: {
-  icon?: IconNames | React.ComponentType<any>;
-  iconColor?: string;
-  name: string;
-  to: string;
-  hasWarning?: string | boolean;
-  count?: number;
-  target?: AnchorHTMLAttributes<HTMLAnchorElement>["target"];
-  subItem?: boolean;
-}) {
-  const pathName = usePathName();
-  const isActive = pathName === to;
-
-  return (
-    <LinkButton
-      variant={subItem ? "small-menu-sub-item" : "small-menu-item"}
-      fullWidth
-      textAlignLeft
-      LeadingIcon={icon}
-      leadingIconClassName={isActive ? iconColor : "text-dimmed"}
-      to={to}
-      target={target}
-      className={cn(
-        "text-bright group-hover:bg-slate-850",
-        subItem ? "text-dimmed" : "",
-        isActive ? "bg-slate-850 text-bright" : "group-hover:text-bright"
-      )}
-    >
-      <div className="flex w-full items-center justify-between">
-        {name}
-        <div className="flex items-center gap-1">
-          {count !== undefined && count > 0 && <MenuCount count={count} />}
-          {typeof hasWarning === "string" ? (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger>
-                  <Icon icon={IconExclamationCircle} className="h-5 w-5 text-rose-500" />
-                </TooltipTrigger>
-                <TooltipContent className="flex items-center gap-1 border border-rose-500 bg-rose-500/20 backdrop-blur-xl">
-                  {hasWarning}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ) : (
-            hasWarning && <Icon icon={IconExclamationCircle} className="h-5 w-5 text-rose-500" />
-          )}
-        </div>
-      </div>
-    </LinkButton>
-  );
-}
-
-function MenuCount({ count }: { count: number | string }) {
-  return <div className="rounded-full bg-slate-900 px-2 py-1 text-xxs text-dimmed">{count}</div>;
 }

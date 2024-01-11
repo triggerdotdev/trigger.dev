@@ -29,7 +29,7 @@ export async function getValidPersonalAccessTokens(userId: string) {
   return personalAccessTokens.map((pat) => ({
     id: pat.id,
     name: pat.name,
-    token: pat.obfuscatedToken,
+    obfuscatedToken: pat.obfuscatedToken,
     createdAt: pat.createdAt,
     lastAccessedAt: pat.lastAccessedAt,
   }));
