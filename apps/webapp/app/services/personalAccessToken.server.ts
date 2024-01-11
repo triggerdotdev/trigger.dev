@@ -90,10 +90,13 @@ export async function authenticatePersonalAccessToken(
 
   const hashedToken = hashToken(token);
 
-  const personalAccessToken = await prisma.personalAccessToken.findFirst({
+  const personalAccessToken = await prisma.personalAccessToken.update({
     where: {
       hashedToken,
       revokedAt: null,
+    },
+    data: {
+      lastAccessedAt: new Date(),
     },
   });
 
@@ -221,9 +224,7 @@ function createToken() {
 /** Obfuscates all but the first and last 4 characters of the token, so it looks like tr_pat_bhbd•••••••••••••••••••fd4a */
 function obfuscateToken(token: string) {
   const withoutPrefix = token.replace(tokenPrefix, "");
-  const obfuscated = `${withoutPrefix.slice(0, 4)}${"•".repeat(
-    tokenValueLength - 8
-  )}${withoutPrefix.slice(-4)}`;
+  const obfuscated = `${withoutPrefix.slice(0, 4)}${"●".repeat(18)}${withoutPrefix.slice(-4)}`;
   return `${tokenPrefix}${obfuscated}`;
 }
 

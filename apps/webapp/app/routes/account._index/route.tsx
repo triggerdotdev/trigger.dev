@@ -19,10 +19,23 @@ import { Checkbox } from "~/components/primitives/Checkbox";
 import { updateUser } from "~/models/user.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { prisma } from "~/db.server";
-import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
+import {
+  AppContainer,
+  MainCenteredContainer,
+  PageBody,
+  PageContainer,
+} from "~/components/layout/AppLayout";
 import { FormTitle } from "~/components/primitives/FormTitle";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Handle } from "~/utils/handle";
+import {
+  PageHeader,
+  PageTitleRow,
+  PageTitle,
+  PageInfoRow,
+  PageInfoGroup,
+  PageInfoProperty,
+} from "~/components/primitives/PageHeader";
 
 function createSchema(
   constraints: {
@@ -131,9 +144,14 @@ export default function Page() {
   });
 
   return (
-    <AppContainer>
-      <MainCenteredContainer>
-        <FormTitle LeadingIcon="user" title="Profile" />
+    <PageContainer>
+      <PageHeader>
+        <PageTitleRow>
+          <PageTitle title="Your profile" />
+        </PageTitleRow>
+      </PageHeader>
+
+      <PageBody>
         <Form method="post" {...form.props} className="max-w-md">
           <InputGroup className="mb-4">
             <Label htmlFor={name.id}>Profile picture</Label>
@@ -179,15 +197,10 @@ export default function Page() {
                   Update
                 </Button>
               }
-              cancelButton={
-                <LinkButton to={rootPath()} variant={"secondary/small"}>
-                  Cancel
-                </LinkButton>
-              }
             />
           </Fieldset>
         </Form>
-      </MainCenteredContainer>
-    </AppContainer>
+      </PageBody>
+    </PageContainer>
   );
 }
