@@ -210,8 +210,11 @@ export async function createPersonalAccessToken({
     name,
     userId,
     token,
+    obfuscatedToken: personalAccessToken.obfuscatedToken,
   };
 }
+
+export type CreatedPersonalAccessToken = Awaited<ReturnType<typeof createPersonalAccessToken>>;
 
 const tokenPrefix = "tr_pat_";
 const tokenValueLength = 64;

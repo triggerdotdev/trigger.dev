@@ -1,24 +1,33 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
-import { Form, useFetcher } from "@remix-run/react";
+import { ShieldExclamationIcon } from "@heroicons/react/24/solid";
+import { useFetcher } from "@remix-run/react";
 import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
+import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
-import { FormTitle } from "~/components/primitives/FormTitle";
+import { Header2 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
+import {
+  PageButtons,
+  PageDescription,
+  PageHeader,
+  PageTitle,
+  PageTitleRow,
+} from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Table,
@@ -31,12 +40,12 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import {
+  CreatedPersonalAccessToken,
   createPersonalAccessToken,
   getValidPersonalAccessTokens,
 } from "~/services/personalAccessToken.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
-import { rootPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -82,7 +91,7 @@ export const action: ActionFunction = async ({ request }) => {
       userId,
     });
 
-    return json({ token: tokenResult });
+    return json({ ...submission, payload: { token: tokenResult } });
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }
@@ -102,7 +111,19 @@ export default function Page() {
       <PageHeader>
         <PageTitleRow>
           <PageTitle title="Personal Access Tokens" />
+          <PageButtons>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="primary/small">Create new token</Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>Create a Personal Access Token</DialogHeader>
+                <CreatePersonalAccessToken />
+              </DialogContent>
+            </Dialog>
+          </PageButtons>
         </PageTitleRow>
+        <PageDescription>Personal Access Tokens can be used with our CLI and API.</PageDescription>
       </PageHeader>
 
       <PageBody>
@@ -169,15 +190,6 @@ export default function Page() {
               )}
             </TableBody>
           </Table>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="primary/medium">Create a Personal Access Token</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>Create a Personal Access Token</DialogHeader>
-              <CreatePersonalAccessToken />
-            </DialogContent>
-          </Dialog>
         </div>
       </PageBody>
     </PageContainer>
@@ -186,7 +198,7 @@ export default function Page() {
 
 function CreatePersonalAccessToken() {
   const fetcher = useFetcher<typeof action>();
-  const lastSubmission = fetcher.data;
+  const lastSubmission = fetcher.data as any;
 
   const [form, { tokenName }] = useForm({
     id: "create-personal-access-token",
@@ -197,37 +209,55 @@ function CreatePersonalAccessToken() {
     },
   });
 
-  console.log(lastSubmission);
+  const token = lastSubmission?.payload?.token
+    ? (lastSubmission?.payload?.token as CreatedPersonalAccessToken)
+    : undefined;
 
   return (
-    <div>
-      <Form method="post" {...form.props} className="max-w-md">
-        <Fieldset>
-          <InputGroup>
-            <Label htmlFor={tokenName.id}>Name</Label>
-            <Input
-              {...conform.input(tokenName, { type: "text" })}
-              placeholder="The name of your Personal Access Token"
-              defaultValue=""
-              icon={ShieldCheckIcon}
-              autoComplete="off"
-            />
-            <Hint>
-              This will help you to identify your token. Tokens called "cli" are automatically
-              generated by our CLI.
-            </Hint>
-            <FormError id={tokenName.errorId}>{tokenName.error}</FormError>
-          </InputGroup>
-
-          <FormButtons
-            confirmButton={
-              <Button type="submit" variant={"primary/small"}>
-                Update
-              </Button>
-            }
+    <div className="max-w-full overflow-x-hidden">
+      {token ? (
+        <div className="flex flex-col gap-2 p-2">
+          <Header2>Successfully generated a new token</Header2>
+          <Callout variant="success">
+            Do copy this access token and store it in a secure place - you will not be able to see
+            it again.
+          </Callout>
+          <ClipboardField
+            secure
+            value={token.token}
+            variant={"secondary/medium"}
+            icon={<ShieldExclamationIcon className="h-5 w-5 text-emerald-500" />}
           />
-        </Fieldset>
-      </Form>
+        </div>
+      ) : (
+        <fetcher.Form method="post" {...form.props}>
+          <Fieldset>
+            <InputGroup>
+              <Label htmlFor={tokenName.id}>Name</Label>
+              <Input
+                {...conform.input(tokenName, { type: "text" })}
+                placeholder="The name of your Personal Access Token"
+                defaultValue=""
+                icon={ShieldCheckIcon}
+                autoComplete="off"
+              />
+              <Hint>
+                This will help you to identify your token. Tokens called "cli" are automatically
+                generated when you login with our CLI.
+              </Hint>
+              <FormError id={tokenName.errorId}>{tokenName.error}</FormError>
+            </InputGroup>
+
+            <FormButtons
+              confirmButton={
+                <Button type="submit" variant={"primary/small"}>
+                  Update
+                </Button>
+              }
+            />
+          </Fieldset>
+        </fetcher.Form>
+      )}
     </div>
   );
 }
