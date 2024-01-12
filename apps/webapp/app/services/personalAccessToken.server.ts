@@ -1,9 +1,13 @@
-import { nanoid } from "nanoid";
+import { customAlphabet, nanoid } from "nanoid";
 import nodeCrypto from "node:crypto";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "./logger.server";
+
+const tokenValueLength = 40;
+//lowercase only, removed 0 and l to avoid confusion
+const tokenGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", tokenValueLength);
 
 type CreatePersonalAccessTokenOptions = {
   name: string;
@@ -221,17 +225,16 @@ export async function createPersonalAccessToken({
 export type CreatedPersonalAccessToken = Awaited<ReturnType<typeof createPersonalAccessToken>>;
 
 const tokenPrefix = "tr_pat_";
-const tokenValueLength = 64;
 
 /** Creates a PersonalAccessToken that starts with tr_pat_  */
 function createToken() {
-  return `${tokenPrefix}${nanoid(tokenValueLength)}`;
+  return `${tokenPrefix}${tokenGenerator()}`;
 }
 
 /** Obfuscates all but the first and last 4 characters of the token, so it looks like tr_pat_bhbd•••••••••••••••••••fd4a */
 function obfuscateToken(token: string) {
   const withoutPrefix = token.replace(tokenPrefix, "");
-  const obfuscated = `${withoutPrefix.slice(0, 4)}${"●".repeat(18)}${withoutPrefix.slice(-4)}`;
+  const obfuscated = `${withoutPrefix.slice(0, 4)}${"•".repeat(18)}${withoutPrefix.slice(-4)}`;
   return `${tokenPrefix}${obfuscated}`;
 }
 
