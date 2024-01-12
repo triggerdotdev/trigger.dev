@@ -1315,15 +1315,21 @@ importers:
       '@types/debug': ^4.1.7
       '@types/jest': ^29.5.3
       '@types/node': '18'
+      https: ^1.0.0
       jest: ^29.6.2
+      node-fetch: ^3.3.2
       partysocket: ^0.0.17
+      proxy-agent: ^6.3.0
       rimraf: ^3.0.2
       ts-jest: ^29.1.1
       tsup: ^8.0.1
       typescript: ^5.3.0
       zod: 3.22.3
     dependencies:
+      https: 1.0.0
+      node-fetch: 3.3.2
       partysocket: 0.0.17
+      proxy-agent: 6.3.0
       zod: 3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
@@ -22128,6 +22134,10 @@ packages:
     transitivePeerDependencies:
       - supports-color
 
+  /https/1.0.0:
+    resolution: {integrity: sha512-4EC57ddXrkaF0x83Oj8sM6SLQHAWXw90Skqu2M4AEWENZ3F02dFJE/GARA8igO79tcgYqGrD7ae4f5L3um2lgg==}
+    dev: false
+
   /human-id/1.0.2:
     resolution: {integrity: sha512-UNopramDEhHJD+VR+ehk8rOslwSfByxPIZyJRfV739NDhN5LF1fa1MqnzKm2lGTQRjNrjK19Q5fhkgIfjlVUKw==}
     dev: false
@@ -25851,6 +25861,15 @@ packages:
 
   /node-fetch/3.3.0:
     resolution: {integrity: sha512-BKwRP/O0UvoMKp7GNdwPlObhYGB5DQqwhEDQlNKuoqwVYSxkSZCSbHjnFFmUEtwSKRPU4kNK8PbDYYitwaE3QA==}
+    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
+    dependencies:
+      data-uri-to-buffer: 4.0.1
+      fetch-blob: 3.2.0
+      formdata-polyfill: 4.0.10
+    dev: false
+
+  /node-fetch/3.3.2:
+    resolution: {integrity: sha512-dRB78srN/l6gqWulah9SrxeYnxeddIG30+GOqK/9OlLVyLg3HPnr6SqOWTWOXKRwC2eGYCkZ59NNuSgvSrpgOA==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
     dependencies:
       data-uri-to-buffer: 4.0.1
