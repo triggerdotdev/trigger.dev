@@ -230,8 +230,8 @@ function CreatePersonalAccessToken() {
         <div className="flex flex-col gap-2 p-2">
           <Header2>Successfully generated a new token</Header2>
           <Callout variant="success">
-            Do copy this access token and store it in a secure place - you will not be able to see
-            it again.
+            Copy this access token and store it in a secure place - you will not be able to see it
+            again.
           </Callout>
           <ClipboardField
             secure
@@ -252,6 +252,7 @@ function CreatePersonalAccessToken() {
                 defaultValue=""
                 icon={ShieldCheckIcon}
                 autoComplete="off"
+                data-1p-ignore
               />
               <Hint>
                 This will help you to identify your token. Tokens called "cli" are automatically
