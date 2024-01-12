@@ -14,6 +14,25 @@ program
   .version(getVersion(), "-v, --version", "Display the version number");
 
 program
+  .command("login")
+  .description("Login with Trigger.dev so you can perform authenticated actions")
+  .option(
+    "-a, --api-url <apiUrl>",
+    "Override the API URL, defaults to https://cloud.trigger.dev",
+    "https://cloud.trigger.dev"
+  )
+  .version(getVersion(), "-v, --version", "Display the version number")
+  .action(async (path, options) => {
+    try {
+      await printInitialBanner();
+      //todo login command
+    } catch (e) {
+      //todo error reporting
+      throw e;
+    }
+  });
+
+program
   .command("dev")
   .description("Run your Trigger.dev tasks locally")
   .argument("[path]", "The path to the project", ".")
