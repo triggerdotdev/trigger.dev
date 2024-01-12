@@ -5,6 +5,7 @@ import { whoamiCommand } from "../commands/whoami.js";
 import { COMMAND_NAME } from "../consts";
 import { getVersion } from "../utilities/getVersion";
 import { printInitialBanner } from "../utilities/initialBanner";
+import { login } from "../commands/login";
 
 export const program = new Command();
 
@@ -17,14 +18,15 @@ program
   .command("login")
   .description("Login with Trigger.dev so you can perform authenticated actions")
   .option(
-    "-a, --api-url <apiUrl>",
+    "-a, --api-url <value>",
     "Override the API URL, defaults to https://cloud.trigger.dev",
     "https://cloud.trigger.dev"
   )
   .version(getVersion(), "-v, --version", "Display the version number")
-  .action(async (path, options) => {
+  .action(async (options) => {
     try {
-      await printInitialBanner();
+      await printInitialBanner(false);
+      await login(options);
       //todo login command
     } catch (e) {
       //todo error reporting
