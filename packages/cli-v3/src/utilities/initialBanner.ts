@@ -1,13 +1,15 @@
+import gradient from "gradient-string";
 import chalk from "chalk";
 import checkForUpdate from "update-check";
 import { logger } from "./logger";
 import type { Result } from "update-check";
 import { getVersion } from "./getVersion";
 import pkg from "../../package.json";
+import { chalkGreen, chalkGrey, chalkPurple } from "./colors";
 
 export async function printInitialBanner(performUpdateCheck = true) {
   const packageVersion = getVersion();
-  let text = ` ⛅️ Trigger.dev ${packageVersion}`;
+  let text = `${chalkGreen("Trigger")}${chalkPurple(".dev")} ${chalkGrey(`(${packageVersion})`)}`;
   let maybeNewVersion: string | undefined;
   if (performUpdateCheck) {
     maybeNewVersion = await updateCheck();
@@ -16,7 +18,7 @@ export async function printInitialBanner(performUpdateCheck = true) {
     }
   }
 
-  logger.log(text + "\n" + chalk.hex("#FF8800")("-".repeat(text.length)));
+  logger.log(text + "\n" + chalkGrey("-".repeat(text.length)));
 
   // Log a slightly more noticeable message if this is a major bump
   if (maybeNewVersion !== undefined) {
