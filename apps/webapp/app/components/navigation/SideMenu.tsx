@@ -58,6 +58,7 @@ import {
 import { StepNumber } from "../primitives/StepNumber";
 import { MenuCount, SideMenuItem } from "./SideMenuItem";
 import { SideMenuHeader } from "./SideMenuHeader";
+import { useV3Enabled } from "~/root";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -380,6 +381,7 @@ function ProjectSelector({
 function UserMenu({ user }: { user: SideMenuUser }) {
   const [isProfileMenuOpen, setProfileMenuOpen] = useState(false);
   const navigation = useNavigation();
+  const v3Enabled = useV3Enabled();
 
   useEffect(() => {
     setProfileMenuOpen(false);
@@ -417,12 +419,14 @@ function UserMenu({ user }: { user: SideMenuUser }) {
               icon={UserProfilePhoto}
               leadingIconClassName="text-indigo-500"
             />
-            <PopoverMenuItem
-              to={personalAccessTokensPath()}
-              title="Personal Access Tokens"
-              icon={ShieldCheckIcon}
-              leadingIconClassName="text-emerald-500"
-            />
+            {v3Enabled && (
+              <PopoverMenuItem
+                to={personalAccessTokensPath()}
+                title="Personal Access Tokens"
+                icon={ShieldCheckIcon}
+                leadingIconClassName="text-emerald-500"
+              />
+            )}
             <PopoverMenuItem
               to={logoutPath()}
               title="Log out"

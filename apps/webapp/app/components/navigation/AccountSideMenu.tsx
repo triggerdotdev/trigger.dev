@@ -10,8 +10,11 @@ import { DiscordIcon } from "@trigger.dev/companyicons";
 import { Feedback } from "../Feedback";
 import { Button, LinkButton } from "../primitives/Buttons";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
+import { useV3Enabled } from "~/root";
 
 export function AccountSideMenu({ user }: { user: User }) {
+  const v3Enabled = useV3Enabled();
+
   return (
     <div
       className={cn(
@@ -49,16 +52,18 @@ export function AccountSideMenu({ user }: { user: User }) {
               data-action="account"
             />
           </div>
-          <div className="mb-1 flex flex-col gap-1 px-1">
-            <SideMenuHeader title="Security" />
-            <SideMenuItem
-              name="Personal Access Tokens"
-              icon={ShieldCheckIcon}
-              iconColor="text-emerald-500"
-              to={personalAccessTokensPath()}
-              data-action="tokens"
-            />
-          </div>
+          {v3Enabled && (
+            <div className="mb-1 flex flex-col gap-1 px-1">
+              <SideMenuHeader title="Security" />
+              <SideMenuItem
+                name="Personal Access Tokens"
+                icon={ShieldCheckIcon}
+                iconColor="text-emerald-500"
+                to={personalAccessTokensPath()}
+                data-action="tokens"
+              />
+            </div>
+          )}
         </div>
         <div className="flex flex-col gap-1 border-t border-border p-1">
           <SideMenuItem
