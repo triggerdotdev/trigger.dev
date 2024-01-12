@@ -5,7 +5,7 @@ import { whoamiCommand } from "../commands/whoami.js";
 import { COMMAND_NAME } from "../consts";
 import { getVersion } from "../utilities/getVersion";
 import { printInitialBanner } from "../utilities/initialBanner";
-import { login } from "../commands/login";
+import { login, loginCommand } from "../commands/login";
 
 export const program = new Command();
 
@@ -26,7 +26,7 @@ program
   .action(async (options) => {
     try {
       await printInitialBanner(false);
-      await login(options);
+      await loginCommand(options);
       //todo login command
     } catch (e) {
       //todo error reporting

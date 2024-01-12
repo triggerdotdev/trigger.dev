@@ -4,14 +4,9 @@ import {
   GetPersonalAccessTokenRequestSchema,
   GetPersonalAccessTokenResponse,
 } from "@trigger.dev/core";
-import { z } from "zod";
 import { generateErrorMessage } from "zod-error";
-import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
-import {
-  createAuthorizationCode,
-  getPersonalAccessTokenFromAuthorizationCode,
-} from "~/services/personalAccessToken.server";
+import { getPersonalAccessTokenFromAuthorizationCode } from "~/services/personalAccessToken.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   logger.info("Getting PersonalAccessToken from AuthorizationCode", { url: request.url });

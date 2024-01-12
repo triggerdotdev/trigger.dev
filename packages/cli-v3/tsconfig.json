@@ -47,7 +47,10 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "types": ["vitest/globals"],
-    "paths": {}
+    "paths": {
+      "@trigger.dev/core/*": ["../core/src/*"],
+      "@trigger.dev/core": ["../core/src/index"]
+    }
   },
   "exclude": ["node_modules"]
 }

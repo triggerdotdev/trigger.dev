@@ -35,12 +35,15 @@
     "trigger-v3-cli": "./dist/index.js"
   },
   "devDependencies": {
+    "@trigger.dev/core": "workspace:*",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/gradient-string": "^1.1.2",
     "@types/mock-fs": "^4.13.1",
     "@types/node": "16",
     "@types/node-fetch": "^2.6.2",
     "@types/ws": "^8.5.3",
+    "open": "^10.0.3",
+    "p-retry": "^6.1.0",
     "rimraf": "^3.0.2",
     "tsup": "^6.5.0",
     "type-fest": "^3.6.0",
@@ -72,7 +75,6 @@
     "nanoid": "^4.0.2",
     "node-fetch": "^3.3.0",
     "npm-check-updates": "^16.12.2",
-    "p-retry": "^6.1.0",
     "posthog-node": "^3.1.1",
     "proxy-agent": "^6.3.0",
     "simple-git": "^3.19.0",

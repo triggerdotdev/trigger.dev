@@ -23,6 +23,10 @@ export function chalkSuccess(text: string) {
   return chalk.green(text);
 }
 
+export function chalkLink(text: string) {
+  return chalk.underline.blue(text);
+}
+
 export function logo() {
   return `${chalk.hex(green).bold("Trigger")}${chalk.hex(purple).bold(".dev")}`;
 }
