@@ -11,7 +11,7 @@ import { Framework } from "../frameworks";
 import { standardWatchFilePaths, standardWatchIgnoreRegex } from "../frameworks/watchConfig";
 import { telemetryClient } from "../telemetry/telemetry";
 import { getEnvFilename } from "../utils/env";
-import fetch, {RequestInit} from "../utils/fetchUseProxy";
+import fetch, { RequestInit } from "../utils/fetchUseProxy";
 import { getTriggerApiDetails } from "../utils/getTriggerApiDetails";
 import { JsRuntime, getJsRuntime } from "../utils/jsRuntime";
 import { logger } from "../utils/logger";
@@ -124,7 +124,7 @@ export async function devCommand(path: string, anyOptions: any) {
       `✖ [trigger.dev] Your endpoint couldn't be verified. Make sure your app is running and try again. ${resolvedOptions.handlerPath}`
     );
     logger.info(
-      `  [trigger.dev] You can use -H to specify a hostname, or -p to specify a port, or -t to specify the tunnel-url pointing to the local dev server.`
+      `  [trigger.dev] You can use -H to specify a hostname, or -p to specify a port, or -s to specify https, or -t to specify the tunnel-url pointing to the local dev server.`
     );
     telemetryClient.dev.failed("no_server_found", resolvedOptions);
     return;
