@@ -14,3 +14,7 @@ export function chalkPurple(text: string) {
 export function chalkGrey(text: string) {
   return chalk.hex("#666")(text);
 }
+
+export function logo() {
+  return `${chalk.hex(green).bold("Trigger")}${chalk.hex(purple).bold(".dev")}`;
+}

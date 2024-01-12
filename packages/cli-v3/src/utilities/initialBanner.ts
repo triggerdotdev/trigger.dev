@@ -1,35 +1,38 @@
-import gradient from "gradient-string";
 import chalk from "chalk";
-import checkForUpdate from "update-check";
-import { logger } from "./logger";
 import type { Result } from "update-check";
-import { getVersion } from "./getVersion";
+import checkForUpdate from "update-check";
 import pkg from "../../package.json";
-import { chalkGreen, chalkGrey, chalkPurple } from "./colors";
+import { chalkGrey, logo } from "./colors";
+import { getVersion } from "./getVersion";
+import { logger } from "./logger";
+import { spinner, intro } from "@clack/prompts";
 
 export async function printInitialBanner(performUpdateCheck = true) {
   const packageVersion = getVersion();
-  let text = `${chalkGreen("Trigger")}${chalkPurple(".dev")} ${chalkGrey(`(${packageVersion})`)}`;
+  const text = `${logo()} ${chalkGrey(`(${packageVersion})`)}`;
+
+  intro(text);
+
   let maybeNewVersion: string | undefined;
   if (performUpdateCheck) {
+    const loadingSpinner = spinner();
+    loadingSpinner.start("Checking for updates");
     maybeNewVersion = await updateCheck();
+
+    // Log a slightly more noticeable message if this is a major bump
     if (maybeNewVersion !== undefined) {
-      text += ` (update available ${chalk.green(maybeNewVersion)})`;
-    }
-  }
-
-  logger.log(text + "\n" + chalkGrey("-".repeat(text.length)));
-
-  // Log a slightly more noticeable message if this is a major bump
-  if (maybeNewVersion !== undefined) {
-    const currentMajor = parseInt(packageVersion.split(".")[0]!);
-    const newMajor = parseInt(maybeNewVersion.split(".")[0]!);
-    if (newMajor > currentMajor) {
-      logger.warn(
-        `Please update to the latest version of \`trigger.dev\` to prevent critical errors.
+      loadingSpinner.stop(`Update available ${chalk.green(maybeNewVersion)})`);
+      const currentMajor = parseInt(packageVersion.split(".")[0]!);
+      const newMajor = parseInt(maybeNewVersion.split(".")[0]!);
+      if (newMajor > currentMajor) {
+        logger.warn(
+          `Please update to the latest version of \`trigger.dev\` to prevent critical errors.
 Run \`npm install --save-dev trigger.dev@${newMajor}\` to update to the latest version.
 After installation, run Trigger.dev with \`npx trigger.dev\`.`
-      );
+        );
+      }
+    } else {
+      loadingSpinner.stop("On latest version");
     }
   }
 }
