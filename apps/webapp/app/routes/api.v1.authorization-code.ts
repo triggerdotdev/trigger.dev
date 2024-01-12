@@ -1,9 +1,11 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
+import { CreateAuthorizationCodeResponse } from "@trigger.dev/core";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { createAuthorizationCode } from "~/services/personalAccessToken.server";
 
+/** Used to create an AuthorizationCode, that can then be used to obtain a Personal Access Token by logging in with the provided URL */
 export async function action({ request }: ActionFunctionArgs) {
   logger.info("Creating AuthorizationCode", { url: request.url });
 
@@ -17,11 +19,12 @@ export async function action({ request }: ActionFunctionArgs) {
 
   try {
     const authorizationCode = await createAuthorizationCode();
-
-    return json({
+    const responseJson: CreateAuthorizationCodeResponse = {
       authorizationCode: authorizationCode.code,
       url: `${env.APP_ORIGIN}/account/authorization-code/${authorizationCode.code}`,
-    });
+    };
+
+    return json(responseJson);
   } catch (error) {
     if (error instanceof Error) {
       logger.error("Error creating AuthorizationCode", {

@@ -6,6 +6,7 @@ export * from "./replacements";
 export * from "./searchParams";
 export * from "./eventFilterMatches";
 export * from "./requestFilterMatches";
+export * from "./v3/schemas";
 
 export const API_VERSIONS = {
   LAZY_LOADED_CACHED_TASKS: "2023-09-29",

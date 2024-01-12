@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "./logger.server";
+import { PersonalAccessToken } from "@trigger.dev/database";
 
 const tokenValueLength = 40;
 //lowercase only, removed 0 and l to avoid confusion
@@ -42,6 +43,42 @@ export async function getValidPersonalAccessTokens(userId: string) {
 export type ObfuscatedPersonalAccessToken = Awaited<
   ReturnType<typeof getValidPersonalAccessTokens>
 >[number];
+
+/** Gets a PersonalAccessToken from an Auth Code, this only works within 10 mins of the auth code being created */
+export async function getPersonalAccessTokenFromAuthorizationCode(authorizationCode: string) {
+  //only allow authorization codes that were created less than 10 mins ago
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+  const code = await prisma.authorizationCode.findUnique({
+    select: {
+      personalAccessToken: true,
+    },
+    where: {
+      code: authorizationCode,
+
+      createdAt: {
+        gte: tenMinutesAgo,
+      },
+    },
+  });
+  if (!code) {
+    throw new Error("Invalid authorization code, or code expired");
+  }
+
+  //there's no PersonalAccessToken associated with this code
+  if (!code.personalAccessToken) {
+    return {
+      token: null,
+    };
+  }
+
+  const decryptedToken = decryptPersonalAccessToken(code.personalAccessToken);
+  return {
+    token: {
+      token: decryptedToken,
+      obfuscatedToken: code.personalAccessToken.obfuscatedToken,
+    },
+  };
+}
 
 export async function revokePersonalAccessToken(tokenId: string) {
   await prisma.personalAccessToken.update({
@@ -112,19 +149,7 @@ export async function authenticatePersonalAccessToken(
     return;
   }
 
-  const encryptedData = EncryptedSecretValueSchema.safeParse(personalAccessToken.encryptedToken);
-
-  if (!encryptedData.success) {
-    throw new Error(
-      `Unable to parse encrypted PersonalAccessToken with id: ${personalAccessToken.id}: ${encryptedData.error.message}`
-    );
-  }
-
-  const decryptedToken = decryptToken(
-    encryptedData.data.nonce,
-    encryptedData.data.ciphertext,
-    encryptedData.data.tag
-  );
+  const decryptedToken = decryptPersonalAccessToken(personalAccessToken);
 
   if (decryptedToken !== token) {
     logger.error(
@@ -257,6 +282,22 @@ function encryptToken(value: string) {
     ciphertext: encrypted,
     tag,
   };
+}
+
+function decryptPersonalAccessToken(personalAccessToken: PersonalAccessToken) {
+  const encryptedData = EncryptedSecretValueSchema.safeParse(personalAccessToken.encryptedToken);
+  if (!encryptedData.success) {
+    throw new Error(
+      `Unable to parse encrypted PersonalAccessToken with id: ${personalAccessToken.id}: ${encryptedData.error.message}`
+    );
+  }
+
+  const decryptedToken = decryptToken(
+    encryptedData.data.nonce,
+    encryptedData.data.ciphertext,
+    encryptedData.data.tag
+  );
+  return decryptedToken;
 }
 
 function decryptToken(nonce: string, ciphertext: string, tag: string): string {
