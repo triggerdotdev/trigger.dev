@@ -1151,7 +1151,7 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
     const stripeClient = new StripeClient("", { apiVersion: "2022-11-15" });
 
     try {
-      const event = stripeClient.webhooks.constructEvent(rawBody, signature, source.secret);
+      const event = await stripeClient.webhooks.constructEventAsync(rawBody, signature, source.secret);
 
       return {
         events: [
