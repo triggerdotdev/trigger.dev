@@ -8,7 +8,7 @@ import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { DiscordIcon } from "@trigger.dev/companyicons";
 import { Feedback } from "../Feedback";
-import { Button } from "../primitives/Buttons";
+import { Button, LinkButton } from "../primitives/Buttons";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
 
 export function AccountSideMenu({ user }: { user: User }) {
@@ -20,14 +20,22 @@ export function AccountSideMenu({ user }: { user: User }) {
     >
       <div className="flex h-full flex-col">
         <div
-          className={cn(
-            "flex h-10 items-center justify-between border-b bg-background px-1 py-1 transition"
-          )}
+          className={cn("flex items-center justify-between border-b bg-background p-px transition")}
         >
-          <Link to={rootPath()} className="flex w-full items-center gap-1">
-            <ArrowLeftIcon className="h-5 w-5 text-slate-400" />
-            <Header3>Account</Header3>
-          </Link>
+          <LinkButton
+            variant="tertiary/medium"
+            LeadingIcon={ArrowLeftIcon}
+            to={rootPath()}
+            fullWidth
+            textAlignLeft
+          >
+            Account
+          </LinkButton>
+
+          {/* <Link to={rootPath()} className="flex w-full items-center gap-1 px-1">
+            <ArrowLeftIcon className="h-4 w-4 text-slate-400" />
+            <Header3 className="text-slate-400">Account</Header3>
+          </Link> */}
         </div>
         <div className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
           <div className="mb-6 flex flex-col gap-1 px-1">

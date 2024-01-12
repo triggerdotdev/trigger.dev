@@ -2,9 +2,9 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
 import { ShieldExclamationIcon } from "@heroicons/react/24/solid";
-import { useFetcher } from "@remix-run/react";
+import { Form, useActionData, useFetcher } from "@remix-run/react";
 import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
@@ -39,13 +39,17 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { redirectWithSuccessMessage } from "~/models/message.server";
 import {
   CreatedPersonalAccessToken,
+  ObfuscatedPersonalAccessToken,
   createPersonalAccessToken,
   getValidPersonalAccessTokens,
+  revokePersonalAccessToken,
 } from "~/services/personalAccessToken.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
+import { personalAccessTokensPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -69,31 +73,58 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
-const CreateTokenSchema = z.object({
-  tokenName: z
-    .string({ required_error: "You must enter a name" })
-    .min(2, "Your name must be at least 2 characters long")
-    .max(50),
-});
+const CreateTokenSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("create"),
+    tokenName: z
+      .string({ required_error: "You must enter a name" })
+      .min(2, "Your name must be at least 2 characters long")
+      .max(50),
+  }),
+  z.object({
+    action: z.literal("revoke"),
+    tokenId: z.string(),
+  }),
+]);
 
 export const action: ActionFunction = async ({ request }) => {
   const userId = await requireUserId(request);
   const formData = await request.formData();
-  const submission = await parse(formData, { schema: CreateTokenSchema, async: true });
+  const submission = parse(formData, { schema: CreateTokenSchema });
 
-  if (!submission.value || submission.intent !== "submit") {
+  if (!submission.value) {
     return json(submission);
   }
 
-  try {
-    const tokenResult = await createPersonalAccessToken({
-      name: submission.value.tokenName,
-      userId,
-    });
+  switch (submission.value.action) {
+    case "create": {
+      try {
+        const tokenResult = await createPersonalAccessToken({
+          name: submission.value.tokenName,
+          userId,
+        });
 
-    return json({ ...submission, payload: { token: tokenResult } });
-  } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+        return json({ ...submission, payload: { token: tokenResult } });
+      } catch (error: any) {
+        return json({ errors: { body: error.message } }, { status: 400 });
+      }
+    }
+    case "revoke": {
+      try {
+        await revokePersonalAccessToken(submission.value.tokenId);
+
+        return redirectWithSuccessMessage(
+          personalAccessTokensPath(),
+          request,
+          "Personal Access Token revoked"
+        );
+      } catch (error: any) {
+        return json({ errors: { body: error.message } }, { status: 400 });
+      }
+    }
+    default: {
+      return json({ errors: { body: "Invalid action" } }, { status: 400 });
+    }
   }
 };
 
@@ -155,29 +186,9 @@ export default function Page() {
                           "Never"
                         )}
                       </TableCell>
-
-                      <TableCellMenu isSticky>
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button
-                              variant="small-menu-item"
-                              LeadingIcon="trash-can"
-                              className="text-xs"
-                            >
-                              Delete Personal Access Token
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>Delete Personal Access Token</DialogHeader>
-                            {/* <DeleteJobDialogContent
-                              id={job.id}
-                              title={job.title}
-                              slug={job.slug}
-                              environments={job.environments}
-                            /> */}
-                          </DialogContent>
-                        </Dialog>
-                      </TableCellMenu>
+                      <TableCell alignment="right">
+                        <RevokePersonalAccessToken token={personalAccessToken} />
+                      </TableCell>
                     </TableRow>
                   );
                 })
@@ -231,6 +242,7 @@ function CreatePersonalAccessToken() {
         </div>
       ) : (
         <fetcher.Form method="post" {...form.props}>
+          <input type="hidden" name="action" value="create" />
           <Fieldset>
             <InputGroup>
               <Label htmlFor={tokenName.id}>Name</Label>
@@ -259,5 +271,41 @@ function CreatePersonalAccessToken() {
         </fetcher.Form>
       )}
     </div>
+  );
+}
+
+function RevokePersonalAccessToken({ token }: { token: ObfuscatedPersonalAccessToken }) {
+  const lastSubmission = useActionData();
+
+  const [form, { tokenId }] = useForm({
+    id: "revoke-personal-access-token",
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
+    onValidate({ formData }) {
+      return parse(formData, { schema: CreateTokenSchema });
+    },
+  });
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="small-menu-item" LeadingIcon="trash-can" className="text-xs" />
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>Revoke Personal Access Token</DialogHeader>
+        <div className="flex flex-col gap-3 pt-3">
+          <Paragraph>
+            Are you sure you want to revoke "{token.name}"? This can't be reversed.
+          </Paragraph>
+          <Form method="post" {...form.props}>
+            <input type="hidden" name="action" value="revoke" />
+            <input type="hidden" name="tokenId" value={token.id} />
+            <Button type="submit" variant="danger/medium" fullWidth>
+              Revoke token
+            </Button>
+          </Form>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

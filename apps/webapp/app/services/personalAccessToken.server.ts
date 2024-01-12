@@ -35,6 +35,10 @@ export async function getValidPersonalAccessTokens(userId: string) {
   }));
 }
 
+export type ObfuscatedPersonalAccessToken = Awaited<
+  ReturnType<typeof getValidPersonalAccessTokens>
+>[number];
+
 export async function revokePersonalAccessToken(tokenId: string) {
   await prisma.personalAccessToken.update({
     where: {
