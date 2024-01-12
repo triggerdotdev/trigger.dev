@@ -1,11 +1,16 @@
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import { json } from "@remix-run/node";
+import { Form, useActionData, useNavigation } from "@remix-run/react";
 import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Fragment } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { z } from "zod";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
+import { Button } from "~/components/primitives/Buttons";
 import { Callout, variantClasses } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
@@ -18,32 +23,26 @@ import {
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { RunListSearchSchema } from "~/components/runs/RunStatuses";
 import { RunsTable } from "~/components/runs/RunsTable";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
+import { useUser } from "~/hooks/useUser";
+import { redirectWithSuccessMessage } from "~/models/message.server";
 import { TriggerSourcePresenter } from "~/presenters/TriggerSourcePresenter.server";
 import { requireUser, requireUserId } from "~/services/session.server";
+import { ActivateSourceService } from "~/services/sources/activateSource.server";
+import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import {
   TriggerSourceParamSchema,
-  rootPath,
-  projectTriggersPath,
   externalTriggerPath,
   externalTriggerRunsParentPath,
+  projectTriggersPath,
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/ListPagination";
-import { RunListSearchSchema } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/route";
-import { Button } from "~/components/primitives/Buttons";
-import { Form, useActionData, useNavigation } from "@remix-run/react";
-import { cn } from "~/utils/cn";
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
-import { z } from "zod";
-import { ActivateSourceService } from "~/services/sources/activateSource.server";
-import { redirectWithSuccessMessage } from "~/models/message.server";
-import { nanoid } from "nanoid";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -130,6 +129,7 @@ export default function Page() {
   const { trigger } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
+  const user = useUser();
   const navigation = useNavigation();
   const lastSubmission = useActionData();
 
@@ -234,6 +234,7 @@ export default function Page() {
                 total={trigger.runList.runs.length}
                 hasFilters={false}
                 runsParentPath={externalTriggerRunsParentPath(organization, project, trigger)}
+                currentUser={user}
               />
               <ListPagination list={trigger.runList} className="mt-2 justify-end" />
             </>

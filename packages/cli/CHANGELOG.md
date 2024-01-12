@@ -1,5 +1,21 @@
 # create-trigger
 
+## 2.3.10
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.10
+- @trigger.dev/yalt@2.3.10
+
+## 2.3.9
+
+### Patch Changes
+
+- aa97bf4a: Updated the telemetry API key
+- Updated dependencies [740b7b23]
+  - @trigger.dev/core@2.3.9
+  - @trigger.dev/yalt@2.3.9
+
 ## 2.3.8
 
 ### Patch Changes

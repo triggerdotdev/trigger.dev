@@ -1,0 +1,48 @@
+---
+title: "TriggerClient: cancelRunsForJob() Instance Method"
+sidebarTitle: "cancelRunsForJob()"
+description: "The `cancelRunsForJob()` instance method will cancel all job runs (yet to be executed) with the given jobId."
+---
+
+## Parameters
+
+<ResponseField name="jobId" type="string" required>
+  The job ID to cancel the job runs for. This is the `id` you set when using `client.defineJob()` or
+  `new Job()`.
+</ResponseField>
+
+## Returns
+
+<ResponseField type="object">
+  <Expandable title="properties" defaultOpen>
+    <ResponseField name="cancelledRunIds" type="array" required>
+      List of Job Run IDs that are cancelled.
+    </ResponseField>
+    <ResponseField name="failedToCancelRunIds" type="array" required>
+      List of Job Run IDs that have failed to be cancelled.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+
+```ts Cancelling Runs for an Event
+//this is the job we want to cancel runs for
+client.defineJob({
+  //this is the job id
+  id: "my-job",
+  name: "My first job",
+  version: "1.0.0",
+  trigger: invokeTrigger({ schema: z.number() }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info(`Hello World ${payload}`);
+  },
+});
+
+// Some time later...
+const res = await client.cancelRunsForJob("my-job");
+console.log(res.cancelledRunIds);
+console.log(res.failedToCancelRunIds);
+```
+
+</RequestExample>

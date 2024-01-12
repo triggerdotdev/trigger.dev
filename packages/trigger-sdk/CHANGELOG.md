@@ -1,5 +1,23 @@
 # @trigger.dev/sdk
 
+## 2.3.10
+
+### Patch Changes
+
+- 8277f4d2: Use correct overload param when invoking a job outside of a run #802
+- 73cb8839: Fixed invoke inferred payload types #830
+  - @trigger.dev/core@2.3.10
+  - @trigger.dev/core-backend@2.3.10
+
+## 2.3.9
+
+### Patch Changes
+
+- f7bf25f0: feat: Add ability to cancel all runs for job from SDK
+- Updated dependencies [740b7b23]
+  - @trigger.dev/core@2.3.9
+  - @trigger.dev/core-backend@2.3.9
+
 ## 2.3.8
 
 ### Patch Changes

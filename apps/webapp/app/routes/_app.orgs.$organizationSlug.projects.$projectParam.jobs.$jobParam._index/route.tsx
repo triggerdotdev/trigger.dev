@@ -10,6 +10,7 @@ import { RunsTable } from "~/components/runs/RunsTable";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useUser } from "~/hooks/useUser";
 import { RunListPresenter } from "~/presenters/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -19,13 +20,8 @@ import {
   organizationIntegrationsPath,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "./ListPagination";
-
-export const DirectionSchema = z.union([z.literal("forward"), z.literal("backward")]);
-
-export const RunListSearchSchema = z.object({
-  cursor: z.string().optional(),
-  direction: DirectionSchema.optional(),
-});
+import { RunListSearchSchema } from "~/components/runs/RunStatuses";
+import { RunsFilters } from "~/components/runs/RunFilters";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -38,6 +34,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const presenter = new RunListPresenter();
   const list = await presenter.call({
     userId,
+    filterEnvironment: searchParams.environment,
+    filterStatus: searchParams.status,
     jobSlug: jobParam,
     projectSlug: projectParam,
     organizationSlug,
@@ -57,6 +55,7 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const job = useJob();
+  const user = useUser();
 
   return (
     <>
@@ -71,16 +70,21 @@ export default function Page() {
         {(open) => (
           <div className={cn("grid h-fit gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
             <div>
-              <div className="mb-2 flex items-center justify-end gap-x-2">
-                <HelpTrigger title="How do I run my Job?" />
-                <ListPagination list={list} />
+              <div className="mb-2 flex items-center justify-between gap-x-2">
+                <RunsFilters />
+                <div className="flex items-center justify-end gap-x-2">
+                  <HelpTrigger title="How do I run my Job?" />
+                  <ListPagination list={list} />
+                </div>
               </div>
+
               <RunsTable
                 total={list.runs.length}
                 hasFilters={false}
                 runs={list.runs}
                 isLoading={isLoading}
                 runsParentPath={jobRunsParentPath(organization, project, job)}
+                currentUser={user}
               />
               <ListPagination list={list} className="mt-2 justify-end" />
             </div>
