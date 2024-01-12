@@ -151,15 +151,20 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
   authorizationCode: string,
   userId: string
 ) {
+  //only allow authorization codes that were created less than 10 mins ago
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
   const code = await prisma.authorizationCode.findUnique({
     where: {
       code: authorizationCode,
       personalAccessTokenId: null,
+      createdAt: {
+        gte: tenMinutesAgo,
+      },
     },
   });
 
   if (!code) {
-    throw new Error("Invalid authorization code, or code already used");
+    throw new Error("Invalid authorization code, code already used, or code expired");
   }
 
   const existingCliPersonalAccessToken = await prisma.personalAccessToken.findFirst({

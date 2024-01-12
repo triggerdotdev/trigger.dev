@@ -1,5 +1,13 @@
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import { Form, useActionData } from "@remix-run/react";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { ActionFunction, json } from "@remix-run/server-runtime";
+import { z } from "zod";
+import { UserProfilePhoto } from "~/components/UserProfilePhoto";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
+import { Button } from "~/components/primitives/Buttons";
+import { Checkbox } from "~/components/primitives/Checkbox";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -7,35 +15,14 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { useUser } from "~/hooks/useUser";
-import { z } from "zod";
-import { ActionFunction, json, redirect } from "@remix-run/server-runtime";
-import { requireUserId } from "~/services/session.server";
-import { parse } from "@conform-to/zod";
-import { accountPath, rootPath } from "~/utils/pathBuilder";
-import { conform, useForm } from "@conform-to/react";
-import { UserProfilePhoto } from "~/components/UserProfilePhoto";
-import { Checkbox } from "~/components/primitives/Checkbox";
-import { updateUser } from "~/models/user.server";
-import { redirectWithSuccessMessage } from "~/models/message.server";
+import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
 import { prisma } from "~/db.server";
-import {
-  AppContainer,
-  MainCenteredContainer,
-  PageBody,
-  PageContainer,
-} from "~/components/layout/AppLayout";
-import { FormTitle } from "~/components/primitives/FormTitle";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
+import { useUser } from "~/hooks/useUser";
+import { redirectWithSuccessMessage } from "~/models/message.server";
+import { updateUser } from "~/models/user.server";
+import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
-import {
-  PageHeader,
-  PageTitleRow,
-  PageTitle,
-  PageInfoRow,
-  PageInfoGroup,
-  PageInfoProperty,
-} from "~/components/primitives/PageHeader";
+import { accountPath } from "~/utils/pathBuilder";
 
 function createSchema(
   constraints: {
