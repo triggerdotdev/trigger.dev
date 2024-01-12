@@ -62,6 +62,7 @@ program
   .argument("[path]", "The path to the directory that contains the package.json file", ".")
   .option("--to <version tag>", "The version to update to (ex: 2.1.4)", "latest")
   .action(async (path, options) => {
+    await printInitialBanner(false);
     await updateCommand(path, options);
   });
 

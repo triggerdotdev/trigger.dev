@@ -5,6 +5,7 @@ import { installDependencies } from "../utilities/installDependencies";
 import { readJSONFileSync, writeJSONFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
 import { z } from "zod";
+import { chalkError, chalkSuccess } from "../utilities/colors";
 
 export const UpdateCommandOptionsSchema = z.object({
   to: z.string().optional(),
@@ -15,9 +16,12 @@ export type UpdateCommandOptions = z.infer<typeof UpdateCommandOptionsSchema>;
 type NcuRunOptionTarget = "latest" | `@${string}`;
 
 export async function updateCommand(projectPath: string, anyOptions: any) {
+  const loadingSpinner = spinner();
+  loadingSpinner.start("Checking settings");
+
   const parseRes = UpdateCommandOptionsSchema.safeParse(anyOptions);
   if (!parseRes.success) {
-    logger.error(parseRes.error.message);
+    loadingSpinner.stop(chalkError(parseRes.error.message));
     return;
   }
   const options = parseRes.data;
@@ -25,10 +29,12 @@ export async function updateCommand(projectPath: string, anyOptions: any) {
   const triggerDevPackage = "@trigger.dev";
   const packageJSONPath = path.join(projectPath, "package.json");
   const packageData = readJSONFileSync(packageJSONPath);
-
   if (!packageData) {
+    loadingSpinner.stop(chalkError("Couldn't load package.json"));
     return;
   }
+
+  loadingSpinner.message("Checking for updates");
 
   const packageMaps: { [k: string]: { type: string; version: string } } = {};
   const packageDependencies = packageData.dependencies || {};
@@ -56,7 +62,10 @@ export async function updateCommand(projectPath: string, anyOptions: any) {
   // Can either give a json like package.json or just with deps and their new versions
   const updatedDependencies: { [k: string]: any } | void = await run(ncuOptions);
 
-  if (!updatedDependencies) return;
+  if (!updatedDependencies) {
+    loadingSpinner.stop(chalkError("Couldn't update dependencies"));
+    return;
+  }
 
   const ifUpdatedDependenciesIsPackageJSON =
     updatedDependencies.hasOwnProperty("dependencies") ||
@@ -73,7 +82,7 @@ export async function updateCommand(projectPath: string, anyOptions: any) {
 
   // If there are no @trigger.dev packages
   if (triggerPackages.length === 0) {
-    logger.success(`✔ All @trigger.dev/* packages are up to date.`);
+    loadingSpinner.stop(chalkSuccess(`All @trigger.dev/* packages are already up to date.`));
     return;
   }
 
@@ -83,7 +92,7 @@ export async function updateCommand(projectPath: string, anyOptions: any) {
 
   // If no packages require any updation
   if (packagesToUpdate.length === 0) {
-    logger.success(`✔ All @trigger.dev/* packages are up to date.`);
+    loadingSpinner.stop(chalkSuccess(`All @trigger.dev/* packages are already up to date.`));
     return;
   }
 
