@@ -9,9 +9,9 @@ import { spinner, intro } from "@clack/prompts";
 
 export async function printInitialBanner(performUpdateCheck = true) {
   const packageVersion = getVersion();
-  const text = `${logo()} ${chalkGrey(`(${packageVersion})`)}`;
+  const text = `\n${logo()} ${chalkGrey(`(${packageVersion})`)}\n`;
 
-  intro(text);
+  logger.info(text);
 
   let maybeNewVersion: string | undefined;
   if (performUpdateCheck) {

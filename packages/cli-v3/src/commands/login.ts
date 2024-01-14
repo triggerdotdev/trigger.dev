@@ -3,9 +3,9 @@ import open, { openApp, apps } from "open";
 import { z } from "zod";
 import { logger } from "../utilities/logger";
 import { ApiClient } from "../apiClient";
-import { spinner, note, log } from "@clack/prompts";
+import { spinner, note, log, intro, outro, select } from "@clack/prompts";
 import { chalkLink } from "../utilities/colors";
-import { writeAuthConfigFile } from "../utilities/configFiles";
+import { readAuthConfigFile, writeAuthConfigFile } from "../utilities/configFiles";
 
 const LoginOptionsSchema = z.object({
   apiUrl: z.string(),
@@ -33,6 +33,34 @@ export type LoginResult =
 
 export async function login(apiUrl: string): Promise<LoginResult> {
   const apiClient = new ApiClient(apiUrl);
+
+  intro("Logging in to Trigger.dev");
+
+  const existingAccessToken = readAuthConfigFile()?.accessToken;
+  if (existingAccessToken) {
+    const continueOption = await select({
+      message: "You are already logged in.",
+      options: [
+        {
+          value: false,
+          label: "Don't login",
+        },
+        {
+          value: true,
+          label: "Login with a different token",
+        },
+      ],
+      initialValue: false,
+    });
+
+    if (continueOption === false) {
+      outro("Already logged in");
+      return {
+        success: true,
+        accessToken: existingAccessToken,
+      };
+    }
+  }
 
   //generate authorization code
   const createAuthCodeSpinner = spinner();
@@ -72,6 +100,8 @@ export async function login(apiUrl: string): Promise<LoginResult> {
     getPersonalAccessTokenSpinner.stop(`Logged in with token ${indexResult.obfuscatedToken}`);
 
     writeAuthConfigFile({ accessToken: indexResult.token });
+
+    outro("Logged in successfully");
 
     return {
       success: true,
