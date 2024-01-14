@@ -34,7 +34,7 @@ You can add a step to the GitHub Action that deploys your app.
 ```yaml .github/workflows/release.yml
 - name: 🚀 Refresh Trigger.dev Jobs
    env:
-      DEPLOY_TEST_HOOK: ${{ secrets.TRIGGER_ENDPOINT_HOOK }}
+      TRIGGER_ENDPOINT_HOOK: ${{ secrets.TRIGGER_ENDPOINT_HOOK }}
    run: |
       curl -X POST $TRIGGER_ENDPOINT_HOOK
 ```
