@@ -39,6 +39,8 @@ program
     }
   });
 
+//todo update for the new version
+//todo add usage instructions to the README
 program
   .command("dev")
   .description("Run your Trigger.dev tasks locally")
@@ -67,7 +69,7 @@ program
     "Updates all @trigger.dev/* packages to their latest compatible versions or the specified version"
   )
   .argument("[path]", "The path to the directory that contains the package.json file", ".")
-  .option("--to <version tag>", "The version to update to (ex: 2.1.4)", "latest")
+  .option("-t, --to <version tag>", "The version to update to (ex: 2.1.4)", "latest")
   .action(async (path, options) => {
     await printInitialBanner(false);
     await updateCommand(path, options);

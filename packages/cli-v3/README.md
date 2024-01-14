@@ -20,6 +20,24 @@ npx trigger.dev@latest login
 | ----------- | ------------ | -------------------------------------------------------------------- |
 | `--api-url` | `-a`         | Set the API URL for Trigger.dev, defaults to https://api.trigger.dev |
 
+### Update
+
+Will update all of your @trigger.dev packages in your package.json to the latest version.
+
+```sh
+npx trigger.dev@latest update
+```
+
+You can pass the path to the folder that your package.json file lives in:
+
+```sh
+npx trigger.dev@latest update ./myapp
+```
+
+| Option | Short option | Description                                                |
+| ------ | ------------ | ---------------------------------------------------------- |
+| `--to` | `-t`         | The version to update to (ex: 2.1.4), defaults to "latest" |
+
 ### Who Am I?
 
 Shows the current user that is logged in.
