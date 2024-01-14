@@ -6,8 +6,28 @@ Note: this only works with Trigger.dev v3 projects and later. For older projects
 
 Trigger.dev is an open source platform that makes it easy to create event-driven background tasks directly in your existing project.
 
-## 💻 Usage
+## Usage
 
-To initialize your project using `trigger.dev`, run any of the following three commands and answer the prompts:
+### Login
 
-//todo add commands
+Logs that machine into Trigger.dev by creating a new Personal Access Token and storing it on the local machine. Once you're logged in you can perform the other actions below.
+
+```sh
+npx trigger.dev@latest login
+```
+
+| Option      | Short option | Description                                                          |
+| ----------- | ------------ | -------------------------------------------------------------------- |
+| `--api-url` | `-a`         | Set the API URL for Trigger.dev, defaults to https://api.trigger.dev |
+
+### Who Am I?
+
+Shows the current user that is logged in.
+
+```sh
+npx trigger.dev@latest whoami
+```
+
+| Option      | Short option | Description                                                          |
+| ----------- | ------------ | -------------------------------------------------------------------- |
+| `--api-url` | `-a`         | Set the API URL for Trigger.dev, defaults to https://api.trigger.dev |

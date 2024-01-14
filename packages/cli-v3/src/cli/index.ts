@@ -24,8 +24,8 @@ program
   .description("Login with Trigger.dev so you can perform authenticated actions")
   .option(
     "-a, --api-url <value>",
-    "Override the API URL, defaults to https://cloud.trigger.dev",
-    "https://cloud.trigger.dev"
+    "Override the API URL, defaults to https://api.trigger.dev",
+    "https://api.trigger.dev"
   )
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (options) => {
