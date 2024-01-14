@@ -5,6 +5,7 @@ import { logger } from "../utilities/logger";
 import { ApiClient } from "../apiClient";
 import { spinner, note, log } from "@clack/prompts";
 import { chalkLink } from "../utilities/colors";
+import { writeAuthConfigFile } from "../utilities/configFiles";
 
 const LoginOptionsSchema = z.object({
   apiUrl: z.string(),
@@ -20,7 +21,17 @@ export async function loginCommand(options: any) {
   return login(result.data.apiUrl);
 }
 
-export async function login(apiUrl: string) {
+export type LoginResult =
+  | {
+      success: true;
+      accessToken: string;
+    }
+  | {
+      success: false;
+      error: string;
+    };
+
+export async function login(apiUrl: string): Promise<LoginResult> {
   const apiClient = new ApiClient(apiUrl);
 
   //generate authorization code
@@ -31,7 +42,10 @@ export async function login(apiUrl: string) {
     createAuthCodeSpinner.stop(
       `Failed to create authorization code\n${authorizationCodeResult.error}`
     );
-    return;
+    return {
+      success: false,
+      error: authorizationCodeResult.error,
+    };
   }
   createAuthCodeSpinner.stop("Created authorization code");
 
@@ -43,7 +57,7 @@ export async function login(apiUrl: string) {
 
   //poll for personal access token (we need to poll for it)
   const getPersonalAccessTokenSpinner = spinner();
-  getPersonalAccessTokenSpinner.start("Getting Access Token");
+  getPersonalAccessTokenSpinner.start("Waiting for you to login");
   try {
     const indexResult = await pRetry(
       () => getPersonalAccessToken(apiClient, authorizationCodeResult.data.authorizationCode),
@@ -55,13 +69,23 @@ export async function login(apiUrl: string) {
       }
     );
 
-    getPersonalAccessTokenSpinner.stop(`Got access token ${indexResult.obfuscatedToken}`);
+    getPersonalAccessTokenSpinner.stop(`Logged in with token ${indexResult.obfuscatedToken}`);
+
+    writeAuthConfigFile({ accessToken: indexResult.token });
+
+    return {
+      success: true,
+      accessToken: indexResult.token,
+    };
   } catch (e) {
     getPersonalAccessTokenSpinner.stop(`Failed to get access token`);
     if (e instanceof AbortError) {
       log.error(e.message);
     }
-    return;
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : JSON.stringify(e),
+    };
   }
 }
 

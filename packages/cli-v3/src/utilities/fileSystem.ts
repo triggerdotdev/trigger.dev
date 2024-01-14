@@ -1,5 +1,6 @@
-import fsModule, { writeFile } from "fs/promises";
 import fsSync from "fs";
+import fsModule, { writeFile } from "fs/promises";
+import fs from "node:fs";
 import pathModule from "path";
 
 // Creates a file at the given path, if the directory doesn't exist it will be created
@@ -8,6 +9,15 @@ export async function createFile(path: string, contents: string): Promise<string
   await fsModule.writeFile(path, contents);
 
   return path;
+}
+
+export function isDirectory(configPath: string) {
+  try {
+    return fs.statSync(configPath).isDirectory();
+  } catch (error) {
+    // ignore error
+    return false;
+  }
 }
 
 export async function pathExists(path: string): Promise<boolean> {

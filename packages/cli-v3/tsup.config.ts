@@ -13,4 +13,8 @@ export default defineConfig({
   target: "esnext",
   outDir: "dist",
   onSuccess: isDev ? `node dist/index.js` : "",
+  //this is required because "xdg-app-paths" uses a dynamic import
+  banner: {
+    js: "import { createRequire } from 'module';const require = createRequire(import.meta.url);",
+  },
 });
