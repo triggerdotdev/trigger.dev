@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   CreateAuthorizationCodeResponseSchema,
   GetPersonalAccessTokenResponseSchema,
+  WhoAmIResponseSchema,
 } from "@trigger.dev/core";
 
 export class ApiClient {
@@ -25,6 +26,15 @@ export class ApiClient {
       body: JSON.stringify({
         authorizationCode,
       }),
+    });
+  }
+
+  async whoAmI({ accessToken }: { accessToken: string }) {
+    return zodfetch(WhoAmIResponseSchema, `${this.apiURL}/api/v2/whoami`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
     });
   }
 }
@@ -72,6 +82,13 @@ async function zodfetch<TResponseBody extends any>(
 
     if (parsedResult.success) {
       return { success: true, data: parsedResult.data };
+    }
+
+    if ("error" in jsonBody) {
+      return {
+        success: false,
+        error: typeof jsonBody.error === "string" ? jsonBody.error : JSON.stringify(jsonBody.error),
+      };
     }
 
     return { success: false, error: parsedResult.error.message };

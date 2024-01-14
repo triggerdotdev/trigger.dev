@@ -1,18 +1,15 @@
+import { intro, log, outro, select, spinner } from "@clack/prompts";
+import open from "open";
 import pRetry, { AbortError } from "p-retry";
-import open, { openApp, apps } from "open";
-import { z } from "zod";
-import { logger } from "../utilities/logger";
 import { ApiClient } from "../apiClient";
-import { spinner, note, log, intro, outro, select } from "@clack/prompts";
+import { ApiUrlOptionsSchema } from "../cli";
 import { chalkLink } from "../utilities/colors";
 import { readAuthConfigFile, writeAuthConfigFile } from "../utilities/configFiles";
-
-const LoginOptionsSchema = z.object({
-  apiUrl: z.string(),
-});
+import { logger } from "../utilities/logger";
+import { whoAmI } from "./whoami";
 
 export async function loginCommand(options: any) {
-  const result = LoginOptionsSchema.safeParse(options);
+  const result = ApiUrlOptionsSchema.safeParse(options);
   if (!result.success) {
     logger.error(result.error.message);
     return;
@@ -38,22 +35,24 @@ export async function login(apiUrl: string): Promise<LoginResult> {
 
   const existingAccessToken = readAuthConfigFile()?.accessToken;
   if (existingAccessToken) {
+    const whoAmiI = await whoAmI(apiUrl);
+
     const continueOption = await select({
       message: "You are already logged in.",
       options: [
         {
           value: false,
-          label: "Don't login",
+          label: "Exit",
         },
         {
           value: true,
-          label: "Login with a different token",
+          label: "Login with a different account",
         },
       ],
       initialValue: false,
     });
 
-    if (continueOption === false) {
+    if (continueOption !== true) {
       outro("Already logged in");
       return {
         success: true,

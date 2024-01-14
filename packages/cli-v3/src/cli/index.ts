@@ -6,8 +6,13 @@ import { COMMAND_NAME } from "../consts";
 import { getVersion } from "../utilities/getVersion";
 import { printInitialBanner } from "../utilities/initialBanner";
 import { login, loginCommand } from "../commands/login";
+import { z } from "zod";
 
 export const program = new Command();
+
+export const ApiUrlOptionsSchema = z.object({
+  apiUrl: z.string(),
+});
 
 program
   .name(COMMAND_NAME)
@@ -71,14 +76,16 @@ program
 program
   .command("whoami")
   .description("display the current logged in user and project details")
-  .argument("[path]", "The path to the project", ".")
-  .option("-p, --port <port>", "The local port your server is on", "3000")
-  .option("-e, --env-file <name>", "The name of the env file to load", ".env.local")
+  .option(
+    "-a, --api-url <value>",
+    "Override the API URL, defaults to https://cloud.trigger.dev",
+    "https://cloud.trigger.dev"
+  )
   .version(getVersion(), "-v, --version", "Display the version number")
-  .action(async (path, options) => {
+  .action(async (options) => {
     try {
       await printInitialBanner();
-      await whoamiCommand(path, options);
+      await whoamiCommand(options);
     } catch (e) {
       throw e;
     }
