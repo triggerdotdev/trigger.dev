@@ -70,7 +70,7 @@ export default function Page() {
           {result.success ? (
             <div>
               <Header1 className="mb-2 flex items-center gap-1">
-                <Icon icon={CheckCircleIcon} className="h-6 w-6 text-emerald-500" /> Successful
+                <Icon icon={CheckCircleIcon} className="h-6 w-6 text-emerald-500" /> Successfully
                 authenticated
               </Header1>
               <Paragraph>Return to your terminal to continue.</Paragraph>
