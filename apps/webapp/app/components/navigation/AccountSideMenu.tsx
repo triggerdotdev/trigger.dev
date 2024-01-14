@@ -34,11 +34,6 @@ export function AccountSideMenu({ user }: { user: User }) {
           >
             Account
           </LinkButton>
-
-          {/* <Link to={rootPath()} className="flex w-full items-center gap-1 px-1">
-            <ArrowLeftIcon className="h-4 w-4 text-slate-400" />
-            <Header3 className="text-slate-400">Account</Header3>
-          </Link> */}
         </div>
         <div className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
           <div className="mb-6 flex flex-col gap-1 px-1">
