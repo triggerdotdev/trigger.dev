@@ -1,22 +1,21 @@
 import { CalendarDateTime, createCalendar } from "@internationalized/date";
-import {
-  AriaDateFieldOptions,
-  DateValue,
-  useDateField,
-  useDateSegment,
-} from "@react-aria/datepicker";
-import type { DateFieldState, DateFieldStateOptions, DateSegment } from "@react-stately/datepicker";
+import { useDateField, useDateSegment } from "@react-aria/datepicker";
+import type { DateFieldState, DateSegment } from "@react-stately/datepicker";
 import { useDateFieldState } from "@react-stately/datepicker";
+import { Granularity } from "@react-types/datepicker";
 import { useRef } from "react";
 import { cn } from "~/utils/cn";
 import { useLocales } from "./LocaleProvider";
-import { Prettify } from "@trigger.dev/core";
 
 type DateFieldProps = {
   label?: string;
   defaultValue?: Date;
+  minValue?: Date;
+  maxValue?: Date;
   className?: string;
   fieldClassName?: string;
+  granularity: Granularity;
+  showGuide?: boolean;
   onValueChange?: (value: Date) => void;
 };
 
@@ -24,8 +23,12 @@ export function DateField({
   label,
   defaultValue,
   onValueChange,
+  minValue,
+  maxValue,
+  granularity,
   className,
   fieldClassName,
+  showGuide = false,
 }: DateFieldProps) {
   const locales = useLocales();
 
@@ -36,6 +39,9 @@ export function DateField({
         onValueChange?.(value.toDate("utc"));
       }
     },
+    minValue: utcDateToCalendarDate(minValue),
+    maxValue: utcDateToCalendarDate(maxValue),
+    granularity,
     locale: locales.at(0) ?? "en-US",
     createCalendar: (name: string) => {
       return createCalendar(name);
@@ -53,7 +59,7 @@ export function DateField({
 
   return (
     <div className={`flex flex-col items-start ${className || ""}`}>
-      <span {...labelProps} className="text-sm text-slate-400">
+      <span {...labelProps} className="mb-1 ml-0.5 text-xs text-slate-300">
         {label}
       </span>
       <div
@@ -68,6 +74,13 @@ export function DateField({
           <DateSegment key={i} segment={segment} state={state} />
         ))}
       </div>
+      {showGuide && (
+        <div className="mt-1 flex px-2">
+          {state.segments.map((segment, i) => (
+            <DateSegmentGuide key={i} segment={segment} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -100,19 +113,16 @@ function DateSegment({ segment, state }: DateSegmentProps) {
       ref={ref}
       style={{
         ...segmentProps.style,
-        minWidth:
-          segment.type !== "literal" && segment.maxValue !== null
-            ? String(`${segment.maxValue}`).length + "ch"
-            : undefined,
+        minWidth: minWidthForSegment(segment),
       }}
-      className={`group box-content rounded-sm px-0.5 text-right tabular-nums outline-none focus:bg-indigo-500 focus:text-white ${
-        !segment.isEditable ? "text-slate-600" : "text-bright"
+      className={`group box-content rounded-sm px-0.5 text-right text-sm tabular-nums outline-none focus:bg-indigo-500 focus:text-white ${
+        !segment.isEditable ? "text-slate-500" : "text-bright"
       }`}
     >
       {/* Always reserve space for the placeholder, to prevent layout shift when editing. */}
       <span
         aria-hidden="true"
-        className="block text-center italic text-gray-500 group-focus:text-white"
+        className="block text-center italic text-slate-500 group-focus:text-white"
         style={{
           visibility: segment.isPlaceholder ? undefined : "hidden",
           height: segment.isPlaceholder ? "" : 0,
@@ -122,6 +132,31 @@ function DateSegment({ segment, state }: DateSegmentProps) {
         {segment.placeholder}
       </span>
       {segment.isPlaceholder ? "" : segment.text}
+    </div>
+  );
+}
+
+function minWidthForSegment(segment: DateSegment) {
+  if (segment.type === "literal") {
+    return undefined;
+  }
+
+  return String(`${segment.maxValue}`).length + "ch";
+}
+
+function DateSegmentGuide({ segment }: { segment: DateSegment }) {
+  return (
+    <div
+      style={{
+        minWidth: minWidthForSegment(segment),
+      }}
+      className={`group box-content rounded-sm px-0.5 text-right text-sm tabular-nums outline-none ${
+        !segment.isEditable ? "text-slate-500" : "text-bright"
+      }`}
+    >
+      <span className="block text-center italic text-slate-500">
+        {segment.type !== "literal" ? segment.placeholder : segment.text}
+      </span>
     </div>
   );
 }

@@ -60,6 +60,7 @@
     "@radix-ui/react-tooltip": "^1.0.5",
     "@react-aria/datepicker": "^3.9.1",
     "@react-stately/datepicker": "^3.9.1",
+    "@react-types/datepicker": "^3.7.1",
     "@remix-run/express": "2.1.0",
     "@remix-run/node": "2.1.0",
     "@remix-run/react": "2.1.0",

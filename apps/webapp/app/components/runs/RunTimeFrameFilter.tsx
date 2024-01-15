@@ -207,19 +207,23 @@ function AbsoluteTimeFrame({
     <div className="flex flex-col gap-2 pt-2">
       <div className="flex flex-col justify-start gap-2">
         <DateField
-          label="From"
+          label="From (UTC)"
           defaultValue={fromDate}
           onValueChange={(value) => {
             setFromDate(value);
             onValueChange({ from: value, to: toDate });
           }}
-          // maxValue={today(getLocalTimeZone())}
-          // granularity="second"
-          // shouldForceLeadingZeros={true}
-          // locale={locales.at(0) ?? "en-US"}
-          // createCalendar={function (name: string): Calendar {
-          //   return createCalendar(name);
-          // }}
+          granularity="second"
+        />
+        <DateField
+          label="To (UTC)"
+          defaultValue={toDate}
+          onValueChange={(value) => {
+            setToDate(value);
+            onValueChange({ from: fromDate, to: value });
+          }}
+          granularity="second"
+          showGuide
         />
       </div>
     </div>

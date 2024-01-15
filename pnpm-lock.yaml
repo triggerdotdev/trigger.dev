@@ -108,6 +108,7 @@ importers:
       '@radix-ui/react-tooltip': ^1.0.5
       '@react-aria/datepicker': ^3.9.1
       '@react-stately/datepicker': ^3.9.1
+      '@react-types/datepicker': ^3.7.1
       '@remix-run/dev': 2.1.0
       '@remix-run/eslint-config': 2.1.0
       '@remix-run/express': 2.1.0
@@ -272,6 +273,7 @@ importers:
       '@radix-ui/react-tooltip': 1.0.5_bwbutfx4xj25dewzmxso6o3wga
       '@react-aria/datepicker': 3.9.1_biqbaboplfbrettd7655fr4n2y
       '@react-stately/datepicker': 3.9.1_react@18.2.0
+      '@react-types/datepicker': 3.7.1_react@18.2.0
       '@remix-run/express': 2.1.0_fgkcria6ebvizt7e6qzdl6ei7a
       '@remix-run/node': 2.1.0_typescript@5.2.2
       '@remix-run/react': 2.1.0_vegmnuvoswdxuttpuhvewcem44
