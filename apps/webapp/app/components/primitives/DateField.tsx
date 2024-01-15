@@ -1,4 +1,4 @@
-import { createCalendar } from "@internationalized/date";
+import { CalendarDateTime, createCalendar } from "@internationalized/date";
 import {
   AriaDateFieldOptions,
   DateValue,
@@ -9,34 +9,59 @@ import type { DateFieldState, DateFieldStateOptions, DateSegment } from "@react-
 import { useDateFieldState } from "@react-stately/datepicker";
 import { useRef } from "react";
 import { cn } from "~/utils/cn";
+import { useLocales } from "./LocaleProvider";
+import { Prettify } from "@trigger.dev/core";
 
-type DateFieldProps = AriaDateFieldOptions<DateValue> &
-  DateFieldStateOptions<DateValue> & {
-    className?: string;
-    fieldClassName?: string;
-  };
+type DateFieldProps = {
+  label?: string;
+  defaultValue?: Date;
+  className?: string;
+  fieldClassName?: string;
+  onValueChange?: (value: Date) => void;
+};
 
-export function DateField(props: DateFieldProps) {
+export function DateField({
+  label,
+  defaultValue,
+  onValueChange,
+  className,
+  fieldClassName,
+}: DateFieldProps) {
+  const locales = useLocales();
+
   const state = useDateFieldState({
-    ...props,
-    locale: props.locale,
-    createCalendar,
+    defaultValue: utcDateToCalendarDate(defaultValue),
+    onChange: (value) => {
+      if (value) {
+        onValueChange?.(value.toDate("utc"));
+      }
+    },
+    locale: locales.at(0) ?? "en-US",
+    createCalendar: (name: string) => {
+      return createCalendar(name);
+    },
   });
 
   const ref = useRef<null | HTMLDivElement>(null);
-  const { labelProps, fieldProps } = useDateField(props, state, ref);
+  const { labelProps, fieldProps } = useDateField(
+    {
+      label,
+    },
+    state,
+    ref
+  );
 
   return (
-    <div className={`flex flex-col items-start ${props.className || ""}`}>
+    <div className={`flex flex-col items-start ${className || ""}`}>
       <span {...labelProps} className="text-sm text-slate-400">
-        {props.label}
+        {label}
       </span>
       <div
         {...fieldProps}
         ref={ref}
         className={cn(
           "flex rounded-md border border-slate-800 bg-midnight-900 p-1 px-2 transition-colors focus-within:border-slate-500 hover:border-slate-700 focus-within:hover:border-slate-500",
-          props.fieldClassName
+          fieldClassName
         )}
       >
         {state.segments.map((segment, i) => (
@@ -45,6 +70,19 @@ export function DateField(props: DateFieldProps) {
       </div>
     </div>
   );
+}
+
+function utcDateToCalendarDate(date?: Date) {
+  return date
+    ? new CalendarDateTime(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        date.getHours(),
+        date.getMinutes(),
+        date.getSeconds()
+      )
+    : undefined;
 }
 
 type DateSegmentProps = {

@@ -200,19 +200,7 @@ function AbsoluteTimeFrame({
   to?: Date;
   onValueChange: (value: { from?: Date; to?: Date }) => void;
 }) {
-  const locales = useLocales();
-  const [fromDate, setFromDate] = useState<DateValue | undefined>(
-    from
-      ? new CalendarDateTime(
-          from.getFullYear(),
-          from.getMonth(),
-          from.getDate(),
-          from.getHours(),
-          from.getMinutes(),
-          from.getSeconds()
-        )
-      : undefined
-  );
+  const [fromDate, setFromDate] = useState<Date | undefined>(from);
   const [toDate, setToDate] = useState<Date | undefined>(to);
 
   return (
@@ -220,22 +208,18 @@ function AbsoluteTimeFrame({
       <div className="flex flex-col justify-start gap-2">
         <DateField
           label="From"
-          value={fromDate}
-          onChange={(value) => {
-            if (value) {
-              setFromDate(value);
-              onValueChange({ from: value.toDate("utc"), to: toDate });
-            } else {
-              console.log("fromDate is undefined");
-            }
+          defaultValue={fromDate}
+          onValueChange={(value) => {
+            setFromDate(value);
+            onValueChange({ from: value, to: toDate });
           }}
-          maxValue={today(getLocalTimeZone())}
-          granularity="second"
-          shouldForceLeadingZeros={true}
-          locale={locales.at(0) ?? "en-US"}
-          createCalendar={function (name: string): Calendar {
-            return createCalendar(name);
-          }}
+          // maxValue={today(getLocalTimeZone())}
+          // granularity="second"
+          // shouldForceLeadingZeros={true}
+          // locale={locales.at(0) ?? "en-US"}
+          // createCalendar={function (name: string): Calendar {
+          //   return createCalendar(name);
+          // }}
         />
       </div>
     </div>
