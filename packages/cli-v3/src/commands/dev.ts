@@ -10,7 +10,8 @@ import { fork } from "node:child_process";
 import { resolve as importResolve } from "import-meta-resolve";
 import { TaskMetadata } from "../types";
 import { isLoggedIn } from "../utilities/session";
-import { login } from "./login";
+import { LoginResult, login } from "./login";
+import { ApiClient } from "../apiClient";
 
 const CONFIG_FILES = ["trigger.config.js", "trigger.config.mjs"];
 
@@ -31,12 +32,14 @@ type EntryPoint = {
 
 type EntryPointBundle = Awaited<ReturnType<typeof buildEntryPoints>>;
 
+let apiClient: ApiClient | undefined;
+
 export async function devCommand(dir: string, anyOptions: any) {
   const config = await loadConfig(dir);
 
-  console.log(config);
-
   const authorization = await isLoggedIn(config.triggerUrl);
+
+  let accessToken: string | undefined;
 
   if (!authorization.ok) {
     const loginResult = await login(config.triggerUrl);
@@ -44,13 +47,26 @@ export async function devCommand(dir: string, anyOptions: any) {
     if (!loginResult.success) {
       throw new Error(loginResult.error);
     }
+
+    accessToken = loginResult.accessToken;
+  } else {
+    accessToken = authorization.accessToken;
+  }
+
+  apiClient = new ApiClient(config.triggerUrl, accessToken);
+
+  const devEnv = await apiClient.getProjectDevEnv({ projectRef: config.project });
+
+  if (!devEnv.success) {
+    throw new Error(devEnv.error);
   }
 
   const entryPoints = await gatherEntryPoints(config);
 
-  console.log(entryPoints);
-
-  const taskServers = await startTaskServers(config, entryPoints);
+  const taskServers = await startTaskServers(config, entryPoints, {
+    TRIGGER_API_URL: config.triggerUrl,
+    TRIGGER_API_KEY: devEnv.data.apiKey,
+  });
 
   for (const taskServer of taskServers) {
     if (!taskServer.tasks) {
@@ -65,13 +81,17 @@ export async function devCommand(dir: string, anyOptions: any) {
   }
 }
 
-async function startTaskServers(config: ResolvedConfig, entryPoints: EntryPoint[]) {
+async function startTaskServers(
+  config: ResolvedConfig,
+  entryPoints: EntryPoint[],
+  env: Record<string, string>
+) {
   const bundle = await buildEntryPoints(entryPoints);
 
   const taskEntryPoints: TaskEntryPoint[] = [];
 
   for (const entryPoint of entryPoints) {
-    taskEntryPoints.push(await loadTaskEntryPoint(config, entryPoint, bundle));
+    taskEntryPoints.push(await loadTaskEntryPoint(config, entryPoint, bundle, env));
   }
 
   return taskEntryPoints;
@@ -80,7 +100,8 @@ async function startTaskServers(config: ResolvedConfig, entryPoints: EntryPoint[
 async function loadTaskEntryPoint(
   config: ResolvedConfig,
   entryPoint: EntryPoint,
-  bundle: EntryPointBundle
+  bundle: EntryPointBundle,
+  env: Record<string, string>
 ) {
   const metaOutputKey = join("out", `${entryPoint.out}.js`);
 
@@ -110,7 +131,8 @@ async function loadTaskEntryPoint(
     metaOutputKey,
     outputFile.text,
     sourceMapFile.text,
-    metaOutput.exports
+    metaOutput.exports,
+    env
   );
 
   return taskServer;
@@ -122,7 +144,8 @@ async function startTaskServer(
   path: string,
   fileContents: string,
   sourceMapContents: string,
-  exports: string[]
+  exports: string[],
+  env: Record<string, string>
 ) {
   // Create a file at join(dir, ".trigger", path) with the fileContents
   const fullPath = join(dir, ".trigger", `${basename(path, extname(path))}.mjs`);
@@ -131,7 +154,7 @@ async function startTaskServer(
   const sourceMapPath = `${fullPath}.map`;
   await fs.promises.writeFile(sourceMapPath, sourceMapContents);
 
-  const taskServer = new TaskEntryPoint(fullPath, exports);
+  const taskServer = new TaskEntryPoint(fullPath, exports, env);
   await taskServer.start();
   return taskServer;
 }
@@ -142,7 +165,8 @@ class TaskEntryPoint {
 
   constructor(
     public path: string,
-    private exports: string[]
+    private exports: string[],
+    private env: Record<string, string>
   ) {}
 
   async start() {
@@ -154,8 +178,7 @@ class TaskEntryPoint {
       this.child = fork(modulePath, {
         stdio: "inherit",
         env: {
-          TRIGGER_API_URL: "http://localhost:3000",
-          TRIGGER_API_KEY: "tr_dev_1234567890",
+          ...this.env,
         },
       });
 

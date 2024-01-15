@@ -2,13 +2,15 @@ import { z } from "zod";
 import {
   CreateAuthorizationCodeResponseSchema,
   GetPersonalAccessTokenResponseSchema,
+  GetProjectDevResponse,
   WhoAmIResponseSchema,
 } from "@trigger.dev/core";
 
 export class ApiClient {
-  constructor(private readonly apiURL: string) {
-    this.apiURL = apiURL;
-  }
+  constructor(
+    private readonly apiURL: string,
+    private readonly accessToken?: string
+  ) {}
 
   async createAuthorizationCode() {
     return zodfetch(
@@ -29,10 +31,27 @@ export class ApiClient {
     });
   }
 
-  async whoAmI({ accessToken }: { accessToken: string }) {
+  async whoAmI() {
+    if (!this.accessToken) {
+      throw new Error("whoAmI: No access token");
+    }
+
     return zodfetch(WhoAmIResponseSchema, `${this.apiURL}/api/v2/whoami`, {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  async getProjectDevEnv({ projectRef }: { projectRef: string }) {
+    if (!this.accessToken) {
+      throw new Error("getProjectDevEnv: No access token");
+    }
+
+    return zodfetch(GetProjectDevResponse, `${this.apiURL}/api/v1/projects/${projectRef}/dev`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
       },
     });

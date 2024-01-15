@@ -1,9 +1,11 @@
-import { nanoid } from "nanoid";
+import { nanoid, customAlphabet } from "nanoid";
 import slug from "slug";
 import { prisma } from "~/db.server";
 import type { Project } from "@trigger.dev/database";
 import { Organization, createEnvironment } from "./organization.server";
 export type { Project } from "@trigger.dev/database";
+
+const externalRefGenerator = customAlphabet("abcdefghijklmnopqrstuvwxyz", 20);
 
 export async function createProject(
   { organizationSlug, name, userId }: { organizationSlug: string; name: string; userId: string },
@@ -53,6 +55,7 @@ export async function createProject(
           slug: organizationSlug,
         },
       },
+      externalRef: externalRefGenerator(),
     },
     include: {
       organization: {

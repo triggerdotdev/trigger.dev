@@ -57,8 +57,8 @@ export async function whoAmI(apiUrl: string): Promise<WhoAmIResult> {
     };
   }
 
-  const apiClient = new ApiClient(apiUrl);
-  const userData = await apiClient.whoAmI({ accessToken });
+  const apiClient = new ApiClient(apiUrl, accessToken);
+  const userData = await apiClient.whoAmI();
 
   if (!userData.success) {
     loadingSpinner.stop("Error getting your account details");

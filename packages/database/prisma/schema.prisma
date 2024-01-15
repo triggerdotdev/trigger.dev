@@ -399,6 +399,8 @@ model Project {
   slug String @unique
   name String
 
+  externalRef String @unique
+
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 

@@ -14,8 +14,8 @@ export async function isLoggedIn(apiUrl: string) {
     return { ok: false, error: "You must login first" };
   }
 
-  const apiClient = new ApiClient(apiUrl);
-  const userData = await apiClient.whoAmI({ accessToken });
+  const apiClient = new ApiClient(apiUrl, accessToken);
+  const userData = await apiClient.whoAmI();
 
   if (!userData.success) {
     return {
