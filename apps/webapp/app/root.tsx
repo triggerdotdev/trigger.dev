@@ -28,6 +28,7 @@ export const meta: TypedMetaFunction<typeof loader> = (args) => {
     title: `Trigger.dev${appEnvTitleTag(args.data?.appEnv)}`,
     charset: "utf-8",
     viewport: "width=1024, initial-scale=1",
+    robots: args.data.features.isManagedCloud ? "index, follow" : "noindex, nofollow",
   });
 };
 
