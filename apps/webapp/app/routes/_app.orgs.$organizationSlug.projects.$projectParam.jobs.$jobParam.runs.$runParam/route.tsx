@@ -10,6 +10,7 @@ import { jobMatchId, useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
+import { useUser } from "~/hooks/useUser";
 import { RunPresenter } from "~/presenters/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
@@ -63,6 +64,7 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const job = useJob();
+  const user = useUser();
 
   const revalidator = useRevalidator();
   const events = useEventSource(runStreamingPath(organization, project, job, run), {
@@ -86,6 +88,7 @@ export default function Page() {
         run: runPath(organization, project, job, run),
         runsPath: jobRunsParentPath(organization, project, job),
       }}
+      currentUser={user}
     />
   );
 }

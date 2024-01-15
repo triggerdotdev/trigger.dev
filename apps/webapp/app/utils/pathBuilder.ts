@@ -1,4 +1,5 @@
 import type {
+  EventRecord,
   Integration,
   TriggerHttpEndpoint,
   TriggerSource,
@@ -15,6 +16,7 @@ export type JobForPath = Pick<Job, "slug">;
 export type RunForPath = Pick<Job, "id">;
 export type IntegrationForPath = Pick<Integration, "slug">;
 export type TriggerForPath = Pick<TriggerSource, "id">;
+export type EventForPath = Pick<EventRecord, "id">;
 export type WebhookForPath = Pick<Webhook, "id">;
 export type HttpEndpointForPath = Pick<TriggerHttpEndpoint, "key">;
 
@@ -44,6 +46,10 @@ export const IntegrationClientParamSchema = OrganizationParamsSchema.extend({
 
 export const TriggerSourceParamSchema = ProjectParamSchema.extend({
   triggerParam: z.string(),
+});
+
+export const EventParamSchema = ProjectParamSchema.extend({
+  eventParam: z.string(),
 });
 
 export const TriggerSourceRunParamsSchema = TriggerSourceParamSchema.extend({
@@ -200,6 +206,18 @@ export function organizationIntegrationsPath(organization: OrgForPath) {
 
 export function projectTriggersPath(organization: OrgForPath, project: ProjectForPath) {
   return `${projectPath(organization, project)}/triggers`;
+}
+
+export function projectEventsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/events`;
+}
+
+export function projectEventPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  event: EventForPath
+) {
+  return `${projectEventsPath(organization, project)}/${event.id}`;
 }
 
 export function projectHttpEndpointsPath(organization: OrgForPath, project: ProjectForPath) {

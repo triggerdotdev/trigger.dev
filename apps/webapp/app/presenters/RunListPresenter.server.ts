@@ -1,15 +1,22 @@
 import { z } from "zod";
+import {
+  Direction,
+  FilterableEnvironment,
+  FilterableStatus,
+  filterableStatuses,
+} from "~/components/runs/RunStatuses";
 import { PrismaClient, prisma } from "~/db.server";
-import { DirectionSchema } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/route";
-
-export type Direction = z.infer<typeof DirectionSchema>;
+import { getUsername } from "~/utils/username";
 
 type RunListOptions = {
   userId: string;
+  eventId?: string;
   jobSlug?: string;
   organizationSlug: string;
   projectSlug: string;
   direction?: Direction;
+  filterStatus?: FilterableStatus;
+  filterEnvironment?: FilterableEnvironment;
   cursor?: string;
   pageSize?: number;
 };
@@ -27,13 +34,18 @@ export class RunListPresenter {
 
   public async call({
     userId,
+    eventId,
     jobSlug,
     organizationSlug,
     projectSlug,
+    filterEnvironment,
+    filterStatus,
     direction = "forward",
     cursor,
     pageSize = DEFAULT_PAGE_SIZE,
   }: RunListOptions) {
+    const filterStatuses = filterStatus ? filterableStatuses[filterStatus] : undefined;
+
     const directionMultiplier = direction === "forward" ? 1 : -1;
 
     // Find the organization that the user is a member of
@@ -43,7 +55,6 @@ export class RunListPresenter {
         members: { some: { userId } },
       },
     });
-
 
     // Find the project scoped to the organization
     const project = await this.#prismaClient.project.findFirstOrThrow({
@@ -57,19 +68,21 @@ export class RunListPresenter {
     const environments = await this.#prismaClient.runtimeEnvironment.findMany({
       where: {
         projectId: project.id,
-        OR: [
-          { orgMember: { userId } },
-          { orgMemberId: null },
-        ]
-      }
+      },
     });
 
-    const job = jobSlug ? await this.#prismaClient.job.findFirstOrThrow({
-      where: {
-        slug: jobSlug,
-        projectId: project.id,
-      },
-    }) : undefined;
+    const job = jobSlug
+      ? await this.#prismaClient.job.findFirstOrThrow({
+          where: {
+            slug: jobSlug,
+            projectId: project.id,
+          },
+        })
+      : undefined;
+
+    const event = eventId
+      ? await this.#prismaClient.eventRecord.findUnique({ where: { id: eventId } })
+      : undefined;
 
     const runs = await this.#prismaClient.jobRun.findMany({
       select: {
@@ -87,7 +100,13 @@ export class RunListPresenter {
             slug: true,
             orgMember: {
               select: {
-                userId: true,
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    displayName: true,
+                  },
+                },
               },
             },
           },
@@ -105,12 +124,15 @@ export class RunListPresenter {
         },
       },
       where: {
+        eventId: event?.id,
         jobId: job?.id,
         projectId: project.id,
         organizationId: organization.id,
         environmentId: {
           in: environments.map((environment) => environment.id),
         },
+        status: filterStatuses ? { in: filterStatuses } : undefined,
+        environment: filterEnvironment ? { type: filterEnvironment } : undefined,
       },
       orderBy: [{ id: "desc" }],
       //take an extra record to tell if there are more
@@ -119,8 +141,8 @@ export class RunListPresenter {
       skip: cursor ? 1 : 0,
       cursor: cursor
         ? {
-          id: cursor,
-        }
+            id: cursor,
+          }
         : undefined,
     });
 
@@ -163,7 +185,8 @@ export class RunListPresenter {
         environment: {
           type: run.environment.type,
           slug: run.environment.slug,
-          userId: run.environment.orgMember?.userId,
+          userId: run.environment.orgMember?.user.id,
+          userName: getUsername(run.environment.orgMember?.user),
         },
         job: run.job,
       })),

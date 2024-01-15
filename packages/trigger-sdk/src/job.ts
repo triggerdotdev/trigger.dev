@@ -185,8 +185,8 @@ export class Job<
         typeof this.options.concurrencyLimit === "number"
           ? this.options.concurrencyLimit
           : typeof this.options.concurrencyLimit === "object"
-            ? { id: this.options.concurrencyLimit.id, limit: this.options.concurrencyLimit.limit }
-            : undefined,
+          ? { id: this.options.concurrencyLimit.id, limit: this.options.concurrencyLimit.limit }
+          : undefined,
     };
   }
 
@@ -263,7 +263,7 @@ export class Job<
       throw new Error("Cannot invoke a job from within a run without a cacheKey.");
     }
 
-    return await triggerClient.invokeJob(this.id, param1, param3);
+    return await triggerClient.invokeJob(this.id, param1, param2);
   }
 
   async invokeAndWaitForCompletion(

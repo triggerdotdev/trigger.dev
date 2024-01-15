@@ -63,6 +63,7 @@ program
     "-t, --tunnel <url>",
     "An optional custom tunnel URL. Use only if you already have an open tunnel to your local dev server."
   )
+  .option("-s, --https", "allows enabled https for the tunnel")
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (path, options) => {
     try {

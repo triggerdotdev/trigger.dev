@@ -10,6 +10,7 @@ import {
 import type { JobRunStatus } from "@trigger.dev/database";
 import { cn } from "~/utils/cn";
 import { Spinner } from "../primitives/Spinner";
+import { z } from "zod";
 
 export function RunStatus({ status }: { status: JobRunStatus }) {
   return (
@@ -127,3 +128,44 @@ export function runStatusClassNameColor(status: JobRunStatus): string {
     }
   }
 }
+
+export const DirectionSchema = z.union([z.literal("forward"), z.literal("backward")]);
+export type Direction = z.infer<typeof DirectionSchema>;
+
+export const FilterableStatus = z.union([
+  z.literal("QUEUED"),
+  z.literal("IN_PROGRESS"),
+  z.literal("WAITING"),
+  z.literal("COMPLETED"),
+  z.literal("FAILED"),
+  z.literal("TIMEDOUT"),
+  z.literal("CANCELED"),
+]);
+export type FilterableStatus = z.infer<typeof FilterableStatus>;
+
+export const FilterableEnvironment = z.union([
+  z.literal("DEVELOPMENT"),
+  z.literal("STAGING"),
+  z.literal("PRODUCTION"),
+]);
+export type FilterableEnvironment = z.infer<typeof FilterableEnvironment>;
+export const environmentKeys: FilterableEnvironment[] = ["DEVELOPMENT", "STAGING", "PRODUCTION"];
+
+export const RunListSearchSchema = z.object({
+  cursor: z.string().optional(),
+  direction: DirectionSchema.optional(),
+  status: FilterableStatus.optional(),
+  environment: FilterableEnvironment.optional(),
+});
+
+export const filterableStatuses: Record<FilterableStatus, JobRunStatus[]> = {
+  QUEUED: ["QUEUED", "WAITING_TO_EXECUTE", "PENDING", "WAITING_ON_CONNECTIONS"],
+  IN_PROGRESS: ["STARTED", "EXECUTING", "PREPROCESSING"],
+  WAITING: ["WAITING_TO_CONTINUE"],
+  COMPLETED: ["SUCCESS"],
+  FAILED: ["FAILURE", "UNRESOLVED_AUTH", "INVALID_PAYLOAD", "ABORTED"],
+  TIMEDOUT: ["TIMED_OUT"],
+  CANCELED: ["CANCELED"],
+};
+
+export const statusKeys: FilterableStatus[] = Object.keys(filterableStatuses) as FilterableStatus[];

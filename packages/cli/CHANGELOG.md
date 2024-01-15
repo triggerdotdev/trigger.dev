@@ -1,5 +1,46 @@
 # create-trigger
 
+## 2.3.11
+
+### Patch Changes
+
+- bc61d837: updated the dev command to include -https flag
+- Updated dependencies [bc61d837]
+  - @trigger.dev/yalt@2.3.11
+  - @trigger.dev/core@2.3.11
+
+## 2.3.10
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.10
+- @trigger.dev/yalt@2.3.10
+
+## 2.3.9
+
+### Patch Changes
+
+- aa97bf4a: Updated the telemetry API key
+- Updated dependencies [740b7b23]
+  - @trigger.dev/core@2.3.9
+  - @trigger.dev/yalt@2.3.9
+
+## 2.3.8
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.8
+- @trigger.dev/yalt@2.3.8
+
+## 2.3.7
+
+### Patch Changes
+
+- dfa47b62: Don't proxy certain headers across the Yalt boundary as it can mess-up proxied local requests
+- Updated dependencies [dfa47b62]
+  - @trigger.dev/yalt@2.3.7
+  - @trigger.dev/core@2.3.7
+
 ## 2.3.6
 
 ### Patch Changes

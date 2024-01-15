@@ -51,8 +51,9 @@ type RouteDecision =
 	| { type: 'not_found' };
 
 function routeUrl(url: URL, env: Env): RouteDecision {
-	if (url.host.startsWith('localhost:')) {
-		const searchParams = new URLSearchParams(url.search);
+	const searchParams = new URLSearchParams(url.search);
+
+	if (searchParams.has('t')) {
 		const name = searchParams.get('t');
 
 		if (name) {
