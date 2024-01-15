@@ -214,7 +214,7 @@ export class IO {
     return new IOLogger(async (level, message, data) => {
       let logLevel: LogLevel = "info";
 
-      if(data instanceof Error && level === "ERROR"){
+      if(data instanceof Error){
         data = {
           name : data.name,
           message : data.message,
