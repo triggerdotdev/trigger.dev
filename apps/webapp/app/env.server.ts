@@ -67,6 +67,9 @@ const EnvironmentSchema = z.object({
 
   TUNNEL_HOST: z.string().optional(),
   TUNNEL_SECRET_KEY: z.string().optional(),
+
+  //v3
+  V3_ENABLED: z.string().default("false"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

@@ -1,0 +1,90 @@
+{
+  "name": "trigger.dev",
+  "version": "1.0.0",
+  "description": "A Command-Line Interface for Trigger.dev (v3) projects",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/triggerdotdev/trigger.dev.git",
+    "directory": "packages/cli-v3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "typescript",
+    "trigger.dev",
+    "workflows",
+    "orchestration",
+    "events",
+    "webhooks",
+    "integrations",
+    "apis",
+    "jobs",
+    "background jobs",
+    "nextjs"
+  ],
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": "./dist/index.js",
+  "bin": {
+    "trigger-v3-cli": "./dist/index.js"
+  },
+  "devDependencies": {
+    "@trigger.dev/core": "workspace:*",
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/gradient-string": "^1.1.2",
+    "@types/mock-fs": "^4.13.1",
+    "@types/node": "16",
+    "@types/node-fetch": "^2.6.2",
+    "@types/ws": "^8.5.3",
+    "open": "^10.0.3",
+    "p-retry": "^6.1.0",
+    "rimraf": "^3.0.2",
+    "tsup": "^6.5.0",
+    "type-fest": "^3.6.0",
+    "typescript": "^4.9.5",
+    "vitest": "^0.34.4",
+    "xdg-app-paths": "^8.3.0"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rimraf dist",
+    "start": "node dist/index.js",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.7.0",
+    "@trigger.dev/core": "workspace:*",
+    "@types/degit": "^2.8.3",
+    "chalk": "^5.2.0",
+    "chokidar": "^3.5.3",
+    "cli-table3": "^0.6.3",
+    "commander": "^9.4.1",
+    "degit": "^2.8.4",
+    "dotenv": "^16.3.1",
+    "execa": "^7.0.0",
+    "gradient-string": "^2.0.2",
+    "liquidjs": "^10.9.2",
+    "mock-fs": "^5.2.0",
+    "nanoid": "^4.0.2",
+    "node-fetch": "^3.3.0",
+    "npm-check-updates": "^16.12.2",
+    "posthog-node": "^3.1.1",
+    "proxy-agent": "^6.3.0",
+    "simple-git": "^3.19.0",
+    "update-check": "^1.5.4",
+    "url": "^0.11.1",
+    "ws": "^8.11.0",
+    "zod": "3.22.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -122,10 +122,26 @@ type TableCellProps = TableCellBasicProps & {
   to?: string;
   onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
   hasAction?: boolean;
+  isSticky?: boolean;
 };
 
+const stickyStyles =
+  "sticky right-0 z-10 w-[2.8rem] min-w-[2.8rem] bg-background before:absolute before:pointer-events-none before:-left-8 before:top-0 before:h-full before:min-w-[2rem] before:bg-gradient-to-r before:from-transparent before:to-background before:content-[''] group-hover:before:to-slate-900";
+
 export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
-  ({ className, alignment = "left", children, colSpan, to, onClick, hasAction = false }, ref) => {
+  (
+    {
+      className,
+      alignment = "left",
+      children,
+      colSpan,
+      to,
+      onClick,
+      hasAction = false,
+      isSticky = false,
+    },
+    ref
+  ) => {
     let alignmentClassName = "text-left";
     switch (alignment) {
       case "center":
@@ -154,6 +170,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
             ? "cursor-pointer group-hover:bg-slate-900"
             : "px-4 py-3 align-middle",
           !to && !onClick && alignmentClassName,
+          isSticky && stickyStyles,
           className
         )}
         colSpan={colSpan}
@@ -174,9 +191,6 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
   }
 );
 
-const stickyStyles =
-  "sticky right-0 z-10 w-[2.8rem] min-w-[2.8rem] bg-background before:absolute before:pointer-events-none before:-left-8 before:top-0 before:h-full before:min-w-[2rem] before:bg-gradient-to-r before:from-transparent before:to-background before:content-[''] group-hover:before:to-slate-900";
-
 export const TableCellChevron = forwardRef<
   HTMLTableCellElement,
   {
@@ -189,7 +203,8 @@ export const TableCellChevron = forwardRef<
 >(({ className, to, children, isSticky, onClick }, ref) => {
   return (
     <TableCell
-      className={cn(isSticky && stickyStyles, className)}
+      className={className}
+      isSticky={isSticky}
       to={to}
       onClick={onClick}
       ref={ref}
@@ -213,7 +228,8 @@ export const TableCellMenu = forwardRef<
   const [isOpen, setIsOpen] = useState(false);
   return (
     <TableCell
-      className={cn(isSticky && stickyStyles, className)}
+      className={className}
+      isSticky={isSticky}
       onClick={onClick}
       ref={ref}
       alignment="right"

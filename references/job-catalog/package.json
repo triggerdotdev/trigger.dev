@@ -64,6 +64,7 @@
   },
   "devDependencies": {
     "@trigger.dev/cli": "workspace:*",
+    "trigger.dev": "workspace:*",
     "@trigger.dev/tsconfig": "workspace:*",
     "concurrently": "^8.2.0",
     "dotenv": "^16.3.1",
