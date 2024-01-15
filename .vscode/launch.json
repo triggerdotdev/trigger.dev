@@ -28,6 +28,14 @@
       "envFile": "${workspaceFolder}/references/job-catalog/.env",
       "cwd": "${workspaceFolder}/references/job-catalog",
       "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug V3 Dev CLI",
+      "command": "pnpm exec trigger-cli v3-dev",
+      "cwd": "${workspaceFolder}/references/v3-catalog",
+      "sourceMaps": true
     }
   ]
 }

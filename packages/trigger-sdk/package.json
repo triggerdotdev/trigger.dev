@@ -21,7 +21,22 @@
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
+    "./v3": {
+      "import": {
+        "types": "./dist/v3/index.d.mts",
+        "default": "./dist/v3/index.mjs"
+      },
+      "require": "./dist/v3/index.js",
+      "types": "./dist/v3/index.d.ts"
+    },
     "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "v3": [
+        "./dist/v3/index.d.ts"
+      ]
+    }
   },
   "scripts": {
     "clean": "rimraf dist",

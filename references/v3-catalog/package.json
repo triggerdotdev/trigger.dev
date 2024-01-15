@@ -1,0 +1,22 @@
+{
+  "name": "@references/v3-catalog",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev:trigger": "trigger-cli v3-dev"
+  },
+  "dependencies": {
+    "@trigger.dev/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@trigger.dev/cli": "workspace:*",
+    "@trigger.dev/tsconfig": "workspace:*",
+    "concurrently": "^8.2.0",
+    "dotenv": "^16.3.1",
+    "nodemon": "^3.0.1",
+    "ts-node": "^10.9.1",
+    "tsconfig-paths": "^3.14.1",
+    "@types/node": "20.4.2",
+    "typescript": "5.1.6"
+  }
+}
