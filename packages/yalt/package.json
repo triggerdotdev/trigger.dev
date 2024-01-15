@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/yalt",
-  "version": "2.3.9",
+  "version": "2.3.11",
   "description": "yalt.dev client library",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -31,7 +31,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "https": "^1.0.0",
+    "node-fetch": "^3.3.2",
     "partysocket": "^0.0.17",
+    "proxy-agent": "^6.3.0",
     "zod": "3.22.3"
   },
   "devDependencies": {

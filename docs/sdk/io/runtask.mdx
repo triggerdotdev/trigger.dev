@@ -207,7 +207,7 @@ client.defineJob({
         }
       },
       { name: "On Error" },
-      onError: (error, task) => {
+      (error, task) => {
         //retry the task in 5 minutes
         return {
           retryAt: new Date(Date.now() + 5 * 60 * 1000),

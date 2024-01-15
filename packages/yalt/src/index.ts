@@ -1,5 +1,12 @@
 import { z } from "zod";
 import { WebSocket } from "partysocket";
+import node_fetch, {
+  RequestInfo as _RequestInfo,
+  RequestInit as _RequestInit,
+  Response,
+} from "node-fetch";
+import { ProxyAgent } from "proxy-agent";
+import https from "https";
 
 export const RequestMesssage = z.object({
   type: z.literal("request"),
@@ -8,6 +15,7 @@ export const RequestMesssage = z.object({
   method: z.string(),
   url: z.string(),
   body: z.string(),
+  https: z.boolean().default(false).optional(),
 });
 
 export type RequestMessage = z.infer<typeof RequestMesssage>;
@@ -27,6 +35,9 @@ export const ServerMessages = z.discriminatedUnion("type", [RequestMesssage]);
 
 export type ClientMessage = z.infer<typeof ClientMessages>;
 export type ServerMessage = z.infer<typeof ServerMessages>;
+
+export type RequestInfo = _RequestInfo;
+export type RequestInit = _RequestInit;
 
 export async function createRequestMessage(id: string, request: Request): Promise<RequestMessage> {
   const { headers, method, url } = request;
@@ -76,7 +87,7 @@ export class YaltApiClient {
       throw new Error(`Could not create tunnel: ${response.status}`);
     }
 
-    const body = await response.json();
+    const body = (await response.json()) as any;
 
     return body.id;
   }
@@ -102,6 +113,7 @@ export class YaltTunnel {
   constructor(
     private url: string,
     private address: string,
+    private https: boolean,
     private socketOptions: YaltTunnelSocketOptions = {},
     private options: YaltTunnelOptions = {}
   ) {}
@@ -165,7 +177,9 @@ export class YaltTunnel {
 
     const url = new URL(request.url);
     // Construct the original url to be the same as the request URL but with a different hostname and using http instead of https
-    const originalUrl = new URL(`http://${this.address}${url.pathname}${url.search}${url.hash}`);
+    const originalUrl = new URL(
+      `${this.https ? "https" : "http"}://${this.address}${url.pathname}${url.search}${url.hash}`
+    );
 
     let response: Response | null = null;
 
@@ -176,10 +190,14 @@ export class YaltTunnel {
     });
 
     try {
+      const agent = new https.Agent({
+        rejectUnauthorized: false, // Ignore self-signed certificates
+      });
       response = await fetch(originalUrl.href, {
         method: request.method,
         headers: stripHeaders(request.headers),
         body: request.body,
+        ...(this.https && { agent }),
       });
     } catch (error) {
       if (error instanceof Error) {
@@ -233,4 +251,15 @@ function stripHeaders(headers: Record<string, string>) {
   return Object.fromEntries(
     Object.entries(headers).filter(([key]) => !blacklistHeaders.includes(key.toLowerCase()))
   );
+}
+
+function fetch(url: RequestInfo, init?: RequestInit) {
+  const fetchInit: RequestInit = { ...init };
+
+  // If agent is not specified, specify proxy-agent and use environment variables such as HTTPS_PROXY.
+  if (!fetchInit.agent) {
+    fetchInit.agent = new ProxyAgent();
+  }
+
+  return node_fetch(url, fetchInit);
 }

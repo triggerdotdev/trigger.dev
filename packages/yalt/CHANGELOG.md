@@ -1,5 +1,13 @@
 # @trigger.dev/yalt
 
+## 2.3.11
+
+### Patch Changes
+
+- bc61d837: updated the dev command to include -https flag
+
+## 2.3.10
+
 ## 2.3.9
 
 ## 2.3.8

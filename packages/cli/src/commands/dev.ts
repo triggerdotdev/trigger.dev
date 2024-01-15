@@ -6,11 +6,12 @@ import ora, { Ora } from "ora";
 import pRetry, { AbortError } from "p-retry";
 import util from "util";
 import { z } from "zod";
+import https from "https";
 import { Framework } from "../frameworks";
 import { standardWatchFilePaths, standardWatchIgnoreRegex } from "../frameworks/watchConfig";
 import { telemetryClient } from "../telemetry/telemetry";
 import { getEnvFilename } from "../utils/env";
-import fetch from "../utils/fetchUseProxy";
+import fetch, { RequestInit } from "../utils/fetchUseProxy";
 import { getTriggerApiDetails } from "../utils/getTriggerApiDetails";
 import { JsRuntime, getJsRuntime } from "../utils/jsRuntime";
 import { logger } from "../utils/logger";
@@ -35,6 +36,7 @@ export const DevCommandOptionsSchema = z.object({
     .url()
     .regex(/^(http|https).+/, "only http/https URLs are accepted")
     .optional(),
+  https: z.boolean().default(false).optional(),
 });
 
 export type DevCommandOptions = z.infer<typeof DevCommandOptionsSchema>;
@@ -59,6 +61,7 @@ type ResolvedUrl = {
   type: "resolved";
   hostname: string;
   port: number;
+  https: boolean;
 };
 
 type ServerUrl = TunnelUrl | ResolvedUrl;
@@ -121,7 +124,7 @@ export async function devCommand(path: string, anyOptions: any) {
       `✖ [trigger.dev] Your endpoint couldn't be verified. Make sure your app is running and try again. ${resolvedOptions.handlerPath}`
     );
     logger.info(
-      `  [trigger.dev] You can use -H to specify a hostname, or -p to specify a port, or -t to specify the tunnel-url pointing to the local dev server.`
+      `  [trigger.dev] You can use -H to specify a hostname, or -p to specify a port, or -s to specify https, or -t to specify the tunnel-url pointing to the local dev server.`
     );
     telemetryClient.dev.failed("no_server_found", resolvedOptions);
     return;
@@ -349,6 +352,7 @@ async function resolveOptions(
       handlerPath: unresolvedOptions.handlerPath,
       clientId: unresolvedOptions.clientId,
       tunnel: unresolvedOptions.tunnel,
+      https: unresolvedOptions.https,
     };
   }
 
@@ -362,6 +366,7 @@ async function resolveOptions(
     handlerPath: unresolvedOptions.handlerPath,
     clientId: unresolvedOptions.clientId,
     tunnel: unresolvedOptions.tunnel,
+    https: unresolvedOptions.https,
   };
 }
 
@@ -375,10 +380,11 @@ async function verifyEndpoint(
 
   //try each url
   for (const serverUrl of serverUrls) {
+    const protocol = resolvedOptions.https ? "https" : "http";
     const url =
       serverUrl.type === "tunnel"
         ? serverUrl.url
-        : `http://${serverUrl.hostname}:${serverUrl.port}`;
+        : `${protocol}://${serverUrl.hostname}:${serverUrl.port}`;
     const localEndpointHandlerUrl = `${url}${resolvedOptions.handlerPath}`;
 
     const spinner = ora(
@@ -386,14 +392,22 @@ async function verifyEndpoint(
     ).start();
 
     try {
-      const response = await fetch(localEndpointHandlerUrl, {
+      const agent = new https.Agent({
+        rejectUnauthorized: false, // Ignore self-signed certificates
+      });
+
+      // Conditionally include the agent in fetch options
+      const fetchOptions: RequestInit = {
         method: "POST",
         headers: {
           "x-trigger-api-key": apiKey,
           "x-trigger-action": "PING",
           "x-trigger-endpoint-id": endpointId,
         },
-      });
+        ...(resolvedOptions.https && { agent }),
+      };
+
+      const response = await fetch(localEndpointHandlerUrl, fetchOptions);
 
       if (!response.ok || response.status !== 200) {
         spinner.fail(
@@ -404,7 +418,11 @@ async function verifyEndpoint(
 
       spinner.succeed(`[trigger.dev] Found your trigger endpoint: ${localEndpointHandlerUrl}`);
 
-      return { ...serverUrl, handlerPath: resolvedOptions.handlerPath };
+      return {
+        ...serverUrl,
+        handlerPath: resolvedOptions.handlerPath,
+        https: resolvedOptions.https ?? false,
+      };
     } catch (err) {
       spinner.fail(`[trigger.dev] No server found (${localEndpointHandlerUrl}).`);
     }
@@ -451,7 +469,7 @@ function findServerUrls(resolvedOptions: ResolvedOptions, framework?: Framework)
   const urls: ResolvedUrl[] = [];
   for (const hostname of hostnames) {
     for (const port of ports) {
-      urls.push({ type: "resolved", hostname, port });
+      urls.push({ type: "resolved", hostname, port, https: resolvedOptions.https ?? false });
     }
   }
 
@@ -480,6 +498,7 @@ async function resolveEndpointUrl(apiUrl: string, apiKey: string, endpoint: Serv
     const tunnelUrl = await createNativeTunnel(
       endpoint.hostname,
       endpoint.port,
+      endpoint.https,
       triggerApi,
       tunnelSpinner
     );
@@ -507,6 +526,7 @@ let yaltTunnel: YaltTunnel | null = null;
 async function createNativeTunnel(
   hostname: string,
   port: number,
+  https: boolean,
   triggerApi: TriggerApi,
   spinner: Ora
 ) {
@@ -519,6 +539,7 @@ async function createNativeTunnel(
     yaltTunnel = new YaltTunnel(
       response.url,
       `${hostname}:${port}`,
+      https,
       {
         WebSocket: WebSocket.default,
         connectionTimeout: 1000,

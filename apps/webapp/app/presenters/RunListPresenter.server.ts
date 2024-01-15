@@ -10,6 +10,7 @@ import { getUsername } from "~/utils/username";
 
 type RunListOptions = {
   userId: string;
+  eventId?: string;
   jobSlug?: string;
   organizationSlug: string;
   projectSlug: string;
@@ -33,6 +34,7 @@ export class RunListPresenter {
 
   public async call({
     userId,
+    eventId,
     jobSlug,
     organizationSlug,
     projectSlug,
@@ -78,6 +80,10 @@ export class RunListPresenter {
         })
       : undefined;
 
+    const event = eventId
+      ? await this.#prismaClient.eventRecord.findUnique({ where: { id: eventId } })
+      : undefined;
+
     const runs = await this.#prismaClient.jobRun.findMany({
       select: {
         id: true,
@@ -118,6 +124,7 @@ export class RunListPresenter {
         },
       },
       where: {
+        eventId: event?.id,
         jobId: job?.id,
         projectId: project.id,
         organizationId: organization.id,
