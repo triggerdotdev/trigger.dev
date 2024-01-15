@@ -106,6 +106,7 @@ importers:
       '@radix-ui/react-switch': ^1.0.3
       '@radix-ui/react-tabs': ^1.0.3
       '@radix-ui/react-tooltip': ^1.0.5
+      '@react-aria/datepicker': ^3.9.1
       '@react-stately/datepicker': ^3.9.1
       '@remix-run/dev': 2.1.0
       '@remix-run/eslint-config': 2.1.0
@@ -174,6 +175,7 @@ importers:
       cron-parser: ^4.7.1
       cross-env: ^7.0.3
       cuid: ^2.1.8
+      datepicker: link:@types/@react-aria/datepicker
       emails: workspace:*
       esbuild: ^0.15.10
       eslint: ^8.24.0
@@ -205,9 +207,10 @@ importers:
       prop-types: ^15.8.1
       random-words: ^2.0.0
       react: ^18.2.0
-      react-aria-components: ^1.0.1
+      react-aria: ^3.31.1
       react-dom: ^18.2.0
       react-hotkeys-hook: ^4.4.1
+      react-stately: ^3.29.1
       react-use: ^17.4.0
       recharts: ^2.8.0
       remix-auth: ^3.6.0
@@ -267,6 +270,7 @@ importers:
       '@radix-ui/react-switch': 1.0.3_daadhm4ohxobgnrt365as5bhny
       '@radix-ui/react-tabs': 1.0.3_biqbaboplfbrettd7655fr4n2y
       '@radix-ui/react-tooltip': 1.0.5_bwbutfx4xj25dewzmxso6o3wga
+      '@react-aria/datepicker': 3.9.1_biqbaboplfbrettd7655fr4n2y
       '@react-stately/datepicker': 3.9.1_react@18.2.0
       '@remix-run/express': 2.1.0_fgkcria6ebvizt7e6qzdl6ei7a
       '@remix-run/node': 2.1.0_typescript@5.2.2
@@ -316,9 +320,10 @@ importers:
       prismjs: 1.29.0
       random-words: 2.0.0
       react: 18.2.0
-      react-aria-components: 1.0.1_biqbaboplfbrettd7655fr4n2y
+      react-aria: 3.31.1_biqbaboplfbrettd7655fr4n2y
       react-dom: 18.2.0_react@18.2.0
       react-hotkeys-hook: 4.4.1_biqbaboplfbrettd7655fr4n2y
+      react-stately: 3.29.1_react@18.2.0
       react-use: 17.4.0_biqbaboplfbrettd7655fr4n2y
       recharts: 2.8.0_v2m5e27vhdewzwhryxwfaorcca
       remix-auth: 3.6.0_ybjp5xbtg4zthziheradfmei64
@@ -383,6 +388,7 @@ importers:
       '@typescript-eslint/eslint-plugin': 5.59.6_7rqy3acf7ittvjpliyki2mhtka
       '@typescript-eslint/parser': 5.59.6_a3vgt4pcadxos4gox5ryckz5rq
       autoprefixer: 10.4.13_postcss@8.4.21
+      datepicker: link:@types/@react-aria/datepicker
       esbuild: 0.15.18
       eslint: 8.31.0
       eslint-config-prettier: 8.6.0_eslint@8.31.0
@@ -11103,19 +11109,6 @@ packages:
       react: 18.2.0
     dev: false
 
-  /@react-aria/toolbar/3.0.0-beta.1_react@18.2.0:
-    resolution: {integrity: sha512-GTQ76i0N8/BzWRJ/95RpOFGmbtv0lV3T2zd7CUis6xmP1zJCpSycs1V2jAUs6ggkVDedHLU2d0AOMkXorZLiUg==}
-    peerDependencies:
-      react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0
-    dependencies:
-      '@react-aria/focus': 3.16.0_react@18.2.0
-      '@react-aria/i18n': 3.10.0_react@18.2.0
-      '@react-aria/utils': 3.23.0_react@18.2.0
-      '@react-types/shared': 3.22.0_react@18.2.0
-      '@swc/helpers': 0.5.2
-      react: 18.2.0
-    dev: false
-
   /@react-aria/tooltip/3.7.0_react@18.2.0:
     resolution: {integrity: sha512-+u9Sftkfe09IDyPEnbbreFKS50vh9X/WTa7n1u2y3PenI9VreLpUR6czyzda4BlvQ95e9jQz1cVxUjxTNaZmBw==}
     peerDependencies:
@@ -11639,15 +11632,6 @@ packages:
       react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0
     dependencies:
       '@react-types/overlays': 3.8.4_react@18.2.0
-      '@react-types/shared': 3.22.0_react@18.2.0
-      react: 18.2.0
-    dev: false
-
-  /@react-types/form/3.7.1_react@18.2.0:
-    resolution: {integrity: sha512-Wr44McYcB5Od3SwMzLhe1qaaZIy+YUe16jYRc/0io1gyCELXmplpIw8VQmf9/x62ze9CC/aZVdEJ/V9CogXmOA==}
-    peerDependencies:
-      react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0
-    dependencies:
       '@react-types/shared': 3.22.0_react@18.2.0
       react: 18.2.0
     dev: false
@@ -29282,31 +29266,6 @@ packages:
       minimist: 1.2.7
       strip-json-comments: 2.0.1
 
-  /react-aria-components/1.0.1_biqbaboplfbrettd7655fr4n2y:
-    resolution: {integrity: sha512-zlSx5r7Hu3kTg7hDEGNBwrtMNWJnJ81Zt1AXPJASAdO0dw6WUgSgQH2/ZgkDiKLlNmRFQhR8/gKN70rAJ+LZiQ==}
-    peerDependencies:
-      react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0
-      react-dom: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0
-    dependencies:
-      '@internationalized/date': 3.5.1
-      '@internationalized/string': 3.2.0
-      '@react-aria/focus': 3.16.0_react@18.2.0
-      '@react-aria/interactions': 3.20.1_react@18.2.0
-      '@react-aria/toolbar': 3.0.0-beta.1_react@18.2.0
-      '@react-aria/utils': 3.23.0_react@18.2.0
-      '@react-stately/table': 3.11.4_react@18.2.0
-      '@react-types/form': 3.7.1_react@18.2.0
-      '@react-types/grid': 3.2.3_react@18.2.0
-      '@react-types/shared': 3.22.0_react@18.2.0
-      '@react-types/table': 3.9.2_react@18.2.0
-      '@swc/helpers': 0.5.2
-      react: 18.2.0
-      react-aria: 3.31.1_biqbaboplfbrettd7655fr4n2y
-      react-dom: 18.2.0_react@18.2.0
-      react-stately: 3.29.1_react@18.2.0
-      use-sync-external-store: 1.2.0_react@18.2.0
-    dev: false
-
   /react-aria/3.31.1_biqbaboplfbrettd7655fr4n2y:
     resolution: {integrity: sha512-q4jRCVDKO6V2o4Sgir5S2obssw/YnMx6QOy10+p0dYqROHpSnMFNkONrKT1w/nA+Nx4ptfPqZbaNra1hR1bUWg==}
     peerDependencies:
@@ -33565,14 +33524,6 @@ packages:
       detect-node-es: 1.1.0
       react: 18.2.0
       tslib: 2.6.2
-    dev: false
-
-  /use-sync-external-store/1.2.0_react@18.2.0:
-    resolution: {integrity: sha512-eEgnFxGQ1Ife9bzYs6VLi8/4X6CObHMw9Qr9tPY43iKwsPw8xE8+EFsf/2cFZ5S3esXgpWgtSCtLNS41F+sKPA==}
-    peerDependencies:
-      react: ^16.8.0 || ^17.0.0 || ^18.0.0
-    dependencies:
-      react: 18.2.0
     dev: false
 
   /use/3.1.1:

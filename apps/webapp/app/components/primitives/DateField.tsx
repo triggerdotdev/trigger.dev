@@ -1,53 +1,89 @@
-import { forwardRef } from "react";
+import { createCalendar } from "@internationalized/date";
 import {
-  DateField as OriginalDateField,
-  DateInput as OriginalDateInput,
-  DateSegment as OriginalDateSegment,
-  Label as OriginalLabel,
-} from "react-aria-components";
+  AriaDateFieldOptions,
+  DateValue,
+  useDateField,
+  useDateSegment,
+} from "@react-aria/datepicker";
+import type { DateFieldState, DateFieldStateOptions, DateSegment } from "@react-stately/datepicker";
+import { useDateFieldState } from "@react-stately/datepicker";
+import { useRef } from "react";
 import { cn } from "~/utils/cn";
 
-export const DateField = forwardRef<
-  React.ElementRef<typeof OriginalDateField>,
-  React.ComponentPropsWithoutRef<typeof OriginalDateField>
->((props, ref) => {
-  return <OriginalDateField ref={ref} {...props} />;
-});
+type DateFieldProps = AriaDateFieldOptions<DateValue> &
+  DateFieldStateOptions<DateValue> & {
+    className?: string;
+    fieldClassName?: string;
+  };
 
-export const DateInput = forwardRef<
-  React.ElementRef<typeof OriginalDateInput>,
-  React.ComponentPropsWithoutRef<typeof OriginalDateInput>
->((props, ref) => {
+export function DateField(props: DateFieldProps) {
+  const state = useDateFieldState({
+    ...props,
+    locale: props.locale,
+    createCalendar,
+  });
+
+  const ref = useRef<null | HTMLDivElement>(null);
+  const { labelProps, fieldProps } = useDateField(props, state, ref);
+
   return (
-    <OriginalDateInput
-      ref={ref}
-      {...props}
-      className={cn(
-        "flex items-center gap-1 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-500 ring-offset-background focus-within:border-indigo-500 focus-within:hover:border-indigo-500",
-        props.className
-      )}
-    />
+    <div className={`flex flex-col items-start ${props.className || ""}`}>
+      <span {...labelProps} className="text-sm text-slate-400">
+        {props.label}
+      </span>
+      <div
+        {...fieldProps}
+        ref={ref}
+        className={cn(
+          "flex rounded-md border border-slate-800 bg-midnight-900 p-1 px-2 transition-colors focus-within:border-slate-500 hover:border-slate-700 focus-within:hover:border-slate-500",
+          props.fieldClassName
+        )}
+      >
+        {state.segments.map((segment, i) => (
+          <DateSegment key={i} segment={segment} state={state} />
+        ))}
+      </div>
+    </div>
   );
-});
+}
 
-export const DateSegment = forwardRef<
-  React.ElementRef<typeof OriginalDateSegment>,
-  React.ComponentPropsWithoutRef<typeof OriginalDateSegment>
->((props, ref) => {
+type DateSegmentProps = {
+  segment: DateSegment;
+  state: DateFieldState;
+};
+
+function DateSegment({ segment, state }: DateSegmentProps) {
+  const ref = useRef<null | HTMLDivElement>(null);
+  const { segmentProps } = useDateSegment(segment, state, ref);
+
   return (
-    <OriginalDateSegment
+    <div
+      {...segmentProps}
       ref={ref}
-      {...props}
-      className={
-        "box-content tabular-nums outline-none  focus:bg-indigo-500 focus:text-white  focus:ring-indigo-500"
-      }
-    />
+      style={{
+        ...segmentProps.style,
+        minWidth:
+          segment.type !== "literal" && segment.maxValue !== null
+            ? String(`${segment.maxValue}`).length + "ch"
+            : undefined,
+      }}
+      className={`group box-content rounded-sm px-0.5 text-right tabular-nums outline-none focus:bg-indigo-500 focus:text-white ${
+        !segment.isEditable ? "text-slate-600" : "text-bright"
+      }`}
+    >
+      {/* Always reserve space for the placeholder, to prevent layout shift when editing. */}
+      <span
+        aria-hidden="true"
+        className="block text-center italic text-gray-500 group-focus:text-white"
+        style={{
+          visibility: segment.isPlaceholder ? undefined : "hidden",
+          height: segment.isPlaceholder ? "" : 0,
+          pointerEvents: "none",
+        }}
+      >
+        {segment.placeholder}
+      </span>
+      {segment.isPlaceholder ? "" : segment.text}
+    </div>
   );
-});
-
-export const Label = forwardRef<
-  React.ElementRef<typeof OriginalLabel>,
-  React.ComponentPropsWithoutRef<typeof OriginalLabel>
->((props, ref) => {
-  return <OriginalLabel ref={ref} {...props} />;
-});
+}

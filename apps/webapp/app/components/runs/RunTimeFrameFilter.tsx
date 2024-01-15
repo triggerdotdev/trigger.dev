@@ -1,16 +1,21 @@
 import { ChevronDownIcon } from "lucide-react";
 import { useCallback, useState } from "react";
-import { CalendarDateTime, getLocalTimeZone, today } from "@internationalized/date";
+import {
+  Calendar,
+  CalendarDateTime,
+  DateValue,
+  getLocalTimeZone,
+  today,
+} from "@internationalized/date";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { ClientTabs, ClientTabsContent, ClientTabsWithUnderline } from "../primitives/ClientTabs";
 import { formatDateTime } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
-import { DateField, DateInput, DateSegment, Label } from "../primitives/DateField";
-import { DateValue, I18nProvider } from "react-aria-components";
-import type { SegmentType } from "@react-stately/datepicker";
+import { DateField } from "../primitives/DateField";
 import { useLocales } from "../primitives/LocaleProvider";
+import { createCalendar } from "@internationalized/date";
 
 type RunTimeFrameFilterProps = {
   from?: number;
@@ -195,7 +200,7 @@ function AbsoluteTimeFrame({
   to?: Date;
   onValueChange: (value: { from?: Date; to?: Date }) => void;
 }) {
-  const locale = useLocales();
+  const locales = useLocales();
   const [fromDate, setFromDate] = useState<DateValue | undefined>(
     from
       ? new CalendarDateTime(
@@ -211,42 +216,28 @@ function AbsoluteTimeFrame({
   const [toDate, setToDate] = useState<Date | undefined>(to);
 
   return (
-    <I18nProvider locale={locale.at(0)}>
-      <div className="flex flex-col gap-2 pt-2">
-        <div className="flex flex-col gap-2">
-          <DateField
-            value={fromDate}
-            onChange={(value) => {
+    <div className="flex flex-col gap-2 pt-2">
+      <div className="flex flex-col justify-start gap-2">
+        <DateField
+          label="From"
+          value={fromDate}
+          onChange={(value) => {
+            if (value) {
               setFromDate(value);
-              console.log("value", value);
-            }}
-            onBlur={(value) => {
-              if (value) onValueChange({ from: fromDate?.toDate("utc"), to: toDate });
-            }}
-            maxValue={today(getLocalTimeZone())}
-            granularity="second"
-            shouldForceLeadingZeros={true}
-          >
-            <Label className="text-xs text-slate-400">From</Label>
-            <DateInput>
-              {(segment) => <DateSegment segment={segment} className={flexOrder[segment.type]} />}
-            </DateInput>
-          </DateField>
-        </div>
+              onValueChange({ from: value.toDate("utc"), to: toDate });
+            } else {
+              console.log("fromDate is undefined");
+            }
+          }}
+          maxValue={today(getLocalTimeZone())}
+          granularity="second"
+          shouldForceLeadingZeros={true}
+          locale={locales.at(0) ?? "en-US"}
+          createCalendar={function (name: string): Calendar {
+            return createCalendar(name);
+          }}
+        />
       </div>
-    </I18nProvider>
+    </div>
   );
 }
-
-const flexOrder: Record<SegmentType, string> = {
-  year: "order-1",
-  month: "order-2",
-  day: "order-3",
-  hour: "order-4",
-  minute: "order-5",
-  second: "order-6",
-  dayPeriod: "order-7",
-  era: "order-8",
-  literal: "order-9",
-  timeZoneName: "order-10",
-};
