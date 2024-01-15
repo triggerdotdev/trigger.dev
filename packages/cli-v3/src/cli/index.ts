@@ -7,6 +7,7 @@ import { getVersion } from "../utilities/getVersion";
 import { printInitialBanner } from "../utilities/initialBanner";
 import { login, loginCommand } from "../commands/login";
 import { z } from "zod";
+import { logoutCommand } from "../commands/logout";
 
 export const program = new Command();
 
@@ -32,6 +33,21 @@ program
     try {
       await printInitialBanner(false);
       await loginCommand(options);
+      //todo login command
+    } catch (e) {
+      //todo error reporting
+      throw e;
+    }
+  });
+
+program
+  .command("logout")
+  .description("Logout of Trigger.dev")
+  .version(getVersion(), "-v, --version", "Display the version number")
+  .action(async (options) => {
+    try {
+      await printInitialBanner(false);
+      await logoutCommand(options);
       //todo login command
     } catch (e) {
       //todo error reporting

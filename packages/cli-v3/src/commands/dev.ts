@@ -9,6 +9,8 @@ import { build } from "esbuild";
 import { fork } from "node:child_process";
 import { resolve as importResolve } from "import-meta-resolve";
 import { TaskMetadata } from "../types";
+import { isLoggedIn } from "../utilities/session";
+import { login } from "./login";
 
 const CONFIG_FILES = ["trigger.config.js", "trigger.config.mjs"];
 
@@ -33,6 +35,16 @@ export async function devCommand(dir: string, anyOptions: any) {
   const config = await loadConfig(dir);
 
   console.log(config);
+
+  const authorization = await isLoggedIn(config.triggerUrl);
+
+  if (!authorization.ok) {
+    const loginResult = await login(config.triggerUrl);
+
+    if (!loginResult.success) {
+      throw new Error(loginResult.error);
+    }
+  }
 
   const entryPoints = await gatherEntryPoints(config);
 

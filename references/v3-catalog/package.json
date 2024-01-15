@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev:trigger": "trigger-v3-cli dev"
+    "dev:trigger": "trigger.dev dev"
   },
   "dependencies": {
     "@trigger.dev/sdk": "workspace:*"
