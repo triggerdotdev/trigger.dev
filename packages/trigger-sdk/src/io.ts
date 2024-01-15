@@ -214,6 +214,14 @@ export class IO {
     return new IOLogger(async (level, message, data) => {
       let logLevel: LogLevel = "info";
 
+      if(data instanceof Error){
+        data = {
+          name : data.name,
+          message : data.message,
+          stack : data.stack
+        }
+      }
+
       if (Logger.satisfiesLogLevel(logLevel, this._jobLogLevel)) {
         await this.runTask(
           [message, level],

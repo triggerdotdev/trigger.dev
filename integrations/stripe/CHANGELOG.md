@@ -1,5 +1,13 @@
 # @trigger.dev/stripe
 
+## 2.3.11
+
+### Patch Changes
+
+- 5af20035: Fix SubtleCryptoProvider webhook validation
+  - @trigger.dev/integration-kit@2.3.11
+  - @trigger.dev/sdk@2.3.11
+
 ## 2.3.10
 
 ### Patch Changes

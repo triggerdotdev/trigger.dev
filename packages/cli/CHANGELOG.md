@@ -1,5 +1,14 @@
 # create-trigger
 
+## 2.3.11
+
+### Patch Changes
+
+- bc61d837: updated the dev command to include -https flag
+- Updated dependencies [bc61d837]
+  - @trigger.dev/yalt@2.3.11
+  - @trigger.dev/core@2.3.11
+
 ## 2.3.10
 
 ### Patch Changes
