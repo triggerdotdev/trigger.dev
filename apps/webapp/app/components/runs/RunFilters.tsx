@@ -56,15 +56,19 @@ export function RunsFilters() {
     handleFilterChange("environment", value === "ALL" ? undefined : value);
   };
 
-  const handleRelativeTimeFrameChange = (value: number) => {
-    if (value) {
-      const date = new Date().getTime();
-      searchParams.set("from", (date - value).toString());
-      searchParams.set("to", date.toString());
+  const handleTimeFrameChange = (range: { from?: number; to?: number }) => {
+    if (range.from) {
+      searchParams.set("from", range.from.toString());
     } else {
       searchParams.delete("from");
+    }
+
+    if (range.to) {
+      searchParams.set("to", range.to.toString());
+    } else {
       searchParams.delete("to");
     }
+
     searchParams.delete("cursor");
     searchParams.delete("direction");
     navigate(`${location.pathname}?${searchParams.toString()}`);
@@ -124,7 +128,7 @@ export function RunsFilters() {
         </Select>
       </SelectGroup>
 
-      <RunTimeFrameFilter from={from} to={to} onValueChange={handleRelativeTimeFrameChange} />
+      <RunTimeFrameFilter from={from} to={to} onRangeChanged={handleTimeFrameChange} />
     </div>
   );
 }

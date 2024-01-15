@@ -1,28 +1,40 @@
-import { useState } from "react";
-import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
-import { Button } from "../primitives/Buttons";
 import { ChevronDownIcon } from "lucide-react";
-import { Paragraph } from "../primitives/Paragraph";
+import { useCallback, useState } from "react";
+import { CalendarDateTime, getLocalTimeZone, today } from "@internationalized/date";
 import { cn } from "~/utils/cn";
+import { Button } from "../primitives/Buttons";
+import { ClientTabs, ClientTabsContent, ClientTabsWithUnderline } from "../primitives/ClientTabs";
 import { formatDateTime } from "../primitives/DateTime";
+import { Paragraph } from "../primitives/Paragraph";
+import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
+import { DateField, DateInput, DateSegment, Label } from "../primitives/DateField";
+import { DateValue, I18nProvider } from "react-aria-components";
+import type { SegmentType } from "@react-stately/datepicker";
+import { useLocales } from "../primitives/LocaleProvider";
 
 type RunTimeFrameFilterProps = {
   from?: number;
   to?: number;
-  onValueChange: (value: number) => void;
+  onRangeChanged: (range: { from?: number; to?: number }) => void;
 };
 
-export function RunTimeFrameFilter({ from, to, onValueChange }: RunTimeFrameFilterProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [activeTimeFrame, setActiveTimeFrame] = useState<RelativeTimeFrameItem | undefined>();
+type Mode = "absolute" | "relative";
 
-  const determineTimeFrame = (from: number | undefined, to: number | undefined) => {
+export function RunTimeFrameFilter({ from, to, onRangeChanged }: RunTimeFrameFilterProps) {
+  const [activeTab, setActiveTab] = useState<Mode>("absolute");
+  const [isOpen, setIsOpen] = useState(false);
+  const [relativeTimeSeconds, setRelativeTimeSeconds] = useState<number | undefined>();
+
+  const fromDate = from ? new Date(from) : undefined;
+  const toDate = to ? new Date(to) : undefined;
+
+  const getTitle = (from: number | undefined, to: number | undefined) => {
     if (!from || !to) {
       return "Timeframe";
     }
 
-    if (activeTimeFrame) {
-      return activeTimeFrame.label;
+    if (relativeTimeSeconds !== undefined) {
+      return timeFrameValues.find((t) => t.value === relativeTimeSeconds)?.label ?? "Timeframe";
     }
 
     const toDateTime = formatDateTime(new Date(to), "UTC", ["en-US"], false, true);
@@ -30,6 +42,21 @@ export function RunTimeFrameFilter({ from, to, onValueChange }: RunTimeFrameFilt
 
     return `${fromDateTime} - ${toDateTime} (UTC)`;
   };
+
+  const relativeTimeFrameChanged = useCallback((value: number) => {
+    const to = new Date().getTime();
+    const from = to - value;
+    onRangeChanged({ from, to });
+    setRelativeTimeSeconds(value);
+  }, []);
+
+  const absoluteTimeFrameChanged = useCallback(({ from, to }: { from?: Date; to?: Date }) => {
+    const fromTime = from?.getTime();
+    const toTime = to?.getTime();
+    if (fromTime || toTime) {
+      onRangeChanged({ from: fromTime, to: toTime });
+    }
+  }, []);
 
   return (
     <Popover onOpenChange={(open) => setIsOpen(open)} open={isOpen} modal>
@@ -39,40 +66,70 @@ export function RunTimeFrameFilter({ from, to, onValueChange }: RunTimeFrameFilt
           className="bg-slate-800 group-hover:bg-tertiary-foreground"
         >
           <Paragraph variant="extra-small" className="mr-2">
-            {determineTimeFrame(from, to)}
+            {getTitle(from, to)}
           </Paragraph>
-
           <ChevronDownIcon className="h-4 w-4 text-bright" />
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent align="start" className="border border-slate-800 bg-popover">
-        <Paragraph variant="extra-small" className="mb-4 uppercase">
-          TimeFrame
-        </Paragraph>
-
-        <div className="grid grid-cols-3 gap-2">
-          {timeFrameValues.map((timeframe) => (
-            <Button
-              key={timeframe.value}
-              variant="tertiary/small"
-              className={cn(
-                "w-full border border-slate-700 group-hover:bg-slate-700",
-                activeTimeFrame?.value === timeframe.value &&
-                  "border-slate-700 bg-slate-700 group-hover:border-slate-700 group-hover:bg-slate-700"
-              )}
-              onClick={() => {
-                setIsOpen(false);
-                setActiveTimeFrame(timeframe);
-                onValueChange(timeframe.value);
-              }}
-            >
-              <Paragraph variant="extra-small">{timeframe.label}</Paragraph>
-            </Button>
-          ))}
-        </div>
+      <PopoverContent align="start" className="bg-popover p-2">
+        <ClientTabs
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v as Mode)}
+          className="p-1"
+        >
+          <ClientTabsWithUnderline
+            tabs={[
+              { label: "Absolute", value: "absolute" },
+              { label: "Relative", value: "relative" },
+            ]}
+            currentValue={activeTab}
+            layoutId={"time-tabs"}
+          />
+          <ClientTabsContent value={"absolute"}>
+            <AbsoluteTimeFrame
+              from={fromDate}
+              to={toDate}
+              onValueChange={absoluteTimeFrameChanged}
+            />
+          </ClientTabsContent>
+          <ClientTabsContent value={"relative"}>
+            <RelativeTimeFrame
+              value={relativeTimeSeconds}
+              onValueChange={relativeTimeFrameChanged}
+            />
+          </ClientTabsContent>
+        </ClientTabs>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function RelativeTimeFrame({
+  value,
+  onValueChange,
+}: {
+  value?: number;
+  onValueChange: (value: number) => void;
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-1 pt-2">
+      {timeFrameValues.map((timeframe) => (
+        <Button
+          key={timeframe.value}
+          variant={value === timeframe.value ? "primary/small" : "tertiary/small"}
+          className={cn(
+            "w-full",
+            value !== timeframe.value && "border border-slate-700 group-hover:bg-slate-700"
+          )}
+          onClick={() => {
+            onValueChange(timeframe.value);
+          }}
+        >
+          <Paragraph variant="extra-small">{timeframe.label}</Paragraph>
+        </Button>
+      ))}
+    </div>
   );
 }
 
@@ -128,3 +185,68 @@ const timeFrameValues = [
 ];
 
 export type RelativeTimeFrameItem = (typeof timeFrameValues)[number];
+
+function AbsoluteTimeFrame({
+  from,
+  to,
+  onValueChange,
+}: {
+  from?: Date;
+  to?: Date;
+  onValueChange: (value: { from?: Date; to?: Date }) => void;
+}) {
+  const locale = useLocales();
+  const [fromDate, setFromDate] = useState<DateValue | undefined>(
+    from
+      ? new CalendarDateTime(
+          from.getFullYear(),
+          from.getMonth(),
+          from.getDate(),
+          from.getHours(),
+          from.getMinutes(),
+          from.getSeconds()
+        )
+      : undefined
+  );
+  const [toDate, setToDate] = useState<Date | undefined>(to);
+
+  return (
+    <I18nProvider locale={locale.at(0)}>
+      <div className="flex flex-col gap-2 pt-2">
+        <div className="flex flex-col gap-2">
+          <DateField
+            value={fromDate}
+            onChange={(value) => {
+              setFromDate(value);
+              console.log("value", value);
+            }}
+            onBlur={(value) => {
+              if (value) onValueChange({ from: fromDate?.toDate("utc"), to: toDate });
+            }}
+            maxValue={today(getLocalTimeZone())}
+            granularity="second"
+            shouldForceLeadingZeros={true}
+          >
+            <Label className="text-xs text-slate-400">From</Label>
+            <DateInput>
+              {(segment) => <DateSegment segment={segment} className={flexOrder[segment.type]} />}
+            </DateInput>
+          </DateField>
+        </div>
+      </div>
+    </I18nProvider>
+  );
+}
+
+const flexOrder: Record<SegmentType, string> = {
+  year: "order-1",
+  month: "order-2",
+  day: "order-3",
+  hour: "order-4",
+  minute: "order-5",
+  second: "order-6",
+  dayPeriod: "order-7",
+  era: "order-8",
+  literal: "order-9",
+  timeZoneName: "order-10",
+};
