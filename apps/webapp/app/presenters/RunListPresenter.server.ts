@@ -19,6 +19,8 @@ type RunListOptions = {
   filterEnvironment?: FilterableEnvironment;
   cursor?: string;
   pageSize?: number;
+  from?: number;
+  to?: number;
 };
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -43,6 +45,8 @@ export class RunListPresenter {
     direction = "forward",
     cursor,
     pageSize = DEFAULT_PAGE_SIZE,
+    from,
+    to,
   }: RunListOptions) {
     const filterStatuses = filterStatus ? filterableStatuses[filterStatus] : undefined;
 
@@ -133,6 +137,10 @@ export class RunListPresenter {
         },
         status: filterStatuses ? { in: filterStatuses } : undefined,
         environment: filterEnvironment ? { type: filterEnvironment } : undefined,
+        startedAt: {
+          gte: from ? new Date(from).toISOString() : undefined,
+          lte: to ? new Date(to).toISOString() : undefined,
+        },
       },
       orderBy: [{ id: "desc" }],
       //take an extra record to tell if there are more

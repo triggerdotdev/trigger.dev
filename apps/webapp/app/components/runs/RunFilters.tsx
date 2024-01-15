@@ -27,12 +27,13 @@ import {
   environmentKeys,
   statusKeys,
 } from "./RunStatuses";
+import { RunTimeFrameFilter } from "./RunTimeFrameFilter";
 
 export function RunsFilters() {
   const navigate = useNavigate();
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
-  const { environment, status } = RunListSearchSchema.parse(
+  const { environment, status, from, to } = RunListSearchSchema.parse(
     Object.fromEntries(searchParams.entries())
   );
 
@@ -53,6 +54,20 @@ export function RunsFilters() {
 
   const handleEnvironmentChange = (value: FilterableEnvironment | "ALL") => {
     handleFilterChange("environment", value === "ALL" ? undefined : value);
+  };
+
+  const handleRelativeTimeFrameChange = (value: number) => {
+    if (value) {
+      const date = new Date().getTime();
+      searchParams.set("from", (date - value).toString());
+      searchParams.set("to", date.toString());
+    } else {
+      searchParams.delete("from");
+      searchParams.delete("to");
+    }
+    searchParams.delete("cursor");
+    searchParams.delete("direction");
+    navigate(`${location.pathname}?${searchParams.toString()}`);
   };
 
   return (
@@ -108,6 +123,8 @@ export function RunsFilters() {
           </SelectContent>
         </Select>
       </SelectGroup>
+
+      <RunTimeFrameFilter from={from} to={to} onValueChange={handleRelativeTimeFrameChange} />
     </div>
   );
 }

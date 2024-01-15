@@ -156,6 +156,14 @@ export const RunListSearchSchema = z.object({
   direction: DirectionSchema.optional(),
   status: FilterableStatus.optional(),
   environment: FilterableEnvironment.optional(),
+  from: z
+    .string()
+    .transform((value) => parseInt(value))
+    .optional(),
+  to: z
+    .string()
+    .transform((value) => parseInt(value))
+    .optional(),
 });
 
 export const filterableStatuses: Record<FilterableStatus, JobRunStatus[]> = {

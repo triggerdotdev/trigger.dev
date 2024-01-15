@@ -52,6 +52,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       organizationSlug,
       direction: searchParams.direction,
       cursor: searchParams.cursor,
+      from: searchParams.from,
+      to: searchParams.to,
     });
 
     return typedjson({ event, list });
