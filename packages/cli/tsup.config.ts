@@ -7,7 +7,7 @@ const copyTemplates = "cp -r src/templates dist";
 export default defineConfig({
   clean: true,
   dts: true,
-  entry: ["src/index.ts", "src/v3-server.ts"],
+  entry: ["src/index.ts"],
   format: ["esm"],
   minify: !isDev,
   metafile: !isDev,

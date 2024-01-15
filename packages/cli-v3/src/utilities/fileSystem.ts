@@ -21,13 +21,7 @@ export function isDirectory(configPath: string) {
 }
 
 export async function pathExists(path: string): Promise<boolean> {
-  try {
-    await fsModule.access(path);
-
-    return true;
-  } catch (err) {
-    return false;
-  }
+  return fsSync.existsSync(path);
 }
 
 export async function someFileExists(directory: string, filenames: string[]): Promise<boolean> {

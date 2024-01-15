@@ -11,7 +11,6 @@ import { getVersion } from "../utils/getVersion";
 import { updateCommand } from "../commands/update";
 import { sendEventCommand } from "../commands/sendEvent";
 import { checkApiKeyIsDevServer } from "../utils/getApiKeyType";
-import { v3DevCommand } from "../commands/v3-dev";
 
 export const program = new Command();
 
@@ -139,20 +138,6 @@ program
     try {
       await sendEventCommand(path, options);
     } catch (e) {
-      throw e;
-    }
-  });
-
-program
-  .command("v3-dev")
-  .description("Run the v3 dev server")
-  .argument("[path]", "The path to the config file", "./trigger.config.mjs")
-  .version(getVersion(), "-v, --version", "Display the version number")
-  .action(async (path, options) => {
-    try {
-      await v3DevCommand(path, options);
-    } catch (e) {
-      telemetryClient.dev.failed("unknown", options, e);
       throw e;
     }
   });

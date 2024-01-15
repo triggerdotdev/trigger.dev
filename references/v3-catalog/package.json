@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev:trigger": "trigger-cli v3-dev"
+    "dev:trigger": "trigger-v3-cli dev"
   },
   "dependencies": {
     "@trigger.dev/sdk": "workspace:*"
   },
   "devDependencies": {
-    "@trigger.dev/cli": "workspace:*",
+    "trigger.dev": "workspace:*",
     "@trigger.dev/tsconfig": "workspace:*",
     "concurrently": "^8.2.0",
     "dotenv": "^16.3.1",

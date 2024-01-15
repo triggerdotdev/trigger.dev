@@ -831,9 +831,7 @@ importers:
       dotenv: ^16.3.1
       esbuild: ^0.19.11
       execa: ^7.0.0
-      find-up: ^7.0.0
       gradient-string: ^2.0.2
-      import-meta-resolve: ^4.0.0
       inquirer: ^9.1.4
       liquidjs: ^10.9.2
       localtunnel: ^2.0.2
@@ -872,9 +870,7 @@ importers:
       dotenv: 16.3.1
       esbuild: 0.19.11
       execa: 7.0.0
-      find-up: 7.0.0
       gradient-string: 2.0.2
-      import-meta-resolve: 4.0.0
       inquirer: 9.1.4
       liquidjs: 10.9.3
       localtunnel: 2.0.2
@@ -926,8 +922,11 @@ importers:
       commander: ^9.4.1
       degit: ^2.8.4
       dotenv: ^16.3.1
+      esbuild: ^0.19.11
       execa: ^7.0.0
+      find-up: ^7.0.0
       gradient-string: ^2.0.2
+      import-meta-resolve: ^4.0.0
       liquidjs: ^10.9.2
       mock-fs: ^5.2.0
       nanoid: ^4.0.2
@@ -958,8 +957,11 @@ importers:
       commander: 9.5.0
       degit: 2.8.4
       dotenv: 16.3.1
+      esbuild: 0.19.11
       execa: 7.0.0
+      find-up: 7.0.0
       gradient-string: 2.0.2
+      import-meta-resolve: 4.0.0
       liquidjs: 10.9.3
       mock-fs: 5.2.0
       nanoid: 4.0.2
@@ -1879,25 +1881,25 @@ importers:
 
   references/v3-catalog:
     specifiers:
-      '@trigger.dev/cli': workspace:*
       '@trigger.dev/sdk': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 20.4.2
       concurrently: ^8.2.0
       dotenv: ^16.3.1
       nodemon: ^3.0.1
+      trigger.dev: workspace:*
       ts-node: ^10.9.1
       tsconfig-paths: ^3.14.1
       typescript: 5.1.6
     dependencies:
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
     devDependencies:
-      '@trigger.dev/cli': link:../../packages/cli
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 20.4.2
       concurrently: 8.2.0
       dotenv: 16.3.1
       nodemon: 3.0.1
+      trigger.dev: link:../../packages/cli-v3
       ts-node: 10.9.1_xj5cs2fmhcigm4w5bhhtewqeja
       tsconfig-paths: 3.14.1
       typescript: 5.1.6
@@ -17652,7 +17654,7 @@ packages:
   /axios/0.21.4_debug@4.3.2:
     resolution: {integrity: sha512-ut5vewkiu8jjGBdqpM44XxjuCjq9LAKeHVmoVfHVzy8eHgxxq8SbAVQNovDA8mVi05kP0Ea/n/UzcSHcTJQfNg==}
     dependencies:
-      follow-redirects: 1.15.2
+      follow-redirects: 1.15.2_debug@4.3.2
     transitivePeerDependencies:
       - debug
     dev: false
@@ -22545,6 +22547,18 @@ packages:
     peerDependenciesMeta:
       debug:
         optional: true
+
+  /follow-redirects/1.15.2_debug@4.3.2:
+    resolution: {integrity: sha512-VQLG33o04KaQ8uYi2tVNbdrWp1QWxNNea+nmIB4EVM28v0hmP17z7aG1+wAkNzVq4KeXTq3221ye5qTJP91JwA==}
+    engines: {node: '>=4.0'}
+    peerDependencies:
+      debug: '*'
+    peerDependenciesMeta:
+      debug:
+        optional: true
+    dependencies:
+      debug: 4.3.2
+    dev: false
 
   /for-each/0.3.3:
     resolution: {integrity: sha512-jqYfLp7mo9vIyQf8ykW2v7A+2N4QjeCeI5+Dz9XraiO1ign81wjiH7Fb9vSOWvQfNtmSa4H2RoQTrrXivdUZmw==}
