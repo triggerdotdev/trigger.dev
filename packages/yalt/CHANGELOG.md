@@ -1,5 +1,7 @@
 # @trigger.dev/yalt
 
+## 2.3.12
+
 ## 2.3.11
 
 ### Patch Changes

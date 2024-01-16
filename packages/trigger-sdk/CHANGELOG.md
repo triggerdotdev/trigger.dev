@@ -1,5 +1,15 @@
 # @trigger.dev/sdk
 
+## 2.3.12
+
+### Patch Changes
+
+- 129f023d: Fix for eventTrigger source not getting passed through
+- 38f5a903: Don't auto-yield with no-op tasks (e.g. logs) that are subtasks
+- ff4ff869: You can pass an Error() instead of properties to all of the `io.logger` functions
+  - @trigger.dev/core@2.3.12
+  - @trigger.dev/core-backend@2.3.12
+
 ## 2.3.11
 
 ### Patch Changes
