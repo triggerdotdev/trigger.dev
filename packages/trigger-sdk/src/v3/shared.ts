@@ -1,4 +1,6 @@
+import { ApiClientV3 } from "@trigger.dev/core";
 import * as packageJson from "../../package.json";
+import { ApiClient } from "../apiClient";
 
 export type PreparedItems = Record<string, any>;
 
@@ -129,10 +131,17 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
 ): Task<TInput, TOutput> {
   const task: Task<TInput, TOutput> = {
     trigger: async ({ payload }) => {
-      //todo actually call the API to start the task
-      return {
-        id: "run_1234",
-      };
+      const apiClient = initializeApiClient();
+
+      const response = await apiClient.triggerTask(params.id, {
+        payload: payload,
+      });
+
+      if (!response.ok) {
+        throw new Error(response.error);
+      }
+
+      return response.data;
     },
     batchTrigger: async ({ items }) => {
       const batchId = "batch_1234";
@@ -175,4 +184,9 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
   });
 
   return task;
+}
+
+// TODO: make this cross-runtime compatible
+function initializeApiClient() {
+  return new ApiClientV3(process.env.TRIGGER_API_URL!, process.env.TRIGGER_API_KEY!);
 }

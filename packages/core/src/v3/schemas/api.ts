@@ -27,3 +27,16 @@ export const CreateBackgroundWorkerResponse = z.object({
 });
 
 export type CreateBackgroundWorkerResponse = z.infer<typeof CreateBackgroundWorkerResponse>;
+
+export const TriggerTaskRequestBody = z.object({
+  payload: z.any(),
+  context: z.any(),
+});
+
+export type TriggerTaskRequestBody = z.infer<typeof TriggerTaskRequestBody>;
+
+export const TriggerTaskResponse = z.object({
+  id: z.string(),
+});
+
+export type TriggerTaskResponse = z.infer<typeof TriggerTaskResponse>;

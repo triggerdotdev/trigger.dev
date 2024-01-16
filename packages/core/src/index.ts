@@ -34,3 +34,7 @@ export function supportsFeature<TFeatureName extends keyof typeof PLATFORM_FEATU
 
   return version >= supportedVersion;
 }
+
+import { ApiClient } from "./v3";
+
+export { ApiClient as ApiClientV3 };

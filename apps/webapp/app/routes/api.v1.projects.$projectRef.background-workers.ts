@@ -1,9 +1,7 @@
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core";
 import { z } from "zod";
-import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { IndexEndpointService } from "~/services/endpoints/indexEndpoint.server";
 import { logger } from "~/services/logger.server";
 import { CreateBackgroundWorkerService } from "~/v3/services/createBackgroundWorker.server";
 
