@@ -1,3 +1,3 @@
 export * from "./tokens";
-export * from "./whoami";
-export * from "./dev";
+export * from "./api";
+export * from "./resources";

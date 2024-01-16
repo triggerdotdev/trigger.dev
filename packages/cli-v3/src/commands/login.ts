@@ -35,7 +35,7 @@ export async function login(apiUrl: string): Promise<LoginResult> {
 
   const existingAccessToken = readAuthConfigFile()?.accessToken;
   if (existingAccessToken) {
-    const whoAmiI = await whoAmI(apiUrl);
+    const whoAmiI = await whoAmI();
 
     const continueOption = await select({
       message: "You are already logged in.",
@@ -98,7 +98,7 @@ export async function login(apiUrl: string): Promise<LoginResult> {
 
     getPersonalAccessTokenSpinner.stop(`Logged in with token ${indexResult.obfuscatedToken}`);
 
-    writeAuthConfigFile({ accessToken: indexResult.token });
+    writeAuthConfigFile({ accessToken: indexResult.token, apiUrl });
 
     outro("Logged in successfully");
 

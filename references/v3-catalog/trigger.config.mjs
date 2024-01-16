@@ -2,5 +2,4 @@
 
 export default {
   project: "euufyohbatmyevxlrxfp",
-  triggerUrl: "http://localhost:3030",
 };

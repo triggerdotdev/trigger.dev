@@ -3,7 +3,9 @@ import {
   CreateAuthorizationCodeResponseSchema,
   GetPersonalAccessTokenResponseSchema,
   GetProjectDevResponse,
+  CreateBackgroundWorkerRequestBody,
   WhoAmIResponseSchema,
+  CreateBackgroundWorkerResponse,
 } from "@trigger.dev/core";
 
 export class ApiClient {
@@ -42,6 +44,25 @@ export class ApiClient {
         "Content-Type": "application/json",
       },
     });
+  }
+
+  async createBackgroundWorker(projectRef: string, body: CreateBackgroundWorkerRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("indexProject: No access token");
+    }
+
+    return zodfetch(
+      CreateBackgroundWorkerResponse,
+      `${this.apiURL}/api/v1/projects/${projectRef}/background-workers`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
   }
 
   async getProjectDevEnv({ projectRef }: { projectRef: string }) {

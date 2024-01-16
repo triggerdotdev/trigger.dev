@@ -9,7 +9,7 @@ export async function logoutCommand(options: any) {
     return;
   }
 
-  writeAuthConfigFile({ ...config, accessToken: undefined });
+  writeAuthConfigFile({ ...config, accessToken: undefined, apiUrl: undefined });
 
   logger.info("Logged out");
 }

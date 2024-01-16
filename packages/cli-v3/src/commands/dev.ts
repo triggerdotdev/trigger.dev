@@ -1,17 +1,20 @@
-import { findUp } from "find-up";
-import { pathToFileURL } from "node:url";
-import { basename, dirname, extname, join, resolve } from "node:path";
-import { z } from "zod";
-import { RequireKeys } from "../utilities/requiredKeys";
-import fs from "node:fs";
-import { CLOUD_API_URL } from "../consts";
+import { cancel, outro, spinner } from "@clack/prompts";
+import { CreateBackgroundWorkerRequestBody, TaskResource } from "@trigger.dev/core/v3";
 import { build } from "esbuild";
-import { fork } from "node:child_process";
+import { findUp } from "find-up";
 import { resolve as importResolve } from "import-meta-resolve";
-import { TaskMetadata } from "../types";
-import { isLoggedIn } from "../utilities/session";
-import { LoginResult, login } from "./login";
+import { fork } from "node:child_process";
+import fs from "node:fs";
+import { basename, dirname, extname, join, relative, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { z } from "zod";
 import { ApiClient } from "../apiClient";
+import { CLOUD_API_URL } from "../consts";
+import { TaskMetadata } from "../types";
+import { logger } from "../utilities/logger";
+import { RequireKeys } from "../utilities/requiredKeys";
+import { isLoggedIn } from "../utilities/session";
+import * as packageJson from "../../package.json";
 
 const CONFIG_FILES = ["trigger.config.js", "trigger.config.mjs"];
 
@@ -37,23 +40,17 @@ let apiClient: ApiClient | undefined;
 export async function devCommand(dir: string, anyOptions: any) {
   const config = await loadConfig(dir);
 
-  const authorization = await isLoggedIn(config.triggerUrl);
-
-  let accessToken: string | undefined;
+  const authorization = await isLoggedIn();
 
   if (!authorization.ok) {
-    const loginResult = await login(config.triggerUrl);
-
-    if (!loginResult.success) {
-      throw new Error(loginResult.error);
-    }
-
-    accessToken = loginResult.accessToken;
-  } else {
-    accessToken = authorization.accessToken;
+    logger.error("You must login first. Use `trigger.dev login` to login.");
+    return;
   }
 
-  apiClient = new ApiClient(config.triggerUrl, accessToken);
+  const accessToken = authorization.config.accessToken;
+  const apiUrl = authorization.config.apiUrl;
+
+  apiClient = new ApiClient(apiUrl, accessToken);
 
   const devEnv = await apiClient.getProjectDevEnv({ projectRef: config.project });
 
@@ -63,41 +60,88 @@ export async function devCommand(dir: string, anyOptions: any) {
 
   const entryPoints = await gatherEntryPoints(config);
 
-  const taskServers = await startTaskServers(config, entryPoints, {
+  const taskRunners = await startTaskRunners(config, entryPoints, {
     TRIGGER_API_URL: config.triggerUrl,
     TRIGGER_API_KEY: devEnv.data.apiKey,
   });
 
-  for (const taskServer of taskServers) {
-    if (!taskServer.tasks) {
-      throw new Error(`Task Server at ${taskServer.path} started without tasks`);
+  let taskCount = 0;
+  let packageVersion: string | undefined;
+
+  const taskResources: Array<TaskResource> = [];
+  const tasksMappedToRunners: Record<string, TaskRunner> = {};
+
+  for (const taskRunner of taskRunners) {
+    if (!taskRunner.tasks) {
+      throw new Error(`Task Server at ${taskRunner.path} started without tasks`);
     }
 
-    console.log(`Task Server at ${taskServer.path} started with tasks:`);
+    for (const task of taskRunner.tasks!) {
+      taskResources.push({
+        id: task.id,
+        filePath: relative(config.projectDir, taskRunner.sourcePath),
+        exportName: task.exportName,
+      });
 
-    for (const task of taskServer.tasks!) {
-      console.log(`  ${task.id} (exported as ${task.exportName})`);
+      tasksMappedToRunners[task.id] = taskRunner;
+
+      taskCount++;
+
+      packageVersion = task.packageVersion;
     }
   }
+
+  const indexingSpinner = spinner();
+  indexingSpinner.start("Initializing background worker");
+
+  if (!packageVersion) {
+    cancel("No tasks found");
+    return;
+  }
+
+  indexingSpinner.message(`Found ${taskCount} task(s)`);
+
+  const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
+    localOnly: true,
+    metadata: {
+      packageVersion,
+      cliPackageVersion: packageJson.version,
+      tasks: taskResources,
+    },
+  };
+
+  apiClient = new ApiClient(apiUrl, devEnv.data.apiKey);
+
+  const backgroundWorker = await apiClient.createBackgroundWorker(
+    config.project,
+    backgroundWorkerBody
+  );
+
+  if (!backgroundWorker.success) {
+    cancel("Error creating background worker");
+    process.exit(1);
+  }
+
+  indexingSpinner.stop(`Background worker ${backgroundWorker.data.version} created and ready`);
 }
 
-async function startTaskServers(
+async function startTaskRunners(
   config: ResolvedConfig,
   entryPoints: EntryPoint[],
   env: Record<string, string>
 ) {
   const bundle = await buildEntryPoints(entryPoints);
 
-  const taskEntryPoints: TaskEntryPoint[] = [];
+  const taskEntryPoints: TaskRunner[] = [];
 
   for (const entryPoint of entryPoints) {
-    taskEntryPoints.push(await loadTaskEntryPoint(config, entryPoint, bundle, env));
+    taskEntryPoints.push(await startTaskEntryPoint(config, entryPoint, bundle, env));
   }
 
   return taskEntryPoints;
 }
 
-async function loadTaskEntryPoint(
+async function startTaskEntryPoint(
   config: ResolvedConfig,
   entryPoint: EntryPoint,
   bundle: EntryPointBundle,
@@ -125,8 +169,9 @@ async function loadTaskEntryPoint(
     throw new Error(`Could not find source map file for entry point ${metaOutput.entryPoint}`);
   }
 
-  const taskServer = await startTaskServer(
+  const taskRunner = await startTaskRunner(
     config.projectDir,
+    entryPoint.in,
     config,
     metaOutputKey,
     outputFile.text,
@@ -135,11 +180,12 @@ async function loadTaskEntryPoint(
     env
   );
 
-  return taskServer;
+  return taskRunner;
 }
 
-async function startTaskServer(
+async function startTaskRunner(
   dir: string,
+  sourcePath: string,
   config: ResolvedConfig,
   path: string,
   fileContents: string,
@@ -154,23 +200,24 @@ async function startTaskServer(
   const sourceMapPath = `${fullPath}.map`;
   await fs.promises.writeFile(sourceMapPath, sourceMapContents);
 
-  const taskServer = new TaskEntryPoint(fullPath, exports, env);
-  await taskServer.start();
-  return taskServer;
+  const taskRunner = new TaskRunner(sourcePath, fullPath, exports, env);
+  await taskRunner.start();
+  return taskRunner;
 }
 
-class TaskEntryPoint {
+class TaskRunner {
   child: undefined | ReturnType<typeof fork>;
   tasks: undefined | Array<TaskMetadata>;
 
   constructor(
+    public sourcePath: string,
     public path: string,
     private exports: string[],
     private env: Record<string, string>
   ) {}
 
   async start() {
-    const v3DevServerPath = importResolve("./task-server.js", import.meta.url);
+    const v3DevServerPath = importResolve("./task-runner.js", import.meta.url);
 
     const modulePath = new URL(v3DevServerPath).href.replace("file://", "");
 

@@ -1,3 +1,5 @@
+import * as packageJson from "../../package.json";
+
 export type PreparedItems = Record<string, any>;
 
 export type RunFnParams<TPayload, TPreparedItems extends PreparedItems> = Prettify<{
@@ -167,6 +169,7 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
     value: {
       id: params.id,
       run: params.run,
+      packageVersion: packageJson.version,
     },
     enumerable: false,
   });

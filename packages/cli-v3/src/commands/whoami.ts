@@ -1,10 +1,11 @@
 import { note, spinner } from "@clack/prompts";
-import { ApiUrlOptionsSchema } from "../cli";
-import { logger } from "../utilities/logger";
-import { resolvePath } from "../utilities/parseNameAndPath";
-import { readAuthConfigFile } from "../utilities/configFiles";
-import { login } from "./login";
 import { ApiClient } from "../apiClient";
+import { ApiUrlOptionsSchema } from "../cli";
+import { readAuthConfigFile } from "../utilities/configFiles";
+import { logger } from "../utilities/logger";
+import { login } from "./login";
+import { isLoggedIn } from "../utilities/session";
+import { chalkLink } from "../utilities/colors";
 
 type WhoAmIResult =
   | {
@@ -19,45 +20,26 @@ type WhoAmIResult =
       error: string;
     };
 
-export async function whoamiCommand(options: any): Promise<WhoAmIResult> {
-  const result = ApiUrlOptionsSchema.safeParse(options);
-  if (!result.success) {
-    logger.error(result.error.message);
-    return {
-      success: false,
-      error: result.error.message,
-    };
-  }
-
-  return whoAmI(result.data.apiUrl);
+export async function whoamiCommand(): Promise<WhoAmIResult> {
+  return whoAmI();
 }
 
-export async function whoAmI(apiUrl: string): Promise<WhoAmIResult> {
+export async function whoAmI(): Promise<WhoAmIResult> {
   const loadingSpinner = spinner();
   loadingSpinner.start("Checking your account details");
 
-  if (!readAuthConfigFile()?.accessToken) {
-    loadingSpinner.stop("You must login.");
-    const loginResult = await login(apiUrl);
-    if (!loginResult.success) {
-      logger.error(loginResult.error);
-      return {
-        success: false,
-        error: loginResult.error,
-      };
-    }
-  }
+  const authentication = await isLoggedIn();
 
-  const accessToken = readAuthConfigFile()?.accessToken;
-  if (!accessToken) {
-    logger.error("No access token after login… this should never happen");
+  if (!authentication.ok) {
+    loadingSpinner.stop("You must login first. Use `trigger.dev login` to login.");
+
     return {
       success: false,
-      error: "No access token after login… this should never happen",
+      error: authentication.error,
     };
   }
 
-  const apiClient = new ApiClient(apiUrl, accessToken);
+  const apiClient = new ApiClient(authentication.config.apiUrl, authentication.config.accessToken);
   const userData = await apiClient.whoAmI();
 
   if (!userData.success) {
@@ -73,7 +55,9 @@ export async function whoAmI(apiUrl: string): Promise<WhoAmIResult> {
 
   note(
     `User ID: ${userData.data.userId}
-Email: ${userData.data.email}`,
+Email: ${userData.data.email}
+URL: ${chalkLink(authentication.config.apiUrl)}
+`,
     "Account details"
   );
 

@@ -87,16 +87,11 @@ program
 program
   .command("whoami")
   .description("display the current logged in user and project details")
-  .option(
-    "-a, --api-url <value>",
-    "Override the API URL, defaults to https://cloud.trigger.dev",
-    "https://cloud.trigger.dev"
-  )
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (options) => {
     try {
       await printInitialBanner();
-      await whoamiCommand(options);
+      await whoamiCommand();
     } catch (e) {
       throw e;
     }

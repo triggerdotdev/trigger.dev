@@ -13,7 +13,9 @@ function getGlobalConfigFolderPath() {
 //auth config file
 export const UserAuthConfigSchema = z.object({
   accessToken: z.string().optional(),
+  apiUrl: z.string().optional(),
 });
+
 export type UserAuthConfig = z.infer<typeof UserAuthConfigSchema>;
 
 function getAuthConfigFilePath() {

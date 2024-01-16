@@ -16,6 +16,7 @@ async function loadEntryPoint(path: string, exports: string[]): Promise<Array<Ta
       tasks.push({
         id: task.__trigger.id,
         exportName,
+        packageVersion: task.__trigger.packageVersion,
       });
     }
   }

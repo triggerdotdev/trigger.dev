@@ -1,0 +1,50 @@
+import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core";
+import { z } from "zod";
+import { prisma } from "~/db.server";
+import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { IndexEndpointService } from "~/services/endpoints/indexEndpoint.server";
+import { logger } from "~/services/logger.server";
+import { CreateBackgroundWorkerService } from "~/v3/services/createBackgroundWorker.server";
+
+const ParamsSchema = z.object({
+  projectRef: z.string(),
+});
+
+export async function action({ request, params }: ActionFunctionArgs) {
+  // Ensure this is a POST request
+  if (request.method.toUpperCase() !== "POST") {
+    return { status: 405, body: "Method Not Allowed" };
+  }
+
+  const parsedParams = ParamsSchema.safeParse(params);
+
+  if (!parsedParams.success) {
+    return json({ error: "Invalid params" }, { status: 400 });
+  }
+
+  // Next authenticate the request
+  const authenticationResult = await authenticateApiRequest(request);
+
+  if (!authenticationResult) {
+    logger.info("Invalid or missing api key", { url: request.url });
+    return json({ error: "Invalid or Missing API key" }, { status: 401 });
+  }
+
+  const authenticatedEnv = authenticationResult.environment;
+
+  const { projectRef } = parsedParams.data;
+
+  const rawBody = await request.json();
+  const body = CreateBackgroundWorkerRequestBody.safeParse(rawBody);
+
+  if (!body.success) {
+    return json({ error: "Invalid body", issues: body.error.issues }, { status: 400 });
+  }
+
+  const service = new CreateBackgroundWorkerService();
+
+  const backgroundWorker = await service.call(projectRef, authenticatedEnv, body.data);
+
+  return json({ id: backgroundWorker.id, version: backgroundWorker.version }, { status: 200 });
+}
