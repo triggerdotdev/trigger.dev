@@ -94,6 +94,7 @@ export class OrganizationsPresenter {
         })),
         hasUnconfiguredIntegrations: org._count.integrations > 0,
         memberCount: org._count.members,
+        runsEnabled: org.runsEnabled,
       };
     });
   }
