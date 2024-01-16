@@ -2,6 +2,7 @@ import * as React from "react";
 import { cn } from "~/utils/cn";
 import type { IconNamesOrString } from "./NamedIcon";
 import { NamedIcon } from "./NamedIcon";
+import { Icon, RenderIcon } from "./Icon";
 
 const variants = {
   large: {
@@ -44,7 +45,7 @@ const variants = {
 
 export type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
   variant?: keyof typeof variants;
-  icon?: IconNamesOrString;
+  icon?: RenderIcon;
   shortcut?: string;
   fullWidth?: boolean;
 };
@@ -59,7 +60,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       <div className={cn("relative", fullWidth ? "w-full" : "max-w-max")}>
         {icon && (
           <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center">
-            <NamedIcon name={icon} className={cn(iconClassName, "text-dimmed")} />
+            <Icon icon={icon} className={cn(iconClassName, "text-dimmed")} />
           </div>
         )}
         <input
