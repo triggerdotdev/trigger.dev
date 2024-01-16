@@ -10,6 +10,8 @@ type EventListOptions = {
   filterEnvironment?: FilterableEnvironment;
   cursor?: string;
   pageSize?: number;
+  from?: number;
+  to?: number;
 };
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -31,6 +33,8 @@ export class EventListPresenter {
     direction = "forward",
     cursor,
     pageSize = DEFAULT_PAGE_SIZE,
+    from,
+    to,
   }: EventListOptions) {
     const directionMultiplier = direction === "forward" ? 1 : -1;
 
@@ -97,6 +101,10 @@ export class EventListPresenter {
           in: environments.map((environment) => environment.id),
         },
         environment: filterEnvironment ? { type: filterEnvironment } : undefined,
+        createdAt: {
+          gte: from ? new Date(from).toISOString() : undefined,
+          lte: to ? new Date(to).toISOString() : undefined,
+        },
       },
       orderBy: [{ id: "desc" }],
       //take an extra record to tell if there are more
