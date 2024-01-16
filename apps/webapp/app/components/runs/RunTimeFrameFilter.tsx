@@ -233,7 +233,6 @@ function AbsoluteTimeFrame({
               onValueChange({ from: from, to: value });
             }}
             granularity="second"
-            showGuide
             showNowButton
             showClearButton
           />
