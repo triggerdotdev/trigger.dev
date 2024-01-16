@@ -84,9 +84,13 @@ export class CronTrigger implements Trigger<ScheduledEventSpecification> {
   constructor(private options: CronOptions) {}
 
   get event() {
+    /**
+     * We need to concat `(UTC)` string at the end of the human readable string to avoid confusion 
+     * with execution time/last run of a job in the UI dashboard which is displayed in local time.
+     */
     const humanReadable = cronstrue.toString(this.options.cron, {
       throwExceptionOnParseError: false,
-    });
+    }).concat(" (UTC)");
 
     return {
       name: "trigger.scheduled",
