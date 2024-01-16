@@ -28,7 +28,7 @@ import {
   environmentKeys,
   statusKeys,
 } from "./RunStatuses";
-import { RunTimeFrameFilter } from "./RunTimeFrameFilter";
+import { TimeFrameFilter } from "./TimeFrameFilter";
 import { Button } from "../primitives/Buttons";
 import { useCallback } from "react";
 
@@ -139,7 +139,7 @@ export function RunsFilters() {
         </Select>
       </SelectGroup>
 
-      <RunTimeFrameFilter from={from} to={to} onRangeChanged={handleTimeFrameChange} />
+      <TimeFrameFilter from={from} to={to} onRangeChanged={handleTimeFrameChange} />
 
       <Button variant="tertiary/small" onClick={() => clearFilters()} LeadingIcon={"close"}>
         Clear

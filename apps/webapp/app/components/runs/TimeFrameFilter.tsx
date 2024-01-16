@@ -25,7 +25,7 @@ type RunTimeFrameFilterProps = {
 
 type Mode = "absolute" | "relative";
 
-export function RunTimeFrameFilter({ from, to, onRangeChanged }: RunTimeFrameFilterProps) {
+export function TimeFrameFilter({ from, to, onRangeChanged }: RunTimeFrameFilterProps) {
   const [activeTab, setActiveTab] = useState<Mode>("absolute");
   const [isOpen, setIsOpen] = useState(false);
   const [relativeTimeSeconds, setRelativeTimeSeconds] = useState<number | undefined>();

@@ -12,14 +12,19 @@ import {
 } from "../primitives/Select";
 import { EventListSearchSchema } from "./EventStatuses";
 import { environmentKeys, FilterableEnvironment } from "~/components/runs/RunStatuses";
+import { TimeFrameFilter } from "../runs/TimeFrameFilter";
+import { useCallback } from "react";
+import { Button } from "../primitives/Buttons";
 
 export function EventsFilters() {
   const navigate = useNavigate();
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
-  const { environment } = EventListSearchSchema.parse(Object.fromEntries(searchParams.entries()));
+  const { environment, from, to } = EventListSearchSchema.parse(
+    Object.fromEntries(searchParams.entries())
+  );
 
-  const handleFilterChange = (filterType: string, value: string | undefined) => {
+  const handleFilterChange = useCallback((filterType: string, value: string | undefined) => {
     if (value) {
       searchParams.set(filterType, value);
     } else {
@@ -28,11 +33,37 @@ export function EventsFilters() {
     searchParams.delete("cursor");
     searchParams.delete("direction");
     navigate(`${location.pathname}?${searchParams.toString()}`);
-  };
+  }, []);
+
+  const handleTimeFrameChange = useCallback((range: { from?: number; to?: number }) => {
+    if (range.from) {
+      searchParams.set("from", range.from.toString());
+    } else {
+      searchParams.delete("from");
+    }
+
+    if (range.to) {
+      searchParams.set("to", range.to.toString());
+    } else {
+      searchParams.delete("to");
+    }
+
+    searchParams.delete("cursor");
+    searchParams.delete("direction");
+    navigate(`${location.pathname}?${searchParams.toString()}`);
+  }, []);
 
   const handleEnvironmentChange = (value: FilterableEnvironment | "ALL") => {
     handleFilterChange("environment", value === "ALL" ? undefined : value);
   };
+
+  const clearFilters = useCallback(() => {
+    searchParams.delete("status");
+    searchParams.delete("environment");
+    searchParams.delete("from");
+    searchParams.delete("to");
+    navigate(`${location.pathname}?${searchParams.toString()}`);
+  }, []);
 
   return (
     <div className="flex flex-row justify-between gap-x-2">
@@ -62,6 +93,12 @@ export function EventsFilters() {
           </SelectContent>
         </Select>
       </SelectGroup>
+
+      <TimeFrameFilter from={from} to={to} onRangeChanged={handleTimeFrameChange} />
+
+      <Button variant="tertiary/small" onClick={() => clearFilters()} LeadingIcon={"close"}>
+        Clear
+      </Button>
     </div>
   );
 }
