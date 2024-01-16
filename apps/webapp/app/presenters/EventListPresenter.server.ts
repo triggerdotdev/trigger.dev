@@ -96,7 +96,7 @@ export class EventListPresenter {
       where: {
         internal: false,
         name: {
-          not: "trigger.scheduled",
+          notIn: ["trigger.scheduled", "dev.trigger.scheduled"],
         },
         projectId: project.id,
         organizationId: organization.id,
