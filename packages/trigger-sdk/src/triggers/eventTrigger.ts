@@ -106,6 +106,7 @@ export function eventTrigger<TEvent extends any = any>(
   return new EventTrigger({
     name: options.name,
     filter: options.filter,
+    source: options.source,
     event: {
       name: options.name,
       title: "Event",
