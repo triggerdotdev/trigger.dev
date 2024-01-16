@@ -96,7 +96,7 @@ export default function Page() {
         <div className="flex flex-col gap-5 rounded border border-border p-6">
           {hitsRunLimit && (
             <Callout
-              variant={"pricing"}
+              variant={"error"}
               cta={
                 <LinkButton
                   variant="primary/small"
@@ -108,7 +108,7 @@ export default function Page() {
                 </LinkButton>
               }
             >
-              <Paragraph variant="small">
+              <Paragraph variant="small" className="text-white">
                 You have exceeded the monthly{" "}
                 {formatNumberCompact(currentPlan?.subscription?.limits.runs ?? 0)} runs limit.
                 Upgrade to a paid plan before{" "}
