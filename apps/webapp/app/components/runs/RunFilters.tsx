@@ -5,6 +5,7 @@ import {
   NoSymbolIcon,
   PauseCircleIcon,
   XCircleIcon,
+  XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { useNavigate } from "@remix-run/react";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
@@ -28,6 +29,8 @@ import {
   statusKeys,
 } from "./RunStatuses";
 import { RunTimeFrameFilter } from "./RunTimeFrameFilter";
+import { Button } from "../primitives/Buttons";
+import { useCallback } from "react";
 
 export function RunsFilters() {
   const navigate = useNavigate();
@@ -37,7 +40,7 @@ export function RunsFilters() {
     Object.fromEntries(searchParams.entries())
   );
 
-  const handleFilterChange = (filterType: string, value: string | undefined) => {
+  const handleFilterChange = useCallback((filterType: string, value: string | undefined) => {
     if (value) {
       searchParams.set(filterType, value);
     } else {
@@ -46,17 +49,17 @@ export function RunsFilters() {
     searchParams.delete("cursor");
     searchParams.delete("direction");
     navigate(`${location.pathname}?${searchParams.toString()}`);
-  };
+  }, []);
 
-  const handleStatusChange = (value: FilterableStatus | "ALL") => {
+  const handleStatusChange = useCallback((value: FilterableStatus | "ALL") => {
     handleFilterChange("status", value === "ALL" ? undefined : value);
-  };
+  }, []);
 
-  const handleEnvironmentChange = (value: FilterableEnvironment | "ALL") => {
+  const handleEnvironmentChange = useCallback((value: FilterableEnvironment | "ALL") => {
     handleFilterChange("environment", value === "ALL" ? undefined : value);
-  };
+  }, []);
 
-  const handleTimeFrameChange = (range: { from?: number; to?: number }) => {
+  const handleTimeFrameChange = useCallback((range: { from?: number; to?: number }) => {
     if (range.from) {
       searchParams.set("from", range.from.toString());
     } else {
@@ -72,7 +75,15 @@ export function RunsFilters() {
     searchParams.delete("cursor");
     searchParams.delete("direction");
     navigate(`${location.pathname}?${searchParams.toString()}`);
-  };
+  }, []);
+
+  const clearFilters = useCallback(() => {
+    searchParams.delete("status");
+    searchParams.delete("environment");
+    searchParams.delete("from");
+    searchParams.delete("to");
+    navigate(`${location.pathname}?${searchParams.toString()}`);
+  }, []);
 
   return (
     <div className="flex flex-row justify-between gap-x-2">
@@ -129,6 +140,10 @@ export function RunsFilters() {
       </SelectGroup>
 
       <RunTimeFrameFilter from={from} to={to} onRangeChanged={handleTimeFrameChange} />
+
+      <Button variant="tertiary/small" onClick={() => clearFilters()} LeadingIcon={"close"}>
+        Clear
+      </Button>
     </div>
   );
 }

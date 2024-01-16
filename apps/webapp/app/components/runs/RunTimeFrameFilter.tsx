@@ -33,21 +33,6 @@ export function RunTimeFrameFilter({ from, to, onRangeChanged }: RunTimeFrameFil
   const fromDate = from ? new Date(from) : undefined;
   const toDate = to ? new Date(to) : undefined;
 
-  const getTitle = (from: number | undefined, to: number | undefined) => {
-    if (!from || !to) {
-      return "Timeframe";
-    }
-
-    if (relativeTimeSeconds !== undefined) {
-      return timeFrameValues.find((t) => t.value === relativeTimeSeconds)?.label ?? "Timeframe";
-    }
-
-    const toDateTime = formatDateTime(new Date(to), "UTC", ["en-US"], false, true);
-    const fromDateTime = formatDateTime(new Date(from), "UTC", ["en-US"], false, true);
-
-    return `${fromDateTime} - ${toDateTime} (UTC)`;
-  };
-
   const relativeTimeFrameChanged = useCallback((value: number) => {
     const to = new Date().getTime();
     const from = to - value;
@@ -56,11 +41,10 @@ export function RunTimeFrameFilter({ from, to, onRangeChanged }: RunTimeFrameFil
   }, []);
 
   const absoluteTimeFrameChanged = useCallback(({ from, to }: { from?: Date; to?: Date }) => {
+    setRelativeTimeSeconds(undefined);
     const fromTime = from?.getTime();
     const toTime = to?.getTime();
-    if (fromTime || toTime) {
-      onRangeChanged({ from: fromTime, to: toTime });
-    }
+    onRangeChanged({ from: fromTime, to: toTime });
   }, []);
 
   return (
@@ -71,7 +55,7 @@ export function RunTimeFrameFilter({ from, to, onRangeChanged }: RunTimeFrameFil
           className="bg-slate-800 group-hover:bg-tertiary-foreground"
         >
           <Paragraph variant="extra-small" className="mr-2">
-            {getTitle(from, to)}
+            {title(from, to, relativeTimeSeconds)}
           </Paragraph>
           <ChevronDownIcon className="h-4 w-4 text-bright" />
         </Button>
@@ -108,6 +92,32 @@ export function RunTimeFrameFilter({ from, to, onRangeChanged }: RunTimeFrameFil
       </PopoverContent>
     </Popover>
   );
+}
+
+function title(
+  from: number | undefined,
+  to: number | undefined,
+  relativeTimeSeconds: number | undefined
+): string {
+  if (!from && !to) {
+    return "All time periods";
+  }
+
+  if (relativeTimeSeconds !== undefined) {
+    return timeFrameValues.find((t) => t.value === relativeTimeSeconds)?.label ?? "Timeframe";
+  }
+
+  let fromString = from ? formatDateTime(new Date(from), "UTC", ["en-US"], false, true) : undefined;
+  let toString = to ? formatDateTime(new Date(to), "UTC", ["en-US"], false, true) : undefined;
+  if (from && !to) {
+    return `From ${fromString} (UTC)`;
+  }
+
+  if (!from && to) {
+    return `To ${toString} (UTC)`;
+  }
+
+  return `${fromString} - ${toString} (UTC)`;
 }
 
 function RelativeTimeFrame({
@@ -200,31 +210,34 @@ function AbsoluteTimeFrame({
   to?: Date;
   onValueChange: (value: { from?: Date; to?: Date }) => void;
 }) {
-  const [fromDate, setFromDate] = useState<Date | undefined>(from);
-  const [toDate, setToDate] = useState<Date | undefined>(to);
-
   return (
     <div className="flex flex-col gap-2 pt-2">
       <div className="flex flex-col justify-start gap-2">
-        <DateField
-          label="From (UTC)"
-          defaultValue={fromDate}
-          onValueChange={(value) => {
-            setFromDate(value);
-            onValueChange({ from: value, to: toDate });
-          }}
-          granularity="second"
-        />
-        <DateField
-          label="To (UTC)"
-          defaultValue={toDate}
-          onValueChange={(value) => {
-            setToDate(value);
-            onValueChange({ from: fromDate, to: value });
-          }}
-          granularity="second"
-          showGuide
-        />
+        <div className="flex flex-row items-center gap-1">
+          <DateField
+            label="From (UTC)"
+            defaultValue={from}
+            onValueChange={(value) => {
+              onValueChange({ from: value, to: to });
+            }}
+            granularity="second"
+            showNowButton
+            showClearButton
+          />
+        </div>
+        <div className="flex flex-row items-center gap-1">
+          <DateField
+            label="To (UTC)"
+            defaultValue={to}
+            onValueChange={(value) => {
+              onValueChange({ from: from, to: value });
+            }}
+            granularity="second"
+            showGuide
+            showNowButton
+            showClearButton
+          />
+        </div>
       </div>
     </div>
   );
