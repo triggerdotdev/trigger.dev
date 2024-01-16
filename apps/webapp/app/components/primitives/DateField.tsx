@@ -39,8 +39,6 @@ export function DateField({
     utcDateToCalendarDate(defaultValue)
   );
 
-  const locales = useLocales();
-
   const state = useDateFieldState({
     value: value,
     onChange: (value) => {
@@ -51,8 +49,9 @@ export function DateField({
     },
     minValue: utcDateToCalendarDate(minValue),
     maxValue: utcDateToCalendarDate(maxValue),
+    shouldForceLeadingZeros: true,
     granularity,
-    locale: locales.at(0) ?? "en-US",
+    locale: "en-US",
     createCalendar: (name: string) => {
       return createCalendar(name);
     },
@@ -80,6 +79,15 @@ export function DateField({
     ref
   );
 
+  //render if reverse date order
+  const yearSegment = state.segments.find((s) => s.type === "year")!;
+  const monthSegment = state.segments.find((s) => s.type === "month")!;
+  const daySegment = state.segments.find((s) => s.type === "day")!;
+  const hourSegment = state.segments.find((s) => s.type === "hour")!;
+  const minuteSegment = state.segments.find((s) => s.type === "minute")!;
+  const secondSegment = state.segments.find((s) => s.type === "second")!;
+  const dayPeriodSegment = state.segments.find((s) => s.type === "dayPeriod")!;
+
   return (
     <div className={`flex flex-col items-start ${className || ""}`}>
       <span {...labelProps} className="mb-1 ml-0.5 text-xs text-slate-300">
@@ -94,9 +102,19 @@ export function DateField({
             fieldClassName
           )}
         >
-          {state.segments.map((segment, i) => (
-            <DateSegment key={i} segment={segment} state={state} />
-          ))}
+          <DateSegment segment={yearSegment} state={state} />
+          <DateSegment segment={literalSegment("/")} state={state} />
+          <DateSegment segment={monthSegment} state={state} />
+          <DateSegment segment={literalSegment("/")} state={state} />
+          <DateSegment segment={daySegment} state={state} />
+          <DateSegment segment={literalSegment(", ")} state={state} />
+          <DateSegment segment={hourSegment} state={state} />
+          <DateSegment segment={literalSegment(":")} state={state} />
+          <DateSegment segment={minuteSegment} state={state} />
+          <DateSegment segment={literalSegment(":")} state={state} />
+          <DateSegment segment={secondSegment} state={state} />
+          <DateSegment segment={literalSegment(" ")} state={state} />
+          <DateSegment segment={dayPeriodSegment} state={state} />
         </div>
         {showNowButton && (
           <Button
@@ -187,6 +205,16 @@ function DateSegment({ segment, state }: DateSegmentProps) {
       {segment.isPlaceholder ? "" : segment.text}
     </div>
   );
+}
+
+function literalSegment(text: string): DateSegment {
+  return {
+    type: "literal",
+    text,
+    isPlaceholder: false,
+    isEditable: false,
+    placeholder: "",
+  };
 }
 
 function minWidthForSegment(segment: DateSegment) {
