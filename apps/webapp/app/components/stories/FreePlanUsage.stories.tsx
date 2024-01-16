@@ -22,6 +22,7 @@ const mockOrganization: MatchedOrganization = {
   ],
   hasUnconfiguredIntegrations: false,
   memberCount: 1,
+  runsEnabled: true,
 };
 
 export const ProgressBar: Story = {
