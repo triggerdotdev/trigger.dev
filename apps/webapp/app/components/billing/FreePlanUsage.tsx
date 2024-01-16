@@ -13,8 +13,15 @@ export function FreePlanUsage({ to, percentage }: { to: string; percentage: numb
     ["#22C55E", "#22C55E", "#F59E0B", "#F43F5E", "#F43F5E"]
   );
 
+  const hasHitLimit = cappedPercentage >= 1;
+
   return (
-    <div className="rounded border border-slate-900 bg-[#101722] p-2.5">
+    <div
+      className={cn(
+        "rounded border border-slate-900 bg-[#101722] p-2.5",
+        hasHitLimit && "border-rose-800/60"
+      )}
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
           <ArrowUpCircleIcon className="h-5 w-5 text-dimmed" />
