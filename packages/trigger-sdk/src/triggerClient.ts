@@ -679,7 +679,7 @@ export class TriggerClient {
   >(options: JobOptions<TTrigger, TIntegrations, TOutput>) {
     const existingRegisteredJob = this.#registeredJobs[options.id];
 
-    if (existingRegisteredJob) {
+    if (existingRegisteredJob && options.__internal !== true) {
       console.warn(
         `[@trigger.dev/sdk] Warning: The Job "${existingRegisteredJob.id}" you're attempting to define has already been defined. Please assign a different ID to the job.`
       );
