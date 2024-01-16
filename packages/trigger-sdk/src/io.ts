@@ -214,12 +214,12 @@ export class IO {
     return new IOLogger(async (level, message, data) => {
       let logLevel: LogLevel = "info";
 
-      if(data instanceof Error){
+      if (data instanceof Error) {
         data = {
-          name : data.name,
-          message : data.message,
-          stack : data.stack
-        }
+          name: data.name,
+          message: data.message,
+          stack: data.stack,
+        };
       }
 
       if (Logger.satisfiesLogLevel(logLevel, this._jobLogLevel)) {
@@ -1097,8 +1097,6 @@ export class IO {
     options?: RunTaskOptions & { parseOutput?: (output: unknown) => T },
     onError?: RunTaskErrorCallback
   ): Promise<T> {
-    this.#detectAutoYield("start_task", 500);
-
     const parentId = this._taskStorage.getStore()?.taskId;
 
     if (parentId) {
@@ -1107,6 +1105,12 @@ export class IO {
         cacheKey,
         options,
       });
+    }
+
+    //don't auto-yield if it's a no-op and a subtask (e.g. a log inside a task)
+    const isSubtaskNoop = options?.noop === true && parentId !== undefined;
+    if (!isSubtaskNoop) {
+      this.#detectAutoYield("start_task", 500);
     }
 
     const idempotencyKey = await generateIdempotencyKey(
