@@ -3,6 +3,7 @@ import express from "express";
 import compression from "compression";
 import morgan from "morgan";
 import { createRequestHandler } from "@remix-run/express";
+import { WebSocketServer } from "ws";
 
 const app = express();
 
@@ -55,34 +56,19 @@ app.all(
 
 const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
 
-import { SocketServer } from "./socket-server";
-import { WebSocketServer } from "ws";
-
 if (process.env.HTTP_SERVER_DISABLED !== "true") {
-  const wss = new WebSocketServer({ noServer: true });
-
-  wss.on("connection", (ws, req) => {
-    const apiKey = req.headers.authorization;
-
-    if (!apiKey || typeof apiKey !== "string") {
-      console.log("Invalid API Key, closing the connection");
-
-      ws.close(1008, "Invalid API Key");
-      return;
-    }
-
-    const keyPart = apiKey.split(" ")[1];
-
-    console.log("Initialization the TriggerServer now...");
-
-    const triggerServer = new SocketServer(ws);
-
-    console.log("TriggerServer initialized, sending the API Key...");
-  });
+  let wss: WebSocketServer | undefined;
 
   const server = app.listen(port, () => {
     // require the built app so we're ready when the first request comes in
-    require(BUILD_DIR);
+    const build = require(BUILD_DIR);
+
+    wss = build.entry.module.wss;
+
+    if (typeof wss !== "undefined") {
+      console.log(`💊 Hooking up the WebSocket server`);
+    }
+
     console.log(`✅ app ready: http://localhost:${port}`);
   });
 
@@ -120,8 +106,8 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
     console.log(`Client connected, upgrading their connection...`);
 
     // Handle the WebSocket connection
-    wss.handleUpgrade(req, socket, head, (ws) => {
-      wss.emit("connection", ws, req);
+    wss?.handleUpgrade(req, socket, head, (ws) => {
+      wss?.emit("connection", ws, req);
     });
   });
 } else {

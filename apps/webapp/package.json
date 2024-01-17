@@ -8,7 +8,6 @@
     "build:db:seed": "esbuild --platform=node --bundle --minify --format=cjs ./prisma/seed.ts --outdir=prisma",
     "build:remix": "remix build",
     "build:server": "esbuild --platform=node --format=cjs ./server.ts --outdir=build",
-    "build:socket-server": "esbuild --platform=node --format=cjs ./socket-server.ts --outdir=build",
     "dev": "cross-env PORT=3030 remix dev",
     "dev:manual": "cross-env PORT=3030 remix dev -c \"node ./build/server.js\"",
     "format": "prettier --write .",
