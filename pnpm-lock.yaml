@@ -625,14 +625,14 @@ importers:
       '@trigger.dev/tsconfig': workspace:*
       '@trigger.dev/tsup': workspace:*
       '@types/node': '18'
-      resend: ^2.0.0
+      resend: ^2.1.0
       rimraf: ^3.0.2
       tsup: 8.0.1
       typescript: ^5.3.0
     dependencies:
       '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
-      resend: 2.0.0
+      resend: 2.1.0
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@trigger.dev/tsup': link:../../config-packages/tsup
@@ -23364,7 +23364,7 @@ packages:
       '@selderee/plugin-htmlparser2': 0.10.0
       deepmerge: 4.3.1
       dom-serializer: 2.0.0
-      htmlparser2: 8.0.1
+      htmlparser2: 8.0.2
       selderee: 0.10.0
     dev: false
 
@@ -23404,15 +23404,6 @@ packages:
       domutils: 2.8.0
       entities: 2.2.0
     dev: true
-
-  /htmlparser2/8.0.1:
-    resolution: {integrity: sha512-4lVbmc1diZC7GUJQtRQ5yBAeUCL1exyMwmForWkRLnwyzWBFxN633SALPMGYaWZvKe9j1pRZJpauvmxENSp/EA==}
-    dependencies:
-      domelementtype: 2.3.0
-      domhandler: 5.0.3
-      domutils: 3.0.1
-      entities: 4.4.0
-    dev: false
 
   /htmlparser2/8.0.2:
     resolution: {integrity: sha512-GYdjWKDkbRLkZ5geuHs5NY1puJ+PXwP7+fHPRz06Eirsb9ugf6d8kkXav6ADhcODhFFPMIXyxkxSuMf3D6NCFA==}
@@ -30388,8 +30379,8 @@ packages:
       - debug
     dev: false
 
-  /resend/2.0.0:
-    resolution: {integrity: sha512-jAh0DN84ZjjmzGM2vMjJ1hphPBg1mG98dzopF7kJzmin62v8ESg4og2iCKWdkAboGOT2SeO5exbr/8Xh8gLddw==}
+  /resend/2.1.0:
+    resolution: {integrity: sha512-s6LlaEReTUvlbo6w3Eg1M1TMuwK9OKJ1GVgyptIV8smLPHhFZVqnwBTFPZHID9rcsih72t3iuyrtkQ3IIGwnow==}
     engines: {node: '>=18'}
     dependencies:
       '@react-email/render': 0.0.9
