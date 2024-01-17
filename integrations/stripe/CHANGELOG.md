@@ -1,5 +1,14 @@
 # @trigger.dev/stripe
 
+## 2.3.13
+
+### Patch Changes
+
+- Updated dependencies [a93b554f]
+- Updated dependencies [0f342cd1]
+  - @trigger.dev/sdk@2.3.13
+  - @trigger.dev/integration-kit@2.3.13
+
 ## 2.3.12
 
 ### Patch Changes

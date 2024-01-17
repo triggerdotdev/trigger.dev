@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/resend",
-  "version": "2.3.12",
+  "version": "2.3.13",
   "description": "The official Resend.com integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -24,8 +24,8 @@
     "build:tsup": "tsup"
   },
   "dependencies": {
-    "@trigger.dev/integration-kit": "workspace:^2.3.12",
-    "@trigger.dev/sdk": "workspace:^2.3.12",
+    "@trigger.dev/integration-kit": "workspace:^2.3.13",
+    "@trigger.dev/sdk": "workspace:^2.3.13",
     "resend": "^2.1.0"
   },
   "engines": {

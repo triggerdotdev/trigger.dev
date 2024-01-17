@@ -114,6 +114,8 @@ model Organization {
 
   companySize String?
 
+  runsEnabled Boolean @default(true)
+
   environments RuntimeEnvironment[]
   connections  IntegrationConnection[]
   endpoints    Endpoint[]

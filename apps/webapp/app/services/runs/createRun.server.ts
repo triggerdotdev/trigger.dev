@@ -3,6 +3,7 @@ import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
+import { logger } from "../logger.server";
 
 export class CreateRunService {
   #prismaClient: PrismaClientOrTransaction;
@@ -25,6 +26,11 @@ export class CreateRunService {
     },
     options: { callbackUrl?: string } = {}
   ) {
+    if (!environment.organization.runsEnabled) {
+      logger.debug("Runs are disabled for this organization", environment);
+      return;
+    }
+
     const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
       where: {
         id: version.endpointId,

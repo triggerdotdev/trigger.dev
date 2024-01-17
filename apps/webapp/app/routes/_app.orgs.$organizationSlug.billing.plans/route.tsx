@@ -65,7 +65,7 @@ export default function Page() {
         </Callout>
       )}
       {hitRunLimit && (
-        <Callout variant={"pricing"}>
+        <Callout variant={"error"}>
           {`You have exceeded the monthly
           ${formatNumberCompact(currentPlan!.subscription!.limits.runs!)} runs limit. Upgrade so you
           can continue to perform runs.`}
