@@ -542,7 +542,7 @@ async function createNativeTunnel(
       https,
       {
         WebSocket: WebSocket.default,
-        connectionTimeout: 1000,
+        connectionTimeout: getConnectionTimeoutValue(),
         maxRetries: 10,
       },
       { verbose: process.env.TUNNEL_VERBOSE === "1" }
@@ -555,6 +555,14 @@ async function createNativeTunnel(
     spinner.fail(`Failed to create tunnel.\n${e}`);
     return;
   }
+}
+
+function getConnectionTimeoutValue() {
+  if (typeof process.env.TUNNEL_CONNECTION_TIMEOUT === "string") {
+    return parseInt(process.env.TUNNEL_CONNECTION_TIMEOUT);
+  }
+
+  return 5000;
 }
 
 async function createNgrokTunnel(hostname: string, port: number, spinner: Ora) {
