@@ -72,7 +72,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
 
     if (!run) {
-      return json({ error: "Job count not be invoked" }, { status: 500 });
+      return json({ error: "Job could not be invoked" }, { status: 500 });
     }
 
     return json({ id: run.id });

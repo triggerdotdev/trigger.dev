@@ -5,6 +5,7 @@ import { formatNumberCompact } from "~/utils/numberFormatter";
 import { plansPath } from "~/utils/pathBuilder";
 import { LinkButton } from "../primitives/Buttons";
 import { Paragraph } from "../primitives/Paragraph";
+import { Callout } from "../primitives/Callout";
 
 type UpgradePromptProps = {
   organization: MatchedOrganization;
@@ -18,19 +19,25 @@ export function UpgradePrompt({ organization }: UpgradePromptProps) {
   }
 
   return (
-    <div className="flex h-full w-full items-center gap-4 bg-gradient-to-r from-transparent to-indigo-900/50 pr-1.5">
-      <Paragraph variant="extra-small" className="text-rose-500">
-        You have exceeded the monthly {formatNumberCompact(currentPlan.usage.runCountCap)} runs
-        limit
-      </Paragraph>
-      <LinkButton
-        variant={"primary/small"}
-        LeadingIcon={ArrowUpCircleIcon}
-        leadingIconClassName="px-0"
-        to={plansPath(organization)}
-      >
-        Upgrade
-      </LinkButton>
-    </div>
+    <Callout variant="error" className="flex h-full items-center rounded-none px-1 py-0">
+      <div className="flex items-center justify-between gap-3">
+        <Paragraph variant="extra-small" className="text-white">
+          {organization.runsEnabled
+            ? `You have exceeded the monthly ${formatNumberCompact(
+                currentPlan.usage.runCountCap
+              )} runs
+          limit`
+            : `No runs are executing because you have exceeded the free limit`}
+        </Paragraph>
+        <LinkButton
+          variant={"primary/small"}
+          LeadingIcon={ArrowUpCircleIcon}
+          leadingIconClassName="px-0"
+          to={plansPath(organization)}
+        >
+          Upgrade
+        </LinkButton>
+      </div>
+    </Callout>
   );
 }
