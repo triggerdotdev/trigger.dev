@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/shopify",
-  "version": "2.3.14",
+  "version": "2.3.15",
   "description": "Trigger.dev integration for @shopify/shopify-api",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -26,8 +26,8 @@
   },
   "dependencies": {
     "@shopify/shopify-api": "^8.0.2",
-    "@trigger.dev/sdk": "workspace:^2.3.14",
-    "@trigger.dev/integration-kit": "workspace:^2.3.14",
+    "@trigger.dev/sdk": "workspace:^2.3.15",
+    "@trigger.dev/integration-kit": "workspace:^2.3.15",
     "zod": "3.22.3"
   },
   "engines": {

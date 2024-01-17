@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 2.3.15
+
+### Patch Changes
+
+- 6c4047cf: Fix an issue where runs were stuck executing when a child task failed and the parent task retried
+  - @trigger.dev/core@2.3.15
+  - @trigger.dev/core-backend@2.3.15
+
 ## 2.3.14
 
 ### Patch Changes
