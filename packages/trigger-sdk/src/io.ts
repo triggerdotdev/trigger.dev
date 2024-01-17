@@ -1333,6 +1333,8 @@ export class IO {
           await this._apiClient.failTask(this._id, task.id, {
             error: error.cause.output as any,
           });
+
+          throw error;
         }
 
         const parsedError = ErrorWithStackSchema.safeParse(error);
