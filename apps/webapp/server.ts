@@ -4,6 +4,7 @@ import compression from "compression";
 import morgan from "morgan";
 import { createRequestHandler } from "@remix-run/express";
 import { WebSocketServer } from "ws";
+import { broadcastDevReady, logDevReady } from "@remix-run/server-runtime";
 
 const app = express();
 
@@ -39,37 +40,29 @@ app.use(morgan("tiny"));
 
 const MODE = process.env.NODE_ENV;
 const BUILD_DIR = path.join(process.cwd(), "build");
+const build = require(BUILD_DIR);
 
 app.all(
   "*",
-  MODE === "production"
-    ? createRequestHandler({ build: require(BUILD_DIR) })
-    : (...args) => {
-        purgeRequireCache();
-        const requestHandler = createRequestHandler({
-          build: require(BUILD_DIR),
-          mode: MODE,
-        });
-        return requestHandler(...args);
-      }
+  createRequestHandler({
+    build,
+    mode: MODE,
+  })
 );
 
 const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
 
 if (process.env.HTTP_SERVER_DISABLED !== "true") {
-  let wss: WebSocketServer | undefined;
+  const wss: WebSocketServer | undefined = build.entry.module.wss;
 
   const server = app.listen(port, () => {
-    // require the built app so we're ready when the first request comes in
-    const build = require(BUILD_DIR);
+    console.log(`✅ app ready: http://localhost:${port} [NODE_ENV: ${MODE}]`);
 
-    wss = build.entry.module.wss;
-
-    if (typeof wss !== "undefined") {
-      console.log(`💊 Hooking up the WebSocket server`);
+    if (MODE === "development") {
+      broadcastDevReady(build)
+        .then(() => logDevReady(build))
+        .catch(console.error);
     }
-
-    console.log(`✅ app ready: http://localhost:${port}`);
   });
 
   server.keepAliveTimeout = 65 * 1000;
@@ -113,18 +106,4 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
 } else {
   require(BUILD_DIR);
   console.log(`✅ app ready (skipping http server)`);
-}
-
-function purgeRequireCache() {
-  // purge require cache on requests for "server side HMR" this won't let
-  // you have in-memory objects between requests in development,
-  // alternatively you can set up nodemon/pm2-dev to restart the server on
-  // file changes, we prefer the DX of this though, so we've included it
-  // for you by default
-  for (const key in require.cache) {
-    if (key.startsWith(BUILD_DIR)) {
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-      delete require.cache[key];
-    }
-  }
 }
