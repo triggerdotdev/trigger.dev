@@ -3,9 +3,11 @@ import type { ResendRunTask } from "./index";
 import { Resend } from "resend";
 import { handleResendError } from "./utils";
 
-type SendEmailResult = NonNullable<Awaited<ReturnType<Resend["emails"]["send"]>>["data"]>;
-type CreateEmailResult = NonNullable<Awaited<ReturnType<Resend["emails"]["create"]>>["data"]>;
-type GetEmailResult = NonNullable<Awaited<ReturnType<Resend["emails"]["get"]>>["data"]>;
+export type SendEmailResult = NonNullable<Awaited<ReturnType<Resend["emails"]["send"]>>["data"]>;
+export type CreateEmailResult = NonNullable<
+  Awaited<ReturnType<Resend["emails"]["create"]>>["data"]
+>;
+export type GetEmailResult = NonNullable<Awaited<ReturnType<Resend["emails"]["get"]>>["data"]>;
 
 export class Emails {
   constructor(private runTask: ResendRunTask) {}

@@ -9,7 +9,7 @@ import {
   type TriggerIntegration,
 } from "@trigger.dev/sdk";
 import { Resend as ResendClient } from "resend";
-import { Emails } from "./emails";
+import { Emails, SendEmailResult } from "./emails";
 import { Batch } from "./batch";
 import { Contacts } from "./contacts";
 import { Audiences } from "./audiences";
@@ -156,7 +156,7 @@ export class Resend implements TriggerIntegration {
   /**
    * @deprecated Please use resend.emails.send instead
    */
-  async sendEmail(...args: Parameters<typeof this.emails.send>) {
+  async sendEmail(...args: Parameters<typeof this.emails.send>): Promise<SendEmailResult> {
     return this.emails.send(...args);
   }
 
