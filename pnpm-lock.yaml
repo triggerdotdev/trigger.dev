@@ -182,6 +182,7 @@ importers:
       esbuild: ^0.15.10
       eslint: ^8.24.0
       eslint-config-prettier: ^8.5.0
+      evt: ^2.4.13
       express: ^4.18.1
       framer-motion: ^10.12.11
       graphile-worker: ^0.13.0
@@ -303,6 +304,7 @@ importers:
       cross-env: 7.0.3
       cuid: 2.1.8
       emails: link:../../packages/emails
+      evt: 2.4.13
       express: 4.18.2
       framer-motion: 10.12.11_biqbaboplfbrettd7655fr4n2y
       graphile-worker: 0.13.0
