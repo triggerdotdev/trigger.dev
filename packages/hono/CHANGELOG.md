@@ -1,5 +1,11 @@
 # @trigger.dev/hono
 
+## 2.3.14
+
+### Patch Changes
+
+- @trigger.dev/sdk@2.3.14
+
 ## 2.3.13
 
 ### Patch Changes
