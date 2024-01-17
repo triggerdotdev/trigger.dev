@@ -1,5 +1,13 @@
 # @trigger.dev/resend
 
+## 2.3.14
+
+### Patch Changes
+
+- 4dd6cf18: Add support for the new Resend audience API endpoints
+  - @trigger.dev/integration-kit@2.3.14
+  - @trigger.dev/sdk@2.3.14
+
 ## 2.3.13
 
 ### Patch Changes
