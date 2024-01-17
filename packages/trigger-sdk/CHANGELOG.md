@@ -1,5 +1,14 @@
 # @trigger.dev/sdk
 
+## 2.3.13
+
+### Patch Changes
+
+- a93b554f: Make it clear that schedules are UTC by appending "UTC" to the end.
+- 0f342cd1: Don't show duplicate Job warning if it's an internal job
+  - @trigger.dev/core@2.3.13
+  - @trigger.dev/core-backend@2.3.13
+
 ## 2.3.12
 
 ### Patch Changes

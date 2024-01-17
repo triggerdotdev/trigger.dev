@@ -1,5 +1,13 @@
 # create-trigger
 
+## 2.3.13
+
+### Patch Changes
+
+- 26f5e777: Increase the yalt.dev connection timeout to 5 seconds
+  - @trigger.dev/core@2.3.13
+  - @trigger.dev/yalt@2.3.13
+
 ## 2.3.12
 
 ### Patch Changes
