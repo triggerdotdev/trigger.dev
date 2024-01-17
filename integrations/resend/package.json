@@ -26,7 +26,7 @@
   "dependencies": {
     "@trigger.dev/integration-kit": "workspace:^2.3.12",
     "@trigger.dev/sdk": "workspace:^2.3.12",
-    "resend": "^2.0.0"
+    "resend": "^2.1.0"
   },
   "engines": {
     "node": ">=18.0.0"

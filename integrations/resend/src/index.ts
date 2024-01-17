@@ -11,6 +11,8 @@ import {
 import { Resend as ResendClient } from "resend";
 import { Emails } from "./emails";
 import { Batch } from "./batch";
+import { Contacts } from "./contacts";
+import { Audiences } from "./audiences";
 
 type ErrorResponse = {
   statusCode: number;
@@ -156,5 +158,37 @@ export class Resend implements TriggerIntegration {
    */
   async sendEmail(...args: Parameters<typeof this.emails.send>) {
     return this.emails.send(...args);
+  }
+
+  /**
+   * Access the Resend Audiences API
+   * @example
+   * ```ts
+   * const response = await io.resend.audiences.create("📧", {
+   *  name: payload.name,
+   * });
+   * ```
+   */
+
+  get audiences() {
+    return new Audiences(this.runTask.bind(this));
+  }
+
+  /**
+   * Access the Resend Contacts API
+   * @example
+   * ```ts
+   * const response = await io.resend.contacts.create("📧", {
+   *  email: payload.email,
+   *  first_name: payload.first_name,
+   *  last_name: payload.last_name,
+   *  unsubscribed: false
+   *  audienceId: payload.audienceId
+   * });
+   * ```
+   */
+
+  get contacts() {
+    return new Contacts(this.runTask.bind(this));
   }
 }
