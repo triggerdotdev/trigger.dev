@@ -1,5 +1,13 @@
 # @trigger.dev/plain
 
+## 2.3.15
+
+### Patch Changes
+
+- Updated dependencies [6c4047cf]
+  - @trigger.dev/sdk@2.3.15
+  - @trigger.dev/integration-kit@2.3.15
+
 ## 2.3.14
 
 ### Patch Changes
