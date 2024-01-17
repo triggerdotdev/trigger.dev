@@ -8,6 +8,7 @@
     "build:db:seed": "esbuild --platform=node --bundle --minify --format=cjs ./prisma/seed.ts --outdir=prisma",
     "build:remix": "remix build",
     "build:server": "esbuild --platform=node --format=cjs ./server.ts --outdir=build",
+    "build:socket-server": "esbuild --platform=node --format=cjs ./socket-server.ts --outdir=build",
     "dev": "cross-env PORT=3030 remix dev",
     "dev:manual": "cross-env PORT=3030 remix dev -c \"node ./build/server.js\"",
     "format": "prettier --write .",
@@ -132,6 +133,7 @@
     "tiny-invariant": "^1.2.0",
     "ulid": "^2.3.0",
     "ulidx": "^2.2.1",
+    "ws": "^8.11.0",
     "zod": "3.22.3",
     "zod-error": "1.5.0",
     "zod-validation-error": "^1.5.0"
@@ -176,6 +178,7 @@
     "@types/simple-oauth2": "^5.0.4",
     "@types/slug": "^5.0.3",
     "@types/tar": "^6.1.4",
+    "@types/ws": "^8.5.3",
     "@typescript-eslint/eslint-plugin": "^5.59.6",
     "@typescript-eslint/parser": "^5.59.6",
     "autoprefixer": "^10.4.13",

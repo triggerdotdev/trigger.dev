@@ -55,7 +55,31 @@ app.all(
 
 const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
 
+import { SocketServer } from "./socket-server";
+import { WebSocketServer } from "ws";
+
 if (process.env.HTTP_SERVER_DISABLED !== "true") {
+  const wss = new WebSocketServer({ noServer: true });
+
+  wss.on("connection", (ws, req) => {
+    const apiKey = req.headers.authorization;
+
+    if (!apiKey || typeof apiKey !== "string") {
+      console.log("Invalid API Key, closing the connection");
+
+      ws.close(1008, "Invalid API Key");
+      return;
+    }
+
+    const keyPart = apiKey.split(" ")[1];
+
+    console.log("Initialization the TriggerServer now...");
+
+    const triggerServer = new SocketServer(ws);
+
+    console.log("TriggerServer initialized, sending the API Key...");
+  });
+
   const server = app.listen(port, () => {
     // require the built app so we're ready when the first request comes in
     require(BUILD_DIR);
@@ -71,6 +95,33 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
       } else {
         console.log("Express server closed gracefully.");
       }
+    });
+  });
+
+  server.on("upgrade", async (req, socket, head) => {
+    console.log(
+      `Attemping to upgrade connection at url ${req.url} with headers: ${JSON.stringify(
+        req.headers
+      )}`
+    );
+
+    const url = new URL(req.url ?? "", "http://localhost");
+
+    // Only upgrade the connecting if the path is `/ws`
+    if (url.pathname !== "/ws") {
+      socket.destroy(
+        new Error(
+          "Cannot connect because of invalid path: Please include `/ws` in the path of your upgrade request."
+        )
+      );
+      return;
+    }
+
+    console.log(`Client connected, upgrading their connection...`);
+
+    // Handle the WebSocket connection
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit("connection", ws, req);
     });
   });
 } else {
