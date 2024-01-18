@@ -4,6 +4,7 @@ import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { redirect, typedjson } from "remix-typedjson";
 import z from "zod";
 import { prisma } from "~/db.server";
+import { featuresForRequest } from "~/features.server";
 import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
 import { requireUserId } from "~/services/session.server";
 import { requestUrl } from "~/utils/requestUrl.server";
@@ -12,7 +13,8 @@ export function createSchema(
   constraints: {
     isTitleUnique?: (title: string) => Promise<boolean>;
     isSlugUnique?: (slug: string) => Promise<boolean>;
-  } = {}
+    isManagedCloud: boolean;
+  }
 ) {
   return z
     .object({
@@ -68,7 +70,16 @@ export function createSchema(
           }
         }),
       description: z.string().optional(),
-      hasCustomClient: z.preprocess((value) => value === "on", z.boolean()),
+      hasCustomClient: z
+          .preprocess((value) => value === "on", z.boolean())
+          .superRefine((hasCustomClient, ctx) => {
+            if (!hasCustomClient && !constraints.isManagedCloud) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "Self-hosted trigger.dev installations must supply their own OAuth credentials.",
+              })
+            }
+          }),
       customClientId: z.string().optional(),
       customClientSecret: z.string().optional(),
       clientType: z.union([z.literal("DEVELOPER"), z.literal("EXTERNAL")]),
@@ -114,6 +125,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
       { status: 405 }
     );
   }
+
+  const { isManagedCloud } = featuresForRequest(request);
+
   const { organizationId } = ParamsSchema.parse(params);
 
   const formData = await request.formData();
@@ -139,6 +153,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
       return !existingIntegration;
     },
+    isManagedCloud
   });
 
   const submission = await parse(formData, { schema: formSchema, async: true });

@@ -52,7 +52,7 @@ export function ConnectToOAuthForm({
       onValidate({ formData }) {
         return parse(formData, {
           // Create the schema without any constraint defined
-          schema: createSchema(),
+          schema: createSchema({isManagedCloud}),
         });
       },
     });
@@ -119,21 +119,23 @@ export function ConnectToOAuthForm({
         </InputGroup>
         <input type="hidden" name="clientType" value={clientType} />
         <div>
-          <Header2>Use my OAuth App</Header2>
-          <Paragraph variant="small" className="mb-2">
-            To use your own OAuth app, check the option below and insert the details.
-          </Paragraph>
-          <Checkbox
-            id="hasCustomClient"
-            label="Use my OAuth App"
-            variant="simple/small"
-            disabled={requiresCustomOAuthApp}
-            onChange={(checked) => setUseMyOAuthApp(checked)}
-            {...conform.input(hasCustomClient, { type: "checkbox" })}
-            defaultChecked={requiresCustomOAuthApp}
-          />
+          <InputGroup fullWidth>
+            <Header2>Use my OAuth App</Header2>
+            <Paragraph variant="small">
+              To use your own OAuth app, check the option below and insert the details.
+            </Paragraph>
+            <Checkbox
+              id="hasCustomClient"
+              label="Use my OAuth App"
+              variant="simple/small"
+              onChange={(checked) => setUseMyOAuthApp(checked)}
+              {...conform.input(hasCustomClient, { type: "checkbox" })}
+              defaultChecked={requiresCustomOAuthApp}
+            />
+            <FormError>{hasCustomClient.error}</FormError>
+          </InputGroup>
           {useMyOAuthApp && (
-            <div className="ml-6 mt-2">
+            <div className="ml-6">
               <Paragraph variant="small" className="mb-2">
                 Set the callback url to <CodeBlock code={callbackUrl} showLineNumbers={false} />
               </Paragraph>
