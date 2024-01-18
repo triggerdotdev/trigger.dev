@@ -17,7 +17,7 @@
     "db:migrate:dev:create": "prisma migrate dev --create-only",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
-    "db:reset": "prisma db push --force-reset",
+    "db:reset": "prisma migrate reset",
     "typecheck": "tsc --noEmit"
   }
 }

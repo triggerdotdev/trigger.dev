@@ -1529,7 +1529,12 @@ model TaskRun {
   taskIdentifier String
 
   payload     String
-  payloadType String @default("JSON")
+  payloadType String @default("application/json")
+
+  output     String?
+  outputType String  @default("application/json")
+
+  error String?
 
   context Json?
 
@@ -1552,7 +1557,8 @@ model TaskRun {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  startedAt DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
 
   @@unique([runtimeEnvironmentId, idempotencyKey])
 }

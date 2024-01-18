@@ -15,6 +15,9 @@ import { logger } from "../utilities/logger";
 import { RequireKeys } from "../utilities/requiredKeys";
 import { isLoggedIn } from "../utilities/session";
 import * as packageJson from "../../package.json";
+import { WebSocket } from "partysocket";
+import { ClientOptions, ServerOptions, WebSocket as wsWebSocket } from "ws";
+import { ClientRequestArgs } from "node:http";
 
 const CONFIG_FILES = ["trigger.config.js", "trigger.config.mjs"];
 
@@ -36,6 +39,9 @@ type EntryPoint = {
 type EntryPointBundle = Awaited<ReturnType<typeof buildEntryPoints>>;
 
 let apiClient: ApiClient | undefined;
+let websocket: WebSocket | undefined;
+
+const backgroundWorkerCoordinators: Map<string, BackgroundWorkerCoordinator> = new Map();
 
 export async function devCommand(dir: string, anyOptions: any) {
   const config = await loadConfig(dir);
@@ -123,6 +129,169 @@ export async function devCommand(dir: string, anyOptions: any) {
   }
 
   indexingSpinner.stop(`Background worker ${backgroundWorker.data.version} created and ready`);
+
+  const websocketUrl = new URL(apiUrl);
+  websocketUrl.protocol = websocketUrl.protocol.replace("http", "ws");
+  websocketUrl.pathname = `/ws`;
+
+  websocket = new WebSocket(websocketUrl.href, [], {
+    WebSocket: WebsocketFactory(devEnv.data.apiKey),
+    connectionTimeout: 10000,
+    maxRetries: 6,
+  });
+
+  websocket.addEventListener("open", (foo) => {
+    console.log("Connected to websocket");
+  });
+
+  websocket.addEventListener("close", (event) => {
+    console.log("Disconnected from websocket", { event });
+  });
+
+  websocket.addEventListener("error", (event) => {
+    console.log("Websocket error", { event });
+  });
+
+  const serverMessageSchema = z.discriminatedUnion("message", [
+    z.object({
+      message: z.literal("SERVER_READY"),
+      id: z.string(),
+    }),
+    z.object({
+      message: z.literal("BACKGROUND_WORKER_MESSAGE"),
+      backgroundWorkerId: z.string(),
+      data: z.unknown(),
+    }),
+  ]);
+
+  websocket.addEventListener("message", async (event) => {
+    const data = JSON.parse(
+      typeof event.data === "string" ? event.data : new TextDecoder("utf-8").decode(event.data)
+    );
+
+    console.log("Websocket message received", { data });
+
+    const message = serverMessageSchema.safeParse(data);
+
+    if (!message.success) {
+      console.log("Received invalid message", { data });
+      return;
+    }
+
+    switch (message.data.message) {
+      case "SERVER_READY": {
+        websocket?.send(
+          JSON.stringify({
+            message: "READY_FOR_TASKS",
+            backgroundWorkerId: backgroundWorker.data.id,
+          })
+        );
+        break;
+      }
+      case "BACKGROUND_WORKER_MESSAGE": {
+        const coordinator = backgroundWorkerCoordinators.get(message.data.backgroundWorkerId);
+
+        if (!coordinator) {
+          console.log("Failed to find background worker coordinator", {
+            backgroundWorkerId: message.data.backgroundWorkerId,
+          });
+          return;
+        }
+
+        await coordinator.handleMessage(message.data.data);
+        break;
+      }
+    }
+  });
+
+  const backgroundWorkerCoordinator = new BackgroundWorkerCoordinator(
+    backgroundWorker.data.id,
+    tasksMappedToRunners
+  );
+
+  backgroundWorkerCoordinators.set(backgroundWorker.data.id, backgroundWorkerCoordinator);
+
+  backgroundWorkerCoordinator.onTaskCompleted.attach((taskRunCompletion) => {
+    websocket?.send(
+      JSON.stringify({
+        message: "BACKGROUND_WORKER_MESSAGE",
+        backgroundWorkerId: backgroundWorker.data.id,
+        data: {
+          type: "TASK_RUN_COMPLETED",
+          taskRunCompletion,
+        },
+      })
+    );
+  });
+}
+
+const backgroundWorkerMessageSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("PENDING_TASK_RUNS"),
+    taskRuns: z
+      .object({
+        id: z.string(),
+        taskIdentifier: z.string(),
+        payload: z.string(),
+        payloadType: z.string(),
+        context: z.any(),
+        status: z.literal("EXECUTING"),
+      })
+      .array(),
+  }),
+]);
+
+import { Evt } from "evt";
+
+type TaskRunCompletion = {
+  id: string;
+  error?: string;
+  output?: any;
+};
+
+class BackgroundWorkerCoordinator {
+  public onTaskCompleted: Evt<TaskRunCompletion> = new Evt();
+
+  constructor(
+    public id: string,
+    private taskRunners: Record<string, TaskRunner>
+  ) {}
+
+  async handleMessage(rawMessage: unknown) {
+    const message = backgroundWorkerMessageSchema.safeParse(rawMessage);
+
+    if (!message.success) {
+      console.log("Received invalid message", { rawMessage });
+      return;
+    }
+
+    switch (message.data.type) {
+      case "PENDING_TASK_RUNS": {
+        await Promise.all(message.data.taskRuns.map((taskRun) => this.#executeTaskRun(taskRun)));
+      }
+    }
+  }
+
+  async #executeTaskRun(taskRun: any) {
+    const taskRunner = this.taskRunners[taskRun.taskIdentifier];
+
+    if (!taskRunner) {
+      console.log("Failed to find task runner", { taskIdentifier: taskRun.taskIdentifier });
+      return;
+    }
+
+    const execution = await taskRunner.executeTaskRun(taskRun);
+
+    this.onTaskCompleted.post(execution);
+  }
+}
+
+function WebsocketFactory(apiKey: string) {
+  return class extends wsWebSocket {
+    constructor(address: string | URL, options?: ClientOptions | ClientRequestArgs) {
+      super(address, { ...(options ?? {}), headers: { Authorization: `Bearer ${apiKey}` } });
+    }
+  };
 }
 
 async function startTaskRunners(
@@ -209,12 +378,29 @@ class TaskRunner {
   child: undefined | ReturnType<typeof fork>;
   tasks: undefined | Array<TaskMetadata>;
 
+  _taskExecutions: Map<
+    string,
+    { resolve: (value: TaskRunCompletion) => void; reject: (err?: any) => void }
+  > = new Map();
+
   constructor(
     public sourcePath: string,
     public path: string,
     private exports: string[],
     private env: Record<string, string>
   ) {}
+
+  async executeTaskRun(taskRun: any) {
+    const promise = new Promise<TaskRunCompletion>((resolve, reject) => {
+      this._taskExecutions.set(taskRun.id, { resolve, reject });
+    });
+
+    this.child?.send({
+      taskRun,
+    });
+
+    return promise;
+  }
 
   async start() {
     const v3DevServerPath = importResolve("./task-runner.js", import.meta.url);
@@ -241,6 +427,17 @@ class TaskRunner {
           } else if (msg.tasksReady && !this.tasks) {
             this.tasks = msg.tasks;
             resolve();
+          } else if (msg.taskRunCompleted) {
+            const taskExecutor = this._taskExecutions.get(msg.result.id);
+
+            if (!taskExecutor) {
+              console.error(`Could not find task executor for task ${msg.result.id}`);
+              return;
+            }
+
+            this._taskExecutions.delete(msg.result.id);
+
+            taskExecutor.resolve(msg.result);
           }
         }
       });

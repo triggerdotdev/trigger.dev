@@ -70,6 +70,7 @@
     "degit": "^2.8.4",
     "dotenv": "^16.3.1",
     "esbuild": "^0.19.11",
+    "evt": "^2.4.13",
     "execa": "^7.0.0",
     "find-up": "^7.0.0",
     "gradient-string": "^2.0.2",
@@ -79,12 +80,13 @@
     "nanoid": "^4.0.2",
     "node-fetch": "^3.3.0",
     "npm-check-updates": "^16.12.2",
+    "partysocket": "^0.0.17",
     "posthog-node": "^3.1.1",
     "proxy-agent": "^6.3.0",
     "simple-git": "^3.19.0",
     "update-check": "^1.5.4",
     "url": "^0.11.1",
-    "ws": "^8.11.0",
+    "ws": "^8.12.0",
     "zod": "3.22.3"
   },
   "engines": {
