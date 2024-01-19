@@ -165,7 +165,7 @@ export class Resend implements TriggerIntegration {
    * @example
    * ```ts
    * const response = await io.resend.audiences.create("📧", {
-   *  name: payload.name,
+   *  name: payload.name
    * });
    * ```
    */
@@ -182,8 +182,8 @@ export class Resend implements TriggerIntegration {
    *  email: payload.email,
    *  first_name: payload.first_name,
    *  last_name: payload.last_name,
-   *  unsubscribed: false
-   *  audienceId: payload.audienceId
+   *  unsubscribed: payload.unsubscribed,
+   *  audience_id: payload.audience_id
    * });
    * ```
    */
