@@ -72,14 +72,14 @@ export function createSchema(
       description: z.string().optional(),
       hasCustomClient: z
           .preprocess((value) => value === "on", z.boolean())
-          .superRefine((hasCustomClient, ctx) => {
+          /*.superRefine((hasCustomClient, ctx) => {
             if (!hasCustomClient && !constraints.isManagedCloud) {
               ctx.addIssue({
                 code: z.ZodIssueCode.custom,
                 message: "Self-hosted trigger.dev installations must supply their own OAuth credentials.",
               })
             }
-          }),
+          })*/,
       customClientId: z.string().optional(),
       customClientSecret: z.string().optional(),
       clientType: z.union([z.literal("DEVELOPER"), z.literal("EXTERNAL")]),
@@ -88,6 +88,17 @@ export function createSchema(
         (data) => (typeof data === "string" ? [data] : data),
         z.array(z.string()).default([])
       ),
+    })
+    .refine((value) => {
+      if (value.hasCustomClient) {
+        return true;
+      }
+
+      return !(value.clientType == "EXTERNAL" || !constraints.isManagedCloud);
+    }, {
+      message:
+        "Self-hosted trigger.dev installations must supply their own OAuth credentials.",
+      path: ["hasCustomClient"]
     })
     .refine(
       (value) => {

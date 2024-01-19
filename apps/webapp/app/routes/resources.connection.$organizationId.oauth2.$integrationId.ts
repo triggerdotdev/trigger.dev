@@ -21,15 +21,7 @@ export function createSchema(
       title: z.string().min(2, "The title must be unique and at least 2 characters long"),
       description: z.string().optional(),
       hasCustomClient: z
-        .preprocess((value) => value === "on", z.boolean())
-        .superRefine((hasCustomClient, ctx) => {
-          if (!hasCustomClient && !constraints.isManagedCloud) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "Self-hosted trigger.dev installations must supply their own OAuth credentials.",
-            })
-          }
-        }),
+        .preprocess((value) => value === "on", z.boolean()),
       customClientId: z.string().optional(),
       customClientSecret: z.string().optional(),
       clientType: z.union([z.literal("DEVELOPER"), z.literal("EXTERNAL")]),
@@ -42,6 +34,17 @@ export function createSchema(
           })
           .nonempty("You must select at least one scope")
       ),
+    })
+    .refine((value) => {
+      if (value.hasCustomClient) {
+        return true;
+      }
+
+      return !(value.clientType == "EXTERNAL" || !constraints.isManagedCloud);
+    }, {
+      message:
+        "Self-hosted trigger.dev installations must supply their own OAuth credentials.",
+      path: ["hasCustomClient"]
     })
     .refine(
       (value) => {
