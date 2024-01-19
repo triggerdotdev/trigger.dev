@@ -1,5 +1,11 @@
-export type TaskMetadata = {
+import { TaskMetadataWithFilePath } from "./dev/schemas";
+
+export type TaskMetadataWithRun = TaskMetadataWithFilePath & {
+  run: (params: any) => Promise<any>;
+};
+
+export type TaskRunCompletion = {
   id: string;
-  exportName: string;
-  packageVersion: string;
+  error?: string;
+  output?: any;
 };

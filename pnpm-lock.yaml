@@ -941,6 +941,7 @@ importers:
       nanoid: ^4.0.2
       node-fetch: ^3.3.0
       npm-check-updates: ^16.12.2
+      npm-run-all: ^4.1.5
       open: ^10.0.3
       p-retry: ^6.1.0
       partysocket: ^0.0.17
@@ -993,6 +994,7 @@ importers:
       '@types/node': 16.18.11
       '@types/node-fetch': 2.6.4
       '@types/ws': 8.5.4
+      npm-run-all: 4.1.5
       open: 10.0.3
       p-retry: 6.1.0
       rimraf: 3.0.2
@@ -27780,7 +27782,7 @@ packages:
       minimatch: 3.1.2
       pidtree: 0.3.1
       read-pkg: 3.0.0
-      shell-quote: 1.7.4
+      shell-quote: 1.8.1
       string.prototype.padend: 3.1.4
 
   /npm-run-path/4.0.1:
@@ -31331,12 +31333,8 @@ packages:
     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
     engines: {node: '>=8'}
 
-  /shell-quote/1.7.4:
-    resolution: {integrity: sha512-8o/QEhSSRb1a5i7TFR0iM4G16Z0vYB2OQVs4G3aAFXjn3T6yEx8AZxy1PgDF7I00LZHYA3WxaSYIf5e5sAX8Rw==}
-
   /shell-quote/1.8.1:
     resolution: {integrity: sha512-6j1W9l1iAs/4xYBI1SYOVZyFcCis9b4KCLQ8fgAGG07QvzaRLVVRQvAy85yNmmZSjYjg4MWh4gNvlPujU/5LpA==}
-    dev: true
 
   /shelljs/0.8.5:
     resolution: {integrity: sha512-TiwcRcrkhHvbrZbnRcFYMLl30Dfov3HKqzp5tO5b4pt6G/SezKcYhmDg15zXVBswHmctSAQKznqNW2LO5tTDow==}

@@ -1,23 +1,22 @@
-import { cancel, outro, spinner } from "@clack/prompts";
+import { cancel, spinner } from "@clack/prompts";
 import { CreateBackgroundWorkerRequestBody, TaskResource } from "@trigger.dev/core/v3";
 import { build } from "esbuild";
 import { findUp } from "find-up";
-import { resolve as importResolve } from "import-meta-resolve";
-import { fork } from "node:child_process";
-import fs from "node:fs";
+import fs, { readFileSync } from "node:fs";
+import { ClientRequestArgs } from "node:http";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { WebSocket } from "partysocket";
+import { ClientOptions, WebSocket as wsWebSocket } from "ws";
 import { z } from "zod";
+import * as packageJson from "../../package.json";
 import { ApiClient } from "../apiClient";
 import { CLOUD_API_URL } from "../consts";
-import { TaskMetadata } from "../types";
 import { logger } from "../utilities/logger";
 import { RequireKeys } from "../utilities/requiredKeys";
 import { isLoggedIn } from "../utilities/session";
-import * as packageJson from "../../package.json";
-import { WebSocket } from "partysocket";
-import { ClientOptions, ServerOptions, WebSocket as wsWebSocket } from "ws";
-import { ClientRequestArgs } from "node:http";
+import { BackgroundWorker, BackgroundWorkerCoordinator } from "../dev/backgroundWorker";
+import { resolve as importResolve } from "import-meta-resolve";
 
 const CONFIG_FILES = ["trigger.config.js", "trigger.config.mjs"];
 
@@ -30,18 +29,33 @@ const ConfigSchema = z.object({
 
 type Config = z.infer<typeof ConfigSchema>;
 type ResolvedConfig = RequireKeys<Config, "triggerDirectories" | "triggerUrl" | "projectDir">;
-type EntryPoint = {
+type TaskFile = {
   triggerDir: string;
-  in: string;
-  out: string;
+  filePath: string;
+  importPath: string;
+  importName: string;
 };
 
-type EntryPointBundle = Awaited<ReturnType<typeof buildEntryPoints>>;
+type EntryPointBundle = Awaited<ReturnType<typeof buildTaskFiles>>;
 
 let apiClient: ApiClient | undefined;
 let websocket: WebSocket | undefined;
 
 const backgroundWorkerCoordinators: Map<string, BackgroundWorkerCoordinator> = new Map();
+
+// Handling file changes
+// Use stdin instead of entryPoints
+// stdin will dynamically import all the trigger files
+// this will create a single output file for all the trigger files
+// we can use esbuild context and watch (like partykit)
+// So we'll need to be able to read the trigger files, parse them, and detect all the exports
+// We can use ink and useEffect where the return value of useEffect will dispose of the esbuild context, and create a new one with a new stdin
+// Watch for any changes to
+// Step 1: Signal to any existing coordinators that they should stop accepting new tasks and when existing tasks are complete the task runners should be stopped
+// Step 2: Build the new entry points
+// Step 3: Start the new task runners
+// Step 4: Create a new coordinator for the new task runners
+// Step 5: Signal the new coordinator that it should start accepting new tasks
 
 export async function devCommand(dir: string, anyOptions: any) {
   const config = await loadConfig(dir);
@@ -64,37 +78,30 @@ export async function devCommand(dir: string, anyOptions: any) {
     throw new Error(devEnv.error);
   }
 
-  const entryPoints = await gatherEntryPoints(config);
+  const taskFiles = await gatherTaskFiles(config);
 
-  const taskRunners = await startTaskRunners(config, entryPoints, {
+  const backgroundWorker = await startBackgroundWorker(config, taskFiles, {
     TRIGGER_API_URL: config.triggerUrl,
     TRIGGER_API_KEY: devEnv.data.apiKey,
   });
 
-  let taskCount = 0;
+  const taskCount = backgroundWorker.tasks?.length ?? 0;
   let packageVersion: string | undefined;
 
   const taskResources: Array<TaskResource> = [];
-  const tasksMappedToRunners: Record<string, TaskRunner> = {};
 
-  for (const taskRunner of taskRunners) {
-    if (!taskRunner.tasks) {
-      throw new Error(`Task Server at ${taskRunner.path} started without tasks`);
-    }
+  if (!backgroundWorker.tasks) {
+    throw new Error(`Background Worker started without tasks`);
+  }
 
-    for (const task of taskRunner.tasks!) {
-      taskResources.push({
-        id: task.id,
-        filePath: relative(config.projectDir, taskRunner.sourcePath),
-        exportName: task.exportName,
-      });
+  for (const task of backgroundWorker.tasks) {
+    taskResources.push({
+      id: task.id,
+      filePath: task.filePath,
+      exportName: task.exportName,
+    });
 
-      tasksMappedToRunners[task.id] = taskRunner;
-
-      taskCount++;
-
-      packageVersion = task.packageVersion;
-    }
+    packageVersion = task.packageVersion;
   }
 
   const indexingSpinner = spinner();
@@ -118,17 +125,19 @@ export async function devCommand(dir: string, anyOptions: any) {
 
   apiClient = new ApiClient(apiUrl, devEnv.data.apiKey);
 
-  const backgroundWorker = await apiClient.createBackgroundWorker(
+  const backgroundWorkerRecord = await apiClient.createBackgroundWorker(
     config.project,
     backgroundWorkerBody
   );
 
-  if (!backgroundWorker.success) {
+  if (!backgroundWorkerRecord.success) {
     cancel("Error creating background worker");
     process.exit(1);
   }
 
-  indexingSpinner.stop(`Background worker ${backgroundWorker.data.version} created and ready`);
+  indexingSpinner.stop(
+    `Background worker ${backgroundWorkerRecord.data.version} created and ready`
+  );
 
   const websocketUrl = new URL(apiUrl);
   websocketUrl.protocol = websocketUrl.protocol.replace("http", "ws");
@@ -183,7 +192,7 @@ export async function devCommand(dir: string, anyOptions: any) {
         websocket?.send(
           JSON.stringify({
             message: "READY_FOR_TASKS",
-            backgroundWorkerId: backgroundWorker.data.id,
+            backgroundWorkerId: backgroundWorkerRecord.data.id,
           })
         );
         break;
@@ -205,17 +214,17 @@ export async function devCommand(dir: string, anyOptions: any) {
   });
 
   const backgroundWorkerCoordinator = new BackgroundWorkerCoordinator(
-    backgroundWorker.data.id,
-    tasksMappedToRunners
+    backgroundWorkerRecord.data.id,
+    backgroundWorker
   );
 
-  backgroundWorkerCoordinators.set(backgroundWorker.data.id, backgroundWorkerCoordinator);
+  backgroundWorkerCoordinators.set(backgroundWorkerRecord.data.id, backgroundWorkerCoordinator);
 
   backgroundWorkerCoordinator.onTaskCompleted.attach((taskRunCompletion) => {
     websocket?.send(
       JSON.stringify({
         message: "BACKGROUND_WORKER_MESSAGE",
-        backgroundWorkerId: backgroundWorker.data.id,
+        backgroundWorkerId: backgroundWorkerRecord.data.id,
         data: {
           type: "TASK_RUN_COMPLETED",
           taskRunCompletion,
@@ -223,67 +232,10 @@ export async function devCommand(dir: string, anyOptions: any) {
       })
     );
   });
-}
 
-const backgroundWorkerMessageSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("PENDING_TASK_RUNS"),
-    taskRuns: z
-      .object({
-        id: z.string(),
-        taskIdentifier: z.string(),
-        payload: z.string(),
-        payloadType: z.string(),
-        context: z.any(),
-        status: z.literal("EXECUTING"),
-      })
-      .array(),
-  }),
-]);
-
-import { Evt } from "evt";
-
-type TaskRunCompletion = {
-  id: string;
-  error?: string;
-  output?: any;
-};
-
-class BackgroundWorkerCoordinator {
-  public onTaskCompleted: Evt<TaskRunCompletion> = new Evt();
-
-  constructor(
-    public id: string,
-    private taskRunners: Record<string, TaskRunner>
-  ) {}
-
-  async handleMessage(rawMessage: unknown) {
-    const message = backgroundWorkerMessageSchema.safeParse(rawMessage);
-
-    if (!message.success) {
-      console.log("Received invalid message", { rawMessage });
-      return;
-    }
-
-    switch (message.data.type) {
-      case "PENDING_TASK_RUNS": {
-        await Promise.all(message.data.taskRuns.map((taskRun) => this.#executeTaskRun(taskRun)));
-      }
-    }
-  }
-
-  async #executeTaskRun(taskRun: any) {
-    const taskRunner = this.taskRunners[taskRun.taskIdentifier];
-
-    if (!taskRunner) {
-      console.log("Failed to find task runner", { taskIdentifier: taskRun.taskIdentifier });
-      return;
-    }
-
-    const execution = await taskRunner.executeTaskRun(taskRun);
-
-    this.onTaskCompleted.post(execution);
-  }
+  backgroundWorkerCoordinator.onWorkerClosed.attach(() => {
+    console.error("Worker closed");
+  });
 }
 
 function WebsocketFactory(apiKey: string) {
@@ -294,34 +246,19 @@ function WebsocketFactory(apiKey: string) {
   };
 }
 
-async function startTaskRunners(
+async function startBackgroundWorker(
   config: ResolvedConfig,
-  entryPoints: EntryPoint[],
+  taskFiles: TaskFile[],
   env: Record<string, string>
 ) {
-  const bundle = await buildEntryPoints(entryPoints);
+  const bundle = await buildTaskFiles(taskFiles, config);
 
-  const taskEntryPoints: TaskRunner[] = [];
-
-  for (const entryPoint of entryPoints) {
-    taskEntryPoints.push(await startTaskEntryPoint(config, entryPoint, bundle, env));
-  }
-
-  return taskEntryPoints;
-}
-
-async function startTaskEntryPoint(
-  config: ResolvedConfig,
-  entryPoint: EntryPoint,
-  bundle: EntryPointBundle,
-  env: Record<string, string>
-) {
-  const metaOutputKey = join("out", `${entryPoint.out}.js`);
+  const metaOutputKey = join("out", `stdin.js`);
 
   const metaOutput = bundle.metafile.outputs[metaOutputKey];
 
   if (!metaOutput) {
-    throw new Error(`Could not find meta output for entry point ${entryPoint.in}`);
+    throw new Error(`Could not find metafile`);
   }
 
   const outputFileKey = join(config.projectDir, metaOutputKey);
@@ -338,119 +275,36 @@ async function startTaskEntryPoint(
     throw new Error(`Could not find source map file for entry point ${metaOutput.entryPoint}`);
   }
 
-  const taskRunner = await startTaskRunner(
+  // Create a file at join(dir, ".trigger", path) with the fileContents
+  const fullPath = join(
     config.projectDir,
-    entryPoint.in,
-    config,
-    metaOutputKey,
-    outputFile.text,
-    sourceMapFile.text,
-    metaOutput.exports,
-    env
+    ".trigger",
+    `${outputFile.hash.replace(/[\\/:*?"<>|]/g, "_")}.mjs`
   );
 
-  return taskRunner;
-}
-
-async function startTaskRunner(
-  dir: string,
-  sourcePath: string,
-  config: ResolvedConfig,
-  path: string,
-  fileContents: string,
-  sourceMapContents: string,
-  exports: string[],
-  env: Record<string, string>
-) {
-  // Create a file at join(dir, ".trigger", path) with the fileContents
-  const fullPath = join(dir, ".trigger", `${basename(path, extname(path))}.mjs`);
   await fs.promises.mkdir(dirname(fullPath), { recursive: true });
-  await fs.promises.writeFile(fullPath, fileContents);
+  await fs.promises.writeFile(fullPath, outputFile.text);
   const sourceMapPath = `${fullPath}.map`;
-  await fs.promises.writeFile(sourceMapPath, sourceMapContents);
+  await fs.promises.writeFile(sourceMapPath, sourceMapFile.text);
 
-  const taskRunner = new TaskRunner(sourcePath, fullPath, exports, env);
-  await taskRunner.start();
-  return taskRunner;
+  const backgroundWorker = new BackgroundWorker(fullPath, env);
+  await backgroundWorker.start();
+  return backgroundWorker;
 }
 
-class TaskRunner {
-  child: undefined | ReturnType<typeof fork>;
-  tasks: undefined | Array<TaskMetadata>;
+async function buildTaskFiles(taskFiles: TaskFile[], config: ResolvedConfig) {
+  const workerFacade = readFileSync(
+    new URL(importResolve("./worker-facade.js", import.meta.url)).href.replace("file://", ""),
+    "utf-8"
+  );
+  const entryPointContents = workerFacade.replace("__TASKS__", createTaskFileImports(taskFiles));
 
-  _taskExecutions: Map<
-    string,
-    { resolve: (value: TaskRunCompletion) => void; reject: (err?: any) => void }
-  > = new Map();
-
-  constructor(
-    public sourcePath: string,
-    public path: string,
-    private exports: string[],
-    private env: Record<string, string>
-  ) {}
-
-  async executeTaskRun(taskRun: any) {
-    const promise = new Promise<TaskRunCompletion>((resolve, reject) => {
-      this._taskExecutions.set(taskRun.id, { resolve, reject });
-    });
-
-    this.child?.send({
-      taskRun,
-    });
-
-    return promise;
-  }
-
-  async start() {
-    const v3DevServerPath = importResolve("./task-runner.js", import.meta.url);
-
-    const modulePath = new URL(v3DevServerPath).href.replace("file://", "");
-
-    await new Promise<void>((resolve) => {
-      this.child = fork(modulePath, {
-        stdio: "inherit",
-        env: {
-          ...this.env,
-        },
-      });
-
-      this.child.on("message", (msg: any) => {
-        if (msg && typeof msg === "object") {
-          if (msg.serverReady) {
-            this.child?.send({
-              entryPoint: {
-                path: this.path,
-                exports: this.exports,
-              },
-            });
-          } else if (msg.tasksReady && !this.tasks) {
-            this.tasks = msg.tasks;
-            resolve();
-          } else if (msg.taskRunCompleted) {
-            const taskExecutor = this._taskExecutions.get(msg.result.id);
-
-            if (!taskExecutor) {
-              console.error(`Could not find task executor for task ${msg.result.id}`);
-              return;
-            }
-
-            this._taskExecutions.delete(msg.result.id);
-
-            taskExecutor.resolve(msg.result);
-          }
-        }
-      });
-
-      this.child.on("exit", (code) => {
-        console.log(`Child exited with code ${code}`);
-      });
-    });
-  }
-}
-
-async function buildEntryPoints(entryPoints: EntryPoint[]) {
   return await build({
+    stdin: {
+      contents: entryPointContents,
+      resolveDir: process.cwd(),
+      sourcefile: "src/trigger-worker.ts",
+    },
     bundle: true,
     metafile: true,
     write: false,
@@ -460,26 +314,54 @@ async function buildEntryPoints(entryPoints: EntryPoint[]) {
     format: "esm",
     target: ["node18", "es2020"],
     outdir: "out",
-    entryPoints: entryPoints.map((entry) => ({ out: entry.out, in: entry.in })),
+    define: {
+      TRIGGER_API_URL: `"${config.triggerUrl}"`,
+    },
+    plugins: [
+      {
+        name: "trigger.dev v3",
+        setup(build) {
+          build.onEnd(async (result) => {});
+        },
+      },
+    ],
   });
 }
 
+function createTaskFileImports(taskFiles: TaskFile[]) {
+  return taskFiles
+    .map(
+      (taskFile) =>
+        `import * as ${taskFile.importName} from "./${taskFile.importPath}"; TaskFileImports["${
+          taskFile.importName
+        }"] = ${taskFile.importName}; TaskFiles["${taskFile.importName}"] = ${JSON.stringify(
+          taskFile
+        )};`
+    )
+    .join("\n");
+}
+
 // Find all the top-level .js or .ts files in the trigger directories
-async function gatherEntryPoints(config: ResolvedConfig): Promise<Array<EntryPoint>> {
-  const entryPoints: Array<EntryPoint> = [];
+async function gatherTaskFiles(config: ResolvedConfig): Promise<Array<TaskFile>> {
+  const taskFiles: Array<TaskFile> = [];
 
   for (const triggerDir of config.triggerDirectories) {
-    const entries = await fs.promises.readdir(triggerDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isFile()) continue;
-      if (!entry.name.endsWith(".js") && !entry.name.endsWith(".ts")) continue;
+    const files = await fs.promises.readdir(triggerDir, { withFileTypes: true });
+    for (const file of files) {
+      if (!file.isFile()) continue;
+      if (!file.name.endsWith(".js") && !file.name.endsWith(".ts")) continue;
 
-      const fullPath = join(triggerDir, entry.name);
-      entryPoints.push({ triggerDir, in: fullPath, out: basename(fullPath, extname(fullPath)) });
+      const fullPath = join(triggerDir, file.name);
+
+      const filePath = relative(config.projectDir, fullPath);
+      const importPath = filePath.replace(/\.(js|ts)$/, "");
+      const importName = importPath.replace(/\//g, "_");
+
+      taskFiles.push({ triggerDir, importPath, importName, filePath });
     }
   }
 
-  return entryPoints;
+  return taskFiles;
 }
 
 async function loadConfig(dir: string): Promise<ResolvedConfig> {
