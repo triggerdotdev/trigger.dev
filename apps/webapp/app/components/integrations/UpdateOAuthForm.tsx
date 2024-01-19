@@ -6,6 +6,7 @@ import { useState } from "react";
 import simplur from "simplur";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useTextFilter } from "~/hooks/useTextFilter";
+import { createSchema } from "~/routes/resources.connection.$organizationId.oauth2.$integrationId";
 import { ApiAuthenticationMethodOAuth2, Integration, Scope } from "~/services/externalApis/types";
 import { cn } from "~/utils/cn";
 import { CodeBlock } from "../code/CodeBlock";
@@ -19,7 +20,6 @@ import { InputGroup } from "../primitives/InputGroup";
 import { Label } from "../primitives/Label";
 import { Paragraph } from "../primitives/Paragraph";
 import { Client } from "~/presenters/IntegrationsPresenter.server";
-import { schema } from "~/routes/resources.connection.$organizationId.oauth2.$integrationId";
 
 export type Status = "loading" | "idle";
 
@@ -49,7 +49,7 @@ export function UpdateOAuthForm({
     lastSubmission: fetcher.data as any,
     onValidate({ formData }) {
       return parse(formData, {
-        schema,
+        schema: createSchema({isManagedCloud}),
       });
     },
   });
@@ -109,19 +109,21 @@ export function UpdateOAuthForm({
         </InputGroup>
         <input type="hidden" name="clientType" value={clientType} />
         <div>
-          <Header2>Use my OAuth App</Header2>
-          <Paragraph variant="small" className="mb-2">
-            To use your own OAuth app, check the option below and insert the details.
-          </Paragraph>
-          <Checkbox
-            id="hasCustomClient"
-            label="Use my OAuth App"
-            variant="simple/small"
-            disabled={requiresCustomOAuthApp}
-            onChange={(checked) => setUseMyOAuthApp(checked)}
-            {...conform.input(hasCustomClient, { type: "checkbox" })}
-            defaultChecked={requiresCustomOAuthApp}
-          />
+          <InputGroup fullWidth>
+            <Header2>Use my OAuth App</Header2>
+            <Paragraph variant="small" className="mb-2">
+              To use your own OAuth app, check the option below and insert the details.
+            </Paragraph>
+            <Checkbox
+              id="hasCustomClient"
+              label="Use my OAuth App"
+              variant="simple/small"
+              onChange={(checked) => setUseMyOAuthApp(checked)}
+              {...conform.input(hasCustomClient, { type: "checkbox" })}
+              defaultChecked={requiresCustomOAuthApp}
+            />
+            <FormError>{hasCustomClient.error}</FormError>
+          </InputGroup>
           {useMyOAuthApp && (
             <div className="ml-6 mt-2">
               <Paragraph variant="small" className="mb-2">
