@@ -1,5 +1,12 @@
 # trigger.dev
 
+## 1.0.5
+
+### Patch Changes
+
+- Updated dependencies [583da458]
+  - @trigger.dev/core@2.3.16
+
 ## 1.0.4
 
 ### Patch Changes
