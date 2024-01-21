@@ -1,9 +1,7 @@
 import { estimate } from "@trigger.dev/billing";
-import { formatDateTime } from "~/components/primitives/DateTime";
 import { PrismaClient, prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { BillingService } from "~/services/billing.server";
-import { logger } from "~/services/logger.server";
 
 export class OrgUsagePresenter {
   #prismaClient: PrismaClient;
@@ -108,7 +106,7 @@ export class OrgUsagePresenter {
 
     const ThirtyDaysAgo = new Date();
     ThirtyDaysAgo.setDate(ThirtyDaysAgo.getDate() - 30);
-    ThirtyDaysAgo.setHours(0, 0, 0, 0);
+    ThirtyDaysAgo.setUTCHours(0, 0, 0, 0);
 
     const hasConcurrencyData = concurrencyChartRawData.length > 0;
     const concurrencyChartRawDataFilledIn = fillInMissingConcurrencyDays(
@@ -116,6 +114,13 @@ export class OrgUsagePresenter {
       31,
       concurrencyChartRawData
     );
+
+    const dailyRunsRawData = await this.#prismaClient.$queryRaw<
+      { day: Date; runs: BigInt }[]
+    >`SELECT date_trunc('day', "createdAt") as day, COUNT(*) as runs FROM "JobRun" WHERE "organizationId" = ${organization.id} AND "createdAt" >= NOW() - INTERVAL '30 days' AND "internal" = FALSE GROUP BY day`;
+
+    const hasDailyRunsData = dailyRunsRawData.length > 0;
+    const dailyRunsDataFilledIn = fillInMissingDailyRuns(ThirtyDaysAgo, 31, dailyRunsRawData);
 
     const endOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1);
     endOfMonth.setDate(endOfMonth.getDate() - 1);
@@ -146,12 +151,12 @@ export class OrgUsagePresenter {
 
     const periodStart = new Date();
     periodStart.setDate(1);
-    periodStart.setHours(0, 0, 0, 0);
+    periodStart.setUTCHours(0, 0, 0, 0);
 
     const periodEnd = new Date();
     periodEnd.setDate(1);
     periodEnd.setMonth(periodEnd.getMonth() + 1);
-    periodEnd.setHours(0, 0, 0, 0);
+    periodEnd.setUTCHours(0, 0, 0, 0);
 
     return {
       id: organization.id,
@@ -161,6 +166,8 @@ export class OrgUsagePresenter {
       hasMonthlyRunData,
       concurrencyData: concurrencyChartRawDataFilledIn,
       hasConcurrencyData,
+      dailyRunsData: dailyRunsDataFilledIn,
+      hasDailyRunsData,
       runCostEstimation,
       projectedRunCostEstimation,
       periodStart,
@@ -217,6 +224,33 @@ function fillInMissingConcurrencyDays(
       outputData.push({
         date,
         maxConcurrentRuns: Number(foundData.max_concurrent_runs),
+      });
+    }
+  }
+
+  return outputData;
+}
+
+function fillInMissingDailyRuns(
+  startDate: Date,
+  days: number,
+  data: Array<{ day: Date; runs: BigInt }>
+) {
+  const outputData: Array<{ date: Date; runs: number }> = [];
+  for (let i = 0; i < days; i++) {
+    const date = new Date(startDate);
+    date.setDate(date.getDate() + i);
+
+    const foundData = data.find((d) => d.day.toISOString() === date.toISOString());
+    if (!foundData) {
+      outputData.push({
+        date,
+        runs: 0,
+      });
+    } else {
+      outputData.push({
+        date,
+        runs: Number(foundData.runs),
       });
     }
   }

@@ -16,6 +16,7 @@ import { formatCurrency, formatNumberCompact } from "~/utils/numberFormatter";
 import { OrganizationParamsSchema, plansPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { DateTime, formatDateTime } from "~/components/primitives/DateTime";
+import { DailyRunsChart } from "~/components/billing/DailyRunsChat";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -90,7 +91,15 @@ export default function Page() {
           />
         </div>
       </div>
-
+      <div>
+        <Header2 spacing>Daily runs</Header2>
+        <div className="flex w-full flex-col gap-5 rounded border border-border p-6">
+          <DailyRunsChart
+            data={loaderData.dailyRunsData}
+            hasDailyRunsData={loaderData.hasDailyRunsData}
+          />
+        </div>
+      </div>
       <div className="@container">
         <Header2 spacing>Runs</Header2>
         <div className="flex flex-col gap-5 rounded border border-border p-6">
