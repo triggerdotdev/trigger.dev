@@ -1,5 +1,11 @@
 # internal-platform
 
+## 2.3.16
+
+### Patch Changes
+
+- 583da458: Changed the minimum interval time period from 60s to 20s
+
 ## 2.3.15
 
 ## 2.3.14
