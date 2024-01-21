@@ -217,7 +217,7 @@ importers:
       remix-auth: ^3.6.0
       remix-auth-email-link: 2.0.2
       remix-auth-github: ^1.6.0
-      remix-typedjson: 0.3.1
+      remix-typedjson: 0.4.1
       remix-utils: ^7.1.0
       rimraf: ^3.0.2
       semver: ^7.5.0
@@ -331,7 +331,7 @@ importers:
       remix-auth: 3.6.0_ybjp5xbtg4zthziheradfmei64
       remix-auth-email-link: 2.0.2_esw6v6dv7ru6ju3hn3i62b7n2m
       remix-auth-github: 1.6.0_esw6v6dv7ru6ju3hn3i62b7n2m
-      remix-typedjson: 0.3.1_7t5z2pmrpxrx2dh2jpp55scw5q
+      remix-typedjson: 0.4.1_7t5z2pmrpxrx2dh2jpp55scw5q
       remix-utils: 7.1.0_nb5lmxjinjv74o775xrkc35gga
       semver: 7.5.0
       simple-oauth2: 5.0.0
@@ -30228,8 +30228,8 @@ packages:
       uuid: 8.3.2
     dev: false
 
-  /remix-typedjson/0.3.1_7t5z2pmrpxrx2dh2jpp55scw5q:
-    resolution: {integrity: sha512-XaLU3slWaUXTWPQe6u5rX4xJuqr665+wk1mRmepFu5Hn4DTP9V0zGOkCqCphCExxZ2Kqg5u+uZbas6AZRaxQzA==}
+  /remix-typedjson/0.4.1_7t5z2pmrpxrx2dh2jpp55scw5q:
+    resolution: {integrity: sha512-AL6LdNajqce1Exy6aB1bD6GYMk90S6H31e8kDCi6jLgBi4K82Ph604lqGGzalswaPPYckYK+NZzgvhWEY7JCDw==}
     peerDependencies:
       '@remix-run/react': ^1.16.0 || ^2.0
       '@remix-run/server-runtime': ^1.16.0 || ^2.0
