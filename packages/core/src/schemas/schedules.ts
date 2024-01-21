@@ -10,8 +10,8 @@ export const ScheduledPayloadSchema = z.object({
 export type ScheduledPayload = z.infer<typeof ScheduledPayloadSchema>;
 
 export const IntervalOptionsSchema = z.object({
-  /** The number of seconds for the interval. Min = 20, Max = 2_592_000 (30 days) */
-  seconds: z.number().int().positive().min(20).max(2_592_000),
+  /** The number of seconds for the interval. Min = 60, Max = 2_592_000 (30 days) */
+  seconds: z.number().int().positive().min(60).max(2_592_000),
 });
 
 /** Interval options */

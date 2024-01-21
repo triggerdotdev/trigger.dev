@@ -103,11 +103,11 @@ function validateSchedule(schedule: ScheduleMetadata): ScheduleMetadata {
 }
 
 function validateInterval(schedule: IntervalMetadata): ScheduleMetadata {
-  if (schedule.options.seconds < 20) {
+  if (schedule.options.seconds < 60) {
     return {
       type: "interval",
       options: {
-        seconds: 20,
+        seconds: 60,
       },
     };
   }
