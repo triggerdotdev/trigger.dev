@@ -13,7 +13,7 @@ const tooltipStyle = {
   color: "#E2E8F0",
 };
 
-type DataItem = { date: Date; runs: number };
+type DataItem = { date: string; runs: number };
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -51,10 +51,12 @@ export function DailyRunsChart({
             tickLine={false}
             axisLine={false}
             dataKey={(item: DataItem) => {
-              if (item.date.getDate() === 1) {
-                return dateFormatter.format(item.date);
+              if (!item.date) return "";
+              const date = new Date(item.date);
+              if (date.getDate() === 1) {
+                return dateFormatter.format(date);
               }
-              return `${item.date.getDate()}`;
+              return `${date.getDate()}`;
             }}
             className="text-xs"
           >
@@ -71,11 +73,12 @@ export function DailyRunsChart({
             cursor={{ fill: "rgba(255,255,255,0.05)" }}
             contentStyle={tooltipStyle}
             labelFormatter={(value, data) => {
-              const date = data.at(0)?.payload.date;
-              if (!date) {
+              const dateString = data.at(0)?.payload.date;
+              if (!dateString) {
                 return "";
               }
-              return dateFormatter.format(date);
+
+              return dateFormatter.format(new Date(dateString));
             }}
           />
           <Line dataKey="runs" name="Runs" stroke="#16A34A" strokeWidth={2} dot={false} />
