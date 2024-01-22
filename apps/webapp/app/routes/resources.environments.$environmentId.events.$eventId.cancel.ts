@@ -5,6 +5,7 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
 import { CancelEventService } from "~/services/events/cancelEvent.server";
 import { prisma } from "~/db.server";
+import { requireUserId } from "~/services/session.server";
 
 export const cancelEventSchema = z.object({
   redirectUrl: z.string(),
@@ -16,6 +17,7 @@ const ParamSchema = z.object({
 });
 
 export const action: ActionFunction = async ({ request, params }) => {
+  const userId = await requireUserId(request);
   const { environmentId, eventId } = ParamSchema.parse(params);
 
   const formData = await request.formData();
@@ -33,6 +35,13 @@ export const action: ActionFunction = async ({ request, params }) => {
       },
       where: {
         id: environmentId,
+        organization: {
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
       },
     });
 
