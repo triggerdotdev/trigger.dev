@@ -1,6 +1,6 @@
 import { ArrowRightIcon } from "@heroicons/react/20/solid";
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
-import { DataFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { DataFunctionArgs, LoaderFunctionArgs, defer } from "@remix-run/server-runtime";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps, XAxis, YAxis } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { ConcurrentRunsChart } from "~/components/billing/ConcurrentRunsChart";
@@ -17,6 +17,8 @@ import { formatCurrency, formatNumberCompact } from "~/utils/numberFormatter";
 import { OrganizationParamsSchema, plansPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { Suspense } from "react";
+import { Await, useLoaderData } from "@remix-run/react";
+import { Spinner } from "~/components/primitives/Spinner";
 
 export async function loader({ request, params }: DataFunctionArgs) {
   const userId = await requireUserId(request);
@@ -24,7 +26,7 @@ export async function loader({ request, params }: DataFunctionArgs) {
 
   const presenter = new OrgUsagePresenter();
   const usageData = presenter.call({ userId, slug: organizationSlug, request });
-  return typeddefer({ usageData });
+  return defer({ usageData });
 }
 
 const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
@@ -42,7 +44,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
 
 export default function Page() {
   const organization = useOrganization();
-  const { usageData } = useTypedLoaderData<typeof loader>();
+  const { usageData } = useLoaderData<typeof loader>();
   const currentPlan = useCurrentPlan();
 
   const hitsRunLimit = currentPlan?.usage?.runCountCap
@@ -51,8 +53,18 @@ export default function Page() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Suspense fallback={<p>Loading slow data...</p>}>
-        <TypedAwait resolve={usageData} errorElement={<p>Error loading slow data!</p>}>
+      <Suspense
+        fallback={
+          <>
+            <LoadingElement title="Concurrent runs" />
+            <LoadingElement title="Runs" />
+          </>
+        }
+      >
+        <Await
+          resolve={usageData}
+          errorElement={<Paragraph>There was a problem loading your usage data.</Paragraph>}
+        >
           {(data) => {
             const hitConcurrencyLimit = currentPlan?.subscription?.limits.concurrentRuns
               ? data.concurrencyData.some(
@@ -198,8 +210,19 @@ export default function Page() {
               </>
             );
           }}
-        </TypedAwait>
+        </Await>
       </Suspense>
+    </div>
+  );
+}
+
+function LoadingElement({ title }: { title: string }) {
+  return (
+    <div>
+      <Header2 spacing>{title}</Header2>
+      <div className="flex h-96 w-full items-center justify-center gap-5 rounded border border-border p-6">
+        <Spinner />
+      </div>
     </div>
   );
 }
