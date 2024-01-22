@@ -1,9 +1,11 @@
 import { parse } from "@conform-to/zod";
 import { ActionFunction, json } from "@remix-run/node";
 import { z } from "zod";
+import { prisma } from "~/db.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
 import { CancelRunService } from "~/services/runs/cancelRun.server";
+import { requireUserId } from "~/services/session.server";
 
 export const cancelSchema = z.object({
   redirectUrl: z.string(),
@@ -14,6 +16,7 @@ const ParamSchema = z.object({
 });
 
 export const action: ActionFunction = async ({ request, params }) => {
+  const userId = await requireUserId(request);
   const { runId } = ParamSchema.parse(params);
 
   const formData = await request.formData();
@@ -24,8 +27,30 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 
   try {
+    const run = await prisma.jobRun.findUnique({
+      select: {
+        id: true,
+      },
+      where: {
+        id: runId,
+        job: {
+          organization: {
+            members: {
+              some: {
+                userId,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!run) {
+      return json({ errors: { body: "Run not found" } }, { status: 404 });
+    }
+
     const cancelRunService = new CancelRunService();
-    await cancelRunService.call({ runId });
+    await cancelRunService.call({ runId: run.id });
 
     return redirectWithSuccessMessage(
       submission.value.redirectUrl,
