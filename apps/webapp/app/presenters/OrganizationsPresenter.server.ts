@@ -77,7 +77,6 @@ export class OrganizationsPresenter {
         },
         _count: {
           select: {
-            members: true,
             integrations: {
               where: {
                 setupStatus: "MISSING_FIELDS",
@@ -100,7 +99,6 @@ export class OrganizationsPresenter {
           jobCount: project._count.jobs,
         })),
         hasUnconfiguredIntegrations: org._count.integrations > 0,
-        memberCount: org._count.members,
         runsEnabled: org.runsEnabled,
       };
     });
