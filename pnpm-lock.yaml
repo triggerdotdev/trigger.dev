@@ -948,6 +948,7 @@ importers:
       object-hash: ^3.0.0
       open: ^10.0.3
       p-retry: ^6.1.0
+      p-throttle: ^6.1.0
       partysocket: ^0.0.17
       posthog-node: ^3.1.1
       proxy-agent: ^6.3.0
@@ -989,6 +990,7 @@ importers:
       node-fetch: 3.3.0
       npm-check-updates: 16.12.3_supports-color@9.4.0
       object-hash: 3.0.0
+      p-throttle: 6.1.0
       partysocket: 0.0.17
       posthog-node: 3.1.3
       proxy-agent: 6.3.0_supports-color@9.4.0
@@ -28647,6 +28649,11 @@ packages:
       '@types/retry': 0.12.2
       is-network-error: 1.0.0
       retry: 0.13.1
+
+  /p-throttle/6.1.0:
+    resolution: {integrity: sha512-eQMdGTxk2+047La67wefUtt0tEHh7D+C8Jl7QXoFCuIiNYeQ9zWs2AZiJdIAs72rSXZ06t11me2bgalRNdy3SQ==}
+    engines: {node: '>=18'}
+    dev: false
 
   /p-timeout/3.2.0:
     resolution: {integrity: sha512-rhIwUycgwwKcP9yTOOFK/AKsAopjjCakVqLHePO3CC6Mir1Z99xT+R63jZxAT5lFZLa2inS5h+ZS2GvR99/FBg==}

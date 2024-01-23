@@ -27,6 +27,7 @@ import { logger } from "../utilities/logger";
 import { RequireKeys } from "../utilities/requiredKeys";
 import { isLoggedIn } from "../utilities/session";
 import chalk from "chalk";
+import pThrottle from "p-throttle";
 
 const CONFIG_FILES = ["trigger.config.js", "trigger.config.mjs"];
 
@@ -296,7 +297,11 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
     let ctx: BuildContext | undefined;
 
     async function runBuild() {
-      let isFirstBuild = true;
+      if (ctx) {
+        await ctx.cancel();
+        await ctx.dispose();
+      }
+
       let latestWorkerContentHash: string | undefined;
 
       const taskFiles = await gatherTaskFiles(config);
@@ -323,6 +328,7 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
         write: false,
         minify: false,
         sourcemap: true,
+        logLevel: "silent",
         platform: "node",
         format: "esm",
         target: ["node18", "es2020"],
@@ -454,13 +460,40 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
       await ctx.watch();
     }
 
-    runBuild().catch((error) => {
-      console.error(error);
-      process.exit(1);
+    const throttle = pThrottle({
+      limit: 2,
+      interval: 1000,
+    });
+
+    const throttledRebuild = throttle(runBuild);
+
+    const taskFileWatcher = watch(
+      config.triggerDirectories.map((triggerDir) => `${triggerDir}/*.ts`),
+      {
+        ignoreInitial: true,
+      }
+    );
+
+    taskFileWatcher.on("add", async (path) => {
+      throttledRebuild().catch((error) => {
+        logger.error(error);
+      });
+    });
+
+    taskFileWatcher.on("unlink", async (path) => {
+      throttledRebuild().catch((error) => {
+        logger.error(error);
+      });
+    });
+
+    throttledRebuild().catch((error) => {
+      logger.error(error);
     });
 
     return () => {
       logger.debug(`Shutting down dev session for ${config.project}`);
+
+      taskFileWatcher.close();
 
       websocket?.close();
       backgroundWorkerCoordinator.close();
