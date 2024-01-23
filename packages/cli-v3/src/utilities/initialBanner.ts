@@ -21,7 +21,7 @@ export async function printInitialBanner(performUpdateCheck = true) {
 
     // Log a slightly more noticeable message if this is a major bump
     if (maybeNewVersion !== undefined) {
-      loadingSpinner.stop(`Update available ${chalk.green(maybeNewVersion)})`);
+      loadingSpinner.stop(`Update available ${chalk.green(maybeNewVersion)}`);
       const currentMajor = parseInt(packageVersion.split(".")[0]!);
       const newMajor = parseInt(maybeNewVersion.split(".")[0]!);
       if (newMajor > currentMajor) {

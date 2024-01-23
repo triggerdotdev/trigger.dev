@@ -2,6 +2,7 @@ import { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core";
 import type { BackgroundWorker } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 
 export class CreateBackgroundWorkerService {
   #prismaClient: PrismaClient;
@@ -30,14 +31,25 @@ export class CreateBackgroundWorkerService {
             runtimeEnvironmentId: environment.id,
           },
           orderBy: {
-            version: "desc",
+            createdAt: "desc",
           },
           take: 1,
         },
       },
     });
 
+    const latestBackgroundWorker = project.backgroundWorkers[0];
+
+    if (latestBackgroundWorker?.contentHash === body.metadata.contentHash) {
+      return latestBackgroundWorker;
+    }
+
     const nextVersion = calculateNextBuildVersion(project.backgroundWorkers[0]?.version);
+
+    logger.debug(`Creating background worker`, {
+      nextVersion,
+      lastVersion: project.backgroundWorkers[0]?.version,
+    });
 
     const backgroundWorker = await this.#prismaClient.backgroundWorker.create({
       data: {
@@ -45,6 +57,7 @@ export class CreateBackgroundWorkerService {
         runtimeEnvironmentId: environment.id,
         projectId: project.id,
         metadata: body.metadata,
+        contentHash: body.metadata.contentHash,
       },
     });
 

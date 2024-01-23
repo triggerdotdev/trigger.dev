@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev:trigger": "trigger.dev dev",
-    "start": "nodemon -r tsconfig-paths/register -r dotenv/config src/index.ts"
+    "start": "ts-node -r tsconfig-paths/register -r dotenv/config src/index.ts"
   },
   "dependencies": {
     "@trigger.dev/sdk": "workspace:*"

@@ -24,6 +24,7 @@ export type CreateBackgroundWorkerRequestBody = z.infer<typeof CreateBackgroundW
 export const CreateBackgroundWorkerResponse = z.object({
   id: z.string(),
   version: z.string(),
+  contentHash: z.string(),
 });
 
 export type CreateBackgroundWorkerResponse = z.infer<typeof CreateBackgroundWorkerResponse>;

@@ -66,6 +66,14 @@ const clientMessageSchema = z.discriminatedUnion("message", [
     backgroundWorkerId: z.string(),
   }),
   z.object({
+    message: z.literal("WORKER_SHUTDOWN"),
+    backgroundWorkerId: z.string(),
+  }),
+  z.object({
+    message: z.literal("WORKER_STOPPED"),
+    backgroundWorkerId: z.string(),
+  }),
+  z.object({
     message: z.literal("BACKGROUND_WORKER_MESSAGE"),
     backgroundWorkerId: z.string(),
     data: z.unknown(),
@@ -121,6 +129,30 @@ class WebsocketHandlers {
 
         break;
       }
+      case "WORKER_STOPPED": {
+        const handler = this.backgroundWorkerHandlers.get(message.data.backgroundWorkerId);
+
+        if (!handler) {
+          logger.error("Failed to find background worker handler", {
+            backgroundWorkerId: message.data.backgroundWorkerId,
+          });
+          return;
+        }
+
+        await handler.stop();
+
+        break;
+      }
+      case "WORKER_SHUTDOWN": {
+        const handler = this.backgroundWorkerHandlers.get(message.data.backgroundWorkerId);
+
+        if (handler) {
+          await handler.stop();
+          this.backgroundWorkerHandlers.delete(handler.id);
+        }
+
+        break;
+      }
       case "BACKGROUND_WORKER_MESSAGE": {
         const handler = this.backgroundWorkerHandlers.get(message.data.backgroundWorkerId);
 
@@ -139,6 +171,12 @@ class WebsocketHandlers {
   }
 
   async #handleClose(ev: CloseEvent) {
+    for (const handler of this.backgroundWorkerHandlers.values()) {
+      await handler.stop();
+    }
+
+    this.backgroundWorkerHandlers.clear();
+
     this.onClose.post(ev);
   }
 
@@ -210,6 +248,10 @@ class BackgroundWorkerHandler {
     }
   }
 
+  async stop() {
+    this._abortController.abort();
+  }
+
   async #handleTaskRunCompleted(taskRunCompletion: any) {
     logger.debug("Task run completed", { taskRunCompletion });
 
@@ -234,6 +276,12 @@ class BackgroundWorkerHandler {
       if (taskRuns.length > 0) {
         logger.debug("Sending task runs to client", { taskRuns });
 
+        if (this._abortController.signal.aborted) {
+          // Return reserverd task runs to pending
+          await this.#returnReservedTasksToPending(taskRuns);
+          return;
+        }
+
         this.send(
           JSON.stringify({
             message: "BACKGROUND_WORKER_MESSAGE",
@@ -248,6 +296,22 @@ class BackgroundWorkerHandler {
 
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
+  }
+
+  async #returnReservedTasksToPending(taskRuns: Array<TaskRun>) {
+    await prisma.taskRun.updateMany({
+      where: {
+        id: {
+          in: taskRuns.map((taskRun) => taskRun.id),
+        },
+      },
+      data: {
+        status: "PENDING",
+        startedAt: null,
+        backgroundWorkerId: null,
+        backgroundWorkerTaskId: null,
+      },
+    });
   }
 
   async #reserveTaskRuns() {

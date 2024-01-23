@@ -44,5 +44,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const backgroundWorker = await service.call(projectRef, authenticatedEnv, body.data);
 
-  return json({ id: backgroundWorker.id, version: backgroundWorker.version }, { status: 200 });
+  return json(
+    {
+      id: backgroundWorker.id,
+      version: backgroundWorker.version,
+      contentHash: backgroundWorker.contentHash,
+    },
+    { status: 200 }
+  );
 }

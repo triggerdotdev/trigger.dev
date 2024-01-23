@@ -104,3 +104,5 @@ process.on("message", async (msg: any) => {
 });
 
 process.send?.({ type: "TASKS_READY", tasks: getTaskMetadata() });
+
+process.title = "trigger-dev-worker";

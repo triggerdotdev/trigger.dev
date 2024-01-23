@@ -1,9 +1,9 @@
 import { Evt } from "evt";
-import { resolve as importResolve } from "import-meta-resolve";
 import { fork } from "node:child_process";
 import { z } from "zod";
 import { TaskRunCompletion } from "../types";
 import { ChildMessages, TaskMetadataWithFilePath, TaskRun } from "./schemas";
+import { CreateBackgroundWorkerResponse } from "@trigger.dev/core/v3";
 
 const backgroundWorkerMessageSchema = z.discriminatedUnion("type", [
   z.object({
@@ -12,20 +12,69 @@ const backgroundWorkerMessageSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
-  public onTaskCompleted: Evt<TaskRunCompletion> = new Evt();
-  public onWorkerClosed: Evt<void> = new Evt();
+  public onTaskCompleted: Evt<{
+    backgroundWorkerId: string;
+    execution: TaskRunCompletion;
+    worker: BackgroundWorker;
+  }> = new Evt();
+  public onWorkerClosed: Evt<{ worker: BackgroundWorker; id: string }> = new Evt();
+  public onWorkerRegistered: Evt<{
+    worker: BackgroundWorker;
+    id: string;
+    record: CreateBackgroundWorkerResponse;
+  }> = new Evt();
+  public onWorkerStopped: Evt<{ worker: BackgroundWorker; id: string }> = new Evt();
+  private _backgroundWorkers: Map<string, BackgroundWorker> = new Map();
+  private _records: Map<string, CreateBackgroundWorkerResponse> = new Map();
 
-  constructor(
-    public id: string,
-    private backgroundWorker: BackgroundWorker
-  ) {
-    this.backgroundWorker.onClose.attachOnce(() => {
-      this.onWorkerClosed.post();
-    });
+  constructor() {}
+
+  get currentWorkers() {
+    return Array.from(this._backgroundWorkers.entries())
+      .filter(([, worker]) => worker.isRunning)
+      .map(([id, worker]) => ({
+        id,
+        worker,
+        record: this._records.get(id)!,
+      }));
   }
 
-  async handleMessage(rawMessage: unknown) {
+  async registerWorker(record: CreateBackgroundWorkerResponse, worker: BackgroundWorker) {
+    // If the worker is already registered, drain the existing workers
+    for (const [workerId, existingWorker] of this._backgroundWorkers.entries()) {
+      if (workerId === record.id) {
+        continue;
+      }
+
+      await existingWorker.stop();
+
+      this.onWorkerStopped.post({ worker: existingWorker, id: workerId });
+    }
+
+    this._backgroundWorkers.set(record.id, worker);
+    this._records.set(record.id, record);
+
+    worker.onClosed.attachOnce(() => {
+      this._backgroundWorkers.delete(record.id);
+      this._records.delete(record.id);
+
+      this.onWorkerClosed.post({ worker, id: record.id });
+    });
+
+    this.onWorkerRegistered.post({ worker, id: record.id, record });
+  }
+
+  close() {
+    for (const worker of this._backgroundWorkers.values()) {
+      worker.child?.kill();
+    }
+
+    this._backgroundWorkers.clear();
+  }
+
+  async handleMessage(id: string, rawMessage: unknown) {
     const message = backgroundWorkerMessageSchema.safeParse(rawMessage);
 
     if (!message.success) {
@@ -35,22 +84,34 @@ export class BackgroundWorkerCoordinator {
 
     switch (message.data.type) {
       case "PENDING_TASK_RUNS": {
-        await Promise.all(message.data.taskRuns.map((taskRun) => this.#executeTaskRun(taskRun)));
+        await Promise.all(
+          message.data.taskRuns.map((taskRun) => this.#executeTaskRun(id, taskRun))
+        );
       }
     }
   }
 
-  async #executeTaskRun(taskRun: any) {
-    const execution = await this.backgroundWorker.executeTaskRun(taskRun);
+  async #executeTaskRun(id: string, taskRun: any) {
+    const worker = this._backgroundWorkers.get(id);
 
-    this.onTaskCompleted.post(execution);
+    if (!worker) {
+      console.error(`Could not find worker ${id}`);
+      return;
+    }
+
+    const execution = await worker.executeTaskRun(taskRun);
+
+    this.onTaskCompleted.post({ execution, worker, backgroundWorkerId: id });
   }
 }
 
 export class BackgroundWorker {
   child: undefined | ReturnType<typeof fork>;
   tasks: undefined | Array<TaskMetadataWithFilePath>;
-  onClose: Evt<void> = new Evt();
+  onClosed: Evt<void> = new Evt();
+
+  private _stopping: boolean = false;
+  private _processClosing: boolean = false;
 
   _taskExecutions: Map<
     string,
@@ -81,6 +142,22 @@ export class BackgroundWorker {
     });
 
     return promise;
+  }
+
+  get isRunning() {
+    return this.child?.exitCode === null;
+  }
+
+  async stop() {
+    this._stopping = true;
+
+    if (this._taskExecutions.size === 0) {
+      this.#kill();
+    }
+  }
+
+  #kill() {
+    this.child?.kill();
   }
 
   async start() {
@@ -119,13 +196,21 @@ export class BackgroundWorker {
 
             taskExecutor.resolve(message.data.result);
 
+            if (this._stopping && this._taskExecutions.size === 0) {
+              this.#kill();
+            }
+
             break;
           }
         }
       });
 
       this.child.on("exit", (code) => {
-        this.onClose.post();
+        if (this._processClosing) {
+          return;
+        }
+
+        this.onClosed.post();
       });
     });
   }
