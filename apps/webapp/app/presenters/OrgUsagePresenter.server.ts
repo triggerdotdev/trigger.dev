@@ -25,7 +25,7 @@ export class OrgUsagePresenter {
     });
 
     if (!organization) {
-      return;
+      throw new Error("Organization not found");
     }
 
     // Get count of runs since the start of the current month
