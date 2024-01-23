@@ -1,6 +1,6 @@
 import { Outlet, UIMatch } from "@remix-run/react";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { UpgradePrompt } from "~/components/billing/UpgradePrompt";
@@ -19,6 +19,14 @@ import { requireUserId } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
 import { Handle } from "~/utils/handle";
 import { organizationPath } from "~/utils/pathBuilder";
+import {
+  commitCurrentProjectSession,
+  getCurrentProjectId,
+  setCurrentProjectId,
+} from "~/services/currentProject.server";
+import { prisma } from "~/db.server";
+import { ProjectPresenter } from "~/presenters/ProjectPresenter.server";
+import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -40,14 +48,60 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { organizationSlug, projectParam } = ParamsSchema.parse(params);
 
   const orgsPresenter = new OrganizationsPresenter();
-  const { organizations, organization, project } = await orgsPresenter.call({
+
+  //we need a project id in the session, we redirect if there isn't one
+  const sessionProjectId = await getCurrentProjectId(request);
+  if (!sessionProjectId) {
+    logger.info("No project id in session", { userId, organizationSlug, projectParam });
+    if (!projectParam) {
+      logger.info("No project param in URL", { userId, organizationSlug, projectParam });
+      const bestProject = await orgsPresenter.selectBestProject(organizationSlug, userId);
+      const session = await setCurrentProjectId(bestProject.id, request);
+      throw redirect(request.url, {
+        headers: { "Set-Cookie": await commitCurrentProjectSession(session) },
+      });
+    }
+
+    //use the project param to find the project
+    const project = await prisma.project.findFirst({
+      select: {
+        id: true,
+        slug: true,
+      },
+      where: {
+        organization: {
+          slug: organizationSlug,
+        },
+        slug: projectParam,
+      },
+    });
+
+    if (!project) {
+      throw new Response("Not found", { status: 404 });
+    }
+
+    const session = await setCurrentProjectId(project.id, request);
+    throw redirect(request.url, {
+      headers: { "Set-Cookie": await commitCurrentProjectSession(session) },
+    });
+  }
+
+  const { organizations, organization } = await orgsPresenter.call({
     userId,
     request,
     organizationSlug,
-    projectSlug: projectParam,
   });
 
   telemetry.organization.identify({ organization });
+
+  const projectPresenter = new ProjectPresenter();
+  const project = await projectPresenter.call({ userId, id: sessionProjectId });
+  if (!project) {
+    logger.info("Not Found", { projectId: sessionProjectId, organization, project });
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  telemetry.project.identify({ project });
 
   const { isManagedCloud } = featuresForRequest(request);
   const billingPresenter = new BillingService(isManagedCloud);
@@ -56,7 +110,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson({
     organizations,
     organization,
-    currentProject: project,
+    project,
     isImpersonating: !!impersonationId,
     currentPlan,
   });
@@ -72,12 +126,9 @@ export const handle: Handle = {
 };
 
 export default function Organization() {
-  const { organization, currentProject, organizations, isImpersonating } =
+  const { organization, project, organizations, isImpersonating } =
     useTypedLoaderData<typeof loader>();
   const user = useUser();
-
-  //the side menu won't change projects when using the switcher unless we use the hook (on project pages)
-  const project = useOptionalProject() ?? currentProject;
 
   return (
     <>

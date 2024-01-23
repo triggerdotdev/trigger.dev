@@ -11,8 +11,8 @@ export class ProjectPresenter {
 
   public async call({
     userId,
-    slug,
-  }: Pick<Project, "slug"> & {
+    id,
+  }: Pick<Project, "id"> & {
     userId: User["id"];
   }) {
     const project = await this.#prismaClient.project.findFirst({
@@ -127,7 +127,7 @@ export class ProjectPresenter {
           },
         },
       },
-      where: { slug, organization: { members: { some: { userId } } } },
+      where: { id, organization: { members: { some: { userId } } } },
     });
 
     if (!project) {

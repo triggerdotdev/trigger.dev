@@ -1,12 +1,9 @@
 import { Outlet, useLocation } from "@remix-run/react";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Fragment } from "react";
 import { typedjson } from "remix-typedjson";
-import { JobStatusBadge } from "~/components/jobs/JobStatusBadge";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
-import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
@@ -22,11 +19,9 @@ import {
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { projectMatchId, useProject } from "~/hooks/useProject";
+import { useProject } from "~/hooks/useProject";
 import { useOptionalRun } from "~/hooks/useRun";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
-import { findJobByParams } from "~/models/job.server";
-import { JobListPresenter } from "~/presenters/JobListPresenter.server";
 import { JobPresenter } from "~/presenters/JobPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { titleCase } from "~/utils";
@@ -36,7 +31,6 @@ import {
   jobPath,
   jobSettingsPath,
   jobTestPath,
-  jobTriggerPath,
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
 

@@ -1,8 +1,14 @@
 import { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
-import { getCurrentProjectId } from "~/services/currentProject.server";
+import {
+  commitCurrentProjectSession,
+  getCurrentProjectId,
+  setCurrentProjectId,
+} from "~/services/currentProject.server";
 import { ProjectPresenter } from "./ProjectPresenter.server";
 import { logger } from "~/services/logger.server";
+import { redirect } from "remix-typedjson";
+import { projectPath } from "~/utils/pathBuilder";
 
 type Org = Awaited<ReturnType<OrganizationsPresenter["getOrganizations"]>>[number];
 
@@ -17,12 +23,10 @@ export class OrganizationsPresenter {
     userId,
     organizationSlug,
     request,
-    projectSlug,
   }: {
     userId: string;
     organizationSlug: string;
     request: Request;
-    projectSlug?: string;
   }) {
     const organizations = await this.getOrganizations(userId);
 
@@ -30,16 +34,13 @@ export class OrganizationsPresenter {
     if (!organization) {
       logger.info("Not Found: organization", {
         organizationSlug,
-        projectSlug,
         request,
         organization,
       });
       throw new Response("Not Found", { status: 404 });
     }
 
-    const project = await this.getProject(organization, projectSlug, request, userId);
-
-    return { organizations, organization, project };
+    return { organizations, organization };
   }
 
   async getOrganizations(userId: string) {
@@ -104,33 +105,31 @@ export class OrganizationsPresenter {
     });
   }
 
-  async getProject(
-    organization: Org,
-    projectSlug: string | undefined,
-    request: Request,
-    userId: string
-  ) {
-    const projectPresenter = new ProjectPresenter();
+  async selectBestProject(organizationSlug: string, userId: string) {
+    const projects = await this.#prismaClient.project.findMany({
+      select: {
+        id: true,
+        slug: true,
+      },
+      where: {
+        organization: {
+          slug: organizationSlug,
+          members: { some: { userId } },
+        },
+      },
+      orderBy: {
+        jobs: {
+          _count: "desc",
+        },
+      },
+      take: 1,
+    });
 
-    if (!projectSlug) {
-      const projectId = await getCurrentProjectId(request);
-      const orgProject = organization.projects.find((p) => p.id === projectId);
-      if (!orgProject) {
-        logger.info("Not Found: proj 1", {
-          projectId,
-          organization,
-          projectSlug: projectSlug ?? null,
-        });
-        throw new Response("Not Found", { status: 404 });
-      }
-      projectSlug = orgProject.slug;
-    }
-
-    const project = await projectPresenter.call({ userId, slug: projectSlug });
-    if (!project) {
-      logger.info("Not Found: proj 2", { projectSlug, organization, project });
+    if (projects.length === 0) {
+      logger.info("Didn't find a project in this org", { organizationSlug, projects });
       throw new Response("Not Found", { status: 404 });
     }
-    return project;
+
+    return projects[0];
   }
 }
