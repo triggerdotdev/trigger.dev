@@ -1,16 +1,14 @@
 import { PrismaClient } from "@trigger.dev/database";
+import { redirect } from "remix-typedjson";
 import { prisma } from "~/db.server";
 import {
   commitCurrentProjectSession,
   getCurrentProjectId,
   setCurrentProjectId,
 } from "~/services/currentProject.server";
-import { ProjectPresenter } from "./ProjectPresenter.server";
 import { logger } from "~/services/logger.server";
-import { redirect } from "remix-typedjson";
-import { newProjectPath, projectPath } from "~/utils/pathBuilder";
-
-type Org = Awaited<ReturnType<OrganizationsPresenter["call"]>>["organization"];
+import { newProjectPath } from "~/utils/pathBuilder";
+import { ProjectPresenter } from "./ProjectPresenter.server";
 
 export class OrganizationsPresenter {
   #prismaClient: PrismaClient;
@@ -50,7 +48,6 @@ export class OrganizationsPresenter {
     }
 
     const projectPresenter = new ProjectPresenter(this.#prismaClient);
-
     const project = await projectPresenter.call({
       id: projectId,
       userId,
