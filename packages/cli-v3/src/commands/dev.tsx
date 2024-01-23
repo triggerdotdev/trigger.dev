@@ -1,32 +1,32 @@
-import { cancel, spinner, text } from "@clack/prompts";
 import { CreateBackgroundWorkerRequestBody, TaskResource } from "@trigger.dev/core/v3";
-import { BuildContext, build, context } from "esbuild";
+import { watch } from "chokidar";
+import { Command } from "commander";
+import { BuildContext, context } from "esbuild";
 import { findUp } from "find-up";
+import { resolve as importResolve } from "import-meta-resolve";
+import { Box, Text, render, useApp, useInput } from "ink";
+import { createHash } from "node:crypto";
 import fs, { readFileSync } from "node:fs";
 import { ClientRequestArgs } from "node:http";
-import { basename, dirname, extname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { WebSocket } from "partysocket";
+import React, { Suspense, useEffect, useState } from "react";
 import { ClientOptions, WebSocket as wsWebSocket } from "ws";
 import { z } from "zod";
 import * as packageJson from "../../package.json";
 import { ApiClient } from "../apiClient";
 import { CLOUD_API_URL } from "../consts";
-import { logger } from "../utilities/logger";
-import { RequireKeys } from "../utilities/requiredKeys";
-import { isLoggedIn } from "../utilities/session";
 import {
   BackgroundWorker,
   BackgroundWorkerCoordinator,
   CurrentWorkers,
 } from "../dev/backgroundWorker";
-import { resolve as importResolve } from "import-meta-resolve";
-import { Suspense, useEffect, useState } from "react";
-import React from "react";
-import { Text, Box, render, useApp, useInput, useStdin } from "ink";
-import Table from "../dev/ink-table";
-import { createHash } from "node:crypto";
-import { pathExists } from "../utilities/fileSystem";
+import { printStandloneInitialBanner } from "../utilities/initialBanner";
+import { logger } from "../utilities/logger";
+import { RequireKeys } from "../utilities/requiredKeys";
+import { isLoggedIn } from "../utilities/session";
+import chalk from "chalk";
 
 const CONFIG_FILES = ["trigger.config.js", "trigger.config.mjs"];
 
@@ -62,37 +62,129 @@ let apiClient: ApiClient | undefined;
 // Step 4: Create a new coordinator for the new task runners
 // Step 5: Signal the new coordinator that it should start accepting new tasks
 
-export async function devCommand(dir: string, anyOptions: any) {
-  const config = await loadConfig(dir);
+const DevCommandOptions = z.object({
+  logLevel: z.enum(["debug", "info", "log", "warn", "error", "none"]).default("log"),
+});
+
+type DevCommandOptions = z.infer<typeof DevCommandOptions>;
+
+export function configureDevCommand(program: Command) {
+  program
+    .command("dev")
+    .description("Run your Trigger.dev tasks locally")
+    .argument("[path]", "The path to the project", ".")
+    .option(
+      "-l, --log-level <level>",
+      "The log level to use (debug, info, log, warn, error, none)",
+      "log"
+    )
+    .action(async (path, options) => {
+      try {
+        await devCommand(path, options);
+      } catch (e) {
+        //todo error reporting
+        throw e;
+      }
+    });
+}
+
+export async function devCommand(dir: string, anyOptions: unknown) {
+  const options = DevCommandOptions.safeParse(anyOptions);
+
+  if (!options.success) {
+    throw new Error(`Invalid options: ${options.error}`);
+  }
 
   const authorization = await isLoggedIn();
 
   if (!authorization.ok) {
     logger.error("You must login first. Use `trigger.dev login` to login.");
+    process.exitCode = 1;
     return;
   }
 
-  const accessToken = authorization.config.accessToken;
-  const apiUrl = authorization.config.apiUrl;
+  let watcher;
 
-  apiClient = new ApiClient(apiUrl, accessToken);
-
-  const devEnv = await apiClient.getProjectDevEnv({ projectRef: config.project });
-
-  if (!devEnv.success) {
-    throw new Error(devEnv.error);
+  try {
+    const devInstance = await startDev(dir, options.data, authorization.config);
+    watcher = devInstance.watcher;
+    const { waitUntilExit } = devInstance.devReactElement;
+    await waitUntilExit();
+  } finally {
+    await watcher?.close();
   }
+}
 
-  const environmentClient = new ApiClient(apiUrl, devEnv.data.apiKey);
+async function startDev(
+  dir: string,
+  options: DevCommandOptions,
+  authorization: { apiUrl: string; accessToken: string }
+) {
+  let watcher: ReturnType<typeof watch> | undefined;
+  let rerender: (node: React.ReactNode) => void | undefined;
 
-  render(
-    <DevUI
-      config={config}
-      apiUrl={apiUrl}
-      apiKey={devEnv.data.apiKey}
-      environmentClient={environmentClient}
-    />
-  );
+  try {
+    if (options.logLevel) {
+      logger.loggerLevel = options.logLevel;
+    }
+
+    await printStandloneInitialBanner(true);
+
+    const configPath = await getConfigPath(dir);
+    let config = await readConfig(configPath);
+
+    watcher = watch(configPath, {
+      persistent: true,
+    }).on("change", async (_event) => {
+      config = await readConfig(configPath);
+      logger.log(`${basename(configPath)} changed...`);
+      logger.debug("New config", { config });
+      rerender(await getDevReactElement(config, authorization));
+    });
+
+    async function getDevReactElement(
+      configParam: ResolvedConfig,
+      authorization: { apiUrl: string; accessToken: string }
+    ) {
+      const accessToken = authorization.accessToken;
+      const apiUrl = authorization.apiUrl;
+
+      apiClient = new ApiClient(apiUrl, accessToken);
+
+      const devEnv = await apiClient.getProjectDevEnv({ projectRef: config.project });
+
+      if (!devEnv.success) {
+        throw new Error(devEnv.error);
+      }
+
+      const environmentClient = new ApiClient(apiUrl, devEnv.data.apiKey);
+
+      return (
+        <DevUI
+          config={config}
+          apiUrl={apiUrl}
+          apiKey={devEnv.data.apiKey}
+          environmentClient={environmentClient}
+        />
+      );
+    }
+
+    const devReactElement = render(await getDevReactElement(config, authorization));
+
+    rerender = devReactElement.rerender;
+
+    return {
+      devReactElement,
+      watcher,
+      stop: async () => {
+        devReactElement.unmount();
+        await watcher?.close();
+      },
+    };
+  } catch (e) {
+    await watcher?.close();
+    throw e;
+  }
 }
 
 type DevProps = {
@@ -103,9 +195,6 @@ type DevProps = {
 };
 
 function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
-  const [currentWorkers, setCurrentWorkers] = useState<CurrentWorkers>([]);
-  const [latestWorker, setLatestWorker] = useState<CurrentWorkers[number] | undefined>();
-
   useEffect(() => {
     const websocketUrl = new URL(apiUrl);
     websocketUrl.protocol = websocketUrl.protocol.replace("http", "ws");
@@ -121,7 +210,9 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
     websocket.addEventListener("close", (event) => {});
     websocket.addEventListener("error", (event) => {});
 
-    const backgroundWorkerCoordinator = new BackgroundWorkerCoordinator();
+    const backgroundWorkerCoordinator = new BackgroundWorkerCoordinator(
+      `${apiUrl}/projects/v3/${config.project}`
+    );
 
     backgroundWorkerCoordinator.onTaskCompleted.attach(({ backgroundWorkerId, execution }) => {
       websocket?.send(
@@ -143,8 +234,6 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
           backgroundWorkerId: id,
         })
       );
-
-      setCurrentWorkers(backgroundWorkerCoordinator.currentWorkers);
     });
 
     backgroundWorkerCoordinator.onWorkerRegistered.attach(({ id, worker, record }) => {
@@ -154,9 +243,6 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
           backgroundWorkerId: id,
         })
       );
-
-      setCurrentWorkers(backgroundWorkerCoordinator.currentWorkers);
-      setLatestWorker({ id, worker, record });
     });
 
     backgroundWorkerCoordinator.onWorkerStopped.attach(({ id }) => {
@@ -166,8 +252,6 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
           backgroundWorkerId: id,
         })
       );
-
-      setCurrentWorkers(backgroundWorkerCoordinator.currentWorkers);
     });
 
     const serverMessageSchema = z.discriminatedUnion("message", [
@@ -213,6 +297,7 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
 
     async function runBuild() {
       let isFirstBuild = true;
+      let latestWorkerContentHash: string | undefined;
 
       const taskFiles = await gatherTaskFiles(config);
 
@@ -224,6 +309,8 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
         "__TASKS__",
         createTaskFileImports(taskFiles)
       );
+
+      logger.log(chalk.dim("⎔ Building background worker..."));
 
       ctx = await context({
         stdin: {
@@ -252,12 +339,6 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
                 if (!result || !result.outputFiles) {
                   logger.error("Build failed: no result");
                   return;
-                }
-
-                if (isFirstBuild) {
-                  text({ message: "Build succeeded, starting background worker..." });
-
-                  isFirstBuild = false;
                 }
 
                 const metaOutputKey = join("out", `stdin.js`);
@@ -293,7 +374,8 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
 
                 const contentHash = md5Hasher.digest("hex");
 
-                if (latestWorker && latestWorker.record.contentHash === contentHash) {
+                if (latestWorkerContentHash === contentHash) {
+                  logger.debug(`No changes detected, skipping build`);
                   return;
                 }
 
@@ -311,6 +393,8 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
                 });
 
                 await backgroundWorker.start();
+
+                latestWorkerContentHash = contentHash;
 
                 let packageVersion: string | undefined;
 
@@ -353,6 +437,10 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
                   throw new Error(backgroundWorkerRecord.error);
                 }
 
+                logger.log(
+                  chalk.green(`Background worker ${backgroundWorkerRecord.data.version} started`)
+                );
+
                 await backgroundWorkerCoordinator.registerWorker(
                   backgroundWorkerRecord.data,
                   backgroundWorker
@@ -372,15 +460,15 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
     });
 
     return () => {
+      logger.debug(`Shutting down dev session for ${config.project}`);
+
       websocket?.close();
       backgroundWorkerCoordinator.close();
       ctx?.dispose().catch((error) => {
         console.error(error);
       });
     };
-  }, [config, apiKey, environmentClient]);
-
-  return { currentWorkers, latestWorker };
+  }, [config, apiUrl, apiKey, environmentClient]);
 }
 
 function DevUI(props: DevProps) {
@@ -394,7 +482,11 @@ function DevUI(props: DevProps) {
 function DevUIImp(props: DevProps) {
   const dev = useDev(props);
 
-  return <>{dev.latestWorker && <HotKeys />}</>;
+  return (
+    <>
+      <HotKeys />
+    </>
+  );
 }
 
 function useHotkeys() {
@@ -496,26 +588,26 @@ async function gatherTaskFiles(config: ResolvedConfig): Promise<Array<TaskFile>>
   return taskFiles;
 }
 
-async function loadConfig(dir: string): Promise<ResolvedConfig> {
-  let configFileName = "trigger.config.js";
-
+async function getConfigPath(dir: string): Promise<string> {
   const path = await findUp(CONFIG_FILES, { cwd: dir });
 
   if (!path) {
     throw new Error("No config file found.");
   }
 
-  configFileName = basename(path);
+  return path;
+}
 
+async function readConfig(path: string): Promise<ResolvedConfig> {
   try {
     // import the config file
-    const userConfigModule = await import(pathToFileURL(path).href);
+    const userConfigModule = await import(`${pathToFileURL(path).href}?_ts=${Date.now()}`);
     const rawConfig = await normalizeConfig(userConfigModule ? userConfigModule.default : {});
     const config = ConfigSchema.parse(rawConfig);
 
     return resolveConfig(path, config);
   } catch (error) {
-    console.error(`Failed to load ${configFileName}`);
+    console.error(`Failed to load config file at ${path}`);
     throw error;
   }
 }

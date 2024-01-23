@@ -4,6 +4,9 @@ import { z } from "zod";
 import { TaskRunCompletion } from "../types";
 import { ChildMessages, TaskMetadataWithFilePath, TaskRun } from "./schemas";
 import { CreateBackgroundWorkerResponse } from "@trigger.dev/core/v3";
+import { logger } from "../utilities/logger";
+import chalk from "chalk";
+import terminalLink from "terminal-link";
 
 const backgroundWorkerMessageSchema = z.discriminatedUnion("type", [
   z.object({
@@ -29,7 +32,7 @@ export class BackgroundWorkerCoordinator {
   private _backgroundWorkers: Map<string, BackgroundWorker> = new Map();
   private _records: Map<string, CreateBackgroundWorkerResponse> = new Map();
 
-  constructor() {}
+  constructor(private baseURL: string) {}
 
   get currentWorkers() {
     return Array.from(this._backgroundWorkers.entries())
@@ -91,15 +94,38 @@ export class BackgroundWorkerCoordinator {
     }
   }
 
-  async #executeTaskRun(id: string, taskRun: any) {
+  async #executeTaskRun(id: string, taskRun: TaskRun) {
     const worker = this._backgroundWorkers.get(id);
 
     if (!worker) {
-      console.error(`Could not find worker ${id}`);
+      logger.error(`Could not find worker ${id}`);
       return;
     }
 
+    const record = this._records.get(id);
+
+    if (!record) {
+      logger.error(`Could not find worker record ${id}`);
+      return;
+    }
+
+    const link = terminalLink("view logs", `${this.baseURL}/runs/${taskRun.id}`);
+
+    logger.log(
+      `[worker:${record.version}][${taskRun.taskIdentifier}] Executing run ${taskRun.id} ${link}`
+    );
+
+    const now = performance.now();
+
     const execution = await worker.executeTaskRun(taskRun);
+
+    const elapsed = performance.now() - now;
+
+    logger.log(
+      `[worker:${record.version}][${taskRun.taskIdentifier}] Execution complete ${taskRun.id}: ${
+        execution.error ? chalk.red(`error: ${execution.error}`) : chalk.green("success")
+      } (${elapsed.toFixed(2)}ms) ${link}`
+    );
 
     this.onTaskCompleted.post({ execution, worker, backgroundWorkerId: id });
   }

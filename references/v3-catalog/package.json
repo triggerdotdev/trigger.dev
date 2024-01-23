@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev:trigger": "trigger.dev dev",
+    "dev:trigger": "trigger.dev dev --log-level debug",
     "start": "ts-node -r tsconfig-paths/register -r dotenv/config src/index.ts"
   },
   "dependencies": {

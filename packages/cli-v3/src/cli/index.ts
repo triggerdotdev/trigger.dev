@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { devCommand } from "../commands/dev";
+import { configureDevCommand, devCommand } from "../commands/dev";
 import { updateCommand } from "../commands/update";
 import { whoamiCommand } from "../commands/whoami.js";
 import { COMMAND_NAME } from "../consts";
@@ -55,22 +55,7 @@ program
     }
   });
 
-//todo update for the new version
-//todo add usage instructions to the README
-program
-  .command("dev")
-  .description("Run your Trigger.dev tasks locally")
-  .argument("[path]", "The path to the project", ".")
-  .version(getVersion(), "-v, --version", "Display the version number")
-  .action(async (path, options) => {
-    try {
-      await printInitialBanner();
-      await devCommand(path, options);
-    } catch (e) {
-      //todo error reporting
-      throw e;
-    }
-  });
+configureDevCommand(program);
 
 program
   .command("update")
