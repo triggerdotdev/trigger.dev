@@ -119,11 +119,9 @@ export const shouldRevalidate: ShouldRevalidateFunction = ({
 
   if (current.success && next.success) {
     if (current.data.organizationSlug !== next.data.organizationSlug) {
-      console.log("shouldRevalidate: organizationSlug changed");
       return true;
     }
     if (current.data.projectParam !== next.data.projectParam) {
-      console.log("shouldRevalidate: projectSlug changed");
       return true;
     }
   }
