@@ -40,13 +40,6 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404 });
   }
 
-  const orgsPresenter = new OrganizationsPresenter();
-  const { organizations, organization } = await orgsPresenter.call({
-    userId,
-    request,
-    organizationSlug,
-  });
-
   return typedjson({ plans: result.plans, organizationSlug });
 }
 

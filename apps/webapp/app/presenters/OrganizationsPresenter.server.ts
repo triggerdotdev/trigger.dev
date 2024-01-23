@@ -8,9 +8,9 @@ import {
 import { ProjectPresenter } from "./ProjectPresenter.server";
 import { logger } from "~/services/logger.server";
 import { redirect } from "remix-typedjson";
-import { projectPath } from "~/utils/pathBuilder";
+import { newProjectPath, projectPath } from "~/utils/pathBuilder";
 
-type Org = Awaited<ReturnType<OrganizationsPresenter["getOrganizations"]>>[number];
+type Org = Awaited<ReturnType<OrganizationsPresenter["call"]>>["organization"];
 
 export class OrganizationsPresenter {
   #prismaClient: PrismaClient;
@@ -22,14 +22,23 @@ export class OrganizationsPresenter {
   public async call({
     userId,
     organizationSlug,
+    projectSlug,
     request,
   }: {
     userId: string;
     organizationSlug: string;
+    projectSlug: string | undefined;
     request: Request;
   }) {
-    const organizations = await this.getOrganizations(userId);
+    //first get the project id, this redirects if there's no session
+    const projectId = await this.#getProjectId({
+      request,
+      projectSlug,
+      organizationSlug,
+      userId,
+    });
 
+    const organizations = await this.#getOrganizations(userId);
     const organization = organizations.find((o) => o.slug === organizationSlug);
     if (!organization) {
       logger.info("Not Found: organization", {
@@ -40,10 +49,101 @@ export class OrganizationsPresenter {
       throw new Response("Not Found", { status: 404 });
     }
 
-    return { organizations, organization };
+    const projectPresenter = new ProjectPresenter(this.#prismaClient);
+
+    const project = await projectPresenter.call({
+      id: projectId,
+      userId,
+    });
+
+    if (!project) {
+      throw new Response("Project not found", { status: 404 });
+    }
+
+    return { organizations, organization, project };
   }
 
-  async getOrganizations(userId: string) {
+  async #getProjectId({
+    request,
+    projectSlug,
+    organizationSlug,
+    userId,
+  }: {
+    request: Request;
+    projectSlug: string | undefined;
+    organizationSlug: string;
+    userId: string;
+  }): Promise<string> {
+    const sessionProjectId = await getCurrentProjectId(request);
+
+    //no project in session, let's set one
+    if (!sessionProjectId) {
+      if (!projectSlug) {
+        const bestProject = await this.#selectBestProjectForOrganization(organizationSlug, userId);
+        const session = await setCurrentProjectId(bestProject.id, request);
+        throw redirect(request.url, {
+          headers: { "Set-Cookie": await commitCurrentProjectSession(session) },
+        });
+      }
+
+      //use the project param to find the project
+      const project = await prisma.project.findFirst({
+        select: {
+          id: true,
+          slug: true,
+        },
+        where: {
+          organization: {
+            slug: organizationSlug,
+          },
+          slug: projectSlug,
+        },
+      });
+
+      if (!project) {
+        throw redirect(newProjectPath({ slug: organizationSlug }));
+      }
+
+      const session = await setCurrentProjectId(project.id, request);
+      throw redirect(request.url, {
+        headers: { "Set-Cookie": await commitCurrentProjectSession(session) },
+      });
+    }
+
+    //no project slug, so just return the session id
+    if (!projectSlug) {
+      return sessionProjectId;
+    }
+
+    //check session id matches the project slug
+    const project = await prisma.project.findFirst({
+      select: {
+        id: true,
+        slug: true,
+      },
+      where: {
+        slug: projectSlug,
+        organization: {
+          slug: organizationSlug,
+        },
+      },
+    });
+
+    if (!project) {
+      throw new Response("Project not found in organization", { status: 404 });
+    }
+
+    if (project.id !== sessionProjectId) {
+      const session = await setCurrentProjectId(project.id, request);
+      throw redirect(request.url, {
+        headers: { "Set-Cookie": await commitCurrentProjectSession(session) },
+      });
+    }
+
+    return project.id;
+  }
+
+  async #getOrganizations(userId: string) {
     const orgs = await this.#prismaClient.organization.findMany({
       where: { members: { some: { userId } } },
       orderBy: { createdAt: "desc" },
@@ -105,7 +205,7 @@ export class OrganizationsPresenter {
     });
   }
 
-  async selectBestProject(organizationSlug: string, userId: string) {
+  async #selectBestProjectForOrganization(organizationSlug: string, userId: string) {
     const projects = await this.#prismaClient.project.findMany({
       select: {
         id: true,

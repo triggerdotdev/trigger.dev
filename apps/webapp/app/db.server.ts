@@ -118,11 +118,11 @@ function getClient() {
   });
 
   client.$on("query", (e) => {
-    console.log(`Query tooks ${e.duration}ms`, {
-      query: e.query,
-      params: e.params,
-      duration: e.duration,
-    });
+    // console.log(`Query tooks ${e.duration}ms`, {
+    //   query: e.query,
+    //   params: e.params,
+    //   duration: e.duration,
+    // });
   });
 
   // connect eagerly

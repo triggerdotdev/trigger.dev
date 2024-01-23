@@ -18,7 +18,7 @@ import { loader as orgLoader } from "../_app.orgs.$organizationSlug/route";
 export const handle: Handle = {
   breadcrumb: (match, matches) => {
     const orgMatch = matches.find((m) => m.id === organizationMatchId);
-    const data = useTypedMatchData<typeof orgLoader>(match);
+    const data = useTypedMatchData<typeof orgLoader>(orgMatch);
     return <BreadcrumbLink to={match.pathname} title={data?.project.name ?? "Project"} />;
   },
   scripts: (match) => [

@@ -26,6 +26,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     userId,
     request,
     organizationSlug,
+    projectSlug: undefined,
   });
 
   const { isManagedCloud } = featuresForRequest(request);
