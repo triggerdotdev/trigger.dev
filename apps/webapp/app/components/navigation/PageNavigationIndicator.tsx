@@ -5,6 +5,6 @@ import { cn } from "~/utils/cn";
 export function PageNavigationIndicator({ className }: { className?: string }) {
   const navigation = useNavigation();
   if (navigation.state === "loading") {
-    return <Spinner color="muted" className={cn("h-4 w-4", className)} />;
+    return <Spinner color="blue" className={cn("h-4 w-4", className)} />;
   }
 }
