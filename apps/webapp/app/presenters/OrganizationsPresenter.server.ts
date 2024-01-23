@@ -46,10 +46,16 @@ export class OrganizationsPresenter {
     const orgs = await this.#prismaClient.organization.findMany({
       where: { members: { some: { userId } } },
       orderBy: { createdAt: "desc" },
-      include: {
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        runsEnabled: true,
         projects: {
-          orderBy: { name: "asc" },
-          include: {
+          select: {
+            id: true,
+            slug: true,
+            name: true,
             _count: {
               select: {
                 jobs: {
@@ -67,6 +73,7 @@ export class OrganizationsPresenter {
               },
             },
           },
+          orderBy: { name: "asc" },
         },
         _count: {
           select: {
