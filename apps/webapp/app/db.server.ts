@@ -110,14 +110,20 @@ function getClient() {
       //   emit: "stdout",
       //   level: "query",
       // },
+      {
+        emit: "event",
+        level: "query",
+      },
     ],
   });
 
-  // client.$on("query", (e) => {
-  //   console.log("Query: " + e.query);
-  //   console.log("Params: " + e.params);
-  //   console.log("Duration: " + e.duration + "ms");
-  // });
+  client.$on("query", (e) => {
+    console.log(`Query tooks ${e.duration}ms`, {
+      query: e.query,
+      params: e.params,
+      duration: e.duration,
+    });
+  });
 
   // connect eagerly
   client.$connect();
