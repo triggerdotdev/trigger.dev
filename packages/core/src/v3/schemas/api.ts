@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BackgroundWorkerMetadata, TaskResource } from "./resources";
+import { BackgroundWorkerMetadata } from "./resources";
 
 export const WhoAmIResponseSchema = z.object({
   userId: z.string(),

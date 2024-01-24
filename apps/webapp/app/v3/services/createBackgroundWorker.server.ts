@@ -3,6 +3,7 @@ import type { BackgroundWorker } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { generateFriendlyId } from "../friendlyIdentifiers";
 
 export class CreateBackgroundWorkerService {
   #prismaClient: PrismaClient;
@@ -53,6 +54,7 @@ export class CreateBackgroundWorkerService {
 
     const backgroundWorker = await this.#prismaClient.backgroundWorker.create({
       data: {
+        friendlyId: generateFriendlyId("worker"),
         version: nextVersion,
         runtimeEnvironmentId: environment.id,
         projectId: project.id,
@@ -64,6 +66,7 @@ export class CreateBackgroundWorkerService {
     for (const task of body.metadata.tasks) {
       await this.#prismaClient.backgroundWorkerTask.create({
         data: {
+          friendlyId: generateFriendlyId("task"),
           projectId: project.id,
           runtimeEnvironmentId: environment.id,
           workerId: backgroundWorker.id,

@@ -1,13 +1,22 @@
+import {
+  BackgroundWorkerClientMessages,
+  TaskRunExecutionResult,
+  TaskRunExecution,
+  ZodMessageHandler,
+  ZodMessageSender,
+  clientWebsocketMessages,
+  serverWebsocketMessages,
+} from "@trigger.dev/core";
+import { BackgroundWorker, BackgroundWorkerTask } from "@trigger.dev/database";
+import { Evt } from "evt";
+import { randomUUID } from "node:crypto";
 import { IncomingMessage } from "node:http";
 import { WebSocketServer } from "ws";
-import { AuthenticatedEnvironment, authenticateApiKey } from "~/services/apiAuth.server";
-import { singleton } from "../utils/singleton";
-import { randomUUID } from "node:crypto";
-import { Evt } from "evt";
-import { logger } from "~/services/logger.server";
 import { prisma } from "~/db.server";
-import { z } from "zod";
-import { BackgroundWorker, BackgroundWorkerTask, TaskRun } from "@trigger.dev/database";
+import { AuthenticatedEnvironment, authenticateApiKey } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
+import { singleton } from "../utils/singleton";
+import { generateFriendlyId } from "./friendlyIdentifiers";
 
 export const wss = singleton("wss", initalizeWebSocketServer);
 
@@ -60,36 +69,12 @@ async function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage) {
   await handler.start();
 }
 
-const clientMessageSchema = z.discriminatedUnion("message", [
-  z.object({
-    message: z.literal("READY_FOR_TASKS"),
-    backgroundWorkerId: z.string(),
-  }),
-  z.object({
-    message: z.literal("WORKER_SHUTDOWN"),
-    backgroundWorkerId: z.string(),
-  }),
-  z.object({
-    message: z.literal("WORKER_STOPPED"),
-    backgroundWorkerId: z.string(),
-  }),
-  z.object({
-    message: z.literal("BACKGROUND_WORKER_MESSAGE"),
-    backgroundWorkerId: z.string(),
-    data: z.unknown(),
-  }),
-]);
-
-// Step 1: We'll receive a response with the background worker's information, which we can use to find out which tasks it supports
-// Step 2: We query for the task runs in the database
-// Step 3: We send the task runs to the client
-// Step 4: The client responds with which taskruns they are executing now
-// Step 5: We update the TaskRuns with the background worker and background worker task
 class WebsocketHandlers {
   public id: string;
   public onClose: Evt<CloseEvent> = new Evt();
 
   private backgroundWorkerHandlers: Map<string, BackgroundWorkerHandler> = new Map();
+  private _sender: ZodMessageSender<typeof serverWebsocketMessages>;
 
   constructor(public ws: WebSocket, public authenticatedEnv: AuthenticatedEnvironment) {
     this.id = randomUUID();
@@ -97,10 +82,17 @@ class WebsocketHandlers {
     ws.addEventListener("message", this.#handleMessage.bind(this));
     ws.addEventListener("close", this.#handleClose.bind(this));
     ws.addEventListener("error", this.#handleError.bind(this));
+
+    this._sender = new ZodMessageSender({
+      schema: serverWebsocketMessages,
+      sender: async (message) => {
+        ws.send(JSON.stringify(message));
+      },
+    });
   }
 
   async start() {
-    this.ws.send(JSON.stringify({ message: "SERVER_READY", id: this.id }));
+    this._sender.send("SERVER_READY", { id: this.id });
   }
 
   async #handleMessage(ev: MessageEvent) {
@@ -108,66 +100,56 @@ class WebsocketHandlers {
 
     logger.debug("Websocket message received", { data });
 
-    const message = clientMessageSchema.safeParse(data);
+    const handler = new ZodMessageHandler({
+      schema: clientWebsocketMessages,
+      messages: {
+        READY_FOR_TASKS: async (payload) => {
+          const handler = new BackgroundWorkerHandler(
+            payload.backgroundWorkerId,
+            this.authenticatedEnv,
+            this._sender
+          );
 
-    if (!message.success) {
-      logger.error("Invalid message received", { issues: message.error.issues });
-      return;
-    }
+          this.backgroundWorkerHandlers.set(handler.id, handler);
 
-    switch (message.data.message) {
-      case "READY_FOR_TASKS": {
-        const handler = new BackgroundWorkerHandler(
-          message.data.backgroundWorkerId,
-          this.authenticatedEnv,
-          this.ws.send.bind(this.ws)
-        );
+          await handler.start();
+        },
+        WORKER_SHUTDOWN: async (payload) => {
+          const handler = this.backgroundWorkerHandlers.get(payload.backgroundWorkerId);
 
-        this.backgroundWorkerHandlers.set(handler.id, handler);
+          if (handler) {
+            await handler.stop();
+            this.backgroundWorkerHandlers.delete(handler.id);
+          }
+        },
+        WORKER_STOPPED: async (payload) => {
+          const handler = this.backgroundWorkerHandlers.get(payload.backgroundWorkerId);
 
-        await handler.start();
+          if (!handler) {
+            logger.error("Failed to find background worker handler", {
+              backgroundWorkerId: payload.backgroundWorkerId,
+            });
+            return;
+          }
 
-        break;
-      }
-      case "WORKER_STOPPED": {
-        const handler = this.backgroundWorkerHandlers.get(message.data.backgroundWorkerId);
-
-        if (!handler) {
-          logger.error("Failed to find background worker handler", {
-            backgroundWorkerId: message.data.backgroundWorkerId,
-          });
-          return;
-        }
-
-        await handler.stop();
-
-        break;
-      }
-      case "WORKER_SHUTDOWN": {
-        const handler = this.backgroundWorkerHandlers.get(message.data.backgroundWorkerId);
-
-        if (handler) {
           await handler.stop();
-          this.backgroundWorkerHandlers.delete(handler.id);
-        }
+        },
+        BACKGROUND_WORKER_MESSAGE: async (payload) => {
+          const handler = this.backgroundWorkerHandlers.get(payload.backgroundWorkerId);
 
-        break;
-      }
-      case "BACKGROUND_WORKER_MESSAGE": {
-        const handler = this.backgroundWorkerHandlers.get(message.data.backgroundWorkerId);
+          if (!handler) {
+            logger.error("Failed to find background worker handler", {
+              backgroundWorkerId: payload.backgroundWorkerId,
+            });
+            return;
+          }
 
-        if (!handler) {
-          logger.error("Failed to find background worker handler", {
-            backgroundWorkerId: message.data.backgroundWorkerId,
-          });
-          return;
-        }
+          await handler.handleMessage(payload.data);
+        },
+      },
+    });
 
-        await handler.handleMessage(message.data.data);
-
-        break;
-      }
-    }
+    await handler.handleMessage(data);
   }
 
   async #handleClose(ev: CloseEvent) {
@@ -185,18 +167,6 @@ class WebsocketHandlers {
   }
 }
 
-const backgroundWorkerHandlerSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("TASK_RUN_COMPLETED"),
-    taskRunCompletion: z.object({
-      id: z.string(),
-      output: z.string().optional(),
-      outputType: z.string().optional(),
-      error: z.string().optional(),
-    }),
-  }),
-]);
-
 class BackgroundWorkerHandler {
   private _backgroundWorker: BackgroundWorker | undefined;
   private _backgroundWorkerTasks: Array<BackgroundWorkerTask> | undefined;
@@ -205,12 +175,12 @@ class BackgroundWorkerHandler {
   constructor(
     public id: string,
     public env: AuthenticatedEnvironment,
-    private send: WebSocket["send"]
+    private sender: ZodMessageSender<typeof serverWebsocketMessages>
   ) {}
 
   async start() {
     const backgroundWorker = await prisma.backgroundWorker.findUnique({
-      where: { id: this.id, runtimeEnvironmentId: this.env.id },
+      where: { friendlyId: this.id, runtimeEnvironmentId: this.env.id },
       include: {
         tasks: true,
       },
@@ -231,17 +201,10 @@ class BackgroundWorkerHandler {
     });
   }
 
-  async handleMessage(data: unknown) {
-    const message = backgroundWorkerHandlerSchema.safeParse(data);
-
-    if (!message.success) {
-      logger.error("Invalid message received", { issues: message.error.issues });
-      return;
-    }
-
-    switch (message.data.type) {
+  async handleMessage(message: BackgroundWorkerClientMessages) {
+    switch (message.type) {
       case "TASK_RUN_COMPLETED": {
-        await this.#handleTaskRunCompleted(message.data.taskRunCompletion);
+        await this.#handleTaskRunCompleted(message.completion);
 
         break;
       }
@@ -252,90 +215,102 @@ class BackgroundWorkerHandler {
     this._abortController.abort();
   }
 
-  async #handleTaskRunCompleted(taskRunCompletion: any) {
-    logger.debug("Task run completed", { taskRunCompletion });
+  async #handleTaskRunCompleted(completion: TaskRunExecutionResult) {
+    logger.debug("Task run completed", { taskRunCompletion: completion });
 
-    await prisma.taskRun.update({
-      where: { id: taskRunCompletion.id },
-      data: {
-        status: taskRunCompletion.error ? "FAILED" : "COMPLETED",
-        output: taskRunCompletion.output,
-        outputType: taskRunCompletion.outputType,
-        error: taskRunCompletion.error,
-        completedAt: new Date(),
-      },
-    });
+    if (completion.ok) {
+      await prisma.taskRunAttempt.update({
+        where: { friendlyId: completion.id },
+        data: {
+          status: "COMPLETED",
+          completedAt: new Date(),
+          output: completion.output,
+          outputType: completion.outputType,
+        },
+      });
+    } else {
+      await prisma.taskRunAttempt.update({
+        where: { friendlyId: completion.id },
+        data: {
+          status: "FAILED",
+          completedAt: new Date(),
+          error: completion.error,
+        },
+      });
+    }
   }
 
   // Every 1 second, we'll check for new tasks to run and send them to the client
   // if the abort controller is aborted, we'll stop the runloop
   async #startRunLoop() {
     while (!this._abortController.signal.aborted) {
-      const taskRuns = await this.#reserveTaskRuns();
+      const { executions, returnReservedTasksToPending } = await this.#reserveTaskRuns();
 
-      if (taskRuns.length > 0) {
-        logger.debug("Sending task runs to client", { taskRuns });
+      if (executions.length > 0) {
+        logger.debug("Sending task run executions to client", { executions });
 
         if (this._abortController.signal.aborted) {
           // Return reserverd task runs to pending
-          await this.#returnReservedTasksToPending(taskRuns);
+          await returnReservedTasksToPending();
+
           return;
         }
 
-        this.send(
-          JSON.stringify({
-            message: "BACKGROUND_WORKER_MESSAGE",
-            backgroundWorkerId: this.id,
-            data: {
-              type: "PENDING_TASK_RUNS",
-              taskRuns: taskRuns,
-            },
-          })
-        );
+        this.sender.send("BACKGROUND_WORKER_MESSAGE", {
+          backgroundWorkerId: this.id,
+          data: {
+            type: "EXECUTE_RUNS",
+            executions,
+          },
+        });
       }
 
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
 
-  async #returnReservedTasksToPending(taskRuns: Array<TaskRun>) {
-    await prisma.taskRun.updateMany({
-      where: {
-        id: {
-          in: taskRuns.map((taskRun) => taskRun.id),
-        },
-      },
-      data: {
-        status: "PENDING",
-        startedAt: null,
-        backgroundWorkerId: null,
-        backgroundWorkerTaskId: null,
-      },
-    });
-  }
-
-  async #reserveTaskRuns() {
-    const taskRuns: Array<TaskRun> = [];
+  async #reserveTaskRuns(): Promise<{
+    executions: Array<TaskRunExecution>;
+    returnReservedTasksToPending: () => Promise<void>;
+  }> {
+    const allExecutions: Array<TaskRunExecution> = [];
+    const allReturnReservedTasksToPending: Array<() => Promise<void>> = [];
 
     if (!this._backgroundWorkerTasks) {
-      return taskRuns;
+      return { executions: allExecutions, returnReservedTasksToPending: async () => {} };
     }
 
     for (const task of this._backgroundWorkerTasks) {
-      const reservedTaskRuns = await this.#reserveTaskRunsForTask(task);
+      const { executions, returnReservedTasksToPending } = await this.#reserveTaskRunsForTask(task);
 
-      taskRuns.push(...reservedTaskRuns);
+      allExecutions.push(...executions);
+      allReturnReservedTasksToPending.push(returnReservedTasksToPending);
     }
 
-    return taskRuns;
+    const returnReservedTasksToPending = async () => {
+      await Promise.all(allReturnReservedTasksToPending);
+    };
+
+    return { executions: allExecutions, returnReservedTasksToPending };
   }
 
-  async #reserveTaskRunsForTask(task: BackgroundWorkerTask) {
+  async #reserveTaskRunsForTask(task: BackgroundWorkerTask): Promise<{
+    executions: Array<TaskRunExecution>;
+    returnReservedTasksToPending: () => Promise<void>;
+  }> {
     return await prisma.$transaction(async (tx) => {
       const taskRuns = await tx.taskRun.findMany({
         where: {
           taskIdentifier: task.slug,
-          status: "PENDING",
+          lockedAt: { equals: null },
+          runtimeEnvironmentId: task.runtimeEnvironmentId,
+        },
+        include: {
+          attempts: {
+            take: 1,
+            orderBy: { number: "desc" },
+          },
+          tags: true,
         },
       });
 
@@ -346,14 +321,102 @@ class BackgroundWorkerHandler {
           },
         },
         data: {
-          status: "EXECUTING",
-          startedAt: new Date(),
-          backgroundWorkerId: this.id,
-          backgroundWorkerTaskId: task.id,
+          lockedAt: new Date(),
+          lockedById: task.id,
         },
       });
 
-      return taskRuns.map((taskRun) => ({ ...taskRun, status: "EXECUTING" as const }));
+      const attempts = taskRuns.map((taskRun) => {
+        const attemptFriendlyId = generateFriendlyId("attempt");
+
+        const create = {
+          number: taskRun.attempts[0] ? taskRun.attempts[0].number + 1 : 1,
+          friendlyId: attemptFriendlyId,
+          taskRunId: taskRun.id,
+          startedAt: new Date(),
+          backgroundWorkerId: task.workerId,
+          backgroundWorkerTaskId: task.id,
+          status: "EXECUTING" as const,
+        };
+
+        const execution = {
+          task: {
+            id: task.slug,
+            filePath: task.filePath,
+            exportName: task.exportName,
+          },
+          attempt: {
+            id: attemptFriendlyId,
+            number: taskRun.attempts[0] ? taskRun.attempts[0].number + 1 : 1,
+            startedAt: new Date(),
+            backgroundWorkerId: this.id,
+            backgroundWorkerTaskId: task.id,
+            status: "EXECUTING" as const,
+          },
+          run: {
+            id: taskRun.friendlyId,
+            payload: taskRun.payload,
+            payloadType: taskRun.payloadType,
+            context: taskRun.context,
+            createdAt: taskRun.createdAt,
+            tags: taskRun.tags.map((tag) => tag.name),
+          },
+          environment: {
+            id: this.env.id,
+            slug: this.env.slug,
+            type: this.env.type,
+          },
+          organization: {
+            id: this.env.organization.id,
+            slug: this.env.organization.slug,
+            name: this.env.organization.title,
+          },
+          project: {
+            id: this.env.project.id,
+            ref: this.env.project.externalRef,
+            slug: this.env.project.slug,
+            name: this.env.project.name,
+          },
+        };
+
+        return { create, execution };
+      });
+
+      await tx.taskRunAttempt.createMany({
+        data: attempts.map(({ create }) => create),
+      });
+
+      const returnReservedTasksToPending = async () => {
+        await prisma.taskRun.updateMany({
+          where: {
+            id: {
+              in: attempts.map(({ create }) => create.taskRunId),
+            },
+          },
+          data: {
+            lockedAt: null,
+            lockedById: null,
+          },
+        });
+
+        await prisma.taskRunAttempt.updateMany({
+          where: {
+            friendlyId: {
+              in: attempts.map(({ create }) => create.friendlyId),
+            },
+          },
+          data: {
+            status: "FAILED",
+            completedAt: new Date(),
+            error: "Worker stopped",
+          },
+        });
+      };
+
+      return {
+        executions: attempts.map(({ execution }) => execution),
+        returnReservedTasksToPending,
+      };
     });
   }
 }

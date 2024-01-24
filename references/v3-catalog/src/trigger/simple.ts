@@ -1,4 +1,4 @@
-import { task } from "@trigger.dev/sdk/v3";
+import { task, type Context } from "@trigger.dev/sdk/v3";
 
 export const simplestTask = task({
   id: "fetch-post-task",
@@ -14,7 +14,13 @@ export const simplestTask = task({
 
 export const createJsonHeroDoc = task({
   id: "create-jsonhero-doc",
-  run: async ({ payload }: { payload: { title: string; content: any } }) => {
+  run: async ({
+    payload,
+    context,
+  }: {
+    payload: { title: string; content: any };
+    context: Context;
+  }) => {
     // Sleep for 5 seconds
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
@@ -26,7 +32,8 @@ export const createJsonHeroDoc = task({
       body: JSON.stringify({
         title: `${payload.title} v2`,
         content: {
-          ...payload.content,
+          payload: payload.content,
+          __triggerContext: context,
         },
         readOnly: true,
       }),

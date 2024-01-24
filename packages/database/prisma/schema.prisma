@@ -423,6 +423,7 @@ model Project {
   backgroundWorkers     BackgroundWorker[]
   backgroundWorkerTasks BackgroundWorkerTask[]
   TaskRun               TaskRun[]
+  TaskTag               TaskTag[]
 }
 
 model Endpoint {
@@ -1480,6 +1481,8 @@ model DataMigration {
 model BackgroundWorker {
   id String @id @default(cuid())
 
+  friendlyId String @unique
+
   contentHash String
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -1494,8 +1497,8 @@ model BackgroundWorker {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tasks BackgroundWorkerTask[]
-  runs  TaskRun[]
+  tasks    BackgroundWorkerTask[]
+  attempts TaskRunAttempt[]
 
   @@unique([projectId, runtimeEnvironmentId, version])
 }
@@ -1503,6 +1506,8 @@ model BackgroundWorker {
 model BackgroundWorkerTask {
   id   String @id @default(cuid())
   slug String
+
+  friendlyId String @unique
 
   filePath   String
   exportName String
@@ -1516,9 +1521,11 @@ model BackgroundWorkerTask {
   runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runtimeEnvironmentId String
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  TaskRun   TaskRun[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attempts TaskRunAttempt[]
+  runs     TaskRun[]
 
   @@unique([workerId, slug])
 }
@@ -1526,21 +1533,14 @@ model BackgroundWorkerTask {
 model TaskRun {
   id String @id @default(cuid())
 
-  externalRef    String @unique
+  friendlyId String @unique
+
   idempotencyKey String
   taskIdentifier String
 
   payload     String
   payloadType String @default("application/json")
-
-  output     String?
-  outputType String  @default("application/json")
-
-  error String?
-
-  context Json?
-
-  status TaskRunStatus @default(PENDING)
+  context     Json?
 
   runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runtimeEnvironmentId String
@@ -1548,13 +1548,51 @@ model TaskRun {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
-  /// This will be set once the background worker has been assigned
-  backgroundWorker   BackgroundWorker? @relation(fields: [backgroundWorkerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  backgroundWorkerId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  /// This will be set once the background worker has been assigned
-  backgroundWorkerTask   BackgroundWorkerTask? @relation(fields: [backgroundWorkerTaskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  backgroundWorkerTaskId String?
+  attempts TaskRunAttempt[]
+  tags     TaskTag[]
+
+  lockedAt   DateTime?
+  lockedBy   BackgroundWorkerTask? @relation(fields: [lockedById], references: [id])
+  lockedById String?
+
+  @@unique([runtimeEnvironmentId, idempotencyKey])
+}
+
+model TaskTag {
+  id   String @id @default(cuid())
+  name String
+
+  friendlyId String @unique
+
+  runs TaskRun[]
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, name])
+}
+
+model TaskRunAttempt {
+  id     String @id @default(cuid())
+  number Int    @default(0)
+
+  friendlyId String @unique
+
+  taskRun   TaskRun @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskRunId String
+
+  backgroundWorker   BackgroundWorker @relation(fields: [backgroundWorkerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  backgroundWorkerId String
+
+  backgroundWorkerTask   BackgroundWorkerTask @relation(fields: [backgroundWorkerTaskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  backgroundWorkerTaskId String
+
+  status TaskRunAttemptStatus @default(PENDING)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1562,10 +1600,14 @@ model TaskRun {
   startedAt   DateTime?
   completedAt DateTime?
 
-  @@unique([runtimeEnvironmentId, idempotencyKey])
+  error      String?
+  output     String?
+  outputType String  @default("application/json")
+
+  @@unique([taskRunId, number])
 }
 
-enum TaskRunStatus {
+enum TaskRunAttemptStatus {
   PENDING
   EXECUTING
   PAUSED

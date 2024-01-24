@@ -1,4 +1,12 @@
-import { CreateBackgroundWorkerRequestBody, TaskResource } from "@trigger.dev/core/v3";
+import {
+  CreateBackgroundWorkerRequestBody,
+  TaskResource,
+  ZodMessageHandler,
+  ZodMessageSender,
+  clientWebsocketMessages,
+  serverWebsocketMessages,
+} from "@trigger.dev/core";
+import chalk from "chalk";
 import { watch } from "chokidar";
 import { Command } from "commander";
 import { BuildContext, context } from "esbuild";
@@ -10,24 +18,19 @@ import fs, { readFileSync } from "node:fs";
 import { ClientRequestArgs } from "node:http";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import pThrottle from "p-throttle";
 import { WebSocket } from "partysocket";
-import React, { Suspense, useEffect, useState } from "react";
+import React, { Suspense, useEffect } from "react";
 import { ClientOptions, WebSocket as wsWebSocket } from "ws";
 import { z } from "zod";
 import * as packageJson from "../../package.json";
 import { ApiClient } from "../apiClient";
 import { CLOUD_API_URL } from "../consts";
-import {
-  BackgroundWorker,
-  BackgroundWorkerCoordinator,
-  CurrentWorkers,
-} from "../dev/backgroundWorker";
+import { BackgroundWorker, BackgroundWorkerCoordinator } from "../dev/backgroundWorker";
 import { printStandloneInitialBanner } from "../utilities/initialBanner";
 import { logger } from "../utilities/logger";
 import { RequireKeys } from "../utilities/requiredKeys";
 import { isLoggedIn } from "../utilities/session";
-import chalk from "chalk";
-import pThrottle from "p-throttle";
 
 const CONFIG_FILES = ["trigger.config.js", "trigger.config.mjs"];
 
@@ -48,20 +51,6 @@ type TaskFile = {
 };
 
 let apiClient: ApiClient | undefined;
-
-// Handling file changes
-// Use stdin instead of entryPoints
-// stdin will dynamically import all the trigger files
-// this will create a single output file for all the trigger files
-// we can use esbuild context and watch (like partykit)
-// So we'll need to be able to read the trigger files, parse them, and detect all the exports
-// We can use ink and useEffect where the return value of useEffect will dispose of the esbuild context, and create a new one with a new stdin
-// Watch for any changes to
-// Step 1: Signal to any existing coordinators that they should stop accepting new tasks and when existing tasks are complete the task runners should be stopped
-// Step 2: Build the new entry points
-// Step 3: Start the new task runners
-// Step 4: Create a new coordinator for the new task runners
-// Step 5: Signal the new coordinator that it should start accepting new tasks
 
 const DevCommandOptions = z.object({
   logLevel: z.enum(["debug", "info", "log", "warn", "error", "none"]).default("log"),
@@ -162,7 +151,7 @@ async function startDev(
 
       return (
         <DevUI
-          config={config}
+          config={configParam}
           apiUrl={apiUrl}
           apiKey={devEnv.data.apiKey}
           environmentClient={environmentClient}
@@ -211,87 +200,66 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
     websocket.addEventListener("close", (event) => {});
     websocket.addEventListener("error", (event) => {});
 
+    const sender = new ZodMessageSender({
+      schema: clientWebsocketMessages,
+      sender: async (message) => {
+        websocket?.send(JSON.stringify(message));
+      },
+    });
+
     const backgroundWorkerCoordinator = new BackgroundWorkerCoordinator(
       `${apiUrl}/projects/v3/${config.project}`
     );
 
-    backgroundWorkerCoordinator.onTaskCompleted.attach(({ backgroundWorkerId, execution }) => {
-      websocket?.send(
-        JSON.stringify({
-          message: "BACKGROUND_WORKER_MESSAGE",
+    backgroundWorkerCoordinator.onTaskCompleted.attach(
+      async ({ backgroundWorkerId, completion }) => {
+        await sender.send("BACKGROUND_WORKER_MESSAGE", {
           backgroundWorkerId,
           data: {
             type: "TASK_RUN_COMPLETED",
-            taskRunCompletion: execution,
+            completion,
           },
-        })
-      );
+        });
+      }
+    );
+
+    backgroundWorkerCoordinator.onWorkerClosed.attach(async ({ id }) => {
+      await sender.send("WORKER_SHUTDOWN", {
+        backgroundWorkerId: id,
+      });
     });
 
-    backgroundWorkerCoordinator.onWorkerClosed.attach(({ id }) => {
-      websocket.send(
-        JSON.stringify({
-          message: "WORKER_SHUTDOWN",
-          backgroundWorkerId: id,
-        })
-      );
+    backgroundWorkerCoordinator.onWorkerRegistered.attach(async ({ id, worker, record }) => {
+      await sender.send("READY_FOR_TASKS", {
+        backgroundWorkerId: id,
+      });
     });
 
-    backgroundWorkerCoordinator.onWorkerRegistered.attach(({ id, worker, record }) => {
-      websocket.send(
-        JSON.stringify({
-          message: "READY_FOR_TASKS",
-          backgroundWorkerId: id,
-        })
-      );
+    backgroundWorkerCoordinator.onWorkerStopped.attach(async ({ id }) => {
+      await sender.send("WORKER_STOPPED", {
+        backgroundWorkerId: id,
+      });
     });
-
-    backgroundWorkerCoordinator.onWorkerStopped.attach(({ id }) => {
-      websocket.send(
-        JSON.stringify({
-          message: "WORKER_STOPPED",
-          backgroundWorkerId: id,
-        })
-      );
-    });
-
-    const serverMessageSchema = z.discriminatedUnion("message", [
-      z.object({
-        message: z.literal("SERVER_READY"),
-        id: z.string(),
-      }),
-      z.object({
-        message: z.literal("BACKGROUND_WORKER_MESSAGE"),
-        backgroundWorkerId: z.string(),
-        data: z.unknown(),
-      }),
-    ]);
 
     websocket.addEventListener("message", async (event) => {
       const data = JSON.parse(
         typeof event.data === "string" ? event.data : new TextDecoder("utf-8").decode(event.data)
       );
 
-      const message = serverMessageSchema.safeParse(data);
+      const messageHandler = new ZodMessageHandler({
+        schema: serverWebsocketMessages,
+        messages: {
+          SERVER_READY: async (payload) => {},
+          BACKGROUND_WORKER_MESSAGE: async (payload) => {
+            await backgroundWorkerCoordinator.handleMessage(
+              payload.backgroundWorkerId,
+              payload.data
+            );
+          },
+        },
+      });
 
-      if (!message.success) {
-        console.error("Received invalid message", { data });
-        return;
-      }
-
-      switch (message.data.message) {
-        case "SERVER_READY": {
-          break;
-        }
-        case "BACKGROUND_WORKER_MESSAGE": {
-          await backgroundWorkerCoordinator.handleMessage(
-            message.data.backgroundWorkerId,
-            message.data.data
-          );
-
-          break;
-        }
-      }
+      await messageHandler.handleMessage(data);
     });
 
     let ctx: BuildContext | undefined;

@@ -1,25 +1,25 @@
 import { Evt } from "evt";
 import { fork } from "node:child_process";
-import { z } from "zod";
-import { TaskRunCompletion } from "../types";
-import { ChildMessages, TaskMetadataWithFilePath, TaskRun } from "./schemas";
-import { CreateBackgroundWorkerResponse } from "@trigger.dev/core/v3";
+import {
+  BackgroundWorkerServerMessages,
+  CreateBackgroundWorkerResponse,
+  TaskMetadataWithFilePath,
+  TaskRunExecutionResult,
+  TaskRunExecution,
+  ZodMessageHandler,
+  ZodMessageSender,
+  childToWorkerMessages,
+  workerToChildMessages,
+} from "@trigger.dev/core";
 import { logger } from "../utilities/logger";
 import chalk from "chalk";
 import terminalLink from "terminal-link";
-
-const backgroundWorkerMessageSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("PENDING_TASK_RUNS"),
-    taskRuns: TaskRun.array(),
-  }),
-]);
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
   public onTaskCompleted: Evt<{
     backgroundWorkerId: string;
-    execution: TaskRunCompletion;
+    completion: TaskRunExecutionResult;
     worker: BackgroundWorker;
   }> = new Evt();
   public onWorkerClosed: Evt<{ worker: BackgroundWorker; id: string }> = new Evt();
@@ -77,24 +77,17 @@ export class BackgroundWorkerCoordinator {
     this._backgroundWorkers.clear();
   }
 
-  async handleMessage(id: string, rawMessage: unknown) {
-    const message = backgroundWorkerMessageSchema.safeParse(rawMessage);
-
-    if (!message.success) {
-      console.log("Received invalid message", { rawMessage });
-      return;
-    }
-
-    switch (message.data.type) {
-      case "PENDING_TASK_RUNS": {
+  async handleMessage(id: string, message: BackgroundWorkerServerMessages) {
+    switch (message.type) {
+      case "EXECUTE_RUNS": {
         await Promise.all(
-          message.data.taskRuns.map((taskRun) => this.#executeTaskRun(id, taskRun))
+          message.executions.map((execution) => this.#executeTaskRun(id, execution))
         );
       }
     }
   }
 
-  async #executeTaskRun(id: string, taskRun: TaskRun) {
+  async #executeTaskRun(id: string, execution: TaskRunExecution) {
     const worker = this._backgroundWorkers.get(id);
 
     if (!worker) {
@@ -109,25 +102,25 @@ export class BackgroundWorkerCoordinator {
       return;
     }
 
-    const link = terminalLink("view logs", `${this.baseURL}/runs/${taskRun.id}`);
+    const link = terminalLink("view logs", `${this.baseURL}/runs/${execution.run.id}`);
 
     logger.log(
-      `[worker:${record.version}][${taskRun.taskIdentifier}] Executing run ${taskRun.id} ${link}`
+      `[worker:${record.version}][${execution.task.id}] Executing ${execution.run.id} (attempt #${execution.attempt.number}) ${link}`
     );
 
     const now = performance.now();
 
-    const execution = await worker.executeTaskRun(taskRun);
+    const completion = await worker.executeTaskRun(execution);
 
     const elapsed = performance.now() - now;
 
     logger.log(
-      `[worker:${record.version}][${taskRun.taskIdentifier}] Execution complete ${taskRun.id}: ${
-        execution.error ? chalk.red(`error: ${execution.error}`) : chalk.green("success")
+      `[worker:${record.version}][${execution.task.id}] Execution complete ${execution.run.id}: ${
+        !completion.ok ? chalk.red(`error: ${completion.error}`) : chalk.green("success")
       } (${elapsed.toFixed(2)}ms) ${link}`
     );
 
-    this.onTaskCompleted.post({ execution, worker, backgroundWorkerId: id });
+    this.onTaskCompleted.post({ completion, worker, backgroundWorkerId: id });
   }
 }
 
@@ -138,18 +131,55 @@ export class BackgroundWorker {
 
   private _stopping: boolean = false;
   private _processClosing: boolean = false;
+  private _sender: ZodMessageSender<typeof workerToChildMessages>;
+  private _handler: ZodMessageHandler<typeof childToWorkerMessages>;
+
+  private _startResolver: undefined | (() => void);
 
   _taskExecutions: Map<
     string,
-    { resolve: (value: TaskRunCompletion) => void; reject: (err?: any) => void }
+    { resolve: (value: TaskRunExecutionResult) => void; reject: (err?: any) => void }
   > = new Map();
 
   constructor(
     public path: string,
     private env: Record<string, string>
-  ) {}
+  ) {
+    this._sender = new ZodMessageSender({
+      schema: workerToChildMessages,
+      sender: async (message) => {
+        this.child?.send(message);
+      },
+    });
 
-  async executeTaskRun(taskRun: any) {
+    this._handler = new ZodMessageHandler({
+      schema: childToWorkerMessages,
+      messages: {
+        TASKS_READY: async (payload) => {
+          this.tasks = payload;
+          this._startResolver?.();
+        },
+        TASK_RUN_COMPLETED: async (payload) => {
+          const taskExecutor = this._taskExecutions.get(payload.id);
+
+          if (!taskExecutor) {
+            console.error(`Could not find task executor for task ${payload.id}`);
+            return;
+          }
+
+          this._taskExecutions.delete(payload.id);
+
+          taskExecutor.resolve(payload);
+
+          if (this._stopping && this._taskExecutions.size === 0) {
+            this.#kill();
+          }
+        },
+      },
+    });
+  }
+
+  async executeTaskRun(execution: TaskRunExecution) {
     if (!this.child) {
       throw new Error("Worker not started");
     }
@@ -158,14 +188,11 @@ export class BackgroundWorker {
       throw new Error(`Worker is killed with exit code ${this.child.exitCode}`);
     }
 
-    const promise = new Promise<TaskRunCompletion>((resolve, reject) => {
-      this._taskExecutions.set(taskRun.id, { resolve, reject });
+    const promise = new Promise<TaskRunExecutionResult>((resolve, reject) => {
+      this._taskExecutions.set(execution.attempt.id, { resolve, reject });
     });
 
-    this.child?.send({
-      type: "EXECUTE_TASK_RUN",
-      taskRun,
-    });
+    await this._sender.send("EXECUTE_TASK_RUN", execution);
 
     return promise;
   }
@@ -188,6 +215,8 @@ export class BackgroundWorker {
 
   async start() {
     await new Promise<void>((resolve) => {
+      this._startResolver = resolve;
+
       this.child = fork(this.path, {
         stdio: "inherit",
         env: {
@@ -195,40 +224,8 @@ export class BackgroundWorker {
         },
       });
 
-      this.child.on("message", (msg: any) => {
-        const message = ChildMessages.safeParse(msg);
-
-        if (!message.success) {
-          console.log("Received invalid message", { rawMessage: msg });
-          return;
-        }
-
-        switch (message.data.type) {
-          case "TASKS_READY": {
-            this.tasks = message.data.tasks;
-            resolve();
-
-            break;
-          }
-          case "TASK_RUN_COMPLETED": {
-            const taskExecutor = this._taskExecutions.get(message.data.result.id);
-
-            if (!taskExecutor) {
-              console.error(`Could not find task executor for task ${message.data.result.id}`);
-              return;
-            }
-
-            this._taskExecutions.delete(message.data.result.id);
-
-            taskExecutor.resolve(message.data.result);
-
-            if (this._stopping && this._taskExecutions.size === 0) {
-              this.#kill();
-            }
-
-            break;
-          }
-        }
+      this.child.on("message", async (msg: any) => {
+        await this._handler.handleMessage(msg);
       });
 
       this.child.on("exit", (code) => {

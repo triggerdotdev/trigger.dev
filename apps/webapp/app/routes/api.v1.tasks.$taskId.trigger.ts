@@ -1,19 +1,8 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import {
-  API_VERSIONS,
-  RunTaskBodyOutputSchema,
-  RunTaskResponseWithCachedTasksBody,
-  ServerTask,
-  parseTriggerTaskRequestBody,
-} from "@trigger.dev/core";
+import { parseTriggerTaskRequestBody } from "@trigger.dev/core";
 import { z } from "zod";
-import { PrismaClient, prisma } from "~/db.server";
-import { prepareTasksForCaching } from "~/models/task.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { logger } from "~/services/logger.server";
-import { RunTaskService } from "~/services/tasks/runTask.server";
-import { generateRunId } from "~/v3/idGenerator.server";
 import { TriggerTaskService } from "~/v3/services/triggerTask.server";
 
 const ParamsSchema = z.object({
@@ -59,16 +48,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const service = new TriggerTaskService();
 
-  const runId = generateRunId();
-
   try {
-    await service.call(runId, taskId, authenticationResult.environment, body.data, {
+    const run = await service.call(taskId, authenticationResult.environment, body.data, {
       idempotencyKey: idempotencyKey ?? undefined,
       triggerVersion: triggerVersion ?? undefined,
     });
 
     return json({
-      id: runId,
+      id: run.friendlyId,
     });
   } catch (error) {
     if (error instanceof Error) {

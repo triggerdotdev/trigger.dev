@@ -46,7 +46,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   return json(
     {
-      id: backgroundWorker.id,
+      id: backgroundWorker.friendlyId,
       version: backgroundWorker.version,
       contentHash: backgroundWorker.contentHash,
     },

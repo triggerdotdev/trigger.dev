@@ -1,6 +1,5 @@
-import { ApiClientV3 } from "@trigger.dev/core";
+import { ApiClientV3, TaskRunContext } from "@trigger.dev/core";
 import * as packageJson from "../../package.json";
-import { ApiClient } from "../apiClient";
 
 export type PreparedItems = Record<string, any>;
 
@@ -15,14 +14,7 @@ export type PrepareFnParams<TPayload> = Prettify<{
   context: Context;
 }>;
 
-export type Context = {
-  externalId?: string;
-  run: {
-    id: string;
-    attempt: number;
-  };
-  //...other stuff
-};
+export type Context = TaskRunContext;
 
 export type SuccessFnParams<TPayload, TOutput, TPreparedItems extends PreparedItems> = RunFnParams<
   TPayload,

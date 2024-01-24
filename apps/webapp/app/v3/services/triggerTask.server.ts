@@ -2,6 +2,7 @@ import { TriggerTaskRequestBody } from "@trigger.dev/core";
 import { nanoid } from "nanoid";
 import { PrismaClient, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { generateFriendlyId } from "../friendlyIdentifiers";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -16,7 +17,6 @@ export class TriggerTaskService {
   }
 
   public async call(
-    runId: string,
     taskId: string,
     environment: AuthenticatedEnvironment,
     body: TriggerTaskRequestBody,
@@ -39,15 +39,14 @@ export class TriggerTaskService {
 
     const taskRun = await this.#prismaClient.taskRun.create({
       data: {
+        friendlyId: generateFriendlyId("run"),
         runtimeEnvironmentId: environment.id,
         projectId: environment.projectId,
-        externalRef: runId,
         idempotencyKey,
         taskIdentifier: taskId,
         payload: JSON.stringify(body.payload),
         payloadType: "application/json",
         context: body.context,
-        status: "PENDING",
       },
     });
 
