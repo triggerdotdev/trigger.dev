@@ -7,6 +7,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import { ApiExample } from "~/services/externalApis/apis.server";
 import { requireUser } from "~/services/session.server";
+
 export async function loader({ request }: LoaderFunctionArgs) {
   await requireUser(request);
   const url = new URL(request.url);
