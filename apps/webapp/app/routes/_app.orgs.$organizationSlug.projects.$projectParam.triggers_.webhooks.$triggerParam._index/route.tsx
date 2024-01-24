@@ -16,7 +16,7 @@ import { useProject } from "~/hooks/useProject";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { useUser } from "~/hooks/useUser";
 import { WebhookSourcePresenter } from "~/presenters/WebhookSourcePresenter.server";
-import { requireUser } from "~/services/session.server";
+import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import {
@@ -29,7 +29,7 @@ import {
 import { ListPagination } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/ListPagination";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const user = await requireUser(request);
+  const userId = await requireUserId(request);
   const { organizationSlug, projectParam, triggerParam } = TriggerSourceParamSchema.parse(params);
 
   const url = new URL(request.url);
@@ -38,7 +38,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const presenter = new WebhookSourcePresenter();
   const { trigger } = await presenter.call({
-    userId: user.id,
+    userId,
     organizationSlug,
     projectSlug: projectParam,
     webhookId: triggerParam,

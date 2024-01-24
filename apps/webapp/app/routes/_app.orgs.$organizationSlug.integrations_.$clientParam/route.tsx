@@ -18,7 +18,7 @@ import {
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { IntegrationClientPresenter } from "~/presenters/IntegrationClientPresenter.server";
-import { requireUser } from "~/services/session.server";
+import { requireUser, requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
 import {
   IntegrationClientParamSchema,
@@ -29,12 +29,12 @@ import {
 } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const user = await requireUser(request);
+  const userId = await requireUserId(request);
   const { organizationSlug, clientParam } = IntegrationClientParamSchema.parse(params);
 
   const presenter = new IntegrationClientPresenter();
   const client = await presenter.call({
-    userId: user.id,
+    userId,
     organizationSlug,
     clientSlug: clientParam,
   });

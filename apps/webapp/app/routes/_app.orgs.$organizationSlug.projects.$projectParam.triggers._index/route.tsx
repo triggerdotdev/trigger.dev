@@ -19,17 +19,17 @@ import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { TriggersPresenter } from "~/presenters/TriggersPresenter.server";
-import { requireUser } from "~/services/session.server";
+import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema, externalTriggerPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const user = await requireUser(request);
+  const userId = await requireUserId(request);
   const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
 
   const presenter = new TriggersPresenter();
   const data = await presenter.call({
-    userId: user.id,
+    userId,
     organizationSlug,
     projectSlug: projectParam,
   });
