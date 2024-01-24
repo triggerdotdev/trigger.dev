@@ -54,6 +54,9 @@ export class RunListPresenter {
 
     // Find the organization that the user is a member of
     const organization = await this.#prismaClient.organization.findFirstOrThrow({
+      select: {
+        id: true,
+      },
       where: {
         slug: organizationSlug,
         members: { some: { userId } },
@@ -62,16 +65,12 @@ export class RunListPresenter {
 
     // Find the project scoped to the organization
     const project = await this.#prismaClient.project.findFirstOrThrow({
+      select: {
+        id: true,
+      },
       where: {
         slug: projectSlug,
         organizationId: organization.id,
-      },
-    });
-
-    // Find all runtimeEnvironments that the user has access to
-    const environments = await this.#prismaClient.runtimeEnvironment.findMany({
-      where: {
-        projectId: project.id,
       },
     });
 
@@ -132,9 +131,6 @@ export class RunListPresenter {
         jobId: job?.id,
         projectId: project.id,
         organizationId: organization.id,
-        environmentId: {
-          in: environments.map((environment) => environment.id),
-        },
         status: filterStatuses ? { in: filterStatuses } : undefined,
         environment: filterEnvironment ? { type: filterEnvironment } : undefined,
         startedAt: {
