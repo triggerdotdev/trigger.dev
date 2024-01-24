@@ -40,24 +40,22 @@ export class EventListPresenter {
 
     // Find the organization that the user is a member of
     const organization = await this.#prismaClient.organization.findFirstOrThrow({
+      select: {
+        id: true,
+      },
       where: {
         slug: organizationSlug,
         members: { some: { userId } },
       },
     });
 
-    // Find the project scoped to the organization
     const project = await this.#prismaClient.project.findFirstOrThrow({
+      select: {
+        id: true,
+      },
       where: {
         slug: projectSlug,
         organizationId: organization.id,
-      },
-    });
-
-    // Find all runtimeEnvironments that the user has access to
-    const environments = await this.#prismaClient.runtimeEnvironment.findMany({
-      where: {
-        projectId: project.id,
       },
     });
 
@@ -100,9 +98,6 @@ export class EventListPresenter {
         },
         projectId: project.id,
         organizationId: organization.id,
-        environmentId: {
-          in: environments.map((environment) => environment.id),
-        },
         environment: filterEnvironment ? { type: filterEnvironment } : undefined,
         createdAt: {
           gte: from ? new Date(from).toISOString() : undefined,
