@@ -77,7 +77,7 @@ export class JobListPresenter {
               },
             },
           },
-          orderBy: [{ createdAt: "desc" }],
+          orderBy: [{ updatedAt: "desc" }],
           take: 1,
         },
         dynamicTriggers: {
