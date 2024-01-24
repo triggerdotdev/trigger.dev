@@ -283,13 +283,15 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
         createTaskFileImports(taskFiles)
       );
 
+      let firstBuild = true;
+
       logger.log(chalk.dim("⎔ Building background worker..."));
 
       ctx = await context({
         stdin: {
           contents: entryPointContents,
           resolveDir: process.cwd(),
-          sourcefile: "src/trigger-worker.ts",
+          sourcefile: "__entryPoint.ts",
         },
         bundle: true,
         metafile: true,
@@ -313,6 +315,10 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
                 if (!result || !result.outputFiles) {
                   logger.error("Build failed: no result");
                   return;
+                }
+
+                if (!firstBuild) {
+                  logger.log(chalk.dim("⎔ Rebuilding background worker..."));
                 }
 
                 const metaOutputKey = join("out", `stdin.js`);
@@ -349,6 +355,8 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
                 const contentHash = md5Hasher.digest("hex");
 
                 if (latestWorkerContentHash === contentHash) {
+                  logger.log(chalk.dim("⎔ No changes detected, skipping build..."));
+
                   logger.debug(`No changes detected, skipping build`);
                   return;
                 }
@@ -362,8 +370,11 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
                 await fs.promises.writeFile(sourceMapPath, sourceMapFile.text);
 
                 const backgroundWorker = new BackgroundWorker(fullPath, {
-                  TRIGGER_API_URL: config.triggerUrl,
-                  TRIGGER_API_KEY: apiKey,
+                  projectDir: config.projectDir,
+                  env: {
+                    TRIGGER_API_URL: config.triggerUrl,
+                    TRIGGER_API_KEY: apiKey,
+                  },
                 });
 
                 await backgroundWorker.start();
@@ -411,9 +422,19 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
                   throw new Error(backgroundWorkerRecord.error);
                 }
 
-                logger.log(
-                  chalk.green(`Background worker ${backgroundWorkerRecord.data.version} started`)
-                );
+                if (firstBuild) {
+                  logger.log(
+                    chalk.green(
+                      `Background worker started (${backgroundWorkerRecord.data.version})`
+                    )
+                  );
+                } else {
+                  logger.log(
+                    chalk.dim(`Background worker rebuilt (${backgroundWorkerRecord.data.version})`)
+                  );
+                }
+
+                firstBuild = false;
 
                 await backgroundWorkerCoordinator.registerWorker(
                   backgroundWorkerRecord.data,

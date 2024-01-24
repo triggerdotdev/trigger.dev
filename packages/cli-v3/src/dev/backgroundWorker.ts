@@ -10,10 +10,15 @@ import {
   ZodMessageSender,
   childToWorkerMessages,
   workerToChildMessages,
+  TaskRunError,
+  TaskRunBuiltInError,
 } from "@trigger.dev/core";
 import { logger } from "../utilities/logger";
 import chalk from "chalk";
 import terminalLink from "terminal-link";
+import { readFileSync } from "node:fs";
+import { SourceMapConsumer, type RawSourceMap } from "source-map";
+import nodePath from "node:path";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -102,11 +107,15 @@ export class BackgroundWorkerCoordinator {
       return;
     }
 
-    const link = terminalLink("view logs", `${this.baseURL}/runs/${execution.run.id}`);
-
-    logger.log(
-      `[worker:${record.version}][${execution.task.id}] Executing ${execution.run.id} (attempt #${execution.attempt.number}) ${link}`
+    const link = chalk.bgBlueBright(
+      terminalLink("view logs", `${this.baseURL}/runs/${execution.run.id}`)
     );
+    const workerPrefix = chalk.green(`[worker:${record.version}]`);
+    const taskPrefix = chalk.yellow(`[task:${execution.task.id}]`);
+    const runId = chalk.blue(execution.run.id);
+    const attempt = `(attempt #${execution.attempt.number})`;
+
+    logger.log(`${workerPrefix}${taskPrefix} ${runId} ${attempt} ${link}`);
 
     const now = performance.now();
 
@@ -114,16 +123,48 @@ export class BackgroundWorkerCoordinator {
 
     const elapsed = performance.now() - now;
 
+    const resultText = !completion.ok ? chalk.red("error") : chalk.green("success");
+
+    const errorText = !completion.ok
+      ? `\n\n\t${chalk.bgRed("Error")} ${this.#formatErrorLog(completion.error)}`
+      : "";
+
+    const elapsedText = chalk.dim(`(${elapsed.toFixed(2)}ms)`);
+
     logger.log(
-      `[worker:${record.version}][${execution.task.id}] Execution complete ${execution.run.id}: ${
-        !completion.ok ? chalk.red(`error: ${completion.error}`) : chalk.green("success")
-      } (${elapsed.toFixed(2)}ms) ${link}`
+      `${workerPrefix}${taskPrefix} ${runId} ${attempt} ${resultText} ${elapsedText} ${link}${errorText}`
     );
 
     this.onTaskCompleted.post({ completion, worker, backgroundWorkerId: id });
   }
+
+  #formatErrorLog(error: TaskRunError) {
+    switch (error.type) {
+      case "INTERNAL_ERROR": {
+        return `Internal error: ${error.code}`;
+      }
+      case "STRING_ERROR": {
+        return error.raw;
+      }
+      case "CUSTOM_ERROR": {
+        return error.raw;
+      }
+      case "BUILT_IN_ERROR": {
+        return `${error.name === "Error" ? "" : `(${error.name})`} ${
+          error.message
+        }\n${error.stackTrace
+          .split("\n")
+          .map((line) => `\t  ${line}`)
+          .join("\n")}\n`;
+      }
+    }
+  }
 }
 
+export type BackgroundWorkerParams = {
+  env: Record<string, string>;
+  projectDir: string;
+};
 export class BackgroundWorker {
   child: undefined | ReturnType<typeof fork>;
   tasks: undefined | Array<TaskMetadataWithFilePath>;
@@ -133,8 +174,8 @@ export class BackgroundWorker {
   private _processClosing: boolean = false;
   private _sender: ZodMessageSender<typeof workerToChildMessages>;
   private _handler: ZodMessageHandler<typeof childToWorkerMessages>;
-
   private _startResolver: undefined | (() => void);
+  private _rawSourceMap: RawSourceMap;
 
   _taskExecutions: Map<
     string,
@@ -143,7 +184,7 @@ export class BackgroundWorker {
 
   constructor(
     public path: string,
-    private env: Record<string, string>
+    private params: BackgroundWorkerParams
   ) {
     this._sender = new ZodMessageSender({
       schema: workerToChildMessages,
@@ -177,6 +218,8 @@ export class BackgroundWorker {
         },
       },
     });
+
+    this._rawSourceMap = JSON.parse(readFileSync(`${path}.map`, "utf-8"));
   }
 
   async executeTaskRun(execution: TaskRunExecution) {
@@ -194,7 +237,104 @@ export class BackgroundWorker {
 
     await this._sender.send("EXECUTE_TASK_RUN", execution);
 
-    return promise;
+    const result = await promise;
+
+    if (result.ok) {
+      return result;
+    }
+
+    const error = result.error;
+
+    if (error.type === "BUILT_IN_ERROR") {
+      const mappedError = await this.#correctError(error, execution);
+
+      return {
+        ...result,
+        error: mappedError,
+      };
+    }
+
+    return result;
+  }
+
+  async #correctError(
+    error: TaskRunBuiltInError,
+    execution: TaskRunExecution
+  ): Promise<TaskRunBuiltInError> {
+    return {
+      ...error,
+      stackTrace: await this.#correctErrorStackTrace(error.stackTrace, execution),
+    };
+  }
+
+  async #correctErrorStackTrace(stackTrace: string, execution: TaskRunExecution): Promise<string> {
+    // Split the stack trace into lines
+    const lines = stackTrace.split("\n");
+
+    // Remove the first line
+    lines.shift();
+
+    // Use SourceMapConsumer.with to handle the source map for the entire stack trace
+    return SourceMapConsumer.with(this._rawSourceMap, null, (consumer) =>
+      lines
+        .map((line) => this.#correctStackTraceLine(line, consumer, execution))
+        .filter(Boolean)
+        .join("\n")
+    );
+  }
+
+  #correctStackTraceLine(
+    line: string,
+    consumer: SourceMapConsumer,
+    execution: TaskRunExecution
+  ): string | undefined {
+    // Split the line into parts
+    const regex = /at (.*?) \(file:\/\/(\/.*?\.mjs):(\d+):(\d+)\)/;
+
+    const match = regex.exec(line);
+
+    if (!match) {
+      return line;
+    }
+
+    const [_, identifier, path, lineNum, colNum] = match;
+
+    const originalPosition = consumer.originalPositionFor({
+      line: Number(lineNum),
+      column: Number(colNum),
+    });
+
+    if (!originalPosition.source) {
+      return line;
+    }
+
+    const { source, line: originalLine, column: originalColumn } = originalPosition;
+
+    if (this.#shouldFilterLine({ identifier, path: source })) {
+      return;
+    }
+
+    const sourcePath = path
+      ? nodePath.relative(this.params.projectDir, nodePath.resolve(nodePath.dirname(path), source))
+      : source;
+
+    return `at ${
+      identifier === "Object.run" ? `${execution.task.exportName}.run` : identifier
+    } (${sourcePath}:${originalLine}:${originalColumn})`;
+  }
+
+  #shouldFilterLine(line: { identifier?: string; path?: string }): boolean {
+    const filename = nodePath.basename(line.path ?? "");
+
+    if (filename === "__entryPoint.ts") {
+      return true;
+    }
+
+    if (line.identifier === "async ZodMessageHandler.handleMessage") {
+      return true;
+    }
+
+    return false;
   }
 
   get isRunning() {
@@ -220,7 +360,7 @@ export class BackgroundWorker {
       this.child = fork(this.path, {
         stdio: "inherit",
         env: {
-          ...this.env,
+          ...this.params.env,
         },
       });
 

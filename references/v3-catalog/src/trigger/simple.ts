@@ -5,7 +5,7 @@ export const simplestTask = task({
   run: async ({ payload }: { payload: { url: string } }) => {
     const response = await fetch(payload.url, {
       method: "POST",
-      body: JSON.stringify({ hello: "world", taskId: "fetch-post-task", foo: "barrrrrrrrrr" }),
+      body: JSON.stringify({ hello: "world", taskId: "fetch-post-task", foo: "barrrrrrrrrrrr" }),
     });
 
     return response.json();
@@ -44,3 +44,17 @@ export const createJsonHeroDoc = task({
     return json;
   },
 });
+
+export const simulateError = task({
+  id: "simulateError",
+  run: async ({ payload, context }: { payload: { message: string }; context: Context }) => {
+    // Sleep for 1 second
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    thisFunctionWillThrow();
+  },
+});
+
+function thisFunctionWillThrow() {
+  throw new Error("This function will throw");
+}

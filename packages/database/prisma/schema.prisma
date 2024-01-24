@@ -1600,7 +1600,7 @@ model TaskRunAttempt {
   startedAt   DateTime?
   completedAt DateTime?
 
-  error      String?
+  error      Json?
   output     String?
   outputType String  @default("application/json")
 

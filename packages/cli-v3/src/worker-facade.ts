@@ -1,10 +1,12 @@
 import {
   TaskMetadataWithFilePath,
   TaskRunContext,
+  TaskRunErrorCodes,
   TaskRunExecution,
   ZodMessageHandler,
   ZodMessageSender,
   childToWorkerMessages,
+  parseError,
   workerToChildMessages,
 } from "@trigger.dev/core";
 import { TaskMetadataWithRun } from "./types";
@@ -92,7 +94,10 @@ const handler = new ZodMessageHandler({
         await sender.send("TASK_RUN_COMPLETED", {
           ok: false,
           id: payload.attempt.id,
-          error: "Could not find executor",
+          error: {
+            type: "INTERNAL_ERROR",
+            code: TaskRunErrorCodes.COULD_NOT_FIND_EXECUTOR,
+          },
         });
 
         return;
@@ -110,7 +115,7 @@ const handler = new ZodMessageHandler({
         return sender.send("TASK_RUN_COMPLETED", {
           id: payload.attempt.id,
           ok: false,
-          error: e instanceof Error ? e.message : JSON.stringify(e),
+          error: parseError(e),
         });
       }
     },

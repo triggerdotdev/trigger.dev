@@ -1,5 +1,48 @@
 import { z } from "zod";
 
+export const TaskRunBuiltInError = z.object({
+  type: z.literal("BUILT_IN_ERROR"),
+  name: z.string(),
+  message: z.string(),
+  stackTrace: z.string(),
+});
+
+export type TaskRunBuiltInError = z.infer<typeof TaskRunBuiltInError>;
+
+export const TaskRunCustomErrorObject = z.object({
+  type: z.literal("CUSTOM_ERROR"),
+  raw: z.string(),
+});
+
+export type TaskRunCustomErrorObject = z.infer<typeof TaskRunCustomErrorObject>;
+
+export const TaskRunStringError = z.object({
+  type: z.literal("STRING_ERROR"),
+  raw: z.string(),
+});
+
+export type TaskRunStringError = z.infer<typeof TaskRunStringError>;
+
+export const TaskRunErrorCodes = {
+  COULD_NOT_FIND_EXECUTOR: "COULD_NOT_FIND_EXECUTOR",
+} as const;
+
+export const TaskRunInternalError = z.object({
+  type: z.literal("INTERNAL_ERROR"),
+  code: z.enum(["COULD_NOT_FIND_EXECUTOR"]),
+});
+
+export type TaskRunInternalError = z.infer<typeof TaskRunInternalError>;
+
+export const TaskRunError = z.discriminatedUnion("type", [
+  TaskRunBuiltInError,
+  TaskRunCustomErrorObject,
+  TaskRunStringError,
+  TaskRunInternalError,
+]);
+
+export type TaskRunError = z.infer<typeof TaskRunError>;
+
 export const TaskRun = z.object({
   id: z.string(),
   payload: z.string(),
@@ -80,7 +123,7 @@ export type TaskRunContext = z.infer<typeof TaskRunContext>;
 export const TaskRunFailedExecutionResult = z.object({
   ok: z.literal(false),
   id: z.string(),
-  error: z.string(),
+  error: TaskRunError,
 });
 
 export type TaskRunFailedExecutionResult = z.infer<typeof TaskRunFailedExecutionResult>;

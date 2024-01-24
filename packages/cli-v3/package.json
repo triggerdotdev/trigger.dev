@@ -96,6 +96,7 @@
     "react": "^18.2.0",
     "react-error-boundary": "^4.0.12",
     "simple-git": "^3.19.0",
+    "source-map": "^0.7.4",
     "supports-color": "^9.4.0",
     "terminal-link": "^3.0.0",
     "update-check": "^1.5.4",
