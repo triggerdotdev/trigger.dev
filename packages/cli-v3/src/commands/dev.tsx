@@ -407,8 +407,7 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
                   metadata: {
                     packageVersion,
                     // This is a hack to get around the funky node16 typescript module resolution issue
-                    cliPackageVersion: (packageJson as unknown as typeof packageJson.default)
-                      .version,
+                    cliPackageVersion: packageJson.version,
                     tasks: taskResources,
                     contentHash: contentHash,
                   },

@@ -1,12 +1,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import appPaths from "xdg-app-paths";
+import xdgAppPaths from "xdg-app-paths";
 import { z } from "zod";
 import { readJSONFileSync } from "./fileSystem.js";
 import { logger } from "./logger.js";
-
-// This is a hack to get around the funky node16 typescript module resolution issue
-const xdgAppPaths = appPaths as unknown as typeof appPaths.default;
 
 function getGlobalConfigFolderPath() {
   const configDir = xdgAppPaths(".trigger").config();
