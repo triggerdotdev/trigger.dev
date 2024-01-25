@@ -29,3 +29,25 @@ export function parseError(error: unknown): TaskRunError {
     };
   }
 }
+
+export function createErrorTaskError(error: TaskRunError): any {
+  switch (error.type) {
+    case "BUILT_IN_ERROR": {
+      const e = new Error(error.message);
+
+      e.name = error.name;
+      e.stack = error.stackTrace;
+
+      return e;
+    }
+    case "STRING_ERROR": {
+      return error.raw;
+    }
+    case "CUSTOM_ERROR": {
+      return JSON.parse(error.raw);
+    }
+    case "INTERNAL_ERROR": {
+      return new Error(`trigger.dev internal error (${error.code})`);
+    }
+  }
+}

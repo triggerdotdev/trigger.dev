@@ -1,4 +1,4 @@
-import { createJsonHeroDoc, simplestTask, simulateError } from "./trigger/simple";
+import { createJsonHeroDoc, parentTask, simplestTask, simulateError } from "./trigger/simple";
 
 export async function main() {
   // await createJsonHeroDoc.trigger({
@@ -14,10 +14,14 @@ export async function main() {
 
   // return await simplestTask.trigger({ payload: { url: "https://enig6u3k3jhj.x.pipedream.net/" } });
 
-  await simulateError.trigger({
-    payload: {
-      message: "This is an error from the trigger-dev CLI",
-    },
+  // await simulateError.trigger({
+  //   payload: {
+  //     message: "This is an error from the trigger-dev CLI",
+  //   },
+  // });
+
+  await parentTask.trigger({
+    payload: { message: "This is a message from the trigger-dev CLI" },
   });
 }
 

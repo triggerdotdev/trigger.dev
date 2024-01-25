@@ -1,17 +1,23 @@
-import { ApiClient, TaskRunContext } from "@trigger.dev/core/v3";
+import {
+  ApiClient,
+  TaskRunContext,
+  createErrorTaskError,
+  runtime,
+  taskContextManager,
+} from "@trigger.dev/core/v3";
 import * as packageJson from "../../package.json";
 
 export type PreparedItems = Record<string, any>;
 
 export type RunFnParams<TPayload, TPreparedItems extends PreparedItems> = Prettify<{
   payload: TPayload;
-  context: Context;
+  ctx: Context;
   prepared: TPreparedItems;
 }>;
 
 export type PrepareFnParams<TPayload> = Prettify<{
   payload: TPayload;
-  context: Context;
+  ctx: Context;
 }>;
 
 export type Context = TaskRunContext;
@@ -144,14 +150,32 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
       };
     },
     triggerAndWait: async ({ payload, options }) => {
-      //pseudo-code for throwing an error if not called from inside a Run
-      if (!process.env.IS_TRIGGER_ENV) {
-        throw new Error("triggerAndWait can only be used from inside a run()");
+      const ctx = taskContextManager.ctx;
+
+      if (!ctx) {
+        throw new Error("triggerAndWait can only be used from inside a task.run()");
       }
 
-      //do an API call that triggers a run and waits for it to finish
-      //return the result
-      throw new Error("not implemented");
+      const apiClient = initializeApiClient();
+
+      const response = await apiClient.triggerTask(params.id, {
+        payload: payload,
+      });
+
+      if (!response.ok) {
+        throw new Error(response.error);
+      }
+
+      const result = await runtime.waitForTask({
+        id: response.data.id,
+        ctx,
+      });
+
+      if (!result.ok) {
+        throw createErrorTaskError(result.error);
+      }
+
+      return JSON.parse(result.output);
     },
     batchTriggerAndWait: async ({ items }) => {
       //pseudo-code for throwing an error if not called from inside a Run

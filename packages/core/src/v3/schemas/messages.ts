@@ -47,6 +47,7 @@ export const clientWebsocketMessages = {
 
 export const workerToChildMessages = {
   EXECUTE_TASK_RUN: TaskRunExecution,
+  TASK_RUN_COMPLETED: z.object({ completion: TaskRunExecutionResult, execution: TaskRunExecution }),
 };
 
 export const TaskMetadata = z.object({

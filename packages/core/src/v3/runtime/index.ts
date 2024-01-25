@@ -1,5 +1,6 @@
 const API_NAME = "runtime";
 
+import { TaskRunContext, TaskRunExecutionResult } from "../schemas";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals";
 import { type RuntimeManager } from "./manager";
 import { NoopRuntimeManager } from "./noopRuntimeManager";
@@ -21,6 +22,10 @@ export class RuntimeAPI {
 
   public waitUntil(date: Date): Promise<void> {
     return this.#getRuntimeManager().waitUntil(date);
+  }
+
+  public waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
+    return this.#getRuntimeManager().waitForTask(params);
   }
 
   public setGlobalRuntimeManager(runtimeManager: RuntimeManager): boolean {

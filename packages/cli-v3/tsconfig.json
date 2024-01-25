@@ -53,11 +53,7 @@
     "useDefineForClassFields": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "types": ["vitest/globals"],
-    "paths": {
-      "@trigger.dev/core/*": ["../core/src/*"],
-      "@trigger.dev/core": ["../core/src/index"]
-    }
+    "types": ["vitest/globals"]
   },
   "exclude": ["node_modules"]
 }

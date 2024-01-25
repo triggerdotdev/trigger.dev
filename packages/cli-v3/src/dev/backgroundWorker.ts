@@ -26,6 +26,7 @@ export class BackgroundWorkerCoordinator {
     backgroundWorkerId: string;
     completion: TaskRunExecutionResult;
     worker: BackgroundWorker;
+    execution: TaskRunExecution;
   }> = new Evt();
   public onWorkerClosed: Evt<{ worker: BackgroundWorker; id: string }> = new Evt();
   public onWorkerRegistered: Evt<{
@@ -37,7 +38,20 @@ export class BackgroundWorkerCoordinator {
   private _backgroundWorkers: Map<string, BackgroundWorker> = new Map();
   private _records: Map<string, CreateBackgroundWorkerResponse> = new Map();
 
-  constructor(private baseURL: string) {}
+  constructor(private baseURL: string) {
+    this.onTaskCompleted.attach(async ({ completion, execution }) => {
+      await this.#notifyWorkersOfTaskCompletion(completion, execution);
+    });
+  }
+
+  async #notifyWorkersOfTaskCompletion(
+    completion: TaskRunExecutionResult,
+    execution: TaskRunExecution
+  ) {
+    for (const worker of this._backgroundWorkers.values()) {
+      await worker.handleTaskRunCompletion(completion, execution);
+    }
+  }
 
   get currentWorkers() {
     return Array.from(this._backgroundWorkers.entries())
@@ -135,7 +149,7 @@ export class BackgroundWorkerCoordinator {
       `${workerPrefix}${taskPrefix} ${runId} ${attempt} ${resultText} ${elapsedText} ${link}${errorText}`
     );
 
-    this.onTaskCompleted.post({ completion, worker, backgroundWorkerId: id });
+    this.onTaskCompleted.post({ completion, execution, worker, backgroundWorkerId: id });
   }
 
   #formatErrorLog(error: TaskRunError) {
@@ -220,6 +234,18 @@ export class BackgroundWorker {
     });
 
     this._rawSourceMap = JSON.parse(readFileSync(`${path}.map`, "utf-8"));
+  }
+
+  async handleTaskRunCompletion(completion: TaskRunExecutionResult, execution: TaskRunExecution) {
+    if (!this.child) {
+      throw new Error("Worker not started");
+    }
+
+    if (this.child.exitCode !== null) {
+      throw new Error(`Worker is killed with exit code ${this.child.exitCode}`);
+    }
+
+    await this._sender.send("TASK_RUN_COMPLETED", { completion, execution });
   }
 
   async executeTaskRun(execution: TaskRunExecution) {
@@ -358,7 +384,7 @@ export class BackgroundWorker {
       this._startResolver = resolve;
 
       this.child = fork(this.path, {
-        stdio: "inherit",
+        stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
         env: {
           ...this.params.env,
         },
@@ -374,6 +400,10 @@ export class BackgroundWorker {
         }
 
         this.onClosed.post();
+      });
+
+      this.child.stdout?.on("data", (data) => {
+        logger.log(data.toString());
       });
     });
   }

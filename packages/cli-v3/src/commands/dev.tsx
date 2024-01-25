@@ -371,7 +371,7 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
                 const backgroundWorker = new BackgroundWorker(fullPath, {
                   projectDir: config.projectDir,
                   env: {
-                    TRIGGER_API_URL: config.triggerUrl,
+                    TRIGGER_API_URL: apiUrl,
                     TRIGGER_API_KEY: apiKey,
                   },
                 });

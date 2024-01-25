@@ -7,9 +7,16 @@ import {
   ZodMessageSender,
   childToWorkerMessages,
   parseError,
+  runtime,
   workerToChildMessages,
+  DevRuntimeManager,
+  taskContextManager,
 } from "@trigger.dev/core/v3";
 import { TaskMetadataWithRun } from "./types.js";
+
+const devRuntimeManager = new DevRuntimeManager();
+
+runtime.setGlobalRuntimeManager(devRuntimeManager);
 
 type TaskFileImport = Record<string, unknown>;
 
@@ -24,11 +31,20 @@ class TaskExecutor {
 
   async execute(execution: TaskRunExecution) {
     const parsedPayload = JSON.parse(execution.run.payload);
+    const ctx = TaskRunContext.parse(execution);
 
-    const output = await this.task.run({
-      payload: parsedPayload,
-      context: TaskRunContext.parse(execution),
-    });
+    const output = await taskContextManager.runWith(
+      {
+        ctx,
+        payload: parsedPayload,
+      },
+      async () => {
+        return await this.task.run({
+          payload: parsedPayload,
+          ctx: TaskRunContext.parse(execution),
+        });
+      }
+    );
 
     return { output: JSON.stringify(output), outputType: "application/json" };
   }
@@ -118,6 +134,9 @@ const handler = new ZodMessageHandler({
           error: parseError(e),
         });
       }
+    },
+    TASK_RUN_COMPLETED: async ({ completion, execution }) => {
+      devRuntimeManager.resumeTask(completion, execution);
     },
   },
 });

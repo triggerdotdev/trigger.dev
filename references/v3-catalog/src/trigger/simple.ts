@@ -5,7 +5,7 @@ export const simplestTask = task({
   run: async ({ payload }: { payload: { url: string } }) => {
     const response = await fetch(payload.url, {
       method: "POST",
-      body: JSON.stringify({ hello: "world", taskId: "fetch-post-task", foo: "barrrrrrrrrrrr" }),
+      body: JSON.stringify({ hello: "world", taskId: "fetch-post-task", foo: "barrrrrrrrrrrrr" }),
     });
 
     return response.json();
@@ -14,13 +14,7 @@ export const simplestTask = task({
 
 export const createJsonHeroDoc = task({
   id: "create-jsonhero-doc",
-  run: async ({
-    payload,
-    context,
-  }: {
-    payload: { title: string; content: any };
-    context: Context;
-  }) => {
+  run: async ({ payload, ctx }: { payload: { title: string; content: any }; ctx: Context }) => {
     // Sleep for 5 seconds
     await wait.for({ seconds: 5 });
 
@@ -33,7 +27,7 @@ export const createJsonHeroDoc = task({
         title: `${payload.title} v2`,
         content: {
           payload: payload.content,
-          __triggerContext: context,
+          __triggerContext: ctx,
         },
         readOnly: true,
       }),
@@ -47,7 +41,7 @@ export const createJsonHeroDoc = task({
 
 export const simulateError = task({
   id: "simulateError",
-  run: async ({ payload, context }: { payload: { message: string }; context: Context }) => {
+  run: async ({ payload, ctx }: { payload: { message: string }; ctx: Context }) => {
     // Sleep for 1 second
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -61,9 +55,8 @@ function thisFunctionWillThrow() {
 
 export const parentTask = task({
   id: "parent-task",
-  run: async ({ payload, context }: { payload: { message: string }; context: Context }) => {
-    // Sleep for 1 second
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+  run: async ({ payload, ctx }: { payload: { message: string }; ctx: Context }) => {
+    await wait.for({ seconds: 5 });
 
     const childTaskResponse = await childTask.triggerAndWait({
       payload: {
@@ -80,12 +73,12 @@ export const parentTask = task({
 
 export const childTask = task({
   id: "child-task",
-  run: async ({ payload, context }: { payload: { message: string }; context: Context }) => {
-    // Sleep for 1 second
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+  run: async ({ payload, ctx }: { payload: { message: string }; ctx: Context }) => {
+    await wait.for({ seconds: 10 });
 
     return {
-      message: payload.message,
+      message: "This is the child task",
+      parentMessage: payload.message,
     };
   },
 });

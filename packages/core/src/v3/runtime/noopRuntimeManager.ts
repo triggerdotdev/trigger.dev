@@ -1,3 +1,4 @@
+import { TaskRunContext, TaskRunExecutionResult } from "../schemas";
 import { RuntimeManager } from "./manager";
 
 export class NoopRuntimeManager implements RuntimeManager {
@@ -7,5 +8,9 @@ export class NoopRuntimeManager implements RuntimeManager {
 
   waitUntil(date: Date): Promise<void> {
     return Promise.resolve();
+  }
+
+  waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
+    throw new Error("Method not implemented.");
   }
 }
