@@ -1,4 +1,4 @@
-import { TriggerTaskRequestBody } from "@trigger.dev/core";
+import { TriggerTaskRequestBody } from "@trigger.dev/core/v3";
 import { nanoid } from "nanoid";
 import { PrismaClient, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";

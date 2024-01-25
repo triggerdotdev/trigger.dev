@@ -1,4 +1,4 @@
-import { ApiClientV3, TaskRunContext } from "@trigger.dev/core";
+import { ApiClient, TaskRunContext } from "@trigger.dev/core/v3";
 import * as packageJson from "../../package.json";
 
 export type PreparedItems = Record<string, any>;
@@ -180,5 +180,5 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
 
 // TODO: make this cross-runtime compatible
 function initializeApiClient() {
-  return new ApiClientV3(process.env.TRIGGER_API_URL!, process.env.TRIGGER_API_KEY!);
+  return new ApiClient(process.env.TRIGGER_API_URL!, process.env.TRIGGER_API_KEY!);
 }

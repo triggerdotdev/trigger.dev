@@ -1,4 +1,4 @@
-import { task, type Context } from "@trigger.dev/sdk/v3";
+import { task, wait, type Context } from "@trigger.dev/sdk/v3";
 
 export const simplestTask = task({
   id: "fetch-post-task",
@@ -22,7 +22,7 @@ export const createJsonHeroDoc = task({
     context: Context;
   }) => {
     // Sleep for 5 seconds
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    await wait.for({ seconds: 5 });
 
     const response = await fetch("https://jsonhero.io/api/create.json", {
       method: "POST",
@@ -58,3 +58,34 @@ export const simulateError = task({
 function thisFunctionWillThrow() {
   throw new Error("This function will throw");
 }
+
+export const parentTask = task({
+  id: "parent-task",
+  run: async ({ payload, context }: { payload: { message: string }; context: Context }) => {
+    // Sleep for 1 second
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    const childTaskResponse = await childTask.triggerAndWait({
+      payload: {
+        message: payload.message,
+      },
+    });
+
+    return {
+      message: payload.message,
+      childTaskResponse,
+    };
+  },
+});
+
+export const childTask = task({
+  id: "child-task",
+  run: async ({ payload, context }: { payload: { message: string }; context: Context }) => {
+    // Sleep for 1 second
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    return {
+      message: payload.message,
+    };
+  },
+});

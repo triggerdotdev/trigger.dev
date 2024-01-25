@@ -1,13 +1,13 @@
 import { Command } from "commander";
-import { configureDevCommand, devCommand } from "../commands/dev";
-import { updateCommand } from "../commands/update";
-import { whoamiCommand } from "../commands/whoami.js";
-import { COMMAND_NAME } from "../consts";
-import { getVersion } from "../utilities/getVersion";
-import { printInitialBanner } from "../utilities/initialBanner";
-import { login, loginCommand } from "../commands/login";
 import { z } from "zod";
-import { logoutCommand } from "../commands/logout";
+import { configureDevCommand } from "../commands/dev.js";
+import { loginCommand } from "../commands/login.js";
+import { logoutCommand } from "../commands/logout.js";
+import { updateCommand } from "../commands/update.js";
+import { configureWhoamiCommand } from "../commands/whoami.js";
+import { COMMAND_NAME } from "../consts.js";
+import { getVersion } from "../utilities/getVersion.js";
+import { printInitialBanner } from "../utilities/initialBanner.js";
 
 export const program = new Command();
 
@@ -69,15 +69,4 @@ program
     await updateCommand(path, options);
   });
 
-program
-  .command("whoami")
-  .description("display the current logged in user and project details")
-  .version(getVersion(), "-v, --version", "Display the version number")
-  .action(async (options) => {
-    try {
-      await printInitialBanner();
-      await whoamiCommand();
-    } catch (e) {
-      throw e;
-    }
-  });
+configureWhoamiCommand(program);

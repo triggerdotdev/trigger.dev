@@ -12,8 +12,8 @@ import {
   workerToChildMessages,
   TaskRunError,
   TaskRunBuiltInError,
-} from "@trigger.dev/core";
-import { logger } from "../utilities/logger";
+} from "@trigger.dev/core/v3";
+import { logger } from "../utilities/logger.js";
 import chalk from "chalk";
 import terminalLink from "terminal-link";
 import { readFileSync } from "node:fs";

@@ -1,12 +1,12 @@
 import { intro, log, outro, select, spinner } from "@clack/prompts";
 import open from "open";
 import pRetry, { AbortError } from "p-retry";
-import { ApiClient } from "../apiClient";
-import { ApiUrlOptionsSchema } from "../cli";
-import { chalkLink } from "../utilities/colors";
-import { readAuthConfigFile, writeAuthConfigFile } from "../utilities/configFiles";
-import { logger } from "../utilities/logger";
-import { whoAmI } from "./whoami";
+import { ApiClient } from "../apiClient.js";
+import { ApiUrlOptionsSchema } from "../cli/index.js";
+import { chalkLink } from "../utilities/colors.js";
+import { readAuthConfigFile, writeAuthConfigFile } from "../utilities/configFiles.js";
+import { logger } from "../utilities/logger.js";
+import { whoAmI } from "./whoami.js";
 
 export async function loginCommand(options: any) {
   const result = ApiUrlOptionsSchema.safeParse(options);

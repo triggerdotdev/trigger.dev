@@ -6,7 +6,7 @@ import {
   CreateBackgroundWorkerRequestBody,
   WhoAmIResponseSchema,
   CreateBackgroundWorkerResponse,
-} from "@trigger.dev/core";
+} from "@trigger.dev/core/v3";
 
 export class ApiClient {
   constructor(

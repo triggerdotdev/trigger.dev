@@ -5,7 +5,7 @@ import {
   ZodMessageSender,
   clientWebsocketMessages,
   serverWebsocketMessages,
-} from "@trigger.dev/core";
+} from "@trigger.dev/core/v3";
 import chalk from "chalk";
 import { watch } from "chokidar";
 import { Command } from "commander";
@@ -24,13 +24,14 @@ import React, { Suspense, useEffect } from "react";
 import { ClientOptions, WebSocket as wsWebSocket } from "ws";
 import { z } from "zod";
 import * as packageJson from "../../package.json";
-import { ApiClient } from "../apiClient";
-import { CLOUD_API_URL } from "../consts";
-import { BackgroundWorker, BackgroundWorkerCoordinator } from "../dev/backgroundWorker";
-import { printStandloneInitialBanner } from "../utilities/initialBanner";
-import { logger } from "../utilities/logger";
-import { RequireKeys } from "../utilities/requiredKeys";
-import { isLoggedIn } from "../utilities/session";
+import { ApiClient } from "../apiClient.js";
+import { CLOUD_API_URL } from "../consts.js";
+import { BackgroundWorker, BackgroundWorkerCoordinator } from "../dev/backgroundWorker.js";
+import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
+import { logger } from "../utilities/logger.js";
+import { RequireKeys } from "../utilities/requiredKeys.js";
+import { isLoggedIn } from "../utilities/session.js";
+import { CommonCommandOptions } from "../cli/common.js";
 
 const CONFIG_FILES = ["trigger.config.js", "trigger.config.mjs"];
 
@@ -52,9 +53,7 @@ type TaskFile = {
 
 let apiClient: ApiClient | undefined;
 
-const DevCommandOptions = z.object({
-  logLevel: z.enum(["debug", "info", "log", "warn", "error", "none"]).default("log"),
-});
+const DevCommandOptions = CommonCommandOptions;
 
 type DevCommandOptions = z.infer<typeof DevCommandOptions>;
 
@@ -407,7 +406,9 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
                   localOnly: true,
                   metadata: {
                     packageVersion,
-                    cliPackageVersion: packageJson.version,
+                    // This is a hack to get around the funky node16 typescript module resolution issue
+                    cliPackageVersion: (packageJson as unknown as typeof packageJson.default)
+                      .version,
                     tasks: taskResources,
                     contentHash: contentHash,
                   },

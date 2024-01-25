@@ -1,5 +1,5 @@
-import { readAuthConfigFile, writeAuthConfigFile } from "../utilities/configFiles";
-import { logger } from "../utilities/logger";
+import { readAuthConfigFile, writeAuthConfigFile } from "../utilities/configFiles.js";
+import { logger } from "../utilities/logger.js";
 
 export async function logoutCommand(options: any) {
   const config = readAuthConfigFile();

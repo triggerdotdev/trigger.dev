@@ -5,7 +5,7 @@ import chalk from "chalk";
 import CLITable from "cli-table3";
 import { formatMessagesSync } from "esbuild";
 import type { Message } from "esbuild";
-import { getEnvironmentVariableFactory } from "./getEnvironmentVariableFactory";
+import { getEnvironmentVariableFactory } from "./getEnvironmentVariableFactory.js";
 export const LOGGER_LEVELS = {
   none: -1,
   error: 0,

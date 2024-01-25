@@ -1,5 +1,5 @@
-import { ApiClient } from "../apiClient";
-import { readAuthConfigFile } from "./configFiles";
+import { ApiClient } from "../apiClient.js";
+import { readAuthConfigFile } from "./configFiles.js";
 
 export async function isLoggedIn() {
   const config = readAuthConfigFile();

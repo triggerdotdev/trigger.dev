@@ -1,8 +1,12 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import xdgAppPaths from "xdg-app-paths";
+import appPaths from "xdg-app-paths";
 import { z } from "zod";
-import { pathExists, readJSONFileSync } from "./fileSystem";
+import { readJSONFileSync } from "./fileSystem.js";
+import { logger } from "./logger.js";
+
+// This is a hack to get around the funky node16 typescript module resolution issue
+const xdgAppPaths = appPaths as unknown as typeof appPaths.default;
 
 function getGlobalConfigFolderPath() {
   const configDir = xdgAppPaths(".trigger").config();
@@ -40,6 +44,7 @@ export function readAuthConfigFile(): UserAuthConfig | undefined {
     const parsed = UserAuthConfigSchema.parse(json);
     return parsed;
   } catch (error) {
+    logger.debug(`Error reading auth config file: ${error}`);
     return undefined;
   }
 }

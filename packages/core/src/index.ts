@@ -6,7 +6,6 @@ export * from "./replacements";
 export * from "./searchParams";
 export * from "./eventFilterMatches";
 export * from "./requestFilterMatches";
-export * from "./v3";
 
 export const API_VERSIONS = {
   LAZY_LOADED_CACHED_TASKS: "2023-09-29",
@@ -34,7 +33,3 @@ export function supportsFeature<TFeatureName extends keyof typeof PLATFORM_FEATU
 
   return version >= supportedVersion;
 }
-
-import { ApiClient } from "./v3";
-
-export { ApiClient as ApiClientV3 };

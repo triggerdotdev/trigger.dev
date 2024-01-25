@@ -4,7 +4,10 @@ export * from "./schemas";
 export * from "./apiClient";
 export * from "./zodMessageHandler";
 export * from "./errors";
+export * from "./runtime-api";
 
 export function parseTriggerTaskRequestBody(body: unknown) {
   return TriggerTaskRequestBody.safeParse(body);
 }
+
+export { taskContextManager } from "./tasks/taskContextManager";

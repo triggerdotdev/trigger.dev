@@ -1,4 +1,4 @@
-import { checkApiKeyIsDevServer } from "./getApiKeyType";
+import { checkApiKeyIsDevServer } from "./getApiKeyType.js";
 
 describe("Test API keys", () => {
   test("dev server succeeds", async () => {

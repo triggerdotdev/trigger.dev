@@ -8,8 +8,8 @@ import {
   childToWorkerMessages,
   parseError,
   workerToChildMessages,
-} from "@trigger.dev/core";
-import { TaskMetadataWithRun } from "./types";
+} from "@trigger.dev/core/v3";
+import { TaskMetadataWithRun } from "./types.js";
 
 type TaskFileImport = Record<string, unknown>;
 

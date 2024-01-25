@@ -1,4 +1,4 @@
-import { logger } from "./logger";
+import { logger } from "./logger.js";
 
 type VariableNames = "TRIGGER_API_URL" | "TRIGGER_API_KEY" | "TRIGGER_LOG_LEVEL";
 

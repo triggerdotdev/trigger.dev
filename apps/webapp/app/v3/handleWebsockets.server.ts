@@ -6,7 +6,7 @@ import {
   ZodMessageSender,
   clientWebsocketMessages,
   serverWebsocketMessages,
-} from "@trigger.dev/core";
+} from "@trigger.dev/core/v3";
 import { BackgroundWorker, BackgroundWorkerTask } from "@trigger.dev/database";
 import { Evt } from "evt";
 import { randomUUID } from "node:crypto";

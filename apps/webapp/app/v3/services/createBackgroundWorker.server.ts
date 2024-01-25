@@ -1,4 +1,4 @@
-import { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core";
+import { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
 import type { BackgroundWorker } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";

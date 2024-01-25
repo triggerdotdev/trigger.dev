@@ -1,11 +1,10 @@
-import { spinner, confirm } from "@clack/prompts";
+import { confirm, spinner } from "@clack/prompts";
+import { RunOptions, run } from "npm-check-updates";
 import path from "path";
-import { run, RunOptions } from "npm-check-updates";
-import { installDependencies } from "../utilities/installDependencies";
-import { readJSONFileSync, writeJSONFile } from "../utilities/fileSystem.js";
-import { logger } from "../utilities/logger.js";
 import { z } from "zod";
-import { chalkError, chalkSuccess } from "../utilities/colors";
+import { chalkError, chalkSuccess } from "../utilities/colors.js";
+import { readJSONFileSync, writeJSONFile } from "../utilities/fileSystem.js";
+import { installDependencies } from "../utilities/installDependencies.js";
 
 export const UpdateCommandOptionsSchema = z.object({
   to: z.string().optional(),

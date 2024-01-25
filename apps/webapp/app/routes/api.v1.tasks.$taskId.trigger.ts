@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { parseTriggerTaskRequestBody } from "@trigger.dev/core";
+import { parseTriggerTaskRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { TriggerTaskService } from "~/v3/services/triggerTask.server";

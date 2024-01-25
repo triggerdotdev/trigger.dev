@@ -1,12 +1,12 @@
+import { spinner } from "@clack/prompts";
 import chalk from "chalk";
+import supportsColor from "supports-color";
 import type { Result } from "update-check";
 import checkForUpdate from "update-check";
 import pkg from "../../package.json";
-import { chalkGrey, green, logo } from "./colors";
-import { getVersion } from "./getVersion";
-import { logger } from "./logger";
-import { spinner, intro } from "@clack/prompts";
-import supportsColor from "supports-color";
+import { chalkGrey, green, logo } from "./colors.js";
+import { getVersion } from "./getVersion.js";
+import { logger } from "./logger.js";
 
 export async function printInitialBanner(performUpdateCheck = true) {
   const packageVersion = getVersion();
@@ -61,7 +61,7 @@ async function doUpdateCheck(): Promise<string | undefined> {
   let update: Result | null = null;
   try {
     // default cache for update check is 1 day
-    update = await checkForUpdate(pkg, {
+    update = await checkForUpdate.default(pkg, {
       distTag: pkg.version.startsWith("0.0.0") ? "beta" : "latest",
     });
   } catch (err) {

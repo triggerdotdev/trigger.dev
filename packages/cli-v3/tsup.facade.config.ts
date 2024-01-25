@@ -3,7 +3,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   clean: false,
   dts: true,
-  tsconfig: "tsconfig.build.json",
+  tsconfig: "tsconfig.json",
   splitting: false,
   entry: ["src/worker-facade.ts"],
   format: ["esm"],
