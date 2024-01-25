@@ -127,9 +127,9 @@ export class BackgroundWorkerCoordinator {
     const workerPrefix = chalk.green(`[worker:${record.version}]`);
     const taskPrefix = chalk.yellow(`[task:${execution.task.id}]`);
     const runId = chalk.blue(execution.run.id);
-    const attempt = `(attempt #${execution.attempt.number})`;
+    const attempt = chalk.blue(`.${execution.attempt.number}`);
 
-    logger.log(`${workerPrefix}${taskPrefix} ${runId} ${attempt} ${link}`);
+    logger.log(`${workerPrefix}${taskPrefix} ${runId}${attempt} ${link}`);
 
     const now = performance.now();
 
@@ -146,7 +146,7 @@ export class BackgroundWorkerCoordinator {
     const elapsedText = chalk.dim(`(${elapsed.toFixed(2)}ms)`);
 
     logger.log(
-      `${workerPrefix}${taskPrefix} ${runId} ${attempt} ${resultText} ${elapsedText} ${link}${errorText}`
+      `${workerPrefix}${taskPrefix} ${runId}${attempt} ${resultText} ${elapsedText} ${link}${errorText}`
     );
 
     this.onTaskCompleted.post({ completion, execution, worker, backgroundWorkerId: id });
