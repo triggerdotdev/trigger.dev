@@ -1,7 +1,12 @@
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
+import {
+  PageButtons,
+  PageHeader,
+  PageTitle,
+  PageTitleRow,
+} from "~/components/primitives/PageHeader";
 import { requireUserId } from "~/services/session.server";
 import { EventParamSchema, projectEventsPath, projectPath } from "~/utils/pathBuilder";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
@@ -18,7 +23,11 @@ import { RunsTable } from "~/components/runs/RunsTable";
 import { RunsFilters } from "~/components/runs/RunFilters";
 import { ListPagination } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/ListPagination";
 import { useUser } from "~/hooks/useUser";
-import { useNavigation } from "@remix-run/react";
+import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
+import { Button } from "~/components/primitives/Buttons";
+import { cancelEventSchema } from "~/routes/resources.environments.$environmentId.events.$eventId.cancel";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -96,6 +105,16 @@ export default function Page() {
               text: "Events",
             }}
           />
+
+          <PageButtons>
+            {!event.deliveredAt && (
+              <CancelEvent
+                environmentId={event.environmentId}
+                eventId={event.eventId}
+                isCancelled={!!event.cancelledAt}
+              />
+            )}
+          </PageButtons>
         </PageTitleRow>
       </PageHeader>
 
@@ -127,5 +146,50 @@ export default function Page() {
         </div>
       </PageBody>
     </PageContainer>
+  );
+}
+
+export function CancelEvent({
+  environmentId,
+  eventId,
+  isCancelled,
+}: {
+  environmentId: string;
+  eventId: string;
+  isCancelled: boolean;
+}) {
+  const lastSubmission = useActionData();
+  const location = useLocation();
+  const navigation = useNavigation();
+
+  const [form, { redirectUrl }] = useForm({
+    id: "cancel-event",
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
+    onValidate({ formData }) {
+      return parse(formData, { schema: cancelEventSchema });
+    },
+  });
+
+  const isLoading = navigation.state === "submitting" && navigation.formData !== undefined;
+
+  return (
+    <Form
+      method="post"
+      action={`/resources/environments/${environmentId}/events/${eventId}/cancel`}
+      {...form.props}
+    >
+      <input {...conform.input(redirectUrl, { type: "hidden" })} defaultValue={location.pathname} />
+
+      <Button
+        type="submit"
+        LeadingIcon={isLoading ? "spinner-white" : "stop"}
+        leadingIconClassName="text-white"
+        variant="danger/small"
+        disabled={isLoading || isCancelled}
+      >
+        {isCancelled ? "Cancelled" : isLoading ? "Canceling" : "Cancel event"}
+      </Button>
+    </Form>
   );
 }

@@ -44,6 +44,9 @@ export class EventPresenter {
         context: true,
         timestamp: true,
         deliveredAt: true,
+        environmentId: true,
+        cancelledAt: true,
+        eventId: true,
       },
       where: {
         id: eventId,
@@ -63,6 +66,9 @@ export class EventPresenter {
       payload: JSON.stringify(event.payload, null, 2),
       context: JSON.stringify(event.context, null, 2),
       deliveredAt: event.deliveredAt,
+      environmentId: event.environmentId,
+      cancelledAt: event.cancelledAt,
+      eventId: event.eventId,
     };
   }
 }
