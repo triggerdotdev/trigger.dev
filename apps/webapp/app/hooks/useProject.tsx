@@ -1,17 +1,16 @@
 import { UIMatch } from "@remix-run/react";
 import { UseDataFunctionReturn } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import type { loader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam/route";
+import type { loader as orgLoader } from "~/routes/_app.orgs.$organizationSlug/route";
 import { useChanged } from "./useChanged";
 import { useTypedMatchesData } from "./useTypedMatchData";
+import { organizationMatchId } from "./useOrganizations";
 
-export type MatchedProject = UseDataFunctionReturn<typeof loader>["project"];
-
-export const projectMatchId = "routes/_app.orgs.$organizationSlug.projects.$projectParam";
+export type MatchedProject = UseDataFunctionReturn<typeof orgLoader>["project"];
 
 export function useOptionalProject(matches?: UIMatch[]) {
-  const routeMatch = useTypedMatchesData<typeof loader>({
-    id: projectMatchId,
+  const routeMatch = useTypedMatchesData<typeof orgLoader>({
+    id: organizationMatchId,
     matches,
   });
 

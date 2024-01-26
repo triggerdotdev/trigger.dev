@@ -1,7 +1,6 @@
-import { HomeIcon } from "@heroicons/react/24/outline";
 import { Outlet } from "@remix-run/react";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { redirect, typedjson } from "remix-typedjson";
 import { getUser, requireUserId } from "~/services/session.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -19,8 +18,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 export default function Page() {
-  const data = useTypedLoaderData<typeof loader>();
-
   return (
     <div className="h-full w-full">
       <Outlet />

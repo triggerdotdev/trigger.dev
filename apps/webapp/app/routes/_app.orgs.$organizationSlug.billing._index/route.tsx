@@ -172,6 +172,9 @@ export default function Page() {
                             currentPlan?.subscription?.plan.runs?.pricing?.brackets.at(0)?.upto
                           }
                           projectedRuns={data.projectedRunsCount}
+                          subscribedToPaidTier={
+                            (currentPlan && currentPlan.subscription?.isPaying) ?? false
+                          }
                         />
                       </div>
                       <div className="relative w-full">

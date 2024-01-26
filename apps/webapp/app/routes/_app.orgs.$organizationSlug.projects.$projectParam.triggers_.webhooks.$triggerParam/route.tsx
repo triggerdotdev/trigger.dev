@@ -15,7 +15,7 @@ import { RunListSearchSchema } from "~/components/runs/RunStatuses";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { WebhookSourcePresenter } from "~/presenters/WebhookSourcePresenter.server";
-import { requireUser } from "~/services/session.server";
+import { requireUserId } from "~/services/session.server";
 import {
   TriggerSourceParamSchema,
   projectWebhookTriggersPath,
@@ -24,7 +24,7 @@ import {
 } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const user = await requireUser(request);
+  const userId = await requireUserId(request);
   const { organizationSlug, projectParam, triggerParam } = TriggerSourceParamSchema.parse(params);
 
   const url = new URL(request.url);
@@ -33,7 +33,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const presenter = new WebhookSourcePresenter();
   const { trigger } = await presenter.call({
-    userId: user.id,
+    userId,
     organizationSlug,
     projectSlug: projectParam,
     webhookId: triggerParam,

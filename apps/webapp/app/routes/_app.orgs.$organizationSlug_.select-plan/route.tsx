@@ -41,10 +41,11 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   }
 
   const orgsPresenter = new OrganizationsPresenter();
-  const { organizations, organization, project } = await orgsPresenter.call({
+  const { project } = await orgsPresenter.call({
     userId,
     request,
     organizationSlug,
+    projectSlug: undefined,
   });
 
   return typedjson({ plans: result.plans, organizationSlug, projectSlug: project.slug });
@@ -52,7 +53,6 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
 export default function ChoosePlanPage() {
   const { plans, organizationSlug, projectSlug } = useTypedLoaderData<typeof loader>();
-  const project = useOptionalProject();
 
   return (
     <div className="mx-auto flex h-full w-full max-w-[80rem] flex-col items-center justify-center gap-12 overflow-y-auto px-12">
@@ -63,7 +63,6 @@ export default function ChoosePlanPage() {
         showActionText={false}
         freeButtonPath={projectPath({ slug: organizationSlug }, { slug: projectSlug })}
       />
-
       <Sheet>
         <SheetTrigger asChild>
           <Button variant="tertiary/small" LeadingIcon={ChartBarIcon} leadingIconClassName="px-0">

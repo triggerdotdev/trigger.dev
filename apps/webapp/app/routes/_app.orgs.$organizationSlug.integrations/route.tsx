@@ -38,31 +38,23 @@ import {
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { MatchedOrganization, useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
 import { useTextFilter } from "~/hooks/useTextFilter";
-import { Project } from "~/models/project.server";
 import {
   Client,
   IntegrationOrApi,
   IntegrationsPresenter,
 } from "~/presenters/IntegrationsPresenter.server";
-import { requireUser } from "~/services/session.server";
+import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
-import {
-  OrganizationParamsSchema,
-  ProjectParamSchema,
-  docsCreateIntegration,
-  docsPath,
-  integrationClientPath,
-} from "~/utils/pathBuilder";
+import { OrganizationParamsSchema, docsPath, integrationClientPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const user = await requireUser(request);
+  const userId = await requireUserId(request);
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
 
   const presenter = new IntegrationsPresenter();
   const data = await presenter.call({
-    userId: user.id,
+    userId,
     organizationSlug,
   });
 

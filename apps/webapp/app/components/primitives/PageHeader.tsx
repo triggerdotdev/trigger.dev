@@ -129,10 +129,10 @@ function PageInfoPropertyContent({
       {label && (
         <Paragraph variant="extra-small/caps" className="mt-0.5 whitespace-nowrap">
           {label}
-          {value && ":"}
+          {value !== undefined && ":"}
         </Paragraph>
       )}
-      {value && <Paragraph variant="small">{value}</Paragraph>}
+      {value !== undefined && <Paragraph variant="small">{value}</Paragraph>}
     </div>
   );
 }
