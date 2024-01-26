@@ -1497,8 +1497,9 @@ model BackgroundWorker {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tasks    BackgroundWorkerTask[]
-  attempts TaskRunAttempt[]
+  tasks      BackgroundWorkerTask[]
+  attempts   TaskRunAttempt[]
+  lockedRuns TaskRun[]
 
   @@unique([projectId, runtimeEnvironmentId, version])
 }
@@ -1551,12 +1552,18 @@ model TaskRun {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  attempts TaskRunAttempt[]
+  attempts TaskRunAttempt[] @relation("attempts")
   tags     TaskTag[]
 
   lockedAt   DateTime?
   lockedBy   BackgroundWorkerTask? @relation(fields: [lockedById], references: [id])
   lockedById String?
+
+  lockedToVersion   BackgroundWorker? @relation(fields: [lockedToVersionId], references: [id])
+  lockedToVersionId String?
+
+  parentAttempt   TaskRunAttempt? @relation("parentAttempt", fields: [parentAttemptId], references: [id])
+  parentAttemptId String?
 
   @@unique([runtimeEnvironmentId, idempotencyKey])
 }
@@ -1583,7 +1590,7 @@ model TaskRunAttempt {
 
   friendlyId String @unique
 
-  taskRun   TaskRun @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskRun   TaskRun @relation("attempts", fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   taskRunId String
 
   backgroundWorker   BackgroundWorker @relation(fields: [backgroundWorkerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -1603,6 +1610,8 @@ model TaskRunAttempt {
   error      Json?
   output     String?
   outputType String  @default("application/json")
+
+  triggeredRuns TaskRun[] @relation("parentAttempt")
 
   @@unique([taskRunId, number])
 }

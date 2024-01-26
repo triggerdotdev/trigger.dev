@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TaskRunExecutionResult, TaskRunExecution } from "./common";
+import { BackgroundWorkerRecord } from "./api";
 
 export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
   z.object({
@@ -12,9 +13,11 @@ export type BackgroundWorkerServerMessages = z.infer<typeof BackgroundWorkerServ
 
 export const serverWebsocketMessages = {
   SERVER_READY: z.object({
+    version: z.literal("v1").default("v1"),
     id: z.string(),
   }),
   BACKGROUND_WORKER_MESSAGE: z.object({
+    version: z.literal("v1").default("v1"),
     backgroundWorkerId: z.string(),
     data: BackgroundWorkerServerMessages,
   }),
@@ -22,6 +25,7 @@ export const serverWebsocketMessages = {
 
 export const BackgroundWorkerClientMessages = z.discriminatedUnion("type", [
   z.object({
+    version: z.literal("v1").default("v1"),
     type: z.literal("TASK_RUN_COMPLETED"),
     completion: TaskRunExecutionResult,
   }),
@@ -31,23 +35,31 @@ export type BackgroundWorkerClientMessages = z.infer<typeof BackgroundWorkerClie
 
 export const clientWebsocketMessages = {
   READY_FOR_TASKS: z.object({
+    version: z.literal("v1").default("v1"),
     backgroundWorkerId: z.string(),
   }),
-  WORKER_SHUTDOWN: z.object({
-    backgroundWorkerId: z.string(),
-  }),
-  WORKER_STOPPED: z.object({
+  WORKER_DEPRECATED: z.object({
+    version: z.literal("v1").default("v1"),
     backgroundWorkerId: z.string(),
   }),
   BACKGROUND_WORKER_MESSAGE: z.object({
+    version: z.literal("v1").default("v1"),
     backgroundWorkerId: z.string(),
     data: BackgroundWorkerClientMessages,
   }),
 };
 
 export const workerToChildMessages = {
-  EXECUTE_TASK_RUN: TaskRunExecution,
-  TASK_RUN_COMPLETED: z.object({ completion: TaskRunExecutionResult, execution: TaskRunExecution }),
+  EXECUTE_TASK_RUN: z.object({
+    version: z.literal("v1").default("v1"),
+    execution: TaskRunExecution,
+    metadata: BackgroundWorkerRecord,
+  }),
+  TASK_RUN_COMPLETED: z.object({
+    version: z.literal("v1").default("v1"),
+    completion: TaskRunExecutionResult,
+    execution: TaskRunExecution,
+  }),
 };
 
 export const TaskMetadata = z.object({
@@ -65,6 +77,12 @@ export const TaskMetadataWithFilePath = TaskMetadata.extend({
 export type TaskMetadataWithFilePath = z.infer<typeof TaskMetadataWithFilePath>;
 
 export const childToWorkerMessages = {
-  TASK_RUN_COMPLETED: TaskRunExecutionResult,
-  TASKS_READY: TaskMetadataWithFilePath.array(),
+  TASK_RUN_COMPLETED: z.object({
+    version: z.literal("v1").default("v1"),
+    result: TaskRunExecutionResult,
+  }),
+  TASKS_READY: z.object({
+    version: z.literal("v1").default("v1"),
+    tasks: TaskMetadataWithFilePath.array(),
+  }),
 };

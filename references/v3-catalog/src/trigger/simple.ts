@@ -5,7 +5,11 @@ export const simplestTask = task({
   run: async ({ payload }: { payload: { url: string } }) => {
     const response = await fetch(payload.url, {
       method: "POST",
-      body: JSON.stringify({ hello: "world", taskId: "fetch-post-task", foo: "barrrrrrrrrrrrr" }),
+      body: JSON.stringify({
+        hello: "world",
+        taskId: "fetch-post-task",
+        foo: "barrrrrrrrrrrrrrrrrr",
+      }),
     });
 
     return response.json();
@@ -61,6 +65,12 @@ export const parentTask = task({
     const childTaskResponse = await childTask.triggerAndWait({
       payload: {
         message: payload.message,
+      },
+    });
+
+    await childTask.trigger({
+      payload: {
+        message: `${payload.message} - 2.a`,
       },
     });
 

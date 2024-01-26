@@ -129,10 +129,16 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
 ): Task<TInput, TOutput> {
   const task: Task<TInput, TOutput> = {
     trigger: async ({ payload }) => {
+      const ctx = taskContextManager.ctx;
+
       const apiClient = initializeApiClient();
 
       const response = await apiClient.triggerTask(params.id, {
         payload: payload,
+        options: {
+          parentAttempt: ctx?.attempt.id,
+          lockToCurrentVersion: false, // Don't lock to current version because we're not waiting for it to finish
+        },
       });
 
       if (!response.ok) {
@@ -160,6 +166,10 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
 
       const response = await apiClient.triggerTask(params.id, {
         payload: payload,
+        options: {
+          parentAttempt: ctx.attempt.id,
+          lockToCurrentVersion: true, // Lock to current version because we're waiting for it to finish
+        },
       });
 
       if (!response.ok) {

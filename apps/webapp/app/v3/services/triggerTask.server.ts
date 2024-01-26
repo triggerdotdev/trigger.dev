@@ -37,6 +37,14 @@ export class TriggerTaskService {
       return existingRun;
     }
 
+    const parentAttempt = body.options?.parentAttempt
+      ? await this.#prismaClient.taskRunAttempt.findUnique({
+          where: {
+            friendlyId: body.options.parentAttempt,
+          },
+        })
+      : undefined;
+
     const taskRun = await this.#prismaClient.taskRun.create({
       data: {
         friendlyId: generateFriendlyId("run"),
@@ -47,6 +55,10 @@ export class TriggerTaskService {
         payload: JSON.stringify(body.payload),
         payloadType: "application/json",
         context: body.context,
+        parentAttemptId: parentAttempt?.id,
+        lockedToVersionId: body.options?.lockToCurrentVersion
+          ? parentAttempt?.backgroundWorkerId
+          : undefined,
       },
     });
 

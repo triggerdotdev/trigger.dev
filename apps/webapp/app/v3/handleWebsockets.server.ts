@@ -12,7 +12,7 @@ import { Evt } from "evt";
 import { randomUUID } from "node:crypto";
 import { IncomingMessage } from "node:http";
 import { WebSocketServer } from "ws";
-import { prisma } from "~/db.server";
+import { PrismaClientOrTransaction, prisma } from "~/db.server";
 import { AuthenticatedEnvironment, authenticateApiKey } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "../utils/singleton";
@@ -114,15 +114,7 @@ class WebsocketHandlers {
 
           await handler.start();
         },
-        WORKER_SHUTDOWN: async (payload) => {
-          const handler = this.backgroundWorkerHandlers.get(payload.backgroundWorkerId);
-
-          if (handler) {
-            await handler.stop();
-            this.backgroundWorkerHandlers.delete(handler.id);
-          }
-        },
-        WORKER_STOPPED: async (payload) => {
+        WORKER_DEPRECATED: async (payload) => {
           const handler = this.backgroundWorkerHandlers.get(payload.backgroundWorkerId);
 
           if (!handler) {
@@ -132,7 +124,7 @@ class WebsocketHandlers {
             return;
           }
 
-          await handler.stop();
+          await handler.deprecate();
         },
         BACKGROUND_WORKER_MESSAGE: async (payload) => {
           const handler = this.backgroundWorkerHandlers.get(payload.backgroundWorkerId);
@@ -171,6 +163,7 @@ class BackgroundWorkerHandler {
   private _backgroundWorker: BackgroundWorker | undefined;
   private _backgroundWorkerTasks: Array<BackgroundWorkerTask> | undefined;
   private _abortController: AbortController = new AbortController();
+  private _deprecated: boolean = false;
 
   constructor(
     public id: string,
@@ -213,6 +206,12 @@ class BackgroundWorkerHandler {
 
   async stop() {
     this._abortController.abort();
+  }
+
+  // This will cause the background worker to stop accepting new tasks
+  // it will still look for tasks locked to it
+  async deprecate() {
+    this._deprecated = true;
   }
 
   async #handleTaskRunCompleted(completion: TaskRunExecutionResult) {
@@ -294,16 +293,15 @@ class BackgroundWorkerHandler {
     return { executions: allExecutions, returnReservedTasksToPending };
   }
 
-  async #reserveTaskRunsForTask(task: BackgroundWorkerTask): Promise<{
-    executions: Array<TaskRunExecution>;
-    returnReservedTasksToPending: () => Promise<void>;
-  }> {
-    return await prisma.$transaction(async (tx) => {
-      const taskRuns = await tx.taskRun.findMany({
+  async #findTaskRunsForTask(task: BackgroundWorkerTask, tx: PrismaClientOrTransaction) {
+    if (this._deprecated) {
+      // Only find task runs that are locked to this worker
+      return tx.taskRun.findMany({
         where: {
           taskIdentifier: task.slug,
           lockedAt: { equals: null },
           runtimeEnvironmentId: task.runtimeEnvironmentId,
+          lockedToVersionId: this._backgroundWorker!.id,
         },
         include: {
           attempts: {
@@ -312,7 +310,38 @@ class BackgroundWorkerHandler {
           },
           tags: true,
         },
+        orderBy: { createdAt: "asc" },
+        take: 10,
       });
+    }
+
+    return tx.taskRun.findMany({
+      where: {
+        OR: [{ lockedToVersionId: null }, { lockedToVersionId: this._backgroundWorker!.id }],
+        AND: {
+          taskIdentifier: task.slug,
+          lockedAt: { equals: null },
+          runtimeEnvironmentId: task.runtimeEnvironmentId,
+        },
+      },
+      include: {
+        attempts: {
+          take: 1,
+          orderBy: { number: "desc" },
+        },
+        tags: true,
+      },
+      orderBy: { createdAt: "asc" },
+      take: 10,
+    });
+  }
+
+  async #reserveTaskRunsForTask(task: BackgroundWorkerTask): Promise<{
+    executions: Array<TaskRunExecution>;
+    returnReservedTasksToPending: () => Promise<void>;
+  }> {
+    return await prisma.$transaction(async (tx) => {
+      const taskRuns = await this.#findTaskRunsForTask(task, tx);
 
       await tx.taskRun.updateMany({
         where: {

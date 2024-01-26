@@ -101,18 +101,22 @@ for (const task of tasks) {
 const handler = new ZodMessageHandler({
   schema: workerToChildMessages,
   messages: {
-    EXECUTE_TASK_RUN: async (payload) => {
-      const executor = taskExecutors.get(payload.task.id);
+    EXECUTE_TASK_RUN: async ({ execution, metadata }) => {
+      process.title = `trigger-dev-worker: ${execution.task.id} ${execution.attempt.id}`;
+
+      const executor = taskExecutors.get(execution.task.id);
 
       if (!executor) {
-        console.error(`Could not find executor for task ${payload.task.id}`);
+        console.error(`Could not find executor for task ${execution.task.id}`);
 
         await sender.send("TASK_RUN_COMPLETED", {
-          ok: false,
-          id: payload.attempt.id,
-          error: {
-            type: "INTERNAL_ERROR",
-            code: TaskRunErrorCodes.COULD_NOT_FIND_EXECUTOR,
+          result: {
+            ok: false,
+            id: execution.attempt.id,
+            error: {
+              type: "INTERNAL_ERROR",
+              code: TaskRunErrorCodes.COULD_NOT_FIND_EXECUTOR,
+            },
           },
         });
 
@@ -120,18 +124,22 @@ const handler = new ZodMessageHandler({
       }
 
       try {
-        const result = await executor.execute(payload);
+        const result = await executor.execute(execution);
 
         return sender.send("TASK_RUN_COMPLETED", {
-          id: payload.attempt.id,
-          ok: true,
-          ...result,
+          result: {
+            id: execution.attempt.id,
+            ok: true,
+            ...result,
+          },
         });
       } catch (e) {
         return sender.send("TASK_RUN_COMPLETED", {
-          id: payload.attempt.id,
-          ok: false,
-          error: parseError(e),
+          result: {
+            id: execution.attempt.id,
+            ok: false,
+            error: parseError(e),
+          },
         });
       }
     },
@@ -145,7 +153,7 @@ process.on("message", async (msg: any) => {
   await handler.handleMessage(msg);
 });
 
-sender.send("TASKS_READY", getTaskMetadata()).catch((err) => {
+sender.send("TASKS_READY", { tasks: getTaskMetadata() }).catch((err) => {
   console.error("Failed to send TASKS_READY message", err);
 });
 

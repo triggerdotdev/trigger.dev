@@ -222,20 +222,14 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
       }
     );
 
-    backgroundWorkerCoordinator.onWorkerClosed.attach(async ({ id }) => {
-      await sender.send("WORKER_SHUTDOWN", {
-        backgroundWorkerId: id,
-      });
-    });
-
     backgroundWorkerCoordinator.onWorkerRegistered.attach(async ({ id, worker, record }) => {
       await sender.send("READY_FOR_TASKS", {
         backgroundWorkerId: id,
       });
     });
 
-    backgroundWorkerCoordinator.onWorkerStopped.attach(async ({ id }) => {
-      await sender.send("WORKER_STOPPED", {
+    backgroundWorkerCoordinator.onWorkerDeprecated.attach(async ({ id }) => {
+      await sender.send("WORKER_DEPRECATED", {
         backgroundWorkerId: id,
       });
     });
@@ -376,7 +370,7 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
                   },
                 });
 
-                await backgroundWorker.start();
+                await backgroundWorker.initialize();
 
                 latestWorkerContentHash = contentHash;
 
@@ -421,6 +415,8 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
                 if (!backgroundWorkerRecord.success) {
                   throw new Error(backgroundWorkerRecord.error);
                 }
+
+                backgroundWorker.metadata = backgroundWorkerRecord.data;
 
                 if (firstBuild) {
                   logger.log(
