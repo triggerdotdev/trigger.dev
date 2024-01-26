@@ -117,7 +117,7 @@ export function UpdateOAuthForm({
             id="hasCustomClient"
             label="Use my OAuth App"
             variant="simple/small"
-            disabled={requiresCustomOAuthApp}
+            readOnly={requiresCustomOAuthApp}
             onChange={(checked) => setUseMyOAuthApp(checked)}
             {...conform.input(hasCustomClient, { type: "checkbox" })}
             defaultChecked={requiresCustomOAuthApp}

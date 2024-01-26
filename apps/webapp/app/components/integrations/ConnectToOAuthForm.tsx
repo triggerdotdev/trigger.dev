@@ -127,7 +127,7 @@ export function ConnectToOAuthForm({
             id="hasCustomClient"
             label="Use my OAuth App"
             variant="simple/small"
-            disabled={requiresCustomOAuthApp}
+            readOnly={requiresCustomOAuthApp}
             onChange={(checked) => setUseMyOAuthApp(checked)}
             {...conform.input(hasCustomClient, { type: "checkbox" })}
             defaultChecked={requiresCustomOAuthApp}
@@ -135,8 +135,9 @@ export function ConnectToOAuthForm({
           {useMyOAuthApp && (
             <div className="ml-6 mt-2">
               <Paragraph variant="small" className="mb-2">
-                Set the callback url to <CodeBlock code={callbackUrl} showLineNumbers={false} />
+                Set the callback url to
               </Paragraph>
+              <CodeBlock code={callbackUrl} showLineNumbers={false} />
               <div className="flex flex-col gap-2">
                 <div className="flex gap-2">
                   <InputGroup fullWidth>

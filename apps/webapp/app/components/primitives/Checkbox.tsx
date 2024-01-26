@@ -109,14 +109,16 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
     return (
       <div
         className={cn(
-          "group flex cursor-pointer items-start gap-x-2 transition",
+          "group flex items-start gap-x-2 transition ",
+          props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
           buttonClassName,
           isChecked && isCheckedClassName,
-          isDisabled && isDisabledClassName,
+          (isDisabled || props.readOnly) && isDisabledClassName,
           className
         )}
         onClick={(e) => {
-          if (isDisabled) return;
+          //returning false is not setting the state to false, it stops the event from bubbling up
+          if (isDisabled || props.readOnly === true) return false;
           setIsChecked((c) => !c);
         }}
       >
@@ -127,12 +129,15 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           value={value}
           checked={isChecked}
           onChange={(e) => {
+            //returning false is not setting the state to false, it stops the event from bubbling up
+            if (isDisabled || props.readOnly === true) return false;
             setIsChecked(!isChecked);
           }}
           disabled={isDisabled}
           className={cn(
             inputPositionClasses,
-            "cursor-pointer rounded-sm border border-slate-700 bg-transparent transition checked:!bg-indigo-500 group-hover:bg-slate-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none focus-visible:ring-indigo-500 disabled:border-slate-650 disabled:!bg-slate-700"
+            props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
+            "rounded-sm border border-slate-700 bg-transparent transition checked:!bg-indigo-500 read-only:border-slate-650 read-only:!bg-slate-700 group-hover:bg-slate-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none focus-visible:ring-indigo-500  disabled:border-slate-650 disabled:!bg-slate-700"
           )}
           id={id}
           ref={ref}
@@ -141,7 +146,10 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           <div className="flex items-center gap-x-2">
             <label
               htmlFor={id}
-              className={cn("cursor-pointer", labelClassName)}
+              className={cn(
+                props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
+                labelClassName
+              )}
               onClick={(e) => e.preventDefault()}
             >
               {label}
