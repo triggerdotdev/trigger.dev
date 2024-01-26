@@ -105,16 +105,6 @@ export default function Page() {
                   </div>
                 </div>
 
-                <div>
-                  <Header2 spacing>Daily runs</Header2>
-                  <div className="flex w-full flex-col gap-5 rounded border border-border p-6">
-                    <DailyRunsChart
-                      data={data.dailyRunsData}
-                      hasDailyRunsData={data.hasDailyRunsData}
-                    />
-                  </div>
-                </div>
-
                 <div className="@container">
                   <Header2 spacing>Runs</Header2>
                   <div className="flex flex-col gap-5 rounded border border-border p-6">
@@ -217,6 +207,13 @@ export default function Page() {
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
+                    </div>
+                    <div>
+                      <Header3 className="mb-4">Daily runs</Header3>
+                      <DailyRunsChart
+                        data={data.dailyRunsData}
+                        hasDailyRunsData={data.hasDailyRunsData}
+                      />
                     </div>
                   </div>
                 </div>
