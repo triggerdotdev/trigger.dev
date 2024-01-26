@@ -40,25 +40,29 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404 });
   }
 
-  return typedjson({ plans: result.plans, organizationSlug });
+  const orgsPresenter = new OrganizationsPresenter();
+  const { project } = await orgsPresenter.call({
+    userId,
+    request,
+    organizationSlug,
+    projectSlug: undefined,
+  });
+
+  return typedjson({ plans: result.plans, organizationSlug, projectSlug: project.slug });
 }
 
 export default function ChoosePlanPage() {
-  const { plans, organizationSlug } = useTypedLoaderData<typeof loader>();
-  const project = useOptionalProject();
+  const { plans, organizationSlug, projectSlug } = useTypedLoaderData<typeof loader>();
 
   return (
     <div className="mx-auto flex h-full w-full max-w-[80rem] flex-col items-center justify-center gap-12 overflow-y-auto px-12">
       <Header1>Subscribe for full access</Header1>
-      {project && (
-        <PricingTiers
-          organizationSlug={organizationSlug}
-          plans={plans}
-          showActionText={false}
-          freeButtonPath={projectPath({ slug: organizationSlug }, { slug: project?.slug })}
-        />
-      )}
-
+      <PricingTiers
+        organizationSlug={organizationSlug}
+        plans={plans}
+        showActionText={false}
+        freeButtonPath={projectPath({ slug: organizationSlug }, { slug: projectSlug })}
+      />
       <Sheet>
         <SheetTrigger asChild>
           <Button variant="tertiary/small" LeadingIcon={ChartBarIcon} leadingIconClassName="px-0">
