@@ -8,6 +8,7 @@ import { ConcurrentRunsChart } from "~/components/billing/ConcurrentRunsChart";
 import { UsageBar } from "~/components/billing/UsageBar";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import { DailyRunsChart } from "~/components/billing/DailyRunsChat";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -100,6 +101,16 @@ export default function Page() {
                       data={data.concurrencyData}
                       concurrentRunsLimit={currentPlan?.subscription?.limits.concurrentRuns}
                       hasConcurrencyData={data.hasConcurrencyData}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Header2 spacing>Daily runs</Header2>
+                  <div className="flex w-full flex-col gap-5 rounded border border-border p-6">
+                    <DailyRunsChart
+                      data={data.dailyRunsData}
+                      hasDailyRunsData={data.hasDailyRunsData}
                     />
                   </div>
                 </div>
