@@ -11,8 +11,8 @@ export class ProjectPresenter {
 
   public async call({
     userId,
-    slug,
-  }: Pick<Project, "slug"> & {
+    id,
+  }: Pick<Project, "id"> & {
     userId: User["id"];
   }) {
     const project = await this.#prismaClient.project.findFirst({
@@ -23,67 +23,6 @@ export class ProjectPresenter {
         organizationId: true,
         createdAt: true,
         updatedAt: true,
-        jobs: {
-          select: {
-            id: true,
-            slug: true,
-            title: true,
-            aliases: {
-              select: {
-                version: {
-                  select: {
-                    version: true,
-                    eventSpecification: true,
-                    properties: true,
-                    runs: {
-                      select: {
-                        createdAt: true,
-                        status: true,
-                      },
-                      take: 1,
-                      orderBy: [{ createdAt: "desc" }],
-                    },
-                    integrations: {
-                      select: {
-                        key: true,
-                        integration: {
-                          select: {
-                            slug: true,
-                            definition: true,
-                            setupStatus: true,
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-                environment: {
-                  select: {
-                    type: true,
-                    orgMember: {
-                      select: {
-                        userId: true,
-                      },
-                    },
-                  },
-                },
-              },
-              where: {
-                name: "latest",
-              },
-            },
-            dynamicTriggers: {
-              select: {
-                type: true,
-              },
-            },
-          },
-          where: {
-            internal: false,
-            deletedAt: null,
-          },
-          orderBy: [{ title: "asc" }],
-        },
         _count: {
           select: {
             sources: {
@@ -100,19 +39,6 @@ export class ProjectPresenter {
             httpEndpoints: true,
           },
         },
-        organization: {
-          select: {
-            _count: {
-              select: {
-                integrations: {
-                  where: {
-                    setupStatus: "MISSING_FIELDS",
-                  },
-                },
-              },
-            },
-          },
-        },
         environments: {
           select: {
             id: true,
@@ -127,7 +53,7 @@ export class ProjectPresenter {
           },
         },
       },
-      where: { slug, organization: { members: { some: { userId } } } },
+      where: { id, organization: { members: { some: { userId } } } },
     });
 
     if (!project) {

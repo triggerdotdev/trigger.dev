@@ -79,7 +79,7 @@ export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
     return false;
   }
 
-  return true;
+  return options.defaultShouldRevalidate;
 };
 
 export function ErrorBoundary() {

@@ -1,20 +1,45 @@
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
+import { useFetcher } from "@remix-run/react";
+import { useEffect } from "react";
+import { loader } from "~/routes/resources.jobs.$jobId";
 import { cn } from "~/utils/cn";
-import { JobStatusTable } from "../JobsStatusTable";
+import { JobEnvironment, JobStatusTable } from "../JobsStatusTable";
 import { Button } from "../primitives/Buttons";
 import { Header1, Header2 } from "../primitives/Headers";
 import { NamedIcon } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
-import { TextLink } from "../primitives/TextLink";
-import { useFetcher } from "@remix-run/react";
 import { Spinner } from "../primitives/Spinner";
+import { TextLink } from "../primitives/TextLink";
+import { useTypedFetcher } from "remix-typedjson";
 
-type JobEnvironment = {
-  type: RuntimeEnvironmentType;
-  lastRun?: Date;
-  version: string;
-  enabled: boolean;
-};
+export function DeleteJobDialog({ id, title, slug }: { id: string; title: string; slug: string }) {
+  const fetcher = useTypedFetcher<typeof loader>();
+  useEffect(() => {
+    fetcher.load(`/resources/jobs/${id}`);
+  }, [id]);
+
+  const isLoading = fetcher.state === "loading" || fetcher.state === "submitting";
+
+  if (isLoading || !fetcher.data) {
+    return (
+      <div className="flex w-full flex-col items-center gap-y-6">
+        <div className="mt-5 flex flex-col items-center justify-center gap-y-2">
+          <Header1>{title}</Header1>
+          <Paragraph variant="small">ID: {slug}</Paragraph>
+        </div>
+        <Spinner />
+      </div>
+    );
+  } else {
+    return (
+      <DeleteJobDialogContent
+        id={id}
+        title={title}
+        slug={slug}
+        environments={fetcher.data.environments}
+      />
+    );
+  }
+}
 
 type DeleteJobDialogContentProps = {
   id: string;
