@@ -1,7 +1,14 @@
 import { $transaction, Prisma, PrismaClient, prisma } from "~/db.server";
 import { ResumeRunService } from "./resumeRun.server";
 
-const RESUMABLE_STATUSES = ["FAILURE", "TIMED_OUT", "UNRESOLVED_AUTH", "ABORTED", "CANCELED"];
+const RESUMABLE_STATUSES = [
+  "FAILURE",
+  "TIMED_OUT",
+  "UNRESOLVED_AUTH",
+  "ABORTED",
+  "CANCELED",
+  "INVALID_PAYLOAD",
+];
 
 export class ContinueRunService {
   #prismaClient: PrismaClient;
