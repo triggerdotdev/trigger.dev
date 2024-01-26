@@ -109,7 +109,8 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
     return (
       <div
         className={cn(
-          "group flex cursor-pointer items-start gap-x-2 transition read-only:cursor-default disabled:cursor-default",
+          "group flex items-start gap-x-2 transition ",
+          props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
           buttonClassName,
           isChecked && isCheckedClassName,
           (isDisabled || props.readOnly) && isDisabledClassName,
@@ -135,7 +136,8 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           disabled={isDisabled}
           className={cn(
             inputPositionClasses,
-            "cursor-pointer rounded-sm border border-slate-700 bg-transparent transition checked:!bg-indigo-500 read-only:cursor-default read-only:border-slate-650 read-only:!bg-slate-700 group-hover:bg-slate-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none focus-visible:ring-indigo-500 disabled:cursor-default disabled:border-slate-650 disabled:!bg-slate-700"
+            props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
+            "rounded-sm border border-slate-700 bg-transparent transition checked:!bg-indigo-500 read-only:border-slate-650 read-only:!bg-slate-700 group-hover:bg-slate-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none focus-visible:ring-indigo-500  disabled:border-slate-650 disabled:!bg-slate-700"
           )}
           id={id}
           ref={ref}
@@ -145,7 +147,7 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
             <label
               htmlFor={id}
               className={cn(
-                "cursor-pointer read-only:cursor-default disabled:cursor-default",
+                props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
                 labelClassName
               )}
               onClick={(e) => e.preventDefault()}
