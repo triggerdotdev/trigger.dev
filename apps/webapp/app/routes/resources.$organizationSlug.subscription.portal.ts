@@ -1,13 +1,13 @@
 import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "remix-typedjson";
 import { prisma } from "~/db.server";
-import { redirectBackWithErrorMessage, redirectWithErrorMessage } from "~/models/message.server";
+import { redirectWithErrorMessage } from "~/models/message.server";
 import { BillingService } from "~/services/billing.server";
-import { requireUser } from "~/services/session.server";
+import { requireUserId } from "~/services/session.server";
 import { OrganizationParamsSchema, usagePath } from "~/utils/pathBuilder";
 
 export async function loader({ request, params }: ActionFunctionArgs) {
-  const user = await requireUser(request);
+  const userId = await requireUserId(request);
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
 
   const org = await prisma.organization.findUnique({
@@ -18,7 +18,7 @@ export async function loader({ request, params }: ActionFunctionArgs) {
       slug: organizationSlug,
       members: {
         some: {
-          userId: user.id,
+          userId,
         },
       },
     },

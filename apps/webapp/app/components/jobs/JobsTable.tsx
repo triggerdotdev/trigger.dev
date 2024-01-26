@@ -22,7 +22,7 @@ import {
 } from "../primitives/Table";
 import { SimpleTooltip } from "../primitives/Tooltip";
 import { runStatusTitle } from "../runs/RunStatuses";
-import { DeleteJobDialogContent } from "./DeleteJobModalContent";
+import { DeleteJobDialog, DeleteJobDialogContent } from "./DeleteJobModalContent";
 import { JobStatusBadge } from "./JobStatusBadge";
 
 export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResultsText: string }) {
@@ -49,13 +49,13 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
               <TableRow key={job.id} className="group">
                 <TableCell to={path}>
                   <span className="flex items-center gap-2">
-                    <NamedIcon name={job.event.icon} className="w-8 h-8" />
+                    <NamedIcon name={job.event.icon} className="h-8 w-8" />
                     <LabelValueStack
                       label={job.title}
                       value={
                         job.dynamic ? (
                           <span className="flex items-center gap-0.5">
-                            <NamedIcon name="dynamic" className="w-4 h-4" />{" "}
+                            <NamedIcon name="dynamic" className="h-4 w-4" />{" "}
                             <span className="uppercase">Dynamic:</span> {job.event.title}
                           </span>
                         ) : (
@@ -75,9 +75,9 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
                       key={integration.key}
                       button={
                         <div className="relative">
-                          <NamedIcon name={integration.icon} className="w-6 h-6" />
+                          <NamedIcon name={integration.icon} className="h-6 w-6" />
                           {integration.setupStatus === "MISSING_FIELDS" && (
-                            <NamedIcon name="error" className="absolute w-4 h-4 -left-1 -top-1" />
+                            <NamedIcon name="error" className="absolute -left-1 -top-1 h-4 w-4" />
                           )}
                         </div>
                       }
@@ -165,12 +165,7 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>Delete Job</DialogHeader>
-                      <DeleteJobDialogContent
-                        id={job.id}
-                        title={job.title}
-                        slug={job.slug}
-                        environments={job.environments}
-                      />
+                      <DeleteJobDialog id={job.id} title={job.title} slug={job.slug} />
                     </DialogContent>
                   </Dialog>
                 </TableCellMenu>

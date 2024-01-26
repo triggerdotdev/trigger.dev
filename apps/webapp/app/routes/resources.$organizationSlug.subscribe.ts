@@ -6,7 +6,7 @@ import { prisma } from "~/db.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { BillingService } from "~/services/billing.server";
 import { logger } from "~/services/logger.server";
-import { requireUser } from "~/services/session.server";
+import { requireUserId } from "~/services/session.server";
 import {
   OrganizationParamsSchema,
   organizationBillingPath,
@@ -14,7 +14,7 @@ import {
 } from "~/utils/pathBuilder";
 
 export async function action({ request, params }: ActionFunctionArgs) {
-  const user = await requireUser(request);
+  const userId = await requireUserId(request);
 
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
 
@@ -33,7 +33,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         slug: organizationSlug,
         members: {
           some: {
-            userId: user.id,
+            userId,
           },
         },
       },

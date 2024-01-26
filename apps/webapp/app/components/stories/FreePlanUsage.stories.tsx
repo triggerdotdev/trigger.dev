@@ -21,7 +21,6 @@ const mockOrganization: MatchedOrganization = {
     { id: "mockId2", slug: "mockSlug2", name: "mockName2", jobCount: 2 },
   ],
   hasUnconfiguredIntegrations: false,
-  memberCount: 1,
   runsEnabled: true,
 };
 

@@ -6,9 +6,10 @@ import { CodeBlock } from "~/components/code/CodeBlock";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import { ApiExample } from "~/services/externalApis/apis.server";
-import { requireUser } from "~/services/session.server";
+import { requireUserId } from "~/services/session.server";
+
 export async function loader({ request }: LoaderFunctionArgs) {
-  await requireUser(request);
+  await requireUserId(request);
   const url = new URL(request.url);
   const codeUrl = url.searchParams.get("url");
   invariant(typeof codeUrl === "string", "codeUrl is required");
