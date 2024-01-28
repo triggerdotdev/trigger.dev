@@ -467,7 +467,7 @@ export class ApiClient {
 
     return await zodfetch(
       GetRunSchema,
-      urlWithSearchParams(`${this.#apiUrl}/api/v1/runs/${runId}`, options),
+      urlWithSearchParams(`${this.#apiUrl}/api/v2/runs/${runId}`, options),
       {
         method: "GET",
         headers: {
@@ -500,7 +500,7 @@ export class ApiClient {
       runId,
     });
 
-    return await zodfetch(GetRunStatusesSchema, `${this.#apiUrl}/api/v1/runs/${runId}/statuses`, {
+    return await zodfetch(GetRunStatusesSchema, `${this.#apiUrl}/api/v2/runs/${runId}/statuses`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${apiKey}`,

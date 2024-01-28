@@ -49,7 +49,7 @@ export function useRunStatuses(
     {
       queryKey: [`triggerdotdev-run-${runId}`],
       queryFn: async () => {
-        return await zodfetch(GetRunStatusesSchema, `${apiUrl}/api/v1/runs/${runId}/statuses`, {
+        return await zodfetch(GetRunStatusesSchema, `${apiUrl}/api/v2/runs/${runId}/statuses`, {
           method: "GET",
           headers: {
             Authorization: `Bearer ${publicApiKey}`,
