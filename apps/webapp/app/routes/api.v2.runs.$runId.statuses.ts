@@ -3,7 +3,6 @@ import { json } from "@remix-run/server-runtime";
 import { JobRunStatusRecordSchema } from "@trigger.dev/core";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { runOriginalStatus } from "~/models/jobRun.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { apiCors } from "~/utils/apiCors";
