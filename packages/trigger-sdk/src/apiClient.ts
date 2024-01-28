@@ -450,7 +450,7 @@ export class ApiClient {
       eventId,
     });
 
-    return await zodfetch(GetEventSchema, `${this.#apiUrl}/api/v1/events/${eventId}`, {
+    return await zodfetch(GetEventSchema, `${this.#apiUrl}/api/v2/events/${eventId}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${apiKey}`,
