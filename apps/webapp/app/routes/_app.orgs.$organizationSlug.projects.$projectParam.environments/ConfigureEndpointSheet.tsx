@@ -47,6 +47,9 @@ export function ConfigureEndpointSheet({ slug, endpoint, onClose }: ConfigureEnd
   const refreshEndpointFetcher = useFetcher();
   const refreshingEndpoint = refreshEndpointFetcher.state !== "idle";
 
+  const deleteEndpointFetcher = useFetcher();
+  const deletingEndpoint = deleteEndpointFetcher.state !== "idle";
+
   const revalidator = useRevalidator();
   const events = useEventSource(endpointStreamingPath({ id: endpoint.environment.id }), {
     event: "message",
@@ -70,12 +73,30 @@ export function ConfigureEndpointSheet({ slug, endpoint, onClose }: ConfigureEnd
     >
       <SheetContent size="lg">
         <SheetHeader>
-          <Header1>
-            <div className="flex items-center gap-2">
-              <EnvironmentLabel environment={{ type: endpoint.environment.type }} />
-              <Header1>Configure endpoint</Header1>
-            </div>
-          </Header1>
+          <div className="flex w-full items-center justify-between">
+            <Header1>
+              <div className="flex items-center gap-2">
+                <EnvironmentLabel environment={{ type: endpoint.environment.type }} />
+                <Header1>Configure endpoint</Header1>
+              </div>
+            </Header1>
+            {endpoint.state === "configured" && (
+              <deleteEndpointFetcher.Form
+                method="post"
+                action={`/resources/environments/${endpoint.environment.id}/endpoint/${endpoint.id}`}
+              >
+                <input type="hidden" name="action" value="delete" />
+                <Button
+                  variant="danger/small"
+                  type="submit"
+                  disabled={deletingEndpoint}
+                  LeadingIcon={deletingEndpoint ? "spinner-white" : undefined}
+                >
+                  {deletingEndpoint ? "Deleting" : "Delete"}
+                </Button>
+              </deleteEndpointFetcher.Form>
+            )}
+          </div>
         </SheetHeader>
         <SheetBody>
           <setEndpointUrlFetcher.Form
@@ -123,6 +144,7 @@ export function ConfigureEndpointSheet({ slug, endpoint, onClose }: ConfigureEnd
                   method="post"
                   action={`/resources/environments/${endpoint.environment.id}/endpoint/${endpoint.id}`}
                 >
+                  <input type="hidden" name="action" value="refresh" />
                   <Callout
                     variant="info"
                     icon={
