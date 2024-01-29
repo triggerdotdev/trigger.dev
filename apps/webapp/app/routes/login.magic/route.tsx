@@ -1,7 +1,7 @@
 import { InboxArrowDownIcon } from "@heroicons/react/24/solid";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
-import { Form, useNavigation } from "@remix-run/react";
+import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { getMatchesData, metaV1 } from "@remix-run/v1-meta";
 import {
   TypedMetaFunction,
@@ -74,6 +74,18 @@ export async function action({ request }: ActionFunctionArgs) {
     .parse(payload);
 
   if (action === "send") {
+    const { email } = z
+      .object({
+        email: z.string().email(),
+      })
+      .parse(payload);
+
+    if (process.env.WHITELISTED_EMAILS && !new RegExp(process.env.WHITELISTED_EMAILS).test(email)) {
+      return {
+        error: "This email is unauthorized",
+      };
+    }
+
     return authenticator.authenticate("email-link", request, {
       successRedirect: "/login/magic",
       failureRedirect: "/login/magic",
@@ -92,6 +104,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
 export default function LoginMagicLinkPage() {
   const { magicLinkSent, magicLinkError } = useTypedLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
   const navigate = useNavigation();
 
   const isLoading =
@@ -176,6 +189,7 @@ export default function LoginMagicLinkPage() {
                   />
                   {isLoading ? "Sending…" : "Send a magic link"}
                 </Button>
+                {actionData?.error && <FormError>{actionData?.error}</FormError>}
                 {magicLinkError && <FormError>{magicLinkError}</FormError>}
               </Fieldset>
               <Paragraph variant="extra-small" className="mb-4 mt-6 text-center">
