@@ -102,6 +102,9 @@ export class EnvironmentsPresenter {
               },
             },
           },
+          where: {
+            deletedAt: null,
+          },
         },
       },
       where: {
