@@ -34,6 +34,9 @@ export class PerformEndpointIndexService {
     const endpointIndex = await this.#prismaClient.endpointIndex.update({
       where: {
         id,
+        endpoint: {
+          deletedAt: null,
+        },
       },
       data: {
         status: "STARTED",
