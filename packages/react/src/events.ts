@@ -17,7 +17,7 @@ export function useEventDetails(eventId: string | undefined): UseEventDetailsRes
     {
       queryKey: [`triggerdotdev-event-${eventId}`],
       queryFn: async () => {
-        return await zodfetch(GetEventSchema, `${apiUrl}/api/v1/events/${eventId}`, {
+        return await zodfetch(GetEventSchema, `${apiUrl}/api/v2/events/${eventId}`, {
           method: "GET",
           headers: {
             Authorization: `Bearer ${publicApiKey}`,

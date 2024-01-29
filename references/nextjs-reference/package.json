@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "generate:types": "npx supabase gen types typescript --project-id axtbanoixaztvdntngew --schema public --schema public_2 > src/supabase.types.ts"
+    "generate:types": "npx supabase gen types typescript --project-id axtbanoixaztvdntngew --schema public --schema public_2 > src/supabase.types.ts",
+    "dev:trigger": "trigger-cli dev --port 3000"
   },
   "dependencies": {
     "@trigger.dev/eslint-plugin": "workspace:*",
