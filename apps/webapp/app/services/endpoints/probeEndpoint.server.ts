@@ -29,6 +29,13 @@ export class ProbeEndpointService {
       id,
     });
 
+    if (!endpoint.url) {
+      logger.debug(`Endpoint has no url`, {
+        id,
+      });
+      return;
+    }
+
     const client = new EndpointApi(endpoint.environment.apiKey, endpoint.url);
 
     const { response, durationInMs } = await client.probe(MAX_RUN_CHUNK_EXECUTION_LIMIT);

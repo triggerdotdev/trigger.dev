@@ -34,9 +34,6 @@ export class PerformEndpointIndexService {
     const endpointIndex = await this.#prismaClient.endpointIndex.update({
       where: {
         id,
-        endpoint: {
-          deletedAt: null,
-        },
       },
       data: {
         status: "STARTED",
@@ -56,6 +53,13 @@ export class PerformEndpointIndexService {
     });
 
     logger.debug("Performing endpoint index", endpointIndex);
+
+    if (!endpointIndex.endpoint.url) {
+      logger.debug("Endpoint URL is not set", endpointIndex);
+      return updateEndpointIndexWithError(this.#prismaClient, id, {
+        message: "Endpoint URL is not set",
+      });
+    }
 
     // Make a request to the endpoint to fetch a list of jobs
     const client = new EndpointApi(

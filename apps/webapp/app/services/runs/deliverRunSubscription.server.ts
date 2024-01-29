@@ -97,6 +97,10 @@ export class DeliverRunSubscriptionService {
           return true;
         }
 
+        if (subscription.run.endpoint.url === null) {
+          return true;
+        }
+
         const client = new EndpointApi(
           subscription.run.environment.apiKey,
           subscription.run.endpoint.url

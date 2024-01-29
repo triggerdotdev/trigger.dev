@@ -11,8 +11,7 @@ export class DeleteEndpointIndexService {
   public async call(id: string, userId: string): Promise<void> {
     await this.#prismaClient.endpoint.update({
       data: {
-        deletedAt: new Date(),
-        slug: `deleted-${id}`,
+        url: null,
       },
       where: {
         id,
