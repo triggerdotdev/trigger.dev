@@ -11,6 +11,7 @@ import {
 import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
+import { FormError } from "~/components/primitives/FormError";
 import { Header1 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -19,6 +20,10 @@ import type { LoaderType as RootLoader } from "~/root";
 import { isGithubAuthSupported } from "~/services/auth.server";
 import { commitSession, setRedirectTo } from "~/services/redirectTo.server";
 import { getUserId } from "~/services/session.server";
+import {
+  getUserSession,
+  commitSession as commitAuthSession,
+} from "~/services/sessionStorage.server";
 import { appEnvTitleTag } from "~/utils";
 import { requestUrl } from "~/utils/requestUrl.server";
 
@@ -41,11 +46,23 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const url = requestUrl(request);
   const redirectTo = url.searchParams.get("redirectTo");
 
+  const session = await getUserSession(request);
+  const error = session.get("auth:error");
+
+  let githubError: string | undefined;
+  if (error) {
+    if ("message" in error) {
+      githubError = error.message;
+    } else {
+      githubError = JSON.stringify(error, null, 2);
+    }
+  }
+
   if (redirectTo) {
     const session = await setRedirectTo(request, redirectTo);
 
     return typedjson(
-      { redirectTo, showGithubAuth: isGithubAuthSupported },
+      { redirectTo, showGithubAuth: isGithubAuthSupported, githubError },
       {
         headers: {
           "Set-Cookie": await commitSession(session),
@@ -53,10 +70,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
       }
     );
   } else {
-    return typedjson({
-      redirectTo: null,
-      showGithubAuth: isGithubAuthSupported,
-    });
+    return typedjson(
+      { redirectTo: null, showGithubAuth: isGithubAuthSupported, githubError },
+      {
+        headers: { "Set-Cookie": await commitAuthSession(session) },
+      }
+    );
   }
 }
 
@@ -78,7 +97,7 @@ export default function LoginPage() {
             Create an account or login
           </Paragraph>
           <Fieldset className="w-full">
-            <div className="flex flex-col gap-y-2">
+            <div className="flex flex-col items-center gap-y-2">
               {data.showGithubAuth && (
                 <Button
                   type="submit"
@@ -102,6 +121,8 @@ export default function LoginPage() {
                 />
                 Continue with Email
               </LinkButton>
+
+              {data.githubError && <FormError>{data.githubError}</FormError>}
             </div>
             <Paragraph variant="extra-small" className="mt-2 text-center">
               By signing up you agree to our{" "}

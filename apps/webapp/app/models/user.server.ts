@@ -66,6 +66,10 @@ export async function findOrCreateGithubUser({
   authenticationProfile,
   authenticationExtraParams,
 }: FindOrCreateGithub): Promise<LoggedInUser> {
+  if (env.WHITELISTED_EMAILS && !new RegExp(env.WHITELISTED_EMAILS).test(email)) {
+    throw new Error("This email is unauthorized");
+  }
+
   const name = authenticationProfile._json.name;
   let avatarUrl: string | undefined = undefined;
   if (authenticationProfile.photos[0]) {
