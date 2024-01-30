@@ -4,7 +4,6 @@ import {
   ArrowRightOnRectangleIcon,
   ChartBarIcon,
   CursorArrowRaysIcon,
-  EllipsisHorizontalIcon,
   ShieldCheckIcon,
 } from "@heroicons/react/20/solid";
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
@@ -15,6 +14,7 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
 import { MatchedProject } from "~/hooks/useProject";
 import { User } from "~/models/user.server";
+import { useV3Enabled } from "~/root";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { cn } from "~/utils/cn";
 import {
@@ -56,9 +56,8 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { StepNumber } from "../primitives/StepNumber";
-import { MenuCount, SideMenuItem } from "./SideMenuItem";
 import { SideMenuHeader } from "./SideMenuHeader";
-import { useV3Enabled } from "~/root";
+import { MenuCount, SideMenuItem } from "./SideMenuItem";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -106,11 +105,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             showHeaderDivider ? " border-border" : "border-transparent"
           )}
         >
-          <ProjectSelector
-            organization={organization}
-            organizations={organizations}
-            project={project}
-          />
+          <ProjectSelector organizations={organizations} project={project} />
           <UserMenu user={user} />
         </div>
         <div
@@ -118,7 +113,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
           ref={borderRef}
         >
           <div className="mb-6 flex flex-col gap-1 px-1">
-            <SideMenuHeader title={project.name || "No project found"}>
+            <SideMenuHeader title={"Project"}>
               <PopoverMenuItem
                 to={projectSetupPath(organization, project)}
                 title="Framework setup"
@@ -170,7 +165,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             />
           </div>
           <div className="mb-1 flex flex-col gap-1 px-1">
-            <SideMenuHeader title={organization.title}>
+            <SideMenuHeader title={"Organization"}>
               <PopoverMenuItem to={newProjectPath(organization)} title="New Project" icon="plus" />
               <PopoverMenuItem
                 to={inviteTeamMemberPath(organization)}
@@ -209,7 +204,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
           </div>
         </div>
         <div className="flex flex-col gap-1 border-t border-border p-1">
-          {currentPlan?.subscription?.isPaying === true ? (
+          {currentPlan?.subscription?.isPaying === true && (
             <Dialog>
               <DialogTrigger asChild>
                 <Button
@@ -265,16 +260,14 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
                 </div>
               </DialogContent>
             </Dialog>
-          ) : (
-            <SideMenuItem
-              name="Join our Discord"
-              icon={DiscordIcon}
-              to="https://trigger.dev/discord"
-              data-action="join our discord"
-              target="_blank"
-            />
           )}
-
+          <SideMenuItem
+            name="Join our Discord"
+            icon={DiscordIcon}
+            to="https://trigger.dev/discord"
+            data-action="join our discord"
+            target="_blank"
+          />
           <SideMenuItem
             name="Documentation"
             icon="docs"
@@ -317,11 +310,9 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
 
 function ProjectSelector({
   project,
-  organization,
   organizations,
 }: {
   project: SideMenuProject;
-  organization: MatchedOrganization;
   organizations: MatchedOrganization[];
 }) {
   const [isOrgMenuOpen, setOrgMenuOpen] = useState(false);
@@ -339,7 +330,7 @@ function ProjectSelector({
         className="h-7 w-full justify-between overflow-hidden py-1 pl-2"
       >
         <LogoIcon className="relative -top-px mr-2 h-4 w-4 min-w-[1rem]" />
-        <span className="truncate">{organization.title ?? "Select an organization"}</span>
+        <span className="truncate">{project.name ?? "Select a project"}</span>
       </PopoverArrowTrigger>
       <PopoverContent
         className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
