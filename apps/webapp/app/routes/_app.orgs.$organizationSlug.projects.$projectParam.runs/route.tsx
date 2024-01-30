@@ -1,5 +1,5 @@
-import { useLocation, useNavigate, useNavigation } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { Await, useLoaderData, useLocation, useNavigate, useNavigation } from "@remix-run/react";
+import { LoaderFunctionArgs, defer } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -20,6 +20,8 @@ import { ProjectParamSchema, docsPath, projectPath } from "~/utils/pathBuilder";
 import { ListPagination } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/ListPagination";
 import { RunListSearchSchema } from "~/components/runs/RunStatuses";
 import { RunsFilters } from "~/components/runs/RunFilters";
+import { Suspense } from "react";
+import { Spinner } from "~/components/primitives/Spinner";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -31,7 +33,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const presenter = new RunListPresenter();
 
-  const list = await presenter.call({
+  const list = presenter.call({
     userId,
     filterEnvironment: searchParams.environment,
     filterStatus: searchParams.status,
@@ -44,13 +46,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     to: searchParams.to,
   });
 
-  return typedjson({
+  return defer({
     list,
   });
 };
 
 export default function Page() {
-  const { list } = useTypedLoaderData<typeof loader>();
+  const { list } = useLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
   const organization = useOrganization();
@@ -79,18 +81,49 @@ export default function Page() {
         <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
           <div className="mb-2 flex items-center justify-between gap-x-2">
             <RunsFilters />
-            <ListPagination list={list} />
+            <Suspense fallback={<></>}>
+              <Await resolve={list}>{(data) => <ListPagination list={data} />}</Await>
+            </Suspense>
           </div>
-          <RunsTable
-            total={list.runs.length}
-            hasFilters={false}
-            showJob={true}
-            runs={list.runs}
-            isLoading={isLoading}
-            runsParentPath={projectPath(organization, project)}
-            currentUser={user}
-          />
-          <ListPagination list={list} className="mt-2 justify-end" />
+          <Suspense
+            fallback={
+              <RunsTable
+                total={0}
+                hasFilters={false}
+                showJob={true}
+                runs={[]}
+                isLoading={true}
+                runsParentPath={projectPath(organization, project)}
+                currentUser={user}
+              />
+            }
+          >
+            <Await resolve={list}>
+              {(data) => {
+                const runs = data.runs.map((run) => ({
+                  ...run,
+                  startedAt: run.startedAt ? new Date(run.startedAt) : null,
+                  completedAt: run.completedAt ? new Date(run.completedAt) : null,
+                  createdAt: new Date(run.createdAt),
+                }));
+
+                return (
+                  <>
+                    <RunsTable
+                      total={data.runs.length}
+                      hasFilters={false}
+                      showJob={true}
+                      runs={runs}
+                      isLoading={isLoading}
+                      runsParentPath={projectPath(organization, project)}
+                      currentUser={user}
+                    />
+                    <ListPagination list={data} className="mt-2 justify-end" />
+                  </>
+                );
+              }}
+            </Await>
+          </Suspense>
         </div>
       </PageBody>
     </PageContainer>
