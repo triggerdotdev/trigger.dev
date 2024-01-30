@@ -1,5 +1,12 @@
 # @trigger.dev/react
 
+## 2.3.17
+
+### Patch Changes
+
+- dd879c8e: Updated run, run statuses and event endpoints to v2 to get full run statuses
+  - @trigger.dev/core@2.3.17
+
 ## 2.3.16
 
 ### Patch Changes
