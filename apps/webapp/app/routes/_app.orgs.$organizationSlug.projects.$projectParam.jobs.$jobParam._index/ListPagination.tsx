@@ -5,8 +5,8 @@ import { cn } from "~/utils/cn";
 
 type List = {
   pagination: {
-    next: string | undefined;
-    previous: string | undefined;
+    next?: string | undefined;
+    previous?: string | undefined;
   };
 };
 
