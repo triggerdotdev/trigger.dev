@@ -25,8 +25,6 @@ export const action: ActionFunction = async ({ request, params }) => {
   const formData = await request.formData();
   const submission = parse(formData, { schema });
 
-  console.log(submission);
-
   if (!submission.value) {
     return redirectWithErrorMessage(
       rootPath(),
