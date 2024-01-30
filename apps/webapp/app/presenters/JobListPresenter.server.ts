@@ -98,27 +98,36 @@ export class JobListPresenter {
       orderBy: [{ title: "asc" }],
     });
 
-    const latestRuns = await this.#prismaClient.$queryRaw<
-      {
-        createdAt: Date;
-        status: JobRunStatus;
-        jobId: string;
-        rn: BigInt;
-      }[]
-    >`
-    SELECT * FROM (
-      SELECT 
-          "id", 
-          "createdAt", 
-          "status", 
-          "jobId",
-          ROW_NUMBER() OVER(PARTITION BY "jobId" ORDER BY "createdAt" DESC) as rn
-      FROM 
-          "public"."JobRun" 
-      WHERE 
-          "jobId" IN (${Prisma.join(jobs.map((j) => j.id))})
-  ) t
-  WHERE rn = 1;`;
+    let latestRuns = [] as {
+      createdAt: Date;
+      status: JobRunStatus;
+      jobId: string;
+      rn: BigInt;
+    }[];
+
+    if (jobs.length > 0) {
+      latestRuns = await this.#prismaClient.$queryRaw<
+        {
+          createdAt: Date;
+          status: JobRunStatus;
+          jobId: string;
+          rn: BigInt;
+        }[]
+      >`
+        SELECT * FROM (
+          SELECT 
+              "id", 
+              "createdAt", 
+              "status", 
+              "jobId",
+              ROW_NUMBER() OVER(PARTITION BY "jobId" ORDER BY "createdAt" DESC) as rn
+          FROM 
+              "public"."JobRun" 
+          WHERE 
+              "jobId" IN (${Prisma.join(jobs.map((j) => j.id))})
+      ) t
+      WHERE rn = 1;`;
+    }
 
     return jobs
       .flatMap((job) => {
