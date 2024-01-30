@@ -137,7 +137,7 @@ export class PerformRunExecutionV3Service {
 
       if (!run.endpoint.url) {
         return await this.#failRunExecution(this.#prismaClient, run, {
-          message: `Endpoint is not configured`,
+          message: `Endpoint has no URL set`,
         });
       }
 
