@@ -38,7 +38,7 @@ export type ClientEndpoint =
       state: "configured";
       id: string;
       slug: string;
-      url: string;
+      url: string | null;
       indexWebhookPath: string;
       latestIndex?: {
         status: EndpointIndexStatus;
@@ -100,6 +100,11 @@ export class EnvironmentsPresenter {
               orderBy: {
                 updatedAt: "desc",
               },
+            },
+          },
+          where: {
+            url: {
+              not: null,
             },
           },
         },

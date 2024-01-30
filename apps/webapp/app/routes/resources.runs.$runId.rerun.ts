@@ -1,12 +1,18 @@
 import { parse } from "@conform-to/zod";
 import { ActionFunction, json } from "@remix-run/node";
 import { z } from "zod";
-import { redirectBackWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import {
+  redirectBackWithErrorMessage,
+  redirectWithErrorMessage,
+  redirectWithSuccessMessage,
+} from "~/models/message.server";
 import { ContinueRunService } from "~/services/runs/continueRun.server";
 import { ReRunService } from "~/services/runs/reRun.server";
+import { rootPath, runPath } from "~/utils/pathBuilder";
 
 export const schema = z.object({
   successRedirect: z.string(),
+  failureRedirect: z.string(),
 });
 
 const ParamSchema = z.object({
@@ -20,7 +26,11 @@ export const action: ActionFunction = async ({ request, params }) => {
   const submission = parse(formData, { schema });
 
   if (!submission.value) {
-    return json(submission);
+    return redirectWithErrorMessage(
+      rootPath(),
+      request,
+      submission.error ? JSON.stringify(submission.error) : "Invalid form"
+    );
   }
 
   try {
@@ -29,7 +39,11 @@ export const action: ActionFunction = async ({ request, params }) => {
       const run = await rerunService.call({ runId });
 
       if (!run) {
-        return redirectBackWithErrorMessage(request, "Unable to retry run");
+        return redirectWithErrorMessage(
+          submission.value.failureRedirect,
+          request,
+          "Unable to retry run"
+        );
       }
 
       return redirectWithSuccessMessage(
@@ -48,6 +62,10 @@ export const action: ActionFunction = async ({ request, params }) => {
       );
     }
   } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+    return redirectWithErrorMessage(
+      submission.value.failureRedirect,
+      request,
+      error instanceof Error ? error.message : JSON.stringify(error)
+    );
   }
 };

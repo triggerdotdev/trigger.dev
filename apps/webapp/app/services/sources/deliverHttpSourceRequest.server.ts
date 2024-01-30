@@ -43,6 +43,10 @@ export class DeliverHttpSourceRequestService {
       return;
     }
 
+    if (!httpSourceRequest.endpoint.url) {
+      return;
+    }
+
     const secretStore = getSecretStore(httpSourceRequest.source.secretReference.provider);
 
     const secret = await secretStore.getSecret(
