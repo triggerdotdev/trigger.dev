@@ -19,8 +19,9 @@ import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/Pag
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { redirectWithSuccessMessage } from "~/models/message.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { DeleteProjectService } from "~/services/deleteProject.server";
+import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { organizationPath, projectPath, projectSettingsPath } from "~/utils/pathBuilder";
 
@@ -99,12 +100,23 @@ export const action: ActionFunction = async ({ request, params }) => {
       }
       case "delete": {
         const deleteProjectService = new DeleteProjectService();
-        await deleteProjectService.call({ projectSlug: projectParam, userId });
-        return redirectWithSuccessMessage(
-          organizationPath({ slug: organizationSlug }),
-          request,
-          `Project ${projectParam} deleted`
-        );
+        try {
+          await deleteProjectService.call({ projectSlug: projectParam, userId });
+          return redirectWithSuccessMessage(
+            organizationPath({ slug: organizationSlug }),
+            request,
+            `Project ${projectParam} deleted`
+          );
+        } catch (error: unknown) {
+          logger.error("Project could not be deleted", {
+            error: error instanceof Error ? error.message : JSON.stringify(error),
+          });
+          return redirectWithErrorMessage(
+            organizationPath({ slug: organizationSlug }),
+            request,
+            `Project ${projectParam} could not be deleted`
+          );
+        }
       }
     }
   } catch (error: any) {

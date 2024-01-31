@@ -1,7 +1,7 @@
 import { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 
-export class DeleteEndpointIndexService {
+export class DeleteEndpointService {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
