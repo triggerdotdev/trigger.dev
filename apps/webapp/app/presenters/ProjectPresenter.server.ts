@@ -23,6 +23,7 @@ export class ProjectPresenter {
         organizationId: true,
         createdAt: true,
         updatedAt: true,
+        deletedAt: true,
         _count: {
           select: {
             sources: {
@@ -53,7 +54,7 @@ export class ProjectPresenter {
           },
         },
       },
-      where: { id, organization: { members: { some: { userId } } } },
+      where: { id, deletedAt: null, organization: { members: { some: { userId } } } },
     });
 
     if (!project) {
@@ -67,6 +68,7 @@ export class ProjectPresenter {
       organizationId: project.organizationId,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
+      deletedAt: project.deletedAt,
       hasInactiveExternalTriggers: project._count.sources > 0,
       jobCount: project._count.jobs,
       httpEndpointCount: project._count.httpEndpoints,
