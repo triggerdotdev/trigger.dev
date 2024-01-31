@@ -33,6 +33,7 @@ import {
   projectHttpEndpointsPath,
   projectPath,
   projectRunsPath,
+  projectSettingsPath,
   projectSetupPath,
   projectTriggersPath,
 } from "~/utils/pathBuilder";
@@ -162,6 +163,13 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               iconColor="text-rose-500"
               to={projectEnvironmentsPath(organization, project)}
               data-action="environments & api keys"
+            />
+            <SideMenuItem
+              name="Project settings"
+              icon="settings"
+              iconColor="text-teal-500"
+              to={projectSettingsPath(organization, project)}
+              data-action="project-settings"
             />
           </div>
           <div className="mb-1 flex flex-col gap-1 px-1">

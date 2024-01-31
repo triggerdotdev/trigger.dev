@@ -1,16 +1,9 @@
 import { Outlet } from "@remix-run/react";
-import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { typedjson } from "remix-typedjson";
-import invariant from "tiny-invariant";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { organizationMatchId, useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useTypedMatchData } from "~/hooks/useTypedMatchData";
-import { ProjectPresenter } from "~/presenters/ProjectPresenter.server";
-import { commitCurrentProjectSession, setCurrentProjectId } from "~/services/currentProject.server";
-import { requireUserId } from "~/services/session.server";
-import { telemetry } from "~/services/telemetry.server";
 import { Handle } from "~/utils/handle";
 import { projectPath } from "~/utils/pathBuilder";
 import { loader as orgLoader } from "../_app.orgs.$organizationSlug/route";

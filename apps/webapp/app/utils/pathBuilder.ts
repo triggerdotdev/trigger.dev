@@ -216,6 +216,10 @@ export function projectEventsPath(organization: OrgForPath, project: ProjectForP
   return `${projectPath(organization, project)}/events`;
 }
 
+export function projectSettingsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/settings`;
+}
+
 export function projectEventPath(
   organization: OrgForPath,
   project: ProjectForPath,
