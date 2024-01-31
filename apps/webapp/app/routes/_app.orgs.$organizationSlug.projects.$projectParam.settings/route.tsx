@@ -2,6 +2,7 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { Form, useActionData } from "@remix-run/react";
 import { ActionFunction, json } from "@remix-run/server-runtime";
+import { redirect } from "remix-typedjson";
 import { r } from "tar";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
@@ -20,6 +21,10 @@ import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import {
+  clearCurrentProjectId,
+  commitCurrentProjectSession,
+} from "~/services/currentProject.server";
 import { DeleteProjectService } from "~/services/deleteProject.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
@@ -102,11 +107,12 @@ export const action: ActionFunction = async ({ request, params }) => {
         const deleteProjectService = new DeleteProjectService();
         try {
           await deleteProjectService.call({ projectSlug: projectParam, userId });
-          return redirectWithSuccessMessage(
-            organizationPath({ slug: organizationSlug }),
-            request,
-            `Project ${projectParam} deleted`
-          );
+
+          //we need to clear the project from the session
+          const removeProjectIdSession = await clearCurrentProjectId(request);
+          return redirect(organizationPath({ slug: organizationSlug }), {
+            headers: { "Set-Cookie": await commitCurrentProjectSession(removeProjectIdSession) },
+          });
         } catch (error: unknown) {
           logger.error("Project could not be deleted", {
             error: error instanceof Error ? error.message : JSON.stringify(error),
