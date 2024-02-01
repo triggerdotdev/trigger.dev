@@ -96,6 +96,14 @@ export class HandleHttpEndpointService {
       );
     }
 
+    if (!httpEndpointEnvironment.endpoint.url) {
+      logger.debug("Endpoint has no url", {
+        httpEndpointId: httpEndpoint.id,
+        environmentId: environment.id,
+      });
+      return json({ error: true, message: "Endpoint has no url" }, { status: 404 });
+    }
+
     const immediateResponseFilter = RequestFilterSchema.nullable().safeParse(
       httpEndpointEnvironment.immediateResponseFilter
     );

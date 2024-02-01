@@ -49,6 +49,10 @@ export class DeliverWebhookRequestService {
       return;
     }
 
+    if (!requestDelivery.endpoint.url) {
+      return;
+    }
+
     const { secretReference } = requestDelivery.webhook.httpEndpoint;
 
     const secretStore = getSecretStore(secretReference.provider);

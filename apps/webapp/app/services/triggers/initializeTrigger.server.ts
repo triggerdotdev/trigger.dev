@@ -35,6 +35,10 @@ export class InitializeTriggerService {
       },
     });
 
+    if (!endpoint.url) {
+      throw new Error("This environment's endpoint doesn't have a URL set");
+    }
+
     const dynamicTrigger = await this.#prismaClient.dynamicTrigger.findUniqueOrThrow({
       where: {
         endpointId_slug_type: {

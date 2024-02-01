@@ -111,7 +111,7 @@ export function ConfigureEndpointSheet({ slug, endpoint, onClose }: ConfigureEnd
                 <Input
                   className="rounded-r-none"
                   {...conform.input(url, { type: "url" })}
-                  defaultValue={"url" in endpoint ? endpoint.url : ""}
+                  defaultValue={"url" in endpoint ? endpoint.url ?? "" : ""}
                   placeholder="URL for your Trigger API route"
                 />
                 <Button

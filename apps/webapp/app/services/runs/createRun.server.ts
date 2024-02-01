@@ -37,6 +37,11 @@ export class CreateRunService {
       },
     });
 
+    if (!endpoint.url) {
+      logger.debug("Endpoint has no url", endpoint);
+      return;
+    }
+
     const eventRecord = await this.#prismaClient.eventRecord.findUniqueOrThrow({
       where: {
         id: eventId,

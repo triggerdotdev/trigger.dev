@@ -413,9 +413,9 @@ model Project {
 }
 
 model Endpoint {
-  id   String @id @default(cuid())
+  id   String  @id @default(cuid())
   slug String
-  url  String
+  url  String?
 
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String

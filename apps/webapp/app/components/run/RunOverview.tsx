@@ -117,6 +117,7 @@ export function RunOverview({ run, trigger, showRerun, paths, currentUser }: Run
             {showRerun && run.isFinished && (
               <RerunPopover
                 runId={run.id}
+                runPath={paths.run}
                 runsPath={paths.runsPath}
                 environmentType={run.environment.type}
                 status={run.basicStatus}
@@ -317,18 +318,20 @@ function BlankTasks({ status }: { status: RunBasicStatus }) {
 
 function RerunPopover({
   runId,
+  runPath,
   runsPath,
   environmentType,
   status,
 }: {
   runId: string;
+  runPath: string;
   runsPath: string;
   environmentType: RuntimeEnvironmentType;
   status: RunBasicStatus;
 }) {
   const lastSubmission = useActionData();
 
-  const [form, { successRedirect }] = useForm({
+  const [form, { successRedirect, failureRedirect }] = useForm({
     id: "rerun",
     // TODO: type this
     lastSubmission: lastSubmission as any,
@@ -347,6 +350,7 @@ function RerunPopover({
       <PopoverContent className="flex min-w-[20rem] max-w-[20rem] flex-col gap-2 p-0" align="end">
         <Form method="post" action={`/resources/runs/${runId}/rerun`} {...form.props}>
           <input {...conform.input(successRedirect, { type: "hidden" })} defaultValue={runsPath} />
+          <input {...conform.input(failureRedirect, { type: "hidden" })} defaultValue={runPath} />
           {environmentType === "PRODUCTION" && (
             <div className="px-4 pt-4">
               <Callout variant="warning">

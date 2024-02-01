@@ -9,7 +9,10 @@ export class DeleteEndpointIndexService {
   }
 
   public async call(id: string, userId: string): Promise<void> {
-    await this.#prismaClient.endpoint.delete({
+    await this.#prismaClient.endpoint.update({
+      data: {
+        url: null,
+      },
       where: {
         id,
         organization: {

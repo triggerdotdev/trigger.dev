@@ -9,6 +9,7 @@ import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
 import { z } from "zod";
 import { projectPath } from "~/utils/pathBuilder";
+import { JobRunStatus } from "@trigger.dev/database";
 
 export type ProjectJob = Awaited<ReturnType<JobListPresenter["call"]>>[0];
 
@@ -43,14 +44,6 @@ export class JobListPresenter {
         id: true,
         slug: true,
         title: true,
-        runs: {
-          select: {
-            createdAt: true,
-            status: true,
-          },
-          take: 1,
-          orderBy: [{ createdAt: "desc" }],
-        },
         integrations: {
           select: {
             key: true,
@@ -105,6 +98,37 @@ export class JobListPresenter {
       orderBy: [{ title: "asc" }],
     });
 
+    let latestRuns = [] as {
+      createdAt: Date;
+      status: JobRunStatus;
+      jobId: string;
+      rn: BigInt;
+    }[];
+
+    if (jobs.length > 0) {
+      latestRuns = await this.#prismaClient.$queryRaw<
+        {
+          createdAt: Date;
+          status: JobRunStatus;
+          jobId: string;
+          rn: BigInt;
+        }[]
+      >`
+        SELECT * FROM (
+          SELECT 
+              "id", 
+              "createdAt", 
+              "status", 
+              "jobId",
+              ROW_NUMBER() OVER(PARTITION BY "jobId" ORDER BY "createdAt" DESC) as rn
+          FROM 
+              "public"."JobRun" 
+          WHERE 
+              "jobId" IN (${Prisma.join(jobs.map((j) => j.id))})
+      ) t
+      WHERE rn = 1;`;
+    }
+
     return jobs
       .flatMap((job) => {
         const version = job.versions.at(0);
@@ -132,6 +156,8 @@ export class JobListPresenter {
           properties = [...properties, ...versionProperties];
         }
 
+        const latestRun = latestRuns.find((r) => r.jobId === job.id);
+
         return [
           {
             id: job.id,
@@ -155,7 +181,7 @@ export class JobListPresenter {
               (i) => i.setupStatus === "MISSING_FIELDS"
             ),
             environment: version.environment,
-            lastRun: job.runs.at(0),
+            lastRun: latestRun,
             properties,
             projectSlug: job.project.slug,
           },

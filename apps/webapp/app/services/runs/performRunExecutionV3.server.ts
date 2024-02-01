@@ -135,6 +135,12 @@ export class PerformRunExecutionV3Service {
         return;
       }
 
+      if (!run.endpoint.url) {
+        return await this.#failRunExecution(this.#prismaClient, run, {
+          message: `Endpoint has no URL set`,
+        });
+      }
+
       const client = new EndpointApi(run.environment.apiKey, run.endpoint.url);
       const event = eventRecordToApiJson(run.event);
 
