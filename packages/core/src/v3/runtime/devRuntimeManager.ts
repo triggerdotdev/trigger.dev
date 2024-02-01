@@ -1,5 +1,10 @@
 import { TaskRunContext, TaskRunExecution, TaskRunExecutionResult } from "../schemas";
+import { TriggerTracer } from "../tracing";
 import { RuntimeManager } from "./manager";
+
+export type DevRuntimeManagerOptions = {
+  tracer: TriggerTracer;
+};
 
 export class DevRuntimeManager implements RuntimeManager {
   _taskWaits: Map<
@@ -7,8 +12,18 @@ export class DevRuntimeManager implements RuntimeManager {
     { resolve: (value: TaskRunExecutionResult) => void; reject: (err?: any) => void }
   > = new Map();
 
+  constructor(private readonly options: DevRuntimeManagerOptions) {}
+
   disable(): void {
     // do nothing
+  }
+
+  async waitForDuration(ms: number): Promise<void> {
+    return this.options.tracer.startActiveSpan("wait for duration", async (span) => {
+      return new Promise((resolve) => {
+        setTimeout(resolve, ms);
+      });
+    });
   }
 
   async waitUntil(date: Date): Promise<void> {
@@ -18,11 +33,15 @@ export class DevRuntimeManager implements RuntimeManager {
   }
 
   async waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
-    const promise = new Promise<TaskRunExecutionResult>((resolve, reject) => {
-      this._taskWaits.set(params.id, { resolve, reject });
-    });
+    return this.options.tracer.startActiveSpan("wait for task", async (span) => {
+      span.setAttribute("trigger.task.run.id", params.id);
 
-    return promise;
+      const promise = new Promise<TaskRunExecutionResult>((resolve, reject) => {
+        this._taskWaits.set(params.id, { resolve, reject });
+      });
+
+      return await promise;
+    });
   }
 
   resumeTask(completion: TaskRunExecutionResult, execution: TaskRunExecution): void {

@@ -6,6 +6,10 @@ export class NoopRuntimeManager implements RuntimeManager {
     // do nothing
   }
 
+  waitForDuration(ms: number): Promise<void> {
+    return Promise.resolve();
+  }
+
   waitUntil(date: Date): Promise<void> {
     return Promise.resolve();
   }

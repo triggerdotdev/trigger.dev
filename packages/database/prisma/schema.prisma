@@ -1539,9 +1539,10 @@ model TaskRun {
   idempotencyKey String
   taskIdentifier String
 
-  payload     String
-  payloadType String @default("application/json")
-  context     Json?
+  payload      String
+  payloadType  String @default("application/json")
+  context      Json?
+  traceContext Json?
 
   runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runtimeEnvironmentId String

@@ -57,6 +57,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const result: GetProjectDevResponse = {
     apiKey: devEnvironment.apiKey,
+    name: project.name,
   };
 
   return json(result);

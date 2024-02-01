@@ -154,6 +154,7 @@ async function startDev(
           apiUrl={apiUrl}
           apiKey={devEnv.data.apiKey}
           environmentClient={environmentClient}
+          projectName={devEnv.data.name}
         />
       );
     }
@@ -181,9 +182,10 @@ type DevProps = {
   apiUrl: string;
   apiKey: string;
   environmentClient: ApiClient;
+  projectName: string;
 };
 
-function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
+function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevProps) {
   useEffect(() => {
     const websocketUrl = new URL(apiUrl);
     websocketUrl.protocol = websocketUrl.protocol.replace("http", "ws");
@@ -298,6 +300,10 @@ function useDev({ config, apiUrl, apiKey, environmentClient }: DevProps) {
         outdir: "out",
         define: {
           TRIGGER_API_URL: `"${config.triggerUrl}"`,
+          SERVICE_NAME: `"${projectName}"`,
+        },
+        banner: {
+          js: "import { createRequire } from 'module';const require = createRequire(import.meta.url);",
         },
         plugins: [
           {

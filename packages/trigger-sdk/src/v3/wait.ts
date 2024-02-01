@@ -25,9 +25,9 @@ export type WaitOptions =
 
 export const wait = {
   for: async (options: WaitOptions) => {
-    const date = calculateDate(options);
+    const durationInMs = calculateDurationInMs(options);
 
-    await runtime.waitUntil(date);
+    await runtime.waitForDuration(durationInMs);
   },
   until: async (options: { date: Date; throwIfInThePast?: boolean }) => {},
   forRequest: async <TRequest>(params: RequestOptions): Promise<TRequest> => {
@@ -35,33 +35,33 @@ export const wait = {
   },
 };
 
-function calculateDate(options: WaitOptions): Date {
+function calculateDurationInMs(options: WaitOptions): number {
   if ("seconds" in options) {
-    return new Date(Date.now() + options.seconds * 1000);
+    return options.seconds * 1000;
   }
 
   if ("minutes" in options) {
-    return new Date(Date.now() + options.minutes * 1000 * 60);
+    return options.minutes * 1000 * 60;
   }
 
   if ("hours" in options) {
-    return new Date(Date.now() + options.hours * 1000 * 60 * 60);
+    return options.hours * 1000 * 60 * 60;
   }
 
   if ("days" in options) {
-    return new Date(Date.now() + options.days * 1000 * 60 * 60 * 24);
+    return options.days * 1000 * 60 * 60 * 24;
   }
 
   if ("weeks" in options) {
-    return new Date(Date.now() + options.weeks * 1000 * 60 * 60 * 24 * 7);
+    return options.weeks * 1000 * 60 * 60 * 24 * 7;
   }
 
   if ("months" in options) {
-    return new Date(Date.now() + options.months * 1000 * 60 * 60 * 24 * 30);
+    return options.months * 1000 * 60 * 60 * 24 * 30;
   }
 
   if ("years" in options) {
-    return new Date(Date.now() + options.years * 1000 * 60 * 60 * 24 * 365);
+    return options.years * 1000 * 60 * 60 * 24 * 365;
   }
 
   throw new Error("Invalid options");

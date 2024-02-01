@@ -1,20 +1,35 @@
+import { flushOtel, getLogger, getTracer } from "./dev/tracer.js";
+
+const otelTracer = getTracer("trigger-dev-worker", packageJson.version);
+const otelLogger = getLogger("trigger-dev-worker", packageJson.version);
+
+import { SpanKind } from "@opentelemetry/api";
 import {
+  DevRuntimeManager,
   TaskMetadataWithFilePath,
   TaskRunContext,
   TaskRunErrorCodes,
   TaskRunExecution,
+  TriggerTracer,
   ZodMessageHandler,
   ZodMessageSender,
   childToWorkerMessages,
   parseError,
   runtime,
-  workerToChildMessages,
-  DevRuntimeManager,
   taskContextManager,
+  workerToChildMessages,
 } from "@trigger.dev/core/v3";
-import { TaskMetadataWithRun } from "./types.js";
+import * as packageJson from "../package.json";
 
-const devRuntimeManager = new DevRuntimeManager();
+import { TaskMetadataWithRun } from "./types.js";
+import { ConsoleLogger } from "./dev/consoleLogger";
+
+const tracer = new TriggerTracer(otelTracer);
+const consoleLogger = new ConsoleLogger(otelLogger);
+
+const devRuntimeManager = new DevRuntimeManager({
+  tracer,
+});
 
 runtime.setGlobalRuntimeManager(devRuntimeManager);
 
@@ -29,7 +44,7 @@ declare const __TASKS__: Record<string, string>;
 class TaskExecutor {
   constructor(public task: TaskMetadataWithRun) {}
 
-  async execute(execution: TaskRunExecution) {
+  async execute(execution: TaskRunExecution, traceContext: Record<string, unknown>) {
     const parsedPayload = JSON.parse(execution.run.payload);
     const ctx = TaskRunContext.parse(execution);
 
@@ -39,10 +54,21 @@ class TaskExecutor {
         payload: parsedPayload,
       },
       async () => {
-        return await this.task.run({
-          payload: parsedPayload,
-          ctx: TaskRunContext.parse(execution),
-        });
+        return await tracer.startActiveSpan(
+          `${execution.task.id} execute`,
+          async (span) => {
+            return await consoleLogger.intercept(console, async () => {
+              return await this.task.run({
+                payload: parsedPayload,
+                ctx: TaskRunContext.parse(execution),
+              });
+            });
+          },
+          {
+            kind: SpanKind.CONSUMER,
+          },
+          tracer.extractContext(traceContext)
+        );
       }
     );
 
@@ -101,7 +127,7 @@ for (const task of tasks) {
 const handler = new ZodMessageHandler({
   schema: workerToChildMessages,
   messages: {
-    EXECUTE_TASK_RUN: async ({ execution, metadata }) => {
+    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }) => {
       process.title = `trigger-dev-worker: ${execution.task.id} ${execution.attempt.id}`;
 
       const executor = taskExecutors.get(execution.task.id);
@@ -124,7 +150,7 @@ const handler = new ZodMessageHandler({
       }
 
       try {
-        const result = await executor.execute(execution);
+        const result = await executor.execute(execution, traceContext);
 
         return sender.send("TASK_RUN_COMPLETED", {
           result: {
@@ -145,6 +171,14 @@ const handler = new ZodMessageHandler({
     },
     TASK_RUN_COMPLETED: async ({ completion, execution }) => {
       devRuntimeManager.resumeTask(completion, execution);
+    },
+    CLEANUP: async ({ flush }) => {
+      if (flush) {
+        await flushOtel();
+      }
+
+      // Now we need to exit the process
+      await sender.send("READY_TO_DISPOSE", undefined);
     },
   },
 });

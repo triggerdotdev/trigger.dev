@@ -6,6 +6,7 @@ import {
   TaskRunBuiltInError,
   TaskRunError,
   TaskRunExecution,
+  TaskRunExecutionPayload,
   TaskRunExecutionResult,
   ZodMessageHandler,
   ZodMessageSender,
@@ -87,14 +88,12 @@ export class BackgroundWorkerCoordinator {
   async handleMessage(id: string, message: BackgroundWorkerServerMessages) {
     switch (message.type) {
       case "EXECUTE_RUNS": {
-        await Promise.all(
-          message.executions.map((execution) => this.#executeTaskRun(id, execution))
-        );
+        await Promise.all(message.payloads.map((payload) => this.#executeTaskRun(id, payload)));
       }
     }
   }
 
-  async #executeTaskRun(id: string, execution: TaskRunExecution) {
+  async #executeTaskRun(id: string, payload: TaskRunExecutionPayload) {
     const worker = this._backgroundWorkers.get(id);
 
     if (!worker) {
@@ -109,6 +108,8 @@ export class BackgroundWorkerCoordinator {
       return;
     }
 
+    const { execution } = payload;
+
     const link = chalk.bgBlueBright(
       terminalLink("view logs", `${this.baseURL}/runs/${execution.run.id}`)
     );
@@ -121,7 +122,7 @@ export class BackgroundWorkerCoordinator {
 
     const now = performance.now();
 
-    const completion = await worker.executeTaskRun(execution);
+    const completion = await worker.executeTaskRun(payload);
 
     const elapsed = performance.now() - now;
 
@@ -239,6 +240,10 @@ export class BackgroundWorker {
         logger.log(data.toString());
       });
 
+      child.stderr?.on("data", (data) => {
+        logger.error(data.toString());
+      });
+
       child.on("exit", (code) => {
         if (!resolved) {
           clearTimeout(timeout);
@@ -256,12 +261,14 @@ export class BackgroundWorker {
   }
 
   // We need to fork the process before we can execute any tasks
-  async executeTaskRun(execution: TaskRunExecution): Promise<TaskRunExecutionResult> {
+  async executeTaskRun(payload: TaskRunExecutionPayload): Promise<TaskRunExecutionResult> {
     const metadata = this.metadata;
 
     if (!metadata) {
       throw new Error("Worker not registered");
     }
+
+    const { execution, traceContext } = payload;
 
     const child = fork(this.path, {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
@@ -313,7 +320,12 @@ export class BackgroundWorker {
         resolver(message.payload.result);
         this._onTaskCompleted.detach(ctx);
         this._onClose.detach(ctx);
-        child.kill();
+
+        await sender.send("CLEANUP", { flush: true });
+      } else if (message.type === "READY_TO_DISPOSE") {
+        if (!child.killed) {
+          child.kill();
+        }
       }
     });
 
@@ -332,7 +344,7 @@ export class BackgroundWorker {
       );
     });
 
-    await sender.send("EXECUTE_TASK_RUN", { execution, metadata });
+    await sender.send("EXECUTE_TASK_RUN", { execution, traceContext, metadata });
 
     const result = await promise;
 

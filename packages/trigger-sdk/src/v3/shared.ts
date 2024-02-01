@@ -1,3 +1,5 @@
+import { SpanKind } from "@opentelemetry/api";
+import { SemanticAttributes } from "@opentelemetry/semantic-conventions";
 import {
   ApiClient,
   TaskRunContext,
@@ -6,6 +8,7 @@ import {
   taskContextManager,
 } from "@trigger.dev/core/v3";
 import * as packageJson from "../../package.json";
+import { tracer } from "./tracer";
 
 export type PreparedItems = Record<string, any>;
 
@@ -133,19 +136,31 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
 
       const apiClient = initializeApiClient();
 
-      const response = await apiClient.triggerTask(params.id, {
-        payload: payload,
-        options: {
-          parentAttempt: ctx?.attempt.id,
-          lockToCurrentVersion: false, // Don't lock to current version because we're not waiting for it to finish
+      const handle = await tracer.startActiveSpan(
+        `${params.id} trigger`,
+        async (span) => {
+          span.setAttribute(SemanticAttributes.MESSAGING_OPERATION, "publish");
+
+          const response = await apiClient.triggerTask(params.id, {
+            payload: payload,
+            options: {
+              parentAttempt: ctx?.attempt.id,
+              lockToCurrentVersion: false, // Don't lock to current version because we're not waiting for it to finish
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error(response.error);
+          }
+
+          span.setAttribute("trigger.id", response.data.id);
+
+          return response.data;
         },
-      });
+        { kind: SpanKind.PRODUCER }
+      );
 
-      if (!response.ok) {
-        throw new Error(response.error);
-      }
-
-      return response.data;
+      return handle;
     },
     batchTrigger: async ({ items }) => {
       const batchId = "batch_1234";
@@ -164,28 +179,36 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
 
       const apiClient = initializeApiClient();
 
-      const response = await apiClient.triggerTask(params.id, {
-        payload: payload,
-        options: {
-          parentAttempt: ctx.attempt.id,
-          lockToCurrentVersion: true, // Lock to current version because we're waiting for it to finish
+      return await tracer.startActiveSpan(
+        `${params.id} trigger`,
+        async (span) => {
+          span.setAttribute(SemanticAttributes.MESSAGING_OPERATION, "publish");
+
+          const response = await apiClient.triggerTask(params.id, {
+            payload: payload,
+            options: {
+              parentAttempt: ctx.attempt.id,
+              lockToCurrentVersion: true, // Lock to current version because we're waiting for it to finish
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error(response.error);
+          }
+
+          const result = await runtime.waitForTask({
+            id: response.data.id,
+            ctx,
+          });
+
+          if (!result.ok) {
+            throw createErrorTaskError(result.error);
+          }
+
+          return JSON.parse(result.output);
         },
-      });
-
-      if (!response.ok) {
-        throw new Error(response.error);
-      }
-
-      const result = await runtime.waitForTask({
-        id: response.data.id,
-        ctx,
-      });
-
-      if (!result.ok) {
-        throw createErrorTaskError(result.error);
-      }
-
-      return JSON.parse(result.output);
+        { kind: SpanKind.PRODUCER }
+      );
     },
     batchTriggerAndWait: async ({ items }) => {
       //pseudo-code for throwing an error if not called from inside a Run

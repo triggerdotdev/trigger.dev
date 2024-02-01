@@ -3,6 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import { parseTriggerTaskRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 import { TriggerTaskService } from "~/v3/services/triggerTask.server";
 
 const ParamsSchema = z.object({
@@ -12,6 +13,8 @@ const ParamsSchema = z.object({
 const HeadersSchema = z.object({
   "idempotency-key": z.string().optional().nullable(),
   "trigger-version": z.string().optional().nullable(),
+  traceparent: z.string().optional(),
+  tracestate: z.string().optional(),
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -27,13 +30,20 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
 
-  const headers = HeadersSchema.safeParse(Object.fromEntries(request.headers));
+  const rawHeaders = Object.fromEntries(request.headers);
+
+  const headers = HeadersSchema.safeParse(rawHeaders);
 
   if (!headers.success) {
     return json({ error: "Invalid headers" }, { status: 400 });
   }
 
-  const { "idempotency-key": idempotencyKey, "trigger-version": triggerVersion } = headers.data;
+  const {
+    "idempotency-key": idempotencyKey,
+    "trigger-version": triggerVersion,
+    traceparent,
+    tracestate,
+  } = headers.data;
 
   const { taskId } = ParamsSchema.parse(params);
 
@@ -46,12 +56,20 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid request body" }, { status: 400 });
   }
 
+  logger.debug("Triggering task", {
+    taskId,
+    idempotencyKey,
+    triggerVersion,
+    body: body.data,
+  });
+
   const service = new TriggerTaskService();
 
   try {
     const run = await service.call(taskId, authenticationResult.environment, body.data, {
       idempotencyKey: idempotencyKey ?? undefined,
       triggerVersion: triggerVersion ?? undefined,
+      traceContext: traceparent ? { traceparent, tracestate } : undefined,
     });
 
     return json({

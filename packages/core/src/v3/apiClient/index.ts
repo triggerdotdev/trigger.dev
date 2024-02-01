@@ -1,3 +1,4 @@
+import { context, propagation } from "@opentelemetry/api";
 import { zodfetch } from "../../zodfetch";
 import { TriggerTaskRequestBody, TriggerTaskResponse } from "../schemas/api";
 
@@ -13,10 +14,19 @@ export class ApiClient {
   triggerTask(taskId: string, options: TriggerTaskRequestBody) {
     return zodfetch(TriggerTaskResponse, `${this.baseUrl}/api/v1/tasks/${taskId}/trigger`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-      },
+      headers: this.#getHeaders(),
       body: JSON.stringify(options),
     });
+  }
+
+  #getHeaders() {
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${this.accessToken}`,
+    };
+
+    propagation.inject(context.active(), headers);
+
+    return headers;
   }
 }

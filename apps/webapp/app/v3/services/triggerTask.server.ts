@@ -7,6 +7,7 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
   triggerVersion?: string;
+  traceContext?: Record<string, string | undefined>;
 };
 
 export class TriggerTaskService {
@@ -55,6 +56,7 @@ export class TriggerTaskService {
         payload: JSON.stringify(body.payload),
         payloadType: "application/json",
         context: body.context,
+        traceContext: options?.traceContext,
         parentAttemptId: parentAttempt?.id,
         lockedToVersionId: body.options?.lockToCurrentVersion
           ? parentAttempt?.backgroundWorkerId

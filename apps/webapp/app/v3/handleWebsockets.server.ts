@@ -6,6 +6,7 @@ import {
   ZodMessageSender,
   clientWebsocketMessages,
   serverWebsocketMessages,
+  TaskRunExecutionPayload,
 } from "@trigger.dev/core/v3";
 import { BackgroundWorker, BackgroundWorkerTask } from "@trigger.dev/database";
 import { Evt } from "evt";
@@ -243,10 +244,10 @@ class BackgroundWorkerHandler {
   // if the abort controller is aborted, we'll stop the runloop
   async #startRunLoop() {
     while (!this._abortController.signal.aborted) {
-      const { executions, returnReservedTasksToPending } = await this.#reserveTaskRuns();
+      const { payloads, returnReservedTasksToPending } = await this.#reserveTaskRuns();
 
-      if (executions.length > 0) {
-        logger.debug("Sending task run executions to client", { executions });
+      if (payloads.length > 0) {
+        logger.debug("Sending task run payloads to client", { payloads });
 
         if (this._abortController.signal.aborted) {
           // Return reserverd task runs to pending
@@ -259,7 +260,7 @@ class BackgroundWorkerHandler {
           backgroundWorkerId: this.id,
           data: {
             type: "EXECUTE_RUNS",
-            executions,
+            payloads,
           },
         });
       }
@@ -269,20 +270,20 @@ class BackgroundWorkerHandler {
   }
 
   async #reserveTaskRuns(): Promise<{
-    executions: Array<TaskRunExecution>;
+    payloads: Array<TaskRunExecutionPayload>;
     returnReservedTasksToPending: () => Promise<void>;
   }> {
-    const allExecutions: Array<TaskRunExecution> = [];
+    const allPayloads: Array<TaskRunExecutionPayload> = [];
     const allReturnReservedTasksToPending: Array<() => Promise<void>> = [];
 
     if (!this._backgroundWorkerTasks) {
-      return { executions: allExecutions, returnReservedTasksToPending: async () => {} };
+      return { payloads: allPayloads, returnReservedTasksToPending: async () => {} };
     }
 
     for (const task of this._backgroundWorkerTasks) {
-      const { executions, returnReservedTasksToPending } = await this.#reserveTaskRunsForTask(task);
+      const { payloads, returnReservedTasksToPending } = await this.#reserveTaskRunsForTask(task);
 
-      allExecutions.push(...executions);
+      allPayloads.push(...payloads);
       allReturnReservedTasksToPending.push(returnReservedTasksToPending);
     }
 
@@ -290,7 +291,7 @@ class BackgroundWorkerHandler {
       await Promise.all(allReturnReservedTasksToPending);
     };
 
-    return { executions: allExecutions, returnReservedTasksToPending };
+    return { payloads: allPayloads, returnReservedTasksToPending };
   }
 
   async #findTaskRunsForTask(task: BackgroundWorkerTask, tx: PrismaClientOrTransaction) {
@@ -337,7 +338,7 @@ class BackgroundWorkerHandler {
   }
 
   async #reserveTaskRunsForTask(task: BackgroundWorkerTask): Promise<{
-    executions: Array<TaskRunExecution>;
+    payloads: Array<TaskRunExecutionPayload>;
     returnReservedTasksToPending: () => Promise<void>;
   }> {
     return await prisma.$transaction(async (tx) => {
@@ -408,7 +409,7 @@ class BackgroundWorkerHandler {
           },
         };
 
-        return { create, execution };
+        return { create, execution, traceContext: taskRun.traceContext as Record<string, unknown> };
       });
 
       await tx.taskRunAttempt.createMany({
@@ -443,7 +444,7 @@ class BackgroundWorkerHandler {
       };
 
       return {
-        executions: attempts.map(({ execution }) => execution),
+        payloads: attempts.map(({ execution, traceContext }) => ({ execution, traceContext })),
         returnReservedTasksToPending,
       };
     });

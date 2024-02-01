@@ -47,19 +47,30 @@
     "test": "jest"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.7.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.40.3",
+    "@opentelemetry/exporter-collector": "^0.25.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.48.0",
+    "@opentelemetry/instrumentation": "^0.48.0",
+    "@opentelemetry/instrumentation-http": "^0.48.0",
+    "@opentelemetry/resources": "^1.21.0",
+    "@opentelemetry/sdk-node": "^0.48.0",
+    "@opentelemetry/sdk-trace-base": "^1.21.0",
+    "@opentelemetry/sdk-trace-node": "^1.21.0",
+    "@opentelemetry/semantic-conventions": "^1.21.0",
     "ulidx": "^2.2.1",
     "zod": "3.22.3",
     "zod-error": "1.5.0"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
+    "@trigger.dev/tsup": "workspace:*",
     "@types/jest": "^29.5.3",
     "@types/node": "16",
     "jest": "^29.6.2",
     "rimraf": "^3.0.2",
     "ts-jest": "^29.1.1",
     "tsup": "^8.0.1",
-    "@trigger.dev/tsup": "workspace:*",
     "typescript": "^5.3.0"
   },
   "engines": {

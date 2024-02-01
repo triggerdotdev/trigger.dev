@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { context, propagation } from "@opentelemetry/api";
 
 type ApiResult<TSuccessResult> =
   | { ok: true; data: TSuccessResult }

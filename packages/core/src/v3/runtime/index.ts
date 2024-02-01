@@ -20,6 +20,10 @@ export class RuntimeAPI {
     return this._instance;
   }
 
+  public waitForDuration(ms: number): Promise<void> {
+    return this.#getRuntimeManager().waitForDuration(ms);
+  }
+
   public waitUntil(date: Date): Promise<void> {
     return this.#getRuntimeManager().waitUntil(date);
   }

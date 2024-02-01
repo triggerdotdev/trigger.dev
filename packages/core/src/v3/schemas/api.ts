@@ -10,6 +10,7 @@ export type WhoAmIResponse = z.infer<typeof WhoAmIResponseSchema>;
 
 export const GetProjectDevResponse = z.object({
   apiKey: z.string(),
+  name: z.string(),
 });
 
 export type GetProjectDevResponse = z.infer<typeof GetProjectDevResponse>;

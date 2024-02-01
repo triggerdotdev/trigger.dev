@@ -7,17 +7,33 @@
     "start": "ts-node -r tsconfig-paths/register -r dotenv/config src/index.ts"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.7.0",
+    "@opentelemetry/api-logs": "^0.48.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.40.3",
+    "@opentelemetry/exporter-collector": "^0.25.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.48.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.48.0",
+    "@opentelemetry/instrumentation": "^0.48.0",
+    "@opentelemetry/instrumentation-fetch": "^0.48.0",
+    "@opentelemetry/instrumentation-http": "^0.48.0",
+    "@opentelemetry/propagator-b3": "^1.21.0",
+    "@opentelemetry/resources": "^1.21.0",
+    "@opentelemetry/sdk-logs": "^0.48.0",
+    "@opentelemetry/sdk-node": "^0.48.0",
+    "@opentelemetry/sdk-trace-base": "^1.21.0",
+    "@opentelemetry/sdk-trace-node": "^1.21.0",
+    "@opentelemetry/semantic-conventions": "^1.21.0",
     "@trigger.dev/sdk": "workspace:*"
   },
   "devDependencies": {
-    "trigger.dev": "workspace:*",
     "@trigger.dev/tsconfig": "workspace:*",
+    "@types/node": "20.4.2",
     "concurrently": "^8.2.0",
     "dotenv": "^16.3.1",
     "nodemon": "^3.0.1",
+    "trigger.dev": "workspace:*",
     "ts-node": "^10.9.1",
     "tsconfig-paths": "^3.14.1",
-    "@types/node": "20.4.2",
     "typescript": "5.1.6"
   }
 }

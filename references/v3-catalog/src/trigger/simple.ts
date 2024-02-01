@@ -60,6 +60,8 @@ function thisFunctionWillThrow() {
 export const parentTask = task({
   id: "parent-task",
   run: async ({ payload, ctx }: { payload: { message: string }; ctx: Context }) => {
+    console.log("Parent task payload", { payload });
+
     await wait.for({ seconds: 5 });
 
     const childTaskResponse = await childTask.triggerAndWait({
@@ -67,6 +69,8 @@ export const parentTask = task({
         message: payload.message,
       },
     });
+
+    console.log("Child task response", { childTaskResponse });
 
     await childTask.trigger({
       payload: {
@@ -84,7 +88,28 @@ export const parentTask = task({
 export const childTask = task({
   id: "child-task",
   run: async ({ payload, ctx }: { payload: { message: string }; ctx: Context }) => {
+    console.log("Child task payload", { payload });
+
     await wait.for({ seconds: 10 });
+
+    const response = await fetch("https://jsonhero.io/api/create.json", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "childTask payload and ctx",
+        content: {
+          payload,
+          ctx,
+        },
+        readOnly: true,
+      }),
+    });
+
+    const json: any = await response.json();
+
+    console.log("JSONHero response", { json });
 
     return {
       message: "This is the child task",

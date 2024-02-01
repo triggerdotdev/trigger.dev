@@ -1,28 +1,32 @@
-import { createJsonHeroDoc, parentTask, simplestTask, simulateError } from "./trigger/simple";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { flushOtel, getTracer } from "./tracer";
+
+const tracer = getTracer("v3-catalog", "0.0.1");
+
+import { parentTask } from "./trigger/simple";
 
 export async function main() {
-  // await createJsonHeroDoc.trigger({
-  //   payload: {
-  //     title: "Hello World",
-  //     content: {
-  //       hello: "world",
-  //       taskId: "create-jsonhero-doc",
-  //       foo: "barrrrrrr",
-  //     },
-  //   },
-  // });
+  const result = await tracer.startActiveSpan("main", async (span) => {
+    try {
+      const handle = await parentTask.trigger({
+        payload: { message: "This is a message from the trigger-dev CLI" },
+      });
 
-  // return await simplestTask.trigger({ payload: { url: "https://enig6u3k3jhj.x.pipedream.net/" } });
+      return handle;
+    } catch (e) {
+      if (e instanceof Error) {
+        span.recordException(e);
+      }
 
-  // await simulateError.trigger({
-  //   payload: {
-  //     message: "This is an error from the trigger-dev CLI",
-  //   },
-  // });
-
-  await parentTask.trigger({
-    payload: { message: "This is a message from the trigger-dev CLI" },
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+      });
+    } finally {
+      span.end();
+    }
   });
+
+  await flushOtel();
 }
 
 main().then(console.log).catch(console.error);

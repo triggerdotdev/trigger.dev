@@ -13,3 +13,4 @@ export function parseTriggerTaskRequestBody(body: unknown) {
 export { taskContextManager } from "./tasks/taskContextManager";
 export type { RuntimeManager } from "./runtime/manager";
 export { DevRuntimeManager } from "./runtime/devRuntimeManager";
+export { TriggerTracer } from "./tracing";
