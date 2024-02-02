@@ -7,15 +7,16 @@ export async function findEnvironmentByApiKey(apiKey: string) {
   const environment = await prisma.runtimeEnvironment.findUnique({
     where: {
       apiKey,
-      project: {
-        deletedAt: null,
-      },
     },
     include: {
       project: true,
       organization: true,
     },
   });
+
+  if (environment?.project.deletedAt !== null) {
+    return null;
+  }
 
   return environment;
 }
