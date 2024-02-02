@@ -49,7 +49,6 @@ export function createSchema(
             message: conform.VALIDATION_UNDEFINED,
           });
         } else {
-          // Tell zod this is an async validation by returning the promise
           const { isMatch, projectSlug } = constraints.getSlugMatch(slug);
           if (isMatch) {
             return;
