@@ -14,6 +14,7 @@ export async function findEnvironmentByApiKey(apiKey: string) {
     },
   });
 
+  //don't return deleted projects
   if (environment?.project.deletedAt !== null) {
     return null;
   }
@@ -25,15 +26,17 @@ export async function findEnvironmentByPublicApiKey(apiKey: string) {
   const environment = await prisma.runtimeEnvironment.findUnique({
     where: {
       pkApiKey: apiKey,
-      project: {
-        deletedAt: null,
-      },
     },
     include: {
       project: true,
       organization: true,
     },
   });
+
+  //don't return deleted projects
+  if (environment?.project.deletedAt !== null) {
+    return null;
+  }
 
   return environment;
 }
