@@ -137,8 +137,8 @@ export class OrganizationsPresenter {
     }
 
     if (!projectSlug) {
-        return sessionProjectId;
-      }
+      return sessionProjectId;
+    }
 
     //check session id matches the project slug
     const project = await prisma.project.findFirst({
@@ -258,11 +258,7 @@ export class OrganizationsPresenter {
     });
 
     if (projects.length === 0) {
-      throw redirectWithErrorMessage(
-        newProjectPath({ slug: organizationSlug }),
-        request,
-        "No projects found"
-      );
+      throw redirect(newProjectPath({ slug: organizationSlug }), request);
     }
 
     return projects[0];
