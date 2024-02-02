@@ -849,6 +849,8 @@ model JobRun {
   statuses           JobRunStatusRecord[]
   autoYieldExecution JobRunAutoYieldExecution[]
   subscriptions      JobRunSubscription[]
+
+  @@index([jobId, createdAt(sort: Desc)], map: "idx_jobrun_jobId_createdAt")
 }
 
 enum JobRunStatus {
