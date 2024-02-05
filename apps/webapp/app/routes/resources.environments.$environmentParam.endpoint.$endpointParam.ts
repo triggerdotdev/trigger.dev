@@ -1,6 +1,6 @@
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { DeleteEndpointIndexService } from "~/services/endpoints/deleteEndpointService";
+import { DeleteEndpointService } from "~/services/endpoints/deleteEndpointService";
 import { IndexEndpointService } from "~/services/endpoints/indexEndpoint.server";
 import { requireUserId } from "~/services/session.server";
 import { workerQueue } from "~/services/worker.server";
@@ -42,7 +42,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         return json({ success: true });
       }
       case "delete": {
-        const service = new DeleteEndpointIndexService();
+        const service = new DeleteEndpointService();
         await service.call(endpointParam, userId);
         return json({ success: true });
       }

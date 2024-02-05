@@ -2,6 +2,7 @@ import { PrismaClient } from "@trigger.dev/database";
 import { redirect } from "remix-typedjson";
 import { prisma } from "~/db.server";
 import {
+  clearCurrentProjectId,
   commitCurrentProjectSession,
   getCurrentProjectId,
   setCurrentProjectId,
@@ -9,6 +10,8 @@ import {
 import { logger } from "~/services/logger.server";
 import { newProjectPath } from "~/utils/pathBuilder";
 import { ProjectPresenter } from "./ProjectPresenter.server";
+import { redirectWithErrorMessage } from "~/models/message.server";
+import { match } from "assert";
 
 export class OrganizationsPresenter {
   #prismaClient: PrismaClient;
@@ -54,7 +57,11 @@ export class OrganizationsPresenter {
     });
 
     if (!project) {
-      throw new Response("Project not found", { status: 404 });
+      throw redirectWithErrorMessage(
+        newProjectPath({ slug: organizationSlug }),
+        request,
+        "No projects found in organization"
+      );
     }
 
     return { organizations, organization, project };
@@ -75,16 +82,21 @@ export class OrganizationsPresenter {
 
     //no project in session, let's set one
     if (!sessionProjectId) {
+      //no session id and no project slug so we need to select the best project
       if (!projectSlug) {
-        const bestProject = await this.#selectBestProjectForOrganization(organizationSlug, userId);
+        const bestProject = await this.#selectBestProjectForOrganization(
+          organizationSlug,
+          userId,
+          request
+        );
         const session = await setCurrentProjectId(bestProject.id, request);
         throw redirect(request.url, {
           headers: { "Set-Cookie": await commitCurrentProjectSession(session) },
         });
       }
 
-      //use the project param to find the project
-      const project = await prisma.project.findFirst({
+      //get all the projects
+      const projects = await prisma.project.findMany({
         select: {
           id: true,
           slug: true,
@@ -93,21 +105,37 @@ export class OrganizationsPresenter {
           organization: {
             slug: organizationSlug,
           },
+          deletedAt: null,
           slug: projectSlug,
+        },
+        orderBy: {
+          updatedAt: "desc",
         },
       });
 
-      if (!project) {
-        throw redirect(newProjectPath({ slug: organizationSlug }));
+      if (projects.length === 0) {
+        throw redirectWithErrorMessage(
+          newProjectPath({ slug: organizationSlug }),
+          request,
+          "No projects in this organization"
+        );
       }
 
-      const session = await setCurrentProjectId(project.id, request);
+      //try get the project which matches the URL
+      let matchingProject = projects.find((p) => p.slug === projectSlug);
+
+      //if there's no matching project, just use the most recently updated one
+      if (!matchingProject) {
+        matchingProject = projects[0];
+      }
+
+      //set the session
+      const session = await setCurrentProjectId(matchingProject.id, request);
       throw redirect(request.url, {
         headers: { "Set-Cookie": await commitCurrentProjectSession(session) },
       });
     }
 
-    //no project slug, so just return the session id
     if (!projectSlug) {
       return sessionProjectId;
     }
@@ -123,6 +151,7 @@ export class OrganizationsPresenter {
         organization: {
           slug: organizationSlug,
         },
+        deletedAt: null,
       },
     });
 
@@ -150,6 +179,7 @@ export class OrganizationsPresenter {
         title: true,
         runsEnabled: true,
         projects: {
+          where: { deletedAt: null },
           select: {
             id: true,
             slug: true,
@@ -202,13 +232,18 @@ export class OrganizationsPresenter {
     });
   }
 
-  async #selectBestProjectForOrganization(organizationSlug: string, userId: string) {
+  async #selectBestProjectForOrganization(
+    organizationSlug: string,
+    userId: string,
+    request: Request
+  ) {
     const projects = await this.#prismaClient.project.findMany({
       select: {
         id: true,
         slug: true,
       },
       where: {
+        deletedAt: null,
         organization: {
           slug: organizationSlug,
           members: { some: { userId } },
@@ -223,8 +258,7 @@ export class OrganizationsPresenter {
     });
 
     if (projects.length === 0) {
-      logger.info("Didn't find a project in this org", { organizationSlug, projects });
-      throw new Response("Not Found", { status: 404 });
+      throw redirect(newProjectPath({ slug: organizationSlug }), request);
     }
 
     return projects[0];

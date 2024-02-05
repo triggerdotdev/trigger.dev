@@ -14,6 +14,11 @@ export async function findEnvironmentByApiKey(apiKey: string) {
     },
   });
 
+  //don't return deleted projects
+  if (environment?.project.deletedAt !== null) {
+    return null;
+  }
+
   return environment;
 }
 
@@ -28,24 +33,10 @@ export async function findEnvironmentByPublicApiKey(apiKey: string) {
     },
   });
 
-  return environment;
-}
-
-export async function getEnvironmentForOrganization(organizationSlug: string, slug: string) {
-  const organization = await prisma.organization.findUnique({
-    where: {
-      slug: organizationSlug,
-    },
-    include: {
-      environments: true,
-    },
-  });
-
-  if (!organization) {
-    return;
+  //don't return deleted projects
+  if (environment?.project.deletedAt !== null) {
+    return null;
   }
-
-  const environment = organization.environments.find((environment) => environment.slug === slug);
 
   return environment;
 }

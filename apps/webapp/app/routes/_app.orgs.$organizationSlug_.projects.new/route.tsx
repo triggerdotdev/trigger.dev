@@ -1,12 +1,14 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import type { ActionFunction } from "@remix-run/node";
+import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -14,11 +16,44 @@ import { FormTitle } from "~/components/primitives/FormTitle";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { useOrganization } from "~/hooks/useOrganizations";
+import { prisma } from "~/db.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { createProject } from "~/models/project.server";
 import { requireUserId } from "~/services/session.server";
-import { organizationPath, projectPath } from "~/utils/pathBuilder";
+import { OrganizationParamsSchema, organizationPath, projectPath } from "~/utils/pathBuilder";
+
+export async function loader({ params, request }: LoaderFunctionArgs) {
+  const userId = await requireUserId(request);
+  const { organizationSlug } = OrganizationParamsSchema.parse(params);
+
+  const organization = await prisma.organization.findUnique({
+    where: { slug: organizationSlug, members: { some: { userId } } },
+    select: {
+      id: true,
+      title: true,
+      _count: {
+        select: {
+          projects: {
+            where: { deletedAt: null },
+          },
+        },
+      },
+    },
+  });
+
+  if (!organization) {
+    throw new Response(null, { status: 404, statusText: "Organization not found" });
+  }
+
+  return typedjson({
+    organization: {
+      id: organization.id,
+      title: organization.title,
+      slug: organizationSlug,
+      projectsCount: organization._count.projects,
+    },
+  });
+}
 
 const schema = z.object({
   projectName: z.string().min(3, "Project name must have at least 3 characters").max(50),
@@ -54,7 +89,7 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function NewOrganizationPage() {
-  const organization = useOrganization();
+  const { organization } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
 
   const [form, { projectName }] = useForm({
@@ -71,10 +106,15 @@ export default function NewOrganizationPage() {
       <div>
         <FormTitle
           LeadingIcon="folder"
-          title="Create a new Project"
-          description="Create a new Project to help you organize the Jobs you create."
+          title="Create a new project"
+          description={`This will create a new project in your "${organization.title}" organization. `}
         />
         <Form method="post" {...form.props}>
+          {organization.projectsCount === 0 && (
+            <Callout variant="info" className="mb-4">
+              Organizations require at least one project, please create one to continue.
+            </Callout>
+          )}
           <Fieldset>
             <InputGroup>
               <Label htmlFor={projectName.id}>Project name</Label>
@@ -93,9 +133,11 @@ export default function NewOrganizationPage() {
                 </Button>
               }
               cancelButton={
-                <LinkButton to={organizationPath(organization)} variant={"secondary/small"}>
-                  Cancel
-                </LinkButton>
+                organization.projectsCount > 0 ? (
+                  <LinkButton to={organizationPath(organization)} variant={"secondary/small"}>
+                    Cancel
+                  </LinkButton>
+                ) : undefined
               }
             />
           </Fieldset>
