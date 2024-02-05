@@ -22,7 +22,7 @@ export class TaskContextManager {
 
   get attributes(): Attributes {
     if (this.ctx) {
-      return flattenAttributes("__trigger", this.ctx);
+      return { ...flattenAttributes("__trigger", this.ctx), "service.name": this.ctx.task.id };
     }
 
     return {};

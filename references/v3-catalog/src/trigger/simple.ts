@@ -67,6 +67,7 @@ export const parentTask = task({
     const childTaskResponse = await childTask.triggerAndWait({
       payload: {
         message: payload.message,
+        forceError: false,
       },
     });
 
@@ -75,6 +76,7 @@ export const parentTask = task({
     await childTask.trigger({
       payload: {
         message: `${payload.message} - 2.a`,
+        forceError: true,
       },
     });
 
@@ -87,7 +89,13 @@ export const parentTask = task({
 
 export const childTask = task({
   id: "child-task",
-  run: async ({ payload, ctx }: { payload: { message: string }; ctx: Context }) => {
+  run: async ({
+    payload,
+    ctx,
+  }: {
+    payload: { message: string; forceError: boolean };
+    ctx: Context;
+  }) => {
     console.log("Child task payload", { payload });
 
     await wait.for({ seconds: 10 });
@@ -110,6 +118,10 @@ export const childTask = task({
     const json: any = await response.json();
 
     console.log("JSONHero response", { json });
+
+    if (payload.forceError) {
+      throw new Error(`Forced error: ${payload.message}`);
+    }
 
     return {
       message: "This is the child task",

@@ -5,30 +5,7 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
-  hostmetrics:
-    collection_interval: 60s
-    scrapers:
-      cpu: {}
-      disk: {}
-      load: {}
-      filesystem: {}
-      memory: {}
-      network: {}
-      paging: {}
-      process:
-        mute_process_name_error: true
-        mute_process_exe_error: true
-        mute_process_io_error: true
-      processes: {}
-  prometheus:
-    config:
-      global:
-        scrape_interval: 60s
-      scrape_configs:
-        - job_name: otel-collector-binary
-          static_configs:
-            - targets:
-              # - localhost:8888
+
 processors:
   batch:
     send_batch_size: 1000
@@ -40,32 +17,24 @@ processors:
     timeout: 2s
     system:
       hostname_sources: [os] # alternatively, use [dns,os] for setting FQDN as host.name and os as fallback
+
 extensions:
   health_check: {}
   zpages: {}
+
 exporters:
   otlp:
-    endpoint: "ingest.us.signoz.cloud:443"
+    endpoint: "api.honeycomb.io:443"
     tls:
       insecure: false
     headers:
-      "signoz-access-token": "c4249c3f-bfb6-4eaf-83f9-86922386626a"
+      "x-honeycomb-team": ${env:HONEYCOMB_API_KEY}
   logging:
     verbosity: normal
+
 service:
-  telemetry:
-    metrics:
-      address: 0.0.0.0:8888
   extensions: [health_check, zpages]
   pipelines:
-    metrics:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlp]
-    metrics/internal:
-      receivers: [prometheus, hostmetrics]
-      processors: [resourcedetection, batch]
-      exporters: [otlp]
     traces:
       receivers: [otlp]
       processors: [batch]

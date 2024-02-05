@@ -80,4 +80,5 @@ services:
       - "55681:55681"
       - "4317:4317" # OTLP gRPC receiver
       - "4318:4318" # OTLP http receiver
-
+    environment:
+      HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}

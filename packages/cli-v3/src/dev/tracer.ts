@@ -26,7 +26,6 @@ export class ServiceDetector implements DetectorSync {
     }
 
     const attributes = {
-      "service.name": this.serviceName,
       "service.namespace": this.serviceName,
     };
 
@@ -59,7 +58,11 @@ const logExporter = new OTLPLogExporter({
 });
 
 // To start a logger, you first need to initialize the Logger provider.
-const loggerProvider = new LoggerProvider();
+const loggerProvider = new LoggerProvider({
+  resource: detectResourcesSync({
+    detectors: [new ServiceDetector({ serviceName: SERVICE_NAME })],
+  }),
+});
 // Add a processor to export log record
 // loggerProvider.addLogRecordProcessor(new SimpleLogRecordProcessor(new ConsoleLogRecordExporter()));
 loggerProvider.addLogRecordProcessor(new SimpleLogRecordProcessor(logExporter));
