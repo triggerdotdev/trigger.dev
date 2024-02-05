@@ -3,22 +3,41 @@ import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { registerInstrumentations } from "@opentelemetry/instrumentation";
 import { FetchInstrumentation } from "@opentelemetry/instrumentation-fetch";
-import { Resource } from "@opentelemetry/resources";
-import {
-  ConsoleLogRecordExporter,
-  LoggerProvider,
-  SimpleLogRecordProcessor,
-} from "@opentelemetry/sdk-logs";
-import { ConsoleSpanExporter } from "@opentelemetry/sdk-trace-base";
+import { Resource, detectResourcesSync } from "@opentelemetry/resources";
+import { LoggerProvider, SimpleLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { NodeTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-node";
-import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
 
 declare const SERVICE_NAME: string;
 
+import { DetectorSync, ResourceDetectionConfig } from "@opentelemetry/resources";
+
+type ServiceDetectorConfig = {
+  serviceName?: string;
+};
+
+export class ServiceDetector implements DetectorSync {
+  serviceName?: string;
+  constructor(config?: ServiceDetectorConfig) {
+    this.serviceName = config?.serviceName || process.env.OTEL_SERVICE_NAME;
+  }
+  detect(_config?: ResourceDetectionConfig): Resource {
+    if (!this.serviceName) {
+      return Resource.empty();
+    }
+
+    const attributes = {
+      "service.name": this.serviceName,
+      "service.namespace": this.serviceName,
+    };
+
+    return new Resource(attributes);
+  }
+}
+
 const provider = new NodeTracerProvider({
   forceFlushTimeoutMillis: 500,
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: SERVICE_NAME,
+  resource: detectResourcesSync({
+    detectors: [new ServiceDetector({ serviceName: SERVICE_NAME })],
   }),
 });
 
