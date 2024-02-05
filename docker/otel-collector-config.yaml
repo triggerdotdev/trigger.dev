@@ -23,12 +23,11 @@ extensions:
   zpages: {}
 
 exporters:
-  otlp:
-    endpoint: "api.honeycomb.io:443"
-    tls:
-      insecure: false
+  otlphttp:
+    endpoint: "https://otel.baselime.io/v1/"
     headers:
-      "x-honeycomb-team": ${env:HONEYCOMB_API_KEY}
+      "x-api-key": "01f2815704fbf29e75cbf6ed0bcfbe0a679e28b2"
+      "x-baselime-dataset": "v3-test"
   logging:
     verbosity: normal
 
@@ -38,8 +37,8 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp]
+      exporters: [otlphttp]
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp]
+      exporters: [otlphttp]
