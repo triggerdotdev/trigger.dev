@@ -1,9 +1,8 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { Form, useActionData } from "@remix-run/react";
+import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { ActionFunction, json } from "@remix-run/server-runtime";
 import { redirect } from "remix-typedjson";
-import { r } from "tar";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -28,7 +27,7 @@ import {
 import { DeleteProjectService } from "~/services/deleteProject.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
-import { organizationPath, projectPath, projectSettingsPath } from "~/utils/pathBuilder";
+import { organizationPath, projectPath } from "~/utils/pathBuilder";
 
 export function createSchema(
   constraints: {
@@ -130,9 +129,9 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function Page() {
-  const organization = useOrganization();
   const project = useProject();
   const lastSubmission = useActionData();
+  const navigation = useNavigation();
 
   const [renameForm, { projectName }] = useForm({
     id: "rename-project",
@@ -161,6 +160,14 @@ export default function Page() {
     },
   });
 
+  const isRenameLoading =
+    navigation.formData?.get("action") === "rename" &&
+    (navigation.state === "submitting" || navigation.state === "loading");
+
+  const isDeleteLoading =
+    navigation.formData?.get("action") === "delete" &&
+    (navigation.state === "submitting" || navigation.state === "loading");
+
   return (
     <PageContainer>
       <PageHeader>
@@ -188,7 +195,12 @@ export default function Page() {
                 </InputGroup>
                 <FormButtons
                   confirmButton={
-                    <Button type="submit" variant={"primary/small"}>
+                    <Button
+                      type="submit"
+                      variant={"primary/small"}
+                      disabled={isRenameLoading}
+                      LeadingIcon={isRenameLoading ? "spinner-white" : undefined}
+                    >
                       Rename project
                     </Button>
                   }
@@ -227,8 +239,9 @@ export default function Page() {
                     <Button
                       type="submit"
                       variant={"danger/small"}
-                      LeadingIcon="trash-can"
+                      LeadingIcon={isDeleteLoading ? "spinner-white" : "trash-can"}
                       leadingIconClassName="text-white"
+                      disabled={isDeleteLoading}
                     >
                       Delete project
                     </Button>
