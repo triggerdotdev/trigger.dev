@@ -171,7 +171,7 @@ export default function Page() {
               <Checkbox
                 id="marketingEmails"
                 {...conform.input(marketingEmails, { type: "checkbox" })}
-                label="Receive product updates"
+                label="Receive onboarding emails"
                 variant="simple/small"
                 defaultChecked={user.marketingEmails}
               />
