@@ -52,7 +52,11 @@ export class DeleteOrganizationService {
     const currentPlan = await billingPresenter.currentPlan(organization.id);
 
     if (currentPlan && currentPlan.subscription && currentPlan.subscription.isPaying) {
-      if (currentPlan.subscription.canceledAt) {
+      //they've cancelled and that date hasn't passed yet
+      if (
+        currentPlan.subscription.canceledAt &&
+        new Date(currentPlan.subscription.canceledAt) > new Date()
+      ) {
         //a dateformatter that produces results like "Jan 1 2024"
         const dateFormatter = new DateFormatter("en-us", {
           year: "numeric",
@@ -75,12 +79,7 @@ export class DeleteOrganizationService {
       await projectDeleteService.call({ projectId: project.id, userId });
     }
 
-    //todo remove org members?
-    await this.#prismaClient.orgMember.deleteMany({
-      where: {
-        organizationId: organization.id,
-      },
-    });
+    //todo IntegrationConnection
 
     //mark the organization as deleted
     await this.#prismaClient.organization.update({
@@ -88,6 +87,7 @@ export class DeleteOrganizationService {
         id: organization.id,
       },
       data: {
+        runsEnabled: false,
         deletedAt: new Date(),
       },
     });
