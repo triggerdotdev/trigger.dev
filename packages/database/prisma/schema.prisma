@@ -272,6 +272,9 @@ model IntegrationConnection {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// If enabled is false, OAuth refreshing will not be attempted
+  enabled Boolean @default(true)
+
   runConnections RunConnection[]
 }
 
