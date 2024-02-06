@@ -171,7 +171,7 @@ export class OrganizationsPresenter {
 
   async #getOrganizations(userId: string) {
     const orgs = await this.#prismaClient.organization.findMany({
-      where: { members: { some: { userId } } },
+      where: { members: { some: { userId } }, deletedAt: null },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -245,6 +245,7 @@ export class OrganizationsPresenter {
       where: {
         deletedAt: null,
         organization: {
+          deletedAt: null,
           slug: organizationSlug,
           members: { some: { userId } },
         },
