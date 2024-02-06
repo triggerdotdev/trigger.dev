@@ -41,12 +41,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     //check that the token is valid for the userId
     const hashedUserId = crypto
       .createHash("sha256")
-      .update(`${userId}-${env.ENCRYPTION_KEY}`)
+      .update(`${userId}-${env.MAGIC_LINK_SECRET}`)
       .digest("hex");
     if (hashedUserId !== token) {
       return typedjson({
         success: false as const,
-        message: "The token in this URL doesn't match the user, so we can't unsubscribe you.",
+        message: "This unsubscribe link was invalid so we can't unsubscribe you.",
       });
     }
 
