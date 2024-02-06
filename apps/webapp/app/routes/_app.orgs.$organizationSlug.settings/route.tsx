@@ -91,6 +91,11 @@ export const action: ActionFunction = async ({ request, params }) => {
         await prisma.organization.update({
           where: {
             slug: organizationSlug,
+            members: {
+              some: {
+                userId,
+              },
+            },
           },
           data: {
             title: submission.value.organizationName,
