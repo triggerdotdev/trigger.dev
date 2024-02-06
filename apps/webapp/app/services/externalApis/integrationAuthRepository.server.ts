@@ -699,7 +699,7 @@ export class IntegrationAuthRepository {
         });
 
         if (!refreshedConnection) {
-          throw new Error(`Failed to refresh connection ${connection.id}`);
+          return;
         }
 
         connection = refreshedConnection;
