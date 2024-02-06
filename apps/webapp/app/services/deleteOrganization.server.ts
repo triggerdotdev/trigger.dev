@@ -79,7 +79,15 @@ export class DeleteOrganizationService {
       await projectDeleteService.call({ projectId: project.id, userId });
     }
 
-    //todo IntegrationConnection
+    //set all the integrations to disabled
+    await this.#prismaClient.integrationConnection.updateMany({
+      where: {
+        organizationId: organization.id,
+      },
+      data: {
+        enabled: false,
+      },
+    });
 
     //mark the organization as deleted
     await this.#prismaClient.organization.update({
