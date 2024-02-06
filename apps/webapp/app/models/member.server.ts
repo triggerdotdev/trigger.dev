@@ -130,6 +130,9 @@ export async function getUsersInvites({ email }: { email: string }) {
   return await prisma.orgMemberInvite.findMany({
     where: {
       email,
+      organization: {
+        deletedAt: null,
+      },
     },
     include: {
       organization: true,
