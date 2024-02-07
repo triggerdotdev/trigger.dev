@@ -26,6 +26,7 @@ import {
   organizationBillingPath,
   organizationIntegrationsPath,
   organizationPath,
+  organizationSettingsPath,
   organizationTeamPath,
   personalAccessTokensPath,
   projectEnvironmentsPath,
@@ -208,6 +209,13 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               to={organizationBillingPath(organization)}
               iconColor="text-green-600"
               data-action="usage & billing"
+            />
+            <SideMenuItem
+              name="Organization settings"
+              icon="settings"
+              iconColor="text-teal-500"
+              to={organizationSettingsPath(organization)}
+              data-action="organization-settings"
             />
           </div>
         </div>

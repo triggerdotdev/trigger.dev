@@ -109,8 +109,9 @@ model Organization {
 
   maximumExecutionTimePerRunInMs Int @default(900000) // 15 minutes
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   companySize String?
 
@@ -270,6 +271,9 @@ model IntegrationConnection {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  /// If enabled is false, OAuth refreshing will not be attempted
+  enabled Boolean @default(true)
 
   runConnections RunConnection[]
 }

@@ -3,6 +3,7 @@ import { parse } from "@conform-to/zod";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { ActionFunction, json } from "@remix-run/server-runtime";
 import { redirect } from "remix-typedjson";
+import { r } from "tar";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -18,44 +19,46 @@ import { Label } from "~/components/primitives/Label";
 import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import {
   clearCurrentProjectId,
   commitCurrentProjectSession,
 } from "~/services/currentProject.server";
-import { DeleteProjectService } from "~/services/deleteProject.server";
+import { DeleteOrganizationService } from "~/services/deleteOrganization.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
-import { organizationPath, projectPath } from "~/utils/pathBuilder";
+import { organizationPath, organizationSettingsPath, rootPath } from "~/utils/pathBuilder";
 
 export function createSchema(
   constraints: {
-    getSlugMatch?: (slug: string) => { isMatch: boolean; projectSlug: string };
+    getSlugMatch?: (slug: string) => { isMatch: boolean; organizationSlug: string };
   } = {}
 ) {
   return z.discriminatedUnion("action", [
     z.object({
       action: z.literal("rename"),
-      projectName: z.string().min(3, "Project name must have at least 3 characters").max(50),
+      organizationName: z
+        .string()
+        .min(3, "Organization name must have at least 3 characters")
+        .max(50),
     }),
     z.object({
       action: z.literal("delete"),
-      projectSlug: z.string().superRefine((slug, ctx) => {
+      organizationSlug: z.string().superRefine((slug, ctx) => {
         if (constraints.getSlugMatch === undefined) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: conform.VALIDATION_UNDEFINED,
           });
         } else {
-          const { isMatch, projectSlug } = constraints.getSlugMatch(slug);
+          const { isMatch, organizationSlug } = constraints.getSlugMatch(slug);
           if (isMatch) {
             return;
           }
 
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: `The slug must match ${projectSlug}`,
+            message: `The slug must match ${organizationSlug}`,
           });
         }
       }),
@@ -65,16 +68,15 @@ export function createSchema(
 
 export const action: ActionFunction = async ({ request, params }) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam } = params;
-  if (!organizationSlug || !projectParam) {
+  const { organizationSlug } = params;
+  if (!organizationSlug) {
     return json({ errors: { body: "organizationSlug is required" } }, { status: 400 });
   }
 
   const formData = await request.formData();
-
   const schema = createSchema({
     getSlugMatch: (slug) => {
-      return { isMatch: slug === projectParam, projectSlug: projectParam };
+      return { isMatch: slug === organizationSlug, organizationSlug };
     },
   });
   const submission = parse(formData, { schema });
@@ -86,46 +88,47 @@ export const action: ActionFunction = async ({ request, params }) => {
   try {
     switch (submission.value.action) {
       case "rename": {
-        await prisma.project.update({
+        await prisma.organization.update({
           where: {
-            slug: projectParam,
-            organization: {
-              members: {
-                some: {
-                  userId,
-                },
+            slug: organizationSlug,
+            members: {
+              some: {
+                userId,
               },
             },
           },
           data: {
-            name: submission.value.projectName,
+            title: submission.value.organizationName,
           },
         });
 
         return redirectWithSuccessMessage(
-          projectPath({ slug: organizationSlug }, { slug: projectParam }),
+          organizationPath({ slug: organizationSlug }),
           request,
-          `Project renamed to ${submission.value.projectName}`
+          `Organization renamed to ${submission.value.organizationName}`
         );
       }
       case "delete": {
-        const deleteProjectService = new DeleteProjectService();
+        const deleteOrganizationService = new DeleteOrganizationService();
         try {
-          await deleteProjectService.call({ projectSlug: projectParam, userId });
+          await deleteOrganizationService.call({ organizationSlug, userId, request });
 
           //we need to clear the project from the session
           const removeProjectIdSession = await clearCurrentProjectId(request);
-          return redirect(organizationPath({ slug: organizationSlug }), {
-            headers: { "Set-Cookie": await commitCurrentProjectSession(removeProjectIdSession) },
+          return redirect(rootPath(), {
+            headers: {
+              "Set-Cookie": await commitCurrentProjectSession(removeProjectIdSession),
+            },
           });
         } catch (error: unknown) {
-          logger.error("Project could not be deleted", {
-            error: error instanceof Error ? error.message : JSON.stringify(error),
+          const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+          logger.error("Organization could not be deleted", {
+            error: errorMessage,
           });
           return redirectWithErrorMessage(
-            organizationPath({ slug: organizationSlug }),
+            organizationSettingsPath({ slug: organizationSlug }),
             request,
-            `Project ${projectParam} could not be deleted`
+            errorMessage
           );
         }
       }
@@ -136,12 +139,12 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function Page() {
-  const project = useProject();
+  const organization = useOrganization();
   const lastSubmission = useActionData();
   const navigation = useNavigation();
 
-  const [renameForm, { projectName }] = useForm({
-    id: "rename-project",
+  const [renameForm, { organizationName }] = useForm({
+    id: "rename-organization",
     // TODO: type this
     lastSubmission: lastSubmission as any,
     shouldRevalidate: "onSubmit",
@@ -152,8 +155,8 @@ export default function Page() {
     },
   });
 
-  const [deleteForm, { projectSlug }] = useForm({
-    id: "delete-project",
+  const [deleteForm, { organizationSlug }] = useForm({
+    id: "delete-organization",
     // TODO: type this
     lastSubmission: lastSubmission as any,
     shouldValidate: "onInput",
@@ -161,7 +164,10 @@ export default function Page() {
     onValidate({ formData }) {
       return parse(formData, {
         schema: createSchema({
-          getSlugMatch: (slug) => ({ isMatch: slug === project.slug, projectSlug: project.slug }),
+          getSlugMatch: (slug) => ({
+            isMatch: slug === organization.slug,
+            organizationSlug: organization.slug,
+          }),
         }),
       });
     },
@@ -179,7 +185,7 @@ export default function Page() {
     <PageContainer>
       <PageHeader>
         <PageTitleRow>
-          <PageTitle title={`${project.name} project settings`} />
+          <PageTitle title={`${organization.title} organization settings`} />
         </PageTitleRow>
       </PageHeader>
 
@@ -190,15 +196,15 @@ export default function Page() {
               <input type="hidden" name="action" value="rename" />
               <Fieldset>
                 <InputGroup>
-                  <Label htmlFor={projectName.id}>Rename your project</Label>
+                  <Label htmlFor={organizationName.id}>Rename your organization</Label>
                   <Input
-                    {...conform.input(projectName, { type: "text" })}
-                    defaultValue={project.name}
-                    placeholder="Your project name"
+                    {...conform.input(organizationName, { type: "text" })}
+                    defaultValue={organization.title}
+                    placeholder="Your organization name"
                     icon="folder"
                     autoFocus
                   />
-                  <FormError id={projectName.errorId}>{projectName.error}</FormError>
+                  <FormError id={organizationName.errorId}>{organizationName.error}</FormError>
                 </InputGroup>
                 <FormButtons
                   confirmButton={
@@ -208,7 +214,7 @@ export default function Page() {
                       disabled={isRenameLoading}
                       LeadingIcon={isRenameLoading ? "spinner-white" : undefined}
                     >
-                      Rename project
+                      Rename organization
                     </Button>
                   }
                 />
@@ -226,19 +232,19 @@ export default function Page() {
               <input type="hidden" name="action" value="delete" />
               <Fieldset className="p-4">
                 <InputGroup>
-                  <Label htmlFor={projectSlug.id}>Delete project</Label>
+                  <Label htmlFor={organizationSlug.id}>Delete organization</Label>
                   <Input
-                    {...conform.input(projectSlug, { type: "text" })}
-                    placeholder="Your project slug"
+                    {...conform.input(organizationSlug, { type: "text" })}
+                    placeholder="Your organization slug"
                     icon="warning"
                     autoFocus
                   />
-                  <FormError id={projectSlug.errorId}>{projectSlug.error}</FormError>
+                  <FormError id={organizationSlug.errorId}>{organizationSlug.error}</FormError>
                   <FormError>{deleteForm.error}</FormError>
                   <Hint>
-                    This change is irreversible, so please be certain. Type in the Project slug
-                    <InlineCode variant="extra-small">{project.slug}</InlineCode> and then press
-                    Delete.
+                    This change is irreversible, so please be certain. Type in the Organization slug
+                    <InlineCode variant="extra-small">{organization.slug}</InlineCode> and then
+                    press Delete.
                   </Hint>
                 </InputGroup>
                 <FormButtons
@@ -250,7 +256,7 @@ export default function Page() {
                       leadingIconClassName="text-white"
                       disabled={isDeleteLoading}
                     >
-                      Delete project
+                      Delete organization
                     </Button>
                   }
                 />
