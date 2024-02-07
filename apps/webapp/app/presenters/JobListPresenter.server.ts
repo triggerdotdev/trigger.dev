@@ -122,7 +122,7 @@ export class JobListPresenter {
               "jobId",
               ROW_NUMBER() OVER(PARTITION BY "jobId" ORDER BY "createdAt" DESC) as rn
           FROM 
-              "public"."JobRun" 
+              "JobRun" 
           WHERE 
               "jobId" IN (${Prisma.join(jobs.map((j) => j.id))})
       ) t
