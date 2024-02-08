@@ -300,7 +300,6 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
         outdir: "out",
         define: {
           TRIGGER_API_URL: `"${config.triggerUrl}"`,
-          SERVICE_NAME: `"${projectName}"`,
         },
         banner: {
           js: "import { createRequire } from 'module';const require = createRequire(import.meta.url);",

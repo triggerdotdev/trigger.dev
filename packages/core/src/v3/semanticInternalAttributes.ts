@@ -1,0 +1,18 @@
+export const SemanticInternalAttributes = {
+  ENVIRONMENT_ID: "ctx.environment.id",
+  ENVIRONMENT_TYPE: "ctx.environment.type",
+  ORGANIZATION_ID: "ctx.organization.id",
+  PROJECT_ID: "ctx.project.id",
+  PROJECT_REF: "ctx.project.ref",
+  RUN_ID: "ctx.run.id",
+  TASK_SLUG: "ctx.task.id",
+  TASK_PATH: "ctx.task.filePath",
+  TASK_EXPORT_NAME: "ctx.task.exportName",
+  SPAN_PARTIAL: "$span.partial",
+  SPAN_ID: "$span.span_id",
+  OUTPUT: "$output",
+  STYLE: "$style",
+  STYLE_ICON: "$style.icon",
+  METADATA: "$metadata",
+  TRIGGER: "$trigger",
+};

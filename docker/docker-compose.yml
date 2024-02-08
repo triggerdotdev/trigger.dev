@@ -54,31 +54,13 @@ services:
     ports:
       - 6379:6379
 
-  redisinsight:
-    image: redislabs/redisinsight:latest
-    ports:
-      - "8001:8001"
-    volumes:
-      - redis-data:/redisinsight
-
-  zipkin:
-    image: openzipkin/zipkin
-    environment:
-      - JAVA_OPTS=-Xms512m -Xmx1024m
-    ports:
-      - "9411:9411"
-
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     command: ["--config", "/etc/otel-collector-config.yaml"]
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
-    depends_on:
-      - zipkin
     ports:
       - "55680:55680"
       - "55681:55681"
       - "4317:4317" # OTLP gRPC receiver
       - "4318:4318" # OTLP http receiver
-    environment:
-      HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}

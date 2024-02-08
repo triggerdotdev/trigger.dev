@@ -1,6 +1,7 @@
 import { Attributes } from "@opentelemetry/api";
 import { TaskRunContext } from "../schemas";
 import { SafeAsyncLocalStorage } from "../utils/safeAsyncLocalStorage";
+import { flattenAttributes } from "../utils/flattenAttributes";
 
 type TaskContext = {
   ctx: TaskRunContext;
@@ -22,7 +23,11 @@ export class TaskContextManager {
 
   get attributes(): Attributes {
     if (this.ctx) {
-      return { ...flattenAttributes("__trigger", this.ctx), "service.name": this.ctx.task.id };
+      return {
+        ...flattenAttributes(this.ctx, "ctx"),
+        ...flattenAttributes(this.payload, "payload"),
+        "service.name": this.ctx.task.id,
+      };
     }
 
     return {};
@@ -41,36 +46,3 @@ export class TaskContextManager {
 }
 
 export const taskContextManager = new TaskContextManager();
-
-function flattenAttributes(
-  prefix: string,
-  obj: Record<string, any> | null | undefined
-): Record<string, any> {
-  const result: Record<string, string | number> = {};
-
-  // Check if obj is null or undefined
-  if (obj == null) {
-    return result;
-  }
-
-  for (const [key, value] of Object.entries(obj)) {
-    const newPrefix = `${prefix}.${key}`;
-    if (Array.isArray(value)) {
-      for (let i = 0; i < value.length; i++) {
-        if (typeof value[i] === "object" && value[i] !== null) {
-          // update null check here as well
-          Object.assign(result, flattenAttributes(`${newPrefix}.${i}`, value[i]));
-        } else {
-          result[`${newPrefix}.${i}`] = value[i];
-        }
-      }
-    } else if (typeof value === "object" && value !== null) {
-      // update null check here
-      Object.assign(result, flattenAttributes(newPrefix, value));
-    } else {
-      result[newPrefix] = value;
-    }
-  }
-
-  return result;
-}

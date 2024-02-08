@@ -139,8 +139,6 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
       const handle = await tracer.startActiveSpan(
         `${params.id} trigger`,
         async (span) => {
-          span.setAttribute(SemanticAttributes.MESSAGING_OPERATION, "publish");
-
           const response = await apiClient.triggerTask(params.id, {
             payload: payload,
             options: {
@@ -157,7 +155,10 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
 
           return response.data;
         },
-        { kind: SpanKind.PRODUCER }
+        {
+          kind: SpanKind.PRODUCER,
+          attributes: { [SemanticAttributes.MESSAGING_OPERATION]: "publish" },
+        }
       );
 
       return handle;

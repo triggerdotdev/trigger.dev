@@ -1625,3 +1625,91 @@ enum TaskRunAttemptStatus {
   CANCELED
   COMPLETED
 }
+
+/// This is the unified otel span/log model that will eventually be replaced by clickhouse
+model TaskEvent {
+  id String @id @default(cuid())
+
+  /// This matches the span name for a trace event, or the log body for a log event
+  message String
+
+  traceId    String
+  spanId     String
+  parentId   String?
+  tracestate String?
+
+  isError   Boolean @default(false)
+  isPartial Boolean @default(false)
+
+  serviceName      String
+  serviceNamespace String
+
+  level  TaskEventLevel  @default(TRACE)
+  kind   TaskEventKind   @default(INTERNAL)
+  status TaskEventStatus @default(UNSET)
+
+  links  Json?
+  events Json?
+
+  startTime DateTime
+
+  /// This is the duration of the event in nanoseconds
+  duration BigInt @default(0)
+
+  attemptId String?
+
+  environmentId   String
+  environmentType RuntimeEnvironmentType
+
+  organizationId String
+
+  projectId  String
+  projectRef String
+
+  runId String
+
+  taskSlug       String
+  taskPath       String
+  taskExportName String
+
+  /// This represents all the span attributes available, like http.status_code, and special attributes like $style.icon, $output, $metadata.payload.userId, as it's used for searching and filtering
+  properties Json
+
+  /// This represents all span attributes in the $metadata namespace, like $metadata.payload
+  metadata Json?
+
+  /// This represents all span attributes in the $style namespace, like $style
+  style Json?
+
+  /// This represents all span attributes in the $output namespace, like $output
+  output Json?
+
+  createdAt DateTime @default(now())
+}
+
+enum TaskEventLevel {
+  TRACE
+  DEBUG
+  LOG
+  INFO
+  WARN
+  ERROR
+}
+
+enum TaskEventKind {
+  UNSPECIFIED
+  INTERNAL
+  SERVER
+  CLIENT
+  PRODUCER
+  CONSUMER
+  UNRECOGNIZED
+  LOG
+}
+
+enum TaskEventStatus {
+  UNSET
+  OK
+  ERROR
+  UNRECOGNIZED
+}

@@ -3,41 +3,51 @@ import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { registerInstrumentations } from "@opentelemetry/instrumentation";
 import { FetchInstrumentation } from "@opentelemetry/instrumentation-fetch";
-import { Resource, detectResourcesSync } from "@opentelemetry/resources";
+import { Resource, ResourceAttributes, detectResourcesSync } from "@opentelemetry/resources";
 import { LoggerProvider, SimpleLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { NodeTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-node";
-
-declare const SERVICE_NAME: string;
-
+import { logs } from "@opentelemetry/api-logs";
 import { DetectorSync, ResourceDetectionConfig } from "@opentelemetry/resources";
+import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
+import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
 
-type ServiceDetectorConfig = {
-  serviceName?: string;
-};
+class AsyncResourceDetector implements DetectorSync {
+  private _promise: Promise<ResourceAttributes>;
+  private _resolver?: (value: ResourceAttributes) => void;
 
-export class ServiceDetector implements DetectorSync {
-  serviceName?: string;
-  constructor(config?: ServiceDetectorConfig) {
-    this.serviceName = config?.serviceName || process.env.OTEL_SERVICE_NAME;
+  constructor() {
+    this._promise = new Promise((resolver) => {
+      this._resolver = resolver;
+    });
   }
+
   detect(_config?: ResourceDetectionConfig): Resource {
-    if (!this.serviceName) {
-      return Resource.empty();
+    return new Resource({}, this._promise);
+  }
+
+  resolveWithAttributes(attributes: ResourceAttributes) {
+    if (!this._resolver) {
+      throw new Error("Resolver not available");
     }
 
-    const attributes = {
-      "service.namespace": this.serviceName,
-    };
-
-    return new Resource(attributes);
+    this._resolver(attributes);
   }
 }
 
+export const asyncResourceDetector = new AsyncResourceDetector();
+
+const commonResources = detectResourcesSync({
+  detectors: [asyncResourceDetector],
+}).merge(
+  new Resource({
+    [SemanticResourceAttributes.CLOUD_PROVIDER]: "trigger.dev",
+    [SemanticInternalAttributes.TRIGGER]: true,
+  })
+);
+
 const provider = new NodeTracerProvider({
   forceFlushTimeoutMillis: 500,
-  resource: detectResourcesSync({
-    detectors: [new ServiceDetector({ serviceName: SERVICE_NAME })],
-  }),
+  resource: commonResources,
 });
 
 const exporter = new OTLPTraceExporter({
@@ -45,7 +55,6 @@ const exporter = new OTLPTraceExporter({
   timeoutMillis: 1000,
 });
 
-// provider.addSpanProcessor(new SimpleSpanProcessor(new ConsoleSpanExporter()));
 provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
 provider.register();
 
@@ -59,13 +68,12 @@ const logExporter = new OTLPLogExporter({
 
 // To start a logger, you first need to initialize the Logger provider.
 const loggerProvider = new LoggerProvider({
-  resource: detectResourcesSync({
-    detectors: [new ServiceDetector({ serviceName: SERVICE_NAME })],
-  }),
+  resource: commonResources,
 });
-// Add a processor to export log record
-// loggerProvider.addLogRecordProcessor(new SimpleLogRecordProcessor(new ConsoleLogRecordExporter()));
+
 loggerProvider.addLogRecordProcessor(new SimpleLogRecordProcessor(logExporter));
+
+logs.setGlobalLoggerProvider(loggerProvider);
 
 //  To create a log record, you first need to get a Logger instance
 export const getLogger: LoggerProvider["getLogger"] = loggerProvider.getLogger.bind(loggerProvider);

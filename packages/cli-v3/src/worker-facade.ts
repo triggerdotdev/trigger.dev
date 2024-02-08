@@ -1,11 +1,14 @@
-import { flushOtel, getLogger, getTracer } from "./dev/tracer.js";
+import { asyncResourceDetector, flushOtel, getLogger, getTracer } from "./dev/tracer.js";
 
 const otelTracer = getTracer("trigger-dev-worker", packageJson.version);
 const otelLogger = getLogger("trigger-dev-worker", packageJson.version);
 
 import { SpanKind } from "@opentelemetry/api";
 import {
+  ConsoleInterceptor,
   DevRuntimeManager,
+  OtelTaskLogger,
+  SemanticInternalAttributes,
   TaskMetadataWithFilePath,
   TaskRunContext,
   TaskRunErrorCodes,
@@ -14,6 +17,7 @@ import {
   ZodMessageHandler,
   ZodMessageSender,
   childToWorkerMessages,
+  logger,
   parseError,
   runtime,
   taskContextManager,
@@ -22,16 +26,23 @@ import {
 import * as packageJson from "../package.json";
 
 import { TaskMetadataWithRun } from "./types.js";
-import { ConsoleLogger } from "./dev/consoleLogger";
+import { flattenAttributes } from "@trigger.dev/core/v3/utils/flattenAttributes.js";
 
-const tracer = new TriggerTracer(otelTracer);
-const consoleLogger = new ConsoleLogger(otelLogger);
+const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
+const consoleInterceptor = new ConsoleInterceptor(otelLogger);
 
 const devRuntimeManager = new DevRuntimeManager({
   tracer,
 });
 
 runtime.setGlobalRuntimeManager(devRuntimeManager);
+
+const otelTaskLogger = new OtelTaskLogger({
+  logger: otelLogger,
+  level: "info",
+});
+
+logger.setGlobalTaskLogger(otelTaskLogger);
 
 type TaskFileImport = Record<string, unknown>;
 
@@ -54,18 +65,27 @@ class TaskExecutor {
         payload: parsedPayload,
       },
       async () => {
+        asyncResourceDetector.resolveWithAttributes(taskContextManager.attributes);
+
         return await tracer.startActiveSpan(
           `${execution.task.id} execute`,
           async (span) => {
-            return await consoleLogger.intercept(console, async () => {
-              return await this.task.run({
+            return await consoleInterceptor.intercept(console, async () => {
+              const output = await this.task.run({
                 payload: parsedPayload,
                 ctx: TaskRunContext.parse(execution),
               });
+
+              span.setAttributes(flattenAttributes(output, SemanticInternalAttributes.OUTPUT));
+
+              return output;
             });
           },
           {
             kind: SpanKind.CONSUMER,
+            attributes: {
+              [SemanticInternalAttributes.STYLE_ICON]: "task",
+            },
           },
           tracer.extractContext(traceContext)
         );

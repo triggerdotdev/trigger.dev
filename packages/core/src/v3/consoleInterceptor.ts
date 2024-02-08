@@ -1,9 +1,9 @@
 import type * as logsAPI from "@opentelemetry/api-logs";
 import { SeverityNumber } from "@opentelemetry/api-logs";
-import { taskContextManager } from "@trigger.dev/core/v3";
 import util from "node:util";
+import { flattenAttributes } from "./utils/flattenAttributes";
 
-export class ConsoleLogger {
+export class ConsoleInterceptor {
   constructor(private readonly logger: logsAPI.Logger) {}
 
   // Intercept the console and send logs to the OpenTelemetry logger
@@ -51,18 +51,68 @@ export class ConsoleLogger {
   }
 
   #handleLog(severityNumber: SeverityNumber, severityText: string, ...args: unknown[]): void {
+    const body = util.format(...args);
+
+    const parsed = tryParseJSON(body);
+
+    if (parsed.ok) {
+      this.logger.emit({
+        severityNumber,
+        severityText,
+        body: getLogMessage(parsed.value, severityText),
+        attributes: { ...this.#getAttributes(), ...flattenAttributes(parsed.value) },
+      });
+
+      return;
+    }
+
     this.logger.emit({
       severityNumber,
       severityText,
-      body: util.format(...args),
+      body,
       attributes: this.#getAttributes(),
     });
   }
 
   #getAttributes(): logsAPI.LogAttributes {
     return {
-      "log.type": "LogRecord",
-      ...taskContextManager.attributes,
+      "log.type": "console",
     };
+  }
+}
+
+function getLogMessage(value: Record<string, unknown>, fallback: string): string {
+  if (typeof value["message"] === "string") {
+    return value["message"];
+  }
+
+  if (typeof value["msg"] === "string") {
+    return value["msg"];
+  }
+
+  if (typeof value["body"] === "string") {
+    return value["body"];
+  }
+
+  if (typeof value["error"] === "string") {
+    return value["error"];
+  }
+
+  return fallback;
+}
+
+function tryParseJSON(
+  value: string
+): { ok: true; value: Record<string, unknown> } | { ok: false; value: string } {
+  try {
+    const parsed = JSON.parse(value);
+
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      return { ok: true, value: parsed };
+    }
+
+    return { ok: false, value };
+  } catch (e) {
+    return { ok: false, value };
   }
 }

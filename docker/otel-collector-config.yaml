@@ -8,37 +8,25 @@ receivers:
 
 processors:
   batch:
-    send_batch_size: 1000
-    timeout: 10s
-  # Ref: https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/resourcedetectionprocessor/README.md
-  resourcedetection:
-    detectors: [env, system] # Before system detector, include ec2 for AWS, gcp for GCP and azure for Azure.
-    # Using OTEL_RESOURCE_ATTRIBUTES envvar, env detector adds custom labels.
-    timeout: 2s
-    system:
-      hostname_sources: [os] # alternatively, use [dns,os] for setting FQDN as host.name and os as fallback
-
-extensions:
-  health_check: {}
-  zpages: {}
 
 exporters:
-  otlphttp:
-    endpoint: "https://otel.baselime.io/v1/"
+  otlp:
+    endpoint: "api.honeycomb.io:443"
     headers:
-      "x-api-key": "01f2815704fbf29e75cbf6ed0bcfbe0a679e28b2"
-      "x-baselime-dataset": "v3-test"
+      "x-honeycomb-team": "7e999faWC62210wKXMAHNM"
   logging:
     verbosity: normal
+  otlphttp:
+    endpoint: "http://host.docker.internal:3030/otel"
+    compression: none
 
 service:
-  extensions: [health_check, zpages]
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp, otlphttp]
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp, otlphttp]

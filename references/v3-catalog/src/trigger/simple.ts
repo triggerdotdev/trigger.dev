@@ -1,4 +1,4 @@
-import { task, wait, type Context } from "@trigger.dev/sdk/v3";
+import { task, wait, type Context, logger } from "@trigger.dev/sdk/v3";
 
 export const simplestTask = task({
   id: "fetch-post-task",
@@ -60,7 +60,9 @@ function thisFunctionWillThrow() {
 export const parentTask = task({
   id: "parent-task",
   run: async ({ payload, ctx }: { payload: { message: string }; ctx: Context }) => {
-    console.log("Parent task payload", { payload });
+    logger.info("Parent task payload", { payload });
+
+    console.log(JSON.stringify({ ctx, message: "This is the parent task context" }));
 
     await wait.for({ seconds: 5 });
 
@@ -71,7 +73,7 @@ export const parentTask = task({
       },
     });
 
-    console.log("Child task response", { childTaskResponse });
+    logger.info("Child task response", { childTaskResponse });
 
     await childTask.trigger({
       payload: {
@@ -96,7 +98,7 @@ export const childTask = task({
     payload: { message: string; forceError: boolean };
     ctx: Context;
   }) => {
-    console.log("Child task payload", { payload });
+    logger.info("Child task payload", { payload });
 
     await wait.for({ seconds: 10 });
 
@@ -117,7 +119,7 @@ export const childTask = task({
 
     const json: any = await response.json();
 
-    console.log("JSONHero response", { json });
+    logger.info("JSONHero response", { json });
 
     if (payload.forceError) {
       throw new Error(`Forced error: ${payload.message}`);

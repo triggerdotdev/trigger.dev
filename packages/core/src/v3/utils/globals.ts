@@ -43,4 +43,5 @@ type TriggerDotDevGlobal = {
 
 type TriggerDotDevGlobalAPI = {
   runtime?: RuntimeManager;
+  logger?: any;
 };
