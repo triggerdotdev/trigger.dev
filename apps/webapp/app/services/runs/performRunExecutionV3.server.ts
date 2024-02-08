@@ -207,6 +207,8 @@ export class PerformRunExecutionV3Service {
 
       forceYieldCoordinator.deregisterRun(run.id);
 
+      //todo if cancelled then return
+
       if (!response) {
         return await this.#failRunExecutionWithRetry(
           run,
