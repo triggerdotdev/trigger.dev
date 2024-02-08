@@ -207,7 +207,18 @@ export class PerformRunExecutionV3Service {
 
       forceYieldCoordinator.deregisterRun(run.id);
 
-      //todo if cancelled then return
+      //if the run has been canceled while it's being executed, we shouldn't do anything more
+      const updatedRun = await this.#prismaClient.jobRun.findUnique({
+        select: {
+          status: true,
+        },
+        where: {
+          id: run.id,
+        },
+      });
+      if (!updatedRun || updatedRun.status === "CANCELED") {
+        return;
+      }
 
       if (!response) {
         return await this.#failRunExecutionWithRetry(
