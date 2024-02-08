@@ -21,8 +21,8 @@ export const GetEventSchema = z.object({
       startedAt: z.coerce.date().optional().nullable(),
       /** When the run completed */
       completedAt: z.coerce.date().optional().nullable(),
-      /** The Job that the  run associated with */
-      job: z.object({ id: z.string() }),
+      /** The Job that the run associated with */
+      job: z.object({ id: z.string() }).optional().nullable(),
     })
   ),
 });

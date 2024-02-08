@@ -89,7 +89,7 @@ export const GetRunSchema = RunSchema.extend({
   tasks: z.array(RunTaskWithSubtasksSchema),
   /** Any status updates that were published from the run */
   statuses: z.array(JobRunStatusRecordSchema).default([]),
-  /** The job associated with the run */
+  /** The job that the run is associated with */
   job: z.object({ id: z.string() }),
   /** If there are more tasks, you can use this to get them */
   nextCursor: z.string().optional(),
