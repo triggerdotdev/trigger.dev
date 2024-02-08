@@ -6,7 +6,6 @@ import { DisableScheduleSourceService } from "./schedules/disableScheduleSource.
 
 type Options = ({ projectId: string } | { projectSlug: string }) & {
   userId: string;
-  ignoreDeleted: boolean;
 };
 
 export class DeleteProjectService {
@@ -52,10 +51,7 @@ export class DeleteProjectService {
     }
 
     if (project.deletedAt) {
-      if (options.ignoreDeleted) {
-        return;
-      }
-      throw new Error("Project already deleted");
+      return;
     }
 
     //disable and delete all jobs

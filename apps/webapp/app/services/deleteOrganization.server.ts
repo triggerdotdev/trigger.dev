@@ -70,7 +70,7 @@ export class DeleteOrganizationService {
     // loop through the projects and delete them
     const projectDeleteService = new DeleteProjectService();
     for (const project of organization.projects) {
-      await projectDeleteService.call({ projectId: project.id, userId, ignoreDeleted: true });
+      await projectDeleteService.call({ projectId: project.id, userId });
     }
 
     //set all the integrations to disabled
