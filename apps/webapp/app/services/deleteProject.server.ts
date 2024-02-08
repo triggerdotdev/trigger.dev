@@ -1,13 +1,13 @@
 import { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
-import { DisableJobService } from "./jobs/disableJob.server";
-import { AuthenticatedEnvironment } from "./apiAuth.server";
-import { DeleteJobService } from "./jobs/deleteJob.server";
 import { DeleteEndpointService } from "./endpoints/deleteEndpointService";
 import { logger } from "./logger.server";
 import { DisableScheduleSourceService } from "./schedules/disableScheduleSource.server";
 
-type Options = { projectId: string; userId: string } | { projectSlug: string; userId: string };
+type Options = ({ projectId: string } | { projectSlug: string }) & {
+  userId: string;
+  ignoreDeleted: boolean;
+};
 
 export class DeleteProjectService {
   #prismaClient: PrismaClient;
@@ -52,6 +52,9 @@ export class DeleteProjectService {
     }
 
     if (project.deletedAt) {
+      if (options.ignoreDeleted) {
+        return;
+      }
       throw new Error("Project already deleted");
     }
 
