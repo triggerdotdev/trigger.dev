@@ -1,82 +1,84 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { useTreeData } from "react-stately";
 import { withDesign } from "storybook-addon-designs";
-import { TreeView } from "../primitives/TreeView";
+import { TreeView, flattenTree } from "../primitives/TreeView";
 
 const meta: Meta = {
   title: "Primitives/TreeView",
   decorators: [withDesign],
 };
-
 export default meta;
-
 type Story = StoryObj<typeof TreeViewsSet>;
 
 export const TreeViews: Story = {
   render: () => <TreeViewsSet />,
 };
 
-const data = [
-  {
+const data = {
+  id: "policies",
+  data: {
     title: "Policies",
-    items: [
-      {
+  },
+  children: [
+    {
+      id: "registration",
+      data: {
         title: "Registration",
-        items: [
-          {
-            title: "Registration A",
-            items: [],
-          },
-          {
-            title: "Registration B",
-            items: [],
-          },
-          {
-            title: "Registration C",
-            items: [],
-          },
-          {
-            title: "Registration D",
-            items: [],
-          },
-        ],
       },
-      {
+      children: [
+        {
+          id: "registration-a",
+          data: { title: "Registration A" },
+        },
+        {
+          id: "registration-b",
+          data: { title: "Registration B" },
+        },
+        {
+          id: "registration-c",
+          data: { title: "Registration C" },
+        },
+        { id: "registration-d", data: { title: "Registration D" } },
+      ],
+    },
+    {
+      id: "authentication",
+      data: {
         title: "Authentication",
-        items: [
-          {
-            title: "Authentication A",
-            items: [],
-          },
-          {
-            title: "Authentication B",
-            items: [],
-          },
-        ],
       },
-    ],
-  },
-  {
-    title: "Other",
-    items: [{ title: "Other A", items: [] }],
-  },
-  {
-    title: "Single Item",
-    items: [],
-  },
-];
+      children: [
+        {
+          id: "authentication-a",
+          data: { title: "Authentication A" },
+        },
+        {
+          id: "authentication-b",
+          data: { title: "Authentication B" },
+        },
+      ],
+    },
+  ],
+};
 
 function TreeViewsSet() {
-  const tree = useTreeData({
-    initialItems: data,
-    getKey: (item) => item.title,
-    getChildren: (item) => item.items,
-  });
+  const flatTree = flattenTree(data);
 
   return (
     <div className="grid grid-cols-2">
       <div className="flex flex-col items-start gap-y-4 p-4">
-        <TreeView tree={tree} />
+        <TreeView
+          tree={flatTree}
+          renderNode={({ node }) => (
+            <div
+              style={{
+                paddingLeft: `${node.level * 1}rem`,
+              }}
+              className="flex items-center gap-2 py-1"
+            >
+              {node.hasChildren ? "📂 " : "📄 "}
+              {node.data.title}
+            </div>
+          )}
+        />
       </div>
     </div>
   );
