@@ -27,12 +27,14 @@ export type UseRunStatusesResult =
       error: undefined;
       statuses: undefined;
       run: undefined;
+      job: undefined;
     }
   | {
       fetchStatus: "error";
       error: Error;
       statuses: undefined;
       run: undefined;
+      job: undefined;
     }
   | ({
       fetchStatus: "success";
@@ -49,7 +51,7 @@ export function useRunStatuses(
     {
       queryKey: [`triggerdotdev-run-${runId}`],
       queryFn: async () => {
-        return await zodfetch(GetRunStatusesSchema, `${apiUrl}/api/v2/runs/${runId}/statuses`, {
+        return await zodfetch(GetRunStatusesSchema, `${apiUrl}/api/v3/runs/${runId}/statuses`, {
           method: "GET",
           headers: {
             Authorization: `Bearer ${publicApiKey}`,
@@ -78,6 +80,7 @@ export function useRunStatuses(
         error: undefined,
         statuses: undefined,
         run: undefined,
+        job: undefined,
       };
     }
     case "error": {
@@ -86,6 +89,7 @@ export function useRunStatuses(
         error: queryResult.error,
         statuses: undefined,
         run: undefined,
+        job: undefined,
       };
     }
     case "success": {
@@ -94,6 +98,7 @@ export function useRunStatuses(
         error: undefined,
         run: queryResult.data.run,
         statuses: queryResult.data.statuses,
+        job: queryResult.data.job,
       };
     }
   }
