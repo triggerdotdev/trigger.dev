@@ -61,7 +61,9 @@ class OTLPExporter {
         (attribute) => attribute.key === SemanticInternalAttributes.TRIGGER
       );
 
-      return isBoolValue(triggerAttribute?.value) ? triggerAttribute.value.value.boolValue : false;
+      if (!triggerAttribute) return false;
+
+      return isBoolValue(triggerAttribute.value) ? triggerAttribute.value.value.boolValue : false;
     });
   }
 
@@ -73,7 +75,9 @@ class OTLPExporter {
         (attribute) => attribute.key === SemanticInternalAttributes.TRIGGER
       );
 
-      return isBoolValue(attribute?.value) ? attribute.value.value.boolValue : false;
+      if (!attribute) return false;
+
+      return isBoolValue(attribute.value) ? attribute.value.value.boolValue : false;
     });
   }
 }
@@ -416,6 +420,8 @@ function extractStringAttribute(
 ): string | undefined {
   const attribute = attributes.find((attribute) => attribute.key === name);
 
+  if (!attribute) return fallback;
+
   return isStringValue(attribute?.value) ? attribute.value.value.stringValue : fallback;
 }
 
@@ -426,7 +432,9 @@ function isPartialSpan(span: Span): boolean {
     (attribute) => attribute.key === SemanticInternalAttributes.SPAN_PARTIAL
   );
 
-  return isBoolValue(attribute?.value) ? attribute.value.value.boolValue : false;
+  if (!attribute) return false;
+
+  return isBoolValue(attribute.value) ? attribute.value.value.boolValue : false;
 }
 
 function isBoolValue(

@@ -1,33 +1,19 @@
 import {
-  TraceService,
+  ExportTracePartialSuccess,
   ExportTraceServiceRequest,
   ExportTraceServiceResponse,
-  ExportTracePartialSuccess,
 } from "./generated/opentelemetry/proto/collector/trace/v1/trace_service";
 
 import {
-  LogsService,
+  ExportLogsPartialSuccess,
   ExportLogsServiceRequest,
   ExportLogsServiceResponse,
-  ExportLogsPartialSuccess,
 } from "./generated/opentelemetry/proto/collector/logs/v1/logs_service";
 
-import { Resource } from "./generated/opentelemetry/proto/resource/v1/resource";
-import {
-  ResourceSpans,
-  Span,
-  SpanFlags,
-  ScopeSpans,
-  Span_SpanKind,
-  Status,
-  Status_StatusCode,
-  Span_Event,
-  Span_Link,
-} from "./generated/opentelemetry/proto/trace/v1/trace";
 import type {
+  AnyValue,
   KeyValue,
   KeyValueList,
-  AnyValue,
 } from "./generated/opentelemetry/proto/common/v1/common";
 import {
   LogRecord,
@@ -35,37 +21,39 @@ import {
   ScopeLogs,
   SeverityNumber,
 } from "./generated/opentelemetry/proto/logs/v1/logs";
-
-export {
-  Resource,
-  Span,
-  SpanFlags,
+import { Resource } from "./generated/opentelemetry/proto/resource/v1/resource";
+import {
   ResourceSpans,
   ScopeSpans,
-  type KeyValue,
-  type KeyValueList,
-  type AnyValue,
+  Span,
+  SpanFlags,
+  Span_Event,
+  Span_Link,
   Span_SpanKind,
   Status,
   Status_StatusCode,
+} from "./generated/opentelemetry/proto/trace/v1/trace";
+
+export {
+  LogRecord,
+  Resource,
+  ResourceLogs,
+  ResourceSpans,
+  ScopeLogs,
+  ScopeSpans,
+  SeverityNumber,
+  Span,
+  SpanFlags,
   Span_Event,
   Span_Link,
-  ResourceLogs,
-  ScopeLogs,
-  LogRecord,
-  SeverityNumber,
+  Span_SpanKind,
+  Status,
+  Status_StatusCode,
+  type AnyValue,
+  type KeyValue,
+  type KeyValueList,
 };
 
-export {
-  type TraceService,
-  ExportTraceServiceRequest,
-  ExportTraceServiceResponse,
-  ExportTracePartialSuccess,
-};
+export { ExportTracePartialSuccess, ExportTraceServiceRequest, ExportTraceServiceResponse };
 
-export {
-  type LogsService,
-  ExportLogsServiceRequest,
-  ExportLogsServiceResponse,
-  ExportLogsPartialSuccess,
-};
+export { ExportLogsPartialSuccess, ExportLogsServiceRequest, ExportLogsServiceResponse };
