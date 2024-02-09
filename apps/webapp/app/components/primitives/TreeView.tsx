@@ -84,6 +84,7 @@ type TreeState = {
   selectNode: (id: string) => void;
   deselectNode: (id: string) => void;
   deselectAllNodes: () => void;
+  toggleNodeSelection: (id: string) => void;
   // selectNextVisibleNode: () => void;
   // selectPreviousVisibleNode: () => void;
   // expandNode: (id: string) => void;
@@ -172,6 +173,18 @@ export function useTreeState({ tree, defaultState }: TreeStateHookProps): TreeSt
     });
   }, [state]);
 
+  const toggleNodeSelection = useCallback(
+    (id: string) => {
+      const currentlySelected = state[id]?.selected ?? false;
+      if (currentlySelected) {
+        deselectNode(id);
+      } else {
+        selectNode(id);
+      }
+    },
+    [state]
+  );
+
   return {
     selected,
     nodes,
@@ -179,6 +192,7 @@ export function useTreeState({ tree, defaultState }: TreeStateHookProps): TreeSt
     selectNode,
     deselectNode,
     deselectAllNodes,
+    toggleNodeSelection,
   };
 }
 
