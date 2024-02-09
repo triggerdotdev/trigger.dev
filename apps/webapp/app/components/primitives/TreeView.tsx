@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Fragment, RefObject, useRef } from "react";
+import { Fragment, RefObject, useEffect, useRef, useState } from "react";
 
 export type TreeViewProps<TData> = {
   tree: FlatTree<TData>;
@@ -16,10 +16,9 @@ export function TreeView<TData>({
   tree,
   renderParent,
   renderNode,
-  state,
+  state: state,
   estimatedRowHeight,
 }: TreeViewProps<TData>) {
-  //todo change renderer to use TanStack virtualizer
   const parentRef = useRef<HTMLElement>(null);
   const rowVirtualizer = useVirtualizer({
     count: state.visibleItemCount,
@@ -60,11 +59,11 @@ type NodeState = {
 
 type NodeVisibility = "visible" | "hidden";
 
-type InputNodeStates = Record<string, Partial<NodeState>>;
+export type InputTreeState = Record<string, Partial<NodeState>>;
 
 type TreeStateHookProps = {
   tree: FlatTree<any>;
-  defaultState?: InputNodeStates;
+  defaultState?: InputTreeState;
   onNodeStateChange?: (
     nodeId: string,
     state: { state: NodeState; visibility: NodeVisibility }
@@ -88,9 +87,12 @@ type TreeState = {
 };
 
 export function useTreeState({ tree, defaultState }: TreeStateHookProps): TreeState {
-  if (!defaultState) {
-    defaultState = {} as InputNodeStates;
-  }
+  const [state, setState] = useState<InputTreeState>(defaultState ?? {});
+
+  //if the defaultState changes, update the state
+  useEffect(() => {
+    setState(defaultState ?? {});
+  }, [defaultState]);
 
   //for each defaultState, explicitly set the selected and expanded state if they're undefined
   const concreteState = tree.reduce((acc, node) => {
@@ -99,7 +101,7 @@ export function useTreeState({ tree, defaultState }: TreeStateHookProps): TreeSt
       expanded: acc[node.id]?.expanded ?? true,
     };
     return acc;
-  }, defaultState as Record<string, NodeState>);
+  }, state as Record<string, NodeState>);
 
   const stateEntries = Object.entries(concreteState);
   const selected = stateEntries.find(([id, state]) => state.selected)?.[0];

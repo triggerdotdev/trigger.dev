@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
-import { TreeView, flattenTree, useTreeState } from "../primitives/TreeView";
+import { InputTreeState, TreeView, flattenTree, useTreeState } from "../primitives/TreeView";
 import { cn } from "~/utils/cn";
 import { DocumentIcon, FolderIcon, FolderOpenIcon } from "@heroicons/react/20/solid";
+import { useState } from "react";
 
 const meta: Meta = {
   title: "Primitives/TreeView",
@@ -12,7 +13,16 @@ export default meta;
 type Story = StoryObj<typeof TreeViewsSet>;
 
 export const TreeViews: Story = {
-  render: () => <TreeViewsSet />,
+  render: () => {
+    return (
+      <TreeViewsSet
+        defaultState={{
+          authentication: { selected: false, expanded: false },
+          "registration-b": { selected: true },
+        }}
+      />
+    );
+  },
 };
 
 const data = {
@@ -72,16 +82,11 @@ const data = {
 };
 const tree = flattenTree(data);
 
-function TreeViewsSet() {
+function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
   const state = useTreeState({
     tree,
-    defaultState: {
-      authentication: { selected: false, expanded: false },
-      "registration-b": { selected: true },
-    },
+    defaultState,
   });
-
-  console.log("state", state);
 
   return (
     <div className="grid grid-cols-2">
@@ -91,7 +96,7 @@ function TreeViewsSet() {
           state={state}
           estimatedRowHeight={() => 40}
           renderParent={({ children, ref }) => (
-            <div ref={ref} className="h-44 overflow-y-auto bg-slate-900">
+            <div ref={ref} className="h-96 w-full overflow-y-auto bg-slate-900">
               {children}
             </div>
           )}
