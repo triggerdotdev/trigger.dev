@@ -3,7 +3,8 @@ import { withDesign } from "storybook-addon-designs";
 import { InputTreeState, TreeView, flattenTree, useTreeState } from "../primitives/TreeView";
 import { cn } from "~/utils/cn";
 import { DocumentIcon, FolderIcon, FolderOpenIcon } from "@heroicons/react/20/solid";
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
 const meta: Meta = {
   title: "Primitives/TreeView",
@@ -114,13 +115,15 @@ function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
             </div>
           )}
           renderNode={({ node, state }) => (
-            <div
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               style={{
                 paddingLeft: `${node.level * 1}rem`,
               }}
               className={cn(
                 "flex cursor-pointer items-center gap-2 py-1 hover:bg-blue-500/10",
-                state.visibility === "hidden" && "hidden",
                 state.selected && "bg-blue-500/20 hover:bg-blue-500/30"
               )}
               onClick={() => {
@@ -152,7 +155,7 @@ function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
                 )}
               </div>
               <div>{node.data.title}</div>
-            </div>
+            </motion.div>
           )}
         />
       </div>
