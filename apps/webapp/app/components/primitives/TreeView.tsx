@@ -101,6 +101,7 @@ type TreeState = {
   collapseNode: (id: string) => void;
   toggleExpandNode: (id: string) => void;
   selectFirstVisibleNode: () => void;
+  selectLastVisibleNode: () => void;
   selectNextVisibleNode: () => void;
   selectPreviousVisibleNode: () => void;
   selectParentNode: () => void;
@@ -251,7 +252,17 @@ export function useTree({ tree, defaultState, onStateChanged }: TreeStateHookPro
     if (firstVisibleNode) {
       selectNode(firstVisibleNode.id);
     }
-  }, [tree]);
+  }, [tree, state]);
+
+  const selectLastVisibleNode = useCallback(() => {
+    const lastVisibleNode = tree
+      .slice()
+      .reverse()
+      .find((node) => nodes[node.id].visibility === "visible");
+    if (lastVisibleNode) {
+      selectNode(lastVisibleNode.id);
+    }
+  }, [tree, state]);
 
   const selectNextVisibleNode = useCallback(() => {
     if (!selected) {
@@ -315,7 +326,7 @@ export function useTree({ tree, defaultState, onStateChanged }: TreeStateHookPro
             break;
           }
           case "End": {
-            // dispatch({ type: "MOVE_TO_BOTTOM", source: e.nativeEvent });
+            selectLastVisibleNode();
             e.preventDefault();
             break;
           }
@@ -390,6 +401,7 @@ export function useTree({ tree, defaultState, onStateChanged }: TreeStateHookPro
     collapseNode,
     toggleExpandNode,
     selectFirstVisibleNode,
+    selectLastVisibleNode,
     selectNextVisibleNode,
     selectPreviousVisibleNode,
     selectParentNode,
