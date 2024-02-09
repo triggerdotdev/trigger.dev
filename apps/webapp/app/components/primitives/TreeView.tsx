@@ -103,6 +103,7 @@ type TreeState = {
   selectFirstVisibleNode: () => void;
   selectNextVisibleNode: () => void;
   selectPreviousVisibleNode: () => void;
+  selectParentNode: () => void;
 };
 
 type ModifyState = ((state: InputTreeState) => InputTreeState) | InputTreeState;
@@ -280,6 +281,23 @@ export function useTree({ tree, defaultState, onStateChanged }: TreeStateHookPro
     }
   }, [selected, state]);
 
+  const selectParentNode = useCallback(() => {
+    if (!selected) {
+      selectFirstVisibleNode();
+      return;
+    }
+
+    const selectedNode = tree.find((node) => node.id === selected);
+    if (!selectedNode) {
+      return;
+    }
+
+    const parentNode = tree.find((node) => node.id === selectedNode.parentId);
+    if (parentNode) {
+      selectNode(parentNode.id);
+    }
+  }, [selected, state]);
+
   const getTreeProps = useCallback(() => {
     return {
       role: "tree",
@@ -316,7 +334,12 @@ export function useTree({ tree, defaultState, onStateChanged }: TreeStateHookPro
           case "Left":
           case "ArrowLeft": {
             if (selected) {
-              collapseNode(selected);
+              const treeNode = tree.find((node) => node.id === selected);
+              if (treeNode && treeNode.hasChildren && nodes[selected].expanded) {
+                collapseNode(selected);
+              } else {
+                selectParentNode();
+              }
             }
             e.preventDefault();
             break;
@@ -369,6 +392,7 @@ export function useTree({ tree, defaultState, onStateChanged }: TreeStateHookPro
     selectFirstVisibleNode,
     selectNextVisibleNode,
     selectPreviousVisibleNode,
+    selectParentNode,
   };
 }
 
