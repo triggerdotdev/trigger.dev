@@ -3,9 +3,10 @@ import { withDesign } from "storybook-addon-designs";
 import { InputTreeState, TreeView, flattenTree, useTree } from "../primitives/TreeView";
 import { cn } from "~/utils/cn";
 import { DocumentIcon, FolderIcon, FolderOpenIcon } from "@heroicons/react/20/solid";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "../primitives/Buttons";
+import { Input } from "../primitives/Input";
 
 const meta: Meta = {
   title: "Primitives/TreeView",
@@ -16,14 +17,7 @@ type Story = StoryObj<typeof TreeViewsSet>;
 
 export const TreeViews: Story = {
   render: () => {
-    return (
-      <TreeViewsSet
-        defaultState={{
-          authentication: { selected: false, expanded: false },
-          "registration-b": { selected: true },
-        }}
-      />
-    );
+    return <TreeViewsSet />;
   },
 };
 
@@ -84,7 +78,55 @@ const data = {
 };
 const tree = flattenTree(data);
 
-function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
+function TreeViewsSet() {
+  const [selectedId, setSelectedId] = useState<string | undefined>();
+  const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
+  const [defaultState, setDefaultState] = useState<InputTreeState>({
+    authentication: { selected: false, expanded: false },
+    "registration-b": { selected: true },
+  });
+
+  return (
+    <div className="flex flex-col items-start justify-start gap-4">
+      <div className="flex items-center gap-2 p-2">
+        <Input
+          placeholder="Selected"
+          value={selectedId}
+          onChange={(v) => setSelectedId(v.target.value)}
+        />
+        <Input
+          placeholder="Collapsed"
+          value={collapsedIds}
+          onChange={(e) => {
+            const val = e.target.value;
+            const ids = val.split(",").map((v) => v.trim());
+            setCollapsedIds(ids);
+          }}
+        />
+        <Button
+          variant="secondary/small"
+          onClick={() => {
+            let s: InputTreeState = {};
+            for (const collapsed of collapsedIds) {
+              s[collapsed] = { expanded: false };
+            }
+
+            if (selectedId) {
+              s[selectedId] = { ...s[selectedId], selected: true };
+            }
+            setDefaultState(s);
+          }}
+        >
+          Update
+        </Button>
+      </div>
+
+      <TreeViewParent defaultState={defaultState} />
+    </div>
+  );
+}
+
+function TreeViewParent({ defaultState }: { defaultState?: InputTreeState }) {
   const changed = useCallback((state: InputTreeState) => {
     // console.log("changed", state);
   }, []);
