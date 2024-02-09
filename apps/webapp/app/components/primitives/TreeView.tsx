@@ -66,10 +66,7 @@ export type InputTreeState = Record<string, Partial<NodeState>>;
 type TreeStateHookProps = {
   tree: FlatTree<any>;
   defaultState?: InputTreeState;
-  onNodeStateChange?: (
-    nodeId: string,
-    state: { state: NodeState; visibility: NodeVisibility }
-  ) => void;
+  onStateChanged?: (newState: InputTreeState) => void;
 };
 
 type TreeState = {
@@ -92,12 +89,35 @@ type TreeState = {
   // selectPreviousVisibleNode: () => void;
 };
 
-export function useTreeState({ tree, defaultState }: TreeStateHookProps): TreeState {
+type ModifyState = ((state: InputTreeState) => InputTreeState) | InputTreeState;
+
+export function useTreeState({
+  tree,
+  defaultState,
+  onStateChanged,
+}: TreeStateHookProps): TreeState {
   const [state, setState] = useState<InputTreeState>(defaultState ?? {});
+
+  const modifyState = useCallback(
+    (input: ModifyState) => {
+      if (typeof input === "function") {
+        setState((state) => {
+          const updatedState = input(state);
+          onStateChanged?.(updatedState);
+          return updatedState;
+        });
+        return;
+      }
+
+      setState(input);
+      onStateChanged?.(input);
+    },
+    [state]
+  );
 
   //if the defaultState changes, update the state
   useEffect(() => {
-    setState(defaultState ?? {});
+    modifyState(defaultState ?? {});
   }, [defaultState]);
 
   //for each defaultState, explicitly set the selected and expanded state if they're undefined
@@ -142,8 +162,7 @@ export function useTreeState({ tree, defaultState }: TreeStateHookProps): TreeSt
         return;
       }
 
-      setState((state) => {
-        //we want to set any other selected nodes to false
+      modifyState((state) => {
         const newState = Object.fromEntries(
           Object.entries(state).map(([key, value]) => [key, { ...value, selected: false }])
         );
@@ -156,22 +175,20 @@ export function useTreeState({ tree, defaultState }: TreeStateHookProps): TreeSt
 
   const deselectNode = useCallback(
     (id: string) => {
-      setState((state) => {
-        return {
-          ...state,
-          [id]: { ...state[id], selected: false },
-        };
-      });
+      modifyState((state) => ({
+        ...state,
+        [id]: { ...state[id], selected: false },
+      }));
     },
     [state]
   );
 
   const deselectAllNodes = useCallback(() => {
-    setState((state) => {
-      return Object.fromEntries(
+    modifyState((state) =>
+      Object.fromEntries(
         Object.entries(state).map(([key, value]) => [key, { ...value, selected: false }])
-      );
-    });
+      )
+    );
   }, [state]);
 
   const toggleNodeSelection = useCallback(
@@ -188,24 +205,20 @@ export function useTreeState({ tree, defaultState }: TreeStateHookProps): TreeSt
 
   const expandNode = useCallback(
     (id: string) => {
-      setState((state) => {
-        return {
-          ...state,
-          [id]: { ...state[id], expanded: true },
-        };
-      });
+      modifyState((state) => ({
+        ...state,
+        [id]: { ...state[id], expanded: true },
+      }));
     },
     [state]
   );
 
   const collapseNode = useCallback(
     (id: string) => {
-      setState((state) => {
-        return {
-          ...state,
-          [id]: { ...state[id], expanded: false },
-        };
-      });
+      modifyState((state) => ({
+        ...state,
+        [id]: { ...state[id], expanded: false },
+      }));
     },
     [state]
   );

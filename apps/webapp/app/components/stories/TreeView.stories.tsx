@@ -3,7 +3,7 @@ import { withDesign } from "storybook-addon-designs";
 import { InputTreeState, TreeView, flattenTree, useTreeState } from "../primitives/TreeView";
 import { cn } from "~/utils/cn";
 import { DocumentIcon, FolderIcon, FolderOpenIcon } from "@heroicons/react/20/solid";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 const meta: Meta = {
   title: "Primitives/TreeView",
@@ -83,13 +83,16 @@ const data = {
 const tree = flattenTree(data);
 
 function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
+  const changed = useCallback((state: InputTreeState) => {
+    console.log(state);
+  }, []);
+
   const { nodes, visibleItemCount, selected, toggleNodeSelection, toggleExpandNode, selectNode } =
     useTreeState({
       tree,
       defaultState,
+      onStateChanged: changed,
     });
-
-  console.log(selected, nodes);
 
   return (
     <div className="grid grid-cols-2">
@@ -100,7 +103,13 @@ function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
           visibleItemCount={visibleItemCount}
           estimatedRowHeight={() => 40}
           renderParent={({ children, ref }) => (
-            <div ref={ref} className="h-96 w-full overflow-y-auto bg-slate-900">
+            <div
+              ref={ref}
+              className="h-96 w-full overflow-y-auto bg-slate-900"
+              onKeyDown={(e) => {
+                console.log(e.key);
+              }}
+            >
               {children}
             </div>
           )}
@@ -117,6 +126,9 @@ function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
               onClick={() => {
                 toggleNodeSelection(node.id);
               }}
+              onKeyDown={(e) => {
+                console.log(e.key);
+              }}
             >
               <div
                 className="h-4 w-4"
@@ -124,6 +136,9 @@ function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
                   e.stopPropagation();
                   toggleExpandNode(node.id);
                   selectNode(node.id);
+                }}
+                onKeyDown={(e) => {
+                  console.log(e.key);
                 }}
               >
                 {node.hasChildren ? (
