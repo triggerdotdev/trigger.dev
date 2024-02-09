@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
-import { TreeView, flattenTree } from "../primitives/TreeView";
+import { TreeView, flattenTree, useTreeState } from "../primitives/TreeView";
 import { cn } from "~/utils/cn";
 import { DocumentIcon, FolderIcon, FolderOpenIcon } from "@heroicons/react/20/solid";
 
@@ -70,15 +70,23 @@ const data = {
     },
   ],
 };
+const tree = flattenTree(data);
 
 function TreeViewsSet() {
-  const flatTree = flattenTree(data);
+  const state = useTreeState({
+    tree,
+    defaultState: {
+      authentication: { selected: false, expanded: false },
+      "registration-b": { selected: true },
+    },
+  });
 
   return (
     <div className="grid grid-cols-2">
       <div className="flex flex-col items-start gap-y-4 p-4">
         <TreeView
-          tree={flatTree}
+          tree={tree}
+          state={state}
           renderNode={({ node, state }) => (
             <div
               style={{
@@ -86,12 +94,13 @@ function TreeViewsSet() {
               }}
               className={cn(
                 "flex items-center gap-2 py-1",
-                state.visibility === "hidden" && "hidden"
+                state.visibility === "hidden" && "hidden",
+                state.selected && "bg-blue-500/20"
               )}
             >
               <div className="h-4 w-4">
                 {node.hasChildren ? (
-                  state.state.expanded ? (
+                  state.expanded ? (
                     <FolderOpenIcon className="h-4 w-4 text-blue-500" />
                   ) : (
                     <FolderIcon className="h-4 w-4 text-blue-500/50" />
@@ -103,9 +112,6 @@ function TreeViewsSet() {
               <div>{node.data.title}</div>
             </div>
           )}
-          nodeStates={{
-            authentication: { selected: true, expanded: false },
-          }}
         />
       </div>
     </div>

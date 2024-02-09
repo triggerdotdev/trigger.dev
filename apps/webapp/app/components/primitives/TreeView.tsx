@@ -4,17 +4,12 @@ export type TreeViewProps<TData> = {
   tree: FlatTree<TData>;
   renderNode: (params: {
     node: FlatTreeItem<TData>;
-    state: { state: NodeState; visibility: NodeVisibility };
+    state: NodeState & { visibility: NodeVisibility };
   }) => React.ReactNode;
-  nodeStates?: NodeStates;
+  state: TreeState;
 };
 
-export function TreeView<TData>({ tree, renderNode, nodeStates }: TreeViewProps<TData>) {
-  const state = useTreeState({
-    tree,
-    nodeStates,
-  });
-
+export function TreeView<TData>({ tree, renderNode, state }: TreeViewProps<TData>) {
   //todo change renderer to use TanStack virtualizer
   console.log("state", state);
 
@@ -38,11 +33,12 @@ type NodeState = {
 };
 
 type NodeVisibility = "visible" | "hidden";
-type NodeStates = Record<string, NodeState>;
+
+type InputNodeStates = Record<string, Partial<NodeState>>;
 
 type TreeStateHookProps = {
   tree: FlatTree<any>;
-  nodeStates?: NodeStates;
+  defaultState?: InputNodeStates;
   onNodeStateChange?: (
     nodeId: string,
     state: { state: NodeState; visibility: NodeVisibility }
@@ -58,37 +54,44 @@ type TreeState = {
   selected: string | undefined;
   nodes: Record<
     string,
-    {
-      state: NodeState;
+    NodeState & {
       visibility: NodeVisibility;
     }
   >;
 };
 
-export function useTreeState({ tree, nodeStates }: TreeStateHookProps): TreeState {
-  if (!nodeStates) {
-    nodeStates = {} as NodeStates;
+export function useTreeState({ tree, defaultState }: TreeStateHookProps): TreeState {
+  if (!defaultState) {
+    defaultState = {} as InputNodeStates;
   }
 
-  const stateEntries = Object.entries<NodeState>(nodeStates);
+  //for each defaultState, explicitly set the selected and expanded state if they're undefined
+  const concreteState = tree.reduce((acc, node) => {
+    acc[node.id] = {
+      selected: acc[node.id]?.selected ?? false,
+      expanded: acc[node.id]?.expanded ?? true,
+    };
+    return acc;
+  }, defaultState as Record<string, NodeState>);
+
+  const stateEntries = Object.entries(concreteState);
   const selected = stateEntries.find(([id, state]) => state.selected)?.[0];
 
   //create the state and visibility for each Node
   //Nodes where the parent is collapsed are hidden, and can't be selected
   const nodes = tree.reduce((acc, node) => {
     //groups are open by default
-    const state = nodeStates![node.id] ?? {
+    const state = concreteState![node.id] ?? {
       selected: false,
       expanded: node.hasChildren ? true : false,
     };
     const parent = node.parentId
       ? acc[node.parentId]
-      : { state: { selected: false, expanded: true }, visibility: "visible" };
-    const visibility =
-      parent.state.expanded && parent.visibility === "visible" ? "visible" : "hidden";
-    acc[node.id] = { state, visibility };
+      : { selected: false, expanded: true, visibility: "visible" };
+    const visibility = parent.expanded && parent.visibility === "visible" ? "visible" : "hidden";
+    acc[node.id] = { ...state, visibility };
     return acc;
-  }, {} as Record<string, { state: NodeState; visibility: NodeVisibility }>);
+  }, {} as Record<string, NodeState & { visibility: NodeVisibility }>);
 
   return {
     selected,
