@@ -357,23 +357,31 @@ function ProjectSelector({
           <Fragment key={organization.id}>
             <PopoverSectionHeader title={organization.title} />
             <div className="flex flex-col gap-1 p-1">
-              {organization.projects.map((p) => {
-                const isSelected = p.id === project.id;
-                return (
-                  <PopoverMenuItem
-                    key={p.id}
-                    to={projectPath(organization, p)}
-                    title={
-                      <div className="flex w-full items-center justify-between text-bright">
-                        <span className="grow truncate text-left">{p.name}</span>
-                        <MenuCount count={p.jobCount} />
-                      </div>
-                    }
-                    isSelected={isSelected}
-                    icon="folder"
-                  />
-                );
-              })}
+              {organization.projects.length > 0 ? (
+                organization.projects.map((p) => {
+                  const isSelected = p.id === project.id;
+                  return (
+                    <PopoverMenuItem
+                      key={p.id}
+                      to={projectPath(organization, p)}
+                      title={
+                        <div className="flex w-full items-center justify-between text-bright">
+                          <span className="grow truncate text-left">{p.name}</span>
+                          <MenuCount count={p.jobCount} />
+                        </div>
+                      }
+                      isSelected={isSelected}
+                      icon="folder"
+                    />
+                  );
+                })
+              ) : (
+                <PopoverMenuItem
+                  to={newProjectPath(organization)}
+                  title="New project"
+                  icon="plus"
+                />
+              )}
             </div>
           </Fragment>
         ))}

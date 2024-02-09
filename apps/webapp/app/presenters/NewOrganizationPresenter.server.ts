@@ -10,11 +10,16 @@ export class NewOrganizationPresenter {
 
   public async call({ userId }: { userId: User["id"] }) {
     const organizations = await this.#prismaClient.organization.findMany({
+      select: {
+        projects: {
+          where: { deletedAt: null },
+        },
+      },
       where: { members: { some: { userId } } },
     });
 
     return {
-      hasOrganizations: organizations.length > 0,
+      hasOrganizations: organizations.filter((o) => o.projects.length > 0).length > 0,
     };
   }
 }
