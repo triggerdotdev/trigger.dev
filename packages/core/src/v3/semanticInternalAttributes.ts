@@ -18,4 +18,6 @@ export const SemanticInternalAttributes = {
   METADATA: "$metadata",
   TRIGGER: "$trigger",
   PAYLOAD: "$payload",
+  WORKER_ID: "worker.id",
+  WORKER_VERSION: "worker.version",
 };

@@ -1675,6 +1675,9 @@ model TaskEvent {
   taskPath       String?
   taskExportName String?
 
+  workerId      String?
+  workerVersion String?
+
   /// This represents all the span attributes available, like http.status_code, and special attributes like $style.icon, $output, $metadata.payload.userId, as it's used for searching and filtering
   properties Json
 

@@ -81,56 +81,7 @@ class OTLPExporter {
 function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<CreatableEvent> {
   const resourceAttributes = resourceLog.resource?.attributes ?? [];
 
-  const resourceProperties = {
-    metadata: convertKeyValueItemsToMap(resourceAttributes, [SemanticInternalAttributes.TRIGGER]),
-    serviceName: extractStringAttribute(
-      resourceAttributes,
-      SemanticResourceAttributes.SERVICE_NAME,
-      "unknown"
-    ),
-    serviceNamespace: extractStringAttribute(
-      resourceAttributes,
-      SemanticResourceAttributes.SERVICE_NAMESPACE,
-      "unknown"
-    ),
-    environmentId: extractStringAttribute(
-      resourceAttributes,
-      SemanticInternalAttributes.ENVIRONMENT_ID,
-      "unknown"
-    ),
-    environmentType: extractStringAttribute(
-      resourceAttributes,
-      SemanticInternalAttributes.ENVIRONMENT_TYPE,
-      "unknown"
-    ) as CreatableEventEnvironmentType,
-    organizationId: extractStringAttribute(
-      resourceAttributes,
-      SemanticInternalAttributes.ORGANIZATION_ID,
-      "unknown"
-    ),
-    projectId: extractStringAttribute(
-      resourceAttributes,
-      SemanticInternalAttributes.PROJECT_ID,
-      "unknown"
-    ),
-    projectRef: extractStringAttribute(
-      resourceAttributes,
-      SemanticInternalAttributes.PROJECT_REF,
-      "unknown"
-    ),
-    runId: extractStringAttribute(resourceAttributes, SemanticInternalAttributes.RUN_ID, "unknown"),
-    attemptId: extractStringAttribute(resourceAttributes, SemanticInternalAttributes.ATTEMPT_ID),
-    taskSlug: extractStringAttribute(
-      resourceAttributes,
-      SemanticInternalAttributes.TASK_SLUG,
-      "unknown"
-    ),
-    taskPath: extractStringAttribute(resourceAttributes, SemanticInternalAttributes.TASK_PATH),
-    taskExportName: extractStringAttribute(
-      resourceAttributes,
-      SemanticInternalAttributes.TASK_EXPORT_NAME
-    ),
-  };
+  const resourceProperties = extractResourceProperties(resourceAttributes);
 
   return resourceLog.scopeLogs.flatMap((scopeLog) => {
     return scopeLog.logRecords.map((log) => {
@@ -170,68 +121,9 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
 }
 
 function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<CreatableEvent> {
-  const resourceProperties = {
-    metadata: convertKeyValueItemsToMap(resourceSpan.resource?.attributes ?? [], [
-      SemanticInternalAttributes.TRIGGER,
-    ]),
-    serviceName: extractStringAttribute(
-      resourceSpan.resource?.attributes ?? [],
-      SemanticResourceAttributes.SERVICE_NAME,
-      "unknown"
-    ),
-    serviceNamespace: extractStringAttribute(
-      resourceSpan.resource?.attributes ?? [],
-      SemanticResourceAttributes.SERVICE_NAMESPACE,
-      "unknown"
-    ),
-    environmentId: extractStringAttribute(
-      resourceSpan.resource?.attributes ?? [],
-      SemanticInternalAttributes.ENVIRONMENT_ID,
-      "unknown"
-    ),
-    environmentType: extractStringAttribute(
-      resourceSpan.resource?.attributes ?? [],
-      SemanticInternalAttributes.ENVIRONMENT_TYPE,
-      "unknown"
-    ) as CreatableEventEnvironmentType,
-    organizationId: extractStringAttribute(
-      resourceSpan.resource?.attributes ?? [],
-      SemanticInternalAttributes.ORGANIZATION_ID,
-      "unknown"
-    ),
-    projectId: extractStringAttribute(
-      resourceSpan.resource?.attributes ?? [],
-      SemanticInternalAttributes.PROJECT_ID,
-      "unknown"
-    ),
-    projectRef: extractStringAttribute(
-      resourceSpan.resource?.attributes ?? [],
-      SemanticInternalAttributes.PROJECT_REF,
-      "unknown"
-    ),
-    runId: extractStringAttribute(
-      resourceSpan.resource?.attributes ?? [],
-      SemanticInternalAttributes.RUN_ID,
-      "unknown"
-    ),
-    attemptId: extractStringAttribute(
-      resourceSpan.resource?.attributes ?? [],
-      SemanticInternalAttributes.ATTEMPT_ID
-    ),
-    taskSlug: extractStringAttribute(
-      resourceSpan.resource?.attributes ?? [],
-      SemanticInternalAttributes.TASK_SLUG,
-      "unknown"
-    ),
-    taskPath: extractStringAttribute(
-      resourceSpan.resource?.attributes ?? [],
-      SemanticInternalAttributes.TASK_PATH
-    ),
-    taskExportName: extractStringAttribute(
-      resourceSpan.resource?.attributes ?? [],
-      SemanticInternalAttributes.TASK_EXPORT_NAME
-    ),
-  };
+  const resourceAttributes = resourceSpan.resource?.attributes ?? [];
+
+  const resourceProperties = extractResourceProperties(resourceAttributes);
 
   return resourceSpan.scopeSpans.flatMap((scopeSpan) => {
     return scopeSpan.spans.map((span) => {
@@ -262,7 +154,7 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
             SemanticInternalAttributes.SPAN_PARTIAL,
           ]),
           ...convertKeyValueItemsToMap(
-            resourceSpan.resource?.attributes ?? [],
+            resourceAttributes,
             [SemanticInternalAttributes.TRIGGER],
             SemanticInternalAttributes.METADATA
           ),
@@ -279,6 +171,50 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
       };
     });
   });
+}
+
+function extractResourceProperties(attributes: KeyValue[]) {
+  return {
+    metadata: convertKeyValueItemsToMap(attributes, [SemanticInternalAttributes.TRIGGER]),
+    serviceName: extractStringAttribute(
+      attributes,
+      SemanticResourceAttributes.SERVICE_NAME,
+      "unknown"
+    ),
+    serviceNamespace: extractStringAttribute(
+      attributes,
+      SemanticResourceAttributes.SERVICE_NAMESPACE,
+      "unknown"
+    ),
+    environmentId: extractStringAttribute(
+      attributes,
+      SemanticInternalAttributes.ENVIRONMENT_ID,
+      "unknown"
+    ),
+    environmentType: extractStringAttribute(
+      attributes,
+      SemanticInternalAttributes.ENVIRONMENT_TYPE,
+      "unknown"
+    ) as CreatableEventEnvironmentType,
+    organizationId: extractStringAttribute(
+      attributes,
+      SemanticInternalAttributes.ORGANIZATION_ID,
+      "unknown"
+    ),
+    projectId: extractStringAttribute(attributes, SemanticInternalAttributes.PROJECT_ID, "unknown"),
+    projectRef: extractStringAttribute(
+      attributes,
+      SemanticInternalAttributes.PROJECT_REF,
+      "unknown"
+    ),
+    runId: extractStringAttribute(attributes, SemanticInternalAttributes.RUN_ID, "unknown"),
+    attemptId: extractStringAttribute(attributes, SemanticInternalAttributes.ATTEMPT_ID),
+    taskSlug: extractStringAttribute(attributes, SemanticInternalAttributes.TASK_SLUG, "unknown"),
+    taskPath: extractStringAttribute(attributes, SemanticInternalAttributes.TASK_PATH),
+    taskExportName: extractStringAttribute(attributes, SemanticInternalAttributes.TASK_EXPORT_NAME),
+    workerId: extractStringAttribute(attributes, SemanticInternalAttributes.WORKER_ID),
+    workerVersion: extractStringAttribute(attributes, SemanticInternalAttributes.WORKER_VERSION),
+  };
 }
 
 function pickAttributes(attributes: KeyValue[], prefix: string): KeyValue[] {

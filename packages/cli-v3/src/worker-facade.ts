@@ -5,6 +5,7 @@ const otelLogger = getLogger("trigger-dev-worker", packageJson.version);
 
 import { SpanKind } from "@opentelemetry/api";
 import {
+  BackgroundWorkerRecord,
   ConsoleInterceptor,
   DevRuntimeManager,
   OtelTaskLogger,
@@ -55,7 +56,11 @@ declare const __TASKS__: Record<string, string>;
 class TaskExecutor {
   constructor(public task: TaskMetadataWithRun) {}
 
-  async execute(execution: TaskRunExecution, traceContext: Record<string, unknown>) {
+  async execute(
+    execution: TaskRunExecution,
+    worker: BackgroundWorkerRecord,
+    traceContext: Record<string, unknown>
+  ) {
     const parsedPayload = JSON.parse(execution.run.payload);
     const ctx = TaskRunContext.parse(execution);
 
@@ -63,6 +68,7 @@ class TaskExecutor {
       {
         ctx,
         payload: parsedPayload,
+        worker,
       },
       async () => {
         asyncResourceDetector.resolveWithAttributes(taskContextManager.attributes);
@@ -170,7 +176,7 @@ const handler = new ZodMessageHandler({
       }
 
       try {
-        const result = await executor.execute(execution, traceContext);
+        const result = await executor.execute(execution, metadata, traceContext);
 
         return sender.send("TASK_RUN_COMPLETED", {
           result: {
