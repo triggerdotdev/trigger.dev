@@ -1,5 +1,5 @@
 import { TaskRunContext, TaskRunExecution, TaskRunExecutionResult } from "../schemas";
-import { TriggerTracer } from "../tracing";
+import { TriggerTracer } from "../tracer";
 import { RuntimeManager } from "./manager";
 
 export type DevRuntimeManagerOptions = {

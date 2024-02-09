@@ -1,7 +1,14 @@
-import { asyncResourceDetector, flushOtel, getLogger, getTracer } from "./dev/tracer.js";
+import { TracingSDK } from "@trigger.dev/core/v3";
 
-const otelTracer = getTracer("trigger-dev-worker", packageJson.version);
-const otelLogger = getLogger("trigger-dev-worker", packageJson.version);
+const tracingSDK = new TracingSDK({
+  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
+  resource: new Resource({
+    [SemanticInternalAttributes.CLI_VERSION]: packageJson.version,
+  }),
+});
+
+const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.version);
+const otelLogger = tracingSDK.getLogger("trigger-dev-worker", packageJson.version);
 
 import { SpanKind } from "@opentelemetry/api";
 import {
@@ -26,8 +33,9 @@ import {
 } from "@trigger.dev/core/v3";
 import * as packageJson from "../package.json";
 
-import { TaskMetadataWithRun } from "./types.js";
+import { Resource } from "@opentelemetry/resources";
 import { flattenAttributes } from "@trigger.dev/core/v3";
+import { TaskMetadataWithRun } from "./types.js";
 
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
 const consoleInterceptor = new ConsoleInterceptor(otelLogger);
@@ -71,7 +79,11 @@ class TaskExecutor {
         worker,
       },
       async () => {
-        asyncResourceDetector.resolveWithAttributes(taskContextManager.attributes);
+        tracingSDK.asyncResourceDetector.resolveWithAttributes({
+          ...taskContextManager.attributes,
+          [SemanticInternalAttributes.SDK_VERSION]: this.task.packageVersion,
+          [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
+        });
 
         return await tracer.startActiveSpan(
           `Attempt #${execution.attempt.number}`,
@@ -200,7 +212,7 @@ const handler = new ZodMessageHandler({
     },
     CLEANUP: async ({ flush }) => {
       if (flush) {
-        await flushOtel();
+        await tracingSDK.flushOtel();
       }
 
       // Now we need to exit the process

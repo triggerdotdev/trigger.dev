@@ -20,4 +20,7 @@ export const SemanticInternalAttributes = {
   PAYLOAD: "$payload",
   WORKER_ID: "worker.id",
   WORKER_VERSION: "worker.version",
+  CLI_VERSION: "cli.version",
+  SDK_VERSION: "sdk.version",
+  SDK_LANGUAGE: "sdk.language",
 };
