@@ -5,6 +5,7 @@ import { cn } from "~/utils/cn";
 import { DocumentIcon, FolderIcon, FolderOpenIcon } from "@heroicons/react/20/solid";
 import { useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Button } from "../primitives/Buttons";
 
 const meta: Meta = {
   title: "Primitives/TreeView",
@@ -85,80 +86,96 @@ const tree = flattenTree(data);
 
 function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
   const changed = useCallback((state: InputTreeState) => {
-    console.log("changed", state);
+    // console.log("changed", state);
   }, []);
 
-  const { nodes, selected, toggleNodeSelection, toggleExpandNode, selectNode } = useTree({
+  const {
+    nodes,
+    selected,
+    getTreeProps,
+    toggleNodeSelection,
+    toggleExpandNode,
+    selectNode,
+    selectFirstVisibleNode,
+  } = useTree({
     tree,
     defaultState,
     onStateChanged: changed,
   });
 
-  console.log("nodes", nodes);
+  console.log("selected", selected);
+  // console.log("nodes", nodes);
 
   return (
-    <div className="grid grid-cols-2">
-      <div className="flex flex-col items-start gap-y-4 p-4">
-        <TreeView
-          tree={tree}
-          nodes={nodes}
-          estimatedRowHeight={() => 40}
-          renderParent={({ children, ref }) => (
-            <div
-              ref={ref}
-              className="h-96 w-full overflow-y-auto bg-slate-900"
-              onKeyDown={(e) => {
-                console.log(e.key);
-              }}
-            >
-              {children}
-            </div>
-          )}
-          renderNode={({ node, state }) => (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              style={{
-                paddingLeft: `${node.level * 1}rem`,
-              }}
-              className={cn(
-                "flex cursor-pointer items-center gap-2 py-1 hover:bg-blue-500/10",
-                state.selected && "bg-blue-500/20 hover:bg-blue-500/30"
-              )}
-              onClick={() => {
-                toggleNodeSelection(node.id);
-              }}
-              onKeyDown={(e) => {
-                console.log(e.key);
-              }}
-            >
-              <div
-                className="h-4 w-4"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleExpandNode(node.id);
-                  selectNode(node.id);
-                }}
-                onKeyDown={(e) => {
-                  console.log(e.key);
-                }}
-              >
-                {node.hasChildren ? (
-                  state.expanded ? (
-                    <FolderOpenIcon className="h-4 w-4 text-blue-500" />
-                  ) : (
-                    <FolderIcon className="h-4 w-4 text-blue-500/50" />
-                  )
-                ) : (
-                  <DocumentIcon className="h-4 w-4" />
-                )}
-              </div>
-              <div>{node.data.title}</div>
-            </motion.div>
-          )}
-        />
+    <div className="flex flex-col items-start gap-y-4 p-4">
+      <div className="flex items-center gap-2">
+        <Button variant="secondary/small" onClick={() => selectFirstVisibleNode()}>
+          Select first
+        </Button>
+        <Button variant="secondary/small" onClick={() => selectNode("registration-b")}>
+          Select Registration B
+        </Button>
       </div>
+      <TreeView
+        tree={tree}
+        nodes={nodes}
+        estimatedRowHeight={() => 40}
+        renderParent={({ children, ref }) => (
+          <div
+            ref={ref}
+            className="h-96 w-full overflow-y-auto bg-slate-900"
+            onKeyDown={(e) => {
+              console.log(e.key);
+            }}
+            {...getTreeProps()}
+          >
+            {children}
+          </div>
+        )}
+        renderNode={({ node, state }) => (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              paddingLeft: `${node.level * 1}rem`,
+            }}
+            className={cn(
+              "flex cursor-pointer items-center gap-2 py-1 hover:bg-blue-500/10",
+              state.selected && "bg-blue-500/20 hover:bg-blue-500/30"
+            )}
+            onClick={() => {
+              toggleNodeSelection(node.id);
+            }}
+            onKeyDown={(e) => {
+              console.log(e.key);
+            }}
+          >
+            <div
+              className="h-4 w-4"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleExpandNode(node.id);
+                selectNode(node.id);
+              }}
+              onKeyDown={(e) => {
+                console.log(e.key);
+              }}
+            >
+              {node.hasChildren ? (
+                state.expanded ? (
+                  <FolderOpenIcon className="h-4 w-4 text-blue-500" />
+                ) : (
+                  <FolderIcon className="h-4 w-4 text-blue-500/50" />
+                )
+              ) : (
+                <DocumentIcon className="h-4 w-4" />
+              )}
+            </div>
+            <div>{node.data.title}</div>
+          </motion.div>
+        )}
+      />
     </div>
   );
 }

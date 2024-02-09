@@ -77,6 +77,7 @@ type TreeState = {
       visibility: NodeVisibility;
     }
   >;
+  getTreeProps: () => React.HTMLAttributes<HTMLElement>;
   selectNode: (id: string) => void;
   deselectNode: (id: string) => void;
   deselectAllNodes: () => void;
@@ -84,8 +85,9 @@ type TreeState = {
   expandNode: (id: string) => void;
   collapseNode: (id: string) => void;
   toggleExpandNode: (id: string) => void;
-  // selectNextVisibleNode: () => void;
-  // selectPreviousVisibleNode: () => void;
+  selectFirstVisibleNode: () => void;
+  selectNextVisibleNode: () => void;
+  selectPreviousVisibleNode: () => void;
 };
 
 type ModifyState = ((state: InputTreeState) => InputTreeState) | InputTreeState;
@@ -228,9 +230,104 @@ export function useTree({ tree, defaultState, onStateChanged }: TreeStateHookPro
     [state]
   );
 
+  const selectFirstVisibleNode = useCallback(() => {
+    const firstVisibleNode = tree.find((node) => nodes[node.id].visibility === "visible");
+    if (firstVisibleNode) {
+      selectNode(firstVisibleNode.id);
+    }
+  }, [tree]);
+
+  const selectNextVisibleNode = useCallback(() => {
+    if (!selected) {
+      selectFirstVisibleNode();
+      return;
+    }
+
+    const visible = visibleNodes(tree, nodes);
+    const selectedIndex = visible.findIndex((node) => node.id === selected);
+    const nextNode = visible[selectedIndex + 1];
+    if (nextNode) {
+      selectNode(nextNode.id);
+    }
+  }, [selected, state]);
+
+  const selectPreviousVisibleNode = useCallback(() => {
+    if (!selected) {
+      selectFirstVisibleNode();
+      return;
+    }
+
+    const visible = visibleNodes(tree, nodes);
+    const selectedIndex = visible.findIndex((node) => node.id === selected);
+    const previousNode = visible[selectedIndex - 1];
+    if (previousNode) {
+      selectNode(previousNode.id);
+    }
+  }, [selected, state]);
+
+  const getTreeProps = useCallback(() => {
+    return {
+      role: "tree",
+      "aria-multiselectable": true,
+      tabIndex: -1,
+      onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => {
+        if (e.defaultPrevented) {
+          return; // Do nothing if the event was already processed
+        }
+
+        switch (e.key) {
+          case "Home": {
+            selectFirstVisibleNode();
+            e.preventDefault();
+            break;
+          }
+          case "End": {
+            // dispatch({ type: "MOVE_TO_BOTTOM", source: e.nativeEvent });
+            e.preventDefault();
+            break;
+          }
+          case "Down":
+          case "ArrowDown": {
+            selectNextVisibleNode();
+            e.preventDefault();
+            break;
+          }
+          case "Up":
+          case "ArrowUp": {
+            selectPreviousVisibleNode();
+            e.preventDefault();
+            break;
+          }
+          case "Left":
+          case "ArrowLeft": {
+            if (selected) {
+              collapseNode(selected);
+            }
+            e.preventDefault();
+            break;
+          }
+          case "Right":
+          case "ArrowRight": {
+            if (selected) {
+              expandNode(selected);
+            }
+            e.preventDefault();
+            break;
+          }
+          case "Escape": {
+            deselectAllNodes();
+            e.preventDefault();
+            break;
+          }
+        }
+      },
+    };
+  }, [selected, state]);
+
   return {
     selected,
     nodes,
+    getTreeProps,
     selectNode,
     deselectNode,
     deselectAllNodes,
@@ -238,6 +335,9 @@ export function useTree({ tree, defaultState, onStateChanged }: TreeStateHookPro
     expandNode,
     collapseNode,
     toggleExpandNode,
+    selectFirstVisibleNode,
+    selectNextVisibleNode,
+    selectPreviousVisibleNode,
   };
 }
 
