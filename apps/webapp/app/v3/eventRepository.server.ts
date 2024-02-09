@@ -21,6 +21,7 @@ export type CreatableEvent = Omit<
 
 export type CreatableEventKind = TaskEventKind;
 export type CreatableEventStatus = TaskEventStatus;
+export type CreatableEventEnvironmentType = CreatableEvent["environmentType"];
 
 export type TraceAttributes = Partial<
   Pick<
@@ -84,10 +85,10 @@ export class EventRepository {
     const start = process.hrtime.bigint();
     const startTime = new Date();
 
-    const traceId = propagatedContext?.traceparent?.traceId ?? this.#generateTraceId();
+    const traceId = propagatedContext?.traceparent?.traceId ?? this.generateTraceId();
     const parentId = propagatedContext?.traceparent?.spanId;
     const tracestate = propagatedContext?.tracestate;
-    const spanId = this.#generateSpanId();
+    const spanId = this.generateSpanId();
 
     logger.info("traceEvent", {
       traceId,
@@ -191,11 +192,11 @@ export class EventRepository {
     });
   }
 
-  #generateTraceId() {
+  public generateTraceId() {
     return this._randomIdGenerator.generateTraceId();
   }
 
-  #generateSpanId() {
+  public generateSpanId() {
     return this._randomIdGenerator.generateSpanId();
   }
 }

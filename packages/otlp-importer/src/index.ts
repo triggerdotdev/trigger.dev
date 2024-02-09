@@ -29,6 +29,12 @@ import type {
   KeyValueList,
   AnyValue,
 } from "./generated/opentelemetry/proto/common/v1/common";
+import {
+  LogRecord,
+  ResourceLogs,
+  ScopeLogs,
+  SeverityNumber,
+} from "./generated/opentelemetry/proto/logs/v1/logs";
 
 export {
   Resource,
@@ -44,6 +50,10 @@ export {
   Status_StatusCode,
   Span_Event,
   Span_Link,
+  ResourceLogs,
+  ScopeLogs,
+  LogRecord,
+  SeverityNumber,
 };
 
 export {
