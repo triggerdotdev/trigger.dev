@@ -83,17 +83,20 @@ const data = {
 const tree = flattenTree(data);
 
 function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
-  const state = useTreeState({
+  const { nodes, visibleItemCount, selected, selectNode } = useTreeState({
     tree,
     defaultState,
   });
+
+  console.log(selected, nodes);
 
   return (
     <div className="grid grid-cols-2">
       <div className="flex flex-col items-start gap-y-4 p-4">
         <TreeView
           tree={tree}
-          state={state}
+          nodes={nodes}
+          visibleItemCount={visibleItemCount}
           estimatedRowHeight={() => 40}
           renderParent={({ children, ref }) => (
             <div ref={ref} className="h-96 w-full overflow-y-auto bg-slate-900">
@@ -106,10 +109,13 @@ function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
                 paddingLeft: `${node.level * 1}rem`,
               }}
               className={cn(
-                "flex items-center gap-2 py-1",
+                "flex cursor-pointer items-center gap-2 py-1 hover:bg-blue-500/10",
                 state.visibility === "hidden" && "hidden",
-                state.selected && "bg-blue-500/20"
+                state.selected && "bg-blue-500/20 hover:bg-blue-500/30"
               )}
+              onClick={() => {
+                selectNode(node.id);
+              }}
             >
               <div className="h-4 w-4">
                 {node.hasChildren ? (

@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Fragment, RefObject, useEffect, useRef, useState } from "react";
+import { Fragment, RefObject, useCallback, useEffect, useRef, useState } from "react";
 
 export type TreeViewProps<TData> = {
   tree: FlatTree<TData>;
@@ -9,19 +9,21 @@ export type TreeViewProps<TData> = {
     node: FlatTreeItem<TData>;
     state: NodeState & { visibility: NodeVisibility };
   }) => React.ReactNode;
-  state: TreeState;
+  nodes: TreeState["nodes"];
+  visibleItemCount: TreeState["visibleItemCount"];
 };
 
 export function TreeView<TData>({
   tree,
   renderParent,
   renderNode,
-  state: state,
+  nodes,
+  visibleItemCount,
   estimatedRowHeight,
 }: TreeViewProps<TData>) {
   const parentRef = useRef<HTMLElement>(null);
   const rowVirtualizer = useVirtualizer({
-    count: state.visibleItemCount,
+    count: visibleItemCount,
     getScrollElement: () => parentRef.current,
     estimateSize: estimatedRowHeight,
   });
@@ -42,7 +44,7 @@ export function TreeView<TData>({
             <Fragment key={node.id}>
               {renderNode({
                 node,
-                state: state.nodes[node.id],
+                state: nodes[node.id],
               })}
             </Fragment>
           );
@@ -68,11 +70,6 @@ type TreeStateHookProps = {
     nodeId: string,
     state: { state: NodeState; visibility: NodeVisibility }
   ) => void;
-  selectNode?: (id: string) => void;
-  selectNextVisibleNode?: () => void;
-  selectPreviousVisibleNode?: () => void;
-  expandNode?: (id: string) => void;
-  collapseNode?: (id: string) => void;
 };
 
 type TreeState = {
@@ -84,6 +81,11 @@ type TreeState = {
     }
   >;
   visibleItemCount: number;
+  selectNode: (id: string) => void;
+  // selectNextVisibleNode: () => void;
+  // selectPreviousVisibleNode: () => void;
+  // expandNode: (id: string) => void;
+  // collapseNode: (id: string) => void;
 };
 
 export function useTreeState({ tree, defaultState }: TreeStateHookProps): TreeState {
@@ -128,10 +130,31 @@ export function useTreeState({ tree, defaultState }: TreeStateHookProps): TreeSt
     return acc;
   }, {} as Record<string, NodeState & { visibility: NodeVisibility }>);
 
+  const selectNode = useCallback(
+    (id: string) => {
+      //if the node was already selected, do nothing. The user needs to use deselectNode to deselect
+      const alreadySelected = state[id]?.selected ?? false;
+      if (alreadySelected) {
+        return;
+      }
+
+      setState((state) => {
+        //we want to set any other selected nodes to false
+        const newState = Object.fromEntries(
+          Object.entries(state).map(([key, value]) => [key, { ...value, selected: false }])
+        );
+        newState[id] = { ...newState[id], selected: true };
+        return newState;
+      });
+    },
+    [state]
+  );
+
   return {
     selected,
     nodes,
     visibleItemCount,
+    selectNode,
   };
 }
 
