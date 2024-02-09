@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
 import { TreeView, flattenTree } from "../primitives/TreeView";
+import { cn } from "~/utils/cn";
+import { DocumentIcon, FolderIcon, FolderOpenIcon } from "@heroicons/react/20/solid";
 
 const meta: Meta = {
   title: "Primitives/TreeView",
@@ -49,6 +51,16 @@ const data = {
         {
           id: "authentication-a",
           data: { title: "Authentication A" },
+          children: [
+            {
+              id: "double-child-a",
+              data: { title: "Double child A" },
+            },
+            {
+              id: "double-child-b",
+              data: { title: "Double child B" },
+            },
+          ],
         },
         {
           id: "authentication-b",
@@ -67,17 +79,33 @@ function TreeViewsSet() {
       <div className="flex flex-col items-start gap-y-4 p-4">
         <TreeView
           tree={flatTree}
-          renderNode={({ node }) => (
+          renderNode={({ node, state }) => (
             <div
               style={{
                 paddingLeft: `${node.level * 1}rem`,
               }}
-              className="flex items-center gap-2 py-1"
+              className={cn(
+                "flex items-center gap-2 py-1",
+                state.visibility === "hidden" && "hidden"
+              )}
             >
-              {node.hasChildren ? "📂 " : "📄 "}
-              {node.data.title}
+              <div className="h-4 w-4">
+                {node.hasChildren ? (
+                  state.state.expanded ? (
+                    <FolderOpenIcon className="h-4 w-4 text-blue-500" />
+                  ) : (
+                    <FolderIcon className="h-4 w-4 text-blue-500/50" />
+                  )
+                ) : (
+                  <DocumentIcon className="h-4 w-4" />
+                )}
+              </div>
+              <div>{node.data.title}</div>
             </div>
           )}
+          nodeStates={{
+            authentication: { selected: true, expanded: false },
+          }}
         />
       </div>
     </div>

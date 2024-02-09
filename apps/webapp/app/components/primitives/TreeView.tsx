@@ -4,8 +4,7 @@ export type TreeViewProps<TData> = {
   tree: FlatTree<TData>;
   renderNode: (params: {
     node: FlatTreeItem<TData>;
-    isSelected: boolean;
-    isExpanded: boolean;
+    state: { state: NodeState; visibility: NodeVisibility };
   }) => React.ReactNode;
   nodeStates?: NodeStates;
 };
@@ -17,6 +16,7 @@ export function TreeView<TData>({ tree, renderNode, nodeStates }: TreeViewProps<
   });
 
   //todo change renderer to use TanStack virtualizer
+  console.log("state", state);
 
   return (
     <div>
@@ -24,8 +24,7 @@ export function TreeView<TData>({ tree, renderNode, nodeStates }: TreeViewProps<
         <Fragment key={node.id}>
           {renderNode({
             node,
-            isSelected: state.nodes[node.id].state.selected,
-            isExpanded: state.nodes[node.id].state.expanded,
+            state: state.nodes[node.id],
           })}
         </Fragment>
       ))}
@@ -67,7 +66,6 @@ type TreeState = {
 };
 
 export function useTreeState({ tree, nodeStates }: TreeStateHookProps): TreeState {
-  //todo what about keyboard support? It would be a "controlled" component and drive the state?
   if (!nodeStates) {
     nodeStates = {} as NodeStates;
   }
@@ -75,10 +73,26 @@ export function useTreeState({ tree, nodeStates }: TreeStateHookProps): TreeStat
   const stateEntries = Object.entries<NodeState>(nodeStates);
   const selected = stateEntries.find(([id, state]) => state.selected)?.[0];
 
+  //create the state and visibility for each Node
+  //Nodes where the parent is collapsed are hidden, and can't be selected
+  const nodes = tree.reduce((acc, node) => {
+    //groups are open by default
+    const state = nodeStates![node.id] ?? {
+      selected: false,
+      expanded: node.hasChildren ? true : false,
+    };
+    const parent = node.parentId
+      ? acc[node.parentId]
+      : { state: { selected: false, expanded: true }, visibility: "visible" };
+    const visibility =
+      parent.state.expanded && parent.visibility === "visible" ? "visible" : "hidden";
+    acc[node.id] = { state, visibility };
+    return acc;
+  }, {} as Record<string, { state: NodeState; visibility: NodeVisibility }>);
+
   return {
     selected,
-    expandedIds: [],
-    visibleIds: tree.map((node) => node.id),
+    nodes,
   };
 }
 
