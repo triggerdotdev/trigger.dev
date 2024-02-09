@@ -4,6 +4,8 @@ export const SemanticInternalAttributes = {
   ORGANIZATION_ID: "ctx.organization.id",
   PROJECT_ID: "ctx.project.id",
   PROJECT_REF: "ctx.project.ref",
+  ATTEMPT_ID: "ctx.attempt.id",
+  ATTEMP_NUMBER: "ctx.attempt.number",
   RUN_ID: "ctx.run.id",
   TASK_SLUG: "ctx.task.id",
   TASK_PATH: "ctx.task.filePath",
@@ -15,4 +17,5 @@ export const SemanticInternalAttributes = {
   STYLE_ICON: "$style.icon",
   METADATA: "$metadata",
   TRIGGER: "$trigger",
+  PAYLOAD: "$payload",
 };

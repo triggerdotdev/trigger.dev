@@ -25,7 +25,6 @@ const exporter = new OTLPTraceExporter({
   timeoutMillis: 1000,
 });
 
-provider.addSpanProcessor(new SimpleSpanProcessor(new ConsoleSpanExporter()));
 provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
 provider.register();
 
@@ -36,7 +35,6 @@ const logExporter = new OTLPLogExporter({
 // To start a logger, you first need to initialize the Logger provider.
 const loggerProvider = new LoggerProvider();
 // Add a processor to export log record
-loggerProvider.addLogRecordProcessor(new SimpleLogRecordProcessor(new ConsoleLogRecordExporter()));
 loggerProvider.addLogRecordProcessor(new SimpleLogRecordProcessor(logExporter));
 
 //  To create a log record, you first need to get a Logger instance

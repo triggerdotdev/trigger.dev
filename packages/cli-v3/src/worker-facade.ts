@@ -26,7 +26,7 @@ import {
 import * as packageJson from "../package.json";
 
 import { TaskMetadataWithRun } from "./types.js";
-import { flattenAttributes } from "@trigger.dev/core/v3/utils/flattenAttributes.js";
+import { flattenAttributes } from "@trigger.dev/core/v3";
 
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
 const consoleInterceptor = new ConsoleInterceptor(otelLogger);
@@ -68,7 +68,7 @@ class TaskExecutor {
         asyncResourceDetector.resolveWithAttributes(taskContextManager.attributes);
 
         return await tracer.startActiveSpan(
-          `${execution.task.id} execute`,
+          `Attempt #${execution.attempt.number}`,
           async (span) => {
             return await consoleInterceptor.intercept(console, async () => {
               const output = await this.task.run({

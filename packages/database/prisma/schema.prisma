@@ -1544,6 +1544,9 @@ model TaskRun {
   context      Json?
   traceContext Json?
 
+  traceId String
+  spanId  String
+
   runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runtimeEnvironmentId String
 
@@ -1669,8 +1672,8 @@ model TaskEvent {
   runId String
 
   taskSlug       String
-  taskPath       String
-  taskExportName String
+  taskPath       String?
+  taskExportName String?
 
   /// This represents all the span attributes available, like http.status_code, and special attributes like $style.icon, $output, $metadata.payload.userId, as it's used for searching and filtering
   properties Json

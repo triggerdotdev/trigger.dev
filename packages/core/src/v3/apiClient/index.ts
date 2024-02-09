@@ -1,6 +1,7 @@
 import { context, propagation } from "@opentelemetry/api";
 import { zodfetch } from "../../zodfetch";
 import { TriggerTaskRequestBody, TriggerTaskResponse } from "../schemas/api";
+import { taskContextManager } from "../tasks/taskContextManager";
 
 /**
  * Trigger.dev v3 API client
@@ -25,7 +26,10 @@ export class ApiClient {
       Authorization: `Bearer ${this.accessToken}`,
     };
 
-    propagation.inject(context.active(), headers);
+    // Only inject the context if we are inside a task
+    if (taskContextManager.isInsideTask) {
+      propagation.inject(context.active(), headers);
+    }
 
     return headers;
   }

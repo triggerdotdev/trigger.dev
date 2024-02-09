@@ -11,6 +11,10 @@ type TaskContext = {
 export class TaskContextManager {
   private _storage: SafeAsyncLocalStorage<TaskContext> = new SafeAsyncLocalStorage<TaskContext>();
 
+  get isInsideTask(): boolean {
+    return this.#getStore() !== undefined;
+  }
+
   get ctx(): TaskRunContext | undefined {
     const store = this.#getStore();
     return store?.ctx;
