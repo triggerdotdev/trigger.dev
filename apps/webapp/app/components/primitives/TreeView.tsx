@@ -10,6 +10,7 @@ export type TreeViewProps<TData> = {
     state: NodeState & { visibility: NodeVisibility };
   }) => React.ReactNode;
   nodes: TreeState["nodes"];
+  autoFocus?: boolean;
 };
 
 export function TreeView<TData>({
@@ -18,6 +19,7 @@ export function TreeView<TData>({
   renderNode,
   nodes,
   estimatedRowHeight,
+  autoFocus = false,
 }: TreeViewProps<TData>) {
   const parentRef = useRef<HTMLElement>(null);
   const visibleTreeItems = visibleNodes(tree, nodes);
@@ -27,6 +29,12 @@ export function TreeView<TData>({
     getScrollElement: () => parentRef.current,
     estimateSize: estimatedRowHeight,
   });
+
+  useEffect(() => {
+    if (autoFocus) {
+      parentRef.current?.focus();
+    }
+  }, [autoFocus, parentRef]);
 
   return renderParent({
     ref: parentRef,
@@ -69,6 +77,12 @@ type TreeStateHookProps = {
   onStateChanged?: (newState: InputTreeState) => void;
 };
 
+//this is so Framer Motion can be used to render the components
+type HTMLAttributes = Omit<
+  React.HTMLAttributes<HTMLElement>,
+  "onAnimationStart" | "onDragStart" | "onDragEnd" | "onDrag"
+>;
+
 type TreeState = {
   selected: string | undefined;
   nodes: Record<
@@ -77,7 +91,8 @@ type TreeState = {
       visibility: NodeVisibility;
     }
   >;
-  getTreeProps: () => React.HTMLAttributes<HTMLElement>;
+  getTreeProps: () => HTMLAttributes;
+  getNodeProps: (id: string) => HTMLAttributes;
   selectNode: (id: string) => void;
   deselectNode: (id: string) => void;
   deselectAllNodes: () => void;
@@ -324,10 +339,26 @@ export function useTree({ tree, defaultState, onStateChanged }: TreeStateHookPro
     };
   }, [selected, state]);
 
+  const getNodeProps = useCallback(
+    (id: string) => {
+      const node = nodes[id];
+      const treeItemIndex = tree.findIndex((node) => node.id === id);
+      const treeItem = tree[treeItemIndex];
+      return {
+        "aria-expanded": node.expanded,
+        "aria-level": treeItem.level + 1,
+        role: "treeitem",
+        tabIndex: node.selected ? -1 : undefined,
+      };
+    },
+    [state]
+  );
+
   return {
     selected,
     nodes,
     getTreeProps,
+    getNodeProps,
     selectNode,
     deselectNode,
     deselectAllNodes,

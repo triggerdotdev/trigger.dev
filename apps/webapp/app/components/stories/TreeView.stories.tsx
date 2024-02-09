@@ -93,6 +93,7 @@ function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
     nodes,
     selected,
     getTreeProps,
+    getNodeProps,
     toggleNodeSelection,
     toggleExpandNode,
     selectNode,
@@ -117,16 +118,14 @@ function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
         </Button>
       </div>
       <TreeView
+        autoFocus
         tree={tree}
         nodes={nodes}
         estimatedRowHeight={() => 40}
         renderParent={({ children, ref }) => (
           <div
             ref={ref}
-            className="h-96 w-full overflow-y-auto bg-slate-900"
-            onKeyDown={(e) => {
-              console.log(e.key);
-            }}
+            className="h-96 w-full overflow-y-auto bg-slate-900 focus-within:outline-none"
             {...getTreeProps()}
           >
             {children}
@@ -147,9 +146,7 @@ function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
             onClick={() => {
               toggleNodeSelection(node.id);
             }}
-            onKeyDown={(e) => {
-              console.log(e.key);
-            }}
+            {...getNodeProps(node.id)}
           >
             <div
               className="h-4 w-4"
