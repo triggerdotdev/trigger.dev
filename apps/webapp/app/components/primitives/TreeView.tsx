@@ -93,11 +93,7 @@ type ModifyState = ((state: InputTreeState) => InputTreeState) | InputTreeState;
 const defaultSelected = false;
 const defaultExpanded = true;
 
-export function useTreeState({
-  tree,
-  defaultState,
-  onStateChanged,
-}: TreeStateHookProps): TreeState {
+export function useTree({ tree, defaultState, onStateChanged }: TreeStateHookProps): TreeState {
   const [state, setState] = useState<InputTreeState>(defaultState ?? {});
 
   const modifyState = useCallback(

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
-import { InputTreeState, TreeView, flattenTree, useTreeState } from "../primitives/TreeView";
+import { InputTreeState, TreeView, flattenTree, useTree } from "../primitives/TreeView";
 import { cn } from "~/utils/cn";
 import { DocumentIcon, FolderIcon, FolderOpenIcon } from "@heroicons/react/20/solid";
 import { useCallback } from "react";
@@ -88,7 +88,7 @@ function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
     console.log("changed", state);
   }, []);
 
-  const { nodes, selected, toggleNodeSelection, toggleExpandNode, selectNode } = useTreeState({
+  const { nodes, selected, toggleNodeSelection, toggleExpandNode, selectNode } = useTree({
     tree,
     defaultState,
     onStateChanged: changed,
