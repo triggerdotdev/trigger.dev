@@ -84,15 +84,16 @@ const tree = flattenTree(data);
 
 function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
   const changed = useCallback((state: InputTreeState) => {
-    console.log(state);
+    console.log("changed", state);
   }, []);
 
-  const { nodes, visibleItemCount, selected, toggleNodeSelection, toggleExpandNode, selectNode } =
-    useTreeState({
-      tree,
-      defaultState,
-      onStateChanged: changed,
-    });
+  const { nodes, selected, toggleNodeSelection, toggleExpandNode, selectNode } = useTreeState({
+    tree,
+    defaultState,
+    onStateChanged: changed,
+  });
+
+  console.log("nodes", nodes);
 
   return (
     <div className="grid grid-cols-2">
@@ -100,7 +101,6 @@ function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
         <TreeView
           tree={tree}
           nodes={nodes}
-          visibleItemCount={visibleItemCount}
           estimatedRowHeight={() => 40}
           renderParent={({ children, ref }) => (
             <div

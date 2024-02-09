@@ -10,7 +10,6 @@ export type TreeViewProps<TData> = {
     state: NodeState & { visibility: NodeVisibility };
   }) => React.ReactNode;
   nodes: TreeState["nodes"];
-  visibleItemCount: TreeState["visibleItemCount"];
 };
 
 export function TreeView<TData>({
@@ -18,12 +17,13 @@ export function TreeView<TData>({
   renderParent,
   renderNode,
   nodes,
-  visibleItemCount,
   estimatedRowHeight,
 }: TreeViewProps<TData>) {
   const parentRef = useRef<HTMLElement>(null);
+  const visibleTreeItems = visibleNodes(tree, nodes);
   const rowVirtualizer = useVirtualizer({
-    count: visibleItemCount,
+    count: visibleTreeItems.length,
+    getItemKey: (index) => visibleTreeItems[index].id,
     getScrollElement: () => parentRef.current,
     estimateSize: estimatedRowHeight,
   });
@@ -39,7 +39,7 @@ export function TreeView<TData>({
         }}
       >
         {rowVirtualizer.getVirtualItems().map((virtualItem) => {
-          const node = tree[virtualItem.index];
+          const node = tree.find((node) => node.id === virtualItem.key)!;
           return (
             <Fragment key={node.id}>
               {renderNode({
@@ -77,7 +77,6 @@ type TreeState = {
       visibility: NodeVisibility;
     }
   >;
-  visibleItemCount: number;
   selectNode: (id: string) => void;
   deselectNode: (id: string) => void;
   deselectAllNodes: () => void;
@@ -91,6 +90,9 @@ type TreeState = {
 
 type ModifyState = ((state: InputTreeState) => InputTreeState) | InputTreeState;
 
+const defaultSelected = false;
+const defaultExpanded = true;
+
 export function useTreeState({
   tree,
   defaultState,
@@ -103,14 +105,14 @@ export function useTreeState({
       if (typeof input === "function") {
         setState((state) => {
           const updatedState = input(state);
-          onStateChanged?.(updatedState);
+          onStateChanged?.(stripOutDefault(updatedState));
           return updatedState;
         });
         return;
       }
 
       setState(input);
-      onStateChanged?.(input);
+      onStateChanged?.(stripOutDefault(input));
     },
     [state]
   );
@@ -123,8 +125,8 @@ export function useTreeState({
   //for each defaultState, explicitly set the selected and expanded state if they're undefined
   const concreteState = tree.reduce((acc, node) => {
     acc[node.id] = {
-      selected: acc[node.id]?.selected ?? false,
-      expanded: acc[node.id]?.expanded ?? true,
+      selected: acc[node.id]?.selected ?? defaultSelected,
+      expanded: acc[node.id]?.expanded ?? defaultExpanded,
     };
     return acc;
   }, state as Record<string, NodeState>);
@@ -134,22 +136,17 @@ export function useTreeState({
 
   //create the state and visibility for each Node
   //Nodes where the parent is collapsed are hidden, and can't be selected
-  let visibleItemCount = 0;
   const nodes = tree.reduce((acc, node) => {
     //groups are open by default
     const state = concreteState![node.id] ?? {
-      selected: false,
-      expanded: node.hasChildren ? true : false,
+      selected: defaultSelected,
+      expanded: node.hasChildren ? defaultExpanded : !defaultExpanded,
     };
     const parent = node.parentId
       ? acc[node.parentId]
-      : { selected: false, expanded: true, visibility: "visible" };
+      : { selected: defaultSelected, expanded: defaultExpanded, visibility: "visible" };
     const visibility = parent.expanded && parent.visibility === "visible" ? "visible" : "hidden";
     acc[node.id] = { ...state, visibility };
-
-    if (visibility === "visible") {
-      visibleItemCount++;
-    }
 
     return acc;
   }, {} as Record<string, NodeState & { visibility: NodeVisibility }>);
@@ -238,7 +235,6 @@ export function useTreeState({
   return {
     selected,
     nodes,
-    visibleItemCount,
     selectNode,
     deselectNode,
     deselectAllNodes,
@@ -247,6 +243,21 @@ export function useTreeState({
     collapseNode,
     toggleExpandNode,
   };
+}
+
+function visibleNodes(tree: FlatTree<any>, nodes: TreeState["nodes"]) {
+  return tree.filter((node) => nodes[node.id].visibility === "visible");
+}
+
+function stripOutDefault(input: InputTreeState): InputTreeState {
+  //if selected === defaultSelected, remove it
+  //if expanded === defaultExpanded, remove it
+  //if both are default, remove the node
+  return Object.fromEntries(
+    Object.entries(input).filter(([id, state]) => {
+      return state.selected !== defaultSelected || state.expanded !== defaultExpanded;
+    })
+  );
 }
 
 /** An actual tree structure with custom data */
