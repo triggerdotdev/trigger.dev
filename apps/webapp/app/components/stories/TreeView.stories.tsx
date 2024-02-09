@@ -83,7 +83,7 @@ const data = {
 const tree = flattenTree(data);
 
 function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
-  const { nodes, visibleItemCount, selected, selectNode } = useTreeState({
+  const { nodes, visibleItemCount, selected, selectNode, deselectNode } = useTreeState({
     tree,
     defaultState,
   });
@@ -114,7 +114,11 @@ function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
                 state.selected && "bg-blue-500/20 hover:bg-blue-500/30"
               )}
               onClick={() => {
-                selectNode(node.id);
+                if (state.selected) {
+                  deselectNode(node.id);
+                } else {
+                  selectNode(node.id);
+                }
               }}
             >
               <div className="h-4 w-4">

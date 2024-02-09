@@ -82,6 +82,8 @@ type TreeState = {
   >;
   visibleItemCount: number;
   selectNode: (id: string) => void;
+  deselectNode: (id: string) => void;
+  deselectAllNodes: () => void;
   // selectNextVisibleNode: () => void;
   // selectPreviousVisibleNode: () => void;
   // expandNode: (id: string) => void;
@@ -150,11 +152,33 @@ export function useTreeState({ tree, defaultState }: TreeStateHookProps): TreeSt
     [state]
   );
 
+  const deselectNode = useCallback(
+    (id: string) => {
+      setState((state) => {
+        return {
+          ...state,
+          [id]: { ...state[id], selected: false },
+        };
+      });
+    },
+    [state]
+  );
+
+  const deselectAllNodes = useCallback(() => {
+    setState((state) => {
+      return Object.fromEntries(
+        Object.entries(state).map(([key, value]) => [key, { ...value, selected: false }])
+      );
+    });
+  }, [state]);
+
   return {
     selected,
     nodes,
     visibleItemCount,
     selectNode,
+    deselectNode,
+    deselectAllNodes,
   };
 }
 
