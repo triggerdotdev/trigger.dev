@@ -83,7 +83,7 @@ const data = {
 const tree = flattenTree(data);
 
 function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
-  const { nodes, visibleItemCount, selected, selectNode, deselectNode, toggleNodeSelection } =
+  const { nodes, visibleItemCount, selected, toggleNodeSelection, toggleExpandNode, selectNode } =
     useTreeState({
       tree,
       defaultState,
@@ -118,7 +118,14 @@ function TreeViewsSet({ defaultState }: { defaultState?: InputTreeState }) {
                 toggleNodeSelection(node.id);
               }}
             >
-              <div className="h-4 w-4">
+              <div
+                className="h-4 w-4"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleExpandNode(node.id);
+                  selectNode(node.id);
+                }}
+              >
                 {node.hasChildren ? (
                   state.expanded ? (
                     <FolderOpenIcon className="h-4 w-4 text-blue-500" />
