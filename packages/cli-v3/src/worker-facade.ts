@@ -1,10 +1,12 @@
-import { TracingSDK } from "@trigger.dev/core/v3";
+import { TracingSDK, HttpInstrumentation, FetchInstrumentation } from "@trigger.dev/core/v3/otel";
 
+// IMPORTANT: this needs to be the first import to work properly
 const tracingSDK = new TracingSDK({
   url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
   resource: new Resource({
     [SemanticInternalAttributes.CLI_VERSION]: packageJson.version,
   }),
+  instrumentations: [new HttpInstrumentation(), new FetchInstrumentation()],
 });
 
 const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.version);

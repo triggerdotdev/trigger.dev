@@ -29,12 +29,23 @@
       "require": "./dist/v3/index.js",
       "types": "./dist/v3/index.d.ts"
     },
+    "./v3/otel": {
+      "import": {
+        "types": "./dist/v3/otel/index.d.mts",
+        "default": "./dist/v3/otel/index.mjs"
+      },
+      "require": "./dist/v3/otel/index.js",
+      "types": "./dist/v3/otel/index.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "typesVersions": {
     "*": {
       "v3": [
         "./dist/v3/index.d.ts"
+      ],
+      "v3/otel": [
+        "./dist/v3/otel/index.d.ts"
       ]
     }
   },
@@ -54,6 +65,7 @@
     "@opentelemetry/exporter-logs-otlp-http": "^0.48.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.48.0",
     "@opentelemetry/instrumentation": "^0.48.0",
+    "@opentelemetry/instrumentation-fetch": "^0.48.0",
     "@opentelemetry/instrumentation-http": "^0.48.0",
     "@opentelemetry/resources": "^1.21.0",
     "@opentelemetry/sdk-logs": "^0.48.0",

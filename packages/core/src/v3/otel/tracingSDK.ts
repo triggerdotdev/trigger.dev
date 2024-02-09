@@ -1,7 +1,10 @@
 import { TracerProvider } from "@opentelemetry/api";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { registerInstrumentations } from "@opentelemetry/instrumentation";
+import {
+  registerInstrumentations,
+  type InstrumentationOption,
+} from "@opentelemetry/instrumentation";
 import {
   IResource,
   Resource,
@@ -13,7 +16,7 @@ import { NodeTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trac
 import { logs } from "@opentelemetry/api-logs";
 import { DetectorSync, ResourceDetectionConfig } from "@opentelemetry/resources";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
-import { SemanticInternalAttributes } from "./semanticInternalAttributes";
+import { SemanticInternalAttributes } from "../semanticInternalAttributes";
 
 class AsyncResourceDetector implements DetectorSync {
   private _promise: Promise<ResourceAttributes>;
@@ -42,6 +45,7 @@ export type TracingSDKConfig = {
   url: string;
   forceFlushTimeoutMillis?: number;
   resource?: IResource;
+  instrumentations?: InstrumentationOption[];
 };
 
 export class TracingSDK {
@@ -78,7 +82,7 @@ export class TracingSDK {
     provider.register();
 
     registerInstrumentations({
-      instrumentations: [],
+      instrumentations: config.instrumentations ?? [],
     });
 
     const logExporter = new OTLPLogExporter({

@@ -21,4 +21,3 @@ export type { TaskLogger } from "./logger/taskLogger";
 export { OtelTaskLogger } from "./logger/taskLogger";
 export { ConsoleInterceptor } from "./consoleInterceptor";
 export { flattenAttributes } from "./utils/flattenAttributes";
-export { TracingSDK, type TracingSDKConfig } from "./tracingSDK";
