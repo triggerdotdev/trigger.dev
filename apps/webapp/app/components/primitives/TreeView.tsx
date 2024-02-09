@@ -1,7 +1,10 @@
-import { Fragment } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { Fragment, RefObject, useRef } from "react";
 
 export type TreeViewProps<TData> = {
   tree: FlatTree<TData>;
+  renderParent: (params: { children: React.ReactNode; ref: RefObject<any> }) => JSX.Element;
+  estimatedRowHeight: (index: number) => number;
   renderNode: (params: {
     node: FlatTreeItem<TData>;
     state: NodeState & { visibility: NodeVisibility };
@@ -9,22 +12,45 @@ export type TreeViewProps<TData> = {
   state: TreeState;
 };
 
-export function TreeView<TData>({ tree, renderNode, state }: TreeViewProps<TData>) {
+export function TreeView<TData>({
+  tree,
+  renderParent,
+  renderNode,
+  state,
+  estimatedRowHeight,
+}: TreeViewProps<TData>) {
   //todo change renderer to use TanStack virtualizer
-  console.log("state", state);
+  const parentRef = useRef<HTMLElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: state.visibleItemCount,
+    getScrollElement: () => parentRef.current,
+    estimateSize: estimatedRowHeight,
+  });
 
-  return (
-    <div>
-      {tree.map((node) => (
-        <Fragment key={node.id}>
-          {renderNode({
-            node,
-            state: state.nodes[node.id],
-          })}
-        </Fragment>
-      ))}
-    </div>
-  );
+  return renderParent({
+    ref: parentRef,
+    children: (
+      <div
+        style={{
+          height: `${rowVirtualizer.getTotalSize()}px`,
+          width: "100%",
+          position: "relative",
+        }}
+      >
+        {rowVirtualizer.getVirtualItems().map((virtualItem) => {
+          const node = tree[virtualItem.index];
+          return (
+            <Fragment key={node.id}>
+              {renderNode({
+                node,
+                state: state.nodes[node.id],
+              })}
+            </Fragment>
+          );
+        })}
+      </div>
+    ),
+  });
 }
 
 type NodeState = {
@@ -58,6 +84,7 @@ type TreeState = {
       visibility: NodeVisibility;
     }
   >;
+  visibleItemCount: number;
 };
 
 export function useTreeState({ tree, defaultState }: TreeStateHookProps): TreeState {
@@ -79,6 +106,7 @@ export function useTreeState({ tree, defaultState }: TreeStateHookProps): TreeSt
 
   //create the state and visibility for each Node
   //Nodes where the parent is collapsed are hidden, and can't be selected
+  let visibleItemCount = 0;
   const nodes = tree.reduce((acc, node) => {
     //groups are open by default
     const state = concreteState![node.id] ?? {
@@ -90,12 +118,18 @@ export function useTreeState({ tree, defaultState }: TreeStateHookProps): TreeSt
       : { selected: false, expanded: true, visibility: "visible" };
     const visibility = parent.expanded && parent.visibility === "visible" ? "visible" : "hidden";
     acc[node.id] = { ...state, visibility };
+
+    if (visibility === "visible") {
+      visibleItemCount++;
+    }
+
     return acc;
   }, {} as Record<string, NodeState & { visibility: NodeVisibility }>);
 
   return {
     selected,
     nodes,
+    visibleItemCount,
   };
 }
 

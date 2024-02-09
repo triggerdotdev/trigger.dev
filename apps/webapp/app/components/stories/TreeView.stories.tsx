@@ -81,12 +81,20 @@ function TreeViewsSet() {
     },
   });
 
+  console.log("state", state);
+
   return (
     <div className="grid grid-cols-2">
       <div className="flex flex-col items-start gap-y-4 p-4">
         <TreeView
           tree={tree}
           state={state}
+          estimatedRowHeight={() => 40}
+          renderParent={({ children, ref }) => (
+            <div ref={ref} className="h-44 overflow-y-auto bg-slate-900">
+              {children}
+            </div>
+          )}
           renderNode={({ node, state }) => (
             <div
               style={{
