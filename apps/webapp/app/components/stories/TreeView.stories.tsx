@@ -1,7 +1,14 @@
 import { UnmountClosed } from "react-collapse";
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
-import { Changes, InputTreeState, TreeView, flattenTree, useTree } from "../primitives/TreeView";
+import {
+  Changes,
+  InputTreeState,
+  Tree,
+  TreeView,
+  flattenTree,
+  useTree,
+} from "../primitives/TreeView";
 import { cn } from "~/utils/cn";
 import { DocumentIcon, FolderIcon, FolderOpenIcon } from "@heroicons/react/20/solid";
 import { useCallback, useState } from "react";
@@ -22,62 +29,99 @@ export const TreeViews: Story = {
   },
 };
 
-const data = {
-  id: "policies",
-  data: {
-    title: "Policies",
-  },
-  children: [
-    {
-      id: "registration",
-      data: {
-        title: "Registration",
-      },
-      children: [
-        {
-          id: "registration-a",
-          data: { title: "Registration A" },
-        },
-        {
-          id: "registration-b",
-          data: { title: "Registration B" },
-        },
-        {
-          id: "registration-c",
-          data: { title: "Registration C" },
-        },
-        { id: "registration-d", data: { title: "Registration D" } },
-      ],
-    },
-    {
-      id: "authentication",
-      data: {
-        title: "Authentication",
-      },
-      children: [
-        {
-          id: "authentication-a",
-          data: { title: "Authentication A" },
-          children: [
-            {
-              id: "double-child-a",
-              data: { title: "Double child A" },
-            },
-            {
-              id: "double-child-b",
-              data: { title: "Double child B" },
-            },
-          ],
-        },
-        {
-          id: "authentication-b",
-          data: { title: "Authentication B" },
-        },
-      ],
-    },
-  ],
-};
+const words = [
+  "Lorem",
+  "ipsum",
+  "dolor",
+  "sit",
+  "amet",
+  "consectetur",
+  "adipisicing",
+  "elit",
+  "sed",
+  "do",
+  "eiusmod",
+  "tempor",
+  "incididunt",
+  "ut",
+  "labore",
+  "et",
+  "dolore",
+  "magna",
+  "aliqua",
+  "enim",
+  "ad",
+  "minim",
+  "veniam",
+  "quis",
+  "nostrud",
+  "exercitation",
+  "ullamco",
+  "laboris",
+  "nisi",
+  "aliquip",
+  "ex",
+  "ea",
+  "commodo",
+  "consequat",
+  "duis",
+  "aute",
+  "irure",
+  "reprehenderit",
+  "voluptate",
+  "velit",
+  "esse",
+  "cillum",
+  "eu",
+  "fugiat",
+  "nulla",
+  "pariatur",
+  "excepteur",
+  "sint",
+  "occaecat",
+  "cupidatat",
+  "non",
+  "proident",
+  "sunt",
+  "culpa",
+  "qui",
+  "officia",
+  "deserunt",
+  "mollit",
+  "anim",
+  "id",
+  "est",
+  "laborum",
+];
+
+function generateTree(number: number): Tree<{ title: string }> {
+  const rawRows = new Array(number).fill("").map((elem, idx) => {
+    return {
+      id: crypto.randomUUID().slice(0, 8),
+      data: { title: `${idx + 1}. ${words[idx % words.length]}` },
+    };
+  }) as Tree<{ title: string }>[];
+
+  const rows: Tree<{ title: string }>[] = [];
+  for (let i = 0; i < rawRows.length - 2; i += 3) {
+    const row = rawRows[i];
+    rows.push({
+      ...row,
+      children: [rawRows[i + 1], rawRows[i + 2]],
+    });
+  }
+
+  return {
+    id: "root",
+    data: { title: "Root" },
+    children: rows,
+  };
+}
+
+const data = generateTree(51);
 const tree = flattenTree(data);
+
+console.log(data);
 
 function TreeViewsSet() {
   const [selectedId, setSelectedId] = useState<string | undefined>();
@@ -161,12 +205,12 @@ function TreeViewParent({
             {children}
           </div>
         )}
-        renderNode={({ node, state, index, virtualizer }) => (
+        renderNode={({ node, state, index, virtualizer, virtualItem }) => (
           <div
             key={node.id}
             data-index={index}
             ref={virtualizer.measureElement}
-            className="[&_.ReactCollapse--collapse]:transition-all "
+            className="[&_.ReactCollapse--collapse]:transition-all"
           >
             <UnmountClosed key={node.id} isOpened={state.visibility === "visible"}>
               <div

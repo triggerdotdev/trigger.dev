@@ -14,6 +14,7 @@ export type TreeViewProps<TData> = {
     state: NodeState & { visibility: NodeVisibility };
     index: number;
     virtualizer: Virtualizer<HTMLElement, Element>;
+    virtualItem: VirtualItem;
   }) => React.ReactNode;
   nodes: TreeState["nodes"];
   autoFocus?: boolean;
@@ -33,7 +34,11 @@ export function TreeView<TData>({
     getItemKey: (index) => tree[index].id,
     getScrollElement: () => parentRef.current,
     estimateSize: (index: number) => {
-      return estimatedRowHeight({ node: tree[index], state: nodes[tree[index].id], index });
+      return estimatedRowHeight({
+        node: tree[index],
+        state: nodes[tree[index].id],
+        index,
+      });
     },
   });
 
@@ -42,6 +47,8 @@ export function TreeView<TData>({
       parentRef.current?.focus();
     }
   }, [autoFocus, parentRef]);
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
 
   return renderParent({
     ref: parentRef,
@@ -53,19 +60,30 @@ export function TreeView<TData>({
           position: "relative",
         }}
       >
-        {rowVirtualizer.getVirtualItems().map((virtualItem) => {
-          const node = tree.find((node) => node.id === virtualItem.key)!;
-          return (
-            <Fragment key={node.id}>
-              {renderNode({
-                node,
-                state: nodes[node.id],
-                index: virtualItem.index,
-                virtualizer: rowVirtualizer,
-              })}
-            </Fragment>
-          );
-        })}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            transform: `translateY(${virtualItems.at(0)?.start ?? 0}px)`,
+          }}
+        >
+          {virtualItems.map((virtualItem) => {
+            const node = tree.find((node) => node.id === virtualItem.key)!;
+            return (
+              <Fragment key={node.id}>
+                {renderNode({
+                  node,
+                  state: nodes[node.id],
+                  index: virtualItem.index,
+                  virtualizer: rowVirtualizer,
+                  virtualItem,
+                })}
+              </Fragment>
+            );
+          })}
+        </div>
       </div>
     ),
   });
