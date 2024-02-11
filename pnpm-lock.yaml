@@ -161,6 +161,7 @@ importers:
       '@types/prismjs': ^1.26.0
       '@types/qs': ^6.9.7
       '@types/react': 18.2.17
+      '@types/react-collapse': ^5.0.4
       '@types/react-dom': 18.2.7
       '@types/semver': ^7.3.13
       '@types/simple-oauth2': ^5.0.4
@@ -210,6 +211,7 @@ importers:
       random-words: ^2.0.0
       react: ^18.2.0
       react-aria: ^3.31.1
+      react-collapse: ^5.1.1
       react-dom: ^18.2.0
       react-hotkeys-hook: ^4.4.1
       react-stately: ^3.29.1
@@ -325,6 +327,7 @@ importers:
       random-words: 2.0.0
       react: 18.2.0
       react-aria: 3.31.1_biqbaboplfbrettd7655fr4n2y
+      react-collapse: 5.1.1_react@18.2.0
       react-dom: 18.2.0_react@18.2.0
       react-hotkeys-hook: 4.4.1_biqbaboplfbrettd7655fr4n2y
       react-stately: 3.29.1_react@18.2.0
@@ -384,6 +387,7 @@ importers:
       '@types/prismjs': 1.26.0
       '@types/qs': 6.9.7
       '@types/react': 18.2.17
+      '@types/react-collapse': 5.0.4
       '@types/react-dom': 18.2.7
       '@types/semver': 7.3.13
       '@types/simple-oauth2': 5.0.4
@@ -15621,6 +15625,12 @@ packages:
   /@types/range-parser/1.2.4:
     resolution: {integrity: sha512-EEhsLsD6UsDM1yFhAvy0Cjr6VwmpMWqFBCb9w07wVugF7w9nfajxLuVmngTIpgS6svCnm6Vaw+MZhoDCKnOfsw==}
 
+  /@types/react-collapse/5.0.4:
+    resolution: {integrity: sha512-tM5cVB6skGLneNYnRK2E3R56VOHguSeJQHslGPTIMC58ytL3oelT8L/l1onkwHGn5vSEs2BEq2Olzrur+YdliA==}
+    dependencies:
+      '@types/react': 18.2.17
+    dev: true
+
   /@types/react-dom/18.2.7:
     resolution: {integrity: sha512-GRaAEriuT4zp9N4p1i8BDBYmEyfo+xQ3yHjJU4eiK5NDa1RmUZG+unZABUTK4/Ox/M+GaHwb6Ow8rUITrtjszA==}
     dependencies:
@@ -29427,6 +29437,14 @@ packages:
       '@react-types/shared': 3.22.0_react@18.2.0
       react: 18.2.0
       react-dom: 18.2.0_react@18.2.0
+    dev: false
+
+  /react-collapse/5.1.1_react@18.2.0:
+    resolution: {integrity: sha512-k6cd7csF1o9LBhQ4AGBIdxB60SUEUMQDAnL2z1YvYNr9KoKr+nDkhN6FK7uGaBd/rYrYfrMpzpmJEIeHRYogBw==}
+    peerDependencies:
+      react: '>=16.3.0'
+    dependencies:
+      react: 18.2.0
     dev: false
 
   /react-colorful/5.6.1_biqbaboplfbrettd7655fr4n2y:

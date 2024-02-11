@@ -1,13 +1,19 @@
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { VirtualItem, Virtualizer, useVirtualizer } from "@tanstack/react-virtual";
 import { Fragment, RefObject, useCallback, useEffect, useRef, useState } from "react";
 
 export type TreeViewProps<TData> = {
   tree: FlatTree<TData>;
   renderParent: (params: { children: React.ReactNode; ref: RefObject<any> }) => JSX.Element;
-  estimatedRowHeight: (index: number) => number;
+  estimatedRowHeight: (params: {
+    node: FlatTreeItem<TData>;
+    state: NodeState & { visibility: NodeVisibility };
+    index: number;
+  }) => number;
   renderNode: (params: {
     node: FlatTreeItem<TData>;
     state: NodeState & { visibility: NodeVisibility };
+    index: number;
+    virtualizer: Virtualizer<HTMLElement, Element>;
   }) => React.ReactNode;
   nodes: TreeState["nodes"];
   autoFocus?: boolean;
@@ -22,12 +28,13 @@ export function TreeView<TData>({
   autoFocus = false,
 }: TreeViewProps<TData>) {
   const parentRef = useRef<HTMLElement>(null);
-  const visibleTreeItems = visibleNodes(tree, nodes);
   const rowVirtualizer = useVirtualizer({
-    count: visibleTreeItems.length,
-    getItemKey: (index) => visibleTreeItems[index].id,
+    count: tree.length,
+    getItemKey: (index) => tree[index].id,
     getScrollElement: () => parentRef.current,
-    estimateSize: estimatedRowHeight,
+    estimateSize: (index: number) => {
+      return estimatedRowHeight({ node: tree[index], state: nodes[tree[index].id], index });
+    },
   });
 
   useEffect(() => {
@@ -53,6 +60,8 @@ export function TreeView<TData>({
               {renderNode({
                 node,
                 state: nodes[node.id],
+                index: virtualItem.index,
+                virtualizer: rowVirtualizer,
               })}
             </Fragment>
           );

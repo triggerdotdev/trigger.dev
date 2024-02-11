@@ -1,3 +1,4 @@
+import { UnmountClosed } from "react-collapse";
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
 import { Changes, InputTreeState, TreeView, flattenTree, useTree } from "../primitives/TreeView";
@@ -150,7 +151,7 @@ function TreeViewParent({
         autoFocus
         tree={tree}
         nodes={nodes}
-        estimatedRowHeight={() => 40}
+        estimatedRowHeight={({ state }) => (state.visibility === "visible" ? 32 : 0)}
         renderParent={({ children, ref }) => (
           <div
             ref={ref}
@@ -160,46 +161,53 @@ function TreeViewParent({
             {children}
           </div>
         )}
-        renderNode={({ node, state }) => (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            style={{
-              paddingLeft: `${node.level * 1}rem`,
-            }}
-            className={cn(
-              "flex cursor-pointer items-center gap-2 py-1 hover:bg-blue-500/10",
-              state.selected && "bg-blue-500/20 hover:bg-blue-500/30"
-            )}
-            onClick={() => {
-              toggleNodeSelection(node.id);
-            }}
-            {...getNodeProps(node.id)}
+        renderNode={({ node, state, index, virtualizer }) => (
+          <div
+            key={node.id}
+            data-index={index}
+            ref={virtualizer.measureElement}
+            className="[&_.ReactCollapse--collapse]:transition-all "
           >
-            <div
-              className="h-4 w-4"
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleExpandNode(node.id);
-                selectNode(node.id);
-              }}
-              onKeyDown={(e) => {
-                console.log(e.key);
-              }}
-            >
-              {node.hasChildren ? (
-                state.expanded ? (
-                  <FolderOpenIcon className="h-4 w-4 text-blue-500" />
-                ) : (
-                  <FolderIcon className="h-4 w-4 text-blue-500/50" />
-                )
-              ) : (
-                <DocumentIcon className="h-4 w-4" />
-              )}
-            </div>
-            <div>{node.data.title}</div>
-          </motion.div>
+            <UnmountClosed key={node.id} isOpened={state.visibility === "visible"}>
+              <div
+                key={node.id}
+                style={{
+                  paddingLeft: `${node.level * 1}rem`,
+                }}
+                className={cn(
+                  "flex cursor-pointer items-center gap-2 py-1 hover:bg-blue-500/10",
+                  state.selected && "bg-blue-500/20 hover:bg-blue-500/30"
+                )}
+                onClick={() => {
+                  toggleNodeSelection(node.id);
+                }}
+                {...getNodeProps(node.id)}
+              >
+                <div
+                  className="h-4 w-4"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleExpandNode(node.id);
+                    selectNode(node.id);
+                  }}
+                  onKeyDown={(e) => {
+                    console.log(e.key);
+                  }}
+                >
+                  {node.hasChildren ? (
+                    state.expanded ? (
+                      <FolderOpenIcon className="h-4 w-4 text-blue-500" />
+                    ) : (
+                      <FolderIcon className="h-4 w-4 text-blue-500/50" />
+                    )
+                  ) : (
+                    <DocumentIcon className="h-4 w-4" />
+                  )}
+                </div>
+                <div>{node.data.title}</div>
+              </div>
+            </UnmountClosed>
+          </div>
         )}
       />
     </div>
