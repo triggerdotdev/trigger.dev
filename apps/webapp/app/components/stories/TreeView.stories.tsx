@@ -158,9 +158,7 @@ function TreeViewParent({
   selectedId?: string;
   collapsedIds?: string[];
 }) {
-  const changed = useCallback((state: Changes) => {
-    console.log("changed", state);
-  }, []);
+  const changed = useCallback((state: Changes) => {}, []);
 
   const {
     nodes,
@@ -177,9 +175,6 @@ function TreeViewParent({
     collapsedIds,
     onStateChanged: changed,
   });
-
-  console.log("selected", selected);
-  // console.log("nodes", nodes);
 
   return (
     <div className="flex flex-col items-start gap-y-4 p-4">
