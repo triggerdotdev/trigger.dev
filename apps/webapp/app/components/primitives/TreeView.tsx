@@ -123,18 +123,25 @@ function inputTreeStateFrom({
   collapsedIds: string[] | undefined;
 }): InputTreeState {
   const state: InputTreeState = {};
-  if (selectedId) {
-    const hasTreeItem = tree.some((item) => item.id === selectedId);
-    if (hasTreeItem) {
-      state[selectedId] = { selected: true };
-    }
-  }
   collapsedIds?.forEach((id) => {
     const hasTreeItem = tree.some((item) => item.id === id);
     if (hasTreeItem) {
-      state[id] = { ...state[id], expanded: false };
+      state[id] = { expanded: false };
     }
   });
+  if (selectedId) {
+    const selectedNode = tree.find((node) => node.id === selectedId);
+    if (selectedNode) {
+      state[selectedId] = { selected: true };
+      //make sure all parents are expanded
+      let parentId = selectedNode.parentId;
+      while (parentId) {
+        state[parentId] = { expanded: true };
+        const parent = tree.find((node) => node.id === parentId);
+        parentId = parent?.parentId;
+      }
+    }
+  }
   return state;
 }
 
