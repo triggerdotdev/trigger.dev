@@ -190,7 +190,7 @@ function TreeViewParent({
         autoFocus
         tree={tree}
         nodes={nodes}
-        estimatedRowHeight={({ state }) => (state.visibility === "visible" ? 32 : 0)}
+        estimatedRowHeight={() => 32}
         renderParent={({ children, ref }) => (
           <div
             ref={ref}
