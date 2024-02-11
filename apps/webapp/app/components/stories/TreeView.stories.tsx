@@ -176,7 +176,7 @@ function TreeViewParent({
   return (
     <div className="flex flex-col items-start gap-y-4 p-4">
       <div className="flex items-center gap-2">
-        <Button variant="secondary/small" onClick={() => selectFirstVisibleNode()}>
+        <Button variant="secondary/small" onClick={() => selectFirstVisibleNode(true)}>
           Select first
         </Button>
         <Button variant="secondary/small" onClick={() => selectNode("registration-b")}>
@@ -211,7 +211,7 @@ function TreeViewParent({
                 e.stopPropagation();
                 toggleExpandNode(node.id);
                 selectNode(node.id);
-                scrollToNode(node.id, virtualizer);
+                scrollToNode(node.id);
               }}
               onKeyDown={(e) => {
                 console.log(e.key);

@@ -129,19 +129,19 @@ type TreeState = {
 
   getTreeProps: () => HTMLAttributes;
   getNodeProps: (id: string) => HTMLAttributes;
-  selectNode: (id: string) => void;
+  selectNode: (id: string, scrollToNode?: boolean) => void;
   deselectNode: (id: string) => void;
   deselectAllNodes: () => void;
-  toggleNodeSelection: (id: string) => void;
-  expandNode: (id: string) => void;
+  toggleNodeSelection: (id: string, scrollToNode?: boolean) => void;
+  expandNode: (id: string, scrollToNode?: boolean) => void;
   collapseNode: (id: string) => void;
-  toggleExpandNode: (id: string) => void;
-  selectFirstVisibleNode: () => void;
-  selectLastVisibleNode: () => void;
-  selectNextVisibleNode: () => void;
-  selectPreviousVisibleNode: () => void;
-  selectParentNode: () => void;
-  scrollToNode: (id: string, virtualizer: Virtualizer<HTMLElement, Element>) => void;
+  toggleExpandNode: (id: string, scrollToNode?: boolean) => void;
+  selectFirstVisibleNode: (scrollToNode?: boolean) => void;
+  selectLastVisibleNode: (scrollToNode?: boolean) => void;
+  selectNextVisibleNode: (scrollToNode?: boolean) => void;
+  selectPreviousVisibleNode: (scrollToNode?: boolean) => void;
+  selectParentNode: (scrollToNode?: boolean) => void;
+  scrollToNode: (id: string) => void;
 };
 
 type ModifyState = ((state: InputTreeState) => InputTreeState) | InputTreeState;
@@ -257,8 +257,19 @@ export function useTree<TData>({
     },
   });
 
-  const selectNode = useCallback(
+  const scrollToNodeFn = useCallback(
     (id: string) => {
+      const itemIndex = tree.findIndex((node) => node.id === id);
+
+      if (itemIndex !== -1) {
+        virtualizer.scrollToIndex(itemIndex, { align: "auto" });
+      }
+    },
+    [state]
+  );
+
+  const selectNode = useCallback(
+    (id: string, scrollToNode = true) => {
       //if the node was already selected, do nothing. The user needs to use deselectNode to deselect
       const alreadySelected = state[id]?.selected ?? false;
       if (alreadySelected) {
@@ -270,6 +281,11 @@ export function useTree<TData>({
           Object.entries(state).map(([key, value]) => [key, { ...value, selected: false }])
         );
         newState[id] = { ...newState[id], selected: true };
+
+        if (scrollToNode) {
+          scrollToNodeFn(id);
+        }
+
         return newState;
       });
     },
@@ -295,23 +311,27 @@ export function useTree<TData>({
   }, [state]);
 
   const toggleNodeSelection = useCallback(
-    (id: string) => {
+    (id: string, scrollToNode = true) => {
       const currentlySelected = state[id]?.selected ?? false;
       if (currentlySelected) {
         deselectNode(id);
       } else {
-        selectNode(id);
+        selectNode(id, scrollToNode);
       }
     },
     [state]
   );
 
   const expandNode = useCallback(
-    (id: string) => {
+    (id: string, scrollToNode = true) => {
       modifyState((state) => ({
         ...state,
         [id]: { ...state[id], expanded: true },
       }));
+
+      if (scrollToNode) {
+        scrollToNodeFn(id);
+      }
     },
     [state]
   );
@@ -327,88 +347,89 @@ export function useTree<TData>({
   );
 
   const toggleExpandNode = useCallback(
-    (id: string) => {
+    (id: string, scrollToNode = true) => {
       const currentlyExpanded = state[id]?.expanded ?? false;
       if (currentlyExpanded) {
         collapseNode(id);
       } else {
-        expandNode(id);
+        expandNode(id, scrollToNode);
       }
     },
     [state]
   );
 
-  const selectFirstVisibleNode = useCallback(() => {
-    const firstVisibleNode = tree.find((node) => nodes[node.id].visibility === "visible");
-    if (firstVisibleNode) {
-      selectNode(firstVisibleNode.id);
-    }
-  }, [tree, state]);
-
-  const selectLastVisibleNode = useCallback(() => {
-    const lastVisibleNode = tree
-      .slice()
-      .reverse()
-      .find((node) => nodes[node.id].visibility === "visible");
-    if (lastVisibleNode) {
-      selectNode(lastVisibleNode.id);
-    }
-  }, [tree, state]);
-
-  const selectNextVisibleNode = useCallback(() => {
-    if (!selected) {
-      selectFirstVisibleNode();
-      return;
-    }
-
-    const visible = visibleNodes(tree, nodes);
-    const selectedIndex = visible.findIndex((node) => node.id === selected);
-    const nextNode = visible[selectedIndex + 1];
-    if (nextNode) {
-      selectNode(nextNode.id);
-    }
-  }, [selected, state]);
-
-  const selectPreviousVisibleNode = useCallback(() => {
-    if (!selected) {
-      selectFirstVisibleNode();
-      return;
-    }
-
-    const visible = visibleNodes(tree, nodes);
-    const selectedIndex = visible.findIndex((node) => node.id === selected);
-    const previousNode = visible[selectedIndex - 1];
-    if (previousNode) {
-      selectNode(previousNode.id);
-    }
-  }, [selected, state]);
-
-  const selectParentNode = useCallback(() => {
-    if (!selected) {
-      selectFirstVisibleNode();
-      return;
-    }
-
-    const selectedNode = tree.find((node) => node.id === selected);
-    if (!selectedNode) {
-      return;
-    }
-
-    const parentNode = tree.find((node) => node.id === selectedNode.parentId);
-    if (parentNode) {
-      selectNode(parentNode.id);
-    }
-  }, [selected, state]);
-
-  const scrollToNode = useCallback(
-    (id: string, virtualizer: Virtualizer<HTMLElement, Element>) => {
-      const itemIndex = tree.findIndex((node) => node.id === id);
-
-      if (itemIndex !== -1) {
-        virtualizer.scrollToIndex(itemIndex, { align: "auto" });
+  const selectFirstVisibleNode = useCallback(
+    (scrollToNode = true) => {
+      const node = firstVisibleNode(tree, nodes);
+      if (node) {
+        selectNode(node.id, scrollToNode);
       }
     },
-    [state]
+    [tree, state]
+  );
+
+  const selectLastVisibleNode = useCallback(
+    (scrollToNode = true) => {
+      const node = lastVisibleNode(tree, nodes);
+      if (node) {
+        selectNode(node.id, scrollToNode);
+      }
+    },
+    [tree, state]
+  );
+
+  const selectNextVisibleNode = useCallback(
+    (scrollToNode = true) => {
+      if (!selected) {
+        selectFirstVisibleNode(scrollToNode);
+        return;
+      }
+
+      const visible = visibleNodes(tree, nodes);
+      const selectedIndex = visible.findIndex((node) => node.id === selected);
+      const nextNode = visible[selectedIndex + 1];
+      if (nextNode) {
+        selectNode(nextNode.id, scrollToNode);
+      }
+    },
+    [selected, state]
+  );
+
+  const selectPreviousVisibleNode = useCallback(
+    (scrollToNode = true) => {
+      if (!selected) {
+        selectFirstVisibleNode(scrollToNode);
+        return;
+      }
+
+      const visible = visibleNodes(tree, nodes);
+      const selectedIndex = visible.findIndex((node) => node.id === selected);
+      const previousNode = visible[selectedIndex - 1];
+      if (previousNode) {
+        selectNode(previousNode.id, scrollToNode);
+      }
+    },
+    [selected, state]
+  );
+
+  const selectParentNode = useCallback(
+    (scrollToNode = true) => {
+      if (!selected) {
+        selectFirstVisibleNode(scrollToNode);
+        return;
+      }
+
+      const selectedNode = tree.find((node) => node.id === selected);
+      if (!selectedNode) {
+        return;
+      }
+
+      const parentNode = tree.find((node) => node.id === selectedNode.parentId);
+      if (parentNode) {
+        selectNode(parentNode.id, scrollToNode);
+      }
+    },
+    [selected, state]
   );
 
   const getTreeProps = useCallback(() => {
@@ -423,24 +444,24 @@ export function useTree<TData>({
 
         switch (e.key) {
           case "Home": {
-            selectFirstVisibleNode();
+            selectFirstVisibleNode(true);
             e.preventDefault();
             break;
           }
           case "End": {
-            selectLastVisibleNode();
+            selectLastVisibleNode(true);
             e.preventDefault();
             break;
           }
           case "Down":
           case "ArrowDown": {
-            selectNextVisibleNode();
+            selectNextVisibleNode(true);
             e.preventDefault();
             break;
           }
           case "Up":
           case "ArrowUp": {
-            selectPreviousVisibleNode();
+            selectPreviousVisibleNode(true);
             e.preventDefault();
             break;
           }
@@ -451,7 +472,7 @@ export function useTree<TData>({
               if (treeNode && treeNode.hasChildren && nodes[selected].expanded) {
                 collapseNode(selected);
               } else {
-                selectParentNode();
+                selectParentNode(true);
               }
             }
             e.preventDefault();
@@ -460,7 +481,7 @@ export function useTree<TData>({
           case "Right":
           case "ArrowRight": {
             if (selected) {
-              expandNode(selected);
+              expandNode(selected, true);
             }
             e.preventDefault();
             break;
@@ -507,7 +528,7 @@ export function useTree<TData>({
     selectNextVisibleNode,
     selectPreviousVisibleNode,
     selectParentNode,
-    scrollToNode,
+    scrollToNode: scrollToNodeFn,
     virtualizer,
   };
 }
@@ -529,6 +550,17 @@ function generateChanges(input: InputTreeState): Changes {
     selectedId,
     collapsedIds,
   };
+}
+
+function firstVisibleNode(tree: FlatTree<any>, nodes: TreeState["nodes"]) {
+  return tree.find((node) => nodes[node.id].visibility === "visible");
+}
+
+function lastVisibleNode(tree: FlatTree<any>, nodes: TreeState["nodes"]) {
+  return tree
+    .slice()
+    .reverse()
+    .find((node) => nodes[node.id].visibility === "visible");
 }
 
 export type Changes = {
