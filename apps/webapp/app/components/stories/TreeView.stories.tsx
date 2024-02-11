@@ -1,6 +1,6 @@
 import { DocumentIcon, FolderIcon, FolderOpenIcon } from "@heroicons/react/20/solid";
 import type { Meta, StoryObj } from "@storybook/react";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { withDesign } from "storybook-addon-designs";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
@@ -150,6 +150,7 @@ function TreeViewParent({
   selectedId?: string;
   collapsedIds?: string[];
 }) {
+  const parentRef = useRef<HTMLDivElement>(null);
   const changed = useCallback((state: Changes) => {}, []);
 
   const {
@@ -162,11 +163,14 @@ function TreeViewParent({
     selectNode,
     selectFirstVisibleNode,
     scrollToNode,
+    virtualizer,
   } = useTree({
     tree,
     selectedId,
     collapsedIds,
     onStateChanged: changed,
+    estimatedRowHeight: () => 32,
+    parentRef,
   });
 
   return (
@@ -180,10 +184,11 @@ function TreeViewParent({
         </Button>
       </div>
       <TreeView
+        parentRef={parentRef}
+        virtualizer={virtualizer}
         autoFocus
         tree={tree}
         nodes={nodes}
-        estimatedRowHeight={() => 32}
         getNodeProps={getNodeProps}
         getTreeProps={getTreeProps}
         parentClassName="h-96 bg-slate-900"

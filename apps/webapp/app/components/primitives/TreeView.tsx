@@ -6,11 +6,7 @@ import { cn } from "~/utils/cn";
 export type TreeViewProps<TData> = {
   tree: FlatTree<TData>;
   parentClassName?: string;
-  estimatedRowHeight: (params: {
-    node: FlatTreeItem<TData>;
-    state: NodeState & { visibility: NodeVisibility };
-    index: number;
-  }) => number;
+
   renderNode: (params: {
     node: FlatTreeItem<TData>;
     state: NodeState & { visibility: NodeVisibility };
@@ -20,32 +16,21 @@ export type TreeViewProps<TData> = {
   }) => React.ReactNode;
   nodes: TreeState["nodes"];
   autoFocus?: boolean;
+  virtualizer: Virtualizer<HTMLElement, Element>;
+  parentRef: RefObject<any>;
 } & Pick<TreeState, "getTreeProps" | "getNodeProps">;
 
 export function TreeView<TData>({
   tree,
   renderNode,
   nodes,
-  estimatedRowHeight,
   autoFocus = false,
   getTreeProps,
   getNodeProps,
   parentClassName,
+  virtualizer,
+  parentRef,
 }: TreeViewProps<TData>) {
-  const parentRef = useRef<any>(null);
-  const virtualizer = useVirtualizer({
-    count: tree.length,
-    getItemKey: (index) => tree[index].id,
-    getScrollElement: () => parentRef.current,
-    estimateSize: (index: number) => {
-      return estimatedRowHeight({
-        node: tree[index],
-        state: nodes[tree[index].id],
-        index,
-      });
-    },
-  });
-
   useEffect(() => {
     if (autoFocus) {
       parentRef.current?.focus();
@@ -113,11 +98,17 @@ type NodeVisibility = "visible" | "hidden";
 
 export type InputTreeState = Record<string, Partial<NodeState>>;
 
-type TreeStateHookProps = {
+type TreeStateHookProps<TData> = {
   tree: FlatTree<any>;
   selectedId?: string;
   collapsedIds?: string[];
   onStateChanged?: (newState: Changes) => void;
+  estimatedRowHeight: (params: {
+    node: FlatTreeItem<TData>;
+    state: NodeState & { visibility: NodeVisibility };
+    index: number;
+  }) => number;
+  parentRef: RefObject<any>;
 };
 
 //this is so Framer Motion can be used to render the components
@@ -134,6 +125,8 @@ type TreeState = {
       visibility: NodeVisibility;
     }
   >;
+  virtualizer: Virtualizer<HTMLElement, Element>;
+
   getTreeProps: () => HTMLAttributes;
   getNodeProps: (id: string) => HTMLAttributes;
   selectNode: (id: string) => void;
@@ -188,12 +181,14 @@ function inputTreeStateFrom({
   return state;
 }
 
-export function useTree({
+export function useTree<TData>({
   tree,
   selectedId,
   collapsedIds,
   onStateChanged,
-}: TreeStateHookProps): TreeState {
+  parentRef,
+  estimatedRowHeight,
+}: TreeStateHookProps<TData>): TreeState {
   const [state, setState] = useState<InputTreeState>(
     inputTreeStateFrom({ tree, selectedId, collapsedIds })
   );
@@ -248,6 +243,19 @@ export function useTree({
 
     return acc;
   }, {} as Record<string, NodeState & { visibility: NodeVisibility }>);
+
+  const virtualizer = useVirtualizer({
+    count: tree.length,
+    getItemKey: (index) => tree[index].id,
+    getScrollElement: () => parentRef.current,
+    estimateSize: (index: number) => {
+      return estimatedRowHeight({
+        node: tree[index],
+        state: nodes[tree[index].id],
+        index,
+      });
+    },
+  });
 
   const selectNode = useCallback(
     (id: string) => {
@@ -500,6 +508,7 @@ export function useTree({
     selectPreviousVisibleNode,
     selectParentNode,
     scrollToNode,
+    virtualizer,
   };
 }
 
