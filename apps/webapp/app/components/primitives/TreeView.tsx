@@ -113,16 +113,27 @@ type ModifyState = ((state: InputTreeState) => InputTreeState) | InputTreeState;
 const defaultSelected = false;
 const defaultExpanded = true;
 
-function inputTreeStateFrom(
-  selectedId: string | undefined,
-  collapsedIds: string[] | undefined
-): InputTreeState {
+function inputTreeStateFrom({
+  tree,
+  selectedId,
+  collapsedIds,
+}: {
+  tree: FlatTree<any>;
+  selectedId: string | undefined;
+  collapsedIds: string[] | undefined;
+}): InputTreeState {
   const state: InputTreeState = {};
   if (selectedId) {
-    state[selectedId] = { selected: true };
+    const hasTreeItem = tree.some((item) => item.id === selectedId);
+    if (hasTreeItem) {
+      state[selectedId] = { selected: true };
+    }
   }
   collapsedIds?.forEach((id) => {
-    state[id] = { ...state[id], expanded: false };
+    const hasTreeItem = tree.some((item) => item.id === id);
+    if (hasTreeItem) {
+      state[id] = { ...state[id], expanded: false };
+    }
   });
   return state;
 }
@@ -133,7 +144,9 @@ export function useTree({
   collapsedIds,
   onStateChanged,
 }: TreeStateHookProps): TreeState {
-  const [state, setState] = useState<InputTreeState>(inputTreeStateFrom(selectedId, collapsedIds));
+  const [state, setState] = useState<InputTreeState>(
+    inputTreeStateFrom({ tree, selectedId, collapsedIds })
+  );
 
   const modifyState = useCallback(
     (input: ModifyState) => {
@@ -154,8 +167,8 @@ export function useTree({
 
   //if the defaultState changes, update the state
   useEffect(() => {
-    modifyState(inputTreeStateFrom(selectedId, collapsedIds));
-  }, [selectedId, collapsedIds]);
+    modifyState(inputTreeStateFrom({ tree, selectedId, collapsedIds }));
+  }, [selectedId, collapsedIds, tree]);
 
   //for each defaultState, explicitly set the selected and expanded state if they're undefined
   const concreteState = tree.reduce((acc, node) => {
