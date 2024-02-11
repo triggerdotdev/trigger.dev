@@ -1,6 +1,7 @@
 import { VirtualItem, Virtualizer, useVirtualizer } from "@tanstack/react-virtual";
 import { Fragment, RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { UnmountClosed } from "react-collapse";
+import { cn } from "~/utils/cn";
 
 export type TreeViewProps<TData> = {
   tree: FlatTree<TData>;
@@ -545,7 +546,9 @@ export function flattenTree<TData>(tree: Tree<TData>): FlatTree<TData> {
 }
 
 type StandardTreeViewProps<TData> = Omit<TreeViewProps<TData>, "renderParent"> &
-  Pick<TreeState, "getTreeProps" | "getNodeProps"> & {};
+  Pick<TreeState, "getTreeProps" | "getNodeProps"> & {
+    parentClassName?: string;
+  };
 
 /** A normal TreeView that is configured sensible */
 export function StandardTreeView<TData>({
@@ -556,6 +559,7 @@ export function StandardTreeView<TData>({
   getTreeProps,
   getNodeProps,
   autoFocus = true,
+  parentClassName,
 }: StandardTreeViewProps<TData>) {
   return (
     <TreeView
@@ -566,7 +570,7 @@ export function StandardTreeView<TData>({
       renderParent={({ children, ref }) => (
         <div
           ref={ref}
-          className="h-96 w-full overflow-y-auto bg-slate-900 focus-within:outline-none"
+          className={cn("w-full overflow-y-auto focus-within:outline-none", parentClassName)}
           {...getTreeProps()}
         >
           {children}

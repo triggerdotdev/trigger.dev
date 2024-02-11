@@ -31,7 +31,7 @@ export const TreeViews: Story = {
 };
 
 const words = [
-  "Lorem",
+  "lorem",
   "ipsum",
   "dolor",
   "sit",
@@ -95,11 +95,12 @@ const words = [
   "laborum",
 ];
 
-function generateTree(number: number): Tree<{ title: string }> {
+function generateTree(): Tree<{ title: string }> {
+  const number = words.length;
   const rawRows = new Array(number).fill("").map((elem, idx) => {
     return {
-      id: crypto.randomUUID().slice(0, 8),
-      data: { title: `${idx + 1}. ${words[idx % words.length]}` },
+      id: words[idx],
+      data: { title: `${idx + 1}. ${words[idx]}` },
     };
   }) as Tree<{ title: string }>[];
 
@@ -114,18 +115,18 @@ function generateTree(number: number): Tree<{ title: string }> {
 
   return {
     id: "root",
-    data: { title: "Root" },
+    data: { title: "root" },
     children: rows,
   };
 }
 
-const data = generateTree(51);
+const data = generateTree();
 const tree = flattenTree(data);
 
 console.log(data);
 
 function TreeViewsSet() {
-  const [selectedId, setSelectedId] = useState<string | undefined>();
+  const [selectedId, setSelectedId] = useState<string>("");
   const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
 
   return (
@@ -138,7 +139,7 @@ function TreeViewsSet() {
         />
         <Input
           placeholder="Collapsed"
-          value={collapsedIds}
+          value={collapsedIds.join(",")}
           onChange={(e) => {
             const val = e.target.value;
             const ids = val.split(",").map((v) => v.trim());
@@ -194,6 +195,7 @@ function TreeViewParent({
         estimatedRowHeight={() => 32}
         getNodeProps={getNodeProps}
         getTreeProps={getTreeProps}
+        parentClassName="h-96 bg-slate-900"
         renderNode={({ node, state, index, virtualizer, virtualItem }) => (
           <div
             style={{
