@@ -209,7 +209,6 @@ function TreeViewParent({
           >
             <UnmountClosed key={node.id} isOpened={state.visibility === "visible"}>
               <div
-                key={node.id}
                 style={{
                   paddingLeft: `${node.level * 1}rem`,
                 }}
