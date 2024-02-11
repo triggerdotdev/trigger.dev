@@ -1,5 +1,6 @@
 import { VirtualItem, Virtualizer, useVirtualizer } from "@tanstack/react-virtual";
 import { Fragment, RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { UnmountClosed } from "react-collapse";
 
 export type TreeViewProps<TData> = {
   tree: FlatTree<TData>;
@@ -541,4 +542,49 @@ export function flattenTree<TData>(tree: Tree<TData>): FlatTree<TData> {
   flattenNode(tree, undefined, 0);
 
   return flatTree;
+}
+
+type StandardTreeViewProps<TData> = Omit<TreeViewProps<TData>, "renderParent"> &
+  Pick<TreeState, "getTreeProps" | "getNodeProps"> & {};
+
+/** A normal TreeView that is configured sensible */
+export function StandardTreeView<TData>({
+  tree,
+  nodes,
+  estimatedRowHeight,
+  renderNode,
+  getTreeProps,
+  getNodeProps,
+  autoFocus = true,
+}: StandardTreeViewProps<TData>) {
+  return (
+    <TreeView
+      autoFocus={autoFocus}
+      tree={tree}
+      nodes={nodes}
+      estimatedRowHeight={estimatedRowHeight}
+      renderParent={({ children, ref }) => (
+        <div
+          ref={ref}
+          className="h-96 w-full overflow-y-auto bg-slate-900 focus-within:outline-none"
+          {...getTreeProps()}
+        >
+          {children}
+        </div>
+      )}
+      renderNode={({ node, state, index, virtualizer, virtualItem }) => (
+        <div
+          key={node.id}
+          data-index={index}
+          ref={virtualizer.measureElement}
+          className="[&_.ReactCollapse--collapse]:transition-all"
+          {...getNodeProps(node.id)}
+        >
+          <UnmountClosed key={node.id} isOpened={state.visibility === "visible"}>
+            {renderNode({ node, state, index, virtualizer, virtualItem })}
+          </UnmountClosed>
+        </div>
+      )}
+    />
+  );
 }
