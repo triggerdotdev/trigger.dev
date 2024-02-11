@@ -1,21 +1,11 @@
-import { UnmountClosed } from "react-collapse";
-import type { Meta, StoryObj } from "@storybook/react";
-import { withDesign } from "storybook-addon-designs";
-import {
-  Changes,
-  InputTreeState,
-  StandardTreeView,
-  Tree,
-  TreeView,
-  flattenTree,
-  useTree,
-} from "../primitives/TreeView";
-import { cn } from "~/utils/cn";
 import { DocumentIcon, FolderIcon, FolderOpenIcon } from "@heroicons/react/20/solid";
+import type { Meta, StoryObj } from "@storybook/react";
 import { useCallback, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { withDesign } from "storybook-addon-designs";
+import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { Input } from "../primitives/Input";
+import { Changes, Tree, TreeView, flattenTree, useTree } from "../primitives/TreeView";
 
 const meta: Meta = {
   title: "Primitives/TreeView",
@@ -189,7 +179,7 @@ function TreeViewParent({
           Select Registration B
         </Button>
       </div>
-      <StandardTreeView
+      <TreeView
         autoFocus
         tree={tree}
         nodes={nodes}

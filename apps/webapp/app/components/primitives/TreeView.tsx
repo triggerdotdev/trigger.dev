@@ -5,7 +5,7 @@ import { cn } from "~/utils/cn";
 
 export type TreeViewProps<TData> = {
   tree: FlatTree<TData>;
-  renderParent: (params: { children: React.ReactNode; ref: RefObject<any> }) => JSX.Element;
+  parentClassName?: string;
   estimatedRowHeight: (params: {
     node: FlatTreeItem<TData>;
     state: NodeState & { visibility: NodeVisibility };
@@ -20,17 +20,19 @@ export type TreeViewProps<TData> = {
   }) => React.ReactNode;
   nodes: TreeState["nodes"];
   autoFocus?: boolean;
-};
+} & Pick<TreeState, "getTreeProps" | "getNodeProps">;
 
 export function TreeView<TData>({
   tree,
-  renderParent,
   renderNode,
   nodes,
   estimatedRowHeight,
   autoFocus = false,
+  getTreeProps,
+  getNodeProps,
+  parentClassName,
 }: TreeViewProps<TData>) {
-  const parentRef = useRef<HTMLElement>(null);
+  const parentRef = useRef<any>(null);
   const rowVirtualizer = useVirtualizer({
     count: tree.length,
     getItemKey: (index) => tree[index].id,
@@ -52,9 +54,12 @@ export function TreeView<TData>({
 
   const virtualItems = rowVirtualizer.getVirtualItems();
 
-  return renderParent({
-    ref: parentRef,
-    children: (
+  return (
+    <div
+      ref={parentRef}
+      className={cn("w-full overflow-y-auto focus-within:outline-none", parentClassName)}
+      {...getTreeProps()}
+    >
       <div
         style={{
           height: `${rowVirtualizer.getTotalSize()}px`,
@@ -74,21 +79,29 @@ export function TreeView<TData>({
           {virtualItems.map((virtualItem) => {
             const node = tree.find((node) => node.id === virtualItem.key)!;
             return (
-              <Fragment key={node.id}>
-                {renderNode({
-                  node,
-                  state: nodes[node.id],
-                  index: virtualItem.index,
-                  virtualizer: rowVirtualizer,
-                  virtualItem,
-                })}
-              </Fragment>
+              <div
+                key={node.id}
+                data-index={virtualItem.index}
+                ref={rowVirtualizer.measureElement}
+                className="[&_.ReactCollapse--collapse]:transition-all"
+                {...getNodeProps(node.id)}
+              >
+                <UnmountClosed key={node.id} isOpened={nodes[node.id].visibility === "visible"}>
+                  {renderNode({
+                    node,
+                    state: nodes[node.id],
+                    index: virtualItem.index,
+                    virtualizer: rowVirtualizer,
+                    virtualItem,
+                  })}
+                </UnmountClosed>
+              </div>
             );
           })}
         </div>
       </div>
-    ),
-  });
+    </div>
+  );
 }
 
 type NodeState = {
@@ -556,52 +569,4 @@ export function flattenTree<TData>(tree: Tree<TData>): FlatTree<TData> {
   flattenNode(tree, undefined, 0);
 
   return flatTree;
-}
-
-type StandardTreeViewProps<TData> = Omit<TreeViewProps<TData>, "renderParent"> &
-  Pick<TreeState, "getTreeProps" | "getNodeProps"> & {
-    parentClassName?: string;
-  };
-
-/** A normal TreeView that is configured sensible */
-export function StandardTreeView<TData>({
-  tree,
-  nodes,
-  estimatedRowHeight,
-  renderNode,
-  getTreeProps,
-  getNodeProps,
-  autoFocus = true,
-  parentClassName,
-}: StandardTreeViewProps<TData>) {
-  return (
-    <TreeView
-      autoFocus={autoFocus}
-      tree={tree}
-      nodes={nodes}
-      estimatedRowHeight={estimatedRowHeight}
-      renderParent={({ children, ref }) => (
-        <div
-          ref={ref}
-          className={cn("w-full overflow-y-auto focus-within:outline-none", parentClassName)}
-          {...getTreeProps()}
-        >
-          {children}
-        </div>
-      )}
-      renderNode={({ node, state, index, virtualizer, virtualItem }) => (
-        <div
-          key={node.id}
-          data-index={index}
-          ref={virtualizer.measureElement}
-          className="[&_.ReactCollapse--collapse]:transition-all"
-          {...getNodeProps(node.id)}
-        >
-          <UnmountClosed key={node.id} isOpened={state.visibility === "visible"}>
-            {renderNode({ node, state, index, virtualizer, virtualItem })}
-          </UnmountClosed>
-        </div>
-      )}
-    />
-  );
 }
