@@ -81,10 +81,6 @@ const tree = flattenTree(data);
 function TreeViewsSet() {
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
-  const [defaultState, setDefaultState] = useState<InputTreeState>({
-    authentication: { selected: false, expanded: false },
-    "registration-b": { selected: true },
-  });
 
   return (
     <div className="flex flex-col items-start justify-start gap-4">
@@ -103,7 +99,7 @@ function TreeViewsSet() {
             setCollapsedIds(ids);
           }}
         />
-        <Button
+        {/* <Button
           variant="secondary/small"
           onClick={() => {
             let s: InputTreeState = {};
@@ -118,19 +114,26 @@ function TreeViewsSet() {
           }}
         >
           Update
-        </Button>
+        </Button> */}
       </div>
 
-      <TreeViewParent defaultState={defaultState} />
+      <TreeViewParent selectedId={selectedId} collapsedIds={collapsedIds} />
     </div>
   );
 }
 
-function TreeViewParent({ defaultState }: { defaultState?: InputTreeState }) {
+function TreeViewParent({
+  selectedId,
+  collapsedIds,
+}: {
+  selectedId?: string;
+  collapsedIds?: string[];
+}) {
   const changed = useCallback((state: InputTreeState) => {
     // console.log("changed", state);
   }, []);
 
+  //todo it would be much better if useTree accepts a selectedId and collapsedIds
   const {
     nodes,
     selected,
@@ -142,7 +145,8 @@ function TreeViewParent({ defaultState }: { defaultState?: InputTreeState }) {
     selectFirstVisibleNode,
   } = useTree({
     tree,
-    defaultState,
+    selectedId,
+    collapsedIds,
     onStateChanged: changed,
   });
 
