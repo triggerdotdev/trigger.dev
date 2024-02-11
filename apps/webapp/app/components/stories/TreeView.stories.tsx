@@ -171,6 +171,7 @@ function TreeViewParent({
     toggleExpandNode,
     selectNode,
     selectFirstVisibleNode,
+    scrollToNode,
   } = useTree({
     tree,
     selectedId,
@@ -215,6 +216,7 @@ function TreeViewParent({
                 e.stopPropagation();
                 toggleExpandNode(node.id);
                 selectNode(node.id);
+                scrollToNode(node.id, virtualizer);
               }}
               onKeyDown={(e) => {
                 console.log(e.key);

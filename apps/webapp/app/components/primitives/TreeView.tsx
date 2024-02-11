@@ -135,6 +135,7 @@ type TreeState = {
   selectNextVisibleNode: () => void;
   selectPreviousVisibleNode: () => void;
   selectParentNode: () => void;
+  scrollToNode: (id: string, virtualizer: Virtualizer<HTMLElement, Element>) => void;
 };
 
 type ModifyState = ((state: InputTreeState) => InputTreeState) | InputTreeState;
@@ -378,6 +379,17 @@ export function useTree({
     }
   }, [selected, state]);
 
+  const scrollToNode = useCallback(
+    (id: string, virtualizer: Virtualizer<HTMLElement, Element>) => {
+      const itemIndex = tree.findIndex((node) => node.id === id);
+
+      if (itemIndex !== -1) {
+        virtualizer.scrollToIndex(itemIndex, { align: "auto" });
+      }
+    },
+    [state]
+  );
+
   const getTreeProps = useCallback(() => {
     return {
       role: "tree",
@@ -474,6 +486,7 @@ export function useTree({
     selectNextVisibleNode,
     selectPreviousVisibleNode,
     selectParentNode,
+    scrollToNode,
   };
 }
 
