@@ -33,7 +33,7 @@ export function TreeView<TData>({
   parentClassName,
 }: TreeViewProps<TData>) {
   const parentRef = useRef<any>(null);
-  const rowVirtualizer = useVirtualizer({
+  const virtualizer = useVirtualizer({
     count: tree.length,
     getItemKey: (index) => tree[index].id,
     getScrollElement: () => parentRef.current,
@@ -52,7 +52,7 @@ export function TreeView<TData>({
     }
   }, [autoFocus, parentRef]);
 
-  const virtualItems = rowVirtualizer.getVirtualItems();
+  const virtualItems = virtualizer.getVirtualItems();
 
   return (
     <div
@@ -62,7 +62,7 @@ export function TreeView<TData>({
     >
       <div
         style={{
-          height: `${rowVirtualizer.getTotalSize()}px`,
+          height: `${virtualizer.getTotalSize()}px`,
           width: "100%",
           position: "relative",
         }}
@@ -82,7 +82,7 @@ export function TreeView<TData>({
               <div
                 key={node.id}
                 data-index={virtualItem.index}
-                ref={rowVirtualizer.measureElement}
+                ref={virtualizer.measureElement}
                 className="[&_.ReactCollapse--collapse]:transition-all"
                 {...getNodeProps(node.id)}
               >
@@ -91,7 +91,7 @@ export function TreeView<TData>({
                     node,
                     state: nodes[node.id],
                     index: virtualItem.index,
-                    virtualizer: rowVirtualizer,
+                    virtualizer: virtualizer,
                     virtualItem,
                   })}
                 </UnmountClosed>
