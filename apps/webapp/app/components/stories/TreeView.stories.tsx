@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
-import { InputTreeState, TreeView, flattenTree, useTree } from "../primitives/TreeView";
+import { Changes, InputTreeState, TreeView, flattenTree, useTree } from "../primitives/TreeView";
 import { cn } from "~/utils/cn";
 import { DocumentIcon, FolderIcon, FolderOpenIcon } from "@heroicons/react/20/solid";
 import { useCallback, useState } from "react";
@@ -99,22 +99,6 @@ function TreeViewsSet() {
             setCollapsedIds(ids);
           }}
         />
-        {/* <Button
-          variant="secondary/small"
-          onClick={() => {
-            let s: InputTreeState = {};
-            for (const collapsed of collapsedIds) {
-              s[collapsed] = { expanded: false };
-            }
-
-            if (selectedId) {
-              s[selectedId] = { ...s[selectedId], selected: true };
-            }
-            setDefaultState(s);
-          }}
-        >
-          Update
-        </Button> */}
       </div>
 
       <TreeViewParent selectedId={selectedId} collapsedIds={collapsedIds} />
@@ -129,11 +113,10 @@ function TreeViewParent({
   selectedId?: string;
   collapsedIds?: string[];
 }) {
-  const changed = useCallback((state: InputTreeState) => {
-    // console.log("changed", state);
+  const changed = useCallback((state: Changes) => {
+    console.log("changed", state);
   }, []);
 
-  //todo it would be much better if useTree accepts a selectedId and collapsedIds
   const {
     nodes,
     selected,

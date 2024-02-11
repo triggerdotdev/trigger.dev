@@ -75,7 +75,7 @@ type TreeStateHookProps = {
   tree: FlatTree<any>;
   selectedId?: string;
   collapsedIds?: string[];
-  onStateChanged?: (newState: InputTreeState) => void;
+  onStateChanged?: (newState: Changes) => void;
 };
 
 //this is so Framer Motion can be used to render the components
@@ -160,14 +160,14 @@ export function useTree({
       if (typeof input === "function") {
         setState((state) => {
           const updatedState = input(state);
-          onStateChanged?.(stripOutDefault(updatedState));
+          onStateChanged?.(generateChanges(updatedState));
           return updatedState;
         });
         return;
       }
 
       setState(input);
-      onStateChanged?.(stripOutDefault(input));
+      onStateChanged?.(generateChanges(input));
     },
     [state]
   );
@@ -452,16 +452,25 @@ function visibleNodes(tree: FlatTree<any>, nodes: TreeState["nodes"]) {
   return tree.filter((node) => nodes[node.id].visibility === "visible");
 }
 
-function stripOutDefault(input: InputTreeState): InputTreeState {
+function generateChanges(input: InputTreeState): Changes {
   //if selected === defaultSelected, remove it
   //if expanded === defaultExpanded, remove it
   //if both are default, remove the node
-  return Object.fromEntries(
-    Object.entries(input).filter(([id, state]) => {
-      return state.selected !== defaultSelected || state.expanded !== defaultExpanded;
-    })
-  );
+  const selectedId = Object.entries(input).find(([_, state]) => state.selected === true)?.[0];
+  const collapsedIds = Object.entries(input)
+    .filter(([_, state]) => state.expanded === false)
+    .map(([id]) => id);
+
+  return {
+    selectedId,
+    collapsedIds,
+  };
 }
+
+export type Changes = {
+  selectedId: string | undefined;
+  collapsedIds: string[];
+};
 
 /** An actual tree structure with custom data */
 export type Tree<TData> = {
