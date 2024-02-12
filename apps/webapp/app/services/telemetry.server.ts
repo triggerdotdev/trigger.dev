@@ -115,7 +115,11 @@ class Telemetry {
   };
 
   project = {
-    identify: ({ project }: { project: Project }) => {
+    identify: ({
+      project,
+    }: {
+      project: Pick<Project, "id" | "name" | "createdAt" | "updatedAt">;
+    }) => {
       if (this.#posthogClient === undefined) return;
       this.#posthogClient.groupIdentify({
         groupType: "project",
