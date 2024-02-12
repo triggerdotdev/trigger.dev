@@ -48,6 +48,7 @@ jobs:
           # Build packages
           pnpm run build --filter @references/nextjs-test^...
           cd apps/webapp && pnpm run build:server
+          cd ../..
           pnpm --filter @trigger.dev/database generate
           pnpm --filter @trigger.dev/otlp-importer generate
 
