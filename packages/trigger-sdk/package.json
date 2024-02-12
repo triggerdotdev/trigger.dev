@@ -1,6 +1,10 @@
 {
   "name": "@trigger.dev/sdk",
+<<<<<<< HEAD
   "version": "2.3.18",
+=======
+  "version": "2.3.17",
+>>>>>>> 5dc0188d4 (Fixed pnpm lock file after rebasing with main)
   "description": "trigger.dev Node.JS SDK",
   "license": "MIT",
   "main": "./dist/index.js",
