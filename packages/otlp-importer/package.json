@@ -29,6 +29,7 @@
     "clean": "rimraf dist",
     "build": "npm run clean && npm run protos && npm run build:tsup",
     "build:tsup": "tsup --dts-resolve",
+    "generate": "npm run protos",
     "protos": "npm run submodule && npm run protos:generate",
     "protos:generate": "./scripts/generate-protos.sh",
     "submodule": "git submodule sync --recursive && git submodule update --init --recursive",
