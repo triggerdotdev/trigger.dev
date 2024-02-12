@@ -1,10 +1,6 @@
 {
   "name": "@trigger.dev/sdk",
-<<<<<<< HEAD
   "version": "2.3.18",
-=======
-  "version": "2.3.17",
->>>>>>> 5dc0188d4 (Fixed pnpm lock file after rebasing with main)
   "description": "trigger.dev Node.JS SDK",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -49,16 +45,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-<<<<<<< HEAD
     "@trigger.dev/core": "workspace:^2.3.18",
     "@trigger.dev/core-backend": "workspace:^2.3.18",
-=======
     "@opentelemetry/api": "^1.7.0",
     "@opentelemetry/api-logs": "^0.48.0",
     "@opentelemetry/semantic-conventions": "^1.21.0",
-    "@trigger.dev/core": "workspace:^2.3.11",
-    "@trigger.dev/core-backend": "workspace:^2.3.11",
->>>>>>> 478f8b4fa (WIP otel)
     "chalk": "^5.2.0",
     "cronstrue": "^2.21.0",
     "debug": "^4.3.4",
