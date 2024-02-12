@@ -32,7 +32,7 @@
     "generate": "npm run protos",
     "protos": "npm run submodule && npm run protos:generate",
     "protos:generate": "./scripts/generate-protos.sh",
-    "submodule": "git submodule sync --recursive && git submodule update --init --recursive",
+    "submodule": "command -v git >/dev/null 2>&1 && git submodule sync --recursive && git submodule update --init --recursive || echo 'git not installed'",
     "typecheck": "tsc --noEmit",
     "test": "jest"
   },
