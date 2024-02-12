@@ -1,12 +1,13 @@
 import { Command } from "commander";
-import { devCommand } from "../commands/dev";
-import { updateCommand } from "../commands/update";
-import { whoamiCommand } from "../commands/whoami.js";
-import { COMMAND_NAME } from "../consts";
-import { getVersion } from "../utilities/getVersion";
-import { printInitialBanner } from "../utilities/initialBanner";
-import { login, loginCommand } from "../commands/login";
 import { z } from "zod";
+import { configureDevCommand } from "../commands/dev.js";
+import { loginCommand } from "../commands/login.js";
+import { logoutCommand } from "../commands/logout.js";
+import { updateCommand } from "../commands/update.js";
+import { configureWhoamiCommand } from "../commands/whoami.js";
+import { COMMAND_NAME } from "../consts.js";
+import { getVersion } from "../utilities/getVersion.js";
+import { printInitialBanner } from "../utilities/initialBanner.js";
 
 export const program = new Command();
 
@@ -39,29 +40,22 @@ program
     }
   });
 
-//todo update for the new version
-//todo add usage instructions to the README
 program
-  .command("dev")
-  .description("Run your Trigger.dev tasks locally")
-  .argument("[path]", "The path to the project", ".")
-  .option("-p, --port <port>", "Override the local port your server is on")
-  .option("-H, --hostname <hostname>", "Override the hostname on which the application is served")
-  .option("-e, --env-file <name>", "Override the name of the env file to load")
-  .option(
-    "-i, --client-id <name>",
-    "The ID of the client to use for this project. Will use the value from the package.json file if not provided."
-  )
+  .command("logout")
+  .description("Logout of Trigger.dev")
   .version(getVersion(), "-v, --version", "Display the version number")
-  .action(async (path, options) => {
+  .action(async (options) => {
     try {
-      await printInitialBanner();
-      await devCommand(path, options);
+      await printInitialBanner(false);
+      await logoutCommand(options);
+      //todo login command
     } catch (e) {
       //todo error reporting
       throw e;
     }
   });
+
+configureDevCommand(program);
 
 program
   .command("update")
@@ -75,20 +69,4 @@ program
     await updateCommand(path, options);
   });
 
-program
-  .command("whoami")
-  .description("display the current logged in user and project details")
-  .option(
-    "-a, --api-url <value>",
-    "Override the API URL, defaults to https://cloud.trigger.dev",
-    "https://cloud.trigger.dev"
-  )
-  .version(getVersion(), "-v, --version", "Display the version number")
-  .action(async (options) => {
-    try {
-      await printInitialBanner();
-      await whoamiCommand(options);
-    } catch (e) {
-      throw e;
-    }
-  });
+configureWhoamiCommand(program);

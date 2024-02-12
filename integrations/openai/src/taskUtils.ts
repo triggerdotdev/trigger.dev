@@ -60,11 +60,11 @@ function createTaskUsageProperties(
     },
     ...("completion_tokens" in usage
       ? [
-        {
-          label: "Completion Usage",
-          text: String(usage.completion_tokens),
-        },
-      ]
+          {
+            label: "Completion Usage",
+            text: String(usage.completion_tokens),
+          },
+        ]
       : []),
   ];
 }
@@ -83,35 +83,35 @@ function createTaskRateLimitProperties(headers: Headers | undefined) {
   return [
     ...(remainingRequests
       ? [
-        {
-          label: "Remaining Requests",
-          text: remainingRequests ?? "Unknown",
-        },
-      ]
+          {
+            label: "Remaining Requests",
+            text: remainingRequests ?? "Unknown",
+          },
+        ]
       : []),
     ...(resetRequests
       ? [
-        {
-          label: "Reset Requests",
-          text: resetRequests ?? "Unknown",
-        },
-      ]
+          {
+            label: "Reset Requests",
+            text: resetRequests ?? "Unknown",
+          },
+        ]
       : []),
     ...(remainingTokens
       ? [
-        {
-          label: "Remaining Tokens",
-          text: remainingTokens ?? "Unknown",
-        },
-      ]
+          {
+            label: "Remaining Tokens",
+            text: remainingTokens ?? "Unknown",
+          },
+        ]
       : []),
     ...(resetTokens
       ? [
-        {
-          label: "Reset Tokens",
-          text: resetTokens ?? "Unknown",
-        },
-      ]
+          {
+            label: "Reset Tokens",
+            text: resetTokens ?? "Unknown",
+          },
+        ]
       : []),
   ];
 }
@@ -128,6 +128,8 @@ export function handleOpenAIError(error: unknown) {
       }
 
       return (
+        //sometimes OpenAI returns a 400 that when retried becomes a 200…
+        error.status === 400 ||
         error.status === 429 ||
         error.status === 408 ||
         error.status === 409 ||
@@ -295,7 +297,7 @@ const requestOptionsKeys: KeysEnum<OpenAIRequestOptions> = {
 
 export const isRequestOptions = (obj: unknown): obj is OpenAIRequestOptions => {
   return (
-    typeof obj === 'object' &&
+    typeof obj === "object" &&
     obj !== null &&
     !isEmptyObj(obj) &&
     Object.keys(obj).every((k) => hasOwn(requestOptionsKeys, k))

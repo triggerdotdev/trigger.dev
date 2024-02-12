@@ -3,7 +3,7 @@ import { parse } from "@conform-to/zod";
 import { RadioGroup } from "@radix-ui/react-radio-group";
 import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
-import { Form, useActionData } from "@remix-run/react";
+import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
@@ -23,7 +23,7 @@ import { createOrganization } from "~/models/organization.server";
 import { NewOrganizationPresenter } from "~/presenters/NewOrganizationPresenter.server";
 import { commitCurrentProjectSession, setCurrentProjectId } from "~/services/currentProject.server";
 import { requireUserId } from "~/services/session.server";
-import { plansPath, projectPath, rootPath, selectPlanPath } from "~/utils/pathBuilder";
+import { projectPath, rootPath, selectPlanPath } from "~/utils/pathBuilder";
 
 const schema = z.object({
   orgName: z.string().min(3).max(50),
@@ -86,6 +86,7 @@ export default function NewOrganizationPage() {
   const { hasOrganizations } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const { isManagedCloud } = useFeatures();
+  const navigation = useNavigation();
 
   const [form, { orgName, projectName }] = useForm({
     id: "create-organization",
@@ -95,7 +96,10 @@ export default function NewOrganizationPage() {
       return parse(formData, { schema });
     },
     shouldRevalidate: "onSubmit",
+    shouldValidate: "onSubmit",
   });
+
+  const isLoading = navigation.state === "submitting" || navigation.state === "loading";
 
   return (
     <MainCenteredContainer className="max-w-[22rem]">
@@ -161,7 +165,12 @@ export default function NewOrganizationPage() {
 
           <FormButtons
             confirmButton={
-              <Button type="submit" variant={"primary/small"} TrailingIcon="arrow-right">
+              <Button
+                type="submit"
+                variant={"primary/small"}
+                TrailingIcon="arrow-right"
+                disabled={isLoading}
+              >
                 Create
               </Button>
             }

@@ -3,6 +3,8 @@ import express from "express";
 import compression from "compression";
 import morgan from "morgan";
 import { createRequestHandler } from "@remix-run/express";
+import { WebSocketServer } from "ws";
+import { broadcastDevReady, logDevReady } from "@remix-run/server-runtime";
 
 const app = express();
 
@@ -38,28 +40,29 @@ app.use(morgan("tiny"));
 
 const MODE = process.env.NODE_ENV;
 const BUILD_DIR = path.join(process.cwd(), "build");
+const build = require(BUILD_DIR);
 
 app.all(
   "*",
-  MODE === "production"
-    ? createRequestHandler({ build: require(BUILD_DIR) })
-    : (...args) => {
-        purgeRequireCache();
-        const requestHandler = createRequestHandler({
-          build: require(BUILD_DIR),
-          mode: MODE,
-        });
-        return requestHandler(...args);
-      }
+  createRequestHandler({
+    build,
+    mode: MODE,
+  })
 );
 
 const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
 
 if (process.env.HTTP_SERVER_DISABLED !== "true") {
+  const wss: WebSocketServer | undefined = build.entry.module.wss;
+
   const server = app.listen(port, () => {
-    // require the built app so we're ready when the first request comes in
-    require(BUILD_DIR);
-    console.log(`✅ app ready: http://localhost:${port}`);
+    console.log(`✅ app ready: http://localhost:${port} [NODE_ENV: ${MODE}]`);
+
+    if (MODE === "development") {
+      broadcastDevReady(build)
+        .then(() => logDevReady(build))
+        .catch(console.error);
+    }
   });
 
   server.keepAliveTimeout = 65 * 1000;
@@ -73,21 +76,34 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
       }
     });
   });
+
+  server.on("upgrade", async (req, socket, head) => {
+    console.log(
+      `Attemping to upgrade connection at url ${req.url} with headers: ${JSON.stringify(
+        req.headers
+      )}`
+    );
+
+    const url = new URL(req.url ?? "", "http://localhost");
+
+    // Only upgrade the connecting if the path is `/ws`
+    if (url.pathname !== "/ws") {
+      socket.destroy(
+        new Error(
+          "Cannot connect because of invalid path: Please include `/ws` in the path of your upgrade request."
+        )
+      );
+      return;
+    }
+
+    console.log(`Client connected, upgrading their connection...`);
+
+    // Handle the WebSocket connection
+    wss?.handleUpgrade(req, socket, head, (ws) => {
+      wss?.emit("connection", ws, req);
+    });
+  });
 } else {
   require(BUILD_DIR);
   console.log(`✅ app ready (skipping http server)`);
-}
-
-function purgeRequireCache() {
-  // purge require cache on requests for "server side HMR" this won't let
-  // you have in-memory objects between requests in development,
-  // alternatively you can set up nodemon/pm2-dev to restart the server on
-  // file changes, we prefer the DX of this though, so we've included it
-  // for you by default
-  for (const key in require.cache) {
-    if (key.startsWith(BUILD_DIR)) {
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-      delete require.cache[key];
-    }
-  }
 }

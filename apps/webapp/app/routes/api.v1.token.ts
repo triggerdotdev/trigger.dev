@@ -3,7 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import {
   GetPersonalAccessTokenRequestSchema,
   GetPersonalAccessTokenResponse,
-} from "@trigger.dev/core";
+} from "@trigger.dev/core/v3";
 import { generateErrorMessage } from "zod-error";
 import { logger } from "~/services/logger.server";
 import { getPersonalAccessTokenFromAuthorizationCode } from "~/services/personalAccessToken.server";

@@ -1,0 +1,15 @@
+{
+  "extends": "@trigger.dev/tsconfig/node18.json",
+  "include": ["./src/**/*.ts", "trigger.config.mjs"],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "lib": ["DOM", "DOM.Iterable"],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
+      "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
+      "@trigger.dev/core": ["../../packages/core/src/index"],
+      "@trigger.dev/core/*": ["../../packages/core/src/*"]
+    }
+  }
+}

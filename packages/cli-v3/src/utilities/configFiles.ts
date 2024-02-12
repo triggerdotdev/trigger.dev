@@ -1,26 +1,22 @@
-import fs, { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import xdgAppPaths from "xdg-app-paths";
 import { z } from "zod";
-import { isDirectory, pathExists, readJSONFileSync } from "./fileSystem";
+import { readJSONFileSync } from "./fileSystem.js";
+import { logger } from "./logger.js";
 
 function getGlobalConfigFolderPath() {
   const configDir = xdgAppPaths(".trigger").config();
-  const legacyConfigDir = path.join(os.homedir(), ".trigger"); // Legacy config in user's home directory
 
-  // Check for the .trigger directory in root, if it is not there then use the XDG compliant path.
-  if (isDirectory(legacyConfigDir)) {
-    return legacyConfigDir;
-  } else {
-    return configDir;
-  }
+  return configDir;
 }
 
 //auth config file
 export const UserAuthConfigSchema = z.object({
   accessToken: z.string().optional(),
+  apiUrl: z.string().optional(),
 });
+
 export type UserAuthConfig = z.infer<typeof UserAuthConfigSchema>;
 
 function getAuthConfigFilePath() {
@@ -38,12 +34,14 @@ export function writeAuthConfigFile(config: UserAuthConfig) {
 }
 
 export function readAuthConfigFile(): UserAuthConfig | undefined {
-  const authConfigFilePath = getAuthConfigFilePath();
-  if (!pathExists(authConfigFilePath)) {
-    return;
-  }
+  try {
+    const authConfigFilePath = getAuthConfigFilePath();
 
-  const json = readJSONFileSync(authConfigFilePath);
-  const parsed = UserAuthConfigSchema.parse(json);
-  return parsed;
+    const json = readJSONFileSync(authConfigFilePath);
+    const parsed = UserAuthConfigSchema.parse(json);
+    return parsed;
+  } catch (error) {
+    logger.debug(`Error reading auth config file: ${error}`);
+    return undefined;
+  }
 }

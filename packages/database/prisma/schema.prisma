@@ -382,6 +382,9 @@ model RuntimeEnvironment {
   keyValueItems            KeyValueItem[]
   webhookEnvironments      WebhookEnvironment[]
   webhookRequestDeliveries WebhookRequestDelivery[]
+  backgroundWorkers        BackgroundWorker[]
+  backgroundWorkerTasks    BackgroundWorkerTask[]
+  TaskRun                  TaskRun[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -399,6 +402,8 @@ model Project {
   slug String @unique
   name String
 
+  externalRef String @unique
+
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
@@ -406,15 +411,19 @@ model Project {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  environments  RuntimeEnvironment[]
-  endpoints     Endpoint[]
-  jobs          Job[]
-  jobVersion    JobVersion[]
-  events        EventRecord[]
-  runs          JobRun[]
-  sources       TriggerSource[]
-  httpEndpoints TriggerHttpEndpoint[]
-  webhooks      Webhook[]
+  environments          RuntimeEnvironment[]
+  endpoints             Endpoint[]
+  jobs                  Job[]
+  jobVersion            JobVersion[]
+  events                EventRecord[]
+  runs                  JobRun[]
+  sources               TriggerSource[]
+  httpEndpoints         TriggerHttpEndpoint[]
+  webhooks              Webhook[]
+  backgroundWorkers     BackgroundWorker[]
+  backgroundWorkerTasks BackgroundWorkerTask[]
+  TaskRun               TaskRun[]
+  TaskTag               TaskTag[]
 }
 
 model Endpoint {
@@ -1464,4 +1473,249 @@ model DataMigration {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   completedAt DateTime?
+}
+
+// ====================================================
+// v3 Models
+// ====================================================
+model BackgroundWorker {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  contentHash String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+
+  version  String
+  metadata Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks      BackgroundWorkerTask[]
+  attempts   TaskRunAttempt[]
+  lockedRuns TaskRun[]
+
+  @@unique([projectId, runtimeEnvironmentId, version])
+}
+
+model BackgroundWorkerTask {
+  id   String @id @default(cuid())
+  slug String
+
+  friendlyId String @unique
+
+  filePath   String
+  exportName String
+
+  worker   BackgroundWorker @relation(fields: [workerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  workerId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attempts TaskRunAttempt[]
+  runs     TaskRun[]
+
+  @@unique([workerId, slug])
+}
+
+model TaskRun {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  idempotencyKey String
+  taskIdentifier String
+
+  payload      String
+  payloadType  String @default("application/json")
+  context      Json?
+  traceContext Json?
+
+  traceId String
+  spanId  String
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attempts TaskRunAttempt[] @relation("attempts")
+  tags     TaskTag[]
+
+  lockedAt   DateTime?
+  lockedBy   BackgroundWorkerTask? @relation(fields: [lockedById], references: [id])
+  lockedById String?
+
+  lockedToVersion   BackgroundWorker? @relation(fields: [lockedToVersionId], references: [id])
+  lockedToVersionId String?
+
+  parentAttempt   TaskRunAttempt? @relation("parentAttempt", fields: [parentAttemptId], references: [id])
+  parentAttemptId String?
+
+  @@unique([runtimeEnvironmentId, idempotencyKey])
+}
+
+model TaskTag {
+  id   String @id @default(cuid())
+  name String
+
+  friendlyId String @unique
+
+  runs TaskRun[]
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, name])
+}
+
+model TaskRunAttempt {
+  id     String @id @default(cuid())
+  number Int    @default(0)
+
+  friendlyId String @unique
+
+  taskRun   TaskRun @relation("attempts", fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskRunId String
+
+  backgroundWorker   BackgroundWorker @relation(fields: [backgroundWorkerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  backgroundWorkerId String
+
+  backgroundWorkerTask   BackgroundWorkerTask @relation(fields: [backgroundWorkerTaskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  backgroundWorkerTaskId String
+
+  status TaskRunAttemptStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  error      Json?
+  output     String?
+  outputType String  @default("application/json")
+
+  triggeredRuns TaskRun[] @relation("parentAttempt")
+
+  @@unique([taskRunId, number])
+}
+
+enum TaskRunAttemptStatus {
+  PENDING
+  EXECUTING
+  PAUSED
+  FAILED
+  CANCELED
+  COMPLETED
+}
+
+/// This is the unified otel span/log model that will eventually be replaced by clickhouse
+model TaskEvent {
+  id String @id @default(cuid())
+
+  /// This matches the span name for a trace event, or the log body for a log event
+  message String
+
+  traceId    String
+  spanId     String
+  parentId   String?
+  tracestate String?
+
+  isError   Boolean @default(false)
+  isPartial Boolean @default(false)
+
+  serviceName      String
+  serviceNamespace String
+
+  level  TaskEventLevel  @default(TRACE)
+  kind   TaskEventKind   @default(INTERNAL)
+  status TaskEventStatus @default(UNSET)
+
+  links  Json?
+  events Json?
+
+  startTime DateTime
+
+  /// This is the duration of the event in nanoseconds
+  duration BigInt @default(0)
+
+  attemptId String?
+
+  environmentId   String
+  environmentType RuntimeEnvironmentType
+
+  organizationId String
+
+  projectId  String
+  projectRef String
+
+  runId String
+
+  taskSlug       String
+  taskPath       String?
+  taskExportName String?
+
+  workerId      String?
+  workerVersion String?
+
+  /// This represents all the span attributes available, like http.status_code, and special attributes like $style.icon, $output, $metadata.payload.userId, as it's used for searching and filtering
+  properties Json
+
+  /// This represents all span attributes in the $metadata namespace, like $metadata.payload
+  metadata Json?
+
+  /// This represents all span attributes in the $style namespace, like $style
+  style Json?
+
+  /// This represents all span attributes in the $output namespace, like $output
+  output Json?
+
+  createdAt DateTime @default(now())
+}
+
+enum TaskEventLevel {
+  TRACE
+  DEBUG
+  LOG
+  INFO
+  WARN
+  ERROR
+}
+
+enum TaskEventKind {
+  UNSPECIFIED
+  INTERNAL
+  SERVER
+  CLIENT
+  PRODUCER
+  CONSUMER
+  UNRECOGNIZED
+  LOG
+}
+
+enum TaskEventStatus {
+  UNSET
+  OK
+  ERROR
+  UNRECOGNIZED
 }
