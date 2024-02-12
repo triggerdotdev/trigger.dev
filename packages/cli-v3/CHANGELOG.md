@@ -1,5 +1,11 @@
 # trigger.dev
 
+## 1.0.7
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.18
+
 ## 1.0.6
 
 ### Patch Changes

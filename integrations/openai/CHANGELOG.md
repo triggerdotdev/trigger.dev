@@ -1,5 +1,13 @@
 # @trigger.dev/slack
 
+## 2.3.18
+
+### Patch Changes
+
+- d69e4e71: Retry 400 status code, OpenAI returns this sometimes for no reason...
+  - @trigger.dev/integration-kit@2.3.18
+  - @trigger.dev/sdk@2.3.18
+
 ## 2.3.17
 
 ### Patch Changes

@@ -1,5 +1,7 @@
 # @trigger.dev/core-backend
 
+## 2.3.18
+
 ## 2.3.17
 
 ## 2.3.16
