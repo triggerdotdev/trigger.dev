@@ -150,6 +150,7 @@ function TreeViewParent({
   selectedId?: string;
   collapsedIds?: string[];
 }) {
+  const [filterText, setFilterText] = useState("");
   const parentRef = useRef<HTMLDivElement>(null);
   const changed = useCallback((state: Changes) => {}, []);
 
@@ -162,6 +163,7 @@ function TreeViewParent({
     toggleExpandNode,
     selectNode,
     selectFirstVisibleNode,
+    selectLastVisibleNode,
     scrollToNode,
     virtualizer,
   } = useTree({
@@ -171,17 +173,34 @@ function TreeViewParent({
     onStateChanged: changed,
     estimatedRowHeight: () => 32,
     parentRef,
+    filter: (node) => {
+      if (filterText === "") return true;
+      if (node.data.title.toLowerCase().includes(filterText.toLowerCase())) {
+        return true;
+      }
+      return false;
+    },
   });
 
   return (
-    <div className="flex flex-col items-start gap-y-4 p-4">
+    <div className="flex w-72 flex-col items-start gap-y-4 p-4">
       <div className="flex items-center gap-2">
-        <Button variant="secondary/small" onClick={() => selectFirstVisibleNode(true)}>
+        <Button variant="secondary/small" onClick={() => selectFirstVisibleNode()}>
           Select first
         </Button>
-        <Button variant="secondary/small" onClick={() => selectNode("registration-b")}>
-          Select Registration B
+        <Button variant="secondary/small" onClick={() => selectLastVisibleNode()}>
+          Select last
         </Button>
+      </div>
+      <div className="flex items-center gap-2">
+        <Input
+          placeholder="Search log"
+          variant="tertiary"
+          icon="search"
+          fullWidth={true}
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+        />
       </div>
       <TreeView
         parentRef={parentRef}

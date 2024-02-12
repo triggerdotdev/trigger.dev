@@ -9,7 +9,7 @@ export type TreeViewProps<TData> = {
 
   renderNode: (params: {
     node: FlatTreeItem<TData>;
-    state: NodeState & { visibility: NodeVisibility };
+    state: NodeState;
     index: number;
     virtualizer: Virtualizer<HTMLElement, Element>;
     virtualItem: VirtualItem;
@@ -89,26 +89,28 @@ export function TreeView<TData>({
   );
 }
 
+type NodeVisibility = "visible" | "hidden";
+
 type NodeState = {
   selected: boolean;
   expanded: boolean;
+  visibility: NodeVisibility;
 };
 
-type NodeVisibility = "visible" | "hidden";
-
-export type InputTreeState = Record<string, Partial<NodeState>>;
+type InputTreeState = Record<string, Partial<NodeState>>;
 
 type TreeStateHookProps<TData> = {
-  tree: FlatTree<any>;
+  tree: FlatTree<TData>;
   selectedId?: string;
   collapsedIds?: string[];
   onStateChanged?: (newState: Changes) => void;
   estimatedRowHeight: (params: {
     node: FlatTreeItem<TData>;
-    state: NodeState & { visibility: NodeVisibility };
+    state: NodeState;
     index: number;
   }) => number;
   parentRef: RefObject<any>;
+  filter?: (node: FlatTreeItem<TData>) => boolean;
 };
 
 //this is so Framer Motion can be used to render the components
@@ -117,14 +119,11 @@ type HTMLAttributes = Omit<
   "onAnimationStart" | "onDragStart" | "onDragEnd" | "onDrag"
 >;
 
+type Nodes = Record<string, NodeState>;
+
 type TreeState = {
   selected: string | undefined;
-  nodes: Record<
-    string,
-    NodeState & {
-      visibility: NodeVisibility;
-    }
-  >;
+  nodes: Nodes;
   virtualizer: Virtualizer<HTMLElement, Element>;
 
   getTreeProps: () => HTMLAttributes;
@@ -188,10 +187,12 @@ export function useTree<TData>({
   onStateChanged,
   parentRef,
   estimatedRowHeight,
+  filter,
 }: TreeStateHookProps<TData>): TreeState {
   const [state, setState] = useState<InputTreeState>(
     inputTreeStateFrom({ tree, selectedId, collapsedIds })
   );
+  const [filteredOut, setFilteredOut] = useState<Set<string>>(new Set());
 
   const modifyState = useCallback(
     (input: ModifyState) => {
@@ -220,12 +221,13 @@ export function useTree<TData>({
     acc[node.id] = {
       selected: acc[node.id]?.selected ?? defaultSelected,
       expanded: acc[node.id]?.expanded ?? defaultExpanded,
+      visibility: acc[node.id]?.visibility ?? "visible",
     };
     return acc;
   }, state as Record<string, NodeState>);
 
   const stateEntries = Object.entries(concreteState);
-  const selected = stateEntries.find(([id, state]) => state.selected)?.[0];
+  let selected = stateEntries.find(([id, state]) => state.selected)?.[0];
 
   //create the state and visibility for each Node
   //Nodes where the parent is collapsed are hidden, and can't be selected
@@ -242,7 +244,90 @@ export function useTree<TData>({
     acc[node.id] = { ...state, visibility };
 
     return acc;
-  }, {} as Record<string, NodeState & { visibility: NodeVisibility }>);
+  }, {} as Nodes);
+
+  if (filter) {
+    //we need to do two passes, first collect all the nodes that are results
+    const newFilteredOut = new Set<string>();
+    for (const node of tree) {
+      if (!filter(node)) {
+        newFilteredOut.add(node.id);
+      }
+    }
+
+    //we need to store the filtered items in state so it's persisted
+    if (!areSetsEqual(newFilteredOut, filteredOut)) {
+      setFilteredOut(newFilteredOut);
+    }
+
+    //if there are filters we should apply them
+    if (newFilteredOut.size > 0) {
+      const visible = new Set<string>();
+      const expanded = new Set<string>();
+
+      //figure out the state of each node
+      for (const node of tree) {
+        const shouldDisplay = !newFilteredOut.has(node.id);
+
+        //if the node is visible, make all the parents visible and expanded
+        if (shouldDisplay) {
+          //should be visible
+          visible.add(node.id);
+          //if it has children it should be expanded
+          if (node.hasChildren) {
+            expanded.add(node.id);
+          }
+
+          //parents need to be both visible and expanded
+          let parentId = node.parentId;
+          while (parentId) {
+            visible.add(parentId);
+            expanded.add(parentId);
+            parentId = tree.find((node) => node.id === parentId)?.parentId;
+          }
+
+          //children should be  visible and if they have children expanded
+          if (node.hasChildren) {
+            const children = tree.filter((child) => child.parentId === node.id);
+            for (const child of children) {
+              visible.add(child.id);
+              if (child.hasChildren) {
+                expanded.add(child.id);
+              }
+            }
+          }
+        }
+      }
+
+      const allItems = new Set(tree.map((node) => node.id));
+      const hidden = difference(allItems, visible);
+      const collapsed = difference(visible, expanded);
+
+      //now set the visibility and expanded state
+      for (const id of hidden) {
+        nodes[id] = { ...nodes[id], visibility: "hidden" };
+      }
+      for (const id of visible) {
+        nodes[id] = { ...nodes[id], visibility: "visible" };
+      }
+
+      for (const id of collapsed) {
+        nodes[id] = { ...nodes[id], expanded: false };
+      }
+      for (const id of expanded) {
+        nodes[id] = { ...nodes[id], expanded: true };
+      }
+
+      if (selected) {
+        if (visible.has(selected)) {
+          nodes[selected] = { ...nodes[selected], selected: true };
+        } else {
+          nodes[selected] = { ...nodes[selected], selected: false };
+          selected = undefined;
+        }
+      }
+    }
+  }
 
   const virtualizer = useVirtualizer({
     count: tree.length,
@@ -610,4 +695,12 @@ export function flattenTree<TData>(tree: Tree<TData>): FlatTree<TData> {
   flattenNode(tree, undefined, 0);
 
   return flatTree;
+}
+
+function areSetsEqual<T>(a: Set<T>, b: Set<T>): boolean {
+  return a.size === b.size && [...a].every((value) => b.has(value));
+}
+
+function difference<T>(a: Set<T>, b: Set<T>): Set<T> {
+  return new Set([...a].filter((x) => !b.has(x)));
 }
