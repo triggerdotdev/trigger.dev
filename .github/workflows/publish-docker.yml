@@ -20,6 +20,8 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
+        with:
+          submodules: recursive
 
       - name: 🆚 Get the version
         id: get_version
