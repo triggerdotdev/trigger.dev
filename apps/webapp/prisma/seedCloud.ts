@@ -40,6 +40,7 @@ export async function seedCloud(prisma: PrismaClient) {
         create: {
           name: "My Project",
           slug: "my-project-123",
+          externalRef: "my-project-123",
         },
       },
     },

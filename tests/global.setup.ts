@@ -39,6 +39,7 @@ const setup = async () => {
             slug: organization.slug,
           },
         },
+        externalRef: "test-project-123",
       },
       include: {
         organization: {

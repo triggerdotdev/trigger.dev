@@ -2,13 +2,17 @@ import { z } from "zod";
 import {
   CreateAuthorizationCodeResponseSchema,
   GetPersonalAccessTokenResponseSchema,
+  GetProjectDevResponse,
+  CreateBackgroundWorkerRequestBody,
   WhoAmIResponseSchema,
-} from "@trigger.dev/core";
+  CreateBackgroundWorkerResponse,
+} from "@trigger.dev/core/v3";
 
 export class ApiClient {
-  constructor(private readonly apiURL: string) {
-    this.apiURL = apiURL;
-  }
+  constructor(
+    private readonly apiURL: string,
+    private readonly accessToken?: string
+  ) {}
 
   async createAuthorizationCode() {
     return zodfetch(
@@ -29,10 +33,46 @@ export class ApiClient {
     });
   }
 
-  async whoAmI({ accessToken }: { accessToken: string }) {
+  async whoAmI() {
+    if (!this.accessToken) {
+      throw new Error("whoAmI: No access token");
+    }
+
     return zodfetch(WhoAmIResponseSchema, `${this.apiURL}/api/v2/whoami`, {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  async createBackgroundWorker(projectRef: string, body: CreateBackgroundWorkerRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("indexProject: No access token");
+    }
+
+    return zodfetch(
+      CreateBackgroundWorkerResponse,
+      `${this.apiURL}/api/v1/projects/${projectRef}/background-workers`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  async getProjectDevEnv({ projectRef }: { projectRef: string }) {
+    if (!this.accessToken) {
+      throw new Error("getProjectDevEnv: No access token");
+    }
+
+    return zodfetch(GetProjectDevResponse, `${this.apiURL}/api/v1/projects/${projectRef}/dev`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
       },
     });

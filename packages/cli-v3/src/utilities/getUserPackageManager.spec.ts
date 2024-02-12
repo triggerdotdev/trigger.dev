@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
-import { pathExists } from "./fileSystem";
-import { getUserPackageManager } from "./getUserPackageManager";
+import { pathExists } from "./fileSystem.js";
+import { getUserPackageManager } from "./getUserPackageManager.js";
 import * as pathModule from "path";
 import { Mock } from "vitest";
 

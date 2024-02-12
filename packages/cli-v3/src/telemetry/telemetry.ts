@@ -1,6 +1,6 @@
 import { PostHog } from "posthog-node";
 import { nanoid } from "nanoid";
-import { getVersion } from "../utilities/getVersion";
+import { getVersion } from "../utilities/getVersion.js";
 
 const postHogApiKey = "phc_9aSDbJCaDUMdZdHxxMPTvcj7A9fsl3mCgM1RBPmPsl7";
 

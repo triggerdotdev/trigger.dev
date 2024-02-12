@@ -21,7 +21,22 @@
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
+    "./v3": {
+      "import": {
+        "types": "./dist/v3/index.d.mts",
+        "default": "./dist/v3/index.mjs"
+      },
+      "require": "./dist/v3/index.js",
+      "types": "./dist/v3/index.d.ts"
+    },
     "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "v3": [
+        "./dist/v3/index.d.ts"
+      ]
+    }
   },
   "scripts": {
     "clean": "rimraf dist",
@@ -32,6 +47,9 @@
   "dependencies": {
     "@trigger.dev/core": "workspace:^2.3.18",
     "@trigger.dev/core-backend": "workspace:^2.3.18",
+    "@opentelemetry/api": "^1.7.0",
+    "@opentelemetry/api-logs": "^0.48.0",
+    "@opentelemetry/semantic-conventions": "^1.21.0",
     "chalk": "^5.2.0",
     "cronstrue": "^2.21.0",
     "debug": "^4.3.4",
@@ -48,6 +66,7 @@
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
+    "@trigger.dev/tsup": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/node": "18",
     "@types/slug": "^5.0.3",
@@ -56,7 +75,6 @@
     "encoding": "^0.1.13",
     "rimraf": "^3.0.2",
     "tsup": "^8.0.1",
-    "@trigger.dev/tsup": "workspace:*",
     "typed-emitter": "^2.1.0",
     "typescript": "^5.3.0"
   },

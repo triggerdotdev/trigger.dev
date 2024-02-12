@@ -144,8 +144,4 @@ export function getSharedSqsEventConsumer() {
 
     return consumer;
   }
-
-  console.log(
-    "The SqsEventConsumer is disabled because AWS credentials are missing. This is OK as this is an optional feature."
-  );
 }

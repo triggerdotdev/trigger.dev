@@ -54,3 +54,4 @@ apps/**/public/build
 /playwright/.cache/
 
 .cosine
+.trigger/

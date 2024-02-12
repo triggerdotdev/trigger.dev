@@ -1,8 +1,8 @@
-import { spinner, confirm } from "@clack/prompts";
-import { getUserPackageManager, type PackageManager } from "./getUserPackageManager";
-import { logger } from "./logger";
+import { spinner } from "@clack/prompts";
 import chalk from "chalk";
 import { execa } from "execa";
+import { getUserPackageManager, type PackageManager } from "./getUserPackageManager.js";
+import { logger } from "./logger.js";
 
 export async function installDependencies(projectDir: string) {
   logger.info("Installing dependencies...");

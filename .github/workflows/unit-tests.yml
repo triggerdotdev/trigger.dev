@@ -22,6 +22,9 @@ jobs:
           node-version: 18
           cache: "pnpm"
 
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+
       - name: ⎔ Setup Deno
         uses: denoland/setup-deno@v1
         with:

@@ -1,11 +1,12 @@
+import { spinner } from "@clack/prompts";
 import chalk from "chalk";
+import supportsColor from "supports-color";
 import type { Result } from "update-check";
 import checkForUpdate from "update-check";
 import pkg from "../../package.json";
-import { chalkGrey, logo } from "./colors";
-import { getVersion } from "./getVersion";
-import { logger } from "./logger";
-import { spinner, intro } from "@clack/prompts";
+import { chalkGrey, green, logo } from "./colors.js";
+import { getVersion } from "./getVersion.js";
+import { logger } from "./logger.js";
 
 export async function printInitialBanner(performUpdateCheck = true) {
   const packageVersion = getVersion();
@@ -21,7 +22,7 @@ export async function printInitialBanner(performUpdateCheck = true) {
 
     // Log a slightly more noticeable message if this is a major bump
     if (maybeNewVersion !== undefined) {
-      loadingSpinner.stop(`Update available ${chalk.green(maybeNewVersion)})`);
+      loadingSpinner.stop(`Update available ${chalk.green(maybeNewVersion)}`);
       const currentMajor = parseInt(packageVersion.split(".")[0]!);
       const newMajor = parseInt(maybeNewVersion.split(".")[0]!);
       if (newMajor > currentMajor) {
@@ -35,6 +36,25 @@ After installation, run Trigger.dev with \`npx trigger.dev\`.`
       loadingSpinner.stop("On latest version");
     }
   }
+}
+
+export async function printStandloneInitialBanner(performUpdateCheck = true) {
+  const packageVersion = getVersion();
+
+  let text = `\n${logo()} ${chalkGrey(`${packageVersion}`)}`;
+
+  if (performUpdateCheck) {
+    const maybeNewVersion = await updateCheck();
+
+    // Log a slightly more noticeable message if this is a major bump
+    if (maybeNewVersion !== undefined) {
+      text = `${text} (update available ${chalk.green(maybeNewVersion)})`;
+    }
+  }
+
+  logger.log(
+    text + "\n" + (supportsColor.stdout ? chalk.hex(green)("-".repeat(54)) : "-".repeat(54))
+  );
 }
 
 async function doUpdateCheck(): Promise<string | undefined> {
