@@ -87,7 +87,11 @@ export async function devCommand(dir: string, anyOptions: unknown) {
   const authorization = await isLoggedIn();
 
   if (!authorization.ok) {
-    logger.error("You must login first. Use `trigger.dev login` to login.");
+    if (authorization.error === "fetch failed") {
+      logger.error("Fetch failed. Platform down?");
+    } else {
+      logger.error("You must login first. Use `trigger.dev login` to login.");
+    }
     process.exitCode = 1;
     return;
   }

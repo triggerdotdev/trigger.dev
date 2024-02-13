@@ -55,7 +55,11 @@ export async function whoAmI(options?: WhoamiCommandOptions): Promise<WhoAmIResu
   const authentication = await isLoggedIn();
 
   if (!authentication.ok) {
-    loadingSpinner.stop("You must login first. Use `trigger.dev login` to login.");
+    if (authentication.error === "fetch failed") {
+      loadingSpinner.stop("Fetch failed. Platform down?");
+    } else {
+      loadingSpinner.stop("You must login first. Use `trigger.dev login` to login.");
+    }
 
     return {
       success: false,
