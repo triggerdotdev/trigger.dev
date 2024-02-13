@@ -1,19 +1,17 @@
-import { Link } from "@remix-run/react";
+import { ShieldCheckIcon } from "@heroicons/react/20/solid";
+import { ArrowLeftIcon } from "@heroicons/react/24/solid";
+import { DiscordIcon } from "@trigger.dev/companyicons";
 import { User } from "@trigger.dev/database";
+import { useFeatures } from "~/hooks/useFeatures";
 import { cn } from "~/utils/cn";
 import { accountPath, personalAccessTokensPath, rootPath } from "~/utils/pathBuilder";
-import { Header3 } from "../primitives/Headers";
-import { ArrowLeftIcon, ChevronLeftIcon } from "@heroicons/react/24/solid";
-import { SideMenuHeader } from "./SideMenuHeader";
-import { SideMenuItem } from "./SideMenuItem";
-import { DiscordIcon } from "@trigger.dev/companyicons";
 import { Feedback } from "../Feedback";
 import { Button, LinkButton } from "../primitives/Buttons";
-import { ShieldCheckIcon } from "@heroicons/react/20/solid";
-import { useV3Enabled } from "~/root";
+import { SideMenuHeader } from "./SideMenuHeader";
+import { SideMenuItem } from "./SideMenuItem";
 
 export function AccountSideMenu({ user }: { user: User }) {
-  const v3Enabled = useV3Enabled();
+  const { v3Enabled } = useFeatures();
 
   return (
     <div

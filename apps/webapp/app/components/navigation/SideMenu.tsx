@@ -14,7 +14,6 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
 import { MatchedProject } from "~/hooks/useProject";
 import { User } from "~/models/user.server";
-import { useV3Enabled } from "~/root";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { cn } from "~/utils/cn";
 import {
@@ -396,7 +395,7 @@ function ProjectSelector({
 function UserMenu({ user }: { user: SideMenuUser }) {
   const [isProfileMenuOpen, setProfileMenuOpen] = useState(false);
   const navigation = useNavigation();
-  const v3Enabled = useV3Enabled();
+  const { v3Enabled } = useFeatures();
 
   useEffect(() => {
     setProfileMenuOpen(false);
