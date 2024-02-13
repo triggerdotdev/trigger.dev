@@ -70,6 +70,8 @@ const EnvironmentSchema = z.object({
 
   //v3
   V3_ENABLED: z.string().default("false"),
+  IMAGE_REGISTRY: z.string().default("docker.io"),
+  IMAGE_REPO: z.string().default("task"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

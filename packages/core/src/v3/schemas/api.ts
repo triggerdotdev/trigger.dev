@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BackgroundWorkerMetadata } from "./resources";
+import { BackgroundWorkerMetadata, ImageDetailsMetadata } from "./resources";
 
 export const WhoAmIResponseSchema = z.object({
   userId: z.string(),
@@ -51,3 +51,16 @@ export const TriggerTaskResponse = z.object({
 });
 
 export type TriggerTaskResponse = z.infer<typeof TriggerTaskResponse>;
+
+export const CreateImageDetailsRequestBody = z.object({
+  metadata: ImageDetailsMetadata,
+});
+
+export type CreateImageDetailsRequestBody = z.infer<typeof CreateImageDetailsRequestBody>;
+
+export const CreateImageDetailsResponse = z.object({
+  id: z.string(),
+  contentHash: z.string(),
+});
+
+export type CreateImageDetailsResponse = z.infer<typeof CreateImageDetailsResponse>;

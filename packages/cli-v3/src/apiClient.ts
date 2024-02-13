@@ -6,6 +6,8 @@ import {
   CreateBackgroundWorkerRequestBody,
   WhoAmIResponseSchema,
   CreateBackgroundWorkerResponse,
+  CreateImageDetailsRequestBody,
+  CreateImageDetailsResponse,
 } from "@trigger.dev/core/v3";
 
 export class ApiClient {
@@ -58,6 +60,25 @@ export class ApiClient {
     return zodfetch(
       CreateBackgroundWorkerResponse,
       `${this.apiURL}/api/v1/projects/${projectRef}/background-workers`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  async createImageDetails(projectRef: string, body: CreateImageDetailsRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("indexProject: No access token");
+    }
+
+    return zodfetch(
+      CreateImageDetailsResponse,
+      `${this.apiURL}/api/v1/projects/${projectRef}/image-details`,
       {
         method: "POST",
         headers: {
