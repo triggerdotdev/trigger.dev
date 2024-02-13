@@ -1,4 +1,5 @@
 import type {
+  BackgroundWorkerTask,
   EventRecord,
   Integration,
   TriggerHttpEndpoint,
@@ -19,6 +20,7 @@ export type TriggerForPath = Pick<TriggerSource, "id">;
 export type EventForPath = Pick<EventRecord, "id">;
 export type WebhookForPath = Pick<Webhook, "id">;
 export type HttpEndpointForPath = Pick<TriggerHttpEndpoint, "key">;
+export type TaskForPath = Pick<BackgroundWorkerTask, "friendlyId">;
 
 export const OrganizationParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -62,6 +64,10 @@ export const TriggerSourceRunTaskParamsSchema = TriggerSourceRunParamsSchema.ext
 
 export const HttpEndpointParamSchema = ProjectParamSchema.extend({
   httpEndpointParam: z.string(),
+});
+
+export const TaskParamSchema = ProjectParamSchema.extend({
+  taskParam: z.string(),
 });
 
 export function trimTrailingSlash(path: string) {
@@ -271,9 +277,12 @@ function projectParam(project: ProjectForPath) {
 }
 
 //v3 project
-
 export function v3ProjectPath(organization: OrgForPath, project: ProjectForPath) {
   return `/orgs/${organizationParam(organization)}/projects/v3/${projectParam(project)}`;
+}
+
+export function v3TaskPath(organization: OrgForPath, project: ProjectForPath, task: TaskForPath) {
+  return `${v3ProjectPath(organization, project)}/tasks/${task.friendlyId}`;
 }
 
 // Integration
