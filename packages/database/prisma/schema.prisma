@@ -411,6 +411,8 @@ model Project {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
+  version ProjectVersion @default(V2)
+
   environments          RuntimeEnvironment[]
   endpoints             Endpoint[]
   jobs                  Job[]
@@ -424,6 +426,11 @@ model Project {
   backgroundWorkerTasks BackgroundWorkerTask[]
   TaskRun               TaskRun[]
   TaskTag               TaskTag[]
+}
+
+enum ProjectVersion {
+  V2
+  V3
 }
 
 model Endpoint {
