@@ -9,10 +9,14 @@ import {
 } from "@trigger.dev/core/v3";
 
 export class ApiClient {
+  private readonly apiURL: string;
+
   constructor(
-    private readonly apiURL: string,
+    apiURL: string,
     private readonly accessToken?: string
-  ) {}
+  ) {
+    this.apiURL = apiURL.replace(/\/$/, "");
+  }
 
   async createAuthorizationCode() {
     return zodfetch(
