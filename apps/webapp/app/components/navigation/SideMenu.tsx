@@ -63,7 +63,13 @@ import { MenuCount, SideMenuItem } from "./SideMenuItem";
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
   MatchedProject,
-  "id" | "name" | "slug" | "hasInactiveExternalTriggers" | "jobCount" | "httpEndpointCount"
+  | "id"
+  | "name"
+  | "slug"
+  | "hasInactiveExternalTriggers"
+  | "jobCount"
+  | "httpEndpointCount"
+  | "version"
 >;
 
 type SideMenuProps = {
