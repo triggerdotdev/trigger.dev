@@ -1491,6 +1491,8 @@ model BackgroundWorker {
   friendlyId String @unique
 
   contentHash String
+  sdkVersion  String @default("unknown")
+  cliVersion  String @default("unknown")
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
