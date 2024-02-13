@@ -6,7 +6,7 @@ import { readJSONFileSync } from "./fileSystem.js";
 import { logger } from "./logger.js";
 
 function getGlobalConfigFolderPath() {
-  const configDir = xdgAppPaths(".trigger").config();
+  const configDir = xdgAppPaths("trigger").config();
 
   return configDir;
 }
@@ -20,7 +20,7 @@ export const UserAuthConfigSchema = z.object({
 export type UserAuthConfig = z.infer<typeof UserAuthConfigSchema>;
 
 function getAuthConfigFilePath() {
-  return path.join(getGlobalConfigFolderPath(), "config", "default.json");
+  return path.join(getGlobalConfigFolderPath(), "default.json");
 }
 
 export function writeAuthConfigFile(config: UserAuthConfig) {
