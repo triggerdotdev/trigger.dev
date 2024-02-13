@@ -135,6 +135,10 @@ export function organizationSettingsPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/settings`;
 }
 
+export function organizationIntegrationsPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/integrations`;
+}
+
 export function usagePath(organization: OrgForPath) {
   return `${organizationPath(organization)}/billing`;
 }
@@ -208,10 +212,6 @@ export function projectJobsPath(organization: OrgForPath, project: ProjectForPat
   return projectPath(organization, project);
 }
 
-export function organizationIntegrationsPath(organization: OrgForPath) {
-  return `${organizationPath(organization)}/integrations`;
-}
-
 export function projectTriggersPath(organization: OrgForPath, project: ProjectForPath) {
   return `${projectPath(organization, project)}/triggers`;
 }
@@ -268,6 +268,12 @@ export function newProjectPath(organization: OrgForPath) {
 
 function projectParam(project: ProjectForPath) {
   return project.slug;
+}
+
+//v3 project
+
+export function v3ProjectPath(organization: OrgForPath, project: ProjectForPath) {
+  return `/orgs/${organizationParam(organization)}/projects/v3/${projectParam(project)}`;
 }
 
 // Integration

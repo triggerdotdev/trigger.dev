@@ -23,8 +23,8 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
     throw new Response("Project not found", { status: 404, statusText: "Project not found" });
   }
 
-  if (project.version === "V3") {
-    return redirect(v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }));
+  if (project.version === "V2") {
+    return redirect(projectPath({ slug: organizationSlug }, { slug: projectParam }));
   }
 
   return null;
@@ -55,5 +55,5 @@ export default function Project() {
 export function ErrorBoundary() {
   const org = useOrganization();
   const project = useProject();
-  return <RouteErrorDisplay button={{ title: project.name, to: projectPath(org, project) }} />;
+  return <RouteErrorDisplay button={{ title: project.name, to: v3ProjectPath(org, project) }} />;
 }
