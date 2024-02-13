@@ -36,6 +36,7 @@ import {
   projectSettingsPath,
   projectSetupPath,
   projectTriggersPath,
+  v3ProjectPath,
 } from "~/utils/pathBuilder";
 import { Feedback } from "../Feedback";
 import { ImpersonationBanner } from "../ImpersonationBanner";
@@ -120,63 +121,11 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
           ref={borderRef}
         >
           <div className="mb-6 flex flex-col gap-1 px-1">
-            <SideMenuHeader title={"Project"}>
-              <PopoverMenuItem
-                to={projectSetupPath(organization, project)}
-                title="Framework setup"
-                icon="plus"
-              />
-            </SideMenuHeader>
-            <SideMenuItem
-              name="Jobs"
-              icon="job"
-              iconColor="text-indigo-500"
-              count={project.jobCount}
-              to={projectPath(organization, project)}
-              data-action="jobs"
-            />
-            <SideMenuItem
-              name="Runs"
-              icon="runs"
-              iconColor="text-teal-500"
-              to={projectRunsPath(organization, project)}
-            />
-            <SideMenuItem
-              name="Triggers"
-              icon="trigger"
-              iconColor="text-amber-500"
-              to={projectTriggersPath(organization, project)}
-              data-action="triggers"
-              hasWarning={project.hasInactiveExternalTriggers}
-            />
-            <SideMenuItem
-              name="Events"
-              icon={CursorArrowRaysIcon}
-              iconColor="text-sky-500"
-              to={projectEventsPath(organization, project)}
-            />
-            <SideMenuItem
-              name="HTTP endpoints"
-              icon="http-endpoint"
-              iconColor="text-pink-500"
-              count={project.httpEndpointCount}
-              to={projectHttpEndpointsPath(organization, project)}
-              data-action="httpendpoints"
-            />
-            <SideMenuItem
-              name="Environments & API Keys"
-              icon="environment"
-              iconColor="text-rose-500"
-              to={projectEnvironmentsPath(organization, project)}
-              data-action="environments & api keys"
-            />
-            <SideMenuItem
-              name="Project settings"
-              icon="settings"
-              iconColor="text-teal-500"
-              to={projectSettingsPath(organization, project)}
-              data-action="project-settings"
-            />
+            {project.version === "V2" ? (
+              <V2ProjectSideMenu organization={organization} project={project} />
+            ) : (
+              <V3ProjectSideMenu organization={organization} project={project} />
+            )}
           </div>
           <div className="mb-1 flex flex-col gap-1 px-1">
             <SideMenuHeader title={"Organization"}>
@@ -457,5 +406,117 @@ function UserMenu({ user }: { user: SideMenuUser }) {
         </Fragment>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function V2ProjectSideMenu({
+  project,
+  organization,
+}: {
+  project: SideMenuProject;
+  organization: MatchedOrganization;
+}) {
+  return (
+    <>
+      <SideMenuHeader title={"Project"}>
+        <PopoverMenuItem
+          to={projectSetupPath(organization, project)}
+          title="Framework setup"
+          icon="plus"
+        />
+      </SideMenuHeader>
+      <SideMenuItem
+        name="Jobs"
+        icon="job"
+        iconColor="text-indigo-500"
+        count={project.jobCount}
+        to={projectPath(organization, project)}
+        data-action="jobs"
+      />
+      <SideMenuItem
+        name="Runs"
+        icon="runs"
+        iconColor="text-teal-500"
+        to={projectRunsPath(organization, project)}
+      />
+      <SideMenuItem
+        name="Triggers"
+        icon="trigger"
+        iconColor="text-amber-500"
+        to={projectTriggersPath(organization, project)}
+        data-action="triggers"
+        hasWarning={project.hasInactiveExternalTriggers}
+      />
+      <SideMenuItem
+        name="Events"
+        icon={CursorArrowRaysIcon}
+        iconColor="text-sky-500"
+        to={projectEventsPath(organization, project)}
+      />
+      <SideMenuItem
+        name="HTTP endpoints"
+        icon="http-endpoint"
+        iconColor="text-pink-500"
+        count={project.httpEndpointCount}
+        to={projectHttpEndpointsPath(organization, project)}
+        data-action="httpendpoints"
+      />
+      <SideMenuItem
+        name="Environments & API Keys"
+        icon="environment"
+        iconColor="text-rose-500"
+        to={projectEnvironmentsPath(organization, project)}
+        data-action="environments & api keys"
+      />
+      <SideMenuItem
+        name="Project settings"
+        icon="settings"
+        iconColor="text-teal-500"
+        to={projectSettingsPath(organization, project)}
+        data-action="project-settings"
+      />
+    </>
+  );
+}
+
+function V3ProjectSideMenu({
+  project,
+  organization,
+}: {
+  project: SideMenuProject;
+  organization: MatchedOrganization;
+}) {
+  return (
+    <>
+      <SideMenuHeader title={"Project"} />
+      <SideMenuItem
+        name="Tasks"
+        icon="job"
+        iconColor="text-indigo-500"
+        count={project.jobCount}
+        to={v3ProjectPath(organization, project)}
+        data-action="tasks"
+      />
+      <SideMenuItem
+        name="Runs"
+        icon="runs"
+        iconColor="text-teal-500"
+        to={projectRunsPath(organization, project)}
+      />
+      <SideMenuItem
+        name="Environments & API Keys"
+        icon="environment"
+        iconColor="text-rose-500"
+        to={projectEnvironmentsPath(organization, project)}
+        data-action="environments & api keys"
+      />
+      <SideMenuItem
+        name="Project settings"
+        icon="settings"
+        iconColor="text-teal-500"
+        to={projectSettingsPath(organization, project)}
+        data-action="project-settings"
+      />
+    </>
   );
 }
