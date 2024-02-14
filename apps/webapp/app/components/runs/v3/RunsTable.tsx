@@ -47,12 +47,12 @@ export function RunsTable({
         <TableRow>
           <TableHeaderCell>Run</TableHeaderCell>
           <TableHeaderCell>Task</TableHeaderCell>
+          <TableHeaderCell>Version</TableHeaderCell>
           <TableHeaderCell>Env</TableHeaderCell>
           <TableHeaderCell>Status</TableHeaderCell>
           <TableHeaderCell>Started</TableHeaderCell>
           <TableHeaderCell>Duration</TableHeaderCell>
           <TableHeaderCell>Test</TableHeaderCell>
-          <TableHeaderCell>Version</TableHeaderCell>
           <TableHeaderCell>Created at</TableHeaderCell>
           <TableHeaderCell>
             <span className="sr-only">Go to page</span>
@@ -79,6 +79,7 @@ export function RunsTable({
                   {typeof run.number === "number" ? `#${run.number}` : "-"}
                 </TableCell>
                 <TableCell to={path}>{run.taskIdentifier}</TableCell>
+                <TableCell to={path}>{run.version ?? "–"}</TableCell>
                 <TableCell to={path}>
                   <EnvironmentLabel environment={run.environment} userName={usernameForEnv} />
                 </TableCell>
@@ -98,7 +99,6 @@ export function RunsTable({
                     <StopIcon className="h-4 w-4 text-slate-850" />
                   )}
                 </TableCell>
-                <TableCell to={path}>{run.version ?? "–"}</TableCell>
                 <TableCell to={path}>
                   {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
                 </TableCell>
