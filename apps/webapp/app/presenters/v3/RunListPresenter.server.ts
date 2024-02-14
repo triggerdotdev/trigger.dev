@@ -1,4 +1,4 @@
-import { TaskAttemptStatus } from "@trigger.dev/database";
+import { TaskAttemptStatus, TaskRunAttemptStatus } from "@trigger.dev/database";
 import { Direction } from "~/components/runs/RunStatuses";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
@@ -82,7 +82,7 @@ export class RunListPresenter {
         taskIdentifier: string;
         version: string | null;
         runtimeEnvironmentId: string;
-        status: TaskAttemptStatus | null;
+        status: TaskRunAttemptStatus | null;
         createdAt: Date;
         startedAt: Date | null;
         completedAt: Date | null;

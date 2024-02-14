@@ -21,6 +21,7 @@ import { RunListItem } from "~/presenters/v3/RunListPresenter.server";
 import { v3RunPath } from "~/utils/pathBuilder";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { TaskRunStatus } from "./TaskRunStatus";
 
 type RunsTableProps = {
   total: number;
@@ -83,7 +84,9 @@ export function RunsTable({
                 <TableCell to={path}>
                   <EnvironmentLabel environment={run.environment} userName={usernameForEnv} />
                 </TableCell>
-                <TableCell to={path}>{run.status ?? "Enqueued"}</TableCell>
+                <TableCell to={path}>
+                  <TaskRunStatus status={run.status} />
+                </TableCell>
                 <TableCell to={path}>
                   {run.startedAt ? <DateTime date={run.startedAt} /> : "–"}
                 </TableCell>
