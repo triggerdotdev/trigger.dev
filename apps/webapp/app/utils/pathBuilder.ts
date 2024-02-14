@@ -66,7 +66,8 @@ export const HttpEndpointParamSchema = ProjectParamSchema.extend({
   httpEndpointParam: z.string(),
 });
 
-export const TaskParamSchema = ProjectParamSchema.extend({
+//v3
+export const v3TaskParamsSchema = ProjectParamSchema.extend({
   taskParam: z.string(),
 });
 
@@ -283,6 +284,14 @@ export function v3ProjectPath(organization: OrgForPath, project: ProjectForPath)
 
 export function v3TaskPath(organization: OrgForPath, project: ProjectForPath, task: TaskForPath) {
   return `${v3ProjectPath(organization, project)}/tasks/${task.friendlyId}`;
+}
+
+export function v3TaskTestPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  task: TaskForPath
+) {
+  return `${v3TaskPath(organization, project, task)}/test`;
 }
 
 // Integration
