@@ -23,7 +23,7 @@ import {
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
-import { TaskListPresenter } from "~/presenters/BackgroundWorkerPresenter.server";
+import { TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema, v3TaskPath } from "~/utils/pathBuilder";
