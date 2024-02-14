@@ -5,6 +5,7 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { env } from "~/env.server";
+import { workerQueue } from "~/services/worker.server";
 
 function escapeStringForRegex(rawString: string) {
   return rawString.replace(/[|\\{}()[\]^$+*?.]/g, "\\$&").replace(/-/g, "\\x2d");
@@ -43,8 +44,15 @@ export class CreateImageDetailsService {
       imageTag: body.metadata.imageTag,
     });
 
-    const imageDetails = await this.#prismaClient.imageDetails.create({
-      data: {
+    const imageDetails = await this.#prismaClient.imageDetails.upsert({
+      where: {
+        projectId_runtimeEnvironmentId_tag: {
+          tag: body.metadata.imageTag,
+          runtimeEnvironmentId: environment.id,
+          projectId: project.id,
+        },
+      },
+      create: {
         friendlyId: generateFriendlyId("image"),
         tag: body.metadata.imageTag,
         runtimeEnvironmentId: environment.id,
@@ -52,9 +60,13 @@ export class CreateImageDetailsService {
         metadata: body.metadata,
         contentHash: body.metadata.contentHash,
       },
+      update: {
+        metadata: body.metadata,
+        contentHash: body.metadata.contentHash,
+      },
     });
 
-    // TODO: enqueue index task
+    await workerQueue.enqueue("indexTasks", { id: imageDetails.id });
 
     return imageDetails;
   }
