@@ -37,6 +37,7 @@ import {
   projectSetupPath,
   projectTriggersPath,
   v3ProjectPath,
+  v3RunsPath,
 } from "~/utils/pathBuilder";
 import { Feedback } from "../Feedback";
 import { ImpersonationBanner } from "../ImpersonationBanner";
@@ -501,7 +502,7 @@ function V3ProjectSideMenu({
         name="Runs"
         icon="runs"
         iconColor="text-teal-500"
-        to={projectRunsPath(organization, project)}
+        to={v3RunsPath(organization, project)}
       />
       <SideMenuItem
         name="Environments & API Keys"

@@ -26,7 +26,7 @@ import { useUser } from "~/hooks/useUser";
 import { TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, v3TaskPath } from "~/utils/pathBuilder";
+import { ProjectParamSchema, v3RunsPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -90,7 +90,7 @@ export default function Page() {
                           user.id !== task.environment.userId
                             ? task.environment.userName
                             : undefined;
-                        const path = v3TaskPath(organization, project, task);
+                        const path = v3RunsPath(organization, project);
                         return (
                           <TableRow key={task.id} className="group">
                             <TableCell to={path}>

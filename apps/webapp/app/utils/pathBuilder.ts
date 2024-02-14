@@ -2,6 +2,7 @@ import type {
   BackgroundWorkerTask,
   EventRecord,
   Integration,
+  TaskRun,
   TriggerHttpEndpoint,
   TriggerSource,
   Webhook,
@@ -21,6 +22,7 @@ export type EventForPath = Pick<EventRecord, "id">;
 export type WebhookForPath = Pick<Webhook, "id">;
 export type HttpEndpointForPath = Pick<TriggerHttpEndpoint, "key">;
 export type TaskForPath = Pick<BackgroundWorkerTask, "friendlyId">;
+export type v3RunForPath = Pick<TaskRun, "friendlyId">;
 
 export const OrganizationParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -282,16 +284,12 @@ export function v3ProjectPath(organization: OrgForPath, project: ProjectForPath)
   return `/orgs/${organizationParam(organization)}/projects/v3/${projectParam(project)}`;
 }
 
-export function v3TaskPath(organization: OrgForPath, project: ProjectForPath, task: TaskForPath) {
-  return `${v3ProjectPath(organization, project)}/tasks/${task.friendlyId}`;
+export function v3RunsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/runs`;
 }
 
-export function v3TaskTestPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  task: TaskForPath
-) {
-  return `${v3TaskPath(organization, project, task)}/test`;
+export function v3RunPath(organization: OrgForPath, project: ProjectForPath, run: v3RunForPath) {
+  return `${v3RunsPath(organization, project)}/${run.friendlyId}`;
 }
 
 // Integration
