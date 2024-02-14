@@ -1,6 +1,7 @@
-import { Outlet, useLocation } from "@remix-run/react";
+import { Outlet, UIMatch, useLocation } from "@remix-run/react";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
+import invariant from "tiny-invariant";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -21,7 +22,7 @@ import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useOptionalRun } from "~/hooks/useRun";
-import { useTypedMatchData } from "~/hooks/useTypedMatchData";
+import { useTypedMatchData, useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { TaskPresenter } from "~/presenters/v3/TaskPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { titleCase } from "~/utils";
@@ -58,6 +59,28 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     task,
   });
 };
+
+export type MatchedTask = UseDataFunctionReturn<typeof loader>["task"];
+const matchId = "routes/_app.orgs.$organizationSlug.projects.v3.$projectParam.tasks.$taskParam";
+
+export function useOptionalTask(matches?: UIMatch[]) {
+  const routeMatch = useTypedMatchesData<typeof loader>({
+    id: matchId,
+    matches,
+  });
+
+  if (!routeMatch) {
+    return undefined;
+  }
+
+  return routeMatch.task;
+}
+
+export function useTask(matches?: UIMatch[]) {
+  const task = useOptionalTask(matches);
+  invariant(task, "Task must be defined");
+  return task;
+}
 
 export const handle: Handle = {
   breadcrumb: (match) => {
