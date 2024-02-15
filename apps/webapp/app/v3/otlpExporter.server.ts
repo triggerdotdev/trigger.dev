@@ -89,6 +89,8 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
 
   return resourceLog.scopeLogs.flatMap((scopeLog) => {
     return scopeLog.logRecords.map((log) => {
+      const logLevel = logLevelToEventLevel(log.severityNumber);
+
       return {
         traceId: binaryToHex(log.traceId),
         spanId: eventRepository.generateSpanId(),
@@ -97,6 +99,7 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
         isPartial: false,
         kind: "INTERNAL",
         level: logLevelToEventLevel(log.severityNumber),
+        isError: logLevel === "ERROR",
         status: logLevelToEventStatus(log.severityNumber),
         startTime: convertUnixNanoToDate(log.timeUnixNano),
         properties: {
@@ -145,6 +148,7 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
         parentId: binaryToHex(span.parentSpanId),
         message: span.name,
         isPartial,
+        isError: span.status?.code === Status_StatusCode.ERROR,
         kind: spanKindToEventKind(span.kind),
         level: "TRACE",
         status: spanStatusToEventStatus(span.status),

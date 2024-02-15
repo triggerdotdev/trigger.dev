@@ -104,7 +104,7 @@ class TaskExecutor {
           {
             kind: SpanKind.CONSUMER,
             attributes: {
-              [SemanticInternalAttributes.STYLE_ICON]: "task",
+              [SemanticInternalAttributes.STYLE_ICON]: "attempt",
             },
           },
           tracer.extractContext(traceContext)

@@ -1,13 +1,7 @@
-import { Prisma, TaskEvent, TaskRunAttemptStatus } from "@trigger.dev/database";
-import { number } from "zod";
-import {
-  FlatTreeItem,
-  createFlatTreeFromWithoutChildren,
-  createTreeFromFlatItems,
-  flattenTree,
-} from "~/components/primitives/TreeView";
-import { Direction } from "~/components/runs/RunStatuses";
-import { ExtendedTaskAttemptStatus } from "~/components/runs/v3/RunFilters";
+import { StyleSchema } from "@trigger.dev/core";
+import { TaskEventStyle } from "@trigger.dev/core/v3";
+import { TaskEvent } from "@trigger.dev/database";
+import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
 
@@ -87,7 +81,9 @@ export class RunPresenter {
           parentId: event.parentId ?? undefined,
           data: {
             message: event.message,
+            style: TaskEventStyle.parse(event.style),
             duration: Number(event.duration),
+            isError: event.isError,
           },
         };
       })

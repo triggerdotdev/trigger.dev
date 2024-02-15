@@ -15,9 +15,17 @@ import { PageBody } from "~/components/layout/AppLayout";
 import { PageHeader, PageTitleRow, PageTitle } from "~/components/primitives/PageHeader";
 import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { useRef } from "react";
-import { DocumentIcon } from "@heroicons/react/20/solid";
-import { FolderOpenIcon, FolderIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  DocumentIcon,
+  InformationCircleIcon,
+} from "@heroicons/react/20/solid";
+import { FolderOpenIcon, FolderIcon, WandIcon } from "lucide-react";
 import { useTree, TreeView } from "~/components/primitives/TreeView";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import { Icon } from "~/components/primitives/Icon";
+import { NamedIcon } from "~/components/primitives/NamedIcon";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -106,46 +114,89 @@ function TasksTreeView({ events }: { events: RunEvent[] }) {
         nodes={nodes}
         getNodeProps={getNodeProps}
         getTreeProps={getTreeProps}
-        parentClassName="h-full bg-slate-900"
+        parentClassName="h-full"
         renderNode={({ node, state, index, virtualizer, virtualItem }) => (
           <div
-            style={{
-              paddingLeft: `${node.level * 1}rem`,
-            }}
             className={cn(
-              "flex cursor-pointer items-center gap-2 py-1 hover:bg-blue-500/10",
-              state.selected && "bg-blue-500/20 hover:bg-blue-500/30"
+              "flex h-8 cursor-pointer items-center rounded-sm border border-transparent",
+              node.data.isError ? "bg-rose-500/10 hover:bg-rose-500/20" : "hover:bg-slate-900",
+              state.selected && (node.data.isError ? "border-rose-500" : "border-indigo-500")
             )}
             onClick={() => {
               toggleNodeSelection(node.id);
             }}
           >
-            <div
-              className="h-4 w-4"
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleExpandNode(node.id);
-                selectNode(node.id);
-                scrollToNode(node.id);
-              }}
-              onKeyDown={(e) => {
-                console.log(e.key);
-              }}
-            >
-              {node.hasChildren ? (
-                state.expanded ? (
-                  <FolderOpenIcon className="h-4 w-4 text-blue-500" />
+            <div className="flex h-8 items-center">
+              {Array.from({ length: node.level }).map((_, index) => (
+                <TaskLine key={index} isError={node.data.isError} isSelected={state.selected} />
+              ))}
+              <div
+                className={cn(
+                  "flex h-8 w-4 items-center",
+                  node.hasChildren &&
+                    (node.data.isError ? "hover:bg-rose-500/30" : "hover:bg-slate-800")
+                )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleExpandNode(node.id);
+                  selectNode(node.id);
+                  scrollToNode(node.id);
+                }}
+                onKeyDown={(e) => {
+                  console.log(e.key);
+                }}
+              >
+                {node.hasChildren ? (
+                  state.expanded ? (
+                    <ChevronDownIcon className="h-4 w-4 text-slate-400" />
+                  ) : (
+                    <ChevronRightIcon className="h-4 w-4 text-slate-400" />
+                  )
                 ) : (
-                  <FolderIcon className="h-4 w-4 text-blue-500/50" />
-                )
-              ) : (
-                <DocumentIcon className="h-4 w-4" />
-              )}
+                  <div className="h-8 w-4" />
+                )}
+              </div>
             </div>
-            <div>{node.data.message}</div>
+
+            <div className="flex items-center gap-2">
+              <TaskIcon name={node.data.style?.icon} />
+              <Paragraph
+                variant="small/bright"
+                className={cn(node.data.isError && "text-rose-500")}
+              >
+                {node.data.message} {node.data.isError && "Error"}
+              </Paragraph>
+            </div>
           </div>
         )}
       />
     </>
+  );
+}
+
+function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boolean }) {
+  return (
+    <div className={cn("h-8 w-2 border-r", isError ? "border-rose-500/40" : "border-slate-800")} />
+  );
+}
+
+function TaskIcon({ name }: { name: string | undefined }) {
+  if (!name) return <InformationCircleIcon className="h-4 w-4 text-slate-800" />;
+
+  switch (name) {
+    case "task":
+      return <DocumentIcon className="h-4 w-4" />;
+    case "attempt":
+      return <WandIcon className="h-4 w-4" />;
+    case "wait":
+      return <FolderIcon className="h-4 w-4" />;
+  }
+
+  return (
+    <NamedIcon
+      name={name}
+      className="h-4 w-4"
+      fallback={<InformationCircleIcon className="h-4 w-4 text-slate-800" />}
+    />
   );
 }

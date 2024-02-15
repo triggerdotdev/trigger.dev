@@ -140,7 +140,7 @@ export class EventRepository {
     };
 
     const style = {
-      [SemanticInternalAttributes.STYLE_ICON]: "play",
+      [SemanticInternalAttributes.STYLE_ICON]: "task",
     };
 
     if (!options.attributes.runId) {
