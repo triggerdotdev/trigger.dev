@@ -132,8 +132,16 @@ export class RunListPresenter {
           ? Prisma.sql`AND tr."runtimeEnvironmentId" IN (${Prisma.join(environments)})`
           : Prisma.empty
       }
-      AND tr."createdAt" > '2024-02-13 12:58:40'
-      AND tr."createdAt" < '2024-02-14 12:58:40'
+      ${
+        from
+          ? Prisma.sql`AND tr."createdAt" >= ${new Date(from).toISOString()}::timestamp`
+          : Prisma.empty
+      } 
+      ${
+        to
+          ? Prisma.sql`AND tr."createdAt" <= ${new Date(to).toISOString()}::timestamp`
+          : Prisma.empty
+      } 
   GROUP BY
     tr."friendlyId", tr."taskIdentifier", tr."runtimeEnvironmentId", tr.id, bw.version, tra.status, tr."createdAt", tra."startedAt", tra."completedAt"
   ORDER BY

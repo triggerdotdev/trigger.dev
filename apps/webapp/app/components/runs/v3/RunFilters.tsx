@@ -47,8 +47,8 @@ export const TaskRunListSearchFilters = z.object({
     (value) => (typeof value === "string" ? value.split(",") : undefined),
     TaskAttemptStatus.array().optional()
   ),
-  from: z.number().optional(),
-  to: z.number().optional(),
+  from: z.coerce.number().optional(),
+  to: z.coerce.number().optional(),
 });
 
 const All = "ALL";
