@@ -74,11 +74,10 @@ export default function Page() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHeaderCell>Version</TableHeaderCell>
-                      <TableHeaderCell>Function</TableHeaderCell>
-                      <TableHeaderCell>ID</TableHeaderCell>
+                      <TableHeaderCell>Task ID</TableHeaderCell>
+                      <TableHeaderCell>Task</TableHeaderCell>
+                      <TableHeaderCell>Environment</TableHeaderCell>
                       <TableHeaderCell>Last run</TableHeaderCell>
-                      <TableHeaderCell>File</TableHeaderCell>
                       <TableHeaderCell>Created</TableHeaderCell>
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
@@ -93,15 +92,16 @@ export default function Page() {
                         const path = v3RunsPath(organization, project, { tasks: [task.slug] });
                         return (
                           <TableRow key={task.id} className="group">
+                            <TableCell to={path}>{task.slug}</TableCell>
                             <TableCell to={path}>
-                              <VersionLabel
-                                version={task.worker.version}
+                              {task.filePath} {task.exportName}()
+                            </TableCell>
+                            <TableCell to={path}>
+                              <EnvironmentLabel
                                 environment={task.environment}
                                 userName={usernameForEnv}
                               />
                             </TableCell>
-                            <TableCell to={path}>{task.exportName}()</TableCell>
-                            <TableCell to={path}>{task.slug}</TableCell>
                             <TableCell to={path}>
                               {task.latestRun ? (
                                 <div
@@ -119,7 +119,6 @@ export default function Page() {
                                 "Never run"
                               )}
                             </TableCell>
-                            <TableCell to={path}>{task.filePath}</TableCell>
                             <TableCell to={path}>
                               <DateTime date={task.createdAt} />
                             </TableCell>

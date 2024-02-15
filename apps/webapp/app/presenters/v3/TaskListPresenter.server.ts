@@ -23,30 +23,14 @@ export class TaskListPresenter {
     projectSlug: Project["slug"];
     organizationSlug: Organization["slug"];
   }) {
-    const tasks = await this.#prismaClient.backgroundWorkerTask.findMany({
+    const project = await this.#prismaClient.project.findFirstOrThrow({
       select: {
         id: true,
-        slug: true,
-        filePath: true,
-        exportName: true,
-        friendlyId: true,
-        createdAt: true,
-        worker: {
+        environments: {
           select: {
             id: true,
-            version: true,
-            sdkVersion: true,
-            cliVersion: true,
-            createdAt: true,
-            updatedAt: true,
-            friendlyId: true,
-          },
-        },
-        runtimeEnvironment: {
-          select: {
-            id: true,
-            slug: true,
             type: true,
+            slug: true,
             orgMember: {
               select: {
                 user: {
@@ -62,12 +46,37 @@ export class TaskListPresenter {
         },
       },
       where: {
-        project: {
-          slug: projectSlug,
+        slug: projectSlug,
+        organization: {
+          slug: organizationSlug,
         },
       },
-      orderBy: [{ createdAt: "desc" }],
     });
+
+    const tasks = await this.#prismaClient.$queryRaw<
+      {
+        id: string;
+        slug: string;
+        exportName: string;
+        filePath: string;
+        runtimeEnvironmentId: string;
+        createdAt: Date;
+      }[]
+    >`
+    SELECT DISTINCT ON(bwt.slug, bwt."runtimeEnvironmentId")
+      bwt.slug,
+      bwt.id,
+      bwt."exportName",
+      bwt."filePath",
+      bwt."runtimeEnvironmentId",
+      bwt."createdAt"
+    FROM
+      "BackgroundWorkerTask" as bwt
+    WHERE bwt."projectId" = ${project.id}
+    ORDER BY
+      bwt.slug,
+      bwt."runtimeEnvironmentId",
+      bwt."createdAt" DESC;`;
 
     let latestRuns = [] as {
       updatedAt: Date;
@@ -99,14 +108,18 @@ export class TaskListPresenter {
 
     return tasks.map((task) => {
       const latestRun = latestRuns.find((r) => r.backgroundWorkerTaskId === task.id);
+      const environment = project.environments.find((env) => env.id === task.runtimeEnvironmentId);
+      if (!environment) {
+        throw new Error(`Environment not found for TaskRun ${task.id}`);
+      }
 
       return {
         ...task,
         environment: {
-          type: task.runtimeEnvironment.type,
-          slug: task.runtimeEnvironment.slug,
-          userId: task.runtimeEnvironment.orgMember?.user.id,
-          userName: getUsername(task.runtimeEnvironment.orgMember?.user),
+          type: environment.type,
+          slug: environment.slug,
+          userId: environment.orgMember?.user.id,
+          userName: getUsername(environment.orgMember?.user),
         },
         latestRun,
       };
