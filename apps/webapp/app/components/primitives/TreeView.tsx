@@ -50,11 +50,13 @@ export function TreeView<TData>({
           height: `${virtualizer.getTotalSize()}px`,
           width: "100%",
           position: "relative",
+          overflowY: "visible",
         }}
       >
         <div
           style={{
             position: "absolute",
+            overflowY: "visible",
             top: 0,
             left: 0,
             width: "100%",
@@ -68,7 +70,7 @@ export function TreeView<TData>({
                 key={node.id}
                 data-index={virtualItem.index}
                 ref={virtualizer.measureElement}
-                className="[&_.ReactCollapse--collapse]:transition-all"
+                className="overflow-clip [&_.ReactCollapse--collapse]:transition-all"
                 {...getNodeProps(node.id)}
               >
                 <UnmountClosed key={node.id} isOpened={nodes[node.id].visibility === "visible"}>

@@ -53,12 +53,10 @@ export default function Page() {
         </PageTitleRow>
       </PageHeader>
       <PageBody>
-        <div className={cn("grid h-fit grid-cols-1 gap-4")}>
-          <div>
+        <div className={cn("grid h-full grid-cols-1 gap-4")}>
+          <div className="h-full overflow-y-clip">
             <div className="mb-2 flex items-center justify-between gap-x-2"></div>
-            <div>
-              <TasksTreeView events={events} />
-            </div>
+            <TasksTreeView events={events} />
           </div>
         </div>
       </PageBody>
