@@ -79,7 +79,7 @@ export default function Page() {
                       <TableHeaderCell>Task</TableHeaderCell>
                       <TableHeaderCell>Environment</TableHeaderCell>
                       <TableHeaderCell>Last run</TableHeaderCell>
-                      <TableHeaderCell>Created</TableHeaderCell>
+                      <TableHeaderCell>Created at</TableHeaderCell>
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
                   </TableHeader>
