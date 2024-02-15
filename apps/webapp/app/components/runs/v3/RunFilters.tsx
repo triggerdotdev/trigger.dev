@@ -59,9 +59,10 @@ type DisplayableEnvironment = Pick<RuntimeEnvironment, "type" | "id"> & {
 
 type RunFiltersProps = {
   possibleEnvironments: DisplayableEnvironment[];
+  possibleTasks: string[];
 };
 
-export function RunsFilters({ possibleEnvironments }: RunFiltersProps) {
+export function RunsFilters({ possibleEnvironments, possibleTasks }: RunFiltersProps) {
   const navigate = useNavigate();
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
@@ -82,6 +83,10 @@ export function RunsFilters({ possibleEnvironments }: RunFiltersProps) {
 
   const handleStatusChange = useCallback((value: TaskRunAttemptStatus | typeof All) => {
     handleFilterChange("statuses", value === "ALL" ? undefined : value);
+  }, []);
+
+  const handleTaskChange = useCallback((value: string | typeof All) => {
+    handleFilterChange("tasks", value === "ALL" ? undefined : value);
   }, []);
 
   const handleEnvironmentChange = useCallback((value: string | typeof All) => {
@@ -157,6 +162,28 @@ export function RunsFilters({ possibleEnvironments }: RunFiltersProps) {
             {allTaskRunStatuses.map((status) => (
               <SelectItem key={status} value={status}>
                 <TaskRunStatus status={status} />
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SelectGroup>
+
+      <SelectGroup>
+        <Select name="tasks" value={tasks?.at(0) ?? "ALL"} onValueChange={handleTaskChange}>
+          <SelectTrigger size="secondary/small" width="full">
+            <SelectValue placeholder="Select task" className="ml-2 p-0" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={"ALL"}>
+              <Paragraph variant="extra-small" className="pl-0.5">
+                All tasks
+              </Paragraph>
+            </SelectItem>
+            {possibleTasks.map((task) => (
+              <SelectItem key={task} value={task}>
+                <Paragraph variant="extra-small" className="pl-0.5">
+                  {task}
+                </Paragraph>
               </SelectItem>
             ))}
           </SelectContent>

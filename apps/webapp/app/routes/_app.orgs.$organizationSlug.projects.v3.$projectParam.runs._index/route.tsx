@@ -53,7 +53,10 @@ export default function Page() {
       <div className={cn("grid h-fit grid-cols-1 gap-4")}>
         <div>
           <div className="mb-2 flex items-center justify-between gap-x-2">
-            <RunsFilters possibleEnvironments={project.environments} />
+            <RunsFilters
+              possibleEnvironments={project.environments}
+              possibleTasks={list.possibleTasks}
+            />
             <div className="flex items-center justify-end gap-x-2">
               <ListPagination list={list} />
             </div>

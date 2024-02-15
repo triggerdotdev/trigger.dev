@@ -74,10 +74,15 @@ export class RunListPresenter {
       },
     });
 
-    console.log(statuses);
+    //get all possible tasks
+    const possibleTasks = await this.#prismaClient.$queryRaw<{ slug: string }[]>`
+    SELECT DISTINCT(slug)
+    FROM "BackgroundWorkerTask"
+    WHERE "projectId" = ${project.id};
+    `;
 
-    //events
-    const runs = await this.#prismaClient.$queryRaw<
+    //get the runs
+    let runs = await this.#prismaClient.$queryRaw<
       {
         id: string;
         runFriendlyId: string;
@@ -116,10 +121,15 @@ export class RunListPresenter {
       -- project
       tr."projectId" = ${project.id}
       -- cursor
-      -- AND tr.id > 'clskddbac00337chuo60ollaq'
+      ${
+        cursor
+          ? direction === "forward"
+            ? Prisma.sql`AND tr.id < ${cursor}`
+            : Prisma.sql`AND tr.id > ${cursor}`
+          : Prisma.empty
+      }
       -- filters
-      AND tr."taskIdentifier" = 'child-task'
-      AND bw."version" IN ('20240213.1')
+      ${tasks ? Prisma.sql`AND tr."taskIdentifier" IN (${Prisma.join(tasks)})` : Prisma.empty}
       ${
         statuses
           ? Prisma.sql`AND tra.status = ANY(ARRAY[${Prisma.join(
@@ -145,8 +155,7 @@ export class RunListPresenter {
   GROUP BY
     tr."friendlyId", tr."taskIdentifier", tr."runtimeEnvironmentId", tr.id, bw.version, tra.status, tr."createdAt", tra."startedAt", tra."completedAt"
   ORDER BY
-    -- direction
-    tr.id ASC
+    ${direction === "forward" ? Prisma.sql`tr.id DESC` : Prisma.sql`tr.id ASC`}
   LIMIT ${pageSize + 1}`;
 
     const hasMore = runs.length > pageSize;
@@ -162,6 +171,7 @@ export class RunListPresenter {
         }
         break;
       case "backward":
+        runs.reverse();
         if (hasMore) {
           previous = runs[1]?.id;
           next = runs[pageSize]?.id;
@@ -202,6 +212,7 @@ export class RunListPresenter {
           },
         };
       }),
+      possibleTasks: possibleTasks.map((task) => task.slug),
       pagination: {
         next,
         previous,
