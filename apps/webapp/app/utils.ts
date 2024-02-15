@@ -1,6 +1,6 @@
 import type { UIMatch } from "@remix-run/react";
 import { useMatches } from "@remix-run/react";
-import humanizeDuration from "humanize-duration";
+import humanizeDuration, { Unit } from "humanize-duration";
 
 const DEFAULT_REDIRECT = "/";
 
@@ -107,11 +107,19 @@ export function formatDuration(
   return formatDurationMilliseconds(dateDifference(start, end), options);
 }
 
+export function formatDurationNanoseconds(nanoseconds: number, options?: DurationOptions): string {
+  return formatDurationMilliseconds(nanoseconds / 1_000_000, options);
+}
+
+const aboveOneSecondUnits = ["d", "h", "m", "s"] as Unit[];
+const belowOneSecondUnits = ["ms"] as Unit[];
+
 export function formatDurationMilliseconds(
   milliseconds: number,
   options?: DurationOptions
 ): string {
   let duration = humanizeDuration(milliseconds, {
+    units: milliseconds < 1000 ? belowOneSecondUnits : aboveOneSecondUnits,
     maxDecimalPoints: options?.maxDecimalPoints ?? 1,
     largest: 2,
   });
@@ -122,6 +130,8 @@ export function formatDurationMilliseconds(
 
   switch (options.style) {
     case "short":
+      duration = duration.replace(" milliseconds", "ms");
+      duration = duration.replace(" millisecond", "ms");
       duration = duration.replace(" seconds", "s");
       duration = duration.replace(" second", "s");
       duration = duration.replace(" minutes", "m");

@@ -84,6 +84,7 @@ export class RunPresenter {
             style: TaskEventStyle.parse(event.style),
             duration: Number(event.duration),
             isError: event.isError,
+            isPartial: event.isPartial,
           },
         };
       })

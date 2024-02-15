@@ -1,31 +1,26 @@
-import { useNavigation } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
-import { RunsFilters, TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
-import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
-import { useProject } from "~/hooks/useProject";
-import { useUser } from "~/hooks/useUser";
-import { RunListPresenter } from "~/presenters/v3/RunListPresenter.server";
-import { requireUserId } from "~/services/session.server";
-import { cn } from "~/utils/cn";
-import { ProjectParamSchema, v3RunParamsSchema } from "~/utils/pathBuilder";
-import { ListPagination } from "../../components/ListPagination";
-import { list } from "tar";
-import { PageBody } from "~/components/layout/AppLayout";
-import { PageHeader, PageTitleRow, PageTitle } from "~/components/primitives/PageHeader";
-import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
-import { useRef } from "react";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
-  DocumentIcon,
-  InformationCircleIcon,
+  ExclamationCircleIcon,
 } from "@heroicons/react/20/solid";
-import { FolderOpenIcon, FolderIcon, WandIcon } from "lucide-react";
-import { useTree, TreeView } from "~/components/primitives/TreeView";
+import { useNavigation } from "@remix-run/react";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { useRef } from "react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { ErrorIcon } from "~/assets/icons/ErrorIcon";
+import { PageBody } from "~/components/layout/AppLayout";
+import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Icon } from "~/components/primitives/Icon";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
+import { Spinner } from "~/components/primitives/Spinner";
+import { TreeView, useTree } from "~/components/primitives/TreeView";
+import { RunIcon } from "~/components/runs/v3/RunIcon";
+import { useProject } from "~/hooks/useProject";
+import { useUser } from "~/hooks/useUser";
+import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { requireUserId } from "~/services/session.server";
+import { formatDurationMilliseconds, formatDurationNanoseconds } from "~/utils";
+import { cn } from "~/utils/cn";
+import { v3RunParamsSchema } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -49,14 +44,12 @@ export default function Page() {
   const { run, events } = useTypedLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
-  const project = useProject();
-  const user = useUser();
 
   return (
     <>
       <PageHeader hideBorder>
         <PageTitleRow>
-          <PageTitle title={`Run`} />
+          <PageTitle title={`Run #${run.number}`} />
         </PageTitleRow>
       </PageHeader>
       <PageBody>
@@ -158,14 +151,33 @@ function TasksTreeView({ events }: { events: RunEvent[] }) {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <TaskIcon name={node.data.style?.icon} />
-              <Paragraph
-                variant="small/bright"
-                className={cn(node.data.isError && "text-rose-500")}
-              >
-                {node.data.message} {node.data.isError && "Error"}
-              </Paragraph>
+            <div className="flex w-full items-center justify-between gap-2 px-1">
+              <div className="flex items-center gap-2 ">
+                <RunIcon name={node.data.style?.icon} className="h-4 w-4" />
+                <Paragraph
+                  variant="small/bright"
+                  className={cn(node.data.isError && "text-rose-500")}
+                >
+                  {node.data.message}
+                </Paragraph>
+              </div>
+              <div className="flex items-center gap-2">
+                {node.data.isError ? (
+                  <div className="flex items-center gap-1">
+                    <Paragraph variant="extra-small" className="text-rose-500">
+                      Error
+                    </Paragraph>
+                    <ExclamationCircleIcon className="h-3 w-3 text-rose-500" />
+                  </div>
+                ) : null}
+                {node.data.isPartial ? (
+                  <Spinner color="blue" className="h-4 w-4" />
+                ) : node.data.duration > 0 ? (
+                  <Paragraph variant="extra-small">
+                    {formatDurationNanoseconds(node.data.duration, { style: "short" })}
+                  </Paragraph>
+                ) : null}
+              </div>
             </div>
           </div>
         )}
@@ -176,27 +188,6 @@ function TasksTreeView({ events }: { events: RunEvent[] }) {
 
 function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boolean }) {
   return (
-    <div className={cn("h-8 w-2 border-r", isError ? "border-rose-500/40" : "border-slate-800")} />
-  );
-}
-
-function TaskIcon({ name }: { name: string | undefined }) {
-  if (!name) return <InformationCircleIcon className="h-4 w-4 text-slate-800" />;
-
-  switch (name) {
-    case "task":
-      return <DocumentIcon className="h-4 w-4" />;
-    case "attempt":
-      return <WandIcon className="h-4 w-4" />;
-    case "wait":
-      return <FolderIcon className="h-4 w-4" />;
-  }
-
-  return (
-    <NamedIcon
-      name={name}
-      className="h-4 w-4"
-      fallback={<InformationCircleIcon className="h-4 w-4 text-slate-800" />}
-    />
+    <div className={cn("h-8 w-2 border-r", isError ? "border-rose-500/10" : "border-slate-800")} />
   );
 }
