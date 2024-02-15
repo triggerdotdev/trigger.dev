@@ -90,7 +90,7 @@ export default function Page() {
                           user.id !== task.environment.userId
                             ? task.environment.userName
                             : undefined;
-                        const path = v3RunsPath(organization, project);
+                        const path = v3RunsPath(organization, project, { tasks: [task.slug] });
                         return (
                           <TableRow key={task.id} className="group">
                             <TableCell to={path}>

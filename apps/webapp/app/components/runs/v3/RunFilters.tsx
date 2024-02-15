@@ -51,6 +51,8 @@ export const TaskRunListSearchFilters = z.object({
   to: z.coerce.number().optional(),
 });
 
+export type TaskRunListSearchFilters = z.infer<typeof TaskRunListSearchFilters>;
+
 const All = "ALL";
 
 type DisplayableEnvironment = Pick<RuntimeEnvironment, "type" | "id"> & {

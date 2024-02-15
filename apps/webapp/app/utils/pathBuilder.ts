@@ -8,9 +8,11 @@ import type {
   Webhook,
 } from "@trigger.dev/database";
 import { z } from "zod";
+import { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
+import { objectToSearchParams } from "./searchParams";
 
 export type OrgForPath = Pick<Organization, "slug">;
 export type ProjectForPath = Pick<Project, "slug">;
@@ -284,8 +286,14 @@ export function v3ProjectPath(organization: OrgForPath, project: ProjectForPath)
   return `/orgs/${organizationParam(organization)}/projects/v3/${projectParam(project)}`;
 }
 
-export function v3RunsPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${v3ProjectPath(organization, project)}/runs`;
+export function v3RunsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  filters?: TaskRunListSearchFilters
+) {
+  const searchParams = objectToSearchParams(filters);
+  const query = searchParams ? `?${searchParams.toString()}` : "";
+  return `${v3ProjectPath(organization, project)}/runs${query}`;
 }
 
 export function v3RunPath(organization: OrgForPath, project: ProjectForPath, run: v3RunForPath) {
