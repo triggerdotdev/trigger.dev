@@ -1,7 +1,11 @@
 import { StopIcon } from "@heroicons/react/24/outline";
 import { CheckIcon } from "@heroicons/react/24/solid";
-import { JobRunStatus, RuntimeEnvironmentType, User } from "@trigger.dev/database";
-import { formatDuration, formatDurationMilliseconds } from "~/utils";
+import { User } from "@trigger.dev/database";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
+import { RunListItem } from "~/presenters/v3/RunListPresenter.server";
+import { formatDuration } from "~/utils";
+import { v3RunPath } from "~/utils/pathBuilder";
 import { EnvironmentLabel } from "../../environments/EnvironmentLabel";
 import { DateTime } from "../../primitives/DateTime";
 import { Paragraph } from "../../primitives/Paragraph";
@@ -16,11 +20,6 @@ import {
   TableHeaderCell,
   TableRow,
 } from "../../primitives/Table";
-import { RunStatus } from "../RunStatuses";
-import { RunListItem } from "~/presenters/v3/RunListPresenter.server";
-import { v3RunPath } from "~/utils/pathBuilder";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
 import { TaskRunStatus } from "./TaskRunStatus";
 
 type RunsTableProps = {
@@ -32,7 +31,7 @@ type RunsTableProps = {
   currentUser: User;
 };
 
-export function RunsTable({
+export function TaskRunsTable({
   total,
   hasFilters,
   runs,

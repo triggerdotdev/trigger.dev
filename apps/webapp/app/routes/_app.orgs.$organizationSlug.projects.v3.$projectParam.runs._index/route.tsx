@@ -1,9 +1,9 @@
 import { useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { RunsFilters } from "~/components/runs/RunFilters";
+import { RunsFilters, TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { RunListSearchSchema } from "~/components/runs/RunStatuses";
-import { RunsTable } from "~/components/runs/v3/RunsTable";
+import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
@@ -19,20 +19,21 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const url = new URL(request.url);
   const s = Object.fromEntries(url.searchParams.entries());
-  const searchParams = RunListSearchSchema.parse(s);
+  const { tasks, versions, statuses, environments, from, to, cursor, direction } =
+    TaskRunListSearchFilters.parse(s);
 
   const presenter = new RunListPresenter();
   const list = await presenter.call({
     userId,
     projectSlug: projectParam,
-    taskSlugs: undefined,
-    versions: undefined,
-    statuses: undefined,
-    environments: undefined,
-    from: undefined,
-    to: undefined,
-    direction: searchParams.direction,
-    cursor: searchParams.cursor,
+    tasks,
+    versions,
+    statuses,
+    environments,
+    from,
+    to,
+    direction: direction,
+    cursor: cursor,
   });
 
   return typedjson({
@@ -44,7 +45,6 @@ export default function Page() {
   const { list } = useTypedLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
-  const organization = useOrganization();
   const project = useProject();
   const user = useUser();
 
@@ -53,13 +53,13 @@ export default function Page() {
       <div className={cn("grid h-fit grid-cols-1 gap-4")}>
         <div>
           <div className="mb-2 flex items-center justify-between gap-x-2">
-            <RunsFilters />
+            <RunsFilters possibleEnvironments={project.environments} />
             <div className="flex items-center justify-end gap-x-2">
               <ListPagination list={list} />
             </div>
           </div>
 
-          <RunsTable
+          <TaskRunsTable
             total={list.runs.length}
             hasFilters={false}
             runs={list.runs}

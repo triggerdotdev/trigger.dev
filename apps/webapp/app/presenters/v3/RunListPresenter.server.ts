@@ -1,4 +1,4 @@
-import { TaskAttemptStatus, TaskRunAttemptStatus } from "@trigger.dev/database";
+import { Prisma, TaskRunAttemptStatus } from "@trigger.dev/database";
 import { Direction } from "~/components/runs/RunStatuses";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
@@ -7,9 +7,9 @@ type RunListOptions = {
   userId: string;
   projectSlug: string;
   //filters
-  taskSlugs: string[] | undefined;
+  tasks: string[] | undefined;
   versions: string[] | undefined;
-  statuses: TaskAttemptStatus[] | undefined;
+  statuses: TaskRunAttemptStatus[] | undefined;
   environments: string[] | undefined;
   from: number | undefined;
   to: number | undefined;
@@ -34,7 +34,7 @@ export class RunListPresenter {
   public async call({
     userId,
     projectSlug,
-    taskSlugs,
+    tasks,
     versions,
     statuses,
     environments,
@@ -73,6 +73,8 @@ export class RunListPresenter {
         slug: projectSlug,
       },
     });
+
+    console.log(statuses);
 
     //events
     const runs = await this.#prismaClient.$queryRaw<
@@ -118,8 +120,18 @@ export class RunListPresenter {
       -- filters
       AND tr."taskIdentifier" = 'child-task'
       AND bw."version" IN ('20240213.1')
-      AND tra.status IN ('COMPLETED', 'FAILED')
-      AND tr."runtimeEnvironmentId" IN ('clsk5dfbf000h7cn1quldxv6t')
+      ${
+        statuses
+          ? Prisma.sql`AND tra.status = ANY(ARRAY[${Prisma.join(
+              statuses
+            )}]::"TaskRunAttemptStatus"[])`
+          : Prisma.empty
+      }
+      ${
+        environments
+          ? Prisma.sql`AND tr."runtimeEnvironmentId" IN (${Prisma.join(environments)})`
+          : Prisma.empty
+      }
       AND tr."createdAt" > '2024-02-13 12:58:40'
       AND tr."createdAt" < '2024-02-14 12:58:40'
   GROUP BY
