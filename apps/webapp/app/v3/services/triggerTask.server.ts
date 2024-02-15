@@ -42,7 +42,7 @@ export class TriggerTaskService {
     }
 
     return await eventRepository.traceEvent(
-      `Triggering task ${taskId}`,
+      `${taskId}`,
       {
         context: options.traceContext,
         kind: "SERVER",
@@ -53,7 +53,7 @@ export class TriggerTaskService {
             ...flattenAttributes(body.payload, SemanticInternalAttributes.PAYLOAD),
           },
           style: {
-            icon: "play",
+            icon: "task",
           },
         },
       },
