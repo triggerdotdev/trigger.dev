@@ -152,7 +152,7 @@ export class EnvironmentQueueConsumer {
     }
 
     const backgroundTask = backgroundWorker.tasks.find(
-      (task) => task.slug === messageBody.data.taskIdentifier
+      (task) => task.slug === existingTaskRun.taskIdentifier
     );
 
     if (!backgroundTask) {
