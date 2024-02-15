@@ -116,6 +116,7 @@ export class TaskListPresenter {
       return {
         ...task,
         environment: {
+          id: environment.id,
           type: environment.type,
           slug: environment.slug,
           userId: environment.orgMember?.user.id,

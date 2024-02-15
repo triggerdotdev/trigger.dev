@@ -20,6 +20,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { TaskRunStatus } from "~/components/runs/v3/TaskRunStatus";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
@@ -89,7 +90,10 @@ export default function Page() {
                           user.id !== task.environment.userId
                             ? task.environment.userName
                             : undefined;
-                        const path = v3RunsPath(organization, project, { tasks: [task.slug] });
+                        const path = v3RunsPath(organization, project, {
+                          tasks: [task.slug],
+                          environments: [task.environment.id],
+                        });
                         return (
                           <TableRow key={task.id} className="group">
                             <TableCell to={path}>{task.slug}</TableCell>
@@ -111,9 +115,7 @@ export default function Page() {
                                   )}
                                 >
                                   <DateTime date={task.latestRun.updatedAt} />
-                                  <span className="text-xxs uppercase">
-                                    {task.latestRun.status}
-                                  </span>
+                                  <TaskRunStatus status={task.latestRun.status} />
                                 </div>
                               ) : (
                                 "Never run"
