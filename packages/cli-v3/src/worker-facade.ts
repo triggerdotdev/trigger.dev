@@ -14,7 +14,7 @@ const otelLogger = tracingSDK.getLogger("trigger-dev-worker", packageJson.versio
 
 import { SpanKind } from "@opentelemetry/api";
 import {
-  BackgroundWorkerRecord,
+  type BackgroundWorkerProperties,
   ConsoleInterceptor,
   DevRuntimeManager,
   OtelTaskLogger,
@@ -68,7 +68,7 @@ class TaskExecutor {
 
   async execute(
     execution: TaskRunExecution,
-    worker: BackgroundWorkerRecord,
+    worker: BackgroundWorkerProperties,
     traceContext: Record<string, unknown>
   ) {
     const parsedPayload = JSON.parse(execution.run.payload);
@@ -129,6 +129,7 @@ function getTasks(): Array<TaskMetadataWithRun> {
           exportName,
           packageVersion: (task as any).__trigger.packageVersion,
           filePath: (taskFile as any).filePath,
+          queue: (task as any).__trigger.queue,
           run: (task as any).__trigger.run,
         });
       }

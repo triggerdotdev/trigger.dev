@@ -388,11 +388,7 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
                 }
 
                 for (const task of backgroundWorker.tasks) {
-                  taskResources.push({
-                    id: task.id,
-                    filePath: task.filePath,
-                    exportName: task.exportName,
-                  });
+                  taskResources.push(task);
 
                   packageVersion = task.packageVersion;
                 }
@@ -405,7 +401,6 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
                   localOnly: true,
                   metadata: {
                     packageVersion,
-                    // This is a hack to get around the funky node16 typescript module resolution issue
                     cliPackageVersion: packageJson.version,
                     tasks: taskResources,
                     contentHash: contentHash,

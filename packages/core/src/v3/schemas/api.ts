@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BackgroundWorkerMetadata } from "./resources";
+import { QueueOptions } from "./messages";
 
 export const WhoAmIResponseSchema = z.object({
   userId: z.string(),
@@ -30,9 +31,6 @@ export const CreateBackgroundWorkerResponse = z.object({
 
 export type CreateBackgroundWorkerResponse = z.infer<typeof CreateBackgroundWorkerResponse>;
 
-export const BackgroundWorkerRecord = CreateBackgroundWorkerResponse;
-export type BackgroundWorkerRecord = CreateBackgroundWorkerResponse;
-
 export const TriggerTaskRequestBody = z.object({
   payload: z.any(),
   context: z.any(),
@@ -40,6 +38,8 @@ export const TriggerTaskRequestBody = z.object({
     .object({
       parentAttempt: z.string().optional(),
       lockToCurrentVersion: z.boolean().optional(),
+      queue: QueueOptions.optional(),
+      concurrencyKey: z.string().optional(),
     })
     .optional(),
 });

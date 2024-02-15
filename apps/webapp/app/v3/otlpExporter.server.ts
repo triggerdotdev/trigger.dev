@@ -218,6 +218,8 @@ function extractResourceProperties(attributes: KeyValue[]) {
     taskExportName: extractStringAttribute(attributes, SemanticInternalAttributes.TASK_EXPORT_NAME),
     workerId: extractStringAttribute(attributes, SemanticInternalAttributes.WORKER_ID),
     workerVersion: extractStringAttribute(attributes, SemanticInternalAttributes.WORKER_VERSION),
+    queueId: extractStringAttribute(attributes, SemanticInternalAttributes.QUEUE_ID),
+    queueName: extractStringAttribute(attributes, SemanticInternalAttributes.QUEUE_NAME),
   };
 }
 

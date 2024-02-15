@@ -1,5 +1,5 @@
 import {
-  BackgroundWorkerRecord,
+  BackgroundWorkerProperties,
   BackgroundWorkerServerMessages,
   CreateBackgroundWorkerResponse,
   TaskMetadataWithFilePath,
@@ -181,7 +181,7 @@ export class BackgroundWorker {
   private _onClose: Evt<void> = new Evt();
 
   public tasks: Array<TaskMetadataWithFilePath> = [];
-  public metadata: BackgroundWorkerRecord | undefined;
+  public metadata: BackgroundWorkerProperties | undefined;
 
   _taskExecutions: Map<
     string,
@@ -344,26 +344,31 @@ export class BackgroundWorker {
       );
     });
 
-    await sender.send("EXECUTE_TASK_RUN", { execution, traceContext, metadata });
+    try {
+      await sender.send("EXECUTE_TASK_RUN", { execution, traceContext, metadata });
 
-    const result = await promise;
+      const result = await promise;
 
-    if (result.ok) {
+      if (result.ok) {
+        return result;
+      }
+
+      const error = result.error;
+
+      if (error.type === "BUILT_IN_ERROR") {
+        const mappedError = await this.#correctError(error, execution);
+
+        return {
+          ...result,
+          error: mappedError,
+        };
+      }
+
       return result;
+    } catch (e) {
+      debugger;
+      throw e;
     }
-
-    const error = result.error;
-
-    if (error.type === "BUILT_IN_ERROR") {
-      const mappedError = await this.#correctError(error, execution);
-
-      return {
-        ...result,
-        error: mappedError,
-      };
-    }
-
-    return result;
   }
 
   async #correctError(

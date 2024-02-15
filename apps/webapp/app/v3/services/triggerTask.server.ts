@@ -5,6 +5,7 @@ import { PrismaClient, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
+import { marqs } from "../marqs.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -65,6 +66,10 @@ export class TriggerTaskService {
             })
           : undefined;
 
+        const queueName = body.options?.queue?.name ?? `task/${taskId}`;
+
+        event.setAttribute("queueName", queueName);
+
         const taskRun = await this.#prismaClient.taskRun.create({
           data: {
             friendlyId: generateFriendlyId("run"),
@@ -82,10 +87,21 @@ export class TriggerTaskService {
             lockedToVersionId: body.options?.lockToCurrentVersion
               ? parentAttempt?.backgroundWorkerId
               : undefined,
+            concurrencyKey: body.options?.concurrencyKey,
+            queue: queueName,
           },
         });
 
         event.setAttribute("runId", taskRun.friendlyId);
+
+        // We need to enqueue the task run into the appropriate queue
+        await marqs?.enqueueMessage(
+          environment,
+          queueName,
+          taskRun.id,
+          { type: "EXECUTE", taskIdentifier: taskId },
+          body.options?.concurrencyKey
+        );
 
         return taskRun;
       }

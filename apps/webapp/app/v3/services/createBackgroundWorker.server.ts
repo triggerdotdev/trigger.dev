@@ -4,6 +4,7 @@ import { PrismaClient, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
+import { marqs } from "../marqs.server";
 
 export class CreateBackgroundWorkerService {
   #prismaClient: PrismaClient;
@@ -75,6 +76,38 @@ export class CreateBackgroundWorkerService {
           exportName: task.exportName,
         },
       });
+
+      const queueName = task.queue?.name ?? `task/${task.id}`;
+
+      const taskQueue = await this.#prismaClient.taskQueue.upsert({
+        where: {
+          runtimeEnvironmentId_name: {
+            runtimeEnvironmentId: environment.id,
+            name: queueName,
+          },
+        },
+        update: {
+          concurrencyLimit: task.queue?.concurrencyLimit,
+          rateLimit: task.queue?.rateLimit,
+        },
+        create: {
+          friendlyId: generateFriendlyId("queue"),
+          name: queueName,
+          concurrencyLimit: task.queue?.concurrencyLimit,
+          runtimeEnvironmentId: environment.id,
+          projectId: project.id,
+          rateLimit: task.queue?.rateLimit,
+          type: task.queue?.name ? "NAMED" : "VIRTUAL",
+        },
+      });
+
+      if (taskQueue.concurrencyLimit) {
+        await marqs?.updateQueueConcurrency(
+          environment,
+          taskQueue.name,
+          taskQueue.concurrencyLimit
+        );
+      }
     }
 
     return backgroundWorker;
