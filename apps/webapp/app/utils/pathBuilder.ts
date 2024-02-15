@@ -75,6 +75,10 @@ export const v3TaskParamsSchema = ProjectParamSchema.extend({
   taskParam: z.string(),
 });
 
+export const v3RunParamsSchema = ProjectParamSchema.extend({
+  runParam: z.string(),
+});
+
 export function trimTrailingSlash(path: string) {
   return path.replace(/\/$/, "");
 }

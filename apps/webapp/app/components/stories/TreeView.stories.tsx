@@ -120,25 +120,27 @@ function TreeViewsSet() {
   const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
 
   return (
-    <div className="flex flex-col items-start justify-start gap-4">
-      <div className="flex items-center gap-2 p-2">
-        <Input
-          placeholder="Selected"
-          value={selectedId}
-          onChange={(v) => setSelectedId(v.target.value)}
-        />
-        <Input
-          placeholder="Collapsed"
-          value={collapsedIds.join(",")}
-          onChange={(e) => {
-            const val = e.target.value;
-            const ids = val.split(",").map((v) => v.trim());
-            setCollapsedIds(ids);
-          }}
-        />
-      </div>
+    <div className="flex gap-12">
+      <div className="flex flex-col items-start justify-start gap-4">
+        <div className="flex items-center gap-2 p-2">
+          <Input
+            placeholder="Selected"
+            value={selectedId}
+            onChange={(v) => setSelectedId(v.target.value)}
+          />
+          <Input
+            placeholder="Collapsed"
+            value={collapsedIds.join(",")}
+            onChange={(e) => {
+              const val = e.target.value;
+              const ids = val.split(",").map((v) => v.trim());
+              setCollapsedIds(ids);
+            }}
+          />
+        </div>
 
-      <TreeViewParent selectedId={selectedId} collapsedIds={collapsedIds} />
+        <TreeViewParent selectedId={selectedId} collapsedIds={collapsedIds} />
+      </div>
     </div>
   );
 }

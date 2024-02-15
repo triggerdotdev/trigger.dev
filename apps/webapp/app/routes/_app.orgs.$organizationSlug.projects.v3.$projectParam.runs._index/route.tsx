@@ -10,6 +10,8 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
+import { PageBody } from "~/components/layout/AppLayout";
+import { PageHeader, PageTitleRow, PageTitle } from "~/components/primitives/PageHeader";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -48,28 +50,35 @@ export default function Page() {
 
   return (
     <>
-      <div className={cn("grid h-fit grid-cols-1 gap-4")}>
-        <div>
-          <div className="mb-2 flex items-center justify-between gap-x-2">
-            <RunsFilters
-              possibleEnvironments={project.environments}
-              possibleTasks={list.possibleTasks}
-            />
-            <div className="flex items-center justify-end gap-x-2">
-              <ListPagination list={list} />
+      <PageHeader hideBorder>
+        <PageTitleRow>
+          <PageTitle title="Runs" />
+        </PageTitleRow>
+      </PageHeader>
+      <PageBody>
+        <div className={cn("grid h-fit grid-cols-1 gap-4")}>
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-x-2">
+              <RunsFilters
+                possibleEnvironments={project.environments}
+                possibleTasks={list.possibleTasks}
+              />
+              <div className="flex items-center justify-end gap-x-2">
+                <ListPagination list={list} />
+              </div>
             </div>
-          </div>
 
-          <TaskRunsTable
-            total={list.runs.length}
-            hasFilters={false}
-            runs={list.runs}
-            isLoading={isLoading}
-            currentUser={user}
-          />
-          <ListPagination list={list} className="mt-2 justify-end" />
+            <TaskRunsTable
+              total={list.runs.length}
+              hasFilters={false}
+              runs={list.runs}
+              isLoading={isLoading}
+              currentUser={user}
+            />
+            <ListPagination list={list} className="mt-2 justify-end" />
+          </div>
         </div>
-      </div>
+      </PageBody>
     </>
   );
 }
