@@ -85,6 +85,7 @@ export class RunListPresenter {
     let runs = await this.#prismaClient.$queryRaw<
       {
         id: string;
+        number: BigInt;
         runFriendlyId: string;
         taskIdentifier: string;
         version: string | null;
@@ -98,6 +99,7 @@ export class RunListPresenter {
     >`
     SELECT
     tr.id,
+    tr.number,
     tr."friendlyId" AS "runFriendlyId",
     tr."taskIdentifier" AS "taskIdentifier",
     bw.version AS version,
@@ -195,7 +197,7 @@ export class RunListPresenter {
         return {
           id: run.id,
           friendlyId: run.runFriendlyId,
-          number: 1,
+          number: Number(run.number),
           createdAt: run.createdAt,
           startedAt: run.startedAt,
           completedAt: run.completedAt,

@@ -46,7 +46,7 @@ export function TaskRunsTable({
       <TableHeader>
         <TableRow>
           <TableHeaderCell>Run</TableHeaderCell>
-          <TableHeaderCell>Task</TableHeaderCell>
+          <TableHeaderCell>Task ID</TableHeaderCell>
           <TableHeaderCell>Version</TableHeaderCell>
           <TableHeaderCell>Env</TableHeaderCell>
           <TableHeaderCell>Status</TableHeaderCell>
@@ -75,9 +75,7 @@ export function TaskRunsTable({
               currentUser.id !== run.environment.userId ? run.environment.userName : undefined;
             return (
               <TableRow key={run.id}>
-                <TableCell to={path}>
-                  {typeof run.number === "number" ? `#${run.number}` : "-"}
-                </TableCell>
+                <TableCell to={path}>#{run.number}</TableCell>
                 <TableCell to={path}>{run.taskIdentifier}</TableCell>
                 <TableCell to={path}>{run.version ?? "–"}</TableCell>
                 <TableCell to={path}>

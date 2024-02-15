@@ -1543,6 +1543,7 @@ model BackgroundWorkerTask {
 model TaskRun {
   id String @id @default(cuid())
 
+  number     Int    @default(0)
   friendlyId String @unique
 
   idempotencyKey String
@@ -1579,6 +1580,11 @@ model TaskRun {
   parentAttemptId String?
 
   @@unique([runtimeEnvironmentId, idempotencyKey])
+}
+
+model TaskRunCounter {
+  taskIdentifier String @id
+  lastNumber     Int    @default(0)
 }
 
 model TaskTag {
