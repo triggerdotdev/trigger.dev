@@ -18,6 +18,7 @@ import { TimeFrameFilter } from "../TimeFrameFilter";
 import { TaskRunStatus } from "./TaskRunStatus";
 
 export const allTaskRunStatuses = [
+  "ENQUEUED",
   "PENDING",
   "EXECUTING",
   "PAUSED",
@@ -25,6 +26,8 @@ export const allTaskRunStatuses = [
   "COMPLETED",
   "CANCELED",
 ] as const;
+
+export type ExtendedTaskAttemptStatus = (typeof allTaskRunStatuses)[number];
 
 export const TaskAttemptStatus = z.enum(allTaskRunStatuses);
 

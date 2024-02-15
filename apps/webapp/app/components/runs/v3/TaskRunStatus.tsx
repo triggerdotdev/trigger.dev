@@ -6,11 +6,11 @@ import {
   RectangleStackIcon,
   XCircleIcon,
 } from "@heroicons/react/20/solid";
-import { TaskRunAttemptStatus } from "@trigger.dev/database";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
+import { ExtendedTaskAttemptStatus } from "./RunFilters";
 
-export function TaskRunStatus({ status }: { status: TaskRunAttemptStatus | null }) {
+export function TaskRunStatus({ status }: { status: ExtendedTaskAttemptStatus | null }) {
   return (
     <span className="flex items-center gap-1">
       <TaskRunStatusIcon status={status} className="h-4 w-4" />
@@ -19,7 +19,7 @@ export function TaskRunStatus({ status }: { status: TaskRunAttemptStatus | null 
   );
 }
 
-export function TaskRunStatusLabel({ status }: { status: TaskRunAttemptStatus | null }) {
+export function TaskRunStatusLabel({ status }: { status: ExtendedTaskAttemptStatus | null }) {
   return <span className={runStatusClassNameColor(status)}>{runStatusTitle(status)}</span>;
 }
 
@@ -27,7 +27,7 @@ export function TaskRunStatusIcon({
   status,
   className,
 }: {
-  status: TaskRunAttemptStatus | null;
+  status: ExtendedTaskAttemptStatus | null;
   className: string;
 }) {
   if (status === null) {
@@ -35,6 +35,8 @@ export function TaskRunStatusIcon({
   }
 
   switch (status) {
+    case "ENQUEUED":
+      return <RectangleStackIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "PENDING":
       return <ClockIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "EXECUTING":
@@ -55,12 +57,14 @@ export function TaskRunStatusIcon({
   }
 }
 
-export function runStatusClassNameColor(status: TaskRunAttemptStatus | null): string {
+export function runStatusClassNameColor(status: ExtendedTaskAttemptStatus | null): string {
   if (status === null) {
     return "text-slate-500";
   }
 
   switch (status) {
+    case "ENQUEUED":
+      return "text-slate-500";
     case "PENDING":
       return "text-slate-500";
     case "EXECUTING":
@@ -80,12 +84,14 @@ export function runStatusClassNameColor(status: TaskRunAttemptStatus | null): st
   }
 }
 
-export function runStatusTitle(status: TaskRunAttemptStatus | null): string {
+export function runStatusTitle(status: ExtendedTaskAttemptStatus | null): string {
   if (status === null) {
     return "Enqueued";
   }
 
   switch (status) {
+    case "ENQUEUED":
+      return "Enqueued";
     case "PENDING":
       return "Pending";
     case "EXECUTING":

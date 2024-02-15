@@ -1,5 +1,6 @@
 import { Prisma, TaskRunAttemptStatus } from "@trigger.dev/database";
 import { Direction } from "~/components/runs/RunStatuses";
+import { ExtendedTaskAttemptStatus } from "~/components/runs/v3/RunFilters";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
 
@@ -9,7 +10,7 @@ type RunListOptions = {
   //filters
   tasks: string[] | undefined;
   versions: string[] | undefined;
-  statuses: TaskRunAttemptStatus[] | undefined;
+  statuses: ExtendedTaskAttemptStatus[] | undefined;
   environments: string[] | undefined;
   from: number | undefined;
   to: number | undefined;
@@ -44,7 +45,10 @@ export class RunListPresenter {
     cursor,
     pageSize = DEFAULT_PAGE_SIZE,
   }: RunListOptions) {
-    const directionMultiplier = direction === "forward" ? 1 : -1;
+    const filterByEnqueuedStatus = statuses ? statuses.includes("ENQUEUED") : false;
+    statuses = statuses ? statuses.filter((s) => s !== "ENQUEUED") : undefined;
+    const hasStatusFilters =
+      filterByEnqueuedStatus || (statuses !== undefined && statuses.length > 0);
 
     // Find the project scoped to the organization
     const project = await this.#prismaClient.project.findFirstOrThrow({
@@ -131,16 +135,22 @@ export class RunListPresenter {
           : Prisma.empty
       }
       -- filters
-      ${tasks ? Prisma.sql`AND tr."taskIdentifier" IN (${Prisma.join(tasks)})` : Prisma.empty}
       ${
-        statuses
-          ? Prisma.sql`AND tra.status = ANY(ARRAY[${Prisma.join(
-              statuses
-            )}]::"TaskRunAttemptStatus"[])`
+        tasks && tasks.length > 0
+          ? Prisma.sql`AND tr."taskIdentifier" IN (${Prisma.join(tasks)})`
           : Prisma.empty
       }
+      ${hasStatusFilters ? Prisma.sql`AND (` : Prisma.empty}
       ${
-        environments
+        statuses && statuses.length > 0
+          ? Prisma.sql`tra.status = ANY(ARRAY[${Prisma.join(statuses)}]::"TaskRunAttemptStatus"[])`
+          : Prisma.empty
+      }
+      ${statuses && statuses.length > 0 && filterByEnqueuedStatus ? Prisma.sql` OR ` : Prisma.empty}
+      ${filterByEnqueuedStatus ? Prisma.sql`tra.status IS NULL` : Prisma.empty}
+      ${hasStatusFilters ? Prisma.sql`) ` : Prisma.empty}
+      ${
+        environments && environments.length > 0
           ? Prisma.sql`AND tr."runtimeEnvironmentId" IN (${Prisma.join(environments)})`
           : Prisma.empty
       }
