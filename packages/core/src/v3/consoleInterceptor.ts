@@ -2,6 +2,8 @@ import type * as logsAPI from "@opentelemetry/api-logs";
 import { SeverityNumber } from "@opentelemetry/api-logs";
 import util from "node:util";
 import { flattenAttributes } from "./utils/flattenAttributes";
+import { SemanticInternalAttributes } from "./semanticInternalAttributes";
+import { iconStringForSeverity } from "./icons";
 
 export class ConsoleInterceptor {
   constructor(private readonly logger: logsAPI.Logger) {}
@@ -60,7 +62,7 @@ export class ConsoleInterceptor {
         severityNumber,
         severityText,
         body: getLogMessage(parsed.value, severityText),
-        attributes: { ...this.#getAttributes(), ...flattenAttributes(parsed.value) },
+        attributes: { ...this.#getAttributes(severityNumber), ...flattenAttributes(parsed.value) },
       });
 
       return;
@@ -70,14 +72,21 @@ export class ConsoleInterceptor {
       severityNumber,
       severityText,
       body,
-      attributes: this.#getAttributes(),
+      attributes: this.#getAttributes(severityNumber),
     });
   }
 
-  #getAttributes(): logsAPI.LogAttributes {
-    return {
+  #getAttributes(severityNumber: SeverityNumber): logsAPI.LogAttributes {
+    const icon = iconStringForSeverity(severityNumber);
+    let result: logsAPI.LogAttributes = {
       "log.type": "console",
     };
+
+    if (icon !== undefined) {
+      result[SemanticInternalAttributes.STYLE_ICON] = icon;
+    }
+
+    return result;
   }
 }
 

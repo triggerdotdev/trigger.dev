@@ -1,5 +1,8 @@
 import { Logger, SeverityNumber } from "@opentelemetry/api-logs";
 import { flattenAttributes } from "../utils/flattenAttributes";
+import { Attributes } from "@opentelemetry/api";
+import { iconStringForSeverity } from "../icons";
+import { SemanticInternalAttributes } from "../semanticInternalAttributes";
 
 export type LogLevel = "log" | "error" | "warn" | "info" | "debug";
 
@@ -61,11 +64,18 @@ export class OtelTaskLogger implements TaskLogger {
     severityNumber: SeverityNumber,
     properties?: Record<string, unknown>
   ) {
+    let attributes: Attributes = { ...flattenAttributes(properties), "log.type": "logger" };
+
+    const icon = iconStringForSeverity(severityNumber);
+    if (icon !== undefined) {
+      attributes[SemanticInternalAttributes.STYLE_ICON] = icon;
+    }
+
     this._config.logger.emit({
       severityNumber,
       severityText,
       body: message,
-      attributes: { ...flattenAttributes(properties), "log.type": "logger" },
+      attributes,
     });
   }
 }

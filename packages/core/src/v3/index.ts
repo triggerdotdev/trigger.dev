@@ -7,6 +7,7 @@ export * from "./errors";
 export * from "./runtime-api";
 export * from "./logger-api";
 export { SemanticInternalAttributes } from "./semanticInternalAttributes";
+export { iconStringForSeverity } from "./icons";
 
 export function parseTriggerTaskRequestBody(body: unknown) {
   return TriggerTaskRequestBody.safeParse(body);

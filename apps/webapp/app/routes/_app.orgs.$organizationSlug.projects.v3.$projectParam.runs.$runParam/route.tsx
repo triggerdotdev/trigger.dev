@@ -191,12 +191,7 @@ function TasksTreeView({
             <div className="flex w-full items-center justify-between gap-2 px-1">
               <div className="flex items-center gap-2 ">
                 <RunIcon name={node.data.style?.icon} className="h-4 w-4" />
-                <Paragraph
-                  variant="small/bright"
-                  className={cn(node.data.isError && "text-rose-500")}
-                >
-                  {node.data.message}
-                </Paragraph>
+                <NodeText node={node} />
               </div>
               <div className="flex items-center gap-2">
                 {node.data.isError ? (
@@ -219,6 +214,62 @@ function TasksTreeView({
       />
     </>
   );
+}
+
+function NodeText({ node }: { node: RunEvent }) {
+  if (node.data.isError) {
+    return (
+      <Paragraph variant="small/bright" className={cn(node.data.isError && "text-rose-500")}>
+        {node.data.message}
+      </Paragraph>
+    );
+  }
+
+  switch (node.data.level) {
+    case "TRACE": {
+      return (
+        <Paragraph variant={node.data.style.prominence === "high" ? "small/bright" : "small"}>
+          {node.data.message}
+        </Paragraph>
+      );
+    }
+    case "LOG":
+    case "INFO":
+    case "DEBUG": {
+      return (
+        <Paragraph
+          variant="small"
+          className={node.data.style.prominence === "high" ? "small/bright" : "small"}
+        >
+          {node.data.message}
+        </Paragraph>
+      );
+    }
+    case "WARN": {
+      return (
+        <Paragraph variant="small" className="text-amber-400">
+          {node.data.message}
+        </Paragraph>
+      );
+    }
+    case "ERROR": {
+      return (
+        <Paragraph variant="small" className="text-rose-500">
+          {node.data.message}
+        </Paragraph>
+      );
+    }
+    default: {
+      return (
+        <Paragraph
+          variant="small"
+          className={node.data.style.prominence === "high" ? "small/bright" : "small"}
+        >
+          {node.data.message}
+        </Paragraph>
+      );
+    }
+  }
 }
 
 function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boolean }) {
