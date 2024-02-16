@@ -5,6 +5,8 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { singleton } from "~/utils/singleton";
 import { AsyncWorker } from "./marqs/asyncWorker.server";
 import { logger } from "~/services/logger.server";
+import { attributesFromAuthenticatedEnv, tracer } from "./tracer.server";
+import { SpanKind } from "@opentelemetry/api";
 
 const KEY_PREFIX = "marqs:";
 
@@ -75,28 +77,43 @@ export class MarQS {
     messageData: Record<string, unknown>,
     concurrencyKey?: string
   ) {
-    const messageQueue = `${constants.ENV_PART}:${env.id}:${constants.QUEUE_PART}:${queue}${
-      concurrencyKey ? `:${constants.CONCURRENCY_KEY_PART}:${concurrencyKey}` : ""
-    }`;
+    return await tracer.startActiveSpan(
+      "enqueueMessage",
+      { kind: SpanKind.PRODUCER, attributes: { ...attributesFromAuthenticatedEnv(env) } },
+      async (span) => {
+        const messageQueue = `${constants.ENV_PART}:${env.id}:${constants.QUEUE_PART}:${queue}${
+          concurrencyKey ? `:${constants.CONCURRENCY_KEY_PART}:${concurrencyKey}` : ""
+        }`;
 
-    const timestamp = Date.now();
+        const timestamp = Date.now();
 
-    const parentQueue =
-      env.type === "DEVELOPMENT"
-        ? `${constants.ENV_PART}:${env.id}:${constants.SHARED_QUEUE}`
-        : constants.SHARED_QUEUE;
+        const parentQueue =
+          env.type === "DEVELOPMENT"
+            ? `${constants.ENV_PART}:${env.id}:${constants.SHARED_QUEUE}`
+            : constants.SHARED_QUEUE;
 
-    const messagePayload: MessagePayload = {
-      version: "1",
-      data: messageData,
-      queue: messageQueue,
-      concurrencyKey,
-      timestamp,
-      messageId,
-      parentQueue,
-    };
+        const messagePayload: MessagePayload = {
+          version: "1",
+          data: messageData,
+          queue: messageQueue,
+          concurrencyKey,
+          timestamp,
+          messageId,
+          parentQueue,
+        };
 
-    await this.#callEnqueueMessage(messagePayload);
+        span.setAttributes({
+          queue,
+          messageId,
+          concurrencyKey,
+          parentQueue,
+        });
+
+        span.end();
+
+        await this.#callEnqueueMessage(messagePayload);
+      }
+    );
   }
 
   public async dequeueMessageInEnv(env: AuthenticatedEnvironment) {

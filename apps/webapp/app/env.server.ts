@@ -70,6 +70,7 @@ const EnvironmentSchema = z.object({
 
   //v3
   V3_ENABLED: z.string().default("false"),
+  OTLP_EXPORTER_TRACES_URL: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

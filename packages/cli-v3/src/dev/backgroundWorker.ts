@@ -125,12 +125,13 @@ export class BackgroundWorkerCoordinator {
     const link = chalk.bgBlueBright(
       terminalLink("view logs", `${this.baseURL}/runs/${execution.run.id}`)
     );
+    let timestampPrefix = chalk.gray(new Date().toISOString());
     const workerPrefix = chalk.green(`[worker:${record.version}]`);
     const taskPrefix = chalk.yellow(`[task:${execution.task.id}]`);
     const runId = chalk.blue(execution.run.id);
     const attempt = chalk.blue(`.${execution.attempt.number}`);
 
-    logger.log(`${workerPrefix}${taskPrefix} ${runId}${attempt} ${link}`);
+    logger.log(`${timestampPrefix} ${workerPrefix}${taskPrefix} ${runId}${attempt} ${link}`);
 
     const now = performance.now();
 
@@ -146,8 +147,10 @@ export class BackgroundWorkerCoordinator {
 
     const elapsedText = chalk.dim(`(${elapsed.toFixed(2)}ms)`);
 
+    timestampPrefix = chalk.gray(new Date().toISOString());
+
     logger.log(
-      `${workerPrefix}${taskPrefix} ${runId}${attempt} ${resultText} ${elapsedText} ${link}${errorText}`
+      `${timestampPrefix} ${workerPrefix}${taskPrefix} ${runId}${attempt} ${resultText} ${elapsedText} ${link}${errorText}`
     );
 
     this.onTaskCompleted.post({ completion, execution, worker, backgroundWorkerId: id });

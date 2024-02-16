@@ -5,15 +5,19 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
+  otlp/internal:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4319
 
 processors:
   batch:
 
 exporters:
-  otlp:
+  otlp/honey:
     endpoint: "api.honeycomb.io:443"
     headers:
-      "x-honeycomb-team": "7e999faWC62210wKXMAHNM"
+      "x-honeycomb-team": "hcaik_01hps80a4qjsnnp6t757r5r70vqm8fwd7tejqdthzk9z98zsdn6ejwzazb"
   logging:
     verbosity: normal
   otlphttp:
@@ -25,8 +29,12 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp, otlphttp]
+      exporters: [otlphttp]
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp, otlphttp]
+      exporters: [otlphttp]
+    traces/internal:
+      receivers: [otlp/internal]
+      processors: [batch]
+      exporters: [otlp/honey]

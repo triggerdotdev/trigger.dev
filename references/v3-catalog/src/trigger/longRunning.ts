@@ -5,8 +5,8 @@ export const longRunning = task({
   run: async ({ payload, ctx }: { payload: { message: string }; ctx: Context }) => {
     logger.info("Long running payloadd", { payload });
 
-    // Wait for 10 minutes
-    await new Promise((resolve) => setTimeout(resolve, 10 * 60 * 1000));
+    // Wait for 3 minutes
+    await new Promise((resolve) => setTimeout(resolve, 3 * 60 * 1000));
 
     return {
       finished: new Date().toISOString(),
