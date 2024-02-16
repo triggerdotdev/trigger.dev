@@ -85,6 +85,7 @@ export class RunPresenter {
             duration: Number(event.duration),
             isError: event.isError,
             isPartial: event.isPartial,
+            startTime: event.startTime,
           },
         };
       })

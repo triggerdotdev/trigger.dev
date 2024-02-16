@@ -5,7 +5,8 @@ import {
 } from "@heroicons/react/20/solid";
 import { useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { useRef } from "react";
+import { animate, motion, useMotionValue, useTime, useTransform } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ErrorIcon } from "~/assets/icons/ErrorIcon";
 import { PageBody } from "~/components/layout/AppLayout";
@@ -18,7 +19,7 @@ import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
 import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { formatDurationMilliseconds, formatDurationNanoseconds } from "~/utils";
+import { formatDuration, formatDurationMilliseconds, formatDurationNanoseconds } from "~/utils";
 import { cn } from "~/utils/cn";
 import { v3RunParamsSchema } from "~/utils/pathBuilder";
 
@@ -169,11 +170,9 @@ function TasksTreeView({ events }: { events: RunEvent[] }) {
                   </div>
                 ) : null}
                 {node.data.isPartial ? (
-                  <Spinner color="blue" className="h-4 w-4" />
+                  <LiveDuration startTime={node.data.startTime} />
                 ) : node.data.duration > 0 ? (
-                  <Paragraph variant="extra-small">
-                    {formatDurationNanoseconds(node.data.duration, { style: "short" })}
-                  </Paragraph>
+                  <Duration duration={node.data.duration} />
                 ) : null}
               </div>
             </div>
@@ -187,5 +186,57 @@ function TasksTreeView({ events }: { events: RunEvent[] }) {
 function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boolean }) {
   return (
     <div className={cn("h-8 w-2 border-r", isError ? "border-rose-500/10" : "border-slate-800")} />
+  );
+}
+
+function Duration({ duration }: { duration: number }) {
+  return (
+    <Paragraph variant="extra-small">
+      {formatDurationNanoseconds(duration, { style: "short" })}
+    </Paragraph>
+  );
+}
+
+function LiveDuration({ startTime }: { startTime: Date }) {
+  return (
+    <div className="flex items-center gap-1">
+      <LiveTimer startTime={startTime} />
+      <Spinner color="blue" className="h-4 w-4" />
+    </div>
+  );
+}
+
+function LiveTimer({
+  startTime,
+  endTime,
+  updateInterval = 250,
+}: {
+  startTime: Date;
+  endTime?: Date;
+  updateInterval?: number;
+}) {
+  const [now, setNow] = useState<Date>();
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const date = new Date();
+      setNow(date);
+
+      if (endTime && date > endTime) {
+        clearInterval(interval);
+      }
+    }, updateInterval);
+
+    return () => clearInterval(interval);
+  }, [startTime]);
+
+  return (
+    <Paragraph variant="extra-small" className="tabular-nums">
+      {formatDuration(startTime, now, {
+        style: "short",
+        maxDecimalPoints: 0,
+        units: ["d", "h", "m", "s"],
+      })}
+    </Paragraph>
   );
 }

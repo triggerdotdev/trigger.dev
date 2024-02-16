@@ -93,6 +93,7 @@ export function hydrateDates(object: any): any {
 type DurationOptions = {
   style?: "long" | "short";
   maxDecimalPoints?: number;
+  units?: Unit[];
 };
 
 export function formatDuration(
@@ -119,7 +120,11 @@ export function formatDurationMilliseconds(
   options?: DurationOptions
 ): string {
   let duration = humanizeDuration(milliseconds, {
-    units: milliseconds < 1000 ? belowOneSecondUnits : aboveOneSecondUnits,
+    units: options?.units
+      ? options.units
+      : milliseconds < 1000
+      ? belowOneSecondUnits
+      : aboveOneSecondUnits,
     maxDecimalPoints: options?.maxDecimalPoints ?? 1,
     largest: 2,
   });
