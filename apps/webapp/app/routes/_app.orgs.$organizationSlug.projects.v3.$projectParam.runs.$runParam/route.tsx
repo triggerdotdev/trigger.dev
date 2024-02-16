@@ -63,7 +63,11 @@ export default function Page() {
         <div className={cn("grid h-full grid-cols-1 gap-4")}>
           <div className="h-full overflow-y-clip">
             <div className="mb-2 flex items-center justify-between gap-x-2"></div>
-            <TasksTreeView events={events} parentRunFriendlyId={parentRunFriendlyId} />
+            <TasksTreeView
+              key={events[0]?.id ?? "-"}
+              events={events}
+              parentRunFriendlyId={parentRunFriendlyId}
+            />
           </div>
         </div>
       </PageBody>
