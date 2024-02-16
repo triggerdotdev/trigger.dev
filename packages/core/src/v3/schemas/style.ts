@@ -16,4 +16,4 @@ export const TaskEventStyle = z
     prominence: LOW_PROMINENCE,
   });
 
-type TaskEventStyle = z.infer<typeof TaskEventStyle>;
+export type TaskEventStyle = z.infer<typeof TaskEventStyle>;

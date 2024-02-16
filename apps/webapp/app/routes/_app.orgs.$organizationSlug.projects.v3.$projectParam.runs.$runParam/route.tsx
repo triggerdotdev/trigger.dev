@@ -3,7 +3,7 @@ import {
   ChevronRightIcon,
   ExclamationCircleIcon,
 } from "@heroicons/react/20/solid";
-import { Link, Outlet, useMatches, useNavigate, useNavigation } from "@remix-run/react";
+import { Link, Outlet, useNavigate } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDuration, formatDurationNanoseconds } from "@trigger.dev/core/v3";
 import { useEffect, useRef, useState } from "react";
@@ -21,6 +21,7 @@ import {
 import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { Changes, TreeView, useTree } from "~/components/primitives/TreeView";
+import { eventTextClassName } from "~/components/runs/v3/EventText";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
@@ -49,6 +50,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
+function getSpanId(path: string): string | undefined {
+  const regex = /spans\/([^\/]*)/;
+  const match = path.match(regex);
+  return match ? match[1] : undefined;
+}
+
 export default function Page() {
   const { run, events, parentRunFriendlyId } = useTypedLoaderData<typeof loader>();
   const navigate = useNavigate();
@@ -56,7 +63,7 @@ export default function Page() {
   const pathName = usePathName();
   const project = useProject();
 
-  const hasSelectedSpan = pathName.includes("/spans/");
+  const selectedSpanId = getSpanId(pathName);
 
   return (
     <>
@@ -71,11 +78,16 @@ export default function Page() {
             <ResizablePanel order={1} minSize={30}>
               <div className="h-full overflow-y-clip">
                 <TasksTreeView
+                  selectedId={selectedSpanId}
                   key={events[0]?.id ?? "-"}
                   events={events}
                   parentRunFriendlyId={parentRunFriendlyId}
                   onChanges={(changes) => {
-                    if (!changes.selectedId) return;
+                    if (selectedSpanId === changes.selectedId) return;
+                    if (!changes.selectedId) {
+                      navigate(v3RunPath(organization, project, run));
+                      return;
+                    }
                     navigate(
                       v3RunSpanPath(organization, project, run, { spanId: changes.selectedId })
                     );
@@ -84,7 +96,7 @@ export default function Page() {
               </div>
             </ResizablePanel>
             <ResizableHandle withHandle />
-            {hasSelectedSpan && (
+            {selectedSpanId !== undefined && (
               <ResizablePanel order={2} minSize={30} defaultSize={30}>
                 <Outlet />
               </ResizablePanel>
@@ -98,10 +110,12 @@ export default function Page() {
 
 function TasksTreeView({
   events,
+  selectedId,
   parentRunFriendlyId,
   onChanges,
 }: {
   events: RunEvent[];
+  selectedId?: string;
   parentRunFriendlyId?: string;
   onChanges: (changes: Changes) => void;
 }) {
@@ -123,7 +137,7 @@ function TasksTreeView({
     virtualizer,
   } = useTree({
     tree: events,
-    // selectedId,
+    selectedId,
     // collapsedIds,
     onStateChanged: onChanges,
     estimatedRowHeight: () => 32,
@@ -142,7 +156,7 @@ function TasksTreeView({
 
   return (
     <div className="px-3">
-      <div className="flex items-center justify-between gap-2 border-b border-slate-850 py-1">
+      <div className="flex h-8 items-center justify-between gap-2 border-b border-slate-850">
         <Input
           placeholder="Search log"
           variant="tertiary"
@@ -167,7 +181,7 @@ function TasksTreeView({
         nodes={nodes}
         getNodeProps={getNodeProps}
         getTreeProps={getTreeProps}
-        parentClassName="h-full"
+        parentClassName="h-full mt-2"
         renderNode={({ node, state, index, virtualizer, virtualItem }) => (
           <div
             className={cn(
@@ -212,8 +226,8 @@ function TasksTreeView({
             </div>
 
             <div className="flex w-full items-center justify-between gap-2 px-1">
-              <div className="flex items-center gap-2 ">
-                <RunIcon name={node.data.style?.icon} className="h-4 w-4" />
+              <div className="flex items-center gap-2 overflow-x-hidden">
+                <RunIcon name={node.data.style?.icon} className="min-w-4 min-h-4 h-4 w-4" />
                 <NodeText node={node} />
               </div>
               <div className="flex items-center gap-2">
@@ -240,59 +254,15 @@ function TasksTreeView({
 }
 
 function NodeText({ node }: { node: RunEvent }) {
-  if (node.data.isError) {
-    return (
-      <Paragraph variant="small/bright" className={cn(node.data.isError && "text-rose-500")}>
-        {node.data.message}
-      </Paragraph>
-    );
-  }
-
-  switch (node.data.level) {
-    case "TRACE": {
-      return (
-        <Paragraph variant={node.data.style.prominence === "high" ? "small/bright" : "small"}>
-          {node.data.message}
-        </Paragraph>
-      );
-    }
-    case "LOG":
-    case "INFO":
-    case "DEBUG": {
-      return (
-        <Paragraph
-          variant="small"
-          className={node.data.style.prominence === "high" ? "small/bright" : "small"}
-        >
-          {node.data.message}
-        </Paragraph>
-      );
-    }
-    case "WARN": {
-      return (
-        <Paragraph variant="small" className="text-amber-400">
-          {node.data.message}
-        </Paragraph>
-      );
-    }
-    case "ERROR": {
-      return (
-        <Paragraph variant="small" className="text-rose-500">
-          {node.data.message}
-        </Paragraph>
-      );
-    }
-    default: {
-      return (
-        <Paragraph
-          variant="small"
-          className={node.data.style.prominence === "high" ? "small/bright" : "small"}
-        >
-          {node.data.message}
-        </Paragraph>
-      );
-    }
-  }
+  const className = "truncate";
+  return (
+    <Paragraph
+      variant="small"
+      className={cn(className, eventTextClassName(node.data), node.data.isError && "text-rose-500")}
+    >
+      {node.data.message}
+    </Paragraph>
+  );
 }
 
 function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boolean }) {
@@ -303,7 +273,7 @@ function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boole
 
 function Duration({ duration }: { duration: number }) {
   return (
-    <Paragraph variant="extra-small">
+    <Paragraph variant="extra-small" className="whitespace-nowrap">
       {formatDurationNanoseconds(duration, { style: "short" })}
     </Paragraph>
   );
@@ -343,7 +313,7 @@ function LiveTimer({
   }, [startTime]);
 
   return (
-    <Paragraph variant="extra-small" className="tabular-nums">
+    <Paragraph variant="extra-small" className="whitespace-nowrap tabular-nums">
       {formatDuration(startTime, now, {
         style: "short",
         maxDecimalPoints: 0,

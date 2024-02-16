@@ -1,3 +1,4 @@
+import { TaskEventStyle } from "@trigger.dev/core/v3";
 import { PrismaClient, prisma } from "~/db.server";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
@@ -48,6 +49,7 @@ export class SpanPresenter {
     return {
       event: {
         ...event,
+        style: TaskEventStyle.parse(event.style),
         duration: Number(event.duration),
       },
     };

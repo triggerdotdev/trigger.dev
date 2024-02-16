@@ -16,7 +16,7 @@ type TaskIconProps = {
 };
 
 export function RunIcon({ name, className }: TaskIconProps) {
-  if (!name) return <Squares2X2Icon className={cn(className, "h-4 w-4 text-slate-700")} />;
+  if (!name) return <Squares2X2Icon className={cn(className, "text-slate-700")} />;
 
   switch (name) {
     case "task":

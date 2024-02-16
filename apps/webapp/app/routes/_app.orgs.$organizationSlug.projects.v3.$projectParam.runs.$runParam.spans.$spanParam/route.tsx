@@ -1,13 +1,15 @@
-import { Await, useLoaderData, useNavigation } from "@remix-run/react";
-import { LoaderFunctionArgs, defer, json } from "@remix-run/server-runtime";
+import { Await, useLoaderData } from "@remix-run/react";
+import { LoaderFunctionArgs, defer } from "@remix-run/server-runtime";
 import { Suspense } from "react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { Callout } from "~/components/primitives/Callout";
-import { Header1 } from "~/components/primitives/Headers";
+import { Header2 } from "~/components/primitives/Headers";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Spinner } from "~/components/primitives/Spinner";
+import { eventTextClassName } from "~/components/runs/v3/EventText";
+import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { useMatchesData } from "~/utils";
+import { cn } from "~/utils/cn";
 import { v3SpanParamsSchema } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -46,7 +48,18 @@ export default function Page() {
       >
         {({ event }) => (
           <div>
-            <Header1 spacing>{event.message}</Header1>
+            <div className="border-b border-slate-800">
+              <div className="flex h-8 items-center justify-between gap-2 border-b border-ui-border px-2">
+                <div className="flex items-center gap-1 overflow-x-hidden">
+                  <RunIcon name={event.style?.icon} className="min-w-4 min-h-4 h-4 w-4" />
+                  <Header2 className={cn("whitespace-nowrap", eventTextClassName(event))}>
+                    {event.message}
+                  </Header2>
+                </div>
+                <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
+              </div>
+            </div>
+            <div></div>
           </div>
         )}
       </Await>
