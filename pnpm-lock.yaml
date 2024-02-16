@@ -226,6 +226,7 @@ importers:
       react-collapse: ^5.1.1
       react-dom: ^18.2.0
       react-hotkeys-hook: ^4.4.1
+      react-resizable-panels: ^2.0.9
       react-stately: ^3.29.1
       react-use: ^17.4.0
       recharts: ^2.8.0
@@ -355,6 +356,7 @@ importers:
       react-collapse: 5.1.1_react@18.2.0
       react-dom: 18.2.0_react@18.2.0
       react-hotkeys-hook: 4.4.1_biqbaboplfbrettd7655fr4n2y
+      react-resizable-panels: 2.0.9_biqbaboplfbrettd7655fr4n2y
       react-stately: 3.29.1_react@18.2.0
       react-use: 17.4.0_biqbaboplfbrettd7655fr4n2y
       recharts: 2.8.0_v2m5e27vhdewzwhryxwfaorcca
@@ -32410,6 +32412,16 @@ packages:
       tslib: 2.6.2
       use-callback-ref: 1.3.0_e74vmjybjy5dsfplslbsgtbvvi
       use-sidecar: 1.1.2_e74vmjybjy5dsfplslbsgtbvvi
+    dev: false
+
+  /react-resizable-panels/2.0.9_biqbaboplfbrettd7655fr4n2y:
+    resolution: {integrity: sha512-ZylBvs7oG7Y/INWw3oYGolqgpFvoPW8MPeg9l1fURDeKpxrmUuCHBUmPj47BdZ11MODImu3kZYXG85rbySab7w==}
+    peerDependencies:
+      react: ^16.14.0 || ^17.0.0 || ^18.0.0
+      react-dom: ^16.14.0 || ^17.0.0 || ^18.0.0
+    dependencies:
+      react: 18.2.0
+      react-dom: 18.2.0_react@18.2.0
     dev: false
 
   /react-resize-detector/8.1.0_biqbaboplfbrettd7655fr4n2y:

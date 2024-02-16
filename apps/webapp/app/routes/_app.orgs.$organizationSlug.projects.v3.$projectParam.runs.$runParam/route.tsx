@@ -15,6 +15,11 @@ import { LinkButton } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { TreeView, useTree } from "~/components/primitives/TreeView";
@@ -59,16 +64,21 @@ export default function Page() {
           <PageTitle title={`Run #${run.number}`} />
         </PageTitleRow>
       </PageHeader>
-      <PageBody>
+      <PageBody scrollable={false}>
         <div className={cn("grid h-full grid-cols-1 gap-4")}>
-          <div className="h-full overflow-y-clip">
-            <div className="mb-2 flex items-center justify-between gap-x-2"></div>
-            <TasksTreeView
-              key={events[0]?.id ?? "-"}
-              events={events}
-              parentRunFriendlyId={parentRunFriendlyId}
-            />
-          </div>
+          <ResizablePanelGroup direction="horizontal" className="h-full">
+            <ResizablePanel>
+              <div className="h-full overflow-y-clip">
+                <TasksTreeView
+                  key={events[0]?.id ?? "-"}
+                  events={events}
+                  parentRunFriendlyId={parentRunFriendlyId}
+                />
+              </div>
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel>Two</ResizablePanel>
+          </ResizablePanelGroup>
         </div>
       </PageBody>
     </>
@@ -118,7 +128,7 @@ function TasksTreeView({
   });
 
   return (
-    <>
+    <div className="px-3">
       <div className="flex items-center justify-between gap-2 border-b border-slate-850 py-1">
         <Input
           placeholder="Search log"
@@ -212,7 +222,7 @@ function TasksTreeView({
           </div>
         )}
       />
-    </>
+    </div>
   );
 }
 
