@@ -1,6 +1,7 @@
 import { TaskRunContext, TaskRunExecution, TaskRunExecutionResult } from "../schemas";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes";
 import { TriggerTracer } from "../tracer";
+import { formatDurationMilliseconds } from "../utils/durations";
 import { RuntimeManager } from "./manager";
 
 export type DevRuntimeManagerOptions = {
@@ -21,7 +22,7 @@ export class DevRuntimeManager implements RuntimeManager {
 
   async waitForDuration(ms: number): Promise<void> {
     return this.options.tracer.startActiveSpan(
-      "wait for duration",
+      `Wait for ${formatDurationMilliseconds(ms, { style: "short" })}`,
       async (span) => {
         return new Promise((resolve) => {
           setTimeout(resolve, ms);
