@@ -12,16 +12,15 @@ type MarQSOptions = {
   redis: RedisOptions;
   defaultConcurrency?: number;
   windowSize?: number;
-  visibilityTimeout?: number;
+  visibilityTimeoutInMs?: number;
   workers: number;
 };
 
 const constants = {
   SHARED_QUEUE: "sharedQueue",
-  SHARED_TIMEOUT_QUEUE: "timeoutQueue",
+  MESSAGE_VISIBILITY_TIMEOUT_QUEUE: "msgVisibilityTimeout",
   CURRENT_CONCURRENCY_PART: "currentConcurrency",
   CONCURRENCY_LIMIT_PART: "concurrency",
-  TIMEOUT_PART: "timeout",
   ENV_PART: "env",
   QUEUE_PART: "queue",
   CONCURRENCY_KEY_PART: "ck",
@@ -118,14 +117,13 @@ export class MarQS {
     // If the queue includes a concurrency key, we need to remove the ck:concurrencyKey from the queue name
     const concurrencyQueueName = messageQueue.replace(/:ck:.+$/, "");
 
-    const message = await this.#callDequeueMessage(
+    const message = await this.#callDequeueMessage({
       messageQueue,
       parentQueue,
-      `${messageQueue}:${constants.TIMEOUT_PART}`,
-      constants.SHARED_TIMEOUT_QUEUE,
-      `${concurrencyQueueName}:${constants.CONCURRENCY_LIMIT_PART}`,
-      `${messageQueue}:${constants.CURRENT_CONCURRENCY_PART}`
-    );
+      visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
+      concurrencyLimitKey: `${concurrencyQueueName}:${constants.CONCURRENCY_LIMIT_PART}`,
+      currentConcurrencyKey: `${messageQueue}:${constants.CURRENT_CONCURRENCY_PART}`,
+    });
 
     if (!message) {
       return;
@@ -141,15 +139,20 @@ export class MarQS {
       return;
     }
 
-    const timeoutQueue = `${message.queue}:${constants.TIMEOUT_PART}`;
+    await this.#callAcknowledgeMessage({
+      messageKey: `${constants.MESSAGE_PART}:${messageId}`,
+      visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
+      concurrencyKey: `${message.queue}:${constants.CURRENT_CONCURRENCY_PART}`,
+      messageId,
+    });
 
-    await this.#callAcknowledgeMessage(
-      `${constants.MESSAGE_PART}:${messageId}`,
-      timeoutQueue,
-      constants.SHARED_TIMEOUT_QUEUE,
-      `${message.queue}:${constants.CURRENT_CONCURRENCY_PART}`,
-      messageId
-    );
+    // await this.#callAcknowledgeMessage(
+    //   `${constants.MESSAGE_PART}:${messageId}`,
+    //   timeoutQueue,
+    //   constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
+    //   `${message.queue}:${constants.CURRENT_CONCURRENCY_PART}`,
+    //   messageId
+    // );
   }
 
   /**
@@ -162,19 +165,19 @@ export class MarQS {
       return;
     }
 
-    // Need to remove the message from the timeout queue and "rebalance" the TIMEOUT parent queue
-    const timeoutQueue = `${message.queue}:${constants.TIMEOUT_PART}`;
-
-    await this.#callNackMessage(
-      `${constants.MESSAGE_PART}:${messageId}`,
-      message.queue,
-      message.parentQueue,
-      `${message.queue}:${constants.CURRENT_CONCURRENCY_PART}`,
-      timeoutQueue,
-      constants.SHARED_TIMEOUT_QUEUE,
+    await this.#callNackMessage({
+      messageKey: `${constants.MESSAGE_PART}:${messageId}`,
+      messageQueue: message.queue,
+      parentQueue: message.parentQueue,
+      concurrencyKey: `${message.queue}:${constants.CURRENT_CONCURRENCY_PART}`,
+      visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
       messageId,
-      message.timestamp
-    );
+      messageScore: message.timestamp,
+    });
+  }
+
+  public async heartbeatMessage(messageId: string, seconds: number = 30) {
+    await this.redis.zincrby(constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE, seconds * 1000, messageId);
   }
 
   async #readMessage(messageId: string) {
@@ -231,7 +234,7 @@ export class MarQS {
 
     const concurrencyLimit =
       (await this.redis.get(`${concurrencyQueueName}:${constants.CONCURRENCY_LIMIT_PART}`)) ?? 100;
-    const currentConcurrency = await this.redis.get(
+    const currentConcurrency = await this.redis.scard(
       `${queue}:${constants.CURRENT_CONCURRENCY_PART}`
     );
 
@@ -276,26 +279,6 @@ export class MarQS {
     return result;
   }
 
-  async #rebalanceParentQueueForChildQueue({
-    parentQueue,
-    childQueue,
-  }: {
-    parentQueue: string;
-    childQueue: string;
-  }) {
-    // Get the earliest task from the child queue
-    const earliestTask = await this.redis.zrange(childQueue, 0, 0, "WITHSCORES");
-
-    if (earliestTask.length === 0) {
-      // Remove the child queue from the parent queue
-
-      return this.redis.zrem(parentQueue, childQueue);
-    }
-
-    // Update the score of the child queue in the parent queue
-    return this.redis.zadd(parentQueue, earliestTask[1], childQueue);
-  }
-
   #startRequeuingWorkers() {
     // Start a new worker to requeue visible messages
     for (let i = 0; i < this.options.workers; i++) {
@@ -308,54 +291,49 @@ export class MarQS {
   }
 
   async #requeueVisibleMessages() {
-    const timeoutQueue = await this.#getRandomQueueFromParentQueue(
-      constants.SHARED_TIMEOUT_QUEUE,
-      (queue, score) => Promise.resolve(Date.now() - score)
-    );
-
-    if (!timeoutQueue) {
-      return;
-    }
-
     // Remove any of the messages from the timeoutQueue that have expired
-    const messages = await this.redis.zrangebyscore(timeoutQueue, 0, Date.now());
+    const messages = await this.redis.zrangebyscore(
+      constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
+      0,
+      Date.now(),
+      "LIMIT",
+      0,
+      10
+    );
 
     if (messages.length === 0) {
       return;
     }
 
-    const messageQueue = timeoutQueue.replace(`:${constants.TIMEOUT_PART}`, "");
+    for (let i = 0; i < messages.length; i++) {
+      const message = messages[i];
 
-    await this.redis.zrem(timeoutQueue, ...messages);
-    await this.redis.zadd(messageQueue, Date.now(), ...messages);
+      const messageData = await this.redis.get(`${constants.MESSAGE_PART}:${message}`);
 
-    const messagePayloads = await Promise.all(
-      messages.map((messageId) => this.#readMessage(messageId))
-    ).then((messages) => messages.filter(Boolean));
+      if (!messageData) {
+        await this.redis.zrem(constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE, message);
 
-    const rebalances: Map<string, { parentQueue: string; childQueue: string }> = new Map();
-
-    for (const messagePayload of messagePayloads) {
-      if (!messagePayload) {
         continue;
       }
 
-      rebalances.set(`${messagePayload.parentQueue}:${messagePayload.queue}`, {
-        parentQueue: messagePayload.parentQueue,
-        childQueue: messageQueue,
+      const parsedMessage = MessagePayload.safeParse(JSON.parse(messageData));
+
+      if (!parsedMessage.success) {
+        await this.redis.zrem(constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE, message);
+
+        continue;
+      }
+
+      await this.#callNackMessage({
+        messageKey: `${constants.MESSAGE_PART}:${message}`,
+        messageQueue: parsedMessage.data.queue,
+        parentQueue: parsedMessage.data.parentQueue,
+        concurrencyKey: `${parsedMessage.data.queue}:${constants.CURRENT_CONCURRENCY_PART}`,
+        visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
+        messageId: parsedMessage.data.messageId,
+        messageScore: parsedMessage.data.timestamp,
       });
     }
-
-    await Promise.all(
-      Array.from(rebalances.values()).map(({ parentQueue, childQueue }) =>
-        this.#rebalanceParentQueueForChildQueue({ parentQueue, childQueue })
-      )
-    );
-
-    await this.#rebalanceParentQueueForChildQueue({
-      parentQueue: constants.SHARED_TIMEOUT_QUEUE,
-      childQueue: timeoutQueue,
-    });
   }
 
   async #callEnqueueMessage(message: MessagePayload) {
@@ -374,33 +352,35 @@ export class MarQS {
     );
   }
 
-  async #callDequeueMessage(
-    childQueue: string,
-    parentQueue: string,
-    timeoutQueue: string,
-    timeoutParentQueue: string,
-    concurrencyLimitKey: string,
-    currentConcurrencyKey: string
-  ) {
+  async #callDequeueMessage({
+    messageQueue,
+    parentQueue,
+    visibilityQueue,
+    concurrencyLimitKey,
+    currentConcurrencyKey,
+  }: {
+    messageQueue: string;
+    parentQueue: string;
+    visibilityQueue: string;
+    concurrencyLimitKey: string;
+    currentConcurrencyKey: string;
+  }) {
     logger.debug("Calling dequeueMessage", {
-      childQueue,
+      messageQueue,
       parentQueue,
-      timeoutQueue,
-      timeoutParentQueue,
+      visibilityQueue,
       concurrencyLimitKey,
       currentConcurrencyKey,
     });
 
     const result = await this.redis.dequeueMessage(
-      childQueue,
+      messageQueue,
       parentQueue,
-      timeoutQueue,
-      timeoutParentQueue,
+      visibilityQueue,
       concurrencyLimitKey,
       currentConcurrencyKey,
-      childQueue,
-      timeoutQueue,
-      String(this.options.visibilityTimeout ?? 300000),
+      messageQueue,
+      String(this.options.visibilityTimeoutInMs ?? 300000), // 5 minutes
       String(Date.now()),
       String(this.options.defaultConcurrency ?? 10)
     );
@@ -423,61 +403,61 @@ export class MarQS {
     };
   }
 
-  async #callAcknowledgeMessage(
-    messageKey: string,
-    timeoutQueue: string,
-    timeoutParentQueue: string,
-    concurrencyKey: string,
-    messageId: string
-  ) {
+  async #callAcknowledgeMessage({
+    messageKey,
+    visibilityQueue,
+    concurrencyKey,
+    messageId,
+  }: {
+    messageKey: string;
+    visibilityQueue: string;
+    concurrencyKey: string;
+    messageId: string;
+  }) {
     logger.debug("Calling acknowledgeMessage", {
       messageKey,
-      timeoutQueue,
-      timeoutParentQueue,
+      visibilityQueue,
       concurrencyKey,
       messageId,
     });
 
-    return this.redis.acknowledgeMessage(
-      messageKey,
-      timeoutQueue,
-      timeoutParentQueue,
-      concurrencyKey,
-      timeoutParentQueue,
-      messageId
-    );
+    return this.redis.acknowledgeMessage(messageKey, visibilityQueue, concurrencyKey, messageId);
   }
 
-  async #callNackMessage(
-    messageKey: string,
-    childQueueKey: string,
-    parentQueueKey: string,
-    concurrencyKey: string,
-    timeoutQueue: string,
-    timeoutParentQueue: string,
-    messageId: string,
-    messageScore: number
-  ) {
+  async #callNackMessage({
+    messageKey,
+    messageQueue,
+    parentQueue,
+    concurrencyKey,
+    visibilityQueue,
+    messageId,
+    messageScore,
+  }: {
+    messageKey: string;
+    messageQueue: string;
+    parentQueue: string;
+    concurrencyKey: string;
+    visibilityQueue: string;
+    messageId: string;
+    messageScore: number;
+  }) {
     logger.debug("Calling nackMessage", {
       messageKey,
-      childQueueKey,
-      parentQueueKey,
+      messageQueue,
+      parentQueue,
       concurrencyKey,
-      timeoutQueue,
-      timeoutParentQueue,
+      visibilityQueue,
       messageId,
       messageScore,
     });
 
     return this.redis.nackMessage(
       messageKey,
-      childQueueKey,
-      parentQueueKey,
+      messageQueue,
+      parentQueue,
       concurrencyKey,
-      timeoutQueue,
-      timeoutParentQueue,
-      childQueueKey,
-      timeoutQueue,
+      visibilityQueue,
+      messageQueue,
       messageId,
       String(Date.now()),
       String(messageScore)
@@ -514,24 +494,22 @@ end
     });
 
     this.redis.defineCommand("dequeueMessage", {
-      numberOfKeys: 6,
+      numberOfKeys: 5,
       lua: `
--- Keys: childQueue, parentQueue, timeoutQueue, timeoutParentQueue, concurrencyLimitKey, currentConcurrencyKey
+-- Keys: childQueue, parentQueue, visibilityQueue, concurrencyLimitKey, currentConcurrencyKey
 -- Args: visibilityTimeout, currentTime
 local childQueue = KEYS[1]
 local parentQueue = KEYS[2]
-local timeoutQueue = KEYS[3]
-local timeoutParentQueue = KEYS[4]
-local concurrencyLimitKey = KEYS[5]
-local currentConcurrencyKey = KEYS[6]
+local visibilityQueue = KEYS[3]
+local concurrencyLimitKey = KEYS[4]
+local currentConcurrencyKey = KEYS[5]
 local childQueueName = ARGV[1]
-local timeoutQueueName = ARGV[2]
-local visibilityTimeout = tonumber(ARGV[3])
-local currentTime = tonumber(ARGV[4])
-local defaultConcurrencyLimit = ARGV[5]
+local visibilityTimeout = tonumber(ARGV[2])
+local currentTime = tonumber(ARGV[3])
+local defaultConcurrencyLimit = ARGV[4]
 
 -- Check current concurrency against the limit
-local currentConcurrency = tonumber(redis.call('GET', currentConcurrencyKey) or '0')
+local currentConcurrency = tonumber(redis.call('SCARD', currentConcurrencyKey) or '0')
 local concurrencyLimit = tonumber(redis.call('GET', concurrencyLimitKey) or defaultConcurrencyLimit)
 
 if currentConcurrency < concurrencyLimit then
@@ -546,8 +524,8 @@ if currentConcurrency < concurrencyLimit then
 
     -- Move message to timeout queue and update concurrency
     redis.call('ZREM', childQueue, messageId)
-    redis.call('ZADD', timeoutQueue, timeoutScore, messageId)
-    redis.call('INCR', currentConcurrencyKey)
+    redis.call('ZADD', visibilityQueue, timeoutScore, messageId)
+    redis.call('SADD', currentConcurrencyKey, messageId)
 
     -- Rebalance the parent queue
     local earliestMessage = redis.call('ZRANGE', childQueue, 0, 0, 'WITHSCORES')
@@ -555,14 +533,6 @@ if currentConcurrency < concurrencyLimit then
         redis.call('ZREM', parentQueue, childQueueName)
     else
         redis.call('ZADD', parentQueue, earliestMessage[2], childQueueName)
-    end
-
-    -- Rebalance the timeout parent queue
-    local earliestTimeoutMessage = redis.call('ZRANGE', timeoutQueue, 0, 0, 'WITHSCORES')
-    if #earliestTimeoutMessage == 0 then
-        redis.call('ZREM', timeoutParentQueue, timeoutQueueName)
-    else
-        redis.call('ZADD', timeoutParentQueue, earliestTimeoutMessage[2], timeoutQueueName)
     end
     
     return {messageId, messageScore} -- Return message details
@@ -574,59 +544,55 @@ return nil
     });
 
     this.redis.defineCommand("acknowledgeMessage", {
-      numberOfKeys: 4,
+      numberOfKeys: 3,
       lua: `
--- Keys: messageKey, timeoutQueue, timeoutParentQueue, concurrencyKey
+-- Keys: messageKey, visibilityQueue, concurrencyKey
 local messageKey = KEYS[1]
-local timeoutQueue = KEYS[2]
-local timeoutParentQueue = KEYS[3]
-local concurrencyKey = KEYS[4]
+local visibilityQueue = KEYS[2]
+local concurrencyKey = KEYS[3]
 
-local timeoutQueueName = ARGV[1]
-local messageId = ARGV[2]
+-- Args: messageId
+local messageId = ARGV[1]
 
 -- Remove the message from the message key
 redis.call('DEL', messageKey)
 
 -- Remove the message from the timeout queue
-redis.call('ZREM', timeoutQueue, messageId)
+redis.call('ZREM', visibilityQueue, messageId)
 
 -- Update the concurrency key
-redis.call('DECR', concurrencyKey)
-
--- Rebalance the timeout parent queue
-local earliestTimeoutMessage = redis.call('ZRANGE', timeoutQueue, 0, 0, 'WITHSCORES')
-if #earliestTimeoutMessage == 0 then
-    redis.call('ZREM', timeoutParentQueue, timeoutQueueName)
-else
-    redis.call('ZADD', timeoutParentQueue, earliestTimeoutMessage[2], timeoutQueueName)
-end
+redis.call('SREM', concurrencyKey, messageId)
 `,
     });
 
     this.redis.defineCommand("nackMessage", {
-      numberOfKeys: 6,
+      numberOfKeys: 5,
       lua: `
--- Keys: childQueueKey, parentQueueKey, timeoutQueue, timeoutParentQueue, concurrencyKey, messageId
+-- Keys: childQueueKey, parentQueueKey, visibilityQueue, concurrencyKey, messageId
 local messageKey = KEYS[1]
 local childQueueKey = KEYS[2]
 local parentQueueKey = KEYS[3]
 local concurrencyKey = KEYS[4]
-local timeoutQueue = KEYS[5]
-local timeoutParentQueue = KEYS[6]
+local visibilityQueue = KEYS[5]
 
--- Args: messageId, currentTime, messageScore
+-- Args: childQueueName, messageId, currentTime, messageScore
 local childQueueName = ARGV[1]
-local timeoutQueueName = ARGV[2]
-local messageId = ARGV[3]
-local currentTime = tonumber(ARGV[4])
-local messageScore = tonumber(ARGV[5])
+local messageId = ARGV[2]
+local currentTime = tonumber(ARGV[3])
+local messageScore = tonumber(ARGV[4])
+
+-- Check to see if the message is still in the visibilityQueue
+local messageVisibility = redis.call('ZSCORE', visibilityQueue, messageId)
+
+if messageVisibility == nil then
+    return
+end
 
 -- Update the concurrency key
-redis.call('DECR', concurrencyKey)
+redis.call('SREM', concurrencyKey, messageId)
 
 -- Remove the message from the timeout queue
-redis.call('ZREM', timeoutQueue, messageId)
+redis.call('ZREM', visibilityQueue, messageId)
 
 -- Enqueue the message into the queue
 redis.call('ZADD', childQueueKey, messageScore, messageId)
@@ -637,15 +603,6 @@ if #earliestMessage == 0 then
     redis.call('ZREM', parentQueueKey, childQueueName)
 else
     redis.call('ZADD', parentQueueKey, earliestMessage[2], childQueueName)
-end
-
--- Rebalance the timeout parent queue
-local earliestTimeoutMessage = redis.call('ZRANGE', timeoutQueue, 0, 0, 'WITHSCORES')
-
-if #earliestTimeoutMessage == 0 then
-    redis.call('ZREM', timeoutParentQueue, timeoutQueueName)
-else
-    redis.call('ZADD', timeoutParentQueue, earliestTimeoutMessage[2], timeoutQueueName)
 end
 `,
     });
@@ -668,12 +625,10 @@ declare module "ioredis" {
     dequeueMessage(
       childQueue: string,
       parentQueue: string,
-      timeoutQueue: string,
-      timeoutParentQueue: string,
+      visibilityQueue: string,
       concurrencyLimitKey: string,
       currentConcurrencyKey: string,
       childQueueName: string,
-      timeoutQueueName: string,
       visibilityTimeout: string,
       currentTime: string,
       defaultConcurrencyLimit: string,
@@ -682,10 +637,8 @@ declare module "ioredis" {
 
     acknowledgeMessage(
       messageKey: string,
-      timeoutQueue: string,
-      timeoutParentQueue: string,
+      visibilityQueue: string,
       concurrencyKey: string,
-      timeoutQueueName: string,
       messageId: string,
       callback?: Callback<void>
     ): Result<void, Context>;
@@ -695,10 +648,8 @@ declare module "ioredis" {
       childQueueKey: string,
       parentQueueKey: string,
       concurrencyKey: string,
-      timeoutQueue: string,
-      timeoutParentQueue: string,
+      visibilityQueue: string,
       childQueueName: string,
-      timeoutQueueName: string,
       messageId: string,
       currentTime: string,
       messageScore: string,
@@ -723,6 +674,7 @@ function getMarQSClient() {
         ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
       },
       defaultConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
+      visibilityTimeoutInMs: 30 * 1000,
     });
   }
 }
