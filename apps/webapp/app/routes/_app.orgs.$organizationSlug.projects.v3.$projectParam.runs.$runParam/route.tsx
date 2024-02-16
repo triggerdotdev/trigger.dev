@@ -3,8 +3,9 @@ import {
   ChevronRightIcon,
   ExclamationCircleIcon,
 } from "@heroicons/react/20/solid";
-import { Link, useNavigation } from "@remix-run/react";
+import { Link, Outlet, useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { formatDuration, formatDurationNanoseconds } from "@trigger.dev/core/v3";
 import { animate, motion, useMotionValue, useTime, useTransform } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -29,7 +30,6 @@ import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
 import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { formatDuration, formatDurationMilliseconds, formatDurationNanoseconds } from "~/utils";
 import { cn } from "~/utils/cn";
 import { v3RunParamsSchema, v3RunPath } from "~/utils/pathBuilder";
 
@@ -67,7 +67,7 @@ export default function Page() {
       <PageBody scrollable={false}>
         <div className={cn("grid h-full grid-cols-1 gap-4")}>
           <ResizablePanelGroup direction="horizontal" className="h-full">
-            <ResizablePanel>
+            <ResizablePanel order={1} minSize={30}>
               <div className="h-full overflow-y-clip">
                 <TasksTreeView
                   key={events[0]?.id ?? "-"}
@@ -77,7 +77,9 @@ export default function Page() {
               </div>
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel>Two</ResizablePanel>
+            <ResizablePanel order={2} minSize={30} defaultSize={30}>
+              <Outlet />
+            </ResizablePanel>
           </ResizablePanelGroup>
         </div>
       </PageBody>

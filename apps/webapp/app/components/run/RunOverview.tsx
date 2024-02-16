@@ -17,7 +17,6 @@ import type { RunBasicStatus } from "~/models/jobRun.server";
 import { ViewRun } from "~/presenters/RunPresenter.server";
 import { cancelSchema } from "~/routes/resources.runs.$runId.cancel";
 import { schema } from "~/routes/resources.runs.$runId.rerun";
-import { formatDuration, formatDurationMilliseconds } from "~/utils";
 import { cn } from "~/utils/cn";
 import { runCompletedPath, runTaskPath, runTriggerPath } from "~/utils/pathBuilder";
 import { CodeBlock } from "../code/CodeBlock";
@@ -53,6 +52,7 @@ import {
 } from "./RunCard";
 import { TaskCard } from "./TaskCard";
 import { TaskCardSkeleton } from "./TaskCardSkeleton";
+import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
 
 type RunOverviewProps = {
   run: ViewRun;

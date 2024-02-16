@@ -1,4 +1,5 @@
 import type { DisplayProperty, StyleName } from "@trigger.dev/core";
+import { formatDuration } from "@trigger.dev/core/v3";
 import { motion } from "framer-motion";
 import { HourglassIcon } from "lucide-react";
 import { ReactNode, useEffect, useState } from "react";
@@ -7,7 +8,6 @@ import { Callout } from "~/components/primitives/Callout";
 import { LabelValueStack } from "~/components/primitives/LabelValueStack";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
 
 type RunPanelProps = {

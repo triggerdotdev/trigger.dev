@@ -4,7 +4,6 @@ import { User } from "@trigger.dev/database";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { RunListItem } from "~/presenters/v3/RunListPresenter.server";
-import { formatDuration } from "~/utils";
 import { v3RunPath } from "~/utils/pathBuilder";
 import { EnvironmentLabel } from "../../environments/EnvironmentLabel";
 import { DateTime } from "../../primitives/DateTime";
@@ -21,6 +20,7 @@ import {
   TableRow,
 } from "../../primitives/Table";
 import { TaskRunStatus } from "./TaskRunStatus";
+import { formatDuration } from "@trigger.dev/core/v3";
 
 type RunsTableProps = {
   total: number;
