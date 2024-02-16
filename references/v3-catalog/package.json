@@ -6,26 +6,12 @@
     "dev:trigger": "trigger.dev dev --log-level debug",
     "start": "ts-node -r tsconfig-paths/register -r dotenv/config src/index.ts",
     "start:concurrency": "ts-node -r tsconfig-paths/register -r dotenv/config src/concurrencyUsage.ts",
-    "start:longRunning": "ts-node -r tsconfig-paths/register -r dotenv/config src/longRunningUsage.ts"
+    "start:longRunning": "ts-node -r tsconfig-paths/register -r dotenv/config src/longRunningUsage.ts",
+    "start:openai": "ts-node -r tsconfig-paths/register -r dotenv/config src/openaiUsage.ts"
   },
   "dependencies": {
-    "@opentelemetry/api": "^1.7.0",
-    "@opentelemetry/api-logs": "^0.48.0",
-    "@opentelemetry/auto-instrumentations-node": "^0.40.3",
-    "@opentelemetry/exporter-collector": "^0.25.0",
-    "@opentelemetry/exporter-logs-otlp-http": "^0.48.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.48.0",
-    "@opentelemetry/instrumentation": "^0.48.0",
-    "@opentelemetry/instrumentation-fetch": "^0.48.0",
-    "@opentelemetry/instrumentation-http": "^0.48.0",
-    "@opentelemetry/propagator-b3": "^1.21.0",
-    "@opentelemetry/resources": "^1.21.0",
-    "@opentelemetry/sdk-logs": "^0.48.0",
-    "@opentelemetry/sdk-node": "^0.48.0",
-    "@opentelemetry/sdk-trace-base": "^1.21.0",
-    "@opentelemetry/sdk-trace-node": "^1.21.0",
-    "@opentelemetry/semantic-conventions": "^1.21.0",
-    "@trigger.dev/sdk": "workspace:*"
+    "@trigger.dev/sdk": "workspace:*",
+    "openai": "^4.28.0"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",

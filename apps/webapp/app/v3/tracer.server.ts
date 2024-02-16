@@ -8,9 +8,12 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
+import { registerInstrumentations } from "@opentelemetry/instrumentation";
+import { PrismaInstrumentation } from "@prisma/instrumentation";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { singleton } from "~/utils/singleton";
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 
 export const tracer = singleton("tracer", getTracer);
 
@@ -40,6 +43,11 @@ function getTracer() {
   }
 
   provider.register();
+
+  registerInstrumentations({
+    tracerProvider: provider,
+    instrumentations: [getNodeAutoInstrumentations(), new PrismaInstrumentation()],
+  });
 
   return provider.getTracer("trigger.dev", "3.0.0.dp.1");
 }

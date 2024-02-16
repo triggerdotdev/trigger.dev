@@ -28,21 +28,6 @@ export class TriggerTaskService {
     body: TriggerTaskRequestBody,
     options: TriggerTaskServiceOptions = {}
   ) {
-    const idempotencyKey = options.idempotencyKey ?? nanoid();
-
-    const existingRun = await this.#prismaClient.taskRun.findUnique({
-      where: {
-        runtimeEnvironmentId_idempotencyKey: {
-          runtimeEnvironmentId: environment.id,
-          idempotencyKey,
-        },
-      },
-    });
-
-    if (existingRun) {
-      return existingRun;
-    }
-
     return await tracer.startActiveSpan(
       "TriggerTaskService.call",
       {
@@ -50,6 +35,25 @@ export class TriggerTaskService {
         attributes: { ...attributesFromAuthenticatedEnv(environment), taskId },
       },
       async (span) => {
+        const idempotencyKey = options.idempotencyKey ?? nanoid();
+
+        const existingRun = await this.#prismaClient.taskRun.findUnique({
+          where: {
+            runtimeEnvironmentId_idempotencyKey: {
+              runtimeEnvironmentId: environment.id,
+              idempotencyKey,
+            },
+          },
+        });
+
+        if (existingRun) {
+          span.setAttribute("runId", existingRun.friendlyId);
+
+          span.end();
+
+          return existingRun;
+        }
+
         return await eventRepository.traceEvent(
           `Triggering task ${taskId}`,
           {

@@ -1,12 +1,19 @@
 import { TracingSDK, HttpInstrumentation, FetchInstrumentation } from "@trigger.dev/core/v3/otel";
+// import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 
 // IMPORTANT: this needs to be the first import to work properly
+// WARNING: [WARNING] Constructing "ImportInTheMiddle" will crash at run-time because it's an import namespace object, not a constructor [call-import-namespace]
+// TODO: https://github.com/open-telemetry/opentelemetry-js/issues/3954
 const tracingSDK = new TracingSDK({
   url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
   resource: new Resource({
     [SemanticInternalAttributes.CLI_VERSION]: packageJson.version,
   }),
-  instrumentations: [new HttpInstrumentation(), new FetchInstrumentation()],
+  instrumentations: [
+    new HttpInstrumentation(),
+    new FetchInstrumentation(),
+    // new OpenAIInstrumentation(),
+  ],
 });
 
 const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.version);

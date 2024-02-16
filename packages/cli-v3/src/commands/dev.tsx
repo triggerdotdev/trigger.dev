@@ -309,7 +309,7 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
         write: false,
         minify: false,
         sourcemap: true,
-        logLevel: "silent",
+        logLevel: "warning",
         platform: "node",
         format: "esm",
         target: ["node18", "es2020"],
@@ -318,7 +318,7 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
           TRIGGER_API_URL: `"${config.triggerUrl}"`,
         },
         banner: {
-          js: "import { createRequire } from 'module';const require = createRequire(import.meta.url);",
+          js: `import { createRequire } from 'module';const require = createRequire(import.meta.url); import "dotenv/config";`,
         },
         plugins: [
           {
