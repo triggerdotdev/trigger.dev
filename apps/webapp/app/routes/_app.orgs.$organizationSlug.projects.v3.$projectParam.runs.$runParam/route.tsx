@@ -3,35 +3,32 @@ import {
   ChevronRightIcon,
   ExclamationCircleIcon,
 } from "@heroicons/react/20/solid";
-import { Link, Outlet, useNavigation } from "@remix-run/react";
+import { Link, Outlet, useMatches, useNavigate, useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDuration, formatDurationNanoseconds } from "@trigger.dev/core/v3";
-import { animate, motion, useMotionValue, useTime, useTransform } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { ErrorIcon } from "~/assets/icons/ErrorIcon";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import { PageBody } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
-  ResizablePanelGroup,
-  ResizablePanel,
   ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
-import { TreeView, useTree } from "~/components/primitives/TreeView";
+import { Changes, TreeView, useTree } from "~/components/primitives/TreeView";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
-import { useUser } from "~/hooks/useUser";
 import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { v3RunParamsSchema, v3RunPath } from "~/utils/pathBuilder";
+import { v3RunParamsSchema, v3RunPath, v3RunSpanPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -54,8 +51,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export default function Page() {
   const { run, events, parentRunFriendlyId } = useTypedLoaderData<typeof loader>();
-  const navigation = useNavigation();
-  const isLoading = navigation.state !== "idle";
+  const navigate = useNavigate();
+  const organization = useOrganization();
+  const pathName = usePathName();
+  const project = useProject();
+
+  const hasSelectedSpan = pathName.includes("/spans/");
 
   return (
     <>
@@ -73,13 +74,21 @@ export default function Page() {
                   key={events[0]?.id ?? "-"}
                   events={events}
                   parentRunFriendlyId={parentRunFriendlyId}
+                  onChanges={(changes) => {
+                    if (!changes.selectedId) return;
+                    navigate(
+                      v3RunSpanPath(organization, project, run, { spanId: changes.selectedId })
+                    );
+                  }}
                 />
               </div>
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel order={2} minSize={30} defaultSize={30}>
-              <Outlet />
-            </ResizablePanel>
+            {hasSelectedSpan && (
+              <ResizablePanel order={2} minSize={30} defaultSize={30}>
+                <Outlet />
+              </ResizablePanel>
+            )}
           </ResizablePanelGroup>
         </div>
       </PageBody>
@@ -90,9 +99,11 @@ export default function Page() {
 function TasksTreeView({
   events,
   parentRunFriendlyId,
+  onChanges,
 }: {
   events: RunEvent[];
   parentRunFriendlyId?: string;
+  onChanges: (changes: Changes) => void;
 }) {
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
@@ -114,7 +125,7 @@ function TasksTreeView({
     tree: events,
     // selectedId,
     // collapsedIds,
-    // onStateChanged: changed,
+    onStateChanged: onChanges,
     estimatedRowHeight: () => 32,
     parentRef,
     filter: (node) => {

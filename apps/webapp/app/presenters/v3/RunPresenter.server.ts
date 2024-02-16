@@ -27,13 +27,13 @@ export class RunPresenter {
     organizationSlug: string;
     runFriendlyId: string;
   }) {
-    // Find the project scoped to the organization
     const run = await this.#prismaClient.taskRun.findFirstOrThrow({
       select: {
         id: true,
         number: true,
         traceId: true,
         spanId: true,
+        friendlyId: true,
         runtimeEnvironment: {
           select: {
             id: true,
@@ -102,6 +102,7 @@ export class RunPresenter {
     return {
       run: {
         number: run.number,
+        friendlyId: run.friendlyId,
         environment: {
           type: run.runtimeEnvironment.type,
           slug: run.runtimeEnvironment.slug,

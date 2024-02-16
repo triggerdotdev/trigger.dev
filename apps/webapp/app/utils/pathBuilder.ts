@@ -25,6 +25,7 @@ export type WebhookForPath = Pick<Webhook, "id">;
 export type HttpEndpointForPath = Pick<TriggerHttpEndpoint, "key">;
 export type TaskForPath = Pick<BackgroundWorkerTask, "friendlyId">;
 export type v3RunForPath = Pick<TaskRun, "friendlyId">;
+export type v3SpanForPath = Pick<TaskRun, "spanId">;
 
 export const OrganizationParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -77,6 +78,10 @@ export const v3TaskParamsSchema = ProjectParamSchema.extend({
 
 export const v3RunParamsSchema = ProjectParamSchema.extend({
   runParam: z.string(),
+});
+
+export const v3SpanParamsSchema = ProjectParamSchema.extend({
+  spanParam: z.string(),
 });
 
 export function trimTrailingSlash(path: string) {
@@ -302,6 +307,15 @@ export function v3RunsPath(
 
 export function v3RunPath(organization: OrgForPath, project: ProjectForPath, run: v3RunForPath) {
   return `${v3RunsPath(organization, project)}/${run.friendlyId}`;
+}
+
+export function v3RunSpanPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  run: v3RunForPath,
+  span: v3SpanForPath
+) {
+  return `${v3RunPath(organization, project, run)}/spans/${span.spanId}`;
 }
 
 // Integration
