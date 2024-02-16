@@ -32,18 +32,10 @@ import { logger } from "../utilities/logger.js";
 import { RequireKeys } from "../utilities/requiredKeys.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { CommonCommandOptions } from "../cli/common.js";
+import { Config, ResolvedConfig } from "../schemas";
 
 const CONFIG_FILES = ["trigger.config.js", "trigger.config.mjs"];
 
-const ConfigSchema = z.object({
-  project: z.string(),
-  triggerDirectories: z.string().array().optional(),
-  triggerUrl: z.string().optional(),
-  projectDir: z.string().optional(),
-});
-
-type Config = z.infer<typeof ConfigSchema>;
-type ResolvedConfig = RequireKeys<Config, "triggerDirectories" | "triggerUrl" | "projectDir">;
 type TaskFile = {
   triggerDir: string;
   filePath: string;
@@ -630,7 +622,7 @@ async function readConfig(path: string): Promise<ResolvedConfig> {
     // import the config file
     const userConfigModule = await import(`${pathToFileURL(path).href}?_ts=${Date.now()}`);
     const rawConfig = await normalizeConfig(userConfigModule ? userConfigModule.default : {});
-    const config = ConfigSchema.parse(rawConfig);
+    const config = Config.parse(rawConfig);
 
     return resolveConfig(path, config);
   } catch (error) {

@@ -11,23 +11,15 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { ApiClient } from "../apiClient.js";
 import { CLOUD_API_URL } from "../consts.js";
+import * as packageJson from "../../package.json";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
-import { RequireKeys } from "../utilities/requiredKeys.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { CommonCommandOptions } from "../cli/common.js";
+import { Config, ResolvedConfig } from "../schemas.js";
 
 const CONFIG_FILES = ["trigger.config.js", "trigger.config.mjs"];
 
-const ConfigSchema = z.object({
-  project: z.string(),
-  triggerDirectories: z.string().array().optional(),
-  triggerUrl: z.string().optional(),
-  projectDir: z.string().optional(),
-});
-
-type Config = z.infer<typeof ConfigSchema>;
-type ResolvedConfig = RequireKeys<Config, "triggerDirectories" | "triggerUrl" | "projectDir">;
 type TaskFile = {
   triggerDir: string;
   filePath: string;
@@ -48,7 +40,7 @@ export function configureBuildCommand(program: Command) {
     .description("Build your Trigger.dev tasks locally")
     .argument("[path]", "The path to the project", ".")
     .requiredOption("-r, --repo <repo_name>", "The repo to push images to")
-    .option("-rr, --registry <registry_address>", "The registry to push images to", "docker.io")
+    .option("-rr, --registry <registry_address>", "The registry to push images to", "")
     .option(
       "-l, --log-level <level>",
       "The log level to use (debug, info, log, warn, error, none)",
@@ -109,7 +101,10 @@ async function startBuild(
       throw new Error(devEnv.error);
     }
 
-    const buildResult = await runBuild(config, options);
+    const buildResult = await runBuild(config, options, {
+      apiUrl: authorization.apiUrl,
+      apiKey: devEnv.data.apiKey,
+    });
 
     const envClient = new ApiClient(authorization.apiUrl, devEnv.data.apiKey);
     await envClient.createImageDetails(config.project, {
@@ -123,14 +118,18 @@ async function startBuild(
   }
 }
 
-async function runBuild(config: ResolvedConfig, options: BuildCommandOptions) {
+async function runBuild(
+  config: ResolvedConfig,
+  options: BuildCommandOptions,
+  auth: { apiUrl: string; apiKey: string }
+) {
   const taskFiles = await gatherTaskFiles(config);
 
-  const workerFacade = readFileSync(
-    new URL(importResolve("./worker-facade.js", import.meta.url)).href.replace("file://", ""),
+  const prodFacade = readFileSync(
+    new URL(importResolve("./prod-facade.js", import.meta.url)).href.replace("file://", ""),
     "utf-8"
   );
-  const entryPointContents = workerFacade.replace("__TASKS__", createTaskFileImports(taskFiles));
+  const entryPointContents = prodFacade.replace("__TASKS__", createTaskFileImports(taskFiles));
 
   logger.log(chalk.dim("⎔ Bundling tasks..."));
 
@@ -201,31 +200,59 @@ async function runBuild(config: ResolvedConfig, options: BuildCommandOptions) {
   const sourceMapPath = `${fullPath}.map`;
   await fs.promises.writeFile(sourceMapPath, sourceMapFile.text);
 
+  const prodWorkerPath = new URL(importResolve("./prod-worker.mjs", import.meta.url)).href.replace(
+    "file://",
+    ""
+  );
+  const buildContextPath = dirname(fullPath);
+  await fs.promises.copyFile(prodWorkerPath, join(buildContextPath, "index.mjs"));
+
   logger.log(chalk.green(`Bundling finished.\n`));
 
-  logger.log(chalk.dim("⎔ Checking repo login..."));
+  let localOnly = false;
 
-  const registryWithRepo = `${options.registry}/${options.repo}`;
-
-  const dockerLogin = execa("docker", ["login", registryWithRepo]);
-
-  dockerLogin.stdout?.on("data", (chunk) => logger.debug(chunk.toString()));
-  dockerLogin.stderr?.on("data", (chunk) => logger.debug(chunk.toString()));
-
-  try {
-    await new Promise((resolve, reject) => {
-      dockerLogin.addListener("exit", (code) => (code === 0 ? resolve(code) : reject(code)));
-    });
-  } catch (error) {
-    throw new Error("Login failed. Please run `docker login` to authenticate.");
+  if (!options.registry) {
+    logger.log(chalk.yellow(`No registry specified, enabling local only mode.\n`));
+    localOnly = true;
   }
 
-  logger.log(chalk.green(`Login succeeded.\n`));
+  const registryWithRepo = localOnly ? options.repo : `${options.registry}/${options.repo}`;
+
+  if (!localOnly) {
+    logger.log(chalk.dim("⎔ Checking repo login..."));
+
+    const dockerLogin = execa("docker", ["login", registryWithRepo]);
+
+    dockerLogin.stdout?.on("data", (chunk) => logger.debug(chunk.toString()));
+    dockerLogin.stderr?.on("data", (chunk) => logger.debug(chunk.toString()));
+
+    try {
+      await new Promise((resolve, reject) => {
+        dockerLogin.addListener("exit", (code) => (code === 0 ? resolve(code) : reject(code)));
+      });
+    } catch (error) {
+      throw new Error("Login failed. Please run `docker login` to authenticate.");
+    }
+
+    logger.log(chalk.green(`Login succeeded.\n`));
+  }
 
   logger.log(chalk.dim("⎔ Starting docker build..."));
 
-  const containerfileContents = `FROM alpine`;
-  const containerfilePath = join(config.projectDir, ".trigger", "Containerfile");
+  const containerfile = await fs.promises.readFile(
+    new URL(importResolve("./Containerfile.prod", import.meta.url)).href.replace("file://", ""),
+    "utf-8"
+  );
+
+  const containerfileContents = containerfile
+    .replace("__API_URL__", auth.apiUrl)
+    .replace("__API_KEY__", auth.apiKey)
+    .replace("__CONTENT_HASH__", contentHash)
+    .replace("__PROJECT_DIR__", config.projectDir)
+    .replace("__PROJECT_REF__", config.project)
+    .replace("__CLI_PACKAGE_VERSION__", packageJson.version);
+
+  const containerfilePath = join(buildContextPath, "Containerfile");
   const imageTag = `${registryWithRepo}:${contentHash}`;
 
   await fs.promises.writeFile(containerfilePath, containerfileContents);
@@ -251,23 +278,23 @@ async function runBuild(config: ResolvedConfig, options: BuildCommandOptions) {
 
   logger.log(chalk.green(`Build finished.\n`));
 
-  logger.log(chalk.dim("⎔ Pushing image..."));
+  if (!localOnly) {
+    logger.log(chalk.dim("⎔ Pushing image..."));
 
-  await fs.promises.writeFile(containerfilePath, containerfileContents);
+    const dockerPush = execa("docker", ["push", imageTag]);
+    dockerPush.stdout?.pipe(process.stdout);
+    dockerPush.stderr?.pipe(process.stderr);
 
-  const dockerPush = execa("docker", ["push", imageTag]);
-  dockerPush.stdout?.pipe(process.stdout);
-  dockerPush.stderr?.pipe(process.stderr);
+    try {
+      await new Promise((resolve, reject) => {
+        dockerPush.addListener("exit", (code) => (code === 0 ? resolve(code) : reject(code)));
+      });
+    } catch (error) {
+      throw new Error("Push failed.");
+    }
 
-  try {
-    await new Promise((resolve, reject) => {
-      dockerPush.addListener("exit", (code) => (code === 0 ? resolve(code) : reject(code)));
-    });
-  } catch (error) {
-    throw new Error("Push failed.");
+    logger.log(chalk.green(`Push complete.\n`));
   }
-
-  logger.log(chalk.green(`Push complete.\n`));
 
   return {
     contentHash,
@@ -326,7 +353,7 @@ async function readConfig(path: string): Promise<ResolvedConfig> {
     // import the config file
     const userConfigModule = await import(`${pathToFileURL(path).href}?_ts=${Date.now()}`);
     const rawConfig = await normalizeConfig(userConfigModule ? userConfigModule.default : {});
-    const config = ConfigSchema.parse(rawConfig);
+    const config = Config.parse(rawConfig);
 
     return resolveConfig(path, config);
   } catch (error) {

@@ -26,7 +26,9 @@ export class CreateImageDetailsService {
     const allowedTagPrefix = escapeStringForRegex(`${env.IMAGE_REGISTRY}/${env.IMAGE_REPO}:`);
 
     if (!body.metadata.imageTag.match(`^${allowedTagPrefix}`)) {
-      throw new Error("Forbidden image tag");
+      if (env.NODE_ENV !== "development") {
+        throw new Error("Forbidden image tag");
+      }
     }
 
     const project = await this.#prismaClient.project.findUniqueOrThrow({
