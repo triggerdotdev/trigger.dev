@@ -31,7 +31,7 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
     return (
       <SwitchPrimitives.Root className={cn("group", container, className)} {...props} ref={ref}>
         {label ? (
-          <label className={cn("text", text)}>
+          <label className={cn("whitespace-nowrap", text)}>
             {typeof label === "string" ? <span>{label}</span> : label}
           </label>
         ) : null}

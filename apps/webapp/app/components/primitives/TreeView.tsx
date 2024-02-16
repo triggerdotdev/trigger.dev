@@ -706,33 +706,28 @@ type FlatTreeWithoutChildren<TData> = {
 };
 
 export function createTreeFromFlatItems<TData>(
-  withoutChildren: FlatTreeWithoutChildren<TData>[]
-): Tree<TData> {
+  withoutChildren: FlatTreeWithoutChildren<TData>[],
+  rootId: string
+): Tree<TData> | undefined {
   // Index items by id
   const indexedItems: { [id: string]: Tree<TData> } = withoutChildren.reduce((acc, item) => {
     acc[item.id] = { id: item.id, data: item.data, children: [] };
     return acc;
   }, {} as { [id: string]: Tree<TData> });
 
-  let rootItems: Tree<TData>[] = [];
-
   // Add items to parent's children array
   withoutChildren.forEach((item) => {
     const indexedItem = indexedItems[item.id];
-    if (item.parentId === undefined) {
-      rootItems.push(indexedItem); // If no parent ID, this is a root item
-    } else {
+    if (item.parentId !== undefined) {
       const parentItem = indexedItems[item.parentId];
       if (parentItem) {
         // If parent ID doesn't exist, this is also a root item
         parentItem.children?.push(indexedItem);
-      } else {
-        rootItems.push(indexedItem);
       }
     }
   });
 
-  return rootItems[0];
+  return indexedItems[rootId];
 }
 
 function areSetsEqual<T>(a: Set<T>, b: Set<T>): boolean {

@@ -3,32 +3,37 @@ import {
   ChevronRightIcon,
   ExclamationCircleIcon,
 } from "@heroicons/react/20/solid";
-import { useNavigation } from "@remix-run/react";
+import { Link, useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { animate, motion, useMotionValue, useTime, useTransform } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ErrorIcon } from "~/assets/icons/ErrorIcon";
+import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import { PageBody } from "~/components/layout/AppLayout";
+import { LinkButton } from "~/components/primitives/Buttons";
+import { Input } from "~/components/primitives/Input";
 import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
+import { Switch } from "~/components/primitives/Switch";
 import { TreeView, useTree } from "~/components/primitives/TreeView";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
 import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { formatDuration, formatDurationMilliseconds, formatDurationNanoseconds } from "~/utils";
 import { cn } from "~/utils/cn";
-import { v3RunParamsSchema } from "~/utils/pathBuilder";
+import { v3RunParamsSchema, v3RunPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam, organizationSlug, runParam } = v3RunParamsSchema.parse(params);
 
   const presenter = new RunPresenter();
-  const { run, events } = await presenter.call({
+  const { run, events, parentRunFriendlyId } = await presenter.call({
     userId,
     organizationSlug,
     projectSlug: projectParam,
@@ -38,11 +43,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson({
     run,
     events,
+    parentRunFriendlyId,
   });
 };
 
 export default function Page() {
-  const { run, events } = useTypedLoaderData<typeof loader>();
+  const { run, events, parentRunFriendlyId } = useTypedLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
 
@@ -57,7 +63,7 @@ export default function Page() {
         <div className={cn("grid h-full grid-cols-1 gap-4")}>
           <div className="h-full overflow-y-clip">
             <div className="mb-2 flex items-center justify-between gap-x-2"></div>
-            <TasksTreeView events={events} />
+            <TasksTreeView events={events} parentRunFriendlyId={parentRunFriendlyId} />
           </div>
         </div>
       </PageBody>
@@ -65,7 +71,15 @@ export default function Page() {
   );
 }
 
-function TasksTreeView({ events }: { events: RunEvent[] }) {
+function TasksTreeView({
+  events,
+  parentRunFriendlyId,
+}: {
+  events: RunEvent[];
+  parentRunFriendlyId?: string;
+}) {
+  const [filterText, setFilterText] = useState("");
+  const [errorsOnly, setErrorsOnly] = useState(false);
   const parentRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -87,17 +101,37 @@ function TasksTreeView({ events }: { events: RunEvent[] }) {
     // onStateChanged: changed,
     estimatedRowHeight: () => 32,
     parentRef,
-    // filter: (node) => {
-    //   if (filterText === "") return true;
-    //   if (node.data.title.toLowerCase().includes(filterText.toLowerCase())) {
-    //     return true;
-    //   }
-    //   return false;
-    // },
+    filter: (node) => {
+      const nodePassesErrorTest = (errorsOnly && node.data.isError) || !errorsOnly;
+      if (!nodePassesErrorTest) return false;
+
+      if (filterText === "") return true;
+      if (node.data.message.toLowerCase().includes(filterText.toLowerCase())) {
+        return true;
+      }
+      return false;
+    },
   });
 
   return (
     <>
+      <div className="flex items-center justify-between gap-2 border-b border-slate-850 py-1">
+        <Input
+          placeholder="Search log"
+          variant="tertiary"
+          icon="search"
+          fullWidth={true}
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+        />
+        <Switch
+          variant="small"
+          label="Errors only"
+          checked={errorsOnly}
+          onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
+        />
+      </div>
+      {parentRunFriendlyId && <ShowParentLink runFriendlyId={parentRunFriendlyId} />}
       <TreeView
         parentRef={parentRef}
         virtualizer={virtualizer}
@@ -238,5 +272,31 @@ function LiveTimer({
         units: ["d", "h", "m", "s"],
       })}
     </Paragraph>
+  );
+}
+
+function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
+  const [mouseOver, setMouseOver] = useState(false);
+  const organization = useOrganization();
+  const project = useProject();
+
+  return (
+    <Link
+      to={v3RunPath(organization, project, {
+        friendlyId: runFriendlyId,
+      })}
+      onMouseEnter={() => setMouseOver(true)}
+      onMouseLeave={() => setMouseOver(false)}
+      className="mt-1 flex h-8 items-center gap-2"
+    >
+      {mouseOver ? (
+        <ShowParentIconSelected className="h-4 w-4 text-indigo-500" />
+      ) : (
+        <ShowParentIcon className="h-4 w-4 text-slate-650" />
+      )}
+      <Paragraph variant="small" className={cn(mouseOver ? "text-indigo-500" : "text-slate-500")}>
+        Show parent items
+      </Paragraph>
+    </Link>
   );
 }

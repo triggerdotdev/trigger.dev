@@ -33,6 +33,7 @@ export class RunPresenter {
         id: true,
         number: true,
         traceId: true,
+        spanId: true,
         runtimeEnvironment: {
           select: {
             id: true,
@@ -88,8 +89,14 @@ export class RunPresenter {
             startTime: event.startTime,
           },
         };
-      })
+      }),
+      run.spanId
     );
+
+    const rootSpanId = events.find((event) => !event.parentId);
+    if (!rootSpanId) {
+      throw new Error("Root span not found");
+    }
 
     return {
       run: {
@@ -101,7 +108,8 @@ export class RunPresenter {
           userName: getUsername(run.runtimeEnvironment.orgMember?.user),
         },
       },
-      events: flattenTree(tree),
+      events: tree ? flattenTree(tree) : [],
+      parentRunFriendlyId: tree?.id === rootSpanId.spanId ? undefined : rootSpanId.runId,
     };
   }
 }
