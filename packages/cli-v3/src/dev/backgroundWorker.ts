@@ -35,9 +35,15 @@ export class BackgroundWorkerCoordinator {
     id: string;
     record: CreateBackgroundWorkerResponse;
   }> = new Evt();
+  public onWorkerTaskHeartbeat: Evt<{
+    id: string;
+    backgroundWorkerId: string;
+    worker: BackgroundWorker;
+  }> = new Evt();
   public onWorkerDeprecated: Evt<{ worker: BackgroundWorker; id: string }> = new Evt();
   private _backgroundWorkers: Map<string, BackgroundWorker> = new Map();
   private _records: Map<string, CreateBackgroundWorkerResponse> = new Map();
+  private _deprecatedWorkers: Set<string> = new Set();
 
   constructor(private baseURL: string) {
     this.onTaskCompleted.attach(async ({ completion, execution }) => {
@@ -59,6 +65,7 @@ export class BackgroundWorkerCoordinator {
       id,
       worker,
       record: this._records.get(id)!,
+      isDeprecated: this._deprecatedWorkers.has(id),
     }));
   }
 
@@ -68,12 +75,17 @@ export class BackgroundWorkerCoordinator {
         continue;
       }
 
+      this._deprecatedWorkers.add(workerId);
       this.onWorkerDeprecated.post({ worker: existingWorker, id: workerId });
     }
 
     this._backgroundWorkers.set(record.id, worker);
     this._records.set(record.id, record);
     this.onWorkerRegistered.post({ worker, id: record.id, record });
+
+    worker.onTaskHeartbeat.attach((id) => {
+      this.onWorkerTaskHeartbeat.post({ id, backgroundWorkerId: record.id, worker });
+    });
   }
 
   close() {
@@ -178,6 +190,7 @@ export class BackgroundWorker {
     completion: TaskRunExecutionResult;
     execution: TaskRunExecution;
   }> = new Evt();
+  public onTaskHeartbeat: Evt<string> = new Evt();
   private _onClose: Evt<void> = new Evt();
 
   public tasks: Array<TaskMetadataWithFilePath> = [];
@@ -196,6 +209,7 @@ export class BackgroundWorker {
   }
 
   close() {
+    this.onTaskHeartbeat.detach();
     this._onClose.post();
   }
 
@@ -326,6 +340,8 @@ export class BackgroundWorker {
         if (!child.killed) {
           child.kill();
         }
+      } else if (message.type === "TASK_HEARTBEAT") {
+        this.onTaskHeartbeat.post(message.payload.id);
       }
     });
 

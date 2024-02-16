@@ -40,15 +40,20 @@ export class AuthenticatedSocketConnection {
         READY_FOR_TASKS: async (payload) => {
           await this._environmentConsumer.registerBackgroundWorker(payload.backgroundWorkerId);
         },
-        WORKER_DEPRECATED: async (payload) => {
-          this._environmentConsumer.deprecateBackgroundWorker(payload.backgroundWorkerId);
-        },
+
         BACKGROUND_WORKER_MESSAGE: async (payload) => {
           switch (payload.data.type) {
             case "TASK_RUN_COMPLETED": {
               await this._environmentConsumer.taskRunCompleted(
                 payload.backgroundWorkerId,
                 payload.data.completion
+              );
+              break;
+            }
+            case "TASK_HEARTBEAT": {
+              await this._environmentConsumer.taskHeartbeat(
+                payload.backgroundWorkerId,
+                payload.data.id
               );
               break;
             }

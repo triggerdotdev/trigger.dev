@@ -194,22 +194,38 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
     const websocket = new WebSocket(websocketUrl.href, [], {
       WebSocket: WebsocketFactory(apiKey),
       connectionTimeout: 10000,
-      maxRetries: 6,
+      maxRetries: 10,
+      minReconnectionDelay: 1000,
+      maxReconnectionDelay: 30000,
+      reconnectionDelayGrowFactor: 1.4, // This leads to the following retry times: 1, 1.4, 1.96, 2.74, 3.84, 5.38, 7.53, 10.54, 14.76, 20.66
+      maxEnqueuedMessages: 250,
     });
-
-    websocket.addEventListener("open", (foo) => {});
-    websocket.addEventListener("close", (event) => {});
-    websocket.addEventListener("error", (event) => {});
 
     const sender = new ZodMessageSender({
       schema: clientWebsocketMessages,
       sender: async (message) => {
-        websocket?.send(JSON.stringify(message));
+        websocket.send(JSON.stringify(message));
       },
     });
 
     const backgroundWorkerCoordinator = new BackgroundWorkerCoordinator(
       `${apiUrl}/projects/v3/${config.project}`
+    );
+
+    websocket.addEventListener("open", async (event) => {});
+    websocket.addEventListener("close", (event) => {});
+    websocket.addEventListener("error", (event) => {});
+
+    backgroundWorkerCoordinator.onWorkerTaskHeartbeat.attach(
+      async ({ worker, backgroundWorkerId, id }) => {
+        await sender.send("BACKGROUND_WORKER_MESSAGE", {
+          backgroundWorkerId,
+          data: {
+            type: "TASK_HEARTBEAT",
+            id,
+          },
+        });
+      }
     );
 
     backgroundWorkerCoordinator.onTaskCompleted.attach(
@@ -230,12 +246,6 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
       });
     });
 
-    backgroundWorkerCoordinator.onWorkerDeprecated.attach(async ({ id }) => {
-      await sender.send("WORKER_DEPRECATED", {
-        backgroundWorkerId: id,
-      });
-    });
-
     websocket.addEventListener("message", async (event) => {
       const data = JSON.parse(
         typeof event.data === "string" ? event.data : new TextDecoder("utf-8").decode(event.data)
@@ -244,7 +254,13 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
       const messageHandler = new ZodMessageHandler({
         schema: serverWebsocketMessages,
         messages: {
-          SERVER_READY: async (payload) => {},
+          SERVER_READY: async (payload) => {
+            for (const worker of backgroundWorkerCoordinator.currentWorkers) {
+              await sender.send("READY_FOR_TASKS", {
+                backgroundWorkerId: worker.id,
+              });
+            }
+          },
           BACKGROUND_WORKER_MESSAGE: async (payload) => {
             await backgroundWorkerCoordinator.handleMessage(
               payload.backgroundWorkerId,

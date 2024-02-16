@@ -176,8 +176,18 @@ export class MarQS {
     });
   }
 
+  // This should increment by the number of seconds, but with a max value of Date.now() + visibilityTimeoutInMs
   public async heartbeatMessage(messageId: string, seconds: number = 30) {
-    await this.redis.zincrby(constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE, seconds * 1000, messageId);
+    await this.#callHeartbeatMessage({
+      visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
+      messageId,
+      milliseconds: seconds * 1000,
+      maxVisibilityTimeout: Date.now() + this.visibilityTimeoutInMs,
+    });
+  }
+
+  get visibilityTimeoutInMs() {
+    return this.options.visibilityTimeoutInMs ?? 300000;
   }
 
   async #readMessage(messageId: string) {
@@ -464,6 +474,25 @@ export class MarQS {
     );
   }
 
+  #callHeartbeatMessage({
+    visibilityQueue,
+    messageId,
+    milliseconds,
+    maxVisibilityTimeout,
+  }: {
+    visibilityQueue: string;
+    messageId: string;
+    milliseconds: number;
+    maxVisibilityTimeout: number;
+  }) {
+    return this.redis.heartbeatMessage(
+      visibilityQueue,
+      messageId,
+      String(milliseconds),
+      String(maxVisibilityTimeout)
+    );
+  }
+
   #registerCommands() {
     this.redis.defineCommand("enqueueMessage", {
       numberOfKeys: 3,
@@ -606,6 +635,32 @@ else
 end
 `,
     });
+
+    this.redis.defineCommand("heartbeatMessage", {
+      numberOfKeys: 1,
+      lua: `
+-- Keys: visibilityQueue
+local visibilityQueue = KEYS[1]
+
+-- Args: messageId, milliseconds, maxVisibilityTimeout
+local messageId = ARGV[1]
+local milliseconds = tonumber(ARGV[2])
+local maxVisibilityTimeout = tonumber(ARGV[3])
+
+-- Get the current visibility timeout
+local currentVisibilityTimeout = redis.call('ZSCORE', visibilityQueue, messageId)
+
+if currentVisibilityTimeout == nil then
+    return
+end
+
+-- Calculate the new visibility timeout
+local newVisibilityTimeout = math.min(currentVisibilityTimeout + milliseconds * 1000, maxVisibilityTimeout)
+
+-- Update the visibility timeout
+redis.call('ZADD', visibilityQueue, newVisibilityTimeout, messageId)
+      `,
+    });
   }
 }
 
@@ -655,6 +710,14 @@ declare module "ioredis" {
       messageScore: string,
       callback?: Callback<void>
     ): Result<void, Context>;
+
+    heartbeatMessage(
+      visibilityQueue: string,
+      messageId: string,
+      milliseconds: string,
+      maxVisibilityTimeout: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
   }
 }
 
@@ -674,7 +737,7 @@ function getMarQSClient() {
         ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
       },
       defaultConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
-      visibilityTimeoutInMs: 30 * 1000,
+      visibilityTimeoutInMs: 120 * 1000, // 2 minutes
     });
   }
 }

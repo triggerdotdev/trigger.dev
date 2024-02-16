@@ -35,6 +35,11 @@ export const BackgroundWorkerClientMessages = z.discriminatedUnion("type", [
     type: z.literal("TASK_RUN_COMPLETED"),
     completion: TaskRunExecutionResult,
   }),
+  z.object({
+    version: z.literal("v1").default("v1"),
+    type: z.literal("TASK_HEARTBEAT"),
+    id: z.string(),
+  }),
 ]);
 
 export type BackgroundWorkerClientMessages = z.infer<typeof BackgroundWorkerClientMessages>;
@@ -49,10 +54,6 @@ export type BackgroundWorkerProperties = z.infer<typeof BackgroundWorkerProperti
 
 export const clientWebsocketMessages = {
   READY_FOR_TASKS: z.object({
-    version: z.literal("v1").default("v1"),
-    backgroundWorkerId: z.string(),
-  }),
-  WORKER_DEPRECATED: z.object({
     version: z.literal("v1").default("v1"),
     backgroundWorkerId: z.string(),
   }),
@@ -151,6 +152,10 @@ export const childToWorkerMessages = {
   TASKS_READY: z.object({
     version: z.literal("v1").default("v1"),
     tasks: TaskMetadataWithFilePath.array(),
+  }),
+  TASK_HEARTBEAT: z.object({
+    version: z.literal("v1").default("v1"),
+    id: z.string(),
   }),
   READY_TO_DISPOSE: z.undefined(),
 };

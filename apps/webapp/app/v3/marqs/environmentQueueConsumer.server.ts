@@ -22,7 +22,6 @@ type BackgroundWorkerWithTasks = BackgroundWorker & { tasks: BackgroundWorkerTas
 
 export class EnvironmentQueueConsumer {
   private _backgroundWorkers: Map<string, BackgroundWorkerWithTasks> = new Map();
-  private _deprecatedWorkers: Set<string> = new Set();
   private _enabled = false;
   private _processingMessages: Set<string> = new Set();
 
@@ -45,12 +44,10 @@ export class EnvironmentQueueConsumer {
 
     this._backgroundWorkers.set(backgroundWorker.id, backgroundWorker);
 
+    logger.debug("Registered background worker", { backgroundWorker: backgroundWorker.id });
+
     // Start reading from the queue if we haven't already
     this.#enable();
-  }
-
-  public deprecateBackgroundWorker(id: string) {
-    this._deprecatedWorkers.add(id);
   }
 
   public async taskRunCompleted(workerId: string, completion: TaskRunExecutionResult) {
@@ -77,6 +74,18 @@ export class EnvironmentQueueConsumer {
 
     this._processingMessages.delete(taskRunAttempt.taskRunId);
     await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
+  }
+
+  public async taskHeartbeat(workerId: string, id: string, seconds: number = 60) {
+    const taskRunAttempt = await prisma.taskRunAttempt.findUnique({
+      where: { friendlyId: id },
+    });
+
+    if (!taskRunAttempt) {
+      return;
+    }
+
+    await marqs?.heartbeatMessage(taskRunAttempt.taskRunId, seconds);
   }
 
   public async stop() {

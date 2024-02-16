@@ -165,6 +165,9 @@ for (const task of tasks) {
   taskExecutors.set(task.id, new TaskExecutor(task));
 }
 
+let _execution: TaskRunExecution | undefined;
+let _isRunning = false;
+
 const handler = new ZodMessageHandler({
   schema: workerToChildMessages,
   messages: {
@@ -191,6 +194,9 @@ const handler = new ZodMessageHandler({
       }
 
       try {
+        _execution = execution;
+        _isRunning = true;
+
         const result = await executor.execute(execution, metadata, traceContext);
 
         return sender.send("TASK_RUN_COMPLETED", {
@@ -208,6 +214,9 @@ const handler = new ZodMessageHandler({
             error: parseError(e),
           },
         });
+      } finally {
+        _execution = undefined;
+        _isRunning = false;
       }
     },
     TASK_RUN_COMPLETED: async ({ completion, execution }) => {
@@ -233,3 +242,30 @@ sender.send("TASKS_READY", { tasks: getTaskMetadata() }).catch((err) => {
 });
 
 process.title = "trigger-dev-worker";
+
+async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 5) {
+  async function _doHeartbeat() {
+    while (true) {
+      if (_isRunning && _execution) {
+        try {
+          await sender.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
+        } catch (err) {
+          console.error("Failed to send HEARTBEAT message", err);
+        }
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1000 * intervalInSeconds));
+    }
+  }
+
+  // Wait for the initial delay
+  await new Promise((resolve) => setTimeout(resolve, 1000 * initialDelayInSeconds));
+
+  // Wait for 5 seconds before the next execution
+  return _doHeartbeat();
+}
+
+// Start the async interval after 30 seconds
+asyncHeartbeat().catch((err) => {
+  console.error("Failed to start asyncHeartbeat", err);
+});
