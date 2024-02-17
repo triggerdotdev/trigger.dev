@@ -76,7 +76,9 @@ export default function Page() {
                   </Property>
                 ) : (
                   <Property label="Timestamp">
-                    <DateTime date={event.startTime} />
+                    <Paragraph variant="small/bright">
+                      <DateTime date={event.startTime} />
+                    </Paragraph>
                   </Property>
                 )}
                 <Property label="Message">{event.message}</Property>
