@@ -22,6 +22,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { Changes, TreeView, useTree } from "~/components/primitives/TreeView";
 import { eventTextClassName } from "~/components/runs/v3/EventText";
+import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
@@ -285,41 +286,6 @@ function LiveDuration({ startTime }: { startTime: Date }) {
       <LiveTimer startTime={startTime} />
       <Spinner color="blue" className="h-4 w-4" />
     </div>
-  );
-}
-
-function LiveTimer({
-  startTime,
-  endTime,
-  updateInterval = 250,
-}: {
-  startTime: Date;
-  endTime?: Date;
-  updateInterval?: number;
-}) {
-  const [now, setNow] = useState<Date>();
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const date = new Date();
-      setNow(date);
-
-      if (endTime && date > endTime) {
-        clearInterval(interval);
-      }
-    }, updateInterval);
-
-    return () => clearInterval(interval);
-  }, [startTime]);
-
-  return (
-    <Paragraph variant="extra-small" className="whitespace-nowrap tabular-nums">
-      {formatDuration(startTime, now, {
-        style: "short",
-        maxDecimalPoints: 0,
-        units: ["d", "h", "m", "s"],
-      })}
-    </Paragraph>
   );
 }
 

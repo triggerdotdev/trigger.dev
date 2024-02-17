@@ -13,6 +13,7 @@ export {
   formatDurationMilliseconds,
   formatDurationNanoseconds,
   formatDurationInDays,
+  nanosecondsToMilliseconds,
 } from "./utils/durations";
 
 export function parseTriggerTaskRequestBody(body: unknown) {

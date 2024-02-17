@@ -22,8 +22,12 @@ export function formatDuration(
   return formatDurationMilliseconds(dateDifference(start, end), options);
 }
 
+export function nanosecondsToMilliseconds(nanoseconds: number): number {
+  return nanoseconds / 1_000_000;
+}
+
 export function formatDurationNanoseconds(nanoseconds: number, options?: DurationOptions): string {
-  return formatDurationMilliseconds(nanoseconds / 1_000_000, options);
+  return formatDurationMilliseconds(nanosecondsToMilliseconds(nanoseconds), options);
 }
 
 const aboveOneSecondUnits = ["d", "h", "m", "s"] as Unit[];
