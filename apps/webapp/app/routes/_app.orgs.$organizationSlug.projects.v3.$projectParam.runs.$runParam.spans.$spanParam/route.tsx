@@ -2,9 +2,10 @@ import { Await, useLoaderData } from "@remix-run/react";
 import { LoaderFunctionArgs, defer } from "@remix-run/server-runtime";
 import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
 import { ReactNode, Suspense } from "react";
+import { CodeBlock } from "~/components/code/CodeBlock";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Header2 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -51,8 +52,7 @@ export default function Page() {
         }
       >
         {({ event }) => (
-          <div>
-            <div className="border-b border-slate-800">
+            <div className="overflow-hidden border-b border-slate-800">
               <div className="flex h-8 items-center justify-between gap-2 border-b border-ui-border px-2">
                 <div className="flex items-center gap-1 overflow-x-hidden">
                   <RunIcon name={event.style?.icon} className="min-w-4 min-h-4 h-4 w-4" />
@@ -63,8 +63,8 @@ export default function Page() {
                 <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
               </div>
             </div>
-            <div className="mt-4">
-              <PropertyTable>
+            <div className="mt-4 overflow-y-auto px-2">
+              <PropertyTable className="mb-4">
                 {event.level === "TRACE" ? (
                   <Property label="Timeline">
                     <Timeline
@@ -83,6 +83,19 @@ export default function Page() {
                 )}
                 <Property label="Message">{event.message}</Property>
               </PropertyTable>
+
+              {event.output !== null && (
+                <div>
+                  <Header3 spacing>Output</Header3>
+                  <CodeBlock code={event.output} />
+                </div>
+              )}
+              {event.properties !== null && (
+                <div>
+                  <Header3 spacing>Properties</Header3>
+                  <CodeBlock code={event.properties} />
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -91,8 +104,8 @@ export default function Page() {
   );
 }
 
-function PropertyTable({ children }: { children: ReactNode }) {
-  return <div className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-2 px-2">{children}</div>;
+function PropertyTable({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-2">{children}</div>;
 }
 
 type PropertyProps = {
