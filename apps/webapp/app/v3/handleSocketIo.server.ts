@@ -1,27 +1,9 @@
+import { ProviderClientToServerEvents, ProviderServerToClientEvents } from "@trigger.dev/core/v3";
 import { type Namespace, Server } from "socket.io";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
-
-type VersionedMessage<TMessage> = { version: "v1" } & TMessage;
-
-interface ProviderClientToServerEvents {
-  LOG: (message: VersionedMessage<{ data: string }>) => void;
-}
-
-interface ProviderServerToClientEvents {
-  INDEX: (message: VersionedMessage<{ imageTag: string; contentHash: string }>) => void;
-  INDEX_COMPLETE: (message: VersionedMessage<{ imageTag: string; contentHash: string }>) => void;
-}
-
-interface ProviderInterServerEvents {
-  ping: () => void;
-}
-
-interface ProviderSocketData {
-  id: string;
-}
 
 function initalizeIoServer() {
   const io = new Server();
@@ -36,12 +18,8 @@ function initalizeIoServer() {
 }
 
 function createProviderNamespace(io: Server) {
-  const providerNamespace: Namespace<
-    ProviderClientToServerEvents,
-    ProviderServerToClientEvents,
-    ProviderInterServerEvents,
-    ProviderSocketData
-  > = io.of("/provider");
+  const providerNamespace: Namespace<ProviderClientToServerEvents, ProviderServerToClientEvents> =
+    io.of("/provider");
 
   providerNamespace.on("connection", async (socket) => {
     const logger = (...args: any[]) => console.log(`[provider][${socket.id}]`, ...args);

@@ -1,6 +1,12 @@
-import { TaskResource } from "@trigger.dev/core/v3";
+import {
+  DaemonToProdWorkerEvents,
+  HttpReply,
+  ProdWorkerToDaemonEvents,
+  TaskResource,
+  getTextBody,
+} from "@trigger.dev/core/v3";
 import { BackgroundWorker } from "./prod/backgroundWorker";
-import { createServer, IncomingMessage } from "node:http";
+import { createServer } from "node:http";
 import { io, Socket } from "socket.io-client";
 
 function getRandomInteger(min: number, max: number) {
@@ -26,47 +32,11 @@ const log = (...args: any[]) => {
 
 const debug = (...args: any[]) => {
   if (!DEBUG) {
-    return args[0]
+    return args[0];
   }
-  log("DEBUG", ...args)
-  return args[0]
-}
-
-const getBody = (req: IncomingMessage) =>
-  new Promise<string>((resolve) => {
-    let body = "";
-    req.on("readable", () => {
-      const chunk = req.read();
-      if (chunk) {
-        body += chunk;
-      }
-    });
-    req.on("end", () => {
-      resolve(body);
-    });
-  });
-
-type VersionedMessage<TMessage> = { version: "v1" } & TMessage;
-
-interface ProdWorkerToDaemonEvents {
-  LOG: (message: VersionedMessage<{ text: string }>, callback: () => {}) => void;
-  INDEX_TASKS: (
-    message: VersionedMessage<{
-      tasks: TaskResource[];
-      packageVersion: string;
-    }>,
-    callback: (params: { success: boolean }) => {}
-  ) => void;
-  READY: (message: VersionedMessage<{}>) => void;
-  WAIT_FOR_DURATION: (message: VersionedMessage<{ seconds: string }>) => void;
-  WAIT_FOR_EVENT: (message: VersionedMessage<{ name: string }>) => void;
-}
-
-interface DaemonToProdWorkerEvents {
-  INVOKE: (message: VersionedMessage<{ payload: any; context: any }>) => void;
-  RESUME: (message: VersionedMessage<{}>) => void;
-  RESUME_WITH: (message: VersionedMessage<{ data: any }>) => void;
-}
+  log("DEBUG", ...args);
+  return args[0];
+};
 
 class ProdWorker {
   private apiUrl = process.env.TRIGGER_API_URL!;
@@ -171,24 +141,26 @@ class ProdWorker {
     const httpServer = createServer(async (req, res) => {
       log(`[${req.method}]`, req.url);
 
+      const reply = new HttpReply(res);
+
       switch (req.url) {
         case "/complete":
           setTimeout(() => process.exit(0), 1000);
-          return res.writeHead(200, { "Content-Type": "text/plain" }).end("ok");
+          return reply.text("ok");
 
         case "/date":
           const date = new Date();
-          return res.writeHead(200, { "Content-Type": "text/plain" }).end(date.toString());
+          return reply.text(date.toString());
 
         case "/fail":
           setTimeout(() => process.exit(1), 1000);
-          return res.writeHead(200, { "Content-Type": "text/plain" }).end("ok");
+          return reply.text("ok");
 
         case "/health":
-          return res.writeHead(200, { "Content-Type": "text/plain" }).end("ok");
+          return reply.text("ok");
 
         case "/whoami":
-          return res.writeHead(200, { "Content-Type": "text/plain" }).end(this.contentHash);
+          return reply.text(this.contentHash);
 
         case "/wait":
           this.#daemonSocket.emit("WAIT_FOR_DURATION", {
@@ -197,11 +169,11 @@ class ProdWorker {
           });
           // this is required when C/Ring established connections
           this.#daemonSocket.close();
-          return res.writeHead(200, { "Content-Type": "text/plain" }).end("sent WAIT");
+          return reply.text("sent WAIT");
 
         case "/connect":
           this.#daemonSocket.connect();
-          return res.writeHead(200).end();
+          return reply.empty();
 
         case "/close":
           this.#daemonSocket.emitWithAck("LOG", {
@@ -209,7 +181,7 @@ class ProdWorker {
             text: "close without delay",
           });
           this.#daemonSocket.close();
-          return res.writeHead(200).end();
+          return reply.empty();
 
         case "/close-delay":
           this.#daemonSocket.emitWithAck("LOG", {
@@ -219,28 +191,28 @@ class ProdWorker {
           setTimeout(() => {
             this.#daemonSocket.close();
           }, 200);
-          return res.writeHead(200).end();
+          return reply.empty();
 
         case "/log":
           this.#daemonSocket.emitWithAck("LOG", {
             version: "v1",
-            text: await getBody(req),
+            text: await getTextBody(req),
           });
-          return res.writeHead(200).end();
+          return reply.empty();
 
         case "/preStop":
           log("should do preStop stuff, e.g. checkpoint and graceful shutdown");
           // this.#sendMessage({ action: "WAIT" })
-          return res.writeHead(200, { "Content-Type": "text/plain" }).end("got preStop request");
+          return reply.text("got preStop request");
 
         case "/ready":
           this.#daemonSocket.emit("READY", {
             version: "v1",
           });
-          return res.writeHead(200).end();
+          return reply.empty();
 
         default:
-          return res.writeHead(404).end();
+          return reply.empty(404);
       }
     });
 
