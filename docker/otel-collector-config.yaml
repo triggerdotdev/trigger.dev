@@ -14,10 +14,12 @@ processors:
   batch:
 
 exporters:
-  otlp/honey:
-    endpoint: "api.honeycomb.io:443"
+  otlphttp/internal:
+    endpoint: "https://otel.baselime.io/v1/"
     headers:
-      "x-honeycomb-team": "hcaik_01hps80a4qjsnnp6t757r5r70vqm8fwd7tejqdthzk9z98zsdn6ejwzazb"
+      "x-api-key": ${env:BASELIME_API_KEY}
+      "x-service": ${env:BASELIME_SERVICE}
+      "x-baselime-dataset": "otel"
   logging:
     verbosity: normal
   otlphttp:
@@ -37,4 +39,4 @@ service:
     traces/internal:
       receivers: [otlp/internal]
       processors: [batch]
-      exporters: [otlp/honey]
+      exporters: [otlphttp/internal]
