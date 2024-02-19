@@ -1,6 +1,8 @@
-FROM node:alpine@sha256:d3271e4bd89eec4d97087060fd4db0c238d9d22fcfad090a73fa9b5128699888
+FROM node:alpine@sha256:d3271e4bd89eec4d97087060fd4db0c238d9d22fcfad090a73fa9b5128699888 AS base
 
 RUN apk add --no-cache dumb-init
+
+FROM base
 
 ENV TRIGGER_API_URL=__API_URL__
 ENV TRIGGER_API_KEY=__API_KEY__
