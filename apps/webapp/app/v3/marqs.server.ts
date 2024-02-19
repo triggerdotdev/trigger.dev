@@ -5,8 +5,10 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { singleton } from "~/utils/singleton";
 import { AsyncWorker } from "./marqs/asyncWorker.server";
 import { logger } from "~/services/logger.server";
-import { attributesFromAuthenticatedEnv, tracer } from "./tracer.server";
-import { SpanKind } from "@opentelemetry/api";
+import { attributesFromAuthenticatedEnv } from "./tracer.server";
+import { Span, SpanKind, SpanOptions, trace } from "@opentelemetry/api";
+
+const tracer = trace.getTracer("marqs");
 
 const KEY_PREFIX = "marqs:";
 
@@ -40,6 +42,13 @@ const MessagePayload = z.object({
 });
 
 type MessagePayload = z.infer<typeof MessagePayload>;
+
+const SemanticAttributes = {
+  QUEUE: "marqs.queue",
+  PARENT_QUEUE: "marqs.parentQueue",
+  MESSAGE_ID: "marqs.messageId",
+  CONCURRENCY_KEY: "marqs.concurrencyKey",
+};
 
 // TODO: heartbeats from the workers to ensure they're still alive
 
@@ -77,9 +86,8 @@ export class MarQS {
     messageData: Record<string, unknown>,
     concurrencyKey?: string
   ) {
-    return await tracer.startActiveSpan(
+    return await this.#trace(
       "enqueueMessage",
-      { kind: SpanKind.PRODUCER, attributes: { ...attributesFromAuthenticatedEnv(env) } },
       async (span) => {
         const messageQueue = `${constants.ENV_PART}:${env.id}:${constants.QUEUE_PART}:${queue}${
           concurrencyKey ? `:${constants.CONCURRENCY_KEY_PART}:${concurrencyKey}` : ""
@@ -103,94 +111,162 @@ export class MarQS {
         };
 
         span.setAttributes({
-          queue,
-          messageId,
-          concurrencyKey,
-          parentQueue,
+          [SemanticAttributes.QUEUE]: queue,
+          [SemanticAttributes.MESSAGE_ID]: messageId,
+          [SemanticAttributes.CONCURRENCY_KEY]: concurrencyKey,
+          [SemanticAttributes.PARENT_QUEUE]: parentQueue,
         });
 
-        span.end();
-
         await this.#callEnqueueMessage(messagePayload);
-      }
+      },
+      { kind: SpanKind.PRODUCER, attributes: { ...attributesFromAuthenticatedEnv(env) } }
     );
   }
 
   public async dequeueMessageInEnv(env: AuthenticatedEnvironment) {
-    const parentQueue =
-      env.type === "DEVELOPMENT"
-        ? `${constants.ENV_PART}:${env.id}:${constants.SHARED_QUEUE}`
-        : constants.SHARED_QUEUE;
+    return this.#trace(
+      "dequeueMessageInEnv",
+      async (span, abort) => {
+        const parentQueue =
+          env.type === "DEVELOPMENT"
+            ? `${constants.ENV_PART}:${env.id}:${constants.SHARED_QUEUE}`
+            : constants.SHARED_QUEUE;
 
-    // Read the parent queue for matching queues
-    const messageQueue = await this.#getRandomQueueFromParentQueue(parentQueue, (queue, score) =>
-      this.#calculateMessageQueueWeight(queue, score)
+        // Read the parent queue for matching queues
+        const messageQueue = await this.#getRandomQueueFromParentQueue(
+          parentQueue,
+          (queue, score) => this.#calculateMessageQueueWeight(queue, score)
+        );
+
+        if (!messageQueue) {
+          abort();
+          return;
+        }
+
+        // If the queue includes a concurrency key, we need to remove the ck:concurrencyKey from the queue name
+        const concurrencyQueueName = messageQueue.replace(/:ck:.+$/, "");
+
+        const messageData = await this.#callDequeueMessage({
+          messageQueue,
+          parentQueue,
+          visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
+          concurrencyLimitKey: `${concurrencyQueueName}:${constants.CONCURRENCY_LIMIT_PART}`,
+          currentConcurrencyKey: `${messageQueue}:${constants.CURRENT_CONCURRENCY_PART}`,
+        });
+
+        if (!messageData) {
+          abort();
+          return;
+        }
+
+        const message = await this.#readMessage(messageData.messageId);
+
+        if (message) {
+          span.setAttributes({
+            [SemanticAttributes.QUEUE]: message.queue,
+            [SemanticAttributes.MESSAGE_ID]: message.messageId,
+            [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
+            [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
+          });
+        } else {
+          abort();
+        }
+
+        return message;
+      },
+      { kind: SpanKind.CONSUMER, attributes: { ...attributesFromAuthenticatedEnv(env) } }
     );
-
-    if (!messageQueue) {
-      return;
-    }
-
-    // If the queue includes a concurrency key, we need to remove the ck:concurrencyKey from the queue name
-    const concurrencyQueueName = messageQueue.replace(/:ck:.+$/, "");
-
-    const message = await this.#callDequeueMessage({
-      messageQueue,
-      parentQueue,
-      visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
-      concurrencyLimitKey: `${concurrencyQueueName}:${constants.CONCURRENCY_LIMIT_PART}`,
-      currentConcurrencyKey: `${messageQueue}:${constants.CURRENT_CONCURRENCY_PART}`,
-    });
-
-    if (!message) {
-      return;
-    }
-
-    return this.#readMessage(message.messageId);
   }
 
   public async acknowledgeMessage(messageId: string) {
-    const message = await this.#readMessage(messageId);
+    return this.#trace(
+      "acknowledgeMessage",
+      async (span) => {
+        const message = await this.#readMessage(messageId);
 
-    if (!message) {
-      return;
-    }
+        if (!message) {
+          return;
+        }
 
-    await this.#callAcknowledgeMessage({
-      messageKey: `${constants.MESSAGE_PART}:${messageId}`,
-      visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
-      concurrencyKey: `${message.queue}:${constants.CURRENT_CONCURRENCY_PART}`,
-      messageId,
+        span.setAttributes({
+          [SemanticAttributes.QUEUE]: message.queue,
+          [SemanticAttributes.MESSAGE_ID]: message.messageId,
+          [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
+          [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
+        });
+
+        await this.#callAcknowledgeMessage({
+          messageKey: `${constants.MESSAGE_PART}:${messageId}`,
+          visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
+          concurrencyKey: `${message.queue}:${constants.CURRENT_CONCURRENCY_PART}`,
+          messageId,
+        });
+      },
+      { kind: SpanKind.CONSUMER }
+    );
+  }
+
+  async #trace<T>(
+    name: string,
+    fn: (span: Span, abort: () => void) => Promise<T>,
+    options?: SpanOptions
+  ): Promise<T> {
+    return tracer.startActiveSpan(name, options ?? {}, async (span) => {
+      let _abort = false;
+      let aborter = () => {
+        _abort = true;
+      };
+
+      try {
+        return await fn(span, aborter);
+      } catch (e) {
+        if (e instanceof Error) {
+          span.recordException(e);
+        } else {
+          span.recordException(new Error(String(e)));
+        }
+
+        throw e;
+      } finally {
+        if (!_abort) {
+          span.end();
+        }
+      }
     });
-
-    // await this.#callAcknowledgeMessage(
-    //   `${constants.MESSAGE_PART}:${messageId}`,
-    //   timeoutQueue,
-    //   constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
-    //   `${message.queue}:${constants.CURRENT_CONCURRENCY_PART}`,
-    //   messageId
-    // );
   }
 
   /**
    * Negative acknowledge a message, which will requeue the message
    */
   public async nackMessage(messageId: string) {
-    const message = await this.#readMessage(messageId);
+    return this.#trace(
+      "nackMessage",
+      async (span) => {
+        const message = await this.#readMessage(messageId);
 
-    if (!message) {
-      return;
-    }
+        if (!message) {
+          return;
+        }
 
-    await this.#callNackMessage({
-      messageKey: `${constants.MESSAGE_PART}:${messageId}`,
-      messageQueue: message.queue,
-      parentQueue: message.parentQueue,
-      concurrencyKey: `${message.queue}:${constants.CURRENT_CONCURRENCY_PART}`,
-      visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
-      messageId,
-      messageScore: message.timestamp,
-    });
+        span.setAttributes({
+          [SemanticAttributes.QUEUE]: message.queue,
+          [SemanticAttributes.MESSAGE_ID]: message.messageId,
+          [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
+          [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
+        });
+
+        await this.#callNackMessage({
+          messageKey: `${constants.MESSAGE_PART}:${messageId}`,
+          messageQueue: message.queue,
+          parentQueue: message.parentQueue,
+          concurrencyKey: `${message.queue}:${constants.CURRENT_CONCURRENCY_PART}`,
+          visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
+          messageId,
+          messageScore: message.timestamp,
+        });
+      },
+      { kind: SpanKind.CONSUMER }
+    );
   }
 
   // This should increment by the number of seconds, but with a max value of Date.now() + visibilityTimeoutInMs
@@ -208,35 +284,50 @@ export class MarQS {
   }
 
   async #readMessage(messageId: string) {
-    const rawMessage = await this.redis.get(`${constants.MESSAGE_PART}:${messageId}`);
+    return this.#trace(
+      "readMessage",
+      async (span) => {
+        const rawMessage = await this.redis.get(`${constants.MESSAGE_PART}:${messageId}`);
 
-    if (!rawMessage) {
-      return;
-    }
+        if (!rawMessage) {
+          return;
+        }
 
-    const message = MessagePayload.safeParse(JSON.parse(rawMessage));
+        const message = MessagePayload.safeParse(JSON.parse(rawMessage));
 
-    if (!message.success) {
-      return;
-    }
+        if (!message.success) {
+          return;
+        }
 
-    return message.data;
+        return message.data;
+      },
+      { attributes: { [SemanticAttributes.MESSAGE_ID]: messageId } }
+    );
   }
 
   async #getRandomQueueFromParentQueue(
     parentQueue: string,
     calculateWeight: (queue: string, score: number) => Promise<number>
   ) {
-    const queues = await this.#zrangeWithScores(parentQueue, 0, -1);
+    return this.#trace(
+      "getRandomQueueFromParentQueue",
+      async (span, abort) => {
+        const queues = await this.#zrangeWithScores(parentQueue, 0, -1);
 
-    if (queues.length === 0) {
-      return;
-    }
+        if (queues.length === 0) {
+          abort();
+          return;
+        }
 
-    const queuesWithWeights = await this.#calculateQueueWeights(queues, calculateWeight);
+        span.setAttribute("marqs.queueCount", queues.length);
 
-    // We need to priority shuffle here to ensure all workers aren't just working on the highest priority queue
-    return await this.#weightedRandomChoice(queuesWithWeights);
+        const queuesWithWeights = await this.#calculateQueueWeights(queues, calculateWeight);
+
+        // We need to priority shuffle here to ensure all workers aren't just working on the highest priority queue
+        return await this.#weightedRandomChoice(queuesWithWeights);
+      },
+      { kind: SpanKind.CONSUMER, attributes: { [SemanticAttributes.PARENT_QUEUE]: parentQueue } }
+    );
   }
 
   // Calculate the weights of the queues based on the age and the capacity

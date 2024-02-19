@@ -1,116 +1,114 @@
 import { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
 import type { BackgroundWorker } from "@trigger.dev/database";
-import { PrismaClient, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "../marqs.server";
+import { BaseService } from "./baseService.server";
 
-export class CreateBackgroundWorkerService {
-  #prismaClient: PrismaClient;
-
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
-
+export class CreateBackgroundWorkerService extends BaseService {
   public async call(
     projectRef: string,
     environment: AuthenticatedEnvironment,
     body: CreateBackgroundWorkerRequestBody
   ): Promise<BackgroundWorker> {
-    const project = await this.#prismaClient.project.findUniqueOrThrow({
-      where: {
-        externalRef: projectRef,
-        environments: {
-          some: {
-            id: environment.id,
-          },
-        },
-      },
-      include: {
-        backgroundWorkers: {
-          where: {
-            runtimeEnvironmentId: environment.id,
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-          take: 1,
-        },
-      },
-    });
+    return this.traceWithEnv("call", environment, async (span) => {
+      span.setAttribute("projectRef", projectRef);
 
-    const latestBackgroundWorker = project.backgroundWorkers[0];
-
-    if (latestBackgroundWorker?.contentHash === body.metadata.contentHash) {
-      return latestBackgroundWorker;
-    }
-
-    const nextVersion = calculateNextBuildVersion(project.backgroundWorkers[0]?.version);
-
-    logger.debug(`Creating background worker`, {
-      nextVersion,
-      lastVersion: project.backgroundWorkers[0]?.version,
-    });
-
-    const backgroundWorker = await this.#prismaClient.backgroundWorker.create({
-      data: {
-        friendlyId: generateFriendlyId("worker"),
-        version: nextVersion,
-        runtimeEnvironmentId: environment.id,
-        projectId: project.id,
-        metadata: body.metadata,
-        contentHash: body.metadata.contentHash,
-      },
-    });
-
-    for (const task of body.metadata.tasks) {
-      await this.#prismaClient.backgroundWorkerTask.create({
-        data: {
-          friendlyId: generateFriendlyId("task"),
-          projectId: project.id,
-          runtimeEnvironmentId: environment.id,
-          workerId: backgroundWorker.id,
-          slug: task.id,
-          filePath: task.filePath,
-          exportName: task.exportName,
-        },
-      });
-
-      const queueName = task.queue?.name ?? `task/${task.id}`;
-
-      const taskQueue = await this.#prismaClient.taskQueue.upsert({
+      const project = await this._prisma.project.findUniqueOrThrow({
         where: {
-          runtimeEnvironmentId_name: {
-            runtimeEnvironmentId: environment.id,
-            name: queueName,
+          externalRef: projectRef,
+          environments: {
+            some: {
+              id: environment.id,
+            },
           },
         },
-        update: {
-          concurrencyLimit: task.queue?.concurrencyLimit,
-          rateLimit: task.queue?.rateLimit,
-        },
-        create: {
-          friendlyId: generateFriendlyId("queue"),
-          name: queueName,
-          concurrencyLimit: task.queue?.concurrencyLimit,
-          runtimeEnvironmentId: environment.id,
-          projectId: project.id,
-          rateLimit: task.queue?.rateLimit,
-          type: task.queue?.name ? "NAMED" : "VIRTUAL",
+        include: {
+          backgroundWorkers: {
+            where: {
+              runtimeEnvironmentId: environment.id,
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+            take: 1,
+          },
         },
       });
 
-      if (taskQueue.concurrencyLimit) {
-        await marqs?.updateQueueConcurrency(
-          environment,
-          taskQueue.name,
-          taskQueue.concurrencyLimit
-        );
-      }
-    }
+      const latestBackgroundWorker = project.backgroundWorkers[0];
 
-    return backgroundWorker;
+      if (latestBackgroundWorker?.contentHash === body.metadata.contentHash) {
+        return latestBackgroundWorker;
+      }
+
+      const nextVersion = calculateNextBuildVersion(project.backgroundWorkers[0]?.version);
+
+      logger.debug(`Creating background worker`, {
+        nextVersion,
+        lastVersion: project.backgroundWorkers[0]?.version,
+      });
+
+      const backgroundWorker = await this._prisma.backgroundWorker.create({
+        data: {
+          friendlyId: generateFriendlyId("worker"),
+          version: nextVersion,
+          runtimeEnvironmentId: environment.id,
+          projectId: project.id,
+          metadata: body.metadata,
+          contentHash: body.metadata.contentHash,
+        },
+      });
+
+      for (const task of body.metadata.tasks) {
+        await this._prisma.backgroundWorkerTask.create({
+          data: {
+            friendlyId: generateFriendlyId("task"),
+            projectId: project.id,
+            runtimeEnvironmentId: environment.id,
+            workerId: backgroundWorker.id,
+            slug: task.id,
+            filePath: task.filePath,
+            exportName: task.exportName,
+          },
+        });
+
+        const queueName = task.queue?.name ?? `task/${task.id}`;
+
+        const taskQueue = await this._prisma.taskQueue.upsert({
+          where: {
+            runtimeEnvironmentId_name: {
+              runtimeEnvironmentId: environment.id,
+              name: queueName,
+            },
+          },
+          update: {
+            concurrencyLimit: task.queue?.concurrencyLimit,
+            rateLimit: task.queue?.rateLimit,
+          },
+          create: {
+            friendlyId: generateFriendlyId("queue"),
+            name: queueName,
+            concurrencyLimit: task.queue?.concurrencyLimit,
+            runtimeEnvironmentId: environment.id,
+            projectId: project.id,
+            rateLimit: task.queue?.rateLimit,
+            type: task.queue?.name ? "NAMED" : "VIRTUAL",
+          },
+        });
+
+        if (taskQueue.concurrencyLimit) {
+          await marqs?.updateQueueConcurrency(
+            environment,
+            taskQueue.name,
+            taskQueue.concurrencyLimit
+          );
+        }
+      }
+
+      return backgroundWorker;
+    });
   }
 }
 

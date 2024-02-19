@@ -1,3 +1,4 @@
+import { Context, ROOT_CONTEXT, SpanKind, context, trace } from "@opentelemetry/api";
 import {
   TaskRunExecutionResult,
   ZodMessageSender,
@@ -10,6 +11,9 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "../marqs.server";
+import { attributesFromAuthenticatedEnv } from "../tracer.server";
+
+const tracer = trace.getTracer("environmentQueueConsumer");
 
 const MessageBody = z.discriminatedUnion("type", [
   z.object({
@@ -20,15 +24,32 @@ const MessageBody = z.discriminatedUnion("type", [
 
 type BackgroundWorkerWithTasks = BackgroundWorker & { tasks: BackgroundWorkerTask[] };
 
+export type EnvironmentQueueConsumerOptions = {
+  maximumItemsPerTrace?: number;
+  traceTimeoutSeconds?: number;
+};
+
 export class EnvironmentQueueConsumer {
   private _backgroundWorkers: Map<string, BackgroundWorkerWithTasks> = new Map();
   private _enabled = false;
   private _processingMessages: Set<string> = new Set();
+  private _options: Required<EnvironmentQueueConsumerOptions>;
+  private _perTraceCountdown: number | undefined;
+  private _lastNewTrace: Date | undefined;
+  private _currentSpanContext: Context | undefined;
+  private _taskFailures: number = 0;
+  private _taskSuccesses: number = 0;
 
   constructor(
     public env: AuthenticatedEnvironment,
-    private _sender: ZodMessageSender<typeof serverWebsocketMessages>
-  ) {}
+    private _sender: ZodMessageSender<typeof serverWebsocketMessages>,
+    options: EnvironmentQueueConsumerOptions = {}
+  ) {
+    this._options = {
+      maximumItemsPerTrace: options.maximumItemsPerTrace ?? 1_000, // 1k items per trace
+      traceTimeoutSeconds: options.traceTimeoutSeconds ?? 300, // 5 minutes
+    };
+  }
 
   public async registerBackgroundWorker(id: string) {
     const backgroundWorker = await prisma.backgroundWorker.findUnique({
@@ -72,6 +93,12 @@ export class EnvironmentQueueConsumer {
           },
         });
 
+    if (taskRunAttempt.status === "COMPLETED") {
+      this._taskSuccesses++;
+    } else {
+      this._taskFailures++;
+    }
+
     this._processingMessages.delete(taskRunAttempt.taskRunId);
     await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
   }
@@ -98,6 +125,10 @@ export class EnvironmentQueueConsumer {
     }
 
     this._enabled = true;
+    this._perTraceCountdown = this._options.maximumItemsPerTrace;
+    this._lastNewTrace = new Date();
+    this._taskFailures = 0;
+    this._taskSuccesses = 0;
 
     this.#doWork().finally(() => {});
   }
@@ -107,6 +138,50 @@ export class EnvironmentQueueConsumer {
       return;
     }
 
+    // Check if the trace has expired
+    if (
+      this._perTraceCountdown === 0 ||
+      Date.now() - this._lastNewTrace!.getTime() > this._options.traceTimeoutSeconds * 1000 ||
+      this._currentSpanContext === undefined
+    ) {
+      // Create a new trace
+      const span = tracer.startSpan(
+        "EnvironmentQueueConsumer.doWork()",
+        {
+          kind: SpanKind.CONSUMER,
+          attributes: {
+            ...attributesFromAuthenticatedEnv(this.env),
+          },
+        },
+        ROOT_CONTEXT
+      );
+
+      span.setAttribute("tasks.period.failures", this._taskFailures);
+      span.setAttribute("tasks.period.successes", this._taskSuccesses);
+
+      // Get the span trace context
+      this._currentSpanContext = trace.setSpan(ROOT_CONTEXT, span);
+
+      span.end();
+
+      this._perTraceCountdown = this._options.maximumItemsPerTrace;
+      this._lastNewTrace = new Date();
+      this._taskFailures = 0;
+      this._taskSuccesses = 0;
+
+      logger.debug("Starting new trace", {
+        traceId: span.spanContext().traceId,
+        spanId: span.spanContext().spanId,
+      });
+    }
+
+    return context.with(this._currentSpanContext ?? ROOT_CONTEXT, async () => {
+      await this.#doWorkInternal();
+      this._perTraceCountdown = this._perTraceCountdown! - 1;
+    });
+  }
+
+  async #doWorkInternal() {
     // Attempt to dequeue a message from the environment's queue
     // If no message is available, reschedule the worker to run again in 1 second
     // If a message is available, find the BackgroundWorkerTask that matches the message's taskIdentifier
@@ -275,6 +350,7 @@ export class EnvironmentQueueConsumer {
       traceContext: lockedTaskRun.traceContext as Record<string, unknown>,
     };
 
+    // TODO: send trace context down to the CLI
     this._sender.send("BACKGROUND_WORKER_MESSAGE", {
       backgroundWorkerId: backgroundWorker.friendlyId,
       data: {

@@ -97,11 +97,12 @@ importers:
       '@internationalized/date': ^3.5.1
       '@lezer/highlight': ^1.1.6
       '@opentelemetry/api': ^1.7.0
-      '@opentelemetry/auto-instrumentations-node': ^0.40.3
       '@opentelemetry/core': ^1.21.0
       '@opentelemetry/exporter-logs-otlp-http': ^0.48.0
       '@opentelemetry/exporter-trace-otlp-http': ^0.48.0
       '@opentelemetry/instrumentation': ^0.48.0
+      '@opentelemetry/instrumentation-express': ^0.35.0
+      '@opentelemetry/instrumentation-http': ^0.48.0
       '@opentelemetry/resources': ^1.21.0
       '@opentelemetry/sdk-logs': ^0.48.0
       '@opentelemetry/sdk-node': ^0.48.0
@@ -283,11 +284,12 @@ importers:
       '@internationalized/date': 3.5.1
       '@lezer/highlight': 1.1.6
       '@opentelemetry/api': 1.7.0
-      '@opentelemetry/auto-instrumentations-node': 0.40.3_@opentelemetry+api@1.7.0
       '@opentelemetry/core': 1.21.0_@opentelemetry+api@1.7.0
       '@opentelemetry/exporter-logs-otlp-http': 0.48.0_@opentelemetry+api@1.7.0
       '@opentelemetry/exporter-trace-otlp-http': 0.48.0_@opentelemetry+api@1.7.0
       '@opentelemetry/instrumentation': 0.48.0_@opentelemetry+api@1.7.0
+      '@opentelemetry/instrumentation-express': 0.35.0_@opentelemetry+api@1.7.0
+      '@opentelemetry/instrumentation-http': 0.48.0_@opentelemetry+api@1.7.0
       '@opentelemetry/resources': 1.21.0_@opentelemetry+api@1.7.0
       '@opentelemetry/sdk-logs': 0.48.0_@opentelemetry+api@1.7.0
       '@opentelemetry/sdk-node': 0.48.0_@opentelemetry+api@1.7.0
@@ -9632,6 +9634,20 @@ packages:
       '@opentelemetry/api': 1.7.0
       '@opentelemetry/core': 1.21.0_@opentelemetry+api@1.7.0
       '@opentelemetry/instrumentation': 0.46.0_rr4fxqkzz7nhz3auplkqn4p6em
+      '@opentelemetry/semantic-conventions': 1.21.0
+    transitivePeerDependencies:
+      - supports-color
+    dev: false
+
+  /@opentelemetry/instrumentation-express/0.35.0_@opentelemetry+api@1.7.0:
+    resolution: {integrity: sha512-ZmSB4WMd88sSecOL7DlghzdBl56/8ymb02n+xEJ/6zUgONuw/1uoTh1TAaNPKfEWdNLoLKXQm+Gd2zBrUVOX0w==}
+    engines: {node: '>=14'}
+    peerDependencies:
+      '@opentelemetry/api': ^1.3.0
+    dependencies:
+      '@opentelemetry/api': 1.7.0
+      '@opentelemetry/core': 1.21.0_@opentelemetry+api@1.7.0
+      '@opentelemetry/instrumentation': 0.48.0_@opentelemetry+api@1.7.0
       '@opentelemetry/semantic-conventions': 1.21.0
     transitivePeerDependencies:
       - supports-color
