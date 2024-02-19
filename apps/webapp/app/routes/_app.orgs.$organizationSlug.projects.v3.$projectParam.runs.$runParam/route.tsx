@@ -74,7 +74,7 @@ export default function Page() {
         </PageTitleRow>
       </PageHeader>
       <PageBody scrollable={false}>
-        <div className={cn("grid h-full grid-cols-1 gap-4")}>
+        <div className={cn("grid max-h-full grid-cols-1 gap-4")}>
           <ResizablePanelGroup direction="horizontal" className="h-full">
             <ResizablePanel order={1} minSize={30}>
               <div className="h-full overflow-y-clip">
@@ -98,7 +98,7 @@ export default function Page() {
             </ResizablePanel>
             <ResizableHandle withHandle />
             {selectedSpanId !== undefined && (
-              <ResizablePanel order={2} minSize={30} defaultSize={30}>
+              <ResizablePanel order={2} minSize={30} defaultSize={40}>
                 <Outlet />
               </ResizablePanel>
             )}
