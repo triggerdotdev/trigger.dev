@@ -52,7 +52,8 @@ export default function Page() {
         }
       >
         {({ event }) => (
-            <div className="overflow-hidden border-b border-slate-800">
+          <div className="grid max-h-full grid-rows-[2rem_1fr] overflow-hidden">
+            <div className="border-b border-slate-800">
               <div className="flex h-8 items-center justify-between gap-2 border-b border-ui-border px-2">
                 <div className="flex items-center gap-1 overflow-x-hidden">
                   <RunIcon name={event.style?.icon} className="min-w-4 min-h-4 h-4 w-4" />
@@ -63,7 +64,7 @@ export default function Page() {
                 <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
               </div>
             </div>
-            <div className="mt-4 overflow-y-auto px-2">
+            <div className="overflow-y-auto px-2 pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
               <PropertyTable className="mb-4">
                 {event.level === "TRACE" ? (
                   <Property label="Timeline">
