@@ -178,6 +178,61 @@ export class MarQS {
     );
   }
 
+  /**
+   * Dequeue a message from the shared queue (this should be used in production environments)
+   */
+  public async dequeueMessageInSharedQueue() {
+    return this.#trace(
+      "dequeueMessageInSharedQueue",
+      async (span, abort) => {
+        const parentQueue = constants.SHARED_QUEUE;
+
+        // Read the parent queue for matching queues
+        const messageQueue = await this.#getRandomQueueFromParentQueue(
+          parentQueue,
+          (queue, score) => this.#calculateMessageQueueWeight(queue, score)
+        );
+
+        if (!messageQueue) {
+          abort();
+          return;
+        }
+
+        // If the queue includes a concurrency key, we need to remove the ck:concurrencyKey from the queue name
+        const concurrencyQueueName = messageQueue.replace(/:ck:.+$/, "");
+
+        const messageData = await this.#callDequeueMessage({
+          messageQueue,
+          parentQueue,
+          visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
+          concurrencyLimitKey: `${concurrencyQueueName}:${constants.CONCURRENCY_LIMIT_PART}`,
+          currentConcurrencyKey: `${messageQueue}:${constants.CURRENT_CONCURRENCY_PART}`,
+        });
+
+        if (!messageData) {
+          abort();
+          return;
+        }
+
+        const message = await this.#readMessage(messageData.messageId);
+
+        if (message) {
+          span.setAttributes({
+            [SemanticAttributes.QUEUE]: message.queue,
+            [SemanticAttributes.MESSAGE_ID]: message.messageId,
+            [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
+            [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
+          });
+        } else {
+          abort();
+        }
+
+        return message;
+      },
+      { kind: SpanKind.CONSUMER }
+    );
+  }
+
   public async acknowledgeMessage(messageId: string) {
     return this.#trace(
       "acknowledgeMessage",
