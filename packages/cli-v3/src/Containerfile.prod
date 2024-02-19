@@ -1,4 +1,4 @@
-FROM node:alpine@sha256:d3271e4bd89eec4d97087060fd4db0c238d9d22fcfad090a73fa9b5128699888 AS base
+FROM node:18-alpine@sha256:ca9f6cb0466f9638e59e0c249d335a07c867cd50c429b5c7830dda1bed584649 AS base
 
 RUN apk add --no-cache dumb-init
 
