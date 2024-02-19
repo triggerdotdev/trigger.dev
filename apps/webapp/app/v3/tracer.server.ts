@@ -87,9 +87,11 @@ function getTracer() {
 
     console.log(`⚡ Tracer: OTLP exporter enabled to ${env.OTLP_EXPORTER_TRACES_URL}`);
   } else {
-    const loggerExporter = new LoggerSpanExporter();
+    if (env.LOG_TELEMETRY === "true") {
+      const loggerExporter = new LoggerSpanExporter();
 
-    provider.addSpanProcessor(new SimpleSpanProcessor(loggerExporter));
+      provider.addSpanProcessor(new SimpleSpanProcessor(loggerExporter));
+    }
   }
 
   provider.register();

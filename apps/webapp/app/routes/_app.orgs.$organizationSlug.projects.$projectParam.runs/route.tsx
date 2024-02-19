@@ -22,6 +22,7 @@ import { RunListSearchSchema } from "~/components/runs/RunStatuses";
 import { RunsFilters } from "~/components/runs/RunFilters";
 import { Suspense } from "react";
 import { Spinner } from "~/components/primitives/Spinner";
+import { logger } from "~/services/logger.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

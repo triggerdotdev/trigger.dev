@@ -10,6 +10,7 @@
  */
 import { env } from "node:process";
 import { Buffer } from "node:buffer";
+import { trace, context } from "@opentelemetry/api";
 
 export type LogLevel = "log" | "error" | "warn" | "info" | "debug";
 
@@ -82,6 +83,9 @@ export class Logger {
     level: string,
     ...args: Array<Record<string, unknown> | undefined>
   ) {
+    // Get the current context from trace if it exists
+    const currentContext = trace.getSpan(context.active());
+
     const structuredLog = {
       ...structureArgs(safeJsonClone(args) as Record<string, unknown>[], this.#filteredKeys),
       ...this.#additionalFields(),
@@ -89,6 +93,8 @@ export class Logger {
       name: this.#name,
       message,
       level,
+      traceId: currentContext?.spanContext().traceId,
+      parentSpanId: currentContext?.spanContext().spanId,
     };
 
     loggerFunction(JSON.stringify(structuredLog, this.#jsonReplacer));
