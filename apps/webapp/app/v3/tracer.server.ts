@@ -15,7 +15,6 @@ import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
 import { Resource } from "@opentelemetry/resources";
 import {
   BatchSpanProcessor,
-  ConsoleSpanExporter,
   ParentBasedSampler,
   Sampler,
   SamplingDecision,
@@ -29,6 +28,7 @@ import { PrismaInstrumentation } from "@prisma/instrumentation";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { singleton } from "~/utils/singleton";
+import { LoggerSpanExporter } from "./telemetry/loggerExporter.server";
 class CustomWebappSampler implements Sampler {
   constructor(private readonly _baseSampler: Sampler) {}
 
@@ -56,7 +56,7 @@ class CustomWebappSampler implements Sampler {
   }
 
   toString(): string {
-    return `NoRootPrismaSampler`;
+    return `CustomWebappSampler`;
   }
 }
 
@@ -87,9 +87,9 @@ function getTracer() {
 
     console.log(`⚡ Tracer: OTLP exporter enabled to ${env.OTLP_EXPORTER_TRACES_URL}`);
   } else {
-    const consoleExporter = new ConsoleSpanExporter();
+    const loggerExporter = new LoggerSpanExporter();
 
-    provider.addSpanProcessor(new SimpleSpanProcessor(consoleExporter));
+    provider.addSpanProcessor(new SimpleSpanProcessor(loggerExporter));
   }
 
   provider.register();
