@@ -17,10 +17,11 @@ import chalk from "chalk";
 import { Evt } from "evt";
 import { fork } from "node:child_process";
 import { readFileSync } from "node:fs";
-import nodePath from "node:path";
+import nodePath, { resolve } from "node:path";
 import { SourceMapConsumer, type RawSourceMap } from "source-map";
 import terminalLink from "terminal-link";
 import { logger } from "../utilities/logger.js";
+import dotenv from "dotenv";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -228,6 +229,7 @@ export class BackgroundWorker {
         stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
         env: {
           ...this.params.env,
+          ...this.#readEnvVars(),
         },
       });
 
@@ -291,6 +293,7 @@ export class BackgroundWorker {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
       env: {
         ...this.params.env,
+        ...this.#readEnvVars(),
       },
     });
 
@@ -388,6 +391,17 @@ export class BackgroundWorker {
       debugger;
       throw e;
     }
+  }
+
+  #readEnvVars() {
+    const result = {};
+
+    dotenv.config({
+      processEnv: result,
+      path: [".env", ".env.local", ".env.development.local"].map((p) => resolve(process.cwd(), p)),
+    });
+
+    return result;
   }
 
   async #correctError(

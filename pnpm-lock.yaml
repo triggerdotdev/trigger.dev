@@ -982,7 +982,7 @@ importers:
       cli-table3: ^0.6.3
       commander: ^9.4.1
       degit: ^2.8.4
-      dotenv: ^16.3.1
+      dotenv: ^16.4.4
       esbuild: ^0.19.11
       evt: ^2.4.13
       execa: ^7.0.0
@@ -1044,7 +1044,7 @@ importers:
       cli-table3: 0.6.3
       commander: 9.5.0
       degit: 2.8.4
-      dotenv: 16.3.1
+      dotenv: 16.4.4
       esbuild: 0.19.11
       evt: 2.4.13
       execa: 7.0.0
@@ -22202,6 +22202,11 @@ packages:
   /dotenv/16.3.1:
     resolution: {integrity: sha512-IPzF4w4/Rd94bA9imS68tZBaYyBWSCE47V1RGuMrB94iyTOIEwRmVL2x/4An+6mETpLrKJ5hQkB8W4kFAadeIQ==}
     engines: {node: '>=12'}
+
+  /dotenv/16.4.4:
+    resolution: {integrity: sha512-XvPXc8XAQThSjAbY6cQ/9PcBXmFoWuw1sQ3b8HqUCR6ziGXjkTi//kB9SWa2UwqlgdAIuRqAa/9hVljzPehbYg==}
+    engines: {node: '>=12'}
+    dev: false
 
   /dotenv/8.6.0:
     resolution: {integrity: sha512-IrPdXQsk2BbzvCBGBOTmmSH5SodmqZNt4ERAZDmW4CT+tL8VtvinqywuANaFu4bOMWki16nqf0e4oC0QIaDr/g==}

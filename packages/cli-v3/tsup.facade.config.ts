@@ -12,5 +12,5 @@ export default defineConfig({
   sourcemap: true,
   target: "esnext",
   outDir: "dist",
-  noExternal: ["zod", /traceloop/, /opentelemetry/, /dotenv/],
+  noExternal: ["zod", /traceloop/, /opentelemetry/],
 });
