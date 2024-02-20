@@ -108,28 +108,28 @@ function getTracer() {
   return provider.getTracer("trigger.dev", "3.0.0.dp.1");
 }
 
-const SemanticAuthAttributes = {
-  ENV_ID: "auth.env.id",
-  ENV_TYPE: "auth.env.type",
-  ENV_SLUG: "auth.env.slug",
-  ORG_ID: "auth.org.id",
-  ORG_SLUG: "auth.org.slug",
-  ORG_TITLE: "auth.org.title",
-  PROJECT_ID: "auth.project.id",
-  PROJECT_NAME: "auth.project.name",
-  USER_ID: "auth.user.id",
+const SemanticEnvResources = {
+  ENV_ID: "$trigger.env.id",
+  ENV_TYPE: "$trigger.env.type",
+  ENV_SLUG: "$trigger.env.slug",
+  ORG_ID: "$trigger.org.id",
+  ORG_SLUG: "$trigger.org.slug",
+  ORG_TITLE: "$trigger.org.title",
+  PROJECT_ID: "$trigger.project.id",
+  PROJECT_NAME: "$trigger.project.name",
+  USER_ID: "$trigger.user.id",
 };
 
 export function attributesFromAuthenticatedEnv(env: AuthenticatedEnvironment): Attributes {
   return {
-    [SemanticAuthAttributes.ENV_ID]: env.id,
-    [SemanticAuthAttributes.ENV_TYPE]: env.type,
-    [SemanticAuthAttributes.ENV_SLUG]: env.slug,
-    [SemanticAuthAttributes.ORG_ID]: env.organizationId,
-    [SemanticAuthAttributes.ORG_SLUG]: env.organization.slug,
-    [SemanticAuthAttributes.ORG_TITLE]: env.organization.title,
-    [SemanticAuthAttributes.PROJECT_ID]: env.projectId,
-    [SemanticAuthAttributes.PROJECT_NAME]: env.project.name,
-    [SemanticAuthAttributes.USER_ID]: env.orgMember?.userId,
+    [SemanticEnvResources.ENV_ID]: env.id,
+    [SemanticEnvResources.ENV_TYPE]: env.type,
+    [SemanticEnvResources.ENV_SLUG]: env.slug,
+    [SemanticEnvResources.ORG_ID]: env.organizationId,
+    [SemanticEnvResources.ORG_SLUG]: env.organization.slug,
+    [SemanticEnvResources.ORG_TITLE]: env.organization.title,
+    [SemanticEnvResources.PROJECT_ID]: env.projectId,
+    [SemanticEnvResources.PROJECT_NAME]: env.project.name,
+    [SemanticEnvResources.USER_ID]: env.orgMember?.userId,
   };
 }
