@@ -20,7 +20,7 @@ import {
 } from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
-import { Changes, TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
+import { TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
 import { eventTextClassName } from "~/components/runs/v3/EventText";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
@@ -83,15 +83,13 @@ export default function Page() {
                   key={events[0]?.id ?? "-"}
                   events={events}
                   parentRunFriendlyId={parentRunFriendlyId}
-                  onChanges={(changes) => {
-                    if (selectedSpanId === changes.selectedId) return;
-                    if (!changes.selectedId) {
+                  onSelectedIdChanged={(id) => {
+                    if (selectedSpanId === id) return;
+                    if (!id) {
                       navigate(v3RunPath(organization, project, run));
                       return;
                     }
-                    navigate(
-                      v3RunSpanPath(organization, project, run, { spanId: changes.selectedId })
-                    );
+                    navigate(v3RunSpanPath(organization, project, run, { spanId: id }));
                   }}
                 />
               </div>
@@ -113,12 +111,12 @@ function TasksTreeView({
   events,
   selectedId,
   parentRunFriendlyId,
-  onChanges,
+  onSelectedIdChanged,
 }: {
   events: RunEvent[];
   selectedId?: string;
   parentRunFriendlyId?: string;
-  onChanges: (changes: Changes) => void;
+  onSelectedIdChanged: (selectedId: string | undefined) => void;
 }) {
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
@@ -140,7 +138,7 @@ function TasksTreeView({
     tree: events,
     selectedId,
     // collapsedIds,
-    onStateChanged: onChanges,
+    onSelectedIdChanged,
     estimatedRowHeight: () => 32,
     parentRef,
     filter: (node) => {
