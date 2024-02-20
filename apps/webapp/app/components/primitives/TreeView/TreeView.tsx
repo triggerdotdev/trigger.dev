@@ -170,15 +170,6 @@ export function useTree<TData>({
     }
   }, [state.changes.collapsedIds]);
 
-  //if the defaultState changes, update the state
-  //todo
-  // useEffect(() => {
-  //   modifyState(inputTreeStateFrom({ tree, selectedId, collapsedIds }));
-  // }, [selectedId, collapsedIds, tree]);
-
-  //create the state and visibility for each Node
-  //Nodes where the parent is collapsed are hidden, and can't be selected
-
   const virtualizer = useVirtualizer({
     count: tree.length,
     getItemKey: (index) => tree[index].id,
