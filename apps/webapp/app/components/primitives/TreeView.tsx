@@ -185,6 +185,16 @@ function inputTreeStateFrom({
   return state;
 }
 
+function stateHasChanged(a: Changes, b: Changes) {
+  if (a.selectedId !== b.selectedId) {
+    return true;
+  }
+
+  const collapsedIdsA = new Set(a.collapsedIds);
+  const collapsedIdsB = new Set(b.collapsedIds);
+  return !areSetsEqual(collapsedIdsA, collapsedIdsB);
+}
+
 export function useTree<TData>({
   tree,
   selectedId,
@@ -198,22 +208,39 @@ export function useTree<TData>({
     inputTreeStateFrom({ tree, selectedId, collapsedIds })
   );
   const [filteredOut, setFilteredOut] = useState<Set<string>>(new Set());
+  const previousState = useRef<Changes>({ selectedId, collapsedIds: collapsedIds ?? [] });
 
   const modifyState = useCallback(
     (input: ModifyState) => {
       if (typeof input === "function") {
         setState((state) => {
           const updatedState = input(state);
-          onStateChanged?.(generateChanges(updatedState));
-          return updatedState;
+          const changes = generateChanges(updatedState);
+          if (stateHasChanged(previousState.current, changes)) {
+            console.log("State has changed fn");
+            onStateChanged?.(generateChanges(updatedState));
+            previousState.current = changes;
+            return updatedState;
+          } else {
+            console.log("State has not changed fn");
+            return state;
+          }
         });
         return;
       }
 
-      setState(input);
-      onStateChanged?.(generateChanges(input));
+      const changes = generateChanges(input);
+
+      if (stateHasChanged(previousState.current, changes)) {
+        console.log("State has changed");
+        setState(input);
+        previousState.current = changes;
+        onStateChanged?.(generateChanges(input));
+      } else {
+        console.log("State has not changed");
+      }
     },
-    [state]
+    [state, previousState.current]
   );
 
   //if the defaultState changes, update the state
