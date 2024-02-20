@@ -5,14 +5,7 @@ import { withDesign } from "storybook-addon-designs";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { Input } from "../primitives/Input";
-import {
-  Changes,
-  FlatTree,
-  Tree,
-  TreeView,
-  flattenTree,
-  useTree,
-} from "../primitives/TreeView/TreeView";
+import { Tree, TreeView, flattenTree, useTree } from "../primitives/TreeView/TreeView";
 
 const meta: Meta = {
   title: "Primitives/TreeView",
@@ -161,7 +154,9 @@ function TreeViewParent({
 }) {
   const [filterText, setFilterText] = useState("");
   const parentRef = useRef<HTMLDivElement>(null);
-  const changed = useCallback((state: Changes) => {}, []);
+  const changed = useCallback((selectedId: string | undefined) => {
+    console.log("selectedId", selectedId);
+  }, []);
 
   const {
     nodes,
@@ -179,7 +174,7 @@ function TreeViewParent({
     tree,
     selectedId,
     collapsedIds,
-    onStateChanged: changed,
+    onSelectedIdChanged: changed,
     estimatedRowHeight: () => 32,
     parentRef,
     filter: (node) => {

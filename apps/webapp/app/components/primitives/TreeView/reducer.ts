@@ -13,6 +13,16 @@ export type NodeState = {
   visible: boolean;
 };
 
+export type Changes = {
+  selectedId: string | undefined;
+  collapsedIds: string[];
+};
+
+export type TreeState = {
+  nodes: NodesState;
+  changes: Changes;
+};
+
 export type NodesState = Record<string, NodeState>;
 
 type ScrollToNodeFn = (id: string) => void;

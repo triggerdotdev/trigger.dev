@@ -2,7 +2,7 @@ import { VirtualItem, Virtualizer, useVirtualizer } from "@tanstack/react-virtua
 import { Fragment, RefObject, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { UnmountClosed } from "react-collapse";
 import { cn } from "~/utils/cn";
-import { NodeState, NodesState, reducer } from "./reducer";
+import { Changes, NodeState, NodesState, reducer } from "./reducer";
 import {
   applyFilterToState,
   concreteStateFromInput,
@@ -22,11 +22,11 @@ export type TreeViewProps<TData> = {
     virtualizer: Virtualizer<HTMLElement, Element>;
     virtualItem: VirtualItem;
   }) => React.ReactNode;
-  nodes: TreeState["nodes"];
+  nodes: UseTreeStateOutput["nodes"];
   autoFocus?: boolean;
   virtualizer: Virtualizer<HTMLElement, Element>;
   parentRef: RefObject<any>;
-} & Pick<TreeState, "getTreeProps" | "getNodeProps">;
+} & Pick<UseTreeStateOutput, "getTreeProps" | "getNodeProps">;
 
 export function TreeView<TData>({
   tree,
@@ -106,7 +106,7 @@ type TreeStateHookProps<TData> = {
   tree: FlatTree<TData>;
   selectedId?: string;
   collapsedIds?: string[];
-  onStateChanged?: (newState: Changes) => void;
+  onSelectedIdChanged?: (selectedId: string | undefined) => void;
   estimatedRowHeight: (params: {
     node: FlatTreeItem<TData>;
     state: NodeState;
@@ -122,7 +122,7 @@ type HTMLAttributes = Omit<
   "onAnimationStart" | "onDragStart" | "onDragEnd" | "onDrag"
 >;
 
-type TreeState = {
+type UseTreeStateOutput = {
   selected: string | undefined;
   nodes: NodesState;
   virtualizer: Virtualizer<HTMLElement, Element>;
@@ -148,11 +148,11 @@ export function useTree<TData>({
   tree,
   selectedId,
   collapsedIds,
-  onStateChanged,
+  onSelectedIdChanged,
   parentRef,
   estimatedRowHeight,
   filter,
-}: TreeStateHookProps<TData>): TreeState {
+}: TreeStateHookProps<TData>): UseTreeStateOutput {
   const [state, dispatch] = useReducer(
     reducer,
     concreteStateFromInput({ tree, selectedId, collapsedIds })
@@ -424,11 +424,6 @@ export function useTree<TData>({
     virtualizer,
   };
 }
-
-export type Changes = {
-  selectedId: string | undefined;
-  collapsedIds: string[];
-};
 
 /** An actual tree structure with custom data */
 export type Tree<TData> = {
