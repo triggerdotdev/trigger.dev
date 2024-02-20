@@ -410,13 +410,18 @@ export class MarQS {
 
     const concurrencyLimit =
       (await this.redis.get(`${concurrencyQueueName}:${constants.CONCURRENCY_LIMIT_PART}`)) ?? 100;
+
+    const guardedConcurrencyLimit = Math.max(Number(concurrencyLimit), 1); // Ensure we don't divide by 0
+
     const currentConcurrency = await this.redis.scard(
       `${queue}:${constants.CURRENT_CONCURRENCY_PART}`
     );
 
-    const capacity = Number(concurrencyLimit) - Number(currentConcurrency);
+    const guardedCurrentConcurrency = Math.max(Number(currentConcurrency), 0);
 
-    const capacityWeight = capacity / Number(concurrencyLimit);
+    const capacity = Math.max(guardedConcurrencyLimit - guardedCurrentConcurrency, 0); // Ensure we don't have negative capacity
+
+    const capacityWeight = capacity / guardedConcurrencyLimit;
     const ageWeight = Date.now() - score;
 
     return ageWeight * 0.8 + capacityWeight * 0.2;
@@ -487,6 +492,7 @@ export class MarQS {
       const messageData = await this.redis.get(`${constants.MESSAGE_PART}:${message}`);
 
       if (!messageData) {
+        // The message has been removed for some reason (TTL, etc.), so we should remove it from the timeout queue
         await this.redis.zrem(constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE, message);
 
         continue;
@@ -890,20 +896,26 @@ declare module "ioredis" {
 export const marqs = singleton("marqs", getMarQSClient);
 
 function getMarQSClient() {
-  if (env.REDIS_HOST && env.REDIS_PORT) {
-    return new MarQS({
-      workers: 1,
-      redis: {
-        keyPrefix: KEY_PREFIX,
-        port: env.REDIS_PORT,
-        host: env.REDIS_HOST,
-        username: env.REDIS_USERNAME,
-        password: env.REDIS_PASSWORD,
-        enableAutoPipelining: true,
-        ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
-      },
-      defaultConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
-      visibilityTimeoutInMs: 120 * 1000, // 2 minutes
-    });
+  if (env.V3_ENABLED) {
+    if (env.REDIS_HOST && env.REDIS_PORT) {
+      return new MarQS({
+        workers: 1,
+        redis: {
+          keyPrefix: KEY_PREFIX,
+          port: env.REDIS_PORT,
+          host: env.REDIS_HOST,
+          username: env.REDIS_USERNAME,
+          password: env.REDIS_PASSWORD,
+          enableAutoPipelining: true,
+          ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+        },
+        defaultConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
+        visibilityTimeoutInMs: 120 * 1000, // 2 minutes
+      });
+    } else {
+      console.warn(
+        "Could not initialize MarQS because process.env.REDIS_HOST and process.env.REDIS_PORT are required to be set. Trigger.dev v3 will not work without this."
+      );
+    }
   }
 }
