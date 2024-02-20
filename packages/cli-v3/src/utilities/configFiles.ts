@@ -7,8 +7,8 @@ import { logger } from "./logger.js";
 import { findUp } from "find-up";
 import { CLOUD_API_URL, CONFIG_FILES } from "../consts.js";
 import { pathToFileURL } from "node:url";
-import { Config, ResolvedConfig } from "../schemas.js";
 import { findTriggerDirectories, resolveTriggerDirectories } from "./taskFiles.js";
+import { Config, ResolvedConfig } from "@trigger.dev/core/v3";
 
 function getGlobalConfigFolderPath() {
   const configDir = xdgAppPaths("trigger").config();

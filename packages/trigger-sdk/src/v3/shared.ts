@@ -1,7 +1,7 @@
 import { SpanKind } from "@opentelemetry/api";
 import { SemanticAttributes } from "@opentelemetry/semantic-conventions";
 import {
-  ApiClient,
+  SdkApiClient,
   TaskRunContext,
   createErrorTaskError,
   runtime,
@@ -147,7 +147,7 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
             },
           });
 
-          if (!response.ok) {
+          if (!response.success) {
             throw new Error(response.error);
           }
 
@@ -193,7 +193,7 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
             },
           });
 
-          if (!response.ok) {
+          if (!response.success) {
             throw new Error(response.error);
           }
 
@@ -238,5 +238,5 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
 
 // TODO: make this cross-runtime compatible
 function initializeApiClient() {
-  return new ApiClient(process.env.TRIGGER_API_URL!, process.env.TRIGGER_API_KEY!);
+  return new SdkApiClient(process.env.TRIGGER_API_URL!, process.env.TRIGGER_API_KEY!);
 }

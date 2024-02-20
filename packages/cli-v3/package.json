@@ -36,6 +36,7 @@
   },
   "devDependencies": {
     "@trigger.dev/core": "workspace:*",
+    "@trigger.dev/core-apps": "workspace:*",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/gradient-string": "^1.1.2",
     "@types/mock-fs": "^4.13.1",

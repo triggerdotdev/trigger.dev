@@ -1,5 +1,4 @@
 import { note, spinner } from "@clack/prompts";
-import { ApiClient } from "../apiClient.js";
 import { chalkLink } from "../utilities/colors.js";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
@@ -7,6 +6,7 @@ import { Command } from "commander";
 import { printInitialBanner } from "../utilities/initialBanner.js";
 import { CommonCommandOptions } from "../cli/common.js";
 import { z } from "zod";
+import { ApiClient } from "@trigger.dev/core/v3";
 
 type WhoAmIResult =
   | {

@@ -1,5 +1,7 @@
 import {
+  ApiClient,
   CreateBackgroundWorkerRequestBody,
+  ResolvedConfig,
   TaskResource,
   ZodMessageHandler,
   ZodMessageSender,
@@ -22,13 +24,11 @@ import React, { Suspense, useEffect } from "react";
 import { ClientOptions, WebSocket as wsWebSocket } from "ws";
 import { z } from "zod";
 import * as packageJson from "../../package.json";
-import { ApiClient } from "../apiClient.js";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "../dev/backgroundWorker.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { CommonCommandOptions } from "../cli/common.js";
-import { ResolvedConfig } from "../schemas";
 import { getConfigPath, readConfig } from "../utilities/configFiles";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 

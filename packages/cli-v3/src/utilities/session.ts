@@ -1,4 +1,4 @@
-import { ApiClient } from "../apiClient.js";
+import { ApiClient } from "@trigger.dev/core/v3";
 import { readAuthConfigFile } from "./configFiles.js";
 
 export async function isLoggedIn() {

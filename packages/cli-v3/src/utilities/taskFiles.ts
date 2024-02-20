@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { TaskFile } from "../types";
-import { ResolvedConfig } from "../schemas";
+import { ResolvedConfig } from "@trigger.dev/core/v3";
 
 export function createTaskFileImports(taskFiles: TaskFile[]) {
   return taskFiles

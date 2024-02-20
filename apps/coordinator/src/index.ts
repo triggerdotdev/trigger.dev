@@ -1,0 +1,634 @@
+import { ClientRequestArgs, createServer } from "node:http";
+import { $ } from "execa";
+import { Namespace } from "socket.io";
+import { WebSocket } from "partysocket";
+import { ClientOptions, WebSocket as wsWebSocket } from "ws";
+import { Server } from "socket.io";
+import { Socket, io } from "socket.io-client";
+import { DefaultEventsMap } from "socket.io/dist/typed-events";
+import {
+  CoordinatorToPlatformEvents,
+  CoordinatorToProdWorkerEvents,
+  CoordinatorToDemoTaskEvents,
+  PlatformToCoordinatorEvents,
+  ProdWorkerSocketData,
+  ProdWorkerToCoordinatorEvents,
+  DemoTaskSocketData,
+  DemoTaskToCoordinatorEvents,
+  ZodMessageHandler,
+  ZodMessageSender,
+  clientWebsocketMessages,
+  serverWebsocketMessages,
+  ResolvedConfig,
+  ApiClient,
+} from "@trigger.dev/core/v3";
+import { HttpReply, getTextBody, ProdBackgroundWorkerCoordinator } from "@trigger.dev/core-apps";
+
+import { collectDefaultMetrics, register, Gauge } from "prom-client";
+collectDefaultMetrics();
+
+const DEBUG = ["v1", "true"].includes(process.env.DEBUG ?? "") || false;
+const PORT = Number(process.env.HTTP_SERVER_PORT || 8000);
+const NODE_NAME = process.env.NODE_NAME || "coordinator";
+const REGISTRY_FQDN = process.env.REGISTRY_FQDN || "localhost:5000";
+const REPO_NAME = process.env.REPO_NAME || "checkpoints";
+const CHECKPOINT_PATH = process.env.CHECKPOINT_PATH || "/checkpoints";
+const REGISTRY_TLS_VERIFY = process.env.REGISTRY_TLS_VERIFY === "false" ? "false" : "true";
+
+const PLATFORM_ENABLED = ["v1", "true"].includes(process.env.PLATFORM_ENABLED ?? "") || false;
+const PLATFORM_HOST = process.env.PLATFORM_HOST || "127.0.0.1";
+const PLATFORM_WS_PORT = process.env.PLATFORM_WS_PORT || 5080;
+const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "coordinator-secret";
+
+const debug = (...args: any[]) => {
+  if (!DEBUG) {
+    return args[0];
+  }
+  console.log(`[${NODE_NAME}]`, "debug:", ...args);
+  return args[0];
+};
+
+const log = (...args: any[]) => {
+  console.log(`[${NODE_NAME}]`, ...args);
+};
+
+function WebSocketFactory(apiKey: string) {
+  return class extends wsWebSocket {
+    constructor(address: string | URL, options?: ClientOptions | ClientRequestArgs) {
+      super(address, {
+        ...(options ?? {}),
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+    }
+  };
+}
+
+type AuthedWebSocketParams = {
+  config: ResolvedConfig;
+  apiUrl: string;
+  apiKey: string;
+  environmentClient: any;
+  projectName: string;
+};
+
+const authedWebSockets: Record<string, WebSocket | undefined> = {};
+
+function createLogger(name: string) {
+  return (...args: any[]) => console.log(`[${name}]`, ...args);
+}
+
+function createAuthedWebSocket({
+  config,
+  apiUrl,
+  apiKey,
+  environmentClient,
+  projectName,
+}: AuthedWebSocketParams) {
+  const logger = createLogger(`ws:${apiKey}`);
+
+  let websocket = authedWebSockets[apiKey];
+
+  if (websocket) {
+    logger("websocket already exists");
+    return;
+  }
+
+  const websocketUrl = new URL("/ws", apiUrl.replace(/^http/, "ws"));
+
+  websocket = new WebSocket(websocketUrl.href, [], {
+    WebSocket: WebSocketFactory(apiKey),
+    connectionTimeout: 10000,
+    maxRetries: 6,
+  });
+
+  authedWebSockets[apiKey] = websocket;
+
+  websocket.addEventListener("open", (event) => {
+    logger("open");
+  });
+  websocket.addEventListener("close", (event) => {
+    logger("close");
+  });
+  websocket.addEventListener("error", (event) => {
+    logger("error");
+  });
+
+  const sender = new ZodMessageSender({
+    schema: clientWebsocketMessages,
+    sender: async (message) => {
+      websocket?.send(JSON.stringify(message));
+    },
+  });
+
+  const backgroundWorkerCoordinator = new ProdBackgroundWorkerCoordinator(
+    `${apiUrl}/projects/v3/${config.project}`
+  );
+
+  backgroundWorkerCoordinator.onTaskCompleted.attach(async ({ backgroundWorkerId, completion }) => {
+    await sender.send("BACKGROUND_WORKER_MESSAGE", {
+      backgroundWorkerId,
+      data: {
+        type: "TASK_RUN_COMPLETED",
+        completion,
+      },
+    });
+  });
+
+  backgroundWorkerCoordinator.onWorkerRegistered.attach(async ({ id, worker, record }) => {
+    await sender.send("READY_FOR_TASKS", {
+      backgroundWorkerId: id,
+    });
+  });
+
+  backgroundWorkerCoordinator.onWorkerDeprecated.attach(async ({ id }) => {
+    await sender.send("WORKER_DEPRECATED", {
+      backgroundWorkerId: id,
+    });
+  });
+
+  websocket.addEventListener("message", async (event) => {
+    const data = JSON.parse(
+      typeof event.data === "string" ? event.data : new TextDecoder("utf-8").decode(event.data)
+    );
+
+    const messageHandler = new ZodMessageHandler({
+      schema: serverWebsocketMessages,
+      messages: {
+        SERVER_READY: async (payload) => {},
+        BACKGROUND_WORKER_MESSAGE: async (payload) => {
+          await backgroundWorkerCoordinator.handleMessage(payload.backgroundWorkerId, payload.data);
+        },
+      },
+    });
+
+    await messageHandler.handleMessage(data);
+  });
+}
+
+class TaskCoordinator {
+  #httpServer: ReturnType<typeof createServer>;
+
+  #prodWorkerNamespace: Namespace<
+    ProdWorkerToCoordinatorEvents,
+    CoordinatorToProdWorkerEvents,
+    DefaultEventsMap,
+    ProdWorkerSocketData
+  >;
+  #demoTaskNamespace: Namespace<
+    DemoTaskToCoordinatorEvents,
+    CoordinatorToDemoTaskEvents,
+    DefaultEventsMap,
+    DemoTaskSocketData
+  >;
+  #platformSocketIo?: Socket<PlatformToCoordinatorEvents, CoordinatorToPlatformEvents>;
+  #platformWebSocket?: WebSocket;
+
+  constructor(
+    private port: number,
+    private host = "0.0.0.0"
+  ) {
+    this.#httpServer = this.#createHttpServer();
+
+    const io = new Server(this.#httpServer, {
+      // connectionStateRecovery: {
+      //   maxDisconnectionDuration: 2 * 60 * 1000,
+      //   skipMiddlewares: false,
+      // },
+    });
+    this.#demoTaskNamespace = this.#createDemoTaskNamespace(io);
+    this.#prodWorkerNamespace = this.#createProdWorkerNamespace(io);
+    this.#platformSocketIo = this.#createPlatformSocket();
+
+    const connectedTasksTotal = new Gauge({
+      name: "daemon_connected_tasks_total",
+      help: "The number of tasks currently connected via websocket.",
+      collect: () => {
+        connectedTasksTotal.set(this.#demoTaskNamespace.sockets.size);
+      },
+    });
+    register.registerMetric(connectedTasksTotal);
+  }
+
+  #createPlatformSocket() {
+    if (!PLATFORM_ENABLED) {
+      console.log("INFO: platform connection disabled");
+      return;
+    }
+
+    const socket: Socket<PlatformToCoordinatorEvents, CoordinatorToPlatformEvents> = io(
+      `ws://${PLATFORM_HOST}:${PLATFORM_WS_PORT}/coordinator`,
+      {
+        transports: ["websocket"],
+        auth: {
+          token: PLATFORM_SECRET,
+        },
+      }
+    );
+
+    const logger = (...args: any[]) => {
+      console.log(`[platform][${socket.id ?? "NO_ID"}]`, ...args);
+    };
+
+    socket.on("connect", () => {
+      logger("connect");
+    });
+
+    socket.on("connect_error", (err) => {
+      logger(`connect_error: ${err.message}`);
+    });
+
+    socket.on("disconnect", () => {
+      logger("disconnect");
+    });
+
+    socket.on("INVOKE", async (message) => {
+      logger("[INVOKE]", message);
+
+      const taskSocket = await this.#getTaskSocket(message.taskId);
+
+      if (!taskSocket) {
+        return;
+      }
+
+      taskSocket.emit("INVOKE", {
+        version: message.version,
+        payload: message.payload,
+        context: message.context,
+      });
+    });
+
+    socket.on("RESUME", async (message) => {
+      logger("[RESUME]", message);
+
+      const taskSocket = await this.#getTaskSocket(message.taskId);
+
+      if (!taskSocket) {
+        return;
+      }
+
+      taskSocket.emit("RESUME", {
+        version: message.version,
+      });
+    });
+
+    socket.on("RESUME_WITH", async (message) => {
+      logger("[RESUME_WITH]", message);
+
+      const taskSocket = await this.#getTaskSocket(message.taskId);
+
+      if (!taskSocket) {
+        return;
+      }
+
+      taskSocket.emit("RESUME_WITH", {
+        version: message.version,
+        data: message.data,
+      });
+    });
+
+    return socket;
+  }
+
+  async #getTaskSocket(taskId: string) {
+    const sockets = await this.#demoTaskNamespace.fetchSockets();
+
+    for (const socket of sockets) {
+      if (socket.data.taskId === taskId) {
+        return socket;
+      }
+    }
+  }
+
+  #createDemoTaskNamespace(io: Server) {
+    const namespace: Namespace<
+      DemoTaskToCoordinatorEvents,
+      CoordinatorToDemoTaskEvents,
+      DefaultEventsMap,
+      DemoTaskSocketData
+    > = io.of("/task");
+
+    namespace.on("connection", async (socket) => {
+      const logger = (...args: any[]) => console.log(`[task][${socket.id}]`, ...args);
+
+      this.#platformSocketIo?.emit("LOG", {
+        version: "v1",
+        taskId: socket.data.taskId,
+        text: "connected",
+      });
+
+      logger("connected");
+
+      socket.on("disconnect", (reason, description) => {
+        logger("disconnect", { reason, description });
+
+        this.#platformSocketIo?.emit("LOG", {
+          version: "v1",
+          taskId: socket.data.taskId,
+          text: "disconnect",
+        });
+      });
+
+      socket.on("error", (error) => {
+        logger({ error });
+      });
+
+      socket.on("LOG", (message) => {
+        logger("[LOG]", message.text);
+        this.#platformSocketIo?.emit("LOG", {
+          version: "v1",
+          taskId: socket.data.taskId,
+          text: message.text,
+        });
+      });
+
+      socket.on("READY", (message) => {
+        logger("[READY]", message);
+        this.#platformSocketIo?.emit("READY", {
+          version: "v1",
+          taskId: socket.data.taskId,
+        });
+      });
+
+      socket.on("WAIT_FOR_DURATION", (message) => {
+        logger("[WAIT_FOR_DURATION]", message.seconds);
+        this.#checkpointAndPush(socket.data.taskId);
+      });
+
+      socket.on("WAIT_FOR_EVENT", (message) => {
+        logger("[WAIT_FOR_EVENT]", message.name);
+        this.#checkpointAndPush(socket.data.taskId);
+      });
+    });
+
+    // auth middleware
+    namespace.use((socket, next) => {
+      const logger = (...args: any[]) => console.log(`[task][${socket.id}][auth]`, ...args);
+
+      const { auth } = socket.handshake;
+
+      if (!("token" in auth)) {
+        logger("no token");
+        return socket.disconnect(true);
+      }
+
+      if (auth.token !== "task-secret") {
+        logger("invalid token");
+        return socket.disconnect(true);
+      }
+
+      const taskId = socket.handshake.headers["x-task-id"];
+      if (!taskId) {
+        logger("no task id");
+        return socket.disconnect(true);
+      }
+      socket.data.taskId = Array.isArray(taskId) ? taskId[0] : taskId;
+
+      logger("success", { taskId: socket.data.taskId });
+
+      next();
+    });
+
+    return namespace;
+  }
+
+  #createProdWorkerNamespace(io: Server) {
+    const namespace: Namespace<
+      ProdWorkerToCoordinatorEvents,
+      CoordinatorToProdWorkerEvents,
+      DefaultEventsMap,
+      ProdWorkerSocketData
+    > = io.of("/prod-worker");
+
+    namespace.on("connection", async (socket) => {
+      const logger = (...args: any[]) => console.log(`[task][${socket.id}]`, ...args);
+
+      this.#platformSocketIo?.emit("LOG", {
+        version: "v1",
+        taskId: socket.data.taskId,
+        text: "connected",
+      });
+
+      logger("connected");
+
+      socket.on("disconnect", (reason, description) => {
+        logger("disconnect", { reason, description });
+
+        this.#platformSocketIo?.emit("LOG", {
+          version: "v1",
+          taskId: socket.data.taskId,
+          text: "disconnect",
+        });
+      });
+
+      socket.on("error", (error) => {
+        logger({ error });
+      });
+
+      socket.on("LOG", (message, callback) => {
+        logger("[LOG]", message.text);
+        callback();
+        this.#platformSocketIo?.emit("LOG", {
+          version: "v1",
+          taskId: socket.data.taskId,
+          text: message.text,
+        });
+      });
+
+      socket.on("READY", (message) => {
+        logger("[READY]", message);
+        this.#platformSocketIo?.emit("READY", {
+          version: "v1",
+          taskId: socket.data.taskId,
+        });
+      });
+
+      socket.on("WAIT_FOR_DURATION", (message) => {
+        logger("[WAIT_FOR_DURATION]", message.seconds);
+        this.#checkpointAndPush(socket.data.taskId);
+      });
+
+      socket.on("WAIT_FOR_EVENT", (message) => {
+        logger("[WAIT_FOR_EVENT]", message.name);
+        this.#checkpointAndPush(socket.data.taskId);
+      });
+
+      socket.on("INDEX_TASKS", async (message, callback) => {
+        logger("[INDEX_TASKS]", message);
+
+        const environmentClient = new ApiClient(socket.data.apiUrl, socket.data.apiKey);
+
+        const createResponse = await environmentClient.createBackgroundWorker(
+          socket.data.projectRef,
+          {
+            localOnly: false,
+            metadata: {
+              cliPackageVersion: socket.data.cliPackageVersion,
+              contentHash: socket.data.contentHash,
+              packageVersion: message.packageVersion,
+              tasks: message.tasks,
+            },
+          }
+        );
+
+        logger({ createResponse });
+        callback({ success: createResponse.success });
+      });
+    });
+
+    // auth middleware
+    namespace.use(async (socket, next) => {
+      const logger = (...args: any[]) => console.log(`[task][${socket.id}][auth]`, ...args);
+
+      const { auth } = socket.handshake;
+
+      if (!("apiKey" in auth)) {
+        logger("no api key");
+        return socket.disconnect(true);
+      }
+
+      if (!("apiUrl" in auth)) {
+        logger("no api url");
+        return socket.disconnect(true);
+      }
+
+      async function validateApiKey(apiKey: string, apiUrl: string) {
+        return true;
+      }
+
+      if (!(await validateApiKey(auth.apiKey, auth.apiUrl))) {
+        logger("invalid api key");
+        return socket.disconnect(true);
+      }
+      socket.data.apiKey = auth.apiKey;
+      socket.data.apiUrl = auth.apiUrl;
+
+      function setSocketDataFromHeader(dataKey: keyof typeof socket.data, headerName: string) {
+        const value = socket.handshake.headers["x-trigger-project-ref"];
+        if (!value) {
+          logger(`missing required header: ${headerName}`);
+          throw new Error("missing header");
+        }
+        socket.data[dataKey] = Array.isArray(value) ? value[0] : value;
+      }
+
+      try {
+        setSocketDataFromHeader("contentHash", "x-trigger-content-hash");
+        setSocketDataFromHeader("cliPackageVersion", "x-trigger-cli-package-version");
+        setSocketDataFromHeader("projectRef", "x-trigger-project-ref");
+      } catch (error) {
+        return socket.disconnect(true);
+      }
+
+      logger("success", { taskId: socket.data.taskId });
+
+      next();
+    });
+
+    return namespace;
+  }
+
+  #createHttpServer() {
+    const httpServer = createServer(async (req, res) => {
+      log(`[${req.method}]`, req.url);
+
+      const reply = new HttpReply(res);
+
+      switch (req.url) {
+        case "/health": {
+          return reply.text("ok");
+        }
+        case "/metrics": {
+          return res
+            .writeHead(200, { "Content-Type": register.contentType })
+            .end(await register.metrics());
+        }
+        case "/whoami": {
+          return reply.text(NODE_NAME);
+        }
+        case "/checkpoint": {
+          const body = await getTextBody(req);
+          await this.#checkpointAndPush(body);
+          return reply.text(`sent restore request: ${body}`);
+        }
+        default: {
+          return reply.empty(404);
+        }
+      }
+    });
+
+    httpServer.on("clientError", (err, socket) => {
+      socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
+    });
+
+    httpServer.on("listening", () => {
+      log("server listening on port", PORT);
+    });
+
+    return httpServer;
+  }
+
+  async #checkpointAndPush(podName: string) {
+    const { path } = await this.#checkpointContainer(podName);
+    const { tag } = await this.#buildImage(path, podName);
+    const { destination } = await this.#pushImage(tag);
+
+    log("checkpointed and pushed image to:", destination);
+
+    return {
+      path,
+      tag,
+      destination,
+    };
+  }
+
+  async #checkpointContainer(podName: string) {
+    const containerId = debug(
+      // @ts-expect-error
+      await $`crictl ps`
+        .pipeStdout($({ stdin: "pipe" })`grep ${podName}`)
+        .pipeStdout($({ stdin: "pipe" })`cut -f1 ${"-d "}`)
+    );
+
+    if (!containerId.stdout) {
+      throw new Error("could not find container id");
+    }
+
+    const exportPath = `${CHECKPOINT_PATH}/${podName}.tar`;
+
+    debug(await $`crictl checkpoint --export=${exportPath} ${containerId}`);
+
+    return {
+      path: exportPath,
+    };
+  }
+
+  async #buildImage(checkpointPath: string, tag: string) {
+    const container = debug(await $`buildah from scratch`);
+    debug(await $`buildah add ${container} ${checkpointPath} /`);
+    debug(
+      await $`buildah config --annotation=io.kubernetes.cri-o.annotations.checkpoint.name=counter ${container}`
+    );
+    debug(await $`buildah commit ${container} ${REGISTRY_FQDN}/${REPO_NAME}:${tag}`);
+    debug(await $`buildah rm ${container}`);
+
+    return {
+      tag,
+    };
+  }
+
+  async #pushImage(tag: string) {
+    const destination = `${REGISTRY_FQDN}/${REPO_NAME}:${tag}`;
+    debug(await $`buildah push --tls-verify=${REGISTRY_TLS_VERIFY} ${destination}`);
+
+    return {
+      destination,
+    };
+  }
+
+  listen() {
+    this.#httpServer.listen(this.port, this.host);
+  }
+}
+
+const coordinator = new TaskCoordinator(PORT);
+coordinator.listen();

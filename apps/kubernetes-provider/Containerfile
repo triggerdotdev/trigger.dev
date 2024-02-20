@@ -1,0 +1,17 @@
+# syntax=docker/dockerfile:labs
+
+FROM node:18-alpine@sha256:ca9f6cb0466f9638e59e0c249d335a07c867cd50c429b5c7830dda1bed584649 AS base
+
+RUN apk add --no-cache dumb-init
+
+FROM base
+
+WORKDIR /app
+
+COPY --chown=node:node dist/index.cjs .
+
+USER node
+
+EXPOSE 8000
+
+ENTRYPOINT [ "/usr/bin/dumb-init", "--", "/usr/local/bin/node", "/app/index.cjs" ]

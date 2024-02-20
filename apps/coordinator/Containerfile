@@ -1,0 +1,30 @@
+# syntax=docker/dockerfile:labs
+
+FROM node:18-slim AS base
+
+RUN apt-get update \
+  && apt-get install -y buildah ca-certificates dumb-init \
+  && rm -rf /var/lib/apt/lists/*
+
+
+FROM alpine AS cri-tools
+
+WORKDIR /cri-tools
+
+ARG CRICTL_VERSION=v1.29.0
+ARG CRICTL_CHECKSUM=sha256:d16a1ffb3938f5a19d5c8f45d363bd091ef89c0bc4d44ad16b933eede32fdcbb
+ADD --checksum=${CRICTL_CHECKSUM} \
+  https://github.com/kubernetes-sigs/cri-tools/releases/download/${CRICTL_VERSION}/crictl-${CRICTL_VERSION}-linux-amd64.tar.gz .
+RUN tar zxvf crictl-${CRICTL_VERSION}-linux-amd64.tar.gz
+
+
+FROM base
+
+WORKDIR /app
+
+COPY --chown=node --from=cri-tools /cri-tools/crictl /usr/local/bin
+COPY --chown=node dist/index.cjs /app/
+
+EXPOSE 8000
+
+ENTRYPOINT [ "/usr/bin/dumb-init", "--", "/usr/local/bin/node", "/app/index.cjs" ]

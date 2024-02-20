@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { RequireKeys } from "./utilities/requiredKeys";
+import { RequireKeys } from "../types";
 
 export const Config = z.object({
   project: z.string(),
@@ -13,3 +13,10 @@ export type ResolvedConfig = RequireKeys<
   Config,
   "triggerDirectories" | "triggerUrl" | "projectDir"
 >;
+
+export const Machine = z.object({
+  cpu: z.string().default("1").optional(),
+  memory: z.string().default("500Mi").optional(),
+});
+
+export type Machine = z.infer<typeof Machine>;

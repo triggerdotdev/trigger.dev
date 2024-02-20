@@ -7,7 +7,6 @@ export * from "./errors";
 export * from "./runtime-api";
 export * from "./logger-api";
 export * from "./types";
-export * from "./http";
 export { SemanticInternalAttributes } from "./semanticInternalAttributes";
 
 export function parseTriggerTaskRequestBody(body: unknown) {

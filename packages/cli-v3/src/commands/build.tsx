@@ -7,15 +7,14 @@ import { createHash } from "node:crypto";
 import fs, { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { z } from "zod";
-import { ApiClient } from "../apiClient.js";
 import * as packageJson from "../../package.json";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { CommonCommandOptions } from "../cli/common.js";
-import { ResolvedConfig } from "../schemas.js";
 import { getConfigPath, readConfig } from "../utilities/configFiles.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles.js";
+import { ApiClient, ResolvedConfig } from "@trigger.dev/core/v3";
 
 const BuildCommandOptions = CommonCommandOptions.extend({
   registry: z.string(),

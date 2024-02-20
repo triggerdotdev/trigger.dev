@@ -1,4 +1,4 @@
-import { IncomingMessage, RequestListener } from "node:http";
+import { IncomingMessage, RequestListener } from "http";
 
 export const getTextBody = (req: IncomingMessage) =>
   new Promise<string>((resolve) => {

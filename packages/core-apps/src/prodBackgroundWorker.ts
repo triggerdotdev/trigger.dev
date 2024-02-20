@@ -1,42 +1,40 @@
-import {
-  BackgroundWorkerRecord,
-  BackgroundWorkerServerMessages,
-  CreateBackgroundWorkerResponse,
-  TaskMetadataWithFilePath,
-  TaskRunBuiltInError,
-  TaskRunError,
-  TaskRunExecution,
-  TaskRunExecutionPayload,
-  TaskRunExecutionResult,
-  ZodMessageHandler,
-  ZodMessageSender,
-  childToWorkerMessages,
-  workerToChildMessages,
-} from "@trigger.dev/core/v3";
 import { Evt } from "evt";
 import { fork } from "node:child_process";
 import { readFileSync } from "node:fs";
 import nodePath from "node:path";
 import { SourceMapConsumer, type RawSourceMap } from "source-map";
+import {
+  TaskRunExecutionResult,
+  TaskRunExecution,
+  CreateBackgroundWorkerResponse,
+  BackgroundWorkerServerMessages,
+  TaskRunExecutionPayload,
+  TaskRunError,
+  childToWorkerMessages,
+  TaskMetadataWithFilePath,
+  BackgroundWorkerRecord,
+  workerToChildMessages,
+  TaskRunBuiltInError,
+  ZodMessageHandler,
+  ZodMessageSender,
+} from "@trigger.dev/core/v3";
 
-export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
-
-export class BackgroundWorkerCoordinator {
+export class ProdBackgroundWorkerCoordinator {
   public onTaskCompleted: Evt<{
     backgroundWorkerId: string;
     completion: TaskRunExecutionResult;
-    worker: BackgroundWorker;
+    worker: ProdBackgroundWorker;
     execution: TaskRunExecution;
   }> = new Evt();
 
   public onWorkerRegistered: Evt<{
-    worker: BackgroundWorker;
+    worker: ProdBackgroundWorker;
     id: string;
     record: CreateBackgroundWorkerResponse;
   }> = new Evt();
 
-  public onWorkerDeprecated: Evt<{ worker: BackgroundWorker; id: string }> = new Evt();
-  private _backgroundWorkers: Map<string, BackgroundWorker> = new Map();
+  public onWorkerDeprecated: Evt<{ worker: ProdBackgroundWorker; id: string }> = new Evt();
+  private _backgroundWorkers: Map<string, ProdBackgroundWorker> = new Map();
   private _records: Map<string, CreateBackgroundWorkerResponse> = new Map();
 
   constructor(private baseURL: string) {
@@ -62,7 +60,7 @@ export class BackgroundWorkerCoordinator {
     }));
   }
 
-  async registerWorker(record: CreateBackgroundWorkerResponse, worker: BackgroundWorker) {
+  async registerWorker(record: CreateBackgroundWorkerResponse, worker: ProdBackgroundWorker) {
     for (const [workerId, existingWorker] of this._backgroundWorkers.entries()) {
       if (workerId === record.id) {
         continue;
@@ -167,11 +165,12 @@ export class BackgroundWorkerCoordinator {
   }
 }
 
-export type BackgroundWorkerParams = {
+type BackgroundWorkerParams = {
   env: Record<string, string>;
   projectDir: string;
 };
-export class BackgroundWorker {
+
+export class ProdBackgroundWorker {
   private _rawSourceMap: RawSourceMap;
   private _initialized: boolean = false;
   private _handler = new ZodMessageHandler({

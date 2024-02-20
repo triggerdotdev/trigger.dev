@@ -1,11 +1,9 @@
 import {
-  DaemonToProdWorkerEvents,
-  HttpReply,
-  ProdWorkerToDaemonEvents,
+  CoordinatorToProdWorkerEvents,
+  ProdWorkerToCoordinatorEvents,
   TaskResource,
-  getTextBody,
 } from "@trigger.dev/core/v3";
-import { BackgroundWorker } from "./prod/backgroundWorker";
+import { HttpReply, getTextBody, ProdBackgroundWorker } from "@trigger.dev/core-apps";
 import { createServer } from "node:http";
 import { io, Socket } from "socket.io-client";
 
@@ -21,8 +19,8 @@ function getRandomPortNumber() {
 
 const DEBUG = ["v1", "true"].includes(process.env.DEBUG ?? "") || false;
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || getRandomPortNumber());
-const DAEMON_HOST = process.env.DAEMON_HOST || "127.0.0.1";
-const DAEMON_PORT = Number(process.env.DAEMON_PORT || 50080);
+const COORDINATOR_HOST = process.env.COORDINATOR_HOST || "127.0.0.1";
+const COORDINATOR_PORT = Number(process.env.COORDINATOR_PORT || 50080);
 const MACHINE_NAME = process.env.MACHINE_NAME || "local";
 const SHORT_HASH = process.env.TRIGGER_CONTENT_HASH!.slice(0, 9);
 
@@ -46,15 +44,15 @@ class ProdWorker {
   private projectRef = process.env.TRIGGER_PROJECT_REF!;
   private cliPackageVersion = process.env.TRIGGER_CLI_PACKAGE_VERSION!;
 
-  #backgroundWorker: BackgroundWorker;
+  #backgroundWorker: ProdBackgroundWorker;
   #httpServer: ReturnType<typeof createServer>;
-  #daemonSocket: Socket<DaemonToProdWorkerEvents, ProdWorkerToDaemonEvents>;
+  #coordinatorSocket: Socket<CoordinatorToProdWorkerEvents, ProdWorkerToCoordinatorEvents>;
 
   constructor(
     private port: number,
     private host = "0.0.0.0"
   ) {
-    this.#backgroundWorker = new BackgroundWorker(this.#getWorkerEntryPath(this.contentHash), {
+    this.#backgroundWorker = new ProdBackgroundWorker(this.#getWorkerEntryPath(this.contentHash), {
       projectDir: this.projectDir,
       env: {
         TRIGGER_API_URL: this.apiUrl,
@@ -62,7 +60,7 @@ class ProdWorker {
       },
     });
 
-    this.#daemonSocket = this.#createDaemonSocket();
+    this.#coordinatorSocket = this.#createCoordinatorSocket();
     this.#httpServer = this.#createHttpServer();
 
     // TODO: create coordinator on daemon instead
@@ -73,9 +71,9 @@ class ProdWorker {
     // );
   }
 
-  #createDaemonSocket() {
-    const socket: Socket<DaemonToProdWorkerEvents, ProdWorkerToDaemonEvents> = io(
-      `ws://${DAEMON_HOST}:${DAEMON_PORT}/prod-worker`,
+  #createCoordinatorSocket() {
+    const socket: Socket<CoordinatorToProdWorkerEvents, ProdWorkerToCoordinatorEvents> = io(
+      `ws://${COORDINATOR_HOST}:${COORDINATOR_PORT}/prod-worker`,
       {
         transports: ["websocket"],
         auth: {
@@ -92,7 +90,7 @@ class ProdWorker {
     );
 
     const logger = (...args: any[]) => {
-      console.log(`[daemon][${socket.id ?? "NO_ID"}]`, ...args);
+      console.log(`[coordinator][${socket.id ?? "NO_ID"}]`, ...args);
     };
 
     socket.on("connect_error", (err) => {
@@ -104,7 +102,7 @@ class ProdWorker {
 
       if (process.env.INDEX_TASKS === "true") {
         const taskResources = await this.#initializeWorker();
-        const { success } = await this.#daemonSocket.emitWithAck("INDEX_TASKS", {
+        const { success } = await this.#coordinatorSocket.emitWithAck("INDEX_TASKS", {
           version: "v1",
           ...taskResources,
         });
@@ -163,38 +161,38 @@ class ProdWorker {
           return reply.text(this.contentHash);
 
         case "/wait":
-          this.#daemonSocket.emit("WAIT_FOR_DURATION", {
+          this.#coordinatorSocket.emit("WAIT_FOR_DURATION", {
             version: "v1",
             seconds: "60",
           });
           // this is required when C/Ring established connections
-          this.#daemonSocket.close();
+          this.#coordinatorSocket.close();
           return reply.text("sent WAIT");
 
         case "/connect":
-          this.#daemonSocket.connect();
+          this.#coordinatorSocket.connect();
           return reply.empty();
 
         case "/close":
-          this.#daemonSocket.emitWithAck("LOG", {
+          this.#coordinatorSocket.emitWithAck("LOG", {
             version: "v1",
             text: "close without delay",
           });
-          this.#daemonSocket.close();
+          this.#coordinatorSocket.close();
           return reply.empty();
 
         case "/close-delay":
-          this.#daemonSocket.emitWithAck("LOG", {
+          this.#coordinatorSocket.emitWithAck("LOG", {
             version: "v1",
             text: "close with delay",
           });
           setTimeout(() => {
-            this.#daemonSocket.close();
+            this.#coordinatorSocket.close();
           }, 200);
           return reply.empty();
 
         case "/log":
-          this.#daemonSocket.emitWithAck("LOG", {
+          this.#coordinatorSocket.emitWithAck("LOG", {
             version: "v1",
             text: await getTextBody(req),
           });
@@ -206,7 +204,7 @@ class ProdWorker {
           return reply.text("got preStop request");
 
         case "/ready":
-          this.#daemonSocket.emit("READY", {
+          this.#coordinatorSocket.emit("READY", {
             version: "v1",
           });
           return reply.empty();
