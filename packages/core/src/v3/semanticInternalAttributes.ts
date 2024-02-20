@@ -10,6 +10,8 @@ export const SemanticInternalAttributes = {
   TASK_SLUG: "ctx.task.id",
   TASK_PATH: "ctx.task.filePath",
   TASK_EXPORT_NAME: "ctx.task.exportName",
+  QUEUE_NAME: "ctx.queue.name",
+  QUEUE_ID: "ctx.queue.id",
   SPAN_PARTIAL: "$span.partial",
   SPAN_ID: "$span.span_id",
   OUTPUT: "$output",

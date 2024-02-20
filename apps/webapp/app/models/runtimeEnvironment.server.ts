@@ -11,6 +11,7 @@ export async function findEnvironmentByApiKey(apiKey: string) {
     include: {
       project: true,
       organization: true,
+      orgMember: true,
     },
   });
 
@@ -30,6 +31,7 @@ export async function findEnvironmentByPublicApiKey(apiKey: string) {
     include: {
       project: true,
       organization: true,
+      orgMember: true,
     },
   });
 
