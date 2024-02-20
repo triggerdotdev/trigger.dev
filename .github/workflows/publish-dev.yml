@@ -41,7 +41,7 @@ jobs:
     runs-on: buildjet-4vcpu-ubuntu-2204
     defaults:
       run:
-        working-directory: ./${{ matrix.package }}
+        working-directory: ./apps/${{ matrix.package }}
     steps:
       - uses: actions/checkout@v4
 
