@@ -107,6 +107,7 @@ type TreeStateHookProps<TData> = {
   selectedId?: string;
   collapsedIds?: string[];
   onSelectedIdChanged?: (selectedId: string | undefined) => void;
+  onCollapsedIdsChanged?: (collapsedIds: string[]) => void;
   estimatedRowHeight: (params: {
     node: FlatTreeItem<TData>;
     state: NodeState;
@@ -149,6 +150,7 @@ export function useTree<TData>({
   selectedId,
   collapsedIds,
   onSelectedIdChanged,
+  onCollapsedIdsChanged,
   parentRef,
   estimatedRowHeight,
   filter,
@@ -158,40 +160,15 @@ export function useTree<TData>({
     concreteStateFromInput({ tree, selectedId, collapsedIds })
   );
 
-  //todo add "changes" to the state which has selectedId and collapsedIds
-  //Two useEffects would use this and call onSelectedIdChanged and onCollapsedIdsChanged
+  useEffect(() => {
+    onSelectedIdChanged?.(state.changes.selectedId);
+  }, [state.changes.selectedId]);
 
-  // const modifyState = useCallback(
-  //   (input: any) => {
-  //     //todo
-  //     // if (typeof input === "function") {
-  //     //   setState((state) => {
-  //     //     const updatedState = input(state);
-  //     //     const changes = generateChanges(updatedState);
-  //     //     if (stateHasChanged(previousState.current, changes)) {
-  //     //       console.log("State has changed fn");
-  //     //       onStateChanged?.(generateChanges(updatedState));
-  //     //       previousState.current = changes;
-  //     //       return updatedState;
-  //     //     } else {
-  //     //       console.log("State has not changed fn");
-  //     //       return state;
-  //     //     }
-  //     //   });
-  //     //   return;
-  //     // }
-  //     // const changes = generateChanges(input);
-  //     // if (stateHasChanged(previousState.current, changes)) {
-  //     //   console.log("State has changed");
-  //     //   setState(input);
-  //     //   previousState.current = changes;
-  //     //   onStateChanged?.(generateChanges(input));
-  //     // } else {
-  //     //   console.log("State has not changed");
-  //     // }
-  //   },
-  //   [state, previousState.current]
-  // );
+  useEffect(() => {
+    if (state.changes.collapsedIds) {
+      onCollapsedIdsChanged?.(state.changes.collapsedIds);
+    }
+  }, [state.changes.collapsedIds]);
 
   //if the defaultState changes, update the state
   //todo
@@ -209,7 +186,7 @@ export function useTree<TData>({
     estimateSize: (index: number) => {
       return estimatedRowHeight({
         node: tree[index],
-        state: state[tree[index].id],
+        state: state.nodes[tree[index].id],
         index,
       });
     },
@@ -357,10 +334,10 @@ export function useTree<TData>({
           }
           case "Left":
           case "ArrowLeft": {
-            const selected = selectedIdFromState(state);
+            const selected = selectedIdFromState(state.nodes);
             if (selected) {
               const treeNode = tree.find((node) => node.id === selected);
-              if (treeNode && treeNode.hasChildren && state[selected].expanded) {
+              if (treeNode && treeNode.hasChildren && state.nodes[selected].expanded) {
                 collapseNode(selected);
               } else {
                 selectParentNode(true);
@@ -371,7 +348,7 @@ export function useTree<TData>({
           }
           case "Right":
           case "ArrowRight": {
-            const selected = selectedIdFromState(state);
+            const selected = selectedIdFromState(state.nodes);
             if (selected) {
               expandNode(selected, true);
             }
@@ -390,7 +367,7 @@ export function useTree<TData>({
 
   const getNodeProps = useCallback(
     (id: string) => {
-      const node = state[id];
+      const node = state.nodes[id];
       const treeItemIndex = tree.findIndex((node) => node.id === id);
       const treeItem = tree[treeItemIndex];
       return {
@@ -404,8 +381,8 @@ export function useTree<TData>({
   );
 
   return {
-    selected: selectedIdFromState(state),
-    nodes: applyFilterToState(tree, state),
+    selected: selectedIdFromState(state.nodes),
+    nodes: applyFilterToState(tree, state.nodes),
     getTreeProps,
     getNodeProps,
     selectNode,

@@ -2,6 +2,7 @@ import { FlatTree } from "./TreeView";
 import {
   applyVisibility,
   firstVisibleNode,
+  generateChanges,
   lastVisibleNode,
   selectedIdFromState,
   visibleNodes,
@@ -15,7 +16,7 @@ export type NodeState = {
 
 export type Changes = {
   selectedId: string | undefined;
-  collapsedIds: string[];
+  collapsedIds: string[] | undefined;
 };
 
 export type TreeState = {
@@ -138,39 +139,42 @@ export type Action =
   | SelectPreviousVisibleNodeAction
   | SelectParentNodeAction;
 
-export function reducer(state: NodesState, action: Action): NodesState {
+export function reducer(state: TreeState, action: Action): TreeState {
   switch (action.type) {
     case "SELECT_NODE": {
       //if the node was already selected, do nothing. The user needs to use deselectNode to deselect
-      const alreadySelected = state[action.payload.id]?.selected ?? false;
+      const alreadySelected = state.nodes[action.payload.id]?.selected ?? false;
       if (alreadySelected) {
         return state;
       }
 
-      const newState = Object.fromEntries(
-        Object.entries(state).map(([key, value]) => [key, { ...value, selected: false }])
+      const newNodes = Object.fromEntries(
+        Object.entries(state.nodes).map(([key, value]) => [key, { ...value, selected: false }])
       );
-      newState[action.payload.id] = { ...newState[action.payload.id], selected: true };
+      newNodes[action.payload.id] = { ...newNodes[action.payload.id], selected: true };
 
       if (action.payload.scrollToNode) {
         action.payload.scrollToNodeFn(action.payload.id);
       }
 
-      return newState;
+      return { nodes: newNodes, changes: generateChanges(state.nodes, newNodes) };
     }
     case "DESELECT_NODE": {
-      return {
-        ...state,
-        [action.payload.id]: { ...state[action.payload.id], selected: false },
+      const nodes = {
+        ...state.nodes,
+        [action.payload.id]: { ...state.nodes[action.payload.id], selected: false },
       };
+
+      return { nodes, changes: generateChanges(state.nodes, nodes) };
     }
     case "DESELECT_ALL_NODES": {
-      return Object.fromEntries(
-        Object.entries(state).map(([key, value]) => [key, { ...value, selected: false }])
+      const nodes = Object.fromEntries(
+        Object.entries(state.nodes).map(([key, value]) => [key, { ...value, selected: false }])
       );
+      return { nodes, changes: generateChanges(state.nodes, nodes) };
     }
     case "TOGGLE_NODE_SELECTION": {
-      const currentlySelected = state[action.payload.id]?.selected ?? false;
+      const currentlySelected = state.nodes[action.payload.id]?.selected ?? false;
       if (currentlySelected) {
         return reducer(state, { type: "DESELECT_NODE", payload: { id: action.payload.id } });
       } else {
@@ -185,25 +189,27 @@ export function reducer(state: NodesState, action: Action): NodesState {
       }
     }
     case "EXPAND_NODE": {
-      const newState = {
-        ...state,
-        [action.payload.id]: { ...state[action.payload.id], expanded: true },
+      const newNodes = {
+        ...state.nodes,
+        [action.payload.id]: { ...state.nodes[action.payload.id], expanded: true },
       };
 
       if (action.payload.scrollToNode) {
         action.payload.scrollToNodeFn(action.payload.id);
       }
 
-      return applyVisibility(action.payload.tree, newState);
+      const visibleNodes = applyVisibility(action.payload.tree, newNodes);
+      return { nodes: visibleNodes, changes: generateChanges(state.nodes, visibleNodes) };
     }
     case "COLLAPSE_NODE": {
-      return applyVisibility(action.payload.tree, {
-        ...state,
-        [action.payload.id]: { ...state[action.payload.id], expanded: false },
+      const visibleNodes = applyVisibility(action.payload.tree, {
+        ...state.nodes,
+        [action.payload.id]: { ...state.nodes[action.payload.id], expanded: false },
       });
+      return { nodes: visibleNodes, changes: generateChanges(state.nodes, visibleNodes) };
     }
     case "TOGGLE_EXPAND_NODE": {
-      const currentlyExpanded = state[action.payload.id]?.expanded ?? true;
+      const currentlyExpanded = state.nodes[action.payload.id]?.expanded ?? true;
       if (currentlyExpanded) {
         return reducer(state, {
           type: "COLLAPSE_NODE",
@@ -222,7 +228,7 @@ export function reducer(state: NodesState, action: Action): NodesState {
       }
     }
     case "SELECT_FIRST_VISIBLE_NODE": {
-      const node = firstVisibleNode(action.payload.tree, state);
+      const node = firstVisibleNode(action.payload.tree, state.nodes);
       if (node) {
         return reducer(state, {
           type: "SELECT_NODE",
@@ -235,7 +241,7 @@ export function reducer(state: NodesState, action: Action): NodesState {
       }
     }
     case "SELECT_LAST_VISIBLE_NODE": {
-      const node = lastVisibleNode(action.payload.tree, state);
+      const node = lastVisibleNode(action.payload.tree, state.nodes);
       if (node) {
         return reducer(state, {
           type: "SELECT_NODE",
@@ -248,7 +254,7 @@ export function reducer(state: NodesState, action: Action): NodesState {
       }
     }
     case "SELECT_NEXT_VISIBLE_NODE": {
-      const selected = selectedIdFromState(state);
+      const selected = selectedIdFromState(state.nodes);
       if (!selected) {
         return reducer(state, {
           type: "SELECT_FIRST_VISIBLE_NODE",
@@ -260,7 +266,7 @@ export function reducer(state: NodesState, action: Action): NodesState {
         });
       }
 
-      const visible = visibleNodes(action.payload.tree, state);
+      const visible = visibleNodes(action.payload.tree, state.nodes);
       const selectedIndex = visible.findIndex((node) => node.id === selected);
       const nextNode = visible[selectedIndex + 1];
       if (nextNode) {
@@ -275,7 +281,7 @@ export function reducer(state: NodesState, action: Action): NodesState {
       }
     }
     case "SELECT_PREVIOUS_VISIBLE_NODE": {
-      const selected = selectedIdFromState(state);
+      const selected = selectedIdFromState(state.nodes);
 
       if (!selected) {
         return reducer(state, {
@@ -288,7 +294,7 @@ export function reducer(state: NodesState, action: Action): NodesState {
         });
       }
 
-      const visible = visibleNodes(action.payload.tree, state);
+      const visible = visibleNodes(action.payload.tree, state.nodes);
       const selectedIndex = visible.findIndex((node) => node.id === selected);
       const previousNode = visible[selectedIndex - 1];
       if (previousNode) {
@@ -305,7 +311,7 @@ export function reducer(state: NodesState, action: Action): NodesState {
       return state;
     }
     case "SELECT_PARENT_NODE": {
-      const selected = selectedIdFromState(state);
+      const selected = selectedIdFromState(state.nodes);
 
       if (!selected) {
         return reducer(state, {

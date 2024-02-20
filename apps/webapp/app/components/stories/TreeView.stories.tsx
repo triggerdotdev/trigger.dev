@@ -113,8 +113,6 @@ function generateTree(): Tree<{ title: string }> {
 const data = generateTree();
 const tree = flattenTree(data);
 
-console.log(data);
-
 function TreeViewsSet() {
   const [selectedId, setSelectedId] = useState<string>("");
   const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
@@ -154,9 +152,6 @@ function TreeViewParent({
 }) {
   const [filterText, setFilterText] = useState("");
   const parentRef = useRef<HTMLDivElement>(null);
-  const changed = useCallback((selectedId: string | undefined) => {
-    console.log("selectedId", selectedId);
-  }, []);
 
   const {
     nodes,
@@ -174,7 +169,12 @@ function TreeViewParent({
     tree,
     selectedId,
     collapsedIds,
-    onSelectedIdChanged: changed,
+    onSelectedIdChanged: (id) => {
+      console.log("onSelectedIdChanged", id);
+    },
+    onCollapsedIdsChanged: (ids) => {
+      console.log("onCollapsedIdsChanged", ids);
+    },
     estimatedRowHeight: () => 32,
     parentRef,
     filter: (node) => {

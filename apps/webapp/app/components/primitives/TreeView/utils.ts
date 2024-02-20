@@ -1,5 +1,5 @@
 import { FlatTree, FlatTreeItem } from "./TreeView";
-import { Changes, NodeState, NodesState } from "./reducer";
+import { Changes, NodeState, NodesState, TreeState } from "./reducer";
 
 type PartialNodeState = Record<string, Partial<NodeState>>;
 
@@ -14,7 +14,7 @@ export function concreteStateFromInput({
   tree: FlatTree<any>;
   selectedId: string | undefined;
   collapsedIds: string[] | undefined;
-}): NodesState {
+}): TreeState {
   const state: PartialNodeState = {};
   collapsedIds?.forEach((id) => {
     const hasTreeItem = tree.some((item) => item.id === id);
@@ -36,7 +36,10 @@ export function concreteStateFromInput({
     }
   }
 
-  return concreteStateFromPartialState(tree, state);
+  return {
+    nodes: concreteStateFromPartialState(tree, state),
+    changes: { selectedId, collapsedIds: [] },
+  };
 }
 
 export function concreteStateFromPartialState<TData>(
@@ -197,25 +200,20 @@ function collapsedIdsFromState(state: NodesState): string[] {
     .map(([id]) => id);
 }
 
-function generateChanges(input: NodesState): Changes {
+export function generateChanges(a: NodesState, b: NodesState): Changes {
   //if selected === defaultSelected, remove it
   //if expanded === defaultExpanded, remove it
   //if both are default, remove the node
-  const selectedId = selectedIdFromState(input);
-  const collapsedIds = collapsedIdsFromState(input);
+  const selectedIdA = selectedIdFromState(a);
+  const selectedIdB = selectedIdFromState(b);
+
+  const collapsedIdsA = new Set(collapsedIdsFromState(a));
+  const collapsedIdsB = new Set(collapsedIdsFromState(b));
+
+  const collapsedChanges = [...difference(collapsedIdsA, collapsedIdsB)];
 
   return {
-    selectedId,
-    collapsedIds,
+    selectedId: selectedIdA !== selectedIdB ? selectedIdB : undefined,
+    collapsedIds: collapsedChanges.length > 0 ? collapsedChanges : undefined,
   };
-}
-
-function hasStateChanged(a: Changes, b: Changes): boolean {
-  if (a.selectedId !== b.selectedId) {
-    return true;
-  }
-
-  const collapsedIdsA = new Set(a.collapsedIds);
-  const collapsedIdsB = new Set(b.collapsedIds);
-  return !areSetsEqual(collapsedIdsA, collapsedIdsB);
 }
