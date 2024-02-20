@@ -6,6 +6,7 @@
     "emitDecoratorMetadata": true,
     "declaration": false,
     "declarationMap": false,
+    "lib": ["DOM", "DOM.Iterable"],
     "paths": {
       "@trigger.dev/core/v3": ["../core/src/v3"],
       "@trigger.dev/core/v3/*": ["../core/src/v3/*"],
