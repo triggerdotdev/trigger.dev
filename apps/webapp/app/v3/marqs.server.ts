@@ -50,10 +50,8 @@ const SemanticAttributes = {
   CONCURRENCY_KEY: "marqs.concurrencyKey",
 };
 
-// TODO: heartbeats from the workers to ensure they're still alive
-
 /**
- * MarQS - Modular Asynchronous Reliable Queueing System (pronounced "markus")
+ * MarQS - Multitenant Asynchronous Reliable Queueing System (pronounced "markus")
  */
 export class MarQS {
   private redis: Redis;
@@ -351,6 +349,11 @@ export class MarQS {
         const message = MessagePayload.safeParse(JSON.parse(rawMessage));
 
         if (!message.success) {
+          logger.error("Failed to parse message", {
+            messageId,
+            error: message.error,
+          });
+
           return;
         }
 
