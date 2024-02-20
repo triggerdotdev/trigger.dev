@@ -5,7 +5,14 @@ import { withDesign } from "storybook-addon-designs";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { Input } from "../primitives/Input";
-import { Changes, Tree, TreeView, flattenTree, useTree } from "../primitives/TreeView";
+import {
+  Changes,
+  FlatTree,
+  Tree,
+  TreeView,
+  flattenTree,
+  useTree,
+} from "../primitives/TreeView/TreeView";
 
 const meta: Meta = {
   title: "Primitives/TreeView",
@@ -231,8 +238,7 @@ function TreeViewParent({
               onClick={(e) => {
                 e.stopPropagation();
                 toggleExpandNode(node.id);
-                selectNode(node.id);
-                scrollToNode(node.id);
+                selectNode(node.id, true);
               }}
               onKeyDown={(e) => {
                 console.log(e.key);

@@ -20,7 +20,7 @@ import {
 } from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
-import { Changes, TreeView, useTree } from "~/components/primitives/TreeView";
+import { Changes, TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
 import { eventTextClassName } from "~/components/runs/v3/EventText";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";

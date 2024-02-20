@@ -1,7 +1,6 @@
-import { StyleSchema } from "@trigger.dev/core";
 import { TaskEventStyle } from "@trigger.dev/core/v3";
 import { TaskEvent } from "@trigger.dev/database";
-import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView";
+import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
 
