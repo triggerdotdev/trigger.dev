@@ -47,6 +47,7 @@ for (const proto of protos) {
     `--ts_proto_opt=removeEnumPrefix=true ` +
     `--ts_proto_opt=lowerCaseServiceMethods=true ` +
     `--ts_proto_opt=oneof=unions ` +
+    `--experimental_allow_proto3_optional ` +
     `"${path.join(protosPath, proto)}"`;
   try {
     const { stdout, stderr } = await execPromise(command);
