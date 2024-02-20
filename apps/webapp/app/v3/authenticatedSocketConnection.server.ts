@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { EnvironmentQueueConsumer } from "./marqs/environmentQueueConsumer.server";
+import type { WebSocket, MessageEvent, CloseEvent, ErrorEvent } from "ws";
 
 export class AuthenticatedSocketConnection {
   public id: string;
@@ -24,7 +25,16 @@ export class AuthenticatedSocketConnection {
     this._sender = new ZodMessageSender({
       schema: serverWebsocketMessages,
       sender: async (message) => {
-        ws.send(JSON.stringify(message));
+        return new Promise((resolve, reject) => {
+          ws.send(JSON.stringify(message), {}, (err) => {
+            if (err) {
+              reject(err);
+              return;
+            }
+
+            resolve();
+          });
+        });
       },
     });
 
@@ -79,7 +89,7 @@ export class AuthenticatedSocketConnection {
     this.onClose.post(ev);
   }
 
-  async #handleError(ev: Event) {
+  async #handleError(ev: ErrorEvent) {
     logger.error("Websocket error", { ev });
   }
 }

@@ -122,6 +122,7 @@ export const RateLimitOptions = z.discriminatedUnion("type", [
 export type RateLimitOptions = z.infer<typeof RateLimitOptions>;
 
 export const QueueOptions = z.object({
+  /** @deprecated This feature is coming soon */
   rateLimit: RateLimitOptions.optional(),
   concurrencyLimit: z.number().int().min(1).max(1000).optional(),
   name: z.string().optional(),

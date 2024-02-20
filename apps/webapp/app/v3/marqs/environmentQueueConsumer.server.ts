@@ -1,4 +1,4 @@
-import { Context, ROOT_CONTEXT, SpanKind, context, trace } from "@opentelemetry/api";
+import { Context, ROOT_CONTEXT, Span, SpanKind, context, trace } from "@opentelemetry/api";
 import {
   TaskRunExecutionResult,
   ZodMessageSender,
@@ -32,13 +32,14 @@ export type EnvironmentQueueConsumerOptions = {
 export class EnvironmentQueueConsumer {
   private _backgroundWorkers: Map<string, BackgroundWorkerWithTasks> = new Map();
   private _enabled = false;
-  private _processingMessages: Set<string> = new Set();
   private _options: Required<EnvironmentQueueConsumerOptions>;
   private _perTraceCountdown: number | undefined;
   private _lastNewTrace: Date | undefined;
   private _currentSpanContext: Context | undefined;
   private _taskFailures: number = 0;
   private _taskSuccesses: number = 0;
+  private _currentSpan: Span | undefined;
+  private _endSpanInNextIteration = false;
 
   constructor(
     public env: AuthenticatedEnvironment,
@@ -47,7 +48,7 @@ export class EnvironmentQueueConsumer {
   ) {
     this._options = {
       maximumItemsPerTrace: options.maximumItemsPerTrace ?? 1_000, // 1k items per trace
-      traceTimeoutSeconds: options.traceTimeoutSeconds ?? 300, // 5 minutes
+      traceTimeoutSeconds: options.traceTimeoutSeconds ?? 60, // 60 seconds
     };
   }
 
@@ -99,7 +100,6 @@ export class EnvironmentQueueConsumer {
       this._taskFailures++;
     }
 
-    this._processingMessages.delete(taskRunAttempt.taskRunId);
     await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
   }
 
@@ -142,10 +142,18 @@ export class EnvironmentQueueConsumer {
     if (
       this._perTraceCountdown === 0 ||
       Date.now() - this._lastNewTrace!.getTime() > this._options.traceTimeoutSeconds * 1000 ||
-      this._currentSpanContext === undefined
+      this._currentSpanContext === undefined ||
+      this._endSpanInNextIteration
     ) {
+      if (this._currentSpan) {
+        this._currentSpan.setAttribute("tasks.period.failures", this._taskFailures);
+        this._currentSpan.setAttribute("tasks.period.successes", this._taskSuccesses);
+
+        this._currentSpan.end();
+      }
+
       // Create a new trace
-      const span = tracer.startSpan(
+      this._currentSpan = tracer.startSpan(
         "EnvironmentQueueConsumer.doWork()",
         {
           kind: SpanKind.CONSUMER,
@@ -156,23 +164,14 @@ export class EnvironmentQueueConsumer {
         ROOT_CONTEXT
       );
 
-      span.setAttribute("tasks.period.failures", this._taskFailures);
-      span.setAttribute("tasks.period.successes", this._taskSuccesses);
-
       // Get the span trace context
-      this._currentSpanContext = trace.setSpan(ROOT_CONTEXT, span);
-
-      span.end();
+      this._currentSpanContext = trace.setSpan(ROOT_CONTEXT, this._currentSpan);
 
       this._perTraceCountdown = this._options.maximumItemsPerTrace;
       this._lastNewTrace = new Date();
       this._taskFailures = 0;
       this._taskSuccesses = 0;
-
-      logger.debug("Starting new trace", {
-        traceId: span.spanContext().traceId,
-        spanId: span.spanContext().spanId,
-      });
+      this._endSpanInNextIteration = false;
     }
 
     return context.with(this._currentSpanContext ?? ROOT_CONTEXT, async () => {
@@ -202,16 +201,17 @@ export class EnvironmentQueueConsumer {
     const messageBody = MessageBody.safeParse(message.data);
 
     if (!messageBody.success) {
-      // TODO: do some kind of DLQ thing?
+      logger.error("Failed to parse message", {
+        queueMessage: message.data,
+        error: messageBody.error,
+        env: this.env,
+      });
+
       await marqs?.acknowledgeMessage(message.messageId);
 
       setTimeout(() => this.#doWork(), 100);
       return;
     }
-
-    logger.debug("Dequeued message", {
-      queueMessage: message,
-    });
 
     const existingTaskRun = await prisma.taskRun.findUnique({
       where: {
@@ -240,7 +240,13 @@ export class EnvironmentQueueConsumer {
     );
 
     if (!backgroundTask) {
-      // TODO: some kind of DLQ thing?
+      logger.warn("No matching background task found for task run", {
+        taskRun: existingTaskRun.id,
+        taskIdentifier: existingTaskRun.taskIdentifier,
+        backgroundWorker: backgroundWorker.id,
+        taskSlugs: backgroundWorker.tasks.map((task) => task.slug),
+      });
+
       await marqs?.acknowledgeMessage(message.messageId);
 
       setTimeout(() => this.#doWork(), 100);
@@ -265,6 +271,13 @@ export class EnvironmentQueueConsumer {
     });
 
     if (!lockedTaskRun) {
+      logger.warn("Failed to lock task run", {
+        taskRun: existingTaskRun.id,
+        taskIdentifier: existingTaskRun.taskIdentifier,
+        backgroundWorker: backgroundWorker.id,
+        messageId: message.messageId,
+      });
+
       await marqs?.acknowledgeMessage(message.messageId);
 
       setTimeout(() => this.#doWork(), 100);
@@ -350,18 +363,47 @@ export class EnvironmentQueueConsumer {
       traceContext: lockedTaskRun.traceContext as Record<string, unknown>,
     };
 
-    // TODO: send trace context down to the CLI
-    this._sender.send("BACKGROUND_WORKER_MESSAGE", {
-      backgroundWorkerId: backgroundWorker.friendlyId,
-      data: {
-        type: "EXECUTE_RUNS",
-        payloads: [payload],
-      },
-    });
+    try {
+      // TODO: send trace context down to the CLI
+      await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
+        backgroundWorkerId: backgroundWorker.friendlyId,
+        data: {
+          type: "EXECUTE_RUNS",
+          payloads: [payload],
+        },
+      });
+    } catch (e) {
+      if (e instanceof Error) {
+        this._currentSpan?.recordException(e);
+      } else {
+        this._currentSpan?.recordException(new Error(String(e)));
+      }
 
-    this._processingMessages.add(message.messageId);
+      this._endSpanInNextIteration = true;
 
-    setTimeout(() => this.#doWork(), 100);
+      // We now need to unlock the task run and delete the task run attempt
+      await prisma.$transaction([
+        prisma.taskRun.update({
+          where: {
+            id: lockedTaskRun.id,
+          },
+          data: {
+            lockedAt: null,
+            lockedById: null,
+          },
+        }),
+        prisma.taskRunAttempt.delete({
+          where: {
+            id: taskRunAttempt.id,
+          },
+        }),
+      ]);
+
+      // Finally we need to nack the message so it can be retried
+      await marqs?.nackMessage(message.messageId);
+    } finally {
+      setTimeout(() => this.#doWork(), 100);
+    }
   }
 
   // Get the latest background worker based on the version.
