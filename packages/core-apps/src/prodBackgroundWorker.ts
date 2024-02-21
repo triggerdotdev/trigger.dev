@@ -12,7 +12,6 @@ import {
   TaskRunError,
   childToWorkerMessages,
   TaskMetadataWithFilePath,
-  BackgroundWorkerRecord,
   workerToChildMessages,
   TaskRunBuiltInError,
   ZodMessageHandler,
@@ -183,7 +182,7 @@ export class ProdBackgroundWorker {
   private _onClose: Evt<void> = new Evt();
 
   public tasks: Array<TaskMetadataWithFilePath> = [];
-  public metadata: BackgroundWorkerRecord | undefined;
+  public metadata: CreateBackgroundWorkerResponse | undefined;
 
   _taskExecutions: Map<
     string,

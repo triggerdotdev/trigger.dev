@@ -14,8 +14,8 @@ const otelLogger = tracingSDK.getLogger("trigger-prod-worker", packageJson.versi
 
 import { SpanKind } from "@opentelemetry/api";
 import {
-  BackgroundWorkerRecord,
   ConsoleInterceptor,
+  CreateBackgroundWorkerResponse,
   OtelTaskLogger,
   ProdRuntimeManager,
   SemanticInternalAttributes,
@@ -68,7 +68,7 @@ class TaskExecutor {
 
   async execute(
     execution: TaskRunExecution,
-    worker: BackgroundWorkerRecord,
+    worker: CreateBackgroundWorkerResponse,
     traceContext: Record<string, unknown>
   ) {
     const parsedPayload = JSON.parse(execution.run.payload);
