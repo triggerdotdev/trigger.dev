@@ -1,6 +1,6 @@
 import { Attributes } from "@opentelemetry/api";
 import { TaskEventStyle } from "@trigger.dev/core/v3";
-import { unflattenAttributes } from "@trigger.dev/core/v3/utils/flattenAttributes";
+import { unflattenAttributes } from "@trigger.dev/core/v3";
 import { PrismaClient, prisma, Prisma } from "~/db.server";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;

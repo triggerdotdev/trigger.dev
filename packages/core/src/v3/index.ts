@@ -28,5 +28,6 @@ export { TriggerTracer } from "./tracer";
 export type { TaskLogger } from "./logger/taskLogger";
 export { OtelTaskLogger } from "./logger/taskLogger";
 export { ConsoleInterceptor } from "./consoleInterceptor";
-export { flattenAttributes } from "./utils/flattenAttributes";
+export { flattenAttributes, unflattenAttributes } from "./utils/flattenAttributes";
 export { defaultRetryOptions, calculateNextRetryTimestamp } from "./utils/retries";
+
