@@ -72,13 +72,13 @@ export default function Page() {
         {event.output !== null && (
           <div>
             <Header3 spacing>Output</Header3>
-            <CodeBlock code={event.output} />
+            <CodeBlock code={event.output} maxLines={20} />
           </div>
         )}
         {event.properties !== null && (
           <div>
             <Header3 spacing>Properties</Header3>
-            <CodeBlock code={event.properties} />
+            <CodeBlock code={event.properties} maxLines={20} />
           </div>
         )}
       </div>

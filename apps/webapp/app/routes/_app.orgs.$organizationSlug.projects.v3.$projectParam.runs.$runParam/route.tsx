@@ -84,8 +84,8 @@ export default function Page() {
         </PageTitleRow>
       </PageHeader>
       <PageBody scrollable={false}>
-        <div className={cn("grid max-h-full grid-cols-1 gap-4")}>
-          <ResizablePanelGroup direction="horizontal" className="h-full">
+        <div className={cn("grid h-full max-h-full grid-cols-1 gap-4")}>
+          <ResizablePanelGroup direction="horizontal" className="h-full max-h-full">
             <ResizablePanel order={1} minSize={30}>
               <div className="h-full overflow-y-clip">
                 <TasksTreeView
