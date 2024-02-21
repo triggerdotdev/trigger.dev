@@ -84,11 +84,9 @@ export function selectedIdFromState(state: NodesState): string | undefined {
 
 export function applyFilterToState<TData>(
   tree: FlatTree<TData>,
-  state: NodesState,
-  filter?: (node: FlatTreeItem<TData>) => boolean
+  inputNodes: NodesState,
+  filter: (node: FlatTreeItem<TData>) => boolean
 ): NodesState {
-  if (!filter) return state;
-
   //we need to do two passes, first collect all the nodes that are results
   const newFilteredOut = new Set<string>();
   for (const node of tree) {
@@ -99,10 +97,13 @@ export function applyFilterToState<TData>(
 
   //nothing is filtered out
   if (newFilteredOut.size === 0) {
-    return state;
+    return inputNodes;
   }
 
-  const selected = selectedIdFromState(state);
+  //copy of nodes
+  const nodes = { ...inputNodes };
+
+  const selected = selectedIdFromState(nodes);
 
   const visible = new Set<string>();
   const expanded = new Set<string>();
@@ -147,28 +148,28 @@ export function applyFilterToState<TData>(
 
   //now set the visibility and expanded state
   for (const id of hidden) {
-    state[id] = { ...state[id], visible: false };
+    nodes[id] = { ...nodes[id], visible: false };
   }
   for (const id of visible) {
-    state[id] = { ...state[id], visible: true };
+    nodes[id] = { ...nodes[id], visible: true };
   }
 
   for (const id of collapsed) {
-    state[id] = { ...state[id], expanded: false };
+    nodes[id] = { ...nodes[id], expanded: false };
   }
   for (const id of expanded) {
-    state[id] = { ...state[id], expanded: true };
+    nodes[id] = { ...nodes[id], expanded: true };
   }
 
   if (selected) {
     if (visible.has(selected)) {
-      state[selected] = { ...state[selected], selected: true };
+      nodes[selected] = { ...nodes[selected], selected: true };
     } else {
-      state[selected] = { ...state[selected], selected: false };
+      nodes[selected] = { ...nodes[selected], selected: false };
     }
   }
 
-  return state;
+  return nodes;
 }
 
 export function visibleNodes(tree: FlatTree<any>, nodes: NodesState) {

@@ -373,7 +373,7 @@ export function useTree<TData>({
 
   return {
     selected: selectedIdFromState(state.nodes),
-    nodes: applyFilterToState(tree, state.nodes),
+    nodes: filter ? applyFilterToState(tree, state.nodes, filter) : state.nodes,
     getTreeProps,
     getNodeProps,
     selectNode,
