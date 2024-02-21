@@ -72,6 +72,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
       traceContext: traceparent ? { traceparent, tracestate } : undefined,
     });
 
+    if (!run) {
+      return json({ error: "Task not found" }, { status: 404 });
+    }
+
     return json({
       id: run.friendlyId,
     });

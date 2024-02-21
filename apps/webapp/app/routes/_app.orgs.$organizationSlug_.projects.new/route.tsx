@@ -16,7 +16,18 @@ import { FormTitle } from "~/components/primitives/FormTitle";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/primitives/Select";
 import { prisma } from "~/db.server";
+import { useFeatures } from "~/hooks/useFeatures";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { createProject } from "~/models/project.server";
 import { requireUserId } from "~/services/session.server";
@@ -57,6 +68,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
 const schema = z.object({
   projectName: z.string().min(3, "Project name must have at least 3 characters").max(50),
+  projectVersion: z.enum(["v2", "v3"]),
 });
 
 export const action: ActionFunction = async ({ request, params }) => {
@@ -76,6 +88,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       organizationSlug: organizationSlug,
       name: submission.value.projectName,
       userId,
+      version: submission.value.projectVersion,
     });
 
     return redirectWithSuccessMessage(
@@ -91,8 +104,9 @@ export const action: ActionFunction = async ({ request, params }) => {
 export default function NewOrganizationPage() {
   const { organization } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
+  const { v3Enabled } = useFeatures();
 
-  const [form, { projectName }] = useForm({
+  const [form, { projectName, projectVersion }] = useForm({
     id: "create-project",
     // TODO: type this
     lastSubmission: lastSubmission as any,
@@ -126,6 +140,28 @@ export default function NewOrganizationPage() {
               />
               <FormError id={projectName.errorId}>{projectName.error}</FormError>
             </InputGroup>
+            {v3Enabled ? (
+              <InputGroup>
+                <Label htmlFor={projectVersion.id}>Project type</Label>
+                <SelectGroup>
+                  <Select
+                    {...conform.input(projectVersion, { type: "select" })}
+                    defaultValue={"v2"}
+                  >
+                    <SelectTrigger width="full" size="medium">
+                      <SelectValue placeholder="Project type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="v2">Version 2</SelectItem>
+                      <SelectItem value="v3">Version 3 (Developer Preview)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </SelectGroup>
+                <FormError id={projectVersion.errorId}>{projectVersion.error}</FormError>
+              </InputGroup>
+            ) : (
+              <input type="hidden" name="projectType" value="v2" />
+            )}
             <FormButtons
               confirmButton={
                 <Button type="submit" variant={"primary/small"} TrailingIcon="arrow-right">

@@ -5,7 +5,7 @@ import { withDesign } from "storybook-addon-designs";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { Input } from "../primitives/Input";
-import { Changes, Tree, TreeView, flattenTree, useTree } from "../primitives/TreeView";
+import { Tree, TreeView, flattenTree, useTree } from "../primitives/TreeView/TreeView";
 
 const meta: Meta = {
   title: "Primitives/TreeView",
@@ -113,32 +113,32 @@ function generateTree(): Tree<{ title: string }> {
 const data = generateTree();
 const tree = flattenTree(data);
 
-console.log(data);
-
 function TreeViewsSet() {
   const [selectedId, setSelectedId] = useState<string>("");
   const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
 
   return (
-    <div className="flex flex-col items-start justify-start gap-4">
-      <div className="flex items-center gap-2 p-2">
-        <Input
-          placeholder="Selected"
-          value={selectedId}
-          onChange={(v) => setSelectedId(v.target.value)}
-        />
-        <Input
-          placeholder="Collapsed"
-          value={collapsedIds.join(",")}
-          onChange={(e) => {
-            const val = e.target.value;
-            const ids = val.split(",").map((v) => v.trim());
-            setCollapsedIds(ids);
-          }}
-        />
-      </div>
+    <div className="flex gap-12">
+      <div className="flex flex-col items-start justify-start gap-4">
+        <div className="flex items-center gap-2 p-2">
+          <Input
+            placeholder="Selected"
+            value={selectedId}
+            onChange={(v) => setSelectedId(v.target.value)}
+          />
+          <Input
+            placeholder="Collapsed"
+            value={collapsedIds.join(",")}
+            onChange={(e) => {
+              const val = e.target.value;
+              const ids = val.split(",").map((v) => v.trim());
+              setCollapsedIds(ids);
+            }}
+          />
+        </div>
 
-      <TreeViewParent selectedId={selectedId} collapsedIds={collapsedIds} />
+        <TreeViewParent selectedId={selectedId} collapsedIds={collapsedIds} />
+      </div>
     </div>
   );
 }
@@ -152,7 +152,6 @@ function TreeViewParent({
 }) {
   const [filterText, setFilterText] = useState("");
   const parentRef = useRef<HTMLDivElement>(null);
-  const changed = useCallback((state: Changes) => {}, []);
 
   const {
     nodes,
@@ -170,7 +169,12 @@ function TreeViewParent({
     tree,
     selectedId,
     collapsedIds,
-    onStateChanged: changed,
+    onSelectedIdChanged: (id) => {
+      console.log("onSelectedIdChanged", id);
+    },
+    onCollapsedIdsChanged: (ids) => {
+      console.log("onCollapsedIdsChanged", ids);
+    },
     estimatedRowHeight: () => 32,
     parentRef,
     filter: (node) => {
@@ -229,8 +233,7 @@ function TreeViewParent({
               onClick={(e) => {
                 e.stopPropagation();
                 toggleExpandNode(node.id);
-                selectNode(node.id);
-                scrollToNode(node.id);
+                selectNode(node.id, true);
               }}
               onKeyDown={(e) => {
                 console.log(e.key);

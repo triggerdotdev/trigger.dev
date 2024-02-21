@@ -18,10 +18,10 @@ import {
 } from "~/components/primitives/PageHeader";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { formatDurationInDays } from "~/utils";
 import { Handle } from "~/utils/handle";
 import { plansPath, stripePortalPath, usagePath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { formatDurationInDays } from "@trigger.dev/core/v3";
 
 export const handle: Handle = {
   breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Usage & Billing" />,

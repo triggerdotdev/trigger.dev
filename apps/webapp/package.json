@@ -129,6 +129,7 @@
     "react-collapse": "^5.1.1",
     "react-dom": "^18.2.0",
     "react-hotkeys-hook": "^4.4.1",
+    "react-resizable-panels": "^2.0.9",
     "react-stately": "^3.29.1",
     "react-use": "^17.4.0",
     "recharts": "^2.8.0",

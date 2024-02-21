@@ -195,9 +195,15 @@ module.exports = {
         carousel: "repeat(6, 200px)",
       },
       screens: {
-        'lg-height': {'raw': '(max-height: 750px)'},
-        'md-height': {'raw': '(max-height: 600px)'},
-      }
+        "lg-height": { raw: "(max-height: 750px)" },
+        "md-height": { raw: "(max-height: 600px)" },
+      },
+      width: {
+        0.75: "0.1875rem",
+      },
+      height: {
+        0.75: "0.1875rem",
+      },
     },
   },
   plugins: [

@@ -21,7 +21,7 @@ import {
   webhookTriggerDeliveryRunsParentPath,
   webhookTriggerPath,
 } from "~/utils/pathBuilder";
-import { ListPagination } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/ListPagination";
+import { ListPagination } from "../../components/ListPagination";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

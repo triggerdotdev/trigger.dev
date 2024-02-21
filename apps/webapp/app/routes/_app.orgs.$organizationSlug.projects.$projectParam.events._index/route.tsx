@@ -16,7 +16,7 @@ import { useProject } from "~/hooks/useProject";
 import { EventListPresenter } from "~/presenters/EventListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { ProjectParamSchema, docsPath, projectPath, trimTrailingSlash } from "~/utils/pathBuilder";
-import { ListPagination } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/ListPagination";
+import { ListPagination } from "../../components/ListPagination";
 import { EventListSearchSchema } from "~/components/events/EventStatuses";
 import { useUser } from "~/hooks/useUser";
 import { EventsFilters } from "~/components/events/EventsFilters";

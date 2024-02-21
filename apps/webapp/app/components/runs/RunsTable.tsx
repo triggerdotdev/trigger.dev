@@ -1,7 +1,6 @@
 import { StopIcon } from "@heroicons/react/24/outline";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { JobRunStatus, RuntimeEnvironmentType, User } from "@trigger.dev/database";
-import { formatDuration, formatDurationMilliseconds } from "~/utils";
 import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 import { DateTime } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
@@ -17,6 +16,7 @@ import {
   TableRow,
 } from "../primitives/Table";
 import { RunStatus } from "./RunStatuses";
+import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
 
 type RunTableItem = {
   id: string;

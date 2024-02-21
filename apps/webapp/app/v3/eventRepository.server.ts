@@ -3,7 +3,7 @@ import { PrismaClient, prisma } from "~/db.server";
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { Attributes, ROOT_CONTEXT, propagation, trace } from "@opentelemetry/api";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
-import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
+import { HIGH_PROMINENCE, SemanticInternalAttributes } from "@trigger.dev/core/v3";
 import { flattenAttributes } from "@trigger.dev/core/v3";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
@@ -148,7 +148,8 @@ export class EventRepository {
     };
 
     const style = {
-      [SemanticInternalAttributes.STYLE_ICON]: "play",
+      [SemanticInternalAttributes.STYLE_ICON]: "task",
+      [SemanticInternalAttributes.STYLE_PROMINENCE]: HIGH_PROMINENCE,
     };
 
     if (!options.attributes.runId) {

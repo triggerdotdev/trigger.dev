@@ -4,7 +4,6 @@ import { Fragment, useState } from "react";
 import simplur from "simplur";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { ViewTask } from "~/presenters/RunPresenter.server";
-import { formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
 import {
   RunPanel,
@@ -21,6 +20,7 @@ import {
   UpdatingDuration,
 } from "./RunCard";
 import { TaskStatusIcon } from "./TaskStatus";
+import { formatDuration } from "@trigger.dev/core/v3";
 
 type TaskCardProps = ViewTask & {
   selectedId?: string;
