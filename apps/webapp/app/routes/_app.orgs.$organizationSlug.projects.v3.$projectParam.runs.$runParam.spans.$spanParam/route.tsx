@@ -35,8 +35,6 @@ export default function Page() {
     span: { event },
   } = useTypedLoaderData<typeof loader>();
 
-  console.log(`spanParam: ${event.spanId} ${event.message}`);
-
   return (
     <div className="grid max-h-full grid-rows-[2rem_1fr] overflow-hidden">
       <div className="border-b border-slate-800">
