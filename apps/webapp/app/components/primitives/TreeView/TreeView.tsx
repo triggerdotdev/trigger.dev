@@ -2,16 +2,7 @@ import { VirtualItem, Virtualizer, useVirtualizer } from "@tanstack/react-virtua
 import { Fragment, RefObject, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { UnmountClosed } from "react-collapse";
 import { cn } from "~/utils/cn";
-import {
-  Action,
-  Changes,
-  Filter,
-  FilterFn,
-  NodeState,
-  NodesState,
-  TreeState,
-  makeReducer,
-} from "./reducer";
+import { Changes, NodeState, NodesState, reducer } from "./reducer";
 import {
   applyFilterToState,
   concreteStateFromInput,
@@ -111,7 +102,7 @@ export function TreeView<TData>({
   );
 }
 
-type TreeStateHookProps<TData, TFilter> = {
+type TreeStateHookProps<TData> = {
   tree: FlatTree<TData>;
   selectedId?: string;
   collapsedIds?: string[];
@@ -123,7 +114,7 @@ type TreeStateHookProps<TData, TFilter> = {
     index: number;
   }) => number;
   parentRef: RefObject<any>;
-  filter?: Filter<TData, TFilter>;
+  filter?: (node: FlatTreeItem<TData>) => boolean;
 };
 
 //this is so Framer Motion can be used to render the components
@@ -154,7 +145,7 @@ type UseTreeStateOutput = {
   scrollToNode: (id: string) => void;
 };
 
-export function useTree<TData, TFilter>({
+export function useTree<TData>({
   tree,
   selectedId,
   collapsedIds,
@@ -163,8 +154,7 @@ export function useTree<TData, TFilter>({
   parentRef,
   estimatedRowHeight,
   filter,
-}: TreeStateHookProps<TData, TFilter>): UseTreeStateOutput {
-  const reducer = useCallback(makeReducer(tree, filter), [tree, filter]);
+}: TreeStateHookProps<TData>): UseTreeStateOutput {
   const previousSelectedId = useRef<string | undefined>(selectedId);
 
   const [state, dispatch] = useReducer(
@@ -185,14 +175,6 @@ export function useTree<TData, TFilter>({
       onCollapsedIdsChanged?.(state.changes.collapsedIds);
     }
   }, [state.changes.collapsedIds]);
-
-  useEffect(() => {
-    dispatch({ type: "UPDATE_TREE", payload: { tree } });
-  }, [tree]);
-
-  useEffect(() => {
-    dispatch({ type: "FILTER_CONTENT_CHANGED", payload: { content: filter?.content } });
-  }, [filter?.content]);
 
   const virtualizer = useVirtualizer({
     count: tree.length,
@@ -397,7 +379,7 @@ export function useTree<TData, TFilter>({
 
   return {
     selected: selectedIdFromState(state.nodes),
-    nodes: state.nodes,
+    nodes: filter ? applyFilterToState(tree, state.nodes, filter) : state.nodes,
     getTreeProps,
     getNodeProps,
     selectNode,
