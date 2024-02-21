@@ -61,12 +61,22 @@ export function unflattenAttributes(obj: Attributes): Record<string, unknown> {
     const parts = key.split(".");
     let current = result;
     for (let i = 0; i < parts.length - 1; i++) {
-      if (current[parts[i]] == null) {
-        current[parts[i]] = {};
+      const part = parts[i];
+
+      // Check if part is not undefined and it's a string.
+      if (typeof part === "string") {
+        if (current[part] == null) {
+          current[part] = {};
+        }
+
+        current = current[part] as Record<string, unknown>;
       }
-      current = current[parts[i]] as Record<string, unknown>;
     }
-    current[parts[parts.length - 1]] = value;
+    // For the last element, we must ensure we also check if it is not undefined and it's a string.
+    const lastPart = parts[parts.length - 1];
+    if (typeof lastPart === "string") {
+      current[lastPart] = value;
+    }
   }
 
   return result;
