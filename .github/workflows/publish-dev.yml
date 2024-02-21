@@ -37,7 +37,7 @@ jobs:
   build:
     strategy:
       matrix:
-        package: [coordinator]
+        package: [coordinator, kubernetes-provider]
     runs-on: buildjet-4vcpu-ubuntu-2204
     env:
       DOCKER_BUILDKIT: "1"
