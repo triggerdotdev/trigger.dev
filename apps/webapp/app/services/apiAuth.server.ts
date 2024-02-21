@@ -1,13 +1,17 @@
+import { Prettify } from "@trigger.dev/core";
 import { z } from "zod";
 import {
   findEnvironmentByApiKey,
   findEnvironmentByPublicApiKey,
 } from "~/models/runtimeEnvironment.server";
 
+type Optional<T, K extends keyof T> = Prettify<Omit<T, K> & Partial<Pick<T, K>>>;
+
 const AuthorizationHeaderSchema = z.string().regex(/^Bearer .+$/);
 
-export type AuthenticatedEnvironment = NonNullable<
-  Awaited<ReturnType<typeof findEnvironmentByApiKey>>
+export type AuthenticatedEnvironment = Optional<
+  NonNullable<Awaited<ReturnType<typeof findEnvironmentByApiKey>>>,
+  "orgMember"
 >;
 
 type ApiAuthenticationResult = {

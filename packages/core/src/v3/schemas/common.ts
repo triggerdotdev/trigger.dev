@@ -98,10 +98,18 @@ export const TaskRunExecutionProject = z.object({
 
 export type TaskRunExecutionProject = z.infer<typeof TaskRunExecutionProject>;
 
+export const TaskRunExecutionQueue = z.object({
+  id: z.string(),
+  name: z.string(),
+});
+
+export type TaskRunExecutionQueue = z.infer<typeof TaskRunExecutionQueue>;
+
 export const TaskRunExecution = z.object({
   task: TaskRunExecutionTask,
   attempt: TaskRunExecutionAttempt,
   run: TaskRun,
+  queue: TaskRunExecutionQueue,
   environment: TaskRunExecutionEnvironment,
   organization: TaskRunExecutionOrganization,
   project: TaskRunExecutionProject,
@@ -113,6 +121,7 @@ export const TaskRunContext = z.object({
   task: TaskRunExecutionTask,
   attempt: TaskRunExecutionAttempt.omit({ backgroundWorkerId: true, backgroundWorkerTaskId: true }),
   run: TaskRun.omit({ payload: true, payloadType: true }),
+  queue: TaskRunExecutionQueue,
   environment: TaskRunExecutionEnvironment,
   organization: TaskRunExecutionOrganization,
   project: TaskRunExecutionProject,

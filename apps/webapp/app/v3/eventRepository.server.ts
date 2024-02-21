@@ -26,7 +26,15 @@ export type CreatableEventEnvironmentType = CreatableEvent["environmentType"];
 export type TraceAttributes = Partial<
   Pick<
     CreatableEvent,
-    "attemptId" | "isError" | "runId" | "output" | "metadata" | "properties" | "style"
+    | "attemptId"
+    | "isError"
+    | "runId"
+    | "output"
+    | "metadata"
+    | "properties"
+    | "style"
+    | "queueId"
+    | "queueName"
   >
 >;
 
@@ -168,6 +176,8 @@ export class EventRepository {
       projectRef: options.environment.project.externalRef,
       runId: options.attributes.runId,
       taskSlug: options.taskSlug,
+      queueId: options.attributes.queueId,
+      queueName: options.attributes.queueName,
       properties: {
         ...style,
         ...(flattenAttributes(metadata, SemanticInternalAttributes.METADATA) as Record<

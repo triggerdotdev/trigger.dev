@@ -1,12 +1,19 @@
 import { TracingSDK, HttpInstrumentation, FetchInstrumentation } from "@trigger.dev/core/v3/otel";
+// import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 
 // IMPORTANT: this needs to be the first import to work properly
+// WARNING: [WARNING] Constructing "ImportInTheMiddle" will crash at run-time because it's an import namespace object, not a constructor [call-import-namespace]
+// TODO: https://github.com/open-telemetry/opentelemetry-js/issues/3954
 const tracingSDK = new TracingSDK({
   url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
   resource: new Resource({
     [SemanticInternalAttributes.CLI_VERSION]: packageJson.version,
   }),
-  instrumentations: [new HttpInstrumentation(), new FetchInstrumentation()],
+  instrumentations: [
+    new HttpInstrumentation(),
+    new FetchInstrumentation(),
+    // new OpenAIInstrumentation(),
+  ],
 });
 
 const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.version);
@@ -14,7 +21,7 @@ const otelLogger = tracingSDK.getLogger("trigger-dev-worker", packageJson.versio
 
 import { SpanKind } from "@opentelemetry/api";
 import {
-  BackgroundWorkerRecord,
+  type BackgroundWorkerProperties,
   ConsoleInterceptor,
   DevRuntimeManager,
   OtelTaskLogger,
@@ -68,7 +75,7 @@ class TaskExecutor {
 
   async execute(
     execution: TaskRunExecution,
-    worker: BackgroundWorkerRecord,
+    worker: BackgroundWorkerProperties,
     traceContext: Record<string, unknown>
   ) {
     const parsedPayload = JSON.parse(execution.run.payload);
@@ -129,6 +136,7 @@ function getTasks(): Array<TaskMetadataWithRun> {
           exportName,
           packageVersion: (task as any).__trigger.packageVersion,
           filePath: (taskFile as any).filePath,
+          queue: (task as any).__trigger.queue,
           run: (task as any).__trigger.run,
         });
       }
@@ -164,6 +172,9 @@ for (const task of tasks) {
   taskExecutors.set(task.id, new TaskExecutor(task));
 }
 
+let _execution: TaskRunExecution | undefined;
+let _isRunning = false;
+
 const handler = new ZodMessageHandler({
   schema: workerToChildMessages,
   messages: {
@@ -190,6 +201,9 @@ const handler = new ZodMessageHandler({
       }
 
       try {
+        _execution = execution;
+        _isRunning = true;
+
         const result = await executor.execute(execution, metadata, traceContext);
 
         return sender.send("TASK_RUN_COMPLETED", {
@@ -207,6 +221,9 @@ const handler = new ZodMessageHandler({
             error: parseError(e),
           },
         });
+      } finally {
+        _execution = undefined;
+        _isRunning = false;
       }
     },
     TASK_RUN_COMPLETED: async ({ completion, execution }) => {
@@ -232,3 +249,30 @@ sender.send("TASKS_READY", { tasks: getTaskMetadata() }).catch((err) => {
 });
 
 process.title = "trigger-dev-worker";
+
+async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 5) {
+  async function _doHeartbeat() {
+    while (true) {
+      if (_isRunning && _execution) {
+        try {
+          await sender.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
+        } catch (err) {
+          console.error("Failed to send HEARTBEAT message", err);
+        }
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1000 * intervalInSeconds));
+    }
+  }
+
+  // Wait for the initial delay
+  await new Promise((resolve) => setTimeout(resolve, 1000 * initialDelayInSeconds));
+
+  // Wait for 5 seconds before the next execution
+  return _doHeartbeat();
+}
+
+// Start the async interval after 30 seconds
+asyncHeartbeat().catch((err) => {
+  console.error("Failed to start asyncHeartbeat", err);
+});
