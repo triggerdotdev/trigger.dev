@@ -1,5 +1,5 @@
 import { FlatTree, FlatTreeItem } from "./TreeView";
-import { Changes, NodeState, NodesState, TreeState } from "./reducer";
+import { Changes, Filter, FilterFn, NodeState, NodesState, TreeState } from "./reducer";
 
 type PartialNodeState = Record<string, Partial<NodeState>>;
 
@@ -82,22 +82,22 @@ export function selectedIdFromState(state: NodesState): string | undefined {
   return selected?.[0];
 }
 
-export function applyFilterToState<TData>(
+export function applyFilterToState<TData, TFilter>(
   tree: FlatTree<TData>,
   inputNodes: NodesState,
-  filter: (node: FlatTreeItem<TData>) => boolean
+  filter: Filter<TData, TFilter>
 ): NodesState {
   //we need to do two passes, first collect all the nodes that are results
   const newFilteredOut = new Set<string>();
   for (const node of tree) {
-    if (!filter(node)) {
+    if (!filter.matches(filter.content, node)) {
       newFilteredOut.add(node.id);
     }
   }
 
   //nothing is filtered out
   if (newFilteredOut.size === 0) {
-    return inputNodes;
+    return { ...inputNodes };
   }
 
   //copy of nodes
@@ -217,4 +217,15 @@ export function generateChanges(a: NodesState, b: NodesState): Changes {
     selectedId: selectedIdA !== selectedIdB ? selectedIdB : undefined,
     collapsedIds: collapsedChanges.length > 0 ? collapsedChanges : undefined,
   };
+}
+
+export function createTreeState<TData, TFilter>(
+  tree: FlatTree<TData>,
+  oldState: NodesState,
+  newState: NodesState,
+  filter: Filter<TData, TFilter> | undefined
+): TreeState {
+  const filteredNodes = filter ? applyFilterToState(tree, newState, filter) : newState;
+  const state = { nodes: filteredNodes, changes: generateChanges(oldState, filteredNodes) };
+  return state;
 }
