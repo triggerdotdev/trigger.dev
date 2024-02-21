@@ -49,38 +49,40 @@ export default function Page() {
         </div>
       </div>
       <div className="overflow-y-auto px-2 pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
-        <PropertyTable className="mb-4">
-          {event.level === "TRACE" ? (
-            <Property label="Timeline">
-              <Timeline
-                startTime={new Date(event.startTime)}
-                duration={event.duration}
-                inProgress={event.isPartial}
-                isError={event.isError}
-              />
-            </Property>
-          ) : (
-            <Property label="Timestamp">
-              <Paragraph variant="small/bright">
-                <DateTime date={event.startTime} />
-              </Paragraph>
-            </Property>
-          )}
-          <Property label="Message">{event.message}</Property>
-        </PropertyTable>
+        <div className="flex flex-col gap-4">
+          <PropertyTable>
+            {event.level === "TRACE" ? (
+              <Property label="Timeline">
+                <Timeline
+                  startTime={new Date(event.startTime)}
+                  duration={event.duration}
+                  inProgress={event.isPartial}
+                  isError={event.isError}
+                />
+              </Property>
+            ) : (
+              <Property label="Timestamp">
+                <Paragraph variant="small/bright">
+                  <DateTime date={event.startTime} />
+                </Paragraph>
+              </Property>
+            )}
+            <Property label="Message">{event.message}</Property>
+          </PropertyTable>
 
-        {event.output !== null && (
-          <div>
-            <Header3 spacing>Output</Header3>
-            <CodeBlock code={event.output} maxLines={20} />
-          </div>
-        )}
-        {event.properties !== null && (
-          <div>
-            <Header3 spacing>Properties</Header3>
-            <CodeBlock code={event.properties} maxLines={20} />
-          </div>
-        )}
+          {event.output !== null && (
+            <div>
+              <Header2 spacing>Output</Header2>
+              <CodeBlock code={event.output} maxLines={20} />
+            </div>
+          )}
+          {event.properties !== null && (
+            <div>
+              <Header2 spacing>Properties</Header2>
+              <CodeBlock code={event.properties} maxLines={20} />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
