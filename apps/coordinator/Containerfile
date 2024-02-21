@@ -1,30 +1,52 @@
-# syntax=docker/dockerfile:labs
+FROM node:18.18.2-bullseye-slim@sha256:21479df46c3173ee0cefc6b264928e10239152c4f74df872ca9369be01a245b7 AS node-18
 
-FROM node:18-slim AS base
-
-RUN apt-get update \
-  && apt-get install -y buildah ca-certificates dumb-init \
-  && rm -rf /var/lib/apt/lists/*
-
-
-FROM alpine AS cri-tools
-
-WORKDIR /cri-tools
-
-ARG CRICTL_VERSION=v1.29.0
-ARG CRICTL_CHECKSUM=sha256:d16a1ffb3938f5a19d5c8f45d363bd091ef89c0bc4d44ad16b933eede32fdcbb
-ADD --checksum=${CRICTL_CHECKSUM} \
-  https://github.com/kubernetes-sigs/cri-tools/releases/download/${CRICTL_VERSION}/crictl-${CRICTL_VERSION}-linux-amd64.tar.gz .
-RUN tar zxvf crictl-${CRICTL_VERSION}-linux-amd64.tar.gz
-
-
-FROM base
+FROM node-18 AS pruner
 
 WORKDIR /app
 
-COPY --chown=node --from=cri-tools /cri-tools/crictl /usr/local/bin
-COPY --chown=node dist/index.cjs /app/
+COPY --chown=node:node . .
+RUN npx -q turbo@1.10.9 prune --scope=coordinator --docker
+RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
 
-EXPOSE 8000
+FROM node-18 AS base
 
-ENTRYPOINT [ "/usr/bin/dumb-init", "--", "/usr/local/bin/node", "/app/index.cjs" ]
+RUN apt-get update && apt-get install -y dumb-init
+
+WORKDIR /app
+
+COPY --chown=node:node .gitignore .gitignore
+COPY --from=pruner --chown=node:node /app/out/json/ .
+COPY --from=pruner --chown=node:node /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=pruner --chown=node:node /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
+
+FROM base AS dev-deps
+WORKDIR /app
+RUN corepack enable
+ENV NODE_ENV development
+
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm fetch --no-frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --ignore-scripts --no-frozen-lockfile
+
+FROM base AS builder
+WORKDIR /app
+RUN corepack enable
+
+COPY --from=pruner --chown=node:node /app/out/full/ .
+COPY --from=dev-deps --chown=node:node /app/ .
+COPY --chown=node:node turbo.json turbo.json
+
+RUN pnpm run -r --filter '@trigger.dev/core*' build
+RUN pnpm run -r --filter coordinator build:bundle
+
+FROM base AS runner
+
+RUN corepack enable
+ENV NODE_ENV production
+
+COPY --from=builder --chown=node:node /app/apps/coordinator/dist/index.cjs ./index.cjs
+
+EXPOSE 3000
+
+USER node
+
+CMD [ "/usr/bin/dumb-init", "--", "/usr/local/bin/node", "./index.cjs" ]

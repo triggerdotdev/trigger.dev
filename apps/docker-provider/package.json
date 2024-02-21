@@ -1,5 +1,5 @@
 {
-  "name": "@trigger.dev/docker-provider",
+  "name": "docker-provider",
   "private": true,
   "version": "0.0.1",
   "description": "",

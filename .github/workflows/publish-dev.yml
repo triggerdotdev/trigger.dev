@@ -37,17 +37,10 @@ jobs:
   build:
     strategy:
       matrix:
-        package: [coordinator, kubernetes-provider]
+        package: [coordinator]
     runs-on: buildjet-4vcpu-ubuntu-2204
-    defaults:
-      run:
-        working-directory: ./apps/${{ matrix.package }}
     steps:
       - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 8
 
       - name: Generate build ID
         id: prep
@@ -55,23 +48,6 @@ jobs:
           sha=${GITHUB_SHA::7}
           ts=$(date +%s)
           echo "BUILD_ID=${{ matrix.package }}-${sha}-${ts}" >> "$GITHUB_OUTPUT"
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Use Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: "18.x"
-
-      - name: Install deps
-        run: pnpm install
-
-      - name: Build deps
-        run: pnpm run -r --filter '@trigger.dev/core*' build
-
-      - name: Run build
-        run: pnpm run build:bundle
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -85,7 +61,7 @@ jobs:
 
       - name: 🚢 Build Container Image
         run: |
-          docker build -t dev_image -f ./Containerfile .
+          docker build -t dev_image -f ./apps/${{ matrix.package }}/Containerfile .
 
       # ..to push image
       - name: 🐙 Login to GitHub Container Registry
