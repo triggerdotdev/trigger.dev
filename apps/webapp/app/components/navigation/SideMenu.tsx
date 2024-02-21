@@ -504,7 +504,7 @@ function V3ProjectSideMenu({
         iconColor="text-teal-500"
         to={v3RunsPath(organization, project)}
       />
-      <SideMenuItem
+      {/* <SideMenuItem
         name="Environments & API Keys"
         icon="environment"
         iconColor="text-rose-500"
@@ -517,7 +517,7 @@ function V3ProjectSideMenu({
         iconColor="text-teal-500"
         to={projectSettingsPath(organization, project)}
         data-action="project-settings"
-      />
+      /> */}
     </>
   );
 }
