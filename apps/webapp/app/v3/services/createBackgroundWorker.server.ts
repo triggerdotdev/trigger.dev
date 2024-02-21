@@ -71,6 +71,8 @@ export class CreateBackgroundWorkerService extends BaseService {
             slug: task.id,
             filePath: task.filePath,
             exportName: task.exportName,
+            retryConfig: task.retry,
+            queueConfig: task.queue,
           },
         });
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TaskRunExecutionResult, TaskRunExecution } from "./common";
+import { TaskRunExecutionResult, TaskRunExecution, TaskRunFailedExecutionResult } from "./common";
 
 export const TaskRunExecutionPayload = z.object({
   execution: TaskRunExecution,
@@ -34,6 +34,7 @@ export const BackgroundWorkerClientMessages = z.discriminatedUnion("type", [
     version: z.literal("v1").default("v1"),
     type: z.literal("TASK_RUN_COMPLETED"),
     completion: TaskRunExecutionResult,
+    execution: TaskRunExecution,
   }),
   z.object({
     version: z.literal("v1").default("v1"),
@@ -71,7 +72,7 @@ export const workerToChildMessages = {
     traceContext: z.record(z.unknown()),
     metadata: BackgroundWorkerProperties,
   }),
-  TASK_RUN_COMPLETED: z.object({
+  TASK_RUN_COMPLETED_NOTIFICATION: z.object({
     version: z.literal("v1").default("v1"),
     completion: TaskRunExecutionResult,
     execution: TaskRunExecution,
@@ -79,6 +80,7 @@ export const workerToChildMessages = {
   CLEANUP: z.object({
     version: z.literal("v1").default("v1"),
     flush: z.boolean().default(false),
+    kill: z.boolean().default(true),
   }),
 };
 
@@ -119,6 +121,16 @@ export const RateLimitOptions = z.discriminatedUnion("type", [
   SlidingWindowRateLimit,
 ]);
 
+export const RetryOptions = z.object({
+  maxAttempts: z.number().int().optional(),
+  factor: z.number().optional(),
+  minTimeoutInMs: z.number().int().optional(),
+  maxTimeoutInMs: z.number().int().optional(),
+  randomize: z.boolean().optional(),
+});
+
+export type RetryOptions = z.infer<typeof RetryOptions>;
+
 export type RateLimitOptions = z.infer<typeof RateLimitOptions>;
 
 export const QueueOptions = z.object({
@@ -135,6 +147,7 @@ export const TaskMetadata = z.object({
   exportName: z.string(),
   packageVersion: z.string(),
   queue: QueueOptions.optional(),
+  retry: RetryOptions.required().optional(),
 });
 
 export type TaskMetadata = z.infer<typeof TaskMetadata>;
@@ -148,6 +161,7 @@ export type TaskMetadataWithFilePath = z.infer<typeof TaskMetadataWithFilePath>;
 export const childToWorkerMessages = {
   TASK_RUN_COMPLETED: z.object({
     version: z.literal("v1").default("v1"),
+    execution: TaskRunExecution,
     result: TaskRunExecutionResult,
   }),
   TASKS_READY: z.object({
