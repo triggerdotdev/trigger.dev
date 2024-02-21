@@ -147,7 +147,7 @@ export default function NewOrganizationPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="v2">Version 2</SelectItem>
-                    <SelectItem value="v3">Version 3</SelectItem>
+                    <SelectItem value="v3">Version 3 (Developer Preview)</SelectItem>
                   </SelectContent>
                 </Select>
               </SelectGroup>
