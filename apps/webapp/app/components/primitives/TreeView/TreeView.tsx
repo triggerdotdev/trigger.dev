@@ -165,6 +165,7 @@ export function useTree<TData, TFilter>({
   filter,
 }: TreeStateHookProps<TData, TFilter>): UseTreeStateOutput {
   const reducer = useCallback(makeReducer(tree, filter), [tree, filter]);
+  const previousSelectedId = useRef<string | undefined>(selectedId);
 
   const [state, dispatch] = useReducer(
     reducer,
@@ -172,7 +173,11 @@ export function useTree<TData, TFilter>({
   );
 
   useEffect(() => {
-    onSelectedIdChanged?.(state.changes.selectedId);
+    const selectedId = selectedIdFromState(state.nodes);
+    if (selectedId !== previousSelectedId.current) {
+      previousSelectedId.current = selectedId;
+      onSelectedIdChanged?.(selectedId);
+    }
   }, [state.changes.selectedId]);
 
   useEffect(() => {
