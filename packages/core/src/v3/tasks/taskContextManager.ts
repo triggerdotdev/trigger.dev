@@ -1,12 +1,12 @@
 import { Attributes } from "@opentelemetry/api";
-import { BackgroundWorkerRecord, TaskRunContext } from "../schemas";
+import { type BackgroundWorkerProperties, TaskRunContext } from "../schemas";
 import { SafeAsyncLocalStorage } from "../utils/safeAsyncLocalStorage";
 import { flattenAttributes } from "../utils/flattenAttributes";
 
 type TaskContext = {
   ctx: TaskRunContext;
   payload: any;
-  worker: BackgroundWorkerRecord;
+  worker: BackgroundWorkerProperties;
 };
 
 export class TaskContextManager {
@@ -26,7 +26,7 @@ export class TaskContextManager {
     return store?.payload;
   }
 
-  get worker(): BackgroundWorkerRecord | undefined {
+  get worker(): BackgroundWorkerProperties | undefined {
     const store = this.#getStore();
     return store?.worker;
   }

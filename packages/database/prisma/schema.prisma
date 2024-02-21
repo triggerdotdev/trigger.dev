@@ -5,8 +5,9 @@ datasource db {
 }
 
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-1.1.x"]
+  provider        = "prisma-client-js"
+  binaryTargets   = ["native", "debian-openssl-1.1.x"]
+  previewFeatures = ["tracing"]
 }
 
 model User {
@@ -384,7 +385,8 @@ model RuntimeEnvironment {
   webhookRequestDeliveries WebhookRequestDelivery[]
   backgroundWorkers        BackgroundWorker[]
   backgroundWorkerTasks    BackgroundWorkerTask[]
-  TaskRun                  TaskRun[]
+  taskRuns                 TaskRun[]
+  taskQueues               TaskQueue[]
   imageDetails             ImageDetails[]
 
   @@unique([projectId, slug, orgMemberId])
@@ -423,8 +425,9 @@ model Project {
   webhooks              Webhook[]
   backgroundWorkers     BackgroundWorker[]
   backgroundWorkerTasks BackgroundWorkerTask[]
-  TaskRun               TaskRun[]
-  TaskTag               TaskTag[]
+  taskRuns              TaskRun[]
+  taskTags              TaskTag[]
+  taskQueues            TaskQueue[]
   imageDetails          ImageDetails[]
 }
 
@@ -1556,6 +1559,8 @@ model TaskRun {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
+  queue String
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1571,6 +1576,8 @@ model TaskRun {
 
   parentAttempt   TaskRunAttempt? @relation("parentAttempt", fields: [parentAttemptId], references: [id])
   parentAttemptId String?
+
+  concurrencyKey String?
 
   @@unique([runtimeEnvironmentId, idempotencyKey])
 }
@@ -1605,6 +1612,9 @@ model TaskRunAttempt {
 
   backgroundWorkerTask   BackgroundWorkerTask @relation(fields: [backgroundWorkerTaskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   backgroundWorkerTaskId String
+
+  queue   TaskQueue @relation(fields: [queueId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  queueId String
 
   status TaskRunAttemptStatus @default(PENDING)
 
@@ -1681,6 +1691,9 @@ model TaskEvent {
   workerId      String?
   workerVersion String?
 
+  queueId   String?
+  queueName String?
+
   /// This represents all the span attributes available, like http.status_code, and special attributes like $style.icon, $output, $metadata.payload.userId, as it's used for searching and filtering
   properties Json
 
@@ -1721,6 +1734,36 @@ enum TaskEventStatus {
   OK
   ERROR
   UNRECOGNIZED
+}
+
+model TaskQueue {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  name String
+  type TaskQueueType @default(VIRTUAL)
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+
+  concurrencyLimit Int?
+  rateLimit        Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attempts TaskRunAttempt[]
+
+  @@unique([runtimeEnvironmentId, name])
+}
+
+enum TaskQueueType {
+  VIRTUAL
+  NAMED
 }
 
 model ImageDetails {

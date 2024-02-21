@@ -1,5 +1,5 @@
 import {
-  BackgroundWorkerRecord,
+  BackgroundWorkerProperties,
   BackgroundWorkerServerMessages,
   CreateBackgroundWorkerResponse,
   TaskMetadataWithFilePath,
@@ -17,10 +17,11 @@ import chalk from "chalk";
 import { Evt } from "evt";
 import { fork } from "node:child_process";
 import { readFileSync } from "node:fs";
-import nodePath from "node:path";
+import nodePath, { resolve } from "node:path";
 import { SourceMapConsumer, type RawSourceMap } from "source-map";
 import terminalLink from "terminal-link";
 import { logger } from "../utilities/logger.js";
+import dotenv from "dotenv";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -35,9 +36,15 @@ export class BackgroundWorkerCoordinator {
     id: string;
     record: CreateBackgroundWorkerResponse;
   }> = new Evt();
+  public onWorkerTaskHeartbeat: Evt<{
+    id: string;
+    backgroundWorkerId: string;
+    worker: BackgroundWorker;
+  }> = new Evt();
   public onWorkerDeprecated: Evt<{ worker: BackgroundWorker; id: string }> = new Evt();
   private _backgroundWorkers: Map<string, BackgroundWorker> = new Map();
   private _records: Map<string, CreateBackgroundWorkerResponse> = new Map();
+  private _deprecatedWorkers: Set<string> = new Set();
 
   constructor(private baseURL: string) {
     this.onTaskCompleted.attach(async ({ completion, execution }) => {
@@ -59,6 +66,7 @@ export class BackgroundWorkerCoordinator {
       id,
       worker,
       record: this._records.get(id)!,
+      isDeprecated: this._deprecatedWorkers.has(id),
     }));
   }
 
@@ -68,12 +76,17 @@ export class BackgroundWorkerCoordinator {
         continue;
       }
 
+      this._deprecatedWorkers.add(workerId);
       this.onWorkerDeprecated.post({ worker: existingWorker, id: workerId });
     }
 
     this._backgroundWorkers.set(record.id, worker);
     this._records.set(record.id, record);
     this.onWorkerRegistered.post({ worker, id: record.id, record });
+
+    worker.onTaskHeartbeat.attach((id) => {
+      this.onWorkerTaskHeartbeat.post({ id, backgroundWorkerId: record.id, worker });
+    });
   }
 
   close() {
@@ -113,12 +126,13 @@ export class BackgroundWorkerCoordinator {
     const link = chalk.bgBlueBright(
       terminalLink("view logs", `${this.baseURL}/runs/${execution.run.id}`)
     );
+    let timestampPrefix = chalk.gray(new Date().toISOString());
     const workerPrefix = chalk.green(`[worker:${record.version}]`);
     const taskPrefix = chalk.yellow(`[task:${execution.task.id}]`);
     const runId = chalk.blue(execution.run.id);
     const attempt = chalk.blue(`.${execution.attempt.number}`);
 
-    logger.log(`${workerPrefix}${taskPrefix} ${runId}${attempt} ${link}`);
+    logger.log(`${timestampPrefix} ${workerPrefix}${taskPrefix} ${runId}${attempt} ${link}`);
 
     const now = performance.now();
 
@@ -134,8 +148,10 @@ export class BackgroundWorkerCoordinator {
 
     const elapsedText = chalk.dim(`(${elapsed.toFixed(2)}ms)`);
 
+    timestampPrefix = chalk.gray(new Date().toISOString());
+
     logger.log(
-      `${workerPrefix}${taskPrefix} ${runId}${attempt} ${resultText} ${elapsedText} ${link}${errorText}`
+      `${timestampPrefix} ${workerPrefix}${taskPrefix} ${runId}${attempt} ${resultText} ${elapsedText} ${link}${errorText}`
     );
 
     this.onTaskCompleted.post({ completion, execution, worker, backgroundWorkerId: id });
@@ -178,10 +194,11 @@ export class BackgroundWorker {
     completion: TaskRunExecutionResult;
     execution: TaskRunExecution;
   }> = new Evt();
+  public onTaskHeartbeat: Evt<string> = new Evt();
   private _onClose: Evt<void> = new Evt();
 
   public tasks: Array<TaskMetadataWithFilePath> = [];
-  public metadata: BackgroundWorkerRecord | undefined;
+  public metadata: BackgroundWorkerProperties | undefined;
 
   _taskExecutions: Map<
     string,
@@ -196,6 +213,7 @@ export class BackgroundWorker {
   }
 
   close() {
+    this.onTaskHeartbeat.detach();
     this._onClose.post();
   }
 
@@ -211,6 +229,7 @@ export class BackgroundWorker {
         stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
         env: {
           ...this.params.env,
+          ...this.#readEnvVars(),
         },
       });
 
@@ -274,6 +293,7 @@ export class BackgroundWorker {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
       env: {
         ...this.params.env,
+        ...this.#readEnvVars(),
       },
     });
 
@@ -326,6 +346,8 @@ export class BackgroundWorker {
         if (!child.killed) {
           child.kill();
         }
+      } else if (message.type === "TASK_HEARTBEAT") {
+        this.onTaskHeartbeat.post(message.payload.id);
       }
     });
 
@@ -344,24 +366,40 @@ export class BackgroundWorker {
       );
     });
 
-    await sender.send("EXECUTE_TASK_RUN", { execution, traceContext, metadata });
+    try {
+      await sender.send("EXECUTE_TASK_RUN", { execution, traceContext, metadata });
 
-    const result = await promise;
+      const result = await promise;
 
-    if (result.ok) {
+      if (result.ok) {
+        return result;
+      }
+
+      const error = result.error;
+
+      if (error.type === "BUILT_IN_ERROR") {
+        const mappedError = await this.#correctError(error, execution);
+
+        return {
+          ...result,
+          error: mappedError,
+        };
+      }
+
       return result;
+    } catch (e) {
+      debugger;
+      throw e;
     }
+  }
 
-    const error = result.error;
+  #readEnvVars() {
+    const result = {};
 
-    if (error.type === "BUILT_IN_ERROR") {
-      const mappedError = await this.#correctError(error, execution);
-
-      return {
-        ...result,
-        error: mappedError,
-      };
-    }
+    dotenv.config({
+      processEnv: result,
+      path: [".env", ".env.local", ".env.development.local"].map((p) => resolve(process.cwd(), p)),
+    });
 
     return result;
   }

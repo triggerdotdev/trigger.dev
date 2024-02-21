@@ -10,12 +10,16 @@ import type {
   TaskSpec,
 } from "graphile-worker";
 import { run as graphileRun, parseCronItems } from "graphile-worker";
+import { SpanKind, trace } from "@opentelemetry/api";
 
 import omit from "lodash.omit";
 import { z } from "zod";
 import { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { PgListenService } from "~/services/db/pgListen.server";
-import { workerLogger as logger, trace } from "~/services/logger.server";
+import { workerLogger as logger } from "~/services/logger.server";
+import { flattenAttributes } from "@trigger.dev/core/v3";
+
+const tracer = trace.getTracer("zodWorker", "3.0.0.dp.1");
 
 export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
@@ -518,13 +522,43 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       throw new Error(`No task for message type: ${String(typeName)}`);
     }
 
-    await trace(
+    await tracer.startActiveSpan(
+      `Run ${typeName as string}`,
       {
-        worker_job: job,
-        worker_name: this.#name,
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          "job.task_identifier": job.task_identifier,
+          "job.id": job.id,
+          ...(job.queue_name ? { "job.queue_name": job.queue_name } : {}),
+          ...flattenAttributes(job.payload as Record<string, unknown>, "job.payload"),
+          "job.priority": job.priority,
+          "job.run_at": job.run_at.toISOString(),
+          "job.attempts": job.attempts,
+          "job.max_attempts": job.max_attempts,
+          "job.created_at": job.created_at.toISOString(),
+          "job.updated_at": job.updated_at.toISOString(),
+          ...(job.key ? { "job.key": job.key } : {}),
+          "job.revision": job.revision,
+          ...(job.locked_at ? { "job.locked_at": job.locked_at.toISOString() } : {}),
+          ...(job.locked_by ? { "job.locked_by": job.locked_by } : {}),
+          ...(job.flags ? flattenAttributes(job.flags, "job.flags") : {}),
+          "worker.name": this.#name,
+        },
       },
-      async () => {
-        await task.handler(payload, job);
+      async (span) => {
+        try {
+          await task.handler(payload, job);
+        } catch (error) {
+          if (error instanceof Error) {
+            span.recordException(error);
+          } else {
+            span.recordException(new Error(String(error)));
+          }
+
+          throw error;
+        } finally {
+          span.end();
+        }
       }
     );
   }
@@ -558,16 +592,45 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     const payload = parsedPayload.data;
 
-    try {
-      await recurringTask.handler(payload._cron, job);
-    } catch (error) {
-      logger.error("Failed to handle recurring task", {
-        error,
-        payload,
-      });
+    await tracer.startActiveSpan(
+      `Run ${typeName as string} recurring`,
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          "job.task_identifier": job.task_identifier,
+          "job.id": job.id,
+          ...(job.queue_name ? { "job.queue_name": job.queue_name } : {}),
+          ...flattenAttributes(job.payload as Record<string, unknown>, "job.payload"),
+          "job.priority": job.priority,
+          "job.run_at": job.run_at.toISOString(),
+          "job.attempts": job.attempts,
+          "job.max_attempts": job.max_attempts,
+          "job.created_at": job.created_at.toISOString(),
+          "job.updated_at": job.updated_at.toISOString(),
+          ...(job.key ? { "job.key": job.key } : {}),
+          "job.revision": job.revision,
+          ...(job.locked_at ? { "job.locked_at": job.locked_at.toISOString() } : {}),
+          ...(job.locked_by ? { "job.locked_by": job.locked_by } : {}),
+          ...(job.flags ? flattenAttributes(job.flags, "job.flags") : {}),
+          "worker.name": this.#name,
+        },
+      },
+      async (span) => {
+        try {
+          await recurringTask.handler(payload._cron, job);
+        } catch (error) {
+          if (error instanceof Error) {
+            span.recordException(error);
+          } else {
+            span.recordException(new Error(String(error)));
+          }
 
-      throw error;
-    }
+          throw error;
+        } finally {
+          span.end();
+        }
+      }
+    );
   }
 
   async #handleCleanup(rawPayload: unknown, helpers: JobHelpers): Promise<void> {

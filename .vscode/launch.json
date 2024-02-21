@@ -9,7 +9,7 @@
       "request": "launch",
       "name": "Debug WebApp",
       "command": "pnpm run dev --filter webapp",
-      "envFile": "${workspaceFolder}/apps/webapp/.env",
+      "envFile": "${workspaceFolder}/.env",
       "cwd": "${workspaceFolder}",
       "sourceMaps": true
     },

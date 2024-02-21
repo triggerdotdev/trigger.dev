@@ -1,9 +1,11 @@
 import { z } from "zod";
+import { QueueOptions } from "./messages";
 
 export const TaskResource = z.object({
   id: z.string(),
   filePath: z.string(),
   exportName: z.string(),
+  queue: QueueOptions.optional(),
 });
 
 export type TaskResource = z.infer<typeof TaskResource>;

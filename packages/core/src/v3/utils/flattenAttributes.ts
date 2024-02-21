@@ -1,13 +1,28 @@
 import { Attributes } from "@opentelemetry/api";
 
 export function flattenAttributes(
-  obj: Record<string, unknown> | null | undefined,
+  obj: Record<string, unknown> | Array<unknown> | string | boolean | number | null | undefined,
   prefix?: string
 ): Attributes {
   const result: Attributes = {};
 
   // Check if obj is null or undefined
   if (obj == null) {
+    return result;
+  }
+
+  if (typeof obj === "string") {
+    result[prefix || ""] = obj;
+    return result;
+  }
+
+  if (typeof obj === "number") {
+    result[prefix || ""] = obj;
+    return result;
+  }
+
+  if (typeof obj === "boolean") {
+    result[prefix || ""] = obj;
     return result;
   }
 

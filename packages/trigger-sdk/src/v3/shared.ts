@@ -2,6 +2,7 @@ import { SpanKind } from "@opentelemetry/api";
 import { SemanticAttributes } from "@opentelemetry/semantic-conventions";
 import {
   SdkApiClient,
+  QueueOptions,
   TaskRunContext,
   createErrorTaskError,
   runtime,
@@ -41,25 +42,13 @@ export type ErrorFnParams<TPayload, TPreparedItems extends PreparedItems> = RunF
     error: unknown;
   }>;
 
-type RateLimitOptions =
-  | {
-      hourly: number;
-    }
-  | {
-      daily: number;
-    }
-  | {
-      monthly: number;
-    };
-
-type QueueOptions = {
-  concurrencyLimit?: number;
-  rateLimit?: RateLimitOptions;
+type RequireOne<T, K extends keyof T> = {
+  [X in Exclude<keyof T, K>]?: T[X];
+} & {
+  [P in K]-?: T[P];
 };
 
-export type Queue = {
-  name: string;
-} & QueueOptions;
+export type Queue = RequireOne<QueueOptions, "name">;
 
 export function queue(options: { name: string } & QueueOptions): Queue {
   return options;
@@ -70,7 +59,7 @@ export type RunOptions<TPayload, TOutput = any, TPreparedItems extends PreparedI
   retry?: {
     maxAttempts?: number;
   };
-  queue?: QueueOptions | Queue;
+  queue?: QueueOptions;
   machine?: {
     image?: "ffmpeg" | "puppeteer";
     cpu?: number;
@@ -131,7 +120,7 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
   params: RunOptions<TInput, TOutput, TPreparedItems>
 ): Task<TInput, TOutput> {
   const task: Task<TInput, TOutput> = {
-    trigger: async ({ payload }) => {
+    trigger: async ({ payload, options }) => {
       const ctx = taskContextManager.ctx;
 
       const apiClient = initializeApiClient();
@@ -144,6 +133,8 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
             options: {
               parentAttempt: ctx?.attempt.id,
               lockToCurrentVersion: false, // Don't lock to current version because we're not waiting for it to finish
+              queue: params.queue,
+              concurrencyKey: options?.concurrencyKey,
             },
           });
 
@@ -190,6 +181,8 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
             options: {
               parentAttempt: ctx.attempt.id,
               lockToCurrentVersion: true, // Lock to current version because we're waiting for it to finish
+              queue: params.queue,
+              concurrencyKey: options?.concurrencyKey,
             },
           });
 
@@ -229,6 +222,7 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
       id: params.id,
       run: params.run,
       packageVersion: packageJson.version,
+      queue: params.queue,
     },
     enumerable: false,
   });
