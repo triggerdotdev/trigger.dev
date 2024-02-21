@@ -3,10 +3,10 @@ import {
   ChevronRightIcon,
   ExclamationCircleIcon,
 } from "@heroicons/react/20/solid";
-import { Link, Outlet, useNavigate } from "@remix-run/react";
+import { Link, Outlet, useNavigate, useParams, useSubmit } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDuration, formatDurationNanoseconds } from "@trigger.dev/core/v3";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import { PageBody } from "~/components/layout/AppLayout";
@@ -24,6 +24,7 @@ import { TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
 import { eventTextClassName } from "~/components/runs/v3/EventText";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
+import { useDebounce } from "~/hooks/useDebounce";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
@@ -63,8 +64,17 @@ export default function Page() {
   const organization = useOrganization();
   const pathName = usePathName();
   const project = useProject();
+  const { runParam } = useParams();
 
   const selectedSpanId = getSpanId(pathName);
+
+  const changeSpanSelection = useDebounce((selectedSpan: string | undefined) => {
+    if (!selectedSpan) {
+      navigate(v3RunPath(organization, project, run));
+      return;
+    }
+    navigate(v3RunSpanPath(organization, project, run, { spanId: selectedSpan }));
+  }, 300);
 
   return (
     <>
@@ -83,22 +93,20 @@ export default function Page() {
                   key={events[0]?.id ?? "-"}
                   events={events}
                   parentRunFriendlyId={parentRunFriendlyId}
-                  onSelectedIdChanged={(id) => {
-                    if (selectedSpanId === id) return;
-                    if (!id) {
-                      navigate(v3RunPath(organization, project, run));
-                      return;
-                    }
-                    navigate(v3RunSpanPath(organization, project, run, { spanId: id }));
+                  onSelectedIdChanged={(selectedSpan) => {
+                    console.log("immediate id", selectedSpan);
+                    changeSpanSelection(selectedSpan);
                   }}
                 />
               </div>
             </ResizablePanel>
-            <ResizableHandle withHandle />
             {selectedSpanId !== undefined && (
-              <ResizablePanel order={2} minSize={30} defaultSize={40}>
-                <Outlet />
-              </ResizablePanel>
+              <>
+                <ResizableHandle withHandle />
+                <ResizablePanel order={2} minSize={30} defaultSize={40}>
+                  <Outlet key={selectedSpanId} />
+                </ResizablePanel>
+              </>
             )}
           </ResizablePanelGroup>
         </div>
@@ -141,15 +149,18 @@ function TasksTreeView({
     onSelectedIdChanged,
     estimatedRowHeight: () => 32,
     parentRef,
-    filter: (node) => {
-      const nodePassesErrorTest = (errorsOnly && node.data.isError) || !errorsOnly;
-      if (!nodePassesErrorTest) return false;
+    filter: {
+      content: { text: filterText, errorsOnly },
+      matches: ({ text, errorsOnly }, node) => {
+        const nodePassesErrorTest = (errorsOnly && node.data.isError) || !errorsOnly;
+        if (!nodePassesErrorTest) return false;
 
-      if (filterText === "") return true;
-      if (node.data.message.toLowerCase().includes(filterText.toLowerCase())) {
-        return true;
-      }
-      return false;
+        if (text === "") return true;
+        if (node.data.message.toLowerCase().includes(text.toLowerCase())) {
+          return true;
+        }
+        return false;
+      },
     },
   });
 
