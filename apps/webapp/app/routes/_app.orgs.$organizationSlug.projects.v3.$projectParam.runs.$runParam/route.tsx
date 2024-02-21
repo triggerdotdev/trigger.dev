@@ -145,19 +145,16 @@ function TasksTreeView({
     onSelectedIdChanged,
     estimatedRowHeight: () => 32,
     parentRef,
-    // filter: {
-    //   content: { text: filterText, errorsOnly },
-    //   matches: ({ text, errorsOnly }, node) => {
-    //     const nodePassesErrorTest = (errorsOnly && node.data.isError) || !errorsOnly;
-    //     if (!nodePassesErrorTest) return false;
+    filter: (node) => {
+      const nodePassesErrorTest = (errorsOnly && node.data.isError) || !errorsOnly;
+      if (!nodePassesErrorTest) return false;
 
-    //     if (text === "") return true;
-    //     if (node.data.message.toLowerCase().includes(text.toLowerCase())) {
-    //       return true;
-    //     }
-    //     return false;
-    //   },
-    // },
+      if (filterText === "") return true;
+      if (node.data.message.toLowerCase().includes(filterText.toLowerCase())) {
+        return true;
+      }
+      return false;
+    },
   });
 
   return (
