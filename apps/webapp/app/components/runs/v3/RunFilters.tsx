@@ -119,6 +119,7 @@ export function RunsFilters({ possibleEnvironments, possibleTasks }: RunFiltersP
   const clearFilters = useCallback(() => {
     searchParams.delete("statuses");
     searchParams.delete("environments");
+    searchParams.delete("tasks");
     searchParams.delete("from");
     searchParams.delete("to");
     navigate(`${location.pathname}?${searchParams.toString()}`);
