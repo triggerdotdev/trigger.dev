@@ -1,14 +1,12 @@
-import { Await, useLoaderData } from "@remix-run/react";
-import { LoaderFunctionArgs, defer } from "@remix-run/server-runtime";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
-import { ReactNode, Suspense } from "react";
+import { ReactNode } from "react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
-import { Spinner } from "~/components/primitives/Spinner";
 import { eventTextClassName } from "~/components/runs/v3/EventText";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
@@ -22,86 +20,71 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug, spanParam } = v3SpanParamsSchema.parse(params);
 
   const presenter = new SpanPresenter();
-  const span = presenter.call({
+  const span = await presenter.call({
     userId,
     organizationSlug,
     projectSlug: projectParam,
     spanId: spanParam,
   });
 
-  return defer({ span });
+  return typedjson({ span });
 };
 
 export default function Page() {
-  const { span } = useLoaderData<typeof loader>();
+  const {
+    span: { event },
+  } = useTypedLoaderData<typeof loader>();
+
+  console.log(`spanParam: ${event.spanId} ${event.message}`);
 
   return (
-    <Suspense
-      fallback={
-        <div className="h-full w-full items-center justify-center">
-          <Spinner />
-        </div>
-      }
-    >
-      <Await
-        resolve={span}
-        errorElement={
-          <div>
-            <Callout variant="error">There's been an error</Callout>
+    <div className="grid max-h-full grid-rows-[2rem_1fr] overflow-hidden">
+      <div className="border-b border-slate-800">
+        <div className="flex h-8 items-center justify-between gap-2 border-b border-ui-border px-2">
+          <div className="flex items-center gap-1 overflow-x-hidden">
+            <RunIcon name={event.style?.icon} className="min-w-4 min-h-4 h-4 w-4" />
+            <Header2 className={cn("whitespace-nowrap", eventTextClassName(event))}>
+              {event.message}
+            </Header2>
           </div>
-        }
-      >
-        {({ event }) => (
-          <div className="grid max-h-full grid-rows-[2rem_1fr] overflow-hidden">
-            <div className="border-b border-slate-800">
-              <div className="flex h-8 items-center justify-between gap-2 border-b border-ui-border px-2">
-                <div className="flex items-center gap-1 overflow-x-hidden">
-                  <RunIcon name={event.style?.icon} className="min-w-4 min-h-4 h-4 w-4" />
-                  <Header2 className={cn("whitespace-nowrap", eventTextClassName(event))}>
-                    {event.message}
-                  </Header2>
-                </div>
-                <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
-              </div>
-            </div>
-            <div className="overflow-y-auto px-2 pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
-              <PropertyTable className="mb-4">
-                {event.level === "TRACE" ? (
-                  <Property label="Timeline">
-                    <Timeline
-                      startTime={new Date(event.startTime)}
-                      duration={event.duration}
-                      inProgress={event.isPartial}
-                      isError={event.isError}
-                    />
-                  </Property>
-                ) : (
-                  <Property label="Timestamp">
-                    <Paragraph variant="small/bright">
-                      <DateTime date={event.startTime} />
-                    </Paragraph>
-                  </Property>
-                )}
-                <Property label="Message">{event.message}</Property>
-              </PropertyTable>
+          <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
+        </div>
+      </div>
+      <div className="overflow-y-auto px-2 pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+        <PropertyTable className="mb-4">
+          {event.level === "TRACE" ? (
+            <Property label="Timeline">
+              <Timeline
+                startTime={new Date(event.startTime)}
+                duration={event.duration}
+                inProgress={event.isPartial}
+                isError={event.isError}
+              />
+            </Property>
+          ) : (
+            <Property label="Timestamp">
+              <Paragraph variant="small/bright">
+                <DateTime date={event.startTime} />
+              </Paragraph>
+            </Property>
+          )}
+          <Property label="Message">{event.message}</Property>
+        </PropertyTable>
 
-              {event.output !== null && (
-                <div>
-                  <Header3 spacing>Output</Header3>
-                  <CodeBlock code={event.output} />
-                </div>
-              )}
-              {event.properties !== null && (
-                <div>
-                  <Header3 spacing>Properties</Header3>
-                  <CodeBlock code={event.properties} />
-                </div>
-              )}
-            </div>
+        {event.output !== null && (
+          <div>
+            <Header3 spacing>Output</Header3>
+            <CodeBlock code={event.output} />
           </div>
         )}
-      </Await>
-    </Suspense>
+        {event.properties !== null && (
+          <div>
+            <Header3 spacing>Properties</Header3>
+            <CodeBlock code={event.properties} />
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
