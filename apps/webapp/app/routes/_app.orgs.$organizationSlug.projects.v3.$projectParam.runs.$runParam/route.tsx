@@ -28,6 +28,7 @@ import { useDebounce } from "~/hooks/useDebounce";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
+import { useThrottle } from "~/hooks/useThrottle";
 import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -64,17 +65,12 @@ export default function Page() {
   const organization = useOrganization();
   const pathName = usePathName();
   const project = useProject();
-  const { runParam } = useParams();
 
   const selectedSpanId = getSpanId(pathName);
 
-  const changeSpanSelection = useDebounce((selectedSpan: string | undefined) => {
-    if (!selectedSpan) {
-      navigate(v3RunPath(organization, project, run));
-      return;
-    }
+  const changeToSpan = useDebounce((selectedSpan: string) => {
     navigate(v3RunSpanPath(organization, project, run, { spanId: selectedSpan }));
-  }, 300);
+  }, 250);
 
   return (
     <>
@@ -94,7 +90,13 @@ export default function Page() {
                   events={events}
                   parentRunFriendlyId={parentRunFriendlyId}
                   onSelectedIdChanged={(selectedSpan) => {
-                    changeSpanSelection(selectedSpan);
+                    //instantly close the panel if no span is selected
+                    if (!selectedSpan) {
+                      navigate(v3RunPath(organization, project, run));
+                      return;
+                    }
+
+                    changeToSpan(selectedSpan);
                   }}
                 />
               </div>
