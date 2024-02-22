@@ -86,20 +86,32 @@ export default function Page() {
       </PageHeader>
       <PageBody scrollable={false}>
         <div className={cn("grid h-full max-h-full grid-cols-1")}>
-          <ResizablePanelGroup
-            direction="horizontal"
-            className="h-full max-h-full"
-            onLayout={(layout) => {
-              if (layout.length !== 2) return;
-              setResizableRunSettings(document, layout);
-            }}
-          >
-            <ResizablePanel
-              order={1}
-              minSize={30}
-              defaultSize={selectedSpanId ? resizeSettings.layout?.[0] : 100}
+          {selectedSpanId === undefined ? (
+            <TasksTreeView
+              selectedId={selectedSpanId}
+              key={events[0]?.id ?? "-"}
+              events={events}
+              parentRunFriendlyId={parentRunFriendlyId}
+              onSelectedIdChanged={(selectedSpan) => {
+                //instantly close the panel if no span is selected
+                if (!selectedSpan) {
+                  navigate(v3RunPath(organization, project, run));
+                  return;
+                }
+
+                changeToSpan(selectedSpan);
+              }}
+            />
+          ) : (
+            <ResizablePanelGroup
+              direction="horizontal"
+              className="h-full max-h-full"
+              onLayout={(layout) => {
+                if (layout.length !== 2) return;
+                setResizableRunSettings(document, layout);
+              }}
             >
-              <div className="h-full overflow-y-clip">
+              <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0]}>
                 <TasksTreeView
                   selectedId={selectedSpanId}
                   key={events[0]?.id ?? "-"}
@@ -115,17 +127,13 @@ export default function Page() {
                     changeToSpan(selectedSpan);
                   }}
                 />
-              </div>
-            </ResizablePanel>
-            {selectedSpanId !== undefined && (
-              <>
-                <ResizableHandle withHandle />
-                <ResizablePanel order={2} minSize={30} defaultSize={resizeSettings.layout?.[1]}>
-                  <Outlet key={selectedSpanId} />
-                </ResizablePanel>
-              </>
-            )}
-          </ResizablePanelGroup>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+              <ResizablePanel order={2} minSize={30} defaultSize={resizeSettings.layout?.[1]}>
+                <Outlet key={selectedSpanId} />
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          )}
         </div>
       </PageBody>
     </>
@@ -176,7 +184,7 @@ function TasksTreeView({
   });
 
   return (
-    <div className="px-3">
+    <div className="h-full overflow-y-clip px-3">
       <div className="flex h-8 items-center justify-between gap-2 border-b border-slate-850">
         <Input
           placeholder="Search log"
