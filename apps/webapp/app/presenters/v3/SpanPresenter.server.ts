@@ -1,10 +1,34 @@
 import { Attributes } from "@opentelemetry/api";
 import { TaskEventStyle } from "@trigger.dev/core/v3";
 import { unflattenAttributes } from "@trigger.dev/core/v3";
+import { z } from "zod";
 import { PrismaClient, prisma, Prisma } from "~/db.server";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = Result["event"];
+
+const OtelExceptionProperty = z.object({
+  type: z.string().optional(),
+  message: z.string().optional(),
+  stacktrace: z.string().optional(),
+});
+
+export type OtelExceptionProperty = z.infer<typeof OtelExceptionProperty>;
+
+const OtelSpanEvent = z.object({
+  name: z.string(),
+  time: z.coerce.date(),
+  properties: z
+    .object({
+      exception: OtelExceptionProperty.optional(),
+    })
+    .passthrough()
+    .optional(),
+});
+
+const OtelSpanEvents = z.array(OtelSpanEvent).optional();
+
+export type OtelSpanEvent = z.infer<typeof OtelSpanEvent>;
 
 export class SpanPresenter {
   #prismaClient: PrismaClient;
@@ -35,14 +59,17 @@ export class SpanPresenter {
     }
 
     // Find the project scoped to the organization
-    const events = await this.#prismaClient.taskEvent.findMany({
+    const matchingEvents = await this.#prismaClient.taskEvent.findMany({
       where: {
         spanId,
         projectId: project.id,
       },
     });
 
-    const event = events.length > 1 ? events.find((event) => !event.isPartial) : events.at(0);
+    const event =
+      matchingEvents.length > 1
+        ? matchingEvents.find((event) => !event.isPartial)
+        : matchingEvents.at(0);
     if (!event) {
       throw new Error("Span not found");
     }
@@ -50,9 +77,19 @@ export class SpanPresenter {
     const styleUnflattened = unflattenAttributes(event.style as Attributes);
     const style = TaskEventStyle.parse(styleUnflattened);
 
+    const eventsUnflattened = event.events
+      ? (event.events as any[]).map((e) => ({
+          ...e,
+          properties: unflattenAttributes(e.properties as Attributes),
+        }))
+      : undefined;
+    console.log("eventsUnflattened", eventsUnflattened);
+    const events = OtelSpanEvents.parse(eventsUnflattened);
+
     return {
       event: {
         ...event,
+        events,
         output: isEmptyJson(event.output) ? null : JSON.stringify(event.output, null, 2),
         properties: sanitizedAttributesStringified(event.properties),
         style,

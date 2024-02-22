@@ -17,6 +17,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { v3SpanParamsSchema } from "~/utils/pathBuilder";
 import { TaskPath } from "~/components/runs/v3/TaskPath";
+import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -92,6 +93,8 @@ export default function Page() {
               </Property>
             )}
           </PropertyTable>
+
+          {event.events !== undefined && <SpanEvents spanEvents={event.events} />}
 
           {event.output !== null && (
             <div>
