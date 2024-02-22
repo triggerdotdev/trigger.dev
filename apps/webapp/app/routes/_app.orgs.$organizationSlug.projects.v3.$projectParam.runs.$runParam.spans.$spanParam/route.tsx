@@ -2,9 +2,11 @@ import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
 import { ReactNode } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { VersionLabel } from "~/components/VersionLabel";
 import { CodeBlock } from "~/components/code/CodeBlock";
+import { InlineCode } from "~/components/code/InlineCode";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { eventTextClassName } from "~/components/runs/v3/EventText";
@@ -52,7 +54,7 @@ export default function Page() {
         <div className="flex flex-col gap-4">
           <PropertyTable>
             {event.level === "TRACE" ? (
-              <Property label="Timeline">
+              <Property label="Timeline" labelClassName="self-end">
                 <Timeline
                   startTime={new Date(event.startTime)}
                   duration={event.duration}
@@ -68,6 +70,22 @@ export default function Page() {
               </Property>
             )}
             <Property label="Message">{event.message}</Property>
+            <Property label="Task ID">{event.taskSlug}</Property>
+            {event.taskPath && <Property label="Task file">{event.taskPath}</Property>}
+            {event.taskExportName && (
+              <Property label="Task function">
+                <InlineCode variant="extra-small">{`${event.taskExportName}()`}</InlineCode>
+              </Property>
+            )}
+            {event.queueName && <Property label="Queue name">{event.queueName}</Property>}
+            {event.workerVersion && (
+              <Property label="Version">
+                <VersionLabel
+                  version={event.workerVersion}
+                  environment={{ type: event.environmentType }}
+                />
+              </Property>
+            )}
           </PropertyTable>
 
           {event.output !== null && (
@@ -76,7 +94,7 @@ export default function Page() {
               <CodeBlock code={event.output} maxLines={20} />
             </div>
           )}
-          {event.properties !== null && (
+          {event.properties !== undefined && (
             <div>
               <Header2 spacing>Properties</Header2>
               <CodeBlock code={event.properties} maxLines={20} />
@@ -89,18 +107,19 @@ export default function Page() {
 }
 
 function PropertyTable({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-2">{children}</div>;
+  return <div className="grid grid-cols-[auto,1fr] items-baseline gap-x-4 gap-y-2">{children}</div>;
 }
 
 type PropertyProps = {
   label: ReactNode;
+  labelClassName?: string;
   children: ReactNode;
 };
 
-function Property({ label, children }: PropertyProps) {
+function Property({ label, labelClassName, children }: PropertyProps) {
   return (
     <>
-      <div>
+      <div className={labelClassName}>
         {typeof label === "string" ? <Paragraph variant="small">{label}</Paragraph> : label}
       </div>
       <div>
@@ -127,7 +146,7 @@ function Timeline({ startTime, duration, inProgress, isError }: TimelineProps) {
   const state = isError ? "error" : inProgress ? "pending" : "complete";
   return (
     <div className="flex w-full flex-col">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-1">
         <Paragraph variant="small">
           <DateTime date={startTime} />
         </Paragraph>

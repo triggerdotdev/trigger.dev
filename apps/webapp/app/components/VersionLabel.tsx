@@ -1,12 +1,6 @@
 import { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
-import {
-  EnvironmentLabel,
-  environmentBorderClassName,
-  environmentColorClassName,
-  environmentTextClassName,
-  environmentTitle,
-} from "./environments/EnvironmentLabel";
 import { cn } from "~/utils/cn";
+import { environmentTextClassName, environmentTitle } from "./environments/EnvironmentLabel";
 
 type Environment = Pick<RuntimeEnvironment, "type">;
 
@@ -20,7 +14,7 @@ export function VersionLabel({ environment, userName, version }: VersionLabelPro
   return (
     <div
       className={cn(
-        "flex items-center justify-stretch justify-items-stretch rounded-sm border border-midnight-700 text-xxs"
+        "inline-flex items-center justify-stretch justify-items-stretch rounded-sm border border-midnight-700 text-xxs"
       )}
     >
       <div className="px-1 text-xs tabular-nums text-dimmed">v{version}</div>

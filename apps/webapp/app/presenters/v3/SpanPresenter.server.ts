@@ -51,14 +51,34 @@ export class SpanPresenter {
       event: {
         ...event,
         output: isEmptyJson(event.output) ? null : JSON.stringify(event.output, null, 2),
-        properties: event.properties
-          ? JSON.stringify(unflattenAttributes(event.properties as Attributes), null, 2)
-          : null,
+        properties: sanitizedAttributesStringified(event.properties),
         style: TaskEventStyle.parse(event.style),
         duration: Number(event.duration),
       },
     };
   }
+}
+
+function sanitizedAttributesStringified(json: Prisma.JsonValue): string | undefined {
+  const sanitizedAttributesValue = sanitizedAttributes(json);
+  if (!sanitizedAttributesValue) {
+    return;
+  }
+
+  return JSON.stringify(sanitizedAttributesValue, null, 2);
+}
+
+function sanitizedAttributes(json: Prisma.JsonValue): Record<string, unknown> | undefined {
+  if (json === null || json === undefined) {
+    return;
+  }
+
+  const withoutPrivateProperties = removePrivateProperties(json as Attributes);
+  if (!withoutPrivateProperties) {
+    return;
+  }
+
+  return unflattenAttributes(withoutPrivateProperties);
 }
 
 function isEmptyJson(json: Prisma.JsonValue) {
@@ -70,4 +90,29 @@ function isEmptyJson(json: Prisma.JsonValue) {
   }
 
   return false;
+}
+
+// removes keys that start with a $ sign. If there are no keys left, return undefined
+function removePrivateProperties(
+  attributes: Attributes | undefined | null
+): Attributes | undefined {
+  if (!attributes) {
+    return undefined;
+  }
+
+  const result: Attributes = {};
+
+  for (const [key, value] of Object.entries(attributes)) {
+    if (key.startsWith("$")) {
+      continue;
+    }
+
+    result[key] = value;
+  }
+
+  if (Object.keys(result).length === 0) {
+    return undefined;
+  }
+
+  return result;
 }
