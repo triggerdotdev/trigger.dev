@@ -3,7 +3,7 @@ import { PrismaClient, prisma } from "~/db.server";
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { Attributes, ROOT_CONTEXT, propagation, trace } from "@opentelemetry/api";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
-import { SemanticInternalAttributes, TASK_VARIANT } from "@trigger.dev/core/v3";
+import { SemanticInternalAttributes, PRIMARY_VARIANT } from "@trigger.dev/core/v3";
 import { flattenAttributes } from "@trigger.dev/core/v3";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
@@ -230,7 +230,7 @@ export class EventRepository {
 
     const style = {
       [SemanticInternalAttributes.STYLE_ICON]: "task",
-      [SemanticInternalAttributes.STYLE_VARIANT]: TASK_VARIANT,
+      [SemanticInternalAttributes.STYLE_VARIANT]: PRIMARY_VARIANT,
     };
 
     if (!options.attributes.runId) {

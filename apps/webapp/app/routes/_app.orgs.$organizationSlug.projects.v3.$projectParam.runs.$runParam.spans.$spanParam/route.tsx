@@ -9,13 +9,14 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
-import { eventTextClassName } from "~/components/runs/v3/EventText";
+import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { v3SpanParamsSchema } from "~/utils/pathBuilder";
+import { TaskPath } from "~/components/runs/v3/TaskPath";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -43,8 +44,8 @@ export default function Page() {
         <div className="flex h-8 items-center justify-between gap-2 border-b border-ui-border px-2">
           <div className="flex items-center gap-1 overflow-x-hidden">
             <RunIcon name={event.style?.icon} className="min-w-4 min-h-4 h-4 w-4" />
-            <Header2 className={cn("whitespace-nowrap", eventTextClassName(event))}>
-              {event.message}
+            <Header2 className={cn("whitespace-nowrap")}>
+              <SpanTitle {...event} size="large" />
             </Header2>
           </div>
           <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
@@ -71,12 +72,16 @@ export default function Page() {
             )}
             <Property label="Message">{event.message}</Property>
             <Property label="Task ID">{event.taskSlug}</Property>
-            {event.taskPath && <Property label="Task file">{event.taskPath}</Property>}
-            {event.taskExportName && (
-              <Property label="Task function">
-                <InlineCode variant="extra-small">{`${event.taskExportName}()`}</InlineCode>
+            {event.taskPath && event.taskExportName && (
+              <Property label="Task">
+                <TaskPath
+                  filePath={event.taskPath}
+                  functionName={`${event.taskExportName}()`}
+                  className="text-xs"
+                />
               </Property>
             )}
+
             {event.queueName && <Property label="Queue name">{event.queueName}</Property>}
             {event.workerVersion && (
               <Property label="Version">
@@ -151,9 +156,7 @@ function Timeline({ startTime, duration, inProgress, isError }: TimelineProps) {
           <DateTime date={startTime} /> UTC
         </Paragraph>
         {state === "pending" ? (
-          <Paragraph variant="small">
-            <LiveTimer startTime={startTime} />
-          </Paragraph>
+          <LiveTimer startTime={startTime} className="" />
         ) : (
           <Paragraph variant="small">
             <DateTime date={new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))} />

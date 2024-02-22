@@ -11,7 +11,12 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Input } from "~/components/primitives/Input";
-import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
+import {
+  PageButtons,
+  PageHeader,
+  PageTitle,
+  PageTitleRow,
+} from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   ResizableHandle,
@@ -21,7 +26,7 @@ import {
 import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
-import { eventTextClassName } from "~/components/runs/v3/EventText";
+import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { useDebounce } from "~/hooks/useDebounce";
@@ -34,6 +39,8 @@ import { getResizableRunSettings, setResizableRunSettings } from "~/services/res
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { v3RunParamsSchema, v3RunPath, v3RunSpanPath } from "~/utils/pathBuilder";
+import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { useUser } from "~/hooks/useUser";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -70,6 +77,7 @@ export default function Page() {
   const organization = useOrganization();
   const pathName = usePathName();
   const project = useProject();
+  const user = useUser();
 
   const selectedSpanId = getSpanId(pathName);
 
@@ -77,11 +85,16 @@ export default function Page() {
     navigate(v3RunSpanPath(organization, project, run, { spanId: selectedSpan }));
   }, 250);
 
+  const usernameForEnv = user.id !== run.environment.userId ? run.environment.userName : undefined;
+
   return (
     <>
       <PageHeader hideBorder>
         <PageTitleRow>
           <PageTitle title={`Run #${run.number}`} />
+          <PageButtons>
+            <EnvironmentLabel environment={run.environment} userName={usernameForEnv} />
+          </PageButtons>
         </PageTitleRow>
       </PageHeader>
       <PageBody scrollable={false}>
@@ -285,11 +298,8 @@ function TasksTreeView({
 function NodeText({ node }: { node: RunEvent }) {
   const className = "truncate";
   return (
-    <Paragraph
-      variant="small"
-      className={cn(className, eventTextClassName(node.data), node.data.isError && "text-rose-500")}
-    >
-      {node.data.message}
+    <Paragraph variant="small" className={cn(className)}>
+      <SpanTitle {...node.data} size="small" />
     </Paragraph>
   );
 }

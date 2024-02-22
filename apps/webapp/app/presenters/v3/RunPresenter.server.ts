@@ -1,4 +1,5 @@
-import { TaskEventStyle } from "@trigger.dev/core/v3";
+import { Attributes } from "@opentelemetry/api";
+import { TaskEventStyle, unflattenAttributes } from "@trigger.dev/core/v3";
 import { TaskEvent } from "@trigger.dev/database";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
 import { PrismaClient, prisma } from "~/db.server";
@@ -76,12 +77,15 @@ export class RunPresenter {
 
     const tree = createTreeFromFlatItems(
       events.map((event) => {
+        const styleUnflattened = unflattenAttributes(event.style as Attributes);
+        const style = TaskEventStyle.parse(styleUnflattened);
+
         return {
           id: event.spanId,
           parentId: event.parentId ?? undefined,
           data: {
             message: event.message,
-            style: TaskEventStyle.parse(event.style),
+            style,
             duration: Number(event.duration),
             isError: event.isError,
             isPartial: event.isPartial,

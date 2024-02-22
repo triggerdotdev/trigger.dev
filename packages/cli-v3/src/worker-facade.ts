@@ -41,6 +41,7 @@ import {
   workerToChildMessages,
   TaskRunExecutionRetry,
   calculateNextRetryTimestamp,
+  Accessory,
 } from "@trigger.dev/core/v3";
 import * as packageJson from "../package.json";
 
@@ -97,7 +98,7 @@ class TaskExecutor {
   ) {
     const parsedPayload = JSON.parse(execution.run.payload);
     const ctx = TaskRunContext.parse(execution);
-    const attemptMessage = `Attempt #${execution.attempt.number}`;
+    const attemptMessage = `Attempt ${execution.attempt.number}`;
 
     const output = await taskContextManager.runWith(
       {
@@ -112,13 +113,25 @@ class TaskExecutor {
           [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
         });
 
+        const accessory: Accessory = {
+          items: [
+            {
+              text: ctx.task.filePath,
+            },
+            {
+              text: `${ctx.task.exportName}()`,
+            },
+          ],
+          style: "codepath",
+        };
+
         return await tracer.startActiveSpan(
           attemptMessage,
           async (span) => {
             return await consoleInterceptor.intercept(console, async () => {
               const output = await this.task.run({
                 payload: parsedPayload,
-                ctx: TaskRunContext.parse(execution),
+                ctx,
               });
 
               span.setAttributes(flattenAttributes(output, SemanticInternalAttributes.OUTPUT));
@@ -130,6 +143,7 @@ class TaskExecutor {
             kind: SpanKind.CONSUMER,
             attributes: {
               [SemanticInternalAttributes.STYLE_ICON]: "attempt",
+              ...flattenAttributes(accessory, SemanticInternalAttributes.STYLE_ACCESSORY),
             },
           },
           tracer.extractContext(traceContext)

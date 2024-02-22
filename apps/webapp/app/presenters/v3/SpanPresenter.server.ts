@@ -47,12 +47,15 @@ export class SpanPresenter {
       throw new Error("Span not found");
     }
 
+    const styleUnflattened = unflattenAttributes(event.style as Attributes);
+    const style = TaskEventStyle.parse(styleUnflattened);
+
     return {
       event: {
         ...event,
         output: isEmptyJson(event.output) ? null : JSON.stringify(event.output, null, 2),
         properties: sanitizedAttributesStringified(event.properties),
-        style: TaskEventStyle.parse(event.style),
+        style,
         duration: Number(event.duration),
       },
     };

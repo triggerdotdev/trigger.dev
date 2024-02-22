@@ -21,6 +21,7 @@ export const SemanticInternalAttributes = {
   STYLE: "$style",
   STYLE_ICON: "$style.icon",
   STYLE_VARIANT: "$style.variant",
+  STYLE_ACCESSORY: "$style.accessory",
   METADATA: "$metadata",
   TRIGGER: "$trigger",
   PAYLOAD: "$payload",
