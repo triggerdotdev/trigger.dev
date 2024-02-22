@@ -1540,6 +1540,9 @@ model BackgroundWorkerTask {
   attempts TaskRunAttempt[]
   runs     TaskRun[]
 
+  queueConfig Json?
+  retryConfig Json?
+
   @@unique([workerId, slug])
 }
 
@@ -1684,7 +1687,8 @@ model TaskEvent {
   /// This is the duration of the event in nanoseconds
   duration BigInt @default(0)
 
-  attemptId String?
+  attemptId     String?
+  attemptNumber Int?
 
   environmentId   String
   environmentType RuntimeEnvironmentType

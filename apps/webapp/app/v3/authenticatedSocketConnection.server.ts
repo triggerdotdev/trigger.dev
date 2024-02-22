@@ -56,7 +56,8 @@ export class AuthenticatedSocketConnection {
             case "TASK_RUN_COMPLETED": {
               await this._environmentConsumer.taskRunCompleted(
                 payload.backgroundWorkerId,
-                payload.data.completion
+                payload.data.completion,
+                payload.data.execution
               );
               break;
             }

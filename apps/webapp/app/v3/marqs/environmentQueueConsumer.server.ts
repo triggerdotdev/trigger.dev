@@ -1,7 +1,12 @@
 import { Context, ROOT_CONTEXT, Span, SpanKind, context, trace } from "@opentelemetry/api";
 import {
+  RetryOptions,
+  TaskRunContext,
+  TaskRunExecution,
   TaskRunExecutionResult,
   ZodMessageSender,
+  defaultRetryOptions,
+  flattenAttributes,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
 import { BackgroundWorker, BackgroundWorkerTask } from "@trigger.dev/database";
@@ -12,6 +17,7 @@ import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "../marqs.server";
 import { attributesFromAuthenticatedEnv } from "../tracer.server";
+import { eventRepository } from "../eventRepository.server";
 
 const tracer = trace.getTracer("environmentQueueConsumer");
 
@@ -72,8 +78,12 @@ export class EnvironmentQueueConsumer {
     this.#enable();
   }
 
-  public async taskRunCompleted(workerId: string, completion: TaskRunExecutionResult) {
-    logger.debug("Task run completed", { taskRunCompletion: completion });
+  public async taskRunCompleted(
+    workerId: string,
+    completion: TaskRunExecutionResult,
+    execution: TaskRunExecution
+  ) {
+    logger.debug("Task run completed", { taskRunCompletion: completion, execution });
 
     const taskRunAttempt = completion.ok
       ? await prisma.taskRunAttempt.update({
@@ -84,6 +94,10 @@ export class EnvironmentQueueConsumer {
             output: completion.output,
             outputType: completion.outputType,
           },
+          include: {
+            taskRun: true,
+            backgroundWorkerTask: true,
+          },
         })
       : await prisma.taskRunAttempt.update({
           where: { friendlyId: completion.id },
@@ -91,6 +105,10 @@ export class EnvironmentQueueConsumer {
             status: "FAILED",
             completedAt: new Date(),
             error: completion.error,
+          },
+          include: {
+            taskRun: true,
+            backgroundWorkerTask: true,
           },
         });
 
@@ -100,7 +118,61 @@ export class EnvironmentQueueConsumer {
       this._taskFailures++;
     }
 
-    await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
+    if (!completion.ok && completion.retry !== undefined) {
+      const retryConfig = taskRunAttempt.backgroundWorkerTask.retryConfig
+        ? {
+            ...defaultRetryOptions,
+            ...RetryOptions.parse(taskRunAttempt.backgroundWorkerTask.retryConfig),
+          }
+        : undefined;
+
+      const retryAt = new Date(completion.retry.timestamp);
+      // Retry the task run
+      await eventRepository.recordEvent(
+        retryConfig?.maxAttempts
+          ? `Retry ${execution.attempt.number}/${retryConfig?.maxAttempts - 1} delay`
+          : `Retry #${execution.attempt.number} delay`,
+        {
+          taskSlug: taskRunAttempt.taskRun.taskIdentifier,
+          environment: this.env,
+          attributes: {
+            metadata: this.#generateMetadataAttributesForNextAttempt(execution),
+            properties: {
+              retryAt: retryAt.toISOString(),
+              factor: retryConfig?.factor,
+              maxAttempts: retryConfig?.maxAttempts,
+              minTimeoutInMs: retryConfig?.minTimeoutInMs,
+              maxTimeoutInMs: retryConfig?.maxTimeoutInMs,
+              randomize: retryConfig?.randomize,
+            },
+            runId: taskRunAttempt.taskRunId,
+            style: {
+              icon: "schedule-attempt",
+            },
+            queueId: taskRunAttempt.queueId,
+            queueName: taskRunAttempt.taskRun.queue,
+          },
+          context: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
+          spanIdSeed: `retry-${taskRunAttempt.number + 1}`,
+          endTime: retryAt,
+        }
+      );
+
+      await marqs?.nackMessage(taskRunAttempt.taskRunId, completion.retry.timestamp);
+    } else {
+      await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
+    }
+  }
+
+  #generateMetadataAttributesForNextAttempt(execution: TaskRunExecution) {
+    const context = TaskRunContext.parse(execution);
+
+    // @ts-ignore
+    context.attempt = {
+      number: context.attempt.number + 1,
+    };
+
+    return flattenAttributes(context, "ctx");
   }
 
   public async taskHeartbeat(workerId: string, id: string, seconds: number = 60) {

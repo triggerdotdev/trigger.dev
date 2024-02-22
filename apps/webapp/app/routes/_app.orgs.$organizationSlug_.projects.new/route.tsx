@@ -160,7 +160,7 @@ export default function NewOrganizationPage() {
                 <FormError id={projectVersion.errorId}>{projectVersion.error}</FormError>
               </InputGroup>
             ) : (
-              <input type="hidden" name="projectType" value="v2" />
+              <input {...conform.input(projectVersion, { type: "hidden" })} value="v2" />
             )}
             <FormButtons
               confirmButton={

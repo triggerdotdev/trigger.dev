@@ -129,10 +129,17 @@ export const TaskRunContext = z.object({
 
 export type TaskRunContext = z.infer<typeof TaskRunContext>;
 
+export const TaskRunExecutionRetry = z.object({
+  timestamp: z.number(),
+});
+
+export type TaskRunExecutionRetry = z.infer<typeof TaskRunExecutionRetry>;
+
 export const TaskRunFailedExecutionResult = z.object({
   ok: z.literal(false),
   id: z.string(),
   error: TaskRunError,
+  retry: TaskRunExecutionRetry.optional(),
 });
 
 export type TaskRunFailedExecutionResult = z.infer<typeof TaskRunFailedExecutionResult>;
