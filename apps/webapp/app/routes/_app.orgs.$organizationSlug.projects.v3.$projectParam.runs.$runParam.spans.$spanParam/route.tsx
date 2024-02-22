@@ -65,7 +65,7 @@ export default function Page() {
             ) : (
               <Property label="Timestamp">
                 <Paragraph variant="small/bright">
-                  <DateTime date={event.startTime} />
+                  <DateTime date={event.startTime} /> UTC
                 </Paragraph>
               </Property>
             )}
@@ -148,7 +148,7 @@ function Timeline({ startTime, duration, inProgress, isError }: TimelineProps) {
     <div className="flex w-full flex-col">
       <div className="flex items-center justify-between gap-1">
         <Paragraph variant="small">
-          <DateTime date={startTime} />
+          <DateTime date={startTime} /> UTC
         </Paragraph>
         {state === "pending" ? (
           <Paragraph variant="small">
