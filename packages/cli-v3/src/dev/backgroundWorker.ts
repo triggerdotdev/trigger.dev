@@ -381,12 +381,12 @@ export class BackgroundWorker {
     execution: TaskRunExecution
   ): string | undefined {
     // Split the line into parts
-    const regex = /at (.*?) \(file:\/\/(\/.*?\.mjs):(\d+):(\d+)\)/;
+    const regex = /at (.*?) \(?file:\/\/(\/.*?\.mjs):(\d+):(\d+)\)?/;
 
     const match = regex.exec(line);
 
     if (!match) {
-      return line;
+      return;
     }
 
     const [_, identifier, path, lineNum, colNum] = match;
@@ -397,7 +397,7 @@ export class BackgroundWorker {
     });
 
     if (!originalPosition.source) {
-      return line;
+      return;
     }
 
     const { source, line: originalLine, column: originalColumn } = originalPosition;
@@ -423,6 +423,14 @@ export class BackgroundWorker {
     }
 
     if (line.identifier === "async ZodMessageHandler.handleMessage") {
+      return true;
+    }
+
+    if (line.identifier === "async ConsoleInterceptor.intercept") {
+      return true;
+    }
+
+    if (line.path?.includes("packages/core/src")) {
       return true;
     }
 
