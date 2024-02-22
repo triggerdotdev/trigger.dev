@@ -19,7 +19,7 @@ import {
   jobRunsParentPath,
   organizationIntegrationsPath,
 } from "~/utils/pathBuilder";
-import { ListPagination } from "./ListPagination";
+import { ListPagination } from "../../components/ListPagination";
 import { RunListSearchSchema } from "~/components/runs/RunStatuses";
 import { RunsFilters } from "~/components/runs/RunFilters";
 

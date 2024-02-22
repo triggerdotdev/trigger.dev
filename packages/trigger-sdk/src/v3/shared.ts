@@ -3,10 +3,12 @@ import { SemanticAttributes } from "@opentelemetry/semantic-conventions";
 import {
   SdkApiClient,
   QueueOptions,
+  RetryOptions,
   TaskRunContext,
   createErrorTaskError,
   runtime,
   taskContextManager,
+  defaultRetryOptions,
 } from "@trigger.dev/core/v3";
 import * as packageJson from "../../package.json";
 import { tracer } from "./tracer";
@@ -56,9 +58,7 @@ export function queue(options: { name: string } & QueueOptions): Queue {
 
 export type RunOptions<TPayload, TOutput = any, TPreparedItems extends PreparedItems = any> = {
   id: string;
-  retry?: {
-    maxAttempts?: number;
-  };
+  retry?: RetryOptions;
   queue?: QueueOptions;
   machine?: {
     image?: "ffmpeg" | "puppeteer";
@@ -223,6 +223,7 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
       run: params.run,
       packageVersion: packageJson.version,
       queue: params.queue,
+      retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     },
     enumerable: false,
   });

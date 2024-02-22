@@ -39,6 +39,8 @@ import {
   runtime,
   taskContextManager,
   workerToChildMessages,
+  TaskRunExecutionRetry,
+  calculateNextRetryTimestamp,
 } from "@trigger.dev/core/v3";
 import * as packageJson from "../package.json";
 
@@ -73,6 +75,21 @@ declare const __TASKS__: Record<string, string>;
 class TaskExecutor {
   constructor(public task: TaskMetadataWithRun) {}
 
+  async determineRetrying(
+    execution: TaskRunExecution,
+    error: unknown
+  ): Promise<TaskRunExecutionRetry | undefined> {
+    if (!this.task.retry) {
+      return;
+    }
+
+    const retry = this.task.retry;
+
+    const timestamp = calculateNextRetryTimestamp(retry, execution.attempt.number);
+
+    return timestamp ? { timestamp } : undefined;
+  }
+
   async execute(
     execution: TaskRunExecution,
     worker: BackgroundWorkerProperties,
@@ -80,6 +97,7 @@ class TaskExecutor {
   ) {
     const parsedPayload = JSON.parse(execution.run.payload);
     const ctx = TaskRunContext.parse(execution);
+    const attemptMessage = `Attempt #${execution.attempt.number}`;
 
     const output = await taskContextManager.runWith(
       {
@@ -95,7 +113,7 @@ class TaskExecutor {
         });
 
         return await tracer.startActiveSpan(
-          `Attempt #${execution.attempt.number}`,
+          attemptMessage,
           async (span) => {
             return await consoleInterceptor.intercept(console, async () => {
               const output = await this.task.run({
@@ -111,7 +129,7 @@ class TaskExecutor {
           {
             kind: SpanKind.CONSUMER,
             attributes: {
-              [SemanticInternalAttributes.STYLE_ICON]: "task",
+              [SemanticInternalAttributes.STYLE_ICON]: "attempt",
             },
           },
           tracer.extractContext(traceContext)
@@ -138,6 +156,7 @@ function getTasks(): Array<TaskMetadataWithRun> {
           filePath: (taskFile as any).filePath,
           queue: (task as any).__trigger.queue,
           run: (task as any).__trigger.run,
+          retry: (task as any).__trigger.retry,
         });
       }
     }
@@ -179,7 +198,7 @@ const handler = new ZodMessageHandler({
   schema: workerToChildMessages,
   messages: {
     EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }) => {
-      process.title = `trigger-dev-worker: ${execution.task.id} ${execution.attempt.id}`;
+      process.title = `trigger-dev-worker: ${execution.task.id} ${execution.run.id}`;
 
       const executor = taskExecutors.get(execution.task.id);
 
@@ -187,6 +206,7 @@ const handler = new ZodMessageHandler({
         console.error(`Could not find executor for task ${execution.task.id}`);
 
         await sender.send("TASK_RUN_COMPLETED", {
+          execution,
           result: {
             ok: false,
             id: execution.attempt.id,
@@ -207,6 +227,7 @@ const handler = new ZodMessageHandler({
         const result = await executor.execute(execution, metadata, traceContext);
 
         return sender.send("TASK_RUN_COMPLETED", {
+          execution,
           result: {
             id: execution.attempt.id,
             ok: true,
@@ -215,10 +236,12 @@ const handler = new ZodMessageHandler({
         });
       } catch (e) {
         return sender.send("TASK_RUN_COMPLETED", {
+          execution,
           result: {
             id: execution.attempt.id,
             ok: false,
             error: parseError(e),
+            retry: await executor.determineRetrying(execution, e),
           },
         });
       } finally {
@@ -226,16 +249,19 @@ const handler = new ZodMessageHandler({
         _isRunning = false;
       }
     },
-    TASK_RUN_COMPLETED: async ({ completion, execution }) => {
+    TASK_RUN_COMPLETED_NOTIFICATION: async ({ completion, execution }) => {
       devRuntimeManager.resumeTask(completion, execution);
     },
-    CLEANUP: async ({ flush }) => {
-      if (flush) {
-        await tracingSDK.flushOtel();
+    CLEANUP: async ({ flush, kill }) => {
+      if (kill) {
+        // Now we need to exit the process
+        await sender.send("READY_TO_DISPOSE", undefined);
+        await tracingSDK.shutdown();
+      } else {
+        if (flush) {
+          await tracingSDK.flush();
+        }
       }
-
-      // Now we need to exit the process
-      await sender.send("READY_TO_DISPOSE", undefined);
     },
   },
 });

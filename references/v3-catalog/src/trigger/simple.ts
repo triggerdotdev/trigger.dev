@@ -8,7 +8,7 @@ export const simplestTask = task({
       body: JSON.stringify({
         hello: "world",
         taskId: "fetch-post-task",
-        foo: "barrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+        foo: "barrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
       }),
     });
 
@@ -62,7 +62,10 @@ export const parentTask = task({
   run: async ({ payload, ctx }: { payload: { message: string }; ctx: Context }) => {
     logger.info("Parent task payload", { payload });
 
+    console.info("This is an info message");
     console.log(JSON.stringify({ ctx, message: "This is the parent task context" }));
+    console.warn("You've been warned buddy");
+    console.error("This is an error message");
 
     await wait.for({ seconds: 5 });
 

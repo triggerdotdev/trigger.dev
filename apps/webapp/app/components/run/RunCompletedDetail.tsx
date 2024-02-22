@@ -3,7 +3,6 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RunStatusIcon, RunStatusLabel } from "~/components/runs/RunStatuses";
 import { MatchedRun } from "~/hooks/useRun";
-import { formatDuration } from "~/utils";
 import {
   RunPanel,
   RunPanelBody,
@@ -13,6 +12,7 @@ import {
   RunPanelIconProperty,
   RunPanelIconSection,
 } from "./RunCard";
+import { formatDuration } from "@trigger.dev/core/v3";
 
 export function RunCompletedDetail({ run }: { run: MatchedRun }) {
   return (

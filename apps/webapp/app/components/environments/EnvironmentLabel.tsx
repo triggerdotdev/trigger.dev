@@ -50,3 +50,29 @@ export function environmentColorClassName(environment: Environment) {
       return "bg-yellow-500";
   }
 }
+
+export function environmentBorderClassName(environment: Environment) {
+  switch (environment.type) {
+    case "PRODUCTION":
+      return "border-green-500";
+    case "STAGING":
+      return "border-amber-500";
+    case "DEVELOPMENT":
+      return "border-pink-500";
+    case "PREVIEW":
+      return "border-yellow-500";
+  }
+}
+
+export function environmentTextClassName(environment: Environment) {
+  switch (environment.type) {
+    case "PRODUCTION":
+      return "text-green-500";
+    case "STAGING":
+      return "text-amber-500";
+    case "DEVELOPMENT":
+      return "text-pink-500";
+    case "PREVIEW":
+      return "text-yellow-500";
+  }
+}

@@ -17,7 +17,7 @@ import { useUser } from "~/hooks/useUser";
 import { RunListPresenter } from "~/presenters/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { ProjectParamSchema, docsPath, projectPath } from "~/utils/pathBuilder";
-import { ListPagination } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/ListPagination";
+import { ListPagination } from "../../components/ListPagination";
 import { RunListSearchSchema } from "~/components/runs/RunStatuses";
 import { RunsFilters } from "~/components/runs/RunFilters";
 import { Suspense } from "react";

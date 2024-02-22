@@ -414,6 +414,8 @@ model Project {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
+  version ProjectVersion @default(V2)
+
   environments          RuntimeEnvironment[]
   endpoints             Endpoint[]
   jobs                  Job[]
@@ -429,6 +431,11 @@ model Project {
   taskTags              TaskTag[]
   taskQueues            TaskQueue[]
   imageDetails          ImageDetails[]
+}
+
+enum ProjectVersion {
+  V2
+  V3
 }
 
 model Endpoint {
@@ -1489,6 +1496,8 @@ model BackgroundWorker {
   friendlyId String @unique
 
   contentHash String
+  sdkVersion  String @default("unknown")
+  cliVersion  String @default("unknown")
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
@@ -1534,12 +1543,16 @@ model BackgroundWorkerTask {
   attempts TaskRunAttempt[]
   runs     TaskRun[]
 
+  queueConfig Json?
+  retryConfig Json?
+
   @@unique([workerId, slug])
 }
 
 model TaskRun {
   id String @id @default(cuid())
 
+  number     Int    @default(0)
   friendlyId String @unique
 
   idempotencyKey String
@@ -1580,6 +1593,11 @@ model TaskRun {
   concurrencyKey String?
 
   @@unique([runtimeEnvironmentId, idempotencyKey])
+}
+
+model TaskRunCounter {
+  taskIdentifier String @id
+  lastNumber     Int    @default(0)
 }
 
 model TaskTag {
@@ -1672,7 +1690,8 @@ model TaskEvent {
   /// This is the duration of the event in nanoseconds
   duration BigInt @default(0)
 
-  attemptId String?
+  attemptId     String?
+  attemptNumber Int?
 
   environmentId   String
   environmentType RuntimeEnvironmentType

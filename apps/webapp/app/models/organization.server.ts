@@ -22,9 +22,11 @@ export async function createOrganization(
     userId,
     projectName,
     companySize,
+    projectVersion,
   }: Pick<Organization, "title" | "companySize"> & {
     userId: User["id"];
     projectName: string;
+    projectVersion: "v2" | "v3";
   },
   attemptCount = 0
 ): Promise<Organization & { projects: Project[] }> {
@@ -49,6 +51,7 @@ export async function createOrganization(
         userId,
         projectName,
         companySize,
+        projectVersion,
       },
       attemptCount + 1
     );
@@ -75,6 +78,7 @@ export async function createOrganization(
     organizationSlug: organization.slug,
     name: projectName,
     userId,
+    version: projectVersion,
   });
 
   return { ...organization, projects: [project] };

@@ -31,7 +31,10 @@ export type OTLPExporterConfig = {
 };
 
 class OTLPExporter {
-  constructor(private readonly _eventRepository: EventRepository) {}
+  constructor(
+    private readonly _eventRepository: EventRepository,
+    private readonly _verbose: boolean
+  ) {}
 
   async exportTraces(request: ExportTraceServiceRequest): Promise<ExportTraceServiceResponse> {
     const events = this.#filterResourceSpans(request.resourceSpans).flatMap((resourceSpan) => {
@@ -89,6 +92,8 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
 
   return resourceLog.scopeLogs.flatMap((scopeLog) => {
     return scopeLog.logRecords.map((log) => {
+      const logLevel = logLevelToEventLevel(log.severityNumber);
+
       return {
         traceId: binaryToHex(log.traceId),
         spanId: eventRepository.generateSpanId(),
@@ -97,6 +102,7 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
         isPartial: false,
         kind: "INTERNAL",
         level: logLevelToEventLevel(log.severityNumber),
+        isError: logLevel === "ERROR",
         status: logLevelToEventStatus(log.severityNumber),
         startTime: convertUnixNanoToDate(log.timeUnixNano),
         properties: {
@@ -119,6 +125,12 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
           []
         ),
         ...resourceProperties,
+        attemptId:
+          extractStringAttribute(log.attributes ?? [], SemanticInternalAttributes.ATTEMPT_ID) ??
+          resourceProperties.attemptId,
+        attemptNumber:
+          extractNumberAttribute(log.attributes ?? [], SemanticInternalAttributes.ATTEMPT_NUMBER) ??
+          resourceProperties.attemptNumber,
       };
     });
   });
@@ -145,6 +157,7 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
         parentId: binaryToHex(span.parentSpanId),
         message: span.name,
         isPartial,
+        isError: span.status?.code === Status_StatusCode.ERROR,
         kind: spanKindToEventKind(span.kind),
         level: "TRACE",
         status: spanStatusToEventStatus(span.status),
@@ -172,6 +185,14 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
           []
         ),
         ...resourceProperties,
+        attemptId:
+          extractStringAttribute(span.attributes ?? [], SemanticInternalAttributes.ATTEMPT_ID) ??
+          resourceProperties.attemptId,
+        attemptNumber:
+          extractNumberAttribute(
+            span.attributes ?? [],
+            SemanticInternalAttributes.ATTEMPT_NUMBER
+          ) ?? resourceProperties.attemptNumber,
       };
     });
   });
@@ -213,6 +234,7 @@ function extractResourceProperties(attributes: KeyValue[]) {
     ),
     runId: extractStringAttribute(attributes, SemanticInternalAttributes.RUN_ID, "unknown"),
     attemptId: extractStringAttribute(attributes, SemanticInternalAttributes.ATTEMPT_ID),
+    attemptNumber: extractNumberAttribute(attributes, SemanticInternalAttributes.ATTEMPT_NUMBER),
     taskSlug: extractStringAttribute(attributes, SemanticInternalAttributes.TASK_SLUG, "unknown"),
     taskPath: extractStringAttribute(attributes, SemanticInternalAttributes.TASK_PATH),
     taskExportName: extractStringAttribute(attributes, SemanticInternalAttributes.TASK_EXPORT_NAME),
@@ -427,6 +449,20 @@ function extractStringAttribute(
   return isStringValue(attribute?.value) ? attribute.value.value.stringValue : fallback;
 }
 
+function extractNumberAttribute(attributes: KeyValue[], name: string): number | undefined;
+function extractNumberAttribute(attributes: KeyValue[], name: string, fallback: number): number;
+function extractNumberAttribute(
+  attributes: KeyValue[],
+  name: string,
+  fallback?: number
+): number | undefined {
+  const attribute = attributes.find((attribute) => attribute.key === name);
+
+  if (!attribute) return fallback;
+
+  return isIntValue(attribute?.value) ? Number(attribute.value.value.intValue) : fallback;
+}
+
 function isPartialSpan(span: Span): boolean {
   if (!span.attributes) return false;
 
@@ -487,4 +523,4 @@ function binaryToHex(buffer: Buffer | undefined): string | undefined {
   return Buffer.from(Array.from(buffer)).toString("hex");
 }
 
-export const otlpExporter = new OTLPExporter(eventRepository);
+export const otlpExporter = new OTLPExporter(eventRepository, true);

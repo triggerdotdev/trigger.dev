@@ -41,20 +41,11 @@ export const meta: TypedMetaFunction<typeof loader> = (args) => {
   });
 };
 
-export function useV3Enabled() {
-  const routeMatch = useTypedMatchesData<typeof loader>({
-    id: "root",
-  });
-
-  return routeMatch?.v3Enabled ?? false;
-}
-
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const session = await getSession(request.headers.get("cookie"));
   const toastMessage = session.get("toastMessage") as ToastMessage;
   const posthogProjectKey = env.POSTHOG_PROJECT_KEY;
   const highlightProjectId = env.HIGHLIGHT_PROJECT_ID;
-  const v3Enabled = env.V3_ENABLED === "true";
   const features = featuresForRequest(request);
 
   return typedjson(
@@ -66,7 +57,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       features,
       appEnv: env.APP_ENV,
       appOrigin: env.APP_ORIGIN,
-      v3Enabled,
     },
     { headers: { "Set-Cookie": await commitSession(session) } }
   );

@@ -16,7 +16,7 @@ import { RunListSearchSchema } from "~/components/runs/RunStatuses";
 import { RunListPresenter } from "~/presenters/RunListPresenter.server";
 import { RunsTable } from "~/components/runs/RunsTable";
 import { RunsFilters } from "~/components/runs/RunFilters";
-import { ListPagination } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/ListPagination";
+import { ListPagination } from "../../components/ListPagination";
 import { useUser } from "~/hooks/useUser";
 import { useNavigation } from "@remix-run/react";
 

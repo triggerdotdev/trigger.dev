@@ -24,6 +24,7 @@ export class ProjectPresenter {
         createdAt: true,
         updatedAt: true,
         deletedAt: true,
+        version: true,
         _count: {
           select: {
             sources: {
@@ -69,6 +70,7 @@ export class ProjectPresenter {
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
       deletedAt: project.deletedAt,
+      version: project.version,
       hasInactiveExternalTriggers: project._count.sources > 0,
       jobCount: project._count.jobs,
       httpEndpointCount: project._count.httpEndpoints,
