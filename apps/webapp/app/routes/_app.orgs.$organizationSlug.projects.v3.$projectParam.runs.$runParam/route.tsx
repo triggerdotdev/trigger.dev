@@ -30,6 +30,7 @@ import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
 import { useThrottle } from "~/hooks/useThrottle";
 import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { getResizableRunSettings } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { v3RunParamsSchema, v3RunPath, v3RunSpanPath } from "~/utils/pathBuilder";
@@ -46,10 +47,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     runFriendlyId: runParam,
   });
 
+  //resizable settings
+  const resizeSettings = (await getResizableRunSettings(request)) ?? [60, 40];
+  console.log("resizeSettings", resizeSettings);
+
   return typedjson({
     run,
     events,
     parentRunFriendlyId,
+    resizeSettings,
   });
 };
 
@@ -60,7 +66,7 @@ function getSpanId(path: string): string | undefined {
 }
 
 export default function Page() {
-  const { run, events, parentRunFriendlyId } = useTypedLoaderData<typeof loader>();
+  const { run, events, parentRunFriendlyId, resizeSettings } = useTypedLoaderData<typeof loader>();
   const navigate = useNavigate();
   const organization = useOrganization();
   const pathName = usePathName();
@@ -80,9 +86,15 @@ export default function Page() {
         </PageTitleRow>
       </PageHeader>
       <PageBody scrollable={false}>
-        <div className={cn("grid h-full max-h-full grid-cols-1 gap-4")}>
-          <ResizablePanelGroup direction="horizontal" className="h-full max-h-full">
-            <ResizablePanel order={1} minSize={30}>
+        <div className={cn("grid h-full max-h-full grid-cols-1")}>
+          <ResizablePanelGroup
+            direction="horizontal"
+            className="h-full max-h-full"
+            onLayout={(layout) => {
+              document.cookie = `react-resizable-panels:layout=${JSON.stringify({ run: layout })}`;
+            }}
+          >
+            <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.run?.[0]}>
               <div className="h-full overflow-y-clip">
                 <TasksTreeView
                   selectedId={selectedSpanId}
@@ -104,7 +116,7 @@ export default function Page() {
             {selectedSpanId !== undefined && (
               <>
                 <ResizableHandle withHandle />
-                <ResizablePanel order={2} minSize={30} defaultSize={40}>
+                <ResizablePanel order={2} minSize={30} defaultSize={resizeSettings.run?.[1]}>
                   <Outlet key={selectedSpanId} />
                 </ResizablePanel>
               </>
