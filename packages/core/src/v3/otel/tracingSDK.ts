@@ -1,4 +1,5 @@
 import { TracerProvider } from "@opentelemetry/api";
+import { logs } from "@opentelemetry/api-logs";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import {
@@ -6,21 +7,27 @@ import {
   type InstrumentationOption,
 } from "@opentelemetry/instrumentation";
 import {
+  DetectorSync,
   IResource,
   Resource,
   ResourceAttributes,
+  ResourceDetectionConfig,
   detectResourcesSync,
 } from "@opentelemetry/resources";
 import { LoggerProvider, SimpleLogRecordProcessor } from "@opentelemetry/sdk-logs";
-import { NodeTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-node";
-import { logs } from "@opentelemetry/api-logs";
-import { DetectorSync, ResourceDetectionConfig } from "@opentelemetry/resources";
+import {
+  NodeTracerProvider,
+  SimpleSpanProcessor,
+  SpanExporter,
+} from "@opentelemetry/sdk-trace-node";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes";
+import { TaskContextLogProcessor, TaskContextSpanProcessor } from "../tasks/taskContextManager";
 
 class AsyncResourceDetector implements DetectorSync {
   private _promise: Promise<ResourceAttributes>;
   private _resolver?: (value: ResourceAttributes) => void;
+  private _resolved: boolean = false;
 
   constructor() {
     this._promise = new Promise((resolver) => {
@@ -37,6 +44,11 @@ class AsyncResourceDetector implements DetectorSync {
       throw new Error("Resolver not available");
     }
 
+    if (this._resolved) {
+      return;
+    }
+
+    this._resolved = true;
     this._resolver(attributes);
   }
 }
@@ -51,7 +63,8 @@ export type TracingSDKConfig = {
 export class TracingSDK {
   public readonly asyncResourceDetector = new AsyncResourceDetector();
   private readonly _logProvider: LoggerProvider;
-  private readonly _traceExporter: OTLPTraceExporter;
+  private readonly _spanExporter: SpanExporter;
+  private readonly _traceProvider: TracerProvider;
 
   public readonly getLogger: LoggerProvider["getLogger"];
   public readonly getTracer: TracerProvider["getTracer"];
@@ -68,18 +81,20 @@ export class TracingSDK {
       )
       .merge(config.resource ?? new Resource({}));
 
-    const provider = new NodeTracerProvider({
+    const traceProvider = new NodeTracerProvider({
       forceFlushTimeoutMillis: config.forceFlushTimeoutMillis ?? 500,
       resource: commonResources,
     });
 
-    const exporter = new OTLPTraceExporter({
+    const spanExporter = new OTLPTraceExporter({
       url: `${config.url}/v1/traces`,
       timeoutMillis: config.forceFlushTimeoutMillis ?? 1000,
     });
 
-    provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
-    provider.register();
+    traceProvider.addSpanProcessor(
+      new TaskContextSpanProcessor(new SimpleSpanProcessor(spanExporter))
+    );
+    traceProvider.register();
 
     registerInstrumentations({
       instrumentations: config.instrumentations ?? [],
@@ -94,19 +109,27 @@ export class TracingSDK {
       resource: commonResources,
     });
 
-    loggerProvider.addLogRecordProcessor(new SimpleLogRecordProcessor(logExporter));
+    loggerProvider.addLogRecordProcessor(
+      new TaskContextLogProcessor(new SimpleLogRecordProcessor(logExporter))
+    );
 
     this._logProvider = loggerProvider;
-    this._traceExporter = exporter;
+    this._spanExporter = spanExporter;
+    this._traceProvider = traceProvider;
 
     logs.setGlobalLoggerProvider(loggerProvider);
 
     this.getLogger = loggerProvider.getLogger.bind(loggerProvider);
-    this.getTracer = provider.getTracer.bind(provider);
+    this.getTracer = traceProvider.getTracer.bind(traceProvider);
   }
 
-  public async flushOtel() {
-    await this._traceExporter.forceFlush();
+  public async flush() {
+    await this._spanExporter.forceFlush?.();
     await this._logProvider.forceFlush();
+  }
+
+  public async shutdown() {
+    await this._spanExporter.shutdown();
+    await this._logProvider.shutdown();
   }
 }

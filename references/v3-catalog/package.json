@@ -7,7 +7,8 @@
     "start": "ts-node -r tsconfig-paths/register -r dotenv/config src/index.ts",
     "start:concurrency": "ts-node -r tsconfig-paths/register -r dotenv/config src/concurrencyUsage.ts",
     "start:longRunning": "ts-node -r tsconfig-paths/register -r dotenv/config src/longRunningUsage.ts",
-    "start:openai": "ts-node -r tsconfig-paths/register -r dotenv/config src/openaiUsage.ts"
+    "start:openai": "ts-node -r tsconfig-paths/register -r dotenv/config src/openaiUsage.ts",
+    "start:retries": "ts-node -r tsconfig-paths/register -r dotenv/config src/retriesUsage.ts"
   },
   "dependencies": {
     "@trigger.dev/sdk": "workspace:*",

@@ -291,7 +291,7 @@ export class MarQS {
   /**
    * Negative acknowledge a message, which will requeue the message
    */
-  public async nackMessage(messageId: string) {
+  public async nackMessage(messageId: string, retryAt: number = Date.now()) {
     return this.#trace(
       "nackMessage",
       async (span) => {
@@ -315,7 +315,7 @@ export class MarQS {
           concurrencyKey: `${message.queue}:${constants.CURRENT_CONCURRENCY_PART}`,
           visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
           messageId,
-          messageScore: message.timestamp,
+          messageScore: retryAt,
         });
       },
       { kind: SpanKind.CONSUMER }

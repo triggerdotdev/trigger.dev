@@ -229,12 +229,13 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
     );
 
     backgroundWorkerCoordinator.onTaskCompleted.attach(
-      async ({ backgroundWorkerId, completion }) => {
+      async ({ backgroundWorkerId, completion, execution }) => {
         await sender.send("BACKGROUND_WORKER_MESSAGE", {
           backgroundWorkerId,
           data: {
             type: "TASK_RUN_COMPLETED",
             completion,
+            execution,
           },
         });
       }
