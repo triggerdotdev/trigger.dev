@@ -65,8 +65,11 @@ export function unflattenAttributes(obj: Attributes): Record<string, unknown> {
 
       // Check if part is not undefined and it's a string.
       if (typeof part === "string") {
+        const isArray = parts[i + 1]
+          ? parseInt(parts[i + 1], 10).toString() === parts[i + 1]
+          : false;
         if (current[part] == null) {
-          current[part] = {};
+          current[part] = isArray ? [] : {};
         }
 
         current = current[part] as Record<string, unknown>;
