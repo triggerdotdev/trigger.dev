@@ -30,7 +30,7 @@ import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
 import { useThrottle } from "~/hooks/useThrottle";
 import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
-import { getResizableRunSettings } from "~/services/resizablePanel.server";
+import { getResizableRunSettings, setResizableRunSettings } from "~/services/resizablePanel";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { v3RunParamsSchema, v3RunPath, v3RunSpanPath } from "~/utils/pathBuilder";
@@ -48,8 +48,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 
   //resizable settings
-  const resizeSettings = (await getResizableRunSettings(request)) ?? [60, 40];
-  console.log("resizeSettings", resizeSettings);
+  const resizeSettings = await getResizableRunSettings(request);
 
   return typedjson({
     run,
@@ -91,10 +90,15 @@ export default function Page() {
             direction="horizontal"
             className="h-full max-h-full"
             onLayout={(layout) => {
-              document.cookie = `react-resizable-panels:layout=${JSON.stringify({ run: layout })}`;
+              if (layout.length !== 2) return;
+              setResizableRunSettings(document, layout);
             }}
           >
-            <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.run?.[0]}>
+            <ResizablePanel
+              order={1}
+              minSize={30}
+              defaultSize={selectedSpanId ? resizeSettings.layout?.[0] : 100}
+            >
               <div className="h-full overflow-y-clip">
                 <TasksTreeView
                   selectedId={selectedSpanId}
@@ -116,7 +120,7 @@ export default function Page() {
             {selectedSpanId !== undefined && (
               <>
                 <ResizableHandle withHandle />
-                <ResizablePanel order={2} minSize={30} defaultSize={resizeSettings.run?.[1]}>
+                <ResizablePanel order={2} minSize={30} defaultSize={resizeSettings.layout?.[1]}>
                   <Outlet key={selectedSpanId} />
                 </ResizablePanel>
               </>
