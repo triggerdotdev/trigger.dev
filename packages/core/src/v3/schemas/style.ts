@@ -1,19 +1,19 @@
 import { z } from "zod";
 
-export const LOW_PROMINENCE = "low";
-export const HIGH_PROMINENCE = "high";
+export const TASK_VARIANT = "task";
+export const ATTEMPT_VARIANT = "attempt";
 
-const Prominence = z.enum([LOW_PROMINENCE, HIGH_PROMINENCE]);
-export type Prominence = z.infer<typeof Prominence>;
+const Variant = z.enum([TASK_VARIANT, ATTEMPT_VARIANT]);
+export type Variant = z.infer<typeof Variant>;
 
 export const TaskEventStyle = z
   .object({
     icon: z.string().optional(),
-    prominence: Prominence.default(LOW_PROMINENCE),
+    variant: Variant.optional(),
   })
   .default({
     icon: undefined,
-    prominence: LOW_PROMINENCE,
+    variant: undefined,
   });
 
 export type TaskEventStyle = z.infer<typeof TaskEventStyle>;

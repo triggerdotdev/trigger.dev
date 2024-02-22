@@ -14,12 +14,12 @@ export function eventTextClassName(event: Event) {
 
   switch (event.level) {
     case "TRACE": {
-      return classNameForProminence(event.style.prominence);
+      return classNameForVariant(event.style.variant);
     }
     case "LOG":
     case "INFO":
     case "DEBUG": {
-      return classNameForProminence(event.style.prominence);
+      return classNameForVariant(event.style.variant);
     }
     case "WARN": {
       return "text-amber-400";
@@ -28,11 +28,21 @@ export function eventTextClassName(event: Event) {
       return "text-rose-500";
     }
     default: {
-      return classNameForProminence(event.style.prominence);
+      return classNameForVariant(event.style.variant);
     }
   }
 }
 
-function classNameForProminence(prominence: TaskEventStyle["prominence"]) {
-  return prominence === "high" ? "text-bright" : "text-dimmed";
+function classNameForVariant(variant: TaskEventStyle["variant"]) {
+  switch (variant) {
+    case "task": {
+      return "text-blue-500";
+    }
+    case "attempt": {
+      return "text-bright";
+    }
+    default: {
+      return "text-dimmed";
+    }
+  }
 }
