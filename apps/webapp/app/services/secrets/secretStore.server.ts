@@ -21,7 +21,7 @@ export interface SecretStoreProvider {
   setSecret<T extends object>(key: string, value: T): Promise<void>;
 }
 
-/** The SecretStore will use the passed in provider. We do NOT recommend using "DATABASE" outside of localhost. */
+/** The SecretStore will use the passed in provider. */
 export class SecretStore {
   constructor(private provider: SecretStoreProvider) {}
 
@@ -154,7 +154,7 @@ class PrismaSecretStore implements SecretStoreProvider {
 
 export function getSecretStore<
   K extends SecretStoreOptions,
-  TOptions extends ProviderInitializationOptions[K],
+  TOptions extends ProviderInitializationOptions[K]
 >(provider: K, options?: TOptions): SecretStore {
   switch (provider) {
     case "DATABASE": {

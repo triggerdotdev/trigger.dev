@@ -299,6 +299,10 @@ export function v3ApiKeysPath(organization: OrgForPath, project: ProjectForPath)
   return `${v3ProjectPath(organization, project)}/apikeys`;
 }
 
+export function v3EnvironmentVariablesPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/environment-variables`;
+}
+
 export function v3RunsPath(
   organization: OrgForPath,
   project: ProjectForPath,

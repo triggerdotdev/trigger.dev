@@ -1,25 +1,15 @@
-import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { useEventSource } from "~/hooks/useEventSource";
-import {
-  EndpointIndexStatusIcon,
-  EndpointIndexStatusLabel,
-} from "~/components/environments/EndpointIndexStatus";
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
-import { HowToUseApiKeysAndEndpoints } from "~/components/helpContent/HelpContentText";
+import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
-import { Badge } from "~/components/primitives/Badge";
-import { ButtonContent, LinkButton } from "~/components/primitives/Buttons";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Header2, Header3 } from "~/components/primitives/Headers";
-import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
+import { Header3 } from "~/components/primitives/Headers";
 import {
   PageButtons,
-  PageDescription,
   PageHeader,
   PageTitle,
   PageTitleRow,
@@ -29,35 +19,23 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableCellChevron,
   TableCellMenu,
   TableHeader,
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { ClientEndpoint, EnvironmentsPresenter } from "~/presenters/EnvironmentsPresenter.server";
+import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
-import {
-  ProjectParamSchema,
-  docsPath,
-  projectEnvironmentsStreamingPath,
-} from "~/utils/pathBuilder";
-import { requestUrl } from "~/utils/requestUrl.server";
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
-import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
-import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
+import { ProjectParamSchema, docsPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam } = ProjectParamSchema.parse(params);
 
   try {
-    const url = requestUrl(request);
-    const baseUrl = `${url.protocol}//${url.host}`;
     const presenter = new ApiKeysPresenter();
     const { environments } = await presenter.call({
       userId,

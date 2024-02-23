@@ -4,6 +4,7 @@ import {
   ArrowRightOnRectangleIcon,
   ChartBarIcon,
   CursorArrowRaysIcon,
+  IdentificationIcon,
   KeyIcon,
   ShieldCheckIcon,
 } from "@heroicons/react/20/solid";
@@ -38,6 +39,7 @@ import {
   projectSetupPath,
   projectTriggersPath,
   v3ApiKeysPath,
+  v3EnvironmentVariablesPath,
   v3ProjectPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
@@ -514,6 +516,13 @@ function V3ProjectSideMenu({
         iconColor="text-amber-500"
         to={v3ApiKeysPath(organization, project)}
         data-action="api keys"
+      />
+      <SideMenuItem
+        name="Environment variables"
+        icon={IdentificationIcon}
+        iconColor="text-pink-500"
+        to={v3EnvironmentVariablesPath(organization, project)}
+        data-action="environment variables"
       />
       {/* <SideMenuItem
         name="Environments & API Keys"
