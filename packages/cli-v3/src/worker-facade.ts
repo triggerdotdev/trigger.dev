@@ -1,4 +1,4 @@
-import { TracingSDK, HttpInstrumentation, FetchInstrumentation } from "@trigger.dev/core/v3/otel";
+import { FetchInstrumentation, HttpInstrumentation, TracingSDK } from "@trigger.dev/core/v3/otel";
 // import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 
 // IMPORTANT: this needs to be the first import to work properly
@@ -10,18 +10,33 @@ const tracingSDK = new TracingSDK({
     [SemanticInternalAttributes.CLI_VERSION]: packageJson.version,
   }),
   instrumentations: [
-    new HttpInstrumentation(),
-    new FetchInstrumentation(),
+    new HttpInstrumentation({
+      ignoreOutgoingRequestHook: (req) => {
+        return process.env.TRIGGER_API_URL
+          ? urlToRegex(process.env.TRIGGER_API_URL).test(req.host ?? "")
+          : false;
+      },
+    }),
+    new FetchInstrumentation({
+      ignoreUrls: process.env.TRIGGER_API_URL ? [urlToRegex(process.env.TRIGGER_API_URL)] : [],
+    }),
     // new OpenAIInstrumentation(),
   ],
 });
+
+function urlToRegex(url: string): RegExp {
+  const urlObj = new URL(url);
+  const hostnameToIgnore = urlObj.hostname.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+  const regexToIgnore = new RegExp(hostnameToIgnore);
+
+  return regexToIgnore;
+}
 
 const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.version);
 const otelLogger = tracingSDK.getLogger("trigger-dev-worker", packageJson.version);
 
 import { SpanKind } from "@opentelemetry/api";
 import {
-  type BackgroundWorkerProperties,
   ConsoleInterceptor,
   DevRuntimeManager,
   OtelTaskLogger,
@@ -30,18 +45,19 @@ import {
   TaskRunContext,
   TaskRunErrorCodes,
   TaskRunExecution,
+  TaskRunExecutionRetry,
   TriggerTracer,
   ZodMessageHandler,
   ZodMessageSender,
+  accessoryAttributes,
+  calculateNextRetryTimestamp,
   childToWorkerMessages,
   logger,
   parseError,
   runtime,
   taskContextManager,
   workerToChildMessages,
-  TaskRunExecutionRetry,
-  calculateNextRetryTimestamp,
-  Accessory,
+  type BackgroundWorkerProperties,
 } from "@trigger.dev/core/v3";
 import * as packageJson from "../package.json";
 
@@ -52,9 +68,7 @@ import { TaskMetadataWithRun } from "./types.js";
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
 const consoleInterceptor = new ConsoleInterceptor(otelLogger);
 
-const devRuntimeManager = new DevRuntimeManager({
-  tracer,
-});
+const devRuntimeManager = new DevRuntimeManager();
 
 runtime.setGlobalRuntimeManager(devRuntimeManager);
 
@@ -113,18 +127,6 @@ class TaskExecutor {
           [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
         });
 
-        const accessory: Accessory = {
-          items: [
-            {
-              text: ctx.task.filePath,
-            },
-            {
-              text: `${ctx.task.exportName}()`,
-            },
-          ],
-          style: "codepath",
-        };
-
         return await tracer.startActiveSpan(
           attemptMessage,
           async (span) => {
@@ -143,7 +145,18 @@ class TaskExecutor {
             kind: SpanKind.CONSUMER,
             attributes: {
               [SemanticInternalAttributes.STYLE_ICON]: "attempt",
-              ...flattenAttributes(accessory, SemanticInternalAttributes.STYLE_ACCESSORY),
+              ...flattenAttributes(parsedPayload, SemanticInternalAttributes.PAYLOAD),
+              ...accessoryAttributes({
+                items: [
+                  {
+                    text: ctx.task.filePath,
+                  },
+                  {
+                    text: `${ctx.task.exportName}.run()`,
+                  },
+                ],
+                style: "codepath",
+              }),
             },
           },
           tracer.extractContext(traceContext)
@@ -198,6 +211,8 @@ const sender = new ZodMessageSender({
 });
 
 const tasks = getTasks();
+
+runtime.registerTasks(tasks);
 
 const taskExecutors: Map<string, TaskExecutor> = new Map();
 

@@ -117,10 +117,14 @@ export class TaskContextSpanProcessor implements SpanProcessor {
   // Called when a span starts
   onStart(span: Span, parentContext: Context): void {
     if (taskContextManager.ctx) {
-      span.setAttribute(SemanticInternalAttributes.ATTEMPT_ID, taskContextManager.ctx.attempt.id);
-      span.setAttribute(
-        SemanticInternalAttributes.ATTEMPT_NUMBER,
-        taskContextManager.ctx.attempt.number
+      span.setAttributes(
+        flattenAttributes(
+          {
+            [SemanticInternalAttributes.ATTEMPT_ID]: taskContextManager.ctx.attempt.id,
+            [SemanticInternalAttributes.ATTEMPT_NUMBER]: taskContextManager.ctx.attempt.number,
+          },
+          SemanticInternalAttributes.METADATA
+        )
       );
     }
 
@@ -154,13 +158,14 @@ export class TaskContextLogProcessor implements LogRecordProcessor {
   onEmit(logRecord: LogRecord, context?: Context | undefined): void {
     // Adds in the context attributes to the log record
     if (taskContextManager.ctx) {
-      logRecord.setAttribute(
-        SemanticInternalAttributes.ATTEMPT_NUMBER,
-        taskContextManager.ctx.attempt.number
-      );
-      logRecord.setAttribute(
-        SemanticInternalAttributes.ATTEMPT_ID,
-        taskContextManager.ctx.attempt.id
+      logRecord.setAttributes(
+        flattenAttributes(
+          {
+            [SemanticInternalAttributes.ATTEMPT_ID]: taskContextManager.ctx.attempt.id,
+            [SemanticInternalAttributes.ATTEMPT_NUMBER]: taskContextManager.ctx.attempt.number,
+          },
+          SemanticInternalAttributes.METADATA
+        )
       );
     }
 

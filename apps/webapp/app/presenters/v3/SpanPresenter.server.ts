@@ -1,5 +1,5 @@
 import { Attributes } from "@opentelemetry/api";
-import { TaskEventStyle } from "@trigger.dev/core/v3";
+import { SemanticInternalAttributes, TaskEventStyle } from "@trigger.dev/core/v3";
 import { unflattenAttributes } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { PrismaClient, prisma, Prisma } from "~/db.server";
@@ -83,20 +83,37 @@ export class SpanPresenter {
           properties: unflattenAttributes(e.properties as Attributes),
         }))
       : undefined;
-    console.log("eventsUnflattened", eventsUnflattened);
+
     const events = OtelSpanEvents.parse(eventsUnflattened);
+
+    const payload = unflattenAttributes(
+      filteredAttributes(event.properties as Attributes, SemanticInternalAttributes.PAYLOAD)
+    )[SemanticInternalAttributes.PAYLOAD];
 
     return {
       event: {
         ...event,
         events,
         output: isEmptyJson(event.output) ? null : JSON.stringify(event.output, null, 2),
+        payload: payload ? JSON.stringify(payload, null, 2) : undefined,
         properties: sanitizedAttributesStringified(event.properties),
         style,
         duration: Number(event.duration),
       },
     };
   }
+}
+
+function filteredAttributes(attributes: Attributes, prefix: string): Attributes {
+  const result: Attributes = {};
+
+  for (const [key, value] of Object.entries(attributes)) {
+    if (key.startsWith(prefix)) {
+      result[key] = value;
+    }
+  }
+
+  return result;
 }
 
 function sanitizedAttributesStringified(json: Prisma.JsonValue): string | undefined {

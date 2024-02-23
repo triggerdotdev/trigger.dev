@@ -1,9 +1,20 @@
-import { BatchTaskRunExecutionResult, TaskRunContext, TaskRunExecutionResult } from "../schemas";
+import {
+  BatchTaskRunExecutionResult,
+  TaskMetadataWithFilePath,
+  TaskRunContext,
+  TaskRunExecutionResult,
+} from "../schemas";
 import { RuntimeManager } from "./manager";
 
 export class NoopRuntimeManager implements RuntimeManager {
   disable(): void {
     // do nothing
+  }
+
+  registerTasks(): void {}
+
+  getTaskMetadata(id: string): TaskMetadataWithFilePath | undefined {
+    return undefined;
   }
 
   waitForDuration(ms: number): Promise<void> {

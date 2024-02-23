@@ -96,6 +96,13 @@ export default function Page() {
 
           {event.events !== undefined && <SpanEvents spanEvents={event.events} />}
 
+          {event.payload && (
+            <div>
+              <Header2 spacing>Payload</Header2>
+              <CodeBlock code={event.payload} maxLines={20} />
+            </div>
+          )}
+
           {event.output !== null && (
             <div>
               <Header2 spacing>Output</Header2>
