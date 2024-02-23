@@ -1,7 +1,12 @@
 import { z } from "zod";
 
+const EnvironmentVariable = z
+  .string()
+  .nonempty("Environment variable key is required")
+  .regex(/^\w+$/, "Environment variables can only contain alphanumeric characters and underscores");
+
 export const CreateEnvironmentVariable = z.object({
-  key: z.string(),
+  key: EnvironmentVariable,
   values: z.array(
     z.object({
       environmentId: z.string(),

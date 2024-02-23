@@ -48,7 +48,7 @@ export class EnvironmentVariablesRepository implements Repository {
     const values = options.values.filter((v) => v.value.trim() !== "");
 
     if (values.length === 0) {
-      return { success: false as const, error: `All values are empty` };
+      return { success: false as const, error: `You must set at least one value` };
     }
 
     try {

@@ -216,20 +216,23 @@ function CreateEnvironmentVariablePanel({
   const lastSubmission = useActionData();
   const navigation = useNavigation();
 
-  const [form, { action, key, values }] = useForm({
+  const isLoading = navigation.state !== "idle" && navigation.formMethod === "post";
+
+  const [form, { key }] = useForm({
     id: "create-environment-variable",
     // TODO: type this
     lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },
+    shouldRevalidate: "onSubmit",
   });
 
   return (
     <>
       <DialogHeader>New environment variable</DialogHeader>
       <Form method="post" {...form.props}>
-        <input {...conform.input(action, { type: "hidden" })} value="create" />
+        <input type="hidden" name="action" value="create" />
         <Fieldset>
           <InputGroup>
             <Label>Message</Label>
@@ -266,8 +269,8 @@ function CreateEnvironmentVariablePanel({
         <FormButtons
           className="m-0 w-max"
           confirmButton={
-            <Button type="submit" variant="primary/medium">
-              Save
+            <Button type="submit" variant="primary/medium" disabled={isLoading}>
+              {isLoading ? "Saving" : "Save"}
             </Button>
           }
         />
