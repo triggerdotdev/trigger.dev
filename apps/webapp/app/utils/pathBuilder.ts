@@ -295,6 +295,10 @@ export function v3ProjectPath(organization: OrgForPath, project: ProjectForPath)
   return `/orgs/${organizationParam(organization)}/projects/v3/${projectParam(project)}`;
 }
 
+export function v3ApiKeysPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/apikeys`;
+}
+
 export function v3RunsPath(
   organization: OrgForPath,
   project: ProjectForPath,

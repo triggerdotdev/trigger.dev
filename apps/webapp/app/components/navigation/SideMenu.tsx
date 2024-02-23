@@ -4,6 +4,7 @@ import {
   ArrowRightOnRectangleIcon,
   ChartBarIcon,
   CursorArrowRaysIcon,
+  KeyIcon,
   ShieldCheckIcon,
 } from "@heroicons/react/20/solid";
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
@@ -36,6 +37,7 @@ import {
   projectSettingsPath,
   projectSetupPath,
   projectTriggersPath,
+  v3ApiKeysPath,
   v3ProjectPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
@@ -505,6 +507,13 @@ function V3ProjectSideMenu({
         icon="runs"
         iconColor="text-teal-500"
         to={v3RunsPath(organization, project)}
+      />
+      <SideMenuItem
+        name="API Keys"
+        icon={KeyIcon}
+        iconColor="text-amber-500"
+        to={v3ApiKeysPath(organization, project)}
+        data-action="api keys"
       />
       {/* <SideMenuItem
         name="Environments & API Keys"
