@@ -268,9 +268,9 @@ const handler = new ZodMessageHandler({
     },
     CLEANUP: async ({ flush, kill }) => {
       if (kill) {
+        await tracingSDK.flush();
         // Now we need to exit the process
         await sender.send("READY_TO_DISPOSE", undefined);
-        await tracingSDK.shutdown();
       } else {
         if (flush) {
           await tracingSDK.flush();

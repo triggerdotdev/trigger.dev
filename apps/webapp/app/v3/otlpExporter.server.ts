@@ -24,6 +24,8 @@ import {
   type CreatableEvent,
   CreatableEventEnvironmentType,
 } from "./eventRepository.server";
+import { logger } from "~/services/logger.server";
+import { env } from "~/env.server";
 
 export type OTLPExporterConfig = {
   batchSize: number;
@@ -41,6 +43,8 @@ class OTLPExporter {
       return convertSpansToCreateableEvents(resourceSpan);
     });
 
+    this.#logEventsVerbose(events);
+
     this._eventRepository.insertMany(events);
 
     return ExportTraceServiceResponse.create();
@@ -51,9 +55,19 @@ class OTLPExporter {
       return convertLogsToCreateableEvents(resourceLog);
     });
 
+    this.#logEventsVerbose(events);
+
     this._eventRepository.insertMany(events);
 
     return ExportLogsServiceResponse.create();
+  }
+
+  #logEventsVerbose(events: CreatableEvent[]) {
+    if (!this._verbose) return;
+
+    events.forEach((event) => {
+      logger.debug("Exporting event", { event });
+    });
   }
 
   #filterResourceSpans(
@@ -523,4 +537,4 @@ function binaryToHex(buffer: Buffer | undefined): string | undefined {
   return Buffer.from(Array.from(buffer)).toString("hex");
 }
 
-export const otlpExporter = new OTLPExporter(eventRepository, true);
+export const otlpExporter = new OTLPExporter(eventRepository, false);

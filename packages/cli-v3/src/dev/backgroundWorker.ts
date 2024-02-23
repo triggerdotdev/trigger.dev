@@ -123,9 +123,9 @@ export class BackgroundWorkerCoordinator {
 
     const { execution } = payload;
 
-    const link = chalk.bgBlueBright(
-      terminalLink("view logs", `${this.baseURL}/runs/${execution.run.id}`)
-    );
+    const logsUrl = `${this.baseURL}/runs/${execution.run.id}`;
+
+    const link = chalk.bgBlueBright(terminalLink("view logs", logsUrl));
     let timestampPrefix = chalk.gray(new Date().toISOString());
     const workerPrefix = chalk.green(`[worker:${record.version}]`);
     const taskPrefix = chalk.yellow(`[task:${execution.task.id}]`);

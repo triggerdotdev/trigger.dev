@@ -387,6 +387,7 @@ model RuntimeEnvironment {
   backgroundWorkerTasks    BackgroundWorkerTask[]
   taskRuns                 TaskRun[]
   taskQueues               TaskQueue[]
+  batchTaskRuns            BatchTaskRun[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -1584,12 +1585,30 @@ model TaskRun {
   lockedToVersion   BackgroundWorker? @relation(fields: [lockedToVersionId], references: [id])
   lockedToVersionId String?
 
-  parentAttempt   TaskRunAttempt? @relation("parentAttempt", fields: [parentAttemptId], references: [id])
-  parentAttemptId String?
-
   concurrencyKey String?
 
+  batchItem  BatchTaskRunItem?
+  dependency TaskRunDependency?
+
   @@unique([runtimeEnvironmentId, idempotencyKey])
+}
+
+model TaskRunDependency {
+  id String @id @default(cuid())
+
+  taskRun   TaskRun @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskRunId String  @unique
+
+  /// An attempt that is dependent on this task run. 
+  dependentAttempt   TaskRunAttempt? @relation("dependentAttempt", fields: [dependentAttemptId], references: [id])
+  dependentAttemptId String?         @unique
+
+  /// A batch run that is dependent on this task run
+  dependentBatchRun   BatchTaskRun? @relation("dependentBatchRun", fields: [dependentBatchRunId], references: [id])
+  dependentBatchRunId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model TaskRunCounter {
@@ -1643,7 +1662,8 @@ model TaskRunAttempt {
   output     String?
   outputType String  @default("application/json")
 
-  triggeredRuns TaskRun[] @relation("parentAttempt")
+  taskRunDependency      TaskRunDependency? @relation("dependentAttempt")
+  batchTaskRunDependency BatchTaskRun?
 
   @@unique([taskRunId, number])
 }
@@ -1780,4 +1800,51 @@ model TaskQueue {
 enum TaskQueueType {
   VIRTUAL
   NAMED
+}
+
+model BatchTaskRun {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  idempotencyKey String
+  taskIdentifier String
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+
+  dependentTaskAttempt   TaskRunAttempt? @relation(fields: [dependentTaskAttemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  dependentTaskAttemptId String?         @unique
+
+  items           BatchTaskRunItem[]
+  runDependencies TaskRunDependency[] @relation("dependentBatchRun")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([runtimeEnvironmentId, idempotencyKey])
+}
+
+model BatchTaskRunItem {
+  id String @id @default(cuid())
+
+  status BatchTaskRunItemStatus @default(PENDING)
+
+  batchTaskRun   BatchTaskRun @relation(fields: [batchTaskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  batchTaskRunId String
+
+  taskRun   TaskRun @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskRunId String  @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([batchTaskRunId, taskRunId])
+}
+
+enum BatchTaskRunItemStatus {
+  PENDING
+  FAILED
+  CANCELED
+  COMPLETED
 }

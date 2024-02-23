@@ -1,4 +1,9 @@
-import { TaskRunContext, TaskRunExecution, TaskRunExecutionResult } from "../schemas";
+import {
+  BatchTaskRunExecutionResult,
+  TaskRunContext,
+  TaskRunExecution,
+  TaskRunExecutionResult,
+} from "../schemas";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes";
 import { TriggerTracer } from "../tracer";
 import { formatDurationMilliseconds } from "../utils/durations";
@@ -12,6 +17,11 @@ export class DevRuntimeManager implements RuntimeManager {
   _taskWaits: Map<
     string,
     { resolve: (value: TaskRunExecutionResult) => void; reject: (err?: any) => void }
+  > = new Map();
+
+  _batchWaits: Map<
+    string,
+    { resolve: (value: BatchTaskRunExecutionResult) => void; reject: (err?: any) => void }
   > = new Map();
 
   constructor(private readonly options: DevRuntimeManagerOptions) {}
@@ -51,6 +61,36 @@ export class DevRuntimeManager implements RuntimeManager {
       });
 
       return await promise;
+    });
+  }
+
+  async waitForBatch(params: {
+    id: string;
+    runs: string[];
+    ctx: TaskRunContext;
+  }): Promise<BatchTaskRunExecutionResult> {
+    return this.options.tracer.startActiveSpan("wait for batch", async (span) => {
+      span.setAttribute("batch.id", params.id);
+      span.setAttribute("batch.runs", params.runs.length);
+
+      if (!params.runs.length) {
+        return Promise.resolve({ id: params.id, items: [] });
+      }
+
+      const promise = Promise.all(
+        params.runs.map((runId) => {
+          return new Promise<TaskRunExecutionResult>((resolve, reject) => {
+            this._taskWaits.set(runId, { resolve, reject });
+          });
+        })
+      );
+
+      const results = await promise;
+
+      return {
+        id: params.id,
+        items: results,
+      };
     });
   }
 

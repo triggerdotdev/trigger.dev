@@ -1,6 +1,6 @@
 const API_NAME = "runtime";
 
-import { TaskRunContext, TaskRunExecutionResult } from "../schemas";
+import { BatchTaskRunExecutionResult, TaskRunContext, TaskRunExecutionResult } from "../schemas";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals";
 import { type RuntimeManager } from "./manager";
 import { NoopRuntimeManager } from "./noopRuntimeManager";
@@ -30,6 +30,14 @@ export class RuntimeAPI {
 
   public waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
     return this.#getRuntimeManager().waitForTask(params);
+  }
+
+  public waitForBatch(params: {
+    id: string;
+    runs: string[];
+    ctx: TaskRunContext;
+  }): Promise<BatchTaskRunExecutionResult> {
+    return this.#getRuntimeManager().waitForBatch(params);
   }
 
   public setGlobalRuntimeManager(runtimeManager: RuntimeManager): boolean {
