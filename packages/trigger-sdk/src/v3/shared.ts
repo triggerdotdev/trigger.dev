@@ -150,7 +150,7 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
       const taskMetadata = runtime.getTaskMetadata(params.id);
 
       const handle = await tracer.startActiveSpan(
-        taskMetadata ? "Call" : `${params.id} trigger()`,
+        taskMetadata ? "Trigger" : `${params.id} trigger()`,
         async (span) => {
           const response = await apiClient.triggerTask(params.id, {
             payload: payload,
@@ -205,7 +205,7 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
       const taskMetadata = runtime.getTaskMetadata(params.id);
 
       const response = await tracer.startActiveSpan(
-        taskMetadata ? "Call" : `${params.id} batchTrigger()`,
+        taskMetadata ? "Batch trigger" : `${params.id} batchTrigger()`,
         async (span) => {
           const response = await apiClient.batchTriggerTask(params.id, {
             items: items.map((item) => ({
@@ -270,7 +270,7 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
       const taskMetadata = runtime.getTaskMetadata(params.id);
 
       return await tracer.startActiveSpan(
-        taskMetadata ? "Call" : `${params.id} triggerAndWait()`,
+        taskMetadata ? "Trigger" : `${params.id} triggerAndWait()`,
         async (span) => {
           const response = await apiClient.triggerTask(params.id, {
             payload: payload,
@@ -340,7 +340,7 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
       const taskMetadata = runtime.getTaskMetadata(params.id);
 
       return await tracer.startActiveSpan(
-        taskMetadata ? "Call" : `${params.id} batchTriggerAndWait()`,
+        taskMetadata ? "Batch trigger" : `${params.id} batchTriggerAndWait()`,
         async (span) => {
           const response = await apiClient.batchTriggerTask(params.id, {
             items: items.map((item) => ({

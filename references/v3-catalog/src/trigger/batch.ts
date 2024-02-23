@@ -10,6 +10,7 @@ export const batchParentTask = task({
     logger.info("Batch task response", { response });
 
     await wait.for({ seconds: 5 });
+    await wait.until({ date: new Date(Date.now() + 1000 * 5) }); // 5 seconds
 
     const waitResponse = await batchChildTask.batchTriggerAndWait({
       items: [{ payload: "item4" }, { payload: "item5" }, { payload: "item6" }],

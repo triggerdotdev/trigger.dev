@@ -1,9 +1,4 @@
-import {
-  SemanticInternalAttributes,
-  accessoryAttributes,
-  flattenAttributes,
-  runtime,
-} from "@trigger.dev/core/v3";
+import { SemanticInternalAttributes, accessoryAttributes, runtime } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer";
 
 export type WaitOptions =
@@ -32,7 +27,7 @@ export type WaitOptions =
 export const wait = {
   for: async (options: WaitOptions) => {
     return tracer.startActiveSpan(
-      nameForWaitOptions(options),
+      `wait.for()`,
       async (span) => {
         const durationInMs = calculateDurationInMs(options);
 
@@ -44,7 +39,8 @@ export const wait = {
           ...accessoryAttributes({
             items: [
               {
-                text: `wait.for()`,
+                text: nameForWaitOptions(options),
+                variant: "normal",
               },
             ],
             style: "codepath",
@@ -53,9 +49,33 @@ export const wait = {
       }
     );
   },
-  until: async (options: { date: Date; throwIfInThePast?: boolean }) => {},
-  forRequest: async <TRequest>(params: RequestOptions): Promise<TRequest> => {
-    return {} as any;
+  until: async (options: { date: Date; throwIfInThePast?: boolean }) => {
+    return tracer.startActiveSpan(
+      `wait.until()`,
+      async (span) => {
+        if (options.throwIfInThePast && options.date < new Date()) {
+          throw new Error("Date is in the past");
+        }
+
+        const durationInMs = options.date.getTime() - new Date().getTime();
+
+        await runtime.waitForDuration(durationInMs);
+      },
+      {
+        attributes: {
+          [SemanticInternalAttributes.STYLE_ICON]: "wait",
+          ...accessoryAttributes({
+            items: [
+              {
+                text: options.date.toISOString(),
+                variant: "normal",
+              },
+            ],
+            style: "codepath",
+          }),
+        },
+      }
+    );
   },
 };
 

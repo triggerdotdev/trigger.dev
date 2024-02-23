@@ -74,6 +74,7 @@ runtime.setGlobalRuntimeManager(devRuntimeManager);
 
 const otelTaskLogger = new OtelTaskLogger({
   logger: otelLogger,
+  tracer: tracer,
   level: "info",
 });
 
