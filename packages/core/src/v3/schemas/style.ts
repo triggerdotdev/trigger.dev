@@ -1,19 +1,32 @@
 import { z } from "zod";
 
-export const LOW_PROMINENCE = "low";
-export const HIGH_PROMINENCE = "high";
+export const PRIMARY_VARIANT = "primary";
 
-const Prominence = z.enum([LOW_PROMINENCE, HIGH_PROMINENCE]);
-export type Prominence = z.infer<typeof Prominence>;
+const Variant = z.enum([PRIMARY_VARIANT]);
+export type Variant = z.infer<typeof Variant>;
+
+const AccessoryItem = z.object({
+  text: z.string(),
+  variant: z.string().optional(),
+  url: z.string().optional(),
+});
+
+const Accessory = z.object({
+  items: z.array(AccessoryItem),
+  style: z.enum(["codepath"]).optional(),
+});
+
+export type Accessory = z.infer<typeof Accessory>;
 
 export const TaskEventStyle = z
   .object({
     icon: z.string().optional(),
-    prominence: Prominence.default(LOW_PROMINENCE),
+    variant: Variant.optional(),
+    accessory: Accessory.optional(),
   })
   .default({
     icon: undefined,
-    prominence: LOW_PROMINENCE,
+    variant: undefined,
   });
 
 export type TaskEventStyle = z.infer<typeof TaskEventStyle>;

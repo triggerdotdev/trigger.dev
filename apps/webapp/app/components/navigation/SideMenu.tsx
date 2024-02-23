@@ -138,13 +138,15 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
                 leadingIconClassName="text-indigo-500"
               />
             </SideMenuHeader>
-            <SideMenuItem
-              name="Integrations"
-              icon="integration"
-              to={organizationIntegrationsPath(organization)}
-              data-action="integrations"
-              hasWarning={organization.hasUnconfiguredIntegrations}
-            />
+            {project.version === "V2" && (
+              <SideMenuItem
+                name="Integrations"
+                icon="integration"
+                to={organizationIntegrationsPath(organization)}
+                data-action="integrations"
+                hasWarning={organization.hasUnconfiguredIntegrations}
+              />
+            )}
             <SideMenuItem
               name="Projects"
               icon="folder"

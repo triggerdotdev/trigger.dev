@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { nanoid } from "nanoid";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
 import {
+  PRIMARY_VARIANT,
   SemanticInternalAttributes,
   TriggerTaskRequestBody,
   flattenAttributes,
@@ -45,7 +46,7 @@ export class TriggerTaskService extends BaseService {
       }
 
       return await eventRepository.traceEvent(
-        `Triggering task ${taskId}`,
+        `${taskId}`,
         {
           context: options.traceContext,
           kind: "SERVER",
@@ -57,6 +58,7 @@ export class TriggerTaskService extends BaseService {
             },
             style: {
               icon: "play",
+              variant: PRIMARY_VARIANT,
             },
           },
         },
