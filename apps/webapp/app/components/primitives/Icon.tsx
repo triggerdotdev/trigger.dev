@@ -1,7 +1,7 @@
 import { IconNamesOrString, NamedIcon } from "./NamedIcon";
 import { cn } from "~/utils/cn";
 
-export type RenderIcon = IconNamesOrString | React.ComponentType<any>;
+export type RenderIcon = IconNamesOrString | React.ComponentType<any> | React.ReactNode;
 
 type IconProps = {
   icon?: RenderIcon;
@@ -14,13 +14,17 @@ export function Icon(props: IconProps) {
     return <NamedIcon name={props.icon} className={props.className ?? ""} fallback={<></>} />;
   }
 
-  const Icon = props.icon;
+  if (typeof props.icon === "function") {
+    const Icon = props.icon;
 
-  if (!Icon) {
-    return <></>;
+    if (!Icon) {
+      return <></>;
+    }
+
+    return <Icon className={props.className} />;
   }
 
-  return <Icon className={props.className} />;
+  return <>{props.icon}</>;
 }
 
 export function IconInBox({ boxClassName, ...props }: IconProps & { boxClassName?: string }) {
