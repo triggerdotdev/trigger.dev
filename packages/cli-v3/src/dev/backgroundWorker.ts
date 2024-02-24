@@ -183,9 +183,10 @@ export class BackgroundWorkerCoordinator {
 export type BackgroundWorkerParams = {
   env: Record<string, string>;
   projectDir: string;
+  debuggerOn: boolean;
 };
 export class BackgroundWorker {
-  private _rawSourceMap: RawSourceMap;
+  private _rawSourceMap: RawSourceMap | undefined;
   private _initialized: boolean = false;
   private _handler = new ZodMessageHandler({
     schema: childToWorkerMessages,
@@ -203,7 +204,9 @@ export class BackgroundWorker {
     public path: string,
     private params: BackgroundWorkerParams
   ) {
-    this._rawSourceMap = JSON.parse(readFileSync(`${path}.map`, "utf-8"));
+    try {
+      this._rawSourceMap = JSON.parse(readFileSync(`${path}.map`, "utf-8"));
+    } catch (e) {}
   }
 
   close() {
@@ -296,7 +299,8 @@ export class BackgroundWorker {
           ...this.params.env,
           ...this.#readEnvVars(),
         },
-        this.metadata
+        this.metadata,
+        this.params.debuggerOn
       );
 
       taskRunProcess.onExit.attach(() => {
@@ -360,6 +364,10 @@ export class BackgroundWorker {
   }
 
   async #correctErrorStackTrace(stackTrace: string, execution: TaskRunExecution): Promise<string> {
+    if (!this._rawSourceMap) {
+      return stackTrace;
+    }
+
     // Split the stack trace into lines
     const lines = stackTrace.split("\n");
 
@@ -457,7 +465,8 @@ class TaskRunProcess {
   constructor(
     private path: string,
     private env: NodeJS.ProcessEnv,
-    private metadata: BackgroundWorkerProperties
+    private metadata: BackgroundWorkerProperties,
+    private debuggerOn: boolean = false
   ) {
     this._sender = new ZodMessageSender({
       schema: workerToChildMessages,
@@ -473,6 +482,7 @@ class TaskRunProcess {
     this._child = fork(this.path, {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
       env: this.env,
+      execArgv: this.debuggerOn ? ["--inspect-brk"] : [],
     });
 
     this._child.on("message", this.#handleMessage.bind(this));
