@@ -216,12 +216,19 @@ export class EnvironmentVariablesRepository implements Repository {
 
           if (existingValue && existingValue.valueReferenceId) {
             if (value.value === "") {
-              await secretStore.deleteSecret(key);
-
               //delete the value
+              await secretStore.deleteSecret(key);
               await tx.secretReference.delete({
                 where: {
                   id: existingValue.valueReferenceId,
+                },
+              });
+              await tx.environmentVariableValue.delete({
+                where: {
+                  variableId_environmentId: {
+                    variableId: environmentVariable.id,
+                    environmentId: value.environmentId,
+                  },
                 },
               });
             } else {
