@@ -387,6 +387,7 @@ model RuntimeEnvironment {
   backgroundWorkerTasks     BackgroundWorkerTask[]
   taskRuns                  TaskRun[]
   taskQueues                TaskQueue[]
+  batchTaskRuns             BatchTaskRun[]
   environmentVariableValues EnvironmentVariableValue[]
 
   @@unique([projectId, slug, orgMemberId])
@@ -1587,12 +1588,30 @@ model TaskRun {
   lockedToVersion   BackgroundWorker? @relation(fields: [lockedToVersionId], references: [id])
   lockedToVersionId String?
 
-  parentAttempt   TaskRunAttempt? @relation("parentAttempt", fields: [parentAttemptId], references: [id])
-  parentAttemptId String?
-
   concurrencyKey String?
 
+  batchItem  BatchTaskRunItem?
+  dependency TaskRunDependency?
+
   @@unique([runtimeEnvironmentId, idempotencyKey])
+}
+
+model TaskRunDependency {
+  id String @id @default(cuid())
+
+  taskRun   TaskRun @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskRunId String  @unique
+
+  /// An attempt that is dependent on this task run. 
+  dependentAttempt   TaskRunAttempt? @relation("dependentAttempt", fields: [dependentAttemptId], references: [id])
+  dependentAttemptId String?         @unique
+
+  /// A batch run that is dependent on this task run
+  dependentBatchRun   BatchTaskRun? @relation("dependentBatchRun", fields: [dependentBatchRunId], references: [id])
+  dependentBatchRunId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model TaskRunCounter {
@@ -1646,7 +1665,8 @@ model TaskRunAttempt {
   output     String?
   outputType String  @default("application/json")
 
-  triggeredRuns TaskRun[] @relation("parentAttempt")
+  taskRunDependency      TaskRunDependency? @relation("dependentAttempt")
+  batchTaskRunDependency BatchTaskRun?
 
   @@unique([taskRunId, number])
 }
@@ -1785,36 +1805,75 @@ enum TaskQueueType {
   NAMED
 }
 
-model EnvironmentVariable {
+model BatchTaskRun {
   id String @id @default(cuid())
 
-  key String
+  friendlyId String @unique
 
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
+  idempotencyKey String
+  taskIdentifier String
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+
+  dependentTaskAttempt   TaskRunAttempt? @relation(fields: [dependentTaskAttemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  dependentTaskAttemptId String?         @unique
+
+  items           BatchTaskRunItem[]
+  runDependencies TaskRunDependency[] @relation("dependentBatchRun")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  values EnvironmentVariableValue[]
+  @@unique([runtimeEnvironmentId, idempotencyKey])
+}
+
+model BatchTaskRunItem {
+  id String @id @default(cuid())
+
+  status BatchTaskRunItemStatus @default(PENDING)
+
+  batchTaskRun   BatchTaskRun @relation(fields: [batchTaskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  batchTaskRunId String
+
+  taskRun   TaskRun @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskRunId String  @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([batchTaskRunId, taskRunId])
+}
+
+enum BatchTaskRunItemStatus {
+  PENDING
+  FAILED
+  CANCELED
+  COMPLETED
+}
+
+model EnvironmentVariable {
+  id        String                     @id @default(cuid())
+  key       String
+  project   Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+  createdAt DateTime                   @default(now())
+  updatedAt DateTime                   @updatedAt
+  values    EnvironmentVariableValue[]
 
   @@unique([projectId, key])
 }
 
 model EnvironmentVariableValue {
-  id String @id @default(cuid())
-
-  valueReference   SecretReference? @relation(fields: [valueReferenceId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  id               String              @id @default(cuid())
+  valueReference   SecretReference?    @relation(fields: [valueReferenceId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   valueReferenceId String?
-
-  variable   EnvironmentVariable @relation(fields: [variableId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  variableId String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  variable         EnvironmentVariable @relation(fields: [variableId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  variableId       String
+  environment      RuntimeEnvironment  @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId    String
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
 
   @@unique([variableId, environmentId])
 }

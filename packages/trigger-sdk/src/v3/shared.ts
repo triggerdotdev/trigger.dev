@@ -1,14 +1,17 @@
 import { SpanKind } from "@opentelemetry/api";
 import { SemanticAttributes } from "@opentelemetry/semantic-conventions";
 import {
-  ApiClient,
   QueueOptions,
   RetryOptions,
+  SemanticInternalAttributes,
   TaskRunContext,
+  accessoryAttributes,
+  apiClientManager,
   createErrorTaskError,
+  defaultRetryOptions,
+  flattenAttributes,
   runtime,
   taskContextManager,
-  defaultRetryOptions,
 } from "@trigger.dev/core/v3";
 import * as packageJson from "../../package.json";
 import { tracer } from "./tracer";
@@ -77,7 +80,24 @@ type InvokeHandle = {
 
 type InvokeBatchHandle = {
   batchId: string;
-  itemCount: number;
+  runs: string[];
+};
+
+export type TaskRunResult<TOutput = any> =
+  | {
+      ok: true;
+      id: string;
+      output: TOutput;
+    }
+  | {
+      ok: false;
+      id: string;
+      error: any;
+    };
+
+export type BatchResult<TOutput = any> = {
+  id: string;
+  runs: TaskRunResult<TOutput>[];
 };
 
 export type Task<TInput, TOutput = any> = {
@@ -90,7 +110,7 @@ export type Task<TInput, TOutput = any> = {
   batchTriggerAndWait: (params: {
     items: { payload: TInput; options?: TaskRunOptions }[];
     batchOptions?: BatchRunOptions;
-  }) => Promise<TOutput[]>;
+  }) => Promise<BatchResult<TOutput>>;
 };
 
 type TaskRunOptions = {
@@ -121,18 +141,20 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
 ): Task<TInput, TOutput> {
   const task: Task<TInput, TOutput> = {
     trigger: async ({ payload, options }) => {
-      const ctx = taskContextManager.ctx;
+      const apiClient = apiClientManager.client;
 
-      const apiClient = initializeApiClient();
+      if (!apiClient) {
+        throw new Error("API client is not initialized");
+      }
+
+      const taskMetadata = runtime.getTaskMetadata(params.id);
 
       const handle = await tracer.startActiveSpan(
-        `${params.id} trigger`,
+        taskMetadata ? "Trigger" : `${params.id} trigger()`,
         async (span) => {
           const response = await apiClient.triggerTask(params.id, {
             payload: payload,
             options: {
-              parentAttempt: ctx?.attempt.id,
-              lockToCurrentVersion: false, // Don't lock to current version because we're not waiting for it to finish
               queue: params.queue,
               concurrencyKey: options?.concurrencyKey,
             },
@@ -142,25 +164,95 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
             throw new Error(response.error);
           }
 
-          span.setAttribute("trigger.id", response.data.id);
+          span.setAttribute("messaging.message.id", response.data.id);
 
           return response.data;
         },
         {
           kind: SpanKind.PRODUCER,
-          attributes: { [SemanticAttributes.MESSAGING_OPERATION]: "publish" },
+          attributes: {
+            [SemanticAttributes.MESSAGING_OPERATION]: "publish",
+            [SemanticInternalAttributes.STYLE_ICON]: "trigger",
+            ["messaging.client_id"]: taskContextManager.worker?.id,
+            [SemanticAttributes.MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
+            ["messaging.message.body.size"]: JSON.stringify(payload).length,
+            [SemanticAttributes.MESSAGING_SYSTEM]: "trigger.dev",
+            ...flattenAttributes(payload as any, SemanticInternalAttributes.PAYLOAD),
+            ...(taskMetadata
+              ? accessoryAttributes({
+                  items: [
+                    {
+                      text: `${taskMetadata.exportName}.trigger()`,
+                      variant: "normal",
+                    },
+                  ],
+                  style: "codepath",
+                })
+              : {}),
+          },
         }
       );
 
       return handle;
     },
     batchTrigger: async ({ items }) => {
-      const batchId = "batch_1234";
-      //todo actually call the API to start the task group
-      return {
-        batchId,
-        itemCount: items.length,
-      };
+      const apiClient = apiClientManager.client;
+
+      if (!apiClient) {
+        throw new Error("API client is not initialized");
+      }
+
+      const taskMetadata = runtime.getTaskMetadata(params.id);
+
+      const response = await tracer.startActiveSpan(
+        taskMetadata ? "Batch trigger" : `${params.id} batchTrigger()`,
+        async (span) => {
+          const response = await apiClient.batchTriggerTask(params.id, {
+            items: items.map((item) => ({
+              payload: item.payload,
+              options: {
+                queue: item.options?.queue ?? params.queue,
+                concurrencyKey: item.options?.concurrencyKey,
+              },
+            })),
+          });
+
+          if (!response.ok) {
+            throw new Error(response.error);
+          }
+
+          span.setAttribute("messaging.message.id", response.data.batchId);
+
+          return response.data;
+        },
+        {
+          kind: SpanKind.PRODUCER,
+          attributes: {
+            [SemanticAttributes.MESSAGING_OPERATION]: "publish",
+            ["messaging.batch.message_count"]: items.length,
+            ["messaging.client_id"]: taskContextManager.worker?.id,
+            [SemanticAttributes.MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
+            ["messaging.message.body.size"]: items
+              .map((item) => JSON.stringify(item.payload))
+              .join("").length,
+            [SemanticAttributes.MESSAGING_SYSTEM]: "trigger.dev",
+            [SemanticInternalAttributes.STYLE_ICON]: "batch-trigger",
+            ...(taskMetadata
+              ? accessoryAttributes({
+                  items: [
+                    {
+                      text: `${taskMetadata.exportName}.batchTrigger()`,
+                      variant: "normal",
+                    },
+                  ],
+                  style: "codepath",
+                })
+              : {}),
+          },
+        }
+      );
+
+      return response;
     },
     triggerAndWait: async ({ payload, options }) => {
       const ctx = taskContextManager.ctx;
@@ -169,18 +261,22 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
         throw new Error("triggerAndWait can only be used from inside a task.run()");
       }
 
-      const apiClient = initializeApiClient();
+      const apiClient = apiClientManager.client;
+
+      if (!apiClient) {
+        throw new Error("API client is not initialized");
+      }
+
+      const taskMetadata = runtime.getTaskMetadata(params.id);
 
       return await tracer.startActiveSpan(
-        `${params.id} trigger`,
+        taskMetadata ? "Trigger" : `${params.id} triggerAndWait()`,
         async (span) => {
-          span.setAttribute(SemanticAttributes.MESSAGING_OPERATION, "publish");
-
           const response = await apiClient.triggerTask(params.id, {
             payload: payload,
             options: {
-              parentAttempt: ctx.attempt.id,
-              lockToCurrentVersion: true, // Lock to current version because we're waiting for it to finish
+              dependentAttempt: ctx.attempt.id,
+              lockToVersion: taskContextManager.worker?.version, // Lock to current version because we're waiting for it to finish
               queue: params.queue,
               concurrencyKey: options?.concurrencyKey,
             },
@@ -189,6 +285,8 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
           if (!response.ok) {
             throw new Error(response.error);
           }
+
+          span.setAttribute("messaging.message.id", response.data.id);
 
           const result = await runtime.waitForTask({
             id: response.data.id,
@@ -201,19 +299,120 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
 
           return JSON.parse(result.output);
         },
-        { kind: SpanKind.PRODUCER }
+        {
+          kind: SpanKind.PRODUCER,
+          attributes: {
+            [SemanticInternalAttributes.STYLE_ICON]: "trigger",
+            [SemanticAttributes.MESSAGING_OPERATION]: "publish",
+            ["messaging.client_id"]: taskContextManager.worker?.id,
+            [SemanticAttributes.MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
+            ["messaging.message.body.size"]: JSON.stringify(payload).length,
+            [SemanticAttributes.MESSAGING_SYSTEM]: "trigger.dev",
+            ...flattenAttributes(payload as any, SemanticInternalAttributes.PAYLOAD),
+            ...(taskMetadata
+              ? accessoryAttributes({
+                  items: [
+                    {
+                      text: `${taskMetadata.exportName}.triggerAndWait()`,
+                      variant: "normal",
+                    },
+                  ],
+                  style: "codepath",
+                })
+              : {}),
+          },
+        }
       );
     },
     batchTriggerAndWait: async ({ items }) => {
-      //pseudo-code for throwing an error if not called from inside a Run
-      if (!process.env.IS_TRIGGER_ENV) {
-        throw new Error("batchTriggerAndWait can only be used from inside a run()");
+      const ctx = taskContextManager.ctx;
+
+      if (!ctx) {
+        throw new Error("batchTriggerAndWait can only be used from inside a task.run()");
       }
 
-      //todo do an API call that creates a TaskGroup
-      //then waits for it to finish
-      //then return the result
-      throw new Error("not implemented");
+      const apiClient = apiClientManager.client;
+
+      if (!apiClient) {
+        throw new Error("API client is not initialized");
+      }
+
+      const taskMetadata = runtime.getTaskMetadata(params.id);
+
+      return await tracer.startActiveSpan(
+        taskMetadata ? "Batch trigger" : `${params.id} batchTriggerAndWait()`,
+        async (span) => {
+          const response = await apiClient.batchTriggerTask(params.id, {
+            items: items.map((item) => ({
+              payload: item.payload,
+              options: {
+                lockToVersion: taskContextManager.worker?.version,
+                queue: item.options?.queue ?? params.queue,
+                concurrencyKey: item.options?.concurrencyKey,
+              },
+            })),
+            dependentAttempt: ctx.attempt.id,
+          });
+
+          if (!response.ok) {
+            throw new Error(response.error);
+          }
+
+          span.setAttribute("messaging.message.id", response.data.batchId);
+
+          const result = await runtime.waitForBatch({
+            id: response.data.batchId,
+            runs: response.data.runs,
+            ctx,
+          });
+
+          const runs = result.items.map((item) => {
+            if (item.ok) {
+              return {
+                ok: true,
+                id: item.id,
+                output: JSON.parse(item.output),
+              } satisfies TaskRunResult<TOutput>;
+            } else {
+              return {
+                ok: false,
+                id: item.id,
+                error: createErrorTaskError(item.error),
+              } satisfies TaskRunResult<TOutput>;
+            }
+          });
+
+          return {
+            id: result.id,
+            runs,
+          };
+        },
+        {
+          kind: SpanKind.PRODUCER,
+          attributes: {
+            [SemanticAttributes.MESSAGING_OPERATION]: "publish",
+            ["messaging.batch.message_count"]: items.length,
+            ["messaging.client_id"]: taskContextManager.worker?.id,
+            [SemanticAttributes.MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
+            ["messaging.message.body.size"]: items
+              .map((item) => JSON.stringify(item.payload))
+              .join("").length,
+            [SemanticAttributes.MESSAGING_SYSTEM]: "trigger.dev",
+            [SemanticInternalAttributes.STYLE_ICON]: "batch-trigger",
+            ...(taskMetadata
+              ? accessoryAttributes({
+                  items: [
+                    {
+                      text: `${taskMetadata.exportName}.batchTriggerAndWait()`,
+                      variant: "normal",
+                    },
+                  ],
+                  style: "codepath",
+                })
+              : {}),
+          },
+        }
+      );
     },
   };
 
@@ -229,9 +428,4 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
   });
 
   return task;
-}
-
-// TODO: make this cross-runtime compatible
-function initializeApiClient() {
-  return new ApiClient(process.env.TRIGGER_API_URL!, process.env.TRIGGER_API_KEY!);
 }

@@ -55,6 +55,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function unflattenAttributes(obj: Attributes): Record<string, unknown> {
+  if (
+    obj === null ||
+    obj === undefined ||
+    typeof obj === "string" ||
+    typeof obj === "number" ||
+    typeof obj === "boolean" ||
+    Array.isArray(obj)
+  ) {
+    return obj;
+  }
+
   const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {

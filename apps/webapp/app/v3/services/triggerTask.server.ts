@@ -68,10 +68,14 @@ export class TriggerTaskService extends BaseService {
           return await $transaction(this._prisma, async (tx) => {
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockId})`;
 
-            const parentAttempt = body.options?.parentAttempt
-              ? await tx.taskRunAttempt.findUnique({
+            const lockedToBackgroundWorker = body.options?.lockToVersion
+              ? await tx.backgroundWorker.findUnique({
                   where: {
-                    friendlyId: body.options.parentAttempt,
+                    projectId_runtimeEnvironmentId_version: {
+                      projectId: environment.projectId,
+                      runtimeEnvironmentId: environment.id,
+                      version: body.options?.lockToVersion,
+                    },
                   },
                 })
               : undefined;
@@ -102,10 +106,7 @@ export class TriggerTaskService extends BaseService {
                 traceContext: traceContext,
                 traceId: event.traceId,
                 spanId: event.spanId,
-                parentAttemptId: parentAttempt?.id,
-                lockedToVersionId: body.options?.lockToCurrentVersion
-                  ? parentAttempt?.backgroundWorkerId
-                  : undefined,
+                lockedToVersionId: lockedToBackgroundWorker?.id,
                 concurrencyKey: body.options?.concurrencyKey,
                 queue: queueName,
               },
@@ -113,6 +114,34 @@ export class TriggerTaskService extends BaseService {
 
             event.setAttribute("runId", taskRun.friendlyId);
             span.setAttribute("runId", taskRun.friendlyId);
+
+            if (body.options?.dependentAttempt) {
+              const dependentAttempt = await tx.taskRun.findUnique({
+                where: { friendlyId: body.options.dependentAttempt },
+              });
+
+              if (dependentAttempt) {
+                await tx.taskRunDependency.create({
+                  data: {
+                    taskRunId: taskRun.id,
+                    dependentAttemptId: dependentAttempt.id,
+                  },
+                });
+              }
+            } else if (body.options?.dependentBatch) {
+              const dependentBatchRun = await tx.batchTaskRun.findUnique({
+                where: { friendlyId: body.options.dependentBatch },
+              });
+
+              if (dependentBatchRun) {
+                await tx.taskRunDependency.create({
+                  data: {
+                    taskRunId: taskRun.id,
+                    dependentBatchRunId: dependentBatchRun.id,
+                  },
+                });
+              }
+            }
 
             // We need to enqueue the task run into the appropriate queue
             await marqs?.enqueueMessage(

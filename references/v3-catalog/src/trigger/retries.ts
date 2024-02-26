@@ -1,4 +1,4 @@
-import { type Context, task, logger, trace } from "@trigger.dev/sdk/v3";
+import { type Context, task, logger } from "@trigger.dev/sdk/v3";
 import { cache } from "./utils/cache";
 
 export const taskWithRetries = task({
@@ -12,7 +12,7 @@ export const taskWithRetries = task({
   },
   run: async ({ payload, ctx }: { payload: string; ctx: Context }) => {
     const user = await cache("user", async () => {
-      return trace("fetch-user", async (span) => {
+      return logger.trace("fetch-user", async (span) => {
         await new Promise((resolve) => setTimeout(resolve, 1000));
 
         span.setAttribute("user.id", "1");
