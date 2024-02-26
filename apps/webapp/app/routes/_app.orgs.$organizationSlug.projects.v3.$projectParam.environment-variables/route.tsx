@@ -2,8 +2,15 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { PencilSquareIcon } from "@heroicons/react/20/solid";
 import { Form, Outlet, useActionData, useNavigation } from "@remix-run/react";
-import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import {
+  ActionFunctionArgs,
+  LoaderFunctionArgs,
+  json,
+  redirect,
+  redirectDocument,
+} from "@remix-run/server-runtime";
 import { RuntimeEnvironment } from "@trigger.dev/database";
+import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
@@ -26,6 +33,7 @@ import {
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Switch } from "~/components/primitives/Switch";
 import {
   Table,
   TableBody,
@@ -38,6 +46,7 @@ import {
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { redirectWithSuccessMessage } from "~/models/message.server";
 import {
   EnvironmentVariableWithSetValues,
   EnvironmentVariablesPresenter,
@@ -45,7 +54,12 @@ import {
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
-import { ProjectParamSchema, docsPath, v3NewEnvironmentVariablesPath } from "~/utils/pathBuilder";
+import {
+  ProjectParamSchema,
+  docsPath,
+  v3EnvironmentVariablesPath,
+  v3NewEnvironmentVariablesPath,
+} from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import {
   CreateEnvironmentVariable,
@@ -77,12 +91,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 const schema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("create"), ...CreateEnvironmentVariable.shape }),
-  z.object({ action: z.literal("edit"), ...EditEnvironmentVariable.shape }),
+  z.object({ action: z.literal("edit"), key: z.string(), ...EditEnvironmentVariable.shape }),
 ]);
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
+  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
 
   if (request.method.toUpperCase() !== "POST") {
     return { status: 405, body: "Method Not Allowed" };
@@ -109,17 +123,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   switch (submission.value.action) {
-    case "create": {
-      const repository = new EnvironmentVariablesRepository(prisma);
-      const result = await repository.create(project.id, userId, submission.value);
-
-      if (!result.success) {
-        submission.error.key = result.error;
-        return json(submission);
-      }
-
-      return json(submission);
-    }
     case "edit": {
       const repository = new EnvironmentVariablesRepository(prisma);
       const result = await repository.edit(project.id, userId, submission.value);
@@ -129,11 +132,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         return json(submission);
       }
 
-      return json(submission);
+      //use redirectDocument because it reloads the page
+      return redirectDocument(
+        v3EnvironmentVariablesPath({ slug: organizationSlug }, { slug: projectParam }),
+        {
+          headers: {
+            refresh: "true",
+          },
+        }
+      );
     }
   }
-
-  return { status: 400, body: "Bad Request" };
 };
 
 export const handle: Handle = {
@@ -141,6 +150,7 @@ export const handle: Handle = {
 };
 
 export default function Page() {
+  const [revealAll, setRevealAll] = useState(false);
   const { environmentVariables, environments } = useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
@@ -162,8 +172,14 @@ export default function Page() {
         </PageTitleRow>
       </PageHeader>
       <PageBody>
-        <div className={cn("h-full flex-col gap-3")}>
-          <div className="flex items-center justify-end">
+        <div className={cn("flex h-full flex-col gap-3")}>
+          <div className="flex items-center justify-end gap-2">
+            <Switch
+              variant="small"
+              label="Reveal values"
+              checked={revealAll}
+              onCheckedChange={(e) => setRevealAll(e.valueOf())}
+            />
             <LinkButton
               to={v3NewEnvironmentVariablesPath(organization, project)}
               variant="primary/small"
@@ -200,7 +216,7 @@ export default function Page() {
                         <TableCell key={environment.id}>
                           <ClipboardField
                             className="w-full max-w-none"
-                            secure
+                            secure={!revealAll}
                             value={value}
                             variant={"tertiary/small"}
                           />
@@ -277,6 +293,7 @@ function EditEnvironmentVariablePanel({
         <Form method="post" {...form.props}>
           <input type="hidden" name="action" value="edit" />
           <input type="hidden" name="id" value={variable.id} />
+          <input type="hidden" name="key" value={variable.key} />
           <FormError id={id.errorId}>{id.error}</FormError>
           <Fieldset>
             <InputGroup>
