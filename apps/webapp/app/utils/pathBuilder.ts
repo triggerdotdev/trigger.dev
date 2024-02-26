@@ -303,6 +303,10 @@ export function v3EnvironmentVariablesPath(organization: OrgForPath, project: Pr
   return `${v3ProjectPath(organization, project)}/environment-variables`;
 }
 
+export function v3NewEnvironmentVariablesPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3EnvironmentVariablesPath(organization, project)}/new`;
+}
+
 export function v3RunsPath(
   organization: OrgForPath,
   project: ProjectForPath,

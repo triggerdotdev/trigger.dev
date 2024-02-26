@@ -1,4 +1,4 @@
-import { PrismaClient } from "@trigger.dev/database";
+import { Prisma, PrismaClient } from "@trigger.dev/database";
 import { $transaction, prisma } from "~/db.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { EnvironmentVariable, ProjectEnvironmentVariable, Repository, Result } from "./repository";
@@ -116,6 +116,16 @@ export class EnvironmentVariablesRepository implements Repository {
         success: true as const,
       };
     } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        // The error code for unique constraint violation in Prisma is P2002
+        if (error.code === "P2002") {
+          return {
+            success: false as const,
+            error: `There's already an environment variable called ${options.key}.`,
+          };
+        }
+      }
+
       return {
         success: false as const,
         error: error instanceof Error ? error.message : "Something went wrong",
