@@ -365,12 +365,55 @@ export class EnvironmentVariablesRepository implements Repository {
     return results;
   }
 
-  getEnvironment(
+  async getEnvironment(
     projectId: string,
     userId: string,
     environmentId: string
   ): Promise<EnvironmentVariable[]> {
-    throw new Error("Method not implemented.");
+    const project = await this.prismaClient.project.findUnique({
+      where: {
+        id: projectId,
+        organization: {
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
+        deletedAt: null,
+      },
+      select: {
+        environments: {
+          select: {
+            id: true,
+          },
+          where: {
+            id: environmentId,
+          },
+        },
+      },
+    });
+
+    if (!project || project.environments.length === 0) {
+      return [];
+    }
+
+    const secretStore = getSecretStore("DATABASE", {
+      prismaClient: this.prismaClient,
+    });
+
+    const secrets = await secretStore.getSecrets(
+      z.object({ secret: z.string() }),
+      secretKeyEnvironmentPrefix(projectId, environmentId)
+    );
+
+    return secrets.map((secret) => {
+      const { key } = parseSecretKey(secret.key);
+      return {
+        key,
+        value: secret.value.secret,
+      };
+    });
   }
 
   async delete(projectId: string, userId: string, options: { id: string }): Promise<Result> {
