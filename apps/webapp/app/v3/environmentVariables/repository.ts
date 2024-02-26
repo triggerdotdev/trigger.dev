@@ -29,6 +29,11 @@ export const EditEnvironmentVariable = z.object({
 });
 export type EditEnvironmentVariable = z.infer<typeof EditEnvironmentVariable>;
 
+export const DeleteEnvironmentVariable = z.object({
+  id: z.string(),
+});
+export type DeleteEnvironmentVariable = z.infer<typeof DeleteEnvironmentVariable>;
+
 export type Result =
   | {
       success: true;
@@ -63,4 +68,5 @@ export interface Repository {
     userId: string,
     environmentId: string
   ): Promise<EnvironmentVariable[]>;
+  delete(projectId: string, userId: string, options: DeleteEnvironmentVariable): Promise<Result>;
 }

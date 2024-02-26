@@ -372,4 +372,91 @@ export class EnvironmentVariablesRepository implements Repository {
   ): Promise<EnvironmentVariable[]> {
     throw new Error("Method not implemented.");
   }
+
+  async delete(projectId: string, userId: string, options: { id: string }): Promise<Result> {
+    const project = await this.prismaClient.project.findUnique({
+      where: {
+        id: projectId,
+        organization: {
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
+        deletedAt: null,
+      },
+      select: {
+        environments: {
+          select: {
+            id: true,
+          },
+          where: {
+            OR: [
+              {
+                orgMember: null,
+              },
+              {
+                orgMember: {
+                  userId,
+                },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    if (!project) {
+      return { success: false as const, error: "Project not found" };
+    }
+
+    const environmentVariable = await this.prismaClient.environmentVariable.findUnique({
+      select: {
+        id: true,
+        key: true,
+        values: {
+          select: {
+            id: true,
+            environmentId: true,
+          },
+        },
+      },
+      where: {
+        id: options.id,
+      },
+    });
+    if (!environmentVariable) {
+      return { success: false as const, error: "Environment variable not found" };
+    }
+
+    try {
+      await $transaction(this.prismaClient, async (tx) => {
+        await tx.environmentVariable.delete({
+          where: {
+            id: options.id,
+          },
+        });
+
+        const secretStore = getSecretStore("DATABASE", {
+          prismaClient: tx,
+        });
+
+        //create the secret values and references
+        for (const value of environmentVariable.values) {
+          const key = secretKey(projectId, value.environmentId, environmentVariable.key);
+          await secretStore.deleteSecret(key);
+        }
+      });
+
+      return {
+        success: true as const,
+      };
+    } catch (error) {
+      return {
+        success: false as const,
+        error: error instanceof Error ? error.message : "Something went wrong",
+      };
+    }
+  }
 }

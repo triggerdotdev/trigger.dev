@@ -1,6 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { PencilSquareIcon } from "@heroicons/react/20/solid";
+import { PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { Form, Outlet, useActionData, useNavigation } from "@remix-run/react";
 import {
   ActionFunctionArgs,
@@ -64,6 +64,7 @@ import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/enviro
 import {
   CreateEnvironmentVariable,
   EditEnvironmentVariable,
+  DeleteEnvironmentVariable,
 } from "~/v3/environmentVariables/repository";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -92,6 +93,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("edit"), key: z.string(), ...EditEnvironmentVariable.shape }),
+  z.object({ action: z.literal("delete"), key: z.string(), ...DeleteEnvironmentVariable.shape }),
 ]);
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
@@ -140,6 +142,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             refresh: "true",
           },
         }
+      );
+    }
+    case "delete": {
+      const repository = new EnvironmentVariablesRepository(prisma);
+      const result = await repository.delete(project.id, userId, submission.value);
+
+      if (!result.success) {
+        submission.error.key = result.error;
+        return json(submission);
+      }
+
+      return redirectWithSuccessMessage(
+        v3EnvironmentVariablesPath({ slug: organizationSlug }, { slug: projectParam }),
+        request,
+        `Deleted ${submission.value.key} environment variable`
       );
     }
   }
@@ -228,6 +245,7 @@ export default function Page() {
                         environments={environments}
                         variable={variable}
                       />
+                      <DeleteEnvironmentVariableButton variable={variable} />
                     </TableCellMenu>
                   </TableRow>
                 ))
@@ -340,5 +358,47 @@ function EditEnvironmentVariablePanel({
         </Form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function DeleteEnvironmentVariableButton({
+  variable,
+}: {
+  variable: EnvironmentVariableWithSetValues;
+}) {
+  const lastSubmission = useActionData();
+  const navigation = useNavigation();
+
+  const isLoading =
+    navigation.state !== "idle" &&
+    navigation.formMethod === "post" &&
+    navigation.formData?.get("action") === "delete";
+
+  const [form, { id }] = useForm({
+    id: "delete-environment-variable",
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
+    onValidate({ formData }) {
+      return parse(formData, { schema });
+    },
+    shouldRevalidate: "onSubmit",
+  });
+
+  return (
+    <Form method="post" {...form.props}>
+      <input type="hidden" name="id" value={variable.id} />
+      <input type="hidden" name="key" value={variable.key} />
+      <Button
+        name="action"
+        value="delete"
+        type="submit"
+        variant="small-menu-item"
+        LeadingIcon={TrashIcon}
+        leadingIconClassName="text-rose-500"
+        className="text-xs"
+      >
+        {isLoading ? "Deleting" : "Delete"}
+      </Button>
+    </Form>
   );
 }
