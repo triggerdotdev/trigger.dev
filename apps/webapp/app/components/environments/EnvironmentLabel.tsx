@@ -32,7 +32,7 @@ export function environmentTitle(environment: Environment, username?: string) {
     case "STAGING":
       return "Staging";
     case "DEVELOPMENT":
-      return username ? `Dev: ${username}` : "Dev";
+      return username ? `Dev: ${username}` : "Dev: You";
     case "PREVIEW":
       return "Preview";
   }

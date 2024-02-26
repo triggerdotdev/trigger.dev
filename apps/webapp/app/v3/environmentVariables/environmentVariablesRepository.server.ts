@@ -1,10 +1,28 @@
 import { PrismaClient } from "@trigger.dev/database";
 import { $transaction, prisma } from "~/db.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
-import { Repository, Result } from "./repository";
+import { EnvironmentVariable, ProjectEnvironmentVariable, Repository, Result } from "./repository";
+import { z } from "zod";
+
+function secretKeyProjectPrefix(projectId: string) {
+  return `environmentvariable:${projectId}:`;
+}
+
+function secretKeyEnvironmentPrefix(projectId: string, environmentId: string) {
+  return `${secretKeyProjectPrefix}${environmentId}:`;
+}
 
 function secretKey(projectId: string, environmentId: string, key: string) {
-  return `environmentvariable:${projectId}:${environmentId}:${key}`;
+  return `${secretKeyEnvironmentPrefix}${key}`;
+}
+
+function parseSecretKey(key: string) {
+  const parts = key.split(":");
+  return {
+    projectId: parts[1],
+    environmentId: parts[2],
+    key: parts[3],
+  };
 }
 
 export class EnvironmentVariablesRepository implements Repository {
@@ -103,5 +121,96 @@ export class EnvironmentVariablesRepository implements Repository {
         error: error instanceof Error ? error.message : "Something went wrong",
       };
     }
+  }
+
+  async getProject(projectId: string, userId: string): Promise<ProjectEnvironmentVariable[]> {
+    const project = await this.prismaClient.project.findUnique({
+      where: {
+        id: projectId,
+        organization: {
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
+        deletedAt: null,
+      },
+      select: {
+        environments: {
+          select: {
+            id: true,
+            type: true,
+          },
+        },
+      },
+    });
+
+    if (!project) {
+      return [];
+    }
+
+    const secretStore = getSecretStore("DATABASE", {
+      prismaClient: this.prismaClient,
+    });
+
+    const secrets = await secretStore.getSecrets(
+      z.object({ secret: z.string() }),
+      secretKeyProjectPrefix(projectId)
+    );
+
+    const values = secrets.map((secret) => {
+      const { projectId, environmentId, key } = parseSecretKey(secret.key);
+      return {
+        projectId,
+        environmentId,
+        key,
+        value: secret.value.secret,
+      };
+    });
+
+    //now group the values together by key and environment ID into ProjectEnvironmentVariable[]
+    //and add the type of environment to the result
+    const results: ProjectEnvironmentVariable[] = [];
+    for (const value of values) {
+      const environment = project.environments.find((e) => e.id === value.environmentId);
+      if (!environment) {
+        throw new Error("Environment not found");
+      }
+
+      const existing = results.find((r) => r.key === value.key);
+      if (existing) {
+        existing.values.push({
+          value: value.value,
+          environment: {
+            id: value.environmentId,
+            type: environment.type,
+          },
+        });
+      } else {
+        results.push({
+          key: value.key,
+          values: [
+            {
+              value: value.value,
+              environment: {
+                id: value.environmentId,
+                type: environment.type,
+              },
+            },
+          ],
+        });
+      }
+    }
+
+    return results;
+  }
+
+  getEnvironment(
+    projectId: string,
+    userId: string,
+    environmentId: string
+  ): Promise<EnvironmentVariable[]> {
+    throw new Error("Method not implemented.");
   }
 }

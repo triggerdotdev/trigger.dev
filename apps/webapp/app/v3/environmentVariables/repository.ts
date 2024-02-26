@@ -1,3 +1,4 @@
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
 
 const EnvironmentVariable = z
@@ -26,6 +27,28 @@ export type Result =
       error: string;
     };
 
+export type ProjectEnvironmentVariable = {
+  key: string;
+  values: {
+    value: string;
+    environment: {
+      id: string;
+      type: RuntimeEnvironmentType;
+    };
+  }[];
+};
+
+export type EnvironmentVariable = {
+  key: string;
+  value: string;
+};
+
 export interface Repository {
   create(projectId: string, userId: string, options: CreateEnvironmentVariable): Promise<Result>;
+  getProject(projectId: string, userId: string): Promise<ProjectEnvironmentVariable[]>;
+  getEnvironment(
+    projectId: string,
+    userId: string,
+    environmentId: string
+  ): Promise<EnvironmentVariable[]>;
 }

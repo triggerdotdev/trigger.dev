@@ -3,6 +3,7 @@ import { z } from "zod";
 import { env } from "~/env.server";
 import nodeCrypto from "node:crypto";
 import { safeJsonParse } from "~/utils/json";
+import { logger } from "../logger.server";
 
 export const SecretStoreOptionsSchema = z.enum(["DATABASE", "AWS_PARAM_STORE"]);
 export type SecretStoreOptions = z.infer<typeof SecretStoreOptionsSchema>;
@@ -18,6 +19,7 @@ type ProviderInitializationOptions = {
 
 export interface SecretStoreProvider {
   getSecret<T>(schema: z.Schema<T>, key: string): Promise<T | undefined>;
+  getSecrets<T>(schema: z.Schema<T>, keyPrefix: string): Promise<{ key: string; value: T }[]>;
   setSecret<T extends object>(key: string, value: T): Promise<void>;
 }
 
@@ -41,6 +43,10 @@ export class SecretStore {
 
   setSecret<T extends object>(key: string, value: T): Promise<void> {
     return this.provider.setSecret(key, value);
+  }
+
+  getSecrets<T>(schema: z.Schema<T>, keyPrefix: string): Promise<{ key: string; value: T }[]> {
+    return this.provider.getSecrets(schema, keyPrefix);
   }
 }
 
@@ -95,6 +101,51 @@ class PrismaSecretStore implements SecretStoreProvider {
     }
 
     return schema.parse(parsedDecrypted);
+  }
+
+  async getSecrets<T>(
+    schema: z.Schema<T>,
+    keyPrefix: string
+  ): Promise<{ key: string; value: T }[]> {
+    const secrets = await this.#prismaClient.secretStore.findMany({
+      where: {
+        key: {
+          startsWith: keyPrefix,
+        },
+      },
+    });
+
+    const results = [] as { key: string; value: T }[];
+
+    for (const secret of secrets) {
+      if (secret.version === "1") {
+        results.push({ key: secret.key, value: schema.parse(secret.value) });
+      }
+
+      const encryptedData = EncryptedSecretValueSchema.safeParse(secret.value);
+
+      if (!encryptedData.success) {
+        throw new Error(
+          `Unable to parse encrypted secret ${secret.key}: ${encryptedData.error.message}`
+        );
+      }
+
+      const decrypted = await this.#decrypt(
+        encryptedData.data.nonce,
+        encryptedData.data.ciphertext,
+        encryptedData.data.tag
+      );
+
+      const parsedDecrypted = safeJsonParse(decrypted);
+      if (!parsedDecrypted) {
+        logger.error(`Secret isn't JSON ${secret.key}`);
+        continue;
+      }
+
+      results.push({ key: secret.key, value: schema.parse(parsedDecrypted) });
+    }
+
+    return results;
   }
 
   async setSecret<T extends object>(key: string, value: T): Promise<void> {
