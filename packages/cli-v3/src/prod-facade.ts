@@ -1,13 +1,36 @@
-import { TracingSDK, HttpInstrumentation, FetchInstrumentation } from "@trigger.dev/core/v3/otel";
+import { FetchInstrumentation, HttpInstrumentation, TracingSDK } from "@trigger.dev/core/v3/otel";
+// import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 
 // IMPORTANT: this needs to be the first import to work properly
+// WARNING: [WARNING] Constructing "ImportInTheMiddle" will crash at run-time because it's an import namespace object, not a constructor [call-import-namespace]
+// TODO: https://github.com/open-telemetry/opentelemetry-js/issues/3954
 const tracingSDK = new TracingSDK({
   url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
   resource: new Resource({
     [SemanticInternalAttributes.CLI_VERSION]: packageJson.version,
   }),
-  instrumentations: [new HttpInstrumentation(), new FetchInstrumentation()],
+  instrumentations: [
+    new HttpInstrumentation({
+      ignoreOutgoingRequestHook: (req) => {
+        return process.env.TRIGGER_API_URL
+          ? urlToRegex(process.env.TRIGGER_API_URL).test(req.host ?? "")
+          : false;
+      },
+    }),
+    new FetchInstrumentation({
+      ignoreUrls: process.env.TRIGGER_API_URL ? [urlToRegex(process.env.TRIGGER_API_URL)] : [],
+    }),
+    // new OpenAIInstrumentation(),
+  ],
 });
+
+function urlToRegex(url: string): RegExp {
+  const urlObj = new URL(url);
+  const hostnameToIgnore = urlObj.hostname.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+  const regexToIgnore = new RegExp(hostnameToIgnore);
+
+  return regexToIgnore;
+}
 
 const otelTracer = tracingSDK.getTracer("trigger-prod-worker", packageJson.version);
 const otelLogger = tracingSDK.getLogger("trigger-prod-worker", packageJson.version);
@@ -44,14 +67,13 @@ import { TaskMetadataWithRun } from "./types.js";
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
 const consoleInterceptor = new ConsoleInterceptor(otelLogger);
 
-const prodRuntimeManager = new ProdRuntimeManager({
-  tracer,
-});
+const prodRuntimeManager = new ProdRuntimeManager();
 
 runtime.setGlobalRuntimeManager(prodRuntimeManager);
 
 const otelTaskLogger = new OtelTaskLogger({
   logger: otelLogger,
+  tracer: tracer,
   level: "info",
 });
 
