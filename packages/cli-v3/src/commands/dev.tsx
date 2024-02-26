@@ -1,5 +1,5 @@
 import {
-  ApiClient,
+  CliApiClient,
   CreateBackgroundWorkerRequestBody,
   ResolvedConfig,
   TaskResource,
@@ -32,7 +32,7 @@ import { CommonCommandOptions } from "../cli/common.js";
 import { getConfigPath, readConfig } from "../utilities/configFiles";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 
-let apiClient: ApiClient | undefined;
+let apiClient: CliApiClient | undefined;
 
 const DevCommandOptions = CommonCommandOptions.extend({
   debugger: z.boolean().default(false),
@@ -126,7 +126,7 @@ async function startDev(
       const accessToken = authorization.accessToken;
       const apiUrl = authorization.apiUrl;
 
-      apiClient = new ApiClient(apiUrl, accessToken);
+      apiClient = new CliApiClient(apiUrl, accessToken);
 
       const devEnv = await apiClient.getProjectDevEnv({ projectRef: config.project });
 
@@ -134,7 +134,7 @@ async function startDev(
         throw new Error(devEnv.error);
       }
 
-      const environmentClient = new ApiClient(apiUrl, devEnv.data.apiKey);
+      const environmentClient = new CliApiClient(apiUrl, devEnv.data.apiKey);
 
       return (
         <DevUI
@@ -170,7 +170,7 @@ type DevProps = {
   config: ResolvedConfig;
   apiUrl: string;
   apiKey: string;
-  environmentClient: ApiClient;
+  environmentClient: CliApiClient;
   projectName: string;
   debuggerOn: boolean;
 };

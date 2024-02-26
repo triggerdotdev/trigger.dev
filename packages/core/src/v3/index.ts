@@ -2,6 +2,7 @@ import { BatchTriggerTaskRequestBody, TriggerTaskRequestBody } from "./schemas";
 
 export * from "./schemas";
 export * from "./apiClient";
+export * from "./cliApiClient";
 export * from "./zodMessageHandler";
 export * from "./errors";
 export * from "./runtime-api";

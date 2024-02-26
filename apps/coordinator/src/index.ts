@@ -14,7 +14,7 @@ import {
   ProdWorkerToCoordinatorEvents,
   DemoTaskSocketData,
   DemoTaskToCoordinatorEvents,
-  ApiClient,
+  CliApiClient,
 } from "@trigger.dev/core/v3";
 import { HttpReply, getTextBody } from "@trigger.dev/core-apps";
 
@@ -366,7 +366,7 @@ class TaskCoordinator {
       socket.on("INDEX_TASKS", async (message, callback) => {
         logger("[INDEX_TASKS]", message);
 
-        const environmentClient = new ApiClient(socket.data.apiUrl, socket.data.apiKey);
+        const environmentClient = new CliApiClient(socket.data.apiUrl, socket.data.apiKey);
 
         const createResponse = await environmentClient.createBackgroundWorker(
           socket.data.projectRef,

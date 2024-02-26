@@ -6,7 +6,7 @@ import { chalkLink } from "../utilities/colors.js";
 import { readAuthConfigFile, writeAuthConfigFile } from "../utilities/configFiles.js";
 import { logger } from "../utilities/logger.js";
 import { whoAmI } from "./whoami.js";
-import { ApiClient } from "@trigger.dev/core/v3";
+import { CliApiClient } from "@trigger.dev/core/v3";
 
 export async function loginCommand(options: any) {
   const result = ApiUrlOptionsSchema.safeParse(options);
@@ -29,7 +29,7 @@ export type LoginResult =
     };
 
 export async function login(apiUrl: string): Promise<LoginResult> {
-  const apiClient = new ApiClient(apiUrl);
+  const apiClient = new CliApiClient(apiUrl);
 
   intro("Logging in to Trigger.dev");
 
@@ -118,7 +118,7 @@ export async function login(apiUrl: string): Promise<LoginResult> {
   }
 }
 
-async function getPersonalAccessToken(apiClient: ApiClient, authorizationCode: string) {
+async function getPersonalAccessToken(apiClient: CliApiClient, authorizationCode: string) {
   const token = await apiClient.getPersonalAccessToken(authorizationCode);
 
   if (!token.success) {

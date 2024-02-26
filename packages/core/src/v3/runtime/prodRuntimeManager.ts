@@ -1,10 +1,11 @@
-import { TaskRunContext, TaskRunExecution, TaskRunExecutionResult } from "../schemas";
-import { TriggerTracer } from "../tracer";
+import {
+  BatchTaskRunExecutionResult,
+  TaskMetadataWithFilePath,
+  TaskRunContext,
+  TaskRunExecution,
+  TaskRunExecutionResult,
+} from "../schemas";
 import { RuntimeManager } from "./manager";
-
-export type ProdRuntimeManagerOptions = {
-  tracer: TriggerTracer;
-};
 
 export class ProdRuntimeManager implements RuntimeManager {
   _taskWaits: Map<
@@ -12,17 +13,30 @@ export class ProdRuntimeManager implements RuntimeManager {
     { resolve: (value: TaskRunExecutionResult) => void; reject: (err?: any) => void }
   > = new Map();
 
-  constructor(private readonly options: ProdRuntimeManagerOptions) {}
+  _batchWaits: Map<
+    string,
+    { resolve: (value: BatchTaskRunExecutionResult) => void; reject: (err?: any) => void }
+  > = new Map();
+
+  _tasks: Map<string, TaskMetadataWithFilePath> = new Map();
 
   disable(): void {
     // do nothing
   }
 
+  registerTasks(tasks: TaskMetadataWithFilePath[]): void {
+    for (const task of tasks) {
+      this._tasks.set(task.id, task);
+    }
+  }
+
+  getTaskMetadata(id: string): TaskMetadataWithFilePath | undefined {
+    return this._tasks.get(id);
+  }
+
   async waitForDuration(ms: number): Promise<void> {
-    return this.options.tracer.startActiveSpan("wait for duration", async (span) => {
-      return new Promise((resolve) => {
-        setTimeout(resolve, ms);
-      });
+    return new Promise((resolve) => {
+      setTimeout(resolve, ms);
     });
   }
 
@@ -33,15 +47,36 @@ export class ProdRuntimeManager implements RuntimeManager {
   }
 
   async waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
-    return this.options.tracer.startActiveSpan("wait for task", async (span) => {
-      span.setAttribute("trigger.task.run.id", params.id);
-
-      const promise = new Promise<TaskRunExecutionResult>((resolve, reject) => {
-        this._taskWaits.set(params.id, { resolve, reject });
-      });
-
-      return await promise;
+    const promise = new Promise<TaskRunExecutionResult>((resolve, reject) => {
+      this._taskWaits.set(params.id, { resolve, reject });
     });
+
+    return await promise;
+  }
+
+  async waitForBatch(params: {
+    id: string;
+    runs: string[];
+    ctx: TaskRunContext;
+  }): Promise<BatchTaskRunExecutionResult> {
+    if (!params.runs.length) {
+      return Promise.resolve({ id: params.id, items: [] });
+    }
+
+    const promise = Promise.all(
+      params.runs.map((runId) => {
+        return new Promise<TaskRunExecutionResult>((resolve, reject) => {
+          this._taskWaits.set(runId, { resolve, reject });
+        });
+      })
+    );
+
+    const results = await promise;
+
+    return {
+      id: params.id,
+      items: results,
+    };
   }
 
   resumeTask(completion: TaskRunExecutionResult, execution: TaskRunExecution): void {

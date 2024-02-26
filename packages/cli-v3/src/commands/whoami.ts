@@ -6,7 +6,7 @@ import { Command } from "commander";
 import { printInitialBanner } from "../utilities/initialBanner.js";
 import { CommonCommandOptions } from "../cli/common.js";
 import { z } from "zod";
-import { ApiClient } from "@trigger.dev/core/v3";
+import { CliApiClient } from "@trigger.dev/core/v3";
 
 type WhoAmIResult =
   | {
@@ -67,7 +67,7 @@ export async function whoAmI(options?: WhoamiCommandOptions): Promise<WhoAmIResu
     };
   }
 
-  const apiClient = new ApiClient(authentication.config.apiUrl, authentication.config.accessToken);
+  const apiClient = new CliApiClient(authentication.config.apiUrl, authentication.config.accessToken);
   const userData = await apiClient.whoAmI();
 
   if (!userData.success) {
