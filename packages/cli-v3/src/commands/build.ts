@@ -133,7 +133,7 @@ async function runBuild(
     write: false,
     minify: false,
     sourcemap: true,
-    logLevel: "silent",
+    logLevel: "warning",
     platform: "node",
     format: "esm",
     target: ["node18", "es2020"],
@@ -180,11 +180,19 @@ async function runBuild(
   md5Hasher.update(Buffer.from(outputFile.contents.buffer));
 
   const contentHash = md5Hasher.digest("hex");
+  const buildContextPath = join(config.projectDir, ".trigger");
+
+  try {
+    // Clean build context dir first
+    await fs.promises.rm(buildContextPath, { recursive: true, force: true });
+  } catch (err) {
+  } finally {
+    // ..then ensure it exists
+    await fs.promises.mkdir(buildContextPath, { recursive: true });
+  }
 
   // Create a file at join(dir, ".trigger", path) with the fileContents
-  const fullPath = join(config.projectDir, ".trigger", `${contentHash}.mjs`);
-
-  await fs.promises.mkdir(dirname(fullPath), { recursive: true });
+  const fullPath = join(buildContextPath, `${contentHash}.mjs`);
   await fs.promises.writeFile(fullPath, outputFile.text);
   const sourceMapPath = `${fullPath}.map`;
   await fs.promises.writeFile(sourceMapPath, sourceMapFile.text);
@@ -193,8 +201,14 @@ async function runBuild(
     "file://",
     ""
   );
-  const buildContextPath = dirname(fullPath);
   await fs.promises.copyFile(prodWorkerPath, join(buildContextPath, "index.mjs"));
+
+  // Ensure source-map package dep exists
+  const sourceMapDep = new URL(importResolve("./mappings.wasm", import.meta.url)).href.replace(
+    "file://",
+    ""
+  );
+  await fs.promises.copyFile(sourceMapDep, join(buildContextPath, "mappings.wasm"));
 
   logger.log(chalk.green(`Bundling finished.\n`));
 
