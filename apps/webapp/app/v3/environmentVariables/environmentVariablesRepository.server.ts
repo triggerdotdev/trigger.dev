@@ -9,11 +9,11 @@ function secretKeyProjectPrefix(projectId: string) {
 }
 
 function secretKeyEnvironmentPrefix(projectId: string, environmentId: string) {
-  return `${secretKeyProjectPrefix}${environmentId}:`;
+  return `${secretKeyProjectPrefix(projectId)}${environmentId}:`;
 }
 
 function secretKey(projectId: string, environmentId: string, key: string) {
-  return `${secretKeyEnvironmentPrefix}${key}`;
+  return `${secretKeyEnvironmentPrefix(projectId, environmentId)}${key}`;
 }
 
 function parseSecretKey(key: string) {
@@ -89,6 +89,148 @@ export class EnvironmentVariablesRepository implements Repository {
         //create the secret values and references
         for (const value of values) {
           const key = secretKey(projectId, value.environmentId, options.key);
+
+          //create the secret reference
+          const secretReference = await tx.secretReference.create({
+            data: {
+              key,
+              provider: "DATABASE",
+            },
+          });
+
+          const variableValue = await tx.environmentVariableValue.create({
+            data: {
+              variableId: environmentVariable.id,
+              environmentId: value.environmentId,
+              valueReferenceId: secretReference.id,
+            },
+          });
+
+          await secretStore.setSecret<{ secret: string }>(key, {
+            secret: value.value,
+          });
+        }
+      });
+
+      return {
+        success: true as const,
+      };
+    } catch (error) {
+      return {
+        success: false as const,
+        error: error instanceof Error ? error.message : "Something went wrong",
+      };
+    }
+  }
+
+  async edit(
+    projectId: string,
+    userId: string,
+    options: { values: { value: string; environmentId: string }[]; id: string }
+  ): Promise<Result> {
+    const project = await this.prismaClient.project.findUnique({
+      where: {
+        id: projectId,
+        organization: {
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
+        deletedAt: null,
+      },
+      select: {
+        environments: {
+          select: {
+            id: true,
+          },
+          where: {
+            OR: [
+              {
+                orgMember: null,
+              },
+              {
+                orgMember: {
+                  userId,
+                },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    if (!project) {
+      return { success: false as const, error: "Project not found" };
+    }
+
+    if (options.values.every((v) => !project.environments.some((e) => e.id === v.environmentId))) {
+      return { success: false as const, error: `Environment not found` };
+    }
+
+    //get rid of empty strings
+    let values = options.values.filter((v) => v.value.trim() !== "");
+
+    //add in empty values for environments that don't have a value
+    const environmentIds = project.environments.map((e) => e.id);
+    for (const environmentId of environmentIds) {
+      if (!values.some((v) => v.environmentId === environmentId)) {
+        values.push({
+          environmentId,
+          value: "",
+        });
+      }
+    }
+
+    const environmentVariable = await this.prismaClient.environmentVariable.findUnique({
+      select: {
+        id: true,
+        key: true,
+      },
+      where: {
+        id: options.id,
+      },
+    });
+    if (!environmentVariable) {
+      return { success: false as const, error: "Environment variable not found" };
+    }
+
+    try {
+      await $transaction(this.prismaClient, async (tx) => {
+        const secretStore = getSecretStore("DATABASE", {
+          prismaClient: tx,
+        });
+
+        //create the secret values and references
+        for (const value of values) {
+          const key = secretKey(projectId, value.environmentId, environmentVariable.key);
+          const existingValue = await tx.environmentVariableValue.findUnique({
+            where: {
+              variableId_environmentId: {
+                variableId: environmentVariable.id,
+                environmentId: value.environmentId,
+              },
+            },
+          });
+
+          if (existingValue && existingValue.valueReferenceId) {
+            if (value.value === "") {
+              await secretStore.deleteSecret(key);
+
+              //delete the value
+              await tx.secretReference.delete({
+                where: {
+                  id: existingValue.valueReferenceId,
+                },
+              });
+            } else {
+              await secretStore.setSecret<{ secret: string }>(key, {
+                secret: value.value,
+              });
+            }
+            continue;
+          }
 
           //create the secret reference
           const secretReference = await tx.secretReference.create({

@@ -1,6 +1,7 @@
-import { conform, useFieldList, useForm } from "@conform-to/react";
+import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
+import { PencilSquareIcon } from "@heroicons/react/20/solid";
+import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { RuntimeEnvironment } from "@trigger.dev/database";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -14,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
+import { Header2 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
@@ -33,15 +35,20 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { TextArea } from "~/components/primitives/TextArea";
 import { prisma } from "~/db.server";
-import { EnvironmentVariablesPresenter } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
+import {
+  EnvironmentVariableWithSetValues,
+  EnvironmentVariablesPresenter,
+} from "~/presenters/v3/EnvironmentVariablesPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import { ProjectParamSchema, docsPath } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
-import { CreateEnvironmentVariable } from "~/v3/environmentVariables/repository";
+import {
+  CreateEnvironmentVariable,
+  EditEnvironmentVariable,
+} from "~/v3/environmentVariables/repository";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -67,7 +74,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
-const schema = z.object({ action: z.literal("create") }).and(CreateEnvironmentVariable);
+const schema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("create"), ...CreateEnvironmentVariable.shape }),
+  z.object({ action: z.literal("edit"), ...EditEnvironmentVariable.shape }),
+]);
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -83,22 +93,34 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return json(submission);
   }
 
+  const project = await prisma.project.findUnique({
+    where: {
+      slug: params.projectParam,
+    },
+    select: {
+      id: true,
+    },
+  });
+  if (!project) {
+    submission.error.key = "Project not found";
+    return json(submission);
+  }
+
   switch (submission.value.action) {
     case "create": {
-      const project = await prisma.project.findUnique({
-        where: {
-          slug: params.projectParam,
-        },
-        select: {
-          id: true,
-        },
-      });
-      if (!project) {
-        submission.error.key = "Project not found";
-        return json(submission);
-      }
       const repository = new EnvironmentVariablesRepository(prisma);
       const result = await repository.create(project.id, userId, submission.value);
+
+      if (!result.success) {
+        submission.error.key = result.error;
+        return json(submission);
+      }
+
+      return json(submission);
+    }
+    case "edit": {
+      const repository = new EnvironmentVariablesRepository(prisma);
+      const result = await repository.edit(project.id, userId, submission.value);
 
       if (!result.success) {
         submission.error.key = result.error;
@@ -138,20 +160,7 @@ export default function Page() {
       <PageBody>
         <div className={cn("h-full flex-col gap-2")}>
           <div className="flex items-center justify-end">
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  variant="primary/small"
-                  LeadingIcon="plus"
-                  leadingIconClassName="text-white"
-                >
-                  New environment variable
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <CreateEnvironmentVariablePanel environments={environments} />
-              </DialogContent>
-            </Dialog>
+            <CreateEnvironmentVariablePanel environments={environments} />
           </div>
           <Table>
             <TableHeader>
@@ -187,7 +196,12 @@ export default function Page() {
                         </TableCell>
                       );
                     })}
-                    <TableCellMenu isSticky></TableCellMenu>
+                    <TableCellMenu isSticky>
+                      <EditEnvironmentVariablePanel
+                        environments={environments}
+                        variable={variable}
+                      />
+                    </TableCellMenu>
                   </TableRow>
                 ))
               ) : (
@@ -212,11 +226,13 @@ function CreateEnvironmentVariablePanel({
 }: {
   environments: Pick<RuntimeEnvironment, "id" | "type">[];
 }) {
-  const location = useLocation();
   const lastSubmission = useActionData();
   const navigation = useNavigation();
 
-  const isLoading = navigation.state !== "idle" && navigation.formMethod === "post";
+  const isLoading =
+    navigation.state !== "idle" &&
+    navigation.formMethod === "post" &&
+    navigation.formData?.get("action") === "create";
 
   const [form, { key }] = useForm({
     id: "create-environment-variable",
@@ -229,52 +245,151 @@ function CreateEnvironmentVariablePanel({
   });
 
   return (
-    <>
-      <DialogHeader>New environment variable</DialogHeader>
-      <Form method="post" {...form.props}>
-        <input type="hidden" name="action" value="create" />
-        <Fieldset>
-          <InputGroup>
-            <Label>Message</Label>
-            <Input {...conform.input(key)} placeholder="e.g. CLIENT_KEY" />
-            <FormError id={key.errorId}>{key.error}</FormError>
-          </InputGroup>
-        </Fieldset>
-        <FormError>{form.error}</FormError>
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="primary/small" LeadingIcon="plus" leadingIconClassName="text-white">
+          New environment variable
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>New environment variable</DialogHeader>
+        <Form method="post" {...form.props}>
+          <input type="hidden" name="action" value="create" />
+          <Fieldset>
+            <InputGroup>
+              <Label>Key</Label>
+              <Input {...conform.input(key)} placeholder="e.g. CLIENT_KEY" />
+            </InputGroup>
+          </Fieldset>
+          <Fieldset>
+            <InputGroup>
+              <Label>Values</Label>
+              <div className="flex flex-col gap-2">
+                {environments.map((environment, index) => {
+                  return (
+                    <div key={environment.id}>
+                      <input
+                        type="hidden"
+                        name={`values[${index}].environmentId`}
+                        value={environment.id}
+                      />
+                      <Input
+                        name={`values[${index}].value`}
+                        placeholder="Not set"
+                        icon={<EnvironmentLabel environment={environment} />}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </InputGroup>
+          </Fieldset>
 
-        <Fieldset>
-          <InputGroup>
-            <Label>Values</Label>
-            <div className="flex flex-col gap-2">
-              {environments.map((environment, index) => {
-                return (
-                  <div key={environment.id}>
-                    <input
-                      type="hidden"
-                      name={`values[${index}].environmentId`}
-                      value={environment.id}
-                    />
-                    <Input
-                      name={`values[${index}].value`}
-                      placeholder="Not set"
-                      icon={<EnvironmentLabel environment={environment} />}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          </InputGroup>
-        </Fieldset>
+          <FormError id={key.errorId}>{key.error}</FormError>
+          <FormError>{form.error}</FormError>
+          <FormButtons
+            className="m-0 w-max"
+            confirmButton={
+              <Button type="submit" variant="primary/medium" disabled={isLoading}>
+                {isLoading ? "Saving" : "Save"}
+              </Button>
+            }
+          />
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
-        <FormButtons
-          className="m-0 w-max"
-          confirmButton={
-            <Button type="submit" variant="primary/medium" disabled={isLoading}>
-              {isLoading ? "Saving" : "Save"}
-            </Button>
-          }
-        />
-      </Form>
-    </>
+function EditEnvironmentVariablePanel({
+  variable,
+  environments,
+}: {
+  variable: EnvironmentVariableWithSetValues;
+  environments: Pick<RuntimeEnvironment, "id" | "type">[];
+}) {
+  const lastSubmission = useActionData();
+  const navigation = useNavigation();
+
+  const isLoading =
+    navigation.state !== "idle" &&
+    navigation.formMethod === "post" &&
+    navigation.formData?.get("action") === "edit";
+
+  const [form, { id }] = useForm({
+    id: "edit-environment-variable",
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
+    onValidate({ formData }) {
+      return parse(formData, { schema });
+    },
+    shouldRevalidate: "onSubmit",
+  });
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          variant="small-menu-item"
+          LeadingIcon={PencilSquareIcon}
+          leadingIconClassName="text-slate-500"
+          className="text-xs"
+        >
+          Edit
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          Edit <strong>{variable.key}</strong>
+        </DialogHeader>
+        <Form method="post" {...form.props}>
+          <input type="hidden" name="action" value="edit" />
+          <input type="hidden" name="id" value={variable.id} />
+          <FormError id={id.errorId}>{id.error}</FormError>
+          <Fieldset>
+            <InputGroup>
+              <Label>Key</Label>
+              <Header2>{variable.key}</Header2>
+            </InputGroup>
+          </Fieldset>
+          <Fieldset>
+            <InputGroup>
+              <Label>Values</Label>
+              <div className="flex flex-col gap-2">
+                {environments.map((environment, index) => {
+                  const value = variable.values[environment.id]?.value;
+                  return (
+                    <div key={environment.id}>
+                      <input
+                        type="hidden"
+                        name={`values[${index}].environmentId`}
+                        value={environment.id}
+                      />
+                      <Input
+                        name={`values[${index}].value`}
+                        placeholder="Not set"
+                        defaultValue={value}
+                        icon={<EnvironmentLabel environment={environment} />}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </InputGroup>
+          </Fieldset>
+
+          <FormError>{form.error}</FormError>
+
+          <FormButtons
+            className="m-0 w-max"
+            confirmButton={
+              <Button type="submit" variant="primary/medium" disabled={isLoading}>
+                {isLoading ? "Saving" : "Edit"}
+              </Button>
+            }
+          />
+        </Form>
+      </DialogContent>
+    </Dialog>
   );
 }

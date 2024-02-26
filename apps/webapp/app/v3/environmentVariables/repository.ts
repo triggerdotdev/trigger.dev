@@ -18,6 +18,17 @@ export const CreateEnvironmentVariable = z.object({
 
 export type CreateEnvironmentVariable = z.infer<typeof CreateEnvironmentVariable>;
 
+export const EditEnvironmentVariable = z.object({
+  id: z.string(),
+  values: z.array(
+    z.object({
+      environmentId: z.string(),
+      value: z.string(),
+    })
+  ),
+});
+export type EditEnvironmentVariable = z.infer<typeof EditEnvironmentVariable>;
+
 export type Result =
   | {
       success: true;
@@ -45,6 +56,7 @@ export type EnvironmentVariable = {
 
 export interface Repository {
   create(projectId: string, userId: string, options: CreateEnvironmentVariable): Promise<Result>;
+  edit(projectId: string, userId: string, options: EditEnvironmentVariable): Promise<Result>;
   getProject(projectId: string, userId: string): Promise<ProjectEnvironmentVariable[]>;
   getEnvironment(
     projectId: string,

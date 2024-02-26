@@ -21,6 +21,7 @@ export interface SecretStoreProvider {
   getSecret<T>(schema: z.Schema<T>, key: string): Promise<T | undefined>;
   getSecrets<T>(schema: z.Schema<T>, keyPrefix: string): Promise<{ key: string; value: T }[]>;
   setSecret<T extends object>(key: string, value: T): Promise<void>;
+  deleteSecret(key: string): Promise<void>;
 }
 
 /** The SecretStore will use the passed in provider. */
@@ -47,6 +48,10 @@ export class SecretStore {
 
   getSecrets<T>(schema: z.Schema<T>, keyPrefix: string): Promise<{ key: string; value: T }[]> {
     return this.provider.getSecrets(schema, keyPrefix);
+  }
+
+  deleteSecret(key: string): Promise<void> {
+    return this.provider.deleteSecret(key);
   }
 }
 
@@ -161,6 +166,14 @@ class PrismaSecretStore implements SecretStoreProvider {
         value: encrypted,
         version: "2",
       },
+      where: {
+        key,
+      },
+    });
+  }
+
+  async deleteSecret(key: string): Promise<void> {
+    await this.#prismaClient.secretStore.delete({
       where: {
         key,
       },

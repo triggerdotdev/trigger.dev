@@ -4,6 +4,9 @@ import { User } from "~/models/user.server";
 import { sortEnvironments } from "~/services/environmentSort.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
+type Result = Awaited<ReturnType<EnvironmentVariablesPresenter["call"]>>;
+export type EnvironmentVariableWithSetValues = Result["environmentVariables"][number];
+
 export class EnvironmentVariablesPresenter {
   #prismaClient: PrismaClient;
 
@@ -97,10 +100,10 @@ export class EnvironmentVariablesPresenter {
             const val = variable?.values.find((v) => v.environment.id === env.id);
             previous[env.id] = {
               value: val?.value,
-              environment: { type: env.type },
+              environment: { type: env.type, id: env.id },
             };
             return { ...previous };
-          }, {} as Record<string, { value: string | undefined; environment: { type: string } }>),
+          }, {} as Record<string, { value: string | undefined; environment: { type: string; id: string } }>),
         };
       }),
       environments: sortedEnvironments.map((environment) => ({
