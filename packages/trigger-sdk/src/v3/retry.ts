@@ -4,7 +4,7 @@ import {
   RetryOptions,
   SemanticInternalAttributes,
   accessoryAttributes,
-  calculateNextRetryTimestamp,
+  calculateNextRetryDelay,
   defaultRetryOptions,
   runtime,
   eventFilterMatches,
@@ -14,7 +14,7 @@ import {
 import { tracer } from "./tracer";
 import { SemanticAttributes } from "@opentelemetry/semantic-conventions";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { SpanStatusCode } from "@opentelemetry/api";
+import { Attributes, Span, SpanStatusCode, context, trace } from "@opentelemetry/api";
 import type { HttpHandler } from "msw";
 
 export type { RetryOptions };
@@ -34,35 +34,57 @@ function onThrow<T>(
       let attempt = 1;
 
       while (attempt <= opts.maxAttempts) {
-        try {
-          return await tracer.startActiveSpan(
-            "retry.fn()",
-            async (span) => {
-              return await fn({ attempt, maxAttempts: opts.maxAttempts });
-            },
-            {
-              attributes: {
-                [SemanticInternalAttributes.STYLE_ICON]: "function",
-                ...accessoryAttributes({
-                  items: [
-                    {
-                      text: `${attempt}/${opts.maxAttempts}`,
-                      variant: "normal",
-                    },
-                  ],
-                  style: "codepath",
-                }),
-              },
-            }
-          );
-        } catch (e) {
-          const nextRetry = calculateNextRetryTimestamp(opts, attempt);
+        const innerSpan = tracer.startSpan("retry.fn()", {
+          attributes: {
+            [SemanticInternalAttributes.STYLE_ICON]: "function",
+            ...accessoryAttributes({
+              items: [
+                {
+                  text: `${attempt}/${opts.maxAttempts}`,
+                  variant: "normal",
+                },
+              ],
+              style: "codepath",
+            }),
+          },
+        });
 
-          if (!nextRetry) {
+        const contextWithSpanSet = trace.setSpan(context.active(), innerSpan);
+
+        try {
+          const result = await context.with(contextWithSpanSet, async () => {
+            return fn({ attempt, maxAttempts: opts.maxAttempts });
+          });
+
+          innerSpan.end();
+
+          return result;
+        } catch (e) {
+          if (e instanceof Error || typeof e === "string") {
+            innerSpan.recordException(e);
+          } else {
+            innerSpan.recordException(String(e));
+          }
+
+          innerSpan.setStatus({ code: SpanStatusCode.ERROR });
+
+          const nextRetryDelay = calculateNextRetryDelay(opts, attempt);
+
+          if (!nextRetryDelay) {
+            innerSpan.end();
+
             throw e;
           }
 
-          await runtime.waitUntil(new Date(nextRetry));
+          innerSpan.setAttribute(
+            SemanticInternalAttributes.RETRY_AT,
+            new Date(Date.now() + nextRetryDelay).toISOString()
+          );
+          innerSpan.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
+          innerSpan.setAttribute(SemanticInternalAttributes.RETRY_DELAY, `${nextRetryDelay}ms`);
+          innerSpan.end();
+
+          await runtime.waitForDuration(nextRetryDelay);
         } finally {
           attempt++;
         }
@@ -131,63 +153,82 @@ const fetchWithInterceptors = async (
   return fetch(input, init);
 };
 
+class FetchErrorWithSpan extends Error {
+  constructor(
+    public readonly originalError: unknown,
+    public readonly span: Span
+  ) {
+    super("Fetch error");
+  }
+}
+
 const doFetchRequest = async (
   input: RequestInfo | URL | string,
   init?: RequestInit,
   attemptCount: number = 0
-): Promise<Response> => {
+): Promise<[Response, Span]> => {
   const url = normalizeUrlFromInput(input);
   const httpMethod = normalizeHttpMethod(input, init);
 
-  return tracer.startActiveSpan(
-    httpMethod,
-    async (span) => {
-      const response = await fetchWithInterceptors(input, {
-        ...init,
-        headers: {
-          ...init?.headers,
-          "x-retry-count": attemptCount.toString(),
-        },
-      });
-
-      span.setAttribute(SemanticAttributes.HTTP_STATUS_CODE, response.status);
-      span.setAttribute(
-        SemanticAttributes.HTTP_RESPONSE_CONTENT_LENGTH,
-        response.headers.get("content-length") || "0"
-      );
-
-      if (!response.ok) {
-        span.recordException(`${response.status}: ${response.statusText}`);
-        span.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: `${response.status}: ${response.statusText}`,
-        });
-      }
-
-      return response;
+  const span = tracer.startSpan(`HTTP ${httpMethod}`, {
+    attributes: {
+      [SemanticAttributes.HTTP_METHOD]: httpMethod,
+      [SemanticAttributes.HTTP_URL]: url.href,
+      [SemanticAttributes.HTTP_HOST]: url.hostname,
+      ["server.host"]: url.hostname,
+      ["server.port"]: url.port,
+      [SemanticAttributes.HTTP_SCHEME]: url.protocol.replace(":", ""),
+      [SemanticInternalAttributes.STYLE_ICON]: "world",
+      ...accessoryAttributes({
+        items: [
+          {
+            text: `${url.hostname}${url.pathname}`,
+            variant: "normal",
+          },
+        ],
+        style: "codepath",
+      }),
+      ...(attemptCount > 1 ? { ["http.request.resend_count"]: attemptCount - 1 } : {}),
     },
-    {
-      attributes: {
-        [SemanticAttributes.HTTP_METHOD]: httpMethod,
-        [SemanticAttributes.HTTP_URL]: url.href,
-        [SemanticAttributes.HTTP_HOST]: url.hostname,
-        ["server.host"]: url.hostname,
-        ["server.port"]: url.port,
-        [SemanticAttributes.HTTP_SCHEME]: url.protocol.replace(":", ""),
-        [SemanticInternalAttributes.STYLE_ICON]: "world",
-        ...accessoryAttributes({
-          items: [
-            {
-              text: `${url.hostname}${url.pathname}`,
-              variant: "normal",
-            },
-          ],
-          style: "codepath",
-        }),
-        ...(attemptCount > 1 ? { ["http.request.resend_count"]: attemptCount - 1 } : {}),
+  });
+
+  try {
+    const response = await fetchWithInterceptors(input, {
+      ...init,
+      headers: {
+        ...init?.headers,
+        "x-retry-count": attemptCount.toString(),
       },
+    });
+
+    span.setAttribute(SemanticAttributes.HTTP_STATUS_CODE, response.status);
+    span.setAttribute("http.status_text", response.statusText);
+    span.setAttribute(
+      SemanticAttributes.HTTP_RESPONSE_CONTENT_LENGTH,
+      response.headers.get("content-length") || "0"
+    );
+    span.setAttributes(createAttributesFromHeaders(response.headers));
+
+    if (!response.ok) {
+      span.recordException(`${response.status}: ${response.statusText}`);
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: `${response.status}: ${response.statusText}`,
+      });
     }
-  );
+
+    return [response, span];
+  } catch (e) {
+    if (typeof e === "string" || e instanceof Error) {
+      span.recordException(e);
+    }
+
+    span.setStatus({ code: SpanStatusCode.ERROR });
+    span.setAttribute(SemanticAttributes.HTTP_STATUS_CODE, 0);
+    span.setAttribute("http.status_text", "This operation was aborted.");
+
+    throw new FetchErrorWithSpan(e, span);
+  }
 };
 
 const MAX_ATTEMPTS = 10;
@@ -218,7 +259,7 @@ async function retryFetch(
             abortController.abort();
           });
 
-          const response = await doFetchRequest(
+          const [response, span] = await doFetchRequest(
             input,
             { ...(init ?? {}), signal: abortController.signal },
             attempt
@@ -229,58 +270,95 @@ async function retryFetch(
           }
 
           if (response.ok) {
+            span.end();
+
             return response;
           }
 
-          const nextRetry = await calculateRetryForResponse(init?.retry, response, attempt);
+          const nextRetry = await calculateRetryDelayForResponse(init?.retry, response, attempt);
 
           if (!nextRetry) {
+            span.end();
+
             return response;
           }
 
           if (attempt >= MAX_ATTEMPTS) {
+            span.end();
+
             return response;
           }
 
-          await tracer.startActiveSpan(
-            "wait",
-            async (span) => {
-              await runtime.waitUntil(new Date(nextRetry));
-            },
-            {
-              attributes: {
-                [SemanticInternalAttributes.STYLE_ICON]: "clock",
-                [SemanticInternalAttributes.RETRY_AT]: new Date(nextRetry).toISOString(),
-                [SemanticInternalAttributes.RETRY_COUNT]: attempt,
-              },
+          if (nextRetry.type === "delay") {
+            span.setAttribute(
+              SemanticInternalAttributes.RETRY_AT,
+              new Date(Date.now() + nextRetry.value).toISOString()
+            );
+            span.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
+            span.setAttribute(SemanticInternalAttributes.RETRY_DELAY, `${nextRetry.value}ms`);
+
+            span.end();
+
+            await runtime.waitForDuration(nextRetry.value);
+          } else {
+            const now = Date.now();
+            const nextRetryDate = new Date(nextRetry.value);
+            const isInFuture = nextRetryDate.getTime() > now;
+
+            span.setAttribute(
+              SemanticInternalAttributes.RETRY_AT,
+              new Date(nextRetry.value).toISOString()
+            );
+            span.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
+
+            if (isInFuture) {
+              span.setAttribute(
+                SemanticInternalAttributes.RETRY_DELAY,
+                `${nextRetry.value - now}ms`
+              );
             }
-          );
+
+            span.end();
+
+            await runtime.waitUntil(new Date(nextRetry.value));
+          }
         } catch (e) {
-          if (e instanceof Error && e.name === "AbortError") {
-            const nextRetry = calculateNextRetryTimestamp(
+          if (
+            e instanceof FetchErrorWithSpan &&
+            e.originalError instanceof Error &&
+            e.originalError.name === "AbortError"
+          ) {
+            const nextRetryDelay = calculateNextRetryDelay(
               { ...defaultRetryOptions, ...(init?.timeout?.retry ?? {}) },
               attempt
             );
 
-            if (!nextRetry) {
+            if (!nextRetryDelay) {
+              e.span.end();
               throw e;
             }
 
-            await tracer.startActiveSpan(
-              "wait",
-              async (span) => {
-                await runtime.waitUntil(new Date(nextRetry));
-              },
-              {
-                attributes: {
-                  [SemanticInternalAttributes.STYLE_ICON]: "clock",
-                  [SemanticInternalAttributes.RETRY_AT]: new Date(nextRetry).toISOString(),
-                  [SemanticInternalAttributes.RETRY_COUNT]: attempt,
-                },
-              }
+            if (attempt >= MAX_ATTEMPTS) {
+              e.span.end();
+              throw e;
+            }
+
+            e.span.setAttribute(
+              SemanticInternalAttributes.RETRY_AT,
+              new Date(Date.now() + nextRetryDelay).toISOString()
             );
+            e.span.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
+            e.span.setAttribute(SemanticInternalAttributes.RETRY_DELAY, `${nextRetryDelay}ms`);
+
+            e.span.end();
+
+            await runtime.waitForDuration(nextRetryDelay);
 
             continue; // Move to the next attempt
+          }
+
+          if (e instanceof FetchErrorWithSpan) {
+            e.span.end();
           }
 
           throw e;
@@ -297,11 +375,11 @@ async function retryFetch(
   );
 }
 
-const calculateRetryForResponse = async (
+const calculateRetryDelayForResponse = async (
   retry: FetchRetryOptions | undefined,
   response: Response,
   attemptCount: number
-): Promise<number | undefined> => {
+): Promise<{ type: "delay"; value: number } | { type: "timestamp"; value: number } | undefined> => {
   if (!retry) {
     return;
   }
@@ -314,14 +392,29 @@ const calculateRetryForResponse = async (
 
   switch (strategy.strategy) {
     case "backoff": {
-      return calculateNextRetryTimestamp({ ...defaultRetryOptions, ...strategy }, attemptCount);
+      const value = calculateNextRetryDelay({ ...defaultRetryOptions, ...strategy }, attemptCount);
+
+      if (value) {
+        return { type: "delay", value };
+      }
+
+      break;
     }
     case "headers": {
       const resetAt = response.headers.get(strategy.resetHeader);
 
       if (typeof resetAt === "string") {
-        return calculateResetAt(resetAt, strategy.resetFormat ?? "unix_timestamp_in_ms");
+        const resetTimestamp = calculateResetAt(
+          resetAt,
+          strategy.resetFormat ?? "unix_timestamp_in_ms"
+        );
+
+        if (resetTimestamp) {
+          return { type: "timestamp", value: resetTimestamp };
+        }
       }
+
+      break;
     }
   }
 };
@@ -395,6 +488,20 @@ const isStatusCodeInRange = (statusCode: number, statusRange: string): boolean =
   }
 
   return statusCode === parseInt(start, 10);
+};
+
+const createAttributesFromHeaders = (headers: Headers): Attributes => {
+  const attributes: Attributes = {};
+
+  const normalizedHeaderKey = (key: string) => {
+    return key.toLowerCase();
+  };
+
+  headers.forEach((value, key) => {
+    attributes[`http.response.header.${normalizedHeaderKey(key)}`] = value;
+  });
+
+  return attributes;
 };
 
 const safeJsonParse = (json: string): unknown => {

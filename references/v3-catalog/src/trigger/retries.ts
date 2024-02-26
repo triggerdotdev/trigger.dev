@@ -1,6 +1,6 @@
 import { logger, retry, task } from "@trigger.dev/sdk/v3";
 import { cache } from "./utils/cache";
-import { HttpResponse, http } from "msw";
+import { interceptor } from "./utils/interceptor";
 
 export const taskWithRetries = task({
   id: "task-with-retries",
@@ -14,13 +14,13 @@ export const taskWithRetries = task({
   run: async ({ payload, ctx }) => {
     const result = await retry.onThrow(
       async ({ attempt }) => {
-        if (attempt < 3) throw new Error("failed");
+        if (attempt < 3) throw new Error("failedd");
 
         return {
           foo: "bar",
         };
       },
-      { maxAttempts: 3 }
+      { maxAttempts: 3, randomize: false }
     );
 
     const user = await cache("user", async () => {
@@ -39,7 +39,7 @@ export const taskWithRetries = task({
 
     logger.info("Fetched user", { user });
 
-    if (ctx.attempt.number <= 9) {
+    if (ctx.attempt.number <= 3) {
       throw new Error(`Attempt ${ctx.attempt.number} failed: ${payload}`);
     }
 
@@ -49,36 +49,6 @@ export const taskWithRetries = task({
     };
   },
 });
-
-const interceptor = retry.interceptFetch(
-  http.get("http://my.host/test-headers", ({ request }) => {
-    const retryCount = request.headers.get("x-retry-count");
-
-    if (retryCount === "1") {
-      return new HttpResponse(null, {
-        status: 429,
-        headers: {
-          "x-ratelimit-limit": "100",
-          "x-ratelimit-remaining": "0",
-          "x-ratelimit-reset": String(Date.now() + 1000 * 10), // 10 seconds
-        },
-      });
-    }
-
-    return HttpResponse.json({ foo: "bar" });
-  }),
-  http.get("http://my.host/test-backoff", ({ request }) => {
-    const retryCount = request.headers.get("x-retry-count");
-
-    if (retryCount === "10") {
-      return HttpResponse.json({ foo: "bar" });
-    }
-
-    return new HttpResponse(null, {
-      status: 500,
-    });
-  })
-);
 
 export const taskWithFetchRetries = task({
   id: "task-with-fetch-retries",
@@ -107,8 +77,8 @@ export const taskWithFetchRetries = task({
         "500-599": {
           strategy: "backoff",
           maxAttempts: 10,
-          factor: 1.8,
-          minTimeoutInMs: 500,
+          factor: 2,
+          minTimeoutInMs: 1_000,
           maxTimeoutInMs: 30_000,
           randomize: false,
         },
@@ -119,9 +89,29 @@ export const taskWithFetchRetries = task({
 
     logger.info("Fetched backoff response", { json2 });
 
+    const timeoutResponse = await retry.fetch("https://httpbin.org/delay/2", {
+      timeout: {
+        durationInMs: 1000,
+        retry: {
+          maxAttempts: 5,
+          factor: 1.8,
+          minTimeoutInMs: 500,
+          maxTimeoutInMs: 30_000,
+          randomize: false,
+        },
+      },
+    });
+
+    const json3 = await timeoutResponse.json();
+
+    logger.info("Fetched timeout response", { json3 });
+
     return {
-      result: "success",
+      result: "successss",
       payload,
+      json,
+      json2,
+      json3,
     };
   },
 });

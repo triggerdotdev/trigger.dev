@@ -9,7 +9,13 @@ export const defaultRetryOptions = {
   randomize: true,
 } satisfies RetryOptions;
 
-export function calculateNextRetryTimestamp(opts: Required<RetryOptions>, attempt: number) {
+/**
+ *
+ * @param opts
+ * @param attempt - The current attempt number. If the first attempt has failed, this will be 1.
+ * @returns
+ */
+export function calculateNextRetryDelay(opts: Required<RetryOptions>, attempt: number) {
   if (attempt >= opts.maxAttempts) {
     return;
   }
@@ -18,10 +24,10 @@ export function calculateNextRetryTimestamp(opts: Required<RetryOptions>, attemp
 
   const random = randomize ? Math.random() + 1 : 1;
 
-  const timeout = Math.min(maxTimeoutInMs, random * minTimeoutInMs * Math.pow(factor, attempt));
+  const timeout = Math.min(maxTimeoutInMs, random * minTimeoutInMs * Math.pow(factor, attempt - 1));
 
-  // return the date in the future
-  return Date.now() + timeout;
+  // Round to the nearest integer
+  return Math.round(timeout);
 }
 
 export function calculateResetAt(

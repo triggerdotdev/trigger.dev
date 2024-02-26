@@ -31,5 +31,6 @@ export const SemanticInternalAttributes = {
   SDK_VERSION: "sdk.version",
   SDK_LANGUAGE: "sdk.language",
   RETRY_AT: "retry.at",
+  RETRY_DELAY: "retry.delay",
   RETRY_COUNT: "retry.count",
 };

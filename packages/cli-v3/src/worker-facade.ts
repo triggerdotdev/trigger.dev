@@ -1,4 +1,4 @@
-import { FetchInstrumentation, HttpInstrumentation, TracingSDK } from "@trigger.dev/core/v3/otel";
+import { TracingSDK } from "@trigger.dev/core/v3/otel";
 // import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 
 // IMPORTANT: this needs to be the first import to work properly
@@ -10,27 +10,9 @@ const tracingSDK = new TracingSDK({
     [SemanticInternalAttributes.CLI_VERSION]: packageJson.version,
   }),
   instrumentations: [
-    new HttpInstrumentation({
-      ignoreOutgoingRequestHook: (req) => {
-        return process.env.TRIGGER_API_URL
-          ? urlToRegex(process.env.TRIGGER_API_URL).test(req.host ?? "")
-          : false;
-      },
-    }),
-    new FetchInstrumentation({
-      ignoreUrls: process.env.TRIGGER_API_URL ? [urlToRegex(process.env.TRIGGER_API_URL)] : [],
-    }),
     // new OpenAIInstrumentation(),
   ],
 });
-
-function urlToRegex(url: string): RegExp {
-  const urlObj = new URL(url);
-  const hostnameToIgnore = urlObj.hostname.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
-  const regexToIgnore = new RegExp(hostnameToIgnore);
-
-  return regexToIgnore;
-}
 
 const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.version);
 const otelLogger = tracingSDK.getLogger("trigger-dev-worker", packageJson.version);
@@ -50,7 +32,7 @@ import {
   ZodMessageHandler,
   ZodMessageSender,
   accessoryAttributes,
-  calculateNextRetryTimestamp,
+  calculateNextRetryDelay,
   childToWorkerMessages,
   logger,
   parseError,
@@ -101,9 +83,9 @@ class TaskExecutor {
 
     const retry = this.task.retry;
 
-    const timestamp = calculateNextRetryTimestamp(retry, execution.attempt.number);
+    const delay = calculateNextRetryDelay(retry, execution.attempt.number);
 
-    return timestamp ? { timestamp } : undefined;
+    return typeof delay === "undefined" ? undefined : { timestamp: Date.now() + delay, delay };
   }
 
   async execute(
@@ -225,6 +207,7 @@ function getTasks(): Array<TaskMetadataWithFunctions> {
           packageVersion: (task as any).__trigger.packageVersion,
           filePath: (taskFile as any).filePath,
           queue: (task as any).__trigger.queue,
+          retry: (task as any).__trigger.retry,
           fns: (task as any).__trigger.fns,
         });
       }

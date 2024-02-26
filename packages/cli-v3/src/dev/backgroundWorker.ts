@@ -48,6 +48,10 @@ export class BackgroundWorkerCoordinator {
 
   constructor(private baseURL: string) {
     this.onTaskCompleted.attach(async ({ completion, execution }) => {
+      if (!completion.ok && typeof completion.retry !== "undefined") {
+        return;
+      }
+
       await this.#notifyWorkersOfTaskCompletion(completion, execution);
     });
   }
@@ -540,6 +544,10 @@ class TaskRunProcess {
   }
 
   taskRunCompletedNotification(completion: TaskRunExecutionResult, execution: TaskRunExecution) {
+    if (!completion.ok && typeof completion.retry === "undefined") {
+      return;
+    }
+
     this._sender.send("TASK_RUN_COMPLETED_NOTIFICATION", {
       completion,
       execution,
