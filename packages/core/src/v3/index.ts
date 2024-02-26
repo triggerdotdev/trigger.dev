@@ -34,5 +34,10 @@ export type { TaskLogger } from "./logger/taskLogger";
 export { OtelTaskLogger } from "./logger/taskLogger";
 export { ConsoleInterceptor } from "./consoleInterceptor";
 export { flattenAttributes, unflattenAttributes } from "./utils/flattenAttributes";
-export { defaultRetryOptions, calculateNextRetryTimestamp } from "./utils/retries";
+export {
+  defaultRetryOptions,
+  calculateNextRetryTimestamp,
+  calculateResetAt,
+} from "./utils/retries";
 export { accessoryAttributes } from "./utils/styleAttributes";
+export { eventFilterMatches } from "../eventFilterMatches";

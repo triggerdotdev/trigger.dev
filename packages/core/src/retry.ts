@@ -1,7 +1,7 @@
 import { RetryOptions } from "./schemas";
 
 const DEFAULT_RETRY_OPTIONS = {
-  limit: 5,
+  maxAttempts: 5,
   factor: 1.8,
   minTimeoutInMs: 1000,
   maxTimeoutInMs: 60000,
@@ -16,7 +16,7 @@ export function calculateRetryAt(retryOptions: RetryOptions, attempts: number): 
 
   const retryCount = attempts + 1;
 
-  if (retryCount >= options.limit) {
+  if (retryCount >= options.maxAttempts) {
     return;
   }
 

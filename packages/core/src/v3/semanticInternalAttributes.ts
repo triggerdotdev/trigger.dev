@@ -30,4 +30,6 @@ export const SemanticInternalAttributes = {
   CLI_VERSION: "cli.version",
   SDK_VERSION: "sdk.version",
   SDK_LANGUAGE: "sdk.language",
+  RETRY_AT: "retry.at",
+  RETRY_COUNT: "retry.count",
 };

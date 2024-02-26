@@ -1,4 +1,5 @@
 import { type RetryOptions } from "../schemas";
+import { calculateResetAt as calculateResetAtInternal } from "../../retry";
 
 export const defaultRetryOptions = {
   maxAttempts: 10,
@@ -6,7 +7,7 @@ export const defaultRetryOptions = {
   minTimeoutInMs: 1000,
   maxTimeoutInMs: 60000,
   randomize: true,
-};
+} satisfies RetryOptions;
 
 export function calculateNextRetryTimestamp(opts: Required<RetryOptions>, attempt: number) {
   if (attempt >= opts.maxAttempts) {
@@ -21,4 +22,18 @@ export function calculateNextRetryTimestamp(opts: Required<RetryOptions>, attemp
 
   // return the date in the future
   return Date.now() + timeout;
+}
+
+export function calculateResetAt(
+  resets: string | undefined | null,
+  format:
+    | "unix_timestamp"
+    | "iso_8601"
+    | "iso_8601_duration_openai_variant"
+    | "unix_timestamp_in_ms",
+  now: number = Date.now()
+): number | undefined {
+  const resetAt = calculateResetAtInternal(resets, format, new Date(now));
+
+  return resetAt?.getTime();
 }

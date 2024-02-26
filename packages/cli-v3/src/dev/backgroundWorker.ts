@@ -307,6 +307,10 @@ export class BackgroundWorker {
         this._taskRunProcesses.delete(payload.execution.run.id);
       });
 
+      taskRunProcess.onTaskHeartbeat.attach((id) => {
+        this.onTaskHeartbeat.post(id);
+      });
+
       await taskRunProcess.initialize();
 
       this._taskRunProcesses.set(payload.execution.run.id, taskRunProcess);
@@ -482,12 +486,13 @@ class TaskRunProcess {
     this._child = fork(this.path, {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
       env: this.env,
-      execArgv: this.debuggerOn ? ["--inspect-brk"] : [],
+      execArgv: this.debuggerOn ? ["--inspect-brk", "--trace-uncaught"] : ["--trace-uncaught"],
     });
 
     this._child.on("message", this.#handleMessage.bind(this));
     this._child.on("exit", this.#handleExit.bind(this));
     this._child.stdout?.on("data", this.#handleLog.bind(this));
+    this._child.stderr?.on("data", this.#handleStdErr.bind(this));
   }
 
   async cleanup(kill: boolean = false) {
@@ -611,6 +616,20 @@ class TaskRunProcess {
     }
 
     logger.log(
+      `[${this.metadata.version}][${this._currentExecution.run.id}.${
+        this._currentExecution.attempt.number
+      }] ${data.toString()}`
+    );
+  }
+
+  #handleStdErr(data: Buffer) {
+    if (!this._currentExecution) {
+      logger.error(`[${this.metadata.version}] ${data.toString()}`);
+
+      return;
+    }
+
+    logger.error(
       `[${this.metadata.version}][${this._currentExecution.run.id}.${
         this._currentExecution.attempt.number
       }] ${data.toString()}`

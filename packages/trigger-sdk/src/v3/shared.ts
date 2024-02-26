@@ -16,32 +16,38 @@ import {
 import * as packageJson from "../../package.json";
 import { tracer } from "./tracer";
 
-export type PreparedItems = Record<string, any>;
+export type InitOutput = Record<string, any> | void | undefined;
 
-export type RunFnParams<TPayload, TPreparedItems extends PreparedItems> = Prettify<{
+export type RunFnParams<TPayload, TInitOutput extends InitOutput> = Prettify<{
   payload: TPayload;
   ctx: Context;
-  prepared: TPreparedItems;
+  init: TInitOutput;
 }>;
 
-export type PrepareFnParams<TPayload> = Prettify<{
+export type MiddlewareFnParams<TPayload> = Prettify<{
+  payload: TPayload;
+  ctx: Context;
+  next: () => Promise<void>;
+}>;
+
+export type InitFnParams<TPayload> = Prettify<{
   payload: TPayload;
   ctx: Context;
 }>;
 
 export type Context = TaskRunContext;
 
-export type SuccessFnParams<TPayload, TOutput, TPreparedItems extends PreparedItems> = RunFnParams<
+export type SuccessFnParams<TPayload, TOutput, TInitOutput extends InitOutput> = RunFnParams<
   TPayload,
-  TPreparedItems
+  TInitOutput
 > &
   Prettify<{
     output: TOutput;
   }>;
 
-export type ErrorFnParams<TPayload, TPreparedItems extends PreparedItems> = RunFnParams<
+export type ErrorFnParams<TPayload, TInitOutput extends InitOutput> = RunFnParams<
   TPayload,
-  TPreparedItems
+  TInitOutput
 > &
   Prettify<{
     error: unknown;
@@ -59,7 +65,7 @@ export function queue(options: { name: string } & QueueOptions): Queue {
   return options;
 }
 
-export type RunOptions<TPayload, TOutput = any, TPreparedItems extends PreparedItems = any> = {
+export type RunOptions<TPayload, TOutput = any, TInitOutput extends InitOutput = any> = {
   id: string;
   retry?: RetryOptions;
   queue?: QueueOptions;
@@ -68,10 +74,12 @@ export type RunOptions<TPayload, TOutput = any, TPreparedItems extends PreparedI
     cpu?: number;
     memory?: number;
   };
-  run: (params: RunFnParams<TPayload, TPreparedItems>) => Promise<TOutput>;
-  before?: (params: PrepareFnParams<TPayload>) => Promise<TPreparedItems>;
-  onSuccess?: (params: SuccessFnParams<TPayload, TOutput, TPreparedItems>) => Promise<void>;
-  onError?: (params: ErrorFnParams<TPayload, TPreparedItems>) => Promise<void>;
+  run: (params: RunFnParams<TPayload, TInitOutput>) => Promise<TOutput>;
+  init?: (params: InitFnParams<TPayload>) => Promise<TInitOutput>;
+  cleanup?: (params: RunFnParams<TPayload, TInitOutput>) => Promise<void>;
+  middleware?: (params: MiddlewareFnParams<TPayload>) => Promise<void>;
+  onSuccess?: (params: SuccessFnParams<TPayload, TOutput, TInitOutput>) => Promise<void>;
+  onError?: (params: ErrorFnParams<TPayload, TInitOutput>) => Promise<void>;
 };
 
 type InvokeHandle = {
@@ -136,8 +144,8 @@ export type DynamicBaseOptions = {
   id: string;
 };
 
-export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems>(
-  params: RunOptions<TInput, TOutput, TPreparedItems>
+export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
+  params: RunOptions<TInput, TOutput, TInitOutput>
 ): Task<TInput, TOutput> {
   const task: Task<TInput, TOutput> = {
     trigger: async ({ payload, options }) => {
@@ -419,10 +427,15 @@ export function createTask<TInput, TOutput, TPreparedItems extends PreparedItems
   Object.defineProperty(task, "__trigger", {
     value: {
       id: params.id,
-      run: params.run,
       packageVersion: packageJson.version,
       queue: params.queue,
       retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
+      fns: {
+        run: params.run,
+        init: params.init,
+        cleanup: params.cleanup,
+        middleware: params.middleware,
+      },
     },
     enumerable: false,
   });
