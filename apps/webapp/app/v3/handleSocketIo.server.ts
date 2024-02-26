@@ -60,7 +60,12 @@ function createCoordinatorNamespace(io: Server) {
       logger("[READY_FOR_EXECUTION]", { message });
 
       const payload = await sharedQueueTasks.getExecutionPayloadFromAttempt(message.attemptId);
-      callback({ payload });
+
+      if (!payload) {
+        callback({ success: false });
+      } else {
+        callback({ success: true, payload });
+      }
     });
 
     socket.on("TASK_RUN_COMPLETED", async (message) => {

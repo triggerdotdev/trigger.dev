@@ -384,8 +384,10 @@ export class SharedQueueConsumer {
 }
 
 export class SharedQueueTasks {
-  async getExecutionPayloadFromAttempt(id: string): Promise<ProdTaskRunExecutionPayload> {
-    const attempt = await prisma.taskRunAttempt.findUniqueOrThrow({
+  async getExecutionPayloadFromAttempt(
+    id: string
+  ): Promise<ProdTaskRunExecutionPayload | undefined> {
+    const attempt = await prisma.taskRunAttempt.findUnique({
       where: {
         id,
       },
@@ -406,6 +408,11 @@ export class SharedQueueTasks {
         queue: true,
       },
     });
+
+    if (!attempt) {
+      logger.error("No attempt found", { id });
+      return;
+    }
 
     const { backgroundWorkerTask, taskRun, queue } = attempt;
 

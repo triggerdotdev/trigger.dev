@@ -73,7 +73,16 @@ export interface CoordinatorToPlatformEvents {
   READY: (message: VersionedMessage<{ taskId: string }>) => void;
   READY_FOR_EXECUTION: (
     message: VersionedMessage<{ attemptId: string }>,
-    callback: (ack: { payload: ProdTaskRunExecutionPayload }) => void
+    callback: (
+      ack:
+        | {
+            success: false;
+          }
+        | {
+            success: true;
+            payload: ProdTaskRunExecutionPayload;
+          }
+    ) => void
   ) => void;
   TASK_RUN_COMPLETED: (
     message: VersionedMessage<{

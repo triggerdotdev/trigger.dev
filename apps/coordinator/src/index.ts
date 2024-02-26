@@ -330,7 +330,12 @@ class TaskCoordinator {
         });
 
         if (!executionAck) {
-          logger("missing platformAck with execution payload");
+          logger("no execution ack");
+          return;
+        }
+
+        if (!executionAck.success) {
+          logger("execution ack unsuccessful");
           return;
         }
 
