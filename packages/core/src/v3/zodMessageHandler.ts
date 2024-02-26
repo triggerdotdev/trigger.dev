@@ -31,6 +31,10 @@ const messageSchema = z.object({
   payload: z.unknown(),
 });
 
+interface EventEmitterLike {
+  on(eventName: string | symbol, listener: (...args: any[]) => void): this;
+}
+
 export class ZodMessageHandler<TMessageCatalog extends ZodMessageCatalogSchema> {
   #schema: TMessageCatalog;
   #handlers: ZodMessageHandlers<TMessageCatalog> | undefined;
@@ -80,6 +84,14 @@ export class ZodMessageHandler<TMessageCatalog extends ZodMessageCatalogSchema> 
       payload: parsedPayload.data,
     };
   }
+
+  public registerHandlers(emitter: EventEmitterLike) {
+    for (const eventName of Object.keys(this.#schema)) {
+      emitter.on(eventName, (payload: any): void => {
+        this.handleMessage({ type: eventName, ...payload });
+      });
+    }
+  }
 }
 
 type ZodMessageSenderCallback<TMessageCatalog extends ZodMessageCatalogSchema> = (message: {
@@ -121,3 +133,7 @@ export class ZodMessageSender<TMessageCatalog extends ZodMessageCatalogSchema> {
     await this.#sender({ type, payload, version: "v1" });
   }
 }
+
+export type MessageCatalogToSocketIoEvents<TCatalog extends ZodMessageCatalogSchema> = {
+  [K in keyof TCatalog]: (message: z.infer<TCatalog[K]>) => void;
+};

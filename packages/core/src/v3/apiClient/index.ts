@@ -140,6 +140,19 @@ export class ApiClient {
       },
     });
   }
+
+  async getProjectProdEnv({ projectRef }: { projectRef: string }) {
+    if (!this.accessToken) {
+      throw new Error("getProjectDevEnv: No access token");
+    }
+
+    return zodfetch(GetProjectDevResponse, `${this.apiURL}/api/v1/projects/${projectRef}/prod`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+  }
 }
 
 type ApiResult<TSuccessResult> =

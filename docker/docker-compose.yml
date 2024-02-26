@@ -55,6 +55,7 @@ services:
       - 6379:6379
 
   otel-collector:
+    container_name: otel-collector
     image: otel/opentelemetry-collector-contrib:latest
     command: ["--config", "/etc/otel-collector-config.yaml"]
     volumes:

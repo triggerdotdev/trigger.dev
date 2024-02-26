@@ -44,6 +44,8 @@ class ProdWorker {
   private projectRef = process.env.TRIGGER_PROJECT_REF!;
   private cliPackageVersion = process.env.TRIGGER_CLI_PACKAGE_VERSION!;
 
+  private executing = false;
+
   #backgroundWorker: ProdBackgroundWorker;
   #httpServer: ReturnType<typeof createServer>;
   #coordinatorSocket: Socket<CoordinatorToProdWorkerEvents, ProdWorkerToCoordinatorEvents>;
@@ -52,23 +54,22 @@ class ProdWorker {
     private port: number,
     private host = "0.0.0.0"
   ) {
+    this.#coordinatorSocket = this.#createCoordinatorSocket();
+
     this.#backgroundWorker = new ProdBackgroundWorker(this.#getWorkerEntryPath(this.contentHash), {
       projectDir: this.projectDir,
       env: {
         TRIGGER_API_URL: this.apiUrl,
         TRIGGER_API_KEY: this.apiKey,
       },
+      contentHash: this.contentHash,
+    });
+    this.#backgroundWorker.onTaskHeartbeat.attach((id) => {
+      console.log("hearbeat", { id });
+      this.#coordinatorSocket.emit("TASK_HEARTBEAT", { version: "v1", runId: id });
     });
 
-    this.#coordinatorSocket = this.#createCoordinatorSocket();
     this.#httpServer = this.#createHttpServer();
-
-    // TODO: create coordinator on daemon instead
-
-    // await backgroundWorkerCoordinator.registerWorker(
-    //   backgroundWorkerRecord.data,
-    //   backgroundWorker
-    // );
   }
 
   #createCoordinatorSocket() {
@@ -102,7 +103,7 @@ class ProdWorker {
 
       if (process.env.INDEX_TASKS === "true") {
         const taskResources = await this.#initializeWorker();
-        const { success } = await this.#coordinatorSocket.emitWithAck("INDEX_TASKS", {
+        const { success } = await socket.emitWithAck("INDEX_TASKS", {
           version: "v1",
           ...taskResources,
         });
@@ -113,6 +114,11 @@ class ProdWorker {
           logger("indexing failure, shutting down..");
           process.exit(1);
         }
+      } else {
+        socket.emit("READY_FOR_EXECUTION", {
+          version: "v1",
+          attemptId: process.env.TRIGGER_ATTEMPT_ID!,
+        });
       }
     });
 
@@ -130,6 +136,22 @@ class ProdWorker {
 
     socket.on("RESUME_WITH", async (message) => {
       logger("[RESUME_WITH]", message);
+    });
+
+    socket.on("EXECUTE_TASK_RUN", async (message, callback) => {
+      logger("[EXECUTE_TASK_RUN]");
+
+      if (this.executing) {
+        return;
+      }
+
+      this.executing = true;
+      const completion = await this.#backgroundWorker.executeTaskRun(message.payload);
+
+      console.log("completed", completion);
+
+      callback({ completion });
+      this.executing = false;
     });
 
     return socket;
@@ -204,8 +226,9 @@ class ProdWorker {
           return reply.text("got preStop request");
 
         case "/ready":
-          this.#coordinatorSocket.emit("READY", {
+          this.#coordinatorSocket.emit("READY_FOR_EXECUTION", {
             version: "v1",
+            attemptId: process.env.TRIGGER_ATTEMPT_ID!,
           });
           return reply.empty();
 

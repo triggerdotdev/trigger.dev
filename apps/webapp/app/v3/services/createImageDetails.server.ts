@@ -48,23 +48,23 @@ export class CreateImageDetailsService {
 
     const imageDetails = await this.#prismaClient.imageDetails.upsert({
       where: {
-        projectId_runtimeEnvironmentId_tag: {
-          tag: body.metadata.imageTag,
+        projectId_runtimeEnvironmentId_contentHash: {
+          contentHash: body.metadata.contentHash,
           runtimeEnvironmentId: environment.id,
           projectId: project.id,
         },
       },
       create: {
+        contentHash: body.metadata.contentHash,
         friendlyId: generateFriendlyId("image"),
         tag: body.metadata.imageTag,
         runtimeEnvironmentId: environment.id,
         projectId: project.id,
         metadata: body.metadata,
-        contentHash: body.metadata.contentHash,
       },
       update: {
+        tag: body.metadata.imageTag,
         metadata: body.metadata,
-        contentHash: body.metadata.contentHash,
       },
     });
 

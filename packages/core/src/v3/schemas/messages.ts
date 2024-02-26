@@ -8,10 +8,25 @@ export const TaskRunExecutionPayload = z.object({
 
 export type TaskRunExecutionPayload = z.infer<typeof TaskRunExecutionPayload>;
 
+export type ProdTaskRunExecutionPayload = TaskRunExecutionPayload & {
+  execution: {
+    worker: {
+      id: string;
+      contentHash: string;
+      version: string;
+    };
+  };
+};
+
 export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("EXECUTE_RUNS"),
     payloads: z.array(TaskRunExecutionPayload),
+  }),
+  z.object({
+    type: z.literal("SCHEDULE_ATTEMPT"),
+    id: z.string(),
+    image: z.string(),
   }),
 ]);
 

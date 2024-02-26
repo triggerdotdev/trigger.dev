@@ -84,18 +84,18 @@ async function startBuild(
 
     const apiClient = new ApiClient(authorization.apiUrl, authorization.accessToken);
 
-    const devEnv = await apiClient.getProjectDevEnv({ projectRef: config.project });
+    const prodEnv = await apiClient.getProjectProdEnv({ projectRef: config.project });
 
-    if (!devEnv.success) {
-      throw new Error(devEnv.error);
+    if (!prodEnv.success) {
+      throw new Error(prodEnv.error);
     }
 
     const buildResult = await runBuild(config, options, {
       apiUrl: authorization.apiUrl,
-      apiKey: devEnv.data.apiKey,
+      apiKey: prodEnv.data.apiKey,
     });
 
-    const envClient = new ApiClient(authorization.apiUrl, devEnv.data.apiKey);
+    const envClient = new ApiClient(authorization.apiUrl, prodEnv.data.apiKey);
     await envClient.createImageDetails(config.project, {
       metadata: {
         contentHash: buildResult.contentHash,

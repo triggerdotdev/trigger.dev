@@ -2,9 +2,14 @@ import { createServer } from "node:http";
 import { $ } from "execa";
 import { io, Socket } from "socket.io-client";
 import {
+  clientWebsocketMessages,
   Machine,
+  MessageCatalogToSocketIoEvents,
   ProviderClientToServerEvents,
   ProviderServerToClientEvents,
+  serverWebsocketMessages,
+  ZodMessageHandler,
+  ZodMessageSender,
 } from "@trigger.dev/core/v3";
 import { HttpReply, getTextBody } from "@trigger.dev/core-apps";
 
@@ -19,15 +24,17 @@ const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "provider-secret";
 const REGISTRY_FQDN = process.env.REGISTRY_FQDN || "localhost:5000";
 const REPO_NAME = process.env.REPO_NAME || "test";
 
-const log = (...args: any[]) => {
-  console.log(`[${MACHINE_NAME}]`, ...args);
-};
+function createLogger(prefix: string) {
+  return (...args: any[]) => console.log(prefix, ...args);
+}
+
+const logger = createLogger(`[${MACHINE_NAME}]`);
 
 const debug = (...args: any[]) => {
   if (!DEBUG) {
     return args[0];
   }
-  log("DEBUG", ...args);
+  logger("DEBUG", ...args);
   return args[0];
 };
 
@@ -62,8 +69,15 @@ class DockerTaskOperations implements TaskOperations {
     }
   }
 
-  async create(opts: { runId: string; image: string; machine: Machine }) {
-    log("noop: create");
+  async create(opts: { attemptId: string; image: string; machine: Machine }) {
+    const containerName = this.#getRunContainerName(opts.attemptId);
+    const { stdout, stderr, exitCode } =
+      await $`docker run --rm -e COORDINATOR_PORT=8020 -e TRIGGER_ATTEMPT_ID=${opts.attemptId} --network=host --pull=never --name=${containerName} ${opts.image}`;
+    debug({ stdout, stderr });
+
+    if (exitCode !== 0) {
+      throw new Error("docker run command failed");
+    }
   }
 
   async restore(opts: {
@@ -73,19 +87,23 @@ class DockerTaskOperations implements TaskOperations {
     checkpointId: string;
     machine: Machine;
   }) {
-    log("noop: restore");
+    logger("noop: restore");
   }
 
   async delete(opts: { runId: string }) {
-    log("noop: delete");
+    logger("noop: delete");
   }
 
   async get(opts: { runId: string }) {
-    log("noop: get");
+    logger("noop: get");
   }
 
   #getIndexContainerName(contentHash: string) {
     return `task-index-${contentHash}`;
+  }
+
+  #getRunContainerName(runId: string) {
+    return `task-run-${runId}`;
   }
 
   #getImageFromRunId(runId: string) {
@@ -121,6 +139,74 @@ class DockerProvider implements Provider {
     this.tasks = options.tasks;
     this.#httpServer = this.#createHttpServer();
     this.#platformSocket = this.#createPlatformSocket();
+    this.#createSharedQueueSocket();
+  }
+
+  #createSharedQueueSocket() {
+    const socket: Socket<
+      MessageCatalogToSocketIoEvents<typeof serverWebsocketMessages>,
+      MessageCatalogToSocketIoEvents<typeof clientWebsocketMessages>
+    > = io(`ws://${PLATFORM_HOST}:${PLATFORM_WS_PORT}/shared-queue`, {
+      transports: ["websocket"],
+      auth: {
+        token: PLATFORM_SECRET,
+      },
+    });
+
+    const logger = createLogger(`[shared-queue][${socket.id ?? "NO_ID"}]`);
+
+    socket.on("connect_error", (err) => {
+      logger(`connect_error: ${err.message}`);
+    });
+
+    socket.on("connect", () => {
+      logger("connect");
+    });
+
+    socket.on("disconnect", () => {
+      logger("disconnect");
+    });
+
+    const sender = new ZodMessageSender({
+      schema: clientWebsocketMessages,
+      sender: async (message) => {
+        return new Promise((resolve, reject) => {
+          try {
+            const { type, ...payload } = message;
+            socket.emit(type, payload as any);
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        });
+      },
+    });
+
+    const handler = new ZodMessageHandler({
+      schema: serverWebsocketMessages,
+      messages: {
+        SERVER_READY: async (payload) => {
+          logger("received SERVER_READY", payload);
+          // FIXME: create new schema without worker req
+          await sender.send("READY_FOR_TASKS", {
+            backgroundWorkerId: "placeholder",
+          });
+        },
+        BACKGROUND_WORKER_MESSAGE: async (payload) => {
+          logger("received BACKGROUND_WORKER_MESSAGE", payload);
+          if (payload.data.type === "SCHEDULE_ATTEMPT") {
+            this.tasks.create({
+              attemptId: payload.data.id,
+              image: payload.data.image,
+              machine: {},
+            });
+          }
+        },
+      },
+    });
+    handler.registerHandlers(socket);
+
+    return socket;
   }
 
   #createPlatformSocket() {
@@ -137,9 +223,7 @@ class DockerProvider implements Provider {
       }
     );
 
-    const logger = (...args: any[]) => {
-      console.log(`[platform][${socket.id ?? "NO_ID"}]`, ...args);
-    };
+    const logger = createLogger(`[platform][${socket.id ?? "NO_ID"}]`);
 
     socket.on("connect_error", (err) => {
       logger(`connect_error: ${err.message}`);
@@ -176,6 +260,7 @@ class DockerProvider implements Provider {
         // callback({ success: true })
       } catch (error) {
         logger("index task failed");
+        debug(error);
         // callback({ success: false })
       }
     });
@@ -191,7 +276,7 @@ class DockerProvider implements Provider {
     socket.on("INVOKE", async (message) => {
       logger("[INVOKE]", message);
       await this.tasks.create({
-        runId: message.name,
+        attemptId: message.name,
         image: message.name,
         machine: message.machine,
       });
@@ -217,7 +302,7 @@ class DockerProvider implements Provider {
 
   #createHttpServer() {
     const httpServer = createServer(async (req, res) => {
-      log(`[${req.method}]`, req.url);
+      logger(`[${req.method}]`, req.url);
 
       const reply = new HttpReply(res);
 
@@ -243,7 +328,7 @@ class DockerProvider implements Provider {
           const body = await getTextBody(req);
 
           await this.tasks.create({
-            runId: body,
+            attemptId: body,
             image: body,
             machine: {
               cpu: "1",
@@ -284,7 +369,7 @@ class DockerProvider implements Provider {
     });
 
     httpServer.on("listening", () => {
-      log("server listening on port", this.options.port);
+      logger("server listening on port", this.options.port);
     });
 
     return httpServer;

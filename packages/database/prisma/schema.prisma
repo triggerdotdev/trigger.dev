@@ -1807,5 +1807,5 @@ model ImageDetails {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([projectId, runtimeEnvironmentId, tag])
+  @@unique([projectId, runtimeEnvironmentId, contentHash])
 }

@@ -23,9 +23,11 @@ import {
   TaskRunContext,
   TaskRunErrorCodes,
   TaskRunExecution,
+  TaskRunExecutionRetry,
   TriggerTracer,
   ZodMessageHandler,
   ZodMessageSender,
+  calculateNextRetryTimestamp,
   childToWorkerMessages,
   logger,
   parseError,
@@ -66,6 +68,21 @@ declare const __TASKS__: Record<string, string>;
 class TaskExecutor {
   constructor(public task: TaskMetadataWithRun) {}
 
+  async determineRetrying(
+    execution: TaskRunExecution,
+    error: unknown
+  ): Promise<TaskRunExecutionRetry | undefined> {
+    if (!this.task.retry) {
+      return;
+    }
+
+    const retry = this.task.retry;
+
+    const timestamp = calculateNextRetryTimestamp(retry, execution.attempt.number);
+
+    return timestamp ? { timestamp } : undefined;
+  }
+
   async execute(
     execution: TaskRunExecution,
     worker: CreateBackgroundWorkerResponse,
@@ -73,6 +90,7 @@ class TaskExecutor {
   ) {
     const parsedPayload = JSON.parse(execution.run.payload);
     const ctx = TaskRunContext.parse(execution);
+    const attemptMessage = `Attempt #${execution.attempt.number}`;
 
     const output = await taskContextManager.runWith(
       {
@@ -88,7 +106,7 @@ class TaskExecutor {
         });
 
         return await tracer.startActiveSpan(
-          `Attempt #${execution.attempt.number}`,
+          attemptMessage,
           async (span) => {
             return await consoleInterceptor.intercept(console, async () => {
               const output = await this.task.run({
@@ -130,6 +148,7 @@ function getTasks(): Array<TaskMetadataWithRun> {
           packageVersion: (task as any).__trigger.packageVersion,
           filePath: (taskFile as any).filePath,
           run: (task as any).__trigger.run,
+          retry: (task as any).__trigger.retry,
         });
       }
     }
@@ -164,11 +183,14 @@ for (const task of tasks) {
   taskExecutors.set(task.id, new TaskExecutor(task));
 }
 
+let _execution: TaskRunExecution | undefined;
+let _isRunning = false;
+
 const handler = new ZodMessageHandler({
   schema: workerToChildMessages,
   messages: {
     EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }) => {
-      process.title = `trigger-prod-worker: ${execution.task.id} ${execution.attempt.id}`;
+      process.title = `trigger-prod-worker: ${execution.task.id} ${execution.run.id}`;
 
       const executor = taskExecutors.get(execution.task.id);
 
@@ -176,6 +198,7 @@ const handler = new ZodMessageHandler({
         console.error(`Could not find executor for task ${execution.task.id}`);
 
         await sender.send("TASK_RUN_COMPLETED", {
+          execution,
           result: {
             ok: false,
             id: execution.attempt.id,
@@ -190,9 +213,13 @@ const handler = new ZodMessageHandler({
       }
 
       try {
+        _execution = execution;
+        _isRunning = true;
+
         const result = await executor.execute(execution, metadata, traceContext);
 
         return sender.send("TASK_RUN_COMPLETED", {
+          execution,
           result: {
             id: execution.attempt.id,
             ok: true,
@@ -201,24 +228,29 @@ const handler = new ZodMessageHandler({
         });
       } catch (e) {
         return sender.send("TASK_RUN_COMPLETED", {
+          execution,
           result: {
             id: execution.attempt.id,
             ok: false,
             error: parseError(e),
+            retry: await executor.determineRetrying(execution, e),
           },
         });
       }
     },
-    TASK_RUN_COMPLETED: async ({ completion, execution }) => {
+    TASK_RUN_COMPLETED_NOTIFICATION: async ({ completion, execution }) => {
       prodRuntimeManager.resumeTask(completion, execution);
     },
-    CLEANUP: async ({ flush }) => {
-      if (flush) {
-        await tracingSDK.flushOtel();
+    CLEANUP: async ({ flush, kill }) => {
+      if (kill) {
+        // Now we need to exit the process
+        await sender.send("READY_TO_DISPOSE", undefined);
+        await tracingSDK.shutdown();
+      } else {
+        if (flush) {
+          await tracingSDK.flush();
+        }
       }
-
-      // Now we need to exit the process
-      await sender.send("READY_TO_DISPOSE", undefined);
     },
   },
 });
@@ -232,3 +264,30 @@ sender.send("TASKS_READY", { tasks: getTaskMetadata() }).catch((err) => {
 });
 
 process.title = "trigger-prod-worker";
+
+async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 5) {
+  async function _doHeartbeat() {
+    while (true) {
+      if (_isRunning && _execution) {
+        try {
+          await sender.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
+        } catch (err) {
+          console.error("Failed to send HEARTBEAT message", err);
+        }
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1000 * intervalInSeconds));
+    }
+  }
+
+  // Wait for the initial delay
+  await new Promise((resolve) => setTimeout(resolve, 1000 * initialDelayInSeconds));
+
+  // Wait for 5 seconds before the next execution
+  return _doHeartbeat();
+}
+
+// Start the async interval after initial delay
+asyncHeartbeat(5).catch((err) => {
+  console.error("Failed to start asyncHeartbeat", err);
+});

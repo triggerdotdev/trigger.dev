@@ -1,4 +1,9 @@
-import { Machine, TaskResource } from "../schemas";
+import {
+  Machine,
+  TaskResource,
+  ProdTaskRunExecutionPayload,
+  TaskRunExecutionResult,
+} from "../schemas";
 
 export type VersionedMessage<TMessage> = { version: "v1" } & TMessage;
 
@@ -37,15 +42,20 @@ export interface ProdWorkerToCoordinatorEvents {
     }>,
     callback: (params: { success: boolean }) => {}
   ) => void;
-  READY: (message: VersionedMessage<{}>) => void;
+  READY_FOR_EXECUTION: (message: VersionedMessage<{ attemptId: string }>) => void;
   WAIT_FOR_DURATION: (message: VersionedMessage<{ seconds: string }>) => void;
   WAIT_FOR_EVENT: (message: VersionedMessage<{ name: string }>) => void;
+  TASK_HEARTBEAT: (message: VersionedMessage<{ runId: string }>) => void;
 }
 
 export interface CoordinatorToProdWorkerEvents {
   INVOKE: (message: VersionedMessage<{ payload: any; context: any }>) => void;
   RESUME: (message: VersionedMessage<{}>) => void;
   RESUME_WITH: (message: VersionedMessage<{ data: any }>) => void;
+  EXECUTE_TASK_RUN: (
+    message: VersionedMessage<{ payload: ProdTaskRunExecutionPayload }>,
+    callback: (ack: { completion: TaskRunExecutionResult }) => void
+  ) => void;
 }
 
 export interface ProdWorkerSocketData {
@@ -61,6 +71,17 @@ export interface ProdWorkerSocketData {
 export interface CoordinatorToPlatformEvents {
   LOG: (message: VersionedMessage<{ taskId: string; text: string }>) => void;
   READY: (message: VersionedMessage<{ taskId: string }>) => void;
+  READY_FOR_EXECUTION: (
+    message: VersionedMessage<{ attemptId: string }>,
+    callback: (ack: { payload: ProdTaskRunExecutionPayload }) => void
+  ) => void;
+  TASK_RUN_COMPLETED: (
+    message: VersionedMessage<{
+      execution: ProdTaskRunExecutionPayload["execution"];
+      completion: TaskRunExecutionResult;
+    }>
+  ) => void;
+  TASK_HEARTBEAT: (message: VersionedMessage<{ runId: string }>) => void;
 }
 
 export interface PlatformToCoordinatorEvents {
