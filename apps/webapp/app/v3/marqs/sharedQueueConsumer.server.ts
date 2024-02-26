@@ -414,6 +414,15 @@ export class SharedQueueTasks {
       return;
     }
 
+    await prisma.taskRunAttempt.update({
+      where: {
+        id,
+      },
+      data: {
+        status: "EXECUTING",
+      },
+    });
+
     const { backgroundWorkerTask, taskRun, queue } = attempt;
 
     const execution = {
@@ -474,7 +483,7 @@ export class SharedQueueTasks {
   }
 
   async completeTaskRun(completion: TaskRunExecutionResult, execution: TaskRunExecution) {
-    logger.debug("Task run completed", { taskRunCompletion: completion });
+    logger.debug("Task run completed", { taskRunCompletion: completion, execution });
 
     const taskRunAttempt = completion.ok
       ? await prisma.taskRunAttempt.update({
